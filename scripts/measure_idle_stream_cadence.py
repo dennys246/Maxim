@@ -80,16 +80,29 @@ def measure(ws_url: str, seconds: float) -> None:
     for k, n in kinds.most_common():
         print(f"{k:16} {n:>6} {n / elapsed:>8.2f}  {first_seen[k]:.1f}s")
 
-    non_meta = {k: n for k, n in kinds.items() if k not in ("heartbeat", "identity", "run", "dropped")}
+    # The REPORT was specifically ~2/s of hippocampus+scn. Judge against THAT,
+    # not against "any non-meta kind" — the first version of this verdict
+    # counted `pipeline` at 0.1/s as a confirmation, which is a 20x miss and
+    # exactly the kind of instrument error this whole exercise keeps hitting.
+    reported = {k: n for k, n in kinds.items() if k in ("hippocampus", "scn")}
+    other = {k: n for k, n in kinds.items() if k not in ("heartbeat", "identity", "run", "dropped", *reported)}
+    reported_rate = sum(reported.values()) / elapsed
     print()
-    if not non_meta:
-        print("VERDICT: only meta-kinds while idle — the reported ~2/s was NOT an idle")
-        print("         cadence. Re-scope the observation to active turns.")
+    if reported_rate >= 1.0:
+        print(f"VERDICT: CONFIRMED — {reported_rate:.2f}/s hippocampus+scn while idle {dict(reported)}.")
+        print("         Next: find the per-iteration caller (store/recall vs SCN registration).")
+    elif reported:
+        print(f"VERDICT: PARTIAL — hippocampus+scn present but only {reported_rate:.2f}/s, far below")
+        print(f"         the reported ~2/s {dict(reported)}. Likely tied to activity, not idle.")
     else:
-        rate = sum(non_meta.values()) / elapsed
-        print(f"VERDICT: {rate:.2f}/s of real records while idle: {dict(non_meta)}")
-        print("         Confirms the report. Next: find the per-iteration caller —")
-        print("         `hippocampus` points at store/recall, `scn` at SCN registration.")
+        print("VERDICT: NOT REPRODUCED — zero hippocampus/scn records while idle.")
+        print("         The reported ~2/s was an ACTIVE-turn cadence, not an idle one.")
+        print("         Re-scope: measure during a turn, not after it.")
+    if other:
+        print(
+            f"         (other non-meta traffic, unrelated to the report: {dict(other)} "
+            f"= {sum(other.values()) / elapsed:.2f}/s)"
+        )
     gaps = sum(1 for a, b in zip(seqs, seqs[1:]) if b != a + 1)
     print(f"seq gaps (dropped events): {gaps}")
 

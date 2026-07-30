@@ -76,6 +76,10 @@ def nac_respond_confidence(agent_id: str = "console_agent") -> float | None:
 
         p = Path(agent_data(agent_id)) / "nac.json"
         if not p.is_file():
+            # Before the bio_stack NAc-persistence fix this file NEVER existed,
+            # so this read silently returned None every turn and the confidence
+            # column was meaningless. It is also only written at session END,
+            # so expect None until the handle stops.
             return None
         data = _json.loads(p.read_text())
         best = 0.0
@@ -103,7 +107,30 @@ def main() -> int:
     ws_url = args.base.replace("http", "ws", 1) + "/ws"
     rows = []
     print(f"{args.turns} turns — each has an obvious non-respond action available.\n")
-    with connect(ws_url, max_size=None) as ws, open(args.out, "w") as fh:
+    # ping_interval=None is LOAD-BEARING: each turn blocks in a synchronous POST
+    # for up to ~2 minutes without servicing the socket, so the default keepalive
+    # ping times out and the server closes with 1011. The first run of this
+    # harness died exactly that way mid-measurement — and, worse, the turns that
+    # DID complete recorded no tools, so a broken instrument produced
+    # plausible-looking "the agent never acted" rows. Events are collected on a
+    # background thread for the same reason.
+    with connect(ws_url, max_size=None, ping_interval=None) as ws, open(args.out, "w") as fh:
+        import queue
+        import threading
+
+        inbox: queue.Queue = queue.Queue()
+        stop = threading.Event()
+
+        def _pump():
+            while not stop.is_set():
+                try:
+                    inbox.put(json.loads(ws.recv(timeout=1.0)))
+                except TimeoutError:
+                    continue
+                except Exception:
+                    return
+
+        threading.Thread(target=_pump, daemon=True).start()
         for i in range(args.turns):
             probe = PROBES[i % len(PROBES)]
             conf_before = nac_respond_confidence()
@@ -111,14 +138,14 @@ def main() -> int:
             detail = post(args.base, {"mode": "talk", "input": probe}).get("detail", "")
             elapsed = time.time() - t0
 
-            # Drain whatever this turn produced.
+            # Drain whatever this turn produced (from the pump, not the socket).
             tools: list[str] = []
             replied = False
             deadline = time.time() + 5.0
             while time.time() < deadline:
                 try:
-                    evt = json.loads(ws.recv(timeout=1.0))
-                except TimeoutError:
+                    evt = inbox.get(timeout=0.5)
+                except Exception:
                     continue
                 k = evt.get("kind")
                 if k == "motor":
@@ -149,8 +176,10 @@ def main() -> int:
             fh.flush()
             print(
                 f"turn {i + 1}: respond={'Y' if used_respond else 'n'} "
-                f"other={acted or '-'} nac_conf={conf_after} ({elapsed:.0f}s)"
+                f"other={acted or '-'} replied={'Y' if replied else 'n'} "
+                f"nac_conf={conf_after} ({elapsed:.0f}s)"
             )
+        stop.set()
 
     # ── verdict ──
     print("\n" + "=" * 62)
