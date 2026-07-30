@@ -210,7 +210,18 @@ class DMRuntime:
                 # generate flavour text / maintain conversational context.
                 self._deliver_and_wait(f"{stimulus}\n\n[Player chose: {choice}]")
             else:
-                # Automated mode: AUT decides via ChooseTool or text classification
+                # Automated mode: AUT decides via ChooseTool or text classification.
+                # The narration must still be SHOWN. Previously display_scene was
+                # called only on the interactive branch, so in automated mode
+                # (which is what the console runs — play_campaign forces
+                # InteractiveMode.OFF) the prose reached a viewer ONLY as the
+                # truncated, BIO-tier PERCEPT summary injected into the AUT.
+                # The story itself never appeared. display_scene emits a
+                # CLEAN-tier SCENE record, so it reaches the JSONL trail and the
+                # console /ws stream as kind="scene".
+                from maxim.simulation.sim_logger import display_scene
+
+                display_scene(stimulus)
                 response = self._deliver_and_wait(stimulus)
 
             if encounter.choices:

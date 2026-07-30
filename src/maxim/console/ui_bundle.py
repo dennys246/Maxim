@@ -45,7 +45,19 @@ logger = logging.getLogger(__name__)
 #           ConsoleEvent gained REQUIRED tier/seq/message; RunAccepted gained
 #           a "completed" status and a `reply` field; RunRequest.input became
 #           meaningful for adventure. A 0.1.0 bundle predates all of it.
-CONSOLE_CONTRACT_VERSION = "0.2.0"
+#   0.3.0 — /api/identity + IdentityResponse/SeamStatus; /ws opens with an
+#           `identity` frame; /api/run mode="rest" went live; /api/diagnose
+#           now returns one row PER CHECK (~69) with extra.group/extra.fix
+#           instead of one blank row per group. A 0.2.0 client cannot know
+#           any of it exists.
+#
+# ADDITIVE CHANGES COUNT. This was learned twice: #438 shipped two endpoints
+# and a reshaped envelope at 0.1.0, and the identity surface itself first
+# shipped at 0.2.0 — the very blindness the 0.1.0→0.2.0 bump was meant to end.
+# `test_schema_surface_matches_the_recorded_contract` now fails when the
+# OpenAPI surface moves without this number moving, so the rule is enforced
+# rather than remembered.
+CONSOLE_CONTRACT_VERSION = "0.3.0"
 
 #: Manifest filename the pulse build writes into every bundle.
 UI_MANIFEST_NAME = "maxim-ui.json"

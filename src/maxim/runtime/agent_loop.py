@@ -1919,6 +1919,11 @@ def run_agentic_loop(
                     _percept_text_for_cycle = str(
                         getattr(observation, "transcript", "") or getattr(observation, "cli_input", "") or ""
                     )
+                # Defaults so the no-gate path (and an exception) still log
+                # coherent numbers rather than tripping a NameError.
+                _gate_score = 0.0
+                _gate_threshold = 0.0
+                _gate_reason = ""
                 if _percept_text_for_cycle and thought_gate is not None:
                     _wms = None
                     _exec = getattr(agent, "exec_agent", None)
@@ -1938,8 +1943,21 @@ def run_agentic_loop(
                             goal_reward_bias=_goal_bias,
                         )
                         _pfc_gate_passed = _gate_decision.passed
+                        # Keep the REAL numbers + reason: the rejection log
+                        # below used to hardcode 0.0/0.0, which printed
+                        # "score=0.00 < 0.00" for EVERY rejection — including
+                        # refractory, energy-exhausted and empty-working-memory,
+                        # none of which are threshold comparisons at all. That
+                        # made a live console session conclude the gate was
+                        # scoring zero when the number had never been measured.
+                        _gate_score = float(getattr(getattr(_gate_decision, "score", None), "combined", 0.0) or 0.0)
+                        _gate_threshold = float(getattr(_gate_decision, "threshold_used", 0.0) or 0.0)
+                        _gate_reason = str(getattr(_gate_decision, "reason", "") or "")
                     except Exception as _ge:
                         log_swallowed_exception(_ge, operation="thought_gate", context={"step": step_num})
+                        # Otherwise the rejection log falls back to the
+                        # fabricated "0.00 < 0.00" this commit exists to kill.
+                        _gate_reason = f"gate error: {type(_ge).__name__}"
                 elif _percept_text_for_cycle:
                     _pfc_gate_passed = bio_enrichment_pipeline is not None
                     # Resolve WMS for the no-gate path (needed by cycles 2+)
@@ -1977,8 +1995,13 @@ def run_agentic_loop(
                         )
                         from maxim.simulation.sim_logger import sim_log, sim_pre_deliberation, sim_deliberation_update
 
+                        # Real numbers here too — a PASS logged as 0.00/0.00 is
+                        # just as uninformative as a rejection was.
                         sim_pre_deliberation(
-                            gate_passed=True, score=0.0, threshold=0.0, enrichment_sections=_n_sections
+                            gate_passed=True,
+                            score=_gate_score,
+                            threshold=_gate_threshold,
+                            enrichment_sections=_n_sections,
                         )
                         # Push cycle 1 enrichment to thinking panel
                         _c1_tags: list[str] = []
@@ -2024,13 +2047,29 @@ def run_agentic_loop(
                     else:
                         from maxim.simulation.sim_logger import sim_pre_deliberation
 
-                        sim_pre_deliberation(gate_passed=False, score=0.0, threshold=0.0, enrichment_sections=0)
+                        # The gate PASSED here — enrichment just produced no
+                        # sections. Reusing _gate_reason printed "gate rejected
+                        # (deliberation approved)", swapping one fabricated
+                        # line for a self-contradictory one.
+                        sim_pre_deliberation(
+                            gate_passed=False,
+                            score=_gate_score,
+                            threshold=_gate_threshold,
+                            enrichment_sections=0,
+                            reason="enrichment produced no sections",
+                        )
                         _pfc_gate_passed = False
                 elif not _pfc_gate_passed and _percept_text_for_cycle:
                     # Only log gate rejection when there was actual percept text to evaluate
                     from maxim.simulation.sim_logger import sim_pre_deliberation
 
-                    sim_pre_deliberation(gate_passed=False, score=0.0, threshold=0.0, enrichment_sections=0)
+                    sim_pre_deliberation(
+                        gate_passed=False,
+                        score=_gate_score,
+                        threshold=_gate_threshold,
+                        enrichment_sections=0,
+                        reason=_gate_reason,
+                    )
             except Exception as e:
                 log_swallowed_exception(e, operation="pfc_enrichment", context={"step": step_num})
 
@@ -2040,7 +2079,10 @@ def run_agentic_loop(
         if _pfc_gate_passed and _percept_enrichment_text:
             from maxim.simulation.sim_logger import sim_contemplation
 
-            sim_contemplation(gate_passed=True, refined=False, score=0.0)
+            # Real measured score — _gate_score is in scope here. Same class as
+            # the pre_deliberation fabrication above: a logged 0.00 that was
+            # never measured reads as a real reading to whoever debugs next.
+            sim_contemplation(gate_passed=True, refined=False, score=_gate_score)
             if thought_gate is not None:
                 thought_gate.reset_refractory(step_num)
 
@@ -4299,6 +4341,11 @@ def run_agentic_loop(
                                             max_cycles=_max_cyc,
                                             salience=locals().get("_salience_c1"),
                                         )
+                                    # NOTE: score=0.0 is a placeholder here —
+                                    # the gate decision is not in this scope
+                                    # (different function). Left explicit
+                                    # rather than silently fabricated; wire a
+                                    # real value if this log is ever relied on.
                                     sim_contemplation(gate_passed=True, refined=False, score=0.0)
                                     sim_deliberation_end(cycle=1, max_cycles=_max_cyc, summary="Ready to act (cycle 1)")
                                     if thought_gate is not None:

@@ -269,3 +269,6 @@ auto.key
 # Vendored Console UI bundle — copied in at RELEASE time by
 # scripts/vendor_console_ui.py, shipped as package data, never committed.
 src/maxim/console/ui_dist/
+
+# Measurement harness output (scripts/measure_respond_fixation.py)
+respond_fixation.jsonl

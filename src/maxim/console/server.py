@@ -44,6 +44,7 @@ from maxim.console.schemas import (
     ConsoleEvent,
     DiagnoseResponse,
     DiagnoseSection,
+    IdentityResponse,
     MeshSetupRequest,
     ModelInfoWire,
     ModelsResponse,
@@ -53,6 +54,7 @@ from maxim.console.schemas import (
     RecallResponse,
     RunAccepted,
     RunRequest,
+    SeamStatus,
     SetupResult,
     SubscribeFrame,
 )
@@ -64,6 +66,10 @@ from maxim.console.ui_bundle import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Set by build_app so /api/identity and the /ws hello can report the bundle
+# that is ACTUALLY being served, not one re-derived after the fact.
+_SERVED_UI_DIST: tuple[Path | None, str] = (None, "none")
 
 _HEARTBEAT_INTERVAL_S = 15.0
 _NOT_IMPLEMENTED = "Seam not yet implemented (Phase 1) — shape is contract-complete for type-gen."
@@ -111,21 +117,124 @@ def get_models() -> ModelsResponse:
     return ModelsResponse(groups={group: [_wire(m) for m in members] for group, members in groups.items()})
 
 
+# A hand-maintained MANIFEST of console surfaces — deliberately NOT a probe.
+# Nothing here is measured: `live` is declared. It is named `_SEAM_DECLARATIONS`
+# rather than `_SEAM_PROBES` because shipping a hardcoded liveness claim under a
+# probing name is the same "instrument that asserts instead of measuring"
+# failure this branch exists to fix. Kept next to the endpoint it feeds so
+# adding a seam without declaring it is visible in review; the `sim` 501 is
+# pinned by a test, which is what actually keeps this honest.
+_SEAM_DECLARATIONS: tuple[tuple[str, str], ...] = (
+    ("probe", "/api/probe"),
+    ("setup", "/api/setup/mesh + /api/setup/cloud"),
+    ("recall", "/api/recall"),
+    ("campaigns", "/api/campaigns"),
+    ("event", "/ws"),
+    ("talk", "/api/run mode=talk"),
+    ("adventure", "/api/run mode=adventure"),
+    ("rest", "/api/run mode=rest"),
+    ("sim", "/api/run mode=sim"),
+)
+
+
+def _git_identity() -> tuple[str | None, str | None]:
+    """(sha, branch) of the checked-out source, or (None, None).
+
+    Load-bearing for an EDITABLE install: `maxim serve` follows the working
+    tree, so the branch IS the capability set. Best-effort — a wheel install
+    has no repo and simply reports None.
+    """
+    import subprocess
+
+    root = Path(__file__).resolve().parents[3]
+    # Only trust a real checkout. For a pip install this path is
+    # .../lib/python3.12 and `git` walks ANCESTORS, so a venv inside the
+    # user's project reported THEIR branch as pymaxim's identity — strictly
+    # worse than None, in the one field the docstring calls load-bearing.
+    if not (root / ".git").exists():
+        _GIT_IDENTITY_CACHE = (None, None)
+        return _GIT_IDENTITY_CACHE
+
+    def _run(args: list[str]) -> str | None:
+        try:
+            out = subprocess.run(args, cwd=root, capture_output=True, text=True, timeout=2.0)
+            return out.stdout.strip() or None if out.returncode == 0 else None
+        except Exception:
+            return None
+
+    return _run(["git", "rev-parse", "--short", "HEAD"]), _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+
+
+def build_identity(ui_dist: Path | str | None = None, ui_source: str = "none") -> IdentityResponse:
+    """Assemble the backend's self-description (shared by /api/identity + /ws)."""
+    import sys as _sys
+
+    import maxim as _maxim
+    from maxim.console.ui_bundle import CONSOLE_CONTRACT_VERSION, read_ui_manifest
+
+    sha, branch = _git_identity()
+    seams = [
+        SeamStatus(name=n, live=(n != "sim"), detail=(d if n != "sim" else f"{d} — use the CLI (`maxim --sim`)"))
+        for n, d in _SEAM_DECLARATIONS
+    ]
+    return IdentityResponse(
+        package_version=getattr(_maxim, "__version__", "unknown"),
+        contract_version=CONSOLE_CONTRACT_VERSION,
+        git_sha=sha,
+        git_branch=branch,
+        python_version=f"{_sys.version_info.major}.{_sys.version_info.minor}.{_sys.version_info.micro}",
+        ui_source=ui_source,  # type: ignore[arg-type]
+        ui_dist=str(ui_dist) if ui_dist else None,
+        ui_manifest=(read_ui_manifest(ui_dist) or {}) if ui_dist else {},
+        seams=seams,
+    )
+
+
+@api.get("/identity", response_model=IdentityResponse, summary="Which backend is this?")
+def get_identity() -> IdentityResponse:
+    # Answers the question a debugging session would otherwise have to guess:
+    # which pymaxim, which branch, which contract, which seams are live, and
+    # which UI bundle is being served.
+    return build_identity(_SERVED_UI_DIST[0], _SERVED_UI_DIST[1])
+
+
 @api.get("/diagnose", response_model=DiagnoseResponse, summary="Environment diagnostics")
 def get_diagnose() -> DiagnoseResponse:
     import maxim
 
     report = maxim.diagnose()
     sections: list[DiagnoseSection] = []
-    for s in getattr(report, "sections", []) or []:
-        d = dataclasses.asdict(s) if dataclasses.is_dataclass(s) else (s if isinstance(s, dict) else {})
-        sections.append(
-            DiagnoseSection(
-                name=str(d.get("name", s if isinstance(s, str) else "")),
-                status=str(d.get("status", "")),
-                detail=d.get("detail"),
+    # `report.sections` is a list of (group_name, [CheckResult, ...]) TUPLES —
+    # not dataclasses. The previous mapping treated each entry as a dataclass /
+    # dict, so `.get("name")` always missed: the console rendered one blank row
+    # per GROUP and dropped every actual check. Flatten to one row per check,
+    # which is what a traffic-light view wants, and keep the group + fix hint.
+    for entry in getattr(report, "sections", []) or []:
+        group, checks = ("", entry)
+        if isinstance(entry, tuple) and len(entry) == 2:
+            group, checks = entry
+        if not isinstance(checks, (list, tuple)):
+            checks = [checks]
+        for check in checks:
+            if dataclasses.is_dataclass(check) and not isinstance(check, type):
+                d = dataclasses.asdict(check)
+            elif isinstance(check, dict):
+                d = dict(check)
+            else:
+                d = {"name": str(check)}
+            extra: dict[str, Any] = {"group": str(group)}
+            if d.get("fix"):
+                extra["fix"] = d["fix"]
+            if d.get("retry_id"):
+                extra["retry_id"] = d["retry_id"]
+            sections.append(
+                DiagnoseSection(
+                    name=str(d.get("name", "") or ""),
+                    status=str(d.get("status", "") or ""),
+                    detail=d.get("message") or d.get("detail"),
+                    extra=extra,
+                )
             )
-        )
     p = getattr(report, "platform", None)
     platform = PlatformWire(
         os=str(getattr(p, "os", "") or ""),
@@ -682,7 +791,7 @@ def get_subscribe_frame() -> SubscribeFrame:
 # NEVER blocks. Filtering is per-connection via SubscribeFrame; meta-kinds
 # (heartbeat/run/dropped/display) bypass filters — they carry stream/UI state.
 
-_META_KINDS = frozenset({"heartbeat", "run", "dropped", "display"})
+_META_KINDS = frozenset({"heartbeat", "run", "dropped", "display", "identity"})
 _WS_QUEUE_MAXSIZE = 512
 _TIER_ORDER = {"clean": 0, "bio": 1, "debug": 2}
 
@@ -860,8 +969,20 @@ _event_hub = _EventHub()
 # ── app factory ─────────────────────────────────────────────────────────────
 
 
-def build_app(ui_dist: Path | None = None) -> FastAPI:
-    """Construct the Console FastAPI app. ``ui_dist`` = the built static bundle."""
+def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
+    """Construct the Console FastAPI app. ``ui_dist`` = the built static bundle.
+
+    ``ui_source`` records HOW that bundle was chosen (flag / config / packaged)
+    so /api/identity can report it — "which UI am I serving, and why" is half
+    of any contract-mismatch investigation.
+    """
+    global _SERVED_UI_DIST
+    # Recorded only if the bundle is ACTUALLY servable. Recording the requested
+    # path unconditionally meant a typo'd --ui-dist reported ui_source="flag"
+    # with a path, while `/` served the "no UI installed" page — identity
+    # lying about precisely the thing it exists to explain.
+    _mountable = bool(ui_dist) and Path(ui_dist).is_dir()
+    _SERVED_UI_DIST = (Path(ui_dist) if _mountable else None, ui_source if _mountable else "none")
     from contextlib import asynccontextmanager
 
     @asynccontextmanager
@@ -922,6 +1043,28 @@ def build_app(ui_dist: Path | None = None) -> FastAPI:
         """
         await websocket.accept()
         conn = _WsConn()
+
+        # Identity FIRST, before any stream event: a client should know what it
+        # is attached to before it starts interpreting what that thing says.
+        # ENQUEUED (not sent directly) so its seq comes from the connection
+        # counter — a hardcoded seq=0 collided with the first real event's
+        # seq 0 and made every client's gap detector report a phantom drop on
+        # every connection, violating the monotonic-seq contract this branch
+        # itself bumped. Enqueued BEFORE add_conn so it cannot be overtaken.
+        try:
+            ident = build_identity(_SERVED_UI_DIST[0], _SERVED_UI_DIST[1])
+            conn.enqueue(
+                ConsoleEvent(
+                    kind="identity",
+                    tier="clean",
+                    seq=0,  # replaced by enqueue()
+                    ts=time.time(),
+                    message=f"pymaxim {ident.package_version} (contract {ident.contract_version})",
+                    data=ident.model_dump(),
+                ).model_dump()
+            )
+        except Exception:
+            logger.warning("could not build /ws identity frame", exc_info=True)
         _event_hub.add_conn(conn)
 
         async def _recv_frames() -> None:
@@ -1053,10 +1196,12 @@ def run_serve(argv: list[str]) -> int:
     # CLI > config > PACKAGED bundle. `_resolve` already applies CLI > env >
     # config; the packaged vendored bundle is the final fallback so a plain
     # `pip install pymaxim[console] && maxim serve` just works.
-    ui_dist = resolve_ui_dist(args.ui_dist, _resolve("console.ui_dist", args.ui_dist))
+    config_ui_dist = _resolve("console.ui_dist", args.ui_dist)
+    ui_dist = resolve_ui_dist(args.ui_dist, config_ui_dist)
+    ui_source = "flag" if args.ui_dist else ("config" if config_ui_dist else ("packaged" if ui_dist else "none"))
     check_ui_contract(ui_dist)
 
-    app = build_app(ui_dist)
+    app = build_app(ui_dist, ui_source)
 
     import uvicorn
 

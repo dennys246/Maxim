@@ -223,6 +223,18 @@ from maxim.console.schemas import ConsoleEvent, SubscribeFrame  # noqa: E402
 from maxim.console.server import _EventHub, _WsConn, build_app  # noqa: E402
 
 
+def _first_stream_event(ws):
+    """Drain the identity hello frame and return the first real event.
+
+    /ws now opens with kind="identity" so a client knows which backend it is
+    attached to before interpreting anything else.
+    """
+    evt = ws.receive_json()
+    if evt.get("kind") == "identity":
+        evt = ws.receive_json()
+    return evt
+
+
 def _drain(conn: _WsConn) -> list[dict]:
     out = []
     while True:
@@ -375,7 +387,7 @@ class TestWsEndToEnd:
                 )
                 t.start()
                 t.join()
-                evt = ws.receive_json()
+                evt = _first_stream_event(ws)
                 assert evt["kind"] == "learn"
                 assert evt["tier"] == "clean"
                 assert evt["message"] == "reward_bias updated"
@@ -394,6 +406,7 @@ class TestWsEndToEnd:
         app = build_app(None)
         with TestClient(app) as client:
             with client.websocket_connect("/ws") as ws:
+                assert ws.receive_json()["kind"] == "identity"  # hello frame
                 ws.send_json({"channels": ["memory"]})
                 motor_seen: set[int] = set()
                 for i in range(50):
@@ -432,7 +445,7 @@ class TestWsEndToEnd:
                 t = threading.Thread(target=sim_log, args=("LEARN", "still alive"))
                 t.start()
                 t.join()
-                evt = ws.receive_json()
+                evt = _first_stream_event(ws)
                 assert evt["kind"] == "learn"
 
     def test_openapi_carries_subscribe_frame(self):
@@ -566,3 +579,75 @@ class TestNarrativeReachesTheStream:
         capsys.readouterr()
         display_scene("Only once please.")
         assert capsys.readouterr().out.count("Only once please.") == 1
+
+
+class TestGateRejectionTellsTheTruth:
+    """`score=0.00 < 0.00` was a FABRICATED log line.
+
+    agent_loop computed a real GateDecision (score, threshold_used, reason)
+    then discarded it and called sim_pre_deliberation with hardcoded 0.0/0.0.
+    Every rejection therefore rendered as a threshold comparison — including
+    refractory, energy-exhausted and empty-working-memory, which are not
+    threshold comparisons at all. A live console session read that number and
+    concluded the gate was scoring zero; it had never been measured.
+    """
+
+    def test_reason_is_shown_instead_of_a_fake_comparison(self, sim_logging):
+        from maxim.simulation.sim_logger import sim_pre_deliberation
+
+        sim_pre_deliberation(
+            gate_passed=False, score=0.0, threshold=0.0, enrichment_sections=0, reason="empty working memory"
+        )
+        rec = [r for r in get_sim_records() if r["subsystem"] == "THOUGHT"][-1]
+        assert "empty working memory" in rec["message"]
+        assert "0.00 < 0.00" not in rec["message"]
+        assert rec["data"]["reason"] == "empty working memory"
+
+    def test_falls_back_to_the_comparison_when_no_reason(self, sim_logging):
+        from maxim.simulation.sim_logger import sim_pre_deliberation
+
+        sim_pre_deliberation(gate_passed=False, score=0.3, threshold=0.4, enrichment_sections=0)
+        rec = [r for r in get_sim_records() if r["subsystem"] == "THOUGHT"][-1]
+        assert "0.30 < 0.40" in rec["message"]
+
+    def test_gate_rejection_reports_measured_values_not_zeros(self, sim_logging):
+        # BEHAVIOURAL, not source-text: the previous version asserted a string
+        # was absent from the module source, which passes on any reformat
+        # (score=0.0,\n threshold=0.0) and cannot tell a wrong-but-present
+        # number from a right one.
+        from maxim.simulation.sim_logger import sim_pre_deliberation
+
+        sim_pre_deliberation(gate_passed=False, score=0.42, threshold=0.55, enrichment_sections=0)
+        rec = [r for r in get_sim_records() if r["subsystem"] == "THOUGHT"][-1]
+        assert rec["data"]["score"] == 0.42 and rec["data"]["threshold"] == 0.55
+        assert "0.42 < 0.55" in rec["message"]
+
+    def test_pass_branch_does_not_render_as_rejected(self, sim_logging):
+        # The enrichment-empty branch reused the PASS reason, printing
+        # "gate rejected (deliberation approved)".
+        from maxim.simulation.sim_logger import sim_pre_deliberation
+
+        sim_pre_deliberation(
+            gate_passed=False,
+            score=0.9,
+            threshold=0.4,
+            enrichment_sections=0,
+            reason="enrichment produced no sections",
+        )
+        msg = [r for r in get_sim_records() if r["subsystem"] == "THOUGHT"][-1]["message"]
+        assert "deliberation approved" not in msg
+        assert "enrichment produced no sections" in msg
+
+
+class TestDmNarrationIsRecordedInAutomatedMode:
+    def test_display_scene_emits_a_record_for_automated_narration(self, sim_logging):
+        # BEHAVIOURAL: the old version counted a substring in the source, which
+        # would pass under `if False:` and SKIPPED (rather than failed) if the
+        # class were renamed. What actually matters is that narration reaches
+        # the record stream — display_scene is the shared path both DM branches
+        # now use.
+        from maxim.simulation.sim_logger import display_scene
+
+        display_scene("The cavern mouth yawns open.")
+        recs = [r for r in get_sim_records() if r["subsystem"] == "SCENE"]
+        assert recs[-1]["data"]["text"] == "The cavern mouth yawns open."

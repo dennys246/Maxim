@@ -1637,6 +1637,7 @@ def sim_pre_deliberation(
     enrichment_sections: int,
     *,
     agent_id: str | None = None,
+    reason: str = "",
 ) -> None:
     """Log a Layer 1 pre-deliberation decision + enrichment summary.
 
@@ -1658,13 +1659,19 @@ def sim_pre_deliberation(
             agent_id=agent_id,
         )
     else:
+        # The REASON is the load-bearing part: a rejection can be refractory,
+        # energy-exhausted or empty-working-memory, none of which are threshold
+        # comparisons — rendering them all as "score < threshold" invented a
+        # measurement that was never taken.
+        detail = reason or f"score={score:.2f} < {threshold:.2f}"
         sim_log(
             "THOUGHT",
-            f"⚖️ pre-deliberation: gate rejected (score={score:.2f} < {threshold:.2f})",
+            f"⚖️ pre-deliberation: gate rejected ({detail})",
             {
                 "gate_passed": False,
                 "score": score,
                 "threshold": threshold,
+                "reason": reason,
                 "enrichment_sections": 0,
             },
             agent_id=agent_id,

@@ -251,6 +251,15 @@ def build_bio_stack(
     _nac_config = NACConfig(
         substrate_explore_bonus_weight=_explore_weight,
         drive_gate_enabled=_drive_gate,
+        # NOTE: deliberately NO persistence_path here yet. NAc is the only
+        # bio-system without one, which means its state is never saved — but
+        # adding the save ALONE makes things strictly worse: agent_factory
+        # overwrites the auto-loaded NAc with this one (agent_factory.py:450,
+        # which never loads), so each session would TRUNCATE the last while
+        # leaving a plausible populated nac.json. "No persistence" is better
+        # than "silently lossy persistence that looks like it works".
+        # Save + load + the decay-on-load decision land together:
+        # docs/plans/deferred/nac_cross_session_persistence.md
     )
     # Loud failure for the silent-no-op footgun: an untried tool's only score is
     # the novelty bonus, so a weight at or below the substrate min_confidence gate
