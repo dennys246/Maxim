@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from maxim.utils.seeding import stable_hash_32
+
 
 class SimilarityIndex:
     """LSH-based similarity index that upgrades existing recall backends.
@@ -49,10 +51,18 @@ class SimilarityIndex:
         return {" ".join(words[i : i + k]) for i in range(len(words) - k + 1)}
 
     def _minhash(self, shingles: set[str]) -> list[int]:
-        """Compute MinHash signature for a set of shingles."""
+        """Compute MinHash signature for a set of shingles.
+
+        stable_hash_32, NOT builtin hash(): signatures + LSH bands are
+        persisted via save()/load(), and queries against a reloaded index
+        re-hash under the new process's seed — with randomized hashing a
+        reloaded index reports len==1 but returns [] for the exact text it
+        stored. (Also the root cause of the same-process CI flake in
+        test_context_index.py::test_similar_text_found.)
+        """
         sig = []
         for i in range(self.num_hashes):
-            min_hash = min(hash((i, s)) & 0xFFFFFFFF for s in shingles) if shingles else 0
+            min_hash = min(stable_hash_32(f"{i}:{s}") for s in shingles) if shingles else 0
             sig.append(min_hash)
         return sig
 

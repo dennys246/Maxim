@@ -100,3 +100,31 @@ def make_agent_rng(base_seed: int, agent_id: str) -> random.Random:
     rng = random.Random(derived_seed)
     logger.debug("Agent RNG: agent_id=%s derived_seed=%d", agent_id, derived_seed)
     return rng
+
+
+def stable_hash_32(text: str) -> int:
+    """Deterministic unsigned 32-bit hash of a string (process-independent).
+
+    Replacement for ``hash(s) & 0xFFFFFFFF`` at every site whose value
+    crosses a persistence boundary.  Python's builtin ``hash()`` for str
+    is randomized per process (PYTHONHASHSEED), so persisted values can
+    never match values recomputed after a restart — the bug class that
+    silently broke ``SituationSignature`` matching and ``SimilarityIndex``
+    recall across sessions (see tests/unit/test_stable_hash_two_process.py).
+
+    Uses SHA-256, same pattern as
+    ``memory/hippocampus_consolidation.py::_context_signature``.
+    """
+    return int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:4], "big")
+
+
+def stable_hash_64_signed(text: str) -> int:
+    """Deterministic SIGNED 64-bit hash of a string (process-independent).
+
+    For call sites that sum hash values and branch on the SIGN of the sum
+    (``SemanticLSH.hash`` / ``NeuralSemanticLSH._fallback_hash`` hyperplane
+    bits).  An unsigned digest would make every sum positive and collapse
+    all hash bits to 1 — the signed range keeps the bit distribution
+    balanced, matching the builtin ``hash()`` semantics it replaces.
+    """
+    return int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:8], "big", signed=True)

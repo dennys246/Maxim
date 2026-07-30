@@ -8,6 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from maxim.utils.seeding import stable_hash_32
+
 
 @dataclass(frozen=True, slots=True)
 class SituationSignature:
@@ -109,8 +111,12 @@ class SituationSignature:
             if hasattr(outcome, "success"):
                 outcome_type = "success" if outcome.success else "failure"
 
+        # stable_hash_32, NOT builtin hash(): these ints are persisted via
+        # EC.save()/load() and compared for exact equality in
+        # _structural_match/_context_match — a randomized hash can never
+        # match across a process boundary (--resume-sim, cross-session).
         structural_str = f"{tool_name}:{outcome_type}"
-        structural_hash = hash(structural_str) & 0xFFFFFFFF
+        structural_hash = stable_hash_32(structural_str)
 
         # Compute temporal hash from timestamp
         temporal_hash = (0, 0, 0, 0)
@@ -139,7 +145,7 @@ class SituationSignature:
                 context_features.extend(perc.detected_people or [])
 
         context_str = f"{mode}:{':'.join(sorted(context_features))}"
-        context_hash = hash(context_str) & 0xFFFFFFFF
+        context_hash = stable_hash_32(context_str)
 
         # Extract goal keywords
         goal_keywords = tuple(word.lower() for word in semantic_text.split()[:10] if len(word) > 3)
