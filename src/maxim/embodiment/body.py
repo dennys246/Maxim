@@ -18,6 +18,18 @@ from maxim.embodiment.sem import Entity, FailureMode, SensorReading
 
 log = logging.getLogger(__name__)
 
+# Drive-pain breach latch tuning (channel 2 / PainBus only — see
+# evaluate_failures). A breach re-publishes only when severity grows by more
+# than `_BREACH_DEEPEN_FRACTION` of the spec's own band/threshold gap (floored
+# at `_BREACH_MIN_EPS`), so per-tick drift creep cannot re-fire while genuine
+# re-injury does. `_BREACH_HYSTERESIS` pulls the homeostatic *recovery* point
+# strictly inside the firing point so a noisy world-set sensor sitting on the
+# band edge cannot chatter one "onset" per jitter. Entropic drives declare
+# their own recovery point (`satisfaction_threshold`) so they do not use it.
+_BREACH_DEEPEN_FRACTION = 0.05
+_BREACH_MIN_EPS = 1e-3
+_BREACH_HYSTERESIS = 0.2
+
 
 @dataclass
 class EmbodimentConfig:
@@ -74,11 +86,6 @@ class Embodiment:
         self._failure_history: list[FailureEvent] = []
         self._last_poll: float = 0.0
         self._tick_count: int = 0
-        # Drive-pain breach latch (transition_based_drive_pain plan): drive
-        # FailureEvents + PainBus publishes fire on band ENTRY only, keyed
-        # (entity_path, drive_name), cleared on the reverse transition.
-        # Session-runtime only — never persisted; a fresh Body starts clear.
-        self._drive_breach: set[tuple[str, str]] = set()
 
     # -- entity access ------------------------------------------------------
 
@@ -228,6 +235,12 @@ class Embodiment:
             for ds_name, ds in ent.drive_specs.items():
                 current = readings.get(ds_name)
                 if current is None:
+                    # Unreadable sensor (backend error, modulator removed,
+                    # entity detached mid-session). Treat "unknown" as "not
+                    # breached" and drop any latched severity — retaining it
+                    # would silently swallow the next genuine breach when the
+                    # sensor comes back out of band.
+                    ent.drive_breach_severity.pop(ds_name, None)
                     continue
 
                 # Drive state trace (for --display debug / JSONL)
@@ -252,12 +265,39 @@ class Embodiment:
                 # crossing lands inside the CAUSING action's execute and a
                 # bystander evaluating during a lingering breach emits
                 # nothing — on both attribution channels. Motivation is
-                # untouched: it rides the drive VALUE (body_state_summary,
-                # _read_drive_states), not these events. The latch is
-                # evaluated against the post-drift value (drift ran above),
-                # so a sensor that drifts back within band clears here and
-                # a later genuine re-breach fires again.
-                breach_key = (ent.full_path, ds_name)
+                # CHANNEL SPLIT (pre-merge two-lens fold — see the
+                # transition-based drive-pain invariant in CLAUDE.md):
+                #
+                #  * The returned FailureEvent list (channel 1, direct
+                #    attribution via ToolOutput.side_effects) stays
+                #    STATE-BASED — one event per call while breached.
+                #    tool_bridge's B8 delta filter already attributes this
+                #    channel correctly, and it is state-INDEPENDENT, so it
+                #    stays right even when a sensor saturates (where a
+                #    level latch goes blind). Latching here silently
+                #    starved that filter and flipped a repeat harmful
+                #    affordance to POSITIVE credit.
+                #  * _publish_drive_pain (channel 2, the unfiltered PainBus
+                #    path this plan was written to fix) is latched on
+                #    SEVERITY: it fires on band entry and again only when
+                #    the breach materially DEEPENS (re-injury), which is
+                #    the bio-faithful shape — repeated noxious stimulus of
+                #    already-injured tissue sensitizes, it does not go
+                #    silent. Steady-state and recovery are silent, which
+                #    kills the per-tick flood.
+                #
+                # Severity is in SENSOR units for both drive kinds (excess
+                # past the comfort band / excursion past the deprivation
+                # threshold) so the epsilon is comparable to the spec's own
+                # thresholds. Clearing uses HYSTERESIS (a recovery point
+                # strictly inside the firing point) so a noisy world-set
+                # sensor hovering at the boundary — live DoA azimuth is
+                # exactly this — cannot chatter one "onset" per jitter.
+                # The latch lives on the ENTITY, not this wrapper, so it
+                # survives reparenting (entity acquisition) and ephemeral
+                # per-invocation Embodiment wrappers, and cannot collide
+                # between same-named siblings.
+                breach_latch = ent.drive_breach_severity
 
                 if isinstance(ds, HomeostaticDriveSpec):
                     # drive_pain_for_value is the single source of truth for the
@@ -266,45 +306,66 @@ class Embodiment:
                     # both already clamped to [0, 1], which is exactly what the
                     # helper returns.
                     pain = drive_pain_for_value(ds, current)
+                    deviation = abs(current - ds.set_point)
+                    severity = max(0.0, deviation - ds.comfort_band)
+                    # Clear only once comfortably back inside the band.
+                    cleared = deviation <= ds.comfort_band * (1.0 - _BREACH_HYSTERESIS)
+                    eps = max(_BREACH_MIN_EPS, _BREACH_DEEPEN_FRACTION * ds.comfort_band)
                     if pain > 0:
-                        if breach_key not in self._drive_breach:
-                            self._drive_breach.add(breach_key)
-                            event = FailureEvent(
-                                entity_path=ent.full_path,
-                                failure_name=f"drive:{ds_name}:discomfort",
-                                pain_intensity=pain,
-                                sensor_readings=dict(readings),
-                            )
-                            events.append(event)
-                            self._failure_history.append(event)
+                        event = FailureEvent(
+                            entity_path=ent.full_path,
+                            failure_name=f"drive:{ds_name}:discomfort",
+                            pain_intensity=pain,
+                            sensor_readings=dict(readings),
+                        )
+                        events.append(event)
+                        self._failure_history.append(event)
+                        latched = breach_latch.get(ds_name)
+                        if latched is None or severity > latched + eps:
+                            breach_latch[ds_name] = severity
                             self._publish_drive_pain(ent, ds_name, pain, readings)
-                    else:
-                        self._drive_breach.discard(breach_key)
+                    elif cleared:
+                        breach_latch.pop(ds_name, None)
 
                 elif isinstance(ds, EntropicDriveSpec):
                     # NB: this inline threshold check mirrors the entropic branch
                     # of drive_pain_for_value; kept explicit here to preserve the
                     # exact fire-on-threshold semantics regardless of the
                     # (degenerate) deprivation_pain == 0 config.
-                    deprived = (ds.drift_direction == "up" and current >= ds.deprivation_threshold) or (
-                        ds.drift_direction == "down" and current <= ds.deprivation_threshold
+                    if ds.drift_direction == "up":
+                        deprived = current >= ds.deprivation_threshold
+                        severity = max(0.0, current - ds.deprivation_threshold)
+                        # satisfaction_threshold is the schema's own recovery
+                        # point — strictly inside deprivation_threshold, i.e.
+                        # the hysteresis is already declared on the spec.
+                        cleared = current <= ds.satisfaction_threshold
+                    elif ds.drift_direction == "down":
+                        deprived = current <= ds.deprivation_threshold
+                        severity = max(0.0, ds.deprivation_threshold - current)
+                        cleared = current >= ds.satisfaction_threshold
+                    else:
+                        deprived, severity, cleared = False, 0.0, False
+                    eps = max(
+                        _BREACH_MIN_EPS,
+                        _BREACH_DEEPEN_FRACTION * abs(ds.deprivation_threshold - ds.satisfaction_threshold),
                     )
                     if deprived:
-                        if breach_key not in self._drive_breach:
-                            self._drive_breach.add(breach_key)
-                            event = FailureEvent(
-                                entity_path=ent.full_path,
-                                failure_name=f"drive:{ds_name}:deprived",
-                                pain_intensity=ds.deprivation_pain,
-                                sensor_readings=dict(readings),
-                            )
-                            events.append(event)
-                            self._failure_history.append(event)
+                        event = FailureEvent(
+                            entity_path=ent.full_path,
+                            failure_name=f"drive:{ds_name}:deprived",
+                            pain_intensity=ds.deprivation_pain,
+                            sensor_readings=dict(readings),
+                        )
+                        events.append(event)
+                        self._failure_history.append(event)
+                        latched = breach_latch.get(ds_name)
+                        if latched is None or severity > latched + eps:
+                            breach_latch[ds_name] = severity
                             self._publish_drive_pain(
                                 ent, ds_name, ds.deprivation_pain, readings, event_suffix="deprived"
                             )
-                    else:
-                        self._drive_breach.discard(breach_key)
+                    elif cleared:
+                        breach_latch.pop(ds_name, None)
 
         return events
 

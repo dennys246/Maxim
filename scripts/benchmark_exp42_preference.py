@@ -362,6 +362,9 @@ def _env_truthy(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in _TRUTHY
 
 
+_PROVENANCE: dict[str, str] = {}
+
+
 def _ablation_arm() -> str:
     """Normalize the Exp 44 arm from the two env vars: A (unwired status
     quo), B (body_state + coach layers off), C (body_state + coach on),
@@ -398,6 +401,18 @@ def _record(
         "ablation_arm": _ablation_arm(),
         "env_body_state_prompt": os.environ.get("MAXIM_ENABLE_BODY_STATE_PROMPT", ""),
         "env_coach_body_layers_disabled": os.environ.get("MAXIM_DISABLE_COACH_BODY_LAYERS", ""),
+        # Drive-gating (B7) arm marker. Records the value ACTUALLY propagated to
+        # the sub-sims (same `os.environ.get(..., "1")` default the launcher
+        # applies), so a run file is self-describing about which arm it is.
+        # Added 2026-07-28 after the Exp 42b re-validation: the treatment and
+        # gating-OFF files were behaviourally indistinguishable and nothing in
+        # the record could confirm the toggle had fired — "did the actuation
+        # actually happen?" must be answerable from the data, not the shell
+        # history.
+        "env_drive_gate_enabled": os.environ.get("MAXIM_SIM_DRIVE_GATE_ENABLED", "1"),
+        # Which code ACTUALLY ran (not just where the harness lives) — see
+        # scripts/_provenance.py. `git_hash` above answers the wrong question.
+        **_PROVENANCE,
     }
     rec.update(compute_run_metrics(tools))
     rec.update(nets)
@@ -545,6 +560,21 @@ def main(argv: list[str] | None = None) -> int:
     if bad:
         print(f"error: unknown arms {bad}; valid: {ARMS}", file=sys.stderr)
         return 2
+
+    # Provenance guard (scripts/_provenance.py): refuse to run if the sub-sims
+    # would import a `maxim` from outside this repo. See that module for the
+    # Exp 42b post-mortem this was earned from.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _provenance import ProvenanceError, assert_repo_interpreter, executed_code_provenance
+
+    repo_root = Path(__file__).resolve().parent.parent
+    try:
+        assert_repo_interpreter(repo_root, _resolve_maxim_binary(), exempt=args.mock)
+    except ProvenanceError as exc:
+        print(f"PREFLIGHT FAIL: {exc}", file=sys.stderr)
+        return 3
+    if not args.mock:
+        _PROVENANCE.update(executed_code_provenance(repo_root, _resolve_maxim_binary()))
 
     return run_benchmark(
         arms=arms,

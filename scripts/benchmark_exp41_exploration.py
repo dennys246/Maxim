@@ -346,6 +346,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--resume", action="store_true", help="skip (arm, seed) pairs already in --out")
     args = p.parse_args(argv)
 
+    # Provenance guard — refuse to run if the sub-sims would import a `maxim`
+    # from outside this repo (scripts/_provenance.py; Exp 42b post-mortem).
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _provenance import ProvenanceError, assert_repo_interpreter
+
+    try:
+        assert_repo_interpreter(
+            Path(__file__).resolve().parent.parent, _resolve_maxim_binary(), exempt=args.mock
+        )
+    except ProvenanceError as exc:
+        print(f"PREFLIGHT FAIL: {exc}", file=sys.stderr)
+        return 3
+
     arms = tuple(a.strip() for a in args.arms.split(",") if a.strip())
     bad = [a for a in arms if a not in ARMS]
     if bad:
