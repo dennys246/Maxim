@@ -82,11 +82,19 @@ def nac_respond_confidence(agent_id: str = "console_agent") -> float | None:
             # so expect None until the handle stops.
             return None
         data = _json.loads(p.read_text())
+        # NAc.dump() uses "links": dict[signature, list[link]] — NOT
+        # "causal_links": dict[id, link]. The original read the wrong key, so
+        # the ternary always took its else-branch and this returned 0.0. Once
+        # nac.json exists that prints a flat 0.000 -> 0.000 curve, which reads
+        # as decisive evidence AGAINST learned saturation from an instrument
+        # that never looked at anything.
         best = 0.0
-        for link in (data.get("causal_links") or {}).values() if isinstance(data.get("causal_links"), dict) else []:
-            sig = str(link.get("event_signature", ""))
-            if "respond" in sig:
-                best = max(best, float(link.get("confidence", 0.0) or 0.0))
+        for links in (data.get("links") or {}).values():
+            for link in links if isinstance(links, list) else [links]:
+                if not isinstance(link, dict):
+                    continue
+                if "respond" in str(link.get("event_signature", "")):
+                    best = max(best, float(link.get("confidence", 0.0) or 0.0))
         return best
     except Exception:
         return None
@@ -202,7 +210,9 @@ def main() -> int:
     if confs:
         print(f"NAc respond confidence: {confs[0]:.3f} → {confs[-1]:.3f}")
     else:
-        print("NAc respond confidence: unreadable (no nac.json yet — turns may not have persisted)")
+        print("NAc respond confidence: UNAVAILABLE — NAc is not persisted yet")
+        print("  (deliberate: docs/plans/deferred/nac_cross_session_persistence.md)")
+        print("  The saturation hypothesis cannot be tested from disk until that lands.")
 
     print()
     if r1 >= 0.8 and r2 >= 0.8:

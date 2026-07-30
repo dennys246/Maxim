@@ -610,29 +610,44 @@ class TestGateRejectionTellsTheTruth:
         rec = [r for r in get_sim_records() if r["subsystem"] == "THOUGHT"][-1]
         assert "0.30 < 0.40" in rec["message"]
 
-    def test_agent_loop_passes_the_real_decision(self):
-        # Structural: the hardcoded zeros must not come back.
-        import inspect
+    def test_gate_rejection_reports_measured_values_not_zeros(self, sim_logging):
+        # BEHAVIOURAL, not source-text: the previous version asserted a string
+        # was absent from the module source, which passes on any reformat
+        # (score=0.0,\n threshold=0.0) and cannot tell a wrong-but-present
+        # number from a right one.
+        from maxim.simulation.sim_logger import sim_pre_deliberation
 
-        from maxim.runtime import agent_loop
+        sim_pre_deliberation(gate_passed=False, score=0.42, threshold=0.55, enrichment_sections=0)
+        rec = [r for r in get_sim_records() if r["subsystem"] == "THOUGHT"][-1]
+        assert rec["data"]["score"] == 0.42 and rec["data"]["threshold"] == 0.55
+        assert "0.42 < 0.55" in rec["message"]
 
-        src = inspect.getsource(agent_loop)
-        assert "score=0.0, threshold=0.0" not in src, "gate rejection is hardcoding zeros again"
-        assert "_gate_reason" in src
+    def test_pass_branch_does_not_render_as_rejected(self, sim_logging):
+        # The enrichment-empty branch reused the PASS reason, printing
+        # "gate rejected (deliberation approved)".
+        from maxim.simulation.sim_logger import sim_pre_deliberation
+
+        sim_pre_deliberation(
+            gate_passed=False,
+            score=0.9,
+            threshold=0.4,
+            enrichment_sections=0,
+            reason="enrichment produced no sections",
+        )
+        msg = [r for r in get_sim_records() if r["subsystem"] == "THOUGHT"][-1]["message"]
+        assert "deliberation approved" not in msg
+        assert "enrichment produced no sections" in msg
 
 
 class TestDmNarrationIsRecordedInAutomatedMode:
-    def test_automated_branch_shows_the_stimulus(self):
-        # display_scene used to be called ONLY on the interactive branch, so a
-        # console campaign (which forces InteractiveMode.OFF) never emitted the
-        # prose — it reached a viewer only as the truncated BIO-tier PERCEPT.
-        import inspect
+    def test_display_scene_emits_a_record_for_automated_narration(self, sim_logging):
+        # BEHAVIOURAL: the old version counted a substring in the source, which
+        # would pass under `if False:` and SKIPPED (rather than failed) if the
+        # class were renamed. What actually matters is that narration reaches
+        # the record stream — display_scene is the shared path both DM branches
+        # now use.
+        from maxim.simulation.sim_logger import display_scene
 
-        from maxim.simulation import dm_runtime
-
-        src = inspect.getsource(dm_runtime.DMRuntime.run) if hasattr(dm_runtime, "DMRuntime") else ""
-        if not src:
-            import pytest
-
-            pytest.skip("DMRuntime.run not introspectable")
-        assert src.count("display_scene(stimulus)") >= 2, "automated mode must also emit the narration"
+        display_scene("The cavern mouth yawns open.")
+        recs = [r for r in get_sim_records() if r["subsystem"] == "SCENE"]
+        assert recs[-1]["data"]["text"] == "The cavern mouth yawns open."

@@ -210,6 +210,33 @@ class TestContractSurfaceCannotDriftSilently:
         s = openapi_schema()
         return sorted(s["paths"]), sorted(s["components"]["schemas"]), s["info"]["version"]
 
+    def _fingerprint(self, schemas_obj) -> str:
+        # CONTENT hash, not a name list. The name-set alone is blind to the
+        # case this guard exists for: BOTH historical misses were additive,
+        # and #438's was fields on an EXISTING schema (ConsoleEvent gaining
+        # required tier/seq/message) — which does not change any name.
+        import hashlib
+        import json
+
+        return hashlib.sha256(json.dumps(schemas_obj, sort_keys=True).encode()).hexdigest()[:16]
+
+    def test_field_level_drift_is_caught_by_the_fingerprint(self):
+        # The guard's whole purpose. A recorded-but-unchecked hash would be
+        # false assurance, so this asserts the hash is actually load-bearing.
+        record, path = self._record()
+        pytest.importorskip("fastapi", reason="requires the `console` extra")
+        from maxim.console.server import openapi_schema
+
+        live = self._fingerprint(openapi_schema()["components"]["schemas"])
+        assert record.get("fingerprint"), "contract_surface.json has no fingerprint to check"
+        assert live == record["fingerprint"], (
+            "The OpenAPI SCHEMA CONTENT changed (a field added/removed/retyped on an "
+            "existing model) while the recorded contract did not.\n"
+            "That is the additive case both historical misses took: no path or schema "
+            "NAME moves, so a name-only check sees nothing.\n"
+            f"Bump CONSOLE_CONTRACT_VERSION, regenerate the snapshot, then refresh {path.name}."
+        )
+
     def test_recorded_version_is_the_current_contract(self):
         record, _ = self._record()
         assert record["contract_version"] == CONSOLE_CONTRACT_VERSION

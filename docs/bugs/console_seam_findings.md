@@ -1,6 +1,6 @@
 # Console seam findings (talk / EVENT / PKG era)
 
-**Status:** Mixed — 12 fixed, 4 open (tracked below)
+**Status:** Mixed — 12 fixed, 6 open (tracked below)
 **Severity:** Mixed — several were SILENT, which is why they survived so long
 **Affects:** `maxim serve` (console seams), `sim_logger`, `internet_search`, the agent loop's PFC gate, aarch64 packaging
 **Discovered:** 2026-07-28/29, mostly by driving the real console from the maxim-pulse side rather than by reading code
@@ -85,7 +85,19 @@ happened, but still says nothing substantive.
 contract for every entry point, and manufacturing words the agent did not
 choose is a bigger decision than a bug fix. Left as an explicit option.
 
-### Issue 5: the reply path bypasses the executor
+### Issue 5: NAc is never saved, and NAc/hippocampus are never loaded back
+
+**Severity:** HIGH for the cross-session claim
+**Observed:** `build_bio_stack` gives no `persistence_path` to NAc, so its state
+is never written. Worse, `create_full_agent` auto-loads NAc **then overwrites it**
+with the never-loaded `bio.nac` — the same discard applies to hippocampus and ATL.
+**Why a partial fix was REVERTED:** adding the save alone makes each session
+truncate the last while leaving a plausible populated `nac.json` — "no
+persistence" becomes "silently lossy persistence that looks like it works".
+**Plan (save + load + a decay-on-load decision + a two-session round-trip test):**
+[deferred/nac_cross_session_persistence.md](../plans/deferred/nac_cross_session_persistence.md).
+
+### Issue 6: the reply path bypasses the executor
 
 **Severity:** Medium (observability; blocks attribution)
 **Observed:** across 12 console talk turns, `glob` was recorded in the action

@@ -117,10 +117,14 @@ def get_models() -> ModelsResponse:
     return ModelsResponse(groups={group: [_wire(m) for m in members] for group, members in groups.items()})
 
 
-# The console surfaces and how to tell whether each is live in THIS build.
-# Kept next to the endpoint it feeds so adding a seam without declaring it here
-# is visible in review.
-_SEAM_PROBES: tuple[tuple[str, str], ...] = (
+# A hand-maintained MANIFEST of console surfaces — deliberately NOT a probe.
+# Nothing here is measured: `live` is declared. It is named `_SEAM_DECLARATIONS`
+# rather than `_SEAM_PROBES` because shipping a hardcoded liveness claim under a
+# probing name is the same "instrument that asserts instead of measuring"
+# failure this branch exists to fix. Kept next to the endpoint it feeds so
+# adding a seam without declaring it is visible in review; the `sim` 501 is
+# pinned by a test, which is what actually keeps this honest.
+_SEAM_DECLARATIONS: tuple[tuple[str, str], ...] = (
     ("probe", "/api/probe"),
     ("setup", "/api/setup/mesh + /api/setup/cloud"),
     ("recall", "/api/recall"),
@@ -143,6 +147,13 @@ def _git_identity() -> tuple[str | None, str | None]:
     import subprocess
 
     root = Path(__file__).resolve().parents[3]
+    # Only trust a real checkout. For a pip install this path is
+    # .../lib/python3.12 and `git` walks ANCESTORS, so a venv inside the
+    # user's project reported THEIR branch as pymaxim's identity — strictly
+    # worse than None, in the one field the docstring calls load-bearing.
+    if not (root / ".git").exists():
+        _GIT_IDENTITY_CACHE = (None, None)
+        return _GIT_IDENTITY_CACHE
 
     def _run(args: list[str]) -> str | None:
         try:
@@ -164,7 +175,7 @@ def build_identity(ui_dist: Path | str | None = None, ui_source: str = "none") -
     sha, branch = _git_identity()
     seams = [
         SeamStatus(name=n, live=(n != "sim"), detail=(d if n != "sim" else f"{d} — use the CLI (`maxim --sim`)"))
-        for n, d in _SEAM_PROBES
+        for n, d in _SEAM_DECLARATIONS
     ]
     return IdentityResponse(
         package_version=getattr(_maxim, "__version__", "unknown"),
@@ -966,7 +977,12 @@ def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
     of any contract-mismatch investigation.
     """
     global _SERVED_UI_DIST
-    _SERVED_UI_DIST = (Path(ui_dist) if ui_dist else None, ui_source if ui_dist else "none")
+    # Recorded only if the bundle is ACTUALLY servable. Recording the requested
+    # path unconditionally meant a typo'd --ui-dist reported ui_source="flag"
+    # with a path, while `/` served the "no UI installed" page — identity
+    # lying about precisely the thing it exists to explain.
+    _mountable = bool(ui_dist) and Path(ui_dist).is_dir()
+    _SERVED_UI_DIST = (Path(ui_dist) if _mountable else None, ui_source if _mountable else "none")
     from contextlib import asynccontextmanager
 
     @asynccontextmanager
@@ -1027,26 +1043,29 @@ def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
         """
         await websocket.accept()
         conn = _WsConn()
-        _event_hub.add_conn(conn)
 
         # Identity FIRST, before any stream event: a client should know what it
         # is attached to before it starts interpreting what that thing says.
-        # (An editable install follows the git branch, so capability changes
-        # silently; a stale `serve` process can outlive the code on disk.)
+        # ENQUEUED (not sent directly) so its seq comes from the connection
+        # counter — a hardcoded seq=0 collided with the first real event's
+        # seq 0 and made every client's gap detector report a phantom drop on
+        # every connection, violating the monotonic-seq contract this branch
+        # itself bumped. Enqueued BEFORE add_conn so it cannot be overtaken.
         try:
             ident = build_identity(_SERVED_UI_DIST[0], _SERVED_UI_DIST[1])
-            await websocket.send_json(
+            conn.enqueue(
                 ConsoleEvent(
                     kind="identity",
                     tier="clean",
-                    seq=0,
+                    seq=0,  # replaced by enqueue()
                     ts=time.time(),
                     message=f"pymaxim {ident.package_version} (contract {ident.contract_version})",
                     data=ident.model_dump(),
                 ).model_dump()
             )
         except Exception:
-            logger.warning("could not send /ws identity frame", exc_info=True)
+            logger.warning("could not build /ws identity frame", exc_info=True)
+        _event_hub.add_conn(conn)
 
         async def _recv_frames() -> None:
             while True:

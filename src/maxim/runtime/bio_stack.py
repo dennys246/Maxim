@@ -251,14 +251,15 @@ def build_bio_stack(
     _nac_config = NACConfig(
         substrate_explore_bonus_weight=_explore_weight,
         drive_gate_enabled=_drive_gate,
-        # NAc was the ONLY bio-system here left without a persistence path,
-        # while hippocampus/ATL/angular-gyrus all got one. MemoryHub's save is
-        # `if nac_path:` — so it silently skipped, and causal links + reward
-        # biases were never written. Episodes survived a restart; the LEARNING
-        # did not, which is precisely the substrate the cross-session claim
-        # rests on. Found because a measurement harness kept reading NAc
-        # confidence as None and the file did not exist.
-        persistence_path=str(p / "nac.json") if p is not None else None,
+        # NOTE: deliberately NO persistence_path here yet. NAc is the only
+        # bio-system without one, which means its state is never saved — but
+        # adding the save ALONE makes things strictly worse: agent_factory
+        # overwrites the auto-loaded NAc with this one (agent_factory.py:450,
+        # which never loads), so each session would TRUNCATE the last while
+        # leaving a plausible populated nac.json. "No persistence" is better
+        # than "silently lossy persistence that looks like it works".
+        # Save + load + the decay-on-load decision land together:
+        # docs/plans/deferred/nac_cross_session_persistence.md
     )
     # Loud failure for the silent-no-op footgun: an untried tool's only score is
     # the novelty bonus, so a weight at or below the substrate min_confidence gate
