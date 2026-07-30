@@ -148,14 +148,24 @@ def main() -> int:
                 except Exception:
                     continue
                 k = evt.get("kind")
-                if k == "motor":
+                if k == "response":
+                    # Read the ACTION LIST off the response record, not MOTOR
+                    # events: sim_action is only emitted from fear_gate.py and
+                    # the console handle runs with_fear_gate=False, so the talk
+                    # path produces no MOTOR records at all. The first version
+                    # of this harness scanned MOTOR and therefore reported
+                    # "no tools" on every turn — including turns that clearly
+                    # replied, which is self-contradictory and should have been
+                    # caught before the numbers were read.
+                    data = evt.get("data", {})
+                    replied = bool(data.get("text"))
+                    tools.extend(str(t) for t in (data.get("actions") or []))
+                elif k == "motor":  # sim/fear-gated paths still use this
                     msg = evt.get("message", "")
                     for name in ("respond", "speak", "list_directory", "read_file", "glob", "internet_search", "bash"):
                         if name in msg:
                             tools.append(name)
                             break
-                elif k == "response":
-                    replied = bool(evt.get("data", {}).get("text"))
 
             conf_after = nac_respond_confidence()
             used_respond = "respond" in tools or "speak" in tools
@@ -203,9 +213,19 @@ def main() -> int:
         print("VERDICT → RISING. Supports B (credit-on-execution saturation): the")
         print("          preference is being learned within the session.")
     elif r1 < 0.3 and r2 < 0.3:
-        print("VERDICT → the agent mostly ACTED. No fixation reproduced on these")
-        print("          probes — re-scope (the April report was a sim orchestrator")
-        print("          context, not console talk).")
+        acted_turns = sum(1 for r in rows if r["other_tools"])
+        if acted_turns:
+            print(f"VERDICT → the agent ACTED on {acted_turns}/{len(rows)} turns and rarely used")
+            print("          respond. No fixation reproduced on these probes — the April")
+            print("          report was a sim-orchestrator context, not console talk.")
+        else:
+            # Do NOT read this as "acted": no respond AND no other tools means
+            # the turns produced nothing measurable, which is an instrument or
+            # a behaviour problem, not evidence about tool preference.
+            print("VERDICT → INCONCLUSIVE: no respond AND no other tools recorded on any")
+            print("          turn. That is not 'the agent acted' — it is no usable signal.")
+            print("          Check that RESPONSE records carry `actions` (needs the")
+            print("          handle fix that puts the action list on every turn).")
     else:
         print("VERDICT → mixed / underpowered. Raise --turns before concluding.")
     print(f"\nrows → {args.out}")

@@ -271,8 +271,21 @@ class MaximHandle:
         reply = _extract_reply(result)
         # Normalize so programmatic callers and the wire agree on the text.
         result["response"] = reply
+        # What the turn actually DID. Carried on EVERY turn, not just silent
+        # ones: `sim_action` (the MOTOR record) is only emitted from
+        # fear_gate.py, and the console handle builds with_fear_gate=False —
+        # so the talk path emits NO tool-execution records at all. Without
+        # this, neither the bio-activity panel nor any measurement harness can
+        # see which tools a turn ran; a reply appears to arrive from nowhere.
+        _acted = _action_names(result)
+        _failed = _failed_actions(result)
         if reply:
-            sim_log("RESPONSE", str(reply), {"text": str(reply)}, agent_id=self.agent_id)
+            sim_log(
+                "RESPONSE",
+                str(reply),
+                {"text": str(reply), "actions": _acted, "failed_actions": _failed},
+                agent_id=self.agent_id,
+            )
         else:
             # A turn must never end silently. Naming WHAT the turn did — and
             # which tools failed — is the difference between the chat showing
@@ -288,8 +301,8 @@ class MaximHandle:
                     "text": None,
                     "no_reply_reason": summary,
                     "timed_out": bool(result.get("timed_out")),
-                    "actions": _action_names(result),
-                    "failed_actions": _failed_actions(result),
+                    "actions": _acted,
+                    "failed_actions": _failed,
                 },
                 agent_id=self.agent_id,
             )
