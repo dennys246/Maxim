@@ -73,6 +73,9 @@ class AgenticRuntimeMixin:
                         len(robots_cfg.robots),
                         robot_id,
                     )
+            # Stash for sibling gates that need the same free-form config
+            # dict (the DoA feed's audio_localization opt-out, Stage 2).
+            self._resolved_robot_config = robot_config
             body_ref = resolve_body_ref(robot_config)
         except Exception as e:  # config load is best-effort; never block startup
             self.log.debug("body-ref resolution skipped: %s", e)
@@ -108,6 +111,58 @@ class AgenticRuntimeMixin:
         except Exception as e:
             self.log.warning("Failed to build ComponentRegistry for body=%r: %s. Running bodiless.", body_ref, e)
             return None, None
+
+    def _maybe_start_doa_feed(self, executor: Any, stop_event: "threading.Event") -> None:
+        """Start the live DoA → azimuth feed when three gates all pass.
+
+        Stage 2 of live_audio_orient_wiring.md — capability-driven, no env
+        var:
+
+        1. the robot seam yields a reader (``get_doa_reader``, probed via
+           ``getattr`` so pre-seam plugins keep working);
+        2. the wired body declares an ``azimuth`` sensor; and
+        3. robots.yaml's free-form config dict does not opt out
+           (``config: {audio_localization: false}``).
+
+        Absent any of the three: no thread, no log spam — a robot without a
+        mic behaves exactly as today. The thread follows the CaptureManager
+        pattern (shared ``stop_event``; joined in ``_stop_agentic_runtime``).
+        The percept sink is wired separately (Stage 3) once the loop's
+        adapter exists — this feed alone makes ``listen`` return live
+        direction, the azimuth drive breach, and body_state renderable.
+        """
+        try:
+            emb = getattr(executor, "embodiment", None)
+            root = getattr(emb, "root", None)
+            sensors = getattr(root, "sensors", None) or {}
+            if "azimuth" not in sensors:
+                return  # bodiless, or a body without sound localization
+            robot_config = getattr(self, "_resolved_robot_config", None)
+            cfg_dict = getattr(robot_config, "config", None) or {}
+            if cfg_dict.get("audio_localization") is False:
+                self.log.info("DoA feed disabled via robots.yaml (audio_localization: false)")
+                return
+            robot = getattr(self, "_robot", None)
+            get_reader = getattr(robot, "get_doa_reader", None)
+            reader = get_reader() if callable(get_reader) else None
+            if reader is None:
+                return  # capability absent — exactly a robot without a mic
+            from maxim.embodiment.audio_localization import DoAFeed
+
+            feed = DoAFeed(
+                reader,
+                emb,
+                stop_event=stop_event,
+                percept_sink=getattr(self, "_doa_percept_sink", None),
+                agent_id=getattr(self, "agent_id", "reachy"),
+            )
+            thread = threading.Thread(target=feed.run, name="doa-feed", daemon=True)
+            self._doa_feed = feed
+            self._doa_thread = thread
+            thread.start()
+            self.log.info("DoA feed started (audio_localization capability + azimuth sensor)")
+        except Exception as e:
+            warn("DoA feed not started: %s", e, logger=self.log)
 
     def _start_agentic_runtime(self, *, use_capture_manager: bool = True) -> None:
         """Start the agentic runtime.
@@ -445,6 +500,10 @@ class AgenticRuntimeMixin:
                 self.log.debug("body_state wiring: memory_hub.embodiment set (Layer 3a)")
         except Exception as e:
             self.log.debug("body_state wiring skipped: %s", e)
+
+        # Stage 2 (live_audio_orient_wiring.md): live DoA → azimuth feed.
+        # Triple-gated inside; a no-op for bodiless / mic-less / opted-out.
+        self._maybe_start_doa_feed(executor, stop_event)
 
         evaluators = build_evaluators()
 
@@ -998,6 +1057,12 @@ class AgenticRuntimeMixin:
         t = getattr(self, "_agentic_thread", None)
         if t is not None:
             threads_to_stop.append(("agentic", t))
+
+        # DoA feed poll thread (Stage 2) — rides _agentic_stop_event (already
+        # set in Phase 1); gated_azimuth's stop_event makes the join fast.
+        doa_thread = getattr(self, "_doa_thread", None)
+        if doa_thread is not None:
+            threads_to_stop.append(("doa.feed", doa_thread))
 
         if capture_manager is not None:
             for attr, name in [

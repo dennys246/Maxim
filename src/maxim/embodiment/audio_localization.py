@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import math
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -247,6 +248,7 @@ def gated_azimuth(
     k: int = 3,
     timeout_s: float = 5.0,
     poll_s: float = 0.15,
+    stop_event: "object | None" = None,
 ) -> float | None:
     """Median of ``k`` speech-gated azimuth samples, or ``None`` on timeout.
 
@@ -263,11 +265,16 @@ def gated_azimuth(
     BLOCKS for up to ``timeout_s`` (sleeps between polls) — call it from a
     dedicated poll thread (the Stage-2 feed), NEVER from
     ``PerceptSource.next_percept()`` or any agent-loop tick path (the
-    non-blocking contract, ``sources.py``).
+    non-blocking contract, ``sources.py``). ``stop_event`` (an object with
+    ``is_set()``/``wait(t)``, i.e. a ``threading.Event``) makes the sampling
+    window interruptible so runtime teardown never waits out ``timeout_s``;
+    returns ``None`` immediately when set.
     """
     samples: list[float] = []
     deadline = time.time() + timeout_s
     while len(samples) < k and time.time() < deadline:
+        if stop_event is not None and stop_event.is_set():  # type: ignore[attr-defined]
+            return None
         try:
             reading = reader()
         except Exception:
@@ -277,11 +284,109 @@ def gated_azimuth(
             doa_rad, is_speech = reading
             if is_speech:
                 samples.append(doa_to_azimuth(float(doa_rad)))
-        time.sleep(poll_s)
+        if stop_event is not None:
+            stop_event.wait(poll_s)  # type: ignore[attr-defined]
+        else:
+            time.sleep(poll_s)
     if not samples:
         return None
     samples.sort()
     return samples[len(samples) // 2]
+
+
+class DoAFeed:
+    """Live DoA → body-sensor feed (live_audio_orient_wiring.md Stage 2).
+
+    Decouples the DoA transport's synchronous read (the REST reader does a
+    blocking GET) from every consumer: ``run()`` — executed in a thread the
+    WIRING layer owns (CaptureManager pattern: shared ``stop_event``,
+    registered in the runtime teardown sweep) — repeatedly samples
+    :func:`gated_azimuth`, and on each FRESH speech-gated reading:
+
+    1. caches ``(azimuth, timestamp)`` under a lock (consumers read
+       :attr:`latest` — never the transport);
+    2. world-sets the body's ``azimuth`` sensor via
+       :func:`world_set_azimuth` (the drive/EC/body_state lane); and
+    3. hands ``make_audio_percept(az)`` to the optional ``percept_sink``
+       (the Stage-3 modality-preserving percept lane — e.g.
+       ``NullSimulationAdapter``'s side-channel slot).
+
+    Silence writes NOTHING: a stale direction is never re-written, so a
+    world-set sensor with ``drift_rate: 0`` holds the last real measurement
+    between utterances (the ``reachy_mini.yaml`` contract).
+
+    This is deliberately NOT a ``PerceptSource`` — attaching one on the
+    live path would flip ``is_sim_mode`` across its 12 consumer sites.
+    It is also not a background DSP thread inside ``AzimuthDoASource``
+    (whose pull-per-tick contract is unchanged); it is the wiring-layer
+    poll thread the ``PerceptSource`` non-blocking invariant demands.
+    """
+
+    def __init__(
+        self,
+        reader: DoAReader,
+        embodiment: object,
+        *,
+        stop_event: threading.Event,
+        percept_sink: "Callable[[Percept], None] | None" = None,
+        agent_id: str | None = None,
+        source_name: str = "reachy:audio-doa",
+        k: int = 3,
+        sample_timeout_s: float = 2.0,
+        sample_poll_s: float = 0.15,
+    ) -> None:
+        self._reader = reader
+        self._embodiment = embodiment
+        self._stop_event = stop_event
+        self._percept_sink = percept_sink
+        self._agent_id = agent_id
+        self._source_name = source_name
+        self._k = k
+        self._sample_timeout_s = sample_timeout_s
+        self._sample_poll_s = sample_poll_s
+        self._lock = threading.Lock()
+        self._latest: "tuple[float, float] | None" = None  # (azimuth, monotonic ts)
+
+    @property
+    def latest(self) -> "tuple[float, float] | None":
+        """Most recent gated ``(azimuth, timestamp)``, or None before first speech."""
+        with self._lock:
+            return self._latest
+
+    def run(self) -> None:
+        """Poll loop — run inside a dedicated thread until ``stop_event`` sets.
+
+        ``gated_azimuth`` paces the loop internally (~6.7 Hz sampling; the
+        chip converges in 0.23 s, faster would be waste) and returns
+        ``None`` per silent window, so quiet rooms cost no writes.
+        """
+        while not self._stop_event.is_set():
+            az = gated_azimuth(
+                self._reader,
+                k=self._k,
+                timeout_s=self._sample_timeout_s,
+                poll_s=self._sample_poll_s,
+                stop_event=self._stop_event,
+            )
+            if self._stop_event.is_set():
+                return
+            if az is None:
+                continue
+            with self._lock:
+                self._latest = (az, time.monotonic())
+            if not world_set_azimuth(self._embodiment, az):
+                logger.debug("DoAFeed: body has no azimuth sensor — value cached only")
+            if self._percept_sink is not None:
+                try:
+                    self._percept_sink(
+                        make_audio_percept(
+                            az,
+                            source=self._source_name,
+                            agent_id=self._agent_id,
+                        )
+                    )
+                except Exception:
+                    logger.debug("DoAFeed: percept_sink raised", exc_info=True)
 
 
 def build_reachy_audio_orienting_source(
