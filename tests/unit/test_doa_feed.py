@@ -324,3 +324,69 @@ class TestFeedRestartHygiene:
         )
         runtime._maybe_start_doa_feed(_FakeExecutor(emb), stop)
         assert getattr(runtime, "_doa_thread", None) is None
+
+
+class TestAudioSalienceConfig:
+    """robots.yaml audio_salience/audio_novelty reach the DoAFeed percepts
+    (2026-08-01): with the passive defaults (0.5/0.3) a no_media,
+    no-typed-input live session NEVER submits to the LLM — sound is
+    perceived but below every > 0.5 escalation gate, so the head never
+    moves. Raising audio_salience is the operator's escalation knob."""
+
+    def _feed_percept_weights(self, runtime, emb):
+        stop = threading.Event()
+        try:
+            runtime._maybe_start_doa_feed(_FakeExecutor(emb), stop)
+            feed = runtime._doa_feed
+            assert feed is not None
+            return feed._salience, feed._novelty
+        finally:
+            stop.set()
+            thread = getattr(runtime, "_doa_thread", None)
+            if thread is not None:
+                thread.join(timeout=2.0)
+
+    def test_defaults_stay_passive(self):
+        _, emb = _reachy_embodiment()
+        runtime = _make_runtime(_FakeRobot(lambda: None))
+        sal, nov = self._feed_percept_weights(runtime, emb)
+        assert sal == 0.5 and nov == 0.3  # below/at every > 0.5 gate
+
+    def test_configured_salience_reaches_the_feed(self):
+        _, emb = _reachy_embodiment()
+        runtime = _make_runtime(
+            _FakeRobot(lambda: None),
+            robot_config=_FakeRobotConfig({"audio_salience": 0.75, "audio_novelty": 0.6}),
+        )
+        sal, nov = self._feed_percept_weights(runtime, emb)
+        assert sal == 0.75 and nov == 0.6
+
+    def test_malformed_value_falls_back_with_default(self):
+        _, emb = _reachy_embodiment()
+        runtime = _make_runtime(
+            _FakeRobot(lambda: None),
+            robot_config=_FakeRobotConfig({"audio_salience": "loud", "audio_novelty": 7}),
+        )
+        sal, nov = self._feed_percept_weights(runtime, emb)
+        assert sal == 0.5 and nov == 0.3  # never silently clamp misconfiguration
+
+    def test_escalating_salience_emits_escalating_percepts(self):
+        """End-to-end: a configured 0.75 percept passes is_audio_escalation."""
+        from maxim.embodiment.audio_localization import is_audio_escalation
+
+        _, emb = _reachy_embodiment()
+        stop = threading.Event()
+        seen = []
+        reader = _ScriptedReader([_SPEECH_LEFT] * 3, stop_event=stop)
+        feed = DoAFeed(
+            reader,
+            emb,
+            stop_event=stop,
+            percept_sink=seen.append,
+            salience=0.75,
+            sample_poll_s=0.0,
+            sample_timeout_s=0.5,
+        )
+        feed.run()
+        assert len(seen) == 1
+        assert is_audio_escalation(seen[0].salience)
