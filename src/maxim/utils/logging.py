@@ -47,6 +47,17 @@ def configure_logging(
     jsonl_active = bool(os.environ.get("MAXIM_LOG_FILE", "").strip())
     root.setLevel(logging.DEBUG if jsonl_active else level)
 
+    # Quiet chatty third-party HTTP loggers. httpx announces EVERY request
+    # at INFO ("HTTP Request: GET ..."); with the live DoA feed polling the
+    # robot's REST endpoint at ~6.7 Hz that is ~7 console lines per second
+    # and a JSONL flood (2026-08-01 live smoke). Maxim's own structured
+    # ``http_request`` events in ``utils/http.py`` (DEBUG; INFO under
+    # MAXIM_HTTP_TRACE=1) are the sanctioned per-call trace — the raw
+    # library line adds nothing over them. WARNING+ (connect errors,
+    # protocol violations) still passes.
+    for _noisy in ("httpx", "httpcore"):
+        logging.getLogger(_noisy).setLevel(logging.WARNING)
+
     formatter = logging.Formatter(fmt=fmt, datefmt=datefmt)
 
     def _ensure_file_handler(path: str) -> None:
