@@ -166,12 +166,38 @@ class AgenticRuntimeMixin:
             adapter = NullSimulationAdapter()
             self._doa_sim_adapter = adapter
 
+            # Attention weights for the emitted audio percepts, from the same
+            # free-form robots.yaml config dict as the other audio keys. The
+            # defaults (0.5/0.3) sit AT or BELOW every > 0.5 escalation gate:
+            # sound is passively perceived but NEVER reaches the LLM — the
+            # plan's passive-by-default decision. Raising audio_salience
+            # above 0.5 makes speech escalate via §1.16 B1 (forces an LLM
+            # submission), which is the only cognition-path trigger on a
+            # no_media, no-typed-input live session. Clamped to [0, 1];
+            # malformed values fall back to the passive defaults with a
+            # WARNING (silent clamping would hide misconfiguration).
+            def _attention_weight(key: str, default: float) -> float:
+                raw = cfg_dict.get(key)
+                if raw is None:
+                    return default
+                try:
+                    v = float(raw)
+                except (TypeError, ValueError):
+                    self.log.warning("robots.yaml %s=%r is not a number — using %s", key, raw, default)
+                    return default
+                if not (0.0 <= v <= 1.0):
+                    self.log.warning("robots.yaml %s=%r outside [0, 1] — using %s", key, raw, default)
+                    return default
+                return v
+
             feed = DoAFeed(
                 reader,
                 emb,
                 stop_event=stop_event,
                 percept_sink=adapter.carry_percept,
                 agent_id=getattr(self, "agent_id", "reachy"),
+                salience=_attention_weight("audio_salience", 0.5),
+                novelty=_attention_weight("audio_novelty", 0.3),
             )
             thread = threading.Thread(target=feed.run, name="doa-feed", daemon=True)
             self._doa_feed = feed
