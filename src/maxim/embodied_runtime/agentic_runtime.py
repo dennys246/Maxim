@@ -148,12 +148,20 @@ class AgenticRuntimeMixin:
             if reader is None:
                 return  # capability absent — exactly a robot without a mic
             from maxim.embodiment.audio_localization import DoAFeed
+            from maxim.runtime.sim_adapter import NullSimulationAdapter
+
+            # Stage 3: the feed's percept lane. A caller-held
+            # NullSimulationAdapter (is_sim_mode stays False) carries each
+            # fresh audio percept into agent_loop §1.16's side-channel;
+            # run_agentic_loop receives it via the sim_adapter= kwarg.
+            adapter = NullSimulationAdapter()
+            self._doa_sim_adapter = adapter
 
             feed = DoAFeed(
                 reader,
                 emb,
                 stop_event=stop_event,
-                percept_sink=getattr(self, "_doa_percept_sink", None),
+                percept_sink=adapter.carry_percept,
                 agent_id=getattr(self, "agent_id", "reachy"),
             )
             thread = threading.Thread(target=feed.run, name="doa-feed", daemon=True)
@@ -946,6 +954,10 @@ class AgenticRuntimeMixin:
                     idle_sleep_s=0.1,
                     target_hz=_compute_target_hz(self._capabilities) if hasattr(self, "_capabilities") else 10.0,
                     protocol_registry=self._protocol_registry,
+                    # Stage 3 (live_audio_orient_wiring.md): the DoA feed's
+                    # adapter, when the feed started; None → loop builds its
+                    # own NullSimulationAdapter, byte-identical to before.
+                    sim_adapter=getattr(self, "_doa_sim_adapter", None),
                 )
             except Exception as e:
                 warn("Agentic runtime loop failed: %s", e, logger=self.log)

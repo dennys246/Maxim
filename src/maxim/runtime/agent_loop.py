@@ -1267,6 +1267,10 @@ def run_agentic_loop(
     substrate_telemetry: Any
     | None = None,  # SubstrateTelemetry writer (Phase 0). Called after each substrate-primary tick when set.
     consolidation: Literal["full", "lightweight"] | None = None,  # HANDLE seam (b): explicit session-end flavor
+    sim_adapter: Any | None = None,  # Pre-built NullSimulationAdapter (Stage 3, live_audio_orient_wiring.md):
+    # lets a live producer (the DoA feed) hold the adapter and carry_percept() into the loop's
+    # modality-preserving side-channel WITHOUT a percept_source (which would flip is_sim_mode).
+    # Only honored when percept_source is None; ignored (with the sim adapter built as before) otherwise.
 ) -> None:
     """
     Non-blocking agentic loop with LLM worker integration.
@@ -1319,7 +1323,10 @@ def run_agentic_loop(
         if executor is not None and hasattr(executor, "registry"):
             sim._tool_registry = executor.registry
     else:
-        sim = NullSimulationAdapter()
+        # Stage 3 (live_audio_orient_wiring.md): a caller-held adapter lets a
+        # live producer carry_percept() into the side-channel; is_sim_mode
+        # stays False either way.
+        sim = sim_adapter if sim_adapter is not None else NullSimulationAdapter()
 
     if not run_id:
         run_id = time.strftime("%Y-%m-%d_%H%M%S")
@@ -1801,11 +1808,17 @@ def run_agentic_loop(
         # ``_audio_escalate_this_tick`` so the has_meaningful_input gate below
         # does NOT discard the audio-only tick (B1 fix — without this the line
         # was folded, logged, and thrown away before the model ever saw it).
-        # Gated to sim + llm-primary: ``sim.current_percept`` is a
-        # SimulationAdapter accessor (skip the per-tick work in production, N1);
-        # substrate-primary consumes the body/EC path, not auto_sense_context
-        # (S1). Opt-in; default OFF. See thalamus_relay_design_pass.md (stage 4).
-        if sim.is_sim_mode and aut_mode != "substrate-primary":
+        # GATE (re-gated in Stage 3 of live_audio_orient_wiring.md): the real
+        # condition was always "a modality-preserving percept is present this
+        # tick" — the old ``sim.is_sim_mode`` check was its proxy, and kept the
+        # live path dark. Both adapters now carry ``current_percept``
+        # (SimulationAdapter from its percept_source; NullSimulationAdapter
+        # from a producer's ``carry_percept`` — the Stage-2 DoA feed), so the
+        # gate reads the side-channel directly. Production ticks with no
+        # carried percept cost one property read (None → skip, N1 preserved).
+        # substrate-primary stays excluded: the drive/EC path reads the sensor
+        # directly and §1.16 would double-write (S1).
+        if getattr(sim, "current_percept", None) is not None and aut_mode != "substrate-primary":
             try:
                 from maxim.embodiment.audio_localization import (
                     audio_attention_profile,
