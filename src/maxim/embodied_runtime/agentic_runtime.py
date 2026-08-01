@@ -800,6 +800,16 @@ class AgenticRuntimeMixin:
                     token_counter=llm_router.get_token_counter(),
                     tool_index=tool_index,
                 )
+                # Embodied identity (2026-08-01 live deep-dive fold): the
+                # live path never set is_embodied, so a robot WITH a wired
+                # SEM body was prompted as "You are Maxim, a robot
+                # assistant." — the exact string prompt_builder documents
+                # as causing respond-loops on 14B-class models. Mirror the
+                # cli.py / orchestrator producers: embodied identity
+                # whenever the executor carries a body. (Acting-coach
+                # wiring stays a separate, flag-gated decision.)
+                if getattr(executor, "embodiment", None) is not None:
+                    llm_worker.is_embodied = True
                 llm_worker.start()
                 self.log.info("LLM worker started for user responses")
             else:
@@ -860,6 +870,9 @@ class AgenticRuntimeMixin:
                 pain_bus=bio.pain_bus if bio is not None else None,
                 fear_agent=fear_agent,
                 frame_size=(640, 480),
+                # Capability truth: no camera → no idle visual exploration
+                # (the phantom look_at generator; 2026-08-01 fold).
+                has_vision=bool(getattr(getattr(self, "_capabilities", None), "has_vision", True)),
             )
             if default_network is not None:
                 self._default_network = default_network

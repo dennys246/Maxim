@@ -624,6 +624,7 @@ def build_default_network(
     config: "DefaultNetworkConfig | None" = None,
     config_path: str | None = None,
     frame_size: tuple[int, int] = (640, 480),
+    has_vision: bool = True,
 ) -> "DefaultNetwork | None":
     """Build the Default Network for reactive behaviors.
 
@@ -716,6 +717,22 @@ def build_default_network(
     else:
         network_config = config
         dn_config = None  # no YAML loaded, skip behavior creation from config
+
+    # Capability truth (2026-08-01 live-smoke fold): without a camera the
+    # DN's idle visual exploration fabricates gaze targets from the
+    # spatial-map grid — it fires PRECISELY when detections are empty,
+    # which under a no_media backend is every tick. Each phantom look_at
+    # then dies in the SDK ("Camera is not initialized"), pollutes
+    # FocusLearner intent-tracking, and gets blamed for unrelated drive
+    # pain via context-similarity attribution. No vision → no visual
+    # exploration, applied to BOTH config branches (a caller's explicit
+    # config cannot re-enable a behavior the hardware cannot perform).
+    if not has_vision and getattr(network_config, "idle_exploration_enabled", False):
+        import dataclasses as _dc
+        import logging as _logging
+
+        network_config = _dc.replace(network_config, idle_exploration_enabled=False)
+        _logging.getLogger(__name__).info("DN idle visual exploration disabled (no camera on this robot)")
 
     # Create the network — maxim=None is valid (headless/sim mode).
     dn = DefaultNetwork(

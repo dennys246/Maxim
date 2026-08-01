@@ -1612,6 +1612,15 @@ def run_agentic_loop(
         _has_sim_percept = (
             sim.is_sim_mode and percept_source is not None and getattr(percept_source, "has_pending", lambda: True)()
         )
+        # A live producer's carried percept (the DoA feed → NullSimulation-
+        # Adapter mailbox, Stage 3 of live_audio_orient_wiring.md) must WAKE
+        # the loop — 2026-08-01 live-smoke fix. This gate's percept check
+        # was gated on is_sim_mode: the same proxy the Stage-3 §1.16 re-gate
+        # removed, one layer up. Without this term a live audio percept sat
+        # undelivered forever on an idle robot (the loop slept BEFORE
+        # next_observation surfaced it), so audio escalation only ever fired
+        # when typed input happened to wake the loop in the same window.
+        _has_carried_percept = bool(getattr(sim, "has_carried_percept", lambda: False)())
         _is_first_step = step_num == 0
         # If we submitted to the LLM recently, we're awaiting a proposal —
         # don't idle-gate or we'll never pick up the result.
@@ -1621,7 +1630,14 @@ def run_agentic_loop(
             and (time.time() - ctrl.last_llm_submit_time) < 120.0
         )
 
-        if not (_has_pending_input or _has_pending_work or _has_sim_percept or _is_first_step or _awaiting_llm):
+        if not (
+            _has_pending_input
+            or _has_pending_work
+            or _has_sim_percept
+            or _has_carried_percept
+            or _is_first_step
+            or _awaiting_llm
+        ):
             time.sleep(idle_sleep_s)
             continue
 

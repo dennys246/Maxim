@@ -342,3 +342,45 @@ def test_agent_loop_1_16_gate_reads_current_percept_not_is_sim_mode():
     assert 'if sim.is_sim_mode and aut_mode != "substrate-primary":' not in src, (
         "the old is_sim_mode §1.16 gate is back — live audio percepts would be dropped"
     )
+
+
+class TestIdleGateSeesCarriedPercept:
+    """2026-08-01 live-smoke root cause: the 0.6 idle gate's percept check
+    was `sim.is_sim_mode and percept_source.has_pending()` — the same
+    is_sim_mode proxy the Stage-3 §1.16 re-gate removed, one layer up. A
+    carried live percept must WAKE the loop, or audio escalation only ever
+    fires when typed input happens to open a tick in the same window."""
+
+    def test_peek_reflects_mailbox_without_consuming(self):
+        from maxim.runtime.sim_adapter import NullSimulationAdapter
+
+        adapter = NullSimulationAdapter()
+        assert adapter.has_carried_percept() is False
+        adapter.carry_percept(make_audio_percept(-0.6, source="test:doa"))
+        assert adapter.has_carried_percept() is True
+        assert adapter.has_carried_percept() is True  # peek, not pop
+        adapter.next_observation(_ObsEnv())
+        assert adapter.has_carried_percept() is False  # delivered
+
+    def test_idle_gate_disjunction_wakes_on_carried_percept(self):
+        """The exact gate shape: everything else quiet, a carried percept
+        alone must flip the gate open."""
+        from maxim.runtime.sim_adapter import NullSimulationAdapter
+
+        sim = NullSimulationAdapter()
+        gate_open = bool(getattr(sim, "has_carried_percept", lambda: False)())
+        assert gate_open is False  # quiet room → loop may idle
+        sim.carry_percept(make_audio_percept(-0.6, source="test:doa"))
+        gate_open = bool(getattr(sim, "has_carried_percept", lambda: False)())
+        assert gate_open is True  # sound → loop must run the tick
+
+    def test_agent_loop_idle_gate_consults_the_peek(self):
+        """Source pin, mirroring the §1.16 pin: reverting the idle-gate term
+        silently re-deafens the live path."""
+        import inspect
+
+        import maxim.runtime.agent_loop as agent_loop
+
+        src = inspect.getsource(agent_loop)
+        assert '_has_carried_percept = bool(getattr(sim, "has_carried_percept", lambda: False)())' in src
+        assert "or _has_carried_percept" in src

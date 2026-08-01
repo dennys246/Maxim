@@ -246,14 +246,21 @@ class ConnectionMixin:
             pass
 
     def _restore_capabilities(self) -> None:
-        """Restore robot capabilities after successful reconnection."""
+        """Restore robot capabilities after successful reconnection.
+
+        Vision/audio are RE-DERIVED from the robot's actual media state
+        (2026-08-01 fold) — the pre-fix unconditional ``True`` silently
+        undid the no_media capability truth on every soft reconnect,
+        re-enabling the capture loops against absent devices.
+        """
         caps = getattr(self, "_capabilities", None)
         if caps is None:
             return
+        from maxim.runtime.capabilities import derive_media_capabilities
+
         caps.has_robot = True
         caps.has_motor = True
-        caps.has_vision = True
-        caps.has_audio = True
+        caps.has_vision, caps.has_audio = derive_media_capabilities(getattr(self, "_robot", None))
         try:
             self.log.info("Capabilities restored — robot reconnected")
         except Exception:

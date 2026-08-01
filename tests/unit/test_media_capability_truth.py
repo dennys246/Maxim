@@ -100,3 +100,86 @@ class TestLookListenCapabilityGates:
     def test_listen_returns_none_without_touching_sdk(self):
         stub = _stub_media_loop(has_vision=True, has_audio=False)
         assert stub.listen() is None
+
+
+class TestDnIdleExplorationCapabilityGate:
+    """2026-08-01 deep-dive fold: with no camera, DN idle exploration
+    fabricated gaze targets from the spatial-map grid (it fires exactly
+    when detections are empty — i.e. every tick under no_media), and each
+    phantom look_at died in the SDK while polluting FocusLearner intent
+    state and pain attribution. build_default_network(has_vision=False)
+    kills the producer at the canonical construction site."""
+
+    def test_no_vision_disables_idle_exploration(self):
+        from maxim.default_network.network import DefaultNetworkConfig
+        from maxim.runtime.bootstrap import build_default_network
+
+        cfg = DefaultNetworkConfig()
+        assert cfg.idle_exploration_enabled is True  # the pre-fix default
+        dn = build_default_network(nac=None, config=cfg, has_vision=False)
+        if dn is None:  # optional dep missing — nothing to assert
+            return
+        assert dn._config.idle_exploration_enabled is False
+
+    def test_vision_present_keeps_exploration(self):
+        from maxim.default_network.network import DefaultNetworkConfig
+        from maxim.runtime.bootstrap import build_default_network
+
+        dn = build_default_network(nac=None, config=DefaultNetworkConfig(), has_vision=True)
+        if dn is None:
+            return
+        assert dn._config.idle_exploration_enabled is True
+
+
+class TestReconnectRederivesCapabilities:
+    def test_restore_does_not_resurrect_absent_devices(self):
+        """The pre-fix _restore_capabilities set has_vision/has_audio=True
+        unconditionally after a soft reconnect — silently undoing the
+        no_media capability truth and re-starting the SDK warning flood."""
+        import types
+
+        from maxim.embodied_runtime.connection import ConnectionMixin
+
+        class _Caps:
+            has_robot = False
+            has_motor = False
+            has_vision = False
+            has_audio = False
+
+        class _Stub(ConnectionMixin):
+            def __init__(self):
+                self._capabilities = _Caps()
+                self._robot = types.SimpleNamespace(mini=_Mini(_Media(camera=None, audio=None)))
+                self.log = logging.getLogger("test-reconnect")
+
+        stub = _Stub()
+        stub._restore_capabilities()
+        assert stub._capabilities.has_robot is True
+        assert stub._capabilities.has_motor is True
+        assert stub._capabilities.has_vision is False  # no_media stays no_media
+        assert stub._capabilities.has_audio is False
+
+
+class TestPassiveModeDescribesTheWorkingMotionTool:
+    """2026-08-01 live deep-dive: on a no_media live robot the ONLY
+    functional motion tool is the angle-based 'move' — the pixel tools
+    passive already allows (focus_interests/track_target) are camera-dead.
+    Passive's allow-list stripped move's description from the prompt while
+    the relevance filter still printed its bare name, leaving 'respond' as
+    the only described action for a heard sound."""
+
+    def test_passive_allows_move(self):
+        from maxim.modes.definitions import get_mode
+
+        passive = get_mode("passive")
+        assert "move" in passive.allowed_tools
+        # The pixel motion tools were already there — 'move' joins its class.
+        assert "focus_interests" in passive.allowed_tools
+        assert "track_target" in passive.allowed_tools
+
+    def test_observe_legacy_alias_reaches_the_same_set(self):
+        # The live path defaults state mode to "observe" → legacy-mapped to
+        # passive — the exact route the deep dive traced.
+        from maxim.modes.definitions import get_mode
+
+        assert "move" in get_mode("observe").allowed_tools

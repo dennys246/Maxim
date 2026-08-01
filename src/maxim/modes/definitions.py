@@ -263,9 +263,17 @@ OPERATIONAL_MODES: dict[str, ModeDefinition] = {
             "Waited for approval before significant actions",
             "Maintained awareness of environment",
         ],
-        # Read-only + observation tools, plus sandbox write for journaling
+        # Read-only + observation tools, plus sandbox write for journaling.
+        # "move" (2026-08-01 live deep-dive fold): passive already allows the
+        # PIXEL motion tools (focus_interests/track_target via CORE_TOOLS) —
+        # but those require a camera, and on a no_media live robot the only
+        # FUNCTIONAL motion tool is the angle-based "move". Excluding it here
+        # stripped its description from the prompt (the relevance filter
+        # still printed the bare name), leaving the model one described
+        # action for a sound: respond. Orienting the head is squarely
+        # within passive's "observe" intent.
         allowed_tools=CORE_TOOLS
-        | {"read_file", "glob", "list_directory", "internet_search", "http_fetch", "write_file"},
+        | {"move", "read_file", "glob", "list_directory", "internet_search", "http_fetch", "write_file"},
         forbidden_tools={"execute_file", "maxim_command", "request_directory_change"},
         max_initiative=0.3,  # Low proactivity - mostly reactive
         can_access_filesystem=True,  # Read CWD, write workspace
