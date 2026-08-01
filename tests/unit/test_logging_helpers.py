@@ -117,3 +117,25 @@ class TestLogRecoverableError:
                 log_recoverable_error(e, operation="parse", recovery="using default")
 
         assert any(record.levelno == logging.WARNING for record in caplog.records)
+
+
+class TestThirdPartyHttpLoggersQuieted:
+    """configure_logging demotes httpx/httpcore to WARNING (2026-08-01):
+    httpx logs every request at INFO, and the live DoA feed polls the
+    robot's REST endpoint at ~6.7 Hz — ~7 console lines/second and a JSONL
+    flood. Maxim's own utils/http.py ``http_request`` events remain the
+    sanctioned per-call trace."""
+
+    def test_httpx_and_httpcore_are_warning_after_configure(self):
+        import logging as _logging
+
+        from maxim.utils.logging import configure_logging
+
+        # Simulate the chatty state: library loggers left at NOTSET/INFO.
+        for name in ("httpx", "httpcore"):
+            _logging.getLogger(name).setLevel(_logging.NOTSET)
+        configure_logging(force=True)
+        for name in ("httpx", "httpcore"):
+            assert _logging.getLogger(name).getEffectiveLevel() >= _logging.WARNING, (
+                f"{name} logger passes INFO — the DoA feed's REST polling will flood the console/JSONL again"
+            )
