@@ -86,6 +86,16 @@ class Embodiment:
         self._failure_history: list[FailureEvent] = []
         self._last_poll: float = 0.0
         self._tick_count: int = 0
+        # Sensors owned by a LIVE exteroceptive writer (e.g. the DoA feed
+        # world-setting ``azimuth`` from real measurements). While a sensor
+        # is in this set, ``ModulatorAffordanceTool.execute`` excludes it
+        # from MODELED self_effect writes AND from drive credit/blame: a
+        # modeled shift on a world-measured sensor is a fabrication the
+        # next reading reverts, and crediting it books relief for actuation
+        # that never happened — repeatably (the pre-merge review's phantom
+        # credit mill, live_audio_orient_wiring.md). Runtime-only state;
+        # never serialized. Empty (the default) = sim semantics, unchanged.
+        self.live_world_set_sensors: set[str] = set()
 
     # -- entity access ------------------------------------------------------
 

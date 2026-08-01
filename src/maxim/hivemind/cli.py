@@ -174,15 +174,41 @@ def _run_merge_nac(args: argparse.Namespace) -> int:
     # ── Fail fast BEFORE any mutation ────────────────────────────────
     # State-space compatibility: a target trained at a different bin
     # boundary/gain would silently mis-bin every lookup post-merge.
-    src_meta = _read_optional_json(_meta_sidecar_path(source_path))
-    tgt_meta = _read_optional_json(_meta_sidecar_path(target_path))
-    if src_meta is not None and tgt_meta is not None and src_meta != tgt_meta:
+    # Corrupt inputs (truncated JSON, list-rooted files) get the same
+    # clean rc=2 contract as every other failure — never a traceback.
+    def _read_dict_or_none(path: Path, label: str) -> "dict | None | int":
+        try:
+            data = _read_optional_json(path)
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"error: cannot read {label} ({path}): {exc}", file=sys.stderr)
+            return 2
+        if data is not None and not isinstance(data, dict):
+            print(f"error: {label} is not a JSON object ({path}). Nothing was written.", file=sys.stderr)
+            return 2
+        return data
+
+    src_meta = _read_dict_or_none(_meta_sidecar_path(source_path), "source policy-meta sidecar")
+    if src_meta == 2:
+        return 2
+    tgt_meta = _read_dict_or_none(_meta_sidecar_path(target_path), "target policy-meta sidecar")
+    if tgt_meta == 2:
+        return 2
+
+    def _meta_essence(meta: "dict | None") -> "dict | None":
+        # Compare state-space CONTENT only — the CC1 ``_format_version``
+        # stamp is bookkeeping, and comparing it would false-abort
+        # imports whose sidecars differ only by stamping history.
+        if meta is None:
+            return None
+        return {k: v for k, v in meta.items() if k != "_format_version"}
+
+    if src_meta is not None and tgt_meta is not None and _meta_essence(src_meta) != _meta_essence(tgt_meta):
         print(
             "error: policy-meta sidecars disagree — the two NAc files were "
             "trained in different state spaces; merging would silently "
             "corrupt both. Nothing was written.\n"
-            f"  source meta ({_meta_sidecar_path(source_path)}): {json.dumps(src_meta, sort_keys=True)}\n"
-            f"  target meta ({_meta_sidecar_path(target_path)}): {json.dumps(tgt_meta, sort_keys=True)}",
+            f"  source meta ({_meta_sidecar_path(source_path)}): {json.dumps(_meta_essence(src_meta), sort_keys=True)}\n"
+            f"  target meta ({_meta_sidecar_path(target_path)}): {json.dumps(_meta_essence(tgt_meta), sort_keys=True)}",
             file=sys.stderr,
         )
         return 2
@@ -192,7 +218,13 @@ def _run_merge_nac(args: argparse.Namespace) -> int:
     except (OSError, json.JSONDecodeError) as exc:
         print(f"error: cannot read source NAc file: {exc}", file=sys.stderr)
         return 2
-    target_state = _read_optional_json(target_path) or {}
+    if not isinstance(source_state, dict):
+        print(f"error: source NAc file is not a JSON object ({source_path}).", file=sys.stderr)
+        return 2
+    target_state = _read_dict_or_none(target_path, "target NAc file")
+    if target_state == 2:
+        return 2
+    target_state = target_state or {}
     target_existed = target_path.is_file()
 
     # The persisted files carry the CC1 ``_format_version`` stamp; the
@@ -214,21 +246,40 @@ def _run_merge_nac(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    # Pre-merge backup of the target (the one destructive-ish step).
-    if target_existed:
-        backup_path = target_path.with_name(target_path.name + ".pre-merge.bak")
-        backup_path.write_text(target_path.read_text(encoding="utf-8"), encoding="utf-8")
+    # Preserve the decay clock (pre-merge review fold): ``nac_merge``
+    # rebuilds from a fixed field list and drops ``saved_at``; without it
+    # the next boot's ``load_safe(apply_decay=True)`` finds no stamp and
+    # skips wall-clock decay for ALL runtime biases once. The TARGET's
+    # stamp is the right clock for the pre-existing state (the trained
+    # policy is frozen — extra decay on it is not owed either way).
+    saved_at = target_state.get("saved_at") or source_state.get("saved_at")
+    if saved_at:
+        merged["saved_at"] = saved_at
 
     from maxim.decisions.nac import _NAC_FORMAT_VERSION
-    from maxim.utils.atomic_io import atomic_write_json
+    from maxim.utils.atomic_io import atomic_write_json, atomic_write_text
     from maxim.utils.format_version import with_format_version
+
+    # Pre-merge backup of the target (the one destructive-ish step) —
+    # atomic, so a crash mid-backup can't leave a truncated .bak as the
+    # only rollback artifact.
+    if target_existed:
+        backup_path = target_path.with_name(target_path.name + ".pre-merge.bak")
+        try:
+            atomic_write_text(str(backup_path), target_path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            print(f"error: cannot write pre-merge backup ({backup_path}): {exc}. Nothing was written.", file=sys.stderr)
+            return 2
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_json(str(target_path), with_format_version(merged, version=_NAC_FORMAT_VERSION))
 
     # The sidecar travels with the import (make-the-definition-travel).
+    # Stamped per CC1 — every persisted JSON Maxim writes carries
+    # ``_format_version``; the equality gate above compares stamp-stripped
+    # essence, so stamping cannot false-abort a legitimate re-import.
     if src_meta is not None:
-        atomic_write_json(str(_meta_sidecar_path(target_path)), src_meta)
+        atomic_write_json(str(_meta_sidecar_path(target_path)), with_format_version(dict(src_meta)))
 
     print(
         f"merged {source_path.name} into {target_path}\n"

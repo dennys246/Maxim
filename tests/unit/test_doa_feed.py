@@ -65,10 +65,12 @@ class TestDoAFeedWrites:
         assert az == -1.0
         assert ts > 0
 
-    def test_write_is_clamped_by_the_sensor_range(self):
-        # DoA 0 rad maps to exactly -1.0; the clamp path is exercised via
-        # world_set_azimuth's [-1, 1] contract (an out-of-convention angle
-        # cannot escape the range).
+    def test_out_of_convention_doa_angle_cannot_escape_the_range(self):
+        # An angle below the XVF3800's 0..π convention is clamped by
+        # doa_to_azimuth BEFORE the write, so the sensor can never leave
+        # [-1, 1]. (The world_set clamp itself is pinned separately by
+        # TestWorldSetAxis in test_audio_localization.py — this test covers
+        # the feed-path composition, not the clamp in isolation.)
         body, emb = _reachy_embodiment()
         stop = threading.Event()
         reader = _ScriptedReader([(-1.0, True)] * 3, stop_event=stop)  # < 0 rad → below -1 pre-clamp
@@ -245,5 +247,80 @@ class TestMaybeStartDoAFeedGates:
                 return None
 
         runtime = _make_runtime(_DisconnectedRobot())
+        runtime._maybe_start_doa_feed(_FakeExecutor(emb), stop)
+        assert getattr(runtime, "_doa_thread", None) is None
+
+
+class TestLiveWorldOwnedSensorFilter:
+    """Pre-merge review fold (phantom credit mill): while a live DoA writer
+    owns ``azimuth``, the modeled self_effect must neither write, credit,
+    nor blame that sensor — a modeled shift the next reading reverts would
+    book relief for actuation that never happened, repeatably."""
+
+    def _turn(self, body, emb, affordance="turn_left"):
+        from maxim.embodiment.tool_bridge import ModulatorAffordanceTool
+
+        mod = body.modulators["orient"]
+        tool = ModulatorAffordanceTool(body, mod, affordance, mod.affordances[affordance], affordance, embodiment=emb)
+        return tool.execute()
+
+    def test_doa_feed_claims_the_azimuth_sensor(self):
+        _, emb = _reachy_embodiment()
+        assert "azimuth" not in emb.live_world_set_sensors
+        DoAFeed(lambda: None, emb, stop_event=threading.Event())
+        assert "azimuth" in emb.live_world_set_sensors
+
+    def test_live_owned_azimuth_gets_no_write_no_credit(self):
+        body, emb = _reachy_embodiment()
+        emb.live_world_set_sensors.add("azimuth")
+        body.vital_metrics["azimuth"] = -0.5  # breached, as a live reading would set
+        result = self._turn(body, emb)
+        assert result.success
+        # No modeled write: the world owns this sensor.
+        assert body.vital_metrics["azimuth"] == -0.5
+        # No phantom relief credit.
+        se = result.side_effects or {}
+        assert "drive_potential_diff" not in se
+        # No B8 blame for a delta that was never applied: the lingering
+        # azimuth breach is a bystander failure, filtered out.
+        failures = se.get("embodiment_failures", [])
+        assert not any("azimuth" in f.get("name", "") for f in failures)
+        # Motor semantics preserved: head_yaw still written.
+        assert body.vital_metrics["head_yaw"] == 0.3
+
+    def test_sim_semantics_unchanged_when_set_empty(self):
+        body, emb = _reachy_embodiment()
+        body.vital_metrics["azimuth"] = -0.5
+        result = self._turn(body, emb)
+        assert result.side_effects["drive_potential_diff"] > 0  # Gate A intact in sim
+        assert abs(body.vital_metrics["azimuth"] - (-0.33)) < 1e-9
+
+
+class TestFeedRestartHygiene:
+    def test_maybe_start_clears_stale_state_when_gates_fail(self):
+        """Pre-merge review fold: a stale _doa_sim_adapter from a prior
+        session must not replay last session's bearing into a restarted
+        loop whose gates fail this time."""
+        stop = threading.Event()
+
+        class _NoDoARobot:
+            pass
+
+        runtime = _make_runtime(_NoDoARobot())
+        runtime._doa_sim_adapter = object()  # leftovers from "session 1"
+        runtime._doa_thread = object()
+        runtime._doa_feed = object()
+        runtime._maybe_start_doa_feed(_FakeExecutor(None), stop)
+        assert runtime._doa_sim_adapter is None
+        assert runtime._doa_thread is None
+        assert runtime._doa_feed is None
+
+    def test_opt_out_accepts_string_false(self):
+        _, emb = _reachy_embodiment()
+        stop = threading.Event()
+        runtime = _make_runtime(
+            _FakeRobot(lambda: None),
+            robot_config=_FakeRobotConfig({"audio_localization": "false"}),
+        )
         runtime._maybe_start_doa_feed(_FakeExecutor(emb), stop)
         assert getattr(runtime, "_doa_thread", None) is None

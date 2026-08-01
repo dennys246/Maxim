@@ -131,6 +131,13 @@ class AgenticRuntimeMixin:
         adapter exists — this feed alone makes ``listen`` return live
         direction, the azimuth drive breach, and body_state renderable.
         """
+        # Clear any prior session's feed state FIRST (pre-merge review fold):
+        # a stale _doa_sim_adapter could replay last session's bearing into a
+        # restarted loop whose gates fail this time, and a dead _doa_thread
+        # reference is join-sweep noise.
+        self._doa_feed = None
+        self._doa_thread = None
+        self._doa_sim_adapter = None
         try:
             emb = getattr(executor, "embodiment", None)
             root = getattr(emb, "root", None)
@@ -139,7 +146,9 @@ class AgenticRuntimeMixin:
                 return  # bodiless, or a body without sound localization
             robot_config = getattr(self, "_resolved_robot_config", None)
             cfg_dict = getattr(robot_config, "config", None) or {}
-            if cfg_dict.get("audio_localization") is False:
+            opt_out = cfg_dict.get("audio_localization")
+            # Accept YAML false AND plausible hand-edits ("false", "no", ...).
+            if opt_out is False or str(opt_out).strip().lower() in ("false", "0", "no", "off"):
                 self.log.info("DoA feed disabled via robots.yaml (audio_localization: false)")
                 return
             robot = getattr(self, "_robot", None)

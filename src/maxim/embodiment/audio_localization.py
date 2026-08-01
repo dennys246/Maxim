@@ -334,6 +334,8 @@ class DoAFeed:
         k: int = 3,
         sample_timeout_s: float = 2.0,
         sample_poll_s: float = 0.15,
+        salience: float = 0.5,
+        novelty: float = 0.3,
     ) -> None:
         self._reader = reader
         self._embodiment = embodiment
@@ -344,8 +346,24 @@ class DoAFeed:
         self._k = k
         self._sample_timeout_s = sample_timeout_s
         self._sample_poll_s = sample_poll_s
+        # Attention weights the emitted percepts carry — same experiment
+        # knobs as AzimuthDoASource: the defaults (0.5/0.3) sit AT or BELOW
+        # every > 0.5 escalation gate, so a live sound is passively
+        # perceived but never escalates to a submission until an operator
+        # raises them (per-run decision, mirroring the sim knobs).
+        self._salience = salience
+        self._novelty = novelty
         self._lock = threading.Lock()
         self._latest: "tuple[float, float] | None" = None  # (azimuth, monotonic ts)
+        # Claim the sensor as live-world-owned (pre-merge review fold): the
+        # modeled self_effect on ``azimuth`` must not write/credit while a
+        # real measurement stream owns the sensor — a modeled shift the next
+        # reading reverts would book relief for actuation that never
+        # happened, repeatably (the phantom credit mill). See
+        # ModulatorAffordanceTool.execute + Embodiment.live_world_set_sensors.
+        owned = getattr(embodiment, "live_world_set_sensors", None)
+        if owned is not None:
+            owned.add("azimuth")
 
     @property
     def latest(self) -> "tuple[float, float] | None":
@@ -360,33 +378,53 @@ class DoAFeed:
         chip converges in 0.23 s, faster would be waste) and returns
         ``None`` per silent window, so quiet rooms cost no writes.
         """
+        warned_once = False
         while not self._stop_event.is_set():
-            az = gated_azimuth(
-                self._reader,
-                k=self._k,
-                timeout_s=self._sample_timeout_s,
-                poll_s=self._sample_poll_s,
-                stop_event=self._stop_event,
-            )
-            if self._stop_event.is_set():
-                return
-            if az is None:
-                continue
-            with self._lock:
-                self._latest = (az, time.monotonic())
-            if not world_set_azimuth(self._embodiment, az):
-                logger.debug("DoAFeed: body has no azimuth sensor — value cached only")
-            if self._percept_sink is not None:
-                try:
-                    self._percept_sink(
-                        make_audio_percept(
-                            az,
-                            source=self._source_name,
-                            agent_id=self._agent_id,
+            # Per-iteration guard (pre-merge review fold): an unexpected
+            # raise must not silently kill the thread and leave audio dark
+            # for the rest of the session. First failure logs a WARNING;
+            # repeats stay at DEBUG. gated_azimuth paces the loop, so a
+            # persistent failure cannot spin.
+            try:
+                az = gated_azimuth(
+                    self._reader,
+                    k=self._k,
+                    timeout_s=self._sample_timeout_s,
+                    poll_s=self._sample_poll_s,
+                    stop_event=self._stop_event,
+                )
+                if self._stop_event.is_set():
+                    return
+                if az is None:
+                    continue
+                with self._lock:
+                    self._latest = (az, time.monotonic())
+                # Concurrent-writer note: this plain set races the loop
+                # thread's RMW sensor writes on OTHER keys only — the
+                # live_world_set_sensors filter removes ``azimuth`` from
+                # modeled self_effect application, so this feed is the
+                # sensor's single writer; a lost update is impossible.
+                if not world_set_azimuth(self._embodiment, az):
+                    logger.debug("DoAFeed: body has no azimuth sensor — value cached only")
+                if self._percept_sink is not None:
+                    try:
+                        self._percept_sink(
+                            make_audio_percept(
+                                az,
+                                source=self._source_name,
+                                agent_id=self._agent_id,
+                                salience=self._salience,
+                                novelty=self._novelty,
+                            )
                         )
-                    )
-                except Exception:
-                    logger.debug("DoAFeed: percept_sink raised", exc_info=True)
+                    except Exception:
+                        logger.debug("DoAFeed: percept_sink raised", exc_info=True)
+            except Exception:
+                if not warned_once:
+                    logger.warning("DoAFeed: iteration raised; feed continues", exc_info=True)
+                    warned_once = True
+                else:
+                    logger.debug("DoAFeed: iteration raised again", exc_info=True)
 
 
 def build_reachy_audio_orienting_source(

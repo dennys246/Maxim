@@ -179,3 +179,72 @@ class TestArgumentValidation:
             ["merge-nac", str(tmp_path / "nope.json"), "--into", str(tmp_path / "nac.json"), "--source-id", "p"]
         )
         assert rc == 2
+
+
+class TestFoldRobustness:
+    """Pre-merge review fold: corrupt inputs get the clean rc=2 contract
+    (never a traceback), the decay clock survives the merge, and the
+    copied sidecar is CC1-stamped without breaking the equality gate."""
+
+    def test_corrupt_target_json_is_a_clean_error(self, tmp_path):
+        src = tmp_path / "policy.json"
+        tgt = tmp_path / "nac.json"
+        _save_policy(src)
+        tgt.write_text("{truncated", encoding="utf-8")
+        rc = run_substrate_subcommand(["merge-nac", str(src), "--into", str(tgt), "--source-id", "p"])
+        assert rc == 2
+        assert tgt.read_text(encoding="utf-8") == "{truncated"  # untouched
+
+    def test_list_rooted_target_is_a_clean_error(self, tmp_path):
+        src = tmp_path / "policy.json"
+        tgt = tmp_path / "nac.json"
+        _save_policy(src)
+        tgt.write_text("[1, 2, 3]", encoding="utf-8")
+        rc = run_substrate_subcommand(["merge-nac", str(src), "--into", str(tgt), "--source-id", "p"])
+        assert rc == 2
+
+    def test_corrupt_sidecar_is_a_clean_error(self, tmp_path):
+        src = tmp_path / "policy.json"
+        tgt = tmp_path / "nac.json"
+        _save_policy(src)
+        _save_runtime(tgt)
+        before = tgt.read_text(encoding="utf-8")
+        _meta_path(src).write_text("not json at all", encoding="utf-8")
+        rc = run_substrate_subcommand(["merge-nac", str(src), "--into", str(tgt), "--source-id", "p"])
+        assert rc == 2
+        assert tgt.read_text(encoding="utf-8") == before
+
+    def test_saved_at_decay_clock_survives_the_merge(self, tmp_path):
+        """nac_merge drops saved_at; the verb must restore it or the next
+        boot's load_safe(apply_decay=True) silently skips one whole
+        wall-clock decay cycle for ALL runtime biases."""
+        src = tmp_path / "policy.json"
+        tgt = tmp_path / "nac.json"
+        _save_policy(src)
+        _save_runtime(tgt)
+        tgt_saved_at = json.loads(tgt.read_text(encoding="utf-8")).get("saved_at")
+        assert tgt_saved_at, "fixture assumption: NAc.save stamps saved_at"
+        assert run_substrate_subcommand(["merge-nac", str(src), "--into", str(tgt), "--source-id", "p"]) == 0
+        merged = json.loads(tgt.read_text(encoding="utf-8"))
+        # The TARGET's clock wins — it times the pre-existing state's decay.
+        assert merged.get("saved_at") == tgt_saved_at
+
+    def test_copied_sidecar_is_format_version_stamped(self, tmp_path):
+        src = tmp_path / "policy.json"
+        tgt = tmp_path / "nac.json"
+        _save_policy(src)
+        _meta_path(src).write_text(json.dumps(_POLICY_META), encoding="utf-8")
+        assert run_substrate_subcommand(["merge-nac", str(src), "--into", str(tgt), "--source-id", "p"]) == 0
+        copied = json.loads(_meta_path(tgt).read_text(encoding="utf-8"))
+        assert "_format_version" in copied  # CC1: every persisted JSON is stamped
+
+    def test_stamped_target_sidecar_vs_unstamped_source_still_matches(self, tmp_path):
+        """The equality gate compares stamp-stripped essence — stamping
+        history alone must never abort a legitimate import."""
+        src = tmp_path / "policy.json"
+        tgt = tmp_path / "nac.json"
+        _save_policy(src)
+        _save_runtime(tgt)
+        _meta_path(src).write_text(json.dumps(_POLICY_META), encoding="utf-8")
+        _meta_path(tgt).write_text(json.dumps({**_POLICY_META, "_format_version": "1.0"}), encoding="utf-8")
+        assert run_substrate_subcommand(["merge-nac", str(src), "--into", str(tgt), "--source-id", "p"]) == 0

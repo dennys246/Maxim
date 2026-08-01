@@ -1325,7 +1325,14 @@ def run_agentic_loop(
     else:
         # Stage 3 (live_audio_orient_wiring.md): a caller-held adapter lets a
         # live producer carry_percept() into the side-channel; is_sim_mode
-        # stays False either way.
+        # stays False either way. A sim-mode adapter smuggled through this
+        # kwarg would flip the 12 is_sim_mode consumer sites without a
+        # percept_source — fail loud instead (pre-merge review fold).
+        if sim_adapter is not None and getattr(sim_adapter, "is_sim_mode", True) is not False:
+            raise ValueError(
+                "sim_adapter= must be a non-sim adapter (is_sim_mode False); "
+                "sim mode is entered via percept_source=, never this kwarg"
+            )
         sim = sim_adapter if sim_adapter is not None else NullSimulationAdapter()
 
     if not run_id:
@@ -1853,7 +1860,13 @@ def run_agentic_loop(
                         world_set_azimuth(_emb, _az)
 
                     _trace = audio_attention_profile(_sal, _nov)
-                    _reflex = _emb is not None and is_orienting_reflex(_sal, _nov, _oprofile)
+                    # Reflex tier is SIM-ONLY (pre-merge review fold): its
+                    # world_set models a turn the body then "has made" — on
+                    # the live path no motor was dispatched, so the modeled
+                    # oriented azimuth would be a fabricated measurement (the
+                    # head-frame lesson's failure class). Live reflex-speed
+                    # orienting is Stage 5's DN behavior, with real motion.
+                    _reflex = sim.is_sim_mode and _emb is not None and is_orienting_reflex(_sal, _nov, _oprofile)
                     _escalates = is_audio_escalation(_sal, _oprofile)
 
                     if _reflex:
@@ -1891,12 +1904,20 @@ def run_agentic_loop(
                         _audio_line = format_audio_orientation(_ap)
                         if _audio_line:
                             _auto_sense_text = f"{_auto_sense_text}\n{_audio_line}" if _auto_sense_text else _audio_line
+                            # Advance the change-gate on DELIVERY — the line
+                            # was folded into auto_sense, so an unchanged
+                            # direction must not re-announce next tick. Store
+                            # the CLAMPED value (N2) so an out-of-range
+                            # reading can't spoof the delta gate. (Pre-fold
+                            # this advance was nested under _escalates, so
+                            # sub-threshold percepts — the DEFAULT 0.5/0.3
+                            # weights, i.e. every live DoA percept — re-folded
+                            # the identical direction every fresh reading:
+                            # exactly the prompt noise this gate exists to
+                            # prevent.)
+                            state.data["_last_audio_orient_az"] = max(-1.0, min(1.0, float(_az)))
                             if _escalates:
                                 _audio_escalate_this_tick = True
-                                # Advance the change-gate only on DELIVERY, and
-                                # store the CLAMPED value (N2) so an out-of-range
-                                # reading can't spoof the delta gate.
-                                state.data["_last_audio_orient_az"] = max(-1.0, min(1.0, float(_az)))
                             _trace["reflex"] = False
                             _trace["escalated"] = _escalates
                             try:
