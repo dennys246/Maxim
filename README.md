@@ -6,7 +6,9 @@ Maxim gives an LLM agent a **body** (sensors, modulators, pain), **drives** (hun
 
 > **Positioning** (per [Exp 37 2026-06-06 results](docs/experiments/37_cross_session_graduation.md)): Maxim is a **bio-inspired LLM harness**. The substrate provides cross-session infrastructure (memory, valence, causal links, drives) that LLM-driven agents use. Substrate-driven action selection independent of the LLM is post-1.0 research direction via Exp 38 substrate-primary work. See [docs/plans/behavioral_graduation_candidates.md](docs/plans/behavioral_graduation_candidates.md) for the Tier 1 graduation status.
 
-**Website:** [dennyschaedig.com/maxim](https://www.dennyschaedig.com/maxim)
+**Website:** 
+- [https://pymaxim.bio](https://pymaxim.bio)
+- [dennyschaedig.com/maxim](https://www.dennyschaedig.com/maxim)
 
 ## What Makes This Different
 
