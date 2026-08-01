@@ -312,6 +312,22 @@ class NullSimulationAdapter:
         with self._percept_lock:
             self._carried_percept = percept
 
+    def has_carried_percept(self) -> bool:
+        """Non-consuming peek: is a percept waiting for the next tick?
+
+        The agent loop's 0.6 idle gate consults this so a carried percept
+        can WAKE the loop (2026-08-01 live-smoke fix): the gate's percept
+        check was ``sim.is_sim_mode and percept_source.has_pending()`` —
+        the same is_sim_mode proxy the Stage-3 §1.16 re-gate removed, one
+        layer up. Without this, a live audio percept sat in the mailbox
+        forever on an idle robot: the loop slept before ``next_observation``
+        ever surfaced it, so §1.16 never ran and escalation was
+        structurally dead unless something ELSE (typed input) woke the
+        loop first.
+        """
+        with self._percept_lock:
+            return self._carried_percept is not None
+
     def next_observation(self, environment: Any, default_network: Any | None = None) -> dict:
         with self._percept_lock:
             self._current_percept = self._carried_percept
