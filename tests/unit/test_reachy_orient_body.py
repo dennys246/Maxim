@@ -120,9 +120,7 @@ class TestGateAEndToEnd:
         body.vital_metrics["azimuth"] = initial_azimuth
         emb = Embodiment(body)
         mod = body.modulators["orient"]
-        tool = ModulatorAffordanceTool(
-            body, mod, affordance, mod.affordances[affordance], affordance, embodiment=emb
-        )
+        tool = ModulatorAffordanceTool(body, mod, affordance, mod.affordances[affordance], affordance, embodiment=emb)
         return tool.execute()
 
     def test_turn_toward_left_sound_emits_positive_relief(self):

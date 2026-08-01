@@ -312,9 +312,7 @@ class TestGatedAzimuth:
         from maxim.embodiment.audio_localization import gated_azimuth
 
         # Three speech readings around front (pi/2): median wins.
-        reader = self._seq_reader(
-            [(math.pi / 2 + 0.3, True), (math.pi / 2, True), (math.pi / 2 - 0.3, True)]
-        )
+        reader = self._seq_reader([(math.pi / 2 + 0.3, True), (math.pi / 2, True), (math.pi / 2 - 0.3, True)])
         az = gated_azimuth(reader, k=3, timeout_s=1.0, poll_s=0.0)
         assert az == pytest.approx(doa_to_azimuth(math.pi / 2))
 

@@ -21,7 +21,6 @@ import math
 import threading
 import time
 
-import pytest
 
 from maxim.embodiment.audio_localization import DoAFeed
 from maxim.embodiment.body import Embodiment

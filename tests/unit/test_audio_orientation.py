@@ -336,9 +336,9 @@ def test_agent_loop_1_16_gate_reads_current_percept_not_is_sim_mode():
     import maxim.runtime.agent_loop as agent_loop
 
     src = inspect.getsource(agent_loop)
-    assert (
-        'if getattr(sim, "current_percept", None) is not None and aut_mode != "substrate-primary":' in src
-    ), "§1.16 gate no longer keys on sim.current_percept (Stage 3 re-gate reverted?)"
-    assert (
-        'if sim.is_sim_mode and aut_mode != "substrate-primary":' not in src
-    ), "the old is_sim_mode §1.16 gate is back — live audio percepts would be dropped"
+    assert 'if getattr(sim, "current_percept", None) is not None and aut_mode != "substrate-primary":' in src, (
+        "§1.16 gate no longer keys on sim.current_percept (Stage 3 re-gate reverted?)"
+    )
+    assert 'if sim.is_sim_mode and aut_mode != "substrate-primary":' not in src, (
+        "the old is_sim_mode §1.16 gate is back — live audio percepts would be dropped"
+    )

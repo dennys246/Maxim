@@ -68,9 +68,7 @@ class TestMergeNacRoundTrip:
         _save_policy(src)
         _save_runtime(tgt)
 
-        rc = run_substrate_subcommand(
-            ["merge-nac", str(src), "--into", str(tgt), "--source-id", "reachy-orient-45c"]
-        )
+        rc = run_substrate_subcommand(["merge-nac", str(src), "--into", str(tgt), "--source-id", "reachy-orient-45c"])
         assert rc == 0
 
         merged = _load_merged(tgt)
@@ -91,9 +89,7 @@ class TestMergeNacRoundTrip:
         merged = _load_merged(tgt)
 
         def argmax_action(nac, az_bin):
-            candidates = {
-                tool: b for (agent, b_bin, tool), b in nac._cluster_reward_bias.items() if b_bin == az_bin
-            }
+            candidates = {tool: b for (agent, b_bin, tool), b in nac._cluster_reward_bias.items() if b_bin == az_bin}
             return max(candidates, key=candidates.get)
 
         assert argmax_action(merged, "near_left") == "turn_left"
@@ -174,9 +170,7 @@ class TestArgumentValidation:
         src = tmp_path / "policy.json"
         tgt = tmp_path / "nac.json"
         _save_policy(src)
-        rc = run_substrate_subcommand(
-            ["merge-nac", str(src), "--into", str(tgt), "--source-id", "_consensus"]
-        )
+        rc = run_substrate_subcommand(["merge-nac", str(src), "--into", str(tgt), "--source-id", "_consensus"])
         assert rc == 2
         assert not tgt.exists()
 
