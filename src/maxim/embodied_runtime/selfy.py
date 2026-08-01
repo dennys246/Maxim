@@ -250,19 +250,41 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
 
         self.log.info("Connecting to Reachy Mini '%s'...", effective_robot_id)
 
+        # Operator-declared connection config (host, connection_mode,
+        # tunnel, ...) comes from ~/.maxim/robots.yaml — the same file the
+        # body wiring already reads. Pre-fix (2026-07-31) this path built
+        # the config inline and silently ignored the file, so the connect
+        # error's own advice ("set host: <ip> in robots.yaml") did nothing:
+        # the controller fell back to mDNS and failed on hosts where .local
+        # resolution is blocked. Declared keys win over the inline defaults;
+        # wiring-layer keys (body, audio_localization) are filtered to the
+        # constructor's signature by connect_robot.
+        if not self._simulation:
+            _connect_config = {
+                "robot_name": self.name,
+                "media_backend": media_backend,
+            }
+            try:
+                from maxim.hardware.config import load_robots_config, resolve_connection_config
+
+                _connect_config = resolve_connection_config(
+                    load_robots_config(),
+                    effective_robot_id,
+                    defaults=_connect_config,
+                )
+            except Exception as e:  # config load is best-effort; never block startup
+                self.log.debug("robots.yaml connection config not loaded: %s", e)
+        else:
+            _connect_config = {
+                "video_resolution": (640, 480),
+                "simulate_delays": False,
+            }
+
         # Use the global registry to connect
         self._robot = _robot_registry.connect_robot(
             robot_id=effective_robot_id,
             robot_type=robot_type,
-            config={
-                "robot_name": self.name,
-                "media_backend": media_backend,
-            }
-            if not self._simulation
-            else {
-                "video_resolution": (640, 480),
-                "simulate_delays": False,
-            },
+            config=_connect_config,
             timeout=effective_timeout,
             set_primary=True,
         )
