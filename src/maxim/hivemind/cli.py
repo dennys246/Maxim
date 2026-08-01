@@ -15,11 +15,26 @@ Subcommands:
 
 - ``maxim substrate inspect <input.zip>`` — print manifest only.
 
+- ``maxim substrate merge-nac <source_nac.json> [--into <target_nac.json>]
+   --source-id <id> [--target-id <id>]`` — one-shot MERGE of a trained
+   NAc policy file into a runtime ``nac.json`` (live_audio_orient_wiring.md
+   Stage 4b). A merge, never a replace: ``NAc.load_safe`` would clobber
+   the runtime's other learning. ONE-SHOT by design — re-running the same
+   import double-counts Welford observations (which is why this is a CLI
+   verb the operator invokes consciously, not a boot-time flag). The
+   policy-meta sidecar (``*.meta.json`` — bin boundary, gain,
+   action_deltas) travels with the import; a target sidecar that
+   DISAGREES with the source's aborts before any mutation (merging
+   policies trained in different state spaces silently corrupts both).
+
 The 1.0 ``import`` verb does NOT auto-merge into a live system. It
 extracts the bundle so the user (or 1.1+ Oasis software) can decide
 what to do with the extracted dicts — typically pass them through
 ``nac_merge`` / ``ec_merge`` (PR B) and re-load into a live system.
 This keeps the CLI side-effect-free at the bio-stack layer.
+``merge-nac`` is the deliberate exception: a file-level merge verb that
+still never touches a LIVE bio-stack (it rewrites the persisted JSON;
+the runtime picks it up at next boot via the Stage-4a load path).
 """
 
 from __future__ import annotations
@@ -130,6 +145,104 @@ def _run_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _meta_sidecar_path(nac_path: Path) -> Path:
+    """``foo/nac.json`` → ``foo/nac.meta.json`` (the policy-meta sidecar).
+
+    Mirrors ``scripts/orient_backbone/live_common.py::_meta_path``: the
+    state-space definition (bin boundary, gain, action_deltas) travels
+    WITH the policy, because a bin name like ``near_left`` means nothing
+    without the boundary that produced it.
+    """
+    name = nac_path.name
+    stem = name[:-5] if name.endswith(".json") else name
+    return nac_path.with_name(stem + ".meta.json")
+
+
+def _run_merge_nac(args: argparse.Namespace) -> int:
+    source_path = Path(args.source).expanduser().resolve()
+    if not source_path.is_file():
+        print(f"error: source NAc file not found: {source_path}", file=sys.stderr)
+        return 2
+
+    if args.into:
+        target_path = Path(args.into).expanduser().resolve()
+    else:
+        from maxim.utils.paths import user_memory
+
+        target_path = user_memory() / "nac.json"
+
+    # ── Fail fast BEFORE any mutation ────────────────────────────────
+    # State-space compatibility: a target trained at a different bin
+    # boundary/gain would silently mis-bin every lookup post-merge.
+    src_meta = _read_optional_json(_meta_sidecar_path(source_path))
+    tgt_meta = _read_optional_json(_meta_sidecar_path(target_path))
+    if src_meta is not None and tgt_meta is not None and src_meta != tgt_meta:
+        print(
+            "error: policy-meta sidecars disagree — the two NAc files were "
+            "trained in different state spaces; merging would silently "
+            "corrupt both. Nothing was written.\n"
+            f"  source meta ({_meta_sidecar_path(source_path)}): {json.dumps(src_meta, sort_keys=True)}\n"
+            f"  target meta ({_meta_sidecar_path(target_path)}): {json.dumps(tgt_meta, sort_keys=True)}",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        source_state = json.loads(source_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"error: cannot read source NAc file: {exc}", file=sys.stderr)
+        return 2
+    target_state = _read_optional_json(target_path) or {}
+    target_existed = target_path.is_file()
+
+    # The persisted files carry the CC1 ``_format_version`` stamp; the
+    # merge consumes pure ``NAc.dump()`` shapes, and ``with_format_version``
+    # fails loudly on a conflicting leftover stamp — strip both.
+    source_state.pop("_format_version", None)
+    target_state.pop("_format_version", None)
+
+    from maxim.hivemind.merge import nac_merge
+
+    try:
+        merged = nac_merge(
+            target_state,
+            source_state,
+            left_source=args.target_id,
+            right_source=args.source_id,
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    # Pre-merge backup of the target (the one destructive-ish step).
+    if target_existed:
+        backup_path = target_path.with_name(target_path.name + ".pre-merge.bak")
+        backup_path.write_text(target_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    from maxim.decisions.nac import _NAC_FORMAT_VERSION
+    from maxim.utils.atomic_io import atomic_write_json
+    from maxim.utils.format_version import with_format_version
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(str(target_path), with_format_version(merged, version=_NAC_FORMAT_VERSION))
+
+    # The sidecar travels with the import (make-the-definition-travel).
+    if src_meta is not None:
+        atomic_write_json(str(_meta_sidecar_path(target_path)), src_meta)
+
+    print(
+        f"merged {source_path.name} into {target_path}\n"
+        f"  links:           {len(merged.get('links', {}))} event signatures\n"
+        f"  cluster biases:  {len(merged.get('cluster_reward_bias', {}))}\n"
+        f"  reward biases:   {len(merged.get('reward_bias', {}))}\n"
+        f"  observations:    {merged.get('total_observations', 0)}\n"
+        f"  policy meta:     {'copied' if src_meta is not None else 'none'}\n"
+        + (f"  backup:          {target_path.name}.pre-merge.bak\n" if target_existed else "")
+        + "NOTE: one-shot — re-running the same import double-counts Welford observations."
+    )
+    return 0
+
+
 def _run_inspect(args: argparse.Namespace) -> int:
     bundle_path = Path(args.input).expanduser().resolve()
     if not bundle_path.is_file():
@@ -192,6 +305,28 @@ def _build_parser() -> argparse.ArgumentParser:
     p_inspect = sub.add_parser("inspect", help="Print the bundle manifest without extracting")
     p_inspect.add_argument("input", help="Path to the .zip bundle")
     p_inspect.set_defaults(func=_run_inspect)
+
+    p_merge_nac = sub.add_parser(
+        "merge-nac",
+        help="One-shot MERGE of a trained NAc policy file into a runtime nac.json (never a replace)",
+    )
+    p_merge_nac.add_argument("source", help="Path to the trained policy NAc JSON (NAc.save output)")
+    p_merge_nac.add_argument(
+        "--into",
+        default=None,
+        help="Target nac.json to merge into (default: ~/.maxim/memory/nac.json — the runtime NAc's Stage-4a persistence path). Created if absent.",
+    )
+    p_merge_nac.add_argument(
+        "--source-id",
+        required=True,
+        help="Opaque contributor ID for the imported policy (e.g. 'reachy-orient-45c'). Must NOT start with '_'.",
+    )
+    p_merge_nac.add_argument(
+        "--target-id",
+        default="runtime",
+        help="Contributor ID for the existing runtime state (default: 'runtime').",
+    )
+    p_merge_nac.set_defaults(func=_run_merge_nac)
 
     return parser
 
