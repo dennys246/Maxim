@@ -45,6 +45,7 @@ class SimulatedController(RobotController):
         video_fps: float = 10.0,
         audio_sample_rate: int = 16000,
         simulate_delays: bool = False,
+        doa_reader=None,
     ) -> None:
         """Initialize simulated controller.
 
@@ -54,12 +55,19 @@ class SimulatedController(RobotController):
             video_fps: FPS for mock video stream.
             audio_sample_rate: Sample rate for mock audio stream.
             simulate_delays: If True, add realistic delays to operations.
+            doa_reader: Optional scripted DoA reader (a zero-arg callable
+                yielding ``(doa_radians, is_speech) | None``). Lets tests
+                exercise the ``get_doa_reader`` capability seam end-to-end
+                without hardware (live_audio_orient_wiring.md Stage 1).
+                ``None`` (default) = capability absent, matching a robot
+                without sound localization.
         """
         super().__init__(robot_id or "simulated")
         self._video_resolution = video_resolution
         self._video_fps = video_fps
         self._audio_sample_rate = audio_sample_rate
         self._simulate_delays = simulate_delays
+        self._doa_reader = doa_reader
 
         self._video_stream: MockVideoStream | None = None
         self._audio_stream: MockAudioStream | None = None
@@ -306,3 +314,14 @@ class SimulatedController(RobotController):
             MockAudioStream, or None if not connected.
         """
         return self._audio_stream
+
+    def get_doa_reader(self):
+        """Get the scripted DoA reader, if one was injected.
+
+        Pins the Stage-1 capability seam without hardware: the injected
+        reader is returned only while connected (mirroring the Reachy
+        implementation's connected gate); otherwise ``None``.
+        """
+        if not self.is_connected():
+            return None
+        return self._doa_reader

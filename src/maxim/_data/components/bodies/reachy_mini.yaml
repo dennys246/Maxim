@@ -78,13 +78,13 @@ entity:
     # drive-kind (or routing the error through the salience/attention path
     # rather than the pain/homeostasis path) is the long-term answer.
     #
-    # TODO(Track 2, when DoA is fed): revisit pain_scale. At 1.0 a fully
-    # off-center sound (|az|=1 → excess 0.9 → intensity 0.9) registers LOUDER in
-    # the NAc pain channel than genuine noxious failure modes on this body
-    # (thermal_throttling 0.4, camera_lost 0.6) — a bio mis-scale that inverts
-    # "off to the side" vs "motors overheating." Latent today (azimuth sits at
-    # initial 0.0, world-set, so no breach until DoA writes it). Drop toward
-    # 0.2-0.3 when wiring the azimuth feed, and re-measure the orient loop.
+    # pain_scale calibration (Stage 0b, live_audio_orient_wiring.md): a fully
+    # off-center sound (|az|=1 → excess 0.9 → intensity 0.9·scale) must NOT
+    # out-shout genuine noxious failure modes on this body (thermal_throttling
+    # 0.4, camera_lost 0.6) — "off to the side" hurts less than "motors
+    # overheating." At 0.25 the worst case is 0.225, below every noxious mode
+    # including low_battery (0.3). base_humanoid.yaml uses 0.3 for the same
+    # reason. Pinned by tests/unit/test_reachy_orient_body.py.
     azimuth:
       unit: normalized
       range: [-1, 1]
@@ -94,7 +94,7 @@ entity:
         set_point: 0.0
         drift_rate: 0.0       # world-set, no auto-return (load-bearing — see note)
         comfort_band: 0.1     # within ±0.1 = centered enough
-        pain_scale: 1.0       # TODO(Track 2): mis-scaled vs noxious modes — see BIO NOTE above
+        pain_scale: 0.25      # calibrated below all noxious failure modes (Stage 0b)
 
     # Battery + thermal
     battery:
@@ -135,28 +135,43 @@ entity:
     # turn_left/turn_right keep their pre-magnitude names + values, so a policy
     # learned on the 2-action set (queen-mind v0.1) still loads and stays valid —
     # it simply has not met the _big actions yet.
+    #
+    # DUAL-KEY self_effect (Stage 0c, live_audio_orient_wiring.md Gate A):
+    # head_yaw alone carries NO drive spec, so tool_bridge's
+    # self_effect ∩ drive_specs intersection was {} and drive_potential_diff
+    # was NEVER emitted — orient relief credit structurally dead. Each turn
+    # now ALSO writes the drive-bearing azimuth key at the measured gain
+    # (0.57 az/rad post-headfix): 0.3 rad → ~0.17, 0.9 rad → ~0.50 — the
+    # magnitudes the ≈0.33 decision boundary above is derived from. SIGN:
+    # under -1=left/+1=right, turning left rotates a stationary sound's
+    # head-relative bearing toward + (a left-of-center sound moves toward the
+    # 0.0 set-point), so azimuth delta has the SAME sign as head_yaw — matches
+    # base_humanoid.yaml and the "drives azimuth toward +" descriptions.
+    # Gate B (known, accepted): the intra-execute credit books the MODELED
+    # shift; the next DoA re-write corrects the value but not the credit.
+    # Sign is what's credited and the modeled sign is calibration-correct.
     orient:
       abstract: true
       affordances:
         turn_left:
           params: {}
           always_active: true   # you can always turn (not goal-gated); the orient loop needs it live
-          self_effect: {head_yaw: 0.3}
+          self_effect: {head_yaw: 0.3, azimuth: 0.17}
           description: "Turn left a normal step (drives azimuth toward +)."
         turn_right:
           params: {}
           always_active: true
-          self_effect: {head_yaw: -0.3}
+          self_effect: {head_yaw: -0.3, azimuth: -0.17}
           description: "Turn right a normal step (drives azimuth toward -)."
         turn_left_big:
           params: {}
           always_active: true
-          self_effect: {head_yaw: 0.9}
+          self_effect: {head_yaw: 0.9, azimuth: 0.50}
           description: "Turn left a large step (drives azimuth toward + fast; overshoots when near-centered)."
         turn_right_big:
           params: {}
           always_active: true
-          self_effect: {head_yaw: -0.9}
+          self_effect: {head_yaw: -0.9, azimuth: -0.50}
           description: "Turn right a large step (drives azimuth toward - fast; overshoots when near-centered)."
     motion:
       abstract: true  # capability-only — no sensors (C4)

@@ -446,25 +446,36 @@ class ModulatorAffordanceTool(Tool):
         # diff represents, used by the collateral-harm gate below.
         drive_potential_diff: float | None = None
         accounted_sensors: set[str] = set()
-        if self._affordance_schema.self_effect and self._embodiment is not None:
+        # Live-world-owned sensor filter (live_audio_orient_wiring.md
+        # pre-merge fold): a sensor a LIVE exteroceptive writer owns (the
+        # DoA feed world-setting ``azimuth``) is excluded from the modeled
+        # self_effect ENTIRELY — no write (the next real measurement would
+        # revert a fabricated shift), no credit (relief for actuation that
+        # never happened books a repeatable phantom +1 — the credit mill),
+        # and no B8 blame (the declared delta was never applied, so the
+        # affordance is a bystander to any lingering breach). Empty set
+        # (sim, scripted substrate, bodies without a live feed) leaves the
+        # declared self_effect untouched. The eventual live credit design
+        # is Stage 5's act-now-credit-later pending map.
+        _self_effect = self._affordance_schema.self_effect
+        _live_owned = getattr(self._embodiment, "live_world_set_sensors", None) or ()
+        if _self_effect and _live_owned:
+            _self_effect = {k: v for k, v in _self_effect.items() if k not in _live_owned}
+        if _self_effect and self._embodiment is not None:
             _body = self._embodiment.root
             _drive_specs = getattr(_body, "drive_specs", {}) or {}
             _metrics = getattr(_body, "vital_metrics", {}) or {}
-            pre_values = {
-                name: _metrics[name]
-                for name in self._affordance_schema.self_effect
-                if name in _drive_specs and name in _metrics
-            }
+            pre_values = {name: _metrics[name] for name in _self_effect if name in _drive_specs and name in _metrics}
             accounted_sensors = set(pre_values)
             _apply_sensor_deltas(
                 self._embodiment.root,
-                self._affordance_schema.self_effect,
+                _self_effect,
                 delta_kind="self_effect",
             )
             if pre_values:
                 drive_potential_diff = _drive_potential_diff(
                     self._embodiment.root,
-                    self._affordance_schema.self_effect,
+                    _self_effect,
                     pre_values,
                 )
 
@@ -522,9 +533,12 @@ class ModulatorAffordanceTool(Tool):
             # the pre-B8 behavior) — a filter bug must not become a silent no-op
             # on the SEM-cascade / Exp 37/38 path.
             try:
+                # NOTE: _self_effect (live-world-owned sensors filtered), not
+                # the raw declaration — an unapplied delta must not blame the
+                # affordance for a breach it did not touch.
                 harmful_sensors = _intrinsically_harmful_sensors(
                     self._embodiment.root,
-                    self._affordance_schema.self_effect,
+                    _self_effect,
                     self._affordance_schema.target_effect,
                 )
                 active_failures = [

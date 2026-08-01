@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import logging
 import math
+import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -240,6 +242,191 @@ def make_reachy_doa_reader(mini: object | None = None) -> DoAReader:
     return _read
 
 
+def gated_azimuth(
+    reader: DoAReader,
+    *,
+    k: int = 3,
+    timeout_s: float = 5.0,
+    poll_s: float = 0.15,
+    stop_event: "object | None" = None,
+) -> float | None:
+    """Median of ``k`` speech-gated azimuth samples, or ``None`` on timeout.
+
+    Promoted from ``scripts/orient_backbone/live_common.py`` (Stage 1d of
+    live_audio_orient_wiring.md) — the measured DoA characterization
+    justifies library status: the speech gate fires only 23-100% (median
+    50%) per utterance, so raw single reads are too noisy for credit.
+
+    Gates on the hardware's ``is_speech_detected`` flag — a transient clap
+    or silence never fabricates a direction. Median-of-``k`` smooths
+    single-read DoA noise so ``potential_diff`` credits the turn, not the
+    measurement jitter.
+
+    BLOCKS for up to ``timeout_s`` (sleeps between polls) — call it from a
+    dedicated poll thread (the Stage-2 feed), NEVER from
+    ``PerceptSource.next_percept()`` or any agent-loop tick path (the
+    non-blocking contract, ``sources.py``). ``stop_event`` (an object with
+    ``is_set()``/``wait(t)``, i.e. a ``threading.Event``) makes the sampling
+    window interruptible so runtime teardown never waits out ``timeout_s``;
+    returns ``None`` immediately when set.
+    """
+    samples: list[float] = []
+    deadline = time.time() + timeout_s
+    while len(samples) < k and time.time() < deadline:
+        if stop_event is not None and stop_event.is_set():  # type: ignore[attr-defined]
+            return None
+        try:
+            reading = reader()
+        except Exception:
+            logger.debug("gated_azimuth: doa_reader raised", exc_info=True)
+            reading = None
+        if reading is not None:
+            doa_rad, is_speech = reading
+            if is_speech:
+                samples.append(doa_to_azimuth(float(doa_rad)))
+        if stop_event is not None:
+            stop_event.wait(poll_s)  # type: ignore[attr-defined]
+        else:
+            time.sleep(poll_s)
+    if not samples:
+        return None
+    samples.sort()
+    return samples[len(samples) // 2]
+
+
+class DoAFeed:
+    """Live DoA → body-sensor feed (live_audio_orient_wiring.md Stage 2).
+
+    Decouples the DoA transport's synchronous read (the REST reader does a
+    blocking GET) from every consumer: ``run()`` — executed in a thread the
+    WIRING layer owns (CaptureManager pattern: shared ``stop_event``,
+    registered in the runtime teardown sweep) — repeatedly samples
+    :func:`gated_azimuth`, and on each FRESH speech-gated reading:
+
+    1. caches ``(azimuth, timestamp)`` under a lock (consumers read
+       :attr:`latest` — never the transport);
+    2. world-sets the body's ``azimuth`` sensor via
+       :func:`world_set_azimuth` (the drive/EC/body_state lane); and
+    3. hands ``make_audio_percept(az)`` to the optional ``percept_sink``
+       (the Stage-3 modality-preserving percept lane — e.g.
+       ``NullSimulationAdapter``'s side-channel slot).
+
+    Silence writes NOTHING: a stale direction is never re-written, so a
+    world-set sensor with ``drift_rate: 0`` holds the last real measurement
+    between utterances (the ``reachy_mini.yaml`` contract).
+
+    This is deliberately NOT a ``PerceptSource`` — attaching one on the
+    live path would flip ``is_sim_mode`` across its 12 consumer sites.
+    It is also not a background DSP thread inside ``AzimuthDoASource``
+    (whose pull-per-tick contract is unchanged); it is the wiring-layer
+    poll thread the ``PerceptSource`` non-blocking invariant demands.
+    """
+
+    def __init__(
+        self,
+        reader: DoAReader,
+        embodiment: object,
+        *,
+        stop_event: threading.Event,
+        percept_sink: "Callable[[Percept], None] | None" = None,
+        agent_id: str | None = None,
+        source_name: str = "reachy:audio-doa",
+        k: int = 3,
+        sample_timeout_s: float = 2.0,
+        sample_poll_s: float = 0.15,
+        salience: float = 0.5,
+        novelty: float = 0.3,
+    ) -> None:
+        self._reader = reader
+        self._embodiment = embodiment
+        self._stop_event = stop_event
+        self._percept_sink = percept_sink
+        self._agent_id = agent_id
+        self._source_name = source_name
+        self._k = k
+        self._sample_timeout_s = sample_timeout_s
+        self._sample_poll_s = sample_poll_s
+        # Attention weights the emitted percepts carry — same experiment
+        # knobs as AzimuthDoASource: the defaults (0.5/0.3) sit AT or BELOW
+        # every > 0.5 escalation gate, so a live sound is passively
+        # perceived but never escalates to a submission until an operator
+        # raises them (per-run decision, mirroring the sim knobs).
+        self._salience = salience
+        self._novelty = novelty
+        self._lock = threading.Lock()
+        self._latest: "tuple[float, float] | None" = None  # (azimuth, monotonic ts)
+        # Claim the sensor as live-world-owned (pre-merge review fold): the
+        # modeled self_effect on ``azimuth`` must not write/credit while a
+        # real measurement stream owns the sensor — a modeled shift the next
+        # reading reverts would book relief for actuation that never
+        # happened, repeatably (the phantom credit mill). See
+        # ModulatorAffordanceTool.execute + Embodiment.live_world_set_sensors.
+        owned = getattr(embodiment, "live_world_set_sensors", None)
+        if owned is not None:
+            owned.add("azimuth")
+
+    @property
+    def latest(self) -> "tuple[float, float] | None":
+        """Most recent gated ``(azimuth, timestamp)``, or None before first speech."""
+        with self._lock:
+            return self._latest
+
+    def run(self) -> None:
+        """Poll loop — run inside a dedicated thread until ``stop_event`` sets.
+
+        ``gated_azimuth`` paces the loop internally (~6.7 Hz sampling; the
+        chip converges in 0.23 s, faster would be waste) and returns
+        ``None`` per silent window, so quiet rooms cost no writes.
+        """
+        warned_once = False
+        while not self._stop_event.is_set():
+            # Per-iteration guard (pre-merge review fold): an unexpected
+            # raise must not silently kill the thread and leave audio dark
+            # for the rest of the session. First failure logs a WARNING;
+            # repeats stay at DEBUG. gated_azimuth paces the loop, so a
+            # persistent failure cannot spin.
+            try:
+                az = gated_azimuth(
+                    self._reader,
+                    k=self._k,
+                    timeout_s=self._sample_timeout_s,
+                    poll_s=self._sample_poll_s,
+                    stop_event=self._stop_event,
+                )
+                if self._stop_event.is_set():
+                    return
+                if az is None:
+                    continue
+                with self._lock:
+                    self._latest = (az, time.monotonic())
+                # Concurrent-writer note: this plain set races the loop
+                # thread's RMW sensor writes on OTHER keys only — the
+                # live_world_set_sensors filter removes ``azimuth`` from
+                # modeled self_effect application, so this feed is the
+                # sensor's single writer; a lost update is impossible.
+                if not world_set_azimuth(self._embodiment, az):
+                    logger.debug("DoAFeed: body has no azimuth sensor — value cached only")
+                if self._percept_sink is not None:
+                    try:
+                        self._percept_sink(
+                            make_audio_percept(
+                                az,
+                                source=self._source_name,
+                                agent_id=self._agent_id,
+                                salience=self._salience,
+                                novelty=self._novelty,
+                            )
+                        )
+                    except Exception:
+                        logger.debug("DoAFeed: percept_sink raised", exc_info=True)
+            except Exception:
+                if not warned_once:
+                    logger.warning("DoAFeed: iteration raised; feed continues", exc_info=True)
+                    warned_once = True
+                else:
+                    logger.debug("DoAFeed: iteration raised again", exc_info=True)
+
+
 def build_reachy_audio_orienting_source(
     *,
     connection_mode: str = "network",
@@ -440,17 +627,60 @@ def world_set_azimuth(embodiment: object, azimuth: float) -> bool:
     written; False (fail-soft) for a body without sound localization — it is
     simply unaffected. Mirrors the real robot, where live DoA world-sets the
     same sensor (Track 2 Layer 2); the sim write is the offline dry-run.
+
+    One-line delegate to :func:`world_set_axis` — the axis-generic form this
+    docstring's dimensionality note asks for (Stage 2 of
+    live_audio_orient_wiring.md picked this parameterization).
+    """
+    return world_set_axis(embodiment, "azimuth", azimuth, default_range=(-1.0, 1.0))
+
+
+def world_set_axis(
+    embodiment: object,
+    sensor_name: str,
+    value: float,
+    *,
+    default_range: "tuple[float, float] | None" = None,
+) -> bool:
+    """World-set any declared root sensor from an exteroceptive measurement.
+
+    The axis-generic helper behind :func:`world_set_azimuth` (Stage 2,
+    live_audio_orient_wiring.md): a future elevation axis is one body-YAML
+    sensor + one call here — NO new type, NO axis config schema (the
+    perception_pipeline_placement.md:127 guardrail: if an ``AxisSpec`` type
+    starts to appear, stop and use the body YAML).
+
+    Clamps to the sensor's declared ``reading_schema["range"]`` when one is
+    resolvable, else to ``default_range`` when given, else writes the raw
+    float (a world-set write must not invent a range the body didn't
+    declare). Returns True if the body declares the sensor and it was
+    written; False fail-soft otherwise.
     """
     root = getattr(embodiment, "root", None)
     if root is None:
         return False
     sensors = getattr(root, "sensors", None) or {}
-    if "azimuth" not in sensors:
+    if sensor_name not in sensors:
         return False
     vm = getattr(root, "vital_metrics", None)
     if vm is None:
         return False
-    vm["azimuth"] = max(-1.0, min(1.0, float(azimuth)))
+    v = float(value)
+    lo_hi: "tuple[float, float] | None" = None
+    schema = getattr(sensors[sensor_name], "reading_schema", None)
+    rng = schema.get("range") if isinstance(schema, dict) else None
+    if isinstance(rng, (list, tuple)) and len(rng) == 2:
+        try:
+            lo, hi = float(rng[0]), float(rng[1])
+            if lo <= hi:
+                lo_hi = (lo, hi)
+        except (TypeError, ValueError):
+            lo_hi = None
+    if lo_hi is None:
+        lo_hi = default_range
+    if lo_hi is not None:
+        v = max(lo_hi[0], min(lo_hi[1], v))
+    vm[sensor_name] = v
     return True
 
 

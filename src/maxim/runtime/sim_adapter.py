@@ -49,6 +49,7 @@ Sim-specific coupling lives in two places intentionally:
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Any
 
@@ -265,7 +266,27 @@ class SimulationAdapter:
 
 
 class NullSimulationAdapter:
-    """No-op adapter for production (non-simulation) mode."""
+    """No-op adapter for production (non-simulation) mode.
+
+    Stage 3 of live_audio_orient_wiring.md taught it to CARRY a
+    modality-preserving percept without becoming a sim adapter:
+    ``is_sim_mode`` stays ``False`` (flipping it would hit its 12 consumer
+    sites — consolidation downgrade, DN shutdown skip, sim logging...),
+    but a live producer (the Stage-2 DoA feed's poll thread) may hand a
+    percept to :meth:`carry_percept`; the next ``next_observation`` tick
+    surfaces it on :attr:`current_percept` exactly like the sim adapter's
+    side-channel, and agent_loop §1.16 — re-gated on
+    ``current_percept is not None`` rather than the old ``is_sim_mode``
+    proxy — consumes it. The percept never lands in the observation dict
+    or ``state.data`` (same leak rationale as ``SimulationAdapter``).
+    """
+
+    def __init__(self) -> None:
+        # carry_percept is called from a producer thread (the DoA feed);
+        # next_observation runs on the loop thread — hence the lock.
+        self._percept_lock = threading.Lock()
+        self._carried_percept: Any | None = None
+        self._current_percept: Any | None = None
 
     @property
     def is_sim_mode(self) -> bool:
@@ -273,12 +294,28 @@ class NullSimulationAdapter:
 
     @property
     def current_percept(self) -> Any | None:
-        """Production has no percept_source side-channel. On the non-sim path
-        the observation returned by ``next_observation`` IS the percept (a bare
-        ``Percept`` or a dict from ``environment.observe()``); read it there."""
-        return None
+        """The carried percept surfaced by the most recent tick, else None.
+
+        Mirrors ``SimulationAdapter.current_percept``: set per tick in
+        ``next_observation``, cleared on the next tick when nothing fresh
+        was carried — never stale.
+        """
+        return self._current_percept
+
+    def carry_percept(self, percept: Any) -> None:
+        """Hand a modality-preserving percept to the NEXT loop tick.
+
+        Thread-safe single-slot mailbox: an undelivered percept is
+        OVERWRITTEN by a fresher one (latest-wins — direction data ages
+        badly; a queue would deliver a stale bearing after a burst).
+        """
+        with self._percept_lock:
+            self._carried_percept = percept
 
     def next_observation(self, environment: Any, default_network: Any | None = None) -> dict:
+        with self._percept_lock:
+            self._current_percept = self._carried_percept
+            self._carried_percept = None
         return environment.observe()
 
     def check_exhaustion(self, pending_proposal: Any | None) -> bool:

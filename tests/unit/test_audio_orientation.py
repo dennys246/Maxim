@@ -257,3 +257,88 @@ def test_audio_orient_enabled_reads_flag():
         assert audio_orient_enabled() is True
     finally:
         os.environ.pop("MAXIM_SIM_AUDIO_ORIENT", None)
+
+
+# ── Stage 3 (live_audio_orient_wiring.md): the percept lane on the LIVE path ─
+#
+# §1.16's gate was re-based from ``sim.is_sim_mode`` (a proxy) onto
+# ``sim.current_percept is not None`` (the real condition), and
+# NullSimulationAdapter learned to CARRY a percept from a live producer
+# (the Stage-2 DoA feed) without flipping is_sim_mode.
+
+
+class _ObsEnv:
+    def observe(self):
+        return {}
+
+
+class TestNullAdapterPerceptCarry:
+    def test_is_sim_mode_stays_false(self):
+        """The load-bearing invariant: carrying a percept must NOT make the
+        live path look like a sim (12 is_sim_mode consumer sites)."""
+        from maxim.runtime.sim_adapter import NullSimulationAdapter
+
+        adapter = NullSimulationAdapter()
+        adapter.carry_percept(make_audio_percept(-0.6, source="test:doa"))
+        adapter.next_observation(_ObsEnv())
+        assert adapter.is_sim_mode is False
+        assert adapter.current_percept is not None
+
+    def test_carried_percept_surfaces_next_tick_then_clears(self):
+        from maxim.runtime.sim_adapter import NullSimulationAdapter
+
+        adapter = NullSimulationAdapter()
+        assert adapter.current_percept is None
+        p = make_audio_percept(-0.6, source="test:doa")
+        adapter.carry_percept(p)
+        # Not visible until the tick boundary (mirrors SimulationAdapter).
+        assert adapter.current_percept is None
+        adapter.next_observation(_ObsEnv())
+        assert adapter.current_percept is p
+        # Next tick with nothing carried → cleared, never stale.
+        adapter.next_observation(_ObsEnv())
+        assert adapter.current_percept is None
+
+    def test_latest_wins_between_ticks(self):
+        """Direction data ages badly — an undelivered bearing is overwritten
+        by a fresher one, not queued behind it."""
+        from maxim.runtime.sim_adapter import NullSimulationAdapter
+
+        adapter = NullSimulationAdapter()
+        adapter.carry_percept(make_audio_percept(-0.6, source="test:doa"))
+        fresh = make_audio_percept(0.4, source="test:doa")
+        adapter.carry_percept(fresh)
+        adapter.next_observation(_ObsEnv())
+        assert adapter.current_percept is fresh
+
+    def test_carried_percept_satisfies_the_1_16_gate(self):
+        """The exact §1.16 gate expression: fires with a carried percept on a
+        non-sim adapter; skips without one."""
+        from maxim.runtime.sim_adapter import NullSimulationAdapter
+
+        aut_mode = "llm-primary"
+        sim = NullSimulationAdapter()
+        assert not (getattr(sim, "current_percept", None) is not None and aut_mode != "substrate-primary")
+        sim.carry_percept(make_audio_percept(-0.6, source="test:doa"))
+        sim.next_observation(_ObsEnv())
+        assert getattr(sim, "current_percept", None) is not None and aut_mode != "substrate-primary"
+        # substrate-primary stays excluded (the drive/EC path reads the
+        # sensor directly; §1.16 would double-write).
+        aut_mode = "substrate-primary"
+        assert not (getattr(sim, "current_percept", None) is not None and aut_mode != "substrate-primary")
+
+
+def test_agent_loop_1_16_gate_reads_current_percept_not_is_sim_mode():
+    """Source pin: the §1.16 gate must key on the side-channel, not the
+    is_sim_mode proxy — reverting it silently re-darkens the live path."""
+    import inspect
+
+    import maxim.runtime.agent_loop as agent_loop
+
+    src = inspect.getsource(agent_loop)
+    assert 'if getattr(sim, "current_percept", None) is not None and aut_mode != "substrate-primary":' in src, (
+        "§1.16 gate no longer keys on sim.current_percept (Stage 3 re-gate reverted?)"
+    )
+    assert 'if sim.is_sim_mode and aut_mode != "substrate-primary":' not in src, (
+        "the old is_sim_mode §1.16 gate is back — live audio percepts would be dropped"
+    )
