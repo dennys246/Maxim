@@ -138,6 +138,42 @@ def find_config_file(search_paths: list[str] | None = None) -> Path | None:
     return None
 
 
+def resolve_connection_config(
+    robots_config: RobotsConfig,
+    robot_id: str | None,
+    *,
+    defaults: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Merge the operator's declared robot config over runtime defaults.
+
+    The single place the LIVE connect path resolves ``robots.yaml``'s
+    free-form ``config:`` dict (host, connection_mode, tunnel, ...) for a
+    robot. Matching mirrors ``_resolve_body_wiring``'s rule exactly: exact
+    ``robot_id`` match first; else fall back to the primary ONLY when it is
+    unambiguous (a single robot, or one explicitly marked ``primary``) —
+    never guess the first of several unmarked robots.
+
+    Declared keys WIN over ``defaults`` (operator intent beats runtime
+    convenience). Returns just the defaults when nothing matches, so a
+    machine without a robots.yaml behaves exactly as before.
+
+    Pre-fix history (2026-07-31 live-smoke debugging): the selfy connect
+    path built its controller config inline and silently ignored
+    robots.yaml — while the connect-failure message told the operator to
+    "set host: <ip> in robots.yaml". This helper is what makes that advice
+    true.
+    """
+    merged = dict(defaults or {})
+    match = robots_config.get(robot_id)
+    if match is None:
+        has_explicit_primary = any(r.primary for r in robots_config.robots)
+        if len(robots_config.robots) == 1 or has_explicit_primary:
+            match = robots_config.get_primary()
+    if match is not None:
+        merged.update(match.config)
+    return merged
+
+
 def load_robots_config(
     config_path: str | Path | None = None,
     search_paths: list[str] | None = None,

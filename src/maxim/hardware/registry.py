@@ -197,12 +197,41 @@ class RobotRegistry:
             config = config or {}
             controller_class = self._controller_types[robot_type]
 
+            # robots.yaml's free-form ``config:`` dict legitimately carries
+            # WIRING-layer keys the controller constructor does not accept
+            # (``body`` — the SEM body declaration read by
+            # _resolve_body_wiring; ``audio_localization`` — the DoA feed
+            # opt-out). Splatting those raised TypeError and silently
+            # produced "Failed to connect" for a perfectly valid config, so
+            # filter to the constructor's accepted kwargs and log what was
+            # set aside. Controllers declaring ``**kwargs`` get everything.
+            ctor_config = dict(config)
             try:
-                controller = controller_class(robot_id=robot_id, **config)
+                import inspect
+
+                sig = inspect.signature(controller_class.__init__)
+                params = sig.parameters
+                if not any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+                    known = set(params) - {"self"}
+                    dropped = sorted(k for k in config if k not in known)
+                    if dropped:
+                        logger.debug(
+                            "connect_robot(%s): config keys not taken by %s constructor "
+                            "(wiring-layer keys, read elsewhere): %s",
+                            robot_id,
+                            controller_class.__name__,
+                            dropped,
+                        )
+                    ctor_config = {k: v for k, v in config.items() if k in known}
+            except (TypeError, ValueError):
+                pass  # unsignaturable constructor — fall back to the raw dict
+
+            try:
+                controller = controller_class(robot_id=robot_id, **ctor_config)
             except TypeError as e:
                 # Try without robot_id if controller doesn't expect it
                 logger.debug("Retrying controller init without robot_id: %s", e)
-                controller = controller_class(**config)
+                controller = controller_class(**ctor_config)
 
             logger.info("Connecting robot: %s (type=%s)", robot_id, robot_type)
 
