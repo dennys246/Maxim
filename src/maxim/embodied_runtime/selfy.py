@@ -12,7 +12,11 @@ from maxim.utils.response_config import (
     load_phrase_responses,
 )
 from maxim.modes.state_manager import StateManager
-from maxim.runtime.capabilities import RuntimeCapabilities, detect_compute_resources
+from maxim.runtime.capabilities import (
+    RuntimeCapabilities,
+    derive_media_capabilities as _derive_media_flags,
+    detect_compute_resources,
+)
 
 import time
 import atexit
@@ -294,8 +298,22 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         else:
             self._capabilities.has_robot = True
             self._capabilities.has_motor = True
-            self._capabilities.has_vision = True
-            self._capabilities.has_audio = True
+            # Capability truth (2026-08-01 fold): has_vision/has_audio were
+            # hardcoded True for ANY connected robot. Under
+            # media_backend: no_media the SDK's media manager exists with
+            # camera=None / audio=None, and every capture-loop poll then
+            # logs the SDK's "Camera/Audio system is not initialized."
+            # WARNING — dozens per second. Derive the flags from the actual
+            # media state; a robot whose media cannot be introspected
+            # (SimulatedController mocks, future SDKs) keeps True.
+            _has_vision, _has_audio = _derive_media_flags(self._robot)
+            self._capabilities.has_vision = _has_vision
+            self._capabilities.has_audio = _has_audio
+            if not _has_vision or not _has_audio:
+                self.log.info(
+                    "Media backend provides no %s — the corresponding capture loops stay off",
+                    " or ".join(n for n, ok in (("camera", _has_vision), ("audio", _has_audio)) if not ok),
+                )
             self._capabilities.robot_type = robot_type
 
         # On Blackwell GPUs, don't start recording - it will crash in GStreamer

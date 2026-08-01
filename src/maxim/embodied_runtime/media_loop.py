@@ -111,6 +111,18 @@ class MediaLoopMixin:
                 self._cli_logger = None
                 warn("Failed to start CLI input logger: %s", e, logger=self.log)
 
+        # Capability truth (2026-08-01): under a no_media backend the robot
+        # exposes no camera/audio device — the capture workers would poll
+        # the SDK's absent devices at loop rate, and its per-call
+        # "Camera/Audio system is not initialized." WARNING was a log
+        # flood. Downgrade the effective flags before any worker spawns;
+        # the connect-time INFO already named what's off.
+        _caps = getattr(self, "_capabilities", None)
+        if vision and _caps is not None and not getattr(_caps, "has_vision", True):
+            vision = False
+        if self.audio and _caps is not None and not getattr(_caps, "has_audio", True):
+            self.audio = False
+
         epochs_label = "unlimited" if self.epochs is None else str(int(self.epochs))
         self.log.info(
             "Starting live loop (home_dir=%s, epochs=%s, observation_period=%s, mode=%s, audio=%s, audio_len=%.1fs)",
@@ -751,6 +763,11 @@ class MediaLoopMixin:
         # Grab frame from reachy mini camera
         if self.mini is None:
             return None
+        # Capability gate: no camera on this media backend (no_media) —
+        # return None WITHOUT touching the SDK (whose per-call WARNING was
+        # the 2026-08-01 log flood).
+        if not getattr(getattr(self, "_capabilities", None), "has_vision", True):
+            return None
         frame = None
         try:
             try:
@@ -795,6 +812,9 @@ class MediaLoopMixin:
     def listen(self, save_file: Optional[str] = None):
         # Grab audio samples from Reachy Mini microphone.
         if self.mini is None:
+            return None
+        # Capability gate — mirrors look(); see the no_media note there.
+        if not getattr(getattr(self, "_capabilities", None), "has_audio", True):
             return None
         try:
             sample = self.mini.media.get_audio_sample()

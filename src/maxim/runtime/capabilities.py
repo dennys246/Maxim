@@ -196,3 +196,33 @@ def detect_compute_resources() -> tuple[bool, str | None, float, float]:
         pass
 
     return has_gpu, gpu_type, vram_gb, ram_gb
+
+
+def derive_media_capabilities(robot: object) -> tuple[bool, bool]:
+    """Derive ``(has_vision, has_audio)`` from a connected robot's ACTUAL media state.
+
+    Capability truth (2026-08-01): the runtime used to hardcode both True
+    for any connected robot. Under the Reachy SDK's
+    ``media_backend: no_media`` the media manager exists with
+    ``camera=None`` / ``audio=None``, and every capture-loop poll then logs
+    the SDK's "Camera/Audio system is not initialized." WARNING — dozens
+    per second across the CaptureManager, frame-observation, and
+    audio-capture loops.
+
+    Introspection is duck-typed through ``robot.mini.media`` (the Reachy
+    controller's SDK handle): a media manager exposing ``camera`` /
+    ``audio`` attributes answers truthfully; anything that cannot be
+    introspected (SimulatedController mocks, third-party controllers,
+    future SDK shapes) keeps the permissive ``True`` — this helper only
+    ever DOWNGRADES on positive evidence of an absent device, so existing
+    robots see no behavior change.
+    """
+    media = getattr(getattr(robot, "mini", None), "media", None)
+    has_vision = True
+    has_audio = True
+    if media is not None:
+        if hasattr(media, "camera"):
+            has_vision = media.camera is not None
+        if hasattr(media, "audio"):
+            has_audio = media.audio is not None
+    return has_vision, has_audio
