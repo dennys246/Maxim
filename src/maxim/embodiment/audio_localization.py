@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -240,6 +241,49 @@ def make_reachy_doa_reader(mini: object | None = None) -> DoAReader:
     return _read
 
 
+def gated_azimuth(
+    reader: DoAReader,
+    *,
+    k: int = 3,
+    timeout_s: float = 5.0,
+    poll_s: float = 0.15,
+) -> float | None:
+    """Median of ``k`` speech-gated azimuth samples, or ``None`` on timeout.
+
+    Promoted from ``scripts/orient_backbone/live_common.py`` (Stage 1d of
+    live_audio_orient_wiring.md) — the measured DoA characterization
+    justifies library status: the speech gate fires only 23-100% (median
+    50%) per utterance, so raw single reads are too noisy for credit.
+
+    Gates on the hardware's ``is_speech_detected`` flag — a transient clap
+    or silence never fabricates a direction. Median-of-``k`` smooths
+    single-read DoA noise so ``potential_diff`` credits the turn, not the
+    measurement jitter.
+
+    BLOCKS for up to ``timeout_s`` (sleeps between polls) — call it from a
+    dedicated poll thread (the Stage-2 feed), NEVER from
+    ``PerceptSource.next_percept()`` or any agent-loop tick path (the
+    non-blocking contract, ``sources.py``).
+    """
+    samples: list[float] = []
+    deadline = time.time() + timeout_s
+    while len(samples) < k and time.time() < deadline:
+        try:
+            reading = reader()
+        except Exception:
+            logger.debug("gated_azimuth: doa_reader raised", exc_info=True)
+            reading = None
+        if reading is not None:
+            doa_rad, is_speech = reading
+            if is_speech:
+                samples.append(doa_to_azimuth(float(doa_rad)))
+        time.sleep(poll_s)
+    if not samples:
+        return None
+    samples.sort()
+    return samples[len(samples) // 2]
+
+
 def build_reachy_audio_orienting_source(
     *,
     connection_mode: str = "network",
@@ -440,17 +484,60 @@ def world_set_azimuth(embodiment: object, azimuth: float) -> bool:
     written; False (fail-soft) for a body without sound localization — it is
     simply unaffected. Mirrors the real robot, where live DoA world-sets the
     same sensor (Track 2 Layer 2); the sim write is the offline dry-run.
+
+    One-line delegate to :func:`world_set_axis` — the axis-generic form this
+    docstring's dimensionality note asks for (Stage 2 of
+    live_audio_orient_wiring.md picked this parameterization).
+    """
+    return world_set_axis(embodiment, "azimuth", azimuth, default_range=(-1.0, 1.0))
+
+
+def world_set_axis(
+    embodiment: object,
+    sensor_name: str,
+    value: float,
+    *,
+    default_range: "tuple[float, float] | None" = None,
+) -> bool:
+    """World-set any declared root sensor from an exteroceptive measurement.
+
+    The axis-generic helper behind :func:`world_set_azimuth` (Stage 2,
+    live_audio_orient_wiring.md): a future elevation axis is one body-YAML
+    sensor + one call here — NO new type, NO axis config schema (the
+    perception_pipeline_placement.md:127 guardrail: if an ``AxisSpec`` type
+    starts to appear, stop and use the body YAML).
+
+    Clamps to the sensor's declared ``reading_schema["range"]`` when one is
+    resolvable, else to ``default_range`` when given, else writes the raw
+    float (a world-set write must not invent a range the body didn't
+    declare). Returns True if the body declares the sensor and it was
+    written; False fail-soft otherwise.
     """
     root = getattr(embodiment, "root", None)
     if root is None:
         return False
     sensors = getattr(root, "sensors", None) or {}
-    if "azimuth" not in sensors:
+    if sensor_name not in sensors:
         return False
     vm = getattr(root, "vital_metrics", None)
     if vm is None:
         return False
-    vm["azimuth"] = max(-1.0, min(1.0, float(azimuth)))
+    v = float(value)
+    lo_hi: "tuple[float, float] | None" = None
+    schema = getattr(sensors[sensor_name], "reading_schema", None)
+    rng = schema.get("range") if isinstance(schema, dict) else None
+    if isinstance(rng, (list, tuple)) and len(rng) == 2:
+        try:
+            lo, hi = float(rng[0]), float(rng[1])
+            if lo <= hi:
+                lo_hi = (lo, hi)
+        except (TypeError, ValueError):
+            lo_hi = None
+    if lo_hi is None:
+        lo_hi = default_range
+    if lo_hi is not None:
+        v = max(lo_hi[0], min(lo_hi[1], v))
+    vm[sensor_name] = v
     return True
 
 

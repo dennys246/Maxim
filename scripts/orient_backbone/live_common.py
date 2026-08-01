@@ -72,36 +72,11 @@ def make_rest_reader(host: str) -> Reader:
     return make_reachy_rest_doa_reader(host)
 
 
-def gated_azimuth(
-    reader: Reader,
-    *,
-    k: int = 3,
-    timeout_s: float = 5.0,
-    poll_s: float = 0.15,
-) -> float | None:
-    """Median of ``k`` speech-gated azimuth samples, or None on timeout.
-
-    Gates on the hardware's is_speech_detected flag — a transient clap or
-    silence never fabricates a direction (runbook calibration unknown #3).
-    Median-of-k smooths single-read DoA noise so potential_diff credits
-    the turn, not the measurement jitter.
-    """
-    samples: list[float] = []
-    deadline = time.time() + timeout_s
-    while len(samples) < k and time.time() < deadline:
-        try:
-            reading = reader()
-        except Exception:  # noqa: BLE001
-            reading = None
-        if reading is not None:
-            doa_rad, is_speech = reading
-            if is_speech:
-                samples.append(doa_to_azimuth(float(doa_rad)))
-        time.sleep(poll_s)
-    if not samples:
-        return None
-    samples.sort()
-    return samples[len(samples) // 2]
+# Promoted into the library (live_audio_orient_wiring.md Stage 1d) so the
+# runtime's Stage-2 poll thread and these scripts share the exact same
+# speech-gate + median-of-k code. Re-exported here so script callers keep
+# their import path.
+from maxim.embodiment.audio_localization import gated_azimuth  # noqa: E402,F401
 
 
 def connect_and_wake(host: str):

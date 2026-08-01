@@ -240,3 +240,125 @@ class TestReachyMiniSemAsset:
         entity = registry.instantiate("bodies/reachy_mini", name="test_reachy")
         assert entity is not None
         assert entity.name == "test_reachy"
+
+
+# ─── get_doa_reader capability seam (live_audio_orient_wiring.md Stage 1) ──
+
+
+class TestDoAReaderSeam:
+    """The one new Stage-1 surface: a NON-abstract, default-``None``
+    ``RobotController.get_doa_reader``. Non-abstract because the ABC is
+    contract-frozen at 12 abstract methods — a 13th breaks every third-party
+    ``maxim.robots`` plugin."""
+
+    def _minimal_controller(self):
+        """A concrete controller that implements ONLY the frozen abstract
+        surface — i.e. a third-party plugin compiled before Stage 1."""
+        from maxim.hardware.controller import RobotController
+
+        class _Minimal(RobotController):
+            @property
+            def robot_type(self):
+                return "minimal"
+
+            def connect(self, timeout=30.0):
+                return True
+
+            def disconnect(self):
+                pass
+
+            def goto_target(self, target):
+                return True
+
+            def look_at_pixel(self, target):
+                return True
+
+            def get_current_pose(self):
+                return {}
+
+            def wake_up(self):
+                return True
+
+            def goto_sleep(self):
+                return True
+
+            def start_recording(self):
+                return True
+
+            def stop_recording(self):
+                return True
+
+            def get_video_stream(self):
+                return None
+
+            def get_audio_stream(self):
+                return None
+
+        return _Minimal("minimal")
+
+    def test_get_doa_reader_is_not_abstract(self):
+        """A plugin that never heard of DoA still instantiates cleanly."""
+        controller = self._minimal_controller()
+        assert controller.robot_type == "minimal"
+
+    def test_default_returns_none(self):
+        assert self._minimal_controller().get_doa_reader() is None
+
+    def test_getattr_probe_discovers_an_override(self):
+        """Call sites probe via getattr so pre-Stage-1 plugins keep working."""
+        controller = self._minimal_controller()
+
+        def scripted():
+            return (1.57, True)
+
+        controller.get_doa_reader = scripted  # type: ignore[method-assign]
+        probe = getattr(controller, "get_doa_reader", None)
+        assert probe is not None
+        assert probe() == (1.57, True)
+
+    def test_simulated_controller_scripted_reader_end_to_end(self):
+        """SimulatedController pins the seam without hardware: injected
+        scripted reader is served while connected, None otherwise."""
+        from maxim.hardware.simulation.controller import SimulatedController
+
+        readings = iter([(0.0, True), (3.14159, False)])
+
+        def scripted():
+            return next(readings, None)
+
+        controller = SimulatedController(doa_reader=scripted)
+        # Not connected yet → capability gated off.
+        assert controller.get_doa_reader() is None
+        assert controller.connect()
+        reader = controller.get_doa_reader()
+        assert reader is not None
+        assert reader() == (0.0, True)
+        assert reader() == (3.14159, False)
+        controller.disconnect()
+        assert controller.get_doa_reader() is None
+
+    def test_simulated_controller_without_reader_has_no_capability(self):
+        from maxim.hardware.simulation.controller import SimulatedController
+
+        controller = SimulatedController()
+        controller.connect()
+        assert controller.get_doa_reader() is None
+
+    def test_reachy_capabilities_advertise_audio_localization(self):
+        """Stage 1c: the capability is advertised via RobotCapabilities.custom
+        (the zero-schema-change channel, same as the antenna joints)."""
+        from maxim.hardware.capabilities import REACHY_MINI_CAPABILITIES
+
+        assert REACHY_MINI_CAPABILITIES.has_custom("audio_localization")
+
+    def test_abstract_method_count_still_frozen_at_twelve(self):
+        """get_doa_reader must never be promoted to @abstractmethod — the
+        ABC's abstract surface is contract-frozen for third-party plugins."""
+        from maxim.hardware.controller import RobotController
+
+        abstract = getattr(RobotController, "__abstractmethods__", frozenset())
+        assert "get_doa_reader" not in abstract
+        assert len(abstract) == 12, (
+            f"RobotController abstract surface changed: {sorted(abstract)} — "
+            "it is contract-frozen at 12 (docs/user/extension_api.md)"
+        )

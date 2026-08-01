@@ -39,7 +39,7 @@ from maxim.hardware.capabilities import (
 from maxim.hardware.streams import AudioStream, VideoStream
 
 if TYPE_CHECKING:
-    pass
+    from maxim.embodiment.audio_localization import DoAReader
 
 logger = logging.getLogger(__name__)
 
@@ -340,6 +340,29 @@ class RobotController(ABC):
             AudioStream implementation, or None if not available.
         """
         ...
+
+    def get_doa_reader(self) -> DoAReader | None:
+        """Get a Direction-of-Arrival reader for this robot, if it has one.
+
+        Optional capability seam (live_audio_orient_wiring.md Stage 1a):
+        a robot with sound-localization hardware returns a
+        :data:`maxim.embodiment.audio_localization.DoAReader` — a zero-arg
+        callable yielding ``(doa_radians, is_speech_detected) | None`` —
+        which the runtime's audio-orient feed polls. ``None`` (the default)
+        means the capability is absent; the caller gets no audio-orient
+        wiring, exactly as a robot without a mic array would.
+
+        Deliberately NON-abstract: the ABC is contract-frozen at 12 abstract
+        methods (a 13th breaks every third-party ``maxim.robots`` plugin).
+        Default-``None`` is the established convenience shape
+        (``center_vision``, ``reconnect``). Call sites probe via
+        ``getattr(controller, "get_doa_reader", None)`` so plugins compiled
+        against an older ABC keep working. Implementations advertise the
+        capability via ``RobotCapabilities.custom`` (``"audio_localization"``).
+        NOT a StreamCapability/SensorStream: DoA is a stateless pull, not a
+        stream.
+        """
+        return None
 
     # ─────────────────────────────────────────────────────────────────────────
     # Context Manager

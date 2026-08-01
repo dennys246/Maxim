@@ -90,6 +90,11 @@ class ReachyMiniController(RobotController):
         self._mini: Any = None  # ReachyMini SDK instance
         self._video_stream: ReachyVideoStream | None = None
         self._audio_stream: ReachyAudioStream | None = None
+        # The host connect() actually resolved + spoke to (mDNS-resolved IP,
+        # explicit host, or 127.0.0.1 under tunnel/localhost_only). connect()
+        # previously resolved this as a local and dropped it; the DoA REST
+        # reader needs it to be self-sufficient (Stage 1b).
+        self._resolved_host: str | None = None
 
     @property
     def robot_type(self) -> str:
@@ -320,6 +325,7 @@ class ReachyMiniController(RobotController):
             logger.info("Connecting to Reachy Mini: %s (mode=%s)", self._robot_name, effective_mode)
 
             connect_host = "127.0.0.1" if effective_mode == "localhost_only" else probe_host
+            self._resolved_host = connect_host
             self._mini = ReachyMini(
                 robot_name=self._robot_name,
                 host=connect_host,
@@ -384,6 +390,7 @@ class ReachyMiniController(RobotController):
             self._mini = None
             self._video_stream = None
             self._audio_stream = None
+            self._resolved_host = None
 
         except Exception as e:
             logger.error("Error during disconnect: %s", e)
@@ -696,3 +703,34 @@ class ReachyMiniController(RobotController):
             ReachyAudioStream, or None if not available.
         """
         return self._audio_stream
+
+    def get_doa_reader(self):
+        """Get a DoA reader for the XVF3800 sound-localization chip.
+
+        Transport choice mirrors ``build_reachy_audio_orienting_source``
+        (live_audio_orient_wiring.md Stage 1b):
+
+        * Running ON the robot (``localhost_only`` without a tunnel): the
+          onboard local-USB path — ``mini.media.get_DoA()`` via
+          ``make_reachy_doa_reader``. This call is local-USB in SDK >= 1.5
+          and yields nothing off-robot, hence the split.
+        * Networked / tunneled: the daemon serves DoA at
+          ``GET /api/state/doa`` — ``make_reachy_rest_doa_reader`` against
+          the host ``connect()`` resolved (127.0.0.1 under a tunnel, which
+          the tunnel forwards).
+
+        Returns ``None`` when not connected — absent capability, no dead
+        config.
+        """
+        if self._mini is None or not self.is_connected():
+            return None
+        from maxim.embodiment.audio_localization import (
+            make_reachy_doa_reader,
+            make_reachy_rest_doa_reader,
+        )
+
+        if self._connection_mode == "localhost_only" and not self._tunnel:
+            return make_reachy_doa_reader(self._mini)
+        if self._resolved_host:
+            return make_reachy_rest_doa_reader(self._resolved_host)
+        return None

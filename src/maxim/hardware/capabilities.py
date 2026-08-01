@@ -180,7 +180,10 @@ REACHY_MINI_CAPABILITIES = RobotCapabilities(
             StreamCapability.AUDIO_OUTPUT,
         }
     ),
-    custom=frozenset({"antenna_left", "antenna_right"}),  # Reachy-specific joints
+    # Reachy-specific joints + the XVF3800 DoA capability (Stage 1c —
+    # "audio_localization" advertises that get_doa_reader() yields a reader;
+    # the zero-schema-change channel, same as the antenna joints).
+    custom=frozenset({"antenna_left", "antenna_right", "audio_localization"}),
     video_resolution=(640, 480),  # Default, may vary
     audio_input_rate=48000,
     audio_output_rate=48000,

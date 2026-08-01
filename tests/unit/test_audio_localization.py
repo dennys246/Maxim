@@ -294,3 +294,122 @@ class TestBuildReachyAudioOrientingSource:
             assert percept.metadata["azimuth"] == doa_to_azimuth(math.pi)
         finally:
             maxim_http.fetch_url = orig
+
+
+# ─── gated_azimuth (promoted from scripts/orient_backbone, Stage 1d) ───────
+
+
+class TestGatedAzimuth:
+    """Speech-gated median-of-k sampling — the library home of the script's
+    signal hygiene (live_audio_orient_wiring.md Stage 1d). poll_s=0 keeps
+    these tests instant."""
+
+    def _seq_reader(self, readings):
+        it = iter(readings)
+        return lambda: next(it, None)
+
+    def test_median_of_k_speech_samples(self):
+        from maxim.embodiment.audio_localization import gated_azimuth
+
+        # Three speech readings around front (pi/2): median wins.
+        reader = self._seq_reader(
+            [(math.pi / 2 + 0.3, True), (math.pi / 2, True), (math.pi / 2 - 0.3, True)]
+        )
+        az = gated_azimuth(reader, k=3, timeout_s=1.0, poll_s=0.0)
+        assert az == pytest.approx(doa_to_azimuth(math.pi / 2))
+
+    def test_non_speech_readings_are_gated_out(self):
+        from maxim.embodiment.audio_localization import gated_azimuth
+
+        # Loud non-speech transients must never fabricate a direction.
+        reader = self._seq_reader(
+            [(0.0, False), (math.pi, False), (math.pi / 2, True), (math.pi / 2, True), (math.pi / 2, True)]
+        )
+        az = gated_azimuth(reader, k=3, timeout_s=1.0, poll_s=0.0)
+        assert az == pytest.approx(0.0)
+
+    def test_silence_times_out_to_none(self):
+        from maxim.embodiment.audio_localization import gated_azimuth
+
+        az = gated_azimuth(lambda: None, k=3, timeout_s=0.05, poll_s=0.0)
+        assert az is None
+
+    def test_reader_exception_is_swallowed(self):
+        from maxim.embodiment.audio_localization import gated_azimuth
+
+        def _boom():
+            raise RuntimeError("transport hiccup")
+
+        az = gated_azimuth(_boom, k=1, timeout_s=0.05, poll_s=0.0)
+        assert az is None
+
+    def test_partial_samples_still_yield_a_median(self):
+        from maxim.embodiment.audio_localization import gated_azimuth
+
+        # Only one speech sample arrives before timeout — use it rather
+        # than discarding a real reading.
+        reader = self._seq_reader([(math.pi, True)])
+        az = gated_azimuth(reader, k=3, timeout_s=0.05, poll_s=0.0)
+        assert az == pytest.approx(1.0)
+
+
+# ─── world_set_axis (Stage 2 multi-axis infra) ─────────────────────────────
+
+
+class _AxisRoot:
+    def __init__(self, sensors, vital):
+        self.sensors = sensors
+        self.vital_metrics = vital
+
+
+class _AxisEmb:
+    def __init__(self, root):
+        self.root = root
+
+
+class _RangedSensor:
+    def __init__(self, lo, hi):
+        self.reading_schema = {"range": [lo, hi]}
+
+
+class TestWorldSetAxis:
+    """The axis-generic helper behind world_set_azimuth. Elevation-ready by
+    DATA: a new axis is one body-YAML sensor + one call — no AxisSpec type
+    (the perception_pipeline_placement.md guardrail)."""
+
+    def test_writes_declared_sensor(self):
+        from maxim.embodiment.audio_localization import world_set_axis
+
+        emb = _AxisEmb(_AxisRoot({"elevation": object()}, {"elevation": 0.0}))
+        assert world_set_axis(emb, "elevation", 0.4) is True
+        assert emb.root.vital_metrics["elevation"] == 0.4
+
+    def test_clamps_to_declared_range(self):
+        from maxim.embodiment.audio_localization import world_set_axis
+
+        emb = _AxisEmb(_AxisRoot({"elevation": _RangedSensor(-0.5, 0.5)}, {"elevation": 0.0}))
+        world_set_axis(emb, "elevation", 2.0)
+        assert emb.root.vital_metrics["elevation"] == 0.5
+
+    def test_default_range_used_when_sensor_has_none(self):
+        from maxim.embodiment.audio_localization import world_set_axis
+
+        emb = _AxisEmb(_AxisRoot({"elevation": object()}, {"elevation": 0.0}))
+        world_set_axis(emb, "elevation", 2.0, default_range=(-1.0, 1.0))
+        assert emb.root.vital_metrics["elevation"] == 1.0
+
+    def test_fail_soft_without_sensor(self):
+        from maxim.embodiment.audio_localization import world_set_axis
+
+        emb = _AxisEmb(_AxisRoot({"azimuth": object()}, {"azimuth": 0.0}))
+        assert world_set_axis(emb, "elevation", 0.4) is False
+        assert "elevation" not in emb.root.vital_metrics
+
+    def test_world_set_azimuth_delegates_and_keeps_unit_clamp(self):
+        """The legacy entry point stays byte-compatible: clamps to [-1, 1]
+        even for a sensor with no declared range (the pre-Stage-2 contract)."""
+        from maxim.embodiment.audio_localization import world_set_azimuth
+
+        emb = _AxisEmb(_AxisRoot({"azimuth": object()}, {"azimuth": 0.0}))
+        assert world_set_azimuth(emb, 5.0) is True
+        assert emb.root.vital_metrics["azimuth"] == 1.0
