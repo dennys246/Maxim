@@ -795,6 +795,104 @@ class MoveTool(Tool):
             return ToolResult(success=False, error=str(e))
 
 
+class FocusOnSoundTool(Tool):
+    """Turn the head to face the sound currently being heard — closed-loop.
+
+    The zero-numeric orient action (2026-08-03, designed off the mirror-turn
+    post-mortem): the LLM decides WHETHER to attend to a sound; this tool owns
+    HOW FAR to turn. No signed scalar ever crosses the LLM interface — the
+    failure mode that produced the mirror robot — and the azimuth used is the
+    live reading at EXECUTION time (the model's own copy is seconds stale by
+    the time a decision lands).
+
+    Sensor: the DoA feed's speech-gated cache (``maxim._doa_feed.latest``,
+    live_audio_orient_wiring.md Stage 2). Convention (hardware-verified):
+    azimuth -1 = full left ... +1 = full right; +yaw = LEFT in degrees. A
+    head-relative azimuth spans ±90°, so the relative turn is ``azimuth·90°``
+    toward the sound, applied to the CURRENT head yaw and clamped to the
+    ±45° head-yaw envelope (a farther sound gets the fullest turn the neck
+    allows; body rotation is the Stage-5 reflex layer's job).
+
+    Fails soft when no sound has been heard yet — a silent room is not an
+    error, there is just nothing to face.
+    """
+
+    name = "focus_on_sound"
+    description = (
+        "Turn Maxim's head to face the sound it is currently hearing. No parameters needed — "
+        "reads the live sound direction at execution time and turns the right amount in the "
+        "right direction. Use when you hear a sound and want to look toward it. "
+        "Fails softly if no sound has been heard."
+    )
+
+    # Responsive orienting with no side effects beyond head pose — same
+    # class as move/track_target/focus_interests (autonomy ALWAYS_ALLOWED).
+    always_allowed = True
+
+    input_schema = {
+        "duration": (float, None),  # Optional movement duration in seconds (default 1.0)
+    }
+
+    # Head-relative azimuth ±1 spans ±90°; the head-yaw envelope matches the
+    # joint-limit predictor's ±45°.
+    _AZIMUTH_TO_DEG = 90.0
+    _MAX_HEAD_YAW_DEG = 45.0
+
+    def __init__(self, maxim: Any) -> None:
+        super().__init__()
+        self._maxim = maxim
+
+    def execute(self, **kwargs: Any) -> ToolResult:
+        import time as _time
+
+        maxim = self._maxim
+        if maxim is None:
+            return ToolResult(success=False, error="No Maxim context available.")
+
+        feed = getattr(maxim, "_doa_feed", None)
+        latest = getattr(feed, "latest", None) if feed is not None else None
+        if latest is None:
+            return ToolResult(
+                success=False,
+                error="No sound has been heard yet (no DoA reading available — is the audio feed running?)",
+            )
+
+        azimuth, ts = latest
+        age_s = max(0.0, _time.monotonic() - float(ts))
+        az = max(-1.0, min(1.0, float(azimuth)))
+
+        cur_yaw = float(getattr(maxim, "yaw", 0.0) or 0.0)
+        # +yaw = LEFT (hardware-verified 2026-08-03); azimuth +1 = right —
+        # so turning TOWARD the sound subtracts.
+        target_yaw = cur_yaw - az * self._AZIMUTH_TO_DEG
+        clamped = abs(target_yaw) > self._MAX_HEAD_YAW_DEG
+        target_yaw = max(-self._MAX_HEAD_YAW_DEG, min(self._MAX_HEAD_YAW_DEG, target_yaw))
+
+        duration = kwargs.get("duration")
+        try:
+            move_fn = getattr(maxim, "move", None)
+            if move_fn is None or not callable(move_fn):
+                return ToolResult(success=False, error="Maxim instance does not support move()")
+            move_fn(yaw=target_yaw, duration=float(duration) if duration else 1.0)
+        except Exception as e:
+            warn("focus_on_sound failed: %s", e, logger=getattr(maxim, "log", None))
+            return ToolResult(success=False, error=str(e))
+
+        side = "left" if az < 0 else ("right" if az > 0 else "ahead")
+        return ToolResult(
+            success=True,
+            output={
+                "faced_sound": True,
+                "azimuth": az,
+                "sound_side": side,
+                "reading_age_s": round(age_s, 2),
+                "from_yaw_deg": round(cur_yaw, 1),
+                "to_yaw_deg": round(target_yaw, 1),
+                "clamped_to_head_limit": clamped,
+            },
+        )
+
+
 class MaximCommandTool(Tool):
     """
     Execute a small allowlisted set of actions on a live `Maxim` instance.

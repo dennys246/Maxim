@@ -148,6 +148,7 @@ def build_tool_registry(
         try:
             from maxim.tools.reachy import (
                 FocusInterestsTool,
+                FocusOnSoundTool,
                 MaximCommandTool,
                 MoveTool,
                 NoveltyTrackTool,
@@ -155,6 +156,7 @@ def build_tool_registry(
             )
 
             registry.register(FocusInterestsTool(maxim))
+            registry.register(FocusOnSoundTool(maxim))  # Closed-loop audio orienting (no numeric params)
             registry.register(MaximCommandTool(maxim))
             registry.register(MoveTool(maxim))  # Direct head movement control
             registry.register(TrackTargetTool(maxim))
