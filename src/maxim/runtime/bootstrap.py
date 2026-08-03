@@ -148,6 +148,7 @@ def build_tool_registry(
         try:
             from maxim.tools.reachy import (
                 FocusInterestsTool,
+                FocusOnSoundTool,
                 MaximCommandTool,
                 MoveTool,
                 NoveltyTrackTool,
@@ -155,6 +156,7 @@ def build_tool_registry(
             )
 
             registry.register(FocusInterestsTool(maxim))
+            registry.register(FocusOnSoundTool(maxim))  # Closed-loop audio orienting (no numeric params)
             registry.register(MaximCommandTool(maxim))
             registry.register(MoveTool(maxim))  # Direct head movement control
             registry.register(TrackTargetTool(maxim))
@@ -167,6 +169,7 @@ def build_tool_registry(
         # Register no-op stubs for observation-only mode (no live Maxim instance)
         from maxim.tools.reachy_stubs import (
             NoOpFocusInterestsTool,
+            NoOpFocusOnSoundTool,
             NoOpMaximCommandTool,
             NoOpMoveTool,
             NoOpNoveltyTrackTool,
@@ -174,6 +177,7 @@ def build_tool_registry(
         )
 
         registry.register(NoOpFocusInterestsTool())
+        registry.register(NoOpFocusOnSoundTool())  # Audio orienting (no-op)
         registry.register(NoOpMaximCommandTool())
         registry.register(NoOpMoveTool())  # Direct head movement control (no-op)
         registry.register(NoOpTrackTargetTool())

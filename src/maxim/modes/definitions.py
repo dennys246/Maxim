@@ -234,7 +234,12 @@ class ModeDefinition:
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Core tools available to most modes
-CORE_TOOLS = {"respond", "speak", "focus_interests", "track_target"}
+# focus_on_sound joins the attention family (2026-08-03): the closed-loop
+# audio-orient action — parameterless, reads the live azimuth at execution
+# time, so no mode's prompt ever asks an LLM to reason about signed angles
+# to face a sound. Same responsive/no-side-effects class as its visual
+# siblings, and equally at home in every mode that can attend.
+CORE_TOOLS = {"respond", "speak", "focus_interests", "track_target", "focus_on_sound"}
 
 # Filesystem tools
 FILESYSTEM_TOOLS = {"read_file", "write_file", "list_directory", "glob"}

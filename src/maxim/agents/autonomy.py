@@ -542,6 +542,7 @@ class AutonomyController:
             "move",  # Direct head movement
             "track_target",  # Visual tracking
             "focus_interests",  # Vision focus
+            "focus_on_sound",  # Closed-loop audio orienting (head pose only)
             # Read-only operations (cannot modify state)
             "glob",  # File pattern search
             "read_file",  # Read file contents

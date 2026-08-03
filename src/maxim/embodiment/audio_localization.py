@@ -336,6 +336,7 @@ class DoAFeed:
         sample_poll_s: float = 0.15,
         salience: float = 0.5,
         novelty: float = 0.3,
+        head_yaw_provider: "Callable[[], float] | None" = None,
     ) -> None:
         self._reader = reader
         self._embodiment = embodiment
@@ -353,8 +354,19 @@ class DoAFeed:
         # raises them (per-run decision, mirroring the sim knobs).
         self._salience = salience
         self._novelty = novelty
+        # Capture-frame stamp (pre-merge review fold): azimuth is
+        # HEAD-relative AT CAPTURE TIME. A consumer that applies it to the
+        # head's CURRENT yaw re-subtracts the same delta on every call while
+        # the reading is unchanged — the fixed point of that loop is the
+        # yaw limit stop, not the sound. Stamping the head yaw the reading
+        # was taken in lets consumers compute a STABLE absolute target
+        # (capture_yaw − az·90°), making re-invocation idempotent. The
+        # provider is best-effort (None → consumers fall back to current
+        # yaw); wired by the runtime as a read of maxim.yaw.
+        self._head_yaw_provider = head_yaw_provider
         self._lock = threading.Lock()
-        self._latest: "tuple[float, float] | None" = None  # (azimuth, monotonic ts)
+        # (azimuth, monotonic ts, capture-time head yaw degrees | None)
+        self._latest: "tuple[float, float, float | None] | None" = None
         # Claim the sensor as live-world-owned (pre-merge review fold): the
         # modeled self_effect on ``azimuth`` must not write/credit while a
         # real measurement stream owns the sensor — a modeled shift the next
@@ -366,8 +378,14 @@ class DoAFeed:
             owned.add("azimuth")
 
     @property
-    def latest(self) -> "tuple[float, float] | None":
-        """Most recent gated ``(azimuth, timestamp)``, or None before first speech."""
+    def latest(self) -> "tuple[float, float, float | None] | None":
+        """Most recent gated ``(azimuth, monotonic_ts, capture_head_yaw_deg)``.
+
+        ``None`` before the first speech. The third element is the head yaw
+        (degrees, body-relative) at the moment the reading was captured —
+        the frame the head-relative azimuth is valid in — or ``None`` when
+        no provider was wired.
+        """
         with self._lock:
             return self._latest
 
@@ -397,8 +415,14 @@ class DoAFeed:
                     return
                 if az is None:
                     continue
+                capture_yaw: "float | None" = None
+                if self._head_yaw_provider is not None:
+                    try:
+                        capture_yaw = float(self._head_yaw_provider())
+                    except Exception:
+                        logger.debug("DoAFeed: head_yaw_provider raised", exc_info=True)
                 with self._lock:
-                    self._latest = (az, time.monotonic())
+                    self._latest = (az, time.monotonic(), capture_yaw)
                 # Concurrent-writer note: this plain set races the loop
                 # thread's RMW sensor writes on OTHER keys only — the
                 # live_world_set_sensors filter removes ``azimuth`` from
