@@ -44,6 +44,7 @@ class ReachyMiniController(RobotController):
         tunnel: bool = False,
         ssh_user: str = "pollen",
         ssh_port: int = 22,
+        automatic_body_yaw: bool = False,
     ) -> None:
         """Initialize Reachy Mini controller.
 
@@ -77,6 +78,17 @@ class ReachyMiniController(RobotController):
                 docs/embodiment/reachy_mini/README.md, transport pivot.)
             ssh_user: SSH user for the tunnel (default "pollen").
             ssh_port: SSH port for the tunnel (default 22).
+            automatic_body_yaw: Whether the DAEMON may auto-rotate the body
+                to follow the head. Default ``False`` — Maxim's loops own
+                the yaw axis, and per the CLAUDE.md head-frame invariant a
+                daemon that modulates body_yaw behind the runtime rotates
+                the frame every yaw computation lives in (observed
+                2026-08-03: −25° of uncommanded body rotation put every
+                focus_on_sound aim off by up to that much with a perfect
+                sensor). The orient scripts have always disabled it
+                (Step-2 calibration); this makes the runtime match.
+                Re-enable via robots.yaml ``config: {automatic_body_yaw:
+                true}`` if the daemon behavior is explicitly wanted.
         """
         super().__init__(robot_id or robot_name)
         self._robot_name = robot_name
@@ -86,6 +98,7 @@ class ReachyMiniController(RobotController):
         self._tunnel = tunnel
         self._ssh_user = ssh_user
         self._ssh_port = ssh_port
+        self._automatic_body_yaw = bool(automatic_body_yaw)
         self._tunnel_proc: subprocess.Popen | None = None
         self._mini: Any = None  # ReachyMini SDK instance
         self._video_stream: ReachyVideoStream | None = None
@@ -333,6 +346,9 @@ class ReachyMiniController(RobotController):
                 connection_mode=effective_mode,
                 media_backend=self._media_backend,
                 timeout=timeout,
+                # Maxim owns the yaw axis (head-frame invariant): stop the
+                # daemon from rotating the body behind the runtime.
+                automatic_body_yaw=self._automatic_body_yaw,
             )
 
             # Create stream wrappers
@@ -604,6 +620,19 @@ class ReachyMiniController(RobotController):
             except Exception as e:  # noqa: BLE001 - older SDKs may lack it
                 logger.warning("enable_motors() failed (%s) — motion may be ignored", e)
             self._mini.wake_up()
+            # Belt-and-suspenders re-assert after wake (mirrors the orient
+            # scripts): construction already passed automatic_body_yaw, but
+            # a daemon-side reset on wake must not silently re-enable the
+            # frame-rotating behavior the runtime's yaw math assumes off.
+            try:
+                self._mini.set_automatic_body_yaw(self._automatic_body_yaw)
+                logger.info(
+                    "automatic_body_yaw=%s (daemon body-follow %s)",
+                    self._automatic_body_yaw,
+                    "enabled" if self._automatic_body_yaw else "disabled — Maxim owns the yaw axis",
+                )
+            except Exception as e:  # noqa: BLE001 - older SDKs may lack it
+                logger.warning("set_automatic_body_yaw unavailable (%s) — daemon may auto-rotate the body", e)
             self._update_state(is_awake=True)
             logger.info("Reachy Mini awake: %s", self._robot_name)
             return True

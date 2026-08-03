@@ -250,3 +250,44 @@ def test_ws_era_sdk_passes_era_gate(monkeypatch):
         patch.object(ReachyMiniController, "_port_open", return_value=True),
     ):
         assert c.connect(timeout=2.0) is True
+
+
+class TestAutomaticBodyYaw:
+    """The frame thief (2026-08-03): the daemon's automatic_body_yaw
+    (SDK default True) rotated the body −25° behind the runtime, putting
+    every focus_on_sound aim off by up to that much with a PERFECT sensor
+    — the exact 'daemon modulates body_yaw behind you' failure the
+    head-frame invariant warns about. Maxim owns the yaw axis: default
+    False at SDK construction AND re-asserted after wake."""
+
+    def test_default_disables_daemon_body_follow_at_construction(self):
+        c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
+        ctx, mod = _mock_sdk()
+        with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
+            assert c.connect()
+        assert mod.ReachyMini.call_args.kwargs["automatic_body_yaw"] is False
+
+    def test_robots_yaml_opt_in_passes_through(self):
+        c = ReachyMiniController(host="10.42.0.1", connection_mode="network", automatic_body_yaw=True)
+        ctx, mod = _mock_sdk()
+        with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
+            assert c.connect()
+        assert mod.ReachyMini.call_args.kwargs["automatic_body_yaw"] is True
+
+    def test_wake_reasserts_the_setting(self):
+        c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
+        ctx, mod = _mock_sdk()
+        with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
+            assert c.connect()
+            mini = mod.ReachyMini.return_value
+            assert c.wake_up()
+        mini.set_automatic_body_yaw.assert_called_with(False)
+
+    def test_wake_survives_sdk_without_the_setter(self):
+        c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
+        ctx, mod = _mock_sdk()
+        with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
+            assert c.connect()
+            mini = mod.ReachyMini.return_value
+            mini.set_automatic_body_yaw.side_effect = AttributeError("old SDK")
+            assert c.wake_up()  # warning, not crash
