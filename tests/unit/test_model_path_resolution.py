@@ -11,11 +11,15 @@ only the downloader resolved correctly ("Already exists" right after
 the prompt).
 
 Pins: explicit relative legacy paths re-anchor at model_dir(); ~ paths
-expanduser; a nonexistent explicit path falls back to build_model_path
-(canonical + case-insensitive); the DOCUMENTED user config location
-(~/.maxim/config/llm.json) is consulted; profile_has_local_file — the
-prompt guard itself — is True for a downloaded model declared with a
-legacy relative path.
+expanduser; a checkout-resident CWD-relative file is used as-is; a
+nonexistent RELATIVE path falls back to build_model_path (canonical +
+case-insensitive) — but a nonexistent ABSOLUTE pin is KEPT (with a
+WARNING), never silently substituted (the Executor-lens finding: a
+custom profile declaring only model_path would otherwise silently load a
+stock model in place of a missing fine-tune); the DOCUMENTED user config
+location (~/.maxim/config/llm.json) is consulted; profile_has_local_file
+— the prompt guard itself — is True for a downloaded model declared with
+a legacy relative path.
 """
 
 from __future__ import annotations
@@ -93,17 +97,57 @@ class TestExplicitPathResolution:
         cfg = load_llm_config(profile_override="smollm-1.7b-instruct")
         assert cfg.model_path == str(f)
 
-    def test_nonexistent_explicit_path_falls_back_to_canonical(self, fake_maxim_home, monkeypatch):
+    def test_nonexistent_absolute_pin_is_kept_not_substituted(self, fake_maxim_home, monkeypatch, caplog):
+        """An operator-explicit ABSOLUTE pin (env var / custom profile)
+        that doesn't exist must be KEPT so it fails loudly downstream —
+        silently substituting a different GGUF is model-provenance
+        corruption (a missing fine-tune would load a stock model)."""
+        import logging
+
         home, gguf = fake_maxim_home
         monkeypatch.setenv("MAXIM_LLM_MODEL_PATH", "/nowhere/else/model.gguf")
         from maxim.models.language.config import load_llm_config
 
+        with caplog.at_level(logging.WARNING, logger="maxim.models.language.config"):
+            cfg = load_llm_config(profile_override="smollm-1.7b-instruct")
+        assert cfg.model_path == "/nowhere/else/model.gguf"
+        assert any("no silent substitution" in r.message for r in caplog.records)
+
+    def test_nonexistent_relative_path_falls_back_to_canonical(self, fake_maxim_home, tmp_path, monkeypatch):
+        """The benign heal: a boilerplate RELATIVE profile path that exists
+        nowhere falls through to build_model_path, which finds the real
+        downloaded file (samefile: macOS's case-insensitive filesystem may
+        return a different spelling; Linux CI exercises the scan)."""
+        home, gguf = fake_maxim_home
+        workdir = tmp_path / "elsewhere"
+        workdir.mkdir()
+        monkeypatch.chdir(workdir)  # CWD-relative original can't exist here
+        # Name that exists NOWHERE (not even re-anchored) so the test
+        # exercises the final build_model_path fallback branch:
+        monkeypatch.setenv("MAXIM_LLM_MODEL_PATH", "data/models/LLM/Renamed-Long-Ago.gguf")
+        monkeypatch.setenv("MAXIM_LLM_MODEL_BASE", "SmolLM-1.7B-Instruct")
+        from maxim.models.language.config import load_llm_config
+
         cfg = load_llm_config(profile_override="smollm-1.7b-instruct")
-        # build_model_path finds the real file (samefile: macOS's
-        # case-insensitive filesystem may return a different spelling of
-        # the same path; Linux CI exercises the case-insensitive scan).
         assert os.path.exists(cfg.model_path)
         assert os.path.samefile(cfg.model_path, str(gguf))
+
+    def test_checkout_resident_relative_file_used_as_is(self, fake_maxim_home, tmp_path, monkeypatch):
+        """Legacy install.sh layouts that really keep the GGUF at
+        <checkout>/data/models/LLM/ (launched from the repo root) must not
+        be re-anchored away from a file that exists."""
+        home, gguf = fake_maxim_home
+        workdir = tmp_path / "old_checkout"
+        local_dir = workdir / "data" / "models" / "LLM"
+        local_dir.mkdir(parents=True)
+        local_gguf = local_dir / "Checkout-Resident.Q4_K_M.gguf"
+        local_gguf.write_bytes(b"GGUF fake")
+        monkeypatch.chdir(workdir)
+        monkeypatch.setenv("MAXIM_LLM_MODEL_PATH", "data/models/LLM/Checkout-Resident.Q4_K_M.gguf")
+        from maxim.models.language.config import load_llm_config
+
+        cfg = load_llm_config(profile_override="smollm-1.7b-instruct")
+        assert os.path.samefile(cfg.model_path, str(local_gguf))
 
     def test_prompt_guard_sees_the_downloaded_model(self, fake_maxim_home):
         """profile_has_local_file is the pre-prompt guard — pre-fix it was

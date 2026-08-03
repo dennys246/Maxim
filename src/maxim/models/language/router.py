@@ -137,6 +137,10 @@ class LLMRouter:
         self._cloud_allowed, self._cloud_block_reason = self._validate_cloud_config()
         self._session_cost: float = 0.0  # Accumulates cost for hard ceiling check
         self._session_cost_exceeded = False  # Once True, all requests rejected
+        # (provider, model) pairs whose CostTracker.record already WARNed this
+        # session — repeat failures drop to DEBUG so a metered lane with a
+        # broken pricing table doesn't flood the log once per call.
+        self._cost_record_warned: set[tuple[str, str]] = set()
         # Track last successfully-used model across providers. ``model_name``
         # returns the config's default; ``last_used_model`` returns what
         # actually ran (important when the router spans local + cloud backends).
@@ -1124,6 +1128,7 @@ class LLMRouter:
                 redaction_result=redaction_result,
                 request_context=request_context,
                 now=now,
+                treat_as_cloud=treat_as_cloud,
             )
             if text:
                 return text, usage, "success"
@@ -1316,11 +1321,21 @@ class LLMRouter:
         redaction_result: RedactionResult | None,
         request_context: dict[str, Any] | None,
         now: float,
+        treat_as_cloud: bool,
     ) -> tuple[str, dict[str, Any] | None]:
         """Dispatch to a backend's complete()/complete_with_usage() and bookkeep.
 
         Records cost + emits cloud-audit on success. Returns ``(text, usage)``;
         ``usage`` is ``None`` for the legacy prompt-formatting path.
+
+        ``treat_as_cloud`` is the caller's (``_try_provider``) already-computed
+        "genuinely metered cloud" predicate — ``_provider_is_cloud(cfg) and not
+        allow_local_endpoints``. It, and ONLY it, decides whether a missing
+        pricing entry at record time is loud. Do NOT substitute the provider
+        config's ``pricing_required`` flag here: lane_backends hardcodes
+        ``pricing_required: False`` on every remote lane entry (including
+        kind=="cloud" URL lanes) to opt out of the pre-dispatch estimate gate,
+        so reusing that flag at record time silently unmeters real cloud spend.
         """
         # Path A: backend wants pre-formatted prompt (legacy llama-cpp style)
         if getattr(backend, "requires_prompt_formatting", True):
@@ -1393,26 +1408,42 @@ class LLMRouter:
                         cached_input_tokens=resp.cached_input_tokens,
                         uncached_input_tokens=resp.uncached_input_tokens,
                         timestamp=now,
-                        # Local/self-hosted lanes declare pricing_required=False
-                        # on their provider config — a missing pricing entry is
-                        # BY DESIGN there, not the data corruption this handler
-                        # exists for (2026-08-03: the conflation produced a
-                        # WARNING on every single local LLM call).
-                        pricing_required=self._provider_pricing_required(
-                            self._providers.get(provider_key) or {}
-                        ),
+                        # Metering is decided by treat_as_cloud (genuinely
+                        # metered cloud call), NOT by the provider config's
+                        # pricing_required flag — that flag opts remote lanes
+                        # out of the pre-dispatch estimate gate and is False
+                        # even on kind=="cloud" URL lanes, so keying record()
+                        # on it would silently unmeter real cloud spend.
+                        # Local/self-hosted (treat_as_cloud=False): a missing
+                        # pricing entry is BY DESIGN, record quietly as $0
+                        # (2026-08-03: conflating the two produced a WARNING
+                        # on every single local LLM call).
+                        pricing_required=treat_as_cloud,
                     )
                 except Exception as e:
-                    # Pricing data corruption or type error — the session
-                    # cost ceiling will not trigger for this call. Elevated
-                    # to WARNING so operators see it immediately rather
-                    # than discovering a stale $0.00 cost after a session.
-                    logger.warning(
-                        "CostTracker.record failed (provider=%s model=%s): %s — cost ceiling will not trigger for this call",
-                        resp.provider or provider_key,
-                        resp.model or model_override,
-                        e,
+                    # Pricing data corruption or type error on a METERED
+                    # call — the session cost ceiling will not trigger.
+                    # WARN once per (provider, model) so operators see it
+                    # without a per-call flood; repeats drop to DEBUG.
+                    warn_key = (
+                        str(resp.provider or provider_key),
+                        str(resp.model or model_override or ""),
                     )
+                    if warn_key not in self._cost_record_warned:
+                        self._cost_record_warned.add(warn_key)
+                        logger.warning(
+                            "CostTracker.record failed (provider=%s model=%s): %s — cost ceiling will not trigger for these calls (further failures for this provider/model logged at DEBUG)",
+                            warn_key[0],
+                            warn_key[1],
+                            e,
+                        )
+                    else:
+                        logger.debug(
+                            "CostTracker.record failed (provider=%s model=%s): %s",
+                            warn_key[0],
+                            warn_key[1],
+                            e,
+                        )
                     cost_usd = 0.0
                 usage["cost_usd"] = cost_usd
                 self._session_cost += cost_usd

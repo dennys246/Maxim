@@ -808,17 +808,64 @@ class LaneBackendManager:
 
         Unlike ``get_lane_kind``/``_classify`` (which key off the PRIMARY
         placement only), this counts cloud PRESENCE — primary or fallback
-        tail — which is what cost tracking cares about: a
-        ``[LOCAL, CLOUD-fallback]`` lane can still bill. Known blind spot
-        (documented, rare): a cloud profile with no URL derives as LOCAL;
-        callers wanting belt-and-suspenders can OR in
-        ``resolve_setting("cloud.enabled")``.
+        tail. NOTE: a cloud profile with no URL derives as LOCAL and is
+        invisible here — anything deciding whether cloud spend is possible
+        must use :meth:`has_cloud_billing_surface`, which closes that
+        blind spot.
         """
         return any(
             entry.origin is Origin.CLOUD
             for cfg in self._configs.values()
             for entry in derive_placement(cfg, peer_owned=self._peer_owned)
         )
+
+    def has_cloud_billing_surface(self) -> bool:
+        """True if ANYTHING in this manager's config could bill a cloud call.
+
+        The startup "Cost tracking disabled (local models only)" banner
+        keys off this — so it must fail CLOSED (return True when unsure):
+        wrongly printing "disabled" on a billing config is the expensive
+        direction. Three surfaces, any one of which means cloud spend is
+        possible:
+
+        1. A CLOUD origin anywhere in any lane's placement (primary or
+           fallback tail) — remote_url cloud lanes, explicit placements,
+           ``--cloud-lane`` / ``--cloud-fallback`` (both materialized into
+           placement before the banner prints).
+        2. A cloud PROFILE with no URL (``--llm claude-sonnet``) — derives
+           a LOCAL placement by design (the MAXIM_MAX_CLOUD_LANES cap
+           exemption) but dispatches to a real metered cloud backend.
+           This is the highest-spend headline path; ``has_cloud_placement``
+           alone would print "disabled" on it.
+        3. Cloud dispatch globally enabled (``cloud.enabled`` /
+           MAXIM_LLM_CLOUD_ENABLED / llm.json) — a user llm.json
+           ``providers`` table can carry cloud entries in
+           ``provider_priority`` that the lane placement view can't see.
+        """
+        if self.has_cloud_placement():
+            return True
+        try:
+            from maxim.models.language.config import _BUILTIN_PROFILES, _normalize_profile
+
+            for cfg in self._configs.values():
+                for entry in derive_placement(cfg, peer_owned=self._peer_owned):
+                    # Normalize first: the lane may carry an alias
+                    # ("claude-sonnet") rather than the canonical profile
+                    # key ("claude-sonnet-4-6") depending on which path
+                    # populated model_profile.
+                    key = _normalize_profile(entry.model or "") or (entry.model or "")
+                    if _BUILTIN_PROFILES.get(key, {}).get("cloud"):
+                        return True
+        except Exception:
+            return True  # can't inspect → don't claim cost tracking is inert
+        try:
+            from maxim.models.language.config import load_llm_config
+
+            if load_llm_config().cloud_enabled:
+                return True
+        except Exception:
+            return True  # fail closed, same reasoning
+        return False
 
     def metrics_snapshot(self) -> dict[str, dict[str, Any]]:
         """Thread-safe snapshot of all per-lane metrics."""
@@ -3031,10 +3078,14 @@ def _print_lane_banner(manager: "LaneBackendManager") -> None:
             profile = data["profile"] or data.get("remote_url", "")
             descr = f"{kind:<7} {url}"
         lines.append(f"  {lane:<7} {descr}")
-    # Owner-requested startup truth (2026-08-03): when NO lane names a cloud
-    # origin anywhere (primary or fallback), say once that cost tracking is
-    # inert — instead of a "Missing pricing" WARNING on every local call.
-    if not manager.has_cloud_placement():
+    # Owner-requested startup truth (2026-08-03): when NOTHING in the config
+    # can bill a cloud call, say once that cost tracking is inert — instead
+    # of a "Missing pricing" WARNING on every local call. MUST use the
+    # fail-closed billing-surface predicate, not has_cloud_placement():
+    # a cloud profile with no URL (--llm claude-sonnet) derives a LOCAL
+    # placement, and printing "disabled" on the highest-spend path is the
+    # exact lie the two-lens review caught.
+    if not manager.has_cloud_billing_surface():
         lines.append("  Cost tracking disabled (local models only)")
     lines.append(" " + "─" * 62)
     logger.info("\n".join(lines))

@@ -252,12 +252,20 @@ The LLM subsystem uses a JSON config file that persists user preferences across 
 
 ### Config File Priority
 
-The system searches for config in this order (first found wins):
+The system searches for config in this order (first found wins; one shared
+list in `models/language/config.py::_llm_config_candidates`):
 1. `MAXIM_LLM_CONFIG` environment variable path
-2. `./data/util/llm.json` (current working directory)
-3. `./llm.json` (current working directory)
-4. Repo root `data/util/llm.json`
-5. Repo root `llm.json`
+2. `~/.maxim/config/llm.json` (the documented user location — the CLI,
+   downloader, and docs all point here)
+3. `./data/util/llm.json` (current working directory)
+4. `./llm.json` (current working directory)
+5. Repo root `data/util/llm.json`
+6. Repo root `llm.json`
+
+When the winning file shadows a lower-priority one that also exists, an
+INFO line says which file won (once per process). The downloader's
+`enable_llm_config` writes to the same first-existing candidate, so the
+file a session reads is always the file the downloader updated.
 
 ### Default Configuration
 

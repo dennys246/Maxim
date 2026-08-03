@@ -728,41 +728,23 @@ _display_log_handler: logging.Handler | None = None
 class _DisplayLoggingHandler(logging.Handler):
     """Routes Python logging WARNING+ through MaximDisplay when active.
 
-    Prevents standard logging output (CostTracker, role_divergence, etc.)
-    from writing raw text to stderr and corrupting the Rich Live panel.
+    Prevents standard logging output from writing raw text to stderr and
+    corrupting the Rich Live panel.
 
-    Repetitive messages (same text within a short window) are suppressed
-    to prevent log floods from sources like CostTracker.
+    (2026-08-03: the substring-based dedup that routed CostTracker/pricing
+    messages to the warnings panel was REMOVED — local lanes no longer warn
+    at all, a remaining pricing WARNING means genuine data corruption on a
+    METERED lane, and the router now dedups that at the producer, once per
+    (provider, model). Display-side suppression would only hide signal.)
     """
-
-    # Messages containing these substrings are shown at most once per
-    # dedup window to prevent flooding the display. (2026-08-03: the
-    # CostTracker/pricing substrings were REMOVED — local lanes no longer
-    # warn at all (pricing_required=False short-circuits record()), and a
-    # remaining "Missing pricing" WARNING now always means genuine pricing
-    # data corruption on a METERED lane, which must not be hidden behind a
-    # 30 s dedup window.)
-    _DEDUP_SUBSTRINGS: tuple[str, ...] = ()
-    _DEDUP_WINDOW_S = 30.0
 
     def __init__(self, display: Any) -> None:
         super().__init__(level=logging.WARNING)
         self._display = display
-        self._seen: dict[str, float] = {}  # message_key → last_shown_time
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = self.format(record)
-
-            # Route noisy repeated messages to the persistent warnings
-            # panel instead of the scrolling log.
-            for substr in self._DEDUP_SUBSTRINGS:
-                if substr in msg:
-                    if hasattr(self._display, "warn"):
-                        # Show a concise version in the fixed warnings panel
-                        self._display.warn(record.getMessage())
-                    return
-
             if record.levelno >= logging.ERROR:
                 self._display.log("blocked", msg)
             else:

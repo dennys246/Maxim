@@ -517,6 +517,8 @@ class TestRequestContextForwarding:
                 redaction_result=None,
                 request_context=request_ctx,
                 now=0.0,
+                # fake-peer declares allow_local_endpoints=True → not metered
+                treat_as_cloud=False,
             )
         call = backend.complete_with_usage.call_args
         assert call.kwargs.get("request_context") == request_ctx
@@ -545,6 +547,7 @@ class TestRequestContextForwarding:
                 redaction_result=None,
                 request_context={"agent_id": "should-not-reach-backend"},
                 now=0.0,
+                treat_as_cloud=False,
             )
         call = backend.complete_with_usage.call_args
         assert "request_context" not in call.kwargs
@@ -572,6 +575,7 @@ class TestRequestContextForwarding:
                 redaction_result=None,
                 request_context=None,
                 now=0.0,
+                treat_as_cloud=False,
             )
         call = backend.complete_with_usage.call_args
         assert "request_context" not in call.kwargs
