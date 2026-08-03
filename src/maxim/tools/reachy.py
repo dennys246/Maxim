@@ -838,10 +838,10 @@ class FocusOnSoundTool(Tool):
 
     name = "focus_on_sound"
     description = (
-        "Turn Maxim's head to face the sound it is currently hearing. No parameters needed — "
-        "reads the live sound direction at execution time and turns the right amount in the "
-        "right direction. Use when you hear a sound and want to look toward it. "
-        "Fails softly if no sound has been heard."
+        "Turn Maxim's head to face the sound it is currently hearing. No direction or angle "
+        "parameters — reads the live sound direction at execution time and turns the right "
+        "amount in the right direction (optional: duration, seconds). Use when you hear a "
+        "sound and want to look toward it. Fails softly if no sound has been heard recently."
     )
 
     # Responsive orienting with no side effects beyond head pose — same
@@ -852,18 +852,38 @@ class FocusOnSoundTool(Tool):
         "duration": (float, None),  # Optional movement duration in seconds (default 1.0)
     }
 
-    # Head-relative azimuth ±1 spans ±90°; the head-yaw envelope matches the
-    # joint-limit predictor's ±45°.
+    # Head-relative azimuth ±1 spans ±90°. The default head-yaw envelope
+    # matches the joint-limit predictor's ±45°; the LEARNED workspace bound
+    # (bounds learner, probed at execute time) can tighten it further but
+    # never widen it.
     _AZIMUTH_TO_DEG = 90.0
     _MAX_HEAD_YAW_DEG = 45.0
+    # A reading older than this is a sound that FADED — turning toward it
+    # would face a memory, not a stimulus (and during silence the feed
+    # holds the last value forever). Fail soft instead.
+    _MAX_READING_AGE_S = 15.0
 
     def __init__(self, maxim: Any) -> None:
         super().__init__()
         self._maxim = maxim
 
-    def execute(self, **kwargs: Any) -> ToolResult:
-        import time as _time
+    def _yaw_envelope_deg(self, maxim: Any) -> float:
+        """±45° default, tightened (never widened) by the learned workspace
+        bound when the runtime exposes one (pre-merge review fold: the
+        bounds learner exists precisely to shrink limits that caused pain —
+        a frozen 45 would ignore it)."""
+        cap = self._MAX_HEAD_YAW_DEG
+        get_limits = getattr(maxim, "_get_workspace_limits", None)
+        if callable(get_limits):
+            try:
+                learned = float((get_limits() or {}).get("yaw", cap))
+                if 0.0 < learned < cap:
+                    cap = learned
+            except Exception:
+                pass
+        return cap
 
+    def execute(self, **kwargs: Any) -> ToolResult:
         maxim = self._maxim
         if maxim is None:
             return ToolResult(success=False, error="No Maxim context available.")
@@ -876,23 +896,64 @@ class FocusOnSoundTool(Tool):
                 error="No sound has been heard yet (no DoA reading available — is the audio feed running?)",
             )
 
-        azimuth, ts = latest
-        age_s = max(0.0, _time.monotonic() - float(ts))
-        az = max(-1.0, min(1.0, float(azimuth)))
+        # (azimuth, monotonic ts, capture-time head yaw) — the third element
+        # is the FRAME the head-relative azimuth was measured in. Tolerate
+        # the pre-fold 2-tuple shape (capture frame unknown → fall back to
+        # the current yaw, accepting the pre-fold behavior).
+        azimuth, ts = float(latest[0]), float(latest[1])
+        capture_yaw = latest[2] if len(latest) > 2 else None
 
+        age_s = max(0.0, time.monotonic() - ts)
+        if age_s > self._MAX_READING_AGE_S:
+            return ToolResult(
+                success=False,
+                error=(
+                    f"The last sound faded {age_s:.0f}s ago — nothing current to face. "
+                    "(Stale readings are not re-used: during silence the direction cache "
+                    "holds the final value indefinitely.)"
+                ),
+            )
+
+        az = max(-1.0, min(1.0, azimuth))
         cur_yaw = float(getattr(maxim, "yaw", 0.0) or 0.0)
+        base_yaw = float(capture_yaw) if capture_yaw is not None else cur_yaw
+
         # +yaw = LEFT (hardware-verified 2026-08-03); azimuth +1 = right —
-        # so turning TOWARD the sound subtracts.
-        target_yaw = cur_yaw - az * self._AZIMUTH_TO_DEG
-        clamped = abs(target_yaw) > self._MAX_HEAD_YAW_DEG
-        target_yaw = max(-self._MAX_HEAD_YAW_DEG, min(self._MAX_HEAD_YAW_DEG, target_yaw))
+        # so turning TOWARD the sound subtracts. Computed against the
+        # CAPTURE-time yaw: the azimuth is head-relative in THAT frame, so
+        # the target is a stable absolute pose and re-invocation on the
+        # same reading is idempotent (pre-merge review fold: computing
+        # against the current yaw re-subtracts the delta every call and
+        # marches the head to the limit stop).
+        envelope = self._yaw_envelope_deg(maxim)
+        target_yaw = base_yaw - az * self._AZIMUTH_TO_DEG
+        clamped = abs(target_yaw) > envelope
+        target_yaw = max(-envelope, min(envelope, target_yaw))
 
         duration = kwargs.get("duration")
+        duration_s = float(duration) if duration is not None else 1.0
+        if duration_s <= 0:
+            duration_s = 1.0
+
+        # Dispatch via the CONTROLLER's goto_target — the hardware-verified
+        # one-shot path (pre-merge review fold): minjerk-interpolated over
+        # ``duration`` (speed governed by time, with the DN movement-velocity
+        # predictor as envelope), ships the explicit head matrix composed
+        # with the body's ACTUAL yaw per the head-frame invariant, and is
+        # NOT subject to maxim.move()'s per-call step clamp (2°/call — a
+        # smoothness guard for streaming gaze loops that made a single
+        # move() call under-turn a 45° orient by 43°).
+        robot = _get_robot_from_registry(None, maxim)
+        if robot is None:
+            return ToolResult(success=False, error="No robot controller available.")
         try:
-            move_fn = getattr(maxim, "move", None)
-            if move_fn is None or not callable(move_fn):
-                return ToolResult(success=False, error="Maxim instance does not support move()")
-            move_fn(yaw=target_yaw, duration=float(duration) if duration else 1.0)
+            import math as _math
+
+            from maxim.hardware import MotionTarget
+
+            ok = robot.goto_target(MotionTarget(head_yaw=_math.radians(target_yaw), duration=duration_s))
+            if not ok:
+                return ToolResult(success=False, error="Motion command rejected by controller")
         except Exception as e:
             warn("focus_on_sound failed: %s", e, logger=getattr(maxim, "log", None))
             return ToolResult(success=False, error=str(e))
@@ -908,6 +969,10 @@ class FocusOnSoundTool(Tool):
                 "from_yaw_deg": round(cur_yaw, 1),
                 "to_yaw_deg": round(target_yaw, 1),
                 "clamped_to_head_limit": clamped,
+                # A linear mic array cannot distinguish front from back: a
+                # source directly BEHIND also reads ≈0 ("ahead"). Honest
+                # self-report per the array's physics.
+                "note": "front/back ambiguous (linear array)" if abs(az) <= 0.1 else None,
             },
         )
 

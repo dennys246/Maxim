@@ -91,6 +91,20 @@ NoOpTrackTargetTool = create_stub_tool(
     output_fields={"tracked": False},
 )
 
+# FocusOnSoundTool stub (always_allowed to match the real tool). Without it,
+# CORE_TOOLS advertises "focus_on_sound" in headless/sim sessions as a bare
+# undispatchable prompt token — the exact bare-token failure the 2026-08-01
+# deep dive found for move (cross-confirmed by both pre-merge review lenses).
+NoOpFocusOnSoundTool = create_stub_tool(
+    name="focus_on_sound",
+    description="Turn the head to face the currently heard sound (observation-only mode - no robot connected).",
+    input_schema={
+        "duration": (float, None),
+    },
+    output_fields={"faced_sound": False},
+    always_allowed=True,
+)
+
 # MoveTool stub (always_allowed to match real MoveTool)
 NoOpMoveTool = create_stub_tool(
     name="move",

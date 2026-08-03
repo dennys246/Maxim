@@ -169,6 +169,7 @@ def build_tool_registry(
         # Register no-op stubs for observation-only mode (no live Maxim instance)
         from maxim.tools.reachy_stubs import (
             NoOpFocusInterestsTool,
+            NoOpFocusOnSoundTool,
             NoOpMaximCommandTool,
             NoOpMoveTool,
             NoOpNoveltyTrackTool,
@@ -176,6 +177,7 @@ def build_tool_registry(
         )
 
         registry.register(NoOpFocusInterestsTool())
+        registry.register(NoOpFocusOnSoundTool())  # Audio orienting (no-op)
         registry.register(NoOpMaximCommandTool())
         registry.register(NoOpMoveTool())  # Direct head movement control (no-op)
         registry.register(NoOpTrackTargetTool())

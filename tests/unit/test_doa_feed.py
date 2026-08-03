@@ -21,6 +21,8 @@ import math
 import threading
 import time
 
+import pytest
+
 
 from maxim.embodiment.audio_localization import DoAFeed
 from maxim.embodiment.body import Embodiment
@@ -61,9 +63,45 @@ class TestDoAFeedWrites:
         feed.run()  # single-threaded: burst → write, silence → stop → return
         assert body.vital_metrics["azimuth"] == -1.0
         assert feed.latest is not None
-        az, ts = feed.latest
+        az, ts, capture_yaw = feed.latest
         assert az == -1.0
         assert ts > 0
+        assert capture_yaw is None  # no head_yaw_provider wired in this test
+
+
+def test_head_yaw_provider_stamps_the_capture_frame():
+    """focus_on_sound fold: the head yaw at CAPTURE time travels with the
+    reading, so consumers compute a stable absolute target instead of
+    re-applying a head-relative delta to a pose that has since moved."""
+    _, emb = _reachy_embodiment()
+    stop = threading.Event()
+    reader = _ScriptedReader([_SPEECH_LEFT] * 3, stop_event=stop)
+    feed = DoAFeed(
+        reader,
+        emb,
+        stop_event=stop,
+        sample_poll_s=0.0,
+        sample_timeout_s=0.5,
+        head_yaw_provider=lambda: 27.9,
+    )
+    feed.run()
+    az, ts, capture_yaw = feed.latest
+    assert capture_yaw == pytest.approx(27.9)
+
+
+def test_head_yaw_provider_failure_is_swallowed():
+    _, emb = _reachy_embodiment()
+    stop = threading.Event()
+
+    def _boom():
+        raise RuntimeError("pose sync not ready")
+
+    reader = _ScriptedReader([_SPEECH_LEFT] * 3, stop_event=stop)
+    feed = DoAFeed(reader, emb, stop_event=stop, sample_poll_s=0.0, sample_timeout_s=0.5, head_yaw_provider=_boom)
+    feed.run()
+    az, ts, capture_yaw = feed.latest
+    assert az == -1.0
+    assert capture_yaw is None
 
     def test_out_of_convention_doa_angle_cannot_escape_the_range(self):
         # An angle below the XVF3800's 0..π convention is clamped by

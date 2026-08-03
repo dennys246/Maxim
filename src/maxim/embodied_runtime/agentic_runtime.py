@@ -198,6 +198,11 @@ class AgenticRuntimeMixin:
                 agent_id=getattr(self, "agent_id", "reachy"),
                 salience=_attention_weight("audio_salience", 0.5),
                 novelty=_attention_weight("audio_novelty", 0.3),
+                # Capture-frame stamp: the head yaw each reading was taken
+                # in, so consumers (focus_on_sound) compute a stable
+                # absolute target instead of re-applying a head-relative
+                # delta to a pose that has since moved.
+                head_yaw_provider=lambda: float(getattr(self, "yaw", 0.0) or 0.0),
             )
             thread = threading.Thread(target=feed.run, name="doa-feed", daemon=True)
             self._doa_feed = feed
