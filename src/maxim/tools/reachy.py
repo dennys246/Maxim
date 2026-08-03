@@ -959,6 +959,20 @@ class FocusOnSoundTool(Tool):
             return ToolResult(success=False, error=str(e))
 
         side = "left" if az < 0 else ("right" if az > 0 else "ahead")
+        # Every aim decision at INFO: the 2026-08-03 live sessions were
+        # undiagnosable from the console because the tool's direction math
+        # was invisible — only "success=True" showed, whether the turn was
+        # toward or away from the sound.
+        _log = getattr(maxim, "log", None) or __import__("logging").getLogger(__name__)
+        _log.info(
+            "focus_on_sound: az=%+.2f (%s, %.1fs old) turning %.1f° → %.1f°%s",
+            az,
+            side,
+            age_s,
+            cur_yaw,
+            target_yaw,
+            " [clamped]" if clamped else "",
+        )
         return ToolResult(
             success=True,
             output={
