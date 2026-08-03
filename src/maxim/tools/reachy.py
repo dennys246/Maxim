@@ -657,21 +657,33 @@ class MoveTool(Tool):
     meaning it bypasses autonomy approval requirements for responsive
     movement control.
 
-    Coordinates:
-    - x: left/right movement (-1.0 to 1.0, negative=left, positive=right)
-    - y: up/down movement (-1.0 to 1.0, negative=up, positive=down)
-    - z: not typically used for head movement
-    - roll/pitch/yaw: rotation angles in degrees
-
-    The tool supports both target_x/target_y (normalized -1 to 1) and
-    raw x/y/z/roll/pitch/yaw parameters for flexibility.
+    Coordinates (2026-08-03 mirror-turn fix — the SIGN CONVENTIONS below are
+    hardware-verified; an undocumented yaw sign made the LLM guess, and its
+    natural compass prior (+ = right) is the OPPOSITE of the stack's
+    convention, producing mirror-image orienting):
+    - target_x / target_y: normalized GAZE direction. They TURN the head
+      (mapped to yaw/pitch), they do not translate it. target_x: -1 = look
+      full LEFT ... +1 = look full RIGHT — the same sign convention as a
+      heard sound's azimuth, so "look toward the sound" is target_x ≈ azimuth.
+      target_y: -1 = up ... +1 = down.
+    - yaw: degrees, POSITIVE = LEFT, negative = RIGHT (verified 2026-08-03:
+      +30° physically turns the head left).
+    - pitch: degrees, POSITIVE = DOWN. roll: degrees.
+    - x/y/z: raw head TRANSLATION (mm-scale platform offsets) — rarely what
+      a caller wants; use target_x/target_y for gaze.
 
     Multi-robot support:
     - robot_id: Optional robot ID to target. If not specified, uses the primary robot.
     """
 
     name = "move"
-    description = "Move Maxim's head to a target position. Use target_x (-1 to 1, left to right) and target_y (-1 to 1, up to down), or raw x/y/z/roll/pitch/yaw values. Optionally specify robot_id to target a specific robot."
+    description = (
+        "Turn Maxim's head to look in a direction. Preferred: target_x (-1 = look full LEFT, "
+        "+1 = look full RIGHT — same sign as a heard sound's azimuth, so to face a sound pass "
+        "target_x ≈ its azimuth) and target_y (-1 = up, +1 = down). Or raw angles in degrees: "
+        "yaw (POSITIVE = LEFT, negative = RIGHT), pitch (positive = down), roll. "
+        "Optionally robot_id for a specific robot."
+    )
 
     # Mark as always allowed - bypasses autonomy approval
     always_allowed = True
@@ -701,25 +713,32 @@ class MoveTool(Tool):
         target_x = kwargs.get("target_x")
         target_y = kwargs.get("target_y")
 
-        # Convert normalized targets to raw values if provided
         x = kwargs.get("x")
         y = kwargs.get("y")
-
-        if target_x is not None and x is None:
-            # Convert normalized target_x to raw x
-            # target_x: -1 = full left, 0 = center, 1 = full right
-            x = float(target_x)
-
-        if target_y is not None and y is None:
-            # Convert normalized target_y to raw y
-            # target_y: -1 = full up, 0 = center, 1 = full down
-            y = float(target_y)
-
         z = kwargs.get("z")
         roll = kwargs.get("roll")
         pitch = kwargs.get("pitch")
         yaw = kwargs.get("yaw")
         duration = kwargs.get("duration", 1.0)
+
+        # Gaze mapping (2026-08-03 mirror-turn fix). target_x/target_y are the
+        # LLM-facing GAZE parameters and must TURN the head — the pre-fix code
+        # mapped them onto the x/y TRANSLATION axes, so "look right" slid the
+        # head a few millimetres instead of rotating it, and the model fell
+        # back to raw yaw whose sign it had to guess (its compass prior,
+        # + = right, is the OPPOSITE of the stack's +yaw = LEFT — verified on
+        # hardware 2026-08-03). Mapping: target_x +1 (look full RIGHT, the
+        # azimuth sign convention) → yaw −45°; target_y +1 (down) → pitch
+        # +30°. Ranges match the joint-limit predictor (±45° yaw, ±30° pitch).
+        # Explicit raw yaw/pitch win over the normalized targets.
+        _MAX_GAZE_YAW_DEG = 45.0
+        _MAX_GAZE_PITCH_DEG = 30.0
+        if target_x is not None and yaw is None:
+            tx = max(-1.0, min(1.0, float(target_x)))
+            yaw = -tx * _MAX_GAZE_YAW_DEG  # +yaw = LEFT, so look-right (+tx) is negative yaw
+        if target_y is not None and pitch is None:
+            ty = max(-1.0, min(1.0, float(target_y)))
+            pitch = ty * _MAX_GAZE_PITCH_DEG  # +pitch = DOWN, matching -1=up/+1=down
 
         try:
             # If robot_id specified, use RobotController directly
