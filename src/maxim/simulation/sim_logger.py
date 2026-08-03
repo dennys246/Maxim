@@ -736,8 +736,13 @@ class _DisplayLoggingHandler(logging.Handler):
     """
 
     # Messages containing these substrings are shown at most once per
-    # dedup window to prevent flooding the display.
-    _DEDUP_SUBSTRINGS = ("CostTracker.record failed", "Missing pricing for model")
+    # dedup window to prevent flooding the display. (2026-08-03: the
+    # CostTracker/pricing substrings were REMOVED — local lanes no longer
+    # warn at all (pricing_required=False short-circuits record()), and a
+    # remaining "Missing pricing" WARNING now always means genuine pricing
+    # data corruption on a METERED lane, which must not be hidden behind a
+    # 30 s dedup window.)
+    _DEDUP_SUBSTRINGS: tuple[str, ...] = ()
     _DEDUP_WINDOW_S = 30.0
 
     def __init__(self, display: Any) -> None:

@@ -803,6 +803,23 @@ class LaneBackendManager:
             return "local"
         return self._classify(cfg)
 
+    def has_cloud_placement(self) -> bool:
+        """True if ANY lane names a CLOUD origin anywhere in its placement.
+
+        Unlike ``get_lane_kind``/``_classify`` (which key off the PRIMARY
+        placement only), this counts cloud PRESENCE — primary or fallback
+        tail — which is what cost tracking cares about: a
+        ``[LOCAL, CLOUD-fallback]`` lane can still bill. Known blind spot
+        (documented, rare): a cloud profile with no URL derives as LOCAL;
+        callers wanting belt-and-suspenders can OR in
+        ``resolve_setting("cloud.enabled")``.
+        """
+        return any(
+            entry.origin is Origin.CLOUD
+            for cfg in self._configs.values()
+            for entry in derive_placement(cfg, peer_owned=self._peer_owned)
+        )
+
     def metrics_snapshot(self) -> dict[str, dict[str, Any]]:
         """Thread-safe snapshot of all per-lane metrics."""
         return self._metrics_registry.snapshot()
@@ -3014,6 +3031,11 @@ def _print_lane_banner(manager: "LaneBackendManager") -> None:
             profile = data["profile"] or data.get("remote_url", "")
             descr = f"{kind:<7} {url}"
         lines.append(f"  {lane:<7} {descr}")
+    # Owner-requested startup truth (2026-08-03): when NO lane names a cloud
+    # origin anywhere (primary or fallback), say once that cost tracking is
+    # inert — instead of a "Missing pricing" WARNING on every local call.
+    if not manager.has_cloud_placement():
+        lines.append("  Cost tracking disabled (local models only)")
     lines.append(" " + "─" * 62)
     logger.info("\n".join(lines))
 

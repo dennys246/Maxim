@@ -600,13 +600,25 @@ def normalize_llm_profile(name: Any) -> str:
     return _normalize_profile(name)
 
 
-def list_llm_profiles() -> list[str]:
-    profiles = set(_BUILTIN_PROFILES.keys())
+def _llm_config_candidates() -> list[str]:
+    """llm.json discovery order — the ONE place it is defined.
 
+    Was duplicated between ``list_llm_profiles`` and ``load_llm_config``,
+    and neither copy consulted the DOCUMENTED user location
+    (``~/.maxim/config/llm.json`` — cli_parser, the downloader, and the
+    docs all point there): env override → user config → CWD/repo-root
+    ``data/util`` legacy developer-checkout fallbacks.
+    """
     candidates: list[str] = []
     env_path = str(os.getenv("MAXIM_LLM_CONFIG", "")).strip()
     if env_path:
         candidates.append(env_path)
+    try:
+        from maxim.utils.paths import user_config
+
+        candidates.append(str(user_config() / "llm.json"))
+    except Exception:
+        pass
     candidates.append(os.path.join(os.getcwd(), "data", "util", "llm.json"))
     candidates.append(os.path.join(os.getcwd(), "llm.json"))
     try:
@@ -615,8 +627,13 @@ def list_llm_profiles() -> list[str]:
         candidates.append(os.path.join(repo_root, "llm.json"))
     except Exception:
         pass
+    return candidates
 
-    for path in candidates:
+
+def list_llm_profiles() -> list[str]:
+    profiles = set(_BUILTIN_PROFILES.keys())
+
+    for path in _llm_config_candidates():
         if not path or not os.path.isfile(path):
             continue
         loaded = _read_json(path)
@@ -765,21 +782,8 @@ def _read_json(path: str) -> dict[str, Any] | None:
 def load_llm_config(profile_override: str | None = None) -> LLMConfig:
     default = LLMConfig()
 
-    candidates: list[str] = []
-    env_path = str(os.getenv("MAXIM_LLM_CONFIG", "")).strip()
-    if env_path:
-        candidates.append(env_path)
-    candidates.append(os.path.join(os.getcwd(), "data", "util", "llm.json"))
-    candidates.append(os.path.join(os.getcwd(), "llm.json"))
-    try:
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-        candidates.append(os.path.join(repo_root, "data", "util", "llm.json"))
-        candidates.append(os.path.join(repo_root, "llm.json"))
-    except Exception:
-        pass
-
     raw: dict[str, Any] = {}
-    for path in candidates:
+    for path in _llm_config_candidates():
         if path and os.path.isfile(path):
             loaded = _read_json(path)
             if isinstance(loaded, dict):
@@ -864,7 +868,32 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
         explicit_path = profile_cfg.get("model_path", raw.get("model_path", builtin.get("model_path")))
 
     if explicit_path:
-        model_path = str(explicit_path).strip()
+        # Resolve the explicit path through the canonical model dir
+        # (2026-08-03 root-cause fix): the pre-fix verbatim passthrough is
+        # why EVERY session prompted to download models that were already
+        # on disk. install.sh writes profiles with RELATIVE legacy paths
+        # ("data/models/LLM/...") while downloads land in ~/.maxim/models/
+        # LLM — the seven existence-check sites (lane ensure_available,
+        # warm-up, auto-spawn, hot-swap, --list-models, doctor tiers) all
+        # read this one field and all failed on the wrong root, while the
+        # downloader (which resolves canonically) immediately reported
+        # "Already exists". Resolution: expanduser; re-anchor a relative
+        # path at model_dir() (stripping the legacy "data/models/" prefix);
+        # if the result still doesn't exist, fall through to
+        # build_model_path — the canonical resolver with its
+        # case-insensitive filename matching.
+        model_path = os.path.expanduser(str(explicit_path).strip())
+        if not os.path.isabs(model_path):
+            rel = model_path.replace("\\", "/")
+            for prefix in ("data/models/", "models/"):
+                if rel.startswith(prefix):
+                    rel = rel[len(prefix) :]
+                    break
+            from maxim.utils.paths import model_dir
+
+            model_path = os.path.join(str(model_dir()), rel)
+        if not os.path.exists(model_path):
+            model_path = build_model_path(model_base, quantization)
     else:
         # Build path from model_base and quantization
         model_path = build_model_path(model_base, quantization)

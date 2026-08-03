@@ -371,11 +371,27 @@ class CostTracker:
         cached_input_tokens: int = 0,
         uncached_input_tokens: int = 0,
         timestamp: float | None = None,
+        pricing_required: bool = True,
     ) -> float:
         now = timestamp or time.time()
         pricing = self.get_pricing(model)
+        # Token accounting runs REGARDLESS of pricing (2026-08-03 fix):
+        # pre-fix the missing-pricing raise fired BEFORE these counters, so
+        # every local/self-hosted call recorded zero tokens and sim reports
+        # under-counted the whole session.
+        self._session_input_tokens += max(0, int(input_tokens))
+        self._session_output_tokens += max(0, int(output_tokens))
+        self._session_cached_tokens += max(0, int(cached_input_tokens))
         if pricing is None:
-            raise ValueError(f"Missing pricing for model: {model}")
+            if pricing_required:
+                # A metered (cloud) provider with no pricing entry IS a
+                # data error — the cost ceiling cannot protect the session.
+                raise ValueError(f"Missing pricing for model: {model}")
+            # Unpriced BY DESIGN (local / self-hosted lane, declared via the
+            # provider's pricing_required=False): zero cost, no ceiling
+            # involvement, no warning — a missing entry is expected here,
+            # not corruption.
+            return 0.0
         cost_usd = self._calculate_cost(
             pricing,
             input_tokens,
@@ -383,10 +399,6 @@ class CostTracker:
             cached_input_tokens,
             uncached_input_tokens,
         )
-        # Track tokens even for zero-cost calls (cached prompts).
-        self._session_input_tokens += max(0, int(input_tokens))
-        self._session_output_tokens += max(0, int(output_tokens))
-        self._session_cached_tokens += max(0, int(cached_input_tokens))
 
         if cost_usd <= 0:
             return 0.0

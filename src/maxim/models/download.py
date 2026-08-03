@@ -882,14 +882,23 @@ def enable_llm_config(
     import json
 
     if config_path is None:
-        from maxim.utils.paths import resolve_config
+        # ALWAYS write to the user config (2026-08-03 fix): resolve_config
+        # falls back to the BUNDLED template path when ~/.maxim/config/
+        # llm.json is absent, so the pre-fix code would open package-shipped
+        # data for writing (PermissionError on an installed wheel, or worse,
+        # silent mutation of bundled defaults). The template is read-only
+        # SEED content; the user config is the write target.
+        from maxim.utils.paths import resolve_config, user_config
 
-        try:
-            config_path = resolve_config("llm.json")
-        except FileNotFoundError:
-            from maxim.utils.paths import user_config
-
-            config_path = user_config() / "llm.json"
+        config_path = user_config() / "llm.json"
+        if not config_path.exists():
+            try:
+                template = resolve_config("llm.json")
+                if Path(template) != config_path and Path(template).exists():
+                    config_path.parent.mkdir(parents=True, exist_ok=True)
+                    config_path.write_text(Path(template).read_text(encoding="utf-8"), encoding="utf-8")
+            except FileNotFoundError:
+                pass
     config_path = Path(config_path)
 
     if not config_path.exists():

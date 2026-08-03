@@ -1393,6 +1393,14 @@ class LLMRouter:
                         cached_input_tokens=resp.cached_input_tokens,
                         uncached_input_tokens=resp.uncached_input_tokens,
                         timestamp=now,
+                        # Local/self-hosted lanes declare pricing_required=False
+                        # on their provider config — a missing pricing entry is
+                        # BY DESIGN there, not the data corruption this handler
+                        # exists for (2026-08-03: the conflation produced a
+                        # WARNING on every single local LLM call).
+                        pricing_required=self._provider_pricing_required(
+                            self._providers.get(provider_key) or {}
+                        ),
                     )
                 except Exception as e:
                     # Pricing data corruption or type error — the session
