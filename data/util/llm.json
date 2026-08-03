@@ -8,7 +8,6 @@
   "profiles": {
     "phi-3-mini-4k-instruct": {
       "backend": "llama_cpp",
-      "model_path": "data/models/LLM/Phi-3-mini-4k-instruct-q4.gguf",
       "prompt_style": "chatml",
       "stop": [
         "<|end|>",
@@ -18,7 +17,6 @@
     },
     "mistral-7b-instruct-v0.2": {
       "backend": "llama_cpp",
-      "model_path": "data/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
       "prompt_style": "mistral_instruct",
       "stop": [
         "</s>"
@@ -27,7 +25,6 @@
     },
     "smollm-1.7b-instruct": {
       "backend": "llama_cpp",
-      "model_path": "data/models/LLM/SmolLM-1.7B-Instruct.Q4_K_M.gguf",
       "prompt_style": "chatml",
       "stop": [
         "<|im_end|>",

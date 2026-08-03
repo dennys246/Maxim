@@ -122,21 +122,18 @@ if [ ! -f "$LLM_CONFIG_PATH" ]; then
   "profiles": {
     "smollm-1.7b-instruct": {
       "backend": "llama_cpp",
-      "model_path": "data/models/LLM/SmolLM-1.7B-Instruct.Q4_K_M.gguf",
       "prompt_style": "chatml",
       "stop": ["<|im_end|>", "</s>"],
       "n_ctx": 4096
     },
     "mistral-7b-instruct-v0.2": {
       "backend": "llama_cpp",
-      "model_path": "data/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
       "prompt_style": "mistral_instruct",
       "stop": ["</s>"],
       "n_ctx": 4096
     },
     "phi-3-mini-4k-instruct": {
       "backend": "llama_cpp",
-      "model_path": "data/models/LLM/Phi-3-mini-4k-instruct.Q4_K_M.gguf",
       "prompt_style": "phi3",
       "stop": ["<|end|>", "<|endoftext|>"],
       "n_ctx": 4096

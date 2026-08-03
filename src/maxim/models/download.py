@@ -882,29 +882,55 @@ def enable_llm_config(
     import json
 
     if config_path is None:
-        from maxim.utils.paths import resolve_config
+        # Write to the SAME file load_llm_config will read (2026-08-03 fix,
+        # refined by the two-lens fold). The pre-fix code opened
+        # resolve_config's result for writing — the BUNDLED template when
+        # ~/.maxim/config/llm.json is absent (PermissionError on an
+        # installed wheel, or silent mutation of bundled defaults). An
+        # intermediate fix seeded the user config from the full template,
+        # but that permanently SHADOWED a developer checkout's
+        # data/util/llm.json (max_tokens 1024, richer profiles) with the
+        # template's max_tokens 128 — read/write symmetry is the actual
+        # invariant: update the first existing discovery candidate; only
+        # when none exists, create a MINIMAL user config carrying exactly
+        # the keys this function writes.
+        from maxim.models.language.config import _llm_config_candidates
+        from maxim.utils.paths import user_config
 
-        try:
-            config_path = resolve_config("llm.json")
-        except FileNotFoundError:
-            from maxim.utils.paths import user_config
-
+        config_path = None
+        for candidate in _llm_config_candidates():
+            if candidate and Path(candidate).is_file():
+                config_path = Path(candidate)
+                break
+        allow_create = config_path is None
+        if config_path is None:
             config_path = user_config() / "llm.json"
+    else:
+        # Explicit path keeps the historical contract: it must exist.
+        allow_create = False
     config_path = Path(config_path)
 
-    if not config_path.exists():
+    if not config_path.exists() and not allow_create:
         print(f"Config not found: {config_path}")
         return False
 
     try:
-        with open(config_path) as f:
-            config = json.load(f)
+        from maxim.utils.atomic_io import atomic_write_json
+
+        if config_path.exists():
+            with open(config_path) as f:
+                config = json.load(f)
+            if not isinstance(config, dict):
+                print(f"Config is not a JSON object: {config_path}")
+                return False
+        else:
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {}
 
         config["enabled"] = True
         config["profile"] = model_name
 
-        with open(config_path, "w") as f:
-            json.dump(config, f, indent=2)
+        atomic_write_json(str(config_path), config)
 
         print(f"Updated {config_path}:")
         print("  enabled: true")

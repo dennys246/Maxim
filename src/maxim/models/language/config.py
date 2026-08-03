@@ -9,9 +9,12 @@ environment variables, and builtin defaults.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -600,23 +603,37 @@ def normalize_llm_profile(name: Any) -> str:
     return _normalize_profile(name)
 
 
-def list_llm_profiles() -> list[str]:
-    profiles = set(_BUILTIN_PROFILES.keys())
+def _llm_config_candidates() -> list[str]:
+    """llm.json discovery order — the ONE place it is defined.
 
+    Was duplicated between ``list_llm_profiles`` and ``load_llm_config``,
+    and neither copy consulted the DOCUMENTED user location
+    (``~/.maxim/config/llm.json`` — cli_parser, the downloader, and the
+    docs all point there): env override → user config → CWD/repo-root
+    ``data/util`` legacy developer-checkout fallbacks.
+    """
     candidates: list[str] = []
     env_path = str(os.getenv("MAXIM_LLM_CONFIG", "")).strip()
     if env_path:
         candidates.append(env_path)
+    try:
+        from maxim.utils.paths import user_config
+
+        candidates.append(str(user_config() / "llm.json"))
+    except (ImportError, OSError):
+        pass
     candidates.append(os.path.join(os.getcwd(), "data", "util", "llm.json"))
     candidates.append(os.path.join(os.getcwd(), "llm.json"))
-    try:
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-        candidates.append(os.path.join(repo_root, "data", "util", "llm.json"))
-        candidates.append(os.path.join(repo_root, "llm.json"))
-    except Exception:
-        pass
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+    candidates.append(os.path.join(repo_root, "data", "util", "llm.json"))
+    candidates.append(os.path.join(repo_root, "llm.json"))
+    return candidates
 
-    for path in candidates:
+
+def list_llm_profiles() -> list[str]:
+    profiles = set(_BUILTIN_PROFILES.keys())
+
+    for path in _llm_config_candidates():
         if not path or not os.path.isfile(path):
             continue
         loaded = _read_json(path)
@@ -762,28 +779,40 @@ def _read_json(path: str) -> dict[str, Any] | None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+_shadow_log_emitted = False
+
+
+def _log_shadowed_llm_configs(winner: str, losers: list[str]) -> None:
+    """One INFO line (per process) when the winning llm.json shadows others.
+
+    The user-config file (`~/.maxim/config/llm.json`) ranking above a
+    developer checkout's `data/util/llm.json` is correct per the docs, but
+    silent shadowing means edits to the loser mysteriously stop taking
+    effect — say which file won, once.
+    """
+    global _shadow_log_emitted
+    if _shadow_log_emitted:
+        return
+    winner_real = os.path.realpath(winner)
+    shadowed = sorted(
+        {os.path.realpath(p) for p in losers if p and os.path.isfile(p) and os.path.realpath(p) != winner_real}
+    )
+    if shadowed:
+        _shadow_log_emitted = True
+        logger.info("llm.json loaded from %s (shadowing: %s)", winner, ", ".join(shadowed))
+
+
 def load_llm_config(profile_override: str | None = None) -> LLMConfig:
     default = LLMConfig()
 
-    candidates: list[str] = []
-    env_path = str(os.getenv("MAXIM_LLM_CONFIG", "")).strip()
-    if env_path:
-        candidates.append(env_path)
-    candidates.append(os.path.join(os.getcwd(), "data", "util", "llm.json"))
-    candidates.append(os.path.join(os.getcwd(), "llm.json"))
-    try:
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-        candidates.append(os.path.join(repo_root, "data", "util", "llm.json"))
-        candidates.append(os.path.join(repo_root, "llm.json"))
-    except Exception:
-        pass
-
     raw: dict[str, Any] = {}
-    for path in candidates:
+    candidates = _llm_config_candidates()
+    for i, path in enumerate(candidates):
         if path and os.path.isfile(path):
             loaded = _read_json(path)
             if isinstance(loaded, dict):
                 raw = loaded
+            _log_shadowed_llm_configs(path, candidates[i + 1 :])
             break
 
     profile_raw = profile_override or os.getenv("MAXIM_LLM_PROFILE")
@@ -864,7 +893,68 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
         explicit_path = profile_cfg.get("model_path", raw.get("model_path", builtin.get("model_path")))
 
     if explicit_path:
-        model_path = str(explicit_path).strip()
+        # Resolve the explicit path through the canonical model dir
+        # (2026-08-03 root-cause fix): the pre-fix verbatim passthrough is
+        # why EVERY session prompted to download models that were already
+        # on disk. install.sh writes profiles with RELATIVE legacy paths
+        # ("data/models/LLM/...") while downloads land in ~/.maxim/models/
+        # LLM — the seven existence-check sites (lane ensure_available,
+        # warm-up, auto-spawn, hot-swap, --list-models, doctor tiers) all
+        # read this one field and all failed on the wrong root, while the
+        # downloader (which resolves canonically) immediately reported
+        # "Already exists". Resolution: expanduser; re-anchor a relative
+        # path at model_dir() (stripping the legacy "data/models/" prefix);
+        # if the result still doesn't exist, fall through to
+        # build_model_path — the canonical resolver with its
+        # case-insensitive filename matching.
+        model_path = os.path.expanduser(str(explicit_path).strip())
+        if os.path.isabs(model_path):
+            # Operator-explicit ABSOLUTE pin (env var or profile). NEVER
+            # substitute another file for it — a missing pin (typo,
+            # not-yet-mounted volume, renamed fine-tune) must fail loudly
+            # downstream, not silently load a different model. A custom
+            # profile declaring ONLY model_path has model_base defaulting
+            # to the stock profile default, so a silent fallback here
+            # would swap a fine-tune for a different model family.
+            if not os.path.exists(model_path):
+                logger.warning(
+                    "model_path %s does not exist — keeping the explicit pin "
+                    "(no silent substitution); fix the path or remove "
+                    "model_path to use the canonical resolver",
+                    model_path,
+                )
+        elif os.path.exists(model_path):
+            # Legacy checkout-resident layout (<checkout>/data/models/LLM/…)
+            # launched from the repo root — the file really is at the
+            # CWD-relative path the profile declared; use it.
+            model_path = os.path.abspath(model_path)
+        else:
+            rel = model_path.replace("\\", "/")
+            for prefix in ("data/models/", "models/"):
+                if rel.startswith(prefix):
+                    rel = rel[len(prefix) :]
+                    break
+            from maxim.utils.paths import model_dir
+
+            reanchored = os.path.join(str(model_dir()), rel)
+            if os.path.exists(reanchored):
+                model_path = reanchored
+            else:
+                canonical = build_model_path(model_base, quantization)
+                if os.path.exists(canonical) and os.path.basename(canonical).lower() != os.path.basename(rel).lower():
+                    # The canonical resolver picked a DIFFERENT file than
+                    # the profile named — say so instead of silently
+                    # swapping models.
+                    logger.warning(
+                        "relative model_path %r not found (checked %s and %s); "
+                        "substituting canonical %s built from model_base=%r",
+                        str(explicit_path),
+                        model_path,
+                        reanchored,
+                        canonical,
+                        model_base,
+                    )
+                model_path = canonical
     else:
         # Build path from model_base and quantization
         model_path = build_model_path(model_base, quantization)
