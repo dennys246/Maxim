@@ -844,3 +844,26 @@ def deregister_entity_tools(
                     known.discard(tname)
                     count += 1
     return count
+
+
+def always_active_sem_tools(registry: Any) -> list[Any]:
+    """SEM affordance tools whose schema declares ``always_active`` — the
+    wired body's reflexive vocabulary (the orient ``turn_*`` family), NOT
+    every affordance on the body.
+
+    The two Phase-1 unions (live SupervisionPolicy allowlist + the prompt's
+    described tool list past the mode filter, sem_motor_binding.md) consume
+    this instead of raw ``get_tools_by_kind`` — the review round flagged
+    that the unfiltered set (~30 tools incl. every goal-gated affordance)
+    is a broader confirmation-free grant and prompt-size cost than the
+    capability that motivated the unions.
+    """
+    out: list[Any] = []
+    try:
+        for tool in registry.get_tools_by_kind("sem-modulator-derived"):
+            schema = getattr(tool, "_affordance_schema", None)
+            if schema is not None and getattr(schema, "always_active", False):
+                out.append(tool)
+    except Exception:
+        log.debug("always_active_sem_tools enumeration failed", exc_info=True)
+    return out

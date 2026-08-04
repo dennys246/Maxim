@@ -360,6 +360,14 @@ def build_executor(
         component_registry: Required iff ``entity_ref`` is set.
         cerebellum: Optional ``Cerebellum`` for forward-model training.
         permissions: Optional ``AgentPermissions``.
+        modulator_factory: Optional ``attach_backends``-shaped factory
+            (``(entity, mod_name, spec_modulator) -> backend | None``)
+            attaching LIVE hardware backends to spec-declared modulators
+            before tool generation (sem_motor_binding.md Phase 1 — real
+            body turns on live Reachy). ``None`` (every sim/headless
+            caller) keeps stub semantics byte-identical. Requires
+            ``entity_ref`` (there is no entity tree to attach to
+            otherwise — passing it alone raises).
 
     Returns:
         Unwrapped inner ``Executor`` with the bridge attached when
@@ -416,6 +424,13 @@ def build_executor(
             "build_executor: pain_bus or pain_detector was provided but nac "
             "is None. Subscribing the bridge without NAc has no effect — "
             "pass an NAc instance or set both subscription sources to None."
+        )
+    if modulator_factory is not None and entity_ref is None:
+        raise ValueError(
+            "build_executor: modulator_factory was provided but entity_ref "
+            "is None — there is no entity tree to attach backends to. "
+            "A silently-ignored factory is a virtual body that lies success "
+            "(sem_motor_binding.md); pass entity_ref or drop the factory."
         )
 
     # ── Bridge construction (gated on nac, not subscription) ─────────

@@ -3899,12 +3899,16 @@ def run_agentic_loop(
                         # 'move' bare-token lesson).
                         if executor is not None and getattr(executor, "embodiment", None) is not None:
                             try:
+                                from maxim.embodiment.tool_bridge import always_active_sem_tools
+
                                 _exec_registry = executor.registry
-                                for _sem_tool in _exec_registry.get_tools_by_kind("sem-modulator-derived"):
+                                for _sem_tool in always_active_sem_tools(_exec_registry):
                                     if _exec_registry.is_tool_active(_sem_tool.name):
                                         available_tools.add(_sem_tool.name)
                             except Exception:
-                                pass
+                                # Silent loss here re-creates the bare-token
+                                # bug this union exists to fix — log it.
+                                logger.debug("SEM prompt union failed", exc_info=True)
 
                         # Wire 3 (release_0_9_1.md Stage 1): filter tools
                         # routed through critically-damaged components and

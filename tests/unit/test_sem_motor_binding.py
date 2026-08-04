@@ -107,6 +107,7 @@ class TestFactoryBinding:
         emb = executor.embodiment
         assert emb is not None
         assert "head_yaw" in emb.live_world_set_sensors
+        assert "body_yaw" in emb.live_world_set_sensors
         _, mod = _orient_modulator(emb.root)
         backend = mod._backend
         assert isinstance(backend, ReachyOrientMotorBackend)
@@ -264,3 +265,98 @@ class TestCreditMillGuard:
             cluster_id="cluster-xyz",
         )
         assert nac.update_cluster_reward.called
+
+
+class TestReviewFoldGuards:
+    """Guards for the two-lens review folds (sem_motor_binding.md)."""
+
+    def test_pose_unreadable_refuses_to_guess(self):
+        """E2: a missing body_yaw in the pre-pose must FAIL, not assume 0 -
+        assuming would command a swing of up to the full body angle."""
+
+        class _BlindRobot(_FakeRobot):
+            def get_current_pose(self):
+                return {"yaw": 0.1}  # joint read failed - no body_yaw
+
+        entity = _reachy()
+        factory = make_reachy_orient_factory(_BlindRobot())
+        ent, mod = _orient_modulator(entity)
+        backend = factory(ent, "orient", mod)
+        result = backend.execute("turn_left", {})
+        assert result.success is False
+        assert "unreadable" in (result.error or "")
+
+    def test_measured_body_yaw_world_set(self):
+        """F5: the readback writes BOTH head_yaw and body_yaw into the
+        entity sensors - the declared body_yaw sensor must not stay frozen
+        at 0 while the body really rotates."""
+        from maxim.runtime.bootstrap import build_executor
+        from maxim.tools.registry import ToolRegistry
+
+        executor = build_executor(
+            ToolRegistry(),
+            pain_bus=_bus(),
+            nac=_nac(),
+            entity_ref="bodies/reachy_mini",
+            component_registry=ComponentRegistry(),
+            modulator_factory=make_reachy_orient_factory(_FakeRobot()),
+        )
+        tool = executor.registry.get("reachy_mini_turn_left")
+        out = tool.execute()
+        assert out.success is True
+        root = executor.embodiment.root
+        assert root.vital_metrics["body_yaw"] == pytest.approx(0.3, abs=0.01)
+
+    def test_always_active_filter_returns_the_orient_family_only(self):
+        """The unions consume the body's ALWAYS-ACTIVE affordances (the
+        reflexive turn_* vocabulary), not every goal-gated affordance."""
+        from maxim.embodiment.tool_bridge import always_active_sem_tools
+        from maxim.runtime.bootstrap import build_executor
+        from maxim.tools.registry import ToolRegistry
+
+        executor = build_executor(
+            ToolRegistry(),
+            pain_bus=_bus(),
+            nac=_nac(),
+            entity_ref="bodies/reachy_mini",
+            component_registry=ComponentRegistry(),
+        )
+        names = {t.name for t in always_active_sem_tools(executor.registry)}
+        # The reflexive vocabulary: the four turns + listen (all declared
+        # always_active in the YAML). Goal-gated affordances (look_at,
+        # antenna moves, ...) must NOT be in the set.
+        assert {
+            "reachy_mini_turn_left",
+            "reachy_mini_turn_right",
+            "reachy_mini_turn_left_big",
+            "reachy_mini_turn_right_big",
+        } <= names
+        assert names <= {
+            "reachy_mini_turn_left",
+            "reachy_mini_turn_right",
+            "reachy_mini_turn_left_big",
+            "reachy_mini_turn_right_big",
+            "reachy_mini_listen",
+        }
+
+    def test_learned_index_registration_makes_tools_renderable(self):
+        """E1: the passive-mode filtered prompt renderer partitions the
+        LearnedToolIndex's OWN universe - SEM tools must be registered into
+        it post-build_executor or they render nowhere on live's default
+        mode."""
+        from maxim.embodiment.tool_bridge import always_active_sem_tools
+        from maxim.runtime.bootstrap import build_executor
+        from maxim.tools.learned_index import LearnedToolIndex
+        from maxim.tools.registry import ToolRegistry
+
+        executor = build_executor(
+            ToolRegistry(),
+            pain_bus=_bus(),
+            nac=_nac(),
+            entity_ref="bodies/reachy_mini",
+            component_registry=ComponentRegistry(),
+        )
+        index = LearnedToolIndex()
+        for t in always_active_sem_tools(executor.registry):
+            index.register_tool(t)
+        assert "reachy_mini_turn_left_big" in index._tool_keywords

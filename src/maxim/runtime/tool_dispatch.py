@@ -512,6 +512,12 @@ def execute_parallel_actions(
             # drive_potential_diff) would fall to the tool-success floor and flood
             # the interoception cluster — the exact flooding the guard prevents on
             # the single-action path (two-lens review, both lenses CONFIRMED).
+            # NOTE (sem_motor_binding.md review fold): this path does NOT read
+            # per-action side_effects, so drive_credit_withheld never reaches it.
+            # Covered today because llm-primary sets drive_relief_only=True (same
+            # elif) and substrate-primary emits single actions only. If
+            # substrate-primary ever batches, thread the marker here per the
+            # every-secondary-dispatcher lesson (#437).
             drive_relief_only=drive_relief_only,
         )
 

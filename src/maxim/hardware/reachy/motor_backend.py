@@ -57,7 +57,7 @@ class ReachyOrientMotorBackend:
     # these keys must not write (the backend's measured readback is the
     # single writer). build_executor unions these into
     # Embodiment.live_world_set_sensors at construction.
-    world_owned_sensors: tuple[str, ...] = ("head_yaw",)
+    world_owned_sensors: tuple[str, ...] = ("head_yaw", "body_yaw")
 
     def __init__(
         self,
@@ -127,6 +127,8 @@ class ReachyOrientMotorBackend:
             body = float(pose.get("body_yaw", 0.0) or 0.0)
             head_rel = float(pose["yaw"]) - body
             world_set_axis(self._embodiment, "head_yaw", head_rel)
+            if "body_yaw" in pose:
+                world_set_axis(self._embodiment, "body_yaw", body)
         except Exception:
             logger.debug("motor backend: measured world-set failed", exc_info=True)
 
@@ -147,7 +149,19 @@ class ReachyOrientMotorBackend:
             from maxim.hardware import MotionTarget
 
             pose = robot.get_current_pose() or {}
-            current_body = float(pose.get("body_yaw", 0.0) or 0.0)
+            if "body_yaw" not in pose:
+                # Refusing to guess (review fold E2): the controller's joint
+                # read is best-effort — assuming body=0 when it fails would
+                # command a swing of up to the full body angle at a duration
+                # computed for a 17-52 deg step. An unverifiable PRE-state is
+                # as disqualifying as an unverified post-state.
+                return self._result(
+                    affordance,
+                    params,
+                    success=False,
+                    error="Body pose unreadable — refusing to guess the current body angle",
+                )
+            current_body = float(pose["body_yaw"])
             target_body = max(-_MAX_BODY_YAW_RAD, min(_MAX_BODY_YAW_RAD, current_body + delta))
             clamped = abs(current_body + delta) > _MAX_BODY_YAW_RAD
             # Duration scales with the swing (~1.5 s for a normal 17°

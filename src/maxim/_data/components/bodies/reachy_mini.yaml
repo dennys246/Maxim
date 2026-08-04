@@ -146,7 +146,8 @@ entity:
     # under -1=left/+1=right, turning left rotates a stationary sound's
     # head-relative bearing toward + (a left-of-center sound moves toward the
     # 0.0 set-point), so azimuth delta has the SAME sign as head_yaw — matches
-    # base_humanoid.yaml and the "drives azimuth toward +" descriptions.
+    # base_humanoid.yaml. (Descriptions were reworded for the LLM audience
+    # in sem_motor_binding.md Phase 1; names/values are unchanged.)
     # Gate B (known, accepted): the intra-execute credit books the MODELED
     # shift; the next DoA re-write corrects the value but not the credit.
     # Sign is what's credited and the modeled sign is calibration-correct.

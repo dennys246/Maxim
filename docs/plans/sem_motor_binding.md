@@ -51,6 +51,15 @@ Both arms run the SAME YAML affordances the live runtime motor-binds (sim = mode
 - **Arm 2 — Weeping Angel (sustained orienting under threat):** an entity advances only while unobserved (|bearing| outside gaze cone → approaches; inside → frozen); contact fires the pain cascade. Tests sustained facing + body-turn necessity when the threat circles past the neck limit; engages fear circuit, harm-avoidance valence, severity latch. Rides existing sim machinery (creature component YAML + orchestrator Layer-2 proximity writes + narrative acts — the cradle pattern).
 - **Hardware calibration step before/alongside Arm 1 live replication:** measure the delivered azimuth shift of a motor-bound turn (body+head-ride ≈ 1.0 gain vs the 0.57 head-only calibration the YAML's ±0.17/0.50 deltas were derived under). If delivered shifts change, the ≈0.33 decision boundary moves and Exp 45b/c re-open — the YAML comment already warns about exactly this.
 
+## Phase 1 implementation review round (two-lens, 2026-08-04) — folds + conscious narrowings
+
+Both lenses confirmed the architecture, guard integrity, head-frame compliance, and B8. Folds landed in the same branch:
+- Prompt/allowlist unions consume `always_active_sem_tools` (the reflexive turn_*+listen vocabulary), not all ~30 SEM tools; SEM tools are ALSO registered into the LearnedToolIndex post-`build_executor` (the passive-mode filtered renderer partitions the index's own universe — without this the prompt union was dead code on live's default mode).
+- Motor factory gates on the DoA feed's own preconditions (reader present + no `audio_localization` opt-out): without a measurement stream owning `azimuth`, the modeled credit books −1 for every real turn (the mill's mirror).
+- Backend refuses to guess an unreadable pre-pose (`body_yaw` missing → failure) and world-sets BOTH `head_yaw` and `body_yaw` from the readback.
+- Four new bare exception swallows converted to logged; `build_executor` fails fast on `modulator_factory` without `entity_ref`.
+- Conscious narrowings recorded: the DoA-reading invalidation after a turn was NOT implemented (the 4-tuple correction + next-reading refresh compensate; readings captured DURING the blocking turn carry a stale body stamp — their azimuth is mid-rotation garbage regardless, Phase 2's pending map owns this window). `execute_parallel_actions` does not read the withheld marker (covered today: llm-primary sets drive_relief_only; substrate-primary emits single actions — comment at the site per the #437 lesson). A `--simulation` Reachy runtime (SimulatedController) also gets the factory — intended: the sim controller honors the same MotionTarget contract. Sign convention (+body_yaw = LEFT) is offline-unverified — the Phase 3 hardware calibration step gates the live policy claim.
+
 ## Risks (ranked, from the lenses)
 
 1. **Three writers on one axis** (`focus_on_sound` + motor-bound turns + future reflex): serialized today by the executor; the Phase-2 discard rule + Stage 5's voluntary-suppresses-reflex handle the rest. Mis-credit across consecutive different-strategy turns is the case the discard rule kills.

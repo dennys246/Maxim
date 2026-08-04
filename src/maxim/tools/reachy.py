@@ -989,7 +989,11 @@ class FocusOnSoundTool(Tool):
                     current_body_deg = _math_frame.degrees(float(pose_now["body_yaw"]))
                     target_yaw += float(capture_body) - current_body_deg
             except Exception:
-                pass
+                # A silent revert to the fixed-body assumption aims wrong by
+                # exactly the body rotation — log it (review fold F1).
+                __import__("logging").getLogger(__name__).debug(
+                    "focus_on_sound: body-frame correction failed", exc_info=True
+                )
         clamped = abs(target_yaw) > envelope
         target_yaw = max(-envelope, min(envelope, target_yaw))
 
@@ -1085,7 +1089,9 @@ class FocusOnSoundTool(Tool):
                 if _ent_name:
                     turn_tool = f"{_ent_name}_turn_{'left' if az < 0 else 'right'}_big"
             except Exception:
-                pass
+                __import__("logging").getLogger(__name__).debug(
+                    "focus_on_sound: turn-tool name resolution failed", exc_info=True
+                )
 
         return ToolResult(
             success=True,
