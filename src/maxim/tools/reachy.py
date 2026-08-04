@@ -814,6 +814,31 @@ class MoveTool(Tool):
             return ToolResult(success=False, error=str(e))
 
 
+def _focus_result_note(az: float, clamped: bool, reached: bool | None, side: str) -> str | None:
+    """LLM-facing outcome note for focus_on_sound — honest per situation.
+
+    The 2026-08-03 live session showed Qwen re-issuing the identical
+    clamped call eight times because the output claimed faced_sound=True
+    with nothing suggesting a different strategy. The note is the
+    actionable half of the honesty fix: say WHY the sound is not faced.
+    """
+    ambiguous = "front/back ambiguous (linear array)" if abs(az) <= 0.1 else None
+    if clamped:
+        return (
+            f"sound beyond neck reach on the {side} — head pointed as far as the neck "
+            "allows but is NOT facing it; turning the body toward the sound would help"
+        )
+    if reached is False:
+        return "head fell short of the target (see achieved_yaw_deg) — motion saturated or was interrupted"
+    if reached is None:
+        return (
+            f"{ambiguous}; motion not verified (no pose readback)"
+            if ambiguous
+            else "motion not verified (no pose readback)"
+        )
+    return ambiguous
+
+
 class FocusOnSoundTool(Tool):
     """Turn the head to face the sound currently being heard — closed-loop.
 
@@ -862,6 +887,10 @@ class FocusOnSoundTool(Tool):
     # would face a memory, not a stimulus (and during silence the feed
     # holds the last value forever). Fail soft instead.
     _MAX_READING_AGE_S = 15.0
+    # Post-motion readback tolerance: |achieved − target| within this counts
+    # as reached (minjerk settling + pose-estimate noise; well under the
+    # 15° azimuth quantum a DoA step represents).
+    _REACH_TOLERANCE_DEG = 5.0
 
     def __init__(self, maxim: Any) -> None:
         super().__init__()
@@ -958,6 +987,38 @@ class FocusOnSoundTool(Tool):
             warn("focus_on_sound failed: %s", e, logger=getattr(maxim, "log", None))
             return ToolResult(success=False, error=str(e))
 
+        # READ THE FRAME BACK (verify-actuation discipline, 2026-08-04): the
+        # goto blocks for ``duration``, so the controller's pose after it
+        # returns is the ACHIEVED pose. The 2026-08-03 live session showed
+        # eight consecutive edge-of-envelope commands where the daemon
+        # accepted the goto, nothing moved, and the tool still reported
+        # faced_sound=True — an "accepted" dispatch is a promise, not a
+        # motion. Best-effort: a controller without get_current_pose (or a
+        # failed read) leaves ``achieved`` unknown rather than fabricated.
+        achieved_yaw: float | None = None
+        reached: bool | None = None
+        try:
+            get_pose = getattr(robot, "get_current_pose", None)
+            pose = get_pose() if callable(get_pose) else None
+            # BOTH frames must be present: the controller's joint read is
+            # best-effort, so a pose can carry world "yaw" without
+            # "body_yaw" — folding a missing body angle to 0 would compute
+            # achieved in the wrong frame with the body turned (a false
+            # "[FELL SHORT]" by the full body angle: the exact
+            # frame-folding class this readback exists to kill). Missing
+            # either → unknown, not failed (review fold, 2026-08-04).
+            if pose and "yaw" in pose and "body_yaw" in pose:
+                world_deg = _math.degrees(float(pose["yaw"]))
+                body_deg = _math.degrees(float(pose["body_yaw"]))
+                achieved_yaw = world_deg - body_deg
+                reached = abs(achieved_yaw - target_yaw) <= self._REACH_TOLERANCE_DEG
+        except Exception:
+            pass
+
+        # Clamp always negates "faced" (the sound is beyond the neck, period);
+        # a CONFIRMED shortfall negates it; an unavailable readback stays
+        # optimistic (unknown ≠ failed) but the note says so.
+        faced = (not clamped) and (reached is not False)
         side = "left" if az < 0 else ("right" if az > 0 else "ahead")
         # Every aim decision at INFO: the 2026-08-03 live sessions were
         # undiagnosable from the console because the tool's direction math
@@ -965,28 +1026,38 @@ class FocusOnSoundTool(Tool):
         # toward or away from the sound.
         _log = getattr(maxim, "log", None) or __import__("logging").getLogger(__name__)
         _log.info(
-            "focus_on_sound: az=%+.2f (%s, %.1fs old) turning %.1f° → %.1f°%s",
+            "focus_on_sound: az=%+.2f (%s, %.1fs old) turning %.1f° → %.1f°%s%s",
             az,
             side,
             age_s,
             cur_yaw,
             target_yaw,
             " [clamped]" if clamped else "",
+            (
+                f" achieved {achieved_yaw:.1f}°" + ("" if reached else " [FELL SHORT]")
+                if achieved_yaw is not None
+                else ""
+            ),
         )
         return ToolResult(
             success=True,
             output={
-                "faced_sound": True,
+                # Honest by measurement, not by dispatch: True only when the
+                # post-motion readback confirms the head is at an UNCLAMPED
+                # target. A clamped target means the sound lies beyond the
+                # neck's reach — the head points as far as it can, but it is
+                # NOT facing the sound, and saying so lets the LLM choose a
+                # body-turn strategy instead of re-issuing the same call.
+                "faced_sound": faced,
                 "azimuth": az,
                 "sound_side": side,
                 "reading_age_s": round(age_s, 2),
                 "from_yaw_deg": round(cur_yaw, 1),
                 "to_yaw_deg": round(target_yaw, 1),
+                "achieved_yaw_deg": round(achieved_yaw, 1) if achieved_yaw is not None else None,
+                "reached_target": reached,
                 "clamped_to_head_limit": clamped,
-                # A linear mic array cannot distinguish front from back: a
-                # source directly BEHIND also reads ≈0 ("ahead"). Honest
-                # self-report per the array's physics.
-                "note": "front/back ambiguous (linear array)" if abs(az) <= 0.1 else None,
+                "note": _focus_result_note(az, clamped, reached, side),
             },
         )
 

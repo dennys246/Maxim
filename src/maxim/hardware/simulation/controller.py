@@ -166,15 +166,22 @@ class SimulatedController(RobotController):
         if not self.is_connected():
             return False
 
-        # Update pose state
+        # Update pose state. FRAME CONTRACT (matches the real controller,
+        # review fold 2026-08-04): MotionTarget.head_yaw is BODY-RELATIVE;
+        # the stored/reported pose "yaw" is WORLD-frame (relative + body),
+        # exactly like ReachyMiniController.get_current_pose (the SDK's fk
+        # folds body_yaw in). Storing the relative value verbatim made the
+        # sim disagree with hardware by the body angle for any consumer
+        # doing world − body — e.g. focus_on_sound's honest readback.
         if target.head_roll is not None:
             self._current_pose["roll"] = target.head_roll
         if target.head_pitch is not None:
             self._current_pose["pitch"] = target.head_pitch
-        if target.head_yaw is not None:
-            self._current_pose["yaw"] = target.head_yaw
         if target.body_yaw is not None:
             self._current_pose["body_yaw"] = target.body_yaw
+        if target.head_yaw is not None:
+            body = float(self._current_pose.get("body_yaw", 0.0) or 0.0)
+            self._current_pose["yaw"] = target.head_yaw + body
 
         if self._simulate_delays:
             time.sleep(target.duration * 0.1)  # 10% of actual duration

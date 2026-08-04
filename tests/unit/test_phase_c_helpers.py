@@ -132,7 +132,23 @@ class TestCliHandlers:
         assert "Local Models" in out
         assert "Cloud Models" in out
 
-    def test_handle_delete_model_unknown_returns_zero(self, capsys):
+    @pytest.fixture()
+    def _isolated_model_home(self, tmp_path, monkeypatch):
+        """Point ~/.maxim at a tmp home so model-deleting code paths can
+        NEVER touch the operator's real files. 2026-08-04: without this,
+        the unknown-profile test below deleted the operator's REAL 4.4 GB
+        mistral GGUF — delete_llm's config fallback resolved the unknown
+        name to the DEFAULT model's canonical path."""
+        from maxim.utils import paths as paths_mod
+
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "maxim_home"))
+        monkeypatch.setenv("MAXIM_LLM_CONFIG", str(tmp_path / "llm.json"))
+        (tmp_path / "llm.json").write_text('{"enabled": false}')
+        paths_mod._reset_caches()
+        yield tmp_path
+        paths_mod._reset_caches()
+
+    def test_handle_delete_model_unknown_returns_zero(self, capsys, _isolated_model_home):
         from maxim.cli import _handle_delete_model
 
         # Unknown profile → falls through, doesn't crash
@@ -141,6 +157,39 @@ class TestCliHandlers:
         out = capsys.readouterr().out
         # Should print available-models hint
         assert "Available local models" in out
+
+    def test_delete_unknown_name_never_deletes_default_model(self, _isolated_model_home, capsys):
+        """THE 2026-08-04 data-loss guard: an unknown/typo'd name must
+        return False and leave every file intact — load_llm_config
+        resolves unknown profiles with the DEFAULT model_base, so an
+        unguarded fallback unlinks the default model's GGUF."""
+        from maxim.models.download import delete_llm
+        from maxim.utils.paths import model_dir
+
+        llm_dir = model_dir() / "LLM"
+        llm_dir.mkdir(parents=True, exist_ok=True)
+        default_gguf = llm_dir / "mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+        default_gguf.write_bytes(b"GGUF fake default model")
+
+        assert delete_llm("not-a-real-profile-xyz") is False
+        assert default_gguf.exists(), (
+            "delete_llm deleted a file the user did not name — the "
+            "unknown-profile fallback resolved the DEFAULT model's path"
+        )
+
+    def test_delete_known_profile_still_works_via_fallback(self, _isolated_model_home, capsys):
+        """The fallback's legitimate job survives the gate: a KNOWN
+        profile with a case-drifted filename is still resolved + deleted."""
+        from maxim.models.download import delete_llm
+        from maxim.utils.paths import model_dir
+
+        llm_dir = model_dir() / "LLM"
+        llm_dir.mkdir(parents=True, exist_ok=True)
+        gguf = llm_dir / "SmolLM-1.7B-Instruct.Q4_K_M.gguf"
+        gguf.write_bytes(b"GGUF fake")
+
+        assert delete_llm("smollm-1.7b-instruct") is True
+        assert not gguf.exists()
 
     def test_handle_clear_memory_unknown_scope_returns_zero(self, tmp_path, capsys):
         from maxim.cli import _handle_clear_memory

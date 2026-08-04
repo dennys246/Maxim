@@ -34,20 +34,30 @@ class _FakeFeed:
 
 
 class _FakeRobot:
-    def __init__(self, accept=True):
+    def __init__(self, accept=True, pose=None, track_target=False):
         self.targets = []
         self._accept = accept
+        self._pose = pose  # dict in RADIANS (controller contract) or None
+        self._track_target = track_target
 
     def goto_target(self, target):
         self.targets.append(target)
+        if self._track_target and self._accept:
+            # Perfect actuation: achieved pose == commanded body-relative yaw.
+            self._pose = {"yaw": float(target.head_yaw), "body_yaw": 0.0}
         return self._accept
+
+    def get_current_pose(self):
+        # None → empty dict: the tool treats a falsy/keyless pose as "no
+        # readback available" (unknown, not failed).
+        return dict(self._pose) if self._pose else {}
 
 
 class _FakeMaxim:
-    def __init__(self, latest=None, yaw=0.0, accept=True, workspace_yaw=None):
+    def __init__(self, latest=None, yaw=0.0, accept=True, workspace_yaw=None, robot=None):
         self._doa_feed = _FakeFeed(latest) if latest is not None else None
         self.yaw = yaw
-        self._robot = _FakeRobot(accept=accept)
+        self._robot = robot if robot is not None else _FakeRobot(accept=accept)
         if workspace_yaw is not None:
             self._get_workspace_limits = lambda: {"yaw": workspace_yaw}
 
@@ -170,6 +180,17 @@ class TestWiringCoherence:
 
         assert "focus_on_sound" in AutonomyController.ALWAYS_ALLOWED_TOOLS
 
+    def test_followup_type_is_process_so_llm_sees_the_result(self):
+        """Review fold 2026-08-04 #1: without a TOOL_DESCRIPTIONS entry
+        the agent loop truncates the output to ~50 chars and the LLM sees
+        only the first key — the honesty payload (faced_sound, note,
+        achieved_yaw_deg) never arrives, and the LLM re-issues the same
+        clamped call (eight times, 2026-08-03 live)."""
+        from maxim.modes.definitions import TOOL_DESCRIPTIONS, get_tool_followup_type
+
+        assert "focus_on_sound" in TOOL_DESCRIPTIONS
+        assert get_tool_followup_type("focus_on_sound") == "process"
+
     def test_every_mode_makes_it_available(self):
         from maxim.modes.definitions import CORE_TOOLS, get_mode
 
@@ -199,3 +220,71 @@ class TestWiringCoherence:
         tool = registry.get("focus_on_sound")
         result = tool.execute()
         assert result.success is False or result.output.get("faced_sound") is False
+
+
+class TestHonestReadback:
+    """Verify-actuation honesty (2026-08-04): the 2026-08-03 live session
+    showed eight consecutive edge-of-envelope commands where the daemon
+    accepted the goto, nothing moved, and the tool reported
+    faced_sound=True — so the LLM re-issued the identical call. The tool
+    now reads the pose back after the (blocking) goto and reports what
+    actually happened."""
+
+    def _run_with_robot(self, latest, robot, yaw=0.0, **params):
+        maxim = _FakeMaxim(latest=latest, yaw=yaw, robot=robot)
+        return FocusOnSoundTool(maxim).execute(**params), maxim
+
+    def test_reached_unclamped_target_faces_sound(self):
+        robot = _FakeRobot(track_target=True)  # perfect actuation
+        result, _ = self._run_with_robot(latest=(0.5, _now(), 0.0), robot=robot)
+        assert result.success
+        assert result.output["faced_sound"] is True
+        assert result.output["reached_target"] is True
+        assert result.output["achieved_yaw_deg"] == pytest.approx(-45.0, abs=0.1)
+
+    def test_confirmed_shortfall_reports_not_faced(self):
+        """Commanded -45, head physically stopped at -12 (neck saturated):
+        faced_sound must be False and the note must say the head fell
+        short — success=True still (dispatch worked), honesty lives in
+        the output the LLM reads."""
+        robot = _FakeRobot(pose={"yaw": math.radians(-12.0), "body_yaw": 0.0})
+        result, _ = self._run_with_robot(latest=(0.5, _now(), 0.0), robot=robot)
+        assert result.success
+        assert result.output["faced_sound"] is False
+        assert result.output["reached_target"] is False
+        assert result.output["achieved_yaw_deg"] == pytest.approx(-12.0, abs=0.1)
+        assert "fell short" in (result.output["note"] or "")
+
+    def test_clamped_target_never_claims_faced_even_when_reached(self):
+        """THE live bug: az=-1.0 clamps to +45; even if the head reaches
+        the clamp target exactly, the sound lies BEYOND it — faced_sound
+        False, and the note points at a body turn."""
+        robot = _FakeRobot(track_target=True)
+        result, _ = self._run_with_robot(latest=(-1.0, _now(), 0.0), robot=robot)
+        assert result.success
+        assert result.output["clamped_to_head_limit"] is True
+        assert result.output["reached_target"] is True  # reached the CLAMP
+        assert result.output["faced_sound"] is False  # but not the SOUND
+        assert "body" in (result.output["note"] or "")
+
+    def test_achieved_is_body_relative(self):
+        """Readback converts the controller's WORLD yaw to body-relative
+        (world − body), the same frame as the commanded target."""
+        # Commanded -25 (az 0.5 from capture 20); world -5 with body +20
+        # → body-relative -25 → reached.
+        robot = _FakeRobot(pose={"yaw": math.radians(-5.0), "body_yaw": math.radians(20.0)})
+        result, _ = self._run_with_robot(latest=(0.5, _now(), 20.0), robot=robot)
+        assert result.output["achieved_yaw_deg"] == pytest.approx(-25.0, abs=0.1)
+        assert result.output["reached_target"] is True
+
+    def test_no_readback_stays_optimistic_with_note(self):
+        """A controller without a usable pose readback: unknown ≠ failed —
+        faced_sound keeps the pre-readback semantics but the note says
+        the motion is unverified."""
+        robot = _FakeRobot(pose=None)
+        result, _ = self._run_with_robot(latest=(0.5, _now(), 0.0), robot=robot)
+        assert result.success
+        assert result.output["faced_sound"] is True
+        assert result.output["reached_target"] is None
+        assert result.output["achieved_yaw_deg"] is None
+        assert "not verified" in (result.output["note"] or "")

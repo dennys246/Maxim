@@ -649,17 +649,34 @@ def delete_llm(
             print(f"Deleted {model_name}: {dest_path.name} ({size_gb:.1f} GB freed)")
             return True
 
-    # Fallback: try resolving via build_model_path (handles case-insensitive matching)
+    # Fallback: try resolving via build_model_path (handles case-insensitive
+    # matching) — but ONLY for names that are actually KNOWN profiles.
+    # load_llm_config resolves an UNKNOWN profile with the DEFAULT
+    # model_base, so an unguarded fallback deletes the default model's GGUF
+    # when the user typos a name (2026-08-04: the test suite deleted the
+    # operator's real 4.4 GB mistral file this way — the config-side path
+    # healing made the previously-dead resolution succeed). Deleting a
+    # file the user did not name is the same silent-substitution class the
+    # model_path fold closed; never fall through for unknown names.
     try:
-        from maxim.models.language.config import load_llm_config
+        from maxim.models.language.config import (
+            _BUILTIN_PROFILES,
+            _normalize_profile,
+            list_llm_profiles,
+        )
 
-        cfg = load_llm_config(profile_override=model_name)
-        model_path = Path(getattr(cfg, "model_path", "") or "")
-        if model_path.is_file():
-            size_gb = model_path.stat().st_size / (1024**3)
-            model_path.unlink()
-            print(f"Deleted {model_name}: {model_path.name} ({size_gb:.1f} GB freed)")
-            return True
+        key = _normalize_profile(model_name) or model_name
+        known_profile = key in _BUILTIN_PROFILES or key in set(list_llm_profiles() or [])
+        if known_profile:
+            from maxim.models.language.config import load_llm_config
+
+            cfg = load_llm_config(profile_override=model_name)
+            model_path = Path(getattr(cfg, "model_path", "") or "")
+            if model_path.is_file():
+                size_gb = model_path.stat().st_size / (1024**3)
+                model_path.unlink()
+                print(f"Deleted {model_name}: {model_path.name} ({size_gb:.1f} GB freed)")
+                return True
     except Exception:
         pass
 

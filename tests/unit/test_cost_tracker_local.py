@@ -295,6 +295,8 @@ class TestRecordMeteringDecision:
             "a metered cloud call with no pricing entry must WARN — silence "
             "here is the silent-unmetered-spend inversion"
         )
+        # Cloud calls DO emit the cloud audit entry.
+        assert router._audit_logger.write.call_count == 1
 
     def test_cloud_record_warning_dedups_per_provider_model(self, caplog):
         import logging
@@ -326,6 +328,10 @@ class TestRecordMeteringDecision:
             "self-hosted lanes have no pricing BY DESIGN — the per-call "
             "WARNING spam is the bug the original patch fixed"
         )
+        # And self-hosted calls do NOT emit cloud audit entries — the
+        # peer tunnel was filling cloud_audit.jsonl (13 MB in a day) plus
+        # a console "cloud_audit" INFO per call before the gate.
+        assert router._audit_logger.write.call_count == 0
 
     def test_record_site_keys_on_treat_as_cloud_not_provider_flag(self):
         """Source pin: the record() call must pass treat_as_cloud. Keying

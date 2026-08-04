@@ -190,14 +190,22 @@ class MovementMixin:
         try:
             import math
 
-            # Get current joint positions - this gives us body_yaw directly
-            # Head joints: 6 Stewart platform joints + 1 body_yaw (index 6)
-            # Antenna joints: 2 antenna positions
+            # Get current joint positions - this gives us body_yaw directly.
+            # SDK >= 1.5 joint vector is [body_yaw, *6 stewart_legs] — its own
+            # kinematics reads INDEX 0 as body_yaw (analytical_kinematics.fk:
+            # `body_yaw = joint_angles[0]`; ik returns `[body_yaw] + stewart`).
+            # The previous index-6 read (zenoh-era ordering, never migrated
+            # across the v1.5 pivot) returned a STEWART LEG angle, so every
+            # body-relative yaw derived here folded a leg-motor angle in —
+            # measured live 2026-08-04: maxim.yaw reported 26.0° while the
+            # daemon's ground truth (/api/state/full) showed world yaw −0.4°,
+            # body −0.3°, with a leg at ≈ −0.45 rad ≈ −26°. That phantom
+            # frame corrupted DoA capture yaw, focus_on_sound aim math, and
+            # the bounds learner's coordinates.
             head_joints, antenna_joints = self.mini.get_current_joint_positions()
 
-            # Body yaw is the 7th joint (index 6) - in radians
-            if len(head_joints) >= 7:
-                body_yaw_rad = head_joints[6]
+            if head_joints is not None and len(head_joints) >= 1:
+                body_yaw_rad = head_joints[0]
                 body_yaw_deg = math.degrees(body_yaw_rad)
                 self.body_yaw = body_yaw_deg
             else:
@@ -1175,11 +1183,14 @@ class MovementMixin:
         from maxim.motion.movement import head_pose_matrix
 
         try:
-            # Get ACTUAL current body yaw from SDK
+            # Get ACTUAL current body yaw from SDK. Joint vector is
+            # [body_yaw, *stewart_legs] — index 0, per analytical_kinematics
+            # (the old index-6 read returned a stewart LEG angle; see the
+            # sync_head_position comment for the live measurement).
             try:
                 head_joints, _ = self.mini.get_current_joint_positions()
-                if len(head_joints) >= 7:
-                    current_body_yaw = math.degrees(head_joints[6])
+                if head_joints is not None and len(head_joints) >= 1:
+                    current_body_yaw = math.degrees(head_joints[0])
                 else:
                     current_body_yaw = float(getattr(self, "body_yaw", 0.0) or 0.0)
             except Exception:
