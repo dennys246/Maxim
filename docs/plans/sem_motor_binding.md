@@ -35,7 +35,11 @@ Guard tests: sim byte-identity (no factory ⇒ stub path, `ToolOutput` byte-equa
 
 Operational (with Phase 1): audit runtime `nac.json` for `tool:focus_on_sound`/`tool:move*` success links written 2026-08-03→04 pre-#459 (phantom-frame sessions recorded mechanical success for actuation that never happened) — reset with backup, the `learned_bounds.json` treatment.
 
-## Phase 2 — measured relief credit (separate PR + two-lens round)
+## Phase 2 — measured relief credit — IMPLEMENTED 2026-08-04 (branch feat/sem-motor-credit, two-lens round pending)
+
+Delivered exactly as specified below: the backend measures (`_read_azimuth` at entry with a 10 s staleness gate; post-motion poll for a reading stamped past `t_end + 0.3 s` settle, 2 s timeout → None, never modeled), the bio layer computes (`tool_bridge` reads `metadata["measured_drive_transitions"]`, applies `drive_comfort_progress`, adds the sensor to `accounted_sensors`, replaces the withheld marker), and the consumer routes (`drive_relief_channel: "exteroceptive"` → the operant/audio cluster; the tool-success floor NEVER routes extero). Registry key `drive_relief_channel` since 1.0.6. Guards: `TestMeasuredReliefCredit` (8 — measured ±, timeout→withheld, stale-before→withheld, audio routing, modeled-stays-intero, floor-never-audio, same-sensor gate).
+
+### Original Phase 2 spec (for reference)
 
 - `az_before` from DoA `latest` at execute entry; post-motion wait for reading with `ts > t_end + ~0.3 s`; `diff = drive_comfort_progress(spec, az_before, az_after)`; emit `side_effects["drive_potential_diff"]` as today.
 - **Timeout → `None`, never modeled fallback** (sparsity acceptable; fabricated sign is not).

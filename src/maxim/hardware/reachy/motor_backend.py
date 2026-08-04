@@ -22,10 +22,14 @@ Honesty contract (verify-actuation discipline):
   ``vital_metrics`` — the modeled self_effect write is filtered, killing
   the SEM sensor drift that shipped with the virtual-turn era.
 
-Credit contract (Phase 1): NONE. The ``azimuth`` claim stays with the
-DoAFeed; no relief credit is booked for real turns until the Phase 2
-measured-credit slice (post-motion DoA re-read) ships with its own review
-round. See docs/plans/sem_motor_binding.md.
+Credit contract (Phase 2, measured): the ``azimuth`` claim stays with
+the DoAFeed (single writer); relief credit comes from a MEASURED
+before/after pair — the feed's reading at execute entry vs the first
+reading stamped after the motion settles. Timeout or staleness → no
+credit (never the modeled delta). The backend only MEASURES; the credit
+formula (drive_comfort_progress) and emission stay in the bio layer
+(tool_bridge reads ``metadata["measured_drive_transitions"]``). See
+docs/plans/sem_motor_binding.md Phase 2.
 
 DN contention: the DefaultNetwork runs on its own thread and its gaze
 behaviors would fight a 1.5-3 s body turn — the backend inhibits the DN
@@ -48,6 +52,17 @@ _MAX_BODY_YAW_RAD = math.radians(160.0)
 # Post-motion readback tolerance: |achieved − target| within this counts
 # as reached (minjerk settling + pose-estimate noise).
 _REACH_TOLERANCE_RAD = math.radians(5.0)
+# Phase 2 measured relief credit (sem_motor_binding.md): the "before"
+# azimuth reading must be recent enough to still describe the sound the
+# turn is answering (the feed holds the last value through silence).
+_MEASURE_BEFORE_MAX_AGE_S = 10.0
+# The chip converges in ~0.23 s after motion; readings stamped earlier
+# than t_end + settle are mid-rotation garbage.
+_MEASURE_SETTLE_S = 0.3
+# How long to wait for a post-motion reading before giving up. A silent
+# room yields NO credit (sparsity is acceptable; fabricated sign is not —
+# the timeout NEVER falls back to the modeled delta).
+_MEASURE_TIMEOUT_S = 2.0
 
 
 class ReachyOrientMotorBackend:
@@ -132,6 +147,43 @@ class ReachyOrientMotorBackend:
         except Exception:
             logger.debug("motor backend: measured world-set failed", exc_info=True)
 
+    def _read_azimuth(self) -> "tuple[float, float] | None":
+        """(azimuth, monotonic_ts) from the DoA feed, or None."""
+        try:
+            feed = getattr(self._maxim, "_doa_feed", None)
+            latest = getattr(feed, "latest", None) if feed is not None else None
+            if latest is None:
+                return None
+            return float(latest[0]), float(latest[1])
+        except Exception:
+            logger.debug("motor backend: azimuth read failed", exc_info=True)
+            return None
+
+    def _measure_azimuth_transition(
+        self, az_before: "tuple[float, float] | None", t_end: float
+    ) -> "tuple[float, float] | None":
+        """MEASURED (before, after) azimuth pair, or None (no fabrication).
+
+        ``after`` must be stamped past ``t_end + settle`` (the chip
+        converges ~0.23 s post-motion; earlier samples are mid-rotation
+        garbage). A silent room times out → None — credit SPARSITY is
+        acceptable, a fabricated or modeled sign is not (the two-lens
+        design round's non-negotiable). The executor serializes actions
+        and the DN is inhibited, so no other motion can contaminate the
+        window on the blocking paths this Phase covers.
+        """
+        if az_before is None:
+            return None
+        import time as _time
+
+        deadline = t_end + _MEASURE_TIMEOUT_S
+        while _time.monotonic() < deadline:
+            after = self._read_azimuth()
+            if after is not None and after[1] > t_end + _MEASURE_SETTLE_S:
+                return az_before[0], after[0]
+            _time.sleep(0.1)
+        return None
+
     # ── the contract surface ─────────────────────────────────────────────
 
     def execute(self, affordance: str, params: dict[str, Any]) -> Any:
@@ -168,8 +220,18 @@ class ReachyOrientMotorBackend:
             # step, ~2.6 s for a big 52° step). The SDK goto blocks.
             duration_s = min(3.0, max(1.0, 1.0 + abs(math.degrees(delta)) / 30.0))
 
+            # Phase 2 measured credit: the BEFORE reading is the sound this
+            # turn answers. Older than the gate = the sound faded; a
+            # measurement against a memory is meaningless -> no credit.
+            import time as _time
+
+            az_before = self._read_azimuth()
+            if az_before is not None and (_time.monotonic() - az_before[1]) > _MEASURE_BEFORE_MAX_AGE_S:
+                az_before = None
+
             self._inhibit_dn(duration_s)
             ok = robot.goto_target(MotionTarget(body_yaw=target_body, duration=duration_s))
+            t_end = _time.monotonic()
             if not ok:
                 return self._result(affordance, params, success=False, error="Motion command rejected by controller")
 
@@ -208,23 +270,33 @@ class ReachyOrientMotorBackend:
                 ),
             )
 
+            # Phase 2: measured azimuth transition (None on timeout/
+            # staleness — never fabricated). Only meaningful when the
+            # motion actually happened; a confirmed-short turn still
+            # rotated PART way, so the measurement stands for it too.
+            transition = self._measure_azimuth_transition(az_before, t_end)
+
             # Unknown readback stays optimistic (unknown != failed);
             # a CONFIRMED shortfall is a real failure the learning
             # chain should see.
             success = reached is not False
+            metadata: dict[str, Any] = {
+                "commanded_body_yaw_deg": round(math.degrees(target_body), 1),
+                "achieved_body_yaw_deg": (round(math.degrees(achieved_body), 1) if achieved_body is not None else None),
+                "reached": reached,
+                "clamped_to_body_limit": clamped,
+            }
+            if transition is not None:
+                # Consumed by ModulatorAffordanceTool.execute: the bio
+                # layer owns the credit formula (drive_comfort_progress);
+                # the backend only measures.
+                metadata["measured_drive_transitions"] = {"azimuth": transition}
             return self._result(
                 affordance,
                 params,
                 success=success,
                 error=None if success else "Body turn fell short (see metadata)",
-                metadata={
-                    "commanded_body_yaw_deg": round(math.degrees(target_body), 1),
-                    "achieved_body_yaw_deg": (
-                        round(math.degrees(achieved_body), 1) if achieved_body is not None else None
-                    ),
-                    "reached": reached,
-                    "clamped_to_body_limit": clamped,
-                },
+                metadata=metadata,
             )
         except Exception as e:
             logger.warning("motor turn %s failed: %s", affordance, e)
