@@ -843,7 +843,14 @@ def _focus_result_note(
             f"allows but is NOT facing it; {body_advice}"
         )
     if reached is False:
-        return "head fell short of the target (see achieved_yaw_deg) — motion saturated or was interrupted"
+        # Name REAL actions here too (2026-08-04 live session: the
+        # un-named fell-short advice made the LLM hallucinate an
+        # `adjust_yaw` tool, which parked the loop at an approval prompt).
+        body_hint = f" or use the {turn_tool} tool to rotate your body toward it" if turn_tool else ""
+        return (
+            "head fell short of the target (see achieved_yaw_deg) — call "
+            f"focus_on_sound again to close the remaining gap{body_hint}"
+        )
     if reached is None:
         return (
             f"{ambiguous}; motion not verified (no pose readback)"
@@ -1082,7 +1089,7 @@ class FocusOnSoundTool(Tool):
         # means the sound is far — recommend the big step on the sound's
         # side. Best-effort: no wired body → generic advice.
         turn_tool: str | None = None
-        if clamped:
+        if clamped or reached is False:
             try:
                 _emb = getattr(feed, "_embodiment", None)
                 _ent_name = getattr(getattr(_emb, "root", None), "name", None)
