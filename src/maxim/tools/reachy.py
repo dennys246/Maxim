@@ -1000,9 +1000,16 @@ class FocusOnSoundTool(Tool):
         try:
             get_pose = getattr(robot, "get_current_pose", None)
             pose = get_pose() if callable(get_pose) else None
-            if pose and "yaw" in pose:
+            # BOTH frames must be present: the controller's joint read is
+            # best-effort, so a pose can carry world "yaw" without
+            # "body_yaw" — folding a missing body angle to 0 would compute
+            # achieved in the wrong frame with the body turned (a false
+            # "[FELL SHORT]" by the full body angle: the exact
+            # frame-folding class this readback exists to kill). Missing
+            # either → unknown, not failed (review fold, 2026-08-04).
+            if pose and "yaw" in pose and "body_yaw" in pose:
                 world_deg = _math.degrees(float(pose["yaw"]))
-                body_deg = _math.degrees(float(pose.get("body_yaw", 0.0) or 0.0))
+                body_deg = _math.degrees(float(pose["body_yaw"]))
                 achieved_yaw = world_deg - body_deg
                 reached = abs(achieved_yaw - target_yaw) <= self._REACH_TOLERANCE_DEG
         except Exception:

@@ -180,6 +180,17 @@ class TestWiringCoherence:
 
         assert "focus_on_sound" in AutonomyController.ALWAYS_ALLOWED_TOOLS
 
+    def test_followup_type_is_process_so_llm_sees_the_result(self):
+        """Review fold 2026-08-04 #1: without a TOOL_DESCRIPTIONS entry
+        the agent loop truncates the output to ~50 chars and the LLM sees
+        only the first key — the honesty payload (faced_sound, note,
+        achieved_yaw_deg) never arrives, and the LLM re-issues the same
+        clamped call (eight times, 2026-08-03 live)."""
+        from maxim.modes.definitions import TOOL_DESCRIPTIONS, get_tool_followup_type
+
+        assert "focus_on_sound" in TOOL_DESCRIPTIONS
+        assert get_tool_followup_type("focus_on_sound") == "process"
+
     def test_every_mode_makes_it_available(self):
         from maxim.modes.definitions import CORE_TOOLS, get_mode
 

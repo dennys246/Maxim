@@ -677,6 +677,23 @@ CRITICAL RULES:
         "example": {"tool_name": "track_target", "params": {"target_class": "person"}},
         "followup_type": None,  # Terminal visual action
     },
+    "focus_on_sound": {
+        "description": (
+            "Turn Maxim's head to face the sound it is currently hearing. "
+            "The result reports whether the head actually FACED the sound "
+            "(faced_sound) — read the note when it did not: a sound beyond "
+            "the neck's reach needs a body turn, not the same call again."
+        ),
+        "params": {},
+        "example": {"tool_name": "focus_on_sound", "params": {}},
+        # "process", not None: the result payload (faced_sound /
+        # achieved_yaw_deg / note) is the honesty half of the tool —
+        # without a followup the agent loop truncates the output to
+        # ~50 chars and the LLM sees only the first key, then re-issues
+        # the identical clamped call (2026-08-03 live session, eight
+        # times; 2026-08-04 review fold #1).
+        "followup_type": "process",
+    },
     "focus_interests": {
         "description": "Scan for and focus on objects in the scene. Use target_class to specify what to look for.",
         "params": {"target_class": "Optional object class to focus on (e.g., 'backpack', 'person', 'cup')"},

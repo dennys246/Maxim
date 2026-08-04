@@ -822,8 +822,8 @@ class LaneBackendManager:
     def has_cloud_billing_surface(self) -> bool:
         """True if ANYTHING in this manager's config could bill a cloud call.
 
-        The startup "Cost tracking disabled (local models only)" banner
-        keys off this — so it must fail CLOSED (return True when unsure):
+        The startup "Cost tracking disabled (no cloud billing configured)"
+        banner keys off this — so it must fail CLOSED (return True when unsure):
         wrongly printing "disabled" on a billing config is the expensive
         direction. Three surfaces, any one of which means cloud spend is
         possible:
