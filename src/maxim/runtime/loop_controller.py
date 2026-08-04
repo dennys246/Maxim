@@ -248,6 +248,14 @@ class LoopController:
         """
         from maxim.modes.definitions import get_tool_followup_type
 
+        # Import at FUNCTION scope, before any branch (2026-08-04 live
+        # crash): the import previously lived inside the approve branch's
+        # try-block, which makes ``display_status`` a LOCAL name for the
+        # whole function — the cancel/modification branches then raised
+        # UnboundLocalError and killed the agentic loop the moment a user
+        # typed anything while a confirmation was pending.
+        from maxim.simulation.sim_logger import display_action, display_status  # noqa: F401
+
         pc = self.get_pending_confirmation()
         if pc is None:
             return False
@@ -274,8 +282,6 @@ class LoopController:
                     outcome="success" if success else "failure",
                 )
                 output = getattr(result, "output", None)
-                from maxim.simulation.sim_logger import display_action, display_status
-
                 if success:
                     confirmed_success = True
                     display_action(pc.tool_name, pc.params or {})

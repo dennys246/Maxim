@@ -329,3 +329,24 @@ class TestBodyFrameCorrection:
         result = FocusOnSoundTool(maxim).execute()
         assert result.output["clamped_to_head_limit"] is True
         assert "reachy_mini_turn_left_big" in (result.output["note"] or "")
+
+    def test_fell_short_note_names_real_actions(self):
+        """2026-08-04 live: the un-named fell-short advice made the LLM
+        hallucinate `adjust_yaw`, parking the loop at an approval prompt.
+        The note must name real registered actions."""
+
+        class _Root:
+            name = "reachy_mini"
+
+        class _Emb:
+            root = _Root()
+
+        # Unclamped target, confirmed shortfall via pose readback.
+        robot = _FakeRobot(pose={"yaw": math.radians(-6.6), "body_yaw": 0.0})
+        maxim = _FakeMaxim(latest=(0.28, _now(), 4.9), robot=robot)
+        maxim._doa_feed._embodiment = _Emb()
+        result = FocusOnSoundTool(maxim).execute()
+        note = result.output["note"] or ""
+        assert result.output["reached_target"] is False
+        assert "focus_on_sound" in note
+        assert "reachy_mini_turn_" in note
