@@ -459,7 +459,18 @@ class ModulatorAffordanceTool(Tool):
         # is Stage 5's act-now-credit-later pending map.
         _self_effect = self._affordance_schema.self_effect
         _live_owned = getattr(self._embodiment, "live_world_set_sensors", None) or ()
+        # Drive-touched-but-unmeasured marker (sem_motor_binding.md Phase 1):
+        # when the affordance's DECLARED effect targets a drive sensor a
+        # live measurement stream owns, the modeled credit is filtered and
+        # no measured credit exists yet (Phase 2) — the consumer must NOT
+        # fall through to the flat +1 tool-success floor. A real motor-bound
+        # turn in a silent room would otherwise mint direction-blind +1s
+        # into the cluster surface (the probe-3 floor-drowning failure).
+        drive_credit_withheld = False
         if _self_effect and _live_owned:
+            _body_for_drives = getattr(self._embodiment, "root", None)
+            _drive_names = set(getattr(_body_for_drives, "drive_specs", {}) or {})
+            drive_credit_withheld = bool(set(_self_effect) & set(_live_owned) & _drive_names)
             _self_effect = {k: v for k, v in _self_effect.items() if k not in _live_owned}
         if _self_effect and self._embodiment is not None:
             _body = self._embodiment.root
@@ -638,6 +649,14 @@ class ModulatorAffordanceTool(Tool):
             if side_effects is None:
                 side_effects = {}
             side_effects["drive_potential_diff"] = drive_potential_diff
+        elif drive_credit_withheld:
+            # See the marker above: drive-touched-but-unmeasured. The
+            # consumer treats this like drive_relief_only for the floor
+            # decision — no cluster credit either way, tool-success ±1
+            # still flows to the causal-link surface as usual.
+            if side_effects is None:
+                side_effects = {}
+            side_effects["drive_credit_withheld"] = True
 
         # Entity acquisition: if this is a pick_up affordance and the target
         # is acquirable, signal the executor to reparent + register tools.
@@ -825,3 +844,26 @@ def deregister_entity_tools(
                     known.discard(tname)
                     count += 1
     return count
+
+
+def always_active_sem_tools(registry: Any) -> list[Any]:
+    """SEM affordance tools whose schema declares ``always_active`` — the
+    wired body's reflexive vocabulary (the orient ``turn_*`` family), NOT
+    every affordance on the body.
+
+    The two Phase-1 unions (live SupervisionPolicy allowlist + the prompt's
+    described tool list past the mode filter, sem_motor_binding.md) consume
+    this instead of raw ``get_tools_by_kind`` — the review round flagged
+    that the unfiltered set (~30 tools incl. every goal-gated affordance)
+    is a broader confirmation-free grant and prompt-size cost than the
+    capability that motivated the unions.
+    """
+    out: list[Any] = []
+    try:
+        for tool in registry.get_tools_by_kind("sem-modulator-derived"):
+            schema = getattr(tool, "_affordance_schema", None)
+            if schema is not None and getattr(schema, "always_active", False):
+                out.append(tool)
+    except Exception:
+        log.debug("always_active_sem_tools enumeration failed", exc_info=True)
+    return out

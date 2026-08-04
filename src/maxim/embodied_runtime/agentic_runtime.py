@@ -203,6 +203,11 @@ class AgenticRuntimeMixin:
                 # absolute target instead of re-applying a head-relative
                 # delta to a pose that has since moved.
                 head_yaw_provider=lambda: float(getattr(self, "yaw", 0.0) or 0.0),
+                # Body stamp (sem_motor_binding.md): once SEM turns really
+                # rotate the body, consumers need the capture-time body
+                # yaw to correct targets across body rotation. maxim.
+                # body_yaw is degrees, synced from joint index 0.
+                body_yaw_provider=lambda: float(getattr(self, "body_yaw", 0.0) or 0.0),
             )
             thread = threading.Thread(target=feed.run, name="doa-feed", daemon=True)
             self._doa_feed = feed
@@ -506,6 +511,47 @@ class AgenticRuntimeMixin:
         # and behavior is byte-identical to before.
         _body_ref, _body_registry = self._resolve_body_wiring(_pain_bus, nac)
 
+        # SEM motor binding (sem_motor_binding.md Phase 1): when a body is
+        # declared AND a real robot controller is connected, the orient
+        # modulator's affordances dispatch REAL body turns (head riding
+        # along) instead of stub success. Sim/headless: factory stays None
+        # → SpecModulator stub semantics, byte-identical.
+        _motor_factory = None
+        if _body_ref is not None:
+            try:
+                from maxim.hardware.reachy.motor_backend import make_reachy_orient_factory
+                from maxim.tools.reachy import _get_robot_from_registry
+
+                _motor_robot = _get_robot_from_registry(None, self)
+                if _motor_robot is not None and _motor_robot.is_connected():
+                    # Bind ONLY when an azimuth MEASUREMENT stream will exist
+                    # (the same gates the DoA feed uses: reader present +
+                    # no audio_localization opt-out). Without the feed
+                    # owning ``azimuth``, the modeled azimuth self_effect
+                    # applies against a sensor pinned at set-point 0 —
+                    # every REAL turn then books −1 relief, the phantom
+                    # credit mill's mirror image (review fold F2).
+                    _cfg_dict = getattr(getattr(self, "_resolved_robot_config", None), "config", None) or {}
+                    _opt_out_raw = _cfg_dict.get("audio_localization")
+                    _audio_opted_out = _opt_out_raw is False or str(_opt_out_raw).strip().lower() in (
+                        "false",
+                        "0",
+                        "no",
+                        "off",
+                    )
+                    _get_reader = getattr(_motor_robot, "get_doa_reader", None)
+                    _reader_ok = callable(_get_reader) and _get_reader() is not None
+                    if _audio_opted_out or not _reader_ok:
+                        self.log.info(
+                            "SEM motor binding skipped: no azimuth measurement stream "
+                            "(audio_localization opt-out or no DoA reader) — modeled "
+                            "azimuth credit would mis-punish real turns"
+                        )
+                    else:
+                        _motor_factory = make_reachy_orient_factory(_motor_robot, maxim=self)
+            except Exception as e:
+                self.log.warning("SEM motor binding unavailable: %s", e)
+
         if nac is not None:
             executor = build_executor(
                 registry,
@@ -518,7 +564,23 @@ class AgenticRuntimeMixin:
                 agent_id=getattr(self, "agent_id", "reachy"),
                 entity_ref=_body_ref,
                 component_registry=_body_registry,
+                modulator_factory=_motor_factory,
             )
+            if _motor_factory is not None:
+                self.log.info("SEM motor binding active: 'orient' affordances dispatch real body turns")
+            # Review fold E1: the LearnedToolIndex was populated BEFORE
+            # build_executor, so the SEM affordance tools it just registered
+            # are invisible to the passive-mode FILTERED prompt renderer
+            # (which partitions the index's own keyword universe). Register
+            # them now — idempotent, preserves learned weights.
+            if tool_index is not None:
+                try:
+                    from maxim.embodiment.tool_bridge import always_active_sem_tools
+
+                    for _sem_tool in always_active_sem_tools(registry):
+                        tool_index.register_tool(_sem_tool)
+                except Exception as e:
+                    self.log.warning("SEM tool-index registration failed: %s", e)
             self._tool_pain_bridge = executor._tool_pain_bridge
             self.log.debug(
                 "ToolPainBridge wired via build_executor (pain_bus=%s, body=%s)",
@@ -761,6 +823,24 @@ class AgenticRuntimeMixin:
         if gateway is not None:
             allowed_tools.add("send_message")
             allowed_tools.add("call_user")
+
+        # The agent's OWN body is not a mode privilege (sem_motor_binding.md
+        # Phase 1): the body's ALWAYS-ACTIVE affordances (the orient turn_*
+        # family — reflexive vocabulary, not goal-gated actions) execute
+        # without a confirmation stop — the live session that motivated
+        # this saw the LLM's correct body-turn strategy die at "requires
+        # approval" (and the live confirmation path can deadlock).
+        # Deliberately NOT via the frozen ALWAYS_ALLOWED_TOOLS set — this
+        # is per-session, derived from the actually-wired body. Narrowed to
+        # always_active per the review fold (the unfiltered ~30-tool set
+        # was a broader confirmation-free grant than the capability needs).
+        try:
+            from maxim.embodiment.tool_bridge import always_active_sem_tools
+
+            for _sem_tool in always_active_sem_tools(registry):
+                allowed_tools.add(_sem_tool.name)
+        except Exception as e:
+            self.log.warning("SEM allowed-tools union failed: %s", e)
 
         # Set up autonomy controller with sensible defaults for live mode
         supervision_policy = SupervisionPolicy(

@@ -288,3 +288,44 @@ class TestHonestReadback:
         assert result.output["reached_target"] is None
         assert result.output["achieved_yaw_deg"] is None
         assert "not verified" in (result.output["note"] or "")
+
+
+class TestBodyFrameCorrection:
+    """sem_motor_binding.md Phase 1: once SEM turns really rotate the body,
+    a reading captured BEFORE a body turn must be corrected by
+    (capture_body - current_body) or the aim points at the wrong world
+    direction by exactly the body rotation."""
+
+    def test_body_rotation_between_capture_and_execute_corrects_frame(self):
+        # Captured at head 0 / body +20 deg; body has since turned to 0.
+        # az +0.5 -> capture-frame target -45; same world direction from
+        # the new body pose = -45 + (20 - 0) = -25.
+        robot = _FakeRobot(pose={"yaw": 0.0, "body_yaw": 0.0})
+        maxim = _FakeMaxim(latest=(0.5, _now(), 0.0, 20.0), robot=robot)
+        result = FocusOnSoundTool(maxim).execute()
+        assert result.success
+        assert math.degrees(maxim._robot.targets[0].head_yaw) == pytest.approx(-25.0)
+
+    def test_three_tuple_reading_keeps_fixed_body_behavior(self):
+        # Pre-Phase-1 stamp shape (no body element): fixed-body assumption,
+        # exactly the previous behavior.
+        robot = _FakeRobot(pose={"yaw": 0.0, "body_yaw": 0.0})
+        maxim = _FakeMaxim(latest=(0.5, _now(), 0.0), robot=robot)
+        result = FocusOnSoundTool(maxim).execute()
+        assert result.success
+        assert math.degrees(maxim._robot.targets[0].head_yaw) == pytest.approx(-45.0)
+
+    def test_clamped_note_names_the_registered_turn_tool(self):
+        # A wired body (via the DoA feed's embodiment ref) lets the note
+        # name the literal registered tool instead of hallucination bait.
+        class _Root:
+            name = "reachy_mini"
+
+        class _Emb:
+            root = _Root()
+
+        maxim = _FakeMaxim(latest=(-1.0, _now(), 0.0))
+        maxim._doa_feed._embodiment = _Emb()
+        result = FocusOnSoundTool(maxim).execute()
+        assert result.output["clamped_to_head_limit"] is True
+        assert "reachy_mini_turn_left_big" in (result.output["note"] or "")

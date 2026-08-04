@@ -90,6 +90,7 @@ def record_outcome(
     embodiment_failed: bool = False,
     drive_potential_diff: float | None = None,
     drive_relief_only: bool = False,
+    drive_credit_withheld: bool = False,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
@@ -291,7 +292,14 @@ def record_outcome(
                 # with an epsilon rather than float identity.
                 if drive_potential_diff is not None and abs(drive_potential_diff) > 1e-9:
                     cluster_reward: float | None = 1.0 if drive_potential_diff > 0.0 else -1.0
-                elif operant_only or drive_relief_only:
+                elif operant_only or drive_relief_only or drive_credit_withheld:
+                    # drive_credit_withheld (sem_motor_binding.md Phase 1):
+                    # a motor-bound LIVE affordance touched a drive sensor a
+                    # measurement stream owns — modeled credit is filtered
+                    # and measured credit hasn't shipped (Phase 2). The
+                    # flat +1 floor here would mint direction-blind cluster
+                    # credit for real turns in a silent room (the probe-3
+                    # floor-drowning failure, one cluster over).
                     # NO tool-success floor. Two callers need this:
                     # - operant_only (cradle_mother): the mother is the sole teacher.
                     # - drive_relief_only (llm-primary / imagination, Phase 1 of
@@ -504,6 +512,12 @@ def execute_parallel_actions(
             # drive_potential_diff) would fall to the tool-success floor and flood
             # the interoception cluster — the exact flooding the guard prevents on
             # the single-action path (two-lens review, both lenses CONFIRMED).
+            # NOTE (sem_motor_binding.md review fold): this path does NOT read
+            # per-action side_effects, so drive_credit_withheld never reaches it.
+            # Covered today because llm-primary sets drive_relief_only=True (same
+            # elif) and substrate-primary emits single actions only. If
+            # substrate-primary ever batches, thread the marker here per the
+            # every-secondary-dispatcher lesson (#437).
             drive_relief_only=drive_relief_only,
         )
 

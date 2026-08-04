@@ -814,19 +814,33 @@ class MoveTool(Tool):
             return ToolResult(success=False, error=str(e))
 
 
-def _focus_result_note(az: float, clamped: bool, reached: bool | None, side: str) -> str | None:
+def _focus_result_note(
+    az: float,
+    clamped: bool,
+    reached: bool | None,
+    side: str,
+    turn_tool: str | None = None,
+) -> str | None:
     """LLM-facing outcome note for focus_on_sound — honest per situation.
 
     The 2026-08-03 live session showed Qwen re-issuing the identical
     clamped call eight times because the output claimed faced_sound=True
     with nothing suggesting a different strategy. The note is the
-    actionable half of the honesty fix: say WHY the sound is not faced.
+    actionable half of the honesty fix: say WHY the sound is not faced —
+    and NAME the real body-turn tool when one is registered (the follow-up
+    session showed the un-named advice made the LLM hallucinate a
+    plausible tool name, sem_motor_binding.md).
     """
     ambiguous = "front/back ambiguous (linear array)" if abs(az) <= 0.1 else None
     if clamped:
+        body_advice = (
+            f"use the {turn_tool} tool to rotate your body toward it"
+            if turn_tool
+            else "turning the body toward the sound would help"
+        )
         return (
             f"sound beyond neck reach on the {side} — head pointed as far as the neck "
-            "allows but is NOT facing it; turning the body toward the sound would help"
+            f"allows but is NOT facing it; {body_advice}"
         )
     if reached is False:
         return "head fell short of the target (see achieved_yaw_deg) — motion saturated or was interrupted"
@@ -931,6 +945,7 @@ class FocusOnSoundTool(Tool):
         # the current yaw, accepting the pre-fold behavior).
         azimuth, ts = float(latest[0]), float(latest[1])
         capture_yaw = latest[2] if len(latest) > 2 else None
+        capture_body = latest[3] if len(latest) > 3 else None
 
         age_s = max(0.0, time.monotonic() - ts)
         if age_s > self._MAX_READING_AGE_S:
@@ -956,6 +971,29 @@ class FocusOnSoundTool(Tool):
         # marches the head to the limit stop).
         envelope = self._yaw_envelope_deg(maxim)
         target_yaw = base_yaw - az * self._AZIMUTH_TO_DEG
+        # Body-rotation correction (sem_motor_binding.md Phase 1): the
+        # dispatched head_yaw is BODY-RELATIVE against the body's CURRENT
+        # yaw, but the capture frame was the body's CAPTURE-time yaw. Once
+        # SEM turns really rotate the body between capture and execute,
+        # the same world direction requires shifting the body-relative
+        # target by (capture_body − current_body). Best-effort: without a
+        # body stamp or a readable pose, behave as before (fixed-body
+        # assumption — correct whenever the body hasn't moved).
+        if capture_body is not None:
+            try:
+                import math as _math_frame
+
+                robot_for_frame = _get_robot_from_registry(None, maxim)
+                pose_now = robot_for_frame.get_current_pose() if robot_for_frame is not None else None
+                if pose_now and "body_yaw" in pose_now:
+                    current_body_deg = _math_frame.degrees(float(pose_now["body_yaw"]))
+                    target_yaw += float(capture_body) - current_body_deg
+            except Exception:
+                # A silent revert to the fixed-body assumption aims wrong by
+                # exactly the body rotation — log it (review fold F1).
+                __import__("logging").getLogger(__name__).debug(
+                    "focus_on_sound: body-frame correction failed", exc_info=True
+                )
         clamped = abs(target_yaw) > envelope
         target_yaw = max(-envelope, min(envelope, target_yaw))
 
@@ -1039,6 +1077,22 @@ class FocusOnSoundTool(Tool):
                 else ""
             ),
         )
+        # Resolve the REGISTERED body-turn tool name for the note (the
+        # tools are entity-prefixed: reachy_mini_turn_left_big). Clamped
+        # means the sound is far — recommend the big step on the sound's
+        # side. Best-effort: no wired body → generic advice.
+        turn_tool: str | None = None
+        if clamped:
+            try:
+                _emb = getattr(feed, "_embodiment", None)
+                _ent_name = getattr(getattr(_emb, "root", None), "name", None)
+                if _ent_name:
+                    turn_tool = f"{_ent_name}_turn_{'left' if az < 0 else 'right'}_big"
+            except Exception:
+                __import__("logging").getLogger(__name__).debug(
+                    "focus_on_sound: turn-tool name resolution failed", exc_info=True
+                )
+
         return ToolResult(
             success=True,
             output={
@@ -1057,7 +1111,7 @@ class FocusOnSoundTool(Tool):
                 "achieved_yaw_deg": round(achieved_yaw, 1) if achieved_yaw is not None else None,
                 "reached_target": reached,
                 "clamped_to_head_limit": clamped,
-                "note": _focus_result_note(az, clamped, reached, side),
+                "note": _focus_result_note(az, clamped, reached, side, turn_tool),
             },
         )
 

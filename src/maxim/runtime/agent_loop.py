@@ -2917,6 +2917,11 @@ def run_agentic_loop(
                     # lets substrate-primary selection learn "turn toward the
                     # sound." None/absent → ±1 fallback. See tool_side_effects.md.
                     _drive_potential_diff = _side.get("drive_potential_diff") if _side else None
+                    # sem_motor_binding.md Phase 1: drive-touched-but-
+                    # unmeasured (motor-bound live turn, credit deferred to
+                    # the Phase 2 measured slice) — suppress the flat +1
+                    # tool-success cluster floor for THIS action.
+                    _drive_credit_withheld = bool(_side.get("drive_credit_withheld")) if _side else False
                     logger.info(
                         "Tool execution completed in %.2fs: %s, success=%s",
                         exec_elapsed,
@@ -3086,6 +3091,7 @@ def run_agentic_loop(
                         clusters=getattr(ctrl.pending_proposal, "clusters", None),
                         embodiment_failed=_embodiment_failed,
                         drive_potential_diff=_drive_potential_diff,
+                        drive_credit_withheld=_drive_credit_withheld,
                     )
 
                     # Record plan outcome in MemoryHub for learning. A plan that
@@ -3882,6 +3888,27 @@ def run_agentic_loop(
 
                         # Get available tools for this mode
                         available_tools = mode_info.get_available_tools(_all_tools)
+
+                        # Body ownership is not a mode privilege
+                        # (sem_motor_binding.md Phase 1): SEM affordance
+                        # tools generated from a wired body join the
+                        # described tool list past the mode filter —
+                        # otherwise a live mode's non-empty allowed_tools
+                        # hides reachy_mini_turn_* and they surface only
+                        # as bare tokens via the relevance filter (the
+                        # 'move' bare-token lesson).
+                        if executor is not None and getattr(executor, "embodiment", None) is not None:
+                            try:
+                                from maxim.embodiment.tool_bridge import always_active_sem_tools
+
+                                _exec_registry = executor.registry
+                                for _sem_tool in always_active_sem_tools(_exec_registry):
+                                    if _exec_registry.is_tool_active(_sem_tool.name):
+                                        available_tools.add(_sem_tool.name)
+                            except Exception:
+                                # Silent loss here re-creates the bare-token
+                                # bug this union exists to fix — log it.
+                                logger.debug("SEM prompt union failed", exc_info=True)
 
                         # Wire 3 (release_0_9_1.md Stage 1): filter tools
                         # routed through critically-damaged components and
