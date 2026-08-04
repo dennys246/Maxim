@@ -1448,22 +1448,29 @@ class LLMRouter:
                 usage["cost_usd"] = cost_usd
                 self._session_cost += cost_usd
 
-                if redaction_result is None:
-                    redaction_result = RedactionResult(
-                        system=redacted_system,
-                        user=redacted_user,
-                        categories_sent=[],
-                        categories_redacted=[],
-                        policy="unknown",
+                # Cloud audit is for CLOUD calls — data leaving to a third
+                # party, with cost attached. Peer-tunnel/self-hosted traffic
+                # was filling data/logs/cloud_audit.jsonl (13 MB in a day)
+                # and emitting a console "cloud_audit" INFO per call
+                # (2026-08-04 live session). Gate on the same metering
+                # predicate record() uses.
+                if treat_as_cloud:
+                    if redaction_result is None:
+                        redaction_result = RedactionResult(
+                            system=redacted_system,
+                            user=redacted_user,
+                            categories_sent=[],
+                            categories_redacted=[],
+                            policy="unknown",
+                        )
+                    self._emit_cloud_audit(
+                        provider_key=provider_key,
+                        model=resp.model or model_override,
+                        usage=usage,
+                        cost_usd=cost_usd,
+                        redaction=redaction_result,
+                        request_context=request_context,
                     )
-                self._emit_cloud_audit(
-                    provider_key=provider_key,
-                    model=resp.model or model_override,
-                    usage=usage,
-                    cost_usd=cost_usd,
-                    redaction=redaction_result,
-                    request_context=request_context,
-                )
                 return resp.content, usage
 
         # Path C: fallback — treat user string as prompt

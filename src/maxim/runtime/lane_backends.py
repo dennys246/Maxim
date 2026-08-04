@@ -3086,7 +3086,11 @@ def _print_lane_banner(manager: "LaneBackendManager") -> None:
     # placement, and printing "disabled" on the highest-spend path is the
     # exact lie the two-lens review caught.
     if not manager.has_cloud_billing_surface():
-        lines.append("  Cost tracking disabled (local models only)")
+        # "no cloud billing configured", not "local models only" — a peer
+        # tunnel lane (self-hosted on your own hardware) is unmetered but
+        # not "local", and the 2026-08-04 live log printed the old wording
+        # right under a self-hosted tunnel URL.
+        lines.append("  Cost tracking disabled (no cloud billing configured)")
     lines.append(" " + "─" * 62)
     logger.info("\n".join(lines))
 
