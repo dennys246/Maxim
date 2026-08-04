@@ -157,22 +157,22 @@ entity:
           params: {}
           always_active: true   # you can always turn (not goal-gated); the orient loop needs it live
           self_effect: {head_yaw: 0.3, azimuth: 0.17}
-          description: "Turn left a normal step (drives azimuth toward +)."
+          description: "Turn your whole body a small step (~17°) to the LEFT, head riding along. Use when a sound or target is to your left — this reaches directions beyond the neck's range."
         turn_right:
           params: {}
           always_active: true
           self_effect: {head_yaw: -0.3, azimuth: -0.17}
-          description: "Turn right a normal step (drives azimuth toward -)."
+          description: "Turn your whole body a small step (~17°) to the RIGHT, head riding along. Use when a sound or target is to your right — this reaches directions beyond the neck's range."
         turn_left_big:
           params: {}
           always_active: true
           self_effect: {head_yaw: 0.9, azimuth: 0.50}
-          description: "Turn left a large step (drives azimuth toward + fast; overshoots when near-centered)."
+          description: "Turn your whole body a LARGE step (~52°) to the LEFT, head riding along. Use for sounds far to your left; overshoots when the sound is nearly centered."
         turn_right_big:
           params: {}
           always_active: true
           self_effect: {head_yaw: -0.9, azimuth: -0.50}
-          description: "Turn right a large step (drives azimuth toward - fast; overshoots when near-centered)."
+          description: "Turn your whole body a LARGE step (~52°) to the RIGHT, head riding along. Use for sounds far to your right; overshoots when the sound is nearly centered."
     motion:
       abstract: true  # capability-only — no sensors (C4)
       affordances:

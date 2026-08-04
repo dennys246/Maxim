@@ -307,6 +307,7 @@ def build_executor(
     entity_map: Any = None,
     distributor: Any = None,
     agent_id: str = "",
+    modulator_factory: Any = None,
 ) -> Executor:
     """Build an Executor with an explicit ToolPainBridge decision.
 
@@ -457,7 +458,40 @@ def build_executor(
         # exception type + message — `ComponentNotFoundError` includes
         # a sorted list of available refs so the user can spot a typo.
         entity = component_registry.instantiate(entity_ref)  # type: ignore[union-attr]
+
+        # SEM motor binding (sem_motor_binding.md Phase 1): attach live
+        # hardware backends to spec-declared modulators BEFORE tool
+        # generation. None (the default, every sim/headless caller) keeps
+        # SpecModulator's stub semantics byte-identical. The factory is
+        # threaded through the canonical builder — not attached post-hoc
+        # by the caller — per the push-silent-no-ops-into-types lesson:
+        # a forgotten attach is a virtual body that LIES success.
+        if modulator_factory is not None:
+            from maxim.embodiment.spec import attach_backends
+
+            attach_backends(entity, modulator_factory=modulator_factory)
+
         embodiment = Embodiment(entity, pain_bus=pain_bus, agent_id=agent_id)
+
+        # Post-construction backend hookup: an attached motor backend
+        # (a) declares which sensors it world-owns — its MEASURED readback
+        # is then the single writer and the modeled self_effect on those
+        # keys is filtered (the same guard mechanism the DoAFeed uses for
+        # ``azimuth``); (b) receives the Embodiment wrapper so its
+        # world-set goes through the canonical ``world_set_axis`` API.
+        if modulator_factory is not None:
+            from maxim.embodiment.spec import SpecModulator
+
+            for ent in entity.walk():
+                for mod in ent.modulators.values():
+                    backend = getattr(mod, "_backend", None) if isinstance(mod, SpecModulator) else None
+                    if backend is None:
+                        continue
+                    for sensor_name in getattr(backend, "world_owned_sensors", ()) or ():
+                        embodiment.live_world_set_sensors.add(str(sensor_name))
+                    bind = getattr(backend, "bind_embodiment", None)
+                    if callable(bind):
+                        bind(embodiment)
 
         generated = generate_tools_for_entity(
             entity,
