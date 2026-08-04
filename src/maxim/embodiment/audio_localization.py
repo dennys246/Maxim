@@ -373,9 +373,14 @@ class DoAFeed:
         self._body_yaw_provider = body_yaw_provider
         self._lock = threading.Lock()
         # (azimuth, monotonic ts, capture head yaw deg | None,
-        #  capture body yaw deg | None) — consumers tolerate shape growth
-        # (focus_on_sound indexes defensively by length).
-        self._latest: "tuple[float, float, float | None, float | None] | None" = None
+        #  capture body yaw deg | None, sample window start ts) —
+        # consumers tolerate shape growth (indexed defensively by length).
+        # window_start is when gated_azimuth BEGAN collecting: the stamp
+        # (ts) trails the last sample by up to the full cycle (~2 s), so
+        # a consumer gating on "captured after X" must test window_start,
+        # not ts (Phase 2 review F1 — gating on the stamp systematically
+        # accepted mid-rotation samples).
+        self._latest: "tuple[float, float, float | None, float | None, float] | None" = None
         # Claim the sensor as live-world-owned (pre-merge review fold): the
         # modeled self_effect on ``azimuth`` must not write/credit while a
         # real measurement stream owns the sensor — a modeled shift the next
@@ -387,8 +392,8 @@ class DoAFeed:
             owned.add("azimuth")
 
     @property
-    def latest(self) -> "tuple[float, float, float | None, float | None] | None":
-        """Most recent gated ``(azimuth, ts, capture_head_yaw_deg, capture_body_yaw_deg)``.
+    def latest(self) -> "tuple[float, float, float | None, float | None, float] | None":
+        """Most recent gated ``(azimuth, ts, capture_head_yaw_deg, capture_body_yaw_deg, window_start_ts)``.
 
         ``None`` before the first speech. The third element is the head yaw
         (degrees, body-relative) at the moment the reading was captured —
@@ -415,6 +420,7 @@ class DoAFeed:
             # repeats stay at DEBUG. gated_azimuth paces the loop, so a
             # persistent failure cannot spin.
             try:
+                window_start = time.monotonic()
                 az = gated_azimuth(
                     self._reader,
                     k=self._k,
@@ -439,7 +445,7 @@ class DoAFeed:
                     except Exception:
                         logger.debug("DoAFeed: body_yaw_provider raised", exc_info=True)
                 with self._lock:
-                    self._latest = (az, time.monotonic(), capture_yaw, capture_body)
+                    self._latest = (az, time.monotonic(), capture_yaw, capture_body, window_start)
                 # Concurrent-writer note: this plain set races the loop
                 # thread's RMW sensor writes on OTHER keys only — the
                 # live_world_set_sensors filter removes ``azimuth`` from

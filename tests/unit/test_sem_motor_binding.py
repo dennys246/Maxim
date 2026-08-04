@@ -363,14 +363,18 @@ class TestReviewFoldGuards:
 
 
 class _FakeFeed:
-    """Scripted DoA feed: `before` served until the turn dispatches, then
-    `after` (stamped in the future so the settle gate passes instantly)."""
+    """Scripted DoA feed serving 5-tuples (az, ts, cap_head, cap_body,
+    window_start): `before` until the turn dispatches, then `after` whose
+    sample WINDOW starts in the future (post-settle gate passes on the
+    first poll — no sleeping in tests)."""
 
-    def __init__(self, before_az=None, after_az=None):
+    def __init__(self, before_az=None, after_az=None, after_window_offset=0.9):
         import time as _t
 
-        self._before = (before_az, _t.monotonic()) if before_az is not None else None
+        now = _t.monotonic()
+        self._before = (before_az, now, 0.0, 0.0, now - 0.05) if before_az is not None else None
         self._after_az = after_az
+        self._after_window_offset = after_window_offset
         self.turn_dispatched = False
 
     @property
@@ -378,10 +382,9 @@ class _FakeFeed:
         import time as _t
 
         if self.turn_dispatched and self._after_az is not None:
-            return (self._after_az, _t.monotonic() + 1.0, 0.0, 0.0)
-        if self._before is not None:
-            return (self._before[0], self._before[1], 0.0, 0.0)
-        return None
+            now = _t.monotonic()
+            return (self._after_az, now + 1.0, 0.0, 0.0, now + self._after_window_offset)
+        return self._before
 
 
 class _MeasuringMaxim:
@@ -565,3 +568,101 @@ class TestMeasuredReliefCredit:
             "same-sensor discomfort nulled the measured credit — accounted_sensors is missing the measured sensor"
         )
         assert side["drive_potential_diff"] > 0
+
+
+class TestMeasurementHonestyGates:
+    """Review folds F1/F2/F4: the gates must test SAMPLE-WINDOW time and
+    CAPTURE-FRAME validity, not stamp time and wall-clock age."""
+
+    def _executor_with(self, feed, robot=None):
+        from maxim.runtime.bootstrap import build_executor
+        from maxim.tools.registry import ToolRegistry
+
+        robot = robot or _MeasuringRobot(feed)
+        maxim = _MeasuringMaxim(feed)
+        executor = build_executor(
+            ToolRegistry(),
+            pain_bus=_bus(),
+            nac=_nac(),
+            entity_ref="bodies/reachy_mini",
+            component_registry=ComponentRegistry(),
+            modulator_factory=make_reachy_orient_factory(robot, maxim=maxim),
+        )
+        executor.embodiment.live_world_set_sensors.add("azimuth")
+        return executor
+
+    def test_mid_window_sample_rejected_despite_fresh_stamp(self, monkeypatch):
+        """F1/F4: the feed stamps AFTER gated_azimuth returns — a reading
+        stamped post-settle can carry samples captured MID-ROTATION. The
+        gate must test window_start, not the stamp."""
+        import maxim.hardware.reachy.motor_backend as mb
+
+        monkeypatch.setattr(mb, "_MEASURE_TIMEOUT_S", 0.3)
+        # after: stamp far in the future (old gate passes) but window
+        # started 1 s BEFORE now (mid-turn samples) — must be REJECTED.
+        feed = _FakeFeed(before_az=-0.5, after_az=-0.2, after_window_offset=-1.0)
+        executor = self._executor_with(feed)
+        out = executor.registry.get("reachy_mini_turn_left").execute()
+        side = out.side_effects or {}
+        assert "drive_potential_diff" not in side, (
+            "a mid-rotation sample window passed the settle gate — stamp-time gating is back (review F1)"
+        )
+        assert side.get("drive_credit_withheld") is True
+
+    def test_before_frame_corrected_across_prior_rotation(self):
+        """F2: a before-reading captured in an OLD frame must be corrected
+        into the turn-entry frame — the uncorrected value mints wrong-SIGN
+        credit on the direction-bearing cluster (the repeat-turn path)."""
+        import math as _m
+
+        # Captured with head world yaw 0 (cap stamps 0/0), az -0.2 (just
+        # left). Since then the body turned RIGHT to -40 deg: in the entry
+        # frame the source is at -0.2 + (-40-0)/90 = -0.644 (well left).
+        feed = _FakeFeed(before_az=-0.2, after_az=-0.34)
+        robot = _MeasuringRobot(feed, body_yaw=_m.radians(-40.0))
+        executor = self._executor_with(feed, robot=robot)
+        out = executor.registry.get("reachy_mini_turn_left").execute()
+        side = out.side_effects or {}
+        assert side.get("drive_potential_diff") is not None
+        assert side["drive_potential_diff"] > 0, (
+            "uncorrected before-frame: |-0.2| vs |-0.34| books -1 for a "
+            "turn that moved TOWARD the sound (review F2 wrong-sign path)"
+        )
+
+    def test_missing_capture_stamps_discard_before(self, monkeypatch):
+        """No capture stamps -> the before-frame is uncorrectable ->
+        discard (withheld), never guess."""
+        import time as _t
+
+        import maxim.hardware.reachy.motor_backend as mb
+
+        monkeypatch.setattr(mb, "_MEASURE_TIMEOUT_S", 0.2)
+        feed = _FakeFeed(before_az=-0.5, after_az=-0.2)
+        now = _t.monotonic()
+        feed._before = (-0.5, now, None, None, now - 0.05)  # stamps absent
+        executor = self._executor_with(feed)
+        out = executor.registry.get("reachy_mini_turn_left").execute()
+        side = out.side_effects or {}
+        assert "drive_potential_diff" not in side
+        assert side.get("drive_credit_withheld") is True
+
+    def test_before_window_overlapping_own_prior_motion_discarded(self, monkeypatch):
+        """A before-window that overlaps this backend's own previous turn
+        is a frame-mixed median — uncorrectable, discard."""
+        import time as _t
+
+        import maxim.hardware.reachy.motor_backend as mb
+
+        monkeypatch.setattr(mb, "_MEASURE_TIMEOUT_S", 0.2)
+        feed = _FakeFeed(before_az=-0.5, after_az=-0.2)
+        executor = self._executor_with(feed)
+        tool = executor.registry.get("reachy_mini_turn_left")
+        tool.execute()  # first turn sets _last_motion_t_end
+        # Re-arm the feed with a before whose window predates that motion.
+        now = _t.monotonic()
+        feed.turn_dispatched = False
+        feed._before = (-0.5, now, 0.0, 0.0, now - 60.0)
+        out = tool.execute()
+        side = out.side_effects or {}
+        assert "drive_potential_diff" not in side
+        assert side.get("drive_credit_withheld") is True

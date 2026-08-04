@@ -61,8 +61,12 @@ _MEASURE_BEFORE_MAX_AGE_S = 10.0
 _MEASURE_SETTLE_S = 0.3
 # How long to wait for a post-motion reading before giving up. A silent
 # room yields NO credit (sparsity is acceptable; fabricated sign is not —
-# the timeout NEVER falls back to the modeled delta).
-_MEASURE_TIMEOUT_S = 2.0
+# the timeout NEVER falls back to the modeled delta). Must exceed the
+# feed's worst case for a fully-post-settle SAMPLE WINDOW: the in-flight
+# gated_azimuth cycle (<= sample_timeout_s 2.0 s) + one clean cycle
+# (<= 2.0 s) + settle (review F3 — 2.0 s systematically missed under
+# sparse speech once the window gate landed).
+_MEASURE_TIMEOUT_S = 4.5
 
 
 class ReachyOrientMotorBackend:
@@ -88,6 +92,10 @@ class ReachyOrientMotorBackend:
         self._maxim = maxim
         self._entity = entity
         self._embodiment: Any = None  # bound by build_executor post-construction
+        # Monotonic end-time of this backend's LAST motion — a before-
+        # reading whose sample window overlaps it is frame-mixed and
+        # uncorrectable (review F2's repeat-turn wrong-sign path).
+        self._last_motion_t_end: float = 0.0
         self._deltas = dict(deltas)  # affordance -> signed body-yaw delta (rad)
         self._modulator_name = modulator_name
         self._entity_name = entity_name
@@ -147,40 +155,86 @@ class ReachyOrientMotorBackend:
         except Exception:
             logger.debug("motor backend: measured world-set failed", exc_info=True)
 
-    def _read_azimuth(self) -> "tuple[float, float] | None":
-        """(azimuth, monotonic_ts) from the DoA feed, or None."""
+    def _read_azimuth(self) -> "tuple[float, float, float | None, float | None, float | None] | None":
+        """(az, ts, capture_head_yaw_deg, capture_body_yaw_deg, window_start) or None.
+
+        The capture-frame stamps and sample-window start are the honesty
+        payload (review F1/F2): the STAMP trails the samples by up to a
+        full gated_azimuth cycle, and the azimuth is head-relative in its
+        CAPTURE frame — both must travel with the value or the gates
+        downstream test the wrong thing.
+        """
         try:
             feed = getattr(self._maxim, "_doa_feed", None)
             latest = getattr(feed, "latest", None) if feed is not None else None
             if latest is None:
                 return None
-            return float(latest[0]), float(latest[1])
+            cap_head = latest[2] if len(latest) > 2 and latest[2] is not None else None
+            cap_body = latest[3] if len(latest) > 3 and latest[3] is not None else None
+            win = float(latest[4]) if len(latest) > 4 and latest[4] is not None else None
+            return (
+                float(latest[0]),
+                float(latest[1]),
+                float(cap_head) if cap_head is not None else None,
+                float(cap_body) if cap_body is not None else None,
+                win,
+            )
         except Exception:
             logger.debug("motor backend: azimuth read failed", exc_info=True)
             return None
 
-    def _measure_azimuth_transition(
-        self, az_before: "tuple[float, float] | None", t_end: float
-    ) -> "tuple[float, float] | None":
-        """MEASURED (before, after) azimuth pair, or None (no fabrication).
+    def _frame_corrected_before(
+        self,
+        reading: "tuple[float, float, float | None, float | None, float | None] | None",
+        entry_world_yaw_deg: float,
+    ) -> "float | None":
+        """The before-azimuth expressed in the TURN-ENTRY head frame, or None.
 
-        ``after`` must be stamped past ``t_end + settle`` (the chip
-        converges ~0.23 s post-motion; earlier samples are mid-rotation
-        garbage). A silent room times out → None — credit SPARSITY is
-        acceptable, a fabricated or modeled sign is not (the two-lens
-        design round's non-negotiable). The executor serializes actions
-        and the DN is inhibited, so no other motion can contaminate the
-        window on the blocking paths this Phase covers.
+        Azimuth is head-relative in its CAPTURE frame (review F2: an
+        age-only gate let a pre-previous-turn reading serve as the
+        baseline — the frame had rotated, minting wrong-SIGN credit on the
+        direction-bearing cluster). Correction: +yaw = LEFT, azimuth
+        +1 = RIGHT, so a head that rotated left by d° since capture sees
+        the same fixed source d/90 further right:
+        ``az_entry = az_capture + (entry_world − capture_world) / 90``.
+        Discards (None) when: no reading; older than the staleness gate;
+        capture stamps missing (uncorrectable); or the sample window
+        overlaps this backend's own previous motion (frame-mixed median —
+        uncorrectable). Saturation clamp attenuates, never flips sign.
         """
-        if az_before is None:
+        if reading is None:
             return None
+        az_cap, ts, cap_head, cap_body, win_start = reading
+        import time as _time
+
+        if (_time.monotonic() - ts) > _MEASURE_BEFORE_MAX_AGE_S:
+            return None
+        if cap_head is None or cap_body is None:
+            return None
+        if win_start is None or win_start <= self._last_motion_t_end:
+            return None
+        cap_world = cap_head + cap_body
+        corrected = az_cap + (entry_world_yaw_deg - cap_world) / 90.0
+        return max(-1.0, min(1.0, corrected))
+
+    def _measure_azimuth_after(self, t_end: float) -> "float | None":
+        """First reading whose SAMPLE WINDOW began past ``t_end + settle``.
+
+        Gating on the stamp is wrong (review F1): the feed stamps AFTER
+        gated_azimuth returns, up to a full cycle later than the samples —
+        stamp-gating systematically preferred the mid-rotation cycle. A
+        silent room times out → None; credit SPARSITY is acceptable, a
+        fabricated or modeled sign is not. The executor serializes actions
+        and the DN is inhibited, so no other motion contaminates a window
+        that begins post-settle.
+        """
         import time as _time
 
         deadline = t_end + _MEASURE_TIMEOUT_S
         while _time.monotonic() < deadline:
             after = self._read_azimuth()
-            if after is not None and after[1] > t_end + _MEASURE_SETTLE_S:
-                return az_before[0], after[0]
+            if after is not None and after[4] is not None and after[4] > t_end + _MEASURE_SETTLE_S:
+                return after[0]
             _time.sleep(0.1)
         return None
 
@@ -221,13 +275,17 @@ class ReachyOrientMotorBackend:
             duration_s = min(3.0, max(1.0, 1.0 + abs(math.degrees(delta)) / 30.0))
 
             # Phase 2 measured credit: the BEFORE reading is the sound this
-            # turn answers. Older than the gate = the sound faded; a
-            # measurement against a memory is meaningless -> no credit.
+            # turn answers, expressed in the TURN-ENTRY frame (frame-
+            # corrected via the capture stamps; discarded when stale,
+            # uncorrectable, or frame-mixed with our own previous motion).
             import time as _time
 
-            az_before = self._read_azimuth()
-            if az_before is not None and (_time.monotonic() - az_before[1]) > _MEASURE_BEFORE_MAX_AGE_S:
-                az_before = None
+            entry_world_deg = math.degrees(float(pose["yaw"])) if "yaw" in pose else None
+            az_before = (
+                self._frame_corrected_before(self._read_azimuth(), entry_world_deg)
+                if entry_world_deg is not None
+                else None
+            )
 
             self._inhibit_dn(duration_s)
             ok = robot.goto_target(MotionTarget(body_yaw=target_body, duration=duration_s))
@@ -274,7 +332,12 @@ class ReachyOrientMotorBackend:
             # staleness — never fabricated). Only meaningful when the
             # motion actually happened; a confirmed-short turn still
             # rotated PART way, so the measurement stands for it too.
-            transition = self._measure_azimuth_transition(az_before, t_end)
+            transition: "tuple[float, float] | None" = None
+            if az_before is not None:
+                az_after = self._measure_azimuth_after(t_end)
+                if az_after is not None:
+                    transition = (az_before, az_after)
+            self._last_motion_t_end = t_end
 
             # Unknown readback stays optimistic (unknown != failed);
             # a CONFIRMED shortfall is a real failure the learning

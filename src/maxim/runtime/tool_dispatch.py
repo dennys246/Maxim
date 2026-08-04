@@ -335,11 +335,11 @@ def record_outcome(
                 # the uniform tool-success floor leak onto them would re-drown
                 # the direction signal on the write side (probe 3).
                 if cluster_reward is not None and not credit_cluster:
-                    # Cluster context exists but the chosen slot is empty:
-                    # either a designed extero-only body (test-pinned), the
-                    # interoception encode failed this tick, or (extero
-                    # routing) no direction-bearing cluster resolved — the
-                    # reward is dropped by design, but not silently.
+                    # Chosen slot empty (a designed extero-only body, or
+                    # the interoception encode failed this tick) — the
+                    # reward is dropped by design, but not silently. Note
+                    # extero routing rarely lands here: operant_cluster
+                    # falls back to intero when only AUDIO_TAG is missing.
                     logger.debug(
                         "cluster reward %+.1f for %s dropped: no credit cluster in %r",
                         cluster_reward,

@@ -522,15 +522,33 @@ class ModulatorAffordanceTool(Tool):
                 _measured_total += drive_comfort_progress(_spec, _before, _after)
                 accounted_sensors.add(_sensor)
                 _measured_any = True
-            if _measured_any:
+            if _measured_any and abs(_measured_total) > 1e-9:
+                # REPLACES the modeled diff wholesale. Safe for every
+                # shipped body (the turns' only drive sensor is the
+                # live-owned azimuth, so the modeled diff is always None
+                # here); a future affordance mixing a modeled intero
+                # effect with a measured extero pair needs per-sensor
+                # channel routing instead of this overwrite (review F5).
                 drive_potential_diff = _measured_total
                 drive_credit_withheld = False
                 # Exteroceptive measured relief is SOURCE-ATTRIBUTABLE
                 # (conditioned on where the sound was) — the consumer
-                # routes it to the direction-bearing (audio) cluster so
-                # live experience COMPOUNDS the trained policy keys
-                # instead of coexisting beside them on intero.
+                # routes it to the direction-bearing (audio) cluster.
+                # NOTE (review): this credits the PRODUCTION audio-cluster
+                # space (EC node ids, direction-level). The Exp 45/46
+                # trained biases are keyed on literal bin names
+                # (far_left, ...) — a DISJOINT key space consulted only by
+                # the orient_backbone scripts. Live credit can therefore
+                # never corrupt the trained bins, but it does not compound
+                # them either; bin/production key unification is the named
+                # follow-up in sem_motor_binding.md.
                 drive_relief_channel = "exteroceptive"
+            elif _measured_any:
+                # Measured exact-zero net progress: an honest "no change"
+                # — keep the floor suppressed (withheld) rather than
+                # letting substrate-primary book a direction-blind +1
+                # for a turn that measurably changed nothing (review F5).
+                drive_credit_withheld = True
 
         # Target-effect: when the affordance fires WITH a target parameter,
         # write deltas to the resolved target's body sensors.  Silent

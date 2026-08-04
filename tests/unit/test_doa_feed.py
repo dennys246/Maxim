@@ -63,7 +63,7 @@ class TestDoAFeedWrites:
         feed.run()  # single-threaded: burst → write, silence → stop → return
         assert body.vital_metrics["azimuth"] == -1.0
         assert feed.latest is not None
-        az, ts, capture_yaw, _capture_body = feed.latest
+        az, ts, capture_yaw, *_rest = feed.latest
         assert az == -1.0
         assert ts > 0
         assert capture_yaw is None  # no head_yaw_provider wired in this test
@@ -84,7 +84,7 @@ class TestDoAFeedWrites:
             head_yaw_provider=lambda: 27.9,
         )
         feed.run()
-        az, ts, capture_yaw, _capture_body = feed.latest
+        az, ts, capture_yaw, *_rest = feed.latest
         assert capture_yaw == pytest.approx(27.9)
 
     def test_head_yaw_provider_failure_is_swallowed(self):
@@ -97,7 +97,7 @@ class TestDoAFeedWrites:
         reader = _ScriptedReader([_SPEECH_LEFT] * 3, stop_event=stop)
         feed = DoAFeed(reader, emb, stop_event=stop, sample_poll_s=0.0, sample_timeout_s=0.5, head_yaw_provider=_boom)
         feed.run()
-        az, ts, capture_yaw, _capture_body = feed.latest
+        az, ts, capture_yaw, *_rest = feed.latest
         assert az == -1.0
         assert capture_yaw is None
 
