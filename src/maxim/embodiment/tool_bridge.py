@@ -490,6 +490,66 @@ class ModulatorAffordanceTool(Tool):
                     pre_values,
                 )
 
+        # Phase 2 MEASURED relief credit (sem_motor_binding.md): a motor
+        # backend that really actuated reports measured before/after pairs
+        # for live-owned drive sensors (``metadata["measured_drive_
+        # transitions"]``). The credit formula stays HERE (the bio layer's
+        # drive_comfort_progress — single source of truth); the backend
+        # only measures. This REPLACES the withheld marker when a
+        # measurement exists; timeout/staleness upstream leaves the marker
+        # (no floor, no fabricated sign). ``accounted_sensors`` MUST
+        # include the measured sensors or the same-sensor collateral gate
+        # below nulls every still-off-center turn (the design round's
+        # self-defeating-feature warning).
+        drive_relief_channel: str | None = None
+        _measured = getattr(result, "metadata", None) or {}
+        _transitions = _measured.get("measured_drive_transitions")
+        if _transitions and self._embodiment is not None:
+            from maxim.embodiment.sem import drive_comfort_progress
+
+            _body_m = self._embodiment.root
+            _specs_m = getattr(_body_m, "drive_specs", {}) or {}
+            _measured_total = 0.0
+            _measured_any = False
+            for _sensor, _pair in _transitions.items():
+                _spec = _specs_m.get(_sensor)
+                if _spec is None:
+                    continue
+                try:
+                    _before, _after = float(_pair[0]), float(_pair[1])
+                except (TypeError, ValueError, IndexError):
+                    continue
+                _measured_total += drive_comfort_progress(_spec, _before, _after)
+                accounted_sensors.add(_sensor)
+                _measured_any = True
+            if _measured_any and abs(_measured_total) > 1e-9:
+                # REPLACES the modeled diff wholesale. Safe for every
+                # shipped body (the turns' only drive sensor is the
+                # live-owned azimuth, so the modeled diff is always None
+                # here); a future affordance mixing a modeled intero
+                # effect with a measured extero pair needs per-sensor
+                # channel routing instead of this overwrite (review F5).
+                drive_potential_diff = _measured_total
+                drive_credit_withheld = False
+                # Exteroceptive measured relief is SOURCE-ATTRIBUTABLE
+                # (conditioned on where the sound was) — the consumer
+                # routes it to the direction-bearing (audio) cluster.
+                # NOTE (review): this credits the PRODUCTION audio-cluster
+                # space (EC node ids, direction-level). The Exp 45/46
+                # trained biases are keyed on literal bin names
+                # (far_left, ...) — a DISJOINT key space consulted only by
+                # the orient_backbone scripts. Live credit can therefore
+                # never corrupt the trained bins, but it does not compound
+                # them either; bin/production key unification is the named
+                # follow-up in sem_motor_binding.md.
+                drive_relief_channel = "exteroceptive"
+            elif _measured_any:
+                # Measured exact-zero net progress: an honest "no change"
+                # — keep the floor suppressed (withheld) rather than
+                # letting substrate-primary book a direction-blind +1
+                # for a turn that measurably changed nothing (review F5).
+                drive_credit_withheld = True
+
         # Target-effect: when the affordance fires WITH a target parameter,
         # write deltas to the resolved target's body sensors.  Silent
         # no-op if no target is provided (preserves backward compatibility
@@ -649,6 +709,10 @@ class ModulatorAffordanceTool(Tool):
             if side_effects is None:
                 side_effects = {}
             side_effects["drive_potential_diff"] = drive_potential_diff
+            if drive_relief_channel is not None:
+                # Measured exteroceptive relief — consumer routes the ±1
+                # to the direction-bearing cluster (see registry doc).
+                side_effects["drive_relief_channel"] = drive_relief_channel
         elif drive_credit_withheld:
             # See the marker above: drive-touched-but-unmeasured. The
             # consumer treats this like drive_relief_only for the floor

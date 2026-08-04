@@ -35,7 +35,18 @@ Guard tests: sim byte-identity (no factory ⇒ stub path, `ToolOutput` byte-equa
 
 Operational (with Phase 1): audit runtime `nac.json` for `tool:focus_on_sound`/`tool:move*` success links written 2026-08-03→04 pre-#459 (phantom-frame sessions recorded mechanical success for actuation that never happened) — reset with backup, the `learned_bounds.json` treatment.
 
-## Phase 2 — measured relief credit (separate PR + two-lens round)
+## Phase 2 — measured relief credit — IMPLEMENTED 2026-08-04 (branch feat/sem-motor-credit, two-lens round FOLDED)
+
+Delivered, then hardened by the round (both lenses BLOCKING, both folded):
+- The backend measures with HONESTY GATES the round rewrote: the after-reading is accepted on its **sample-window start** (`latest[4]`, new 5-tuple element), not its stamp — the feed stamps AFTER `gated_azimuth` returns, up to a full cycle later than the samples, so stamp-gating systematically preferred the mid-rotation cycle (executor F1). The before-reading is **frame-corrected into the turn-entry frame** via the capture stamps (`az_entry = az_cap + (entry_world − cap_world)/90`) and discarded when stale (10 s), stamp-less, or window-overlapping this backend's own previous motion (executor F2 — the repeat-turn wrong-sign path). Timeout raised to 4.5 s (≥ 2 feed cycles + settle, F3). Rejection guards landed with the fold and are fail-verified against stamp-gating.
+- The bio layer computes (`drive_comfort_progress` from `metadata["measured_drive_transitions"]`, sensor added to `accounted_sensors`); a measured exact-zero keeps the floor suppressed (withheld) rather than minting a +1.
+- The consumer routes `drive_relief_channel: "exteroceptive"` → the operant/audio cluster; the tool-success floor NEVER routes extero (test-pinned).
+
+**CLAIM CORRECTION (bio-credit lens F1, blocking):** this credit lands on the PRODUCTION audio-cluster space — EC node ids from `encode_sensors(azimuth, modality="audio")`, direction-level (~2 clusters left/right). The Exp 45/46 trained biases are keyed on **literal bin names** (`far_left`, …) — a DISJOINT key space consulted only by the `scripts/orient_backbone` harnesses. Live credit therefore can never corrupt the trained bins, but it does not compound them either, and the graded far→big magnitude differentiation cannot re-emerge through this channel. **Named follow-up: bin/production key unification** (map the production encode onto the trained bin space, or re-train the policy on production keys — revisit the bias-cap saturation question when doing so). Also noted: front/back fold (linear array) can inject contradictory ±1s in mixed front/rear environments and has a spurious fixed-point facing directly away — sensor limitation, bounded, future confidence-field gating. Planning-mode approved-action path never extracts side_effects (pre-existing; dropped credit, never wrong-sign).
+
+Registry key `drive_relief_channel` since 1.0.6. Guards: `TestMeasuredReliefCredit` (8) + `TestMeasurementHonestyGates` (4, fail-verified).
+
+### Original Phase 2 spec (for reference)
 
 - `az_before` from DoA `latest` at execute entry; post-motion wait for reading with `ts > t_end + ~0.3 s`; `diff = drive_comfort_progress(spec, az_before, az_after)`; emit `side_effects["drive_potential_diff"]` as today.
 - **Timeout → `None`, never modeled fallback** (sparsity acceptable; fabricated sign is not).

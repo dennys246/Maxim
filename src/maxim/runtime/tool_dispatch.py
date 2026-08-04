@@ -91,6 +91,7 @@ def record_outcome(
     drive_potential_diff: float | None = None,
     drive_relief_only: bool = False,
     drive_credit_withheld: bool = False,
+    drive_relief_channel: str | None = None,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
@@ -290,8 +291,21 @@ def record_outcome(
                 # residue that exact-equality would mis-credit as ±1. The
                 # exactly-0 -> tool-success boundary is load-bearing, so guard it
                 # with an epsilon rather than float identity.
+                # Credit target: interoception by default. MEASURED
+                # exteroceptive relief (Phase 2, sem_motor_binding.md —
+                # producer marks drive_relief_channel="exteroceptive")
+                # routes to the direction-bearing operant cluster instead:
+                # it is source-attributable (conditioned on where the sound
+                # was, exactly like the caregiver's operant credit — the
+                # probe-3 carve-out), and it is the surface the trained
+                # orient policy keys on, so live experience COMPOUNDS the
+                # imported biases instead of coexisting beside them. The
+                # tool-success floor NEVER routes extero (probe-3 rule).
+                credit_cluster = intero_cluster
                 if drive_potential_diff is not None and abs(drive_potential_diff) > 1e-9:
                     cluster_reward: float | None = 1.0 if drive_potential_diff > 0.0 else -1.0
+                    if drive_relief_channel == "exteroceptive":
+                        credit_cluster = operant_cluster
                 elif operant_only or drive_relief_only or drive_credit_withheld:
                     # drive_credit_withheld (sem_motor_binding.md Phase 1):
                     # a motor-bound LIVE affordance touched a drive sensor a
@@ -320,22 +334,23 @@ def record_outcome(
                 # credit_operant_reward via the pending action above); letting
                 # the uniform tool-success floor leak onto them would re-drown
                 # the direction signal on the write side (probe 3).
-                if cluster_reward is not None and not intero_cluster:
-                    # Cluster context exists (extero) but no interoception
-                    # slot: either a designed extero-only body (test-pinned)
-                    # or the interoception encode failed this tick — the
-                    # reward is dropped by design, but not silently.
+                if cluster_reward is not None and not credit_cluster:
+                    # Chosen slot empty (a designed extero-only body, or
+                    # the interoception encode failed this tick) — the
+                    # reward is dropped by design, but not silently. Note
+                    # extero routing rarely lands here: operant_cluster
+                    # falls back to intero when only AUDIO_TAG is missing.
                     logger.debug(
-                        "cluster reward %+.1f for %s dropped: no interoception cluster in %r",
+                        "cluster reward %+.1f for %s dropped: no credit cluster in %r",
                         cluster_reward,
                         sig,
                         sorted(active_clusters),
                     )
-                if cluster_reward is not None and intero_cluster:
+                if cluster_reward is not None and credit_cluster:
                     try:
                         nac.update_cluster_reward(
                             agent_id=agent_id,
-                            cluster_id=intero_cluster,
+                            cluster_id=credit_cluster,
                             tool_signature=sig,
                             reward=cluster_reward,
                         )

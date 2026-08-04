@@ -360,3 +360,309 @@ class TestReviewFoldGuards:
         for t in always_active_sem_tools(executor.registry):
             index.register_tool(t)
         assert "reachy_mini_turn_left_big" in index._tool_keywords
+
+
+class _FakeFeed:
+    """Scripted DoA feed serving 5-tuples (az, ts, cap_head, cap_body,
+    window_start): `before` until the turn dispatches, then `after` whose
+    sample WINDOW starts in the future (post-settle gate passes on the
+    first poll — no sleeping in tests)."""
+
+    def __init__(self, before_az=None, after_az=None, after_window_offset=0.9):
+        import time as _t
+
+        now = _t.monotonic()
+        self._before = (before_az, now, 0.0, 0.0, now - 0.05) if before_az is not None else None
+        self._after_az = after_az
+        self._after_window_offset = after_window_offset
+        self.turn_dispatched = False
+
+    @property
+    def latest(self):
+        import time as _t
+
+        if self.turn_dispatched and self._after_az is not None:
+            now = _t.monotonic()
+            return (self._after_az, now + 1.0, 0.0, 0.0, now + self._after_window_offset)
+        return self._before
+
+
+class _MeasuringMaxim:
+    def __init__(self, feed):
+        self._doa_feed = feed
+
+
+class _MeasuringRobot(_FakeRobot):
+    def __init__(self, feed, **kw):
+        super().__init__(**kw)
+        self._feed = feed
+
+    def goto_target(self, target):
+        ok = super().goto_target(target)
+        self._feed.turn_dispatched = True
+        return ok
+
+
+class TestMeasuredReliefCredit:
+    """Phase 2 (sem_motor_binding.md): relief credit is a MEASURED
+    before/after azimuth pair — never the modeled delta — routed to the
+    direction-bearing cluster."""
+
+    def _executor_with_feed(self, feed):
+        from maxim.runtime.bootstrap import build_executor
+        from maxim.tools.registry import ToolRegistry
+
+        robot = _MeasuringRobot(feed)
+        maxim = _MeasuringMaxim(feed)
+        executor = build_executor(
+            ToolRegistry(),
+            pain_bus=_bus(),
+            nac=_nac(),
+            entity_ref="bodies/reachy_mini",
+            component_registry=ComponentRegistry(),
+            modulator_factory=make_reachy_orient_factory(robot, maxim=maxim),
+        )
+        # Live claim, as the DoAFeed does at construction.
+        executor.embodiment.live_world_set_sensors.add("azimuth")
+        return executor
+
+    def test_measured_progress_emits_positive_diff_on_audio_channel(self):
+        # Sound at -0.5 (left); after the turn it reads -0.2 — moved toward
+        # center: positive measured relief, exteroceptive channel.
+        feed = _FakeFeed(before_az=-0.5, after_az=-0.2)
+        executor = self._executor_with_feed(feed)
+        out = executor.registry.get("reachy_mini_turn_left").execute()
+        side = out.side_effects or {}
+        assert side.get("drive_potential_diff") is not None
+        assert side["drive_potential_diff"] > 0
+        assert side.get("drive_relief_channel") == "exteroceptive"
+        assert "drive_credit_withheld" not in side
+
+    def test_measured_regress_emits_negative_diff(self):
+        # Turned AWAY: -0.2 → -0.5. Negative measured relief.
+        feed = _FakeFeed(before_az=-0.2, after_az=-0.5)
+        executor = self._executor_with_feed(feed)
+        out = executor.registry.get("reachy_mini_turn_right").execute()
+        side = out.side_effects or {}
+        assert side.get("drive_potential_diff") is not None
+        assert side["drive_potential_diff"] < 0
+
+    def test_silent_room_times_out_to_withheld(self, monkeypatch):
+        # No post-motion reading ever arrives: NO fabricated credit — the
+        # withheld marker (floor suppression) instead. Timeout shrunk so
+        # the test doesn't sleep 2 s.
+        import maxim.hardware.reachy.motor_backend as mb
+
+        monkeypatch.setattr(mb, "_MEASURE_TIMEOUT_S", 0.2)
+        feed = _FakeFeed(before_az=-0.5, after_az=None)
+        executor = self._executor_with_feed(feed)
+        out = executor.registry.get("reachy_mini_turn_left").execute()
+        side = out.side_effects or {}
+        assert "drive_potential_diff" not in side, "fabricated credit on timeout"
+        assert side.get("drive_credit_withheld") is True
+
+    def test_stale_before_reading_yields_no_credit(self, monkeypatch):
+        # The motivating sound faded 30 s ago — measuring against a memory
+        # is meaningless. Withheld, no credit.
+        import time as _t
+
+        import maxim.hardware.reachy.motor_backend as mb
+
+        monkeypatch.setattr(mb, "_MEASURE_TIMEOUT_S", 0.2)
+        feed = _FakeFeed(before_az=-0.5, after_az=-0.2)
+        feed._before = (-0.5, _t.monotonic() - 30.0)
+        executor = self._executor_with_feed(feed)
+        out = executor.registry.get("reachy_mini_turn_left").execute()
+        side = out.side_effects or {}
+        assert "drive_potential_diff" not in side
+        assert side.get("drive_credit_withheld") is True
+
+    def test_consumer_routes_exteroceptive_to_audio_cluster(self):
+        from maxim.decisions.nac import INTEROCEPTION_MODALITY
+        from maxim.embodiment.sensory_streams import AUDIO_TAG
+        from maxim.runtime.tool_dispatch import record_outcome
+
+        nac = MagicMock()
+        record_outcome(
+            agent_id="a",
+            tool_name="reachy_mini_turn_left",
+            success=True,
+            result_summary="ok",
+            error=None,
+            reasoning="",
+            recent_outcomes=[],
+            max_recent=10,
+            llm_worker=None,
+            context_pool=MagicMock(),
+            nac=nac,
+            clusters={AUDIO_TAG: "aud-1", INTEROCEPTION_MODALITY: "int-1"},
+            drive_potential_diff=0.3,
+            drive_relief_channel="exteroceptive",
+        )
+        call = nac.update_cluster_reward.call_args
+        assert call.kwargs["cluster_id"] == "aud-1", (
+            "measured exteroceptive relief must credit the direction-bearing "
+            "cluster (the trained policy's keys), not interoception"
+        )
+        assert call.kwargs["reward"] == 1.0
+
+    def test_modeled_relief_still_routes_to_intero(self):
+        from maxim.decisions.nac import INTEROCEPTION_MODALITY
+        from maxim.embodiment.sensory_streams import AUDIO_TAG
+        from maxim.runtime.tool_dispatch import record_outcome
+
+        nac = MagicMock()
+        record_outcome(
+            agent_id="a",
+            tool_name="warm_self",
+            success=True,
+            result_summary="ok",
+            error=None,
+            reasoning="",
+            recent_outcomes=[],
+            max_recent=10,
+            llm_worker=None,
+            context_pool=MagicMock(),
+            nac=nac,
+            clusters={AUDIO_TAG: "aud-1", INTEROCEPTION_MODALITY: "int-1"},
+            drive_potential_diff=0.3,
+        )
+        assert nac.update_cluster_reward.call_args.kwargs["cluster_id"] == "int-1"
+
+    def test_floor_never_routes_to_audio(self):
+        from maxim.decisions.nac import INTEROCEPTION_MODALITY
+        from maxim.embodiment.sensory_streams import AUDIO_TAG
+        from maxim.runtime.tool_dispatch import record_outcome
+
+        nac = MagicMock()
+        record_outcome(
+            agent_id="a",
+            tool_name="say",
+            success=True,
+            result_summary="ok",
+            error=None,
+            reasoning="",
+            recent_outcomes=[],
+            max_recent=10,
+            llm_worker=None,
+            context_pool=MagicMock(),
+            nac=nac,
+            clusters={AUDIO_TAG: "aud-1", INTEROCEPTION_MODALITY: "int-1"},
+            drive_relief_channel="exteroceptive",  # channel WITHOUT a diff
+        )
+        # Tool-success floor fires (no diff) but must stay on intero.
+        assert nac.update_cluster_reward.call_args.kwargs["cluster_id"] == "int-1"
+
+    def test_same_sensor_discomfort_does_not_null_measured_credit(self):
+        # accounted_sensors includes azimuth in the measured path, so a
+        # lingering drive:azimuth discomfort (still off-center after a
+        # RELIEVING turn) is same-sensor, not collateral — the design
+        # round's self-defeating-feature warning.
+        feed = _FakeFeed(before_az=-0.9, after_az=-0.6)  # relieving, still off
+        executor = self._executor_with_feed(feed)
+        # Drive the azimuth sensor far off-center so discomfort is active.
+        executor.embodiment.root.vital_metrics["azimuth"] = -0.9
+        out = executor.registry.get("reachy_mini_turn_left").execute()
+        side = out.side_effects or {}
+        assert side.get("drive_potential_diff") is not None, (
+            "same-sensor discomfort nulled the measured credit — accounted_sensors is missing the measured sensor"
+        )
+        assert side["drive_potential_diff"] > 0
+
+
+class TestMeasurementHonestyGates:
+    """Review folds F1/F2/F4: the gates must test SAMPLE-WINDOW time and
+    CAPTURE-FRAME validity, not stamp time and wall-clock age."""
+
+    def _executor_with(self, feed, robot=None):
+        from maxim.runtime.bootstrap import build_executor
+        from maxim.tools.registry import ToolRegistry
+
+        robot = robot or _MeasuringRobot(feed)
+        maxim = _MeasuringMaxim(feed)
+        executor = build_executor(
+            ToolRegistry(),
+            pain_bus=_bus(),
+            nac=_nac(),
+            entity_ref="bodies/reachy_mini",
+            component_registry=ComponentRegistry(),
+            modulator_factory=make_reachy_orient_factory(robot, maxim=maxim),
+        )
+        executor.embodiment.live_world_set_sensors.add("azimuth")
+        return executor
+
+    def test_mid_window_sample_rejected_despite_fresh_stamp(self, monkeypatch):
+        """F1/F4: the feed stamps AFTER gated_azimuth returns — a reading
+        stamped post-settle can carry samples captured MID-ROTATION. The
+        gate must test window_start, not the stamp."""
+        import maxim.hardware.reachy.motor_backend as mb
+
+        monkeypatch.setattr(mb, "_MEASURE_TIMEOUT_S", 0.3)
+        # after: stamp far in the future (old gate passes) but window
+        # started 1 s BEFORE now (mid-turn samples) — must be REJECTED.
+        feed = _FakeFeed(before_az=-0.5, after_az=-0.2, after_window_offset=-1.0)
+        executor = self._executor_with(feed)
+        out = executor.registry.get("reachy_mini_turn_left").execute()
+        side = out.side_effects or {}
+        assert "drive_potential_diff" not in side, (
+            "a mid-rotation sample window passed the settle gate — stamp-time gating is back (review F1)"
+        )
+        assert side.get("drive_credit_withheld") is True
+
+    def test_before_frame_corrected_across_prior_rotation(self):
+        """F2: a before-reading captured in an OLD frame must be corrected
+        into the turn-entry frame — the uncorrected value mints wrong-SIGN
+        credit on the direction-bearing cluster (the repeat-turn path)."""
+        import math as _m
+
+        # Captured with head world yaw 0 (cap stamps 0/0), az -0.2 (just
+        # left). Since then the body turned RIGHT to -40 deg: in the entry
+        # frame the source is at -0.2 + (-40-0)/90 = -0.644 (well left).
+        feed = _FakeFeed(before_az=-0.2, after_az=-0.34)
+        robot = _MeasuringRobot(feed, body_yaw=_m.radians(-40.0))
+        executor = self._executor_with(feed, robot=robot)
+        out = executor.registry.get("reachy_mini_turn_left").execute()
+        side = out.side_effects or {}
+        assert side.get("drive_potential_diff") is not None
+        assert side["drive_potential_diff"] > 0, (
+            "uncorrected before-frame: |-0.2| vs |-0.34| books -1 for a "
+            "turn that moved TOWARD the sound (review F2 wrong-sign path)"
+        )
+
+    def test_missing_capture_stamps_discard_before(self, monkeypatch):
+        """No capture stamps -> the before-frame is uncorrectable ->
+        discard (withheld), never guess."""
+        import time as _t
+
+        import maxim.hardware.reachy.motor_backend as mb
+
+        monkeypatch.setattr(mb, "_MEASURE_TIMEOUT_S", 0.2)
+        feed = _FakeFeed(before_az=-0.5, after_az=-0.2)
+        now = _t.monotonic()
+        feed._before = (-0.5, now, None, None, now - 0.05)  # stamps absent
+        executor = self._executor_with(feed)
+        out = executor.registry.get("reachy_mini_turn_left").execute()
+        side = out.side_effects or {}
+        assert "drive_potential_diff" not in side
+        assert side.get("drive_credit_withheld") is True
+
+    def test_before_window_overlapping_own_prior_motion_discarded(self, monkeypatch):
+        """A before-window that overlaps this backend's own previous turn
+        is a frame-mixed median — uncorrectable, discard."""
+        import time as _t
+
+        import maxim.hardware.reachy.motor_backend as mb
+
+        monkeypatch.setattr(mb, "_MEASURE_TIMEOUT_S", 0.2)
+        feed = _FakeFeed(before_az=-0.5, after_az=-0.2)
+        executor = self._executor_with(feed)
+        tool = executor.registry.get("reachy_mini_turn_left")
+        tool.execute()  # first turn sets _last_motion_t_end
+        # Re-arm the feed with a before whose window predates that motion.
+        now = _t.monotonic()
+        feed.turn_dispatched = False
+        feed._before = (-0.5, now, 0.0, 0.0, now - 60.0)
+        out = tool.execute()
+        side = out.side_effects or {}
+        assert "drive_potential_diff" not in side
+        assert side.get("drive_credit_withheld") is True

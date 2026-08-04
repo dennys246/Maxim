@@ -2922,6 +2922,9 @@ def run_agentic_loop(
                     # the Phase 2 measured slice) — suppress the flat +1
                     # tool-success cluster floor for THIS action.
                     _drive_credit_withheld = bool(_side.get("drive_credit_withheld")) if _side else False
+                    # Phase 2 (sem_motor_binding.md): measured exteroceptive
+                    # relief routes to the direction-bearing cluster.
+                    _drive_relief_channel = _side.get("drive_relief_channel") if _side else None
                     logger.info(
                         "Tool execution completed in %.2fs: %s, success=%s",
                         exec_elapsed,
@@ -3092,6 +3095,7 @@ def run_agentic_loop(
                         embodiment_failed=_embodiment_failed,
                         drive_potential_diff=_drive_potential_diff,
                         drive_credit_withheld=_drive_credit_withheld,
+                        drive_relief_channel=_drive_relief_channel,
                     )
 
                     # Record plan outcome in MemoryHub for learning. A plan that
