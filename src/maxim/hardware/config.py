@@ -17,9 +17,14 @@ from maxim.hardware.registry import RobotRegistry
 
 logger = logging.getLogger(__name__)
 
-# Default config paths (searched in order)
+# Default config paths (searched in order). The data-home entry is
+# resolved lazily in find_config_file via maxim.utils.paths.data_home()
+# so MAXIM_DATA_HOME isolation covers robots.yaml like every other
+# persisted surface (default unchanged: ~/.maxim/robots.yaml). The
+# hardcoded "~/.maxim" literal was the one path that ignored the
+# override — an Exp 49 harness trial would otherwise silently pick up
+# the operator's REAL robot config.
 DEFAULT_CONFIG_PATHS = [
-    "~/.maxim/robots.yaml",
     "robots.yaml",
 ]
 
@@ -127,8 +132,27 @@ def resolve_body_ref(robot_config: RobotConfig | None) -> str | None:
 
 
 def find_config_file(search_paths: list[str] | None = None) -> Path | None:
-    """Find the first existing config file in search paths."""
-    paths = search_paths or DEFAULT_CONFIG_PATHS
+    """Find the first existing config file in search paths.
+
+    Default order: ``<data_home>/robots.yaml`` (``~/.maxim`` unless
+    ``MAXIM_DATA_HOME`` overrides — same resolution as every other
+    persisted surface), then ``./robots.yaml``.
+    """
+    if search_paths is not None:
+        paths = list(search_paths)
+    else:
+        try:
+            from maxim.utils.paths import data_home
+
+            paths = [str(data_home() / "robots.yaml"), *DEFAULT_CONFIG_PATHS]
+        except Exception:
+            # Do NOT fall back to a hardcoded "~/.maxim/robots.yaml" here
+            # (review fold): if data-home resolution fails inside an
+            # isolated harness run, silently reading the operator's REAL
+            # robots.yaml could connect a trial to real hardware. Fail
+            # toward cwd-only and say so.
+            logger.warning("data_home() unresolvable — robots.yaml search limited to cwd")
+            paths = list(DEFAULT_CONFIG_PATHS)
 
     for path_str in paths:
         path = Path(path_str).expanduser()
@@ -136,6 +160,27 @@ def find_config_file(search_paths: list[str] | None = None) -> Path | None:
             return path
 
     return None
+
+
+def resolve_robot_entry(
+    robots_config: RobotsConfig,
+    robot_id: str | None,
+) -> RobotConfig | None:
+    """Resolve the declared robot entry for a runtime id — THE match rule.
+
+    Exact ``robot_id`` match first; else fall back to the primary ONLY
+    when it is unambiguous (a single robot, or one explicitly marked
+    ``primary``) — never guess the first of several unmarked robots.
+    Shared by :func:`resolve_connection_config` and the selfy connect
+    path's declared-``type`` resolution so the two can never disagree on
+    which robot the operator meant.
+    """
+    match = robots_config.get(robot_id)
+    if match is None:
+        has_explicit_primary = any(r.primary for r in robots_config.robots)
+        if len(robots_config.robots) == 1 or has_explicit_primary:
+            match = robots_config.get_primary()
+    return match
 
 
 def resolve_connection_config(
@@ -148,10 +193,7 @@ def resolve_connection_config(
 
     The single place the LIVE connect path resolves ``robots.yaml``'s
     free-form ``config:`` dict (host, connection_mode, tunnel, ...) for a
-    robot. Matching mirrors ``_resolve_body_wiring``'s rule exactly: exact
-    ``robot_id`` match first; else fall back to the primary ONLY when it is
-    unambiguous (a single robot, or one explicitly marked ``primary``) —
-    never guess the first of several unmarked robots.
+    robot. Matching is :func:`resolve_robot_entry`'s rule.
 
     Declared keys WIN over ``defaults`` (operator intent beats runtime
     convenience). Returns just the defaults when nothing matches, so a
@@ -164,11 +206,7 @@ def resolve_connection_config(
     true.
     """
     merged = dict(defaults or {})
-    match = robots_config.get(robot_id)
-    if match is None:
-        has_explicit_primary = any(r.primary for r in robots_config.robots)
-        if len(robots_config.robots) == 1 or has_explicit_primary:
-            match = robots_config.get_primary()
+    match = resolve_robot_entry(robots_config, robot_id)
     if match is not None:
         merged.update(match.config)
     return merged

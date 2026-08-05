@@ -18,6 +18,18 @@ from maxim.utils.gpu_compat import is_gpu_available
 from maxim.utils.logging import warn
 
 
+def config_flag_disabled(raw: object) -> bool:
+    """True when a robots.yaml free-form config value opts a feature OUT.
+
+    Accepts YAML ``false`` AND plausible hand-edits ("false", "0", "no",
+    "off" — case/whitespace-insensitive). Absent (None) or any other
+    value = NOT opted out. The single parser for the runtime's config-dict
+    opt-outs (``audio_localization``, ``motor_binding``) so the accepted
+    spellings can never drift between gates.
+    """
+    return raw is False or str(raw).strip().lower() in ("false", "0", "no", "off")
+
+
 def _compute_target_hz(capabilities) -> float:
     """Adapt agentic loop frequency to available hardware.
 
@@ -146,9 +158,8 @@ class AgenticRuntimeMixin:
                 return  # bodiless, or a body without sound localization
             robot_config = getattr(self, "_resolved_robot_config", None)
             cfg_dict = getattr(robot_config, "config", None) or {}
-            opt_out = cfg_dict.get("audio_localization")
             # Accept YAML false AND plausible hand-edits ("false", "no", ...).
-            if opt_out is False or str(opt_out).strip().lower() in ("false", "0", "no", "off"):
+            if config_flag_disabled(cfg_dict.get("audio_localization")):
                 self.log.info("DoA feed disabled via robots.yaml (audio_localization: false)")
                 return
             robot = getattr(self, "_robot", None)
@@ -517,7 +528,16 @@ class AgenticRuntimeMixin:
         # along) instead of stub success. Sim/headless: factory stays None
         # → SpecModulator stub semantics, byte-identical.
         _motor_factory = None
-        if _body_ref is not None:
+        # Explicit opt-out seam (Exp 49 arm A, 2026-08-04): robots.yaml
+        # `config: {motor_binding: false}` keeps the DoA feed + focus_on_sound
+        # (the head-only repertoire) while the SEM turn affordances stay
+        # stub — the head-only comparison arm. Same free-form config dict
+        # + false-parse as the audio_localization opt-out.
+        _mb_cfg = getattr(getattr(self, "_resolved_robot_config", None), "config", None) or {}
+        _motor_binding_opted_out = config_flag_disabled(_mb_cfg.get("motor_binding"))
+        if _motor_binding_opted_out:
+            self.log.info("SEM motor binding disabled via robots.yaml (motor_binding: false)")
+        if _body_ref is not None and not _motor_binding_opted_out:
             try:
                 from maxim.hardware.reachy.motor_backend import make_reachy_orient_factory
                 from maxim.tools.reachy import _get_robot_from_registry
@@ -532,13 +552,7 @@ class AgenticRuntimeMixin:
                     # every REAL turn then books −1 relief, the phantom
                     # credit mill's mirror image (review fold F2).
                     _cfg_dict = getattr(getattr(self, "_resolved_robot_config", None), "config", None) or {}
-                    _opt_out_raw = _cfg_dict.get("audio_localization")
-                    _audio_opted_out = _opt_out_raw is False or str(_opt_out_raw).strip().lower() in (
-                        "false",
-                        "0",
-                        "no",
-                        "off",
-                    )
+                    _audio_opted_out = config_flag_disabled(_cfg_dict.get("audio_localization"))
                     _get_reader = getattr(_motor_robot, "get_doa_reader", None)
                     _reader_ok = callable(_get_reader) and _get_reader() is not None
                     if _audio_opted_out or not _reader_ok:
@@ -1065,6 +1079,22 @@ class AgenticRuntimeMixin:
                     except Exception:
                         pass
 
+        # Proposer mode (Exp 49 arm C, 2026-08-04): robots.yaml
+        # `config: {aut_mode: substrate-primary}` runs the live loop on the
+        # substrate proposer (NAc.recommend_action over the SEM repertoire —
+        # no LLM in the action path). Default (absent/invalid) stays
+        # llm-primary, byte-identical to before; invalid values warn rather
+        # than silently degrading to a different proposer.
+        _aut_cfg = getattr(getattr(self, "_resolved_robot_config", None), "config", None) or {}
+        _aut_mode = str(_aut_cfg.get("aut_mode") or "llm-primary").strip().lower()
+        if _aut_mode not in ("llm-primary", "substrate-primary"):
+            self.log.warning(
+                "robots.yaml aut_mode=%r is not a known mode — using llm-primary", _aut_cfg.get("aut_mode")
+            )
+            _aut_mode = "llm-primary"
+        if _aut_mode != "llm-primary":
+            self.log.info("Agentic loop proposer: %s (robots.yaml aut_mode)", _aut_mode)
+
         def _worker() -> None:
             try:
                 run_agentic_loop(
@@ -1091,6 +1121,7 @@ class AgenticRuntimeMixin:
                     # adapter, when the feed started; None → loop builds its
                     # own NullSimulationAdapter, byte-identical to before.
                     sim_adapter=getattr(self, "_doa_sim_adapter", None),
+                    aut_mode=_aut_mode,
                 )
             except Exception as e:
                 warn("Agentic runtime loop failed: %s", e, logger=self.log)

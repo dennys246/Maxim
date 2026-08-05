@@ -269,13 +269,37 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
                 "media_backend": media_backend,
             }
             try:
-                from maxim.hardware.config import load_robots_config, resolve_connection_config
+                from maxim.hardware.config import (
+                    load_robots_config,
+                    resolve_connection_config,
+                    resolve_robot_entry,
+                )
 
+                _robots_cfg = load_robots_config()
                 _connect_config = resolve_connection_config(
-                    load_robots_config(),
+                    _robots_cfg,
                     effective_robot_id,
                     defaults=_connect_config,
                 )
+                # Honor the operator's declared `type:` (Exp 49 seam,
+                # 2026-08-04): `type: simulated` runs the FULL live stack
+                # against SimulatedController, declaratively — previously
+                # the live path hardcoded reachy_mini and the `type` field
+                # was silently ignored (the registry registered "simulated"
+                # but nothing could ever select it without the internal
+                # simulation= constructor flag). Same match rule as the
+                # connection-config resolution, so type and config always
+                # come from the same entry.
+                _entry = resolve_robot_entry(_robots_cfg, effective_robot_id)
+                if _entry is not None and _entry.robot_type:
+                    if _entry.robot_type != robot_type:
+                        self.log.info(
+                            "robots.yaml declares type=%s for %r — overriding default %s",
+                            _entry.robot_type,
+                            effective_robot_id,
+                            robot_type,
+                        )
+                    robot_type = _entry.robot_type
             except Exception as e:  # config load is best-effort; never block startup
                 self.log.debug("robots.yaml connection config not loaded: %s", e)
         else:
