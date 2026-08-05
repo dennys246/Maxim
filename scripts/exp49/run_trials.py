@@ -180,7 +180,7 @@ def run_scripted_trial(bearing_deg: float, seed: int, sandbox: Path) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _trial_env(arm: str, home: Path, jsonl: Path) -> dict:
+def _trial_env(arm: str, home: Path, jsonl: Path, *, min_confidence: float | None) -> dict:
     env = os.environ.copy()
     env["PYTHONPATH"] = str((REPO_ROOT / "src").resolve())
     env["MAXIM_DATA_HOME"] = str(home)
@@ -195,7 +195,40 @@ def _trial_env(arm: str, home: Path, jsonl: Path) -> dict:
         # always-succeed generic tools don't out-compete the affordances
         # under test (the probe-3 floor lesson; substring match).
         env["MAXIM_SUBSTRATE_TOOL_WHITELIST"] = "turn_left,turn_right"
+    if min_confidence is not None:
+        # Documented experiment knob (CLAUDE.md env table): bypasses
+        # recommend_action's cold-start gate. Needed for arm C with an
+        # imported live policy — cluster_reward_bias is CAPPED (~0.2)
+        # below the default 0.3 threshold, so a real learned bias can
+        # never act through the default gate (the known clamp-vs-
+        # threshold asymmetry). Recorded in the trial record.
+        env["MAXIM_NAC_MIN_CONFIDENCE"] = str(min_confidence)
     return env
+
+
+def _import_substrate(home: Path, source_dir: Path) -> dict:
+    """Copy a trained nac.json + ec.json PAIR into the trial's data home.
+
+    The pair rule (CLAUDE.md nac_cross_session_persistence invariant):
+    NAc biases key on EC node ids — restoring either without the other
+    leaves biases dangling on nodes a fresh EC never re-allocates. Refuses
+    a half-pair. build_bio_stack restores both on startup because the
+    sandbox home now "has prior files". Returns provenance for the record.
+    """
+    import hashlib
+
+    nac_src = source_dir / "nac.json"
+    ec_src = source_dir / "ec.json"
+    if not nac_src.exists() or not ec_src.exists():
+        raise SystemExit(f"--import-substrate needs BOTH nac.json and ec.json in {source_dir} (the pair rule)")
+    mem = home / "memory"
+    mem.mkdir(parents=True, exist_ok=True)
+    prov = {}
+    for src in (nac_src, ec_src):
+        data = src.read_bytes()
+        (mem / src.name).write_bytes(data)
+        prov[src.name] = {"source": str(src), "sha256": hashlib.sha256(data).hexdigest()[:16]}
+    return prov
 
 
 def run_spawned_trial(
@@ -204,12 +237,18 @@ def run_spawned_trial(
     seed: int,
     sandbox: Path,
     maxim_bin: str,
+    *,
+    import_substrate: Path | None = None,
+    min_confidence: float | None = None,
 ) -> dict:
     sandbox.mkdir(parents=True, exist_ok=True)
     home = sandbox / "home"
     home.mkdir(exist_ok=True)
     jsonl = sandbox / "maxim.jsonl"
     (home / "robots.yaml").write_text(common.robots_yaml_text(arm=arm, bearing_deg=bearing_deg, seed=seed))
+    substrate_prov = None
+    if import_substrate is not None:
+        substrate_prov = _import_substrate(home, import_substrate)
 
     cmd = [
         maxim_bin,
@@ -224,7 +263,7 @@ def run_spawned_trial(
         "--verbosity",
         "1",
     ]
-    env = _trial_env(arm, home, jsonl)
+    env = _trial_env(arm, home, jsonl, min_confidence=min_confidence)
     started = time.time()
     record: dict = {
         "arm": arm,
@@ -233,6 +272,8 @@ def run_spawned_trial(
         "started_at": _now_iso(),
         "cmd": cmd,
         "jsonl": str(jsonl),
+        "min_confidence_env": min_confidence,
+        "imported_substrate": substrate_prov,
         "provenance": _provenance.executed_code_provenance(REPO_ROOT, maxim_bin),
     }
     stdout_log = open(sandbox / "stdout.log", "w")
@@ -286,6 +327,19 @@ def main() -> int:
     )
     ap.add_argument("--seed-base", type=int, default=4900)
     ap.add_argument("--limit-trials", type=int, default=0, help="Run only the first N trials (0 = all)")
+    ap.add_argument(
+        "--import-substrate",
+        default=None,
+        help="Directory holding a trained nac.json + ec.json PAIR to seed each trial's "
+        "data home (arm C 'trained policy import'). Both files required.",
+    )
+    ap.add_argument(
+        "--min-confidence",
+        type=float,
+        default=None,
+        help="Sets MAXIM_NAC_MIN_CONFIDENCE for spawned trials (arm C: 0.0 lets a "
+        "capped cluster bias act through the 0.3 default gate).",
+    )
     args = ap.parse_args()
 
     out_dir = Path(args.out).expanduser().resolve()
@@ -323,7 +377,15 @@ def main() -> int:
         if args.arm == "scripted":
             rec = run_scripted_trial(bearing, seed, sandbox)
         else:
-            rec = run_spawned_trial(args.arm, bearing, seed, sandbox, maxim_bin)
+            rec = run_spawned_trial(
+                args.arm,
+                bearing,
+                seed,
+                sandbox,
+                maxim_bin,
+                import_substrate=(Path(args.import_substrate).expanduser() if args.import_substrate else None),
+                min_confidence=args.min_confidence,
+            )
         records.append(rec)
         m = rec["metrics"]
         print(

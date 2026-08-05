@@ -160,8 +160,17 @@ def configure_logging(
             _ensure_jsonl_file_handler(jsonl_path)
         return
 
-    # Keep existing handlers but align their levels with the requested verbosity.
+    # Keep existing handlers but align their levels with the requested
+    # verbosity. The JSONL handler is EXEMPT: its contract is "captures
+    # DEBUG+ regardless of stdout verbosity" (see _ensure_jsonl_file_handler),
+    # and this align loop was silently clobbering it to the console level on
+    # any later configure_logging(force=False) call (e.g. selfy.__init__ at
+    # verbosity 1) — DEBUG-level structured events then never reached the
+    # MAXIM_LOG_FILE they exist for (caught by the Exp 49 arm-C probe: zero
+    # sim_doa.read events in a 156 s session with the feed demonstrably up).
     for handler in root.handlers:
+        if getattr(handler, "_maxim_jsonl", False):
+            continue
         try:
             handler.setLevel(level)
         except Exception:
