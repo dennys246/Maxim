@@ -85,7 +85,7 @@ def _assert_in_process_repo() -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def run_scripted_trial(bearing_deg: float, seed: int, sandbox: Path) -> dict:
+def run_scripted_trial(bearing_deg: float, seed: int, sandbox: Path, *, speech_density: float = 1.0) -> dict:
     """One in-process closed-loop trial with the scripted proposer.
 
     Exercises: scenario physics (fold, inverse mapping, noise, pose
@@ -112,7 +112,7 @@ def run_scripted_trial(bearing_deg: float, seed: int, sandbox: Path) -> dict:
     controller = SimulatedController(
         doa_source_bearing_deg=bearing_deg,
         doa_noise_sigma=common.DOA_NOISE_SIGMA,
-        doa_speech_density=1.0,
+        doa_speech_density=speech_density,
         doa_seed=seed,
         head_yaw_limit_deg=common.HEAD_YAW_LIMIT_DEG,
         body_yaw_limit_deg=common.BODY_YAW_LIMIT_DEG,
@@ -242,12 +242,15 @@ def run_spawned_trial(
     *,
     import_substrate: Path | None = None,
     min_confidence: float | None = None,
+    speech_density: float = 1.0,
 ) -> dict:
     sandbox.mkdir(parents=True, exist_ok=True)
     home = sandbox / "home"
     home.mkdir(exist_ok=True)
     jsonl = sandbox / "maxim.jsonl"
-    (home / "robots.yaml").write_text(common.robots_yaml_text(arm=arm, bearing_deg=bearing_deg, seed=seed))
+    (home / "robots.yaml").write_text(
+        common.robots_yaml_text(arm=arm, bearing_deg=bearing_deg, seed=seed, speech_density=speech_density)
+    )
     if arm == "A":
         # Head-only body variant into the sandbox's user-components layer
         # (data_home()/components — MAXIM_DATA_HOME-scoped, shadows nothing
@@ -350,6 +353,14 @@ def main() -> int:
         help="Sets MAXIM_NAC_MIN_CONFIDENCE for spawned trials (arm C: 0.0 lets a "
         "capped cluster bias act through the 0.3 default gate).",
     )
+    ap.add_argument(
+        "--speech-density",
+        type=float,
+        default=1.0,
+        help="Probability per DoA read that is_speech is True (default 1.0 = the "
+        "dense main arms; ~0.3-0.5 = the pre-registered sparse follow-on arm, "
+        "the live-conversation condition Exp 49's main arms deliberately removed).",
+    )
     args = ap.parse_args()
 
     out_dir = Path(args.out).expanduser().resolve()
@@ -385,7 +396,7 @@ def main() -> int:
         sandbox = out_dir / f"trial_{args.arm}_{i:02d}_b{bearing:+.0f}_s{seed}"
         print(f"[{i + 1}/{len(bearings)}] arm={args.arm} bearing={bearing:+.0f}° seed={seed} ... ", end="", flush=True)
         if args.arm == "scripted":
-            rec = run_scripted_trial(bearing, seed, sandbox)
+            rec = run_scripted_trial(bearing, seed, sandbox, speech_density=args.speech_density)
         else:
             rec = run_spawned_trial(
                 args.arm,
@@ -395,7 +406,9 @@ def main() -> int:
                 maxim_bin,
                 import_substrate=(Path(args.import_substrate).expanduser() if args.import_substrate else None),
                 min_confidence=args.min_confidence,
+                speech_density=args.speech_density,
             )
+        rec["speech_density"] = args.speech_density
         records.append(rec)
         m = rec["metrics"]
         print(
