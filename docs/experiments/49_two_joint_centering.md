@@ -1,6 +1,7 @@
 # Exp 49 — Two-joint centering: does the runtime USE the body-turn capability appropriately?
 
-**Status:** PRE-REGISTERED (draft pending owner-visible commit). Phase 3 Arm 1 of
+**Status:** COMPLETE (2026-08-04). H1 supported, H2 1.00, H3 1.00 on arm B.
+Results below the Amendments section. Phase 3 Arm 1 of
 [sem_motor_binding.md](../plans/sem_motor_binding.md); owner-designed scenario
 (2026-08-04): "a simulation that requires both a combination of body movement
 and head movement to center on a sound for reward."
@@ -125,3 +126,63 @@ definitions.
 5. **Determinism caveat:** the per-trial seed fixes the noise/speech DRAW
    SEQUENCE, not the trajectory — read counts are wall-clock-paced, so trials
    are statistically controlled, not bit-reproducible.
+
+## Results (2026-08-04, post-amendment runs; harness @ a2f1abef)
+
+10 trials/arm, bearings ±{40,60,90,120,160}°, dense speech, σ=0.03, neck
+envelope ±22°, caps 12 actions / 180 s. Arm A/B proposer: Qwen32B via the
+big-mac-mini tunnel (~40–90 s per action). Arm C: substrate-primary with the
+live runtime's nac.json+ec.json pair imported (one trained bias:
+`turn_right` @ +0.101 on one audio cluster), `MAXIM_NAC_MIN_CONFIDENCE=0`.
+Per-trial JSONL + provenance in the session scratchpad
+(`exp49_arm{A,B,C}_full` / `exp49_armC_v2`); every record carries
+`executed_git_hash` + import hashes.
+
+| Metric | A head-only | B full (LLM) | C substrate |
+|---|---|---|---|
+| centering rate | **0/10** | **4/10** | 5/10 |
+| far bins (±120/160) centered | 0/4 | 2/4 (both ±120) | 0/4 |
+| body-turn usage | 0.0 | 1.0 | 1.0 |
+| first body turn correct (H2) | n/a (no tool) | **10/10 = 1.00** | 5/10 |
+| mean time-to-center | — | 86.8 s | 4.65 s |
+| credited turns (H3 sign acc.) | 0 | **23/23 = 1.00** | 118/129 = 0.915 |
+| credited fold-divergent | 0 | 7 | 77 |
+| plateaued at neck limit | 6/10 | 0 | 0 |
+
+- **H1 SUPPORTED.** Head-only cannot do the task: 0/10, zero body turns,
+  60% of trials parked at the neck envelope (the others under-aimed at the
+  folded image and idled). Motor-bound B centers 4/10 overall and 2/4 far
+  bins with zero overlap against A. B's four timeouts are CLOCK-bound, not
+  capability-bound: every timeout trial had direction-correct body turns in
+  progress at 3–5 actions when the 180 s cap hit (the LLM's per-action
+  latency is the binding constraint; the pre-registered cap charitably
+  assumed faster deliberation).
+- **H2 PASSED at 1.00** (gate ≥0.80): the LLM's first body turn was
+  direction-correct in 10/10 trials under dense speech with the honest
+  fell-short/clamped feedback — the 2026-08-04 live wrong-direction turns do
+  not reproduce once speech is dense and the feedback loop is closed.
+- **H3 PASSED at 1.00 on arm B** (23/23 credited turns sign-accurate vs the
+  folded sensor truth; gate ≥0.95). Arm C: 0.915 — residual audit: 5
+  mismatches at the noise floor (|Δaz_true| ≈ 0.004 ≪ σ) and 6 with a
+  consistent ~16° one-turn-stale capture frame in the before-reading, a
+  cadence artifact of INSTANT sim turns (real motion takes 1.5–3 s, giving
+  the feed a fresh cycle; the sim's 0 s turns can leave the mirror stamp one
+  turn behind). Tracked as a harness-fidelity follow-up — resolve before any
+  hardware H3 claim; it does not affect arm B (deliberation is slower than
+  the feed cycle).
+- **Secondary finding — the fold splits the two intelligences.** The
+  deliberative LLM crosses the linear array's front/back fold (centers
+  ±120° rear sources) because its policy is not credit-following; the
+  substrate is genuinely TRAPPED by the fold's 180° false equilibrium on
+  far bins (77 fold-divergent credits — honest measurement punishing
+  correct turns behind the fold), while being ~20× faster than the LLM
+  where its trained policy applies (4.65 s vs 86.8 s to center). This is
+  the cleanest argument yet for the layered design (fast substrate reflex
+  inside the fold, deliberation for the ambiguous rear half) and for the
+  bin/production key unification + Phase-3 reflex work.
+- **Also recorded:** a FRESH substrate (no import) is inert on this task by
+  design — recommend_action is positive-gated with no azimuth→turn affinity
+  entry, and the one live-trained bias (+0.101) sits under the 0.3 default
+  confidence gate (the clamp-vs-threshold asymmetry). Within-trial learning
+  is visible in arm C traces: overshoot books negative credit, the policy
+  switches to the opposite turn and servos onto center.
