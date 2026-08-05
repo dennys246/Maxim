@@ -436,7 +436,15 @@ class SimulatedController(RobotController):
         yaw = -((target.u - center_x) / center_x) * (fov_h / 2)
         pitch = ((target.v - center_y) / center_y) * (fov_v / 2)
 
-        self._current_pose["yaw"] = yaw
+        # A pixel gaze is a HEAD-RELATIVE command (camera frame): route it
+        # through the same relative-clamp + body composition as goto_target
+        # so the envelope cannot be smuggled past and the stored yaw stays
+        # world-frame (review fold — the old direct write treated a
+        # camera-relative yaw as world and bypassed head_yaw_limit_deg).
+        if self._head_yaw_limit_rad is not None:
+            yaw = max(-self._head_yaw_limit_rad, min(self._head_yaw_limit_rad, yaw))
+        body = float(self._current_pose.get("body_yaw", 0.0) or 0.0)
+        self._current_pose["yaw"] = yaw + body
         self._current_pose["pitch"] = pitch
 
         if self._simulate_delays:

@@ -146,7 +146,13 @@ def find_config_file(search_paths: list[str] | None = None) -> Path | None:
 
             paths = [str(data_home() / "robots.yaml"), *DEFAULT_CONFIG_PATHS]
         except Exception:
-            paths = ["~/.maxim/robots.yaml", *DEFAULT_CONFIG_PATHS]
+            # Do NOT fall back to a hardcoded "~/.maxim/robots.yaml" here
+            # (review fold): if data-home resolution fails inside an
+            # isolated harness run, silently reading the operator's REAL
+            # robots.yaml could connect a trial to real hardware. Fail
+            # toward cwd-only and say so.
+            logger.warning("data_home() unresolvable — robots.yaml search limited to cwd")
+            paths = list(DEFAULT_CONFIG_PATHS)
 
     for path_str in paths:
         path = Path(path_str).expanduser()

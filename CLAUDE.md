@@ -534,6 +534,9 @@ MAXIM_LANE_LARGE_REMOTE_API_KEY= # Auth token for remote server
 MAXIM_LANE_LARGE_TIMEOUT_S=      # Per-tier inference read timeout (seconds, strictly positive). llm_timeout_scalability.md Stage 2. Resolved via standard `resolve_setting('lanes.<tier>.timeout_s', ...)` precedence (CLI > env > config.json > backend default). Unset → backend default applies (`_MaximPeerBackend` 300s, `_OpenAIBackend` 60s). Threaded through `LaneConfig.remote_timeout_s` → `providers[provider_key]["timeout_s"]` so both backends pick it up via their existing `_provider_cfg().get("timeout_s", default)` reads. Same env-var family for medium / small tiers.
 # Tier names only: large, medium, small (legacy infer/review/record removed in v1.0)
 
+# Exp 49 measured-credit trace (sem_motor_binding Phase 3)
+MAXIM_MOTOR_CREDIT_TRACE=1       # Emit one structured `motor_credit.measured` JSONL event per measured-relief credit decision in embodiment/tool_bridge.py (transitions + signed potential_diff — the H3 credited-turn sign-accuracy channel for Exp 49). Off by default; logging-only. Autouse scrub: tests/conftest.py::_isolate_maxim_motor_credit_trace_env.
+
 # Bio-system debug traces (also activatable via --debug <subsystem> or --debug all)
 MAXIM_HIPPO_TRACE=1              # Enable per-operation Hippocampus trace events (store/recall/promote). memory/hippo_tracer.py
 MAXIM_ATL_TRACE=1                # Enable per-operation ATL (Angular-Temporal Lobe) trace events. memory/atl_tracer.py

@@ -38,6 +38,8 @@ def _emit_motor_credit_trace(
     affordance: str,
     transitions: Any,
     potential_diff: float | None,
+    measured_total: float | None,
+    nulled_by_collateral: bool,
 ) -> None:
     """One structured event per measured-relief credit decision.
 
@@ -46,15 +48,32 @@ def _emit_motor_credit_trace(
     Exp 49 H3's credited-turn sign-accuracy gate needs the measured
     before/after pair AND the signed progress that was actually credited,
     neither of which reaches any structured log otherwise).
-    ``potential_diff`` is the drive_comfort_progress total over the
-    measured transitions — its SIGN is what record_outcome books; ``None``
-    means no transition parsed (nothing credited). Read per call so test
-    env-scrubs work without import-order games; no-op cost is one dict
-    lookup at tool-execution cadence.
+
+    ``potential_diff`` is the POST-collateral-gate credited value — the
+    quantity whose SIGN record_outcome books; ``None`` = nothing credited
+    (no parse, measured-zero withheld, or nulled by collateral harm).
+    ``measured_total`` is the raw drive_comfort_progress sum BEFORE the
+    gate; the two differ exactly when ``nulled_by_collateral`` — an
+    Executor-lens review catch: the first draft emitted pre-gate, so a
+    harm-nulled turn traced as credited-positive and corrupted the very
+    H3 metric the event exists to serve.
+
+    Per-entry safe conversion: one malformed transition pair must not
+    drop the whole event (a silent trace hole for a turn that WAS
+    credited — the second review catch); the bad pair is skipped exactly
+    like the credit loop skips it. Env read per call so test scrubs work
+    without import-order games.
     """
     if os.environ.get("MAXIM_MOTOR_CREDIT_TRACE") != "1":
         return
     try:
+        safe_transitions: dict[str, list[float]] = {}
+        for k, v in dict(transitions or {}).items():
+            try:
+                if isinstance(v, (list, tuple)) and len(v) >= 2:
+                    safe_transitions[str(k)] = [float(v[0]), float(v[1])]
+            except (TypeError, ValueError):
+                continue
         logging.getLogger("maxim.motor_credit").info(
             "motor_credit.measured",
             extra={
@@ -62,12 +81,10 @@ def _emit_motor_credit_trace(
                 "data": {
                     "tool": tool_name,
                     "affordance": affordance,
-                    "transitions": {
-                        str(k): [float(v[0]), float(v[1])]
-                        for k, v in dict(transitions or {}).items()
-                        if isinstance(v, (list, tuple)) and len(v) >= 2
-                    },
+                    "transitions": safe_transitions,
                     "potential_diff": potential_diff,
+                    "measured_total": measured_total,
+                    "nulled_by_collateral": nulled_by_collateral,
                 },
             },
         )
@@ -548,6 +565,7 @@ class ModulatorAffordanceTool(Tool):
         drive_relief_channel: str | None = None
         _measured = getattr(result, "metadata", None) or {}
         _transitions = _measured.get("measured_drive_transitions")
+        _measured_credit_total: float | None = None
         if _transitions and self._embodiment is not None:
             from maxim.embodiment.sem import drive_comfort_progress
 
@@ -566,12 +584,6 @@ class ModulatorAffordanceTool(Tool):
                 _measured_total += drive_comfort_progress(_spec, _before, _after)
                 accounted_sensors.add(_sensor)
                 _measured_any = True
-            _emit_motor_credit_trace(
-                tool_name=self.name,
-                affordance=self._affordance_name,
-                transitions=_transitions,
-                potential_diff=_measured_total if _measured_any else None,
-            )
             if _measured_any and abs(_measured_total) > 1e-9:
                 # REPLACES the modeled diff wholesale. Safe for every
                 # shipped body (the turns' only drive sensor is the
@@ -599,6 +611,8 @@ class ModulatorAffordanceTool(Tool):
                 # letting substrate-primary book a direction-blind +1
                 # for a turn that measurably changed nothing (review F5).
                 drive_credit_withheld = True
+            if _measured_any:
+                _measured_credit_total = _measured_total
 
         # Target-effect: when the affordance fires WITH a target parameter,
         # write deltas to the resolved target's body sensors.  Silent
@@ -693,6 +707,22 @@ class ModulatorAffordanceTool(Tool):
                 if _drive_failure_sensor(_f.get("name", "")) not in accounted_sensors:
                     drive_potential_diff = None
                     break
+
+        # H3 credit trace — emitted AFTER the collateral-harm gate so the
+        # event reports what is actually credited (Exp 49 review fold: a
+        # pre-gate emission traced harm-nulled turns as credited-positive).
+        if _transitions:
+            _mc_credited = drive_potential_diff if _measured_credit_total is not None else None
+            _emit_motor_credit_trace(
+                tool_name=self.name,
+                affordance=self._affordance_name,
+                transitions=_transitions,
+                potential_diff=_mc_credited,
+                measured_total=_measured_credit_total,
+                nulled_by_collateral=(
+                    _measured_credit_total is not None and abs(_measured_credit_total) > 1e-9 and _mc_credited is None
+                ),
+            )
 
         # Cerebellum observes cascade outcome for forward model training
         if self._cerebellum is not None and entity_state:

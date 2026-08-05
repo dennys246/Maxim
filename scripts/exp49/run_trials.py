@@ -9,8 +9,10 @@ Arms (pre-registered):
   metric extraction that scores the real arms scores the smoke — the
   instrument is verified before it measures anything (harness physics,
   JSONL emission, centered detection, direction-correctness).
-- ``A`` — head-only: full live stack, ``motor_binding: false`` (the SEM
-  turn tools never bind; focus_on_sound is the whole repertoire).
+- ``A`` — head-only: full live stack against the ``reachy_mini_headonly``
+  body variant (orient modulator removed — the turn tools are genuinely
+  absent, not placebo-stubbed; amendment 1) + ``motor_binding: false``
+  belt-and-suspenders. focus_on_sound is the whole orient repertoire.
 - ``B`` — full: live stack with motor binding, LLM proposer.
 - ``C`` — substrate: live stack with motor binding,
   ``aut_mode: substrate-primary`` (no LLM in the action path).
@@ -246,6 +248,14 @@ def run_spawned_trial(
     home.mkdir(exist_ok=True)
     jsonl = sandbox / "maxim.jsonl"
     (home / "robots.yaml").write_text(common.robots_yaml_text(arm=arm, bearing_deg=bearing_deg, seed=seed))
+    if arm == "A":
+        # Head-only body variant into the sandbox's user-components layer
+        # (data_home()/components — MAXIM_DATA_HOME-scoped, shadows nothing
+        # outside this trial). See headonly_body_yaml for the review fold.
+        bundled = REPO_ROOT / "src" / "maxim" / "_data" / "components" / "bodies" / "reachy_mini.yaml"
+        variant_dir = home / "components" / "bodies"
+        variant_dir.mkdir(parents=True, exist_ok=True)
+        (variant_dir / "reachy_mini_headonly.yaml").write_text(common.headonly_body_yaml(bundled))
     substrate_prov = None
     if import_substrate is not None:
         substrate_prov = _import_substrate(home, import_substrate)

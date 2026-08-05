@@ -47,6 +47,39 @@ HEAD_YAW_LIMIT_DEG = 22.0  # measured neck envelope, not the optimistic 45
 BODY_YAW_LIMIT_DEG = 160.0  # daemon clamp
 
 
+HEADONLY_BODY_REF = "bodies/reachy_mini_headonly"
+
+
+def headonly_body_yaml(bundled_body_path: Path) -> str:
+    """Arm A's head-only body: the bundled reachy_mini MINUS the orient modulator.
+
+    Review fold (Architecture BLOCKING #1): ``motor_binding: false`` alone
+    leaves the SEM turn tools registered with stub-SUCCESS semantics —
+    arm A's LLM would call ``turn_left``, receive placebo success, and
+    believe it turned; and stub turns emit no motion events, so the
+    action cap never fires. The honest head-only arm REMOVES the orient
+    modulator so the turn tools are genuinely absent from the tool list
+    (the pre-registered "arm A simply lacks the turn tools").
+
+    Generated from the BUNDLED yaml at harness runtime (no duplicate
+    YAML to drift): only ``component.name``/``synonyms`` change (a new
+    ref) and ``entity.modulators.orient`` is deleted. ``entity.name``
+    stays ``reachy_mini`` so every OTHER SEM tool keeps an identical
+    name across arms (prompt identity modulo the turn tools).
+    """
+    import yaml
+
+    doc = yaml.safe_load(bundled_body_path.read_text())
+    doc["component"]["name"] = "reachy_mini_headonly"
+    doc["component"]["synonyms"] = []
+    doc["component"]["description"] = "Exp 49 arm A: reachy_mini without the orient (body-turn) modulator."
+    mods = doc["entity"]["modulators"]
+    if "orient" not in mods:
+        raise SystemExit(f"bundled body {bundled_body_path} has no orient modulator — arm A variant impossible")
+    del mods["orient"]
+    return yaml.safe_dump(doc, sort_keys=False)
+
+
 def robots_yaml_text(
     *,
     arm: str,
@@ -56,18 +89,20 @@ def robots_yaml_text(
 ) -> str:
     """The per-trial robots.yaml — the declarative scenario config.
 
-    Arm differences are EXACTLY the pre-registered ones: arm A adds
-    ``motor_binding: false`` (head-only — same prompt path, the turn
-    tools simply never bind); arm C adds ``aut_mode: substrate-primary``.
-    Everything else is byte-identical across arms.
+    Arm differences are EXACTLY the pre-registered (amended) ones: arm A
+    declares the head-only body variant (turn tools genuinely absent) +
+    ``motor_binding: false`` belt-and-suspenders; arm C adds
+    ``aut_mode: substrate-primary``. Everything else is byte-identical
+    across arms.
     """
+    body_ref = HEADONLY_BODY_REF if arm == "A" else "bodies/reachy_mini"
     lines = [
         "robots:",
         "  exp49_sim:",
         "    type: simulated",
         "    primary: true",
         "    config:",
-        "      body: bodies/reachy_mini",
+        f"      body: {body_ref}",
         "      video_enabled: false",
         f"      doa_source_bearing_deg: {bearing_deg}",
         f"      doa_noise_sigma: {DOA_NOISE_SIGMA}",
@@ -121,6 +156,10 @@ class TrialMetrics:
     credited_turns: int = 0
     credited_sign_matches: int = 0
     credited_sign_accuracy: float | None = None
+    # Credited turns where the folded-sensor progress sign DISAGREES with
+    # the unfolded-truth |theta| progress sign — the linear array's
+    # physical blind spot (|theta| > 90°), reported separately from H3.
+    credited_fold_divergent: int = 0
     end_reason: str = "unknown"
     notes: list[str] = field(default_factory=list)
 
@@ -152,9 +191,17 @@ def compute_trial_metrics(events: list[dict[str, Any]]) -> TrialMetrics:
 
     H3 (credited-turn sign accuracy): the credited sign is
     ``sign(potential_diff)``; the TRUE progress sign is the change in
-    |theta| across the motion window (nearest truth reads before/after
-    the credit event). A credit whose sign disagrees with the true
-    |theta| trajectory is a leak in the measurement honesty gates.
+    the FOLDED noiseless ``|az_true|`` across the motion window (nearest
+    truth reads before/after the credited turn). Folded — NOT unfolded
+    theta — because the credit measures the azimuth SENSOR, and behind
+    the linear array's fold (|theta| > 90°) a correct turn toward the
+    source honestly increases the folded reading: sensor-faithful credit
+    and unfolded truth have OPPOSITE signs there by physics, not by a
+    leaking honesty gate (amendment after the first arm-C run fired the
+    pre-registered STOP clause: sub-fold sign accuracy 0.89 vs 0.08
+    beyond the fold under the original unfolded-theta definition). The
+    unfolded divergence is counted separately as
+    ``credited_fold_divergent`` — the sensor's physical blind spot.
     """
     m = TrialMetrics()
     reads = sorted((e for e in events if e.get("e") == "sim_doa.read"), key=lambda r: r["t"])
@@ -198,6 +245,11 @@ def compute_trial_metrics(events: list[dict[str, Any]]) -> TrialMetrics:
         ref = _nearest_read_before(reads, first["t"])
         if ref is not None and "theta_deg" in ref:
             m.first_body_turn_correct = (delta > 0) == (float(ref["theta_deg"]) > 0)
+        else:
+            # Review fold: don't conflate "no body turn" with "no read
+            # preceded the first turn" silently — the None stays (excluded
+            # from the H2 rate) but the exclusion is visible.
+            m.notes.append("first body turn had no preceding truth read — excluded from H2 rate")
 
     # Head-only plateau (arm A signature): never centered, no body turns,
     # and the head parked at the neck envelope while theta stayed out.
@@ -206,12 +258,14 @@ def compute_trial_metrics(events: list[dict[str, Any]]) -> TrialMetrics:
         head_rel = abs(float(last.get("head_world_deg", 0.0)) - float(last.get("body_yaw_deg", 0.0)))
         m.plateaued_at_neck_limit = head_rel >= HEAD_YAW_LIMIT_DEG - 2.0
 
-    # H3: credited-turn sign accuracy against the truth channel.
+    # H3: credited-turn sign accuracy against the FOLDED truth channel
+    # (|az_true| — what an honest measurement of this sensor can know;
+    # see the docstring). The unfolded-theta divergence is counted, not
+    # scored.
     for c in credits:
         pd = c.get("potential_diff")
         if pd is None or abs(float(pd)) <= 1e-9:
             continue
-        before = _nearest_read_before(reads, c["t"] - 0.0)
         # The credit event fires after the post-motion measurement; the
         # motion preceding it is the credited turn. Find it.
         turn = None
@@ -219,21 +273,31 @@ def compute_trial_metrics(events: list[dict[str, Any]]) -> TrialMetrics:
             if mo["t"] <= c["t"]:
                 turn = mo
                 break
-        if turn is None or before is None:
-            m.notes.append("credit event without a matching motion/read — skipped")
+        if turn is None:
+            m.notes.append("credit event without a matching motion — skipped")
             continue
         pre = _nearest_read_before(reads, turn["t"])
         post = _nearest_read_after(reads, turn["t"])
-        if pre is None or post is None or "theta_deg" not in pre or "theta_deg" not in post:
+        if (
+            pre is None
+            or post is None
+            or "az_true" not in pre
+            or "az_true" not in post
+            or "theta_deg" not in pre
+            or "theta_deg" not in post
+        ):
             m.notes.append("credit event lacked surrounding truth reads — skipped")
             continue
-        true_progress = abs(float(pre["theta_deg"])) - abs(float(post["theta_deg"]))
-        if abs(true_progress) <= 1e-9:
-            m.notes.append("credited turn with ~zero true progress — skipped for sign accuracy")
+        sensor_progress = abs(float(pre["az_true"])) - abs(float(post["az_true"]))
+        if abs(sensor_progress) <= 1e-9:
+            m.notes.append("credited turn with ~zero sensor-truth progress — skipped for sign accuracy")
             continue
         m.credited_turns += 1
-        if (float(pd) > 0) == (true_progress > 0):
+        if (float(pd) > 0) == (sensor_progress > 0):
             m.credited_sign_matches += 1
+        unfolded_progress = abs(float(pre["theta_deg"])) - abs(float(post["theta_deg"]))
+        if abs(unfolded_progress) > 1e-9 and (sensor_progress > 0) != (unfolded_progress > 0):
+            m.credited_fold_divergent += 1
     if m.credited_turns:
         m.credited_sign_accuracy = m.credited_sign_matches / m.credited_turns
 
@@ -282,6 +346,7 @@ def summarize_arm(trial_records: list[dict[str, Any]]) -> dict[str, Any]:
         "body_turn_usage_rate": round(sum(1 for m in ms if m.get("body_turns", 0) > 0) / n, 3),
         "credited_turns": credited,
         "credited_sign_accuracy": round(matches / credited, 4) if credited else None,
+        "credited_fold_divergent": sum(m.get("credited_fold_divergent", 0) for m in ms),
         "plateau_rate": round(sum(1 for m in ms if m.get("plateaued_at_neck_limit")) / n, 3),
     }
 

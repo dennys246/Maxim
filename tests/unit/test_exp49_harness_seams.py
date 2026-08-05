@@ -315,6 +315,146 @@ class TestConfigFlagDisabled:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 6b. Trial-metric extractor (verify-the-instrument: the H3 scorer itself)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _exp49_common():
+    import importlib.util
+    from pathlib import Path
+
+    import sys
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "exp49" / "exp49_common.py"
+    spec = importlib.util.spec_from_file_location("exp49_common_under_test", path)
+    mod = importlib.util.module_from_spec(spec)
+    # dataclasses resolves cls.__module__ through sys.modules at class
+    # creation — register before exec or @dataclass fails.
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _read(t, theta, az_true):
+    return {"e": "sim_doa.read", "t": t, "theta_deg": theta, "az_true": az_true, "az_read": az_true, "speech": True}
+
+
+def _motion(t, body_before, body_after, head_before=None, head_after=None):
+    return {
+        "e": "sim_doa.motion",
+        "t": t,
+        "body_yaw_deg_before": body_before,
+        "body_yaw_deg_after": body_after,
+        "head_world_deg_before": head_before if head_before is not None else body_before,
+        "head_world_deg_after": head_after if head_after is not None else body_after,
+        "commanded_body": True,
+        "commanded_head": False,
+    }
+
+
+def _credit(t, pd):
+    return {"e": "motor_credit.measured", "t": t, "potential_diff": pd, "transitions": {}}
+
+
+class TestComputeTrialMetrics:
+    def test_normal_credited_turn_scores_match(self):
+        c = _exp49_common()
+        events = [
+            _read(1.0, 40.0, -0.444),
+            _motion(2.0, 0.0, 17.0),
+            _read(3.0, 23.0, -0.256),
+            _credit(3.5, 0.2),
+            _read(4.0, 23.0, -0.256),
+        ]
+        m = c.compute_trial_metrics(events)
+        assert m.credited_turns == 1
+        assert m.credited_sign_matches == 1
+        assert m.credited_fold_divergent == 0
+        assert m.first_body_turn_correct is True
+
+    def test_fold_case_negative_credit_matches_sensor_truth(self):
+        # Behind the fold: a CORRECT turn toward a 160° source worsens the
+        # folded reading (az_true 0.222 → 0.411 right... source LEFT so
+        # negative: -0.222 → -0.411). Sensor-faithful credit is NEGATIVE;
+        # under fold-aware truth that is a MATCH, and the unfolded
+        # divergence is counted separately.
+        c = _exp49_common()
+        events = [
+            _read(1.0, 160.0, -0.222),
+            _motion(2.0, 0.0, 17.0),
+            _read(3.0, 143.0, -0.411),
+            _credit(3.5, -0.19),
+            _read(4.0, 143.0, -0.411),
+        ]
+        m = c.compute_trial_metrics(events)
+        assert m.credited_turns == 1
+        assert m.credited_sign_matches == 1  # negative credit, sensor got worse — honest
+        assert m.credited_fold_divergent == 1  # unfolded truth improved — the blind spot
+
+    def test_wrong_sign_credit_detected(self):
+        # A POSITIVE credit while the folded sensor truth worsened (below
+        # the fold) IS an honesty-gate leak — must score as mismatch.
+        c = _exp49_common()
+        events = [
+            _read(1.0, 40.0, -0.444),
+            _motion(2.0, 0.0, -17.0),  # wrong-direction turn
+            _read(3.0, 57.0, -0.633),
+            _credit(3.5, 0.2),  # fabricated positive credit
+            _read(4.0, 57.0, -0.633),
+        ]
+        m = c.compute_trial_metrics(events)
+        assert m.credited_turns == 1
+        assert m.credited_sign_matches == 0
+
+    def test_credit_matches_its_own_turn_not_later_motion(self):
+        c = _exp49_common()
+        events = [
+            _read(1.0, 40.0, -0.444),
+            _motion(2.0, 0.0, 17.0),
+            _read(3.0, 23.0, -0.256),
+            _credit(3.5, 0.2),
+            _motion(4.0, 17.0, 34.0),  # later motion must not steal the match
+            _read(5.0, 6.0, -0.067),
+        ]
+        m = c.compute_trial_metrics(events)
+        assert m.credited_turns == 1
+        assert m.credited_sign_matches == 1
+
+    def test_timestamp_tie_uses_strictly_before_read(self):
+        # 10 ms rounding can tie a post-motion read with the motion; the
+        # pre-turn reference must be the strictly-earlier read.
+        c = _exp49_common()
+        events = [
+            _read(1.0, -40.0, 0.444),
+            _motion(2.0, 0.0, -17.0),
+            _read(2.0, -23.0, 0.256),  # tied with motion — post-turn frame
+            _read(3.0, -23.0, 0.256),
+        ]
+        m = c.compute_trial_metrics(events)
+        assert m.first_body_turn_correct is True  # ref read is theta -40 (right), delta negative
+
+    def test_centered_sustain_and_actions_to_center(self):
+        c = _exp49_common()
+        events = [
+            _read(1.0, 40.0, -0.444),
+            _motion(2.0, 0.0, 34.0),
+            _read(3.0, 6.0, -0.067),
+            _read(4.0, 6.0, -0.067),
+            _read(5.0, 6.0, -0.067),
+        ]
+        m = c.compute_trial_metrics(events)
+        assert m.centered is True
+        assert m.actions_to_center == 1
+        assert m.time_to_center_s == pytest.approx(3.0, abs=0.01)
+
+    def test_no_reads_yields_no_reads_reason(self):
+        c = _exp49_common()
+        m = c.compute_trial_metrics([])
+        assert m.end_reason == "no_reads"
+        assert m.centered is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 7. Motor-credit trace (H3 visibility)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -330,6 +470,8 @@ class TestMotorCreditTrace:
                 affordance="turn_left",
                 transitions={"azimuth": (-0.5, -0.3)},
                 potential_diff=0.2,
+                measured_total=0.2,
+                nulled_by_collateral=False,
             )
         records = [r for r in caplog.records if getattr(r, "event", None) == "motor_credit.measured"]
         assert len(records) == 1
@@ -337,6 +479,47 @@ class TestMotorCreditTrace:
         assert data["tool"] == "reachy_mini_turn_left"
         assert data["transitions"]["azimuth"] == [-0.5, -0.3]
         assert data["potential_diff"] == pytest.approx(0.2)
+        assert data["nulled_by_collateral"] is False
+
+    def test_collateral_nulled_event_reports_none_credited(self, caplog):
+        # Review fold: pre-gate emission traced harm-nulled turns as
+        # credited-positive. The post-gate event must carry
+        # potential_diff=None + the raw measured_total + the null flag.
+        from maxim.embodiment.tool_bridge import _emit_motor_credit_trace
+
+        os.environ["MAXIM_MOTOR_CREDIT_TRACE"] = "1"
+        with caplog.at_level(logging.INFO, logger="maxim.motor_credit"):
+            _emit_motor_credit_trace(
+                tool_name="t",
+                affordance="a",
+                transitions={"azimuth": (-0.5, -0.3)},
+                potential_diff=None,
+                measured_total=0.2,
+                nulled_by_collateral=True,
+            )
+        (rec,) = [r for r in caplog.records if getattr(r, "event", None) == "motor_credit.measured"]
+        assert rec.data["potential_diff"] is None
+        assert rec.data["measured_total"] == pytest.approx(0.2)
+        assert rec.data["nulled_by_collateral"] is True
+
+    def test_malformed_pair_skipped_event_still_emitted(self, caplog):
+        # Review fold: one bad pair must not silently drop the whole
+        # event while credit still books (a trace hole in the H3 audit).
+        from maxim.embodiment.tool_bridge import _emit_motor_credit_trace
+
+        os.environ["MAXIM_MOTOR_CREDIT_TRACE"] = "1"
+        with caplog.at_level(logging.INFO, logger="maxim.motor_credit"):
+            _emit_motor_credit_trace(
+                tool_name="t",
+                affordance="a",
+                transitions={"azimuth": (0.5, 0.3), "bogus": ("x", "y")},
+                potential_diff=0.2,
+                measured_total=0.2,
+                nulled_by_collateral=False,
+            )
+        (rec,) = [r for r in caplog.records if getattr(r, "event", None) == "motor_credit.measured"]
+        assert rec.data["transitions"] == {"azimuth": [0.5, 0.3]}
+        assert rec.data["potential_diff"] == pytest.approx(0.2)
 
     def test_silent_when_disabled(self, caplog):
         from maxim.embodiment.tool_bridge import _emit_motor_credit_trace
@@ -348,5 +531,7 @@ class TestMotorCreditTrace:
                 affordance="a",
                 transitions={"azimuth": (0.1, 0.0)},
                 potential_diff=0.1,
+                measured_total=0.1,
+                nulled_by_collateral=False,
             )
         assert not [r for r in caplog.records if getattr(r, "event", None) == "motor_credit.measured"]

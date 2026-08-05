@@ -238,6 +238,15 @@ def derive_media_capabilities(robot: object) -> tuple[bool, bool]:
         if hasattr(media, "audio"):
             has_audio = media.audio is not None
         return has_vision, has_audio
+    # Stream-surface fallback is only meaningful POST-connect (streams are
+    # created in connect()); a pre-connect probe would read None and
+    # downgrade on no evidence (review fold). Both production call sites
+    # are post-connect; this guard makes the precondition structural.
+    try:
+        if not robot.is_connected():  # type: ignore[union-attr]
+            return has_vision, has_audio
+    except Exception:
+        return has_vision, has_audio
     get_video = getattr(robot, "get_video_stream", None)
     if callable(get_video):
         try:
