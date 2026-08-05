@@ -212,10 +212,22 @@ def derive_media_capabilities(robot: object) -> tuple[bool, bool]:
     Introspection is duck-typed through ``robot.mini.media`` (the Reachy
     controller's SDK handle): a media manager exposing ``camera`` /
     ``audio`` attributes answers truthfully; anything that cannot be
-    introspected (SimulatedController mocks, third-party controllers,
-    future SDK shapes) keeps the permissive ``True`` — this helper only
-    ever DOWNGRADES on positive evidence of an absent device, so existing
-    robots see no behavior change.
+    introspected (third-party controllers, future SDK shapes) keeps the
+    permissive ``True`` — this helper only ever DOWNGRADES on positive
+    evidence of an absent device, so existing robots see no behavior
+    change.
+
+    Controllers WITHOUT an SDK handle (``mini`` absent/None) fall back to
+    the :class:`~maxim.hardware.controller.RobotController` stream
+    surface: a connected controller whose ``get_video_stream()`` /
+    ``get_audio_stream()`` returns ``None`` has positively declared the
+    device absent (the ABC defines those getters as THE media surface),
+    so the flag downgrades — e.g. ``SimulatedController(video_enabled=
+    False)`` in an audio-only scenario, where a permissive ``True`` would
+    leave DN idle visual exploration fabricating gaze targets from a
+    camera that does not exist (the 2026-08-01 capability-truth lesson,
+    extended to the sim). A controller lacking the getters entirely keeps
+    ``True`` (no evidence).
     """
     media = getattr(getattr(robot, "mini", None), "media", None)
     has_vision = True
@@ -225,4 +237,17 @@ def derive_media_capabilities(robot: object) -> tuple[bool, bool]:
             has_vision = media.camera is not None
         if hasattr(media, "audio"):
             has_audio = media.audio is not None
+        return has_vision, has_audio
+    get_video = getattr(robot, "get_video_stream", None)
+    if callable(get_video):
+        try:
+            has_vision = get_video() is not None
+        except Exception:
+            has_vision = True
+    get_audio = getattr(robot, "get_audio_stream", None)
+    if callable(get_audio):
+        try:
+            has_audio = get_audio() is not None
+        except Exception:
+            has_audio = True
     return has_vision, has_audio

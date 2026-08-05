@@ -15,6 +15,7 @@ Tool names use progressive prefixing to avoid collisions:
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from maxim.embodiment.sem import (
@@ -29,6 +30,49 @@ from maxim.tools.base import Tool, ToolOutput
 from maxim.tools.registry import ToolRegistry
 
 log = logging.getLogger(__name__)
+
+
+def _emit_motor_credit_trace(
+    *,
+    tool_name: str,
+    affordance: str,
+    transitions: Any,
+    potential_diff: float | None,
+) -> None:
+    """One structured event per measured-relief credit decision.
+
+    Gated on ``MAXIM_MOTOR_CREDIT_TRACE=1`` (the pain_chain pattern: a
+    per-transition JSONL event so a harness can audit the credit path —
+    Exp 49 H3's credited-turn sign-accuracy gate needs the measured
+    before/after pair AND the signed progress that was actually credited,
+    neither of which reaches any structured log otherwise).
+    ``potential_diff`` is the drive_comfort_progress total over the
+    measured transitions — its SIGN is what record_outcome books; ``None``
+    means no transition parsed (nothing credited). Read per call so test
+    env-scrubs work without import-order games; no-op cost is one dict
+    lookup at tool-execution cadence.
+    """
+    if os.environ.get("MAXIM_MOTOR_CREDIT_TRACE") != "1":
+        return
+    try:
+        logging.getLogger("maxim.motor_credit").info(
+            "motor_credit.measured",
+            extra={
+                "event": "motor_credit.measured",
+                "data": {
+                    "tool": tool_name,
+                    "affordance": affordance,
+                    "transitions": {
+                        str(k): [float(v[0]), float(v[1])]
+                        for k, v in dict(transitions or {}).items()
+                        if isinstance(v, (list, tuple)) and len(v) >= 2
+                    },
+                    "potential_diff": potential_diff,
+                },
+            },
+        )
+    except Exception:
+        log.debug("motor_credit trace emission failed", exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -522,6 +566,12 @@ class ModulatorAffordanceTool(Tool):
                 _measured_total += drive_comfort_progress(_spec, _before, _after)
                 accounted_sensors.add(_sensor)
                 _measured_any = True
+            _emit_motor_credit_trace(
+                tool_name=self.name,
+                affordance=self._affordance_name,
+                transitions=_transitions,
+                potential_diff=_measured_total if _measured_any else None,
+            )
             if _measured_any and abs(_measured_total) > 1e-9:
                 # REPLACES the modeled diff wholesale. Safe for every
                 # shipped body (the turns' only drive sensor is the

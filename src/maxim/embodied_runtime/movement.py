@@ -184,9 +184,22 @@ class MovementMixin:
         the internal yaw/pitch tracking to match. This helps correct drift
         between software tracking and actual hardware position.
 
+        Controllers WITHOUT an SDK handle (``self.mini`` is None — e.g.
+        ``SimulatedController``) sync from the RobotController abstraction
+        instead: ``get_current_pose()`` reports world-frame head yaw +
+        body yaw in radians (the same frame contract as the SDK path), so
+        the mirrors (``self.yaw`` body-relative degrees, ``self.body_yaw``
+        degrees) stay truthful. Pre-fix the SDK read raised into the
+        except and the mirrors silently froze — every consumer of the
+        frame (DoA capture stamps, focus_on_sound aim, the motor
+        backend's post-turn sync) then reasoned in a stale frame on any
+        non-SDK controller (Exp 49 seam, 2026-08-04).
+
         Returns:
             True if sync was successful, False otherwise.
         """
+        if getattr(self, "mini", None) is None:
+            return self._sync_head_position_from_controller()
         try:
             import math
 
@@ -354,6 +367,44 @@ class MovementMixin:
 
         except Exception as e:
             self.log.warning("Failed to sync head position: %s", e)
+            return False
+
+    def _sync_head_position_from_controller(self) -> bool:
+        """Sync the frame mirrors from the RobotController abstraction.
+
+        The non-SDK arm of :meth:`sync_head_position` (see its docstring).
+        ``get_current_pose()`` reports radians with pose ``yaw`` in the
+        WORLD frame and ``body_yaw`` separate — the same contract as the
+        SDK's fk — so the conversion mirrors the SDK path exactly:
+        ``self.yaw`` = (world − body) in degrees (body-relative),
+        ``self.body_yaw`` = body degrees. Translation (x/y/z) is left
+        untouched — the sim controller does not model it, and a fabricated
+        zero would overwrite the operator's centered-pose defaults.
+        """
+        try:
+            import math
+
+            robot = getattr(self, "_robot", None)
+            if robot is None or not robot.is_connected():
+                return False
+            pose = robot.get_current_pose() or {}
+            if "yaw" not in pose:
+                return False
+            body_yaw_deg = math.degrees(float(pose.get("body_yaw", 0.0) or 0.0))
+            yaw_deg = math.degrees(float(pose["yaw"])) - body_yaw_deg
+            while yaw_deg > 180:
+                yaw_deg -= 360
+            while yaw_deg < -180:
+                yaw_deg += 360
+            self.body_yaw = body_yaw_deg
+            self.yaw = yaw_deg
+            if "pitch" in pose:
+                self.pitch = math.degrees(float(pose["pitch"]))
+            if "roll" in pose:
+                self.roll = math.degrees(float(pose["roll"]))
+            return True
+        except Exception as e:
+            self.log.debug("Controller-abstraction head sync failed: %s", e)
             return False
 
     # Protocol workspace override — set by ProtocolRegistry, read by

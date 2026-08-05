@@ -259,6 +259,25 @@ def _isolate_maxim_deterministic_scene_embodiment_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_motor_credit_trace_env():
+    """Scrub ``MAXIM_MOTOR_CREDIT_TRACE`` across every test.
+
+    Exp 49 seam: gates the ``motor_credit.measured`` structured JSONL
+    event in embodiment/tool_bridge.py. Logging-only (no side effects),
+    but a leaked enable would spray extra log records into unrelated
+    tests' caplog assertions — same scrub discipline as the other
+    harness toggles.
+    """
+    saved = os.environ.pop("MAXIM_MOTOR_CREDIT_TRACE", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_MOTOR_CREDIT_TRACE", None)
+        if saved is not None:
+            os.environ["MAXIM_MOTOR_CREDIT_TRACE"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_exp44_capture_log_env():
     """Scrub ``MAXIM_EXP44_CAPTURE_LOG`` across every test.
 
