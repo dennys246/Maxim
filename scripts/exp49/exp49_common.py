@@ -266,11 +266,18 @@ def compute_trial_metrics(events: list[dict[str, Any]]) -> TrialMetrics:
         pd = c.get("potential_diff")
         if pd is None or abs(float(pd)) <= 1e-9:
             continue
-        # The credit event fires after the post-motion measurement; the
-        # motion preceding it is the credited turn. Find it.
+        # The credit event fires at the END of its turn's execute (after the
+        # post-motion measurement wait), so the credited turn is the last
+        # motion STRICTLY before it. Strictly: under back-to-back actions the
+        # NEXT turn's motion event can land within the 10 ms JSONL timestamp
+        # rounding of this credit — `<=` matched the tie and mis-attributed
+        # ~5% of arm C credits as wrong-sign (the "stale frame" hypothesis
+        # this refuted: the measured pairs were frame-clean all along; the
+        # extractor's attribution was the liar). A credit can never tie with
+        # its OWN motion — the measurement wait guarantees >=0.3 s separation.
         turn = None
         for mo in reversed(motions):
-            if mo["t"] <= c["t"]:
+            if mo["t"] < c["t"]:
                 turn = mo
                 break
         if turn is None:

@@ -1,6 +1,6 @@
 # Exp 49 — Two-joint centering: does the runtime USE the body-turn capability appropriately?
 
-**Status:** COMPLETE (2026-08-04). H1 supported, H2 1.00, H3 1.00 on arm B.
+**Status:** COMPLETE (2026-08-04; H3 attribution corrected 2026-08-06). H1 supported, H2 1.00, H3 1.00 (B) / 0.969 (C) — both pass.
 Results below the Amendments section. Phase 3 Arm 1 of
 [sem_motor_binding.md](../plans/sem_motor_binding.md); owner-designed scenario
 (2026-08-04): "a simulation that requires both a combination of body movement
@@ -145,7 +145,7 @@ Per-trial JSONL + provenance in the session scratchpad
 | body-turn usage | 0.0 | 1.0 | 1.0 |
 | first body turn correct (H2) | n/a (no tool) | **10/10 = 1.00** | 5/10 |
 | mean time-to-center | — | 86.8 s | 4.65 s |
-| credited turns (H3 sign acc.) | 0 | **23/23 = 1.00** | 118/129 = 0.915 |
+| credited turns (H3 sign acc.) | 0 | **23/23 = 1.00** | **125/129 = 0.969** (corrected 2026-08-06) |
 | credited fold-divergent | 0 | 7 | 77 |
 | plateaued at neck limit | 6/10 | 0 | 0 |
 
@@ -161,15 +161,31 @@ Per-trial JSONL + provenance in the session scratchpad
   direction-correct in 10/10 trials under dense speech with the honest
   fell-short/clamped feedback — the 2026-08-04 live wrong-direction turns do
   not reproduce once speech is dense and the feedback loop is closed.
-- **H3 PASSED at 1.00 on arm B** (23/23 credited turns sign-accurate vs the
-  folded sensor truth; gate ≥0.95). Arm C: 0.915 — residual audit: 5
-  mismatches at the noise floor (|Δaz_true| ≈ 0.004 ≪ σ) and 6 with a
-  consistent ~16° one-turn-stale capture frame in the before-reading, a
-  cadence artifact of INSTANT sim turns (real motion takes 1.5–3 s, giving
-  the feed a fresh cycle; the sim's 0 s turns can leave the mirror stamp one
-  turn behind). Tracked as a harness-fidelity follow-up — resolve before any
-  hardware H3 claim; it does not affect arm B (deliberation is slower than
-  the feed cycle).
+- **H3 PASSED on BOTH arms** (gate ≥0.95): arm B 23/23 = 1.00; arm C
+  **125/129 = 0.969** after the 2026-08-06 extractor-attribution correction
+  (below). The 4 remaining arm C mismatches are pure noise floor: true
+  sensor progress ≈ 0.0036 az (0.3°) under σ = 0.03 read noise — an honest
+  measurement legitimately sign-flips there. The measurement honesty gates
+  survive with zero confirmed leaks.
+- **CORRECTION (2026-08-06): the "one-turn-stale capture frame" residual
+  hypothesis in the first version of this section is REFUTED.** A published
+  0.915 arm C H3 attributed 6 full-magnitude mismatches to a stale mirror
+  frame under instantaneous sim turns. Event-level reconstruction showed the
+  measured before/after pairs were **frame-clean all along** — every
+  credit's `before` chains exactly from the previous credit's `after`. The
+  liar was the harness's credit-to-motion matcher: the credit event is
+  emitted at the END of its turn's execute, and under back-to-back
+  substrate actions the NEXT turn's motion event lands within the 10 ms
+  JSONL timestamp rounding — a `<=` matcher attributed those credits to the
+  wrong turn and scored honest negative credit (a turn genuinely away from
+  center) as sign-flipped. Fixed to strictly-before matching (a credit can
+  never tie with its OWN motion — the ≥0.3 s measurement settle guarantees
+  separation; rounding is monotonic so the next motion never rounds below
+  its predecessor's credit). Pinned by
+  `test_credit_tied_with_next_motion_attributes_to_own_turn`. Consequence:
+  **hardware H3 claims are no longer instrument-blocked** — the previously
+  planned "stale-frame fix" in the backend gates is unnecessary; no
+  production code changed.
 - **Secondary finding — the fold splits the two intelligences.** The
   deliberative LLM crosses the linear array's front/back fold (centers
   ±120° rear sources) because its policy is not credit-following; the
