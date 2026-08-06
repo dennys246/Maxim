@@ -172,7 +172,7 @@ head was fixed.
 
 ---
 
-## Measured DoA transfer curve (2026-08-05) — the staircase, and the version-skew incident that nearly hid it
+## 2026-08-05 session — the version-skew incident (settled) and a CONTESTED second curve (unreconciled)
 
 Full-envelope static sweep (`scripts/orient_backbone/doa_sweep.py`): body yaw
 swept ±1.4 rad in 0.1 rad steps (head riding along — post-headfix path,
@@ -209,7 +209,38 @@ scale error) and **d(head)/d(body) = +1.007** — the head, and therefore the
 mic array, rides the body essentially 1:1. The 2026-07-16 head-frame fix
 holds.
 
-### The real transfer curve: a compressed staircase, not a line
+### A CONTESTED second curve — do NOT treat as settled
+
+> **UNRECONCILED (flagged 2026-08-06 by a design review, before this section
+> was merged).** What follows **contradicts the 2026-07-16 characterization
+> above by ~3× in gain and by ~13× in quantization**, and the 07-16 numbers are
+> the better-evidenced of the two:
+>
+> | | 2026-07-16 (above) | 2026-08-05 (below) |
+> |---|---|---|
+> | gain | **0.57 az/rad**, four independent measurements within ±0.03 | 0.19/rad central |
+> | linearity | **R² = 0.9982**, both directions | plateaus + steps |
+> | monotonicity | **complete across ±1.4 rad** | non-monotonic zones |
+> | quantization | ~1° | ~13° sectors claimed |
+> | hysteresis | 0.015 | 0.051 |
+> | evidence | 4 cross-checked sweeps | **1 run** |
+>
+> The 08-05 run was taken **immediately after discovering and "fixing" an
+> SDK/daemon version skew** (below) — the same run's first pass measured
+> 0.015/rad of pure garbage. That a version change moved the gain 0.015 → 0.19
+> shows the skew was *a* problem; it does not show it was the *only* problem,
+> and 0.19 is still 3× below the established value. **The most probable reading
+> is that the 08-05 sweep is still instrument-compromised**, not that the chip
+> changed. This repo has already written a phantom DoA pathology into three
+> docs before vendor documentation refuted it (see the retraction above) — the
+> invariant that produced is exactly why this is flagged rather than published.
+>
+> **Nothing downstream may rely on the staircase until it is reconciled.**
+> Reconciliation = re-sweep on a version-verified stack, at ≥2 source
+> geometries, and either reproduce 0.57/R²≈0.998 (→ delete this section as an
+> instrument artifact) or reproduce the staircase (→ then investigate what
+> changed on the robot between 07-16 and 08-05: firmware, shell, mounting).
+> The data below is retained so the re-sweep has a baseline to compare against.
 
 Pooled per-pose medians (both passes, 10 samples/pose), matched versions:
 
@@ -220,10 +251,11 @@ Pooled per-pose medians (both passes, 10 samples/pose), matched versions:
 | beyond ~65° (left side only) | **second step to −26°** (az −0.289) |
 
 Fitted gains: central (|ψ|≤0.5 rad) +0.195/rad, left tail +0.214, right tail
-+0.171, full-range +0.180. Hysteresis is small (mean |asc−desc| = 0.051), so
-the curve is repeatable — this is the sensor's shape, not drift.
++0.171, full-range +0.180. Hysteresis is 0.051 — repeatable *within this run*,
+which is consistent with a stable sensor shape AND with a stable instrument
+fault; it does not discriminate between them.
 
-Three characterizations that matter downstream:
+Three observations, **provisional pending reconciliation**:
 
 1. **Discrete preferred values.** The readings snap to the same exact values
    over and over (−0.289, −0.144, +0.133 az ≈ −26°, −13°, +12°) — consistent
@@ -236,37 +268,39 @@ Three characterizations that matter downstream:
 3. **Zero offset.** True center reads az ≈ −0.03; the zero crossing sits near
    ψ +0.1–0.2 rad (~6–11°). Mounting, shell, or source placement.
 
-### Implications for the orient stack
+### Implications for the orient stack — IF the curve survives reconciliation
 
-- **Direction is safe.** Sign is correct everywhere outside the small-offset
-  noise band — which is all the servo loop, H2-style direction choice, and the
-  Exp 49 direction results need. Nothing here retracts a direction claim.
-- **Magnitude selection is impaired on hardware.** The big-step decision
-  boundary (|az| ≈ 0.33, derived from the 0.55–0.57 near-center gain measured
-  2026-07-16 over small swings) sits **above the right side's saturation
-  ceiling** (+0.29 max, and that's the left side): from readings alone, the
-  `_big` turns will rarely trigger. The YAML's modeled per-turn az deltas
-  (0.17 / 0.50) overstate the real reading change ~2.5–3× outside the central
-  zone.
-- **Do NOT retune the YAML magnitudes from this one room.** The magnitudes are
-  load-bearing for the Exp 45b/45c decision boundary, and the plateau
-  structure may be partly environmental. Characterize first, retune once, with
-  the sweep as the standing instrument.
-- **The sim scenario can now be made hardware-faithful.** Exp 49's
-  `SimulatedDoAScenario` uses the ideal linear fold (0.637/rad). A
-  measured-staircase variant (piecewise transfer + ~13° quantization +
-  asymmetry) is a cheap follow-on arm and would predict hardware behavior far
-  better — particularly for magnitude-policy experiments.
+Stated conditionally on purpose. **If the 08-05 sweep turns out to be an
+instrument artifact, none of this applies and the 2026-07-16 implications stand
+unchanged.**
 
-### Next steps
+- **Direction would remain safe** either way. Sign is correct outside the
+  small-offset noise band under *both* characterizations — which is all the
+  servo loop, H2-style direction choice, and the Exp 49 direction results need.
+  No direction claim is at risk under either reading.
+- **Magnitude selection would be impaired.** The big-step boundary (|az| ≈ 0.33,
+  derived from the 0.55–0.57 gain) sits above the 08-05 right-side saturation
+  ceiling, so `_big` turns would rarely trigger from readings alone. **Under the
+  07-16 curve this problem does not exist** — which is precisely why the
+  reconciliation matters before any policy work.
+- **Do NOT retune the YAML magnitudes.** Load-bearing for the Exp 45b/45c
+  boundary, and sourced here from a single contested run in one room.
+- **Do NOT build a measured-staircase sim variant yet.** Encoding a contested
+  curve into `SimulatedDoAScenario` would propagate a possible instrument fault
+  into every downstream sim result — the phantom-pathology failure mode, one
+  layer deeper.
 
-1. Repeat the sweep with the source at a different distance and height
-   (`--label` accordingly) to separate sensor shape from room geometry —
-   especially for the L/R asymmetry and the zero offset.
-2. `ear_map.py` for a finer directional map if the sector hypothesis holds.
-3. Only then: decide whether the staircase belongs in the sim scenario and
-   whether the magnitude YAML needs a hardware-calibrated retune (a
-   pre-registered re-run of the 45b/45c boundary comes with it).
+### Next steps (reconciliation first)
+
+1. **Re-sweep on a version-verified stack** (`curl /api/daemon/status` vs
+   `importlib.metadata.version("reachy_mini")` recorded in the run), at **≥2
+   source geometries**, against the 07-16 protocol. This is the discriminator:
+   reproduce 0.57 / R²≈0.998 → the 08-05 curve was an instrument artifact and
+   this section gets deleted; reproduce the staircase at both geometries → it is
+   real and the next question is what changed on the robot since 07-16.
+2. Only if the staircase reproduces: `ear_map.py` for a finer directional map,
+   then decide about the sim variant and any YAML retune (which carries a
+   pre-registered re-run of the 45b/45c boundary).
 
 ---
 
