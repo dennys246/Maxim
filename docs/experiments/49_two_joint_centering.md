@@ -116,14 +116,22 @@ definitions.
    said "|az|" without naming the frame.)
 4. **Arm C operating point (pre-registered here):** substrate import is the
    live runtime's `nac.json` + `ec.json` PAIR (the pair rule — biases key on
-   EC node ids); `MAXIM_NAC_MIN_CONFIDENCE=0` (cluster bias is capped ~0.2,
-   below the 0.3 default gate — the known clamp-vs-threshold asymmetry; a
-   fresh-substrate arm under the default gate is inert by design and was
-   recorded as such); `MAXIM_SUBSTRATE_TOOL_WHITELIST=turn_left,turn_right`
+   EC node ids); `MAXIM_NAC_MIN_CONFIDENCE=0`; `MAXIM_SUBSTRATE_TOOL_WHITELIST=turn_left,turn_right`
    (the probe-3 floor lesson). NOTE the whitelist means C's action space
    excludes `focus_on_sound` while B's includes it — B-vs-C comparisons
    conflate proposer with repertoire and are secondary.
-5. **Determinism caveat:** the per-trial seed fixes the noise/speech DRAW
+5. **CORRECTION (2026-08-06): the "clamp-vs-threshold asymmetry" cited in
+   amendment 4 was FACTUALLY WRONG.** `max_cluster_reward_bias` is **1.0**
+   (`nac.py:309`), 5× larger than `max_reward_bias = 0.20` — deliberately, since
+   cluster bias is a *primary* selection score. Two consistent `+1` credits at
+   `alpha = 0.15` reach 0.30 and clear the default gate unaided. The observed
+   `+0.101` was an **undertrained / decayed** value (1-day wall-clock half-life
+   plus 300-tick per-tick tau), not a clamp. The real cold-start blockers on this
+   task are different: there is no azimuth/orient entry in
+   `_DRIVE_TOOL_AFFINITIES`, so a fresh substrate has zero cold-start signal for
+   turning. `MAXIM_NAC_MIN_CONFIDENCE=0` remains the correct arm-C operating
+   point (it removes a confound), but the *reason* recorded above was wrong.
+6. **Determinism caveat:** the per-trial seed fixes the noise/speech DRAW
    SEQUENCE, not the trajectory — read counts are wall-clock-paced, so trials
    are statistically controlled, not bit-reproducible.
 
