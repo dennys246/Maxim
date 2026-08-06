@@ -172,6 +172,104 @@ head was fixed.
 
 ---
 
+## Measured DoA transfer curve (2026-08-05) — the staircase, and the version-skew incident that nearly hid it
+
+Full-envelope static sweep (`scripts/orient_backbone/doa_sweep.py`): body yaw
+swept ±1.4 rad in 0.1 rad steps (head riding along — post-headfix path,
+`automatic_body_yaw` off), fixed sustained speech source ~1–2 m in front of the
+neutral heading, 5 speech-gated reads per pose, ascending + descending passes.
+Raw data: [`data/2026-08-05_doa_sweep_skewed_and_matched.jsonl`](data/2026-08-05_doa_sweep_skewed_and_matched.jsonl)
+(labels `post-1.9-daemon` = the invalid skewed run, `matched-versions` = the
+real one). Daemon 1.8.3 throughout.
+
+### The incident first: SDK/daemon version skew silently corrupts BOTH surfaces
+
+The first sweep ran with **SDK 1.9.0 against daemon 1.8.3** (the SDK printed a
+version-mismatch RuntimeWarning and carried on). Result: central gain
+**+0.015/rad** — a ~40× collapse, readings pinned near az 0 at every pose, with
+non-monotonic garbage excursions. The same session's live run had
+`goto_target` **motion commands rejected by the controller**. One cause, two
+independent symptom surfaces (sensing AND control). Pinning the client back
+(`pip install reachy-mini==1.8.3`) restored both: the very next sweep, same
+room, same source, measured central gain +0.195/rad with clean sign structure.
+
+**Rule (this is the existing version-match invariant, now with a measured
+blast radius):** a skewed client does not fail loudly — it produces
+plausible-looking flat data and intermittent motion rejections. Version-match
+FIRST (`curl http://<robot>:8000/api/daemon/status` vs
+`importlib.metadata.version("reachy_mini")`) before believing any measurement,
+and never label a data file with an unverified topology guess (the skewed
+run's label says `post-1.9-daemon`; the daemon was 1.8.3 the whole time — it
+was the SDK that moved).
+
+The same session also re-verified actuation with the matched stack
+(`yaw_verify.py`, daemon-side pose readback): commanded→actual body travel
+ratio **0.955** (0.961 small steps / 0.928 large — mild duration limiting, no
+scale error) and **d(head)/d(body) = +1.007** — the head, and therefore the
+mic array, rides the body essentially 1:1. The 2026-07-16 head-frame fix
+holds.
+
+### The real transfer curve: a compressed staircase, not a line
+
+Pooled per-pose medians (both passes, 10 samples/pose), matched versions:
+
+| true offset (body yaw ψ) | reading (az, deg-equivalent) |
+|---|---|
+| 0–30° | roughly proportional, **gain ≈ 0.19/rad** (geometry predicts 0.637) |
+| 30–60° | **plateau at ±12–14°** (az ≈ ±0.13–0.14) regardless of true offset |
+| beyond ~65° (left side only) | **second step to −26°** (az −0.289) |
+
+Fitted gains: central (|ψ|≤0.5 rad) +0.195/rad, left tail +0.214, right tail
++0.171, full-range +0.180. Hysteresis is small (mean |asc−desc| = 0.051), so
+the curve is repeatable — this is the sensor's shape, not drift.
+
+Three characterizations that matter downstream:
+
+1. **Discrete preferred values.** The readings snap to the same exact values
+   over and over (−0.289, −0.144, +0.133 az ≈ −26°, −13°, +12°) — consistent
+   with the XVF3800 steering a limited set of internal beam sectors (~13°
+   pitch) rather than reporting continuous bearing. Angular resolution is
+   therefore ~13° at best outside the central zone.
+2. **Left/right asymmetry.** The left side reaches −0.289; the right saturates
+   at +0.13–0.17 — about 2× weaker. Sensor vs room/source geometry is not yet
+   separated (see next steps).
+3. **Zero offset.** True center reads az ≈ −0.03; the zero crossing sits near
+   ψ +0.1–0.2 rad (~6–11°). Mounting, shell, or source placement.
+
+### Implications for the orient stack
+
+- **Direction is safe.** Sign is correct everywhere outside the small-offset
+  noise band — which is all the servo loop, H2-style direction choice, and the
+  Exp 49 direction results need. Nothing here retracts a direction claim.
+- **Magnitude selection is impaired on hardware.** The big-step decision
+  boundary (|az| ≈ 0.33, derived from the 0.55–0.57 near-center gain measured
+  2026-07-16 over small swings) sits **above the right side's saturation
+  ceiling** (+0.29 max, and that's the left side): from readings alone, the
+  `_big` turns will rarely trigger. The YAML's modeled per-turn az deltas
+  (0.17 / 0.50) overstate the real reading change ~2.5–3× outside the central
+  zone.
+- **Do NOT retune the YAML magnitudes from this one room.** The magnitudes are
+  load-bearing for the Exp 45b/45c decision boundary, and the plateau
+  structure may be partly environmental. Characterize first, retune once, with
+  the sweep as the standing instrument.
+- **The sim scenario can now be made hardware-faithful.** Exp 49's
+  `SimulatedDoAScenario` uses the ideal linear fold (0.637/rad). A
+  measured-staircase variant (piecewise transfer + ~13° quantization +
+  asymmetry) is a cheap follow-on arm and would predict hardware behavior far
+  better — particularly for magnitude-policy experiments.
+
+### Next steps
+
+1. Repeat the sweep with the source at a different distance and height
+   (`--label` accordingly) to separate sensor shape from room geometry —
+   especially for the L/R asymmetry and the zero offset.
+2. `ear_map.py` for a finer directional map if the sector hypothesis holds.
+3. Only then: decide whether the staircase belongs in the sim scenario and
+   whether the magnitude YAML needs a hardware-calibrated retune (a
+   pre-registered re-run of the 45b/45c boundary comes with it).
+
+---
+
 ## Sources
 
 - Reachy Mini media stack — https://huggingface.co/blog/pollen-robotics/reachy-mini-media-stack
