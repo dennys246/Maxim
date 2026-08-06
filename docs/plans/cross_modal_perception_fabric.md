@@ -11,7 +11,9 @@ the converged design needs *fewer* new mechanisms than rev 1, not more.
 critical path).
 **Owns (proposed):** the perception-resolution stage, the foveal binding
 convention, the two-level attention convention, and the artifact contract.
-**Companion plans:** [sem_motor_binding.md](sem_motor_binding.md) ·
+**Companion plans:** [three_factor_credit_assignment.md](three_factor_credit_assignment.md)
+(the learning-rule stance this plan's binding + calibration work sits inside) ·
+[sem_motor_binding.md](sem_motor_binding.md) ·
 [archive/cross_modal_substrate_binding.md](archive/cross_modal_substrate_binding.md)
 (**this plan proposes its revival** — see "What changed in rev 2") ·
 [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md)
@@ -412,15 +414,15 @@ visual identity is far higher-dimensional than a 40-band spectrum — but this i
 an open question, not an assumption.* Rev 3 makes the audio path model-free;
 vision is now the only place a pretrained model enters.
 
-**C. Thesis boundary** (still undecided, but the pressure keeps dropping): fixed
-pretrained encoder = accepted practice (sentence-transformers precedent);
-projection trained on the robot's own paired experience = judgment call;
-gradient-trained *policy* = excluded. Rev 2 removed the projection requirement;
-rev 3 removes the acoustic model. **See also the three-factor learning question**
-— whether locally-computed, backprop-free gradient updates (e.g. for Layer-2
-calibration) sit inside or outside the claim is a live decision, and the honest
-framing may be "no backpropagation, no pretrained-weight updates" rather than "no
-gradient descent."*
+**C. Thesis boundary** — **now handled in
+[three_factor_credit_assignment.md](three_factor_credit_assignment.md)**, which
+proposes the sharper framing: *no backpropagation, no pretrained-weight updates*
+(rather than "no gradient descent"), on the grounds that one-layer local updates
+need no backward pass and three-factor learning is a defensible position rather
+than an absence. Rev 2 removed the projection requirement; rev 3 removed the
+acoustic model; vision's pretrained encoder is now the only imported-weight
+surface left. **Layer-2 calibration learning is specified there**, including the
+prediction-error-not-reward teacher rule and consolidation-window updates.
 
 *(Rev 1's Open Decisions B and C — vision's float shape, and probe-credit as
 exemption-vs-mechanism — are CLOSED by the rev 2 design: vision is an encoder, and
