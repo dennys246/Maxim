@@ -654,3 +654,68 @@ def test_nac_merge_output_iteration_order_is_sorted() -> None:
     )
     merged = nac_merge(left, right, left_source="A", right_source="B")
     assert list(merged["links"].keys()) == ["a_event", "m_event", "z_event"]
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Cross-encoder-space safety (2026-08-06 design-review findings)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_cosine_returns_zero_on_dimension_mismatch() -> None:
+    """Different-length vectors come from different encoder spaces.
+
+    Pre-fix ``zip`` truncated to the shorter vector, so the pair scored a
+    PARTIAL cosine over the overlapping prefix.
+    """
+    from maxim.hivemind.merge import _cosine
+
+    a = [1.0, 0.0, 0.0]
+    b = [1.0, 0.0, 0.0, 0.0, 0.0]
+    assert _cosine(a, b) == 0.0
+    # Same-length still behaves normally.
+    assert _cosine([1.0, 0.0], [1.0, 0.0]) == 1.0
+
+
+def test_ec_merge_does_not_merge_across_encoder_dimensions() -> None:
+    """A 384-dim and a 768-dim node of the SAME modality must stay separate.
+
+    The pre-fix partial cosine over the shared prefix was 1.0 here — far
+    above the 0.44 threshold — so the two silently merged and one
+    contributor's centroid absorbed a vector from a different space.
+    ``ec_merge`` gates on ``modality`` only and EC node payloads carry no
+    encoder identity, so nothing else would have caught it.
+    """
+    left = {"n_small": {"embedding": [1.0, 0.0, 0.0], "modality": "text", "count": 1}}
+    right = {"n_big": {"embedding": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0], "modality": "text", "count": 1}}
+
+    merged = ec_merge(left, right, left_source="A", right_source="B")
+
+    assert set(merged) == {"n_small", "n_big"}, "different-dim nodes must not merge"
+    assert merged["n_small"]["embedding"] == [1.0, 0.0, 0.0]
+    assert merged["n_big"]["embedding"] == [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+
+def test_hivemind_frozen_modalities_match_ec_default() -> None:
+    """The duplicated literal must track ``ECConfig``'s (pinned, not typed).
+
+    ``merge.py`` deliberately avoids importing internal modules, so the
+    frozen-modality set is duplicated. It silently diverged — ``"audio"``
+    was in ``ECConfig`` but not here, so a default-argument ``ec_merge``
+    running-mean-updated audio centroids across contributors, exactly
+    what the local EC forbids for that modality.
+    """
+    from maxim.hivemind.merge import DEFAULT_FROZEN_CENTROID_MODALITIES
+    from maxim.similarity.ec import ECConfig
+
+    assert DEFAULT_FROZEN_CENTROID_MODALITIES == ECConfig().frozen_centroid_modalities
+
+
+def test_ec_merge_freezes_audio_centroid_by_default() -> None:
+    """Audio centroids must not drift across contributors by default."""
+    left = {"n1": {"embedding": [1.0, 0.0], "modality": "audio", "count": 1}}
+    right = {"n2": {"embedding": [0.9, 0.436], "modality": "audio", "count": 1}}
+
+    merged = ec_merge(left, right, left_source="A", right_source="B")
+
+    assert merged["n1"]["embedding"] == [1.0, 0.0], "audio centroid must stay frozen"
+    assert merged["n1"]["count"] == 2, "counts still aggregate"
