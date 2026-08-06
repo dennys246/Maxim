@@ -1,6 +1,6 @@
 # Cross-Modal Perception Fabric (1.3 design direction)
 
-**Status:** DESIGN DRAFT, **rev 2** (2026-08-06). Zero code. Rev 1 went through a
+**Status:** DESIGN DRAFT, **rev 3** (2026-08-06). Zero code. Rev 1 went through a
 four-lens review round (substrate/credit · persistence/hivemind ·
 perception/encoder · bio-fidelity/scope); all four returned BLOCKING findings.
 Rev 2 folds them AND an owner design pass that **simplified the architecture** —
@@ -103,13 +103,61 @@ not WHAT**. Binding bearing-audio to vision can only learn "a sound at bearing X
 goes with the thing at bearing X" — tautological, zero identity content.
 Emergent identity requires *content* on both sides.
 
+### Why the 2-cluster ceiling exists — it is a CODE artifact, not a sensor limit
+
+`_sensor_embed` derives two fixed SHA-seeded 384-dim basis vectors per sensor
+*name* and interpolates between them by the normalized value. So **every possible
+azimuth lies on one line segment** in the embedding space. Two random high-dim
+vectors are near-orthogonal, so that segment spans cosine ≈ 0→1, and chopping it
+at `pattern_threshold = 0.85` yields 2–3 pieces. Exp 46's "2 clusters at every
+threshold 0.44→0.93" is **arithmetic**: one scalar carries one degree of freedom
+and the encoder faithfully preserves exactly that. Better acoustics cannot fix it.
+
+**The fix is population coding, on two axes** — the brain's answer to coding a
+continuous quantity (tonotopy in the cochlea, place-coded azimuth maps in SC/IC):
+
+- **Bearing:** one scalar → N tuned units. **Already earned on live hardware** —
+  [Exp 45e](../experiments/45e_orient_s4_population_readout.md) resolved the
+  far-bin cell starvation with a population-vector readout.
+- **Content:** nothing → N frequency bands. The cochlea, literally.
+
+Same fix, two axes.
+
+### A filterbank rides `ModalityChannel`; a learned embedding does not
+
+Rev 2 said embeddings cannot ride `ModalityChannel`. That holds for a *learned*
+512-dim embedding whose per-dimension names are meaningless — but **a filterbank
+is different**: band *k* has stable semantics (a fixed frequency range), so
+naming `mel_00 … mel_39` is legitimate, and `_sensor_embed`'s weighted sum over N
+named bases is a **random projection** of the spectrum (Johnson–Lindenstrauss:
+distances approximately preserved). Cosine in the projected space tracks cosine
+between mel vectors.
+
+Two consequences, both good:
+
+1. The cochlear front-end rides the **existing** `SensorEncoder` path — a
+   `ModalityChannel` with N named scalars instead of 1. No new encoder type.
+2. **It needs no neural network at all** (a gammatone/mel filterbank is DSP), so
+   there are no imported weights anywhere in the audio path. Strictly cheaper and
+   more thesis-clean than rev 2's pretrained acoustic encoder.
+
+Design parameters to pre-decide: **time summarization** (mean over the utterance
+is simplest; onset + sustain as two sub-vectors is more faithful — transient and
+steady-state carry different identity information); **loudness normalization**
+(or volume dominates and a loud bark clusters with a loud bell); **frozen
+centroid** (a dense continuous stream on running-mean centroids is the documented
+drift collapse); **band count** (too few reproduces the starvation, too many and
+the summed projection washes out — sweep it in Stage 0b); **mel first, gammatone
+as the fidelity upgrade**. Band energies are non-negative, so the legacy `[0,1]`
+normalization applies with no signed-folding concern.
+
 ### Target state
 
 | Stream | Encoder | EC modality | Purpose |
 |---|---|---|---|
-| Audio bearing | `SensorEncoder` (unchanged) | `"audio"` | Sensorimotor orient policy |
+| Audio bearing | `SensorEncoder` + **population code** (Exp 45e) | `"audio"` | Sensorimotor orient policy |
 | Vision foveal | **NEW** fixed pretrained image encoder | `"vision"` | Identity (emergent) |
-| Audio content | **NEW, DEFERRED** fixed pretrained acoustic encoder | `"audio_content"` | Identity for non-speech sounds |
+| Audio content | **NEW — cochlear filterbank (DSP, NO model)** | `"audio_content"` | Identity for non-speech sounds |
 | (speech content) | existing transcription → `LinguisticEncoder` | `"text"` | The **Stage 0c shortcut** — zero new encoders |
 
 Both new encoders bypass `ModalityChannel` entirely — they emit embeddings, not
@@ -243,12 +291,14 @@ never exist.
 | Level-2 novelty | The co-activation edge weight itself | **RIDES — free** |
 | Cross-modal binding | `archive/cross_modal_substrate_binding.md` (CANCELLED) | **REVIVAL, gated on Stage 0c earning it** |
 | Vision encoder | Nothing | **GENUINELY NEW** (fixed pretrained, sensory boundary) |
-| Acoustic content encoder | Nothing | **GENUINELY NEW — deferred**; Stage 0c uses the speech path |
+| Acoustic content | Nothing | **NEW but DSP-only** (mel/gammatone filterbank), and it **rides `ModalityChannel` + `SensorEncoder`** as N named bands — no model, no new encoder type |
 | Bundle artifact-kind refusal | `compose_bundle` has a fixed signature and **no notion of artifact kind** | **GENUINELY NEW** (Stage 4) |
 
-**Count:** one new mechanism on the near-term path (the vision encoder), one
-revival (binding), two deferred (acoustic encoder, bundle-kind refusal). Rev 1
-claimed "exactly ONE" and was wrong; rev 2's design pass genuinely reduced it.
+**Count (rev 3):** one new *mechanism* on the near-term path (the vision
+encoder), one new *DSP stage* that rides existing infrastructure (the cochlear
+filterbank), one revival (binding), one deferred (bundle-kind refusal). Rev 1
+claimed "exactly ONE" and was wrong; successive design passes genuinely reduced
+it.
 
 ### Deliberately NOT doing
 
@@ -272,12 +322,12 @@ claimed "exactly ONE" and was wrong; rev 2's design pass genuinely reduced it.
 | Stage | Content | Gate |
 |---|---|---|
 | **0a** | **Reconcile the DoA curve.** Version-verified re-sweep (daemon + SDK versions recorded in the run) at **≥2 source geometries**, against the 07-16 protocol. | Reproduces 0.57/R²≈0.998 → staircase was an artifact, delete it. Reproduces the staircase at both geometries → real, and the next question is what changed on the robot since 07-16. Fact 3 is UNUSABLE until this returns. |
-| **0b** | **Cluster-resolution precondition.** Measure distinguishable EC clusters for the audio channel across the working range. | ≥ as many clusters as distinct correct actions. Exp 46 already measured **2**. **If this fails, no policy at any layer can condition on direction** — levers are calibration rescaling, per-channel `min_delta`/`pattern_threshold`, or the **population readout earned in Exp 45e** (the shipped answer to exactly this starvation). |
-| **0c** | **THE PIVOTAL TEST — co-activation, speech-first.** Someone says a word off-axis → robot orients → foveal encoder fires on what is centered → does the `"text"` node co-activate with a stable `"vision"` node, repeatably, across sessions? Uses `MAXIM_EC_TRACE_ACTIVATIONS=1` + `scripts/analyze_roy_4_coactivation.py`. **One** new encoder, against content already flowing. | Measurable co-activation above the Roy-4 baseline. This earns the binding-plan revival. **Pre-registered limitation:** text content is *linguistic*, so a pass demonstrates the binding **mechanism**, not yet that identity emerges from raw sensation. |
+| **0b** | **Cluster-resolution precondition.** Measure distinguishable EC clusters for the audio channel across the working range. | ≥ as many clusters as distinct correct actions. Exp 46 measured **2**, and the cause is now known to be the CODE, not the sensor. Concrete levers, in order: **population coding for bearing** (Exp 45e, already earned), **band count** for the spectral channel, then per-channel `min_delta`/`pattern_threshold`. Sweep band count here — it is the same measurement. |
+| **0c** | **THE PIVOTAL TEST — co-activation.** Preferred form is **spectral** (cochlear filterbank → `"audio_content"`), which tests sensory association directly. The **speech path** (transcription → `"text"`, zero new encoders) is the cheap cross-check and fallback if the filterbank slips. Someone says a word off-axis → robot orients → foveal encoder fires on what is centered → does the `"text"` node co-activate with a stable `"vision"` node, repeatably, across sessions? Uses `MAXIM_EC_TRACE_ACTIVATIONS=1` + `scripts/analyze_roy_4_coactivation.py`. **One** new encoder, against content already flowing. | Measurable co-activation above the Roy-4 baseline. This earns the binding-plan revival. **Pre-registered limitation:** text content is *linguistic*, so a pass demonstrates the binding **mechanism**, not yet that identity emerges from raw sensation. |
 | **1** | Perception resolution (§A) + fold veto (§B). Three-lens design review first. | Fold-resolved azimuth improves far-bin centering **with the policy's cluster space unchanged** (trained-policy key continuity is part of the gate). |
 | **2** | Hardware-faithful sim scenario — **only if 0a says the staircase is real.** Must include the **fold** and quantize **before** noise; insertion point is the `az_true → az_read` step in `SimulatedDoAScenario`. Note: shipped library code with three importers, not harness code. | Reproduces fold-divergent credit. |
 | **3** | Foveal vision encoder + orient-windowed binding + the two-level attention convention (§C). | Emergent clusters recur across sessions; binding gated on presence; both attention levels instrumented. |
-| **4** | Acoustic content encoder (generalize 0c beyond speech) **and/or** artifact contract + sharing rule. Scope is larger than rev 1 drafted: binary payloads are **impossible today** (text-only `extract_bundle`, no `atomic_write_bytes`, closed `compose_bundle` signature) and it needs a `BUNDLE_SCHEMA_VERSION` bump + registered migration. | Requires 0c + 3. |
+| **4** | Artifact contract + sharing rule (the acoustic front-end moved forward into 0c/3 — it is DSP, not a model, so it no longer needs deferring). Scope is larger than rev 1 drafted: binary payloads are **impossible today** (text-only `extract_bundle`, no `atomic_write_bytes`, closed `compose_bundle` signature) and it needs a `BUNDLE_SCHEMA_VERSION` bump + registered migration. | Requires 0c + 3. |
 
 **Behavioral re-validation obligations:** rev 1's Stage 3 fired Exp 48's
 registered `Re-run on:` trigger verbatim. Rev 2's vision-as-encoder design
@@ -354,11 +404,23 @@ non-speech) or does the artifact/sharing work? *Recommendation: acoustic encoder
 it completes the capability; sharing is only useful once there is something worth
 sharing.*
 
-**B. Thesis boundary** (still undecided): fixed pretrained encoder = accepted
-practice (sentence-transformers precedent); projection trained on the robot's own
-paired experience = judgment call; gradient-trained policy = excluded. Decide
-before Stage 4. Rev 2 **reduces** the pressure here — Hebbian binding needs no
-trained projection.
+**B. Does vision need a pretrained encoder at all?** If audio's identity code is
+a hand-built cochlear filterbank with no model, the symmetric question is whether
+vision could use a hand-built V1-analog (retinotopic patches, oriented filters)
+instead of a pretrained network. *Current answer: keep the pretrained encoder —
+visual identity is far higher-dimensional than a 40-band spectrum — but this is
+an open question, not an assumption.* Rev 3 makes the audio path model-free;
+vision is now the only place a pretrained model enters.
+
+**C. Thesis boundary** (still undecided, but the pressure keeps dropping): fixed
+pretrained encoder = accepted practice (sentence-transformers precedent);
+projection trained on the robot's own paired experience = judgment call;
+gradient-trained *policy* = excluded. Rev 2 removed the projection requirement;
+rev 3 removes the acoustic model. **See also the three-factor learning question**
+— whether locally-computed, backprop-free gradient updates (e.g. for Layer-2
+calibration) sit inside or outside the claim is a live decision, and the honest
+framing may be "no backpropagation, no pretrained-weight updates" rather than "no
+gradient descent."*
 
 *(Rev 1's Open Decisions B and C — vision's float shape, and probe-credit as
 exemption-vs-mechanism — are CLOSED by the rev 2 design: vision is an encoder, and
