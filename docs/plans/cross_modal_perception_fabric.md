@@ -1,383 +1,383 @@
 # Cross-Modal Perception Fabric (1.3 design direction)
 
-**Status:** DESIGN DRAFT — **MAJOR REVISION after a four-lens review round
-(2026-08-06)**. Zero code. Four lenses (substrate/credit, persistence/hivemind,
-perception/encoder, bio-fidelity/scope) each returned BLOCKING findings; the
-corrections are folded below and the open architectural decisions are listed at
-the end. **Do not open Stage 1 until the Stage 0 preconditions pass.** Owner-initiated after Exp 49
-("thoughts and language don't drive movement — they run in parallel"), grounded
-in three things Exp 49 + the 2026-08-05 hardware session MEASURED.
+**Status:** DESIGN DRAFT, **rev 2** (2026-08-06). Zero code. Rev 1 went through a
+four-lens review round (substrate/credit · persistence/hivemind ·
+perception/encoder · bio-fidelity/scope); all four returned BLOCKING findings.
+Rev 2 folds them AND an owner design pass that **simplified the architecture** —
+the converged design needs *fewer* new mechanisms than rev 1, not more.
+**Do not open Stage 1 until the Stage 0 preconditions pass.**
+
 **Target version:** 1.3 (design may start earlier; nothing here is on the 1.1
 critical path).
-**Owns (proposed):** the *artifact contract* + the extero/intero channel
-extension + the sharing rule. Projection TRAINING internals stay owned by
-[jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) — this
-plan does not duplicate them; it supplies the artifact shape that plan leaves
-open and re-evaluates its revival trigger.
-**Companion plans:** [sem_motor_binding.md](sem_motor_binding.md) (Phase 3 is
-Stage 1 here) · [jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md)
-(Stage 2's training half) · [maxim_hivemind.md](maxim_hivemind.md) (Stage 4's
-sharing surface) · [exteroception_interoception_seam.md](exteroception_interoception_seam.md)
-(the shipped channel split this extends) · [perception_pipeline_placement.md](perception_pipeline_placement.md)
-(where perception stages run).
+**Owns (proposed):** the perception-resolution stage, the foveal binding
+convention, the two-level attention convention, and the artifact contract.
+**Companion plans:** [sem_motor_binding.md](sem_motor_binding.md) ·
+[archive/cross_modal_substrate_binding.md](archive/cross_modal_substrate_binding.md)
+(**this plan proposes its revival** — see "What changed in rev 2") ·
+[deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md)
+(**no longer on the near-term path**) ·
+[maxim_hivemind.md](maxim_hivemind.md) ·
+[exteroception_interoception_seam.md](exteroception_interoception_seam.md) ·
+[perception_pipeline_placement.md](perception_pipeline_placement.md).
 
 ---
 
-## Motivation — three measured facts, not an aesthetic
+## Motivation — measured facts
 
-1. **Language is the bottleneck in the motor loop.** Exp 49: the substrate
-   centered a sound in **4.65 s** vs the LLM's **86.8 s** (~20×), and every
-   LLM-arm failure was clock-bound, not capability-bound. The architecture
-   already declares three orient vocabularies (deliberative / substrate /
-   reflex); only the deliberative one is fully wired on live hardware. **The
-   gap is wiring, not design.**
+1. **Language is the bottleneck in the motor loop.** Exp 49: substrate centered
+   in **4.65 s** vs the LLM's **86.8 s** (~20×); every LLM-arm failure was
+   clock-bound. Three orient vocabularies are already declared (deliberative /
+   substrate / reflex); only the deliberative one is wired on live hardware.
+   **The gap is wiring, not design.**
 2. **A single azimuth reading cannot resolve the task.** The linear array's
-   front/back fold creates a **180° false equilibrium**: a rear source reads as
-   its front mirror, so honest credit *punishes* correct turns behind the fold
-   (Exp 49: 77 fold-divergent credits; arm C trapped on every far bin while the
-   non-credit-following LLM crossed it). No threshold tunes this away.
-3. **CONTESTED — the sensor may not express graded magnitude.** The
-   2026-08-05 sweep measured a compressed staircase (~0.19/rad, plateaus, ~13°
-   sectors). **This contradicts the shipped 2026-07-16 characterization by ~3×
-   in gain (0.57/rad, R²=0.9982, ~1° quantization, complete monotonicity, four
-   cross-checked measurements) and is a single run taken right after "fixing" a
-   version skew.** Most probable reading: the 08-05 sweep is still
-   instrument-compromised. See the CONTESTED banner in
-   [audio_localization.md](../embodiment/reachy_mini/audio_localization.md).
-   **Nothing in this plan may rely on fact 3 until a version-verified re-sweep
-   at ≥2 source geometries reconciles it.** Note the conv-net exclusion below
-   does NOT depend on fact 3 — its other three disqualifiers stand alone.
+   front/back fold creates a **180° false equilibrium**: honest credit *punishes*
+   correct turns behind the fold (Exp 49: 77 fold-divergent credits; arm C
+   trapped on every far bin while the non-credit-following LLM crossed it). No
+   threshold tunes this away.
+3. **CONTESTED — the sensor may not express graded magnitude.** The 2026-08-05
+   sweep measured a compressed staircase (~0.19/rad, plateaus, ~13° sectors).
+   This **contradicts the shipped 2026-07-16 characterization** (0.57/rad,
+   R²=0.9982, ~1° quantization, complete monotonicity, four cross-checked
+   measurements) and is a single run taken right after "fixing" a version skew.
+   Most probable reading: still instrument-compromised. See the CONTESTED banner
+   in [audio_localization.md](../embodiment/reachy_mini/audio_localization.md).
+   **Nothing here may rely on fact 3 until Stage 0a reconciles it.** The conv-net
+   exclusion below does NOT depend on it.
 
-Facts 2 and 3 have the **same escape**: use the *difference across a probe
-turn*, not the single reading. Fact 2 additionally has a second escape:
-**another modality** (vision resolves front from back). Both are what this plan
-builds toward.
+---
+
+## What changed in rev 2 (the design pass)
+
+Rev 1 framed act-and-compare as a special *probe* action and vision as a third
+substrate channel. Both were wrong, and fixing them **removed** mechanisms:
+
+| Rev 1 | Rev 2 | Effect |
+|---|---|---|
+| A dedicated probe action | **Any modulator firing** yields a (commanded, sensed) pair; perception consumes it generically | No probe class, **no credit exemption needed** — the conflict dissolves rather than being resolved |
+| Act-and-compare in the POLICY layer | In the **PERCEPTION** layer | Policy's cluster space unchanged → Exp 45/46/48 trained policies survive |
+| Vision as a `ModalityChannel` | Vision as its **own encoder** → EC directly | No named-scalar shape problem, no five sync sites, doesn't fire Exp 48's re-run trigger |
+| Identity needs a class vocabulary | Identity **emerges** — orienting canonicalizes location, so correspondence is solved by the body | The variable-cardinality fork disappears |
+| JEPA projection for cross-modal | **Hebbian co-activation** (dimension-agnostic) | No projection needed for the near-term goal |
+
+**The one-turn disambiguation result** (why no probe is needed): source at
+unfolded bearing θ, head turns left by δ. Front (|θ| ≤ 90°): the folded reading
+moves by **−δ/90**. Rear (|θ| > 90°): the fold mirrors it, so it moves by
+**+δ/90**. Opposite signs — **the sign of the sensed change relative to the
+commanded turn reveals hemifield**. The agent's first *ordinary* turn, credited
+normally, already disambiguates.
+
+**The co-activation result** (why JEPA is off the near-term path):
+`cross_modal_substrate_binding` was cancelled because Roy-4 found the EC nodes
+**never co-fire** — a *temporal* failure, not a dimensional one (the 384/768 gap
+is the later Roy-5a finding, and it concerns sensor↔**language**). Orienting
+manufactures the missing window: sound → turn → settle → both modalities active
+about the same object in the same instant. Hebbian edges compare *nothing*, so
+they are dimension-agnostic. Per the dormancy rule, resurrection needs an
+experiment that earns it — **Stage 0c is that experiment**.
+
+---
+
+## Representation — what audio and vision actually are
+
+### The neural-network boundary (explicit)
+
+- **Fixed pretrained encoder at the sensory boundary: YES.** Already the house
+  pattern — `LinguisticEncoder` *is* a pretrained transformer
+  (`paraphrase-mpnet-base-v2`), shipping behind the `semantic` extra, handing its
+  output straight to `EC.pattern_complete_or_separate(embedding, modality)`.
+  Vision and (later) acoustic encoders are identical in shape.
+- **A network doing the LEARNING: NO.** A gradient-trained policy mapping sensors
+  → movement is excluded (see "Deliberately NOT doing"). Learning stays EC
+  clustering + NAc credit + Hebbian edges.
+
+### Current state (audited, not assumed)
+
+| Stream | Representation today | Reaches substrate? |
+|---|---|---|
+| Audio **bearing** | one DoA scalar → `SensorEncoder` hash basis (SHA-seeded low/high vectors interpolated by value) → 384-dim → EC `"audio"`, frozen centroid | Yes — but Exp 46 measured only **2 distinguishable clusters** at every threshold 0.44→0.93, and called it a *perceptual* limit |
+| Audio **content** | transcription → text → `LinguisticEncoder` → EC `"text"` | **Speech only.** No acoustic encoder exists — no mel/spectrogram/embedding path; the 2-ch 16 kHz stream feeds transcription and nothing else |
+| Vision | YOLO detections → DefaultNetwork behaviors | **No.** Nothing visual is encoded into EC at all |
+
+**The consequence that shapes this plan:** the audio modality encodes **WHERE,
+not WHAT**. Binding bearing-audio to vision can only learn "a sound at bearing X
+goes with the thing at bearing X" — tautological, zero identity content.
+Emergent identity requires *content* on both sides.
+
+### Target state
+
+| Stream | Encoder | EC modality | Purpose |
+|---|---|---|---|
+| Audio bearing | `SensorEncoder` (unchanged) | `"audio"` | Sensorimotor orient policy |
+| Vision foveal | **NEW** fixed pretrained image encoder | `"vision"` | Identity (emergent) |
+| Audio content | **NEW, DEFERRED** fixed pretrained acoustic encoder | `"audio_content"` | Identity for non-speech sounds |
+| (speech content) | existing transcription → `LinguisticEncoder` | `"text"` | The **Stage 0c shortcut** — zero new encoders |
+
+Both new encoders bypass `ModalityChannel` entirely — they emit embeddings, not
+named scalars, and `_sensor_embed` sums a per-*name* SHA basis, so splitting a
+512-dim embedding into `v0…v511` would be meaningless. They hand embeddings
+straight to EC, exactly as `LinguisticEncoder` does.
+
+---
+
+## Architecture
+
+### A. Perception resolution — the generic modulator-outcome contingency
+
+Every modulator firing produces a sensor delta. Perception compares the sensed
+delta against an **efference copy** of the commanded motion and emits a
+*fold-resolved azimuth* into the existing `"audio"` channel. The policy's input
+and cluster space are **unchanged** — which is why the trained policies survive.
+
+Bio grounding: Wallach (1940) / Wightman & Kistler (1999) — dynamic head-movement
+cues resolve front/back in mammals via efference-copy comparison, and the output
+is a disambiguated *percept* feeding the ordinary orienting transform. (Cite the
+mammalian literature, **not** the barn owl — *Tyto alba* resolves azimuth by ITD
+alone and needs no movement.)
+
+Two shipped surfaces this rides:
+- `Cerebellum.observe_from_action(...)` already fires on **every** affordance and
+  has been accumulating forward models; prediction error is the discriminator.
+  **Caveat:** its `predict` read path is **dormant** (one caller, constructed only
+  by tests) — un-dormanting carries a Principle-2 earning obligation.
+- `measured_drive_transitions` already computes the before/after pairs.
+
+Known constraint: `min_delta = 0.05` (~4.5° on `[-1,1]`) suppresses small deltas
+— turn magnitudes must be pre-registered against it.
+
+### B. Emergent identity — correspondence by orienting
+
+The hard part of cross-modal association is normally **correspondence**: given a
+sound and N visual things, which one made it? Orienting solves it with the
+**body** instead of the perception system — after centering, whatever made the
+sound is at a canonical location. "What is at center" *is* the sound's visual
+correlate.
+
+Consequences:
+- **Fixed-cardinality encoding.** One canonical region, not N detections.
+- **Identity is never declared.** Repeated (content, foveal-content) pairs
+  pattern-complete into a stable EC cluster; the cluster *is* the identity. No
+  class vocabulary, no labels.
+- **Vision doubles as the fold veto.** Center on a rear (folded) source and there
+  is nothing there — so *absence at center is evidence of rear*. Binding gates on
+  visual presence, and the gate failure is informative. This is the bio-correct
+  form: SC integration is a **register** operation (out-of-register inputs
+  *depress* the response), not an additive vote.
+
+Honest limits: "center" is a coarse region (FOV ~60–70° against DoA resolution
+somewhere in 1–13°); the source must outlive the 1.5–3 s turn (bind **after**
+settle, never during); and a *systematically* co-occurring distractor will bind —
+correctly, since that is a real correlation in the world. Repetition washes out
+*uncorrelated* clutter only.
+
+### C. Two-level attention — a convention, not a framework
+
+Salience/novelty apply at **two independent levels**:
+
+- **Level 1 (per-modality source):** how surprising/important is this reading
+  within its own stream. Partially exists — `Percept.salience`/`.novelty`,
+  `audio_salience`/`audio_novelty` config, `OrientingProfile` thresholds, the DN
+  salience network + novelty tracker — but unevenly, and not as a declared
+  contract across modalities.
+- **Level 2 (multi-modal):** how surprising is this *pairing*. **Not** a function
+  of level 1: two individually-familiar signals that have never co-occurred carry
+  ~zero unimodal novelty and maximal association novelty — exactly when binding
+  should fire hardest. Level 2 is **association surprise**, which is the Hebbian
+  learning signal itself, so it comes essentially **free** as the inverse of the
+  co-activation edge weight. No parallel mechanism.
+
+**Both levels gate PLASTICITY, never RECOGNITION.** This is load-bearing:
+`get_threshold_overrides` returns `node_id → base − reward_bias`, so a per-node
+bias makes matching *easier*. Feeding familiarity into that channel is a positive
+feedback loop — familiar node → lower threshold → absorbs marginal instances →
+more familiar → absorbs everything — i.e. the EC centroid-drift collapse with a
+gain term. (`_reward_bias` is clamped `[0, max]` so it only ever *widens*; safe
+for reward, which touches few nodes, unsafe for familiarity, which touches every
+node and self-reinforces.) Bio agrees: ACh/NE gate **learning rate** under
+novelty/salience; they do not lower detection thresholds.
+
+Design rules:
+- Every modality source declares salience + novelty on the same `[0,1]` scale
+  with stated semantics. **A convention, not a registry/type/config schema** —
+  the same discipline as the placement plan's anti-`AxisSpec` guardrail.
+- Exactly two consumption points: level 1 gates attention/escalation (existing);
+  level 2 gates binding plasticity (new).
+- **Composition is explicit:** series for attention, independent for plasticity (a
+  low-salience but highly-novel pairing should still bind). Two gates in series
+  multiply — the live smoke already showed default 0.5/0.3 weights passing *no*
+  gate, so a robot heard sound for 25 minutes and never escalated.
+- **Instrument both levels** in one trace event (values + gate outcomes), or a
+  binding failure cannot be attributed.
+
+Later payoff: level 2 is the only place **inverse effectiveness** (SC enhancement
+largest when unimodal inputs are weakest) can be expressed. Uniform semantics also
+make hivemind bundles interpretable without knowing the source modality.
+
+### D. Layer split for shareable artifacts (deferred; substance unchanged)
+
+**Layer 1 semantic** (contract-keyed, shareable) vs **Layer 2 calibration**
+(per-unit, never shared). Bio support: Knudsen's barn-owl prism-rearing — the
+ITD→space map is plastic and **instructed by the visual map**, and each individual
+re-learns its own cue-to-space calibration atop a shared topographic space. That
+predicts a *direction* (vision instructs audio calibration), making Stage 3
+testable: *does adding vision reduce fitted azimuth calibration error?*
+
+**Correction carried from rev 1:** Layer 2 **already leaks today** —
+`compose_bundle` ships the whole `substrate_nodes` slice, and an `"audio"`
+centroid *is* `_sensor_embed({"azimuth": raw_uncalibrated_value})`. The rule must
+be **"share only artifacts whose input axis is calibration-CORRECTED"**, which
+forces an ordering rev 1 omitted: **Layer 2 applies BEFORE Layer 1.** The rev-1
+falsifier ("a Layer-2 artifact file in a bundle") looked for a file that will
+never exist.
 
 ---
 
 ## Front-gate scope pressure (CLAUDE.md Principle 3)
 
-**Question:** does this need to be its own mechanism, or can it ride on
-existing infrastructure?
-
 | Need | Existing infrastructure | Verdict |
 |---|---|---|
-| Per-modality compartmentalized encoding | `ModalityChannel` registry (`_SUBSTRATE_CHANNELS`, agent_loop.py) — a 3-tuple of `(tag, read_values, read_ranges)`; audio + interoception already live | **RIDES.** Vision is one more entry + a state reader. No new type. |
-| Action selection from sensory state | `NAc.recommend_action` + `cluster_reward_bias` summed additively across the active `{modality: cluster}` set | **RIDES.** Explicitly binding-free by design ("late convergence at selection, no arbitration"). |
-| Credit for a movement | `drive_comfort_progress` + the Phase-2 measured before/after pairs (`measured_drive_transitions`) | **RIDES.** Exp 49 validated the sign accuracy (1.00 / 0.969) with **zero confirmed honesty-gate leaks**, twice audited. |
-| Learned movement prediction | `embodiment/cerebellum.py` forward models (`predict`, `observe_from_action`) — the designated, currently-underused slot | **RIDES.** If a learned predictor is wanted, this is its home. |
-| Per-body calibration artifact | `spatial/bounds_learner.py` persists to `resolve_user_state("util/learned_bounds.json")` | **RIDES the pattern** (mutable-state layer, per-unit). New artifact, established shape. |
-| Cross-modal alignment **sensor↔LANGUAGE** | *Nothing.* `SensorEncoder` 384-dim vs `LinguisticEncoder` 768-dim — cosine undefined between them | **GENUINELY NEW** — already designed as JEPA. **CORRECTION:** `cross_modal_substrate_binding.md` was cancelled by Roy-4 for a **temporal co-activation failure** (priming↔test EC nodes never co-fire), NOT the dim mismatch — that was the later Roy-5a finding. Dim-consistency removes only the algebraic obstacle. |
-| Cross-modal alignment **audio↔VISION** | Both would be `SensorEncoder` output at the **same 384 dims** (`encoder.py:495`) | **NO PROJECTION NEEDED.** Cosine is already well-defined. This invalidates the original Stage 3/4 ordering and weakens the JEPA half-fire argument — see Open Decisions. |
-| Credit for an epistemic (probe) action | *Nothing appropriate.* NAc's explore bonus keys on **tool identity**, is session-scoped and unpersisted — it rewards an untried tool, not uncertainty reduction | **GENUINELY NEW or an explicit exemption** — see Correction 2. The headline "exactly ONE new mechanism" was FALSE. |
-| Refusing an artifact kind at the bundle boundary | `compose_bundle` has a fixed signature, hardcodes two slices, and has **no notion of artifact kind at all** | **GENUINELY NEW** (row 7 below over-claimed). |
-| Sharable perception artifacts | `hivemind/bundle.py` + `merge.py` (contract + migration seam + reserved `_*` namespace) | **RIDES**, with one new rule (below). |
+| Per-modality compartmentalized encoding | `ModalityChannel` registry; EC modality tags | **RIDES** (unchanged for audio/intero) |
+| Handing an embedding to the substrate | `EC.pattern_complete_or_separate(embedding, modality)` — `LinguisticEncoder` is the template | **RIDES** — why vision needs no channel |
+| Action selection | `NAc.recommend_action` + additive cluster bias | **RIDES, untouched** — perception-layer resolution keeps the cluster space |
+| Credit for a movement | `drive_comfort_progress` + measured pairs | **RIDES** — with no probe class, **no exemption needed** |
+| Forward model / prediction error | `Cerebellum` (write path live, **read path dormant**) | **RIDES with a Principle-2 earning obligation** |
+| Level-2 novelty | The co-activation edge weight itself | **RIDES — free** |
+| Cross-modal binding | `archive/cross_modal_substrate_binding.md` (CANCELLED) | **REVIVAL, gated on Stage 0c earning it** |
+| Vision encoder | Nothing | **GENUINELY NEW** (fixed pretrained, sensory boundary) |
+| Acoustic content encoder | Nothing | **GENUINELY NEW — deferred**; Stage 0c uses the speech path |
+| Bundle artifact-kind refusal | `compose_bundle` has a fixed signature and **no notion of artifact kind** | **GENUINELY NEW** (Stage 4) |
 
-**Conclusion (CORRECTED):** **at least three** genuinely-new mechanisms — the
-sensor↔language projection (has a plan), probe-credit handling, and bundle-kind
-refusal. The original "exactly ONE" claim did not survive review. Everything else is wiring existing surfaces. This plan's
-real deliverable is **the artifact contract and the layer split** — the thing
-that decides whether perception artifacts are shareable at all.
+**Count:** one new mechanism on the near-term path (the vision encoder), one
+revival (binding), two deferred (acoustic encoder, bundle-kind refusal). Rev 1
+claimed "exactly ONE" and was wrong; rev 2's design pass genuinely reduced it.
 
 ### Deliberately NOT doing
 
-- **A conv net (or any gradient-trained policy) mapping sensors → movement.**
-  Four independent disqualifiers: (a) wrong data shape — DoA is one scalar,
-  nothing to convolve, and the az→turn map is ~10 parameters; (b) wrong
-  sample regime — a hardware turn costs 1.5–3 s + settle, so a session yields
-  low hundreds of labeled turns against the 10⁴–10⁶ a net wants, while
-  EC/NAc prototype matching learns from 10–100; (c) it duplicates NAc as a
-  second learning system claiming the same job; (d) fact 3 above — the sensor
-  can't feed it anyway. **If a learned predictor is ever wanted, it goes in
-  the Cerebellum slot, not a parallel net.**
-- **A learned space→space transformer for cross-*species* transfer** (robot A's
-  vision encoding → robot B's). It needs paired data *spanning both robots*,
-  which is strictly harder to obtain than each robot's own alignment — the
-  "align the aligners" regress. Deferred until two robots and real paired data
-  exist; the contract stamp (below) means it slots in later as a declared
-  adapter between two *named* contracts rather than an untyped blob conversion.
+- **A gradient-trained policy mapping sensors → movement.** Four independent
+  disqualifiers: wrong data shape (DoA is one scalar; the az→turn map is ~10
+  parameters); wrong sample regime (a hardware turn costs 1.5–3 s + settle → low
+  hundreds of labeled turns per session vs the 10⁴–10⁶ a net wants, while EC/NAc
+  prototype matching learns from 10–100); it duplicates NAc; and the sensor may
+  not feed it (fact 3). **If a learned predictor is wanted, it goes in the
+  Cerebellum slot.**
+- **A learned space→space transformer for cross-*species* transfer.** Needs paired
+  data spanning both robots — harder to obtain than each robot's own alignment
+  (the align-the-aligners regress).
+- **Salience/novelty on the recognition threshold.** See §C — positive feedback
+  into centroid collapse. Recorded so it is not re-proposed.
 
 ---
 
-## Architecture: three layers, deliberately separable
+## Stages
 
-### Layer 0 — act-and-compare as a PERCEPTION stage (revised)
-
-**CORRECTION 1 (bio + substrate + perception lenses, cross-confirmed).** The
-first draft put act-and-compare in the POLICY layer ("a policy layer that
-consumes differentials"). Biology puts it in PERCEPTION: Wallach (1940) /
-Wightman & Kistler (1999) — the auditory system compares sensed ITD change
-against an **efference copy of the commanded rotation** to infer hemifield. The
-output is a *disambiguated percept*, which then feeds the ordinary
-single-reading orienting transform. (Cite the mammalian dynamic-cue
-literature, not the barn owl — *Tyto alba* resolves azimuth by ITD alone and
-needs no probe.)
-
-This is not taxonomy. Three consequences:
-
-- **Policy-layer differentials orphan the trained policy.** `recommend_action`
-  selects on EC clusters from `encode_sensors(azimuth, modality="audio")`;
-  changing the policy's input to a differential changes the encoded state
-  space and invalidates every bias `maxim substrate merge-nac` imports —
-  the same failure `sem_motor_binding.md` decision #1 refused when it declined
-  a new `turn_body` tool identity. A perception-layer resolution keeps the
-  cluster space, the policy, and Exp 45/46/48's earned results intact.
-- **The substrate is provably state-keyed and memoryless.** `propose_via_substrate`
-  reads only the current snapshot; `SensorEncoder._last_sensors` exists but is a
-  **gate only** (the `min_delta` skip), never encoded. "The reading changed by X
-  when I did Y" is currently inexpressible — so the original claim that "the
-  perception half already exists" was **false for encoding** (it is true only
-  for *credit*, via `measured_drive_transitions`).
-- **`min_delta = 0.05`** (~4.5° on `[-1,1]`) suppresses exactly the small
-  differentials a probe produces. Probe magnitude must be pre-registered
-  against it.
-
-**CORRECTION 2 — the probe/relief credit conflict (cross-confirmed, unmentioned
-in the first draft).** A probe deliberately worsens `|az|` to gain information.
-`drive_comfort_progress` → `tool_dispatch` takes the SIGN, so the probe books
-**−1** on the audio cluster — and because `min_delta` prevents small probes from
-changing the cluster, the penalty lands on **the very cluster the probe must be
-run from**, decaying only over a 300-tick tau. Building a probe policy on a
-sign-of-relief credit path punishes the behaviour it depends on.
-
-Biologically these are different pathways: SC orienting is fast and largely
-**not reward-gated**; information-seeking rides a separate signal
-(Bromberg-Martin & Hikosaka 2009 — dopaminergic preference for advance
-information, independent of reward magnitude). The cheap resolution that rides
-shipped infrastructure: mark probes **credit-withheld** via the existing
-`drive_credit_withheld` machinery and book value on the *disambiguated turn that
-follows*, using the already-shipped delayed-credit path
-(`set_pending_operant_action`) and the eligibility/temporal-anchor trace that
-`SensorEncoder` already fires on every encode.
-
-### Layer 1 — semantic projection (shared, CONTRACT-keyed)
-
-Encoder-space → shared latent, so two modalities can be compared at all. Its
-identity is a **contract**, never a robot or a component name: which encoder
-produced the input, which modality/axis, which convention and range. Any body
-whose declaration satisfies the contract can load it — compatibility by
-*construction*, not by conversion. Training internals: JEPA plan.
-
-### Layer 2 — body calibration (per-unit, NEVER shared)
-
-Gain, asymmetry, zero offset, saturation shape, motor scaling. **The 2026-08-05
-staircase IS this artifact.** Per-robot, plausibly per-installation (the
-room-vs-sensor question is open pending the second-position sweep). Sharing it
-between two units of the same model could actively poison the receiver.
-
-**Why the split is the load-bearing idea:** it makes the hivemind rule crisp —
-**share Layer 1, never Layer 2** — instead of "share projections but be
-careful."
-
-**Bio support is stronger than first claimed** (bio lens): Knudsen's barn-owl
-prism-rearing work shows the ITD→space map is plastic and **instructed by the
-visual map**, and that every individual must re-learn its own cue-to-space
-calibration on top of a shared topographic space. That is literally
-"shared semantic map + per-body calibration" — and it predicts a *direction*
-(vision instructs audio calibration, not the reverse), which turns Stage 3 into
-a testable claim: *does adding vision reduce fitted azimuth calibration error?*
-
-**CORRECTION 3 — Layer 2 already leaks today, and the falsifier can't see it.**
-`compose_bundle` ships the whole `substrate_nodes` slice; an `audio` node's
-centroid **is** `_sensor_embed({"azimuth": raw_uncalibrated_value})`. So this
-unit's calibration is already inside shared bundles, and the original falsifier
-("any Layer-2 *artifact* appearing in a bundle") looks for a file that will
-never exist. The rule must be restated as **"share only artifacts whose input
-axis is calibration-CORRECTED"**, which forces an ordering the first draft
-omitted: **Layer 2 applies BEFORE Layer 1**.
-
----
-
-## The artifact contract
-
-Weights live in the **mutable state layer** (`resolve_user_state`, `.npy` +
-`.json` sidecar per the no-pickle rule), never in component YAML. Components
-are declarative operator config — the same layer as `mesh.yml` / `robots.yaml`
-/ `config.json`, where **runtime writes are forbidden**. A component may
-*declare which contract it satisfies*; it never carries weights or paths.
-
-```json
-{
-  "_format_version": "1.0",
-  "kind": "projection",
-  "layer": "semantic",
-  "contract": {
-    "modality": "audio",
-    "axis": "azimuth",
-    "range": [-1.0, 1.0],
-    "convention": "doa-xvf3800-v1",
-    "source_encoder": "sensor-hash-384-v1",
-    "target_encoder": "paraphrase-mpnet-768"
-  },
-  "weights_ref": "audio_azimuth_v1.npy"
-}
-```
-
-Load rule: **contract match → load; mismatch → refuse LOUDLY.** Never silently
-transform. This is the same shape as `check_format_version` and the
-`hash_scheme: "stable-sha256-v1"` marker (#446), for the same reason.
-
-**The precedent that matters most:** NAc biases key on EC node ids, so NAc and
-EC persist as a **pair** — restoring one without the other leaves biases
-dangling on nodes a fresh EC never re-allocates. Projection weights key on an
-encoder space in exactly the same way. Same invariant class → reuse the same
-solution: paired persistence, a compatibility stamp, refuse-don't-guess.
-
-**Component inheritance comes free:** `ComponentRegistry` already supports
-`extends` with deep-merge, so `bodies/reachy_mini_v2 extends bodies/reachy_mini`
-inherits the sensor declarations → the contract → projection compatibility,
-legibly and with zero coupling between the declarative and learned layers.
-
----
-
-## Stages (REVISED — Stage 0 added, ordering changed)
-
-| Stage | Content | Gate to proceed |
+| Stage | Content | Gate |
 |---|---|---|
-| **0a** | **Reconcile the DoA curve.** Version-verified re-sweep at ≥2 source geometries against the 07-16 protocol. | Either reproduces 0.57/R²≈0.998 (staircase was an artifact) or reproduces the staircase at both geometries. Motivation fact 3 is UNUSABLE until this returns. |
-| **0b** | **Cluster-resolution precondition.** Measure how many distinct EC clusters the audio channel actually produces across the working range. Exp 46 already recorded **2 clusters** at every threshold 0.44→0.93 and called it a *perceptual* limit; the perception lens measured **1** under the (contested) staircase. | ≥ as many distinguishable clusters as distinct correct actions. **If this fails, no policy work can succeed regardless of layer** — the levers are Layer-2 rescaling, per-channel `min_delta`/`pattern_threshold`, or the **population readout already earned in Exp 45e** (which this plan failed to cite and which is the shipped answer to exactly this starvation). |
-| **0c** | **Co-activation measurement** (`MAXIM_EC_TRACE_ACTIVATIONS=1` + `scripts/analyze_roy_4_coactivation.py`). This is what actually killed `cross_modal_substrate_binding`, and the placement plan makes it mandatory before cross-modal reasoning. | Audio and vision EC nodes co-fire within the binding window at measurable rates. |
-| **1** | **Act-and-compare as a percept-resolution stage** (Correction 1) + probe-credit handling (Correction 2). Three-lens design review first. | Fold-resolved azimuth improves far-bin centering **without changing the policy's cluster space** (trained-policy key continuity is part of the gate). |
-| **2** | Hardware-faithful sim scenario — **only if 0a says the staircase is real**. Must include the **fold** (the thing that actually breaks credit, omitted from the first draft) and quantize **before** noise. Insertion point: the `az_true → az_read` step in `SimulatedDoAScenario`. Note this is shipped library code with three importers, not harness code. | Reproduces fold-divergent credit. |
-| **3** | Vision channel. **NOT "one more entry, no new type"** — see Open Decision B. Blast radius is five sync sites: `_SUBSTRATE_CHANNELS`, `ECConfig.frozen_centroid_modalities` (vision would otherwise fall to the running-mean drift branch), `merge.py`'s duplicate of that set, `_EC_TRACE_MODALITY_TAG_MAP`, and **`tool_dispatch`'s extero credit routing — which picks `AUDIO_TAG` first, so vision-measured relief would silently book to the audio cluster.** Also: the summed cluster term scales ±N with channel count, so `min_confidence` needs recalibration. | Explicit resolution of Open Decision B + credit routing for >1 extero channel. |
-| **4** | Artifact contract + sharing rule. Scope is larger than drafted: binary payloads are **impossible today** (text-only `extract_bundle`, no `atomic_write_bytes`, closed `compose_bundle` signature) and it needs a `BUNDLE_SCHEMA_VERSION` bump + registered migration. | Requires 0c + 3. |
+| **0a** | **Reconcile the DoA curve.** Version-verified re-sweep (daemon + SDK versions recorded in the run) at **≥2 source geometries**, against the 07-16 protocol. | Reproduces 0.57/R²≈0.998 → staircase was an artifact, delete it. Reproduces the staircase at both geometries → real, and the next question is what changed on the robot since 07-16. Fact 3 is UNUSABLE until this returns. |
+| **0b** | **Cluster-resolution precondition.** Measure distinguishable EC clusters for the audio channel across the working range. | ≥ as many clusters as distinct correct actions. Exp 46 already measured **2**. **If this fails, no policy at any layer can condition on direction** — levers are calibration rescaling, per-channel `min_delta`/`pattern_threshold`, or the **population readout earned in Exp 45e** (the shipped answer to exactly this starvation). |
+| **0c** | **THE PIVOTAL TEST — co-activation, speech-first.** Someone says a word off-axis → robot orients → foveal encoder fires on what is centered → does the `"text"` node co-activate with a stable `"vision"` node, repeatably, across sessions? Uses `MAXIM_EC_TRACE_ACTIVATIONS=1` + `scripts/analyze_roy_4_coactivation.py`. **One** new encoder, against content already flowing. | Measurable co-activation above the Roy-4 baseline. This earns the binding-plan revival. **Pre-registered limitation:** text content is *linguistic*, so a pass demonstrates the binding **mechanism**, not yet that identity emerges from raw sensation. |
+| **1** | Perception resolution (§A) + fold veto (§B). Three-lens design review first. | Fold-resolved azimuth improves far-bin centering **with the policy's cluster space unchanged** (trained-policy key continuity is part of the gate). |
+| **2** | Hardware-faithful sim scenario — **only if 0a says the staircase is real.** Must include the **fold** and quantize **before** noise; insertion point is the `az_true → az_read` step in `SimulatedDoAScenario`. Note: shipped library code with three importers, not harness code. | Reproduces fold-divergent credit. |
+| **3** | Foveal vision encoder + orient-windowed binding + the two-level attention convention (§C). | Emergent clusters recur across sessions; binding gated on presence; both attention levels instrumented. |
+| **4** | Acoustic content encoder (generalize 0c beyond speech) **and/or** artifact contract + sharing rule. Scope is larger than rev 1 drafted: binary payloads are **impossible today** (text-only `extract_bundle`, no `atomic_write_bytes`, closed `compose_bundle` signature) and it needs a `BUNDLE_SCHEMA_VERSION` bump + registered migration. | Requires 0c + 3. |
 
-**Behavioral re-validation obligations (was missing):** Stage 3 fires Exp 48's
-registered `Re-run on:` trigger **verbatim** (ModalityChannel registry,
-`recommend_action(current_clusters=)`, `record_outcome(clusters=)` routing) —
-an EARNED Tier-1 row that would go `Stale` and block the next release. The ±N
-selection shift plausibly also fires Exp 42's confidence-gate trigger. Schedule
-the re-runs inside Stage 3, not at the release gate.
+**Behavioral re-validation obligations:** rev 1's Stage 3 fired Exp 48's
+registered `Re-run on:` trigger verbatim. Rev 2's vision-as-encoder design
+**avoids** touching the ModalityChannel registry /
+`recommend_action(current_clusters=)` / `record_outcome(clusters=)` routing — so
+the trigger should *not* fire. **Verify this explicitly at Stage 3**; if any of
+those three surfaces is touched after all, schedule the Exp 48 re-run inside
+Stage 3, not at the release gate.
 
 ---
 
-## Corrections to the artifact contract
+## Artifact contract corrections (for Stage 4)
 
 - **Stamp the REALIZED encoder state, not its name.** `LinguisticEncoder` at the
-  same configured name emits 768-dim real vectors *or* 384-dim bag-of-words
-  hashes depending on whether the `semantic` extra is installed. Add
-  `embedding_dim` (checked against the actual array) and `using_fallback`.
-  Derive both at write time.
-- **Stamp the sensor-NAME SET and the normalization mode.** `_sensor_embed`
-  sums a SHA-derived basis per sensor *name*, so two bodies both declaring
-  `azimuth` produce comparable vectors only if their channel's full name set
-  matches; range-aware vs range-blind `_normalize_value` are different
-  functions.
-- **Add `units`** (or `normalized: true`) — the signed-sensor invariant warns a
-  raw-unit range paired with normalized values is worse than the fold.
-- **Declarative fields are DERIVED from body YAML at write time**, never
-  authored in the artifact, or the placement plan's anti-`AxisSpec` guardrail is
-  violated and range/axis gets two sources of truth.
-- **Precedent citations were wrong.** `hash_scheme` **warns and continues**; the
+  same configured name emits 768-dim real vectors *or* 384-dim bag-of-words hashes
+  depending on whether `semantic` is installed. Add `embedding_dim` (checked
+  against the actual array) and `using_fallback`, derived at write time.
+- **Stamp the sensor-NAME SET and the normalization mode** — `_sensor_embed` sums
+  a SHA basis per name, and range-aware vs range-blind `_normalize_value` are
+  different functions.
+- **Add `units`** (or `normalized: true`) — the signed-sensor invariant warns that
+  a raw-unit range with normalized values is worse than the fold.
+- **Declarative fields are DERIVED from body YAML at write time**, never authored
+  in the artifact (two sources of truth otherwise).
+- **Precedent corrections:** `hash_scheme` **warns and continues**; the
   refuse-don't-guess precedents are `ec.py`'s `Unsupported EC version` raise and
-  `bundle.py`'s no-migration raise. And `bounds_learner` is precedent for
-  **placement only** — it is globally-keyed (not per-unit), non-atomic, carries
-  no `_format_version`, and swallows load errors: the new artifact must fix all
-  four, and the per-unit key must be part of the path/contract.
-- **The real precedent to copy is `hivemind/cli.py`'s policy-meta sidecar**
+  `bundle.py`'s no-migration raise. `bounds_learner` is precedent for **placement
+  only** — globally-keyed (not per-unit), non-atomic, no `_format_version`,
+  swallows load errors; the new artifact must fix all four and make the per-unit
+  key part of the path.
+- **The real precedent to copy** is `hivemind/cli.py`'s policy-meta sidecar
   (`_meta_sidecar_path` / `_meta_essence`), which compares content and **aborts
-  before any mutation** — including the non-obvious detail that it *strips the
-  version stamp before comparing*, which a naive dict compare would get wrong.
-- **Enforcement belongs in the type:** `compose_bundle(*, projections=...)` as a
-  typed keyword that rejects `layer != "semantic"`, plus `extract_bundle`
-  rejecting entries absent from `manifest["contents"]` — that cross-check is
-  also the **regression guard** for the sharing-rule falsifier.
-- **Reserve `validate_projection` + `trusted_sources` now**, the way `merge.py`
-  reserved its 1.2 hooks, so poison-resistance doesn't need a signature break.
+  before mutation** — including the non-obvious detail that it *strips the version
+  stamp before comparing*.
+- **Enforcement in the type:** `compose_bundle(*, projections=...)` as a typed
+  keyword rejecting `layer != "semantic"`, plus `extract_bundle` rejecting entries
+  absent from `manifest["contents"]` — that cross-check is also the regression
+  guard for the sharing-rule falsifier.
+- **Reserve `validate_projection` + `trusted_sources` now**, as `merge.py`
+  reserved its 1.2 hooks.
 - **Location:** mutable state layer (`resolve_user_state`), `.npy` + `.json`.
-  This **supersedes** the JEPA plan's header (`_data/projections/`, the bundled
-  wheel layer) and its `.pt`/pickle format; file that correction against JEPA,
-  whose header also points at a `peer/substrate_bundle.py` that does not exist.
+  **Supersedes** the JEPA plan's header (`_data/projections/`, the bundled wheel
+  layer) and its `.pt`/pickle format; file that correction against JEPA, whose
+  header also points at a `peer/substrate_bundle.py` that does not exist.
 
 ---
 
-## Does JEPA's revival trigger fire?
+## What would falsify what
 
-Its registered trigger: *"a 1.1+ iteration surfaces a problem that is
-structurally cross-modal AND unsolvable by threshold tuning, AND the Stage 0
-paired-data audit confirms sufficient training pairs."*
-
-**REVISED: on current evidence it does NOT fire.** The first draft argued it
-half-fired because the fold is cross-modal. But JEPA solves **sensor↔language**
-dimensional misalignment, and audio↔vision — if vision is a `ModalityChannel` —
-are **both 384-dim `SensorEncoder` output**, where cosine is already defined.
-The fold therefore does not motivate JEPA at all. Moreover the real blocker that
-cancelled cross-modal binding was **temporal co-activation**, which JEPA does not
-address and which Stage 0c must measure first. Recording the *retraction* of the
-half-fire claim so the trigger stays honest.
-
-**Thesis boundary to decide explicitly (do not drift):** the headline claim is
-cross-session learning *without fine-tuning*. A **fixed pretrained encoder as
-input** is already accepted practice (sentence-transformers for text). A
-**projection trained on the robot's own paired experience** is a judgment call
-— defensible as learned-from-experience, but it *is* gradient descent, and the
-JEPA plan currently rejects imported alignment on thesis grounds. A
-**gradient-trained policy** clearly breaks it and is excluded above. Write the
-decision down before Stage 4.
-
----
-
-## What would falsify what (revised)
-
-- **Stage 0a re-sweep reproduces 0.57/R²≈0.998** → the staircase was an
-  instrument artifact; motivation fact 3 is deleted and the magnitude concerns
-  evaporate. (The conv-net exclusion survives on its other three grounds.)
-- **Stage 0b finds ≤2 audio clusters** → no policy at any layer can condition on
-  direction; the work becomes perceptual resolution (population readout / Layer-2
-  rescaling), not policy.
-- **Stage 0c finds no audio↔vision co-activation** → cross-modal binding fails
-  the same way it did in Roy-4, regardless of dims or pair counts.
+- **0a reproduces 0.57/R²≈0.998** → the staircase was an instrument artifact;
+  fact 3 is deleted and the magnitude concerns evaporate (the conv-net exclusion
+  survives on its other three grounds).
+- **0b finds ≤2 audio clusters** → no policy at any layer can condition on
+  direction; the work becomes perceptual resolution (population readout /
+  calibration rescaling), not policy.
+- **0c finds no co-activation** → orienting does *not* manufacture the binding
+  window, the cancelled plan stays cancelled, and emergent identity needs a
+  different mechanism. **The single most informative outcome in the plan.**
+- **0c passes but Stage 3 clusters do not recur across sessions** → correspondence-
+  by-orienting works within a session but the clusters are not stable identities;
+  suspect centering precision or persistence, not the binding rule.
 - Stage 1 percept-resolution ≈ raw azimuth on far bins → act-and-compare is not
-  the answer; the fold needs vision (raises Stage 3) or a reflex scaffold.
+  the answer; the fold needs vision or a reflex scaffold.
 - **A shared bundle whose audio centroids encode uncalibrated readings** → the
-  sharing rule leaked. Note this is the *real* detector; the original
-  "Layer-2 artifact file in a bundle" test was unobservable (Correction 3).
+  sharing rule leaked (the *real* detector; see §D).
 
 ---
 
-## Open decisions (need an owner call before Stage 1)
+## Open decisions
 
-**A. Where does act-and-compare live?** Correction 1 argues PERCEPTION (keeps
-the cluster space and the trained policy; matches the efference-copy
-literature). The alternative — a differential channel feeding the policy — is
-simpler to wire but changes the encoded state space and orphans Exp 45/46/48
-policies. *Recommendation: perception.*
+**A. Acoustic encoder timing.** 0c uses speech (transcription → `"text"`) to avoid
+building one. If 0c passes, does the acoustic encoder come next (generalize to
+non-speech) or does the artifact/sharing work? *Recommendation: acoustic encoder —
+it completes the capability; sharing is only useful once there is something worth
+sharing.*
 
-**B. What are vision's floats?** `ModalityChannel.read_values` returns
-`dict[str, float]` with **stable names**, but vision's real data is a
-variable-cardinality list of detections with unstable `track_id`s. Every
-flattening loses something: per-class presence discards azimuth; a single
-"detection centroid azimuth" discards identity and reproduces the same 1-scalar
-starvation as audio. Either (i) declare a small fixed set of named scalar vision
-sensors in body YAML and accept the resolution ceiling, or (ii) accept that a
-variable-cardinality modality needs new encoding — **which re-opens the front
-gate**. *No recommendation; this is a genuine architectural fork.*
-
-**C. Is probe credit an exemption or a mechanism?** Withholding credit
-(Correction 2) rides shipped infrastructure and is cheap. An actual
-information-value signal is a second new mechanism and needs its own earning
-experiment. *Recommendation: exemption first; revisit if probing fails to
-consolidate.*
-
-**D. Thesis boundary** (unchanged from the first draft, still undecided): fixed
-pretrained encoder = accepted practice; projection trained on the robot's own
+**B. Thesis boundary** (still undecided): fixed pretrained encoder = accepted
+practice (sentence-transformers precedent); projection trained on the robot's own
 paired experience = judgment call; gradient-trained policy = excluded. Decide
-before Stage 4.
+before Stage 4. Rev 2 **reduces** the pressure here — Hebbian binding needs no
+trained projection.
+
+*(Rev 1's Open Decisions B and C — vision's float shape, and probe-credit as
+exemption-vs-mechanism — are CLOSED by the rev 2 design: vision is an encoder, and
+there is no probe class.)*
 
 ---
 
 ## Review round
 
-Four-lens design review, 2026-08-06 (substrate/credit · persistence/hivemind ·
-perception/encoder · bio-fidelity/scope). All four returned BLOCKING findings;
-Corrections 1–3, the front-gate re-verdicts, Stage 0, and the contract
-corrections above are the fold. Two findings were **shipped bugs independent of
-this plan** and shipped separately: `_cosine` dimension truncation and the
-`DEFAULT_FROZEN_CENTROID_MODALITIES` divergence in `hivemind/merge.py`.
+Four-lens design review, 2026-08-06. All four lenses returned BLOCKING findings;
+rev 2 folds them plus an owner design pass. Two findings were **shipped bugs
+independent of this plan** and shipped separately (PR #467): `_cosine` dimension
+truncation and the `DEFAULT_FROZEN_CENTROID_MODALITIES` divergence in
+`hivemind/merge.py`. A third was a factual error in the merged Exp 49 doc
+(PR #469); a fourth blocked a contested measurement from being published as fact
+(PR #465).
 
-**Cycle-divergence judgment (asked explicitly):** Exp 49's H3 was corrected
-twice, but the bio/scope lens assessed this as **convergence, not divergence** —
-same kind of issue (metric frame-of-reference vs sensor truth), each iteration
-narrowing, and the primary criteria PASSED. The trigger does not fire. What
-*does* apply is the sibling rule — verify the instrument — which is why Stage 0a
-exists.
+**Cycle-divergence judgment (asked explicitly):** Exp 49's H3 was corrected twice,
+but this is **convergence, not divergence** — the same kind of issue (metric
+frame-of-reference vs sensor truth), each iteration narrowing, and the primary
+criteria PASSED. The trigger does not fire. The sibling rule — *verify the
+instrument* — does apply, which is why Stage 0a exists.
