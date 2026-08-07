@@ -10,6 +10,26 @@ on:
   # could never fire, so the job would only ever execute post-merge on main.
   workflow_dispatch:
 
+# Supersede in-flight runs for the same ref instead of letting them compete
+# for runners (2026-08-06 CI starvation incident).
+#
+# WHAT HAPPENED: with several PRs open and pushed in quick succession, jobs
+# were created but NEVER ASSIGNED A RUNNER (`runner_name: ""`), sat in the
+# queue, and were killed at exactly 15m01s with zero steps executed. They
+# surfaced as `failure` in `gh pr checks`, indistinguishable from real test
+# failures — five PRs looked red while the only PR with source changes was
+# green. Healthy runs are ~12 min of real work (3m45s install + 7m43s tests),
+# so this was not slowness; it was demand. Every push previously left its
+# predecessor's run alive, so N pushes to one branch competed for N times the
+# slots.
+#
+# `cancel-in-progress` is deliberately FALSE on main: a superseded main run
+# must still complete, because main's CI result is what the release gate and
+# the post-merge verification read. Only PR-branch runs are cancellable.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
