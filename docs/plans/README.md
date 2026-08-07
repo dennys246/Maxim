@@ -1,7 +1,11 @@
 # Maxim Plans
 
-Current version: **1.0.1** (1.0.0 published on PyPI as `pymaxim` 2026-06-17).
-Now: **1.1** — embodiment grounding + substrate-primary validation. Orient-to-center on Reachy Mini (Exp 45e ✓, PR #431) and Exp 44 embodied choice (✓ **reward-driven confirmed via counterbalance**, PR #429) are done; substrate-learns-from-lived-experience Phase 1 shipped (#437). **Oasis is the remaining build.**
+Current version: **1.0.6** (1.0.0 published on PyPI as `pymaxim` 2026-06-17).
+Now: **1.1 "Sensorimotor"** — ship the merged embodiment work plus the truth/hygiene
+debt it incurred. **Zero new mechanisms.** Scoped 2026-08-07 by a four-lens design
+review (audio front-end · reflex wiring · bio-fidelity · release scope); see
+[roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) for the cut line, the blockers, and
+why the reflex tier / loudness / Oasis moved.
 
 **Directory audited 2026-07-15** (deep plans review): every top-level plan verified against code + git history; 12 concluded plans archived, 19 paused plans moved to deferred/ with revive triggers. Root = active work only.
 
@@ -18,7 +22,9 @@ Now: **1.1** — embodiment grounding + substrate-primary validation. Orient-to-
 | **0.9.2** | **Config unification + Hivemind shareability + LLM timeout scalability** — `~/.config/maxim/config.json`, `maxim config/model/substrate` CLIs, `hivemind/` substrate bundle, TTFT keepalive, per-tier timeout, context-overflow admission, stall detector, leader-local harness singleton guard | **SHIPPED** (2026-06-05) |
 | **0.9.3** | **Loud optional-dependency failures** — `utils/optional_deps.py` centralises 45+ import sites; missing requested backend raises `OptionalDependencyError` instead of silently returning empty responses | **SHIPPED** (2026-06-06) |
 | **1.0** | **Validation + stabilization + grounding** — cross-session proof, bio-system protocol freeze, sensorimotor cradle, SEM world enrichment, SCN feedback loop, cleanup, docs | **SHIPPED** (2026-06-17) |
-| **1.1** | **Embodiment grounding + substrate-primary validation** — exploration policy (Exp 42 GRADUATE ✓), perception pipeline placement (✓), substrate-native orienting on Reachy Mini (Exp 45e ✓ PR #431), Exp 44 embodied choice (✓ reward-driven confirmed via counterbalance, PR #429), substrate-learns-from-experience Phase 1 (✓ #437). **Remaining: Oasis.** | In progress |
+| **1.1** | **"Sensorimotor"** — *the substrate leaves the simulator.* Ships already-merged work (Exp 42 GRADUATE ✓, perception placement ✓, Exp 45e ✓ #431, Exp 44 counterbalanced ✓ #429, Phase 1 ✓ #437, SEM motor binding ✓ #460/#461, Exp 49 ✓ #463, cross-session persistence ✓ #446, console seams) + release-truth debt: CHANGELOG for 1.0.0→1.0.6, n_ctx clamp, persona hard-remove, the first-ever graduation heartbeat walk, artifact stamping, orient-vocabulary audit. **Zero new mechanisms. One hardware session.** | In progress (5–7 wks) |
+| **1.2** | **Oasis + Hivemind** — peer substrate sharing (~800 LOC) + P2P protocol (~600 LOC), both de-risked with a cleared gate. Plus: orient arbitration mechanism, pain-on-startle (visual), Weeping Angel sim arm, cradle formalized as the standing measurement environment. | Planned |
+| **1.3** | **Perception fabric + reflex tier** — cochlear front-end, population coding, vision encoder, orient-windowed binding, three-factor calibration ([cross_modal_perception_fabric.md](cross_modal_perception_fabric.md), [three_factor_credit_assignment.md](three_factor_credit_assignment.md) — both self-targeted 1.3), and the DN-canonical orienting reflex. Contains the pivotal may-fail experiment (Stage 0c). | Planned |
 
 **Discipline:** 0.7 was the last major feature version. 0.8 matured cognition and embodiment. 1.0 stabilizes, validates, and grounds — every bio-system fully operational with closed feedback loops, interfaces frozen with future-proof protocols, and the agent demonstrably learns from its own body.
 
