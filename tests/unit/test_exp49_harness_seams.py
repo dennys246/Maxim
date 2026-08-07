@@ -406,6 +406,26 @@ class TestComputeTrialMetrics:
         assert m.credited_turns == 1
         assert m.credited_sign_matches == 0
 
+    def test_credit_tied_with_next_motion_attributes_to_own_turn(self):
+        # The arm C "stale frame" refutation: the credit event is emitted at
+        # the END of its execute, and the NEXT turn's motion can land within
+        # the 10 ms timestamp rounding — a `<=` matcher attributed the credit
+        # to the WRONG turn and scored honest credit as sign-flipped. The
+        # credited turn here is the 2.0 motion (theta 22.8→40, AWAY from
+        # center, negative credit = correct); the tie at 3.0 must not steal it.
+        c = _exp49_common()
+        events = [
+            _read(1.0, 22.8, -0.254),
+            _motion(2.0, 17.2, 0.0),  # away from center
+            _read(2.5, 40.0, -0.444),
+            _credit(3.0, -0.19),  # negative credit for the 2.0 turn — honest
+            _motion(3.0, 0.0, 17.2),  # NEXT turn, tied timestamp
+            _read(3.5, 22.8, -0.254),
+        ]
+        m = c.compute_trial_metrics(events)
+        assert m.credited_turns == 1
+        assert m.credited_sign_matches == 1  # would be 0 under <= matching
+
     def test_credit_matches_its_own_turn_not_later_motion(self):
         c = _exp49_common()
         events = [
