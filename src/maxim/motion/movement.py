@@ -150,9 +150,76 @@ def load_movement_thresholds(path: Path | str = _DEFAULT_THRESHOLDS_PATH) -> dic
     }
 
 
-def move_head(mini, x, y, z, roll, pitch, yaw, duration):
-    pose = head_pose_matrix(x, y, z, roll, pitch, yaw)
-    mini.goto_target(head=pose, duration=duration, body_yaw=None)
+# Physical rotation limits (degrees) — CAPABILITY ceilings, mirroring
+# ReachyMiniController's clamps (2026-08-07 safety fold; motors 2+3 were
+# destroyed by a pose commanded beyond capability). Vendor SDK docs:
+# roll/pitch ±40°, head yaw RELATIVE TO BODY max 65°. NOTE the 65° figure
+# has a provenance conflict with the ~22° measured in Exp 49 — but that
+# measurement was taken on the degraded platform; H1 re-measures on
+# healthy hardware (docs/experiments/protocols/h1_healthy_hardware_doa_preregistration.md).
+_MAX_HEAD_ROLL_DEG = 40.0
+_MAX_HEAD_PITCH_DEG = 40.0
+_MAX_HEAD_REL_YAW_DEG = 65.0
+
+
+def _current_body_yaw_deg(mini) -> float:
+    """Best-effort body yaw (degrees) from the SDK joint vector; 0.0 on failure.
+
+    Joint vector is ``[body_yaw, *stewart_legs]`` — the SDK's own fk() reads
+    index 0 as body_yaw.
+    """
+    try:
+        head_joints, _ = mini.get_current_joint_positions()
+        if head_joints is not None and len(head_joints) >= 1:
+            return math.degrees(float(head_joints[0]))
+    except Exception:
+        pass
+    return 0.0
+
+
+def move_head(mini, x, y, z, roll, pitch, yaw, duration, *, motion_lock=None):
+    """Dispatch a head pose to the SDK. ``yaw`` is BODY-RELATIVE degrees.
+
+    FRAME (2026-08-07 safety fold — this was the reincarnation of the
+    head-frame trap one layer up): every Selfy-layer caller works in the
+    body-relative frame (``sync_head_position`` computes ``yaw = world −
+    body``), but the SDK head pose matrix is WORLD-frame. Pre-fold this
+    function shipped the relative yaw AS world yaw with ``body_yaw=None``
+    (retain) — correct only while the body sat at 0. After any SEM body
+    turn (body at e.g. 160°), a gaze command of "relative ≈ 0" dragged the
+    head to WORLD 0, demanding a head-relative angle of −160° against a
+    ±65° neck capability: the motor-destruction failure class, and the
+    same mechanism `turn_around`'s STEP 2 was just fixed for.
+
+    Composition happens at DISPATCH time (this runs on the motor-queue
+    thread), so the body yaw read is as fresh as it can be. Rotations are
+    clamped to physical capability as belt-and-suspenders — Selfy.move()
+    clamps the tighter style workspace upstream, but goto_pose and the
+    workers.py IK-recovery recenter also land here.
+    """
+    import contextlib
+
+    # When the caller can supply the controller's _motion_lock (Selfy.move
+    # threads it through), the body-yaw read + compose + dispatch here is
+    # serialized against controller-routed callers too — otherwise a
+    # controller goto_target changing body yaw between our read and our
+    # dispatch re-opens the TOCTOU one path over (executor-lens review
+    # finding). Lock-less callers (workers.py recovery) degrade to a fresh
+    # read with a small residual window.
+    lock = motion_lock if motion_lock is not None else contextlib.nullcontext()
+    with lock:
+        body_yaw_deg = _current_body_yaw_deg(mini)
+        roll = max(-_MAX_HEAD_ROLL_DEG, min(_MAX_HEAD_ROLL_DEG, float(roll)))
+        pitch = max(-_MAX_HEAD_PITCH_DEG, min(_MAX_HEAD_PITCH_DEG, float(pitch)))
+        yaw = max(-_MAX_HEAD_REL_YAW_DEG, min(_MAX_HEAD_REL_YAW_DEG, float(yaw)))
+        # Translation intent is body-frame (x forward, y left of the BODY);
+        # rotate into the world frame so a turned body doesn't reinterpret a
+        # forward nudge as sideways. mm-scale — not a destruction-class axis.
+        b = math.radians(body_yaw_deg)
+        x_w = float(x) * math.cos(b) - float(y) * math.sin(b)
+        y_w = float(x) * math.sin(b) + float(y) * math.cos(b)
+        pose = head_pose_matrix(x_w, y_w, z, roll, pitch, yaw + body_yaw_deg)
+        mini.goto_target(head=pose, duration=duration, body_yaw=None)
 
 
 def move_antenna(

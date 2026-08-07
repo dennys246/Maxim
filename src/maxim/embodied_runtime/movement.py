@@ -11,8 +11,6 @@ import time
 import uuid
 from typing import Any, Optional
 
-import numpy as np
-
 from maxim.motion.movement import (
     move_antenna,
     move_head,
@@ -130,44 +128,45 @@ class MovementMixin:
         except Exception:
             pose = None
 
+        # Collect into locals and dispatch through self.move() — NOT a direct
+        # _enqueue_motor(move_head, ...) (2026-08-07 safety fold): move() owns
+        # the workspace clamp, so a config-authored pose beyond limits cannot
+        # ship raw. (Setting self.x..yaw first and then calling move() would
+        # trip move()'s no-op check — collect first, assign nothing.)
+        vals: tuple[float, float, float, float, float, float] | None = None
         if isinstance(pose, (list, tuple)) and len(pose) >= 6:
             try:
-                self.x = float(pose[0])
-                self.y = float(pose[1])
-                self.z = float(pose[2])
-                self.roll = float(pose[3])
-                self.pitch = float(pose[4])
-                self.yaw = float(pose[5])
+                vals = tuple(float(pose[i]) for i in range(6))  # type: ignore[assignment]
                 if duration is None and len(pose) >= 7:
                     duration = float(pose[6])
             except Exception:
-                pose = None
+                vals = None
 
-        if pose is None:
+        if vals is None:
             fallback = getattr(self, "_default_head_pose", None)
             if not isinstance(fallback, dict):
                 fallback = {}
-            self.x = float(fallback.get("x", 0.0) or 0.0)
-            self.y = float(fallback.get("y", 0.0) or 0.0)
-            self.z = float(fallback.get("z", 0.0) or 0.0)
-            self.roll = float(fallback.get("roll", 0.0) or 0.0)
-            self.pitch = float(fallback.get("pitch", 0.0) or 0.0)
-            self.yaw = float(fallback.get("yaw", 0.0) or 0.0)
+            vals = (
+                float(fallback.get("x", 0.0) or 0.0),
+                float(fallback.get("y", 0.0) or 0.0),
+                float(fallback.get("z", 0.0) or 0.0),
+                float(fallback.get("roll", 0.0) or 0.0),
+                float(fallback.get("pitch", 0.0) or 0.0),
+                float(fallback.get("yaw", 0.0) or 0.0),
+            )
 
         if duration is None:
             duration = float(getattr(self, "duration", 0.5) or 0.5)
 
         try:
-            self._enqueue_motor(
-                move_head,
-                self.mini,
-                self.x,
-                self.y,
-                self.z,
-                self.roll,
-                self.pitch,
-                self.yaw,
-                float(duration),
+            self.move(
+                x=vals[0],
+                y=vals[1],
+                z=vals[2],
+                roll=vals[3],
+                pitch=vals[4],
+                yaw=vals[5],
+                duration=float(duration),
             )
         except Exception as e:
             warn("Failed to center vision: %s", e, logger=self.log)
@@ -427,13 +426,16 @@ class MovementMixin:
             "yaw": self._SAFE_YAW_LIMIT,
         }
 
-        # 2. Override with learned bounds if available
+        # 2. Override with learned bounds if available — TIGHTEN-ONLY
+        # (2026-08-07 safety fold): the learner exists to shrink limits that
+        # caused pain; a config-inflated learner ceiling must never WIDEN
+        # what is now a safety clamp past the hardcoded safe limits.
         default_network = getattr(self, "_default_network", None)
         if default_network is not None:
             bounds_learner = getattr(default_network, "_bounds_learner", None)
             if bounds_learner is not None:
                 for axis in limits:
-                    limits[axis] = bounds_learner.get_bound(axis)
+                    limits[axis] = min(limits[axis], bounds_learner.get_bound(axis))
 
         # 3. Apply protocol override (can only tighten, never widen)
         override = self._workspace_limit_override
@@ -1085,6 +1087,18 @@ class MovementMixin:
                 if abs(dyaw) > step:
                     next_yaw = cur_yaw + (step if dyaw > 0 else -step)
 
+        # WORKSPACE CLAMP (2026-08-07 safety fold). This was the missing
+        # guard on the MoveTool no-robot_id fallback: move() applied only the
+        # per-call max-step limiter above — whose defaults are all 0.0, i.e.
+        # DISABLED — and then enqueued the ABSOLUTE pose raw to the SDK. An
+        # LLM-passed yaw of any magnitude went straight to the motors: the
+        # "commanded a pose beyond its physical capability" failure class
+        # from the 2026-08-07 hardware note (motors 2+3 destroyed).
+        # move_relative() already clamps; move() must too.
+        next_x, next_y, next_z, next_roll, next_pitch, next_yaw = self._clamp_to_workspace_6d(
+            next_x, next_y, next_z, next_roll, next_pitch, next_yaw
+        )
+
         if (
             next_x == cur_x
             and next_y == cur_y
@@ -1122,6 +1136,10 @@ class MovementMixin:
             self.pitch,
             self.yaw,
             self.duration,
+            # Serialize against controller-routed callers (executor-lens
+            # review fold): move_head's body-yaw read + compose + dispatch
+            # runs under the same lock as the controller's goto_target.
+            motion_lock=getattr(getattr(self, "_robot", None), "_motion_lock", None),
             _commanded_6d=commanded_6d,
         )
 
@@ -1231,59 +1249,76 @@ class MovementMixin:
                 self.log.debug("Failed to inhibit DefaultNetwork: %s", inh_e)
 
         import time as time_mod
-        from maxim.motion.movement import head_pose_matrix
+
+        from maxim.hardware.controller import MotionTarget
 
         try:
-            # Get ACTUAL current body yaw from SDK. Joint vector is
-            # [body_yaw, *stewart_legs] — index 0, per analytical_kinematics
-            # (the old index-6 read returned a stewart LEG angle; see the
-            # sync_head_position comment for the live measurement).
+            # THE DISPATCH PATH IS THE FIX (2026-08-07 safety fold). This
+            # method previously hand-rolled its 3-step sequence against the
+            # raw SDK (`self.mini.goto_target(...)`), bypassing
+            # ReachyMiniController.goto_target — and with it the head-frame
+            # composition, the workspace clamps, and the motion lock. The
+            # STEP-2 body rotation shipped `head=None`, so the daemon held
+            # the head at its RETAINED world pose (centered at world 0 from
+            # STEP 1) while the body rotated up to ±160° beneath it —
+            # commanding a head-relative angle far past the ±65° neck
+            # capability. That is the motor-destruction failure class from
+            # the 2026-08-07 hardware note. Routing through the controller
+            # gives: head rides along with the body (head-frame invariant),
+            # every axis clamped to physical limits, and the read→compose→
+            # dispatch TOCTOU closed by the controller's motion lock.
+            robot = getattr(self, "_robot", None)
+            if robot is None:
+                self.log.warning("turn_around: no robot controller — skipping body rotation")
+                return
+
+            # Get ACTUAL current body yaw from the controller's pose read.
             try:
-                head_joints, _ = self.mini.get_current_joint_positions()
-                if head_joints is not None and len(head_joints) >= 1:
-                    current_body_yaw = math.degrees(head_joints[0])
-                else:
-                    current_body_yaw = float(getattr(self, "body_yaw", 0.0) or 0.0)
+                pose = robot.get_current_pose() or {}
+                current_body_yaw = math.degrees(float(pose["body_yaw"])) if "body_yaw" in pose else None
             except Exception:
+                current_body_yaw = None
+            if current_body_yaw is None:
                 current_body_yaw = float(getattr(self, "body_yaw", 0.0) or 0.0)
 
             target_body_yaw = current_body_yaw + angle
             target_body_yaw = max(-160.0, min(160.0, target_body_yaw))
 
             self.log.info(
-                "turn_around: 3-step sequence starting (body %.1f -> %.1f)", current_body_yaw, target_body_yaw
+                "turn_around: 2-step sequence starting (body %.1f -> %.1f)", current_body_yaw, target_body_yaw
             )
 
             # ═══════════════════════════════════════════════════════════════════
-            # STEP 1: Return head to center first (prevents IK issues during turn)
+            # STEP 1: Center the head RELATIVE TO THE BODY (prevents IK issues
+            # during the turn). head_yaw on MotionTarget is body-relative, so
+            # 0.0 means "straight ahead of the body", not world zero.
             # ═══════════════════════════════════════════════════════════════════
             step1_duration = min(2.0, duration * 0.3)
-            center_pose = head_pose_matrix(0, 0, 0, 0, 0, 0)
-
             self.log.info("turn_around STEP 1: centering head (%.1fs)", step1_duration)
             try:
-                self.mini.goto_target(
-                    head=center_pose,
-                    duration=step1_duration,
-                    method="minjerk",
+                ok1 = robot.goto_target(
+                    MotionTarget(head_roll=0.0, head_pitch=0.0, head_yaw=0.0, duration=step1_duration)
                 )
+                if not ok1:
+                    self.log.warning("turn_around STEP 1: motion command rejected")
                 time_mod.sleep(step1_duration + 0.3)  # Wait for completion + buffer
             except Exception as e1:
                 self.log.warning("turn_around STEP 1 failed: %s", e1)
 
             # ═══════════════════════════════════════════════════════════════════
-            # STEP 2: Rotate body (head stays centered relative to body)
+            # STEP 2: Rotate body. The controller composes a head matrix with
+            # the body delta added (head-frame invariant), so the head — and
+            # the camera/mics in it — ride along instead of counter-rotating.
             # ═══════════════════════════════════════════════════════════════════
             step2_duration = max(3.0, duration * 0.5)
-            body_yaw_rad = np.deg2rad(target_body_yaw)
+            body_yaw_rad = math.radians(target_body_yaw)
 
             self.log.info("turn_around STEP 2: rotating body to %.1f° (%.1fs)", target_body_yaw, step2_duration)
+            ok2 = False
             try:
-                self.mini.goto_target(
-                    body_yaw=body_yaw_rad,
-                    duration=step2_duration,
-                    method="minjerk",
-                )
+                ok2 = robot.goto_target(MotionTarget(body_yaw=body_yaw_rad, duration=step2_duration))
+                if not ok2:
+                    self.log.warning("turn_around STEP 2: motion command rejected")
                 time_mod.sleep(step2_duration + 0.3)  # Wait for completion + buffer
             except Exception as e2:
                 self.log.warning("turn_around STEP 2 failed: %s", e2)
@@ -1297,13 +1332,19 @@ class MovementMixin:
             # Sync with hardware to get accurate position
             self.sync_head_position()
 
-            # Update internal tracking
-            self.body_yaw = target_body_yaw
-            if recenter_head:
-                self.yaw = 0.0
-                self.pitch = 0.0
-                self.y = 0.0
-                self.z = 0.0
+            # Update internal tracking ONLY for a motion the controller
+            # accepted (executor-lens review fold): a rejected/failed turn
+            # must not leave the mirror asserting a rotation that never
+            # happened — sync_head_position above already restored the
+            # hardware truth, and overwriting it with the TARGET would
+            # corrupt every frame consumer until the next sync.
+            if ok2:
+                self.body_yaw = target_body_yaw
+                if recenter_head:
+                    self.yaw = 0.0
+                    self.pitch = 0.0
+                    self.y = 0.0
+                    self.z = 0.0
 
             self.log.info(
                 "turn_around complete: body_yaw %.1f -> %.1f (total %.1fs)",
