@@ -55,7 +55,7 @@ by delaying Oasis two versions.
 | 5 | **Graduation heartbeat walk** (9 rows) — the **first ever**; no row has ever been marked `Maintained` | 1.5–2.5 wk |
 | 6 | **H1 hardware session** — version-verified DoA re-sweep (≥2 geometries, 07-16 protocol) + `yaw_verify` + motor-bound delivered-shift measurement | 2–3 d |
 | 7 | **Artifact stamping** — `embedding_dim`, `using_fallback`, sensor-name set, normalization mode. Pulled forward from the fabric plan's Stage 4 | 80–150 LOC |
-| 8 | **Orient-vocabulary audit** (doc) + fix the two live bugs it surfaced | 3–5 d |
+| 8 | **Orient-vocabulary audit + workspace-limit bypass fix** — ⚠️ **SAFETY**: the two `goto_target`-bypassing paths are the likely cause of the motor destruction (see hardware note). Highest priority after #467 | 3–5 d |
 | 9 | Doc-truth pass — this file, README, `perception_placement.py` disposition, Exp 09 citation | 2–3 d |
 
 **Total: 5–7 weeks**, one external dependency (H1), currently unblocked.
@@ -67,44 +67,53 @@ The DoA re-sweep resolves **Exp 45's staleness**, *is* **1.3's Stage 0a**, and p
 (magnitude re-probe, only if H1 moves the ≈0.33 decision boundary) into the
 pre-registration **before** H1 runs, so its outcome is decided in advance.
 
-### Hardware note (2026-08-07): spare motor swapped in — and TWO were found broken
+### Hardware note (2026-08-07): motors 2 and 3 were broken for the ENTIRE 1.0+ era
 
-**A physical hypothesis for the contested DoA curve.** The 2026-08-05 sweep measured
-~0.19 az/rad against the 2026-07-16 measurement of 0.57 (R²=0.9982, four cross-checked
-runs). It was flagged as probably instrument-compromised via SDK/daemon version skew.
-**A degraded Stewart platform is a second, better candidate**: the head pose reported
-by the daemon is computed by forward kinematics from *joint angles*, so a motor that
-does not reach its commanded angle yields a pose readback that describes where the head
-was *told* to be, not where it *is*. The mic array under-rotates while the frame claims
-it turned — which produces exactly a depressed apparent DoA gain.
+**Operator report:** motors in Stewart positions **2 and 3** were broken and have now
+been replaced and reflashed from the motor-1 config. All six legs confirmed healthy;
+the platform moves cleanly. **The breakage spans essentially all of 1.0+**, repaired
+~2026-08-05.
 
-Note this is the *verify-actuation* failure class again, one layer deeper than 2026-07-16:
-there the head counter-rotated because of `head=None`; here the head may simply not have
-gone where FK said. The 08-05 `yaw_verify` result (`d(head)/d(body) = +1.007`, travel
-ratio 0.955) does **not** rule this out — it was derived from the same FK readback.
+**Root cause, and it is ours:** an earlier Maxim iteration commanded a pose *beyond its
+physical capability*; the motors glitched, the head snapped violently to the opposite
+extreme, and the robot rotated itself off the table. This is a **workspace-limit
+enforcement failure**, and it connects directly to the orient-vocabulary audit (item 8):
+**two paths bypass `ReachyMiniController.goto_target` entirely** — `MoveTool` gaze
+without a `robot_id`, and `turn_around`, which hand-rolls its own centering. A path that
+bypasses the controller plausibly bypasses workspace clamping with it. That elevates
+item 8 from a correctness fix to a **safety** fix, and it should be treated as the
+highest-priority item in the 1.1 cut line after PR #467.
 
-**H1 gains a pre-registered discriminator — but only on a FULLY healthy platform.**
-The Stewart platform has six legs; if any remains degraded, a sweep result is still
-confounded and the discriminator does not discriminate. **Confirm all six are healthy
-before H1 runs** (compare commanded vs FK-reported joint angles per leg, and/or a
-physical range check) — otherwise H1 spends a hardware session producing another
-uninterpretable number. With that confirmed, re-run the 07-16 sweep protocol. If gain returns to ~0.57 with R²≈0.998, the staircase was
-platform degradation and the CONTESTED banner in
-[audio_localization.md](../embodiment/reachy_mini/audio_localization.md) resolves to
-"instrument artifact — deleted." If the staircase reproduces on healthy hardware at two
-source geometries, it is real and the sensor genuinely has this shape.
+**Data-quality consequence — the important part.** Every live-hardware measurement in
+the 1.0+ era was taken on a degraded platform, including:
 
-**Data-quality obligation:** date the degradation window if possible. Any live result
-collected inside it inherits the caveat — including the 08-05 sweep and any live orient
-session in that period. Sim-only work (Exp 49 ran against `SimulatedController`) is
-unaffected. Exp 45e (2026-07-27) sits near the boundary and should be dated explicitly
-during the graduation walk rather than assumed clean.
+- the 2026-07-16 "TRUE characterization" (0.57 az/rad, R²=0.9982) — **also degraded**,
+  contrary to the earlier hypothesis that it was the healthy baseline
+- the 2026-08-05 contested sweep (~0.19 az/rad)
+- Exp 45 / 45b / 45c / 45d / 45e (orient direction + magnitude)
+- Exp 46 / 48 (operant orienting)
+- every live orient session and smoke test
 
-**Operational:** keep **multiple** spares on hand — this incident needed more than the
-one held. A hardware line whose sessions can be blocked for weeks by a single failed
-component is a scheduling risk on every plan that gates on an H-session, and this
-roadmap has three. Two failures in one incident also suggests characterizing the
-failure mode (wear? load? a bad batch?) rather than only replacing parts.
+**This yields a better hypothesis for the contested curve than either previous one:
+progressive mechanical degradation.** If motors 2 and 3 were failing *gradually*, then
+0.57 (July) and 0.19 (August) are both real measurements of a platform in two different
+states of decline — not one good run and one instrument artifact. That predicts
+**healthy hardware should now measure ≥0.57, plausibly nearer the geometric 0.637.**
+H1 tests it directly.
+
+**What survives and what does not.** Direction findings are likely robust — if the body
+turns at all, which way it turned is preserved. **Magnitude findings are not**: delivered
+shift is exactly what a degraded platform corrupts, and the magnitude line already
+rested on n=1 sessions. Treat every magnitude claim (the ≈0.33 decision boundary, Exp
+45b/45c/45d/45e magnitude arms) as **provisional pending re-measurement**, and say so in
+the graduation walk rather than assuming clean.
+
+**H1 is therefore the first honest hardware measurement in the project's 1.0+ history**,
+and its value is much higher than originally scoped. Run it early.
+
+**Operational:** stock multiple spares — this incident needed more than the one held.
+And two failures from one root cause argues for fixing the *cause* (workspace-limit
+bypass) rather than only the symptom.
 
 ---
 
