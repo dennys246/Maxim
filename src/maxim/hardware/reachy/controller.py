@@ -9,6 +9,7 @@ import dataclasses
 import logging
 import socket
 import subprocess
+import threading
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -108,6 +109,12 @@ class ReachyMiniController(RobotController):
         # previously resolved this as a local and dropped it; the DoA REST
         # reader needs it to be self-sufficient (Stage 1b).
         self._resolved_host: str | None = None
+        # Serializes goto_target's read→compose→dispatch. Two overlapping
+        # callers (e.g. focus_on_sound + a SEM body turn) each read
+        # get_current_pose() and compose a head matrix against it; without
+        # the lock the second composes against a body yaw the first is
+        # already changing (TOCTOU on live kinematic state).
+        self._motion_lock = threading.RLock()
 
     @property
     def robot_type(self) -> str:
@@ -444,6 +451,34 @@ class ReachyMiniController(RobotController):
         """Map a MotionTarget.method name to the Reachy SDK's InterpolationTechnique value."""
         return cls._METHOD_MAP.get(method, "minjerk")
 
+    # ── PHYSICAL workspace limits (radians) ──────────────────────────────
+    # These are CAPABILITY limits, not style preferences — commanding past
+    # them is what destroyed motors 2+3 (2026-08-07 hardware note: a pose
+    # beyond physical capability made the motors glitch, the head snapped to
+    # the opposite extreme, and the robot rotated itself off the table).
+    # Sources: Reachy Mini SDK docs — roll/pitch ±40°, head yaw RELATIVE TO
+    # BODY max 65°; body yaw ±160° matches the SEM motor backend's
+    # _MAX_BODY_YAW_RAD. The clamp lives HERE, at the single dispatch point
+    # every sanctioned caller routes through, so no caller can forget it.
+    _MAX_HEAD_ROLL_RAD = 0.6981317007977318  # 40°
+    _MAX_HEAD_PITCH_RAD = 0.6981317007977318  # 40°
+    _MAX_HEAD_REL_YAW_RAD = 1.1344640137963142  # 65° head-relative-to-body
+    _MAX_BODY_YAW_RAD = 2.792526803190927  # 160°
+
+    @staticmethod
+    def _clamp(value: float, limit: float, axis: str) -> float:
+        """Clamp to ±limit; WARN when the command actually exceeded it."""
+        if abs(value) > limit:
+            logger.warning(
+                "goto_target: %s %.3f rad exceeds physical limit ±%.3f — clamping "
+                "(a pose beyond capability is the motor-destruction failure class)",
+                axis,
+                value,
+                limit,
+            )
+            return limit if value > 0 else -limit
+        return value
+
     def goto_target(self, target: MotionTarget) -> bool:
         """Move robot to target pose.
 
@@ -457,68 +492,94 @@ class ReachyMiniController(RobotController):
             return False
 
         try:
-            # Build head target. SDK >= 1.5 goto_target(head=...) requires a
-            # 4x4 pose MATRIX (the zenoh-era (roll, pitch, yaw) tuple would be
-            # flatten()ed to 3 values where the daemon expects 16). Compose
-            # the pose from euler targets via the SDK's own helper.
-            #
-            # THE HEAD-FRAME RULE (CLAUDE.md invariant, 2026-07-16). The head
-            # pose is in the WORLD frame and sits ABOVE body_yaw in the
-            # kinematic chain, so:
-            #   * head=None does NOT mean "leave the head alone" — the daemon
-            #     re-solves IK against the RETAINED world head target, which
-            #     COUNTER-ROTATES the head while the body turns under it. The
-            #     head-mounted camera and mic array then barely move (measured:
-            #     0.32 rad of sensor rotation for a 0.9 rad body command).
-            #   * a head yaw expressed as if body-relative is also wrong: the
-            #     pose is world, so head_yaw=0.1 with body_yaw=0.5 pins the head
-            #     at world 0.1 instead of 0.6.
-            # Both were live here until 2026-07-16. Pollen's prescription:
-            # "to make the head follow the body, ship a `head` matrix in the same
-            # call with the body delta added to the head yaw."
-            body_yaw_target = target.body_yaw
-            head_requested = any(x is not None for x in [target.head_roll, target.head_pitch, target.head_yaw])
-
-            head_target = None
-            if head_requested or body_yaw_target is not None:
-                from reachy_mini.utils import create_head_pose
-
-                # Fill unspecified axes from the current pose so single-axis
-                # commands don't recenter the others.
-                current = self.get_current_pose()
-                current_body = current.get("body_yaw", 0.0) or 0.0
-                # get_current_pose() reports head yaw in the WORLD frame (the
-                # SDK's fk() folds body_yaw in), so the head's angle RELATIVE to
-                # the body is (world head yaw - body yaw). Callers naturally mean
-                # "point the head there relative to the body", so re-add the
-                # TARGET body yaw to keep the head riding along.
-                # target.head_yaw is interpreted BODY-RELATIVE (what callers mean by
-                # "look left"); current["yaw"] is WORLD. Convert, then re-add the
-                # target body yaw so the head ends up riding along with the body.
-                if target.head_yaw is not None:
-                    relative_yaw = target.head_yaw
-                else:
-                    relative_yaw = current.get("yaw", 0.0) - current_body
-                target_body = body_yaw_target if body_yaw_target is not None else current_body
-                head_target = create_head_pose(
-                    roll=(target.head_roll if target.head_roll is not None else current.get("roll", 0.0)),
-                    pitch=(target.head_pitch if target.head_pitch is not None else current.get("pitch", 0.0)),
-                    yaw=relative_yaw + target_body,
-                    degrees=False,
-                )
-
-            self._mini.goto_target(
-                head=head_target,
-                body_yaw=body_yaw_target,
-                duration=target.duration,
-                method=self._sdk_method(target.method),
-            )
-
-            return True
-
+            with self._motion_lock:
+                return self._goto_target_locked(target)
         except Exception as e:
             logger.error("Motion command failed: %s", e)
             return False
+
+    def _goto_target_locked(self, target: MotionTarget) -> bool:
+        """Body of goto_target; runs under ``_motion_lock``.
+
+        The lock spans get_current_pose() → head-matrix composition → SDK
+        dispatch so overlapping callers cannot compose against a body yaw
+        that another call is concurrently changing (TOCTOU on live
+        kinematic state).
+        """
+        # Build head target. SDK >= 1.5 goto_target(head=...) requires a
+        # 4x4 pose MATRIX (the zenoh-era (roll, pitch, yaw) tuple would be
+        # flatten()ed to 3 values where the daemon expects 16). Compose
+        # the pose from euler targets via the SDK's own helper.
+        #
+        # THE HEAD-FRAME RULE (CLAUDE.md invariant, 2026-07-16). The head
+        # pose is in the WORLD frame and sits ABOVE body_yaw in the
+        # kinematic chain, so:
+        #   * head=None does NOT mean "leave the head alone" — the daemon
+        #     re-solves IK against the RETAINED world head target, which
+        #     COUNTER-ROTATES the head while the body turns under it. The
+        #     head-mounted camera and mic array then barely move (measured:
+        #     0.32 rad of sensor rotation for a 0.9 rad body command).
+        #   * a head yaw expressed as if body-relative is also wrong: the
+        #     pose is world, so head_yaw=0.1 with body_yaw=0.5 pins the head
+        #     at world 0.1 instead of 0.6.
+        # Both were live here until 2026-07-16. Pollen's prescription:
+        # "to make the head follow the body, ship a `head` matrix in the same
+        # call with the body delta added to the head yaw."
+        body_yaw_target = target.body_yaw
+        if body_yaw_target is not None:
+            body_yaw_target = self._clamp(body_yaw_target, self._MAX_BODY_YAW_RAD, "body_yaw")
+        head_requested = any(x is not None for x in [target.head_roll, target.head_pitch, target.head_yaw])
+
+        head_target = None
+        if head_requested or body_yaw_target is not None:
+            from reachy_mini.utils import create_head_pose
+
+            # Fill unspecified axes from the current pose so single-axis
+            # commands don't recenter the others.
+            current = self.get_current_pose()
+            current_body = current.get("body_yaw", 0.0) or 0.0
+            # get_current_pose() reports head yaw in the WORLD frame (the
+            # SDK's fk() folds body_yaw in), so the head's angle RELATIVE to
+            # the body is (world head yaw - body yaw). Callers naturally mean
+            # "point the head there relative to the body", so re-add the
+            # TARGET body yaw to keep the head riding along.
+            # target.head_yaw is interpreted BODY-RELATIVE (what callers mean by
+            # "look left"); current["yaw"] is WORLD. Convert, then re-add the
+            # target body yaw so the head ends up riding along with the body.
+            if target.head_yaw is not None:
+                relative_yaw = target.head_yaw
+            else:
+                relative_yaw = current.get("yaw", 0.0) - current_body
+            target_body = body_yaw_target if body_yaw_target is not None else current_body
+            # Clamp in the BODY-RELATIVE frame — that is where the physical
+            # 65° neck constraint lives. Clamping the world-frame sum instead
+            # would spuriously limit a legal head pose whenever the body is
+            # turned, and miss an illegal one whenever body and head offsets
+            # cancel.
+            relative_yaw = self._clamp(relative_yaw, self._MAX_HEAD_REL_YAW_RAD, "head_yaw (body-relative)")
+            head_target = create_head_pose(
+                roll=self._clamp(
+                    (target.head_roll if target.head_roll is not None else current.get("roll", 0.0)),
+                    self._MAX_HEAD_ROLL_RAD,
+                    "head_roll",
+                ),
+                pitch=self._clamp(
+                    (target.head_pitch if target.head_pitch is not None else current.get("pitch", 0.0)),
+                    self._MAX_HEAD_PITCH_RAD,
+                    "head_pitch",
+                ),
+                yaw=relative_yaw + target_body,
+                degrees=False,
+            )
+
+        self._mini.goto_target(
+            head=head_target,
+            body_yaw=body_yaw_target,
+            duration=target.duration,
+            method=self._sdk_method(target.method),
+        )
+
+        return True
 
     def look_at_pixel(self, target: PixelTarget) -> bool:
         """Move head to look at a pixel coordinate.

@@ -97,9 +97,12 @@ class _FakeMini:
 
 @pytest.fixture
 def controller() -> tuple[ReachyMiniController, _FakeMini]:
+    import threading
+
     ctl = ReachyMiniController.__new__(ReachyMiniController)
     fake = _FakeMini()
     ctl._mini = fake
+    ctl._motion_lock = threading.RLock()  # normally set by __init__ (2026-08-07 safety fold)
     ctl.is_connected = lambda: True  # type: ignore[method-assign]
     ctl._update_state = lambda **kw: None  # type: ignore[method-assign]
     return ctl, fake
