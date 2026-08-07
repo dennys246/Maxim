@@ -346,3 +346,249 @@ class TestSelfyMoveClamps:
         _, args, _ = host.enqueued[0]
         assert args[6] == pytest.approx(20.0)
         assert args[5] == pytest.approx(10.0)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Review folds (two-lens round, 2026-08-07)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+from maxim.motion.movement import move_head  # noqa: E402
+
+
+class TestMoveHeadFrameComposition:
+    """BLOCKING review finding: move_head shipped BODY-RELATIVE yaw AS a
+    WORLD-frame matrix with body_yaw=None. With the body turned (post SEM
+    turn), a 'centered' gaze command demanded a head-relative angle up to
+    ±160° against the ±65° neck — the destruction mechanism one layer up."""
+
+    def test_relative_zero_on_turned_body_ships_world_body_yaw(self):
+        body = math.radians(120.0)
+        fake = _FakeMini(body_yaw=body)
+        move_head(fake, 0, 0, 0, 0, 0, 0.0, 0.5)
+        (call,) = fake.calls
+        assert _world_yaw_of(call["head"]) == pytest.approx(body, abs=1e-6), (
+            "move_head(yaw=0) on a body at 120° must center the head ON THE BODY "
+            "(world 120°), not drag it to world 0 — a relative demand of −120°."
+        )
+
+    def test_relative_yaw_composes_onto_body(self):
+        body = math.radians(90.0)
+        fake = _FakeMini(body_yaw=body)
+        move_head(fake, 0, 0, 0, 0, 0, 30.0, 0.5)
+        (call,) = fake.calls
+        assert _world_yaw_of(call["head"]) == pytest.approx(body + math.radians(30.0), abs=1e-6)
+
+    def test_rotations_clamped_to_capability(self):
+        fake = _FakeMini()
+        move_head(fake, 0, 0, 0, 90.0, -90.0, 170.0, 0.5)
+        (call,) = fake.calls
+        m = call["head"]
+        yaw = _world_yaw_of(m)
+        pitch = math.atan2(-m[2][0], math.hypot(m[2][1], m[2][2]))
+        roll = math.atan2(m[2][1], m[2][2])
+        assert yaw == pytest.approx(math.radians(65.0), abs=1e-6)
+        assert roll == pytest.approx(math.radians(40.0), abs=1e-6)
+        assert pitch == pytest.approx(-math.radians(40.0), abs=1e-6)
+
+    def test_body_read_failure_falls_back_to_zero(self):
+        class _NoJointsMini(_FakeMini):
+            def get_current_joint_positions(self):
+                raise RuntimeError("joint read failed")
+
+        fake = _NoJointsMini()
+        move_head(fake, 0, 0, 0, 0, 0, 20.0, 0.5)
+        (call,) = fake.calls
+        assert _world_yaw_of(call["head"]) == pytest.approx(math.radians(20.0), abs=1e-6)
+
+    def test_workers_recovery_recenter_is_body_relative(self):
+        """workers.py's IK-failure recovery calls move_head(mini, 0,...,0) —
+        with the frame fix this now means 'centered on the body', never a
+        world-zero demand against a turned body during IK distress."""
+        body = math.radians(-150.0)
+        fake = _FakeMini(body_yaw=body)
+        move_head(fake, 0, 0, 0, 0, 0, 0, 0.5)
+        (call,) = fake.calls
+        assert _world_yaw_of(call["head"]) == pytest.approx(body, abs=1e-6)
+
+
+class _PoseHost(_MoveHost):
+    def __init__(self, poses=None) -> None:
+        super().__init__()
+        self.poses = poses or {}
+
+
+class TestGotoPoseRoutesThroughMove:
+    def test_config_pose_beyond_workspace_is_clamped(self):
+        """Review finding: goto_pose enqueued config-authored poses raw."""
+        host = _PoseHost(poses={"wild": [0, 0, 0, 0, 0, 170.0]})
+        host.goto_pose("wild", duration=0.1)
+        assert host.enqueued, "goto_pose should dispatch via move()"
+        _, args, _ = host.enqueued[0]
+        assert abs(args[6]) <= host._SAFE_YAW_LIMIT + 1e-6
+
+    def test_centered_pose_dispatches(self):
+        host = _PoseHost(poses={"centered": [0, 0, 0, 0, 0, 10.0]})
+        host.goto_pose("centered", duration=0.1)
+        assert host.enqueued
+        _, args, _ = host.enqueued[0]
+        assert args[6] == pytest.approx(10.0)
+
+
+class TestBoundsLearnerTightenOnly:
+    def test_learned_bound_cannot_widen_safe_limit(self):
+        """Review finding: _get_workspace_limits replaced the hardcoded safe
+        limits with learner output wholesale — a config-inflated learner
+        ceiling silently widened the safety clamp."""
+
+        class _WideLearner:
+            def get_bound(self, axis):
+                return 999.0
+
+        class _DN:
+            _bounds_learner = _WideLearner()
+
+        host = _MoveHost()
+        host._default_network = _DN()
+        limits = host._get_workspace_limits()
+        assert limits["yaw"] <= host._SAFE_YAW_LIMIT
+        assert limits["y"] <= host._SAFE_Y_LIMIT
+
+    def test_learned_bound_can_tighten(self):
+        class _TightLearner:
+            def get_bound(self, axis):
+                return 10.0
+
+        class _DN:
+            _bounds_learner = _TightLearner()
+
+        host = _MoveHost()
+        host._default_network = _DN()
+        assert host._get_workspace_limits()["yaw"] == pytest.approx(10.0)
+
+
+class TestSimulatedControllerParity:
+    def test_default_limits_match_real_controller(self):
+        """Review finding: sim defaults were unclamped while the real
+        controller now clamps unconditionally — silent sim/hardware
+        divergence in the incident's axis."""
+        from maxim.hardware.simulation.controller import SimulatedController
+
+        sim = SimulatedController()
+        sim.connect()
+        assert sim.goto_target(MotionTarget(head_yaw=math.radians(120.0))) is True
+        pose = sim.get_current_pose()
+        rel = pose["yaw"] - pose["body_yaw"]
+        assert rel == pytest.approx(ReachyMiniController._MAX_HEAD_REL_YAW_RAD, abs=1e-6)
+
+    def test_default_body_limit_matches_real_controller(self):
+        from maxim.hardware.simulation.controller import SimulatedController
+
+        sim = SimulatedController()
+        sim.connect()
+        assert sim.goto_target(MotionTarget(body_yaw=6.0)) is True
+        assert sim.get_current_pose()["body_yaw"] == pytest.approx(ReachyMiniController._MAX_BODY_YAW_RAD, abs=1e-6)
+
+    def test_explicit_tighter_limit_still_wins(self):
+        from maxim.hardware.simulation.controller import SimulatedController
+
+        sim = SimulatedController(head_yaw_limit_deg=22.0)
+        sim.connect()
+        sim.goto_target(MotionTarget(head_yaw=math.radians(60.0)))
+        pose = sim.get_current_pose()
+        assert pose["yaw"] - pose["body_yaw"] == pytest.approx(math.radians(22.0), abs=1e-6)
+
+
+class TestControllerClampHonesty:
+    def test_clamped_axes_recorded(self, controller):
+        ctl, fake = controller
+        ctl.goto_target(MotionTarget(head_yaw=math.radians(120.0), body_yaw=6.0))
+        assert "body_yaw" in ctl.last_clamped_axes
+        assert any("head_yaw" in a for a in ctl.last_clamped_axes)
+
+    def test_clean_dispatch_clears_previous_record(self, controller):
+        ctl, fake = controller
+        ctl.goto_target(MotionTarget(body_yaw=6.0))
+        assert ctl.last_clamped_axes
+        ctl.goto_target(MotionTarget(body_yaw=0.2))
+        assert ctl.last_clamped_axes == ()
+
+
+class TestExecutorLensFolds:
+    """Second review-round folds (executor lens)."""
+
+    def test_selfy_move_on_turned_body_dispatches_body_relative(self):
+        """THE cross-confirmed BLOCKING finding, end-to-end: after a body turn
+        (mirror yaw correctly body-relative ≈ 0), a Selfy.move() must NOT drag
+        the head to world 0 — the enqueued move_head composes world = rel +
+        current body at dispatch time."""
+        body = math.radians(90.0)
+        host = _MoveHost()
+        host.mini = _FakeMini(body_yaw=body)
+        host.move(pitch=5.0)  # yaw axis filled from mirror (rel 0)
+        assert host.enqueued
+        fn, args, kwargs = host.enqueued[0]
+        kwargs.pop("_commanded_6d", None)
+        fn(*args, **kwargs)  # execute what the motor worker would
+        (call,) = host.mini.calls
+        assert _world_yaw_of(call["head"]) == pytest.approx(body, abs=1e-6), (
+            "move(pitch=5) with the body at 90° shipped the head toward world 0 — "
+            "a relative demand of −90° against the ±65° neck: the destruction "
+            "mechanism, reincarnated through the motor queue."
+        )
+
+    def test_turn_around_step1_centers_relative_to_body_not_world(self):
+        """STEP 1 must center the head ON THE BODY. At body=0 'world 0' and
+        'relative 0' coincide, so the original tests could not detect a
+        world-frame regression — this starts with the body turned."""
+        body = math.radians(60.0)
+        ctl, fake = _make_controller(body_yaw=body, head_world_yaw=body)
+        host = _TurnHost(ctl)
+        host.turn_around(45.0, duration=5.0)
+        step1 = fake.calls[0]
+        assert step1.get("head") is not None
+        assert _world_yaw_of(step1["head"]) == pytest.approx(body, abs=1e-3), (
+            "STEP 1 centered the head at WORLD 0 with the body at 60° — the "
+            "counter-rotation trap turn_around was rewritten to close."
+        )
+
+    def test_controller_refuses_retained_yaw_on_unreadable_pose(self):
+        """Body-only command + unreadable pose must REFUSE, not guess world 0
+        (a legal-under-clamp but violent swing while state is unknown)."""
+        ctl, fake = _make_controller()
+        ctl.get_current_pose = lambda: {}  # type: ignore[method-assign]
+        assert ctl.goto_target(MotionTarget(body_yaw=0.5)) is False
+        assert fake.calls == []
+
+    def test_turn_around_rejected_motion_does_not_update_mirror(self):
+        """A rejected STEP 2 must not leave the mirror asserting a rotation
+        that never happened."""
+
+        class _RejectingController:
+            def get_current_pose(self):
+                return {"yaw": 0.0, "pitch": 0.0, "roll": 0.0, "body_yaw": 0.0}
+
+            def goto_target(self, target):
+                return False
+
+        host = _TurnHost(_RejectingController())
+        host.body_yaw = 0.0
+        host.yaw = 12.0
+        host.turn_around(90.0, duration=5.0)
+        assert host.body_yaw == pytest.approx(0.0), "mirror must not claim the failed turn"
+        assert host.yaw == pytest.approx(12.0)
+
+    def test_move_threads_motion_lock_to_move_head(self):
+        """Selfy.move must pass the controller's _motion_lock through the
+        motor queue so the body-read→compose→dispatch in move_head is
+        serialized against controller-routed callers."""
+        host = _MoveHost()
+        sentinel = threading.RLock()
+
+        class _R:
+            _motion_lock = sentinel
+
+        host._robot = _R()
+        host.move(yaw=10.0)
+        _, _, kwargs = host.enqueued[0]
+        assert kwargs.get("motion_lock") is sentinel

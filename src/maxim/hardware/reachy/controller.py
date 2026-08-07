@@ -115,6 +115,12 @@ class ReachyMiniController(RobotController):
         # the lock the second composes against a body yaw the first is
         # already changing (TOCTOU on live kinematic state).
         self._motion_lock = threading.RLock()
+        # Honesty surface for the clamps: axes clamped by the MOST RECENT
+        # goto_target dispatch. Callers that report pose outcomes to the
+        # LLM (MoveTool) read this instead of echoing the commanded value —
+        # a silently-clamped "success" is the faced_sound=True dishonesty
+        # class PR #459 fixed.
+        self.last_clamped_axes: tuple[str, ...] = ()
 
     @property
     def robot_type(self) -> str:
@@ -465,9 +471,8 @@ class ReachyMiniController(RobotController):
     _MAX_HEAD_REL_YAW_RAD = 1.1344640137963142  # 65° head-relative-to-body
     _MAX_BODY_YAW_RAD = 2.792526803190927  # 160°
 
-    @staticmethod
-    def _clamp(value: float, limit: float, axis: str) -> float:
-        """Clamp to ±limit; WARN when the command actually exceeded it."""
+    def _clamp(self, value: float, limit: float, axis: str, clamped_axes: list[str]) -> float:
+        """Clamp to ±limit; WARN + record the axis when the command exceeded it."""
         if abs(value) > limit:
             logger.warning(
                 "goto_target: %s %.3f rad exceeds physical limit ±%.3f — clamping "
@@ -476,6 +481,7 @@ class ReachyMiniController(RobotController):
                 value,
                 limit,
             )
+            clamped_axes.append(axis)
             return limit if value > 0 else -limit
         return value
 
@@ -525,9 +531,10 @@ class ReachyMiniController(RobotController):
         # Both were live here until 2026-07-16. Pollen's prescription:
         # "to make the head follow the body, ship a `head` matrix in the same
         # call with the body delta added to the head yaw."
+        clamped_axes: list[str] = []
         body_yaw_target = target.body_yaw
         if body_yaw_target is not None:
-            body_yaw_target = self._clamp(body_yaw_target, self._MAX_BODY_YAW_RAD, "body_yaw")
+            body_yaw_target = self._clamp(body_yaw_target, self._MAX_BODY_YAW_RAD, "body_yaw", clamped_axes)
         head_requested = any(x is not None for x in [target.head_roll, target.head_pitch, target.head_yaw])
 
         head_target = None
@@ -537,6 +544,18 @@ class ReachyMiniController(RobotController):
             # Fill unspecified axes from the current pose so single-axis
             # commands don't recenter the others.
             current = self.get_current_pose()
+            # Refuse to guess (executor-lens review fold, mirroring
+            # ReachyOrientMotorBackend's E2 rule): deriving the RETAINED
+            # relative yaw needs both the world head yaw and the body yaw.
+            # Treating an unreadable one as 0 commands a swing of up to the
+            # full body angle — legal under the clamp, violent in practice.
+            if target.head_yaw is None and ("yaw" not in current or "body_yaw" not in current):
+                logger.error(
+                    "goto_target: current pose unreadable (have keys %s) — refusing to guess "
+                    "the retained head yaw; re-issue with an explicit head_yaw or retry",
+                    sorted(current.keys()),
+                )
+                return False
             current_body = current.get("body_yaw", 0.0) or 0.0
             # get_current_pose() reports head yaw in the WORLD frame (the
             # SDK's fk() folds body_yaw in), so the head's angle RELATIVE to
@@ -556,22 +575,27 @@ class ReachyMiniController(RobotController):
             # would spuriously limit a legal head pose whenever the body is
             # turned, and miss an illegal one whenever body and head offsets
             # cancel.
-            relative_yaw = self._clamp(relative_yaw, self._MAX_HEAD_REL_YAW_RAD, "head_yaw (body-relative)")
+            relative_yaw = self._clamp(
+                relative_yaw, self._MAX_HEAD_REL_YAW_RAD, "head_yaw (body-relative)", clamped_axes
+            )
             head_target = create_head_pose(
                 roll=self._clamp(
                     (target.head_roll if target.head_roll is not None else current.get("roll", 0.0)),
                     self._MAX_HEAD_ROLL_RAD,
                     "head_roll",
+                    clamped_axes,
                 ),
                 pitch=self._clamp(
                     (target.head_pitch if target.head_pitch is not None else current.get("pitch", 0.0)),
                     self._MAX_HEAD_PITCH_RAD,
                     "head_pitch",
+                    clamped_axes,
                 ),
                 yaw=relative_yaw + target_body,
                 degrees=False,
             )
 
+        self.last_clamped_axes = tuple(clamped_axes)
         self._mini.goto_target(
             head=head_target,
             body_yaw=body_yaw_target,
@@ -594,11 +618,16 @@ class ReachyMiniController(RobotController):
             return False
 
         try:
-            self._mini.look_at_image(
-                target.u,
-                target.v,
-                duration=target.duration,
-            )
+            # Same lock as goto_target: a look_at in flight changing the head
+            # pose between another caller's pose read and its dispatch is the
+            # same TOCTOU (clamp risk is low here — pixel→angle is
+            # FOV-bounded — but the serialization claim must be true).
+            with self._motion_lock:
+                self._mini.look_at_image(
+                    target.u,
+                    target.v,
+                    duration=target.duration,
+                )
             return True
 
         except Exception as e:

@@ -237,12 +237,25 @@ class SimulatedController(RobotController):
             )
             doa_reader = self._doa_scenario.read
         self._doa_reader = doa_reader
-        self._head_yaw_limit_rad: float | None = (
-            math.radians(abs(float(head_yaw_limit_deg))) if head_yaw_limit_deg is not None else None
+        # Sim-hardware parity (2026-08-07 safety fold): the real controller
+        # now clamps unconditionally, so the sim's DEFAULT must match it —
+        # a sim accepting poses the hardware would alter is silent
+        # sim/hardware divergence in the exact axis the motor-destruction
+        # incident lived in. Explicit tighter limits (Exp 49's measured
+        # ~±22°) still win; None now means "the real controller's limit",
+        # not "unclamped".
+        from maxim.hardware.reachy.controller import ReachyMiniController as _Real
+
+        self._head_yaw_limit_rad: float = (
+            math.radians(abs(float(head_yaw_limit_deg)))
+            if head_yaw_limit_deg is not None
+            else _Real._MAX_HEAD_REL_YAW_RAD
         )
-        self._body_yaw_limit_rad: float | None = (
-            math.radians(abs(float(body_yaw_limit_deg))) if body_yaw_limit_deg is not None else None
+        self._body_yaw_limit_rad: float = (
+            math.radians(abs(float(body_yaw_limit_deg))) if body_yaw_limit_deg is not None else _Real._MAX_BODY_YAW_RAD
         )
+        self._head_roll_limit_rad: float = _Real._MAX_HEAD_ROLL_RAD
+        self._head_pitch_limit_rad: float = _Real._MAX_HEAD_PITCH_RAD
 
         self._video_stream: MockVideoStream | None = None
         self._audio_stream: MockAudioStream | None = None
@@ -365,23 +378,25 @@ class SimulatedController(RobotController):
         old_body = float(self._current_pose.get("body_yaw", 0.0) or 0.0)
         old_world_yaw = float(self._current_pose.get("yaw", 0.0) or 0.0)
         new_body = old_body if target.body_yaw is None else float(target.body_yaw)
-        if self._body_yaw_limit_rad is not None:
-            new_body = max(-self._body_yaw_limit_rad, min(self._body_yaw_limit_rad, new_body))
+        new_body = max(-self._body_yaw_limit_rad, min(self._body_yaw_limit_rad, new_body))
         if target.head_yaw is not None:
             relative_yaw = float(target.head_yaw)
         else:
             relative_yaw = old_world_yaw - old_body
-        if self._head_yaw_limit_rad is not None:
-            # The daemon-analog neck envelope: the head cannot exceed this
-            # BODY-RELATIVE yaw (Exp 49 pins the measured ~±22°). Clamped
-            # on every motion so a body turn cannot smuggle the head past
-            # the envelope either.
-            relative_yaw = max(-self._head_yaw_limit_rad, min(self._head_yaw_limit_rad, relative_yaw))
+        # The daemon-analog neck envelope: the head cannot exceed this
+        # BODY-RELATIVE yaw (Exp 49 pins the measured ~±22°; the default is
+        # the real controller's ±65° capability limit). Clamped on every
+        # motion so a body turn cannot smuggle the head past the envelope.
+        relative_yaw = max(-self._head_yaw_limit_rad, min(self._head_yaw_limit_rad, relative_yaw))
 
         if target.head_roll is not None:
-            self._current_pose["roll"] = target.head_roll
+            self._current_pose["roll"] = max(
+                -self._head_roll_limit_rad, min(self._head_roll_limit_rad, float(target.head_roll))
+            )
         if target.head_pitch is not None:
-            self._current_pose["pitch"] = target.head_pitch
+            self._current_pose["pitch"] = max(
+                -self._head_pitch_limit_rad, min(self._head_pitch_limit_rad, float(target.head_pitch))
+            )
         self._current_pose["body_yaw"] = new_body
         self._current_pose["yaw"] = relative_yaw + new_body
 

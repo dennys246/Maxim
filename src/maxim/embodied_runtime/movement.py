@@ -128,44 +128,45 @@ class MovementMixin:
         except Exception:
             pose = None
 
+        # Collect into locals and dispatch through self.move() — NOT a direct
+        # _enqueue_motor(move_head, ...) (2026-08-07 safety fold): move() owns
+        # the workspace clamp, so a config-authored pose beyond limits cannot
+        # ship raw. (Setting self.x..yaw first and then calling move() would
+        # trip move()'s no-op check — collect first, assign nothing.)
+        vals: tuple[float, float, float, float, float, float] | None = None
         if isinstance(pose, (list, tuple)) and len(pose) >= 6:
             try:
-                self.x = float(pose[0])
-                self.y = float(pose[1])
-                self.z = float(pose[2])
-                self.roll = float(pose[3])
-                self.pitch = float(pose[4])
-                self.yaw = float(pose[5])
+                vals = tuple(float(pose[i]) for i in range(6))  # type: ignore[assignment]
                 if duration is None and len(pose) >= 7:
                     duration = float(pose[6])
             except Exception:
-                pose = None
+                vals = None
 
-        if pose is None:
+        if vals is None:
             fallback = getattr(self, "_default_head_pose", None)
             if not isinstance(fallback, dict):
                 fallback = {}
-            self.x = float(fallback.get("x", 0.0) or 0.0)
-            self.y = float(fallback.get("y", 0.0) or 0.0)
-            self.z = float(fallback.get("z", 0.0) or 0.0)
-            self.roll = float(fallback.get("roll", 0.0) or 0.0)
-            self.pitch = float(fallback.get("pitch", 0.0) or 0.0)
-            self.yaw = float(fallback.get("yaw", 0.0) or 0.0)
+            vals = (
+                float(fallback.get("x", 0.0) or 0.0),
+                float(fallback.get("y", 0.0) or 0.0),
+                float(fallback.get("z", 0.0) or 0.0),
+                float(fallback.get("roll", 0.0) or 0.0),
+                float(fallback.get("pitch", 0.0) or 0.0),
+                float(fallback.get("yaw", 0.0) or 0.0),
+            )
 
         if duration is None:
             duration = float(getattr(self, "duration", 0.5) or 0.5)
 
         try:
-            self._enqueue_motor(
-                move_head,
-                self.mini,
-                self.x,
-                self.y,
-                self.z,
-                self.roll,
-                self.pitch,
-                self.yaw,
-                float(duration),
+            self.move(
+                x=vals[0],
+                y=vals[1],
+                z=vals[2],
+                roll=vals[3],
+                pitch=vals[4],
+                yaw=vals[5],
+                duration=float(duration),
             )
         except Exception as e:
             warn("Failed to center vision: %s", e, logger=self.log)
@@ -425,13 +426,16 @@ class MovementMixin:
             "yaw": self._SAFE_YAW_LIMIT,
         }
 
-        # 2. Override with learned bounds if available
+        # 2. Override with learned bounds if available — TIGHTEN-ONLY
+        # (2026-08-07 safety fold): the learner exists to shrink limits that
+        # caused pain; a config-inflated learner ceiling must never WIDEN
+        # what is now a safety clamp past the hardcoded safe limits.
         default_network = getattr(self, "_default_network", None)
         if default_network is not None:
             bounds_learner = getattr(default_network, "_bounds_learner", None)
             if bounds_learner is not None:
                 for axis in limits:
-                    limits[axis] = bounds_learner.get_bound(axis)
+                    limits[axis] = min(limits[axis], bounds_learner.get_bound(axis))
 
         # 3. Apply protocol override (can only tighten, never widen)
         override = self._workspace_limit_override
@@ -1132,6 +1136,10 @@ class MovementMixin:
             self.pitch,
             self.yaw,
             self.duration,
+            # Serialize against controller-routed callers (executor-lens
+            # review fold): move_head's body-yaw read + compose + dispatch
+            # runs under the same lock as the controller's goto_target.
+            motion_lock=getattr(getattr(self, "_robot", None), "_motion_lock", None),
             _commanded_6d=commanded_6d,
         )
 
@@ -1306,6 +1314,7 @@ class MovementMixin:
             body_yaw_rad = math.radians(target_body_yaw)
 
             self.log.info("turn_around STEP 2: rotating body to %.1f° (%.1fs)", target_body_yaw, step2_duration)
+            ok2 = False
             try:
                 ok2 = robot.goto_target(MotionTarget(body_yaw=body_yaw_rad, duration=step2_duration))
                 if not ok2:
@@ -1323,13 +1332,19 @@ class MovementMixin:
             # Sync with hardware to get accurate position
             self.sync_head_position()
 
-            # Update internal tracking
-            self.body_yaw = target_body_yaw
-            if recenter_head:
-                self.yaw = 0.0
-                self.pitch = 0.0
-                self.y = 0.0
-                self.z = 0.0
+            # Update internal tracking ONLY for a motion the controller
+            # accepted (executor-lens review fold): a rejected/failed turn
+            # must not leave the mirror asserting a rotation that never
+            # happened — sync_head_position above already restored the
+            # hardware truth, and overwriting it with the TARGET would
+            # corrupt every frame consumer until the next sync.
+            if ok2:
+                self.body_yaw = target_body_yaw
+                if recenter_head:
+                    self.yaw = 0.0
+                    self.pitch = 0.0
+                    self.y = 0.0
+                    self.z = 0.0
 
             self.log.info(
                 "turn_around complete: body_yaw %.1f -> %.1f (total %.1fs)",

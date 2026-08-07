@@ -762,19 +762,30 @@ class MoveTool(Tool):
                 if not success:
                     return ToolResult(success=False, error="Motion command failed")
 
-                return ToolResult(
-                    success=True,
-                    output={
-                        "moved": True,
-                        "robot_id": robot_id,
-                        "target_x": target_x,
-                        "target_y": target_y,
-                        "roll": roll,
-                        "pitch": pitch,
-                        "yaw": yaw,
-                        "duration": duration,
-                    },
-                )
+                # Honesty (2026-08-07 safety fold): echoing the COMMANDED
+                # angles after the controller clamped them is the
+                # "accepted dispatch is a promise, not a motion" class PR
+                # #459 fixed for focus_on_sound. Surface what was clamped
+                # so the LLM does not re-issue an impossible pose.
+                clamped_axes = tuple(getattr(robot, "last_clamped_axes", ()) or ())
+                output: dict[str, Any] = {
+                    "moved": True,
+                    "robot_id": robot_id,
+                    "target_x": target_x,
+                    "target_y": target_y,
+                    "roll": roll,
+                    "pitch": pitch,
+                    "yaw": yaw,
+                    "duration": duration,
+                }
+                if clamped_axes:
+                    output["clamped_axes"] = list(clamped_axes)
+                    output["note"] = (
+                        "command exceeded the robot's physical limits on: "
+                        + ", ".join(clamped_axes)
+                        + " — the head moved to the clamped pose, NOT the requested angles"
+                    )
+                return ToolResult(success=True, output=output)
 
             # Fallback to Maxim's move method for backward compatibility
             if maxim is None:

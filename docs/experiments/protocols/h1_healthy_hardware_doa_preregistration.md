@@ -58,6 +58,14 @@ stop the session, do not "push through."
 - `d(head)/d(body)` — must be ≈ +1.0 (head rides the body; the 2026-07-16
   head-frame fix). If this is not ≈1, STOP — every downstream number is
   frame-corrupted.
+- **Head-relative yaw envelope** (added by the safety-fold review round):
+  step the head-relative yaw command up from 0° in 5° increments (body held)
+  and record the achieved relative yaw at each step until it stops tracking.
+  This settles the 65°-vs-22° provenance conflict (vendor docs say 65°;
+  Exp 49's ~22° was measured on the degraded platform) and calibrates the
+  controller's `_MAX_HEAD_REL_YAW_RAD` capability clamp. If the healthy
+  envelope is materially below 65°, tighten the constant citing this
+  measurement.
 
 ### Part B — DoA sweep, ≥2 source geometries
 

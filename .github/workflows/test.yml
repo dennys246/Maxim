@@ -609,6 +609,29 @@ jobs:
             echo "ERROR: deleted energy classes referenced (EnergyReactionBridge/MovementEnergyTracker)"
             exit 1
           fi
+          # 2026-08-07 orient workspace-safety fold: raw SDK motion dispatch
+          # (mini.goto_target / mini.set_target / mini.look_at_image) is
+          # restricted to the two sanctioned primitives — the controller
+          # (hardware/reachy/controller.py, clamps + motion lock) and
+          # motion/movement.py (move_head: frame composition + rotation
+          # clamps; move_antenna). One additional reference is allow-listed:
+          # embodied_runtime/movement.py's _enqueue_sdk_look_at (the SDK's
+          # own IK-managed look_at path). A new hand-rolled raw dispatch is
+          # the motor-destruction failure class (motors 2+3, hardware note
+          # in docs/plans/roadmap_1_1_to_1_3.md).
+          RAW_SDK_MOTION=$(grep -rnE --include="*.py" "mini\.(goto_target|set_target|look_at_image)" src/maxim/ \
+            | grep -v "^src/maxim/hardware/reachy/controller\.py:" \
+            | grep -v "^src/maxim/motion/movement\.py:" \
+            | grep -vE "^src/maxim/embodied_runtime/movement\.py:[0-9]+: *self\._enqueue_motor\(self\.mini\.look_at_image" \
+            | grep -vE "^[^:]+:[0-9]+: *#" \
+            || true)
+          if [ -n "$RAW_SDK_MOTION" ]; then
+            echo "ERROR: raw SDK motion dispatch outside the sanctioned primitives"
+            echo "$RAW_SDK_MOTION"
+            echo "       Route through ReachyMiniController.goto_target (clamps + lock) or"
+            echo "       Selfy.move()'s clamped enqueue. See docs/embodiment/reachy_mini/orient_vocabulary_audit.md."
+            exit 1
+          fi
           echo "1.0 promoted grep invariants clean"
 
       - name: CLAUDE.md invariant regression-guard lint (Principle 5)
