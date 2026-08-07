@@ -87,6 +87,13 @@ def _run_export(args: argparse.Namespace) -> int:
     nac_state = _read_optional_json(session_dir / "aut_nac.json")
     ec_payload = _read_optional_json(session_dir / "aut_ec.json")
     ec_substrate_nodes = ec_payload.get("substrate_nodes") if isinstance(ec_payload, dict) else None
+    # Encode-time encoder stamps (artifact stamping, 1.1 item 7) — read
+    # from the payload the writing system produced, NEVER fabricated here:
+    # this CLI's own encoder singleton need not match the one that wrote
+    # the session, and stamping the wrong provenance is exactly the
+    # calibration leak the stamp exists to prevent. Pre-stamping payloads
+    # carry None (honest unknown).
+    ec_encoder_provenance = ec_payload.get("encoder_provenance") if isinstance(ec_payload, dict) else None
 
     if nac_state is None and ec_substrate_nodes is None:
         print(
@@ -105,6 +112,7 @@ def _run_export(args: argparse.Namespace) -> int:
             domain=args.domain,
             apply_identity_filter=not args.no_identity_filter,
             identity_threshold=args.identity_threshold,
+            encoder_provenance=ec_encoder_provenance,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)

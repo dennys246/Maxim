@@ -132,8 +132,25 @@ class LinguisticEncoder:
         self._ensure_model()
         if self._model is not None:
             vec = self._model.encode(text, convert_to_numpy=True)
-            return vec.tolist()
-        return _fallback_embed(text, dim=self.config.fallback_dim)
+            embedding = vec.tolist()
+        else:
+            embedding = _fallback_embed(text, dim=self.config.fallback_dim)
+        # Artifact stamping (1.1 item 7): record the REALIZED state — the
+        # dim is measured on the actual vector, and using_fallback is only
+        # knowable here (a 384-dim array could be the fallback OR a real
+        # 384-dim model; post-hoc array inspection cannot distinguish).
+        # Duck-typed so EC stubs in tests without the method are unaffected.
+        rec = getattr(self.ec, "record_encoder_provenance", None)
+        if rec is not None:
+            rec(
+                "linguistic",
+                {
+                    "model_name": self.config.model_name,
+                    "using_fallback": self._using_fallback,
+                    "embedding_dim": len(embedding),
+                },
+            )
+        return embedding
 
     def encode(self, percept: Any) -> str | None:
         """Run the full substrate encoding pipeline on a percept.
@@ -610,6 +627,31 @@ class SensorEncoder:
             return self._last_node_id.get(stash_key)
 
         embedding = _sensor_embed(sensors, ranges=ranges, dim=self.config.embedding_dim)
+
+        # Artifact stamping (1.1 item 7): the sensor-NAME SET and the
+        # normalization mode are part of the embedding's identity —
+        # `_sensor_embed` sums a SHA basis per name, and range-aware vs
+        # range-blind `_normalize_value` are different functions. A bundle
+        # missing this stamp lets a range-blind-folded azimuth cluster
+        # circulate as if comparable to a range-aware one. Per-sensor
+        # granularity: a call may range only SOME sensors, so the mode is
+        # recorded as mixed when the ranges dict doesn't cover the set.
+        rec = getattr(self.ec, "record_encoder_provenance", None)
+        if rec is not None:
+            if not ranges:
+                mode = "range-blind"
+            elif all(name in ranges for name in sensors):
+                mode = "range-aware"
+            else:
+                mode = "range-partial"
+            rec(
+                f"sensor:{modality}",
+                {
+                    "embedding_dim": len(embedding),
+                    "sensor_names": sorted(sensors.keys()),
+                    "normalization": mode,
+                },
+            )
 
         result = self.ec.pattern_complete_or_separate(
             embedding=embedding,
