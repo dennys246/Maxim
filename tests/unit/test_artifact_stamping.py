@@ -85,7 +85,12 @@ class TestEncoderRecordingSites:
 
         ec = _make_ec()
         enc = SensorEncoder(ec=ec)
-        enc.encode_sensors(agent_id="a", sensors={"azimuth": 0.5, "cold": 0.2}, modality="audio", ranges={"azimuth": (-1.0, 1.0), "cold": (0.0, 1.0)})
+        enc.encode_sensors(
+            agent_id="a",
+            sensors={"azimuth": 0.5, "cold": 0.2},
+            modality="audio",
+            ranges={"azimuth": (-1.0, 1.0), "cold": (0.0, 1.0)},
+        )
         prov = ec.encoder_provenance["sensor:audio"]
         assert prov["sensor_names"] == ["azimuth", "cold"]
         assert prov["normalization_modes"] == ["range-aware"]
@@ -95,7 +100,9 @@ class TestEncoderRecordingSites:
 
         ec = _make_ec()
         enc = SensorEncoder(ec=ec)
-        enc.encode_sensors(agent_id="a", sensors={"azimuth": 0.5, "cold": 0.2}, modality="audio", ranges={"azimuth": (-1.0, 1.0)})
+        enc.encode_sensors(
+            agent_id="a", sensors={"azimuth": 0.5, "cold": 0.2}, modality="audio", ranges={"azimuth": (-1.0, 1.0)}
+        )
         assert ec.encoder_provenance["sensor:audio"]["normalization_modes"] == ["range-partial"]
 
     def test_sensor_encoder_no_ranges_stamps_range_blind(self):
