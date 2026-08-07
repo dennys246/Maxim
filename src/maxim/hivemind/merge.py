@@ -141,7 +141,22 @@ def _cosine(a: list[float], b: list[float]) -> float:
     Duplicated from ``maxim.similarity.ec._cosine_similarity`` to keep
     the Hivemind layer free of internal-module imports — same math,
     same edge case.
+
+    DIMENSION MISMATCH IS NOT SIMILARITY (2026-08-06). Vectors of
+    different length come from different encoder spaces and are not
+    comparable at all. ``zip`` silently truncates to the shorter one, so
+    a 384-dim node and a 768-dim node of the same modality tag were
+    compared over the first 384 dims and MERGED whenever that partial
+    cosine cleared the threshold — a silent cross-space corruption on
+    the shipped ``ec_merge`` surface (``ec_merge`` gates on ``modality``
+    only, never on dimension, and EC node payloads carry no encoder
+    identity). Returning 0.0 makes the pair fall below every threshold,
+    so the right-side node inserts as its OWN node instead of
+    contaminating a left-side centroid — the non-destructive outcome,
+    and consistent with the zero-norm convention above.
     """
+    if len(a) != len(b):
+        return 0.0
     dot = sum(x * y for x, y in zip(a, b))
     n_a = sum(x * x for x in a) ** 0.5
     n_b = sum(x * x for x in b) ** 0.5
@@ -512,14 +527,25 @@ def nac_merge(
 # ─────────────────────────────────────────────────────────────────────────
 
 
-# Default frozen-prototype modalities — matches ``ECConfig.frozen_centroid_modalities``.
+# Default frozen-prototype modalities — MUST match
+# ``ECConfig.frozen_centroid_modalities`` (pinned by
+# ``test_hivemind_frozen_modalities_match_ec_default``).
 # ``ec_merge`` does NOT update the centroid for nodes in these modalities
 # (it only sums counts + unions contributors). This preserves the
 # bio-fidelity invariant from the EC centroid-drift fix lesson:
 # interoceptive embeddings track smooth drive drift and a running-mean
 # centroid update across contributors would re-introduce the drift the
 # frozen-modality contract was designed to prevent.
-DEFAULT_FROZEN_CENTROID_MODALITIES: frozenset[str] = frozenset({"interoception"})
+#
+# ``"audio"`` was MISSING here until 2026-08-06 while ``ECConfig`` has
+# carried it since the exteroception seam shipped — so a default-argument
+# ``ec_merge`` running-mean-updated audio centroids ACROSS contributors,
+# exactly what the local EC forbids for that modality. The docstring
+# already claimed the two matched; they did not. The literal is
+# duplicated rather than imported to keep this layer free of
+# internal-module imports (see ``_cosine``), so a test pins the equality
+# instead of the type system.
+DEFAULT_FROZEN_CENTROID_MODALITIES: frozenset[str] = frozenset({"interoception", "audio"})
 
 
 def ec_merge(

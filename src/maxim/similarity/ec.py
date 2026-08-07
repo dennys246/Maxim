@@ -42,7 +42,21 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     """Cosine similarity between two dense vectors.
 
     Returns 0.0 for zero-norm vectors instead of NaN.
+
+    DIMENSION MISMATCH IS NOT SIMILARITY (2026-08-06). ``zip`` silently
+    truncates to the shorter vector, so vectors from DIFFERENT encoder
+    spaces returned a plausible-but-wrong score over their shared prefix.
+    Reachable within one agent across a LOAD boundary: an ``ec.json``
+    written while ``sentence-transformers`` was installed holds 768-dim
+    ``LinguisticEncoder`` nodes, but the same encoder silently falls back
+    to a 384-dim bag-of-words hash when the ``semantic`` extra is absent
+    — so the next session compares 384 against 768 and pattern-completes
+    on garbage. Returning 0.0 puts the pair below every threshold, so it
+    pattern-SEPARATES (a new node) instead of completing onto an
+    incomparable one. Mirrors the same guard in ``hivemind/merge.py``.
     """
+    if len(a) != len(b):
+        return 0.0
     dot = sum(x * y for x, y in zip(a, b))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))

@@ -149,3 +149,22 @@ def test_frozen_centroid_modalities_default() -> None:
     frozen-prototype for stable per-direction clusters.
     """
     assert ECConfig().frozen_centroid_modalities == frozenset({"interoception", "audio"})
+
+
+def test_cosine_similarity_returns_zero_on_dimension_mismatch() -> None:
+    """Different-length embeddings come from different encoder spaces.
+
+    Reachable within ONE agent across a load boundary: an ``ec.json``
+    written while ``sentence-transformers`` was installed holds 768-dim
+    nodes, but ``LinguisticEncoder`` silently falls back to a 384-dim
+    bag-of-words hash without the ``semantic`` extra. Pre-fix, ``zip``
+    truncated to the shorter vector and returned a plausible score over
+    the shared prefix, so the query pattern-COMPLETED onto an
+    incomparable node.
+    """
+    from maxim.similarity.ec import _cosine_similarity
+
+    assert _cosine_similarity([1.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]) == 0.0
+    # Same length is unaffected.
+    assert _cosine_similarity([1.0, 0.0], [1.0, 0.0]) == 1.0
+    assert _cosine_similarity([0.0, 0.0], [0.0, 0.0]) == 0.0
