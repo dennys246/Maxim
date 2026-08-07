@@ -67,7 +67,7 @@ The DoA re-sweep resolves **Exp 45's staleness**, *is* **1.3's Stage 0a**, and p
 (magnitude re-probe, only if H1 moves the ≈0.33 decision boundary) into the
 pre-registration **before** H1 runs, so its outcome is decided in advance.
 
-### Hardware note (2026-08-07): motors repaired — and TWO were broken, not one
+### Hardware note (2026-08-07): spare motor swapped in — and TWO were found broken
 
 **A physical hypothesis for the contested DoA curve.** The 2026-08-05 sweep measured
 ~0.19 az/rad against the 2026-07-16 measurement of 0.57 (R²=0.9982, four cross-checked
@@ -83,8 +83,12 @@ there the head counter-rotated because of `head=None`; here the head may simply 
 gone where FK said. The 08-05 `yaw_verify` result (`d(head)/d(body) = +1.007`, travel
 ratio 0.955) does **not** rule this out — it was derived from the same FK readback.
 
-**H1 gains a pre-registered discriminator:** re-run the 07-16 sweep protocol on the
-repaired platform. If gain returns to ~0.57 with R²≈0.998, the staircase was
+**H1 gains a pre-registered discriminator — but only on a FULLY healthy platform.**
+The Stewart platform has six legs; if any remains degraded, a sweep result is still
+confounded and the discriminator does not discriminate. **Confirm all six are healthy
+before H1 runs** (compare commanded vs FK-reported joint angles per leg, and/or a
+physical range check) — otherwise H1 spends a hardware session producing another
+uninterpretable number. With that confirmed, re-run the 07-16 sweep protocol. If gain returns to ~0.57 with R²≈0.998, the staircase was
 platform degradation and the CONTESTED banner in
 [audio_localization.md](../embodiment/reachy_mini/audio_localization.md) resolves to
 "instrument artifact — deleted." If the staircase reproduces on healthy hardware at two
@@ -96,9 +100,11 @@ session in that period. Sim-only work (Exp 49 ran against `SimulatedController`)
 unaffected. Exp 45e (2026-07-27) sits near the boundary and should be dated explicitly
 during the graduation walk rather than assumed clean.
 
-**Operational:** keep spare motors on hand. A hardware line whose sessions can be
-blocked for weeks by a single failed component is a scheduling risk on every plan that
-gates on H-sessions, and this roadmap has three.
+**Operational:** keep **multiple** spares on hand — this incident needed more than the
+one held. A hardware line whose sessions can be blocked for weeks by a single failed
+component is a scheduling risk on every plan that gates on an H-session, and this
+roadmap has three. Two failures in one incident also suggests characterizing the
+failure mode (wear? load? a bad batch?) rather than only replacing parts.
 
 ---
 
@@ -126,9 +132,10 @@ The verb "enable" was doing enormous work. Verified against code:
 - **Real scope is ~900–1,400 production LOC**, with an unresolved design decision
   (reflex NAc isolation) and a *mandatory unbuilt prerequisite* (`sem_motor_binding.md`:
   the pending map is required before any non-blocking dispatcher ships).
-- ~~**Sign-off is motor-blocked.**~~ **RESOLVED 2026-08-07 — motors repaired.** Four
-  plan docs gated on this; the gate is now open. See the hardware note below, which
-  raises a new and more interesting question.
+- ~~**Sign-off is motor-blocked.**~~ **2026-08-07 — a spare motor was swapped in.**
+  Four plan docs gated on this. **TWO motors were found broken**, so whether the gate
+  is fully open depends on whether both are now healthy — see the hardware note, which
+  also raises a more interesting question.
 
 ---
 
