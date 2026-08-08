@@ -25,6 +25,15 @@ class _RouterStub:
     def get_provider_configs(self):
         return {name: ({"n_ctx": ctx} if ctx is not None else {}) for name, ctx in self._provider_ctxs.items()}
 
+    def cloud_allowed(self) -> bool:
+        # Review fold: the pre-fix code gated on cloud_allowed(); without
+        # this method the old max()-raise path could never execute against
+        # the stub, so test_clamp_is_lower_only pinned the new invariant
+        # but could not DISCRIMINATE the old raise behavior. With it, the
+        # lower-only test is an honest before/after witness (fails on
+        # pre-fix code, which raises 16384 → 200000).
+        return True
+
 
 def _make_worker(llm, n_ctx: int) -> LLMWorker:
     return LLMWorker(llm=llm, n_ctx=n_ctx)
@@ -93,5 +102,26 @@ class TestNCtxClamp:
 
         with caplog.at_level(logging.WARNING):
             worker = _make_worker(_WeirdRouter(), n_ctx=4096)
+        assert worker._n_ctx == 4096
+        assert any("n_ctx scan failed" in r.message for r in caplog.records)
+
+    def test_bool_n_ctx_is_skipped_not_believed_as_one(self):
+        """Review fold NIT: n_ctx: true would int() to 1 and clamp the whole
+        budget to a single token."""
+        worker = _make_worker(_RouterStub({"weird": True, "local": 16384}), n_ctx=32768)
+        assert worker._n_ctx == 16384
+
+    def test_provider_scan_raising_arbitrary_error_degrades_to_warning(self, caplog):
+        """Review fold: the scan now runs for EVERY router exposing
+        get_provider_configs — a third-party backend raising RuntimeError
+        must not crash the constructor."""
+        import logging
+
+        class _ExplodingRouter:
+            def get_provider_configs(self):
+                raise RuntimeError("backend exploded")
+
+        with caplog.at_level(logging.WARNING):
+            worker = _make_worker(_ExplodingRouter(), n_ctx=4096)
         assert worker._n_ctx == 4096
         assert any("n_ctx scan failed" in r.message for r in caplog.records)

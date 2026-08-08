@@ -447,7 +447,14 @@ def run(
         from maxim.exceptions import ConfigurationError
 
         raise ConfigurationError("No LLM backend available. Set --language-model or MAXIM_LLM_PROFILE.")
-    llm_worker = LLMWorker(llm=router)
+    # n_ctx=router.n_ctx (review fold, 1.1 item 3): this was the ONE
+    # LLMWorker construction site that resolved no n_ctx at all — the
+    # constructor default (4096) applied, and only the old cloud max()
+    # raise compensated by lifting it to the declared provider window.
+    # With the clamp now lower-only, omitting n_ctx here would pin every
+    # headless cloud run to a 4096-token prompt budget. Same pattern as
+    # console/handle.py.
+    llm_worker = LLMWorker(llm=router, n_ctx=router.n_ctx, token_counter=router.get_token_counter())
     llm_worker.start()
 
     # ── Agent pipeline ───────────────────────────────────────────────────

@@ -314,21 +314,34 @@ class LLMWorker:
         # (update_provider_n_ctx on spawn, not just hot-swap) — is
         # tracked follow-up; until then `maxim config set llm.n_ctx` is
         # the alignment mechanism.
+        #
+        # ACCEPTED TRADE (review fold — do NOT re-add max() to "restore
+        # cloud routing"): in a mixed lane (local 16k + cloud 200k) the
+        # min() budget means prompts never exceed 16k, so the router's
+        # context_window_routing can no longer route a long-context burst
+        # to the cloud fallback — that window is unreachable by
+        # construction. That routing only helped when the local provider's
+        # DECLARED n_ctx was truthful; when it lied high (the unfixed
+        # auto-spawn leg), the "route away" never fired and the local
+        # server 500'd. One conservative budget for all providers is the
+        # 1.1 semantics; PER-PROVIDER budgets are the eventual right
+        # design and belong with the auto-spawn leg.
         if hasattr(self._llm, "get_provider_configs"):
             try:
                 # Positive-only (review fold): with min(), a bogus declared
                 # value like -5 or 0 would poison the WHOLE budget — the
                 # pre-fix max() made bogus-small harmless, min() inverts the
                 # blast radius, so nonpositive declarations are skipped as
-                # malformed rather than believed. AttributeError covers a
-                # non-dict provider cfg (the scan degrades to a warning, not
-                # a constructor crash).
+                # malformed rather than believed (bool too: True is int 1).
+                # The scan is best-effort — ANY failure degrades to a
+                # warning + unclamped budget, never a constructor crash
+                # (handle-and-log, not a silent swallow).
                 declared = [
                     n
                     for cfg in self._llm.get_provider_configs().values()
-                    if (raw := cfg.get("n_ctx")) is not None and (n := int(raw)) > 0
+                    if (raw := cfg.get("n_ctx")) is not None and not isinstance(raw, bool) and (n := int(raw)) > 0
                 ]
-            except (TypeError, ValueError, AttributeError) as e:
+            except Exception as e:
                 logger.warning("provider n_ctx scan failed (%s); keeping n_ctx=%d", e, self._n_ctx)
                 declared = []
             if declared:
