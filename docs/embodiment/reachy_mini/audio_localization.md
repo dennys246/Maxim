@@ -209,12 +209,28 @@ scale error) and **d(head)/d(body) = +1.007** — the head, and therefore the
 mic array, rides the body essentially 1:1. The 2026-07-16 head-frame fix
 holds.
 
-### A CONTESTED second curve — do NOT treat as settled
+### A CONTESTED second curve — RESOLVED 2026-08-08: degraded-platform artifact
 
-> **UNRECONCILED (flagged 2026-08-06 by a design review, before this section
-> was merged).** What follows **contradicts the 2026-07-16 characterization
-> above by ~3× in gain and by ~13× in quantization**, and the 07-16 numbers are
-> the better-evidenced of the two:
+> **RESOLVED by the H1 healthy-hardware re-sweep
+> ([results](../../experiments/protocols/h1_healthy_hardware_doa_preregistration.md#results--appended-2026-08-08-session-1-parts-a--b-complete-envelope--part-c-pending-recalibration),
+> data [h1_doa_sweep.jsonl](data/h1_doa_sweep.jsonl)).** After motors 2+3 —
+> broken for the entire 1.0+ era — were replaced, a version-verified two-geometry
+> sweep on `executed_git_hash 38aaddea` measured **gain 0.578 (front, replicated
+> at 0.575) / 0.645 (63° displaced, ≈ the geometric 0.637), R² 0.984–0.996,
+> monotone, NO staircase at either geometry** (the displaced curve folds at
+> ±π/2 relative bearing — linear-array physics, not quantization). Per this
+> section's own reconciliation rule, the staircase below was an **instrument
+> artifact of the degrading motors**, and the 0.57-vs-0.19 discrepancy resolves
+> as **progressive mechanical degradation** — both historical sweeps were real
+> measurements of a platform in two states of decline. The data below is
+> RETAINED as the degraded-platform record; nothing downstream may build on it.
+> Residual caveat: the healthy platform still carried a constant motor-zero
+> offset at measurement time (H1 finding F2 — slope-invariant, so the gains
+> stand; the offset explains the fitted ψ₀ ≈ −0.13 rad).
+>
+> The original unreconciled banner and comparison table follow, kept verbatim
+> for the historical record. The 08-05 sweep **contradicted the 2026-07-16
+> characterization by ~3× in gain and ~13× in quantization**:
 >
 > | | 2026-07-16 (above) | 2026-08-05 (below) |
 > |---|---|---|

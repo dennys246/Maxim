@@ -132,3 +132,50 @@ Whatever the outcome: every **magnitude** claim in the walk is marked
 provisional-pending-this-session; **direction** findings (sign-based, robust
 to proportional gain error) are evaluated on their own evidence. H1's result
 is the citation the Exp 45-family rows need to move at all.
+
+---
+
+# RESULTS — appended 2026-08-08 (session 1: Parts A + B complete; envelope + Part C pending recalibration)
+
+**Provenance:** `executed_git_hash 38aaddea` (main incl. the #472 safety fold), SDK 1.8.3 == daemon 1.8.3 (verified), `automatic_body_yaw` off, operator-confirmed motor swap. Raw data: [data/h1_doa_sweep.jsonl](../data/h1_doa_sweep.jsonl) (3 runs x 58 points) + [data/h1_daemon_state_precal.json](../data/h1_daemon_state_precal.json).
+
+## Part A — actuation verification: PASS (with one flagged figure)
+
+- **d(head)/d(body) = +1.024** — the mics ride the body; the head-frame fix holds on the repaired platform. THE gate, passed decisively.
+- Travel ratio 0.934 mean — **0.951 small steps / 0.865 large steps**, the duration-limit signature. Small-step figure matches the 08-05 matched-stack value (0.961); sweep steps are small-regime, so Part B is uncontaminated. The large-step figure is now understood as an early symptom of the calibration finding below.
+
+## Part B — DoA sweep, two geometries + an accidental replication: PASS, top branch of the outcome tree
+
+Fold-model fit (az = g*fold(psi − psi0)) on medians:
+
+| run | source psi0 | gain g | R^2 | per-side g (right/left) |
+|---|---|---|---|---|
+| geom 1 (front) | −0.14 | **0.578** | 0.9944 | 0.586 / 0.564 |
+| front replication* | −0.12 | **0.575** | 0.9957 | 0.585 / 0.559 |
+| geom 2 (~63° right; fold captured) | −1.09 | **0.645** | 0.9843 | — (fold-region leverage) |
+
+*The first "geom2-displaced"-labelled run was a placement misunderstanding — the source stayed in front. Re-classified here as a same-geometry replication (the label in the JSONL is wrong; the data is what it is and the zero crossing proves placement). The true displaced run follows it in the file.
+
+**Outcome-tree verdict — the TOP branch fires:** gain >= 0.57 at both geometries, R^2 0.98–0.996, monotone in the fold domain, **no staircase at either geometry** (the geom-2 curve folds at rel. bearing ±pi/2 — linear-array physics, matching the sim's honest-physics model — which geometry 1 could never expose).
+
+- **Progressive-degradation hypothesis SUPPORTED.** 0.57 (2026-07-16) and 0.19 (2026-08-05) were two decline states of the failing motors 2+3. The 08-05 staircase was a degraded-platform artifact. The CONTESTED section in [audio_localization.md](../../embodiment/reachy_mini/audio_localization.md) is resolved accordingly (annotated in place, data retained).
+- **H2 does NOT fire.** Policy-relevant (front-geometry, matching the conditions the 0.33 boundary was derived under) gain 0.578 ∈ [0.52, 0.62]; implied boundary shift ~0.01 az < 0.03. Magnitude YAML stays frozen. The geom-2 fit at 0.645 (~geometric 0.637) is recorded as a geometry/fold-region dependence observation — post-hoc, spawns nothing without its own pre-registration.
+- Per-side gains near-symmetric (~4% right-favoring, both front runs, same direction with the source moved → leans sensor/mounting, mild). The fitted psi0 ≈ −0.13 rad found a likely cause the same evening — see finding F2.
+
+## Two unplanned findings (post-hoc — each spawns follow-up work, neither is promoted to a claim)
+
+**F1 — retained-axes ratchet (controller behavior, reproducible).** `goto_target` fills unspecified axes from the CURRENT POSE READBACK ("don't recenter the others", pre-#472 behavior). Under any achieved-vs-commanded bias this is positive feedback: ~20 yaw-only probe commands ratcheted roll +~1.3°/command up to +38° (pitch drifted too), invisibly contaminating the first envelope measurements. The orient scripts dodge it by pinning the full head matrix each command; the #472 ±40° roll clamp bounds it. **Fix direction (own PR): retain the last COMMANDED value, not the readback.** The first envelope numbers (right side "~22° at 65° cmd") are RETRACTED as roll-contaminated; envelope re-measurement pends recalibration.
+
+**F2 — motor-zero miscalibration on the repaired platform (the session's operative discovery).** Six consecutive explicit all-zero commands plateau at **yaw +6.2°, roll +18.2°, pitch +9.2°** (stable to ±0.2°); the daemon's OWN state agrees exactly (roll 0.3197 rad — [data/h1_daemon_state_precal.json](../data/h1_daemon_state_precal.json)), ruling out any Maxim-side readback error. The platform has a fixed attractor that is not the commanded zero — consistent with the replacement motors 2+3 having been reflashed from MOTOR-1's config (zero-offsets are per-motor calibration; copying skips it). Constant offsets shift curves but not slopes, so Part A/B conclusions stand (and the fitted psi0 ≈ −0.13 rad ≈ −7° now has a candidate cause: this attractor's yaw component). **Operator action: per-motor zero calibration for motors 2+3, then re-verify zero, then envelope + Part C.**
+
+## Status ledger
+
+| item | state |
+|---|---|
+| Part A (yaw_verify) | **PASS** |
+| Part B (2 geometries + replication) | **PASS — top branch; CONTESTED resolved; H2 does not fire** |
+| Neck envelope | PENDING recalibration (first attempt retracted per F1) |
+| Part C (delivered shift) | PENDING recalibration |
+| Exp 45 graduation row | stays **Stale** until calibration + Part C complete; sweep-half evidence recorded on the row |
+| Exp 50 amendment | g_H = 0.578 fillable now; envelope constant pends |
+
