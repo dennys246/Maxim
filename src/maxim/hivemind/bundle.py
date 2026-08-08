@@ -294,6 +294,16 @@ def compose_bundle(
         carries ``observed_embedding_dims`` derived from the ACTUAL
         arrays in the EC slice at write time (checked truth, per the
         fabric plan's "stamp the realized state, not its name" rule).
+
+        MERGE SEMANTICS (pinned for 1.2 — do not build on the naive
+        reading): ``recorded`` describes the COMPOSING substrate's own
+        encoders only. A substrate that previously imported foreign
+        nodes via ``ec_merge`` ships arrays encoded elsewhere that its
+        local stamps do not describe — the 1.2 P2P merge must union
+        provenance per-contributor rather than trusting a merged
+        substrate's local stamps. ``observed_embedding_dims`` is the
+        measured backstop either way, but dims alone cannot distinguish
+        a 384-dim fallback from a real 384-dim model.
     """
     # Fold (Executor IMPORTANT): route through the same validator
     # PR B's merge functions use, instead of duplicating the
@@ -330,7 +340,7 @@ def compose_bundle(
         # rather than discovered at merge time.
         dims_by_modality: dict[str, set[int]] = {}
         for node in ec_nodes_filtered.values():
-            modality = str(node.get("modality"))
+            modality = str(node.get("modality") or "unknown")
             emb = node.get("embedding") or []
             dims_by_modality.setdefault(modality, set()).add(len(emb))
         observed_embedding_dims = {m: sorted(d) for m, d in sorted(dims_by_modality.items())}

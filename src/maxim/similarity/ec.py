@@ -387,8 +387,15 @@ class EntorhinalCortex:
 
     @property
     def encoder_provenance(self) -> dict[str, dict[str, Any]]:
-        """Read-only view of the recorded encoder stamps (for bundle export)."""
-        return {k: dict(v) for k, v in self._encoder_provenance.items()}
+        """Read-only copy of the recorded encoder stamps (for bundle export).
+
+        Nested lists are copied too — a caller mutating the returned
+        structure must not corrupt internal state.
+        """
+        return {
+            k: {kk: (list(vv) if isinstance(vv, list) else vv) for kk, vv in v.items()}
+            for k, v in self._encoder_provenance.items()
+        }
 
     # ─────────────────────────────────────────────────────────────────────────
     # Substrate Pattern Completion (P1)
@@ -863,7 +870,13 @@ class EntorhinalCortex:
             },
             # Realized encoder state recorded at encode time (artifact
             # stamping, 1.1 item 7) — see record_encoder_provenance.
-            "encoder_provenance": self._encoder_provenance,
+            # Snapshotted (not by reference) so a concurrent record from
+            # the capture thread cannot mutate the payload mid-serialize —
+            # same discipline as the substrate_nodes comprehension above.
+            "encoder_provenance": {
+                k: {kk: (list(vv) if isinstance(vv, list) else vv) for kk, vv in v.items()}
+                for k, v in self._encoder_provenance.items()
+            },
         }
 
         from maxim.utils.atomic_io import atomic_write_json
@@ -948,8 +961,11 @@ class EntorhinalCortex:
 
         # Encoder stamps (artifact stamping, 1.1 item 7). Pre-stamping
         # files lack the key — empty dict, and the bundle will honestly
-        # carry recorded=None for them.
-        self._encoder_provenance = dict(data.get("encoder_provenance", {}))
+        # carry recorded=None for them. Inner dicts are copied so later
+        # record calls never mutate the caller-visible parsed JSON.
+        self._encoder_provenance = {
+            k: dict(v) for k, v in (data.get("encoder_provenance") or {}).items() if isinstance(v, dict)
+        }
 
         logger.info(
             "Loaded EC from %s (%d signatures, %d substrate nodes)",

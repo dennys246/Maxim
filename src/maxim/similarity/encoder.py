@@ -139,17 +139,18 @@ class LinguisticEncoder:
         # dim is measured on the actual vector, and using_fallback is only
         # knowable here (a 384-dim array could be the fallback OR a real
         # 384-dim model; post-hoc array inspection cannot distinguish).
-        # Duck-typed so EC stubs in tests without the method are unaffected.
-        rec = getattr(self.ec, "record_encoder_provenance", None)
-        if rec is not None:
-            rec(
-                "linguistic",
-                {
-                    "model_name": self.config.model_name,
-                    "using_fallback": self._using_fallback,
-                    "embedding_dim": len(embedding),
-                },
-            )
+        # Direct call, not a getattr probe (review fold): every other
+        # encoder→EC call in this file is direct and typed, and a silent
+        # no-op on an EC-shaped substitute missing the method would ship
+        # stamp-less state — the exact leak this feature exists to prevent.
+        self.ec.record_encoder_provenance(
+            "linguistic",
+            {
+                "model_name": self.config.model_name,
+                "using_fallback": self._using_fallback,
+                "embedding_dim": len(embedding),
+            },
+        )
         return embedding
 
     def encode(self, percept: Any) -> str | None:
@@ -636,22 +637,26 @@ class SensorEncoder:
         # circulate as if comparable to a range-aware one. Per-sensor
         # granularity: a call may range only SOME sensors, so the mode is
         # recorded as mixed when the ranges dict doesn't cover the set.
-        rec = getattr(self.ec, "record_encoder_provenance", None)
-        if rec is not None:
-            if not ranges:
-                mode = "range-blind"
-            elif all(name in ranges for name in sensors):
-                mode = "range-aware"
-            else:
-                mode = "range-partial"
-            rec(
-                f"sensor:{modality}",
-                {
-                    "embedding_dim": len(embedding),
-                    "sensor_names": sorted(sensors.keys()),
-                    "normalization": mode,
-                },
-            )
+        # SCOPE (stated deferral, fabric-plan Stage 4): the RANGE VALUES /
+        # units bullet ("a raw-unit range with normalized values is worse
+        # than the fold") and body-YAML-derived declarative fields are NOT
+        # covered by this pull-forward — they land with the Stage-4
+        # projection artifact in 1.3. This stamp records WHETHER ranges
+        # were applied, not whether they were the right ranges.
+        if not ranges:
+            mode = "range-blind"
+        elif all(name in ranges for name in sensors):
+            mode = "range-aware"
+        else:
+            mode = "range-partial"
+        self.ec.record_encoder_provenance(
+            f"sensor:{modality}",
+            {
+                "embedding_dim": len(embedding),
+                "sensor_names": sorted(sensors.keys()),
+                "normalization": mode,
+            },
+        )
 
         result = self.ec.pattern_complete_or_separate(
             embedding=embedding,

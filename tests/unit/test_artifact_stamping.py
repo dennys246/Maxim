@@ -182,16 +182,88 @@ class TestBundleStamping:
 
 
 class TestExtractCompat:
+    def _nodes(self):
+        return {
+            "n1": {"embedding": [0.1] * 384, "modality": "linguistic", "count": 1, "source": "local", "domain": None},
+        }
+
     def test_extract_bundle_accepts_stamped_manifest(self, tmp_path):
+        """The stamped-EC path, actually exercised (review fold: the first
+        version's hasattr hack silently degraded this to a nac-only bundle
+        with no EC slice — an instrument that could not detect the
+        regression it appeared to cover)."""
         from maxim.hivemind.bundle import compose_bundle, extract_bundle
 
         out = tmp_path / "b.zip"
         compose_bundle(
             nac_state={"links": {}},
-            ec_substrate_nodes=self._nodes() if hasattr(self, "_nodes") else None,
+            ec_substrate_nodes=self._nodes(),
             output_path=out,
             contributor_id="tester",
             encoder_provenance={"linguistic": {"using_fallback": False}},
         )
-        result = extract_bundle(bundle_path=out, output_dir=tmp_path / "extracted")
-        assert result is not None
+        manifest = extract_bundle(bundle_path=out, output_dir=tmp_path / "extracted")
+        assert manifest is not None
+        assert manifest["encoder_provenance"]["observed_embedding_dims"] == {"linguistic": [384]}
+
+
+class TestCliExportPassthrough:
+    """The read-from-payload-not-live-singleton seam (review fold F5): the
+    CLI must carry the WRITER's stamps from aut_ec.json — falling back to
+    the reader's own encoder singleton would stamp the reader's calibration
+    onto the writer's arrays, the precise leak the stamp exists to prevent."""
+
+    def _run_export(self, session_dir, out_path):
+        import argparse
+
+        from maxim.hivemind.cli import _run_export
+
+        args = argparse.Namespace(
+            session=str(session_dir),
+            output=str(out_path),
+            contributor_id="tester",
+            domain=None,
+            no_identity_filter=False,
+            identity_threshold=2,
+        )
+        return _run_export(args)
+
+    def test_export_carries_writer_stamps(self, tmp_path):
+        session = tmp_path / "session"
+        session.mkdir()
+        recorded = {"linguistic": {"using_fallback": True, "embedding_dim": 384}}
+        (session / "aut_ec.json").write_text(
+            json.dumps(
+                {
+                    "substrate_nodes": {
+                        "n1": {"embedding": [0.1] * 384, "modality": "linguistic", "count": 1},
+                    },
+                    "encoder_provenance": recorded,
+                }
+            )
+        )
+        out = tmp_path / "b.zip"
+        assert self._run_export(session, out) == 0
+        with zipfile.ZipFile(out) as zf:
+            manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+        assert manifest["encoder_provenance"]["recorded"] == recorded
+
+    def test_export_of_pre_stamping_session_carries_none(self, tmp_path):
+        session = tmp_path / "session"
+        session.mkdir()
+        (session / "aut_ec.json").write_text(
+            json.dumps(
+                {
+                    "substrate_nodes": {
+                        "n1": {"embedding": [0.1] * 384, "modality": "linguistic", "count": 1},
+                    }
+                }
+            )
+        )
+        out = tmp_path / "b.zip"
+        assert self._run_export(session, out) == 0
+        with zipfile.ZipFile(out) as zf:
+            manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+        assert manifest["encoder_provenance"]["recorded"] is None, (
+            "pre-stamping session must export an honest unknown — NEVER the reader's own encoder state"
+        )
