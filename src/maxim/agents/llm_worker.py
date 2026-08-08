@@ -296,13 +296,64 @@ class LLMWorker:
         self._cost_energy_scale = _load_cost_bridge_config().get("cost_energy_scale", 100.0)
         self._provider_semaphores: dict[str, threading.Semaphore] = {}
 
-        if self._has_cloud_providers():
-            providers = self._llm.get_provider_configs()
+        # Clamp the prompt budget to the SMALLEST declared provider context
+        # (1.1 cut-line item 3; the CLAUDE.md "run-config single source"
+        # known bug). The pre-fix code took max() across providers — and
+        # only when a CLOUD provider was configured — so a mixed lane
+        # (local primary 16k + cloud fallback 200k) budgeted prompts at
+        # 200k that the local server rejects with a raw HTTP 500
+        # (down_500 → provider cooldown → every subsequent call
+        # _llm_unavailable → the agent silently takes 0 real actions).
+        # A budget smaller than a provider's true window costs headroom;
+        # a budget larger than the smallest served window costs the whole
+        # session. Providers that declare no n_ctx are skipped (unknown ≠
+        # small); the clamp only ever LOWERS the budget, so a cloud-only
+        # worker whose constructor n_ctx already matches its profile is
+        # unchanged. The remaining half of the known bug — auto-spawn
+        # propagating the RESOLVED n_ctx into the provider config
+        # (update_provider_n_ctx on spawn, not just hot-swap) — is
+        # tracked follow-up; until then `maxim config set llm.n_ctx` is
+        # the alignment mechanism.
+        #
+        # ACCEPTED TRADE (review fold — do NOT re-add max() to "restore
+        # cloud routing"): in a mixed lane (local 16k + cloud 200k) the
+        # min() budget means prompts never exceed 16k, so the router's
+        # context_window_routing can no longer route a long-context burst
+        # to the cloud fallback — that window is unreachable by
+        # construction. That routing only helped when the local provider's
+        # DECLARED n_ctx was truthful; when it lied high (the unfixed
+        # auto-spawn leg), the "route away" never fired and the local
+        # server 500'd. One conservative budget for all providers is the
+        # 1.1 semantics; PER-PROVIDER budgets are the eventual right
+        # design and belong with the auto-spawn leg.
+        if hasattr(self._llm, "get_provider_configs"):
             try:
-                max_ctx = max(int(cfg.get("n_ctx", self._n_ctx) or self._n_ctx) for cfg in providers.values())
-                self._n_ctx = max(self._n_ctx, max_ctx)
-            except Exception:
-                pass
+                # Positive-only (review fold): with min(), a bogus declared
+                # value like -5 or 0 would poison the WHOLE budget — the
+                # pre-fix max() made bogus-small harmless, min() inverts the
+                # blast radius, so nonpositive declarations are skipped as
+                # malformed rather than believed (bool too: True is int 1).
+                # The scan is best-effort — ANY failure degrades to a
+                # warning + unclamped budget, never a constructor crash
+                # (handle-and-log, not a silent swallow).
+                declared = [
+                    n
+                    for cfg in self._llm.get_provider_configs().values()
+                    if (raw := cfg.get("n_ctx")) is not None and not isinstance(raw, bool) and (n := int(raw)) > 0
+                ]
+            except Exception as e:
+                logger.warning("provider n_ctx scan failed (%s); keeping n_ctx=%d", e, self._n_ctx)
+                declared = []
+            if declared:
+                smallest = min(declared)
+                if smallest < self._n_ctx:
+                    logger.warning(
+                        "n_ctx clamped %d -> %d: the smallest declared provider context wins "
+                        "(a larger budget composes prompts that provider rejects with HTTP 500)",
+                        self._n_ctx,
+                        smallest,
+                    )
+                    self._n_ctx = smallest
 
         # WorkerPool integration
         self._pool: WorkerPool | None = pool
@@ -341,14 +392,6 @@ class LLMWorker:
             n_ctx=self._n_ctx,
             token_counter=self._token_counter,
             tool_index=self._tool_index,
-        )
-
-    def _has_cloud_providers(self) -> bool:
-        """Check if the LLM router has cloud providers configured and allowed."""
-        return (
-            hasattr(self._llm, "cloud_allowed")
-            and self._llm.cloud_allowed()
-            and hasattr(self._llm, "get_provider_configs")
         )
 
     def _get_provider_hint(
