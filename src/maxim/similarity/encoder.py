@@ -132,8 +132,26 @@ class LinguisticEncoder:
         self._ensure_model()
         if self._model is not None:
             vec = self._model.encode(text, convert_to_numpy=True)
-            return vec.tolist()
-        return _fallback_embed(text, dim=self.config.fallback_dim)
+            embedding = vec.tolist()
+        else:
+            embedding = _fallback_embed(text, dim=self.config.fallback_dim)
+        # Artifact stamping (1.1 item 7): record the REALIZED state — the
+        # dim is measured on the actual vector, and using_fallback is only
+        # knowable here (a 384-dim array could be the fallback OR a real
+        # 384-dim model; post-hoc array inspection cannot distinguish).
+        # Direct call, not a getattr probe (review fold): every other
+        # encoder→EC call in this file is direct and typed, and a silent
+        # no-op on an EC-shaped substitute missing the method would ship
+        # stamp-less state — the exact leak this feature exists to prevent.
+        self.ec.record_encoder_provenance(
+            "linguistic",
+            {
+                "model_name": self.config.model_name,
+                "using_fallback": self._using_fallback,
+                "embedding_dim": len(embedding),
+            },
+        )
+        return embedding
 
     def encode(self, percept: Any) -> str | None:
         """Run the full substrate encoding pipeline on a percept.
@@ -557,6 +575,13 @@ class SensorEncoder:
         self.config = config or SensorEncoderConfig()
         self._last_sensors: dict[tuple[str, str], dict[str, float]] = {}  # per (agent_id, modality)
         self._last_node_id: dict[tuple[str, str], str] = {}  # per (agent_id, modality)
+        # Ranges identity per stash key (executor-lens review, artifact
+        # stamping): the delta gate keyed on VALUES only, so a caller
+        # switching ranges (range-blind → range-aware — exactly the P1
+        # calibration event) while sensor values sat still was gated out:
+        # the STALE node id came back even though the embedding function
+        # had changed, and the provenance stamp never saw the mode flip.
+        self._last_ranges: dict[tuple[str, str], "dict[str, tuple[float, float]] | None"] = {}
 
     def encode_sensors(
         self,
@@ -606,10 +631,48 @@ class SensorEncoder:
         # modalities — the per-agent-stash footgun from CLAUDE.md.
         stash_key = (agent_id, modality)
         prev = self._last_sensors.get(stash_key)
-        if prev is not None and self._max_delta(prev, sensors) < self.config.min_delta:
+        # The gate bypasses only when BOTH values and ranges identity are
+        # unchanged: a ranges flip changes the embedding function itself,
+        # so returning the cached node would hand back a node computed
+        # under a different normalization (and hide the flip from the
+        # provenance stamp).
+        if (
+            prev is not None
+            and self._max_delta(prev, sensors) < self.config.min_delta
+            and self._last_ranges.get(stash_key) == ranges
+        ):
             return self._last_node_id.get(stash_key)
 
         embedding = _sensor_embed(sensors, ranges=ranges, dim=self.config.embedding_dim)
+
+        # Artifact stamping (1.1 item 7): the sensor-NAME SET and the
+        # normalization mode are part of the embedding's identity —
+        # `_sensor_embed` sums a SHA basis per name, and range-aware vs
+        # range-blind `_normalize_value` are different functions. A bundle
+        # missing this stamp lets a range-blind-folded azimuth cluster
+        # circulate as if comparable to a range-aware one. Per-sensor
+        # granularity: a call may range only SOME sensors, so the mode is
+        # recorded as mixed when the ranges dict doesn't cover the set.
+        # SCOPE (stated deferral, fabric-plan Stage 4): the RANGE VALUES /
+        # units bullet ("a raw-unit range with normalized values is worse
+        # than the fold") and body-YAML-derived declarative fields are NOT
+        # covered by this pull-forward — they land with the Stage-4
+        # projection artifact in 1.3. This stamp records WHETHER ranges
+        # were applied, not whether they were the right ranges.
+        if not ranges:
+            mode = "range-blind"
+        elif all(name in ranges for name in sensors):
+            mode = "range-aware"
+        else:
+            mode = "range-partial"
+        self.ec.record_encoder_provenance(
+            f"sensor:{modality}",
+            {
+                "embedding_dim": len(embedding),
+                "sensor_names": sorted(sensors.keys()),
+                "normalization": mode,
+            },
+        )
 
         result = self.ec.pattern_complete_or_separate(
             embedding=embedding,
@@ -659,6 +722,7 @@ class SensorEncoder:
 
         self._last_sensors[stash_key] = dict(sensors)
         self._last_node_id[stash_key] = result.node_id
+        self._last_ranges[stash_key] = dict(ranges) if ranges else None
 
         logger.debug(
             "Encoded sensor pattern → node %s (sim=%.3f, new=%s, sensors=%d)",

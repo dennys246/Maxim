@@ -233,6 +233,7 @@ def compose_bundle(
     signature: str | None = None,
     signature_algorithm: str | None = None,
     signer_identity: str | None = None,
+    encoder_provenance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compose a substrate snapshot bundle.
 
@@ -282,6 +283,27 @@ def compose_bundle(
         Always ``None`` at 1.0; reserved so 1.1+ bundle verification
         can bind a verified identity to ``contributor_id`` without
         retrofitting the manifest shape. NOT validated here.
+    encoder_provenance
+        Encode-time encoder stamps from the source EC payload
+        (``ec.json``'s ``encoder_provenance`` key — recorded by the
+        encoders via ``EC.record_encoder_provenance``, never authored
+        post-hoc). Carried into ``manifest["encoder_provenance"]
+        ["recorded"]`` verbatim; ``None`` (pre-stamping payloads) is
+        carried as ``None`` — an honest "unknown", not a fabricated
+        default. Independent of this parameter, the manifest ALWAYS
+        carries ``observed_embedding_dims`` derived from the ACTUAL
+        arrays in the EC slice at write time (checked truth, per the
+        fabric plan's "stamp the realized state, not its name" rule).
+
+        MERGE SEMANTICS (pinned for 1.2 — do not build on the naive
+        reading): ``recorded`` describes the COMPOSING substrate's own
+        encoders only. A substrate that previously imported foreign
+        nodes via ``ec_merge`` ships arrays encoded elsewhere that its
+        local stamps do not describe — the 1.2 P2P merge must union
+        provenance per-contributor rather than trusting a merged
+        substrate's local stamps. ``observed_embedding_dims`` is the
+        measured backstop either way, but dims alone cannot distinguish
+        a 384-dim fallback from a real 384-dim model.
     """
     # Fold (Executor IMPORTANT): route through the same validator
     # PR B's merge functions use, instead of duplicating the
@@ -303,6 +325,7 @@ def compose_bundle(
             filtered_nac["links"] = filtered_links
         bundle_contents["nac.json"] = json.dumps(filtered_nac, indent=2, sort_keys=True, default=str)
 
+    observed_embedding_dims: dict[str, list[int]] = {}
     if ec_substrate_nodes is not None:
         ec_nodes_filtered = _filter_ec_nodes_by_domain(ec_substrate_nodes, domain=domain)
         bundle_contents["ec.json"] = json.dumps(
@@ -311,6 +334,16 @@ def compose_bundle(
             sort_keys=True,
             default=str,
         )
+        # Artifact stamping (1.1 item 7): dims measured on the ACTUAL
+        # arrays being shipped — a per-modality dim SET, so a mixed-space
+        # slice (the #467 corruption class) is visible in the manifest
+        # rather than discovered at merge time.
+        dims_by_modality: dict[str, set[int]] = {}
+        for node in ec_nodes_filtered.values():
+            modality = str(node.get("modality") or "unknown")
+            emb = node.get("embedding") or []
+            dims_by_modality.setdefault(modality, set()).add(len(emb))
+        observed_embedding_dims = {m: sorted(d) for m, d in sorted(dims_by_modality.items())}
 
     manifest: dict[str, Any] = {
         "_format_version": FORMAT_VERSION,
@@ -323,6 +356,10 @@ def compose_bundle(
         "identity_threshold": int(identity_threshold) if apply_identity_filter else None,
         "contents": {
             slice_name.removesuffix(".json"): {"file": slice_name} for slice_name in sorted(bundle_contents.keys())
+        },
+        "encoder_provenance": {
+            "observed_embedding_dims": observed_embedding_dims,
+            "recorded": encoder_provenance,
         },
         "signature": signature,
         "signature_algorithm": signature_algorithm,

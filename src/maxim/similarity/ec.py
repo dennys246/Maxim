@@ -351,6 +351,57 @@ class EntorhinalCortex:
         # string (``"combat"``, ``"cooking"``, ...) for domain-scoped nodes.
         self._substrate_node_sources: dict[str, str] = {}
         self._substrate_node_domains: dict[str, str | None] = {}
+        # Artifact stamping (1.1 item 7, pulled forward from the fabric
+        # plan's Stage 4): encoders RECORD their realized state here at
+        # ENCODE time — the only moment the truth is knowable (a 384-dim
+        # embedding could be the bag-of-words fallback OR a real 384-dim
+        # model; post-hoc inspection of the arrays cannot distinguish
+        # them). Persisted in save()/load() and carried into substrate
+        # bundles so a calibration difference (fallback vs real encoder,
+        # range-aware vs range-blind sensor normalization) is visible in
+        # every circulating artifact instead of silently baking in.
+        # Keyed by recorder ("linguistic", "sensor:<modality>").
+        self._encoder_provenance: dict[str, dict[str, Any]] = {}
+
+    def record_encoder_provenance(self, key: str, info: dict[str, Any]) -> None:
+        """Merge an encoder's realized-state stamp under ``key``.
+
+        Merge rules: ``sensor_names`` accumulates as a sorted union
+        (bodies can grow sensors mid-session); ``normalization`` values
+        accumulate into ``normalization_modes`` (a session that mixed
+        range-aware and range-blind calls must say so — "mixed" is a
+        finding, not an error); every other field is last-write-wins.
+        Values must be JSON-serializable (they ride ``save()``).
+        """
+        entry = self._encoder_provenance.setdefault(key, {})
+        for k, v in info.items():
+            if k == "sensor_names":
+                # Harden against a corrupt PERSISTED value (executor-lens
+                # review): set("azimuth") would char-explode a string, and
+                # a non-iterable would raise inside the encode hot path.
+                prev_raw = entry.get("sensor_names", [])
+                prev = set(prev_raw) if isinstance(prev_raw, (list, tuple, set)) else set()
+                new = set(v) if isinstance(v, (list, tuple, set)) else set()
+                entry["sensor_names"] = sorted(prev | new)
+            elif k == "normalization":
+                modes_raw = entry.get("normalization_modes", [])
+                modes = set(modes_raw) if isinstance(modes_raw, (list, tuple, set)) else set()
+                modes.add(v)
+                entry["normalization_modes"] = sorted(modes)
+            else:
+                entry[k] = v
+
+    @property
+    def encoder_provenance(self) -> dict[str, dict[str, Any]]:
+        """Read-only copy of the recorded encoder stamps (for bundle export).
+
+        Nested lists are copied too — a caller mutating the returned
+        structure must not corrupt internal state.
+        """
+        return {
+            k: {kk: (list(vv) if isinstance(vv, list) else vv) for kk, vv in v.items()}
+            for k, v in self._encoder_provenance.items()
+        }
 
     # ─────────────────────────────────────────────────────────────────────────
     # Substrate Pattern Completion (P1)
@@ -823,6 +874,15 @@ class EntorhinalCortex:
                 }
                 for nid, (emb, mod) in self._substrate_nodes.items()
             },
+            # Realized encoder state recorded at encode time (artifact
+            # stamping, 1.1 item 7) — see record_encoder_provenance.
+            # Snapshotted (not by reference) so a concurrent record from
+            # the capture thread cannot mutate the payload mid-serialize —
+            # same discipline as the substrate_nodes comprehension above.
+            "encoder_provenance": {
+                k: {kk: (list(vv) if isinstance(vv, list) else vv) for kk, vv in v.items()}
+                for k, v in self._encoder_provenance.items()
+            },
         }
 
         from maxim.utils.atomic_io import atomic_write_json
@@ -904,6 +964,14 @@ class EntorhinalCortex:
             self._substrate_node_counts[nid] = ndata.get("count", 1)
             self._substrate_node_sources[nid] = ndata.get("source", "local")
             self._substrate_node_domains[nid] = ndata.get("domain")
+
+        # Encoder stamps (artifact stamping, 1.1 item 7). Pre-stamping
+        # files lack the key — empty dict, and the bundle will honestly
+        # carry recorded=None for them. Inner dicts are copied so later
+        # record calls never mutate the caller-visible parsed JSON.
+        self._encoder_provenance = {
+            k: dict(v) for k, v in (data.get("encoder_provenance") or {}).items() if isinstance(v, dict)
+        }
 
         logger.info(
             "Loaded EC from %s (%d signatures, %d substrate nodes)",

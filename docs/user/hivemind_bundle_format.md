@@ -39,6 +39,24 @@ These namespace prefixes are reserved for hardware-bound, cloud-KMS, and vendor-
 | `kms:*` | Cloud KMS–managed keys (e.g. `kms:aws:...`, `kms:gcp:...`). |
 | `vendor:*` | Vendor-specific signature schemes not covered above. |
 
+## Manifest `encoder_provenance` field (1.1, artifact stamping)
+
+Bundles composed from 1.1+ carry an additive `encoder_provenance` manifest key
+(same additive-optional precedent as `signer_identity` — read via `.get(...)`,
+absent on pre-1.1 bundles):
+
+| Sub-field | Meaning |
+|---|---|
+| `observed_embedding_dims` | Per-modality **sorted set of dims measured on the actual arrays** in the shipped `ec.json` slice at write time. Never declared — a mixed-dim slice (the cross-space corruption class fixed in `ec_merge`) is visible here instead of discovered at merge time. `{}` for NAc-only bundles. |
+| `recorded` | The source `ec.json`'s **encode-time encoder stamps** (`EC.record_encoder_provenance` — realized `using_fallback`, measured `embedding_dim`, sensor-name set, normalization modes), passed through verbatim. `None` for pre-stamping payloads — an honest unknown, **never** fabricated from the exporting process's own encoder (the exporter's encoder need not match the writer's). |
+
+**Merge caveat (pinned for 1.2):** `recorded` describes the *composing
+substrate's own encoders only*. A substrate that previously imported foreign
+nodes via `ec_merge` ships arrays its local stamps do not describe; the 1.2
+P2P merge must union provenance per-contributor rather than trusting a merged
+substrate's local stamps. `observed_embedding_dims` is the measured backstop,
+but dims alone cannot distinguish a 384-dim fallback from a real 384-dim model.
+
 ## Contract
 
 - **Append-only.** Once an algorithm name or reserved prefix is listed here, its meaning does not change. New values may be added in a minor release (a non-breaking widening of the verifier's dispatch table).

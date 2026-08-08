@@ -586,6 +586,19 @@ def ec_merge(
 
     Pure function: inputs are not mutated; output is a fresh dict.
 
+    ENCODER-PROVENANCE IS SEVERED AT MERGE (artifact stamping, 1.1
+    item 7 — stated so 1.1 Oasis does not inherit it silently): this
+    function consumes the bare nodes dict; the bundle's encode-time
+    stamps live in ``manifest["encoder_provenance"]`` and do NOT ride
+    through here. Consequence: a substrate that imports foreign nodes
+    and later RE-EXPORTS will stamp them with the importing session's
+    own ``EC._encoder_provenance`` — wrong provenance on right arrays,
+    which is worse than the honest ``None``. Per-contributor
+    provenance union is 1.2 P2P merge work (see the
+    ``compose_bundle`` docstring's MERGE SEMANTICS pin); until then,
+    consumers must treat a merged substrate's stamps as describing its
+    LOCAL encoders only.
+
     Parameters
     ----------
     left, right
