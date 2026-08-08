@@ -256,8 +256,11 @@ predicate's clothes.
 7. **PPI explicitly out of scope** — the loop tick (33–500 ms) exceeds the PPI lead
    window, there is no sub-threshold acoustic channel, and no graded amplitude.
 8. **Halo risk:** graduation Tier-3 #9 reads "Reflex system … EARNED — Experiment 09,"
-   but that covers the keyword-matched infant thermal-contact reflex. A different
-   modality, trigger, circuit, and output **does not inherit it.**
+   but that covers the keyword-matched NARRATIVE percept reflexes only (Exp 09 ran
+   `bodies/base_humanoid` against dragon attack/fire narration — this sentence
+   originally repeated the row's own "infant thermal contact" mis-description;
+   corrected in the 2026-08-07 doc-truth pass). A different modality, trigger,
+   circuit, and output **does not inherit it.**
 9. **Better framing available:** SC is a *multisensory integration* structure, so
    orienting is arguably the oldest **instance** of binding rather than a layer beneath
    it. That makes 1.1→1.3 continuous rather than stacked.
@@ -266,10 +269,11 @@ predicate's clothes.
 
 ## Free findings (fix during the 1.1 doc-truth pass)
 
-- **Graduation Tier-3 #9 cites a file that does not exist** (`09_percept_reflex.md`;
-  the real file is `09_percept_reflex_poc.md`) **and mis-describes the experiment**
-  (says infant thermal contact; Exp 09 ran `bodies/base_humanoid` against dragon/fire
-  narration). A Principle-5 defect on an EARNED row.
+- ✅ **RESOLVED (doc-truth PR, 2026-08-07):** **Graduation Tier-3 #9 cites a file that
+  does not exist** (`09_percept_reflex.md`; the real file is `09_percept_reflex_poc.md`)
+  **and mis-describes the experiment** (says infant thermal contact; Exp 09 ran
+  `bodies/base_humanoid` against dragon/fire narration). A Principle-5 defect on an
+  EARNED row. — Row corrected + halo caveat added.
 - **`CaptureManager` is constructed only when `has_vision`** — an audio-only robot gets
   no audio thread at all.
 - **`get_audio_stream()` returns non-`None` under `no_media`** — a capability lie at the
@@ -278,8 +282,10 @@ predicate's clothes.
   nothing, while a plan doc claims it "covers half the race." It covers none.
 - **`Reaction(kind="reward")` is published** from `cerebellum_modulator.py` and is not a
   member of `ReactionKind`. The taxonomy is drifting unenforced.
-- **`perception_placement.py`** — 267 LOC, zero `src/` callers, claimed "✅ shipped."
-  Wire it or mark it Dormant per Principle 2.
+- ✅ **RESOLVED (doc-truth PR, 2026-08-07):** **`perception_placement.py`** — 267 LOC,
+  zero `src/` callers, claimed "✅ shipped." Wire it or mark it Dormant per Principle 2.
+  — Marked Dormant (module docstring, resurrection trigger = the 1.3 fabric actually
+  placing stages); plans README claim corrected to PARTIALLY landed.
 
 ---
 
