@@ -117,10 +117,31 @@ moves on this experiment's outcome (Exp 45's row un-stales on H1, not on this).
 
 ## Amendment slot (the ONLY permitted pre-results edit)
 
-After H1, before trial 1, fill in — dated, one commit:
-`g_H = ___ az/rad` (H1 central gain), `g_D = 0.19–0.57` (the degraded-era
-bracket; state which comparison value P2 uses and why), healthy neck envelope
-`= ___°`, arm-A `--az-gain = ___`, P2's concrete expected-error direction.
+**FILLED 2026-08-08 from H1 (sessions 1+2 complete —
+[results](protocols/h1_healthy_hardware_doa_preregistration.md)):**
+
+- `g_H = 0.578 az/rad` (front-geometry fold-model fit, replicated at 0.575;
+  R² 0.994–0.996).
+- `g_D`: P2 uses **0.55** as the comparison value — the gain the 45d-seed-2
+  policy's sidecar was trained under (`--az-gain 0.55`), which is the value
+  the loaded policy's bin boundaries assume. (The degraded-era bracket
+  0.19–0.57 spans the platform's decline; the POLICY's calibration point is
+  what P2's miscalibration prediction keys on.)
+- Healthy neck envelope: **~±50° delivered / 65° command ceiling** (54.8°/−48.0°
+  at ±65° commanded, level platform).
+- Arm-A `--az-gain = 0.55` — UNCHANGED from the historical value: H1 measured
+  0.578, inside the H2 no-fire band, so the boundary stays at 0.330 and arms
+  A/B run the same state space (required for T_A vs T_B comparability).
+- **P2 concrete prediction:** g_H (0.578) ≈ g_D (0.55) within 5% — the gain
+  barely moved, so P2 CONVERTS TO ITS PRE-DECLARED NULL FORM: arm-B trial-0
+  magnitude ≈ 1.00 (the loaded policy should be correctly calibrated on the
+  healthy plant). The informative miscalibration axis is now the DELIVERED
+  side instead: H1 Part C measured position-dependent under-delivery
+  (0.87–0.98 by direction-vs-center), which the policy trained on the
+  miscalibrated platform never experienced in this form. Any trial-0
+  magnitude deficit therefore attributes to delivered-shift differences, not
+  sensor gain — state this in the results rather than re-fitting predictions
+  post-hoc.
 
 ## Post-hoc discipline
 

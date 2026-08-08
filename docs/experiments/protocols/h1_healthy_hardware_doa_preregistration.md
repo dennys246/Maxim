@@ -179,3 +179,100 @@ Fold-model fit (az = g*fold(psi − psi0)) on medians:
 | Exp 45 graduation row | stays **Stale** until calibration + Part C complete; sweep-half evidence recorded on the row |
 | Exp 50 amendment | g_H = 0.578 fillable now; envelope constant pends |
 
+
+---
+
+# RESULTS — session 2 appended 2026-08-08 (recalibration + envelope + Part C: H1 COMPLETE)
+
+**Provenance:** same stack as session 1 (`38aaddea`, SDK==daemon 1.8.3). Between
+sessions the operator ran the per-motor zero calibration for the replaced
+motors 2+3 (the F2 fix). Part C ran on big-mac-mini (48GB) with qwen2.5-32b
+local; distilled data: [data/h1_partc_summary.json](../data/h1_partc_summary.json)
+(39 turns + 12 measured-credit events; raw 55MB JSONL retained on the mini).
+
+## F2 recalibration: CONFIRMED FIXED
+
+Explicit all-zero command post-recal lands at **rel yaw −0.7°, roll −2.3°,
+pitch +2.9°** (was a stable +6.2/+18.2/+9.2 attractor). `yaw_verify` improved
+exactly as F2 predicted: travel ratio 0.934 → **0.951**, small-step 0.951 →
+**0.975** (large-step ~unchanged 0.855, the duration-limit component).
+`d(head)/d(body) = +1.018` — holds.
+
+## Neck envelope (roll/pitch pinned, level platform): ~±50° delivered
+
+| cmd | achieved (right) | cmd | achieved (left) |
+|---|---|---|---|
+| 15° | 10.0° | −15° | −6.9° |
+| 30° | 24.2° | −30° | −21.5° |
+| 45° | 42.9° | −45° | −36.7° |
+| 65° | **54.8°** | −65° | **−48.0°** |
+
+Roll stayed within ±4° the whole run (no ratchet under explicit pinning). The
+**session-1 retraction is superseded with an explanation**: the "~22° envelope"
+was measured on the pre-recal miscalibrated platform under accumulated roll —
+NOT a capability. Resolution of the 65°-vs-22° conflict: **65° = vendor
+command ceiling (daemon soft-saturates gracefully, verified live); ~±50° =
+true delivered envelope on a healthy level platform; the Exp 49 sim limit of
+22° reflects the miscalibrated platform and under-states healthy hardware**
+(sim-config revisit noted, not churned here). Mild right>left extreme
+asymmetry (54.8 vs 48.0) and ~7-8° came-from-side return lag (backlash-
+flavored) recorded. Controller clamp constants unchanged — the 65° command
+ceiling is inside the daemon's gracefully-handled range.
+
+## Part C — motor-bound delivered shift: MEASURED (normal arms complete; _big n=1/side)
+
+39 turns through the PRODUCTION affordance path (SEM motor binding →
+controller → daemon), LLM-driven (qwen2.5-32b), 12 measured-credit events:
+
+| affordance | n | delivered ratio | toward-center | away-center |
+|---|---|---|---|---|
+| turn_left | 19 | 0.890 ± 0.042 | 0.923 | 0.867 |
+| turn_right | 18 | 0.937 ± 0.075 | 0.984 | 0.899 |
+| turn_left_big | 1 | 0.979 | — | — |
+| turn_right_big | 1 | 0.932 | — | — |
+
+- **Position-dependent load confirmed statistically:** turns toward center
+  deliver ~0.92–0.98 of commanded; away from center ~0.87–0.90. This is the
+  structure motor-binding Phase 3's gain calibration should absorb (a single
+  scalar gain under-fits it).
+- **Right>left actuation asymmetry ~4%** (0.936 vs 0.895) — same direction
+  and similar magnitude as the sweep's per-side sensor tilt; whether they are
+  one phenomenon (actuation) or two is a post-hoc question for a
+  pre-registered follow-up, not claimed here.
+- **The measured-credit chain behaved correctly on hard cases:** negative
+  credit for azimuth-worsening turns (−0.018/−0.035/−0.040), and a
+  fold-crossing transition (az −0.374 → +0.367) credited +0.007 — near-zero,
+  honest — instead of a fabricated large relief. Zero events
+  `nulled_by_collateral`. Credit sparsity as designed: 12 measured events for
+  39 turns, the gaps being speech-silence windows (source had dead air).
+- **The `_big` arms are n=1 each** (both fired and measured — turn_right_big
+  Δaz −0.373 for one ~48° delivered swing). A dedicated ~8-rep-per-side block
+  with continuous audio is the remaining follow-up; NOT blocking (the normal
+  arms carry the Phase-3 calibration need; the _big YAML magnitudes stay
+  frozen per H2-did-not-fire).
+
+## Session-2 operational lessons (recorded for the runbook)
+
+Live-session bring-up on a NEW machine hit, in order: reachy-mini SDK absent
+(pin EXACTLY to the daemon version — a loose `>=` re-opens the 08-05 skew);
+`robots.yaml` absent (each machine's `~/.maxim` is its own); macOS Local
+Network TCC denying python with a masquerading `EHOSTUNREACH` while
+Apple-signed curl passes (grant via a GUI terminal once); `media_backend:
+"default"` in ad-hoc controller constructions connecting media channels that
+refuse under no_media daemons (pass `no_media` explicitly, per #456); bare
+`maxim` menu option 1 is the SIM stack, not the live runtime (`maxim --llm
+<model>` is the live path); and multi-line pastes into `maxim>` queue as
+separate inputs and scramble tool selection.
+
+## H1 status: COMPLETE
+
+| item | verdict |
+|---|---|
+| Part A | PASS (both sessions; post-recal improved) |
+| Part B | PASS — top branch; CONTESTED resolved; H2 does not fire |
+| Neck envelope | **~±50° delivered / 65° command ceiling** — conflict resolved |
+| Part C | Normal arms MEASURED (n=37); _big n=1/side, follow-up block queued |
+| F1 retained-axes ratchet | Fix queued (own PR: retain last COMMANDED) |
+| F2 motor-zero miscalibration | FIXED by per-motor recalibration, verified |
+| Exp 45 graduation row | **UN-STALED** (see row for the _big caveat) |
+| Exp 50 amendment | FILLED (g_H=0.578, envelope ±50°, boundary unchanged) |

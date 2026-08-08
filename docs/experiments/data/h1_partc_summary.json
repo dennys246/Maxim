@@ -1,0 +1,379 @@
+{
+ "_note": "H1 Part C distilled summary (2026-08-08). Turns parsed from data/logs/reachy_log_2026-08-08_*.log on big-mac-mini; measured-credit events from the MAXIM_LOG_FILE JSONL. Raw 55MB JSONL retained on the mini at /tmp/h1_partc.jsonl.",
+ "executed_git_hash": "38aaddea",
+ "sdk": "1.8.3",
+ "daemon": "1.8.3",
+ "turns": [
+  {
+   "time": "13:44:29",
+   "affordance": "turn_right",
+   "from_deg": -0.4,
+   "commanded_deg": -17.6,
+   "achieved_deg": -16.3
+  },
+  {
+   "time": "14:01:26",
+   "affordance": "turn_right",
+   "from_deg": -0.4,
+   "commanded_deg": -17.6,
+   "achieved_deg": -16.5
+  },
+  {
+   "time": "14:05:31",
+   "affordance": "turn_left",
+   "from_deg": -17.1,
+   "commanded_deg": 0.1,
+   "achieved_deg": -1.5
+  },
+  {
+   "time": "14:06:38",
+   "affordance": "turn_right",
+   "from_deg": -0.5,
+   "commanded_deg": -17.7,
+   "achieved_deg": -16.5
+  },
+  {
+   "time": "14:07:30",
+   "affordance": "turn_right_big",
+   "from_deg": -17.0,
+   "commanded_deg": -68.5,
+   "achieved_deg": -65.0
+  },
+  {
+   "time": "14:08:20",
+   "affordance": "turn_right",
+   "from_deg": -70.2,
+   "commanded_deg": -87.4,
+   "achieved_deg": -82.0
+  },
+  {
+   "time": "14:09:49",
+   "affordance": "turn_left_big",
+   "from_deg": -69.6,
+   "commanded_deg": -18.0,
+   "achieved_deg": -19.1
+  },
+  {
+   "time": "14:11:04",
+   "affordance": "turn_left",
+   "from_deg": -18.9,
+   "commanded_deg": -1.7,
+   "achieved_deg": -4.0
+  },
+  {
+   "time": "14:11:37",
+   "affordance": "turn_right",
+   "from_deg": -3.0,
+   "commanded_deg": -20.2,
+   "achieved_deg": -19.3
+  },
+  {
+   "time": "14:12:00",
+   "affordance": "turn_left",
+   "from_deg": -20.0,
+   "commanded_deg": -2.8,
+   "achieved_deg": -4.7
+  },
+  {
+   "time": "14:12:31",
+   "affordance": "turn_right",
+   "from_deg": -4.2,
+   "commanded_deg": -21.4,
+   "achieved_deg": -20.6
+  },
+  {
+   "time": "14:16:19",
+   "affordance": "turn_left",
+   "from_deg": -20.9,
+   "commanded_deg": -3.7,
+   "achieved_deg": -5.4
+  },
+  {
+   "time": "14:19:18",
+   "affordance": "turn_left",
+   "from_deg": -5.2,
+   "commanded_deg": 12.0,
+   "achieved_deg": 9.8
+  },
+  {
+   "time": "14:25:14",
+   "affordance": "turn_left",
+   "from_deg": 10.5,
+   "commanded_deg": 27.7,
+   "achieved_deg": 25.2
+  },
+  {
+   "time": "14:28:34",
+   "affordance": "turn_left",
+   "from_deg": 25.6,
+   "commanded_deg": 42.8,
+   "achieved_deg": 40.1
+  },
+  {
+   "time": "14:43:32",
+   "affordance": "turn_right",
+   "from_deg": 40.7,
+   "commanded_deg": 23.5,
+   "achieved_deg": 23.3
+  },
+  {
+   "time": "14:54:14",
+   "affordance": "turn_left",
+   "from_deg": 23.4,
+   "commanded_deg": 40.6,
+   "achieved_deg": 38.3
+  },
+  {
+   "time": "14:59:12",
+   "affordance": "turn_left",
+   "from_deg": 39.1,
+   "commanded_deg": 56.3,
+   "achieved_deg": 53.7
+  },
+  {
+   "time": "14:59:53",
+   "affordance": "turn_right",
+   "from_deg": 54.3,
+   "commanded_deg": 37.1,
+   "achieved_deg": 37.1
+  },
+  {
+   "time": "15:01:11",
+   "affordance": "turn_right",
+   "from_deg": 37.1,
+   "commanded_deg": 19.9,
+   "achieved_deg": 20.2
+  },
+  {
+   "time": "15:02:21",
+   "affordance": "turn_right",
+   "from_deg": 20.0,
+   "commanded_deg": 2.8,
+   "achieved_deg": 3.3
+  },
+  {
+   "time": "15:03:09",
+   "affordance": "turn_left",
+   "from_deg": 2.9,
+   "commanded_deg": 20.1,
+   "achieved_deg": 18.5
+  },
+  {
+   "time": "15:04:36",
+   "affordance": "turn_right",
+   "from_deg": 19.2,
+   "commanded_deg": 2.1,
+   "achieved_deg": 2.6
+  },
+  {
+   "time": "15:07:16",
+   "affordance": "turn_right",
+   "from_deg": 2.0,
+   "commanded_deg": -15.2,
+   "achieved_deg": -14.1
+  },
+  {
+   "time": "15:07:52",
+   "affordance": "turn_left",
+   "from_deg": -14.5,
+   "commanded_deg": 2.7,
+   "achieved_deg": 1.4
+  },
+  {
+   "time": "15:09:22",
+   "affordance": "turn_left",
+   "from_deg": 1.9,
+   "commanded_deg": 19.1,
+   "achieved_deg": 17.3
+  },
+  {
+   "time": "15:12:42",
+   "affordance": "turn_left",
+   "from_deg": 18.0,
+   "commanded_deg": 35.2,
+   "achieved_deg": 32.9
+  },
+  {
+   "time": "15:13:37",
+   "affordance": "turn_left",
+   "from_deg": 33.1,
+   "commanded_deg": 50.3,
+   "achieved_deg": 47.7
+  },
+  {
+   "time": "15:22:21",
+   "affordance": "turn_right",
+   "from_deg": 48.2,
+   "commanded_deg": 31.0,
+   "achieved_deg": 30.9
+  },
+  {
+   "time": "15:22:59",
+   "affordance": "turn_right",
+   "from_deg": 30.9,
+   "commanded_deg": 13.7,
+   "achieved_deg": 14.0
+  },
+  {
+   "time": "15:24:29",
+   "affordance": "turn_right",
+   "from_deg": 13.7,
+   "commanded_deg": -3.5,
+   "achieved_deg": -2.6
+  },
+  {
+   "time": "15:24:52",
+   "affordance": "turn_right",
+   "from_deg": -3.1,
+   "commanded_deg": -20.3,
+   "achieved_deg": -19.1
+  },
+  {
+   "time": "15:25:14",
+   "affordance": "turn_right",
+   "from_deg": -19.6,
+   "commanded_deg": -36.8,
+   "achieved_deg": -35.2
+  },
+  {
+   "time": "15:26:34",
+   "affordance": "turn_right",
+   "from_deg": -35.6,
+   "commanded_deg": -52.8,
+   "achieved_deg": -50.0
+  },
+  {
+   "time": "15:27:08",
+   "affordance": "turn_left",
+   "from_deg": -50.7,
+   "commanded_deg": -33.5,
+   "achieved_deg": -33.6
+  },
+  {
+   "time": "15:27:32",
+   "affordance": "turn_left",
+   "from_deg": -33.5,
+   "commanded_deg": -16.3,
+   "achieved_deg": -16.7
+  },
+  {
+   "time": "15:28:11",
+   "affordance": "turn_left",
+   "from_deg": -16.5,
+   "commanded_deg": 0.7,
+   "achieved_deg": -0.6
+  },
+  {
+   "time": "15:31:58",
+   "affordance": "turn_left",
+   "from_deg": -0.5,
+   "commanded_deg": 16.7,
+   "achieved_deg": 14.6
+  },
+  {
+   "time": "15:32:05",
+   "affordance": "turn_left",
+   "from_deg": 14.7,
+   "commanded_deg": 31.9,
+   "achieved_deg": 29.4
+  }
+ ],
+ "measured_credit_events": [
+  {
+   "t": 1786218270.83,
+   "affordance": "turn_right",
+   "az_before": 0.4326680611247273,
+   "az_after": 0.2444444537772691,
+   "potential_diff": 0.1882236073474582,
+   "nulled_by_collateral": false
+  },
+  {
+   "t": 1786219652.62,
+   "affordance": "turn_right_big",
+   "az_before": 0.4951242861558319,
+   "az_after": 0.12222224080240214,
+   "potential_diff": 0.3729020453534298,
+   "nulled_by_collateral": false
+  },
+  {
+   "t": 1786219866.89,
+   "affordance": "turn_left",
+   "az_before": -0.27115009876838025,
+   "az_after": -0.28888889439741633,
+   "potential_diff": -0.017738795629036075,
+   "nulled_by_collateral": false
+  },
+  {
+   "t": 1786219901.69,
+   "affordance": "turn_right",
+   "az_before": -0.06863787739531049,
+   "az_after": -0.19999997773797185,
+   "potential_diff": -0.13136210034266135,
+   "nulled_by_collateral": false
+  },
+  {
+   "t": 1786219924.82,
+   "affordance": "turn_left",
+   "az_before": -0.3738285989117876,
+   "az_after": 0.36666666675213605,
+   "potential_diff": 0.007161932159651552,
+   "nulled_by_collateral": false
+  },
+  {
+   "t": 1786221816.51,
+   "affordance": "turn_right",
+   "az_before": 0.027829081174239108,
+   "az_after": 0.011111076005348823,
+   "potential_diff": 0.016718005168890285,
+   "nulled_by_collateral": false
+  },
+  {
+   "t": 1786222753.79,
+   "affordance": "turn_left",
+   "az_before": 0.15315600688784342,
+   "az_after": 2.782753519183795e-08,
+   "potential_diff": 0.15315597906030823,
+   "nulled_by_collateral": false
+  },
+  {
+   "t": 1786222797.51,
+   "affordance": "turn_right",
+   "az_before": 0.27293845785813325,
+   "az_after": 2.782753519183795e-08,
+   "potential_diff": 0.2729384300305981,
+   "nulled_by_collateral": false
+  },
+  {
+   "t": 1786224144.19,
+   "affordance": "turn_right",
+   "az_before": 0.13667592235594467,
+   "az_after": 2.782753519183795e-08,
+   "potential_diff": 0.13667589452840948,
+   "nulled_by_collateral": false
+  },
+  {
+   "t": 1786224317.32,
+   "affordance": "turn_right",
+   "az_before": -0.006178697246867107,
+   "az_after": 2.782753519183795e-08,
+   "potential_diff": 0.006178669419331915,
+   "nulled_by_collateral": false
+  },
+  {
+   "t": 1786224397.44,
+   "affordance": "turn_right",
+   "az_before": -0.03822207721371054,
+   "az_after": 0.0777777445271845,
+   "potential_diff": -0.03955566731347396,
+   "nulled_by_collateral": false
+  },
+  {
+   "t": 1786224494.31,
+   "affordance": "turn_left",
+   "az_before": -0.020269095310073745,
+   "az_after": -0.055555592516486854,
+   "potential_diff": -0.03528649720641311,
+   "nulled_by_collateral": false
+  }
+ ]
+}
