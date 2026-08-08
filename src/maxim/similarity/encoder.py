@@ -575,6 +575,13 @@ class SensorEncoder:
         self.config = config or SensorEncoderConfig()
         self._last_sensors: dict[tuple[str, str], dict[str, float]] = {}  # per (agent_id, modality)
         self._last_node_id: dict[tuple[str, str], str] = {}  # per (agent_id, modality)
+        # Ranges identity per stash key (executor-lens review, artifact
+        # stamping): the delta gate keyed on VALUES only, so a caller
+        # switching ranges (range-blind → range-aware — exactly the P1
+        # calibration event) while sensor values sat still was gated out:
+        # the STALE node id came back even though the embedding function
+        # had changed, and the provenance stamp never saw the mode flip.
+        self._last_ranges: dict[tuple[str, str], "dict[str, tuple[float, float]] | None"] = {}
 
     def encode_sensors(
         self,
@@ -624,7 +631,16 @@ class SensorEncoder:
         # modalities — the per-agent-stash footgun from CLAUDE.md.
         stash_key = (agent_id, modality)
         prev = self._last_sensors.get(stash_key)
-        if prev is not None and self._max_delta(prev, sensors) < self.config.min_delta:
+        # The gate bypasses only when BOTH values and ranges identity are
+        # unchanged: a ranges flip changes the embedding function itself,
+        # so returning the cached node would hand back a node computed
+        # under a different normalization (and hide the flip from the
+        # provenance stamp).
+        if (
+            prev is not None
+            and self._max_delta(prev, sensors) < self.config.min_delta
+            and self._last_ranges.get(stash_key) == ranges
+        ):
             return self._last_node_id.get(stash_key)
 
         embedding = _sensor_embed(sensors, ranges=ranges, dim=self.config.embedding_dim)
@@ -706,6 +722,7 @@ class SensorEncoder:
 
         self._last_sensors[stash_key] = dict(sensors)
         self._last_node_id[stash_key] = result.node_id
+        self._last_ranges[stash_key] = dict(ranges) if ranges else None
 
         logger.debug(
             "Encoded sensor pattern → node %s (sim=%.3f, new=%s, sensors=%d)",

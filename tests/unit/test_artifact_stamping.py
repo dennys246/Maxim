@@ -267,3 +267,60 @@ class TestCliExportPassthrough:
         assert manifest["encoder_provenance"]["recorded"] is None, (
             "pre-stamping session must export an honest unknown — NEVER the reader's own encoder state"
         )
+
+
+class TestDeltaGateRangesIdentity:
+    """Executor-lens review fold: the delta gate keyed on VALUES only, so a
+    ranges flip (range-blind → range-aware — exactly the P1 calibration
+    event the stamp exists to expose) while sensor values sat still was
+    gated out: the stale node came back even though the embedding function
+    had changed, and the mode flip never reached the provenance stamp."""
+
+    def test_ranges_flip_bypasses_the_gate_and_stamps_the_new_mode(self):
+        from maxim.similarity.encoder import SensorEncoder
+
+        ec = _make_ec()
+        enc = SensorEncoder(ec=ec)
+        sensors = {"azimuth": 0.5}
+        node_blind = enc.encode_sensors(agent_id="a", sensors=sensors, modality="audio")
+        # Same values, ranges flipped — must NOT return the cached node.
+        node_aware = enc.encode_sensors(
+            agent_id="a", sensors=dict(sensors), modality="audio", ranges={"azimuth": (-1.0, 1.0)}
+        )
+        assert node_blind is not None and node_aware is not None
+        modes = ec.encoder_provenance["sensor:audio"]["normalization_modes"]
+        assert modes == ["range-aware", "range-blind"], (
+            "the mode flip was invisible to the stamp — the delta gate swallowed the re-encode"
+        )
+
+    def test_unchanged_values_and_ranges_still_gate(self):
+        from maxim.similarity.encoder import SensorEncoder
+
+        ec = _make_ec()
+        enc = SensorEncoder(ec=ec)
+        sensors = {"azimuth": 0.5}
+        ranges = {"azimuth": (-1.0, 1.0)}
+        n1 = enc.encode_sensors(agent_id="a", sensors=sensors, modality="audio", ranges=ranges)
+        n2 = enc.encode_sensors(agent_id="a", sensors=dict(sensors), modality="audio", ranges=dict(ranges))
+        assert n1 == n2
+
+
+class TestProvenanceCorruptionHardening:
+    def test_corrupt_persisted_sensor_names_string_does_not_char_explode(self):
+        """A corrupt persisted value like "azimuth" (string, not list) must
+        neither explode into characters nor raise in the encode hot path."""
+        ec = _make_ec()
+        ec._encoder_provenance["sensor:audio"] = {"sensor_names": "azimuth"}
+        ec.record_encoder_provenance("sensor:audio", {"sensor_names": ["cold"]})
+        assert ec.encoder_provenance["sensor:audio"]["sensor_names"] == ["cold"]
+
+    def test_null_encoder_provenance_in_file_loads_clean(self, tmp_path):
+        ec = _make_ec()
+        path = str(tmp_path / "ec.json")
+        ec.save(path)
+        data = json.loads((tmp_path / "ec.json").read_text())
+        data["encoder_provenance"] = None
+        (tmp_path / "ec.json").write_text(json.dumps(data))
+        ec2 = _make_ec()
+        ec2.load(path)
+        assert ec2.encoder_provenance == {}

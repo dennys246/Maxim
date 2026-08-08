@@ -376,10 +376,16 @@ class EntorhinalCortex:
         entry = self._encoder_provenance.setdefault(key, {})
         for k, v in info.items():
             if k == "sensor_names":
-                prev = set(entry.get("sensor_names", []))
-                entry["sensor_names"] = sorted(prev | set(v))
+                # Harden against a corrupt PERSISTED value (executor-lens
+                # review): set("azimuth") would char-explode a string, and
+                # a non-iterable would raise inside the encode hot path.
+                prev_raw = entry.get("sensor_names", [])
+                prev = set(prev_raw) if isinstance(prev_raw, (list, tuple, set)) else set()
+                new = set(v) if isinstance(v, (list, tuple, set)) else set()
+                entry["sensor_names"] = sorted(prev | new)
             elif k == "normalization":
-                modes = set(entry.get("normalization_modes", []))
+                modes_raw = entry.get("normalization_modes", [])
+                modes = set(modes_raw) if isinstance(modes_raw, (list, tuple, set)) else set()
                 modes.add(v)
                 entry["normalization_modes"] = sorted(modes)
             else:
