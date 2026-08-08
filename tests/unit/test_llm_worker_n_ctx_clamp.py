@@ -72,3 +72,26 @@ class TestNCtxClamp:
             worker = _make_worker(_RouterStub({"bad": "not-a-number"}), n_ctx=4096)
         assert worker._n_ctx == 4096
         assert any("n_ctx scan failed" in r.message for r in caplog.records)
+
+    def test_nonpositive_declared_value_cannot_poison_the_budget(self):
+        """Review fold: with min(), a bogus n_ctx of -5 or 0 would clamp the
+        WHOLE budget to garbage (the pre-fix max() made bogus-small harmless;
+        min() inverts the blast radius). Nonpositive declarations are skipped
+        as malformed, not believed."""
+        worker = _make_worker(_RouterStub({"bogus": -5, "zero": 0, "local": 16384}), n_ctx=32768)
+        assert worker._n_ctx == 16384
+
+    def test_non_dict_provider_cfg_warns_and_keeps_budget(self, caplog):
+        """Review fold: a router returning a non-dict cfg raises
+        AttributeError — the scan must degrade to a warning, not crash the
+        constructor."""
+        import logging
+
+        class _WeirdRouter:
+            def get_provider_configs(self):
+                return {"weird": "not-a-dict"}
+
+        with caplog.at_level(logging.WARNING):
+            worker = _make_worker(_WeirdRouter(), n_ctx=4096)
+        assert worker._n_ctx == 4096
+        assert any("n_ctx scan failed" in r.message for r in caplog.records)

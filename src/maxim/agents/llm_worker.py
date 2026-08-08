@@ -316,18 +316,31 @@ class LLMWorker:
         # the alignment mechanism.
         if hasattr(self._llm, "get_provider_configs"):
             try:
-                declared = [int(raw) for cfg in self._llm.get_provider_configs().values() if (raw := cfg.get("n_ctx"))]
-            except (TypeError, ValueError) as e:
+                # Positive-only (review fold): with min(), a bogus declared
+                # value like -5 or 0 would poison the WHOLE budget — the
+                # pre-fix max() made bogus-small harmless, min() inverts the
+                # blast radius, so nonpositive declarations are skipped as
+                # malformed rather than believed. AttributeError covers a
+                # non-dict provider cfg (the scan degrades to a warning, not
+                # a constructor crash).
+                declared = [
+                    n
+                    for cfg in self._llm.get_provider_configs().values()
+                    if (raw := cfg.get("n_ctx")) is not None and (n := int(raw)) > 0
+                ]
+            except (TypeError, ValueError, AttributeError) as e:
                 logger.warning("provider n_ctx scan failed (%s); keeping n_ctx=%d", e, self._n_ctx)
                 declared = []
-            if declared and min(declared) < self._n_ctx:
-                logger.warning(
-                    "n_ctx clamped %d -> %d: the smallest declared provider context wins "
-                    "(a larger budget composes prompts that provider rejects with HTTP 500)",
-                    self._n_ctx,
-                    min(declared),
-                )
-                self._n_ctx = min(declared)
+            if declared:
+                smallest = min(declared)
+                if smallest < self._n_ctx:
+                    logger.warning(
+                        "n_ctx clamped %d -> %d: the smallest declared provider context wins "
+                        "(a larger budget composes prompts that provider rejects with HTTP 500)",
+                        self._n_ctx,
+                        smallest,
+                    )
+                    self._n_ctx = smallest
 
         # WorkerPool integration
         self._pool: WorkerPool | None = pool
