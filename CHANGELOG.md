@@ -11,7 +11,212 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > [HTML roadmap](html-guides/maxim-roadmap.html). The 0.9.0 entry below
 > picks up the convention again.
 
+> **Note (2026-08-07):** versions 1.0.0 → 1.0.6 shipped to PyPI without CHANGELOG
+> entries or git tags past `v1.0.0` (88+ PRs, ~14,000 `src/` lines). The entries
+> below were reconstructed from the git history during the 1.1 release-truth pass
+> (roadmap item 2); annotated tags `v1.0.1`–`v1.0.6` were created at the verified
+> version-bump commits at the same time.
+
 ## [Unreleased]
+
+### Added
+
+- **Exp 49 two-joint centering** — harness + three arms complete: H1 supported
+  (head-only 0/10 vs two-joint 4/10), H2 1.00 dense AND sparse (`--speech-density`
+  knob for the pre-registered sparse arm), H3 1.00 (B) / 0.969 (C after the
+  timestamp-tie credit-attribution correction — gates clean). Key fold finding:
+  the 180° false equilibrium traps a credit-following substrate on rear sources.
+  (#463, #464, #466)
+- **Roadmap 1.1 → 1.3** from the four-lens review — 1.1 "Sensorimotor" cut line
+  (zero new mechanisms), 1.2 Oasis + Hivemind, 1.3 perception fabric + reflex
+  tier; hardware note: motors 2+3 were broken for the entire 1.0+ era. (#471)
+- **Cross-modal perception fabric (1.3) + three-factor credit assignment** design
+  plans. (#468)
+
+### Fixed
+
+- **`ec_merge` silent cross-space corruption** — vectors from different encoder
+  spaces (384-dim vs 768-dim, same modality tag) were compared over the shorter
+  prefix by `zip` truncation and MERGED when the partial cosine cleared the
+  threshold. Dimension mismatch now reads as similarity 0.0 (right-side node
+  inserts as its own node — non-destructive). Blocker #1 for Oasis ingestion.
+  (#467)
+- Confirmation-branch `UnboundLocalError` crash; fell-short orient note now
+  names real registered actions. (#462)
+- CI queue starvation — in-flight runs per ref are superseded instead of
+  competing for runners (jobs previously sat unassigned and died at 15m01s as
+  false-red `failure`). (#470)
+
+## [1.0.6] - 2026-08-04
+
+### Added
+
+- **SEM motor binding Phase 2** — measured relief credit routed to the AUDIO
+  cluster: the motor backend measures the azimuth transition across each real
+  body turn (frame-corrected, staleness-gated, never fabricated) and the bio
+  layer credits drive relief from the measurement, not from execution. (#461)
+
+## [1.0.5] - 2026-08-04
+
+### Added
+
+- **NAc cross-session persistence** — save + load + decay-on-load land together,
+  with the stable-hashing prerequisite (5 sites moved off randomized builtin
+  `hash()`, two-process regression guard; persisted files carry `hash_scheme`
+  markers). NAc + EC persist as a pair; `apply_decay=False` at `--resume-sim`
+  and read-only observers; the orchestrator NPC is write-but-don't-read. (#446)
+- **Live audio-orient wiring (Stages 0b–4b)** — DoA feed into the standard
+  embodied runtime as a percept lane; phantom credit mill found and guarded
+  (relief credit deferred to the motor bridge). (#447)
+- **SEM motor binding Phase 1** — orient affordances become REAL body turns on
+  live hardware via the pre-existing `attach_backends` seam; Phase 1 withholds
+  relief credit (`drive_credit_withheld`), refuses on unreadable pose. (#460)
+- **`focus_on_sound`** — zero-numeric closed-loop audio orienting: the LLM
+  decides WHETHER to attend, the tool owns HOW FAR, reading the live DoA at
+  execution time; honest per-situation outcome notes name real tools. (#455)
+- `robots.yaml` `audio_salience` / `audio_novelty` operator escalation knobs
+  (#451); `ear_map.py` DoA characterization sweep (#457).
+
+### Fixed
+
+- **`body_yaw` joint-index phantom frame** — the SDK >= 1.5 joint vector is
+  `[body_yaw, *stewart_legs]`; a zenoh-era index-6 read returned a stewart LEG
+  angle, corrupting every body-relative yaw consumer (DoA capture stamps,
+  focus_on_sound aim, bounds-learner coordinates). Plus honest `focus_on_sound`
+  readback (measured, not promised). (#459)
+- **Daemon `automatic_body_yaw` off by default** — the daemon silently rotated
+  the body behind the runtime (−25° observed), rotating the frame every yaw
+  computation lives in. Maxim's loops own the yaw axis. (#456)
+- **MoveTool gaze interface** — hardware-verified sign conventions; `target_x`
+  now TURNS the head (pre-fix it translated mm-scale, so the LLM fell back to
+  raw yaw whose sign it guessed — mirror-image orienting). (#454)
+- Record-time cost metering keys on `treat_as_cloud` (was the provider
+  `pricing_required` flag — False on cloud-URL lanes → silent $0 spend);
+  fail-closed local-only banner; canonical model-path resolution. (#458)
+- `robots.yaml` actually drives the live robot connection (#448); capability
+  truth for media flags under `no_media` (#452); httpx INFO spam at the ~7 Hz
+  DoA poll silenced (#450); live deep-dive fold — wake on sound, kill phantom
+  gaze, embodied identity (#453).
+
+## [1.0.4] - 2026-07-29
+
+### Fixed
+
+- **Recovered the broken #435 squash-merge** — `main` shipped only the first
+  commit of the transition-based drive-pain PR, a design its own review round
+  had refuted: a boolean band latch silenced repeat harmful affordances →
+  `learn_success` flipped True → **positive** cluster reward for the harmful
+  source, inverting the Exp 42 safe-vs-harm mechanism — with GREEN CI, because
+  the guard test was in the unmerged fold. Recovery landed the channel-split
+  design (direct FailureEvent channel state-based; PainBus channel
+  severity-latched on the entity). (#443)
+- Recovered 6 commits #442 left behind + console backend identity + diagnose
+  fix + gate-log truth. (#445)
+
+### Added
+
+- Console rest mode + actionable sim pointer (#442); lean aarch64 Pi extra
+  (`pi`) with uv-based sound-resolution guard, recovering orphaned #440 (#441).
+- Process rule: **a review round is not complete until its fold commits are ON
+  the merge target** (#444) — the lesson from #435/#440/#442.
+
+## [1.0.3] - 2026-07-28
+
+### Added
+
+- **Substrate learns from lived experience, Phase 1** — the cluster-reward
+  WRITE path closes at the `record_outcome` choke point in llm-primary:
+  intero cluster encoded at action time, credit is DRIVE-RELIEF-ONLY
+  (tool-success floor suppressed; reinforcement beats decay ~45×). (#436, #437)
+- Console talk mode + launcher-completion seams. (#438)
+
+### Fixed
+
+- Transition-based drive-pain — fire on band entry, latched per entity/drive
+  (#435; **note: this squash-merge was broken and shipped a refuted design —
+  recovered in 1.0.4 by #443**).
+
+## [1.0.2] - 2026-07-28
+
+The largest window of the 1.0.x line (~56 PRs, #381–#434): the operant
+orienting arc from scripted probes to live-hardware learning, plus the
+maxim-pulse Console seam set.
+
+### Added
+
+- **Orient line (Exp 43 → 48):** operant gaze + substrate-generalization probes
+  (#386); shared orient-to-center backbone (#387); Exp 45 Layer 1 live learning
+  loop — all arms EARNED, direction + magnitude on real hardware (#395); Exp 45d
+  magnitude replication + full-policy cross-session transfer (#413); Exp 45e
+  population-vector readout resolves far-bin magnitude starvation (#431);
+  productive orienting — hear, localize, turn toward sound (#403); operant
+  orient — a mother teaches, a crèche pools, the system habituates (#410);
+  **Exp 48 GRADUATE** — the extero/intero seam lifts the embodied cradle_mother
+  sim off chance (taught 0.875 vs 0.448) (#411, #412).
+- **Perception:** pipeline-placement type layer (#382–#383; later marked
+  Dormant — zero production callers); DoA-consumption audio front-end (#385);
+  thalamic relay — composite + side-channel + audio/DoA recognition in the
+  loop (#402); percept-ingress organizing frame (thalamus & hypothalamus)
+  (#401).
+- **Live Reachy:** WS-era migration + embodiment docs suite (#392); Track 1 —
+  SEM body wired into the live runtime (opt-in body + drift tick + body_state
+  prompt) (#400); off-robot REST DoA reader (#399); standalone RTSP streamer
+  (#388).
+- **maxim-pulse Console seams:** `maxim serve` skeleton + OpenAPI facade
+  contract (#416); FIT substrate footprint measurement + Pi runbook (#415);
+  PROBE (#419), cloud + mesh SETUP (#426, #424), RECALL (#425), EVENT /ws
+  bridge (#434), HANDLE persistent-agent campaign injection + consolidation
+  stop contract (#428, #427); local-first distribution model pinned (#421).
+- **Exp 44 counterfactual harness** — trajectory-matched ablation (#429).
+- 2026-07-15 deep plans audit — 12 concluded plans archived, 19 deferred with
+  revive triggers, 1000+ stale links fixed (#394).
+
+### Fixed
+
+- **P1 range-aware `_normalize_value`** — the signed-sensor FOLD (center 0.0
+  aliased hard-left −1.0): orient full-range 0.847 → 1.000. (#409)
+- **Orient motor-credit re-landed with the value-progress fix** — credit by the
+  SIGN of drive value-progress toward comfort, not tool-execution success; the
+  original #405 pain-based version floored Exp 42 (60→8 warmth contacts) and
+  was reverted (#407) before the corrected re-land (#408).
+- **Post-merge orient review fold — 7 blocking, including a production
+  head-frame bug** (`ReachyMiniController.goto_target` passing `head=None`)
+  (#397); controller passed `minimum_jerk` where the SDK only accepts
+  `minjerk` — every controller-driven motion crashed on SDK >= 1.5 (#398).
+- 1.0 regression-guard promotion — CI enforcement + live-violation fixes +
+  stale citation repair (#389); embodiment truth restoration (tick invariant
+  corrected, dormancy markers, dead-code deletion) (#390).
+
+## [1.0.1] - 2026-06-23
+
+### Added
+
+- **Exp 42 substrate-primary preference setup** — drive-gating,
+  delta-attribution (B8), introspection filter; the run that led to the
+  substrate-primary safe-vs-harm GRADUATE (#6). (#380; the review fold +
+  frozen GRADUATE results were stranded by the squash-merge and landed at the
+  top of the 1.0.2 window as #381.)
+- Exp 41 substrate-primary exploration + cradle harm-wiring + harness
+  (result: VOID). (#379)
+
+## [1.0.0] - 2026-06-17
+
+The 1.0 release: **a bio-inspired cognitive harness for LLM agents** with
+cross-session learning without fine-tuning.
+
+### Added
+
+- **Lane capability/placement split** — placement (`Origin{LOCAL,CLOUD,PEER}`)
+  becomes a first-class typed axis orthogonal to capability tier, riding
+  `LLMRouter`'s existing failover; declarative `config.json::lanes.<tier>.placement`;
+  legacy configs byte-identical via the derive oracle. (#356–#362)
+- **Exp 37/38/40 cross-model campaign** — the Goldilocks result: substrate
+  signal lands only where LLM priors leave headroom; Exp 40 counter-prior
+  dominance at Qwen-32B folded into the 1.0 announcement. (#363–#377)
+- Prompt caching for cloud backends (byte-stable system prefix, ~38% ITPM
+  reduction) (#349–#350); optional-dependency loud failures via
+  `utils/optional_deps.py` (#341); CC13 auth format freeze (#375);
+  reasoning-model timeout support (#369).
 
 ### Changed
 

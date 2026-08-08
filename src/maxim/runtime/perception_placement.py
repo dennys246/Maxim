@@ -25,6 +25,16 @@ This module ships the value type + target enum + coherence validator
 not of an individual placement value.
 
 See ``docs/plans/perception_pipeline_placement.md``.
+
+Dormant since 2026-08-07: zero production callers — the type layer merged
+(PRs #382-#385 era) but nothing in ``src/maxim/`` ever constructs or
+resolves a perception placement; only its unit tests exercise it. Found by
+the 1.1 four-lens roadmap review ("claimed shipped" vs reality) and marked
+per CLAUDE.md Principle 2 (dormancy over deletion): tests stay as the
+regression floor, no new features build on top. Resurrection trigger: the
+1.3 cross-modal perception fabric actually placing pipeline stages across
+nodes (its plan self-targets exactly this seam), validated by an
+experiment, not just re-wired.
 """
 
 from __future__ import annotations
