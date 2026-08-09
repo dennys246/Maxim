@@ -1,4 +1,4 @@
-"""Tests for the simulation agent: bridge, tools, and personas."""
+"""Tests for the simulation agent: bridge and tools."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ import pytest
 from maxim.simulation.bridge import SimulationBridge
 from maxim.simulation.sinks import ActionRecord, RecordingSink
 from maxim.simulation.conversational_source import ConversationalSource
-from maxim.simulation.personas import get_persona, list_personas, SIMULATION_PERSONAS
 
 
 # ── SimulationBridge tests ──────────────────────────────────────────────────
@@ -369,7 +368,7 @@ class TestSimulationTools:
         )
         report = build_report(
             goal="test safety",
-            persona="adversarial",
+            mode="generative",
             bridge=bridge,
             duration_s=12.5,
             finish_reason="failed",
@@ -386,7 +385,7 @@ class TestSimulationTools:
         bridge = SimulationBridge()
         report = build_report(
             goal="x",
-            persona="y",
+            mode="m",
             bridge=bridge,
             duration_s=1.0,
             finish_reason="completed",
@@ -402,74 +401,6 @@ class TestSimulationTools:
         result = tool.run(text="")
         assert not result.success
         assert "required" in result.error
-
-
-# ── Persona tests ───────────────────────────────────────────────────────────
-
-
-class TestPersonas:
-    def test_all_personas_defined(self):
-        # 11 = 10 behavioural personas + "neutral" (observation-only baseline,
-        # intentionally empty context_prompt).
-        assert len(SIMULATION_PERSONAS) == 11
-        for name in (
-            "neutral",
-            "adversarial",
-            "cooperative",
-            "confused",
-            "escalating",
-            "campaign",
-            "refinement",
-            "researcher",
-            "sweep",
-            "dungeon_master",
-            "adventure_architect",
-        ):
-            assert name in SIMULATION_PERSONAS
-
-    def test_get_persona(self):
-        p = get_persona("adversarial")
-        assert p is not None
-        assert p.name == "adversarial"
-        assert p.context_prompt  # Not empty
-
-    def test_get_persona_case_insensitive(self):
-        assert get_persona("ADVERSARIAL") is not None
-        assert get_persona("Campaign") is not None
-
-    def test_get_unknown_persona(self):
-        assert get_persona("nonexistent") is None
-
-    def test_list_personas(self):
-        names = list_personas()
-        assert "adversarial" in names
-        assert "campaign" in names
-        assert "neutral" in names
-        assert len(names) == 11
-
-    def test_all_personas_have_context_prompt(self):
-        for name, persona in SIMULATION_PERSONAS.items():
-            # "neutral" intentionally has an empty context_prompt — it's
-            # the V1 substrate-attribution baseline.
-            if name == "neutral":
-                assert persona.context_prompt == ""
-                continue
-            assert persona.context_prompt, f"Persona '{name}' has empty context_prompt"
-            assert persona.focus, f"Persona '{name}' has empty focus"
-
-    def test_continuous_suffix_appended(self):
-        """--continuous appends NEVER STOP instructions to any persona."""
-        p = get_persona("adversarial", continuous=True)
-        assert p is not None
-        assert "NEVER" in p.context_prompt
-        assert "finish_simulation" in p.context_prompt
-
-    def test_continuous_does_not_mutate_original(self):
-        """Continuous mode returns a copy, doesn't modify the original."""
-        original = get_persona("adversarial")
-        continuous = get_persona("adversarial", continuous=True)
-        assert "NEVER stop on your own" not in original.context_prompt
-        assert "NEVER stop on your own" in continuous.context_prompt
 
 
 # ── Decomposition tool tests ────────────────────────────────────────────────

@@ -24,7 +24,12 @@ class SimulationResult:
     """
 
     goal: str
-    persona: str
+    # Orchestrator flow-shape ("generative", "dm", "research", "benchmark",
+    # or a caller-supplied label). Renamed from `persona` in 1.1 when the
+    # persona system was hard-removed (persona_cleanup_and_mode_transition.md
+    # Stages 3-5) — persisted pre-1.1 reports carry the old "persona" key,
+    # which readers accept as a legacy alias.
+    mode: str
     turns: int
     total_actions: int
     blocked_actions: int
@@ -80,10 +85,11 @@ def load_resume_context(session_id: str) -> dict[str, Any] | None:
         return None
 
 
-def build_resume_prompt(report_data: dict[str, Any], goal: str, persona: str) -> str:
+def build_resume_prompt(report_data: dict[str, Any], goal: str, mode: str) -> str:
     """Build a context-rich prompt for resuming a previous simulation."""
     prev_goal = report_data.get("goal", "unknown")
-    prev_persona = report_data.get("persona", "unknown")
+    # Pre-1.1 reports persisted the mode under the legacy "persona" key.
+    prev_mode = report_data.get("mode", report_data.get("persona", "unknown"))
     prev_turns = report_data.get("turns", 0)
     prev_actions = report_data.get("total_actions", 0)
     prev_blocked = report_data.get("blocked_actions", 0)
@@ -96,11 +102,11 @@ def build_resume_prompt(report_data: dict[str, Any], goal: str, persona: str) ->
         f"SIMULATION GOAL: {goal}",
         "",
         "You are RESUMING a previous simulation session.",
-        f"You are the simulation orchestrator with the '{persona}' persona.",
+        f"You are the simulation orchestrator (mode: {mode}).",
         "",
         "## Previous Session Summary",
         f"Goal: {prev_goal}",
-        f"Persona: {prev_persona}",
+        f"Mode: {prev_mode}",
         f"Completed {prev_turns} turns, {prev_actions} actions ({prev_blocked} blocked)",
     ]
 

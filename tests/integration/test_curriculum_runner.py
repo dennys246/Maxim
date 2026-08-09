@@ -89,7 +89,7 @@ def _make_fake_sim_runner(
             # branch (which fires first when both signal a failure).
             return SimulationResult(
                 goal=kwargs.get("goal", ""),
-                persona=kwargs.get("persona", ""),
+                mode=kwargs.get("mode", ""),
                 turns=0,
                 total_actions=0,
                 blocked_actions=0,
@@ -156,7 +156,7 @@ def _make_fake_sim_runner(
 
         return SimulationResult(
             goal=kwargs.get("goal", ""),
-            persona=kwargs.get("persona", ""),
+            mode=kwargs.get("mode", ""),
             turns=int(kwargs.get("max_turns", 0)),
             total_actions=growth_per_call,
             blocked_actions=0,
@@ -259,7 +259,7 @@ class TestCurriculumEndToEnd:
             "name: kwargs-check\n"
             "embodiment: bodies/infant_humanoid\n"
             "aut_mode: substrate-primary\n"
-            "persona: neutral\n"
+            "persona: neutral\n"  # legacy key — pins the pre-1.1 alias read
             "stages:\n"
             "  - name: act1\n"
             f"    fixture: {fixture.name}\n"
@@ -281,7 +281,7 @@ class TestCurriculumEndToEnd:
         # Stage 1: top-level defaults; no resume.
         assert kw1["entity_ref"] == "bodies/infant_humanoid"
         assert kw1["aut_mode"] == "substrate-primary"
-        assert kw1["persona"] == "neutral"
+        assert kw1["mode"] == "neutral"  # read via the legacy persona: alias
         assert kw1["max_turns"] == 3
         assert kw1["fixture_path"] == str(fixture.resolve())
         assert "resume_session" not in kw1
@@ -289,7 +289,7 @@ class TestCurriculumEndToEnd:
         # Stage 2: per-stage overrides win; resume_session chains stage 1's id.
         assert kw2["entity_ref"] == "bodies/infant_humanoid"
         assert kw2["aut_mode"] == "llm-primary"  # overridden
-        assert kw2["persona"] == "adversarial"  # overridden
+        assert kw2["mode"] == "adversarial"  # overridden (legacy alias)
         assert kw2["max_turns"] == 7
         assert kw2["resume_session"] == call1["session_id"]
 

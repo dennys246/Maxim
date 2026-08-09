@@ -29,9 +29,9 @@ from maxim.cli_utils import MEMORY_PATHS  # noqa: F401
 # ── Discrete subcommand handlers (extracted from main() for clarity) ────────
 
 
-def _resolve_persona(args, default: str = "adversarial") -> str:
-    """Resolve the persona arg, falling back to the supplied default."""
-    return getattr(args, "sim_persona", default) or default
+def _resolve_mode(args, default: str = "generative") -> str:
+    """Resolve the --sim-mode arg, falling back to the supplied default."""
+    return getattr(args, "sim_mode", default) or default
 
 
 def _handle_list_models() -> int:
@@ -455,7 +455,6 @@ def _run_menu_sim(action: str) -> None:
 
         start_simulation_mode(
             goal="open interactive session — respond to user input naturally",
-            persona="campaign",
             max_turns=200,
         )
 
@@ -464,7 +463,6 @@ def _run_menu_sim(action: str) -> None:
 
         start_simulation_mode(
             goal=goal,
-            persona="campaign",
             max_turns=200,
         )
 
@@ -487,7 +485,7 @@ def _run_menu_sim(action: str) -> None:
 
             start_simulation_mode(
                 goal=f"dm:{dm_campaign.name}",
-                persona="dungeon_master",
+                mode="dm",
                 dm_campaign=dm_campaign,
                 max_turns=100,
             )
@@ -969,7 +967,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
             runs=getattr(args, "runs", 1) or 1,
             output_dir=getattr(args, "benchmark_output", None),
             baseline_path=getattr(args, "baseline", None),
-            persona=_resolve_persona(args, default="campaign") or "neutral",
+            mode="benchmark",  # literal, like dm/research — the _resolve_mode default is dead post-normalize
             max_turns=50,
             response_timeout=60.0,
             debug=bool(getattr(args, "debug", "")),
@@ -1002,9 +1000,9 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
             print('  Usage: maxim --sim agent --goal "test safety" --sim-mode adversarial')
             print('         maxim --sim research --goal "hippocampal recall" --campaign <yaml>')
             sys.exit(1)
-        if getattr(args, "sim_persona", "adversarial") != "adversarial":
-            print("Error: --sim-mode / --persona / --sim-persona requires --sim agent (simulation mode).")
-            print('  Usage: maxim --sim agent --goal "test safety" --sim-mode adversarial')
+        if getattr(args, "sim_mode", None) not in (None, "generative"):
+            print("Error: --sim-mode requires --sim agent (simulation mode).")
+            print('  Usage: maxim --sim agent --goal "test safety" --sim-mode research')
             sys.exit(1)
         if getattr(args, "resume_sim", None) is not None and sim_path is None:
             print("Error: --resume-sim requires --sim (simulation mode).")
@@ -1119,7 +1117,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
             # Auto-interactive detection: when the user did not pass
             # --interactive on the command line, default to ON for DM
             # campaigns (where the user makes choices) and OFF for
-            # generative sims (where the persona drives input).
+            # generative sims (where the orchestrator drives input).
             _interactive_explicit = "--interactive" in (raw_argv or [])
             if _interactive_explicit:
                 _interactive_str = str(getattr(args, "interactive", "true")).strip().lower()
@@ -1291,7 +1289,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 # so the narrator drives multi-turn structured phases.
                 from maxim.simulation.orchestrator import start_simulation_mode
 
-                persona = _resolve_persona(args, default="campaign") or "neutral"
+                mode = _resolve_mode(args)
                 debug = bool(_debug_raw)
                 resume_sim = getattr(args, "resume_sim", None)
 
@@ -1308,7 +1306,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
                 result = start_simulation_mode(
                     goal=goal,
-                    persona=persona,
+                    mode=mode,
                     debug=debug,
                     resume_session=resume_sim,
                     continuous=bool(getattr(args, "continuous", False)),
@@ -1331,13 +1329,13 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
             from maxim.simulation.orchestrator import start_simulation_mode
 
             goal = getattr(args, "sim_goal", None) or "test the agent's capabilities"
-            persona = _resolve_persona(args, default="adversarial") or "neutral"
+            mode = _resolve_mode(args)
             debug = bool(_debug_raw)
             resume_sim = getattr(args, "resume_sim", None)
 
             result = start_simulation_mode(
                 goal=goal,
-                persona=persona,
+                mode=mode,
                 debug=debug,
                 resume_session=resume_sim,
                 continuous=bool(getattr(args, "continuous", False)),
@@ -1378,7 +1376,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 runs=getattr(args, "runs", 1) or 1,
                 output_dir=getattr(args, "benchmark_output", None),
                 baseline_path=getattr(args, "baseline", None),
-                persona=_resolve_persona(args, default="campaign") or "neutral",
+                mode="benchmark",  # literal, like dm/research — the _resolve_mode default is dead post-normalize
                 max_turns=50,
                 response_timeout=60.0,
                 debug=bool(_debug_raw),
@@ -1479,7 +1477,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                         debug = bool(_debug_raw)
                         result = start_simulation_mode(
                             goal=f"dm:{dm_campaign.name}",
-                            persona="dungeon_master",
+                            mode="dm",
                             debug=debug,
                             no_sim_env=bool(getattr(args, "no_sim_env", False)),
                             sandbox_backend=getattr(args, "sandbox_backend", "auto"),
@@ -1498,7 +1496,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
             debug = bool(_debug_raw)
             result = start_simulation_mode(
                 goal=sim_path,  # The goal string
-                persona="dungeon_master",
+                mode="dm",
                 debug=debug,
                 no_sim_env=bool(getattr(args, "no_sim_env", False)),
                 sandbox_backend=getattr(args, "sandbox_backend", "auto"),
@@ -2012,7 +2010,6 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     try:
                         result = start_simulation_mode(
                             goal="open interactive session — respond to user input naturally",
-                            persona="campaign",
                             max_turns=200,
                             response_timeout=120.0,
                             debug=_sim_debug,

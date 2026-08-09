@@ -208,7 +208,7 @@ class MaximHandle:
 
         return self._run_sim(
             goal=f"dm:{campaign.name}",
-            persona="dungeon_master",
+            mode="dm",
             dm_campaign=campaign,
             max_turns=max_turns,
         )
@@ -229,7 +229,7 @@ class MaximHandle:
         premise = (premise or "").strip()
         if not premise:
             raise ValueError("premise must be non-empty")
-        return self._run_sim(goal=premise, persona="collaborative", generative=True, max_turns=max_turns)
+        return self._run_sim(goal=premise, mode="generative", generative=True, max_turns=max_turns)
 
     # ── talk (live loop) ────────────────────────────────────────────────
 

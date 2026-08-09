@@ -147,7 +147,7 @@ def start_research_mode(
     # the same log the Writer/Reviewer will read from (D-0a fix).
     sim_result = start_simulation_mode(
         goal=researcher_goal,
-        persona="researcher",
+        mode="research",
         max_turns=max_turns,
         debug=debug,
         sandbox_backend=sandbox_backend,

@@ -6,7 +6,7 @@ Public API (verb-based):
 
     maxim.configure(verbosity=2)
     maxim.run(model="mistral-7b")
-    maxim.imagine(goal="test safety", persona="adversarial")
+    maxim.imagine(goal="test safety")
     maxim.connect("simulated")
     maxim.diagnose()
     maxim.observe("memory")

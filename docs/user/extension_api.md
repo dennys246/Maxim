@@ -17,7 +17,7 @@ This page documents **extension surfaces** — what third parties plug INTO Maxi
 | 5 | Custom action sinks | stable | [`ActionSink` protocol](#5-custom-action-sinks) |
 | 6 | Bio-system bridges | experimental | [`PainBus.subscribe` / `ReactionBus.subscribe`](#6-bio-system-bridges) |
 | 7 | Event subscriptions | experimental | [`maxim.on(event_name, callback)`](#7-event-subscriptions) |
-| 8 | Custom personas | ⛔ deprecated in 0.9 — removed in 1.1 | [`maxim.register_persona(...)`](#8-custom-personas) |
+| 8 | Custom personas | ⛔ REMOVED in 1.1 | [`maxim.register_persona(...)` raises](#8-custom-personas-removed) |
 
 ---
 
@@ -406,42 +406,29 @@ handle.unsubscribe()
 
 ---
 
-## 8. Custom personas
+## 8. Custom personas (REMOVED)
 
-**Stability:** ⛔ **deprecated in 0.9 — removed in 1.1.** `maxim.register_persona()` emits `DeprecationWarning` in 0.9 / 1.0 and will raise in 1.1. The persona system is being replaced by `--sim-mode` (an orchestrator flow-shape selector) plus the bio-emergent disposition mechanics tracked in `docs/plans/deferred/bio_emergent_persona_foundations.md`. The CLI flag `--persona` (and its `--sim-persona` alias) is also deprecated in 0.9; use `--sim-mode` instead. See [`docs/plans/deferred/persona_cleanup_and_mode_transition.md`](../plans/deferred/persona_cleanup_and_mode_transition.md) for the migration timeline and rationale.
+**Stability:** ⛔ **REMOVED in 1.1** (deprecated in 0.9). The persona system was
+hard-deleted per
+[`docs/plans/deferred/persona_cleanup_and_mode_transition.md`](../plans/deferred/persona_cleanup_and_mode_transition.md)
+Stages 3-5 (Option A):
 
-> **Note on flag naming:** the persona-cleanup plan originally proposed the short alias `--mode`, but that token is already owned by the core run-mode flag (`--mode {live,train,reflection,sleep,agentic,exploration}`). Stage 1 ships `--sim-mode` only; freeing `--mode` for sim use is a separate breaking change with its own deprecation cycle.
+- `maxim.register_persona(...)` now **raises `RuntimeError`** — the promised
+  1.1 behavior. The symbol survives one cycle so old code fails loudly with a
+  pointer instead of an `AttributeError`; it is dropped entirely in 1.2.
+- The `--persona` / `--sim-persona` CLI flags are gone. `--sim-mode` is the
+  flow-shape label recorded in reports/logs.
+- `simulation/personas.py` was deleted. The audit finding stands as the
+  rationale: registered personas never shaped orchestrator behavior — the
+  `context_prompt` was never injected anywhere; the registry was label-only.
+- `imagine(persona=...)` is a deprecated alias for `imagine(mode=...)`
+  (warns, dropped in 1.2).
 
-> **Note (audit finding):** registered personas currently flow through to reports and logs as a label; the orchestrator does not inject the supplied `context_prompt` into the agent prompt today. The rich prompt strings shipped in `simulation/personas.py` exist as scaffolding for behavioural shaping that is being moved to `--sim-mode` and the bio-emergent disposition mechanics. Stage 5 of the cleanup plan removes the unused field.
-
-Personas shape how the simulation orchestrator framing affects an agent — adversarial probing, cooperative coaching, etc. Register a persona once and reference it by name in `--persona <name>` or the `persona=` argument to `imagine()`/`run()`.
-
-### Minimal example
-
-```python
-import maxim
-
-
-maxim.register_persona(
-    name="cautious_explorer",
-    description="Probes carefully, prefers reversible actions",
-    focus="risk-averse exploration of unfamiliar SEM affordances",
-    context_prompt=(
-        "You are a cautious explorer. Before every action, ask: "
-        "if this fails, can I recover? Prefer affordances you have "
-        "already seen succeed."
-    ),
-    max_initiative=0.3,
-)
-
-
-maxim.imagine("explore the cradle", persona="cautious_explorer")
-```
-
-### Reference
-
-- API: [`src/maxim/api.py::register_persona`](../../src/maxim/api.py)
-- Built-in personas: [`src/maxim/simulation/personas.py`](../../src/maxim/simulation/personas.py)
+Behavioral disposition is bio-emergent (learned through Hippocampus / NAc /
+ATL experience), not prompt-injected — see
+`docs/plans/deferred/bio_emergent_persona_foundations.md`. NPC
+`persona_prompt:` fields in campaign YAMLs are a **separate concept**
+(narrative metadata for individual characters) and are unaffected.
 
 ---
 

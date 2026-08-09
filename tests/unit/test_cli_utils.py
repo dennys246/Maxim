@@ -81,13 +81,10 @@ class TestNormalizeArgs:
         assert args.epochs == 0
 
 
-class TestPersonaModeResolution:
-    """Stage 1 of docs/plans/deferred/persona_cleanup_and_mode_transition.md.
-
-    --mode is the new flag, --persona is deprecated in 0.9 and removed
-    in 1.1. After normalize_args, args.sim_persona is always set (the
-    rest of the CLI treats it as the canonical dispatch slot).
-    """
+class TestSimModeResolution:
+    """1.1 persona hard-remove (persona_cleanup_and_mode_transition.md
+    Stages 3-5): --persona/--sim-persona are gone; normalize_args just
+    guarantees args.sim_mode is set (default "generative")."""
 
     def _bare_args(self, **kwargs):
         defaults = {
@@ -104,55 +101,27 @@ class TestPersonaModeResolution:
         defaults.update(kwargs)
         return argparse.Namespace(**defaults)
 
-    def test_neither_flag_falls_back_to_default(self):
+    def test_no_flag_falls_back_to_generative(self):
         args = self._bare_args()
         normalize_args(args)
-        assert args.sim_persona == "adversarial"
+        assert args.sim_mode == "generative"
 
-    def test_mode_only_sets_sim_persona(self):
-        args = self._bare_args(sim_mode="researcher")
+    def test_explicit_mode_preserved(self):
+        args = self._bare_args(sim_mode="research")
         normalize_args(args)
-        assert args.sim_persona == "researcher"
+        assert args.sim_mode == "research"
 
-    def test_mode_only_does_not_warn(self, capsys, recwarn):
-        args = self._bare_args(sim_mode="cooperative")
+    def test_mode_does_not_warn(self, capsys, recwarn):
+        args = self._bare_args(sim_mode="benchmark")
         normalize_args(args)
         captured = capsys.readouterr()
         assert "DeprecationWarning" not in captured.err
         assert not any(issubclass(w.category, DeprecationWarning) for w in recwarn.list)
 
-    def test_persona_only_emits_deprecation(self, capsys, recwarn):
-        args = self._bare_args(sim_persona="researcher")
+    def test_empty_mode_falls_back_to_generative(self):
+        args = self._bare_args(sim_mode="")
         normalize_args(args)
-        # sim_persona preserved so dispatch keeps working
-        assert args.sim_persona == "researcher"
-        # Stderr line for human visibility
-        captured = capsys.readouterr()
-        assert "DeprecationWarning" in captured.err
-        assert "--sim-mode" in captured.err
-        # DeprecationWarning emitted for programmatic catch
-        dep_warnings = [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
-        assert len(dep_warnings) == 1
-        assert "1.1" in str(dep_warnings[0].message)
-
-    def test_both_flags_consistent_prefer_mode_silently(self, capsys, recwarn):
-        args = self._bare_args(sim_persona="adversarial", sim_mode="adversarial")
-        normalize_args(args)
-        assert args.sim_persona == "adversarial"
-        # No conflict warning because values match; no deprecation either
-        # because --sim-mode is the canonical path.
-        captured = capsys.readouterr()
-        assert "WARNING" not in captured.err
-        assert "DeprecationWarning" not in captured.err
-        assert not any(issubclass(w.category, DeprecationWarning) for w in recwarn.list)
-
-    def test_both_flags_conflict_warns_and_prefers_mode(self, capsys):
-        args = self._bare_args(sim_persona="researcher", sim_mode="adversarial")
-        normalize_args(args)
-        assert args.sim_persona == "adversarial"
-        captured = capsys.readouterr()
-        assert "WARNING" in captured.err
-        assert "--sim-mode" in captured.err and "--persona" in captured.err
+        assert args.sim_mode == "generative"
 
 
 class TestGpuAvailable:

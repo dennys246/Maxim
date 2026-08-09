@@ -17,7 +17,7 @@ class TestSimulationResult:
 
         r = SimulationResult(
             goal="test",
-            persona="cooperative",
+            mode="generative",
             turns=5,
             total_actions=10,
             blocked_actions=2,
@@ -31,7 +31,7 @@ class TestSimulationResult:
 
         r = SimulationResult(
             goal="compat",
-            persona="adversarial",
+            mode="generative",
             turns=3,
             total_actions=5,
             blocked_actions=1,
@@ -44,7 +44,7 @@ class TestSimulationResult:
 
         r = SimulationResult(
             goal="g",
-            persona="p",
+            mode="m",
             turns=0,
             total_actions=0,
             blocked_actions=0,
@@ -66,29 +66,44 @@ class TestBuildResumePrompt:
 
         report = {
             "goal": "test safety",
-            "persona": "adversarial",
+            "mode": "generative",
             "turns": 10,
             "total_actions": 25,
             "blocked_actions": 5,
         }
-        prompt = build_resume_prompt(report, "continue testing", "cooperative")
+        prompt = build_resume_prompt(report, "continue testing", "generative")
         assert "RESUMING" in prompt
         assert "continue testing" in prompt
         assert "10" in prompt
         assert "25" in prompt
+
+    def test_legacy_persona_key_read_as_mode(self):
+        """Pre-1.1 report.json persisted the mode under "persona" — the
+        resume prompt must still surface it."""
+        from maxim.simulation.sim_types import build_resume_prompt
+
+        report = {
+            "goal": "test safety",
+            "persona": "adversarial",
+            "turns": 2,
+            "total_actions": 3,
+            "blocked_actions": 0,
+        }
+        prompt = build_resume_prompt(report, "continue", "generative")
+        assert "Mode: adversarial" in prompt
 
     def test_includes_issues(self):
         from maxim.simulation.sim_types import build_resume_prompt
 
         report = {
             "goal": "test",
-            "persona": "p",
+            "mode": "m",
             "turns": 1,
             "total_actions": 1,
             "blocked_actions": 0,
             "llm_issues_found": ["issue1", "issue2"],
         }
-        prompt = build_resume_prompt(report, "g", "p")
+        prompt = build_resume_prompt(report, "g", "m")
         assert "issue1" in prompt
 
     def test_includes_tool_usage(self):
@@ -96,13 +111,13 @@ class TestBuildResumePrompt:
 
         report = {
             "goal": "test",
-            "persona": "p",
+            "mode": "m",
             "turns": 1,
             "total_actions": 1,
             "blocked_actions": 0,
             "tool_usage": {"look": 5, "move": 3},
         }
-        prompt = build_resume_prompt(report, "g", "p")
+        prompt = build_resume_prompt(report, "g", "m")
         assert "look: 5" in prompt
 
 

@@ -108,7 +108,7 @@ def run_campaign(
     aut_model: str = "mistral-7b",
     seed_keywords: list[str] | None = None,
     goal: str = "run campaign experiment",
-    persona: str = "campaign",
+    mode: str = "generative",
     max_turns: int = 50,
     response_timeout: float = 60.0,
     debug: bool = False,
@@ -126,7 +126,7 @@ def run_campaign(
         aut_model: Model profile for the AUT (e.g., "mistral-7b").
         seed_keywords: Keywords to search for in post-campaign analysis.
         goal: Simulation goal string.
-        persona: Orchestrator persona (default "campaign" for hands-off).
+        mode: Orchestrator flow-shape label (default "generative").
         max_turns: Maximum simulation turns.
         response_timeout: Timeout per turn in seconds.
         debug: Enable verbose tracing.
@@ -151,7 +151,7 @@ def run_campaign(
     # Run the simulation with campaign turns injected directly
     sim_result = start_simulation_mode(
         goal=goal,
-        persona=persona,
+        mode=mode,
         max_turns=max_turns,
         response_timeout=response_timeout,
         debug=debug,

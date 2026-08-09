@@ -526,7 +526,7 @@ suite:
 name: config_test
 percepts: []
 config:
-  persona: campaign
+  mode: generative
   max_turns: 30
   response_timeout: 45.0
 """
@@ -536,7 +536,7 @@ config:
             defn = load_scenario(Path(f.name))
 
         assert defn.config is not None
-        assert defn.config["persona"] == "campaign"
+        assert defn.config["mode"] == "generative"
         assert defn.config["max_turns"] == 30
 
     def test_metadata_defaults_when_absent(self):

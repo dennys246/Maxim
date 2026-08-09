@@ -46,7 +46,7 @@ The machinery already exists and is already used: `Episode.imagined` / `CausalLi
 | TTS (on-device) | `TTSEngine` (piper) [`models/audio/tts.py`](../../src/maxim/models/audio/tts.py); `speak` affordance + `speaker_fn` | exists |
 | STT | `faster-whisper` (`audio` extra); `agent_loop` consumes `pending_voice_input` ([agent_loop.py:1999](../../src/maxim/runtime/agent_loop.py)) | exists |
 | DM display panels (character sheet, inventory) | [`interactive/display.py:54`](../../src/maxim/interactive/display.py) | exists |
-| Personas | `simulation/personas.py` | exists |
+| Personas | ~~`simulation/personas.py`~~ | DELETED in 1.1 (persona hard-remove — label-only dead code) |
 | Orient-to-speaker (DoA + head-frame) | Exp 45/48, perception placement | exists |
 | Cross-session memory | bio-stack in `~/.maxim/` | exists |
 

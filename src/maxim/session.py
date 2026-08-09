@@ -50,7 +50,10 @@ class Session:
     id: str
     dir: str = ""
     goal: str = ""
-    persona: str = ""
+    # Orchestrator flow-shape label. Renamed from `persona` in 1.1 (persona
+    # hard-remove); pre-1.1 report.json/session.json carry the legacy
+    # "persona" key, which the disk loaders below accept as an alias.
+    mode: str = ""
     model: str = ""
     _result: Any = field(default=None, repr=False)
 
@@ -151,7 +154,7 @@ class Session:
             title=f"Research Report — {self.goal}" if self.goal else "Research Report",
             goal=self.goal,
             session_id=self.id,
-            metadata={"persona": self.persona, "model": self.model},
+            metadata={"mode": self.mode, "model": self.model},
         )
 
         # Populate with bio-state if available
@@ -214,7 +217,7 @@ class Session:
         meta = {
             "session_id": self.id,
             "goal": self.goal,
-            "persona": self.persona,
+            "mode": self.mode,
             "model": self.model,
             "turns": self.turns,
             "duration_s": self.duration_s,
@@ -235,7 +238,7 @@ class Session:
             id=result.session_id,
             dir=result.session_dir,
             goal=result.goal,
-            persona=result.persona,
+            mode=result.mode,
             model=model,
             _result=result,
         )
@@ -265,14 +268,15 @@ class Session:
         # Load report.json for metadata
         report_path = session_dir / "report.json"
         goal = ""
-        persona = ""
+        mode = ""
         model = ""
         if report_path.exists():
             try:
                 with open(report_path) as f:
                     data = json.load(f)
                 goal = data.get("goal", "")
-                persona = data.get("persona", "")
+                # "persona" is the pre-1.1 legacy key.
+                mode = data.get("mode", data.get("persona", ""))
                 model = data.get("language_model", "")
             except Exception as exc:
                 logger.warning("Could not load report.json for session %s: %s", match, exc)
@@ -281,7 +285,7 @@ class Session:
             id=match,
             dir=str(session_dir),
             goal=goal,
-            persona=persona,
+            mode=mode,
             model=model,
             _result=None,  # No live result for disk-loaded sessions
         )
@@ -417,7 +421,7 @@ def list_sessions(*, limit: int = 20) -> list[Session]:
                     id=d.name,
                     dir=str(d),
                     goal=data.get("goal", ""),
-                    persona=data.get("persona", ""),
+                    mode=data.get("mode", data.get("persona", "")),
                     model=data.get("language_model", ""),
                 )
             )

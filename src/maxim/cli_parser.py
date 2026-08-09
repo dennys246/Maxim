@@ -342,34 +342,22 @@ def _build_parser() -> argparse.ArgumentParser:
         help="[experimental] Generate research report (Writer + Reviewer agents) "
         "after simulation completes. Surface still evolving — see docs/user/stable_api.md.",
     )
-    sim.add_argument(
-        "--sim-persona",
-        "--persona",
-        type=str,
-        default=argparse.SUPPRESS,
-        dest="sim_persona",
-        metavar="PERSONA",
-        help="[DEPRECATED in 0.9 — removed in 1.1] Orchestrator persona for simulation "
-        "(adversarial, cooperative, confused, escalating, campaign, refinement). "
-        "Use --sim-mode instead. See docs/plans/deferred/persona_cleanup_and_mode_transition.md.",
-    )
+    # --persona / --sim-persona were REMOVED in 1.1 (deprecated in 0.9; the
+    # persona system was hard-deleted per
+    # docs/plans/deferred/persona_cleanup_and_mode_transition.md Stages 3-5).
     # Note: the short alias `--mode` is intentionally NOT added here because
     # the core run-mode flag at line 57 already owns that token (live/train/
     # reflection/sleep/agentic/exploration). Freeing `--mode` for sim use is
-    # a separate breaking change with its own deprecation cycle and is out of
-    # scope for Stage 1 of persona_cleanup_and_mode_transition.md.
+    # a separate breaking change with its own deprecation cycle.
     sim.add_argument(
         "--sim-mode",
         type=str,
         default=argparse.SUPPRESS,
         dest="sim_mode",
         metavar="MODE",
-        help="Orchestrator mode for simulation. Accepts the same values as --persona "
-        "(adversarial, cooperative, confused, escalating, campaign, refinement, "
-        "researcher, sweep, dungeon_master, adventure_architect) plus 'neutral'. "
-        "Replacement for --persona, which is deprecated in 0.9 and removed in 1.1. "
-        "Default: adversarial (resolved by cli_utils._resolve_persona_mode when "
-        "neither --sim-mode nor --persona is passed).",
+        help="Orchestrator flow-shape label recorded in reports/logs "
+        "(default: generative; the dm/research/benchmark dispatch paths set "
+        "their own). Free-form; replaced the removed --persona flag.",
     )
     sim.add_argument(
         "--aut-model",

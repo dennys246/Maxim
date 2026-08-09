@@ -205,7 +205,7 @@ content-type: application/json
 **Run on: peer**
 
 ```bash
-MAXIM_LANE_TRACE=1 maxim --sim "say hi" --persona cooperative
+MAXIM_LANE_TRACE=1 maxim --sim "say hi"
 ```
 
 **Expected in peer's terminal (within ~10s of sim start):**
@@ -230,7 +230,7 @@ peer_large req=abc12345 provider=lane-large model=mistral-7b status=ok latency=3
 
 **If the banner shows `self-hosted` but no `peer_infer` lines →** the LLM call isn't reaching the outbound client:
 - The sim might be stalling before making any LLM calls (check for `LLM submit` lines)
-- The orchestrator might be hallucinating non-existent tools (pre-existing persona issue)
+- The orchestrator might be hallucinating non-existent tools (pre-existing orchestrator-prompt issue)
 
 **If you see `peer_infer req=... status=error http=403` →** confirmed Cloudflare edge blocking. See §Common failures.
 

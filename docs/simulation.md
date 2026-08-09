@@ -14,7 +14,6 @@ src/maxim/simulation/
     bridge.py                  # SimulationBridge (ConversationalSource + RecordingSink + send_and_wait)
     orchestrator.py            # start_simulation_mode() lifecycle, 3-thread orchestrator
     tools.py                   # Orchestrator tools (send_message, spawn_sub_simulation, extend_simulation, ...)
-    personas.py                # 8 personas (adversarial, cooperative, confused, escalating, campaign, refinement, researcher, sweep)
     response_policy.py         # ResponsePolicy (auto-approve/reject/delayed/ask-orchestrator)
     report.py                  # SimulationReport builder, persistence, LLM roundup
     interactive.py             # Conversational REPL (rewired for multi-turn)
@@ -387,7 +386,7 @@ The bridge holds the policy (`SimulationBridge.response_policy`). The agent loop
 Defined in `report.py`. Built after every simulation run in the orchestrator cleanup phase.
 
 **What it captures:**
-- Session metadata (goal, persona, model, timing)
+- Session metadata (goal, mode, model, timing)
 - Full action summary (tool usage, success rates, blocked actions)
 - AUT cognitive state (hippocampus memory count, NAc causal links, top links by confidence)
 - Cost data (session USD, input/output tokens)
@@ -407,7 +406,7 @@ Defined in `tools.py`. Gives the orchestrator read-only access to the AUT's cogn
 
 Supported queries: `memory_recall`, `causal_links`, `predict_outcome`, `pain_history`, `energy_status`, `system_stats`, `concept_query`, `temporal_patterns`.
 
-Used primarily by the `refinement` persona for systematic measurement.
+Used for systematic refinement measurement.
 
 ## Sandbox (TmpdirSandbox / DockerSandbox / PainTriggerLayer)
 
@@ -446,7 +445,7 @@ Crash safety: every container launched through `LocalDockerRunner` gets a UUID-s
 
 ```bash
 # Auto (default): use Docker if available, else tmpdir with a warning
-maxim --sim "test safety" --persona adversarial
+maxim --sim "test safety"
 
 # Require Docker, fail if unavailable
 maxim --sim "test safety" --sandbox docker
