@@ -358,6 +358,15 @@ class SimulatedController(RobotController):
         if not self.is_connected():
             return False
 
+        # RETAINED-AXES TRIPWIRE (F1 fold, 2026-08-09): this sim fills
+        # unspecified axes from its own stored pose, which is fine ONLY
+        # because the sim achieves exactly what is commanded (achieved ==
+        # commanded, so readback-fill is mathematically identical to the
+        # real controller's last-commanded stash). If actuation bias or
+        # noise is ever modeled here (the Exp 49 act-and-compare direction),
+        # mirror ReachyMiniController._last_commanded or the F1 readback
+        # ratchet returns in sim (tests/unit/test_reachy_retained_axes.py).
+
         # Update pose state. FRAME CONTRACT (matches the real controller,
         # review fold 2026-08-04): MotionTarget.head_yaw is BODY-RELATIVE;
         # the stored/reported pose "yaw" is WORLD-frame (relative + body),

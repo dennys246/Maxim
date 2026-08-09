@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import math
 import socket
 import subprocess
 import threading
@@ -121,6 +122,17 @@ class ReachyMiniController(RobotController):
         # a silently-clamped "success" is the faced_sound=True dishonesty
         # class PR #459 fixed.
         self.last_clamped_axes: tuple[str, ...] = ()
+        # Last COMMANDED value per axis, as dispatched (post-clamp). Keys:
+        # "head_roll" / "head_pitch" / "head_rel_yaw" (body-relative) /
+        # "body_yaw". goto_target fills UNSPECIFIED axes from here, never
+        # from the live readback — see the F1 ratchet note in
+        # _goto_target_locked. Mutated only under _motion_lock; cleared by
+        # out-of-band motion (look_at_pixel / wake_up / goto_sleep) and
+        # disconnect via _forget_commanded so the next fill-in re-seeds
+        # from the readback once.
+        self._last_commanded: dict[str, float] = {}
+        # Throttle for the achieved-vs-commanded divergence WARNING.
+        self._divergence_last_warn: float = 0.0
 
     @property
     def robot_type(self) -> str:
@@ -425,6 +437,11 @@ class ReachyMiniController(RobotController):
             logger.error("Error during disconnect: %s", e)
 
         finally:
+            # A reconnect finds the robot wherever it is now — stale
+            # commanded values from the previous connection must not
+            # masquerade as its pose. In the finally block so a raising
+            # stream stop cannot skip the clear (two-lens fold).
+            self._forget_commanded()
             self._update_state(
                 connection_state=RobotConnectionState.DISCONNECTED,
                 is_awake=False,
@@ -485,6 +502,22 @@ class ReachyMiniController(RobotController):
             return limit if value > 0 else -limit
         return value
 
+    def _forget_commanded(self, *axes: str) -> None:
+        """Drop retained commanded values (all of them when no axes given).
+
+        Call after any motion the stash did not see (look_at_pixel, wake_up,
+        goto_sleep) so the next goto_target fill-in re-seeds the dropped
+        axes from the readback ONCE. A one-shot seed absorbs at most one
+        step of achieved-vs-commanded bias; RE-USING the readback on every
+        command is the F1 ratchet this stash exists to prevent.
+        """
+        with self._motion_lock:
+            if not axes:
+                self._last_commanded.clear()
+            else:
+                for axis in axes:
+                    self._last_commanded.pop(axis, None)
+
     def goto_target(self, target: MotionTarget) -> bool:
         """Move robot to target pose.
 
@@ -538,25 +571,57 @@ class ReachyMiniController(RobotController):
         head_requested = any(x is not None for x in [target.head_roll, target.head_pitch, target.head_yaw])
 
         head_target = None
+        roll = pitch = relative_yaw = 0.0
         if head_requested or body_yaw_target is not None:
             from reachy_mini.utils import create_head_pose
 
-            # Fill unspecified axes from the current pose so single-axis
-            # commands don't recenter the others.
+            # Fill UNSPECIFIED axes from the last COMMANDED value, never the
+            # live readback (F1 ratchet fix, H1 2026-08-08). Filling from the
+            # readback is positive feedback under any achieved-vs-commanded
+            # bias: each command re-targets the previous ACHIEVED value, so
+            # the bias integrates — ~20 yaw-only probe commands ratcheted
+            # roll +~1.3°/command up to +38° during H1 (see the F1 finding in
+            # docs/experiments/protocols/h1_healthy_hardware_doa_preregistration.md).
+            # The readback SEEDS an axis only when it has never been
+            # commanded through here (or after out-of-band motion cleared
+            # the stash) — a one-shot read has no feedback loop.
+            stash = self._last_commanded
             current = self.get_current_pose()
             # Refuse to guess (executor-lens review fold, mirroring
-            # ReachyOrientMotorBackend's E2 rule): deriving the RETAINED
-            # relative yaw needs both the world head yaw and the body yaw.
-            # Treating an unreadable one as 0 commands a swing of up to the
-            # full body angle — legal under the clamp, violent in practice.
-            if target.head_yaw is None and ("yaw" not in current or "body_yaw" not in current):
+            # ReachyOrientMotorBackend's E2 rule): SEEDING the retained
+            # relative yaw needs both the world head yaw and the body yaw
+            # from the readback. Treating an unreadable one as 0 commands a
+            # swing of up to the full body angle — legal under the clamp,
+            # violent in practice. With a stashed commanded yaw the readback
+            # is not needed for the yaw seed, so an unreadable pose no
+            # longer blocks — but see the body-seed refusal just below.
+            if (
+                target.head_yaw is None
+                and "head_rel_yaw" not in stash
+                and ("yaw" not in current or "body_yaw" not in current)
+            ):
                 logger.error(
                     "goto_target: current pose unreadable (have keys %s) — refusing to guess "
                     "the retained head yaw; re-issue with an explicit head_yaw or retry",
                     sorted(current.keys()),
                 )
                 return False
-            current_body = current.get("body_yaw", 0.0) or 0.0
+            # Same rule for the BODY seed (two-lens fold, cross-confirmed):
+            # the world-yaw composition needs a body angle. Guessing 0 when
+            # the body was never commanded AND the readback is dark ships a
+            # world head yaw that can demand a neck angle off by the full
+            # body rotation — the relative-frame clamp cannot catch it
+            # because it runs in the BELIEVED frame. (Head-only dispatches
+            # deliberately do not stash the body, so this seed recurs until
+            # a body command or a successful readback.)
+            if body_yaw_target is None and "body_yaw" not in stash and "body_yaw" not in current:
+                logger.error(
+                    "goto_target: body yaw unreadable (have keys %s) and never commanded — "
+                    "refusing to guess the body angle for head composition; re-issue with an "
+                    "explicit body_yaw or retry",
+                    sorted(current.keys()),
+                )
+                return False
             # get_current_pose() reports head yaw in the WORLD frame (the
             # SDK's fk() folds body_yaw in), so the head's angle RELATIVE to
             # the body is (world head yaw - body yaw). Callers naturally mean
@@ -567,9 +632,24 @@ class ReachyMiniController(RobotController):
             # target body yaw so the head ends up riding along with the body.
             if target.head_yaw is not None:
                 relative_yaw = target.head_yaw
+            elif "head_rel_yaw" in stash:
+                relative_yaw = stash["head_rel_yaw"]
             else:
-                relative_yaw = current.get("yaw", 0.0) - current_body
-            target_body = body_yaw_target if body_yaw_target is not None else current_body
+                relative_yaw = current["yaw"] - current["body_yaw"]
+            # Body fill-in for the world-yaw composition: last commanded
+            # body when one exists. A never-commanded body reads back its
+            # actual angle instead — head-only dispatches don't move the
+            # body, so there is no command→achieve→re-command loop there.
+            # (Under automatic_body_yaw the daemon moves the body behind
+            # the runtime, so the body is never stashed — see the stash
+            # write below — and this branch always reads back.)
+            if body_yaw_target is not None:
+                target_body = body_yaw_target
+            elif "body_yaw" in stash:
+                target_body = stash["body_yaw"]
+            else:
+                target_body = current.get("body_yaw", 0.0) or 0.0
+            self._warn_commanded_vs_achieved(stash, current)
             # Clamp in the BODY-RELATIVE frame — that is where the physical
             # 65° neck constraint lives. Clamping the world-frame sum instead
             # would spuriously limit a legal head pose whenever the body is
@@ -578,19 +658,29 @@ class ReachyMiniController(RobotController):
             relative_yaw = self._clamp(
                 relative_yaw, self._MAX_HEAD_REL_YAW_RAD, "head_yaw (body-relative)", clamped_axes
             )
+            roll = self._clamp(
+                (
+                    target.head_roll
+                    if target.head_roll is not None
+                    else stash.get("head_roll", current.get("roll", 0.0))
+                ),
+                self._MAX_HEAD_ROLL_RAD,
+                "head_roll",
+                clamped_axes,
+            )
+            pitch = self._clamp(
+                (
+                    target.head_pitch
+                    if target.head_pitch is not None
+                    else stash.get("head_pitch", current.get("pitch", 0.0))
+                ),
+                self._MAX_HEAD_PITCH_RAD,
+                "head_pitch",
+                clamped_axes,
+            )
             head_target = create_head_pose(
-                roll=self._clamp(
-                    (target.head_roll if target.head_roll is not None else current.get("roll", 0.0)),
-                    self._MAX_HEAD_ROLL_RAD,
-                    "head_roll",
-                    clamped_axes,
-                ),
-                pitch=self._clamp(
-                    (target.head_pitch if target.head_pitch is not None else current.get("pitch", 0.0)),
-                    self._MAX_HEAD_PITCH_RAD,
-                    "head_pitch",
-                    clamped_axes,
-                ),
+                roll=roll,
+                pitch=pitch,
                 yaw=relative_yaw + target_body,
                 degrees=False,
             )
@@ -603,7 +693,80 @@ class ReachyMiniController(RobotController):
             method=self._sdk_method(target.method),
         )
 
+        # Stash AFTER the dispatch returns (fail-fast-before-mutation): a
+        # raised dispatch must not leave the stash asserting values that
+        # never shipped. Post-clamp values — what was actually commanded.
+        if head_target is not None:
+            stash = self._last_commanded
+            stash["head_roll"] = roll
+            stash["head_pitch"] = pitch
+            stash["head_rel_yaw"] = relative_yaw
+        # Under automatic_body_yaw the daemon rotates the body behind the
+        # runtime with no invalidation hook, so a stashed body value would
+        # go stale without bound (two-lens fold): never stash the body in
+        # that mode — the fill-in above then always reads the body back.
+        if body_yaw_target is not None and not self._automatic_body_yaw:
+            self._last_commanded["body_yaw"] = body_yaw_target
+
         return True
+
+    # Achieved-vs-commanded divergence threshold + throttle for the
+    # observability WARNING below. 5° is well above the XVF-era measured
+    # per-command bias (~1.3°) so healthy hardware stays quiet.
+    _DIVERGENCE_WARN_RAD = 0.0872664625997  # 5°
+    _DIVERGENCE_WARN_INTERVAL_S = 30.0
+
+    def _warn_commanded_vs_achieved(self, stash: dict[str, float], current: dict[str, float]) -> None:
+        """Rate-limited WARNING when the readback diverges from the stash.
+
+        The stash deliberately stops the readback from steering commands
+        (the F1 ratchet), but that also silences the signal that exposed
+        F1 in the first place: a persistently mis-achieving actuator. This
+        is the early-warning channel for progressive motor degradation —
+        compare what we last commanded against what the hardware reports,
+        per axis, and warn (throttled) past 5°. Purely observational;
+        never feeds back into any command.
+        """
+        deltas: list[str] = []
+        for key, achieved in (
+            ("head_roll", current.get("roll")),
+            ("head_pitch", current.get("pitch")),
+            ("body_yaw", current.get("body_yaw")),
+        ):
+            if key in stash and achieved is not None:
+                d = stash[key] - achieved
+                if abs(d) > self._DIVERGENCE_WARN_RAD:
+                    deltas.append(f"{key} {math.degrees(d):+.1f}deg")
+        if "head_rel_yaw" in stash and "yaw" in current and "body_yaw" in current:
+            d = stash["head_rel_yaw"] - (current["yaw"] - current["body_yaw"])
+            if abs(d) > self._DIVERGENCE_WARN_RAD:
+                deltas.append(f"head_rel_yaw {math.degrees(d):+.1f}deg")
+        if not deltas:
+            return
+        now = time.time()
+        if now - self._divergence_last_warn < self._DIVERGENCE_WARN_INTERVAL_S:
+            return
+        self._divergence_last_warn = now
+        logger.warning(
+            "goto_target: achieved pose diverges from last commanded (%s) — "
+            "possible actuator degradation or external motion the controller "
+            "did not see (progressive-degradation early warning, H1 F1)",
+            ", ".join(deltas),
+        )
+
+    def note_external_head_motion(self) -> None:
+        """Tell the controller the head moved outside its dispatch paths.
+
+        Public invalidation hook for sanctioned raw-SDK head movers
+        (``motion/movement.py::move_head``, Selfy's raw ``look_at_image``
+        enqueue) and for scripts that drive the raw SDK and hand control
+        back. Drops the retained head axes so the next ``goto_target``
+        fill-in re-seeds them from the readback once — without this, the
+        next controller command would snap the head back to the stale
+        stashed pose. The body stash is kept: raw head movers do not
+        command the body axis.
+        """
+        self._forget_commanded("head_roll", "head_pitch", "head_rel_yaw")
 
     def look_at_pixel(self, target: PixelTarget) -> bool:
         """Move head to look at a pixel coordinate.
@@ -623,6 +786,15 @@ class ReachyMiniController(RobotController):
             # same TOCTOU (clamp risk is low here — pixel→angle is
             # FOV-bounded — but the serialization claim must be true).
             with self._motion_lock:
+                # look_at_image moves the head outside goto_target's stash —
+                # the retained head axes will no longer describe where the
+                # head was commanded. Forget BEFORE dispatching (two-lens
+                # fold): invalidation must be conservative in the opposite
+                # direction from population — a spurious clear costs one
+                # readback seed, a missed clear (dispatch raising after
+                # partial motion) leaves stale re-commands.
+                # (Body is untouched by look_at_image; its stash stays.)
+                self._forget_commanded("head_roll", "head_pitch", "head_rel_yaw")
                 self._mini.look_at_image(
                     target.u,
                     target.v,
@@ -709,6 +881,10 @@ class ReachyMiniController(RobotController):
                 self._mini.enable_motors()
             except Exception as e:  # noqa: BLE001 - older SDKs may lack it
                 logger.warning("enable_motors() failed (%s) — motion may be ignored", e)
+            # The wake motion moves the robot outside goto_target's stash —
+            # forget BEFORE dispatching so a raise after partial motion
+            # cannot leave stale values (spurious clear costs one seed).
+            self._forget_commanded()
             self._mini.wake_up()
             # Belt-and-suspenders re-assert after wake (mirrors the orient
             # scripts): construction already passed automatic_body_yaw, but
@@ -741,6 +917,9 @@ class ReachyMiniController(RobotController):
             return True  # Already "asleep"
 
         try:
+            # The sleep fold moves the robot outside goto_target's stash —
+            # forget BEFORE dispatching (same rationale as wake_up).
+            self._forget_commanded()
             self._mini.goto_sleep()
             self._update_state(is_awake=False)
             logger.info("Reachy Mini asleep: %s", self._robot_name)

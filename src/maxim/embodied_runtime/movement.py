@@ -980,7 +980,27 @@ class MovementMixin:
         }
         if commanded_6d is not None:
             kwargs["_commanded_6d"] = commanded_6d
-        self._enqueue_motor(self.mini.look_at_image, sdk_u, sdk_v, **kwargs)
+
+        # F1 retained-axes fold: this raw look_at_image bypasses
+        # ReachyMiniController.look_at_pixel, so the controller's
+        # last-commanded head stash never sees the motion. Wrap the
+        # dispatch to invalidate the stash (duck-typed — SimulatedController
+        # has none) so the controller's next goto_target re-seeds the head
+        # axes from the readback instead of snapping back to a stale pose.
+        # Invalidate BEFORE dispatch (conservative direction: a spurious
+        # clear costs one readback seed; a missed clear leaves stale
+        # re-commands) and only when the head will actually move.
+        sdk_look_at = self.mini.look_at_image
+        invalidate = getattr(getattr(self, "_robot", None), "note_external_head_motion", None)
+        if perform_movement and invalidate is not None:
+
+            def _look_at_with_invalidate(*args: Any, **kw: Any) -> Any:
+                invalidate()
+                return sdk_look_at(*args, **kw)
+
+            self._enqueue_motor(_look_at_with_invalidate, sdk_u, sdk_v, **kwargs)
+        else:
+            self._enqueue_motor(sdk_look_at, sdk_u, sdk_v, **kwargs)
 
     def move(
         self,
@@ -1140,6 +1160,10 @@ class MovementMixin:
             # review fold): move_head's body-yaw read + compose + dispatch
             # runs under the same lock as the controller's goto_target.
             motion_lock=getattr(getattr(self, "_robot", None), "_motion_lock", None),
+            # F1 retained-axes fold: move_head moves the head outside the
+            # controller's last-commanded stash — thread the controller so
+            # move_head can invalidate its head axes after dispatch.
+            controller=getattr(self, "_robot", None),
             _commanded_6d=commanded_6d,
         )
 

@@ -103,6 +103,9 @@ def controller() -> tuple[ReachyMiniController, _FakeMini]:
     fake = _FakeMini()
     ctl._mini = fake
     ctl._motion_lock = threading.RLock()  # normally set by __init__ (2026-08-07 safety fold)
+    ctl._last_commanded = {}  # normally set by __init__ (F1 retained-axes fix, 2026-08-08)
+    ctl._automatic_body_yaw = False
+    ctl._divergence_last_warn = 0.0
     ctl.is_connected = lambda: True  # type: ignore[method-assign]
     ctl._update_state = lambda **kw: None  # type: ignore[method-assign]
     return ctl, fake
