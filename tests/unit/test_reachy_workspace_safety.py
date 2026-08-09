@@ -101,6 +101,7 @@ def _make_controller(body_yaw: float = 0.0, head_world_yaw: float = 0.0):
     fake = _FakeMini(body_yaw=body_yaw, head_world_yaw=head_world_yaw)
     ctl._mini = fake
     ctl._motion_lock = threading.RLock()
+    ctl._last_commanded = {}  # normally set by __init__ (F1 retained-axes fix, 2026-08-08)
     ctl.is_connected = lambda: True  # type: ignore[method-assign]
     ctl._update_state = lambda **kw: None  # type: ignore[method-assign]
     return ctl, fake
