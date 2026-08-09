@@ -299,11 +299,11 @@ maxim --delete-model llama-2-13b-chat        # free disk space
 maxim --sim "test memory recall"             # generative campaign (interactive)
 maxim --sim interactive                      # interactive chat (full generative sim stack)
 maxim --sim scenarios/campaigns/heist_v1.yaml  # DM campaign (human picks choices + free-text roleplay)
-maxim --sim "test safety" --persona adversarial --research  # with research report
+maxim --sim "test safety" --research                        # with research report
 maxim --sim benchmark --models mistral-7b,qwen2.5-14b      # benchmark
 maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml --seed 42  # fixture-driven (S1+S4)
 # In-sim commands: /cancel /pause /resume /status /report /display clean|bio|debug
-# /new <goal> /persona <name> — arrow keys scroll the log
+# /new <goal> — arrow keys scroll the log
 # DM campaigns: type choice number/name, or free-text to roleplay before choosing
 
 # Embodiment in sim (0.6+) — AUT gets SEM affordance tools + pain cascade
@@ -407,7 +407,7 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 | Reactions | `reactions/types.py` (Reaction, ReactionContext, TraceSnapshot), `reactions/bus.py` (ReactionBus), `reactions/protocols.py` (PerceptProducer, ReactionProducer) |
 | Cross-layer wiring | `integration/memory_hub.py` (single coordinator) |
 | Persistence | `utils/atomic_io.py`, `utils/paths.py` (data path resolution) |
-| Simulation | `simulation/orchestrator.py`, `simulation/bridge.py`, `simulation/fixture_orchestrator.py`, `simulation/personas.py` |
+| Simulation | `simulation/orchestrator.py`, `simulation/bridge.py`, `simulation/fixture_orchestrator.py` |
 | Substrate test infra | `models/language/backend_protocol.py` (S2), `utils/seeding.py` (S4), `tests/substrate/` (S2+S3+P1 metrics) |
 | Generative campaigns | `simulation/arcs.py` (NarrativePhase with `act` + `world_entities`, BUILTIN_ARCS, select_arc_for_goal), `simulation/narrator.py` (two-call decide+generate, phase instruction passthrough), `simulation/generative_runner.py` (per-phase entity activation, imagination fallback) |
 | DM campaigns | `simulation/dm_schema.py`, `simulation/dm_runtime.py` |

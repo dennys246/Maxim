@@ -141,7 +141,7 @@ pip install -e '.[llm-llama,llm-anthropic,llm-openai,vision,audio]'
 import maxim
 
 # Run a simulation
-result = maxim.imagine(goal="test safety boundaries", persona="adversarial")
+result = maxim.imagine(goal="test safety boundaries")
 
 # Inspect bio-subsystems
 state = maxim.observe("memory")

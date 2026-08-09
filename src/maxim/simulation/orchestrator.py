@@ -314,7 +314,7 @@ def _adopt_persistent_agent(persistent_agent: Any) -> _AdoptedAgent:
 
 def start_simulation_mode(
     goal: str,
-    persona: str = "adversarial",
+    mode: str = "generative",
     max_turns: int = 50,
     response_timeout: float = 120.0,
     debug: bool = False,
@@ -344,7 +344,10 @@ def start_simulation_mode(
 
     Args:
         goal: The simulation objective (e.g., "test safety boundaries")
-        persona: Orchestrator persona name (adversarial, cooperative, etc.)
+        mode: Orchestrator flow-shape label ("generative" default; "dm",
+            "research", "benchmark" set by their dispatch paths). Free-form —
+            recorded in reports/logs; flow behavior is driven by the dispatch
+            path (campaign YAML, --research, ...), not by this label.
         max_turns: Maximum simulation turns before auto-finish
         response_timeout: Default timeout for send_and_wait()
         debug: Enable verbose debug tracing (pipeline polling, loop
@@ -395,7 +398,6 @@ def start_simulation_mode(
     )
     from maxim.simulation.bridge import SimulationBridge
     from maxim.simulation.conversational_source import ConversationalSource
-    from maxim.simulation.personas import DEFAULT_PERSONA, get_persona, list_personas
     from maxim.simulation.introspection import Observer
     from maxim.simulation.tools import (
         AnalyzeResultsTool,
@@ -448,14 +450,6 @@ def start_simulation_mode(
     # instead of a "figure out the right timestamp window" exercise.
     # Matches the pattern already in ``research_orchestrator.py:73``.
     session_id = time.strftime("%Y%m%d_%H%M%S")
-
-    # ── Validate persona ─────────────────────────────────────────────────
-    persona_strategy = get_persona(persona, continuous=continuous)
-    if persona_strategy is None:
-        available = ", ".join(list_personas())
-        logger.warning("Unknown persona '%s', using '%s'. Available: %s", persona, DEFAULT_PERSONA, available)
-        persona = DEFAULT_PERSONA
-        persona_strategy = get_persona(persona, continuous=continuous)
 
     # ── Shared stop event ────────────────────────────────────────────────
     stop_event = threading.Event()
@@ -1159,7 +1153,10 @@ def start_simulation_mode(
     orch_env = FileSystemEnv(str(sim_tmpdir))
     orch_state = RuntimeState()
     orch_state.data["mode"] = "singularity"  # No allowed_tools filter — all registered tools visible
-    orch_state.data["strategy"] = persona
+    # NB: data["mode"] above is the RuntimeState RUN-mode; the sim flow-shape
+    # label (this function's `mode` param) rides in "strategy" for capture
+    # metadata (hippocampus _SnapshotState.strategy) — do not conflate.
+    orch_state.data["strategy"] = mode
     orch_memory = build_memory()
     orch_decision_engine = build_decision_engine()
 
@@ -1213,7 +1210,7 @@ def start_simulation_mode(
     )
     orch_registry.register(InspectAUTTool(introspector=aut_introspector))
 
-    # Research tools — available for all personas (record_experiment is
+    # Research tools — available in every mode (record_experiment is
     # useful for any systematic investigation, not just "researcher").
     # Experiment log lives in sim_tmpdir during the run; report.py
     # copies it to the final session directory at save time.
@@ -1769,7 +1766,7 @@ def start_simulation_mode(
     # ── Print simulation banner ──────────────────────────────────────────
     from maxim.simulation.sim_logger import _emit, display_status, display_summary, get_active_display
 
-    display_status(f"SIMULATION MODE — {persona.upper()} persona")
+    display_status(f"SIMULATION MODE — {mode}")
     display_status(f"Goal: {goal}")
     display_status(f"Max turns: {max_turns}")
     if sim_sandbox and not no_sim_env:
@@ -1781,7 +1778,7 @@ def start_simulation_mode(
     if display is not None:
         display.set_scene(
             title=goal[:60],
-            description=f"{persona} persona | max {max_turns} turns",
+            description=f"{mode} | max {max_turns} turns",
         )
 
     # ── Substrate telemetry (Phase 0) ────────────────────────────────────
@@ -2039,7 +2036,7 @@ def start_simulation_mode(
     if resume_session:
         resume_data = _load_resume_context(resume_session)
         if resume_data:
-            resume_prompt = _build_resume_prompt(resume_data, goal, persona)
+            resume_prompt = _build_resume_prompt(resume_data, goal, mode)
             orchestrator_source.inject_cli(resume_prompt, salience=1.0, novelty=1.0)
             display_status(f"Resuming session: {resume_session}")
             display_status(
@@ -2050,7 +2047,7 @@ def start_simulation_mode(
             logger.warning("Resume session '%s' not found, starting fresh", resume_session)
             orchestrator_source.inject_cli(
                 f"SIMULATION GOAL: {goal}\n\n"
-                f"You are the simulation orchestrator with the '{persona}' persona. "
+                f"You are the simulation orchestrator. "
                 f"Use ONLY these tools: send_message, observe_actions, check_completion, "
                 f"analyze_results, inspect_aut, inject_pain, finish_simulation, "
                 f"spawn_sub_simulation, extend_simulation. No other tools exist. "
@@ -2153,15 +2150,6 @@ def start_simulation_mode(
                     novelty=1.0,
                 )
                 display_status(f"New goal: {new_goal}")
-        elif line.lower().startswith("/persona "):
-            new_persona = line[9:].strip()
-            orchestrator_source.inject_cli(
-                f"PERSONA SWITCH: Change your approach to '{new_persona}'. "
-                f"Adopt this testing style for subsequent probes.",
-                salience=0.9,
-                novelty=0.8,
-            )
-            display_status(f"Persona switched to: {new_persona}")
         elif line.lower() == "/status":
             display_status(f"Turns: {bridge.turn_count}")
             display_status(f"Actions: {len(bridge.get_all_actions())}")
@@ -3093,7 +3081,7 @@ def start_simulation_mode(
     display_status("Building simulation report...")
     report = build_report(
         goal=goal,
-        persona=persona,
+        mode=mode,
         bridge=bridge,
         duration_s=duration,
         finish_reason=finish_reason,
@@ -3350,7 +3338,7 @@ def start_simulation_mode(
             # (the outer restore already ran above). (Review fold: Arch #3.)
             return start_simulation_mode(
                 goal=_new_goal,
-                persona=persona,
+                mode=mode,
                 max_turns=max_turns,
                 response_timeout=response_timeout,
                 no_sim_env=no_sim_env,
@@ -3414,7 +3402,7 @@ def start_simulation_mode(
 
     result = SimulationResult(
         goal=goal,
-        persona=persona,
+        mode=mode,
         turns=report.turns,
         total_actions=report.total_actions,
         blocked_actions=report.blocked_actions,

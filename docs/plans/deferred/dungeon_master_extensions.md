@@ -72,7 +72,7 @@ MVP tells us which extensions matter. Don't commit to a sequence upfront. After 
 **The character-creation flow uses the same shared `Character` schema** as MVP, so generated PCs and NPCs drop directly into campaign YAML without translation.
 
 **New files:**
-- Entry in `src/maxim/simulation/personas.py` for `adventure_architect`
+- ~~Entry in `src/maxim/simulation/personas.py` for `adventure_architect`~~ (personas.py DELETED in 1.1 — a revived version of this plan uses `--sim-mode` labels / goal text instead)
 - `src/maxim/simulation/tools_dm.py` — add `emit_campaign`, `browse_encounters`, `propose_draft`, `propose_character`, `propose_npc_from_description`
 - `src/maxim/simulation/character_templates.py` (~120) — class archetypes (warrior/spellcaster/rogue/diplomat) with attribute arrays, ability pools, starting inventory; NPC role templates (tavern_keeper, guard, merchant, noble, bandit) for architect-generated NPCs
 

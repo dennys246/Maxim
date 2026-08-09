@@ -103,7 +103,7 @@ class ChooseTool(Tool):
 
 
 # ---------------------------------------------------------------------------
-# Architect tools — used by adventure_architect persona
+# Architect tools — DM/architect flow tools (the adventure_architect persona label was removed in 1.1)
 # ---------------------------------------------------------------------------
 
 

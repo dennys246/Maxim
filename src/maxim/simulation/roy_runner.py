@@ -52,10 +52,11 @@ Iteration spec YAML (deliberately tiny)::
     # Per-arm overrides — substrate source + system_prompt slug.
     # ``substrate: from_priming`` resumes the priming curriculum's final
     # session id; ``substrate: blank`` starts fresh. ``system_prompt``
-    # maps to the orchestrator ``persona`` field on
-    # ``start_simulation_mode`` — "neutral" is the canonical no-injection
-    # value; arm B passes a registered persona slug ("adversarial",
-    # "cooperative", ...) to drive the prompt-injected baseline.
+    # maps to the orchestrator ``mode`` label on
+    # ``start_simulation_mode`` (the persona system was hard-removed in
+    # 1.1 — the slug is a report/log label only; it never injected a
+    # prompt, which is the fact the removal made honest). "neutral" is
+    # the canonical no-injection value.
     arms:
       a: { substrate: from_priming, system_prompt: neutral }
       b: { substrate: blank,        system_prompt: adversarial }
@@ -462,12 +463,12 @@ def _build_test_kwargs(
 ) -> dict[str, Any]:
     """Build the kwargs for one arm's test-scenario sim.
 
-    Same fixture for every arm; persona varies (system_prompt slug);
-    resume_session set only when ``arm.substrate == "from_priming"``.
+    Same fixture for every arm; the mode label varies (system_prompt
+    slug); resume_session set only when ``arm.substrate == "from_priming"``.
     """
     kwargs: dict[str, Any] = {
         "goal": f"roy:{spec.name}:arm_{arm.name}",
-        "persona": arm.system_prompt,
+        "mode": arm.system_prompt,
         "max_turns": spec.test_scenario.turns,
         "aut_mode": spec.aut_mode,
         "entity_ref": spec.embodiment,

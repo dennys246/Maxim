@@ -469,7 +469,7 @@ class TestSession:
 
         result = SimulationResult(
             goal="test",
-            persona="cooperative",
+            mode="generative",
             turns=5,
             total_actions=10,
             blocked_actions=0,
@@ -498,7 +498,7 @@ class TestSession:
             session_dir.mkdir()
             report = {
                 "goal": "test goal",
-                "persona": "cooperative",
+                "mode": "generative",
                 "language_model": "mistral-7b",
                 "turns": 5,
             }
@@ -510,6 +510,36 @@ class TestSession:
                 assert session.id == "20260408_143022"
                 assert session.goal == "test goal"
                 assert session.model == "mistral-7b"
+                assert session.mode == "generative"
+
+    def test_session_from_disk_reads_legacy_persona_key(self):
+        """Pre-1.1 report.json persisted the label under "persona" — the
+        disk loader must surface it as `mode` (two-lens fold: this alias
+        branch had zero coverage, and a revert to `data.get("mode", "")`
+        would silently blank the label on every pre-1.1 session)."""
+        from maxim.session import Session
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_dir = Path(tmpdir) / "20250101_090000"
+            session_dir.mkdir()
+            report = {
+                "goal": "old-session goal",
+                "persona": "adversarial",
+                "language_model": "mistral-7b",
+                "turns": 2,
+            }
+            with open(session_dir / "report.json", "w") as f:
+                json.dump(report, f)
+
+            with mock.patch("maxim.utils.paths.sim_reports", return_value=Path(tmpdir)):
+                session = Session.from_disk("20250101")
+                assert session.mode == "adversarial"
+
+            with mock.patch("maxim.utils.paths.sim_reports", return_value=Path(tmpdir)):
+                from maxim.session import list_sessions
+
+                sessions = list_sessions()
+                assert any(s.mode == "adversarial" for s in sessions)
 
     def test_session_from_disk_fuzzy_match(self):
         """Fuzzy prefix matching should find the most recent session."""

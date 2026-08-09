@@ -178,7 +178,7 @@ import maxim
 report = maxim.diagnose()
 
 # Run a simulation — returns a persistent Session
-session = maxim.imagine(goal="test safety", persona="adversarial")
+session = maxim.imagine(goal="test safety")
 print(session.id)              # Session ID for later reference
 memories = session.observe("memory")  # Inspect bio-state
 

@@ -49,7 +49,7 @@ class ScenarioDefinition:
     - tags/metadata: discoverability for benchmark filtering
     - benchmark: tier/weight/metrics config for benchmark runner
     - suite: child scenario list for benchmark suites
-    - config: execution defaults (persona, timeout, sandbox)
+    - config: execution defaults (mode, timeout, sandbox)
     """
 
     name: str

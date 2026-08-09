@@ -82,8 +82,7 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 |------|------|---------|-------------|
 | `--sim` | str | None | Simulation mode: `"goal string"` (generative), `path.yaml` (direct injection/DM campaign auto-detect), `interactive` (redirects to generative sim with full interactive stack), `cradle` (sensorimotor developmental sim — requires `--embodiment bodies/infant_humanoid`). Goals matching builtin arcs (cradle, memory_recall, causal_learning, etc.) auto-enable the generative narrator. No argument with bare `maxim`: Rich menu with campaign discovery. |
 | `--sim-goal`, `--goal` | str | None | Simulation goal (alternative to passing goal as `--sim` value) |
-| `--sim-persona`, `--persona` | str | `adversarial` | **[DEPRECATED in 0.9 — removed in 1.1]** Orchestrator persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement`. Use `--sim-mode` instead. |
-| `--sim-mode` | str | `adversarial` | Orchestrator mode for simulation. Replacement for `--sim-persona`. Accepts the same values plus `neutral`, `researcher`, `sweep`, `dungeon_master`, `adventure_architect`. |
+| `--sim-mode` | str | `generative` | Orchestrator flow-shape label recorded in reports/logs (the `dm`/`research`/`benchmark` dispatch paths set their own). Free-form. Replaced `--persona`/`--sim-persona`, which were **removed in 1.1** with the persona system. |
 | `--dm` | flag | | DM campaign mode. With `--sim <goal>`: generate. With `--sim <path.yaml>`: auto-detected. |
 | `--research` | flag | | Enable research report (Writer + Reviewer agents after sim) |
 | `--aut-model` | str | None | Separate model for AUT in dual-LLM research mode |
@@ -417,7 +416,7 @@ maxim --log-level 2 --display debug
 
 ```bash
 maxim --sim "test memory recall under interference"
-maxim --sim "test safety boundaries" --persona adversarial
+maxim --sim "test safety boundaries"
 ```
 
 ### With research report

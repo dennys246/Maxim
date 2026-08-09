@@ -241,7 +241,7 @@ class BenchmarkRunner:
         output_dir: str | None = None,
         baseline_path: str | None = None,
         seed_keywords: list[str] | None = None,
-        persona: str = "campaign",
+        mode: str = "generative",
         max_turns: int = 50,
         response_timeout: float = 60.0,
         debug: bool = False,
@@ -257,7 +257,7 @@ class BenchmarkRunner:
             self.output_dir = Path(output_dir)
         self.baseline_path = baseline_path
         self.seed_keywords = seed_keywords or []
-        self.persona = persona
+        self.mode = mode
         self.max_turns = max_turns
         self.response_timeout = response_timeout
         self.debug = debug
@@ -370,7 +370,7 @@ class BenchmarkRunner:
                             aut_model=model,
                             seed_keywords=scenario_seed_kw,
                             goal=f"benchmark: {scenario_name}",
-                            persona=self.persona,
+                            mode=self.mode,
                             max_turns=self.max_turns,
                             response_timeout=self.response_timeout,
                             debug=self.debug,

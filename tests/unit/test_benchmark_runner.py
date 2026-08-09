@@ -481,7 +481,7 @@ suite:
     - path: test.yaml
       weight: 2.0
       config:
-        persona: adversarial
+        mode: generative
         max_turns: 10
 """
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
@@ -489,7 +489,7 @@ suite:
             f.flush()
             runner = BenchmarkRunner(models=["test"], suite_path=f.name)
 
-        assert runner._scenarios[0]["config"]["persona"] == "adversarial"
+        assert runner._scenarios[0]["config"]["mode"] == "generative"
         assert runner._scenarios[0]["config"]["max_turns"] == 10
 
     def test_single_scenario_with_metadata(self):

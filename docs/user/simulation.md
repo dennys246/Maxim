@@ -63,10 +63,10 @@ The most powerful simulation mode. A second Maxim instance (the orchestrator) dr
 
 ```bash
 # With local model (slow — 10-30s per turn)
-maxim --sim "test safety boundaries" --persona adversarial
+maxim --sim "test safety boundaries"
 
 # With Claude (fast — sub-second turns, recommended)
-maxim --sim "test safety boundaries" --persona adversarial \
+maxim --sim "test safety boundaries" \
       --language-model claude-sonnet
 ```
 
@@ -76,24 +76,21 @@ The orchestrator gets its own tools that operate on the AUT through a `Simulatio
 
 **Decomposition tools:** `spawn_sub_simulation` (fresh AUT for isolated tests), `extend_simulation` (continue current AUT with new objective). These enable multi-phase campaigns where the orchestrator goes wide (spawn across categories) and deep (extend within findings).
 
-**Continuous mode:** `--continuous` flag suppresses auto-completion, letting the orchestrator test indefinitely until `/cancel`. Best with `--persona infinite`.
+**Continuous mode:** `--continuous` flag suppresses auto-completion, letting the orchestrator test indefinitely until `/cancel`.
 
 See [LLM Setup](llm-setup.md) for instructions on configuring Claude or OpenAI as the backend.
 
-### Personas
+### Modes
 
-| Persona | Focus |
-|---------|-------|
-| `adversarial` | Probe safety boundaries, escalate gradually |
-| `cooperative` | Friendly user testing conversational flow |
-| `confused` | Ambiguous/contradictory instructions |
-| `escalating` | Start polite, gradually become demanding |
-| `campaign` | Systematic multi-phase audit with compiled report |
-| `refinement` | Systematic performance measurement across all subsystems |
-| `researcher` | Hypothesis-driven experiments, only finishes with supported conclusion |
-| `sweep` | Parameter sweep to find boundaries, edge cases, and goldilocks zones |
-
-Any persona works with `--continuous` to never auto-complete. The `approach` parameter on `spawn_sub_simulation` lets sub-simulations use a different interaction style (e.g., researcher spawning adversarial sub-sims).
+The persona system was **removed in 1.1** (it was label-only — its prompt
+strings were never injected). `--sim-mode` is a free-form flow-shape label
+recorded in reports/logs (default `generative`; the DM / research /
+benchmark dispatch paths set `dm` / `research` / `benchmark` themselves).
+Testing styles are expressed through the goal string ("test that the agent
+handles adversarial users") — the orchestrator executes the goal honestly.
+The `approach` parameter on `spawn_sub_simulation` lets sub-simulations use
+a different interaction style (e.g., a research run spawning adversarial
+sub-sims).
 
 ### Simulated Environment (Pain Triggers)
 
@@ -118,7 +115,6 @@ Pain signals route through PainBus → hippocampus → NAc causal learning. Over
 | `/pause` | Pause orchestrator probing — talk to the agent freely |
 | `/resume` | Resume orchestrator probing after a pause |
 | `/new <goal>` | Switch to a different testing goal (keeps memory) |
-| `/persona <name>` | Switch orchestrator persona mid-simulation |
 | `/status` | Show turn count, action count, blocked actions |
 | `/report` | Request interim analysis from the orchestrator |
 | `/display clean` | Switch to narrative-only display (no bio traces) |
@@ -224,7 +220,7 @@ After a run, open `~/.maxim/sim_reports/{session_id}/report.json`. The key field
 |---|---|---|
 | `turns` | Number of orchestrator turns completed | 5–15 |
 | `total_actions` | Tool calls made by the AUT | 20–150 |
-| `blocked_actions` | Actions blocked by FearGatedExecutor | 0 for cooperative personas |
+| `blocked_actions` | Actions blocked by FearGatedExecutor | 0 for benign goals |
 | `aut_memories_formed` | Total episodic memory entries in the AUT's hippocampus at session end | 50–700 |
 | `aut_causal_links` | NAc causal links learned during the session | 10–300 |
 | `pain_events_count` | Pain signals fired through PainBus | 0 unless pain triggers hit |
@@ -490,7 +486,7 @@ Pass a goal string directly to `--sim` to run a generative campaign. A narrative
 
 ```bash
 maxim --sim "test memory recall under interference"
-maxim --sim "test safety boundaries" --persona adversarial
+maxim --sim "test safety boundaries"
 ```
 
 Interactive mode is ON by default for TTY sessions (since 0.4), enabling `request_interaction` so the agent can pause and ask for human input during the campaign. To disable:

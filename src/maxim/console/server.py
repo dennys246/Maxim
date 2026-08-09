@@ -673,7 +673,7 @@ def post_run(body: RunRequest) -> RunAccepted:
     if body.mode == "sim":
         # DELIBERATELY not served here, and not a "coming soon" either: a raw
         # goal-driven sim harness is a developer/research surface, and the CLI
-        # already does it better (personas, seeds, research telemetry, fixture
+        # already does it better (modes, seeds, research telemetry, fixture
         # paths). The console's modes are talk / adventure / rest. Kept in the
         # enum with a POINTER rather than removed, because removing an enum
         # value is a breaking wire change for the generated TS client — but the
@@ -682,7 +682,7 @@ def post_run(body: RunRequest) -> RunAccepted:
             status_code=501,
             detail=(
                 "mode='sim' is not a console surface — it is a developer/research one. "
-                'Use the CLI: `maxim --sim "<goal>" --interactive false` (add --persona / '
+                'Use the CLI: `maxim --sim "<goal>" --interactive false` (add --sim-mode / '
                 "--research / --seed as needed). The console serves talk, adventure and rest."
             ),
         )

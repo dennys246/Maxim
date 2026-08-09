@@ -64,7 +64,7 @@ From the CLI, `maxim --llm qwen2.5-14b-instruct` persists the same way.
 result = maxim.imagine(
     goal="test memory recall under interference",
     model="claude-sonnet",
-    persona="cooperative",
+    mode="generative",
 )
 print(result.finish_reason)
 

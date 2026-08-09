@@ -7,8 +7,8 @@ description: |
   This scenario should pass on a healthy build. If it regresses, inspect
   the actions.jsonl + hippocampus dump in data/sim_reports/ to diagnose.
 
-  Paired with the `refinement` persona (src/maxim/simulation/personas.py)
-  for LLM-driven variants; this YAML path is the deterministic guardrail.
+  This YAML path is the deterministic guardrail (the LLM-driven
+  'refinement persona' variant was removed with the persona system in 1.1).
 
 timing: step_based
 

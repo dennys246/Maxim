@@ -6,7 +6,7 @@ Verb-based functions that map directly to user intent:
 
     maxim.configure(verbosity=2)
     maxim.run(model="mistral-7b")
-    maxim.imagine(goal="test safety", persona="adversarial")
+    maxim.imagine(goal="test safety")
     maxim.connect("reachy_mini")
     maxim.diagnose()
     maxim.observe("memory")
@@ -569,7 +569,8 @@ def run(
 def imagine(
     goal: str = "general exploration",
     *,
-    persona: str = "cooperative",
+    mode: str = "generative",
+    persona: str | None = None,
     scenario: str | None = None,
     model: str = _API_DEFAULT_MODEL,
     sandbox: str = "tmpdir",
@@ -587,8 +588,10 @@ def imagine(
 
     Args:
         goal: What the orchestrator should test (e.g. ``"test safety"``).
-        persona: Orchestrator persona (``"adversarial"``, ``"cooperative"``,
-            ``"confused"``, ``"escalating"``, ``"researcher"``, etc.).
+        mode: Orchestrator flow-shape label recorded in reports/logs
+            (default ``"generative"``). Free-form.
+        persona: REMOVED in 1.1 (legacy alias for ``mode``) — accepted with
+            a ``DeprecationWarning`` through 1.x, dropped in 1.2.
         scenario: Path to YAML scenario file.  If provided, percepts are
             loaded from the file and injected directly. Relative paths
             resolve against the current working directory — pass an
@@ -608,6 +611,18 @@ def imagine(
         ``observe()``, and ``research()`` methods.
     """
     from maxim.session import Session
+
+    if persona is not None:
+        import warnings
+
+        warnings.warn(
+            "imagine(persona=...) was removed in 1.1 with the persona system; "
+            "the value is used as the mode label (overriding any mode= also "
+            "passed). Pass mode=... instead (this alias is dropped in 1.2).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        mode = persona
 
     model = _resolve_model(model)
     _validate_model(model)
@@ -644,7 +659,7 @@ def imagine(
     try:
         sim_result = start_simulation_mode(
             goal=goal,
-            persona=persona,
+            mode=mode,
             max_turns=max_turns,
             debug=verbosity >= 3,
             sandbox_backend=sandbox,
@@ -1195,7 +1210,7 @@ def campaign(
     try:
         sim_result = start_simulation_mode(
             goal=campaign_def.goal or f"Complete the {campaign_def.name} campaign",
-            persona="campaign",
+            mode="dm",
             dm_campaign=campaign_def,
         )
 
@@ -1821,60 +1836,23 @@ def register_persona(
     context_prompt: str = "",
     max_initiative: float = 0.5,
 ) -> None:
-    """Register a custom simulation persona.
+    """REMOVED in 1.1 — always raises ``RuntimeError``.
 
-    **Deprecated in 0.9 — removed in 1.1.** Stage 1 of
+    The persona system was hard-deleted per
     [docs/plans/deferred/persona_cleanup_and_mode_transition.md](../../docs/plans/deferred/persona_cleanup_and_mode_transition.md)
-    starts the deprecation cycle: ``DeprecationWarning`` in 0.9 / 1.0,
-    ``raise`` in 1.1. Orchestrator behaviour shaping is moving to
-    ``--sim-mode`` (a flow-shape selector) plus the bio-emergent
-    disposition mechanics tracked in
-    ``docs/plans/deferred/bio_emergent_persona_foundations.md``. Registered
-    personas currently flow through to reports and logs as a label; the
-    orchestrator does not inject the supplied ``context_prompt`` into the
-    agent prompt today (audit finding in the plan). Stage 5 of the
-    cleanup plan removes the unused field.
-
-    Custom personas are available for ``imagine()`` and ``campaign()``
-    via the ``persona`` parameter.
-
-    Args:
-        name: Persona name (used in ``persona="my_persona"``).
-        description: Short description of the persona's behavior.
-        focus: What the persona focuses on during simulation.
-        context_prompt: System prompt injected into the orchestrator.
-        max_initiative: How proactive the persona is (0-1).
-
-    Example::
-
-        maxim.register_persona(
-            name="medical_tester",
-            description="Tests medical knowledge boundaries",
-            focus="Healthcare decision-making and drug interactions",
-            context_prompt="You are testing a medical AI...",
-            max_initiative=0.8,
-        )
-        maxim.imagine(goal="test", persona="medical_tester")
+    (deprecated in 0.9 with the promise "raises in 1.1" — this is that
+    promise kept; the symbol survives one cycle so old code fails loudly
+    with a pointer instead of an ``AttributeError``). Registered personas
+    never shaped orchestrator behavior — the ``context_prompt`` was never
+    injected (audit finding in the plan). Use ``imagine(mode=...)`` for
+    the report/log label; behavioral disposition is bio-emergent
+    (``docs/plans/deferred/bio_emergent_persona_foundations.md``).
     """
-    import warnings
-
-    warnings.warn(
-        "maxim.register_persona() is deprecated and will be removed in 1.1. "
-        "The persona system is being replaced by --sim-mode (orchestrator "
-        "flow-shape) plus bio-emergent disposition mechanics. "
-        "See docs/plans/deferred/persona_cleanup_and_mode_transition.md.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-
-    from maxim.simulation.personas import SIMULATION_PERSONAS, Persona
-
-    SIMULATION_PERSONAS[name.lower()] = Persona(
-        name=name,
-        description=description,
-        focus=focus,
-        context_prompt=context_prompt,
-        max_initiative=max_initiative,
+    raise RuntimeError(
+        "maxim.register_persona() was removed in 1.1 — the persona system was "
+        "hard-deleted (its context_prompt was never injected; the registry was "
+        "label-only). Use imagine(mode=...) for the report label. See "
+        "docs/plans/deferred/persona_cleanup_and_mode_transition.md."
     )
 
 

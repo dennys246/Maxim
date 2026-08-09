@@ -468,7 +468,7 @@ class TestRunLifecycleEvents:
 
         result = SimulationResult(
             goal="g",
-            persona="p",
+            mode="m",
             turns=1,
             total_actions=1,
             blocked_actions=0,
@@ -505,7 +505,7 @@ class TestRunLifecycleEvents:
         from maxim.console.server import _event_hub, _run_campaign_thread
         from maxim.simulation.sim_types import SimulationResult
 
-        result = SimulationResult(goal="g", persona="p", turns=0, total_actions=0, blocked_actions=0, duration_s=0.0)
+        result = SimulationResult(goal="g", mode="m", turns=0, total_actions=0, blocked_actions=0, duration_s=0.0)
 
         class FakeHandle:
             def play_campaign(self, path):

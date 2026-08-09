@@ -191,7 +191,7 @@ def _make_fake_sim_runner(
 
         return SimulationResult(
             goal=goal,
-            persona=kwargs.get("persona", ""),
+            mode=kwargs.get("mode", ""),
             turns=int(kwargs.get("max_turns", 0)),
             total_actions=growth_per_call,
             blocked_actions=0,
@@ -324,6 +324,18 @@ class TestRoyEndToEnd:
         # All three session_ids are distinct.
         ids = {result.arms[k].session_id for k in ("a", "b", "c")}
         assert len(ids) == 3, f"expected distinct session_ids, got {ids}"
+
+        # Two-lens fold (2026-08-09): the arm kwargs must carry the RENAMED
+        # `mode` key and never the removed `persona` key. The fake runner
+        # accepts **kwargs, so without this assertion a production
+        # `"persona": ...` kwarg (TypeError against the real
+        # start_simulation_mode) sails through the fake invisibly — the
+        # exact masking that hid the roy_runner persona= regression.
+        arm_calls = [c for c in runner.call_log if str(c["kwargs"].get("goal", "")).startswith("roy:")]  # type: ignore[attr-defined]
+        assert len(arm_calls) == 3
+        for call in arm_calls:
+            assert "persona" not in call["kwargs"], "removed kwarg leaked back into arm dispatch"
+            assert call["kwargs"]["mode"], "arm dispatch must label the sim via mode="
 
         # Arm A resumed from priming; B and C did not.
         assert result.arms["a"].resumed_from == result.priming["final_session_id"]

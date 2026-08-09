@@ -17,7 +17,7 @@ Curriculum YAML schema (deliberately tiny)::
     name: roy-0-smoke
     embodiment: bodies/infant_humanoid     # default for all stages
     aut_mode: substrate-primary            # default; "llm-primary" also OK
-    persona: neutral                       # default
+    mode: generative                       # default ("persona:" accepted as legacy alias)
     stages:
       - name: act1_warmup
         fixture: scenarios/cradle/warmup.yaml   # OR
@@ -28,7 +28,7 @@ Curriculum YAML schema (deliberately tiny)::
         arc: cradle_prelinguistic
         turns: 200
 
-Top-level ``embodiment`` / ``aut_mode`` / ``persona`` apply to every
+Top-level ``embodiment`` / ``aut_mode`` / ``mode`` apply to every
 stage unless the stage overrides them. Each stage picks exactly one of
 ``fixture`` / ``arc`` / ``goal``; passing more than one is rejected.
 
@@ -111,7 +111,7 @@ class _StageSpec:
     turns: int
     embodiment: str | None
     aut_mode: str
-    persona: str
+    mode: str
 
 
 @dataclass
@@ -122,7 +122,7 @@ class _CurriculumSpec:
 
 
 _DEFAULT_AUT_MODE = "llm-primary"
-_DEFAULT_PERSONA = "neutral"
+_DEFAULT_MODE = "generative"
 _VALID_AUT_MODES = ("llm-primary", "substrate-primary")
 
 
@@ -160,9 +160,11 @@ def _parse_spec(spec_path: Path) -> _CurriculumSpec:
     if top_aut_mode not in _VALID_AUT_MODES:
         raise ValueError(f"Top-level 'aut_mode' must be one of {_VALID_AUT_MODES!r}, got {top_aut_mode!r}")
 
-    top_persona = raw.get("persona", _DEFAULT_PERSONA)
-    if not isinstance(top_persona, str) or not top_persona.strip():
-        raise ValueError("Top-level 'persona' must be a non-empty string")
+    # "mode" is the 1.1 name; "persona" is accepted as a legacy alias for
+    # pre-1.1 curriculum YAMLs (Roy harness specs) — mode wins when both set.
+    top_mode = raw.get("mode", raw.get("persona", _DEFAULT_MODE))
+    if not isinstance(top_mode, str) or not top_mode.strip():
+        raise ValueError("Top-level 'mode' must be a non-empty string")
 
     spec_dir = spec_path.parent
     seen_names: set[str] = set()
@@ -210,9 +212,9 @@ def _parse_spec(spec_path: Path) -> _CurriculumSpec:
         if stage_aut_mode not in _VALID_AUT_MODES:
             raise ValueError(f"Stage {sname!r} 'aut_mode' must be one of {_VALID_AUT_MODES!r}, got {stage_aut_mode!r}")
 
-        stage_persona = stage_raw.get("persona", top_persona)
-        if not isinstance(stage_persona, str) or not stage_persona.strip():
-            raise ValueError(f"Stage {sname!r} 'persona' must be a non-empty string")
+        stage_mode = stage_raw.get("mode", stage_raw.get("persona", top_mode))
+        if not isinstance(stage_mode, str) or not stage_mode.strip():
+            raise ValueError(f"Stage {sname!r} 'mode' must be a non-empty string")
 
         stages.append(
             _StageSpec(
@@ -222,7 +224,7 @@ def _parse_spec(spec_path: Path) -> _CurriculumSpec:
                 turns=turns_raw,
                 embodiment=stage_embodiment,
                 aut_mode=stage_aut_mode,
-                persona=stage_persona,
+                mode=stage_mode,
             )
         )
 
@@ -243,7 +245,7 @@ def _build_stage_kwargs(stage: _StageSpec, prev_session_id: str | None) -> dict[
     campaign runner. ``goal`` stages pass the goal verbatim.
     """
     kwargs: dict[str, Any] = {
-        "persona": stage.persona,
+        "mode": stage.mode,
         "max_turns": stage.turns,
         "aut_mode": stage.aut_mode,
         "entity_ref": stage.embodiment,

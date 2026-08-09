@@ -309,59 +309,58 @@ class TestToolRegistration:
 # ---------------------------------------------------------------------------
 
 
-class TestPersonaRegistration:
-    def test_register_custom_persona(self):
+class TestImaginePersonaAlias:
+    def test_persona_kwarg_warns_and_maps_to_mode(self, monkeypatch):
+        """imagine(persona=...) is a 1.1 deprecation alias: it must warn AND
+        map the value onto mode= (warn-and-ignore would silently relabel
+        old callers' sessions "generative"). Dropped in 1.2."""
         import warnings
 
-        from maxim.api import register_persona
-        from maxim.simulation.personas import SIMULATION_PERSONAS
+        import maxim.api as api_mod
 
-        # Stage 1 of persona_cleanup_and_mode_transition.md emits a
-        # DeprecationWarning here. The verb itself still works through
-        # 1.0; suppress the warning so this side of the test stays focused
-        # on registration behaviour.
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            register_persona(
-                name="test_api_persona",
-                description="Test persona from API",
-                focus="Testing",
-                context_prompt="You are a test persona.",
-                max_initiative=0.7,
-            )
+        captured: dict = {}
 
-        assert "test_api_persona" in SIMULATION_PERSONAS
-        p = SIMULATION_PERSONAS["test_api_persona"]
-        assert p.description == "Test persona from API"
-        assert p.max_initiative == 0.7
+        def fake_start(**kwargs):
+            captured.update(kwargs)
+            raise RuntimeError("stop before running a real sim")
 
-        # Cleanup
-        SIMULATION_PERSONAS.pop("test_api_persona", None)
+        import maxim.simulation.orchestrator as orch_mod
 
-    def test_register_persona_emits_deprecation_warning(self):
-        """Stage 1: register_persona() must emit DeprecationWarning. Removed in 1.1."""
-        import warnings
-
-        from maxim.api import register_persona
-        from maxim.simulation.personas import SIMULATION_PERSONAS
+        monkeypatch.setattr(orch_mod, "start_simulation_mode", fake_start)
+        monkeypatch.setattr(api_mod, "_validate_model", lambda m: None)
+        monkeypatch.setattr(api_mod, "configure", lambda **kw: None)
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always", DeprecationWarning)
-            register_persona(name="test_deprecation_persona")
-
-        SIMULATION_PERSONAS.pop("test_deprecation_persona", None)
+            try:
+                api_mod.imagine(goal="g", persona="adversarial")
+            except RuntimeError:
+                pass
 
         dep = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-        assert len(dep) == 1, f"expected 1 DeprecationWarning, got {len(dep)}"
-        msg = str(dep[0].message)
-        assert "register_persona" in msg
-        assert "1.1" in msg
-        assert "--sim-mode" in msg
+        assert any("persona" in str(w.message) for w in dep), "alias must warn"
+        assert captured.get("mode") == "adversarial", "alias value must map onto mode="
+        assert "persona" not in captured, "removed kwarg must not reach the orchestrator"
 
 
-# ---------------------------------------------------------------------------
-# observe() — session-linked (verify existing behavior)
-# ---------------------------------------------------------------------------
+class TestPersonaRegistration:
+    def test_register_persona_raises_removed_error(self):
+        """1.1 keeps the deprecation promise: register_persona() raises with a
+        pointer (symbol survives one cycle so old code fails loudly, not
+        with an AttributeError)."""
+        import pytest as _pytest
+
+        from maxim.api import register_persona
+
+        with _pytest.raises(RuntimeError, match="removed in 1.1"):
+            register_persona(name="test_api_persona")
+
+    def test_persona_module_is_gone(self):
+        """personas.py was hard-deleted (Option A) — the import must fail."""
+        import pytest as _pytest
+
+        with _pytest.raises(ModuleNotFoundError):
+            import maxim.simulation.personas  # noqa: F401
 
 
 class TestObserve:

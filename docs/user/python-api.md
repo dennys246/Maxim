@@ -21,7 +21,7 @@ import maxim
 report = maxim.diagnose()
 
 # Run a simulation — returns a persistent Session
-session = maxim.imagine(goal="test memory recall", persona="cooperative")
+session = maxim.imagine(goal="test memory recall")
 print(session.id)        # "20260408_143022"
 print(session.turns)     # 12
 
@@ -42,7 +42,7 @@ Top-level functions for common operations. All heavy imports are deferred.
 |------|---------|---------|
 | `configure(verbosity, log_file, debug, show)` | Set logging + tracing | None |
 | `run(model, goal, headless, learning)` | Run the agentic cycle | None (blocks) |
-| `imagine(goal, persona, scenario, model, resume)` | Run a simulation | `Session` |
+| `imagine(goal, mode, scenario, model, resume)` | Run a simulation | `Session` |
 | `connect(robot_type, name, config)` | Connect to a robot | `RobotController` |
 | `diagnose(peer, api_key)` | Environment diagnostics | `DiagnosticReport` |
 | `observe(subsystem, keyword, limit)` | Query cognitive state | `dict` |
@@ -65,7 +65,7 @@ Top-level functions for common operations. All heavy imports are deferred.
 |------|---------|---------|
 | `on(event, callback)` | Subscribe to agent events | `EventHandle` |
 | `register_tool(tool)` | Add a custom tool | None |
-| `register_persona(name, ...)` | Add a simulation persona | None |
+| `register_persona(name, ...)` | ⛔ REMOVED in 1.1 — raises `RuntimeError` (symbol dropped in 1.2) | raises |
 | `@tool` | Decorator to register a function as a tool | decorated function |
 
 #### Custom Tools

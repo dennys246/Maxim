@@ -26,7 +26,9 @@ class SimulationReport:
     session_id: str = ""
     timestamp: str = ""
     goal: str = ""
-    persona: str = ""
+    # Orchestrator flow-shape label. Renamed from `persona` in 1.1 (persona
+    # hard-remove); pre-1.1 report.json files carry the legacy "persona" key.
+    mode: str = ""
     language_model: str = ""
     language_provider: str = (
         ""  # provider key (lane label, e.g. "lane-large", "anthropic"); first-tier coarse routing signal
@@ -130,7 +132,7 @@ def _count_tokens(text: str, llm_router: Any | None) -> int:
 def build_report(
     *,
     goal: str,
-    persona: str,
+    mode: str,
     bridge: Any,
     duration_s: float,
     finish_reason: str,
@@ -309,7 +311,7 @@ def build_report(
         session_id=session_id,
         timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
         goal=goal,
-        persona=persona,
+        mode=mode,
         language_model=language_model,
         language_provider=language_provider,
         language_backend_class=language_backend_class,
@@ -616,7 +618,7 @@ def _build_roundup_prompt(report: SimulationReport) -> str:
     )
     lines = [
         f"# Simulation Report — {report.goal}",
-        f"Persona: {report.persona}",
+        f"Mode: {report.mode}",
         f"Model: {model_disp}",
         f"Duration: {report.duration_s}s, Turns: {report.turns}",
         f"Finish reason: {report.finish_reason}",
@@ -681,7 +683,7 @@ def print_report(report: SimulationReport, *, session_dir: Path | str | None = N
     lines = [
         f"SIMULATION REPORT — {report.session_id}",
         f"  Goal: {report.goal}",
-        f"  Persona: {report.persona}",
+        f"  Mode: {report.mode}",
         f"  Model: {model_disp}",
         f"  Duration: {report.duration_s}s | Turns: {report.turns}",
         f"  Finish: {report.finish_reason}",
