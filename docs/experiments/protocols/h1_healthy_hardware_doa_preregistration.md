@@ -164,7 +164,7 @@ Fold-model fit (az = g*fold(psi − psi0)) on medians:
 
 ## Two unplanned findings (post-hoc — each spawns follow-up work, neither is promoted to a claim)
 
-**F1 — retained-axes ratchet (controller behavior, reproducible).** `goto_target` fills unspecified axes from the CURRENT POSE READBACK ("don't recenter the others", pre-#472 behavior). Under any achieved-vs-commanded bias this is positive feedback: ~20 yaw-only probe commands ratcheted roll +~1.3°/command up to +38° (pitch drifted too), invisibly contaminating the first envelope measurements. The orient scripts dodge it by pinning the full head matrix each command; the #472 ±40° roll clamp bounds it. **Fix direction (own PR): retain the last COMMANDED value, not the readback.** The first envelope numbers (right side "~22° at 65° cmd") are RETRACTED as roll-contaminated; envelope re-measurement pends recalibration.
+**F1 — retained-axes ratchet (controller behavior, reproducible).** `goto_target` fills unspecified axes from the CURRENT POSE READBACK ("don't recenter the others", pre-#472 behavior). Under any achieved-vs-commanded bias this is positive feedback: ~20 yaw-only probe commands ratcheted roll +~1.3°/command up to +38° (pitch drifted too), invisibly contaminating the first envelope measurements. The orient scripts dodge it by pinning the full head matrix each command; the #472 ±40° roll clamp bounds it. **Fix direction (own PR): retain the last COMMANDED value, not the readback.** The first envelope numbers (right side "~22° at 65° cmd") are RETRACTED as roll-contaminated; envelope re-measurement pends recalibration. *(Fix LANDED 2026-08-09 — see the status ledger row below for the mechanism + regression guard.)*
 
 **F2 — motor-zero miscalibration on the repaired platform (the session's operative discovery).** Six consecutive explicit all-zero commands plateau at **yaw +6.2°, roll +18.2°, pitch +9.2°** (stable to ±0.2°); the daemon's OWN state agrees exactly (roll 0.3197 rad — [data/h1_daemon_state_precal.json](../data/h1_daemon_state_precal.json)), ruling out any Maxim-side readback error. The platform has a fixed attractor that is not the commanded zero — consistent with the replacement motors 2+3 having been reflashed from MOTOR-1's config (zero-offsets are per-motor calibration; copying skips it). Constant offsets shift curves but not slopes, so Part A/B conclusions stand (and the fitted psi0 ≈ −0.13 rad ≈ −7° now has a candidate cause: this attractor's yaw component). **Operator action: per-motor zero calibration for motors 2+3, then re-verify zero, then envelope + Part C.**
 
@@ -272,7 +272,7 @@ separate inputs and scramble tool selection.
 | Part B | PASS — top branch; CONTESTED resolved; H2 does not fire |
 | Neck envelope | **~±50° delivered / 65° command ceiling** — conflict resolved |
 | Part C | Normal arms MEASURED (n=37); _big n=1/side, follow-up block queued |
-| F1 retained-axes ratchet | Fix queued (own PR: retain last COMMANDED) |
+| F1 retained-axes ratchet | **FIXED** (2026-08-09, `fix/goto-target-retained-axes-ratchet`): `goto_target` retains the last COMMANDED value per axis; readback seeds once; raw movers invalidate via `note_external_head_motion()`. Guard: [tests/unit/test_reachy_retained_axes.py](../../../tests/unit/test_reachy_retained_axes.py) (fails on the pre-fix controller) |
 | F2 motor-zero miscalibration | FIXED by per-motor recalibration, verified |
 | Exp 45 graduation row | **UN-STALED** (see row for the _big caveat) |
 | Exp 50 amendment | FILLED (g_H=0.578, envelope ±50°, boundary unchanged) |

@@ -177,7 +177,7 @@ def _current_body_yaw_deg(mini) -> float:
     return 0.0
 
 
-def move_head(mini, x, y, z, roll, pitch, yaw, duration, *, motion_lock=None):
+def move_head(mini, x, y, z, roll, pitch, yaw, duration, *, motion_lock=None, controller=None):
     """Dispatch a head pose to the SDK. ``yaw`` is BODY-RELATIVE degrees.
 
     FRAME (2026-08-07 safety fold — this was the reincarnation of the
@@ -220,6 +220,16 @@ def move_head(mini, x, y, z, roll, pitch, yaw, duration, *, motion_lock=None):
         y_w = float(x) * math.sin(b) + float(y) * math.cos(b)
         pose = head_pose_matrix(x_w, y_w, z, roll, pitch, yaw + body_yaw_deg)
         mini.goto_target(head=pose, duration=duration, body_yaw=None)
+        # F1 retained-axes fold (2026-08-09): this raw dispatch moves the
+        # head outside ReachyMiniController's last-commanded stash. When
+        # the caller shares a robot with a controller (Selfy threads it,
+        # same as motion_lock above), tell the controller so its next
+        # goto_target re-seeds the head axes from the readback instead of
+        # snapping the head back to a stale stashed pose. Duck-typed so
+        # this module stays SDK-level (SimulatedController has no stash).
+        hook = getattr(controller, "note_external_head_motion", None)
+        if hook is not None:
+            hook()
 
 
 def move_antenna(

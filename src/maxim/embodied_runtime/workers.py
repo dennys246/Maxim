@@ -151,7 +151,7 @@ def motor_worker(
                                 maxim.log.info("Moving to center from synced position")
                                 from maxim.motion.movement import move_head
 
-                                move_head(maxim.mini, 0, 0, 0, 0, 0, 0, 0.5)
+                                move_head(maxim.mini, 0, 0, 0, 0, 0, 0, 0.5, controller=getattr(maxim, "_robot", None))
                                 maxim.yaw = 0.0
                                 maxim.pitch = 0.0
                                 ik_failure_count = 0
@@ -162,7 +162,7 @@ def motor_worker(
                             maxim.pitch = 0.0
                             from maxim.motion.movement import move_head
 
-                            move_head(maxim.mini, 0, 0, 0, 0, 0, 0, 0.5)
+                            move_head(maxim.mini, 0, 0, 0, 0, 0, 0, 0.5, controller=getattr(maxim, "_robot", None))
                             ik_failure_count = 0
 
                         last_ik_reset_time = now

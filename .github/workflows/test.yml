@@ -616,13 +616,19 @@ jobs:
           # motion/movement.py (move_head: frame composition + rotation
           # clamps; move_antenna). One additional reference is allow-listed:
           # embodied_runtime/movement.py's _enqueue_sdk_look_at (the SDK's
-          # own IK-managed look_at path). A new hand-rolled raw dispatch is
+          # own IK-managed look_at path) — since the 2026-08-09 F1
+          # retained-axes fold that site binds the SDK fn to a local
+          # (sdk_look_at = self.mini.look_at_image) so a wrapper can
+          # invalidate the controller's last-commanded stash around the
+          # dispatch; both the old direct-enqueue shape and the new binding
+          # shape are allow-listed. A new hand-rolled raw dispatch is
           # the motor-destruction failure class (motors 2+3, hardware note
           # in docs/plans/roadmap_1_1_to_1_3.md).
           RAW_SDK_MOTION=$(grep -rnE --include="*.py" "mini\.(goto_target|set_target|look_at_image)" src/maxim/ \
             | grep -v "^src/maxim/hardware/reachy/controller\.py:" \
             | grep -v "^src/maxim/motion/movement\.py:" \
             | grep -vE "^src/maxim/embodied_runtime/movement\.py:[0-9]+: *self\._enqueue_motor\(self\.mini\.look_at_image" \
+            | grep -vE "^src/maxim/embodied_runtime/movement\.py:[0-9]+: *sdk_look_at = self\.mini\.look_at_image" \
             | grep -vE "^[^:]+:[0-9]+: *#" \
             || true)
           if [ -n "$RAW_SDK_MOTION" ]; then
