@@ -1,0 +1,39 @@
+component:
+  name: green_flame_b
+  # HARM variant (arms.thermal 0.6 > band 0.5 → thermal_contact pain) — Exp 44
+  # COUNTERBALANCE pair (cradle_pref_neutral_b): green is HARMFUL here, purple is
+  # safe (swapped vs cradle_pref_neutral). The `_b` suffix is a meaningless harness
+  # id — it does NOT leak safety. Same color words as arm A so the run controls for
+  # a raw "the LLM likes green" bias: if the substrate (which flags purple_flame_b
+  # as rewarding here) steers the LLM toward PURPLE, the effect is reward-driven,
+  # not color-driven. Identity lives ONLY in the arms.thermal delta the LLM can't see.
+  category: items
+  tags: [cradle, thermal, flame, exp44]
+  synonyms: [green flame, emerald fire]
+  description: |
+    A warmth source burning with a steady green flame. Moving close relieves the
+    body's `cold` drive. (Exp 44 counterbalance variant — see the maintainer
+    comment above for which twin this is.)
+
+entity:
+  name: green_flame_b
+  entity_type: item
+  modulators:
+    glow:
+      abstract: true  # capability-only — no sensors (C4)
+      affordances:
+        observe:
+          params: {}
+          description: "Look at the flame from a distance"
+        warm_self:
+          params: {}
+          description: "Move close to feel the flame's warmth"
+          self_effect:
+            cold: -0.3
+            arms.thermal: 0.6
+        touch:
+          params: {}
+          description: "Reach toward the flame"
+          self_effect:
+            cold: -0.3
+            arms.thermal: 0.6

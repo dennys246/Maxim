@@ -605,6 +605,32 @@ BUILTIN_ARCS["cradle_pref_b"] = _make_builtin(
     "(harm swapped vs arm A). Predict the substrate learns to prefer ALPHA.",
     _make_pref_phases("items/warmth_alpha_safe", "items/warmth_beta_harm"),
 )
+# Exp 44 NEUTRAL-NAME variant (exp44_substrate_counterfactual_harness.md): same
+# harm/safe mechanics as cradle_pref_a (purple = harmful, green = safe) but the
+# affordance NAMES do not leak the answer — `purple_flame` / `green_flame` are
+# indistinguishable to an LLM-primary AUT except through felt experience. This is
+# the vehicle for the substrate-counterfactual: a substrate-primary run learns
+# the preference (green > purple), then an llm-primary resume run tests whether
+# that learned bias sways the LLM WITHOUT the tool name giving away safety.
+# Counterbalance twin swaps colors so a fixed color/position bias can't fake it.
+BUILTIN_ARCS["cradle_pref_neutral"] = _make_builtin(
+    "cradle_pref_neutral",
+    "Exp 44 neutral-name preference: purple_flame harmful, green_flame safe, but "
+    "NAMES don't leak safety. Predict the substrate learns to prefer green.",
+    _make_pref_phases("items/purple_flame", "items/green_flame"),
+)
+# COUNTERBALANCE (Exp 44 arm B): green=harm, purple=safe — swapped vs
+# cradle_pref_neutral, under the meaningless `_b` suffix (does NOT leak safety).
+# Controls for a raw "the LLM likes green" bias: arm A showed the substrate steering
+# toward green (the safe source there); if that were color bias it would persist
+# here, but if it's reward-driven the substrate (flagging purple_flame_b as
+# rewarding) should steer the LLM toward PURPLE. Same run recipe as arm A.
+BUILTIN_ARCS["cradle_pref_neutral_b"] = _make_builtin(
+    "cradle_pref_neutral_b",
+    "Exp 44 counterbalance: green_flame_b harmful, purple_flame_b safe (swapped vs "
+    "cradle_pref_neutral). Predict the substrate learns to prefer purple.",
+    _make_pref_phases("items/green_flame_b", "items/purple_flame_b"),
+)
 
 
 # ---------------------------------------------------------------------------

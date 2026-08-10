@@ -1,0 +1,39 @@
+component:
+  name: green_flame
+  # SAFE variant (arms.thermal 0.05, no breach) — Exp 44 neutral-name pair.
+  # The safe/harm identity lives ONLY in the arms.thermal delta below, which the
+  # LLM never sees. Name, tags, synonyms, description, and affordance text are
+  # deliberately IDENTICAL to purple_flame except the color word, so an
+  # LLM-primary AUT cannot read the answer off its tool list — the preference is
+  # discoverable only through felt experience (the substrate). See
+  # docs/plans/exp44_substrate_counterfactual_harness.md.
+  category: items
+  tags: [cradle, thermal, flame, exp44]
+  synonyms: [green flame, emerald fire]
+  description: |
+    A warmth source burning with a steady green flame. Moving close relieves the
+    body's `cold` drive. (Neutral-name Exp 44 variant of the Exp 42 preference
+    pair — see the maintainer comment above for which twin this is.)
+
+entity:
+  name: green_flame
+  entity_type: item
+  modulators:
+    glow:
+      abstract: true  # capability-only — no sensors (C4)
+      affordances:
+        observe:
+          params: {}
+          description: "Look at the flame from a distance"
+        warm_self:
+          params: {}
+          description: "Move close to feel the flame's warmth"
+          self_effect:
+            cold: -0.3
+            arms.thermal: 0.05
+        touch:
+          params: {}
+          description: "Reach toward the flame"
+          self_effect:
+            cold: -0.3
+            arms.thermal: 0.05
