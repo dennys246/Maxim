@@ -15,9 +15,13 @@ confirmatory half the program has been missing.
 
 - **H1 (primary):** Adding the learned-substrate annotation to an otherwise byte-identical
   prompt shifts the LLM's flipped decisions toward the experientially-safe source.
-  Prediction: per-seed net safety direction is positive in a majority of seeds;
-  **two-sided exact sign test across seeds, α = 0.05**, pooled over the counterbalanced
-  pair (arms A + B). This is the ONLY confirmatory test; everything else is descriptive.
+  Prediction: per-run net safety direction is positive in a majority of runs;
+  **two-sided exact sign test, α = 0.05. The unit of analysis is the (arm × seed) run —
+  n = 20 units (10 seeds × 2 counterbalanced arms), each contributing one NET sign;
+  zero-NET units are dropped (standard sign-test ties handling).** Arms are NOT summed
+  into 10 per-seed units — the two readings differ (a color bias cancels within-unit
+  under summing but across-units here), so the unit is pinned explicitly (review fold).
+  This is the ONLY confirmatory test; everything else is descriptive.
 - **H2 (secondary, descriptive):** The commitment axis (observe→warm_self) shows the same
   sign. No α claimed.
 - **H3 (control expectation):** The wrong-content transplant arm (A's green-rewarding
@@ -27,7 +31,19 @@ confirmatory half the program has been missing.
 - **Intrinsic-color baseline:** ablated-side P(safe-colored) per arm quantifies the
   residual color preference the pilot saw (arm B 2 harm-ward vs arm A 0).
 
-## Design (identical to Exp 44; only N and the frozen test change)
+## Design (Exp 44's design at power, with four declared deltas)
+
+Declared deltas from the exploratory Exp 44 runs (each a validity improvement, none
+data-dependent): (1) capture runs use `seed + 1000` — decorrelates capture-world noise
+from the learn pass; the counterfactual compares within-capture so comparability is
+unaffected; (2) capture `max_turns` 40; (3) **arm B's arc introduces the SAFE source
+first** (arm A introduces harm first) — position is now counterbalanced across arms,
+mirroring the Exp 42 pair's structure; without this, a "safe is always second"
+positional preference could mimic content-following in both arms (review fold);
+(4) the campaign runner scrubs all experiment env toggles and pins each stage's env
+explicitly, so the full-vs-ablated delta is the cluster-bias annotation alone
+(`MAXIM_ENABLE_BODY_STATE_PROMPT` stays OFF; one leaked toggle could otherwise fake a
+confirmatory null).
 
 Counterbalanced pair `cradle_pref_neutral` (green=safe) / `cradle_pref_neutral_b`
 (purple=safe), leak-free names. Per (arm × seed): substrate-primary LEARN (gate:
@@ -60,12 +76,31 @@ correction applies across models.
 | Decay tau | 1000 |
 | Requery decoding | temp 0.0, both variants, same backend |
 
-**Transplant-control validity gate (decided pre-analysis):** the control is only
-interpretable if the transplanted substrate actually surfaces — ≥50% of the control arm's
-captured full-prompts must contain a substrate annotation (grep the capture JSONL).
-Cross-arc bias surfacing rides EC pattern completion across the `_b` name suffix and is
-UNVERIFIED; if the gate fails, the control is VOID (reported as such, not silently
-dropped) and a name-matched swapped-safety arc is the follow-up fixture work.
+**Annotation-presence gates (mechanically enforced by the runner, frozen predicate):**
+the predicate is the capture record's `has_cluster_bias` field (written by
+`capture_paired_prompts.py` at capture time — not a post-hoc grep pattern):
+
+- **Confirmatory arms:** each capture requires `annotation_fraction ≥ 0.5` or the seed
+  FAILS loud (harness failure, decided before any counterfactual data exists). A
+  substrate-carrying capture whose prompts don't carry the annotation is a broken
+  instrument, not a null result.
+- **Transplant control:** `annotation_fraction < 0.5` writes a `control_void.json`
+  marker; stats reports the cell as **VOID** (not silently dropped, never pooled).
+  Cross-arc bias surfacing rides EC pattern completion across the `_b` name suffix and
+  is UNVERIFIED; if the gate voids, a name-matched swapped-safety arc is the follow-up
+  fixture work.
+
+**Learn gate is deliberately sign- and cluster-blind** (max |bias| ≥ 0.9 on any
+cluster): no direction-conditioned exclusions — a learn run that somehow biased the
+wrong source still enters, and the primary test absorbs it. Do not "improve" this into
+a safe-cluster-only gate; that is a forking path.
+
+**Known shared-context caveat (declared, not a gate):** `--resume-sim` injects the
+learn session's report summary (and restores hippocampal episodes) into the capture
+run — shared by BOTH prompt variants, so flips remain attributable to the annotation
+alone, but the ablated variant is "annotation-free", not "experience-free". The pilot
+inspection step below includes reading one captured prompt pair end-to-end to bound
+what the resume context actually says about the flames.
 
 ## Amendment rule
 
@@ -79,6 +114,24 @@ pre-registration discipline, applied with the Exp 37 lesson in hand.)
 The campaign is self-contained under its own `MAXIM_DATA_HOME`s and touches nothing in
 `~/.maxim` except the shared model cache (symlinked read-only) — safe to run while the
 1.1 walk runs elsewhere. **Never run it on the leader** (Exp 37 cascade lesson).
+
+Operator notes (review folds):
+- **`maxim config set llm.profile` + `llm.n_ctx` alignment is MANDATORY** —
+  `~/.config/maxim/config.json` is NOT redirected by `MAXIM_DATA_HOME`, so sub-sims
+  inherit it; a profile-default budgeter vs served-n_ctx drift silently `down_500`s the
+  capture stage (the documented open n_ctx leg-3 cross-process case).
+- The pre-registered config pins `narrator_profile` so the learn narrator can't float
+  on whatever the operator's config.json defaults to.
+- **Cross-model sweeps:** kill/swap the llama-cpp server before re-querying with a
+  different model — the singleton reuse guard fails loud (correctly) on a live server
+  serving another model.
+- **After any capture timeout:** check for an orphaned llama-cpp on :8100
+  (`ps aux | grep llama_cpp`) before re-running — the timeout kills only the direct
+  child, and an orphan poisons subsequent runs (Exp 37 collision class).
+- **Pilot inspection step (pre-freeze):** read ONE captured pair end-to-end
+  (`prompt_full` vs `prompt_ablated` in capture.jsonl): confirm the only delta is the
+  cluster-bias annotation, and note what the resume-context summary says about the
+  flames (shared-context caveat above). Check `annotation_fraction` in manifest.jsonl.
 
 ```bash
 # one-time setup

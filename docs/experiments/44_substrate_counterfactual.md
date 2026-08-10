@@ -1,7 +1,10 @@
 # Exp 44 — Does a learned substrate steer the LLM? (trajectory-matched counterfactual)
 
-**Status:** ARM A + COUNTERBALANCE COMPLETE (2026-07-28). Reward-driven **confirmed**
-across a color swap; one honest residual-color caveat (arm B is not as clean as A).
+**Status:** ARM A + COUNTERBALANCE COMPLETE (2026-07-28). **EXPLORATORY** — the final
+metrics were selected after observing pilot data; the confirmatory re-run at power is
+Exp 44b ([protocols/exp44b_preregistration.md](protocols/exp44b_preregistration.md)).
+Reward-driven **supported** across a color swap (counterbalanced positive, not
+EARNED-clean); one honest residual-color caveat (arm B is not as clean as A).
 **Model:** qwen2.5-32b-instruct (local, big-mac-mini). No fine-tuning; substrate is
 a persisted NAc, not weights.
 **Harness:** [scripts/exp44/](../../scripts/exp44/) (capture / offline re-query /

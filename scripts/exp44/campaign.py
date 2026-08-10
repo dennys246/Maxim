@@ -97,8 +97,14 @@ def _resolve_maxim_binary() -> str:
 def _max_abs_cluster_bias(nac_json: Path) -> float:
     """Best-effort max |value| under any cluster_reward_bias subtree.
 
-    Recursive scan rather than a hardcoded shape so NAc persistence-format
-    evolution degrades this gate loudly (0.0 → gate fails) instead of silently.
+    Matches NAc.dump()'s flat ``"cluster_reward_bias": {key: float}`` map. The
+    recursive substring scan tolerates shape evolution, but note the failure
+    DIRECTION is asymmetric: a renamed field degrades loudly (0.0 → gate
+    fails), while a persisted numeric CONFIG field whose name contains the
+    substring (e.g. a future ``cluster_reward_bias_decay_tau``) would pass the
+    gate silently. NAc.dump() persists no config today; if that changes,
+    tighten this to exact-key matching. The gate is deliberately sign- and
+    cluster-blind (anti-forking: no direction-conditioned exclusions).
     """
     try:
         data = json.loads(nac_json.read_text())
@@ -122,8 +128,35 @@ def _max_abs_cluster_bias(nac_json: Path) -> float:
     return best
 
 
+# Experiment toggles that must NEVER leak from the operator's shell into a
+# campaign sub-sim (two-lens fold, cross-confirmed): one stray
+# MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION=1 silently produces full==ablated
+# prompts -> a clean-looking confirmatory NULL. Every toggle a stage needs is
+# set EXPLICITLY in that stage's `extra` dict; everything else is scrubbed.
+_SCRUBBED_ENV_VARS = (
+    "MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION",
+    "MAXIM_DISABLE_VARIANCE_ANNOTATION",
+    "MAXIM_NAC_REWARD_BIAS_DISABLED",
+    "MAXIM_ENABLE_BODY_STATE_PROMPT",
+    "MAXIM_DISABLE_COACH_BODY_LAYERS",
+    "MAXIM_SUBSTRATE_TOOL_WHITELIST",
+    "MAXIM_OPERANT_ONLY_CREDIT",
+    "MAXIM_CRADLE_MOTHER_DISABLE_CARE",
+    "MAXIM_NAC_MIN_CONFIDENCE",
+    "MAXIM_EXP44_CAPTURE_LOG",
+    "MAXIM_DETERMINISTIC_SCENE_EMBODIMENT",
+    "MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU",
+    "MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT",
+    "MAXIM_SIM_DRIVE_GATE_ENABLED",
+    "MAXIM_DISABLE_IMAGINATION",
+    "MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL",
+)
+
+
 def _sub_env(data_home: Path, *, profile: str | None, extra: dict[str, str]) -> dict[str, str]:
     env = os.environ.copy()
+    for var in _SCRUBBED_ENV_VARS:
+        env.pop(var, None)
     env["MAXIM_DATA_HOME"] = str(data_home)
     env["MAXIM_ROLE"] = "solo"
     env["MAXIM_LLM_CLOUD_ENABLED"] = "0"
@@ -157,12 +190,32 @@ def _run_sim(cmd: list[str], env: dict[str, str], log_path: Path, timeout_s: int
             return -9
 
 
-def _find_session(data_home: Path) -> Path | None:
+def _list_sessions(data_home: Path) -> set[str]:
     reports = data_home / "sim_reports"
     if not reports.is_dir():
+        return set()
+    return {d.name for d in reports.iterdir() if d.is_dir()}
+
+
+def _find_new_session(data_home: Path, before: set[str]) -> Path | None:
+    """Newest session dir CREATED by the run we just launched (snapshot diff).
+
+    Newest-mtime-overall is wrong here: learn and capture sessions share one
+    sim_reports/, so after a deleted learn marker the newest dir could be a
+    CAPTURE session whose resumed, tau-held aut_nac.json would pass the bias
+    gate spuriously (executor-lens finding).
+    """
+    new = _list_sessions(data_home) - before
+    if not new:
         return None
-    dirs = sorted((d for d in reports.iterdir() if d.is_dir()), key=lambda d: d.stat().st_mtime)
-    return dirs[-1] if dirs else None
+    reports = data_home / "sim_reports"
+    return max((reports / n for n in new), key=lambda d: d.stat().st_mtime)
+
+
+def _fingerprint(d: dict[str, Any]) -> str:
+    """Stable hash of the stage-relevant config so edited parameters invalidate
+    cached stage markers instead of silently reusing stale outputs."""
+    return hashlib.sha256(json.dumps(d, sort_keys=True).encode()).hexdigest()[:16]
 
 
 # ── stages ───────────────────────────────────────────────────────────────────
@@ -180,11 +233,24 @@ def stage_learn(
     """Run the substrate-primary learn pass; return the verified session dir."""
     data_home = arm_dir / f"seed{seed}"
     marker = data_home / "learn_verified.json"
-    if marker.exists():
-        return Path(json.loads(marker.read_text())["session_dir"])
-
     learn = arm.get("learn", {})
     min_bias = float(learn.get("min_bias", MIN_BIAS_DEFAULT))
+    fp = _fingerprint(
+        {
+            "arc": arm["arc"],
+            "max_turns": learn.get("max_turns", 56),
+            "min_bias": min_bias,
+            "seed": seed,
+            "embodiment": cfg.get("embodiment", "bodies/infant_humanoid"),
+            "narrator_profile": cfg.get("narrator_profile"),
+        }
+    )
+    if marker.exists():
+        rec = json.loads(marker.read_text())
+        if rec.get("fp") == fp and Path(rec["session_dir"]).is_dir():
+            return Path(rec["session_dir"])
+        print(f"  learn marker stale (config changed or session gone) arm={arm['name']} seed={seed} — re-running")
+        marker.unlink()
     cmd = [
         _resolve_maxim_binary(),
         "--sim",
@@ -207,12 +273,23 @@ def stage_learn(
         data_home,
         profile=cfg.get("narrator_profile"),
         extra={
+            # Learn is substrate-primary (no LLM in the action path) — no server
+            # spawn. Capture deliberately DOES allow auto-spawn (llm-primary
+            # needs a backend).
             "MAXIM_AUTO_SPAWN_LLM_SERVER": "0",
-            "MAXIM_SIM_DRIVE_GATE_ENABLED": os.environ.get("MAXIM_SIM_DRIVE_GATE_ENABLED", "1"),
+            # Exploration bonus is REQUIRED (executor-lens blocker): config
+            # default is 0.0 and without it an untried affordance never clears
+            # the NAc min-confidence gate — every learn seed floors at the bias
+            # gate. 1.5 is the Exp 42 graduated value.
+            "MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT": str(learn.get("explore_weight", 1.5)),
+            # Drive-gating ON — the Exp 42 enabling mechanism. Pinned (no
+            # parent-env override): 44b runs no gating ablation.
+            "MAXIM_SIM_DRIVE_GATE_ENABLED": "1",
         },
     )
+    before = _list_sessions(data_home)
     rc = _run_sim(cmd, env, data_home / "logs" / "learn.log", int(learn.get("timeout_s", LEARN_TIMEOUT_S)))
-    session = _find_session(data_home)
+    session = _find_new_session(data_home, before)
     nac = session / "aut_nac.json" if session else None
     bias = _max_abs_cluster_bias(nac) if nac and nac.exists() else 0.0
     ok = rc == 0 and session is not None and bias >= min_bias
@@ -237,7 +314,7 @@ def stage_learn(
             file=sys.stderr,
         )
         return None
-    marker.write_text(json.dumps({"session_dir": str(session), "bias": bias}))
+    marker.write_text(json.dumps({"session_dir": str(session), "bias": bias, "fp": fp}))
     return session
 
 
@@ -255,11 +332,28 @@ def stage_capture(
     data_home = arm_dir / f"seed{seed}"
     capture_path = data_home / "capture.jsonl"
     marker = data_home / "capture_verified.json"
-    if marker.exists():
-        return capture_path
-
     cap = arm.get("capture", {})
     substrate = arm.get("substrate", "learn")
+    fp = _fingerprint(
+        {
+            "arc": arm["arc"],
+            "max_turns": cap.get("max_turns", 40),
+            "decay_tau": cap.get("decay_tau", 1000),
+            "model": cap.get("model") or cfg.get("capture_profile"),
+            "substrate": substrate,
+            "seed": seed,
+        }
+    )
+    if marker.exists():
+        rec = json.loads(marker.read_text())
+        if rec.get("fp") == fp and capture_path.exists():
+            return capture_path
+        print(f"  capture marker stale (config changed or file gone) arm={arm['name']} seed={seed} — re-running")
+        marker.unlink()
+    # The capture hook opens the JSONL in APPEND mode — a failed attempt's
+    # partial pairs must not mix with the retry's (executor-lens blocker).
+    if capture_path.exists():
+        capture_path.unlink()
 
     # Transplant: copy the source arm's same-seed learned session into OUR
     # data home so --resume-sim resolves it (wrong-content control).
@@ -317,10 +411,48 @@ def stage_capture(
     )
     rc = _run_sim(cmd, env, data_home / "logs" / "capture.log", int(cap.get("timeout_s", CAPTURE_TIMEOUT_S)))
     n_pairs = 0
+    n_with_annotation = 0
     if capture_path.exists():
         with open(capture_path, encoding="utf-8") as f:
-            n_pairs = sum(1 for line in f if line.strip())
-    ok = rc == 0 and n_pairs >= int(cap.get("min_pairs", MIN_CAPTURE_PAIRS))
+            for line in f:
+                if not line.strip():
+                    continue
+                n_pairs += 1
+                try:
+                    if json.loads(line).get("has_cluster_bias"):
+                        n_with_annotation += 1
+                except json.JSONDecodeError:
+                    pass
+    annotation_fraction = (n_with_annotation / n_pairs) if n_pairs else 0.0
+
+    # Annotation-presence gates (two-lens fold, frozen in the pre-registration):
+    # a substrate-carrying capture whose prompts DON'T carry the annotation is a
+    # broken instrument, not a null result. Confirmatory ("learn") arms FAIL the
+    # seed; transplant arms proceed but are marked VOID (visible in stats), since
+    # cross-arc bias surfacing across the _b name suffix is the unverified thing
+    # the control gate exists to check.
+    void_marker = data_home / "control_void.json"
+    annotation_ok = True
+    if substrate == "learn":
+        annotation_ok = annotation_fraction >= 0.5
+    elif substrate.startswith("transplant:"):
+        if annotation_fraction < 0.5:
+            void_marker.write_text(
+                json.dumps(
+                    {
+                        "annotation_fraction": annotation_fraction,
+                        "reason": "transplanted substrate did not surface in capture prompts",
+                    }
+                )
+            )
+            print(
+                f"  CONTROL VOID arm={arm['name']} seed={seed}: annotation_fraction={annotation_fraction:.2f} < 0.5",
+                file=sys.stderr,
+            )
+        elif void_marker.exists():
+            void_marker.unlink()
+
+    ok = rc == 0 and n_pairs >= int(cap.get("min_pairs", MIN_CAPTURE_PAIRS)) and annotation_ok
     _append_manifest(
         campaign_dir,
         {
@@ -329,6 +461,7 @@ def stage_capture(
             "seed": seed,
             "rc": rc,
             "n_pairs": n_pairs,
+            "annotation_fraction": round(annotation_fraction, 3),
             "substrate": substrate,
             "resumed_session": session.name if session else None,
             "capture_sha16": _sha16(capture_path) if capture_path.exists() else None,
@@ -339,11 +472,15 @@ def stage_capture(
     if not ok:
         print(
             f"  CAPTURE FAILED arm={arm['name']} seed={seed} rc={rc} pairs={n_pairs} "
-            f"— see {data_home / 'logs' / 'capture.log'}",
+            f"annotation_fraction={annotation_fraction:.2f} — see {data_home / 'logs' / 'capture.log'}",
             file=sys.stderr,
         )
         return None
-    marker.write_text(json.dumps({"n_pairs": n_pairs, "sha16": _sha16(capture_path)}))
+    # A fresh verified capture invalidates every requery of the old capture —
+    # prune so stale results can't be picked up by the stats walk (cross-
+    # confirmed two-lens finding).
+    shutil.rmtree(data_home / "requery", ignore_errors=True)
+    marker.write_text(json.dumps({"n_pairs": n_pairs, "sha16": _sha16(capture_path), "fp": fp}))
     return capture_path
 
 
@@ -363,17 +500,27 @@ def stage_requery(
     if dry:
         print(f"  [dry] REQUERY[{model}] arm={arm['name']} seed={seed} (cached by capture hash)")
         return None
-    key = f"{model}__{_sha16(capture)}__e{ent.get('samples', 8)}t{ent.get('temp', 0.7)}"
+    if not capture.exists():
+        print(f"  REQUERY SKIPPED arm={arm['name']} seed={seed}: capture file missing", file=sys.stderr)
+        return None
+    # "__" is the stats-side field separator — sanitize it out of the model key
+    # so a profile name containing "__" can't be mislabeled downstream.
+    model_key = model.replace("__", "-")
+    key = f"{model_key}__{_sha16(capture)}__e{ent.get('samples', 8)}t{ent.get('temp', 0.7)}"
     out = arm_dir / f"seed{seed}" / "requery" / f"{key}.jsonl"
     if out.exists() and out.stat().st_size > 0:
         return out  # cache hit — cross-model sweeps and re-runs are free
+    # Write to a .partial and rename only on success: the re-query flushes per
+    # record, so a SIGKILL mid-run would otherwise leave a truncated-but-valid-
+    # looking JSONL that is cached forever (executor-lens blocker).
+    tmp = out.with_suffix(".partial")
     cmd = [
         sys.executable,
         str(_HERE.parent / "rerun_ablated_offline.py"),
         "--log",
         str(capture),
         "--out",
-        str(out),
+        str(tmp),
         "--entropy-samples",
         str(ent.get("samples", 8)),
         "--entropy-temp",
@@ -384,9 +531,18 @@ def stage_requery(
     out.parent.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env["MAXIM_LLM_PROFILE"] = model
+    env["MAXIM_LLM_CLOUD_ENABLED"] = "0"  # a cloud-mapped model must not silently spend
+    env["MAXIM_DATA_HOME"] = str(arm_dir / f"seed{seed}")
     env["PYTHONPATH"] = str(_REPO / "src")
-    rc = subprocess.run(cmd, env=env).returncode
-    ok = rc == 0 and out.exists() and out.stat().st_size > 0
+    try:
+        rc = subprocess.run(cmd, env=env, timeout=int(cfg.get("requery_timeout_s", 14400))).returncode
+    except subprocess.TimeoutExpired:
+        rc = -9
+    ok = rc == 0 and tmp.exists() and tmp.stat().st_size > 0
+    if ok:
+        tmp.rename(out)
+    elif tmp.exists():
+        tmp.unlink()
     _append_manifest(
         campaign_dir,
         {
@@ -427,23 +583,40 @@ def main() -> int:
     campaign_dir.mkdir(parents=True, exist_ok=True)
 
     # Provenance preflight (Exp 42b): the maxim the sub-sims import must be
-    # THIS repo. Exits 3 on mismatch before any compute is spent.
+    # THIS repo. Exits 3 on mismatch before any compute is spent (the contract
+    # the CLAUDE.md lesson + the sibling Exp 42 harness pin verbatim).
     binary = _resolve_maxim_binary()
     if not args.dry_run:
-        assert_repo_interpreter(_REPO, binary)
+        from _provenance import ProvenanceError
+
+        try:
+            assert_repo_interpreter(_REPO, binary)
+        except ProvenanceError as e:
+            print(f"PROVENANCE MISMATCH: {e}", file=sys.stderr)
+            return 3
     prov = executed_code_provenance(_REPO, binary)
     _append_manifest(campaign_dir, {"stage": "campaign_start", "config": cfg, **prov})
 
     arm_filter = {a for a in args.arms.split(",") if a}
     seed_filter = {int(s) for s in args.seeds.split(",") if s}
-    requery_models = (
-        [m for m in args.requery_models.split(",") if m] or cfg.get("requery_models") or [cfg.get("capture_profile")]
-    )
+    requery_models = [
+        m
+        for m in (
+            [m for m in args.requery_models.split(",") if m]
+            or cfg.get("requery_models")
+            or [cfg.get("capture_profile")]
+        )
+        if m
+    ]
+    if not requery_models:
+        print("ERROR: no requery model — set requery_models or capture_profile in the config", file=sys.stderr)
+        return 2
 
     # Learn-before-transplant ordering: all "learn" arms first.
     arms = [a for a in cfg["arms"] if not arm_filter or a["name"] in arm_filter]
     arms.sort(key=lambda a: 0 if a.get("substrate", "learn") == "learn" else 1)
 
+    failed_cells = 0
     for arm in arms:
         arm_dir = campaign_dir / "arms" / arm["name"]
         seeds = [s for s in arm["seeds"] if not seed_filter or s in seed_filter]
@@ -453,15 +626,22 @@ def main() -> int:
             if arm.get("substrate", "learn") == "learn":
                 session = stage_learn(arm, seed, arm_dir, cfg, campaign_dir, prov, args.dry_run)
                 if session is None and not args.dry_run:
+                    failed_cells += 1
                     continue
             capture = stage_capture(arm, seed, arm_dir, session, cfg, campaign_dir, prov, args.dry_run)
             if capture is None and not args.dry_run:
+                failed_cells += 1
                 continue
             for model in requery_models:
                 if capture is not None or args.dry_run:
-                    stage_requery(
+                    got = stage_requery(
                         arm, seed, arm_dir, capture or Path("dry"), model, cfg, campaign_dir, prov, args.dry_run
                     )
+                    if got is None and not args.dry_run:
+                        failed_cells += 1
+
+    if failed_cells:
+        print(f"\n{failed_cells} cell(s) FAILED — see manifest.jsonl and per-seed logs", file=sys.stderr)
 
     if not args.dry_run and not args.skip_stats:
         rc = subprocess.run(
@@ -474,8 +654,8 @@ def main() -> int:
                 args.config,
             ]
         ).returncode
-        return rc
-    return 0
+        return rc or (1 if failed_cells else 0)
+    return 1 if failed_cells else 0
 
 
 if __name__ == "__main__":

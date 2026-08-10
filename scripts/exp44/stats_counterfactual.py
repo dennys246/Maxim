@@ -18,9 +18,12 @@ SECONDARY (descriptive support, not confirmatory):
     - Commitment axis (observe < touch < warm_self): per-seed sign test +
       pooled binomial, same structure.
     - Intrinsic color baseline: among ABLATED choices that engage either flame,
-      P(safe-colored source). The ablated prompts are substrate-free by
-      construction, so this measures the LLM's raw color/name preference and
-      quantifies the residual arm-A/arm-B asymmetry seen in the pilot.
+      P(safe-colored source). CAVEAT (two-lens fold): the ablated prompt lacks
+      the substrate ANNOTATION but is NOT experience-free — the captured
+      trajectory was generated under substrate-steered actions, and --resume-sim
+      restores hippocampal episodes into both variants. This measures the LLM's
+      within-context color preference, not a raw prior; the flip metric itself
+      stays valid because both variants share that context symmetrically.
     - Weak/strong prior-entropy slices of all of the above.
 
 Transplant (wrong-content) arms are scored with THIS arm's world ground truth,
@@ -70,21 +73,40 @@ def binom_p(k: int, n: int) -> float:
 
 
 def load_results(campaign: Path) -> dict[str, dict[tuple[str, int], list[dict[str, Any]]]]:
-    """{model: {(arm, seed): [records]}} from arms/<arm>/seed<N>/requery/<model>__*.jsonl."""
+    """{model: {(arm, seed): [records]}} from arms/<arm>/seed<N>/requery/<model>__*.jsonl.
+
+    FAILS LOUD on duplicate (model, arm, seed) files: campaign.py prunes the
+    requery dir on re-capture, so a duplicate means stale results from a
+    superseded capture coexist with fresh ones — silently keeping either would
+    make the confirmatory analysis nondeterministic (cross-confirmed two-lens
+    finding). Delete the stale file rather than letting sort order pick.
+    """
     out: dict[str, dict[tuple[str, int], list[dict[str, Any]]]] = defaultdict(dict)
     for f in sorted(campaign.glob("arms/*/seed*/requery/*.jsonl")):
         arm = f.parents[2].name
         seed = int(f.parents[1].name.removeprefix("seed"))
         model = f.name.split("__", 1)[0]
+        if (arm, seed) in out[model]:
+            raise SystemExit(
+                f"DUPLICATE requery results for model={model} arm={arm} seed={seed} "
+                f"(stale capture-hash files coexist under {f.parent}) — delete the stale one and re-run"
+            )
         with open(f, encoding="utf-8") as fh:
             recs = [json.loads(line) for line in fh if line.strip()]
         out[model][(arm, seed)] = recs
     return out
 
 
+def is_void(campaign: Path, arm: str, seed: int) -> bool:
+    """True when campaign.py marked this control cell VOID (transplanted
+    substrate never surfaced in the capture prompts — see the pre-registration's
+    transplant validity gate)."""
+    return (campaign / "arms" / arm / f"seed{seed}" / "control_void.json").exists()
+
+
 def score_run(recs: list[dict[str, Any]], safe: str, harm: str, entropy_hi: float) -> dict[str, Any]:
     """Per-(arm,seed) counts: directional / commit / baseline / entropy slices."""
-    scored = [r for r in recs if r.get("action_full") and r.get("action_ablated")]
+    scored = [r for r in recs if r.get("action_full") is not None and r.get("action_ablated") is not None]
     flips = [r for r in scored if r.get("flipped")]
 
     def sdelta(r: dict[str, Any]) -> int:
@@ -205,7 +227,17 @@ def main() -> int:
             "per_run": {f"{k[0]}/seed{k[1]}": v for k, v in sorted(per_run.items())},
         }
         if ctrl:
-            m["control_arms"] = {f"{k[0]}/seed{k[1]}": v for k, v in sorted(ctrl.items())}
+            m["control_arms"] = {
+                f"{k[0]}/seed{k[1]}": {**v, **({"VOID": True} if is_void(campaign, k[0], k[1]) else {})}
+                for k, v in sorted(ctrl.items())
+            }
+            n_void = sum(1 for k in ctrl if is_void(campaign, k[0], k[1]))
+            if n_void:
+                print(
+                    f"  WARNING: {n_void}/{len(ctrl)} control cell(s) VOID — transplanted "
+                    f"substrate never surfaced (see control_void.json markers); "
+                    f"the wrong-content control is uninterpretable for those cells"
+                )
         report["models"][model] = m
 
         print(f"\n=== model {model} ===")

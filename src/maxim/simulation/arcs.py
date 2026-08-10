@@ -625,11 +625,16 @@ BUILTIN_ARCS["cradle_pref_neutral"] = _make_builtin(
 # toward green (the safe source there); if that were color bias it would persist
 # here, but if it's reward-driven the substrate (flagging purple_flame_b as
 # rewarding) should steer the LLM toward PURPLE. Same run recipe as arm A.
+# POSITION is also counterbalanced (44b review fold): entity-list order is
+# scene-introduction order, and arm A introduces harm first — so arm B
+# introduces SAFE first (purple_b), mirroring the Exp 42 pair's structure.
+# Without this, "safe is always second" positional preference could mimic
+# content-following in both confirmatory arms.
 BUILTIN_ARCS["cradle_pref_neutral_b"] = _make_builtin(
     "cradle_pref_neutral_b",
     "Exp 44 counterbalance: green_flame_b harmful, purple_flame_b safe (swapped vs "
     "cradle_pref_neutral). Predict the substrate learns to prefer purple.",
-    _make_pref_phases("items/green_flame_b", "items/purple_flame_b"),
+    _make_pref_phases("items/purple_flame_b", "items/green_flame_b"),
 )
 
 
