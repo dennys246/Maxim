@@ -61,11 +61,25 @@ needs the gate numbers in the pointer, not just a green feeling.
 
 ---
 
+## Chapters
+
+Rows are grouped into **chapters by shared needs** — run a chapter's rows
+together so its setup (LLM server, physical rig, budget approval) is paid
+once. Ordered cheapest-first.
+
+| Chapter | Needs | Rows |
+|---|---|---|
+| **Free Chapter** | pytest only | SEM cascade, EC guards |
+| **Sim-Short Chapter** | one local LLM server | Exp 09 reflexes, Exp 10 persistence |
+| **Fleet Chapter** | local narrator server, hours of wall-clock | Exp 48 operant, Exp 42 discrimination |
+| **Cloud Chapter** | cloud/large-model budget — never auto-fired | Exp 37 Goldilocks per model |
+| **Hardware Chapter** | robot + operator + the physical audio rig (speaker at a bearing) | Exp 45 orient rows |
+
 ## Row-by-row commands
 
-Ordered cheapest-first — run the free ones while the expensive ones queue.
+### Free Chapter
 
-### 1. SEM pain → NAc cascade (Tier 1) — free, seconds
+#### 1. SEM pain → NAc cascade (Tier 1) — seconds
 
 End-to-end cascade pinned by the substrate test suite (real `rusty_sword`
 fixture; direct-attribution path):
@@ -77,7 +91,7 @@ python -m pytest tests/substrate/test_sem_pain_cascade.py tests/unit/test_pain_b
 **Gate:** all pass. This row's evidence is the test itself (EARNED de facto);
 a red here is `Broken`, not `Stale`.
 
-### 2. EC pattern completion / separation (Tier 1) — free, seconds
+#### 2. EC pattern completion / separation (Tier 1) — seconds
 
 Heartbeat level = the pinned unit guards (threshold defaults, NAc-override
 coupling, Roy-5 H1C boundary tracking):
@@ -90,7 +104,9 @@ python -m pytest tests/unit/test_ec_centroid_drift_fix.py tests/unit/test_roy_5_
 required only when a **Re-run on:** trigger fires (encoder swap, EC threshold
 change) — not for a routine heartbeat.
 
-### 3. Narrative reflexes, Exp 09 (Tier 3 #9) — one short sim, ~2 min
+### Sim-Short Chapter
+
+#### 3. Narrative reflexes, Exp 09 (Tier 3 #9) — one short sim, ~2 min
 
 ```bash
 MAXIM_SUBSTRATE_PATH=1 \
@@ -105,7 +121,7 @@ trajectories present. Validation greps live in
 **Scope caveat (from the row):** narrative keyword reflexes only — no halo to
 audio/orienting reflexes.
 
-### 4. Cross-session memory persistence, Exp 10 (Tier 1 row 1) — 3 short sims, ~10-20 min
+#### 4. Cross-session memory persistence, Exp 10 (Tier 1 row 1) — 3 short sims, ~10-20 min
 
 ```bash
 # Phase 1 — fresh baseline (note the printed session_id)
@@ -128,12 +144,14 @@ grep "enrichment_trace" /tmp/heartbeat_e10_p2.jsonl | python3 -c "import sys,jso
 dungeon dominance. Full protocol:
 [10_cross_session_enrichment.md](../10_cross_session_enrichment.md).
 
-### 5. Operant orienting (Exp 48, cradle_mother) — sub-sim fleet, local LLM, ~1-3 h
+### Fleet Chapter
+
+#### 5. Operant orienting (Exp 48, cradle_mother) — sub-sim fleet, local LLM
 
 ```bash
 python scripts/benchmark_cradle_mother.py \
   --arms taught,no_feed --trials 12 --seed-base 42 \
-  --model mistral-7b \
+  --model mistral-7b --timeout-s 7200 \
   --out docs/experiments/data/48_heartbeat_<ver>.jsonl
 python scripts/analyze_cradle_mother.py --in docs/experiments/data/48_heartbeat_<ver>.jsonl --trials 12
 ```
@@ -143,7 +161,14 @@ python scripts/analyze_cradle_mother.py --in docs/experiments/data/48_heartbeat_
 taught 0.875 vs no_feed 0.448. The `turn_left,turn_right` whitelist is part of
 the pinned setup — do not "fix" it for the re-run.
 
-### 6. Substrate-primary discrimination (Exp 42, Tier 1 #6) — sub-sim fleet, ~2-4 h
+**Timeout sizing (measured, 1.1 walk):** the harness default `--timeout-s
+1800` is sized for a fast GPU box. On the Mac the 56-turn taught arm was
+only at turn 32 when it hit 1800s — a healthy run, killed by the clock.
+Size the timeout from observed pace (~55 s/turn on the Mac → ≥ 5400s;
+7200s gives margin), and if the FIRST seed times out, STOP the fleet and
+re-size rather than letting every seed burn the full window.
+
+#### 6. Substrate-primary discrimination (Exp 42, Tier 1 #6) — sub-sim fleet
 
 ```bash
 python scripts/benchmark_exp42_preference.py \
@@ -159,7 +184,9 @@ sensitive degradation arm is tracked follow-up. The harness calls
 `assert_repo_interpreter` and stamps `executed_git_hash` per record — check
 them in the output JSONL before reading results.
 
-### 7. Cross-session Goldilocks under LLM-AUT (Exp 37, Tier 1 row 1b) — the expensive one, cloud/large-local models
+### Cloud Chapter
+
+#### 7. Cross-session Goldilocks under LLM-AUT (Exp 37, Tier 1 row 1b) — the expensive one
 
 Per the row: re-validation re-fires Exp 37 with the same N=5 design at the
 matching git hash across the model set (per-model, pick the models that matter
@@ -182,7 +209,9 @@ fresh path; the harness preflight (`assert_subsim_routed_not_local`) exits 4
 on the leader-local cascade signature; leader-local runs are safe only
 post-2026-06-05 hardening (singleton reuse + preflight).
 
-### 8. Real-hardware orient (Exp 45 row) — HARDWARE, operator present
+### Hardware Chapter
+
+#### 8. Real-hardware orient (Exp 45 row) — operator present
 
 Not a routine heartbeat row — it re-runs when its hardware triggers fire (any
 motion-command change, shell/acoustic mod, motor service). The H1 campaign
@@ -205,7 +234,7 @@ the healthy band (H2 branch fires only if outside ≈[0.52, 0.62]); probe 1.00
 direction. Version-match SDK/daemon first (skew fails silently on sensing AND
 control).
 
-### 9. Rows that do NOT re-run on heartbeat
+### Rows that do NOT re-run on heartbeat
 
 - **Exp 37/38 behavioral-override claim** — settled-dominated (row 2); the
   Exp 38 counter-prior result stands unless its own triggers fire.
