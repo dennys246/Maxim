@@ -197,6 +197,57 @@ def _list_sessions(data_home: Path) -> set[str]:
     return {d.name for d in reports.iterdir() if d.is_dir()}
 
 
+def acquire_campaign_lock(campaign_dir: Path) -> bool:
+    """Take the single-runner lock for this workdir, or refuse loudly.
+
+    Third double-launch incident (2026-08-10): two campaign_starts 82s apart
+    raced one workdir — both launched the same capture, appending interleaved
+    pairs into one capture.jsonl and racing the marker/prune steps. nohup +
+    block-buffered stdout makes a fresh launch LOOK dead, so the operator
+    relaunches; structure has to make that safe (the same push-into-structure
+    rule as the silent-no-op invariants).
+
+    O_CREAT|O_EXCL is the atomic take; the lock records the holder pid. A lock
+    whose holder is no longer alive is stale (crash/SIGKILL) and is replaced
+    automatically — recovery needs no manual rm. Released via atexit.
+    """
+    lock_path = campaign_dir / "campaign.lock"
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            break
+        except FileExistsError:
+            try:
+                holder = int(lock_path.read_text().strip() or "0")
+            except (OSError, ValueError):
+                holder = 0
+            alive = False
+            if holder > 0:
+                try:
+                    os.kill(holder, 0)
+                    alive = True
+                except ProcessLookupError:
+                    alive = False
+                except PermissionError:
+                    alive = True  # pid exists, owned by someone else
+            if alive:
+                print(
+                    f"ERROR: another campaign (pid {holder}) already holds {lock_path} — "
+                    f"exactly one runner per workdir. To watch progress, tail the per-seed "
+                    f"logs; do NOT relaunch.",
+                    file=sys.stderr,
+                )
+                return False
+            lock_path.unlink(missing_ok=True)  # stale (holder dead) — retake
+
+    import atexit
+
+    atexit.register(lambda: lock_path.unlink(missing_ok=True))
+    return True
+
+
 def capture_stats(capture_path: Path) -> tuple[int, int]:
     """(n_pairs, n_with_annotation) from a paired-prompt capture JSONL.
 
@@ -603,6 +654,9 @@ def main() -> int:
     cfg = json.loads(Path(args.config).read_text())
     campaign_dir = Path(args.workdir).resolve()
     campaign_dir.mkdir(parents=True, exist_ok=True)
+
+    if not args.dry_run and not acquire_campaign_lock(campaign_dir):
+        return 2
 
     # Provenance preflight (Exp 42b): the maxim the sub-sims import must be
     # THIS repo. Exits 3 on mismatch before any compute is spent (the contract
