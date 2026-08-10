@@ -371,7 +371,7 @@ def record_outcome(
                     getattr(link, "confidence", 0.5),
                 )
             except Exception:
-                pass  # sim trace is best-effort
+                log_swallowed_exception()  # sim trace is best-effort
         except Exception as e:
             logger.warning("NAc reward signal failed for tool %s: %s", tool_name, e)
 
@@ -392,7 +392,7 @@ def record_outcome(
                 context={"agent_id": agent_id, "tool": tool_name},
             )
         except Exception:
-            pass
+            log_swallowed_exception()
 
 
 def execute_parallel_actions(

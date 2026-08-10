@@ -72,9 +72,17 @@ runs the fast suite + the memory-hub suite + one sim smoke).
 
 **Stage 4 — lock.** Extend the CI lint: the diff-scoped no-new-swallows lint already tracked
 in CLAUDE.md ships here, with the measurement-path files promoted to a **zero-total-swallows
-allow-list** (not just no-new). Grep form:
-`grep -EA1 "except Exception:\s*$" <files> | grep -E "^\s+(pass|continue)\s*$"` must return
-zero matches in the scoped files.
+allow-list** (not just no-new). Grep form (COMMENT-TOLERANT — the PR #487 review found the
+original comment-blind pattern missed 10 `pass  # best-effort` swallows, including the
+`record_event` wrap that motivated this plan):
+`grep -EA1 "except Exception:\s*(#.*)?$" <files> | grep -E "^\s+(pass|continue)\s*(#.*)?$"`
+must return zero matches in the scoped files.
+
+**Stage 1 outcome note (2026-08-10):** shipped as PR #487 — 38 inventory sites + 10
+comment-blind sites found by the review lens = **48 instrumented sites**. The review also
+caught that the `swallowed_exception` event initially did not survive StructuredFormatter
+into the MAXIM_LOG_FILE JSONL (event/data `extra` was required) — pinned by
+`TestJsonlSerialization` so the Stage-2 grep provably sees what fires.
 
 ## Interaction with running experiments
 

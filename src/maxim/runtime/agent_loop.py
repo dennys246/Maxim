@@ -1688,7 +1688,7 @@ def run_agentic_loop(
                             _force_debug=True,
                         )
                     except Exception:
-                        pass
+                        log_swallowed_exception()
             except Exception as e:
                 log_swallowed_exception(e, operation="imagination_trigger", context={"step": step_num})
 
@@ -1815,7 +1815,7 @@ def run_agentic_loop(
                             _n_entities = _auto_sense_text.count("[SCENE]") + _auto_sense_text.count("[YOU]")
                             sim_log("PERCEPTION", f"auto-sense: {_n_entities} entities, body state updated")
                         except Exception:
-                            pass
+                            log_swallowed_exception()
             except Exception as _ase:
                 log_swallowed_exception(_ase, operation="auto_sense", context={"step": step_num})
 
@@ -1912,7 +1912,7 @@ def run_agentic_loop(
                                 data=_trace,
                             )
                         except Exception:
-                            pass
+                            log_swallowed_exception()
                     elif should_emit_orientation(state.data.get("_last_audio_orient_az"), _az):
                         # DELIBERATIVE tier: the agent CHOOSES to attend. Change-
                         # gate skips an unchanged direction (prompt noise — the
@@ -1941,7 +1941,7 @@ def run_agentic_loop(
 
                                 sim_log("PERCEPTION", f"audio-orient: {_audio_line}", data=_trace)
                             except Exception:
-                                pass
+                                log_swallowed_exception()
             except Exception as _aoe:
                 log_swallowed_exception(_aoe, operation="audio_orientation", context={"step": step_num})
 

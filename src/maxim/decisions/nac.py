@@ -35,6 +35,7 @@ from maxim.decisions.causal_link import (
     Valence,
     _VALENCE_TO_REWARD,
 )
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.memory.semantic_promoter import PromotionCandidate
@@ -1017,7 +1018,7 @@ class NAc:
                         valence=valence_str,
                     )
             except Exception:
-                pass
+                log_swallowed_exception()
 
         return updated_links
 
@@ -1180,7 +1181,7 @@ class NAc:
                     link_type="updated" if link.observation_count > 1 else "new",
                 )
             except Exception:
-                pass
+                log_swallowed_exception()
 
         return updated_links
 
@@ -1252,7 +1253,7 @@ class NAc:
                         link_type="observed",
                     )
                 except Exception:
-                    pass
+                    log_swallowed_exception()
                 return existing_link
 
             new_link = CausalLink(
@@ -1289,7 +1290,7 @@ class NAc:
                     link_type="new_observed",
                 )
             except Exception:
-                pass
+                log_swallowed_exception()
             # Capture new-link payload for the OUTSIDE-the-lock LEARN
             # headline emission below.  ``observe`` is the direct-observation
             # API (caller already attributed event → outcome), so any new
@@ -1318,7 +1319,7 @@ class NAc:
                     valence=valence_str,
                 )
             except Exception:
-                pass
+                log_swallowed_exception()
         return new_link
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1359,7 +1360,7 @@ class NAc:
                 outcomes = []
             sim_nac_predict(event=event_signature, outcomes=outcomes)
         except Exception:
-            pass
+            log_swallowed_exception()
         return result
 
     def _predict_impl(
@@ -1397,7 +1398,7 @@ class NAc:
                             event_links = list(event_links) + [link]
                             existing_ids.add(id(link))
             except Exception:
-                pass  # EC query is best-effort
+                log_swallowed_exception()  # EC query is best-effort
 
         if not event_links:
             # Check priors
@@ -1708,7 +1709,7 @@ class NAc:
             )
             self._ec.register(f"causal:{link.id}", sig)
         except Exception:
-            pass  # EC registration is best-effort
+            log_swallowed_exception()  # EC registration is best-effort
 
     def _register_imported_link(self, link: CausalLink) -> None:
         """Register an externally-imported CausalLink.
@@ -1727,7 +1728,7 @@ class NAc:
             try:
                 self._ec.remove_signature(f"causal:{link_id}")
             except Exception:
-                pass
+                log_swallowed_exception()
 
     def _enforce_limits(self) -> None:
         """Enforce max_links limit by removing lowest-confidence links."""
@@ -2896,7 +2897,7 @@ class NAc:
                         if temporal_strength > 0.01:
                             temporal_eligible[(aid, nid)] = temporal_strength
                 except Exception:
-                    pass  # TemporalSignature not available — skip fallback
+                    log_swallowed_exception()  # TemporalSignature not available — skip fallback
 
             all_eligible = {**eligible, **temporal_eligible}
             if not all_eligible:
@@ -2929,7 +2930,7 @@ class NAc:
                     nodes_credited=len(credited),
                 )
             except Exception:
-                pass
+                log_swallowed_exception()
 
         return credited
 

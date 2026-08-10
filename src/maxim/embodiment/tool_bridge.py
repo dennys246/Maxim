@@ -28,6 +28,7 @@ from maxim.embodiment.sem import (
 )
 from maxim.tools.base import Tool, ToolOutput
 from maxim.tools.registry import ToolRegistry
+from maxim.utils.logging import log_swallowed_exception
 
 log = logging.getLogger(__name__)
 
@@ -181,7 +182,7 @@ def _apply_sensor_deltas(
                 baseline=old_val,
             )
         except Exception:
-            pass
+            log_swallowed_exception()
 
 
 def _drive_potential_diff(
@@ -480,7 +481,7 @@ class ModulatorAffordanceTool(Tool):
                 if isinstance(reading.value, (int, float)):
                     entity_state[sensor_name] = reading.value
         except Exception:
-            pass
+            log_swallowed_exception()
 
         # --- Self-effect / target-effect apply BEFORE evaluate_failures ---
         # Order-of-operations invariant (Exp 37 root-cause fix, 2026-06-01):
@@ -754,9 +755,9 @@ class ModulatorAffordanceTool(Tool):
                     )
                     sim_cerebellum(self._entity.full_path, self._affordance_name, conf)
                 except Exception:
-                    pass
+                    log_swallowed_exception()
             except Exception:
-                pass
+                log_swallowed_exception()
 
         output_dict: dict[str, Any] = {
             "entity": result.entity_name,

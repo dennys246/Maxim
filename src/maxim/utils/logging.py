@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
+import threading
 from typing import Optional
 
 DEFAULT_DATEFMT = "%H:%M:%S"
@@ -298,42 +300,104 @@ def info(message: str, *args: object, logger: Optional[logging.Logger] = None) -
         print(f"[INFO] {formatted}")
 
 
+# Fail-loud Stage 1 (docs/plans/measurement_path_fail_loud.md): per-site dedup
+# so every distinct swallow site announces itself at WARNING exactly once per
+# process, DEBUG after — loud enough for Stage 2's firing-site inventory,
+# quiet enough for hot defensive paths.
+_swallow_seen: set[str] = set()
+_swallow_seen_lock = threading.Lock()
+
+
+def _reset_swallow_seen_for_test() -> None:
+    with _swallow_seen_lock:
+        _swallow_seen.clear()
+
+
 def log_swallowed_exception(
-    exc: BaseException,
+    exc: BaseException | None = None,
     *,
-    operation: str,
+    operation: str | None = None,
     context: dict[str, object] | None = None,
     logger: Optional[logging.Logger] = None,
-    level: int = logging.DEBUG,
+    level: int | None = None,
 ) -> None:
-    """Log an exception that is intentionally swallowed.
+    """Log an exception that is intentionally swallowed. NEVER raises.
 
-    Use this instead of bare `except: pass` to maintain visibility
-    into silently handled errors.
+    Two forms:
 
-    Args:
-        exc: The exception being swallowed.
-        operation: Brief description of what was attempted.
-        context: Optional dict of relevant context values.
-        logger: Logger to use (defaults to "maxim").
-        level: Log level (defaults to DEBUG for non-critical swallows).
+    **Zero-arg form (fail-loud Stage 1)** — call from inside an ``except``
+    block; the exception comes from ``sys.exc_info()`` and the site from the
+    caller's frame (``file:function:line``). Emits a structured
+    ``swallowed_exception`` event at WARNING the first time each site fires in
+    this process, DEBUG after (per-site dedup)::
 
-    Example:
-        try:
-            result = risky_operation()
+        except Exception:
+            log_swallowed_exception()   # was: pass
+
+    **Legacy explicit form** — unchanged semantics (DEBUG default, no dedup)::
+
         except SomeError as e:
             log_swallowed_exception(e, operation="risky_operation", context={"input": x})
-            result = fallback_value
+
+    Args:
+        exc: The exception being swallowed (default: current ``sys.exc_info``).
+        operation: Brief description of what was attempted (default: caller site).
+        context: Optional dict of relevant context values.
+        logger: Logger to use (defaults to "maxim").
+        level: Log level. Default: DEBUG for the explicit form; for the
+            zero-arg form, WARNING on a site's first fire then DEBUG.
     """
-    if logger is None:
-        logger = logging.getLogger("maxim")
+    try:
+        if logger is None:
+            logger = logging.getLogger("maxim")
 
-    ctx_str = ""
-    if context:
-        ctx_parts = [f"{k}={v!r}" for k, v in context.items()]
-        ctx_str = f" [{', '.join(ctx_parts)}]"
+        stage1_form = exc is None and operation is None
+        if exc is None:
+            exc = sys.exc_info()[1]
+        if operation is None:
+            frame = sys._getframe(1)
+            operation = f"{os.path.basename(frame.f_code.co_filename)}:{frame.f_code.co_name}:{frame.f_lineno}"
 
-    logger.log(level, "Swallowed %s in %s: %s%s", type(exc).__name__, operation, exc, ctx_str)
+        if level is None:
+            if stage1_form:
+                with _swallow_seen_lock:
+                    first = operation not in _swallow_seen
+                    if first:
+                        _swallow_seen.add(operation)
+                level = logging.WARNING if first else logging.DEBUG
+            else:
+                level = logging.DEBUG
+
+        ctx_str = ""
+        if context:
+            ctx_parts = [f"{k}={v!r}" for k, v in context.items()]
+            ctx_str = f" [{', '.join(ctx_parts)}]"
+
+        if stage1_form:
+            # The `extra` event/data pair is LOAD-BEARING (review fold, PR #487):
+            # the MAXIM_LOG_FILE JSONL handler's StructuredFormatter serializes
+            # ONLY record.event + record.data and discards the printf message
+            # and exc_info — without this, Stage 2's "grep the JSONL for
+            # swallowed_exception" finds nothing even when sites fire.
+            logger.log(
+                level,
+                "swallowed_exception site=%s%s",
+                operation,
+                ctx_str,
+                exc_info=exc,
+                extra={
+                    "event": "swallowed_exception",
+                    "data": {
+                        "site": operation,
+                        "exc_type": type(exc).__name__ if exc is not None else None,
+                        "exc": str(exc) if exc is not None else None,
+                    },
+                },
+            )
+        else:
+            logger.log(level, "Swallowed %s in %s: %s%s", type(exc).__name__, operation, exc, ctx_str)
+    except Exception:  # noqa: BLE001 — the logger must never take down the site it guards
+        pass
 
 
 def log_recoverable_error(

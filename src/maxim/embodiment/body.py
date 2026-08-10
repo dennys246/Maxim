@@ -15,6 +15,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from maxim.embodiment.sem import Entity, FailureMode, SensorReading
+from maxim.utils.logging import log_swallowed_exception
 
 log = logging.getLogger(__name__)
 
@@ -203,7 +204,7 @@ class Embodiment:
                         r = sensor.read()
                         readings[sname] = float(r.value)
                     except Exception:
-                        pass
+                        log_swallowed_exception()
 
             # also include vital_metrics (may have drifted values)
             for vname, vval in ent.vital_metrics.items():
@@ -226,7 +227,7 @@ class Embodiment:
                     baseline = ent.vital_metrics.get(sname)
                     sim_sensor(ent.full_path, sname, sval, baseline=baseline)
             except Exception:
-                pass
+                log_swallowed_exception()
 
             # -- Standard failure mode evaluation --
             for fm in ent.failure_modes:
@@ -269,7 +270,7 @@ class Embodiment:
                             f"val={current:.3f} threshold={ds.deprivation_threshold} dir={ds.drift_direction}",
                         )
                 except Exception:
-                    pass
+                    log_swallowed_exception()
 
                 # Transition latch: pain fires on band ENTRY only, so the
                 # crossing lands inside the CAUSING action's execute and a
@@ -591,6 +592,7 @@ class Embodiment:
                     reading = sensor.read()
                     val = float(reading.value)
                 except Exception:
+                    log_swallowed_exception()
                     continue
 
                 sensor_info: dict[str, Any] = {

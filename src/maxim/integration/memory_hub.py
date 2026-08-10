@@ -23,6 +23,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.agents.fear_agent import FearAgent
@@ -1069,9 +1070,9 @@ class MemoryHub:
                         f"Registered {memory_id[:8]} in circadian={sig.circadian_phase:.2f} (significance={salience:.2f})",
                     )
             except Exception:
-                pass
+                log_swallowed_exception()
         except Exception:
-            pass  # Don't let SCN errors block memory capture
+            log_swallowed_exception()  # Don't let SCN errors block memory capture
 
     def _on_memory_captured(self, memory_id: str, memory: Any) -> None:
         """Handle memory capture for semantic embedding.
