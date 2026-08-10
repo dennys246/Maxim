@@ -90,6 +90,18 @@ the predicate is the capture record's `has_cluster_bias` field (written by
   is UNVERIFIED; if the gate voids, a name-matched swapped-safety arc is the follow-up
   fixture work.
 
+**Phantom-pick exclusion (frozen pre-scoring; pilot finding 2026-08-10):** the
+component-index discovery enrichment is registry-wide, so the counterbalance twins leak
+into the OTHER arm's prompts as discovery hints (observed: `green_flame_b` listed in an
+arm-A capture). The names carry no safety information and no such tool exists in the
+arm's scene — but a temp-0 re-query could still EMIT a phantom action name, and naive
+substring ranking would mis-score it (`"green_flame" in "green_flame_b_warm_self"`).
+Rule: a decision whose full OR ablated action references a flame entity not in the arm's
+`world_entities` (longest-name-first matching) is EXCLUDED from all scoring, counted as
+`n_phantom_excluded`, and reported per run — never silently dropped. This rule is frozen
+before any re-query results have been scored. A structural fix (scene-scoped discovery
+enrichment for controlled arcs) is candidate follow-up src work, not a campaign patch.
+
 **Learn gate is deliberately sign- and cluster-blind** (max |bias| ≥ 0.9 on any
 cluster): no direction-conditioned exclusions — a learn run that somehow biased the
 wrong source still enters, and the primary test absorbs it. Do not "improve" this into

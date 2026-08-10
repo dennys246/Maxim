@@ -104,9 +104,47 @@ def is_void(campaign: Path, arm: str, seed: int) -> bool:
     return (campaign / "arms" / arm / f"seed{seed}" / "control_void.json").exists()
 
 
-def score_run(recs: list[dict[str, Any]], safe: str, harm: str, entropy_hi: float) -> dict[str, Any]:
+# All flame entities across both counterbalanced arcs, LONGEST FIRST so
+# "green_flame_b" wins the match before "green_flame" can (substring trap).
+_FLAME_ENTITIES = ("green_flame_b", "purple_flame_b", "green_flame", "purple_flame")
+
+
+def referenced_flame(action: str | None) -> str | None:
+    """Which flame entity an action name references (longest-match), or None."""
+    if not action:
+        return None
+    for ent in _FLAME_ENTITIES:
+        if ent in action:
+            return ent
+    return None
+
+
+def is_phantom(action: str | None, world: tuple[str, ...] | None) -> bool:
+    """True when the action references a flame that does NOT exist in this
+    arm's world — a cross-arc twin surfaced by registry-wide discovery
+    enrichment (pilot finding, 2026-08-10). Phantom picks are unexecutable in
+    the arm's scene, and the naive substring safety-rank would mis-score them
+    (``"green_flame" in "green_flame_b_warm_self"`` → counted safe in arm A).
+    Excluded from scoring, COUNTED and reported (never silently dropped)."""
+    if world is None:
+        return False
+    ent = referenced_flame(action)
+    return ent is not None and ent not in world
+
+
+def score_run(
+    recs: list[dict[str, Any]],
+    safe: str,
+    harm: str,
+    entropy_hi: float,
+    world: tuple[str, ...] | None = None,
+) -> dict[str, Any]:
     """Per-(arm,seed) counts: directional / commit / baseline / entropy slices."""
-    scored = [r for r in recs if r.get("action_full") is not None and r.get("action_ablated") is not None]
+    usable = [r for r in recs if r.get("action_full") is not None and r.get("action_ablated") is not None]
+    phantom = [
+        r for r in usable if is_phantom(r.get("action_full"), world) or is_phantom(r.get("action_ablated"), world)
+    ]
+    scored = [r for r in usable if r not in phantom]
     flips = [r for r in scored if r.get("flipped")]
 
     def sdelta(r: dict[str, Any]) -> int:
@@ -131,6 +169,7 @@ def score_run(recs: list[dict[str, Any]], safe: str, harm: str, entropy_hi: floa
     weak = [r for r in flips if (r.get("prior_entropy_bits") or 0.0) >= entropy_hi]
     return {
         "n_scored": len(scored),
+        "n_phantom_excluded": len(phantom),
         "n_flips": len(flips),
         "toward_safe": toward_safe,
         "toward_harm": toward_harm,
@@ -173,7 +212,8 @@ def main() -> int:
             a = arms_cfg.get(arm)
             if a is None:
                 continue
-            per_run[(arm, seed)] = score_run(recs, a["safe_substr"], a["harm_substr"], entropy_hi)
+            world = tuple(a["world_entities"]) if a.get("world_entities") else None
+            per_run[(arm, seed)] = score_run(recs, a["safe_substr"], a["harm_substr"], entropy_hi, world=world)
 
         conf = {k: v for k, v in per_run.items() if k[0] in confirmatory}
         ctrl = {k: v for k, v in per_run.items() if k[0] not in confirmatory}
@@ -252,6 +292,12 @@ def main() -> int:
             f"pooled {tc} commit vs {to} observe (p={binom_p(tc, tc + to):.4g})"
         )
         print(f"  weak-prior slice: {ws} safe vs {wh} harm")
+        n_phantom = sum(v["n_phantom_excluded"] for v in per_run.values())
+        if n_phantom:
+            print(
+                f"  phantom picks excluded: {n_phantom} (action referenced a flame "
+                f"not in the arm's world — cross-arc discovery leakage; see prereg)"
+            )
         for arm, b in baseline.items():
             ps = f"{b['p_safe']:.3f}" if b["p_safe"] is not None else "n/a"
             print(
