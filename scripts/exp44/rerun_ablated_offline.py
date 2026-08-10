@@ -42,12 +42,20 @@ def _build_router() -> Any:
 
 
 def _action_of(router: Any, prompt: str, *, temperature: float, max_tokens: int = 512) -> str | None:
-    """Query the LLM and extract the proposed tool name (None on failure)."""
+    """Query the LLM and extract the proposed tool name (None on failure).
+
+    The tool-aware response format nests the tool under ``action``:
+    ``{"ready_to_act": ..., "action": {"tool_name": "...", "params": {...}}}``.
+    Fall back to a flat ``tool_name`` for other shapes.
+    """
     resp = router.generate_json(prompt, temperature=temperature, max_tokens=max_tokens)
-    if isinstance(resp, dict):
-        tool = resp.get("tool_name")
-        return str(tool) if tool is not None else None
-    return None
+    if not isinstance(resp, dict):
+        return None
+    action = resp.get("action")
+    if isinstance(action, dict) and action.get("tool_name") is not None:
+        return str(action["tool_name"])
+    tool = resp.get("tool_name")  # flat fallback
+    return str(tool) if tool is not None else None
 
 
 def _prior_entropy(router: Any, prompt_ablated: str, *, samples: int, temperature: float) -> float:
@@ -80,13 +88,14 @@ def main() -> int:
         print("no usable paired-prompt rows in", args.log)
         return 1
 
+    print(f"[exp44] building router + loading model (first call is slow)… scoring {len(rows)} decisions", flush=True)
     router = _build_router()
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     results: list[dict[str, Any]] = []
     with out_path.open("w") as f:
-        for r in rows:
+        for i, r in enumerate(rows, 1):
             a_full = _action_of(router, r["prompt_full"], temperature=0.0)
             a_abl = _action_of(router, r["prompt_ablated"], temperature=0.0)
             flipped = a_full is not None and a_abl is not None and a_full != a_abl
@@ -105,6 +114,9 @@ def main() -> int:
             }
             results.append(rec)
             f.write(json.dumps(rec) + "\n")
+            f.flush()  # so `wc -l` on --out is a real live progress indicator
+            tag = "FLIP" if flipped else ("skip" if a_full is None or a_abl is None else "same")
+            print(f"[{i}/{len(rows)}] full={a_full} abl={a_abl} {tag}", flush=True)
 
     # ── rollup ──────────────────────────────────────────────────────────────
     scored = [x for x in results if x["action_full"] is not None and x["action_ablated"] is not None]

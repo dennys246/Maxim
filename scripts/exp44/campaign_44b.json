@@ -1,0 +1,40 @@
+{
+  "name": "exp44b_confirmatory",
+  "_comment": "Exp 44b pre-registered campaign. Freeze this file (commit hash) BEFORE the confirmatory run; protocol doc: docs/experiments/protocols/exp44b_preregistration.md. Arms A+B are the confirmatory counterbalanced pair (pooled by the primary test). The transplant arm is the wrong-content control (A's green-rewarding substrate dropped into B's world where green harms) and is never pooled.",
+  "embodiment": "bodies/infant_humanoid_chilled",
+  "capture_profile": "qwen2.5-32b-instruct",
+  "narrator_profile": "qwen2.5-32b-instruct",
+  "requery_models": ["qwen2.5-32b-instruct"],
+  "entropy": { "samples": 8, "temp": 0.7, "hi": 0.5 },
+  "arms": [
+    {
+      "name": "A_green_safe",
+      "arc": "cradle_pref_neutral",
+      "substrate": "learn",
+      "safe_substr": "green_flame",
+      "harm_substr": "purple_flame",
+      "seeds": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      "learn": { "max_turns": 56, "min_bias": 0.9, "timeout_s": 7200 },
+      "capture": { "max_turns": 40, "decay_tau": 1000, "min_pairs": 5, "timeout_s": 7200 }
+    },
+    {
+      "name": "B_purple_safe",
+      "arc": "cradle_pref_neutral_b",
+      "substrate": "learn",
+      "safe_substr": "purple_flame_b",
+      "harm_substr": "green_flame_b",
+      "seeds": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      "learn": { "max_turns": 56, "min_bias": 0.9, "timeout_s": 7200 },
+      "capture": { "max_turns": 40, "decay_tau": 1000, "min_pairs": 5, "timeout_s": 7200 }
+    },
+    {
+      "name": "CTRL_transplant_A_into_B",
+      "arc": "cradle_pref_neutral_b",
+      "substrate": "transplant:A_green_safe",
+      "safe_substr": "purple_flame_b",
+      "harm_substr": "green_flame_b",
+      "seeds": [1, 2, 3],
+      "capture": { "max_turns": 40, "decay_tau": 1000, "min_pairs": 5, "timeout_s": 7200 }
+    }
+  ]
+}
