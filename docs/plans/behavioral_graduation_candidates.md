@@ -52,6 +52,10 @@ Each entry below is an engineering invariant (or family) from CLAUDE.md whose bi
 
 Not all 67 `[engineering]` invariants from CLAUDE.md need to graduate. Don't burn experiments on engineering scaffolding.
 
+## Heartbeat walks
+
+**Commands live in the standing runbook:** [docs/experiments/protocols/heartbeat_rerun_runbook.md](../experiments/protocols/heartbeat_rerun_runbook.md) — per-row harness invocations, the universal provenance preflight (worktree pinned at the release candidate, `assert_repo_interpreter`, config.json pinning), gates, and cost planning. This doc owns claims + status; the runbook owns how to re-run them. When a row graduates, its runbook section is added in the same PR.
+
 ## 2026-08-07 heartbeat walk — the FIRST EVER (1.1 cut-line item 5)
 
 No row had ever been marked `Maintained` before this walk. Status after the
