@@ -114,6 +114,46 @@ alone, but the ablated variant is "annotation-free", not "experience-free". The 
 inspection step below includes reading one captured prompt pair end-to-end to bound
 what the resume context actually says about the flames.
 
+## §44c — Companion arms: prior strength in the counterfactual frame
+
+Three additional pre-registered arms extend the campaign into a **prior-strength
+dose-response**, all measured with the same per-decision flip metric. They are pool
+`companion`: reported separately with their own frozen predictions, **never pooled into
+the H1 primary test**, no α claimed — the confirmatory burden stays on H1 alone.
+
+**C_collision_hearth (the dominance leg, Exp 38 counterfactual-ized).** World =
+`cradle_deceptive` (Exp 38's false hearth: name/description read as a benign warm fire —
+strong SAFE prior — but `warm_self` breaches the thermal band; telegraph-denylist
+enforced). Learn stage runs in `cradle_prelinguistic_deceptive` (substrate-primary,
+LLM-free) so the aversion is acquired purely from embodied pain; capture resumes it in
+the narrated world.
+- **Aversion-calibrated learn gate (frozen now, before any 44c data): max |cluster
+  bias| ≥ 0.15.** Rationale: aversive substrates are small in magnitude — the agent
+  avoids the hearth after first pain, so it accumulates far less signal than the 44b
+  attraction (+0.997); Exp 42's harm-side magnitudes ran ≈0.25. The gate stays sign- and
+  cluster-blind (same anti-forking rule as 44b's).
+- **Metric:** corrective shift rate among flips = fraction whose full-variant action
+  reduces hearth commitment (commit delta < 0) or leaves the hearth for a non-hearth
+  action (safety delta > 0). One-entity world → the commitment axis carries the signal;
+  `safe_substr` is a never-matching sentinel by design.
+- **Frozen prediction (dominance):** corrective shift rate ≪ 44b's toward-safe flip
+  rate; consistent with ≈0. If instead corrective flips are common, dominance FAILS to
+  replicate in the causal frame — reported either way.
+
+**D_hearth_green_safe / D_hearth_purple_safe (the stretch dose point).** Hearth-twin
+pair: leak-free within-pair discrimination exactly like 44b's flames, but the base noun
+"hearth" carries a benign CATEGORY-level prior. Color and position counterbalanced.
+5 seeds/arm. **Declared stretch:** run if pilot economics allow; skipping is a scope
+decision, not an amendment.
+- **Frozen prediction (gradient):** toward-safe flip rate BELOW 44b's (the reassuring
+  category prior suppresses within-category discrimination) and ABOVE C's corrective
+  rate — i.e. the three pools order monotonically: **44b flames > D hearth twins >
+  C false hearth.** This converts the Goldilocks claim into a pre-registered
+  monotonicity prediction on one axis, one metric.
+
+Phantom-pick exclusion applies across ALL arms with the extended entity list (hearth
+twins + bare `hearth`, longest-name-first so `hearth` cannot shadow its twins).
+
 ## Amendment rule
 
 Amendments after first confirmatory data are permitted only for *structural invalidity*

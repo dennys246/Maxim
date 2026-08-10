@@ -266,9 +266,12 @@ def stage_learn(
     marker = data_home / "learn_verified.json"
     learn = arm.get("learn", {})
     min_bias = float(learn.get("min_bias", MIN_BIAS_DEFAULT))
+    # Per-stage arc override (44c): the collision arm LEARNS in the LLM-free
+    # prelinguistic deceptive arc and CAPTURES in the narrated one.
+    learn_arc = learn.get("arc", arm["arc"])
     fp = _fingerprint(
         {
-            "arc": arm["arc"],
+            "arc": learn_arc,
             "max_turns": learn.get("max_turns", 56),
             "min_bias": min_bias,
             "seed": seed,
@@ -285,7 +288,7 @@ def stage_learn(
     cmd = [
         _resolve_maxim_binary(),
         "--sim",
-        arm["arc"],
+        learn_arc,
         "--aut-mode",
         "substrate-primary",
         "--embodiment",
