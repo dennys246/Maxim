@@ -305,8 +305,45 @@ class TestProfileHasLocalFile:
         assert profile_has_local_file("") is False
 
     def test_nonexistent_profile(self):
-        # Unknown profile — should return False, not raise
+        """Unknown profile -> False, not raise — HOST-INDEPENDENTLY.
+
+        Pre-fix this was the host-dependent CI-green class: load_llm_config
+        silently falls back to the DEFAULT profile for an unknown name, so on
+        any machine with the default GGUF downloaded this returned True (and
+        CI, with no models, never saw it). The registry membership check makes
+        the answer identical everywhere.
+        """
         assert profile_has_local_file("nonexistent-model-xyz") is False
+
+    def test_unknown_profile_false_even_when_default_model_exists(self, tmp_path):
+        """The exact pre-fix false positive, simulated on any host: an unknown
+        profile must NOT inherit the default profile's on-disk model."""
+        default_model = tmp_path / "default-model.Q4_K_M.gguf"
+        default_model.write_bytes(b"gguf")
+
+        class _FakeCfg:
+            model_path = str(default_model)
+
+        # Even if config resolution WOULD hand back an existing default-model
+        # path, the registry check must short-circuit to False first.
+        with patch("maxim.models.language.config.load_llm_config", return_value=_FakeCfg()):
+            assert profile_has_local_file("definitely-not-a-profile") is False
+
+    def test_alias_resolves_to_known_profile(self, tmp_path):
+        """Aliases must still pass the registry check (normalize before
+        membership) — a real profile name reaching the file check."""
+        from maxim.models.language.config import list_llm_profiles, normalize_llm_profile
+
+        known = list_llm_profiles()[0]
+        model = tmp_path / "known.Q4_K_M.gguf"
+        model.write_bytes(b"gguf")
+
+        class _FakeCfg:
+            model_path = str(model)
+
+        assert normalize_llm_profile(known) in list_llm_profiles()
+        with patch("maxim.models.language.config.load_llm_config", return_value=_FakeCfg()):
+            assert profile_has_local_file(known) is True
 
     def test_rejects_partial_suffix(self, tmp_path):
         """A profile resolved to a .partial tmp file must return False
