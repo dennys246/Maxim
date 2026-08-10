@@ -374,7 +374,26 @@ def log_swallowed_exception(
             ctx_str = f" [{', '.join(ctx_parts)}]"
 
         if stage1_form:
-            logger.log(level, "swallowed_exception site=%s%s", operation, ctx_str, exc_info=exc)
+            # The `extra` event/data pair is LOAD-BEARING (review fold, PR #487):
+            # the MAXIM_LOG_FILE JSONL handler's StructuredFormatter serializes
+            # ONLY record.event + record.data and discards the printf message
+            # and exc_info — without this, Stage 2's "grep the JSONL for
+            # swallowed_exception" finds nothing even when sites fire.
+            logger.log(
+                level,
+                "swallowed_exception site=%s%s",
+                operation,
+                ctx_str,
+                exc_info=exc,
+                extra={
+                    "event": "swallowed_exception",
+                    "data": {
+                        "site": operation,
+                        "exc_type": type(exc).__name__ if exc is not None else None,
+                        "exc": str(exc) if exc is not None else None,
+                    },
+                },
+            )
         else:
             logger.log(level, "Swallowed %s in %s: %s%s", type(exc).__name__, operation, exc, ctx_str)
     except Exception:  # noqa: BLE001 — the logger must never take down the site it guards

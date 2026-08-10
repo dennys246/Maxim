@@ -119,7 +119,7 @@ class ToolPainBridge:
             )
             self._distributor.record_event(event)
         except Exception:
-            pass  # Temporal event emission is best-effort
+            log_swallowed_exception()  # Temporal event emission is best-effort
 
     def record_tool_start(
         self,
@@ -196,7 +196,7 @@ class ToolPainBridge:
                         significance=0.3,  # Mild positive signal
                     )
                 except Exception:
-                    pass  # SCN registration is best-effort
+                    log_swallowed_exception()  # SCN registration is best-effort
 
             # Emit temporal event for credit attribution
             self._emit_temporal_event(
@@ -327,7 +327,7 @@ class ToolPainBridge:
                     significance=outcome_context["intensity"] or 0.5,
                 )
             except Exception:
-                pass  # SCN registration is best-effort.
+                log_swallowed_exception()  # SCN registration is best-effort.
 
         # Emit temporal event for credit attribution
         self._emit_temporal_event(
@@ -391,7 +391,7 @@ class ToolPainBridge:
                         significance=signal.intensity,
                     )
                 except Exception:
-                    pass  # SCN registration is best-effort
+                    log_swallowed_exception()  # SCN registration is best-effort
 
             # Emit temporal event for credit attribution
             self._emit_temporal_event(

@@ -82,6 +82,26 @@ class TestStage1ZeroArgForm:
         assert any("swallowed_exception" in r.message for r in caplog.records)
 
 
+class TestJsonlSerialization:
+    """The Stage-2 protocol is literally 'grep the MAXIM_LOG_FILE JSONL for
+    swallowed_exception' — but StructuredFormatter serializes ONLY record.event
+    + record.data and DISCARDS the printf message and exc_info (PR #487 review
+    finding #1: the instrument could not detect its own events). This pins the
+    fix at the serialized-output level, not the in-memory LogRecord."""
+
+    def test_event_survives_structured_formatter(self, caplog):
+        from maxim.utils.structured_logging import StructuredFormatter
+
+        log = logging.getLogger("test.swallowed.jsonl")
+        with caplog.at_level(logging.WARNING, logger="test.swallowed.jsonl"):
+            _swallow_once(log)
+        rec = next(r for r in caplog.records if "swallowed_exception" in r.message)
+        serialized = StructuredFormatter().format(rec)
+        assert "swallowed_exception" in serialized  # the Stage-2 grep target
+        assert "test_swallowed_log.py:_swallow_once:" in serialized  # the site
+        assert "ValueError" in serialized  # the exception type
+
+
 class TestLegacyExplicitForm:
     """The pre-Stage-1 callers (memory_agent, media_loop, selfy) must be untouched."""
 

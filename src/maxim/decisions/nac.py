@@ -1398,7 +1398,7 @@ class NAc:
                             event_links = list(event_links) + [link]
                             existing_ids.add(id(link))
             except Exception:
-                pass  # EC query is best-effort
+                log_swallowed_exception()  # EC query is best-effort
 
         if not event_links:
             # Check priors
@@ -1709,7 +1709,7 @@ class NAc:
             )
             self._ec.register(f"causal:{link.id}", sig)
         except Exception:
-            pass  # EC registration is best-effort
+            log_swallowed_exception()  # EC registration is best-effort
 
     def _register_imported_link(self, link: CausalLink) -> None:
         """Register an externally-imported CausalLink.
@@ -2897,7 +2897,7 @@ class NAc:
                         if temporal_strength > 0.01:
                             temporal_eligible[(aid, nid)] = temporal_strength
                 except Exception:
-                    pass  # TemporalSignature not available — skip fallback
+                    log_swallowed_exception()  # TemporalSignature not available — skip fallback
 
             all_eligible = {**eligible, **temporal_eligible}
             if not all_eligible:

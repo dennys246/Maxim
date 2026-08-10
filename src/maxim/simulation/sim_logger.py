@@ -751,6 +751,13 @@ class _DisplayLoggingHandler(logging.Handler):
             else:
                 self._display.log("info", msg)
         except Exception:
+            # RE-ENTRANCY NOTE (PR #487 review): this handler is attached to the
+            # ROOT logger at WARNING, so logging from its own error path
+            # re-dispatches into this emit. Recursion is BOUNDED by two facts
+            # that must both hold: (1) log_swallowed_exception marks the site
+            # seen BEFORE logging, so the recursed fire is DEBUG; (2) this
+            # handler's level is >= WARNING, so DEBUG never re-enters. If
+            # either changes, switch this site to self.handleError(record).
             log_swallowed_exception()
 
 

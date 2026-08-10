@@ -1072,7 +1072,7 @@ class MemoryHub:
             except Exception:
                 log_swallowed_exception()
         except Exception:
-            pass  # Don't let SCN errors block memory capture
+            log_swallowed_exception()  # Don't let SCN errors block memory capture
 
     def _on_memory_captured(self, memory_id: str, memory: Any) -> None:
         """Handle memory capture for semantic embedding.

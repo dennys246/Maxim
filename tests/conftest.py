@@ -1385,3 +1385,21 @@ def make_http_response(
 def http_response_factory():
     """Pytest fixture wrapper around :func:`make_http_response`."""
     return make_http_response
+
+
+@pytest.fixture(autouse=True)
+def _reset_swallowed_exception_dedup():
+    """Reset log_swallowed_exception's per-process site dedup between tests.
+
+    The Stage-1 zero-arg form (measurement_path_fail_loud.md) escalates a
+    site's FIRST fire to WARNING and demotes later fires to DEBUG via a
+    process-global seen-set. Without this reset, any test that trips an
+    instrumented production site consumes that site's one WARNING for the
+    whole pytest process, making later first-fire assertions order-dependent
+    (PR #487 review finding #10).
+    """
+    from maxim.utils.logging import _reset_swallow_seen_for_test
+
+    _reset_swallow_seen_for_test()
+    yield
+    _reset_swallow_seen_for_test()

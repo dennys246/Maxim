@@ -323,6 +323,6 @@ class TemporalCreditDistributor:
                 try:
                     self._scn.unregister(event_id)
                 except Exception:
-                    pass  # Best-effort cleanup
+                    log_swallowed_exception()  # Best-effort cleanup
             self._session_event_ids.clear()
             self._deliberation_events.clear()
