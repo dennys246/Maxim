@@ -1,7 +1,7 @@
 {
   "name": "exp44b_confirmatory",
   "_comment": "Exp 44b pre-registered campaign. Freeze this file (commit hash) BEFORE the confirmatory run; protocol doc: docs/experiments/protocols/exp44b_preregistration.md. Arms A+B are the confirmatory counterbalanced pair (pooled by the primary test). The transplant arm is the wrong-content control (A's green-rewarding substrate dropped into B's world where green harms) and is never pooled.",
-  "embodiment": "bodies/infant_humanoid",
+  "embodiment": "bodies/infant_humanoid_chilled",
   "capture_profile": "qwen2.5-32b-instruct",
   "narrator_profile": "qwen2.5-32b-instruct",
   "requery_models": ["qwen2.5-32b-instruct"],

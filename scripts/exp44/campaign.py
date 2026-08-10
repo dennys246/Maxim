@@ -241,7 +241,7 @@ def stage_learn(
             "max_turns": learn.get("max_turns", 56),
             "min_bias": min_bias,
             "seed": seed,
-            "embodiment": cfg.get("embodiment", "bodies/infant_humanoid"),
+            "embodiment": cfg.get("embodiment", "bodies/infant_humanoid_chilled"),
             "narrator_profile": cfg.get("narrator_profile"),
         }
     )
@@ -258,7 +258,7 @@ def stage_learn(
         "--aut-mode",
         "substrate-primary",
         "--embodiment",
-        cfg.get("embodiment", "bodies/infant_humanoid"),
+        cfg.get("embodiment", "bodies/infant_humanoid_chilled"),
         "--interactive",
         "false",
         "--sim-max-turns",
@@ -381,7 +381,7 @@ def stage_capture(
         "--aut-mode",
         "llm-primary",
         "--embodiment",
-        cfg.get("embodiment", "bodies/infant_humanoid"),
+        cfg.get("embodiment", "bodies/infant_humanoid_chilled"),
         "--interactive",
         "false",
         "--sim-max-turns",

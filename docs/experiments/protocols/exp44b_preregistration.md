@@ -116,6 +116,15 @@ The campaign is self-contained under its own `MAXIM_DATA_HOME`s and touches noth
 1.1 walk runs elsewhere. **Never run it on the leader** (Exp 37 cascade lesson).
 
 Operator notes (review folds):
+- **The body MUST be `bodies/infant_humanoid_chilled`** (the config's `embodiment`; also
+  the Exp 42 harness default). The plain `infant_humanoid` has NO `cold` sensor — the
+  flames' `self_effect: cold: -0.3` silently no-ops, no cold pressure ever develops, and
+  under drive-relief-only credit the learn stage can never pass the bias gate (found by
+  the first pilot smoke: bias 0.0 at tick 2000+, every drive at set point, drift +0%).
+  The chilled body's `cold` is ENTROPIC (starts 0.6, regenerates) — load-bearing per its
+  own docstring: a homeostatic cold satiates after a few warms and floors the metric
+  (the Exp 41 trap). Symptom signature if wrong: `[NAc_RECOMMEND] passed_gate=False,
+  cluster_reward_bias_consulted=0.0` forever + no `drive:cold` line in the drive dump.
 - **`maxim config set llm.profile` + `llm.n_ctx` alignment is MANDATORY** —
   `~/.config/maxim/config.json` is NOT redirected by `MAXIM_DATA_HOME`, so sub-sims
   inherit it; a profile-default budgeter vs served-n_ctx drift silently `down_500`s the
