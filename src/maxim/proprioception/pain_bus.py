@@ -48,6 +48,12 @@ dispatch, and (b) invisible coupling with ``@resilient`` retry and
 async contexts. The current design calls direct subscribers from
 ``PainBus.publish`` itself, gated by PainBus's own refractory state.
 No ContextVar, no nested subscriber, no re-entrancy hazard.
+
+Bio-mapping: FUNCTIONAL. Shares the nociceptive-pathway role — routing
+harm signals from transducers to learning and memory consumers with
+refractory gating. The algorithm is typed pub/sub dispatch; it does NOT
+implement fiber-class dynamics (A-delta/C), gate control, or sensitization
+kinetics (the severity latch is an engineering analog, not a model).
 """
 
 from __future__ import annotations

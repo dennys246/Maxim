@@ -7,6 +7,11 @@ The DefaultNetwork is the central component that:
 4. Respects inhibition signals from deliberative layer
 5. Publishes winning actions to motor queue
 6. Acts as Thalamic Gate, filtering percepts for escalation
+
+Bio-mapping: NAME-ONLY. "Default Network" here names the always-on reactive
+layer (novelty, pain reflexes, gaze behaviors) that runs beneath deliberate
+action — a mnemonic for the mental model, not a claim about the brain's
+default mode network (task-negative introspection), which this is not.
 """
 
 from __future__ import annotations

@@ -16,6 +16,10 @@ Brain mapping:
 
 Implements MemoryLayer ABC — the abstract protocol shared with
 Hippocampus (episodic) and ATL (semantic) memory layers.
+
+Bio-mapping: FUNCTIONAL. Shares the angular-gyrus role — arithmetic fact
+retrieval bound to language. The algorithm is exact computation plus a math
+fact/method memory layer; no claim is made about parietal magnitude codes.
 """
 
 from __future__ import annotations

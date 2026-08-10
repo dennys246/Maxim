@@ -8,6 +8,12 @@ Phase 1 Implementation:
 - StateStore for state snapshot caching
 
 See hippocampus_plan.md for full design and future phases.
+
+Bio-mapping: FUNCTIONAL. Shares the hippocampal role — episodic capture,
+tiered consolidation, cue-based recall, replay-driven strengthening. The
+algorithm is an associative graph store with tier promotion and recall-side
+reconsolidation touches; it does NOT implement CA1/CA3 circuitry, place
+fields, or sharp-wave ripple dynamics.
 """
 
 from __future__ import annotations

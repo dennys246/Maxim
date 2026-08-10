@@ -10,6 +10,12 @@ it teaches the Cerebellum, then fades out.
 
 Thread safety: per-key ``RLock`` (read-heavy pattern; per-key granularity
 avoids global contention).
+
+Bio-mapping: MECHANISM (single-cue delta rule). The per-sensor update
+``mean += lr * (actual - expected)`` IS the Rescorla-Wagner delta rule in its
+single-cue form; prediction-error-proportional learning is the earned claim.
+NOT implemented: compound-cue competition (classic R-W's summed prediction
+term), cerebellar microcircuitry (Purkinje/climbing-fiber timing).
 """
 
 from __future__ import annotations

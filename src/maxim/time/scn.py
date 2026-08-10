@@ -2,6 +2,11 @@
 
 Maintains binned indices for fast temporal queries across multiple time scales.
 Inspired by the biological SCN that serves as the brain's master circadian pacemaker.
+
+Bio-mapping: FUNCTIONAL. Shares the SCN's master-clock role — anchoring
+events to circadian (and longer) time scales. The core is binned temporal
+indexing for fast queries; the coupled-oscillator submodule
+(``time/oscillator.py``) separately earns MECHANISM for Kuramoto dynamics.
 """
 
 from __future__ import annotations

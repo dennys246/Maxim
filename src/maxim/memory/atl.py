@@ -10,6 +10,11 @@ semantic representations.  It captures *what things mean* rather than
 
 Concepts are promoted from episodes (via NAc reward signals and
 StatisticianAgent pattern confirmation) or ingested directly (RAG).
+
+Bio-mapping: FUNCTIONAL. Shares the anterior-temporal role as a semantic hub
+(what things mean, promoted from episodic evidence). The algorithm is a typed
+concept store with reinforcement counters; it does NOT implement hub-and-spoke
+degradation dynamics or semantic dementia's graded loss patterns.
 """
 
 from __future__ import annotations

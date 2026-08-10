@@ -16,6 +16,12 @@ Brain mapping:
     a network of coupled oscillators.  Inter-oscillator coupling is learned
     from environmental cues (zeitgebers), allowing emergent rhythms like
     "Monday mornings" to form via circadian-weekly coupling.
+
+Bio-mapping: MECHANISM (Kuramoto + Hebbian coupling). The documented equations
+are the implemented ones: Euler-integrated ``dtheta_i = omega_i + (K/N) * sum_j
+W[i][j] * sin(theta_j - theta_i)`` and coupling learning ``dW = eta *
+cos(theta_i - theta_j)``. Scope honestly: 4 oscillators standing in for the
+SCN's ~20k, fixed natural frequencies, Euler (not exact) integration.
 """
 
 from __future__ import annotations
