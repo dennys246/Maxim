@@ -1284,6 +1284,17 @@ class LaneBackendManager:
         # site without backend-side wiring changes.
         if remote_timeout_s is not None:
             provider_entry["timeout_s"] = float(remote_timeout_s)
+        # n_ctx leg 3: declare the SERVED context on the provider entry when
+        # it is actually known (auto-spawn stamps LaneConfig.served_n_ctx with
+        # the value it launched the server with). The llm_worker budget clamp
+        # reads the smallest declared positive provider n_ctx, so this makes
+        # the budgeter track the real server window from first spawn. Do NOT
+        # fall back to cfg.n_ctx here — that is a LOCAL hardware estimate
+        # (detect_tiers), meaningless for a remote peer's server, and a wrong
+        # declaration silently distorts the min-clamp.
+        _served = int(cfg.served_n_ctx or 0)
+        if _served > 0:
+            provider_entry["n_ctx"] = _served
         providers[provider_key] = provider_entry
 
         # Ensure the lane provider appears in routing.provider_priority so
@@ -1303,6 +1314,10 @@ class LaneBackendManager:
                 model=remote_model,
                 providers=providers,
                 routing=routing,
+                # n_ctx leg 3: router.n_ctx reads cfg.n_ctx directly (the
+                # budgeter's belief). When the served window is known, it
+                # overrides the profile default; otherwise keep base.n_ctx.
+                n_ctx=(_served if _served > 0 else base.n_ctx),
                 # Self-hosted is not cloud; cloud lanes still require cloud_enabled.
                 cloud_enabled=(True if kind == "cloud" else base.cloud_enabled),
             )
@@ -2511,12 +2526,20 @@ def _maybe_auto_spawn_server(
             _server_mod._llm_start_time = time.time()
         if sources_out is not None:
             sources_out[_infer_tier] = _REUSED_SERVER_SOURCE
+        # n_ctx leg 3: when the reused server is one WE spawned in this
+        # process, we know exactly what context it serves — stamp it so the
+        # budgeter's belief matches. An externally-started server's n_ctx is
+        # unknowable here; leave served_n_ctx unset rather than guess.
+        _reused_served_n_ctx: int | None = None
+        if _server_mod._active_spawner is not None and _server_mod._active_spawner.is_running:
+            _reused_served_n_ctx = int(getattr(_server_mod._active_spawner, "_n_ctx", 0) or 0) or None
         out = dict(lane_configs)
         out[_infer_tier] = dataclasses.replace(
             infer_cfg,
             remote_url=existing_url,
             remote_model=effective_profile,
             remote_api_key=infer_cfg.remote_api_key or api_key,
+            served_n_ctx=_reused_served_n_ctx or infer_cfg.served_n_ctx,
         )
         return out
 
@@ -2619,6 +2642,14 @@ def _maybe_auto_spawn_server(
         remote_url=url,
         remote_model=effective_profile,
         remote_api_key=infer_api_key,
+        # n_ctx leg 3 (2026-08-09): the server was JUST launched with
+        # resolved_n_ctx — stamp the served value so _build_remote_backend
+        # threads it into the lane provider entry + lane llm_config and the
+        # PromptBudgeter's belief matches the server from first spawn
+        # (previously only the hot-swap path propagated, via
+        # router.update_provider_n_ctx; a fresh auto-spawn kept the profile
+        # default → oversize prompts → llama-cpp HTTP 500 → _llm_unavailable).
+        served_n_ctx=resolved_n_ctx,
     )
 
     # Leader mode: also auto-spawn the cloudflared daemon alongside the LLM
