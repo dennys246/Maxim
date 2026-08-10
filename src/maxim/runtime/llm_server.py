@@ -393,7 +393,22 @@ def profile_has_local_file(profile_name: str) -> bool:
     if not profile_name:
         return False
     try:
-        from maxim.models.language.config import load_llm_config
+        from maxim.models.language.config import (
+            list_llm_profiles,
+            load_llm_config,
+            normalize_llm_profile,
+        )
+
+        # Fail-closed on UNKNOWN profiles (2026-08-10): load_llm_config
+        # silently falls back to the DEFAULT profile for an unknown name, so
+        # without this check an unknown profile "has a local file" whenever
+        # the default model happens to be downloaded — the host-dependent
+        # false-positive that made test_nonexistent_profile pass in CI (no
+        # models) and fail on every dev box. Whether load_llm_config's silent
+        # fallback is itself correct is a separate, wider question — this
+        # honors THIS function's documented fail-closed contract.
+        if normalize_llm_profile(profile_name) not in list_llm_profiles():
+            return False
 
         cfg = load_llm_config(profile_override=profile_name)
         model_path = getattr(cfg, "model_path", "") or ""
