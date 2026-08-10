@@ -228,6 +228,18 @@ class LaneConfig:
     # estimate_max_ctx() so the chosen n_ctx fits the lane's VRAM budget
     # without OOMing at load time. See peer_leader_flexibility_plan.md P4c.
     n_ctx: int | None = None
+    # The context window the lane's server is ACTUALLY serving, when known.
+    # Distinct from ``n_ctx`` (a local hardware ESTIMATE from detect_tiers):
+    # set ONLY by code that knows the served value — the auto-spawn path
+    # stamps the n_ctx it launched llama-cpp-server with (n_ctx leg 3,
+    # 2026-08-09; hot-swap covers the same gap via
+    # ``router.update_provider_n_ctx``). ``_build_remote_backend`` threads
+    # this into the lane provider entry + the lane llm_config so the
+    # PromptBudgeter's belief matches the server from first spawn. Do NOT
+    # populate it for remote peer lanes from the tier estimate — that value
+    # describes THIS machine's hardware, not the remote server, and a wrong
+    # declaration here silently shrinks (min-clamp) or inflates the budget.
+    served_n_ctx: int | None = None
     # KV cache quantization for llama.cpp (-1.5x to -4x KV memory cost vs f16).
     # Currently only "f16" is wired in by detect_tiers; "q8_0" / "q4_0" can be
     # set manually via tier overrides in llm.json for tight-VRAM cards.

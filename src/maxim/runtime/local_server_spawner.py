@@ -236,6 +236,14 @@ class LocalServerSpawner:
         return f"http://127.0.0.1:{self._port}/v1"
 
     @property
+    def n_ctx(self) -> int:
+        """The context window this spawner launched (or will launch) the
+        server with. Public because the auto-spawn reuse path stamps it as
+        the lane's served_n_ctx — a private-attr getattr there would turn a
+        rename into a silent no-op (two-lens fold 2026-08-09)."""
+        return self._n_ctx
+
+    @property
     def is_running(self) -> bool:
         return self._process is not None and self._process.poll() is None
 
