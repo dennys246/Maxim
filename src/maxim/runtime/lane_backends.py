@@ -1292,7 +1292,13 @@ class LaneBackendManager:
         # fall back to cfg.n_ctx here — that is a LOCAL hardware estimate
         # (detect_tiers), meaningless for a remote peer's server, and a wrong
         # declaration silently distorts the min-clamp.
+        # Belt-and-suspenders on top of the auto-spawn placement guard: the
+        # stamp describes the server at cfg.remote_url — honor it only when
+        # that IS the primary being compiled (a placement primary pointing
+        # elsewhere must not inherit a local spawn's declaration).
         _served = int(cfg.served_n_ctx or 0)
+        if _served > 0 and primary is not None and primary.url != cfg.remote_url:
+            _served = 0
         if _served > 0:
             provider_entry["n_ctx"] = _served
         providers[provider_key] = provider_entry
@@ -1317,6 +1323,11 @@ class LaneBackendManager:
                 # n_ctx leg 3: router.n_ctx reads cfg.n_ctx directly (the
                 # budgeter's belief). When the served window is known, it
                 # overrides the profile default; otherwise keep base.n_ctx.
+                # Side effect: providers in this lane WITHOUT a declared
+                # n_ctx (e.g. a PEER tail entry) now fall back to the served
+                # value in context_window_routing instead of the profile
+                # default — consistent with the leg-1 min-clamp trade (the
+                # long-context window is unreachable by construction).
                 n_ctx=(_served if _served > 0 else base.n_ctx),
                 # Self-hosted is not cloud; cloud lanes still require cloud_enabled.
                 cloud_enabled=(True if kind == "cloud" else base.cloud_enabled),
@@ -2401,6 +2412,15 @@ def _maybe_auto_spawn_server(
     infer_cfg = lane_configs.get(_infer_tier)
     if infer_cfg is None or infer_cfg.remote_url or not infer_cfg.model_profile:
         return lane_configs
+    # An explicit config placement opts the tier out of auto-spawn (this
+    # implements the opt-out _apply_config_placements documents; two-lens
+    # fold 2026-08-09). Without it, a placement lane whose primary is a
+    # REMOTE peer could still trigger a pointless local spawn — and, post
+    # served_n_ctx, stamp the LOCAL spawn's context onto the PEER's
+    # provider entry: a confident false declaration in the exact failure
+    # class this field exists to close.
+    if getattr(infer_cfg, "placement", ()):
+        return lane_configs
 
     # If the lane's assigned profile is a cloud profile (anthropic, openai,
     # gemini, etc.), there's no local GGUF to serve and auto-spawn is not
@@ -2531,8 +2551,16 @@ def _maybe_auto_spawn_server(
         # budgeter's belief matches. An externally-started server's n_ctx is
         # unknowable here; leave served_n_ctx unset rather than guess.
         _reused_served_n_ctx: int | None = None
-        if _server_mod._active_spawner is not None and _server_mod._active_spawner.is_running:
-            _reused_served_n_ctx = int(getattr(_server_mod._active_spawner, "_n_ctx", 0) or 0) or None
+        if (
+            _server_mod._active_spawner is not None
+            and _server_mod._active_spawner.is_running
+            # Port identity: the reuse probe hit existing_url (current
+            # MAXIM_AUTO_SPAWN_PORT). Our spawner's n_ctx describes OUR
+            # server — if the env changed mid-process, a different
+            # matching-model server may be answering on the new port.
+            and _server_mod._active_spawner.base_url == existing_url
+        ):
+            _reused_served_n_ctx = int(_server_mod._active_spawner.n_ctx or 0) or None
         out = dict(lane_configs)
         out[_infer_tier] = dataclasses.replace(
             infer_cfg,
@@ -2990,8 +3018,19 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
         # Without this, hot-swapping from a 4k model to a 32k model
         # still rejects requests that would fit in the new window.
         try:
+            swapped_base_url = f"http://127.0.0.1:{port}/v1"
             for router in _find_active_routers():
+                # "local" covers plain local-backend routers (providers
+                # synthesized by normalize_providers). Lane routers key the
+                # spawned server as "lane-<tier>" with a base_url at the
+                # swapped port — for those, the literal "local" key is a
+                # silent no-op (two-lens fold 2026-08-09): also refresh
+                # every provider entry actually pointing at this server so
+                # the served declaration survives a cross-model swap.
                 router.update_provider_n_ctx("local", n_ctx)
+                for _pkey, _pcfg in getattr(router, "_providers", {}).items():
+                    if isinstance(_pcfg, dict) and str(_pcfg.get("base_url", "")) == swapped_base_url:
+                        router.update_provider_n_ctx(_pkey, n_ctx)
                 if logger is not None:
                     logger.info("LLM swap: updated router n_ctx to %d", n_ctx)
         except Exception as e:

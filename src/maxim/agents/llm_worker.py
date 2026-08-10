@@ -309,11 +309,15 @@ class LLMWorker:
         # session. Providers that declare no n_ctx are skipped (unknown ≠
         # small); the clamp only ever LOWERS the budget, so a cloud-only
         # worker whose constructor n_ctx already matches its profile is
-        # unchanged. The remaining half of the known bug — auto-spawn
-        # propagating the RESOLVED n_ctx into the provider config
-        # (update_provider_n_ctx on spawn, not just hot-swap) — is
-        # tracked follow-up; until then `maxim config set llm.n_ctx` is
-        # the alignment mechanism.
+        # unchanged. The auto-spawn half of the known bug is PARTIALLY
+        # closed (n_ctx leg 3, 2026-08-09): same-process fresh spawns and
+        # owned-server reuse stamp LaneConfig.served_n_ctx, which
+        # _build_remote_backend declares on the lane provider entry — so
+        # this clamp sees the real served window. Cross-process reuse (a
+        # sub-sim on the leader's server: _active_spawner is per-process)
+        # still budgets from the profile default, so `maxim config set
+        # llm.n_ctx` remains the alignment mechanism for harness
+        # topologies.
         #
         # ACCEPTED TRADE (review fold — do NOT re-add max() to "restore
         # cloud routing"): in a mixed lane (local 16k + cloud 200k) the

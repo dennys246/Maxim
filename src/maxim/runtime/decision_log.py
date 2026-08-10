@@ -155,6 +155,10 @@ def _serialize_lane(lane_cfg: Any, source: str) -> dict[str, Any]:
     return {
         "profile": getattr(lane_cfg, "model_profile", None),
         "n_ctx": getattr(lane_cfg, "n_ctx", None),
+        # Estimate-vs-served split (n_ctx leg 3): n_ctx above is the local
+        # hardware ESTIMATE; this is what the lane's server actually serves
+        # when known — the self-auditing surface for budget-vs-server drift.
+        "served_n_ctx": getattr(lane_cfg, "served_n_ctx", None),
         "kv_quant_mode": getattr(lane_cfg, "kv_quant_mode", "f16"),
         "device": getattr(lane_cfg, "device", "auto"),
         "remote_host": _redact_url(getattr(lane_cfg, "remote_url", None)),
