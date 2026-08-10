@@ -197,6 +197,37 @@ def _list_sessions(data_home: Path) -> set[str]:
     return {d.name for d in reports.iterdir() if d.is_dir()}
 
 
+def capture_stats(capture_path: Path) -> tuple[int, int]:
+    """(n_pairs, n_with_annotation) from a paired-prompt capture JSONL.
+
+    A row is a PAIR iff it carries both prompt variants (capture-error rows —
+    ``{"decision_id", "capture_error"}`` — are not pairs and must not satisfy
+    min_pairs). ``has_cluster_bias`` lives NESTED under ``world_state`` (the
+    ``_digest`` dict from capture_paired_prompts.py) — the first pilot's
+    capture gate failed with a structurally-impossible 0.0 because this
+    counter read it at top level (fixed 2026-08-10; guarded by
+    tests/unit/test_exp44_campaign_gates.py against the REAL row shape).
+    """
+    n_pairs = 0
+    n_annotated = 0
+    if not capture_path.exists():
+        return 0, 0
+    with open(capture_path, encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if "prompt_full" not in row or "prompt_ablated" not in row:
+                continue  # capture_error row — not a pair
+            n_pairs += 1
+            if (row.get("world_state") or {}).get("has_cluster_bias"):
+                n_annotated += 1
+    return n_pairs, n_annotated
+
+
 def _find_new_session(data_home: Path, before: set[str]) -> Path | None:
     """Newest session dir CREATED by the run we just launched (snapshot diff).
 
@@ -410,19 +441,7 @@ def stage_capture(
         },
     )
     rc = _run_sim(cmd, env, data_home / "logs" / "capture.log", int(cap.get("timeout_s", CAPTURE_TIMEOUT_S)))
-    n_pairs = 0
-    n_with_annotation = 0
-    if capture_path.exists():
-        with open(capture_path, encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                n_pairs += 1
-                try:
-                    if json.loads(line).get("has_cluster_bias"):
-                        n_with_annotation += 1
-                except json.JSONDecodeError:
-                    pass
+    n_pairs, n_with_annotation = capture_stats(capture_path)
     annotation_fraction = (n_with_annotation / n_pairs) if n_pairs else 0.0
 
     # Annotation-presence gates (two-lens fold, frozen in the pre-registration):
