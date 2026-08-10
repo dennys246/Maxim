@@ -102,6 +102,103 @@
         "green_flame_b",
         "purple_flame_b"
       ]
+    },
+    {
+      "name": "C_collision_hearth",
+      "_comment": "44c COLLISION (companion, pre-registered): the Exp 38 false hearth \u2014 strong benign prior, secretly harmful, aversion learned by experience. Frozen prediction: corrective flips ~0 (dominance in flip units). Learn arc is the LLM-free prelinguistic deceptive; capture arc is the narrated deceptive world. Aversion-calibrated learn gate 0.15 (Exp 42 harm magnitudes ~0.25; aversive substrates are small because the agent avoids after first pain).",
+      "arc": "cradle_deceptive",
+      "substrate": "learn",
+      "pool": "companion",
+      "safe_substr": "__no_safe_entity__",
+      "harm_substr": "hearth",
+      "world_entities": [
+        "hearth"
+      ],
+      "seeds": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "learn": {
+        "arc": "cradle_prelinguistic_deceptive",
+        "max_turns": 56,
+        "min_bias": 0.15,
+        "timeout_s": 7200
+      },
+      "capture": {
+        "max_turns": 40,
+        "decay_tau": 1000,
+        "min_pairs": 5,
+        "timeout_s": 7200
+      }
+    },
+    {
+      "name": "D_hearth_green_safe",
+      "_comment": "44c STRETCH (companion): hearth-twin pair \u2014 benign CATEGORY prior over a within-category discrimination. Middle dose point on the prior-strength axis (44b flames -> hearth twins -> false hearth). Run if pilot economics allow; declared stretch in the prereg.",
+      "arc": "cradle_pref_hearth",
+      "substrate": "learn",
+      "pool": "companion",
+      "safe_substr": "green_hearth",
+      "harm_substr": "purple_hearth",
+      "world_entities": [
+        "green_hearth",
+        "purple_hearth"
+      ],
+      "seeds": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "learn": {
+        "max_turns": 56,
+        "min_bias": 0.9,
+        "timeout_s": 7200
+      },
+      "capture": {
+        "max_turns": 40,
+        "decay_tau": 1000,
+        "min_pairs": 5,
+        "timeout_s": 7200
+      }
+    },
+    {
+      "name": "D_hearth_purple_safe",
+      "arc": "cradle_pref_hearth_b",
+      "substrate": "learn",
+      "pool": "companion",
+      "safe_substr": "purple_hearth_b",
+      "harm_substr": "green_hearth_b",
+      "world_entities": [
+        "green_hearth_b",
+        "purple_hearth_b"
+      ],
+      "seeds": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "learn": {
+        "max_turns": 56,
+        "min_bias": 0.9,
+        "timeout_s": 7200
+      },
+      "capture": {
+        "max_turns": 40,
+        "decay_tau": 1000,
+        "min_pairs": 5,
+        "timeout_s": 7200
+      }
     }
   ]
 }

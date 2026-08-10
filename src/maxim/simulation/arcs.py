@@ -636,6 +636,26 @@ BUILTIN_ARCS["cradle_pref_neutral_b"] = _make_builtin(
     "cradle_pref_neutral). Predict the substrate learns to prefer purple.",
     _make_pref_phases("items/purple_flame_b", "items/green_flame_b"),
 )
+# Exp 44c STRETCH arms (exp44b_preregistration.md §44c): the hearth-twin pair —
+# same leak-free structure as the neutral flames, but the base noun "hearth"
+# carries a benign category-level prior ("hearths are cozy/safe"). Middle dose
+# point on the prior-strength axis: does a reassuring CATEGORY prior suppress
+# within-category discrimination that the substrate learned? Position and color
+# counterbalanced exactly like the flame pair (A harm-first, B safe-first).
+BUILTIN_ARCS["cradle_pref_hearth"] = _make_builtin(
+    "cradle_pref_hearth",
+    "Exp 44c hearth-twin preference (arm A): purple_hearth harmful, green_hearth "
+    "safe; the 'hearth' noun carries a benign category prior. Predict the "
+    "substrate learns to prefer green.",
+    _make_pref_phases("items/purple_hearth", "items/green_hearth"),
+)
+BUILTIN_ARCS["cradle_pref_hearth_b"] = _make_builtin(
+    "cradle_pref_hearth_b",
+    "Exp 44c hearth-twin counterbalance: green_hearth_b harmful, purple_hearth_b "
+    "safe (color AND position swapped vs cradle_pref_hearth). Predict the "
+    "substrate learns to prefer purple.",
+    _make_pref_phases("items/purple_hearth_b", "items/green_hearth_b"),
+)
 
 
 # ---------------------------------------------------------------------------

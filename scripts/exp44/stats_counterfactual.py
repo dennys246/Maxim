@@ -104,13 +104,25 @@ def is_void(campaign: Path, arm: str, seed: int) -> bool:
     return (campaign / "arms" / arm / f"seed{seed}" / "control_void.json").exists()
 
 
-# All flame entities across both counterbalanced arcs, LONGEST FIRST so
-# "green_flame_b" wins the match before "green_flame" can (substring trap).
-_FLAME_ENTITIES = ("green_flame_b", "purple_flame_b", "green_flame", "purple_flame")
+# All warmth entities across every 44b/44c arc, LONGEST FIRST so the most
+# specific name wins the substring match ("green_flame_b" before "green_flame";
+# bare "hearth" LAST — it is a substring of every hearth twin AND names the
+# 44c collision arm's false hearth).
+_FLAME_ENTITIES = (
+    "purple_hearth_b",
+    "purple_flame_b",
+    "green_hearth_b",
+    "green_flame_b",
+    "purple_hearth",
+    "purple_flame",
+    "green_hearth",
+    "green_flame",
+    "hearth",
+)
 
 
 def referenced_flame(action: str | None) -> str | None:
-    """Which flame entity an action name references (longest-match), or None."""
+    """Which warmth entity an action name references (longest-match), or None."""
     if not action:
         return None
     for ent in _FLAME_ENTITIES:
@@ -196,9 +208,20 @@ def main() -> int:
     cfg = json.loads(Path(args.config).read_text())
     entropy_hi = args.entropy_hi if args.entropy_hi is not None else cfg.get("entropy", {}).get("hi", 0.5)
     arms_cfg = {a["name"]: a for a in cfg["arms"]}
-    # Confirmatory pool: counterbalanced "learn" arms only. Controls
-    # (transplant/none) are reported separately, never pooled into the test.
-    confirmatory = {n for n, a in arms_cfg.items() if a.get("substrate", "learn") == "learn"}
+
+    # Pools (frozen in the prereg): "confirmatory" = the counterbalanced pair,
+    # the ONLY arms entering the primary test; "companion" = pre-registered
+    # 44c arms (collision / hearth twins) reported separately with their own
+    # frozen predictions; controls (transplant/none) also never pooled.
+    # Default: learn arms are confirmatory unless they declare pool=companion.
+    def _pool(a: dict[str, Any]) -> str:
+        explicit = a.get("pool")
+        if explicit:
+            return explicit
+        return "confirmatory" if a.get("substrate", "learn") == "learn" else "control"
+
+    confirmatory = {n for n, a in arms_cfg.items() if _pool(a) == "confirmatory"}
+    companion = {n for n, a in arms_cfg.items() if _pool(a) == "companion"}
 
     all_results = load_results(campaign)
     if not all_results:
@@ -216,7 +239,8 @@ def main() -> int:
             per_run[(arm, seed)] = score_run(recs, a["safe_substr"], a["harm_substr"], entropy_hi, world=world)
 
         conf = {k: v for k, v in per_run.items() if k[0] in confirmatory}
-        ctrl = {k: v for k, v in per_run.items() if k[0] not in confirmatory}
+        comp = {k: v for k, v in per_run.items() if k[0] in companion}
+        ctrl = {k: v for k, v in per_run.items() if k[0] not in confirmatory and k[0] not in companion}
 
         # PRIMARY: per-seed sign test on directional NET (confirmatory arms).
         nets = [v["net"] for v in conf.values()]
@@ -278,6 +302,26 @@ def main() -> int:
                     f"substrate never surfaced (see control_void.json markers); "
                     f"the wrong-content control is uninterpretable for those cells"
                 )
+        if comp:
+            # Companion arms (44c): per-arm aggregates, NEVER pooled into the
+            # primary. The paper's dose-response comparison reads flip-direction
+            # and commit rates across pools from these blocks.
+            m["companion_arms"] = {}
+            for arm_name in sorted({k[0] for k in comp}):
+                runs_c = {k: v for k, v in comp.items() if k[0] == arm_name}
+                ts_c = sum(v["toward_safe"] for v in runs_c.values())
+                th_c = sum(v["toward_harm"] for v in runs_c.values())
+                tc_c = sum(v["toward_commit"] for v in runs_c.values())
+                to_c = sum(v["toward_observe"] for v in runs_c.values())
+                m["companion_arms"][arm_name] = {
+                    "n_runs": len(runs_c),
+                    "toward_safe": ts_c,
+                    "toward_harm": th_c,
+                    "direction_wilson_95ci": list(wilson_ci(ts_c, ts_c + th_c)),
+                    "toward_commit": tc_c,
+                    "toward_observe": to_c,
+                    "per_run": {f"seed{k[1]}": v for k, v in sorted(runs_c.items())},
+                }
         report["models"][model] = m
 
         print(f"\n=== model {model} ===")
@@ -303,6 +347,13 @@ def main() -> int:
             print(
                 f"  intrinsic baseline [{arm}]: P(safe-colored | ablated, flame) = {ps} "
                 f"({b['ablated_safe']}/{b['ablated_safe'] + b['ablated_harm']})"
+            )
+        for arm_name, c in m.get("companion_arms", {}).items():
+            lo_c, hi_c = c["direction_wilson_95ci"]
+            print(
+                f"  companion [{arm_name}]: {c['toward_safe']} safe vs {c['toward_harm']} harm "
+                f"(Wilson95 [{lo_c:.2f},{hi_c:.2f}]); commit {c['toward_commit']}/{c['toward_observe']} "
+                f"(never pooled into the primary)"
             )
 
     out = Path(args.out) if args.out else campaign / "stats.json"

@@ -118,9 +118,15 @@ def main() -> int:
         # Commitment slice: among flips where BOTH arms act on a flame (so the
         # safety class is unchanged / lateral), did the substrate raise engagement
         # (observe→touch→warm_self)? This is the effect the safety-rank hides.
-        commit_flips = [r for r in b_flips if commit_rank(r["action_full"]) is not None and commit_rank(r["action_ablated"]) is not None]
+        commit_flips = [
+            r
+            for r in b_flips
+            if commit_rank(r["action_full"]) is not None and commit_rank(r["action_ablated"]) is not None
+        ]
         toward_commit = sum(1 for r in commit_flips if commit_rank(r["action_full"]) > commit_rank(r["action_ablated"]))
-        toward_observe = sum(1 for r in commit_flips if commit_rank(r["action_full"]) < commit_rank(r["action_ablated"]))
+        toward_observe = sum(
+            1 for r in commit_flips if commit_rank(r["action_full"]) < commit_rank(r["action_ablated"])
+        )
         print(f"\n[{name}] decisions={len(bucket)} flips={nf}")
         if nf:
             print(f"  toward SAFE : {toward_safe}/{nf} = {toward_safe / nf:.3f}")

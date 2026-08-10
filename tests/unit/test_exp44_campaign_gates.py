@@ -95,3 +95,32 @@ def test_digest_shape_contract():
     assert row["world_state"]["has_cluster_bias"] is True
     row2 = _real_row(1, annotated=False)
     assert row2["world_state"]["has_cluster_bias"] is False
+
+
+stats_mod = _load("_exp44_stats_for_test", "scripts/exp44/stats_counterfactual.py")
+
+
+class TestPhantomGuard44c:
+    """Longest-match ordering with the 44c hearth entities — bare 'hearth' is a
+    substring of every hearth twin and must never shadow them."""
+
+    def test_twin_wins_before_base(self):
+        assert stats_mod.referenced_flame("green_hearth_b_warm_self") == "green_hearth_b"
+        assert stats_mod.referenced_flame("purple_hearth_observe") == "purple_hearth"
+        assert stats_mod.referenced_flame("hearth_warm_self") == "hearth"
+        assert stats_mod.referenced_flame("green_flame_b_touch") == "green_flame_b"
+
+    def test_phantom_in_collision_world(self):
+        world = ("hearth",)
+        assert stats_mod.is_phantom("green_flame_warm_self", world) is True
+        assert stats_mod.is_phantom("green_hearth_warm_self", world) is True  # twin leak
+        assert stats_mod.is_phantom("hearth_warm_self", world) is False
+        assert stats_mod.is_phantom("sense_presence", world) is False
+
+    def test_phantom_in_hearth_twin_world(self):
+        world = ("green_hearth", "purple_hearth")
+        assert stats_mod.is_phantom("green_hearth_warm_self", world) is False
+        assert stats_mod.is_phantom("green_hearth_b_warm_self", world) is True
+        assert stats_mod.is_phantom("green_flame_warm_self", world) is True
+        # bare-hearth reference: not in this world's entity list -> phantom
+        assert stats_mod.is_phantom("hearth_warm_self", world) is True

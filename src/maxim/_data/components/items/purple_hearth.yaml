@@ -1,0 +1,39 @@
+component:
+  name: purple_hearth
+  # HARM variant (arms.thermal 0.6 > band 0.5 → thermal_contact pain) — Exp 44
+  # neutral-name pair. The safe/harm identity lives ONLY in the arms.thermal
+  # delta below, which the LLM never sees. Name, tags, synonyms, description, and
+  # affordance text are deliberately IDENTICAL to green_hearth except the color
+  # word, so an LLM-primary AUT cannot read the answer off its tool list — the
+  # preference is discoverable only through felt experience (the substrate). See
+  # docs/experiments/protocols/exp44b_preregistration.md (44c stretch arm).
+  category: items
+  tags: [cradle, thermal, hearth, exp44c]
+  synonyms: [purple hearth, violet hearth]
+  description: |
+    A hearth burning with steady purple flames. Moving close relieves the
+    body's `cold` drive. (Exp 44c hearth-twin variant of the Exp 44 flame
+    pair — see the maintainer comment above for which twin this is.)
+
+entity:
+  name: purple_hearth
+  entity_type: item
+  modulators:
+    glow:
+      abstract: true  # capability-only — no sensors (C4)
+      affordances:
+        observe:
+          params: {}
+          description: "Look at the hearth from a distance"
+        warm_self:
+          params: {}
+          description: "Move close to feel the hearth's warmth"
+          self_effect:
+            cold: -0.3
+            arms.thermal: 0.6
+        touch:
+          params: {}
+          description: "Reach toward the hearth"
+          self_effect:
+            cold: -0.3
+            arms.thermal: 0.6
