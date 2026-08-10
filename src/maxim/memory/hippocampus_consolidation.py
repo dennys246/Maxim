@@ -6,6 +6,7 @@ import hashlib
 import logging
 import time
 from typing import TYPE_CHECKING
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.memory.strategies import MemoryStrategy
@@ -205,7 +206,7 @@ class ConsolidationMixin:
                     preserved=results["preserved"],
                 )
             except Exception:
-                pass
+                log_swallowed_exception()
 
         return results
 
@@ -411,7 +412,7 @@ class ConsolidationMixin:
                 memory_id=memory_id,
             )
         except Exception:
-            pass
+            log_swallowed_exception()
         return True
 
     def _add_consolidation_candidate(self, memory_id: str) -> None:

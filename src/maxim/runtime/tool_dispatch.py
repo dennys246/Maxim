@@ -392,7 +392,7 @@ def record_outcome(
                 context={"agent_id": agent_id, "tool": tool_name},
             )
         except Exception:
-            pass
+            log_swallowed_exception()
 
 
 def execute_parallel_actions(

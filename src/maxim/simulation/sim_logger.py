@@ -25,6 +25,7 @@ import threading
 import time
 from contextlib import contextmanager
 from typing import Any, Callable, Generator
+from maxim.utils.logging import log_swallowed_exception
 
 logger = logging.getLogger(__name__)
 
@@ -706,7 +707,7 @@ def _cleanup_log_file() -> None:
         try:
             _log_file.close()
         except Exception:
-            pass
+            log_swallowed_exception()
         _log_file = None
 
 
@@ -750,7 +751,7 @@ class _DisplayLoggingHandler(logging.Handler):
             else:
                 self._display.log("info", msg)
         except Exception:
-            pass
+            log_swallowed_exception()
 
 
 def set_active_display(display: Any) -> None:
@@ -817,7 +818,7 @@ def _cleanup_display() -> None:
         try:
             display.stop()
         except Exception:
-            pass
+            log_swallowed_exception()
 
 
 atexit.register(_cleanup_display)

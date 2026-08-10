@@ -61,6 +61,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from maxim.proprioception.pain import PainSignal, PainType
 from maxim.reactions.bus import ReactionBus
 from maxim.reactions.compat import pain_signal_to_reaction
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.decisions.nac import NAc
@@ -95,7 +96,7 @@ def _sim_log_reaction(reaction: "Reaction") -> None:
 
         sim_reaction(reaction.kind, reaction.intensity, reaction.source)
     except Exception:
-        pass
+        log_swallowed_exception()
 
 
 class PainBus:
@@ -373,7 +374,7 @@ def create_pain_memory_subscriber(
                 f"Pain memory captured: {signal.pain_type.value} (intensity={signal.intensity:.2f})",
             )
         except Exception:
-            pass
+            log_swallowed_exception()
 
     return _on_pain
 
@@ -446,7 +447,7 @@ def create_percept_valence_subscriber(
             if get_interactive_mode() == InteractiveMode.ON:
                 return
         except Exception:
-            pass
+            log_swallowed_exception()
 
         context = signal.context or {}
         agent_id = str(context.get("agent_id") or "")
@@ -532,7 +533,7 @@ def create_pain_nac_subscriber(
             if get_interactive_mode() == InteractiveMode.ON:
                 return
         except Exception:
-            pass
+            log_swallowed_exception()
 
         context = dict(signal.context or {})
         source = context.get("source", "unknown")

@@ -24,6 +24,7 @@ from typing import Any
 from maxim.decisions.valence_signal import ValenceSignal
 from maxim.time.temporal_event import TemporalEvent
 from maxim.time.temporal_signature import TemporalSignature
+from maxim.utils.logging import log_swallowed_exception
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +196,7 @@ class TemporalCreditDistributor:
                     pre_activated=[(s, round(a, 3)) for s, a in pre_activated[:5]],
                 )
             except Exception:
-                pass
+                log_swallowed_exception()
 
         return pre_activated
 
@@ -298,7 +299,7 @@ class TemporalCreditDistributor:
                     nodes_credited=total_count,
                 )
             except Exception:
-                pass
+                log_swallowed_exception()
 
         return credited
 

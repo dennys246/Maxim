@@ -35,6 +35,7 @@ from maxim.decisions.causal_link import (
     Valence,
     _VALENCE_TO_REWARD,
 )
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.memory.semantic_promoter import PromotionCandidate
@@ -1017,7 +1018,7 @@ class NAc:
                         valence=valence_str,
                     )
             except Exception:
-                pass
+                log_swallowed_exception()
 
         return updated_links
 
@@ -1180,7 +1181,7 @@ class NAc:
                     link_type="updated" if link.observation_count > 1 else "new",
                 )
             except Exception:
-                pass
+                log_swallowed_exception()
 
         return updated_links
 
@@ -1252,7 +1253,7 @@ class NAc:
                         link_type="observed",
                     )
                 except Exception:
-                    pass
+                    log_swallowed_exception()
                 return existing_link
 
             new_link = CausalLink(
@@ -1289,7 +1290,7 @@ class NAc:
                     link_type="new_observed",
                 )
             except Exception:
-                pass
+                log_swallowed_exception()
             # Capture new-link payload for the OUTSIDE-the-lock LEARN
             # headline emission below.  ``observe`` is the direct-observation
             # API (caller already attributed event → outcome), so any new
@@ -1318,7 +1319,7 @@ class NAc:
                     valence=valence_str,
                 )
             except Exception:
-                pass
+                log_swallowed_exception()
         return new_link
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1359,7 +1360,7 @@ class NAc:
                 outcomes = []
             sim_nac_predict(event=event_signature, outcomes=outcomes)
         except Exception:
-            pass
+            log_swallowed_exception()
         return result
 
     def _predict_impl(
@@ -1727,7 +1728,7 @@ class NAc:
             try:
                 self._ec.remove_signature(f"causal:{link_id}")
             except Exception:
-                pass
+                log_swallowed_exception()
 
     def _enforce_limits(self) -> None:
         """Enforce max_links limit by removing lowest-confidence links."""
@@ -2929,7 +2930,7 @@ class NAc:
                     nodes_credited=len(credited),
                 )
             except Exception:
-                pass
+                log_swallowed_exception()
 
         return credited
 

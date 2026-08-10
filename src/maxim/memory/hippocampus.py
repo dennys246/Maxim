@@ -57,6 +57,7 @@ from maxim.memory.types import (
     Outcome,
     Perception,
 )
+from maxim.utils.logging import log_swallowed_exception
 
 logger = logging.getLogger(__name__)
 
@@ -1799,7 +1800,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 valence=episode.valence,
             )
         except Exception:
-            pass
+            log_swallowed_exception()
 
         return episode
 

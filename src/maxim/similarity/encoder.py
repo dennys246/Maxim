@@ -21,6 +21,7 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from typing import Any
+from maxim.utils.logging import log_swallowed_exception
 
 logger = logging.getLogger(__name__)
 
@@ -235,7 +236,7 @@ class LinguisticEncoder:
 
                 temporal_sig = TemporalSignature.now()
             except Exception:
-                pass
+                log_swallowed_exception()
             self._nac.update_eligibility(agent_id, result.node_id, activation, temporal_sig=temporal_sig)
 
         logger.debug(
@@ -323,7 +324,7 @@ class LinguisticEncoder:
 
                     temporal_sig = TemporalSignature.now()
                 except Exception:
-                    pass
+                    log_swallowed_exception()
                 self._nac.update_eligibility(agent_id, result.node_id, activation, temporal_sig=temporal_sig)
 
             node_ids.append(result.node_id)

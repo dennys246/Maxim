@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from maxim.decisions.causal_link import Valence
 from maxim.decisions.nac import NAc
 from maxim.proprioception.pain import PainDetector, PainSignal, PainType
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.decisions.temporal_credit import TemporalCreditDistributor
@@ -503,7 +504,7 @@ class ToolPainBridge:
                     significance=signal.intensity,
                 )
             except Exception:
-                pass
+                log_swallowed_exception()
 
         # Emit temporal event for credit attribution
         self._emit_temporal_event(
@@ -540,7 +541,7 @@ class ToolPainBridge:
                         weight=link.confidence,
                     )
                 except Exception:
-                    pass
+                    log_swallowed_exception()
 
     # ── Reflexion: verbal self-critique on surprising failures ──────────
 
