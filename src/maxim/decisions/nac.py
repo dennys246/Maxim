@@ -1,7 +1,19 @@
-"""Nucleus Accumbens (NAc) - Causal inference and reward prediction.
+"""Nucleus Accumbens (NAc) - Causal inference and reward-modulated credit assignment.
 
-Learns event → outcome relationships through temporal difference learning,
-enabling prediction of outcomes before taking actions.
+Learns event → outcome relationships as explicit CausalLinks (with Welford
+online variance over outcomes), and assigns credit for rewards via
+eligibility-trace-weighted proportional distribution: fast-decaying traces
+credit recently-active substrate nodes, with an SCN phase-similarity fallback
+for expired traces. Accumulated per-node/per-tool/per-goal reward biases
+(clamped ≥ 0) widen EC recognition and steer action selection; they never
+narrow recognition — avoidance is carried by valence, not negative bias.
+
+Bio-mapping: INSPIRATION, not mechanism. The biological NAc story is
+dopaminergic reward-prediction error, i.e. temporal-difference learning
+(δ = r + γV(s') − V(s)). This module does NOT implement TD learning — there
+is no value function, no bootstrapping, and no discount factor. What is
+shared with the biology is the functional role (reward-modulated credit
+assignment over recently-active representations), not the algorithm.
 """
 
 from __future__ import annotations
