@@ -21,6 +21,11 @@ must call ``replay_top_episodes()`` explicitly.
 Depends on:
 - P3a (episode binding / Hebbian links)
 - P6 (extinction — baseline decay so replay improvement is measurable)
+
+Bio-mapping: FUNCTIONAL. Shares the role of sleep replay — offline
+reactivation of episodes to strengthen and reorganize memory. The algorithm
+is priority-ordered episode re-processing at session end; it does NOT
+implement sharp-wave ripples, sequence compression, or slow-wave/REM staging.
 """
 
 from __future__ import annotations

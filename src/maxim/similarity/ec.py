@@ -1,6 +1,12 @@
 """Entorhinal Cortex (EC) - Multi-modal similarity engine.
 
 Provides efficient similarity queries across multiple dimensions.
+
+Bio-mapping: FUNCTIONAL. Shares the entorhinal role — deciding whether an
+input matches an existing representation (pattern completion) or warrants a
+new one (pattern separation). The algorithm is cosine-threshold clustering
+over embedding centroids; it does NOT implement DG/CA3 attractor dynamics,
+grid cells, or theta-phase coding.
 """
 
 from __future__ import annotations

@@ -8,12 +8,16 @@ for expired traces. Accumulated per-node/per-tool/per-goal reward biases
 (clamped ≥ 0) widen EC recognition and steer action selection; they never
 narrow recognition — avoidance is carried by valence, not negative bias.
 
-Bio-mapping: INSPIRATION, not mechanism. The biological NAc story is
-dopaminergic reward-prediction error, i.e. temporal-difference learning
-(δ = r + γV(s') − V(s)). This module does NOT implement TD learning — there
-is no value function, no bootstrapping, and no discount factor. What is
-shared with the biology is the functional role (reward-modulated credit
-assignment over recently-active representations), not the algorithm.
+Bio-mapping: FUNCTIONAL at the module level; MECHANISM at the link level.
+The biological NAc story is dopaminergic reward-prediction error via
+temporal-difference learning (δ = r + γV(s') − V(s)). This module does NOT
+implement TD — no bootstrapping, no discount factor, no value chaining.
+What IS earned: per-link value learning uses the genuine Rescorla-Wagner
+delta rule (``CausalLink.update_from_outcome``: ΔV = α(R − V), with
+``last_rpe`` = |R − V| a true single-trial prediction error) — the
+non-bootstrapped sibling of TD. The credit-assignment layer above it
+(eligibility-trace proportional distribution) shares the biological ROLE,
+not the algorithm.
 """
 
 from __future__ import annotations

@@ -47,6 +47,12 @@ Any code that mutates both ``EpisodeStore`` and the binding graph MUST
 acquire locks in this order: ``EpisodeStore._lock`` (RLock) then
 ``DependencyGraph._lock`` (regular Lock). Never the reverse.
 Regression-guarded by ``TestP3aMechanism::test_boundary_close_no_deadlock``.
+
+Bio-mapping: MECHANISM (loose Hebbian). ``apply_hebbian_on_close`` implements
+correlational potentiation — co-activated node pairs gain edge weight
+(init/increment/clamp), "fire together, wire together" with saturation.
+NOT implemented: spike-timing dependence (STDP), heterosynaptic LTD; decay
+lives elsewhere (valence annotation, not this rule).
 """
 
 from __future__ import annotations

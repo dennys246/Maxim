@@ -1,6 +1,12 @@
 """Causal link data structures for NAc.
 
 Represents learned causal relationships between events and outcomes.
+
+Bio-mapping: MECHANISM (Rescorla-Wagner value learning). ``update_from_outcome``
+implements the delta rule ``dV = alpha * (R - V)`` with a novelty-adaptive
+learning rate, and ``last_rpe`` is the genuine single-trial reward-prediction
+error magnitude ``|R - V|``. NOT implemented: temporal-difference bootstrapping
+(no gamma*V(s') term, no value chaining across states).
 """
 
 from __future__ import annotations
