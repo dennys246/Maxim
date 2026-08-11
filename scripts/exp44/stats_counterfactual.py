@@ -355,6 +355,28 @@ def main() -> int:
                 f"(Wilson95 [{lo_c:.2f},{hi_c:.2f}]); commit {c['toward_commit']}/{c['toward_observe']} "
                 f"(never pooled into the primary)"
             )
+        # H3 is a HEADLINE, not a footnote: the wrong-content control is what
+        # separates "the substrate steers by learned CONTENT" from "naming any
+        # tool in the prompt raises its selection". Pre-fix these numbers went
+        # to stats.json and NEVER to the console (only a VOID warning did), so
+        # the pilot's most decisive result was invisible in its own report.
+        for arm_name in sorted({k[0] for k in ctrl}):
+            rows = [v for k, v in ctrl.items() if k[0] == arm_name]
+            voids = sum(1 for k in ctrl if k[0] == arm_name and is_void(campaign, k[0], k[1]))
+            ts_x = sum(v["toward_safe"] for v in rows)
+            th_x = sum(v["toward_harm"] for v in rows)
+            lo_x, hi_x = wilson_ci(th_x, ts_x + th_x)  # CI on the FOLLOWS-ANNOTATION side
+            tag = f" [{voids}/{len(rows)} VOID]" if voids else ""
+            print(
+                f"  CONTROL [{arm_name}]{tag}: {th_x} follow-annotation (toward-harm here) vs "
+                f"{ts_x} toward-safe; Wilson95 p_follow=[{lo_x:.2f},{hi_x:.2f}]; "
+                f"commit {sum(v['toward_commit'] for v in rows)}/{sum(v['toward_observe'] for v in rows)}"
+            )
+            print(
+                "    ^ H3: follow-annotation DOMINANT => channel is generic, learned content "
+                "is what makes 44b's steering safe. toward-safe DOMINANT => the LLM is "
+                "correcting the wrong substrate from context (report honestly; weakens H3)."
+            )
 
     out = Path(args.out) if args.out else campaign / "stats.json"
     out.write_text(json.dumps(report, indent=2))
