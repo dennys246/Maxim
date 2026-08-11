@@ -124,3 +124,41 @@ class TestPhantomGuard44c:
         assert stats_mod.is_phantom("green_flame_warm_self", world) is True
         # bare-hearth reference: not in this world's entity list -> phantom
         assert stats_mod.is_phantom("hearth_warm_self", world) is True
+
+
+class TestCampaignLock:
+    """Single-runner lock (third double-launch incident, 2026-08-10)."""
+
+    def test_fresh_take_and_release_registration(self, tmp_path):
+        assert campaign_mod.acquire_campaign_lock(tmp_path) is True
+        lock = tmp_path / "campaign.lock"
+        assert lock.exists() and int(lock.read_text()) == __import__("os").getpid()
+        lock.unlink()  # cleanup (atexit registered, but keep tmp deterministic)
+
+    def test_live_holder_refuses(self, tmp_path, capsys):
+        import os
+
+        (tmp_path / "campaign.lock").write_text(str(os.getpid()))  # our own pid = alive
+        assert campaign_mod.acquire_campaign_lock(tmp_path) is False
+        assert "already holds" in capsys.readouterr().err
+        (tmp_path / "campaign.lock").unlink()
+
+    def test_stale_holder_is_replaced(self, tmp_path):
+        import os
+        import subprocess
+
+        # A pid that definitely exited: spawn-and-wait a trivial child.
+        proc = subprocess.Popen(["true"])
+        proc.wait()
+        (tmp_path / "campaign.lock").write_text(str(proc.pid))
+        assert campaign_mod.acquire_campaign_lock(tmp_path) is True
+        assert int((tmp_path / "campaign.lock").read_text()) == os.getpid()
+        (tmp_path / "campaign.lock").unlink()
+
+    def test_garbage_lock_is_replaced(self, tmp_path):
+        import os
+
+        (tmp_path / "campaign.lock").write_text("not-a-pid")
+        assert campaign_mod.acquire_campaign_lock(tmp_path) is True
+        assert int((tmp_path / "campaign.lock").read_text()) == os.getpid()
+        (tmp_path / "campaign.lock").unlink()
