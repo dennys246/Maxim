@@ -59,29 +59,51 @@ PYTHONPATH=src python scripts/analyze_cradle_mother.py --in ~/exp48_cradle_mothe
 
 ## Results
 
-> ### ⚠️ DISCLAIMER — read before citing any number below (added 2026-08-11)
+> ### ⚠️ CONTESTED — do not cite this experiment pending resolution (2026-08-11)
 >
-> The 1.1 heartbeat re-run **could not reproduce the magnitudes in this
-> section**, and a four-configuration investigation traced the gap to the
-> measurement apparatus rather than to the mechanism. In short:
+> The 1.1 heartbeat re-run could not reproduce the magnitudes below, and the
+> investigation that followed found a **conflict between this experiment's
+> conclusion and how its apparatus actually behaves**. Both the numbers and the
+> mechanism are contested; this is an open assessment, not a settled downgrade.
 >
-> * **The claim holds.** A caregiver's contingent feeding teaches a driveless
->   infant to orient. Re-measured at n=12: `taught` reaches **0.748** while the
->   identical `no_feed` control stays flat at **0.399** (+0.349, MOTHER-TAUGHT
->   PASS), and wrong-way turns halve across acts (18% → 8%).
-> * **The magnitudes below do not reproduce**, at this commit or any other. The
->   headline **0.875 late / +0.211 rise** was not recovered in any of four
->   configurations (see the re-run section at the end of this document).
-> * **The headline number is apparatus-determined.** Directedness is capped by a
->   "no-move" floor — the infant emits ~60 near-perfectly-balanced `turn_left`/
->   `turn_right` actions per mother-turn, so a fraction of turns net zero
->   displacement. Each run sits just under the ceiling its own thrashing rate
->   imposes. The 0.90 above implies a ~10% no-move rate; nothing we can
->   reproduce gets below ~16%.
+> **What is established:**
 >
-> **Treat the numbers below as the original measurement, not as the current
-> expected values.** The row is `Stale` pending re-baselining against a fixed
-> apparatus — not retracted, and not a code regression.
+> * **The magnitudes do not reproduce.** The headline **0.875 late / +0.211
+>   rise** was not recovered in any of four configurations (two commits, two
+>   machines, two narrator models). At matched n=12 the graduation commit scores
+>   **+0.055** and current code **+0.079** — so this is **not a code
+>   regression**.
+> * **The arm difference is real**: `taught` 0.748 vs `no_feed` 0.399 (+0.349) at
+>   n=12, control flat across all four acts.
+>
+> **What is contested — why the arm difference exists:**
+>
+> * **The action path is an undamped oscillator.** The exploration bonus
+>   (`novelty = weight/(1+visits)`) is an explicit anti-repetition term AND, on
+>   this driveless body, the *sole source of action* (at weight 0 the agent
+>   emits nothing). It produces strict `turn_left`/`turn_right` alternation at
+>   50/50 ±1. A learned bias below ~0.11 is invisible against it; even a
+>   saturated policy reaches only 88%.
+> * **The operant credit lands on a coin flip.** The mother credits the single
+>   most recent action, which under alternation is left or right with
+>   probability ½ — so the teaching signal may be uncorrelated with the
+>   behaviour it is supposed to be teaching.
+> * **The arms are not exposure-matched:** `taught` gets ~86 mother-turns per
+>   seed, `no_feed` exactly 48.
+> * **The outcome sequence is not independent** (lag-1 autocorrelation 0.62 vs
+>   0.50 for independent draws), and both the stimulus and the agent alternate
+>   deterministically — so "directedness" may partly measure the *phase
+>   relationship between two oscillators* rather than learning.
+> * **The action count is a stopwatch reading**, not a behaviour: actions per
+>   turn = mother-turn wall-clock ÷ 0.5 s (`agent_loop.py:3475`), unbounded by
+>   any turn signal. This is why the number is machine- and latency-dependent,
+>   and plausibly why the original was never reproducible.
+>
+> **Status:** the row is `Stale`/CONTESTED and blocks 1.1 pending pre-registered
+> controls (randomised stimulus order; explore-weight sweep — the latter
+> pre-approved in this document's own pre-registration). It is **not retracted**
+> and **not a code regression**. Treat every number below as the original
+> measurement under an apparatus we no longer trust.
 
 **Run 2026-07-23, big-mac-mini leader, 12 seeds/arm, 56 turns, mistral-7b narrator. 24 runs, 0 failed.**
 
