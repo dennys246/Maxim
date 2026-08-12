@@ -26,6 +26,7 @@ from typing import Any
 
 import pytest
 
+from maxim.decisions.causal_link import Valence
 from maxim.decisions.nac import NAc, NACConfig
 
 
@@ -87,21 +88,47 @@ class TestScoreDecomposition:
         assert data["learned_margin"] == pytest.approx(expected_margin, abs=1e-3)
 
     def test_components_sum_to_best_score(self, tmp_path: Path) -> None:
-        """The decomposition is complete: no score term lives outside it."""
+        """The decomposition is complete: no score term lives outside it.
+
+        Review fold (Executor #2): every one of the five components must
+        be NONZERO in this scenario — a fixture where causal/reward_bias
+        stay at 0.0 would let a future score term added in that region
+        without a ``comp`` write pass this guard silently.
+        """
         nac = NAc(config=NACConfig(substrate_explore_bonus_weight=1.5))
+        # learned_bias: cluster-keyed credit.
         nac.update_cluster_reward("sim_aut", "c1", "tool:warm_self", reward=5.0)
+        # causal: positive outcome links for the same tool signature.
+        for _ in range(3):
+            nac.observe(
+                event_type="tool",
+                event_signature="tool:warm_self",
+                outcome_type="result",
+                outcome_signature="success",
+                outcome_valence=Valence.POSITIVE,
+                delta_seconds=1.0,
+            )
+        # reward_bias: node-keyed recognition credit on the tool signature.
+        nac.credit_node("sim_aut", "tool:warm_self", reward=5.0)
 
         recs = _capture(
             tmp_path,
             lambda: nac.recommend_action(
                 agent_id="sim_aut",
                 available_tools=["warm_self", "look_around"],
-                current_drives={"cold": 0.9},
+                current_drives={"cold": 0.9},  # drive: "cold" substring hits warm affinity
                 current_cluster_id="c1",
             ),
         )
         data = recs[0]["data"]
         comp = data["score_components"]
+        # All five components carry signal — the completeness sum cannot
+        # be satisfied by a zeroed region.
+        assert comp["causal"] > 0.0
+        assert comp["reward_bias"] > 0.0
+        assert comp["learned_bias"] > 0.0
+        assert comp["drive"] > 0.0
+        assert comp["explore"] > 0.0
         assert sum(comp.values()) == pytest.approx(data["best_score"], abs=1e-3)
 
     def test_no_scores_path_reports_zero_candidates(self, tmp_path: Path) -> None:
@@ -297,3 +324,52 @@ class TestPureObservation:
             disable_sim_logging()
 
         assert silent == logged
+
+    def test_golden_alternation_sequence_pins_selection(self) -> None:
+        """Golden-sequence pin in the ALTERNATION regime (review fold,
+        Architecture #1 — BLOCKING).
+
+        The on-vs-off test above covers only the emission path: the
+        provenance block runs in BOTH arms, so a state-mutating bug
+        inside it (e.g. a stray ``_visit_count`` write) cancels out and
+        that test stays green — verified by bug injection during the
+        pre-merge review. This pin is the guard that actually carries
+        the plan's non-goal ("if any stage changes a selection, it has
+        a bug"): the sequence below was generated from origin/main
+        BEFORE the provenance block existed, in a regime where
+        visit-count arithmetic is behaviorally decisive (close biases +
+        exploration → the novelty term flips the argmax tick-to-tick).
+        The injected visit-count bug diverges it at step 7; the clean
+        provenance code matches it exactly.
+
+        If this fails after an intentional selection-policy change,
+        regenerate the golden sequence from the pre-change commit and
+        justify the diff — do NOT just paste the new output.
+        """
+        nac = NAc(config=NACConfig(substrate_explore_bonus_weight=1.5))
+        nac.update_cluster_reward("sim_aut", "c1", "tool:alpha", reward=3.0)
+        nac.update_cluster_reward("sim_aut", "c1", "tool:beta", reward=2.0)
+
+        seq = []
+        for _ in range(12):
+            r = nac.recommend_action(
+                agent_id="sim_aut",
+                available_tools=["alpha", "beta"],
+                current_cluster_id="c1",
+            )
+            seq.append(r["tool_name"] if r else None)
+
+        assert seq == [
+            "alpha",
+            "beta",
+            "alpha",
+            "beta",
+            "alpha",
+            "alpha",
+            "beta",
+            "alpha",
+            "alpha",
+            "beta",
+            "alpha",
+            "alpha",
+        ]

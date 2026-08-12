@@ -215,6 +215,31 @@ def _emit_recommend_action_event(
     sim_logger isn't importable at all) is swallowed silently. Any
     other exception propagates — a real sim_logger bug should surface
     rather than masquerade as silent annotation-off.
+
+    **Decision-provenance field contract** (decision_provenance.md
+    Stages 1+2; this docstring is the schema of record for consumers):
+
+    - ``explore_decisive``: would the same call with the explore term
+      removed — no novelty score AND no explore-first hard gate; the
+      drive gate still applies — have produced a different OUTCOME?
+      The comparison includes ``None``: when the explore-first gate
+      selects a sub-threshold tool (proposal suppressed) while the
+      no-explore argmax would have passed, this reads ``True``. It is
+      NOT a bare tool-identity comparison. ``False`` when exploration
+      is off (the term is structurally zero); ``None`` when no
+      decision was scored at all.
+    - ``runner_up_score`` / ``learned_margin``: the runner-up is the
+      best OTHER tool by the same ``(score, name)`` ordering from the
+      UN-gated score table. When a hard gate (explore-first / drive)
+      overrode the argmax, ``best_score - runner_up_score`` and
+      ``learned_margin`` can be NEGATIVE — that is signal (the gate
+      decided, not the score), not an error. Naive "margin must be
+      positive" analyzers will misread gated decisions.
+    - ``n_candidates``: ``0`` = tools existed but none scored > 0;
+      ``None`` = no tools were available (mirrors the
+      ``_consulted_on_empty`` distinction).
+    - ``visit_count``: the winner's visit count read BEFORE this
+      selection's increment — the novelty driver at decision time.
     """
     try:
         from maxim.simulation import sim_logger as _sl
@@ -254,7 +279,7 @@ def _emit_recommend_action_event(
                 ),
                 "runner_up_score": (round(runner_up_score, 4) if runner_up_score is not None else None),
                 "n_candidates": n_candidates,
-                "visit_count": visit_count,
+                "visit_count": (round(visit_count, 4) if visit_count is not None else None),
                 "explore_decisive": explore_decisive,
                 "learned_margin": (round(learned_margin, 4) if learned_margin is not None else None),
             },
@@ -2140,6 +2165,10 @@ class NAc:
         # full bonus for 122 ticks but was never selected). The sticky
         # ``_ever_selected`` set is the gate's source of truth; the novelty
         # bonus still orders soft re-exploration AMONG tried tools afterwards.
+        # NOTE: this gate (and the drive gate below) is MIRRORED in the
+        # decision-provenance counterfactual further down — a new gate or a
+        # change to either gate's conditions must be reflected there, or
+        # ``explore_decisive`` silently mismeasures. Change both.
         in_explore_first = False
         if self.config.substrate_explore_bonus_weight > 0.0:
             untried = [t for t in scores if (agent_id, t) not in self._ever_selected]
@@ -2166,6 +2195,9 @@ class NAc:
         # an always-succeeding tool that happens to match a second drive's
         # affinity could re-enter; not reachable for the single-cold-drive Exp 42
         # fixture, but relevant if a future body has several concurrent drives.
+        # NOTE: mirrored in the decision-provenance counterfactual below
+        # (which applies it unconditionally — correct, since at explore
+        # weight 0 ``in_explore_first`` is vacuously False). Change both.
         if self.config.drive_gate_enabled and not in_explore_first and drive_relevant:
             max_drive_intensity = max(drives.values(), default=0.0)
             if max_drive_intensity > self.config.drive_gate_threshold:
