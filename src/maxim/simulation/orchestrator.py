@@ -493,6 +493,15 @@ def start_simulation_mode(
             "substrate-primary action budget: %d action(s) per sim turn (MAXIM_SUBSTRATE_ACTIONS_PER_TURN)",
             _substrate_budget,
         )
+    elif _substrate_budget is not None:
+        # Loud-misconfig norm (review fold): the env is set but the bound
+        # only applies to substrate-primary — say so instead of silently
+        # ignoring it.
+        logger.info(
+            "MAXIM_SUBSTRATE_ACTIONS_PER_TURN=%d set but aut_mode=%r — budget applies only to substrate-primary; ignored",
+            _substrate_budget,
+            aut_mode,
+        )
     bridge = SimulationBridge(
         response_timeout=response_timeout,
         stop_event=stop_event,

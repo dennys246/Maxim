@@ -116,9 +116,17 @@ class SimulationBridge:
         # budget bounds the AUT itself. Per apparatus standard S6
         # (simulation_apparatus_standards.md) the bound is opt-in and
         # experiment-visible: configure via MAXIM_SUBSTRATE_ACTIONS_PER_TURN,
-        # logged at run start and once per exhausted window.
+        # logged at run start and once per exhausted window. A direct
+        # caller passing a sub-1 value gets a ValueError, mirroring the
+        # env parser's refusal — silently rewriting 0 → 1 would invent a
+        # nearly-frozen AUT (review fold, both lenses; the
+        # push-invariants-into-types rule).
+        if substrate_actions_per_turn is not None and int(substrate_actions_per_turn) < 1:
+            raise ValueError(
+                f"substrate_actions_per_turn must be >= 1 or None (unbounded), got {substrate_actions_per_turn!r}"
+            )
         self._substrate_actions_per_turn = (
-            max(1, int(substrate_actions_per_turn)) if substrate_actions_per_turn is not None else None
+            int(substrate_actions_per_turn) if substrate_actions_per_turn is not None else None
         )
         self._turn_start_action_idx = 0
         self._budget_logged_this_turn = False
@@ -276,7 +284,16 @@ class SimulationBridge:
         }
 
     def inject_pain(self, pain_type: str = "external_signal", intensity: float = 0.5, **context: Any) -> None:
-        """Send a pain/proprioceptive signal to the AUT."""
+        """Send a pain/proprioceptive signal to the AUT.
+
+        NOTE: increments ``_turn_count`` but deliberately does NOT open a
+        new substrate action-budget window — only ``send_and_wait`` (the
+        narrator turn boundary) does. A pain injection between narrator
+        turns therefore leaves the budget tighter, never looser; if a
+        substrate-primary flow ever drives turns through this method,
+        hoist the window-open into a shared turn-boundary helper
+        (review fold, Executor #8).
+        """
         self.percept_source.inject_pain(pain_type=pain_type, intensity=intensity, **context)
         self._turn_count += 1
 
@@ -304,10 +321,16 @@ class SimulationBridge:
 
         Counts ``action_sink.actions`` — the same counter the observer's
         settle-loop cap reads, so the two views cannot disagree about
-        what an "action" is. Thread-safe enough by construction: the
-        AUT thread reads two ints the orchestrator thread writes at turn
-        boundaries; a race window of one action at the boundary is
-        harmless (the budget is an apparatus bound, not an invariant).
+        what an "action" is. Blocked actions (fear/autonomy gates) count:
+        blocked attempts ARE the thrashing being bounded. Latent coupling
+        (review fold, Executor #7): ``RecordingSink.record_noop``'s
+        deliberation markers would also consume budget — zero production
+        callers today; if a substrate-primary path starts recording
+        noops, decide then whether they spend budget. Thread-safe enough
+        by construction: the AUT thread reads two ints the orchestrator
+        thread writes at turn boundaries; a race window of one action at
+        the boundary is harmless (the budget is an apparatus bound, not
+        an invariant).
 
         The first denial per window logs once (INFO via sim_log) so a
         run's JSONL shows the bound engaging — apparatus standard S6:

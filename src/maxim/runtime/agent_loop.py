@@ -3527,11 +3527,12 @@ def run_agentic_loop(
                 # thrashing fix). A denied tick skips the proposal — the AUT
                 # idles until the orchestrator opens the next turn window —
                 # but still advances last_llm_submit_time and fires telemetry
-                # (proposal=None) so the cadence stays observable. Drive
-                # drift is unaffected: it is wall-clock-lazy and the next
-                # propose_via_substrate applies the accumulated dt. The gate
-                # itself logs the first denial per window (sim_log EXEC), so
-                # gate-idle is distinguishable from substrate-no-opinion IDLE.
+                # (proposal=None, gated=True) so the cadence stays observable
+                # AND gate-idle is distinguishable from substrate-no-opinion
+                # IDLE in the telemetry artifact itself (review fold — the
+                # once-per-window sim_log line alone marks the window, not
+                # the rows). Drive drift is unaffected: it is wall-clock-lazy
+                # and the next propose_via_substrate applies the accumulated dt.
                 _substrate_gate_denied = substrate_action_gate is not None and not substrate_action_gate()
                 substrate_proposal = None
                 if not _substrate_gate_denied:
@@ -3565,6 +3566,7 @@ def run_agentic_loop(
                             ec=_ec_ref,
                             executor=executor,
                             proposal=substrate_proposal,
+                            gated=_substrate_gate_denied,
                         )
                     except Exception:
                         logger.debug("substrate telemetry callback raised", exc_info=True)

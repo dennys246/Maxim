@@ -205,6 +205,35 @@ here*, and it deliberately does not treat "the sim got more realistic" as a free
 action. (Note the bisect neither confirmed nor refuted that hypothesis — S6
 stands on its own logic, not on this incident's unfinished attribution.)
 
+**First shipped instance — `MAXIM_SUBSTRATE_ACTIONS_PER_TURN` (the Exp 48
+thrashing fix, 2026-08-12).** A turn-scoped action budget for the
+substrate-primary AUT replaces the emergent stopwatch bound (actions/turn =
+narrator wall-clock ÷ 0.5 s, machine-dependent — why Exp 48's magnitudes never
+reproduced across hosts). Opt-in; unset = the pre-fix regime byte-identically.
+Visibility: orchestrator start log, once-per-window sim_log denial, per-row
+`gated` flag in `substrate_telemetry.jsonl`, `apparatus.substrate_actions_per_turn`
+in `report.json`, and `substrate_actions_per_turn_env` in the cradle_mother
+harness JSONL. **Expected interactions any budgeted run must declare** (two-lens
+review, 2026-08-12 — these are apparatus effects; a sweep that books them as
+learning is misattributing):
+
+1. **The operant credit target changes.** The mother credits
+   `_pending_operant_action` — the LAST action before her tick. Unbounded, that
+   is a quasi-random tail sample of the L/R oscillation (≈ a coin flip,
+   accidental symmetric noise). Budgeted, it is deterministically the Nth action
+   of the window — the policy's own latest choice, making the credit→policy loop
+   self-confirming. This is legitimate operant-chamber design (bounded response
+   opportunity; nothing leaks INTO the agent — denial precedes
+   `propose_via_substrate`, so no encoding, no visit increment, no eligibility),
+   but taught-arm magnitudes under a budget are a NEW REGIME by construction,
+   not comparable to any pre-fix number including the EARNED 0.90.
+2. **The explore/learned balance shifts toward explore at window starts.**
+   `decay_exploration_visits` (~30 Hz) keeps running through gate-idle, so
+   novelty recovers across each window's idle span, while reinforcement events
+   drop from ~60/turn to N/turn against unchanged wall-clock bias decay. Both
+   effects matter against the ~0.11 novelty visibility floor. The
+   `_ever_selected` explore-FIRST hard gate is unaffected (sticky, one-shot).
+
 ### S7 — A gate must be robust to a ceiling in its own baseline
 
 Exp 48's LEARNED gate is `late ≥ 0.65 AND rise ≥ 0.15`. The rise term is

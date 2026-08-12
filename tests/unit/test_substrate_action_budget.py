@@ -116,17 +116,18 @@ class TestBridgeGate:
         _record(bridge)
         assert bridge.substrate_action_allowed() is False
 
-    def test_budget_clamped_to_one(self):
-        """Constructor clamps a sub-1 explicit value (the env parser
-        already refuses these; the clamp is the belt for direct callers)."""
-        bridge = SimulationBridge(
-            response_timeout=0.5,
-            settle_s=0.1,
-            substrate_actions_per_turn=0,
-        )
-        assert bridge.substrate_action_allowed() is True
-        _record(bridge)
-        assert bridge.substrate_action_allowed() is False
+    def test_sub_one_budget_raises(self):
+        """Direct callers get a ValueError on sub-1 values, mirroring the
+        env parser's refusal — a silent clamp to 1 would invent a nearly
+        frozen AUT (review fold, cross-confirmed by both lenses)."""
+        import pytest as _pytest
+
+        with _pytest.raises(ValueError, match="must be >= 1 or None"):
+            SimulationBridge(
+                response_timeout=0.5,
+                settle_s=0.1,
+                substrate_actions_per_turn=0,
+            )
 
     def test_denial_is_stateless_readonly_for_counting(self):
         """Repeated gate calls without new actions don't change the answer
@@ -139,6 +140,83 @@ class TestBridgeGate:
         _record(bridge)
         for _ in range(10):
             assert bridge.substrate_action_allowed() is False
+
+    def test_denial_logs_once_per_window(self, tmp_path):
+        """The S6 visibility channel itself (review fold, Architecture #6):
+        the once-per-window sim_log denial must fire exactly once per
+        exhausted window and re-arm at the turn boundary — a refactor
+        deleting it would otherwise pass the suite while removing the
+        log-stream trace of denial."""
+        import json
+
+        from maxim.simulation.sim_logger import disable_sim_logging, enable_sim_logging
+
+        log_path = tmp_path / "sim_log.jsonl"
+        enable_sim_logging(log_path=str(log_path))
+        try:
+            bridge = SimulationBridge(
+                response_timeout=0.3,
+                settle_s=0.1,
+                aut_mode="substrate-primary",
+                substrate_actions_per_turn=1,
+            )
+            _record(bridge)
+            assert bridge.substrate_action_allowed() is False
+            assert bridge.substrate_action_allowed() is False  # second denial: no second log
+            bridge.send_and_wait("next turn", timeout=0.3)  # re-arms the latch
+            _record(bridge)
+            assert bridge.substrate_action_allowed() is False  # new window: logs again
+        finally:
+            disable_sim_logging()
+
+        records = [json.loads(line) for line in log_path.read_text().splitlines()]
+        denials = [r for r in records if "substrate action budget reached" in str(r.get("message", ""))]
+        assert len(denials) == 2
+
+
+# ─────────────────────────────────────────────────────────────────────
+# S6 durable artifacts (review fold, Architecture #1 — BLOCKING): a
+# budgeted run and an unbounded run must never produce indistinguishable
+# committed artifacts.
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestApparatusArtifacts:
+    def test_report_carries_apparatus_block(self):
+        from maxim.simulation.report import build_report
+
+        bounded = SimulationBridge(response_timeout=0.5, settle_s=0.1, substrate_actions_per_turn=6)
+        unbounded = SimulationBridge(response_timeout=0.5, settle_s=0.1)
+        r_bounded = build_report(goal="g", mode="m", bridge=bounded, duration_s=1.0, finish_reason="done")
+        r_unbounded = build_report(goal="g", mode="m", bridge=unbounded, duration_s=1.0, finish_reason="done")
+        assert r_bounded.apparatus["substrate_actions_per_turn"] == 6
+        assert r_unbounded.apparatus["substrate_actions_per_turn"] is None
+
+    def test_telemetry_row_carries_gated_flag(self, tmp_path):
+        """Gate-denied ticks must be distinguishable from substrate-no-
+        opinion IDLE in the telemetry JSONL itself (cross-confirmed by
+        both review lenses) — an IDLE-rate analyzer must be able to
+        exclude gated rows."""
+        import json
+
+        from maxim.simulation.substrate_telemetry import SubstrateTelemetry
+
+        telem = SubstrateTelemetry(log_path=tmp_path / "telem.jsonl", agent_id="aut")
+        telem.snapshot(step=1, nac=None, ec=None, executor=None, proposal=None, gated=True)
+        telem.snapshot(step=2, nac=None, ec=None, executor=None, proposal=None)
+        rows = [json.loads(line) for line in (tmp_path / "telem.jsonl").read_text().splitlines()]
+        assert rows[0]["gated"] is True
+        assert rows[1]["gated"] is False
+
+    def test_harness_stamps_budget_env_into_records(self):
+        """The cradle_mother harness JSONL must carry the env the sub-sim
+        inherited (the Exp 42b self-auditing-artifact rule) — pinned at
+        source level (the harness is a stdlib-only script)."""
+        from pathlib import Path
+
+        src = Path("scripts/benchmark_cradle_mother.py").read_text()
+        assert '"substrate_actions_per_turn_env"' in src
+        assert 'os.environ.get("MAXIM_SUBSTRATE_ACTIONS_PER_TURN")' in src
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -176,11 +254,13 @@ class TestWiringPins:
         import maxim.simulation.orchestrator as orch
 
         src = Path(orch.__file__).read_text()
-        # Whitespace-insensitive pin (the formatter may rewrap the call).
-        collapsed = " ".join(src.split())
-        assert "substrate_action_gate=( bridge.substrate_action_allowed" in collapsed, (
-            "orchestrator must wire SimulationBridge.substrate_action_allowed into "
-            "the AUT's run_agentic_loop as substrate_action_gate"
+        # Two independent anchors instead of one fused string (review fold:
+        # a fused pin false-fails on formatter rejoins or a variable rename).
+        assert "substrate_action_gate=" in src, (
+            "orchestrator must pass substrate_action_gate to the AUT's run_agentic_loop"
+        )
+        assert "bridge.substrate_action_allowed" in src, (
+            "orchestrator must wire SimulationBridge.substrate_action_allowed as the gate"
         )
         assert "read_substrate_actions_per_turn_env" in src, (
             "orchestrator must read MAXIM_SUBSTRATE_ACTIONS_PER_TURN at bridge construction"
