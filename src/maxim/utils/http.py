@@ -664,7 +664,7 @@ def _classify_status(
 def _loggable_url(url: str) -> str:
     """Strip query string + fragment from a URL before logging it.
 
-    2026-08-12 privacy audit: the ``_external`` endpoint's structured
+    Privacy audit (PR #506): the ``_external`` endpoint's structured
     log events (``http_request`` / ``http_request_failed`` — the latter
     is WARNING, default-on) previously carried the full URL. For search
     and fetch tools the query string IS the payload — an LLM-generated
@@ -672,7 +672,7 @@ def _loggable_url(url: str) -> str:
     events land in MAXIM_LOG_FILE and the leader proxy's remote-readable
     log buffer. Scheme + host + path keep the events debuggable (which
     endpoint failed) without the free text. A ``?…`` suffix marks that
-    a query was present.
+    a query and/or fragment was stripped.
     """
     from urllib.parse import urlsplit
 

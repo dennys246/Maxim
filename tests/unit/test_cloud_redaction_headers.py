@@ -35,6 +35,7 @@ def _make_filter(policy: str) -> CloudRedactionFilter:
 # Live sensitive headers, with representative parameterized instances.
 _LIVE_SENSITIVE_HEADERS = [
     "=== Relevant Memories ===",
+    "=== What your experience tells you about this situation ===",
     "=== Conversation History ===",
     "=== Recent Action Outcomes ===",
     "=== Recent Speech ===",
@@ -46,20 +47,42 @@ _LIVE_SENSITIVE_HEADERS = [
     "=== Your prior reasoning ===",
 ]
 
-# Source literals the rules are pinned against. If PromptBuilder renames
-# one of these, this test fails — update BOTH the producer and the
-# matching rule in cloud_redaction._SECTION_RULES in the same commit.
+# Source substrings the rules are pinned against (quote-agnostic so a
+# formatter pass over prompt_builder.py can't break the pin without an
+# actual header change). If PromptBuilder renames one of these, this
+# test fails — update BOTH the producer and the matching rule in
+# cloud_redaction._SECTION_RULES in the same commit.
 _PINNED_SOURCE_LITERALS = [
-    '"=== Relevant Memories ==="',
-    '"=== Conversation History ===\\n"',
-    '"=== Recent Action Outcomes ==="',
-    '"=== Recent Speech ==="',
-    '"=== Context ===\\n"',
-    'f"=== PROJECT DIRECTORY ({n_entries} entries, CWD: {cwd_name}) ==="',
-    "f\"=== EXISTING WORKSPACE ({n_files} file{'s' if n_files != 1 else ''}) ===\"",
-    '"=== Your inner deliberation (private — not speech) ==="',
-    '"=== Your prior reasoning ==="',
+    "=== Relevant Memories ===",
+    "=== What your experience tells you about this situation ===",
+    "=== Conversation History ===",
+    "=== Recent Action Outcomes ===",
+    "=== Recent Speech ===",
+    "=== Context ===",
+    "=== PROJECT DIRECTORY ({n_entries} entries, CWD: {cwd_name}) ===",
+    "=== EXISTING WORKSPACE ({n_files} file{'s' if n_files != 1 else ''}) ===",
+    "=== Your inner deliberation (private — not speech) ===",
+    "=== Your prior reasoning ===",
 ]
+
+# budgeter.add section names for every rule-matched section. The
+# redaction filter only sees the USER segment (the dynamic remainder);
+# a section tagged cacheable=True moves into the byte-stable prefix →
+# the system message → the rule silently no-ops again. Pinned by
+# test_sensitive_sections_are_not_cacheable below.
+_SENSITIVE_SECTION_NAMES = frozenset(
+    {
+        "conversation",
+        "context_pool",
+        "speech",
+        "recent_outcomes",
+        "workspace_manifest",
+        "relevant_memories",
+        "bio_enrichment",
+        "deliberation_transcript",
+        "working_memory_thoughts",
+    }
+)
 
 
 class TestSectionRulesPinnedToPromptBuilder:
@@ -75,6 +98,36 @@ class TestSectionRulesPinnedToPromptBuilder:
                 f"update _SECTION_RULES in cloud_redaction.py and this pin together"
             )
 
+    def test_sensitive_sections_are_not_cacheable(self) -> None:
+        """The redaction filter runs only on the user segment (dynamic
+        remainder). A sensitive section tagged cacheable=True moves into
+        the byte-stable prefix → system message → its redaction rule
+        silently no-ops. Pin every rule-matched section as dynamic."""
+        import ast
+
+        source = Path(prompt_builder_mod.__file__).read_text()
+        tree = ast.parse(source)
+        seen: set[str] = set()
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "add"):
+                continue
+            if not (node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)):
+                continue
+            name = node.args[0].value
+            if name not in _SENSITIVE_SECTION_NAMES:
+                continue
+            seen.add(name)
+            for kw in node.keywords:
+                if kw.arg == "cacheable":
+                    assert not (isinstance(kw.value, ast.Constant) and kw.value.value is True), (
+                        f"section {name!r} is redaction-matched but tagged cacheable=True — "
+                        f"it would move into the system message where _redact_sections never runs"
+                    )
+        assert seen == set(_SENSITIVE_SECTION_NAMES), (
+            f"budgeter.add sites not found for: {set(_SENSITIVE_SECTION_NAMES) - seen} — "
+            f"section renamed? update _SENSITIVE_SECTION_NAMES and _SECTION_RULES together"
+        )
+
 
 class TestRedactionBehaviorOnLiveFormat:
     """The audit's empirical repro, kept as a regression guard."""
@@ -84,6 +137,8 @@ class TestRedactionBehaviorOnLiveFormat:
             "=== Relevant Memories ===",
             "- [episodic, salience=0.91] user said their password hint is SENTINEL_MEMORY",
             "",
+            "=== What your experience tells you about this situation ===",
+            "You remember SENTINEL_ENRICHMENT from a prior encounter",
             "=== EXISTING WORKSPACE (2 files) ===",
             "notes_on_denny.txt",
             "SENTINEL_FILENAME.txt",
@@ -97,6 +152,7 @@ class TestRedactionBehaviorOnLiveFormat:
     def test_strict_redacts_memories_workspace_deliberation(self) -> None:
         result = _make_filter("strict").redact("system prompt", self._USER_PROMPT)
         assert "SENTINEL_MEMORY" not in result.user
+        assert "SENTINEL_ENRICHMENT" not in result.user
         assert "SENTINEL_FILENAME" not in result.user
         assert "SENTINEL_DELIBERATION" not in result.user
         assert "[REDACTED: memory_contents]" in result.user

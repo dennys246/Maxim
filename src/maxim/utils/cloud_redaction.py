@@ -85,9 +85,19 @@ _SECTION_RULES: list[tuple[re.Pattern, str, DataSensitivity, bool]] = [
         True,
     ),
     (re.compile(r"^=== Context ===$"), "context_pool", DataSensitivity.PRIVATE, True),
-    # memory_contents: live PromptBuilder header + legacy exec_agent
-    # prompt marker (still emitted by the standalone-agent path).
+    # memory_contents: live PromptBuilder header, the bio-enrichment
+    # section (whose EnrichmentResult.memories lines are the same
+    # hippocampus recall content — half-redacting memories while their
+    # sibling section ships them was the review round's cross-confirmed
+    # gap), + legacy exec_agent prompt marker (still emitted by the
+    # standalone-agent path).
     (re.compile(r"^=== Relevant Memories ===$"), "memory_contents", DataSensitivity.PRIVATE, True),
+    (
+        re.compile(r"^=== What your experience tells you about this situation ===$"),
+        "memory_contents",
+        DataSensitivity.PRIVATE,
+        True,
+    ),
     (re.compile(r"^RELEVANT MEMORIES:$"), "memory_contents", DataSensitivity.PRIVATE, False),
     (re.compile(r"^RECENT CLI INPUTS:$"), "cli_inputs", DataSensitivity.PRIVATE, False),
     # inner_deliberation: the header itself classifies the section as

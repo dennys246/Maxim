@@ -872,8 +872,8 @@ class TestBundleScrubsModelGeneratedText:
 
     def test_link_survives_scrub_with_allowlisted_fields(self, tmp_path: Path) -> None:
         """Scrub, don't drop: the link ships with agent_id kept, the
-        outcome_signature truncated to its success/failure token, and
-        memory_ids emptied."""
+        outcome_signature replaced by the canonical valence-preserving
+        ``{outcome_type}:{valence}`` form, and memory_ids emptied."""
         nac = self._leaky_nac()
         output = tmp_path / "bundle.zip"
         compose_bundle(
@@ -889,7 +889,7 @@ class TestBundleScrubsModelGeneratedText:
         assert "tool:probe_scan" in data["links"]
         (link,) = data["links"]["tool:probe_scan"]
         assert link["event_context"] == {"agent_id": "agent1"}
-        assert link["outcome_signature"] == "failure"
+        assert link["outcome_signature"] == "tool_result:negative"
         assert link["memory_ids"] == []
 
     def test_local_nac_state_is_not_mutated_by_composition(self, tmp_path: Path) -> None:
@@ -1055,8 +1055,15 @@ class TestBundleScrubsNacStateSurfaces:
             },
         )
         data = self._compose(tmp_path, state)
-        # links: lists concatenated under the truncated key
-        assert len(data["links"]["tool:use"]) == 2
+        # links: both collapse to the canonical (event_sig, outcome_sig)
+        # pair and FOLD into one merged link — shipping duplicates would
+        # let nac_merge's by-outcome pairing clobber all but one on the
+        # receiving side (review-round BLOCKING finding).
+        (merged_link,) = data["links"]["tool:use"]
+        assert merged_link["observation_count"] == 2
+        assert merged_link["outcome_signature"] == "tool_result:positive"
+        # outcome_index: rebuilt on canonical keys from the shipped links
+        assert data["outcome_index"] == {"tool_result:positive": [merged_link["id"]]}
         # welford: parallel merge — n sums, mean averages (equal n)
         merged = data["event_outcome_welford"]["aut\x1ftool:use"]
         assert merged["n"] == 4.0
@@ -1065,6 +1072,38 @@ class TestBundleScrubsNacStateSurfaces:
         assert data["cluster_reward_bias"]["aut\x1fcid-1\x1ftool:use"] == pytest.approx(0.3)
         # source: disagreement promotes to "mixed" (NAc's own semantics)
         assert data["cluster_reward_source"]["aut\x1fcid-1\x1ftool:use"] == "mixed"
+
+    def test_scrubbed_bundle_survives_nac_merge_without_link_loss(self, tmp_path: Path) -> None:
+        """Review-round BLOCKING repro: two failure links with distinct
+        summaries under one event signature must not be clobbered when
+        the scrubbed bundle is merged on the receiving side. Pre-fold,
+        first-token truncation made both outcome signatures 'failure'
+        and nac_merge silently discarded one link's observations."""
+        link_a = _link_dict(event_sig="tool:probe", outcome_sig="failure:timeout", valence="negative")
+        link_a["id"] = "aaaa000011112222"  # production ids are sha256[:16], not sig-derived
+        link_b = _link_dict(event_sig="tool:probe", outcome_sig="failure:connection refused", valence="negative")
+        link_b["id"] = "bbbb000011112222"
+        state = _empty_nac_state(links={"tool:probe": [link_a, link_b]})
+        data = self._compose(tmp_path, state)
+        merged = nac_merge(data, _empty_nac_state(), left_source="A", right_source="B")
+        (link,) = merged["links"]["tool:probe"]
+        # Both observations survive the scrub-time fold + the merge.
+        assert link["observation_count"] == 2
+        assert "timeout" not in json.dumps(merged)
+
+    def test_percept_valences_entity_class_gate(self, tmp_path: Path) -> None:
+        """Identifier-shaped entity classes ship (transfer vocabulary);
+        LLM-coined multi-word imagined-entity names do not — and the
+        gate holds regardless of the identity filter flag."""
+        state = _empty_nac_state(
+            percept_valences={
+                "aut\x1frusty_sword\x1fsharp_edge": -0.4,
+                "aut\x1fdave the blacksmith SENTINEL_ENTITY\x1fSHARP": -0.2,
+            }
+        )
+        data = self._compose(tmp_path, state, apply_identity_filter=False)
+        assert "aut\x1frusty_sword\x1fsharp_edge" in data["percept_valences"]
+        assert "SENTINEL_ENTITY" not in json.dumps(data)
 
     def test_percept_refs_zeroed(self, tmp_path: Path) -> None:
         link = _link_dict(event_sig="tool:probe")

@@ -193,14 +193,15 @@ from maxim.tools.base import ToolErrorKind as ToolErrorKind  # noqa: F401
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-#: The Percept fields allowed on the peer↔leader wire — the single
-#: source of truth for BOTH directions. ``to_wire_dict`` writes exactly
-#: these (plus ``context``, serialized separately, and the
-#: ``_format_version`` envelope); ``from_wire_dict`` accepts ONLY these,
-#: so the wire-excluded fields (``embedding``, ``substrate_node_id``,
-#: ``salience``, ``novelty``, ``maxim_runtime``) cannot be injected by a
-#: peer either. See the ``to_wire_dict`` docstring for the exclusion
-#: rationale.
+#: The Percept fields allowed on the peer↔leader wire, in BOTH
+#: directions. ``from_wire_dict`` filters on this set structurally;
+#: ``to_wire_dict`` hand-builds its payload, and the two are held equal
+#: by ``test_wire_fields_constant_matches_to_wire_dict_output`` — so
+#: the wire-excluded fields (``embedding``, ``substrate_node_id``,
+#: ``salience``, ``novelty``, ``maxim_runtime``) can neither ship nor
+#: be injected by a peer. See the ``to_wire_dict`` docstring for the
+#: exclusion rationale. ``context`` rides separately (typed
+#: serialization) and ``_format_version`` is the envelope.
 _PERCEPT_WIRE_FIELDS: frozenset[str] = frozenset(
     {
         "timestamp",
@@ -427,7 +428,7 @@ class Percept:
             data["context"] = PerceptContext.from_dict(ctx_raw)
         elif ctx_raw is not None:
             data["context"] = ctx_raw
-        # Inbound allowlist mirrors the outbound one (2026-08-12 audit):
+        # Inbound allowlist mirrors the outbound one (PR #506 audit):
         # filtering on valid DATACLASS fields alone would let a buggy or
         # malicious peer inject the wire-EXCLUDED fields (embedding,
         # substrate_node_id, salience, novelty, maxim_runtime) — derived

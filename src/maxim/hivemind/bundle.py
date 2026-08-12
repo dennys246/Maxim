@@ -83,7 +83,7 @@ from maxim.hivemind.identity import (
     filter_identity_bearing_links,
     is_identity_bearing,
 )
-from maxim.hivemind.merge import _validate_source
+from maxim.hivemind.merge import _merge_link_pair, _merge_welford, _validate_source
 from maxim.utils.atomic_io import atomic_write_text
 from maxim.utils.format_version import FORMAT_VERSION, check_format_version
 
@@ -200,8 +200,9 @@ def _utc_now_iso() -> str:
 # ─────────────────────────────────────────────────────────────────────────
 # NAc content scrub — model-generated text must not ship
 #
-# The NAc dump carries locally-scoped text on several surfaces (2026-08-12
-# five-lens privacy audit; each independently cross-confirmed):
+# The NAc dump carries locally-scoped text on several surfaces (privacy
+# audit + two-lens review, PR #506; each finding independently
+# cross-confirmed there):
 #
 # 1. ``event_context`` — tool_dispatch.py sets ``ctx["goal"]`` to the
 #    LLM's own ``reasoning[:100]`` (model-generated text, verbatim).
@@ -246,14 +247,18 @@ def _utc_now_iso() -> str:
 # producer adds next.
 _BUNDLE_EVENT_CONTEXT_ALLOWLIST: frozenset[str] = frozenset({"agent_id"})
 
-# Identifier-shaped ``use``-action tail: single short token, no
-# whitespace. ``tool:use:dodge`` / ``tool:use:open`` are the documented
-# transfer vocabulary; a sentence-shaped action is verbatim LLM output.
-_USE_ACTION_TOKEN = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
+# Identifier-shaped token: single short token, no whitespace. Gates the
+# ``tool:use:<action>`` tail (``tool:use:dodge`` / ``tool:use:open`` are
+# the documented transfer vocabulary; a sentence-shaped action is
+# verbatim LLM output) and the ``percept_valences`` entity_class (YAML
+# component names like ``rusty_sword``; an imagined entity's LLM-coined
+# multi-word name is not).
+_IDENTIFIER_TOKEN = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 _USE_SIG_PREFIX = "tool:use:"
 
-# Composite-key separator used by NAc.dump() for welford / cluster keys.
+# Composite-key separator used by NAc.dump() for welford / cluster /
+# percept-valence keys.
 _NAC_KEY_SEP = "\x1f"
 
 
@@ -267,7 +272,7 @@ def _scrub_event_signature(sig: str) -> str:
     """
     if sig.startswith(_USE_SIG_PREFIX):
         action = sig[len(_USE_SIG_PREFIX) :]
-        if not _USE_ACTION_TOKEN.match(action):
+        if not _IDENTIFIER_TOKEN.match(action):
             return "tool:use"
     return sig
 
@@ -276,9 +281,18 @@ def _scrub_link_for_bundle(link: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of one CausalLink dict scrubbed for bundle export."""
     scrubbed = dict(link)
     scrubbed["event_context"] = {k: v for k, v in link["event_context"].items() if k in _BUNDLE_EVENT_CONTEXT_ALLOWLIST}
-    # Keep only the token before the first ":" — the success/failure
-    # marker survives; the raw outcome_summary text does not.
-    scrubbed["outcome_signature"] = link["outcome_signature"].split(":", 1)[0]
+    # Canonical valence-preserving form built from STRUCTURED fields.
+    # The review round refuted the first-token-of-outcome_signature
+    # draft twice over: (a) only one of the four outcome_signature
+    # producers embeds success|failure in its first token, so valence
+    # was destroyed for the others, violating nac_merge's design rule
+    # #2 (valence-distinct links stay separate — _merge_link_pair's
+    # documented precondition); (b) truncation made outcome signatures
+    # non-unique within an event's link list, and _merge_link_lists
+    # pairs by outcome_signature, silently clobbering all but one link.
+    # ``{outcome_type}:{valence}`` is equally free-text-free, unique per
+    # valence class, and merge-safe by construction.
+    scrubbed["outcome_signature"] = f"{link['outcome_type']}:{link['outcome_valence']}"
     scrubbed["event_signature"] = _scrub_event_signature(link["event_signature"])
     scrubbed["memory_ids"] = []
     scrubbed["percept_refs"] = []
@@ -290,42 +304,65 @@ def scrub_nac_state_for_bundle(nac_state: dict[str, Any]) -> dict[str, Any]:
 
     Pure function: the input is not mutated. See the section comment
     above for the field-by-field rationale. Key collisions introduced
-    by signature truncation are merged with the same math the hivemind
-    merge layer uses (list union, parallel-Welford, bias mean,
-    source promotion to ``"mixed"``).
+    by signature scrubbing are merged with the same math the hivemind
+    merge layer uses (``_merge_link_pair``, parallel-Welford, bias
+    mean, source promotion to ``"mixed"``), so the shipped state
+    satisfies ``nac_merge``'s pairing invariants — outcome signatures
+    stay unique per link list, valence classes stay separate.
     """
-    from maxim.hivemind.merge import _merge_welford
-
     scrubbed = dict(nac_state)
 
-    # links: scrub each link + re-key on the scrubbed signature,
-    # concatenating lists when truncation collides two keys.
+    # links: scrub each link, re-key on the scrubbed event signature,
+    # and fold links that now share (event_sig, outcome_sig) via
+    # _merge_link_pair — nac_merge pairs by outcome_signature, so
+    # shipping duplicates would silently clobber all but one on the
+    # receiving side. The canonical outcome signature embeds valence,
+    # so same-key folding satisfies _merge_link_pair's same-valence
+    # precondition by construction.
     merged_links: dict[str, list[dict[str, Any]]] = {}
     for evt_sig, links in (nac_state.get("links", {}) or {}).items():
-        merged_links.setdefault(_scrub_event_signature(evt_sig), []).extend(
-            _scrub_link_for_bundle(link) for link in links
-        )
+        bucket = merged_links.setdefault(_scrub_event_signature(evt_sig), [])
+        for link in links:
+            scrubbed_link = _scrub_link_for_bundle(link)
+            existing = next(
+                (b for b in bucket if b["outcome_signature"] == scrubbed_link["outcome_signature"]),
+                None,
+            )
+            if existing is None:
+                bucket.append(scrubbed_link)
+            else:
+                bucket[bucket.index(existing)] = _merge_link_pair(
+                    existing,
+                    scrubbed_link,
+                    left_source=str(existing.get("source") or "local"),
+                    right_source=str(scrubbed_link.get("source") or "local"),
+                )
     scrubbed["links"] = merged_links
 
-    # outcome_index: keys ARE outcome signatures — first-token
-    # truncation, colliding buckets unioned.
-    merged_index: dict[str, list[str]] = {}
-    for outcome_sig, link_ids in (nac_state.get("outcome_index", {}) or {}).items():
-        token = outcome_sig.split(":", 1)[0]
-        bucket = merged_index.setdefault(token, [])
-        for link_id in link_ids:
-            if link_id not in bucket:
-                bucket.append(link_id)
-    scrubbed["outcome_index"] = merged_index
+    # outcome_index: rebuilt from the scrubbed links (keys ARE outcome
+    # signatures, now canonical) — rebuilding also drops index entries
+    # for links the caller filtered out.
+    rebuilt_index: dict[str, list[str]] = {}
+    for links in merged_links.values():
+        for link in links:
+            bucket_ids = rebuilt_index.setdefault(link["outcome_signature"], [])
+            if link["id"] not in bucket_ids:
+                bucket_ids.append(link["id"])
+    scrubbed["outcome_index"] = rebuilt_index
 
     # goal_reward_bias / priors: dropped entirely (see section comment).
     scrubbed["goal_reward_bias"] = {}
     scrubbed["priors"] = {}
 
     # event_outcome_welford: scrub the signature half of the composite
-    # key; parallel-Welford merge on collision.
+    # key; parallel-Welford merge on collision. A separator-less key is
+    # not a shape NAc.dump() can emit — raise rather than ship a
+    # silently-mangled key (same policy the cluster unpacking below
+    # enforces by construction).
     merged_welford: dict[str, dict[str, float]] = {}
     for key, state in (nac_state.get("event_outcome_welford", {}) or {}).items():
+        if _NAC_KEY_SEP not in key:
+            raise ValueError(f"malformed event_outcome_welford key (no separator): {key!r}")
         aid, _, evt_sig = key.partition(_NAC_KEY_SEP)
         new_key = f"{aid}{_NAC_KEY_SEP}{_scrub_event_signature(evt_sig)}"
         if new_key in merged_welford:
@@ -335,6 +372,19 @@ def scrub_nac_state_for_bundle(nac_state: dict[str, Any]) -> dict[str, Any]:
         else:
             merged_welford[new_key] = dict(state)
     scrubbed["event_outcome_welford"] = merged_welford
+
+    # percept_valences: keys are {aid}\x1f{entity_class}\x1f{failure_mode}.
+    # entity_class is usually a YAML component name (rusty_sword), but
+    # imagined entities carry LLM-coined names built from percept noun
+    # phrases — potentially user speech. Identifier-shaped classes ship
+    # (they are the transfer vocabulary, same line as tool:use actions);
+    # anything else is dropped. failure_mode is template vocabulary
+    # (drive:hunger:discomfort) and passes through.
+    scrubbed["percept_valences"] = {
+        key: valence
+        for key, valence in (nac_state.get("percept_valences", {}) or {}).items()
+        if _IDENTIFIER_TOKEN.match(key.split(_NAC_KEY_SEP, 2)[1])
+    }
 
     # cluster_reward_bias: scrub the tsig third of the key; mean on
     # collision (matches nac_merge's bias semantics).
@@ -522,7 +572,12 @@ def compose_bundle(
             # The same event-signature strings the links filter drops
             # also key event_outcome_welford — without this, an
             # identity-quarantined signature ships anyway through its
-            # Welford twin (2026-08-12 audit).
+            # Welford twin (PR #506 audit). cluster_reward_bias tsigs
+            # are deliberately NOT filtered here: they are
+            # build_tool_signature output (template except tool:use:
+            # tails, which the unconditional scrub already truncates),
+            # and the identity heuristic needs whitespace-separated
+            # tokens it never contains.
             filtered_nac["event_outcome_welford"] = {
                 key: state
                 for key, state in (filtered_nac.get("event_outcome_welford", {}) or {}).items()
