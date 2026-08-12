@@ -1403,3 +1403,21 @@ def _reset_swallowed_exception_dedup():
     _reset_swallow_seen_for_test()
     yield
     _reset_swallow_seen_for_test()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_maxim_place_code_env():
+    """Scrub MAXIM_PLACE_CODE_EXTEROCEPTION between tests.
+
+    Opt-in env var on a hot substrate-encoding path — per the CLAUDE.md rule,
+    any such branch ships with an autouse scrub in the same commit, or one
+    test's arm leaks into every later test that builds the runtime.
+    """
+    import os as _os
+
+    saved = _os.environ.pop("MAXIM_PLACE_CODE_EXTEROCEPTION", None)
+    yield
+    if saved is not None:
+        _os.environ["MAXIM_PLACE_CODE_EXTEROCEPTION"] = saved
+    else:
+        _os.environ.pop("MAXIM_PLACE_CODE_EXTEROCEPTION", None)
