@@ -1,6 +1,17 @@
 # Decision provenance — recording WHY the substrate chose an action
 
-**Status:** PROPOSED (2026-08-11), motivated by the Exp 48 apparatus investigation.
+**Status:** Stages 1+2 SHIPPED (2026-08-12); Stages 3+4 open.
+`sim_recommend_action` now carries `score_components` (causal / reward_bias /
+learned_bias / drive / explore for the selected tool), `runner_up_score`,
+`n_candidates`, `visit_count`, `explore_decisive`, and `learned_margin` on every
+path (None where uncomputable; `n_candidates` 0-vs-None mirrors the
+`_consulted_on_empty` no-scores/no-tools distinction). The counterfactual
+compares against the ACTUAL outcome (None when the gate fails), so the
+explore-first-gate-selects-a-sub-threshold-tool case reads decisive=True.
+Guards: `tests/unit/test_decision_provenance.py` (9 tests incl. the
+byte-identical-selection sequence with telemetry on vs off, and the
+gate-override negative `learned_margin`). Originally PROPOSED 2026-08-11,
+motivated by the Exp 48 apparatus investigation.
 **Owns:** the per-decision attribution surface on `NAc.recommend_action` /
 `propose_via_substrate`.
 **Companions:** [simulation_apparatus_standards.md](simulation_apparatus_standards.md)

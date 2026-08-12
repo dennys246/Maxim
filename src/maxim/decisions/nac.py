@@ -183,6 +183,12 @@ def _emit_recommend_action_event(
     passed_gate: bool,
     current_clusters: "ModalityClusters | None" = None,
     consulted_bias_by_modality: dict[str, float] | None = None,
+    score_components: dict[str, float] | None = None,
+    runner_up_score: float | None = None,
+    n_candidates: int | None = None,
+    visit_count: float | None = None,
+    explore_decisive: bool | None = None,
+    learned_margin: float | None = None,
 ) -> None:
     """Emit a ``sim_recommend_action`` event for Stage 0c telemetry.
 
@@ -236,6 +242,21 @@ def _emit_recommend_action_event(
                 "best_score": round(best_score, 4),
                 "min_confidence": min_confidence,
                 "passed_gate": passed_gate,
+                # Decision provenance (decision_provenance.md Stages 1+2):
+                # the score decomposition for the SELECTED tool, the margin
+                # over the runner-up, and the counterfactual "would argmax
+                # WITHOUT the explore term have produced a different
+                # outcome?". None on paths where a value is uncomputable
+                # (early returns) — fields are always present so a jq query
+                # never has to guess the schema.
+                "score_components": (
+                    {k: round(v, 4) for k, v in score_components.items()} if score_components is not None else None
+                ),
+                "runner_up_score": (round(runner_up_score, 4) if runner_up_score is not None else None),
+                "n_candidates": n_candidates,
+                "visit_count": visit_count,
+                "explore_decisive": explore_decisive,
+                "learned_margin": (round(learned_margin, 4) if learned_margin is not None else None),
             },
             agent_id=agent_id,
         )
@@ -1943,12 +1964,20 @@ class NAc:
 
         scores: dict[str, float] = {}
         reasoning_parts: dict[str, list[str]] = {}
+        # Decision provenance (decision_provenance.md Stage 1): the named
+        # score components, kept per tool so the emitted event can carry the
+        # winner's decomposition and the Stage 2 counterfactual can subtract
+        # the explore term. Pure bookkeeping — the selection below reads only
+        # ``scores``; if this dict ever changes a choice, that's a bug (see
+        # the byte-identical-selection guard in test_decision_provenance.py).
+        components: dict[str, dict[str, float]] = {}
         # Tools a drive above the affinity floor matched (name or affinity) —
         # the drive-relevant set the attentional gate narrows to (Exp 42).
         drive_relevant: set[str] = set()
 
         for tool_name in tool_list:
             score = 0.0
+            comp = {"causal": 0.0, "reward_bias": 0.0, "learned_bias": 0.0, "drive": 0.0, "explore": 0.0}
             parts: list[str] = []
             event_sig = f"tool:{tool_name}"
 
@@ -1960,11 +1989,13 @@ class NAc:
             if pos_links:
                 best_pos = max(link.confidence for link in pos_links)
                 score += best_pos
+                comp["causal"] += best_pos
                 parts.append(f"causal_pos={best_pos:.2f}")
             neg_links = self.get_negative_outcomes(event_sig)
             if neg_links:
                 best_neg = max(link.confidence for link in neg_links)
                 score -= best_neg * 0.5
+                comp["causal"] -= best_neg * 0.5
                 parts.append(f"causal_neg={best_neg:.2f}")
 
             # Component 2 (secondary learned signal): reward bias. Capped at
@@ -1974,6 +2005,7 @@ class NAc:
             bias = self.reward_bias(agent_id, event_sig)
             if bias > 0:
                 score += bias
+                comp["reward_bias"] += bias
                 parts.append(f"reward_bias={bias:.2f}")
 
             # Component 2b (Track 2 of grounded_language_acquisition.md +
@@ -1990,6 +2022,7 @@ class NAc:
                 cluster_bias = self.cluster_reward_bias(agent_id, _mod_cluster, event_sig)
                 if cluster_bias != 0.0:
                     score += cluster_bias
+                    comp["learned_bias"] += cluster_bias
                     parts.append(f"cluster_bias[{_mod_tag}]={cluster_bias:+.2f}")
 
             # Component 3: drive-relevance (cold-start heuristic)
@@ -2009,6 +2042,7 @@ class NAc:
                 # Direct name substring match
                 if drive_lower in tool_lower:
                     score += drive_value
+                    comp["drive"] += drive_value
                     parts.append(f"drive:{drive_name}({drive_value:.2f}) name-match")
                     drive_relevant.add(tool_name)
                     continue
@@ -2018,6 +2052,7 @@ class NAc:
                 for keyword in affinities:
                     if keyword in tool_lower:
                         score += drive_value * 0.7
+                        comp["drive"] += drive_value * 0.7
                         parts.append(f"drive:{drive_name}({drive_value:.2f}) →{keyword}")
                         drive_relevant.add(tool_name)
                         break
@@ -2051,10 +2086,12 @@ class NAc:
                     novelty = explore_weight / (1.0 + visits)
                 if novelty > 0.0:
                     score += novelty
+                    comp["explore"] += novelty
                     parts.append(f"explore={novelty:.2f}")
 
             if score > 0:
                 scores[tool_name] = score
+                components[tool_name] = comp
                 reasoning_parts[tool_name] = parts
 
         # Stage 0c (release_0_9_1.md): emit `sim_recommend_action` for
@@ -2081,6 +2118,10 @@ class NAc:
                 min_confidence=min_confidence,
                 passed_gate=False,
                 current_clusters=active_clusters or None,
+                # Provenance: tools existed but none scored > 0 — the
+                # 0 here vs None on the no-tools path mirrors the
+                # _consulted_on_empty distinction above.
+                n_candidates=0,
             )
             return None
 
@@ -2152,6 +2193,59 @@ class NAc:
             # to the single-cluster value for pre-seam callers).
             consulted_bias = sum(consulted_by_modality.values())
 
+        # ── Decision provenance (decision_provenance.md Stages 1+2) ─────
+        # Pure observation computed from values already in hand — if any
+        # of this changes a selection, it has a bug (pinned by the
+        # byte-identical-selection guard in test_decision_provenance.py).
+        #
+        # Runner-up under the same (score, name) ordering, from the
+        # un-gated score table. When a hard gate (explore-first / drive)
+        # selected a non-argmax tool, the margin can go NEGATIVE — that
+        # is signal (the gate overrode the score), not an error.
+        _prov_others = [t for t in scores if t != best_tool]
+        _prov_runner_up = max(_prov_others, key=lambda t: (scores[t], t)) if _prov_others else None
+        _prov_runner_up_score = scores[_prov_runner_up] if _prov_runner_up is not None else None
+        # learned_margin: the winner's learned-bias lead over the
+        # runner-up — the quantity that must exceed the novelty gap for
+        # learning to be expressible (the Exp 48 ~0.11 visibility floor).
+        _prov_learned_margin = (
+            components[best_tool]["learned_bias"] - components[_prov_runner_up]["learned_bias"]
+            if _prov_runner_up is not None
+            else None
+        )
+        # Read BEFORE the selection increment below — this is the novelty
+        # driver at decision time.
+        _prov_visit_count = self._visit_count.get((agent_id, best_tool), 0.0)
+
+        # Stage 2 counterfactual: re-run the selection pipeline with the
+        # explore term removed — no novelty score, no explore-first hard
+        # gate. The drive gate still applies (it is exploitation-phase
+        # machinery, active regardless of exploration). Removing explore
+        # only ever LOWERS scores, but the explore-first gate can select a
+        # sub-threshold tool while the global argmax would have passed —
+        # so the counterfactual is compared against the ACTUAL outcome
+        # (None when the gate fails), not against best_tool.
+        explore_decisive: bool
+        if self.config.substrate_explore_bonus_weight > 0.0:
+            _cf_scores = {t: s - components[t]["explore"] for t, s in scores.items()}
+            _cf_scores = {t: s for t, s in _cf_scores.items() if s > 0}
+            _cf_best: str | None = None
+            if _cf_scores:
+                _cf_best = max(_cf_scores, key=lambda t: (_cf_scores[t], t))
+                if self.config.drive_gate_enabled and drive_relevant:
+                    if max(drives.values(), default=0.0) > self.config.drive_gate_threshold:
+                        _cf_gated = [t for t in _cf_scores if t in drive_relevant]
+                        if _cf_gated:
+                            _cf_best = max(_cf_gated, key=lambda t: (_cf_scores[t], t))
+                if _cf_scores[_cf_best] < min_confidence:
+                    _cf_best = None
+            _actual: str | None = best_tool if best_score >= min_confidence else None
+            explore_decisive = _cf_best != _actual
+        else:
+            # Exploration off → the explore term is structurally zero and
+            # cannot have decided anything.
+            explore_decisive = False
+
         if best_score < min_confidence:
             _emit_recommend_action_event(
                 agent_id=agent_id,
@@ -2163,6 +2257,12 @@ class NAc:
                 passed_gate=False,
                 current_clusters=active_clusters or None,
                 consulted_bias_by_modality=consulted_by_modality,
+                score_components=components[best_tool],
+                runner_up_score=_prov_runner_up_score,
+                n_candidates=len(scores),
+                visit_count=_prov_visit_count,
+                explore_decisive=explore_decisive,
+                learned_margin=_prov_learned_margin,
             )
             return None
 
@@ -2186,6 +2286,12 @@ class NAc:
             passed_gate=True,
             current_clusters=active_clusters or None,
             consulted_bias_by_modality=consulted_by_modality,
+            score_components=components[best_tool],
+            runner_up_score=_prov_runner_up_score,
+            n_candidates=len(scores),
+            visit_count=_prov_visit_count,
+            explore_decisive=explore_decisive,
+            learned_margin=_prov_learned_margin,
         )
         return {
             "tool_name": best_tool,
