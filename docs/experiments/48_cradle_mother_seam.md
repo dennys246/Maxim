@@ -59,6 +59,52 @@ PYTHONPATH=src python scripts/analyze_cradle_mother.py --in ~/exp48_cradle_mothe
 
 ## Results
 
+> ### ⚠️ CONTESTED — do not cite this experiment pending resolution (2026-08-11)
+>
+> The 1.1 heartbeat re-run could not reproduce the magnitudes below, and the
+> investigation that followed found a **conflict between this experiment's
+> conclusion and how its apparatus actually behaves**. Both the numbers and the
+> mechanism are contested; this is an open assessment, not a settled downgrade.
+>
+> **What is established:**
+>
+> * **The magnitudes do not reproduce.** The headline **0.875 late / +0.211
+>   rise** was not recovered in any of four configurations (two commits, two
+>   machines, two narrator models). At matched n=12 the graduation commit scores
+>   **+0.055** and current code **+0.079** — so this is **not a code
+>   regression**.
+> * **The arm difference is real**: `taught` 0.748 vs `no_feed` 0.399 (+0.349) at
+>   n=12, control flat across all four acts.
+>
+> **What is contested — why the arm difference exists:**
+>
+> * **The action path is an undamped oscillator.** The exploration bonus
+>   (`novelty = weight/(1+visits)`) is an explicit anti-repetition term AND, on
+>   this driveless body, the *sole source of action* (at weight 0 the agent
+>   emits nothing). It produces strict `turn_left`/`turn_right` alternation at
+>   50/50 ±1. A learned bias below ~0.11 is invisible against it; even a
+>   saturated policy reaches only 88%.
+> * **The operant credit lands on a coin flip.** The mother credits the single
+>   most recent action, which under alternation is left or right with
+>   probability ½ — so the teaching signal may be uncorrelated with the
+>   behaviour it is supposed to be teaching.
+> * **The arms are not exposure-matched:** `taught` gets ~86 mother-turns per
+>   seed, `no_feed` exactly 48.
+> * **The outcome sequence is not independent** (lag-1 autocorrelation 0.62 vs
+>   0.50 for independent draws), and both the stimulus and the agent alternate
+>   deterministically — so "directedness" may partly measure the *phase
+>   relationship between two oscillators* rather than learning.
+> * **The action count is a stopwatch reading**, not a behaviour: actions per
+>   turn = mother-turn wall-clock ÷ 0.5 s (`agent_loop.py:3475`), unbounded by
+>   any turn signal. This is why the number is machine- and latency-dependent,
+>   and plausibly why the original was never reproducible.
+>
+> **Status:** the row is `Stale`/CONTESTED and blocks 1.1 pending pre-registered
+> controls (randomised stimulus order; explore-weight sweep — the latter
+> pre-approved in this document's own pre-registration). It is **not retracted**
+> and **not a code regression**. Treat every number below as the original
+> measurement under an apparatus we no longer trust.
+
 **Run 2026-07-23, big-mac-mini leader, 12 seeds/arm, 56 turns, mistral-7b narrator. 24 runs, 0 failed.**
 
 Per-act directedness (4 time-bins: early / warmup / consolidation / autonomy):
@@ -83,3 +129,106 @@ Pooled verdict bins (analyzer):
 ### Reading
 
 The seam carried to the embodied instrument. The `taught` curve is a clean developmental rise (0.51 → 0.82 → 0.85 → 0.90) while the control sits flat at chance across all four acts (0.43 → 0.45) — the +0.427 late-bin gap is the mother's operant teaching, isolated. This is the narrow claim the pre-registration scoped: **no longer at chance, and the mother is why** — a confound-check that the seam's de-dilution payoff survives the embodied machinery (narrator, gates, turn caps) that pinned Exp 46 at chance. It does NOT re-derive the mechanism (that is the scripted closing test, `TestMultiDriveOrientLearnsEndToEnd`); it confirms the fix reaches the embodied path. Per the pre-registered PASS branch: Exp 46's "embodied = chance" note updated, the `simulation/cradle_mother.py` dormancy marker lifted, and a `[behavioral]` graduation-candidate row filed.
+
+---
+
+## 1.1 heartbeat re-run — the magnitudes do not reproduce (2026-08-11)
+
+The 1.1 walk re-ran this row per
+[heartbeat_rerun_runbook.md](protocols/heartbeat_rerun_runbook.md) and it failed
+the LEARNED gate (rise **+0.079** vs the required +0.15). A four-configuration
+investigation followed. **Two hypotheses were raised and both were refuted by
+measurement** — recorded here because the refutations are the useful part.
+
+### The four configurations
+
+| run | machine | narrator | commit | n | early | late | **rise** |
+|---|---|---|---|---|---|---|---|
+| heartbeat | Mac | mistral-7b | `f05c63aa` | 12 | 0.669 | 0.748 | **+0.079** |
+| bisect | Mac | mistral-7b | `45bd1789` (this row's commit) | 12 | 0.726 | 0.781 | **+0.055** |
+| model probe | big-mac-mini | qwen2.5-32b | `45bd1789` | 4 | 0.757 | 0.698 | **−0.059** |
+| **published above** | big-mac-mini | "mistral-7b" | `45bd1789` | 12 | 0.664 | **0.875** | **+0.211** |
+
+Provenance verified per run (`git_hash`, `mock: false`, 12/12 per arm).
+
+### What was refuted
+
+1. **"A code regression broke it"** — REFUTED. At matched n=12 the graduation
+   commit scores **+0.055** and current code scores **+0.079**: current code is
+   marginally *better*, and the difference is inside noise. ~957 lines had
+   changed in the shared substrate/motor path since this row graduated
+   (predominantly the Reachy orienting line — #447, #460/#461, #463), which made
+   a regression the natural first hypothesis. It is not one.
+2. **"The thrashing is new"** — REFUTED. The oscillation described below was
+   present at this row's own graduation commit (62.8 actions/mother-turn vs 59.4
+   now, both ~1% left/right imbalance).
+3. **"The narrator model explains it"** — REFUTED, and inverted: qwen2.5-32b is
+   *worse* (−0.059), so a 32B-vs-7B difference cannot account for a missing
+   +0.13. (This hypothesis was worth testing: with the mistral-7b GGUF **not
+   present on the mini**, `_maybe_auto_spawn_server` logs "GGUF file not found"
+   and returns *before* the singleton model-match guard — so a run can silently
+   serve a different model than its protocol records.)
+
+### What the re-run establishes instead
+
+**The mechanism holds.** Learning is real and reproducible:
+
+| | act1 | act2 | act3 | act4 |
+|---|---|---|---|---|
+| taught (n=12, `f05c63aa`) | 0.602 | 0.735 | 0.748 | 0.747 |
+| no_feed control (n=12) | 0.364 | 0.389 | 0.389 | 0.410 |
+
+The control is flat at chance for the whole arc; the taught infant climbs to
+0.75 and holds. MOTHER-TAUGHT passes at **+0.349**.
+
+**The learning completes in the first transition.** act1 → act2 is **+0.133**;
+act2 → act4 is **+0.012**. It learns fast, then saturates.
+
+**The gate's bins are misaligned with the learning.** `early = mean(act1, act2)`
+folds the already-learned act2 into the baseline, so the gate compares the
+plateau against itself. On the honest comparison, act1 → act4 is **+0.145**
+against the control's +0.046.
+
+**The plateau height is set by an apparatus pathology.** The infant emits ~60
+near-balanced `turn_left`/`turn_right` actions per mother-turn; the net
+displacement cancels on a fraction of turns (`progress == 0`, "no-move"), which
+caps directedness:
+
+| run | no-move rate | implied cap | observed peak |
+|---|---|---|---|
+| `f05c63aa` | ~19–21% | ~0.80 | 0.748 |
+| `45bd1789` | ~16% | ~0.84 | 0.833 (act3) |
+| published | ~10% (implied) | ~0.90 | 0.90 |
+
+Every run sits just under the ceiling its own thrashing rate imposes. The
+published 0.90 implies an apparatus oscillating roughly half as much as anything
+reproducible today. **Why the original thrashed less cannot be determined**: its
+raw records went to `~/exp48_cradle_mother_seam.jsonl` and its logs to
+`/tmp/exp48_runs`, both gone — including the `lane_decisions.jsonl` that would
+identify what the sub-sims actually served.
+
+### Disposition
+
+- The claim **stands**; the row is **not retracted** and this is **not a code
+  regression**.
+- The row is `Stale` pending **re-baselining against a fixed apparatus**. Fixing
+  the thrashing lifts the ceiling, at which point the magnitude means something.
+- The LEARNED gate needs **re-pre-registration** (bin alignment + ceiling
+  robustness) — by pre-registration, never post-hoc adjustment.
+- Standards derived from this incident, including the ones that would have
+  caught it years earlier in the cycle:
+  [simulation_apparatus_standards.md](../plans/simulation_apparatus_standards.md).
+
+### Analyzer defect found en route
+
+Running a single arm makes the analyzer treat the absent arm as `0.0` and report
+**MOTHER-TAUGHT: PASS** against a control that never ran. A gate that passes
+vacuously on missing data is worse than one that fails; fix alongside the gate
+re-pre-registration.
+
+**Data (durable, committed per S4 — the standard this investigation kept
+violating):** `docs/experiments/data/48_heartbeat_1_1.jsonl` (new commit, 24
+runs) + `48_bisect_45bd1789.jsonl` (old commit, 12 runs). The 4-run qwen32b
+probe lives on the big-mac-mini at `~/exp48_mini/old_mini_qwen.jsonl` and should
+be copied to `data/48_probe_qwen32b.jsonl` — its per-seed lines are recorded in
+the table above so the finding survives if the file does not.
