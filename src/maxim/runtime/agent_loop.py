@@ -821,6 +821,25 @@ def _read_drive_ranges(executor: Any) -> "dict[str, tuple[float, float]]":
 _EXTEROCEPTIVE_ROOT_SENSORS: tuple[str, ...] = ("azimuth",)
 
 
+# Place-code opt-in (modality_resolution_and_alignment.md; Exp 46 validated).
+# Default OFF: turning it on changes EC cluster identity for the audio channel,
+# which is a re-validation trigger for Exp 48 (and Exp 46's own numbers). Same
+# default-OFF-pending-ablation shape as MAXIM_ENABLE_BODY_STATE_PROMPT.
+_PLACE_CODE_ENV = "MAXIM_PLACE_CODE_EXTEROCEPTION"
+_PLACE_CODE_PREFIX = "azdir"
+
+
+def place_code_exteroception_enabled() -> bool:
+    """True when the exteroceptive channel should emit a population code.
+
+    Read per call (not cached): the autouse conftest scrub flips it between
+    tests, and a cached read would leak one test's arm into the next.
+    """
+    from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
+
+    return annotation_disabled_via_env(os.environ.get(_PLACE_CODE_ENV))
+
+
 def _read_exteroceptive_states(executor: Any) -> dict[str, float]:
     """Read world-set EXTEROCEPTIVE root sensors (``azimuth``) — the value
     source for the ``"audio"`` ModalityChannel, encoded in its OWN
@@ -861,6 +880,17 @@ def _read_exteroceptive_states(executor: Any) -> dict[str, float]:
                 out[name] = float(vm[name])
             except (TypeError, ValueError):
                 continue
+    if out and place_code_exteroception_enabled():
+        # Population code REPLACES the raw scalar — emitting both would hand the
+        # encoder a redundant basis pair whose constant-ish contribution dilutes
+        # the very dimension the code exists to resolve (the extero/intero
+        # dilution failure, one level down).
+        from maxim.similarity.place_code import place_code
+
+        coded: dict[str, float] = {}
+        for name, value in out.items():
+            coded.update(place_code(value, prefix=f"{_PLACE_CODE_PREFIX}_{name}_"))
+        return coded
     return out
 
 
@@ -873,6 +903,22 @@ def _read_exteroceptive_ranges(executor: Any) -> "dict[str, tuple[float, float]]
     if root is None:
         return {}
     sensors = getattr(root, "sensors", {}) or {}
+    # LOCKSTEP INVARIANT (same class as _read_drive_ranges): this walk and
+    # _read_exteroceptive_states must emit the same sensor SET. A value with no
+    # declared range silently re-folds through the legacy range-blind map (P1),
+    # so a place-coded value walk with a raw range walk would encode seven
+    # activations under the wrong normalisation. Guarded by
+    # test_place_code_wiring.py::test_value_and_range_walks_stay_in_lockstep.
+    if place_code_exteroception_enabled():
+        from maxim.similarity.place_code import place_code_ranges
+
+        coded_ranges: dict[str, tuple[float, float]] = {}
+        for name in _EXTEROCEPTIVE_ROOT_SENSORS:
+            if sensors.get(name) is None:
+                continue
+            coded_ranges.update(place_code_ranges(prefix=f"{_PLACE_CODE_PREFIX}_{name}_"))
+        return coded_ranges
+
     ranges: dict[str, tuple[float, float]] = {}
     for name in _EXTEROCEPTIVE_ROOT_SENSORS:
         sensor = sensors.get(name)
