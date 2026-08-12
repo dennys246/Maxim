@@ -113,3 +113,40 @@ class TestPersistence:
         restored = NAc()
         restored.load_state(nac.dump())
         assert restored.get_cluster_reward_sources(agent_id="a1") == {"tool:use:dodge": "tool_success"}
+
+
+class TestProducerWiring:
+    """The producer must pass the source it ALREADY computes — the branch in
+    tool_dispatch distinguishing drive relief from the tool-success floor is the
+    only place this information exists.
+
+    SCOPE (honest): this records WHICH MECHANISM deposited a bias. It does NOT
+    verify that mechanism attributed correctly — Exp 48's contested finding is
+    that operant credit lands on the last action, a coin flip under alternation,
+    which would tag cleanly as "operant" here while being uncorrelated with the
+    taught behaviour. The read-side counterpart is
+    docs/plans/decision_provenance.md (explore_decisive / score components).
+    """
+
+    def test_operant_credit_is_tagged(self, nac):
+        nac.set_pending_operant_action(agent_id="a1", cluster_id="c1", tool_signature="tool:turn_left")
+        assert nac.credit_operant_reward(agent_id="a1", reward=1.0) is not None
+        assert nac.get_cluster_reward_sources(agent_id="a1") == {"tool:turn_left": "operant"}
+
+    def test_operant_then_drive_relief_is_mixed(self, nac):
+        nac.set_pending_operant_action(agent_id="a1", cluster_id="c1", tool_signature="tool:turn_left")
+        nac.credit_operant_reward(agent_id="a1", reward=1.0)
+        nac.update_cluster_reward("a1", "c1", "tool:turn_left", 1.0, source="drive_relief")
+        assert nac.get_cluster_reward_sources(agent_id="a1")["tool:turn_left"] == "mixed"
+
+    def test_dispatch_branch_labels_match_the_vocabulary(self):
+        """Pins the producer's literals against CREDIT_SOURCES: a rename on
+        either side fails here rather than silently storing nothing."""
+        import re
+        from pathlib import Path as _P
+
+        src = _P(__file__).resolve().parents[2] / "src/maxim/runtime/tool_dispatch.py"
+        labels = set(re.findall(r'credit_source = "([a-z_]+)"', src.read_text()))
+        assert labels, "producer no longer assigns credit_source"
+        assert labels <= NAc.CREDIT_SOURCES
+        assert "mixed" not in labels  # mixed is derived, never asserted

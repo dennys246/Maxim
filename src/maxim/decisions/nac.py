@@ -2437,6 +2437,11 @@ class NAc:
             cluster_id=cluster_id,
             tool_signature=tool_signature,
             reward=reward,
+            # S1: the caregiver/world contingency is a DISTINCT credit source
+            # from drive relief — "the mother fed me for this" is a different
+            # reason than "my cold went away", and the annotation should be
+            # able to say which.
+            source="operant",
         )
         return pending
 
