@@ -1,6 +1,17 @@
 # Decision provenance — recording WHY the substrate chose an action
 
-**Status:** PROPOSED (2026-08-11), motivated by the Exp 48 apparatus investigation.
+**Status:** Stages 1+2 SHIPPED (2026-08-12); Stages 3+4 open.
+`sim_recommend_action` now carries `score_components` (causal / reward_bias /
+learned_bias / drive / explore for the selected tool), `runner_up_score`,
+`n_candidates`, `visit_count`, `explore_decisive`, and `learned_margin` on every
+path (None where uncomputable; `n_candidates` 0-vs-None mirrors the
+`_consulted_on_empty` no-scores/no-tools distinction). The counterfactual
+compares against the ACTUAL outcome (None when the gate fails), so the
+explore-first-gate-selects-a-sub-threshold-tool case reads decisive=True.
+Guards: `tests/unit/test_decision_provenance.py` (9 tests incl. the
+byte-identical-selection sequence with telemetry on vs off, and the
+gate-override negative `learned_margin`). Originally PROPOSED 2026-08-11,
+motivated by the Exp 48 apparatus investigation.
 **Owns:** the per-decision attribution surface on `NAc.recommend_action` /
 `propose_via_substrate`.
 **Companions:** [simulation_apparatus_standards.md](simulation_apparatus_standards.md)
@@ -127,11 +138,20 @@ Thread the already-computed components into `_emit_recommend_action_event` for
 the **winning** tool:
 
 ```
-score_components: {causal: float, drive: float, learned_bias: float, explore: float}
+score_components: {causal: float, reward_bias: float, learned_bias: float,
+                   drive: float, explore: float}
 visit_count:      float          # the novelty driver
 runner_up_score:  float | None   # margin = best_score - runner_up_score
 n_candidates:     int
 ```
+
+**Why `reward_bias` is a separate fifth component** (review fold): the node-keyed
+`reward_bias` (capped 0.20, recognition modulator) is a different mechanism from the
+cluster-keyed `cluster_reward_bias`, and S1's `_cluster_reward_source` annotates only
+the latter. Folding both into `learned_bias` would make the S1 join incoherent —
+"learned_bias 0.42, deposited by operant" would include a term S1 never sources. Do
+NOT merge them for simplicity; `score_components.learned_bias` must equal exactly the
+cluster-bias sum S1 annotates.
 
 Keyword-only, all optional with `None` defaults so no existing caller breaks.
 The components are local variables at the scoring site today — this is
@@ -161,6 +181,13 @@ reports: fraction of decisions where `explore_decisive`, the distribution of
 attribution. Cite it from the runbook so a walk can ask "was this row's
 behaviour learned or explored?" as a routine check.
 
+**S1-join note (review fold):** join provenance on the persisted
+`(agent_id, cluster_id, tool_sig)` triple — the event carries `current_clusters`
++ `best_tool` for exactly this. Do NOT join through the aggregated
+`get_cluster_reward_sources` read surface: it unions across ALL clusters
+(`"mixed"` on disagreement) while `learned_bias` sums the ACTIVE clusters only,
+so the tool-level aggregate can over-coarsen the attribution.
+
 ### Stage 4 — Wire into the S2 canaries (read side AND write side)
 
 The apparatus canaries then assert on attribution rather than only on outcome.
@@ -168,7 +195,13 @@ The apparatus canaries then assert on attribution rather than only on outcome.
 
 * **Read side (this plan):** *"in a substrate-primary row claiming learned
   selection, `explore_decisive` must be below X% by the final act."* Catches
-  learning that is correct but never expressed.
+  learning that is correct but never expressed. Two canary-authoring notes
+  (review fold): (a) pick the denominator explicitly — `passed_gate=True`
+  events vs all non-None `explore_decisive` events give different rates;
+  (b) a run with exploration accidentally DISABLED reads 0% decisive and
+  trivially passes — rows that claim exploration was live must co-assert
+  `substrate_explore_bonus_weight > 0` (or nonzero `score_components.explore`
+  somewhere in the run).
 * **Write side (S1):** *"in an operant-only row, `cluster_reward_source` must be
   100% `operant`, never `mixed`."* Catches a tool-success floor leaking into a
   row whose design excludes it — a different failure, invisible to
