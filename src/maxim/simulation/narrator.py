@@ -485,6 +485,13 @@ def _compose_substrate_context(nac_top_biases: list[tuple[str, float]] | None) -
     line appended to the section. Surfaced by the two-lens pre-merge
     review (bio-fidelity critical finding C1).
 
+    **S1 credit-source glosses are Wire-A-only BY DESIGN** (S1 review
+    fold): this call passes no ``sources``, so the manifest sees the
+    pre-S1 bare bands. The manifest LLM selects entities, not tools —
+    it has no applicability decision the credit source would inform.
+    Do NOT add a ``sources=`` argument here for symmetry; the voices
+    diverge deliberately.
+
     Returns empty string when ``nac_top_biases`` is None, empty, or
     contains only neutral entries so the no-substrate-signal path is
     byte-identical to the pre-W2 behavior.

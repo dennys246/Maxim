@@ -727,6 +727,14 @@ class StructuredContext:
     # None == disabled (env var off, no NAc wired, or cold-start agent).
     cluster_bias_annotations: list[tuple[str, float]] | None = None
 
+    # S1 credit-source provenance for the annotations above:
+    # {raw_tool_signature: source} from NAc.get_cluster_reward_sources,
+    # joined by the renderer on the RAW signature before the "tool:"
+    # prefix strip. None / missing entries render the pre-S1 format
+    # (pre-S1 persisted state carries no provenance). Populated at the
+    # same agent_loop producer site, behind the same env-var gate.
+    cluster_bias_sources: dict[str, str] | None = None
+
     # Grayscale tool annotations (W1 sense_tool_registry MVP). List of
     # (tool_name, bias, description) for SEM-derived tools the substrate
     # has accumulated a non-zero reward bias for but that are NOT in the

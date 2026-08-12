@@ -35,7 +35,31 @@ from typing import Any
 
 HEADER = "=== Substrate associations from prior experience ==="
 # ``  <name padded>  [band…]`` — band text is everything up to the closing bracket;
-# "from prior experience" is a suffix on every band except "neutral / mixed".
+# "from prior experience" is a suffix on every band except "neutral / mixed", and
+# since the S1 renderer the bracket may also carry a credit-source gloss after an
+# em-dash separator (``[<band> from prior experience — <gloss>]``). The separator
+# is a shared format constant on the production composer; imported when the repo
+# is on sys.path, literal fallback for standalone runs. The imported path is
+# guarded by the round-trip test (tests/unit/test_exp44_nonstationarity.py,
+# real composer → real parser); the FALLBACK literal is guarded separately by
+# the fallback-branch test there, which blocks the import and re-execs this
+# module — without that, the fallback would be the classic two-literals-
+# agreeing-by-luck (in CI the import always succeeds, so a round-trip test
+# alone can never see the fallback drift; review fold, cross-confirmed).
+#
+# SCOPE (review fold): this analyzer measures BAND non-stationarity only.
+# The S1 credit-source gloss is deliberately stripped before banding, so a
+# mid-campaign gloss flip (e.g. one-way promotion to "mixed" while the band
+# stays stable) is a treatment change this instrument does NOT see. If a
+# campaign's question depends on gloss stationarity, extend the parser to
+# also collect the post-separator text — do not infer gloss stability from
+# a stationary band trajectory.
+try:
+    from maxim.prompts.cluster_bias_annotation import (
+        ANNOTATION_SOURCE_SEPARATOR as _SOURCE_SEP,
+    )
+except ImportError:  # standalone run without maxim installed
+    _SOURCE_SEP = " — "
 _ROW = re.compile(r"^\s{2,}(\S+)\s{2,}\[([^\]]+)\]\s*$")
 
 # Ordinal tiers — higher = stronger positive treatment. Mirrors bias_to_band's five
@@ -64,6 +88,9 @@ def parse_annotation(prompt: str) -> dict[str, str] | None:
         if not m:
             break  # first non-row line ends the block
         tool, band_text = m.group(1), m.group(2).strip()
+        # Split off the S1 credit-source gloss first (leftmost separator wins —
+        # the band side never contains an em-dash), then strip the suffix.
+        band_text = band_text.split(_SOURCE_SEP, 1)[0]
         band = band_text.replace(" from prior experience", "").strip()
         out[tool] = band
     return out or None
