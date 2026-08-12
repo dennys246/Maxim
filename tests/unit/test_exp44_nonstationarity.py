@@ -62,6 +62,44 @@ class TestParserRoundTripsProductionRenderer:
             "an_extremely_long_affordance_name_here": "strongly rewarding",
         }
 
+    def test_s1_source_gloss_round_trips(self):
+        """S1 renderer: the credit-source gloss after the em-dash must be
+        stripped by the parser — every band recovers exactly, glossed or
+        not. This is the guard that keeps the S1 format change from
+        silently reading as 'no annotation' across a campaign."""
+        biases = [
+            ("tool:green_flame_warm_self", 0.9),
+            ("tool:purple_flame_observe", 0.3),
+            ("tool:unglossed", 0.7),
+            ("tool:risky", -0.9),
+            ("tool:meh", 0.0),
+        ]
+        sources = {
+            "tool:green_flame_warm_self": "drive_relief",
+            "tool:purple_flame_observe": "tool_success",
+            "tool:risky": "operant",
+        }
+        section = compose_cluster_bias_annotation_section(biases, sources)
+        # Sanity: the gloss is actually present in the rendered text.
+        assert "— relieved a bodily need]" in section
+        parsed = s4.parse_annotation(f"PREAMBLE\n\n{section}\n\nTRAILING\n")
+        assert parsed == {
+            "green_flame_warm_self": "strongly rewarding",
+            "purple_flame_observe": "mildly rewarding",
+            "unglossed": "strongly rewarding",
+            "risky": "strongly aversive",
+            "meh": "neutral / mixed",
+        }
+        assert all(s4.band_tier(b) is not None for b in parsed.values())
+
+    def test_parser_separator_matches_composer_constant(self):
+        """The parser's separator (import-with-fallback) must equal the
+        composer's shared constant — two literals agreeing by luck is
+        exactly what this pins."""
+        from maxim.prompts.cluster_bias_annotation import ANNOTATION_SOURCE_SEPARATOR
+
+        assert s4._SOURCE_SEP == ANNOTATION_SOURCE_SEPARATOR
+
     def test_absent_annotation_returns_none(self):
         assert s4.parse_annotation("a prompt with no substrate section at all") is None
 

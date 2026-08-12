@@ -29,6 +29,30 @@ removing it matters.
 
 ## S1 — Provenance in the annotation (the "why")
 
+**Status: SHIPPED (write side PR #501, 2026-08-11; render side follow-up PR,
+2026-08-12).** Write side: `NAc._cluster_reward_source`, closed `CREDIT_SOURCES`
+vocabulary, one-way promotion to `"mixed"`, `get_cluster_reward_sources(agent_id=)`.
+Render side: `compose_cluster_bias_annotation_section(biases, sources)` joins on the RAW
+tool signature (before the `tool:` prefix strip) and appends a sign-aware gloss after
+`ANNOTATION_SOURCE_SEPARATOR` (` — `); the S4 parser splits at the same shared constant
+and the round-trip test in `tests/unit/test_exp44_nonstationarity.py` renders through the
+real composer and parses back, so format drift fails there instead of silently reading as
+"no annotation" across a campaign. Glosses are sign-aware because negative credits carry
+sources too (a drive REGRESS books −1.0 with source `drive_relief`). Pre-S1 persisted
+state has no sources → byte-identical pre-S1 rendering.
+
+**Decision (documented for review): the source renders in the annotation, not
+telemetry-only.** Rationale: (a) the Exp 44 counterfactual proved the annotation steers
+the LLM, so *applicability* information belongs where the steering happens; (b) glosses
+are display-layer downstream of encoding, same defensibility as the band labels; (c) the
+existing env kill switch covers the whole section, and `decision_provenance.md`'s
+`score_components` can carry the same tag for telemetry regardless. If review prefers
+telemetry-only, the producer stops populating `cluster_bias_sources` — one-line revert.
+
+**Known limitation:** the vocabulary records the credit BRANCH (`drive_relief`), not the
+specific drive (`relieved cold`) — per-drive specificity would need the sensor name
+recorded at credit time; deferred until an experiment asks for it.
+
 Carry the credit SOURCE alongside the band: drive relief (which drive), tool success,
 cross-modal credit. Producer-side only; no substrate write path changes (Wire-A's bands
 are pure I/O and must stay that way — see `prompts/cluster_bias_annotation.py` docstring).

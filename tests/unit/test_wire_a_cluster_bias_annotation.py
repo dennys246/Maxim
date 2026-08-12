@@ -263,6 +263,111 @@ class TestComposeSection:
 
 
 # ─────────────────────────────────────────────────────────────────────
+# Layer 2b: S1 credit-source glosses in the rendered annotation
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestComposeSectionWithSources:
+    """S1 renderer: the credit source recorded at reward time
+    (NAc._cluster_reward_source) is narrated in the bracket after an
+    em-dash separator. Sources join on the RAW tool signature (before
+    the ``tool:`` prefix strip); absent/unknown sources render the
+    pre-S1 format byte-identically."""
+
+    def test_drive_relief_gloss_on_rewarding_band(self) -> None:
+        """The canonical S1 example from the plan."""
+        biases = [("tool:green_flame_warm_self", 0.9)]
+        sources = {"tool:green_flame_warm_self": "drive_relief"}
+        text = compose_cluster_bias_annotation_section(biases, sources)
+        assert "green_flame_warm_self" in text
+        assert "[strongly rewarding from prior experience — relieved a bodily need]" in text
+
+    def test_tool_success_gloss_on_rewarding_band(self) -> None:
+        biases = [("tool:purple_flame_observe", 0.3)]
+        sources = {"tool:purple_flame_observe": "tool_success"}
+        text = compose_cluster_bias_annotation_section(biases, sources)
+        assert "[mildly rewarding from prior experience — the action succeeded]" in text
+
+    def test_sources_join_on_raw_signature_before_strip(self) -> None:
+        """A source map keyed by the STRIPPED name must NOT join —
+        producer and composer both carry the raw ``tool:`` signature,
+        and joining post-strip would be a silent format coupling."""
+        biases = [("tool:foo", 0.9)]
+        stripped_keyed = {"foo": "drive_relief"}
+        text = compose_cluster_bias_annotation_section(biases, stripped_keyed)
+        # No join → pre-S1 format, no gloss.
+        assert "—" not in text
+        assert "[strongly rewarding from prior experience]" in text
+
+    def test_aversive_band_gets_sign_appropriate_gloss(self) -> None:
+        """Negative credits carry sources too (tool_dispatch books -1.0
+        with source drive_relief when a drive regressed). The aversive
+        gloss variant must render — narrating an aversive bias as
+        'relieved a bodily need' would misstate what happened."""
+        biases = [("tool:risky", -0.9)]
+        sources = {"tool:risky": "drive_relief"}
+        text = compose_cluster_bias_annotation_section(biases, sources)
+        assert "[strongly aversive from prior experience — worsened a bodily need]" in text
+
+    def test_neutral_band_never_glossed(self) -> None:
+        """A neutral bias makes no direction claim for a sign-aware
+        gloss to agree with; the row stays terse."""
+        biases = [("tool:strong", 0.9), ("tool:meh", 0.05)]
+        sources = {"tool:meh": "tool_success"}
+        text = compose_cluster_bias_annotation_section(biases, sources)
+        assert "[neutral / mixed]" in text
+        assert "neutral / mixed — " not in text
+
+    def test_unknown_source_value_renders_pre_s1_format(self) -> None:
+        """Defensive degrade mirrors _note_cluster_reward_source's
+        drop-typos behavior: an unrecognized source narrates nothing
+        rather than inventing a category."""
+        biases = [("tool:foo", 0.9)]
+        sources = {"tool:foo": "not_a_real_source"}
+        text = compose_cluster_bias_annotation_section(biases, sources)
+        assert "[strongly rewarding from prior experience]" in text
+        assert "—" not in text
+
+    def test_none_sources_byte_identical_to_pre_s1(self) -> None:
+        """The whole call graph that doesn't pass sources (narrator W2
+        manifest, fixture orchestrator, pre-S1 captures) must produce
+        byte-identical output."""
+        biases = [
+            ("tool:sense_food_source", 0.9),
+            ("tool:infant_humanoid_pick_up", 0.05),
+            ("tool:risky", -0.3),
+        ]
+        assert compose_cluster_bias_annotation_section(biases, None) == compose_cluster_bias_annotation_section(biases)
+        assert compose_cluster_bias_annotation_section(biases, {}) == compose_cluster_bias_annotation_section(biases)
+
+    def test_mixed_source_gloss_is_sign_neutral(self) -> None:
+        biases = [("tool:foo", 0.9), ("tool:bar", -0.9)]
+        sources = {"tool:foo": "mixed", "tool:bar": "mixed"}
+        text = compose_cluster_bias_annotation_section(biases, sources)
+        assert text.count("credited in more than one way") == 2
+
+    def test_real_nac_sources_join_with_real_biases(self) -> None:
+        """End-to-end key agreement: get_agent_tool_biases and
+        get_cluster_reward_sources on the SAME real NAc must produce
+        joinable maps — this is the seam the composer relies on."""
+        nac = NAc(config=NACConfig())
+        nac.update_cluster_reward("sim_aut", "c1", "tool:green_flame_warm_self", reward=10.0, source="drive_relief")
+        biases = nac.get_agent_tool_biases(agent_id="sim_aut", top_n=5)
+        sources = nac.get_cluster_reward_sources(agent_id="sim_aut")
+        text = compose_cluster_bias_annotation_section(biases, sources)
+        assert "green_flame_warm_self" in text
+        assert "— relieved a bodily need]" in text
+
+    def test_gloss_vocabulary_matches_nac_credit_sources(self) -> None:
+        """Adding a credit branch to NAc without a gloss (or a gloss
+        without a branch) fails HERE, not as a silent bare band in
+        production prompts."""
+        from maxim.prompts.cluster_bias_annotation import CREDIT_SOURCE_GLOSSES
+
+        assert set(CREDIT_SOURCE_GLOSSES) == set(NAc.CREDIT_SOURCES)
+
+
+# ─────────────────────────────────────────────────────────────────────
 # Layer 3: PromptBuilder section helper
 # ─────────────────────────────────────────────────────────────────────
 
@@ -300,6 +405,7 @@ class TestPromptBuilderSectionHelper:
 
         budgeter = MagicMock()
         request = self._make_request_with_biases([("tool:sense_food_source", 0.9)])
+        request.context.cluster_bias_sources = None
         PromptBuilder._add_cluster_bias_annotation_section(budgeter, request)
         budgeter.add.assert_called_once()
         args, _ = budgeter.add.call_args
@@ -307,6 +413,31 @@ class TestPromptBuilderSectionHelper:
         assert name == "cluster_bias_annotations"
         assert "Substrate associations" in text
         assert priority == SectionPriority.IMPORTANT
+
+    def test_helper_threads_sources_into_rendered_text(self) -> None:
+        """S1: cluster_bias_sources on the context reaches the composer —
+        the rendered section carries the gloss."""
+        from maxim.agents.prompt_builder import PromptBuilder
+
+        budgeter = MagicMock()
+        request = self._make_request_with_biases([("tool:green_flame_warm_self", 0.9)])
+        request.context.cluster_bias_sources = {"tool:green_flame_warm_self": "drive_relief"}
+        PromptBuilder._add_cluster_bias_annotation_section(budgeter, request)
+        budgeter.add.assert_called_once()
+        text = budgeter.add.call_args[0][1]
+        assert "— relieved a bodily need]" in text
+
+    def test_helper_tolerates_context_without_sources_field(self) -> None:
+        """Older StructuredContext shapes (or non-context objects) lack
+        cluster_bias_sources — the getattr default must degrade to the
+        pre-S1 format, not raise."""
+        from maxim.agents.prompt_builder import PromptBuilder
+
+        budgeter = MagicMock()
+        request = MagicMock()
+        request.context = object()  # no fields at all → biases getattr → None
+        PromptBuilder._add_cluster_bias_annotation_section(budgeter, request)
+        budgeter.add.assert_not_called()
 
 
 # ─────────────────────────────────────────────────────────────────────

@@ -62,6 +62,44 @@ _BAND_MILD_REWARDING = 0.1
 _BAND_NEUTRAL_LOWER = -0.1
 _BAND_MILD_AVERSIVE = -0.5
 
+# S1 renderer (annotation_context_and_provenance.md): separator between the
+# band phrase and the credit-source gloss inside the bracket annotation.
+# This is a FORMAT CONTRACT shared with the S4 non-stationarity parser
+# (scripts/exp44/analyze_nonstationarity.py imports it, with a literal
+# fallback for standalone runs); the round-trip test in
+# tests/unit/test_exp44_nonstationarity.py renders through this module and
+# parses back, so a drift between the two fails there instead of silently
+# reporting "no annotation" across a whole campaign.
+ANNOTATION_SOURCE_SEPARATOR = " — "
+
+# S1 credit-source glosses — display-layer translation of NAc.CREDIT_SOURCES
+# for the LLM reader, same defensibility as the band labels above: the
+# source VALUES are substrate-recorded at credit time (tool_dispatch /
+# credit_operant_reward); only the wording is human-picked, and nothing
+# band- or gloss-derived flows back into any substrate write path.
+#
+# Glosses are SIGN-AWARE because negative credits carry sources too
+# (tool_dispatch books -1.0 with source "drive_relief" when a drive
+# regressed, "tool_success" when the call failed): narrating an aversive
+# bias as "relieved a bodily need" would misstate what happened. The
+# rewarding gloss is used for the rewarding bands, the aversive gloss for
+# the aversive bands; the neutral band is never glossed (informational
+# row stays terse, and a neutral bias makes no direction claim for the
+# gloss to agree with).
+#
+# The key set MUST equal NAc.CREDIT_SOURCES — pinned by
+# test_wire_a_cluster_bias_annotation.py so adding a credit branch
+# without a gloss (or vice versa) fails loudly instead of rendering
+# a silent bare band.
+CREDIT_SOURCE_GLOSSES: dict[str, tuple[str, str]] = {
+    # source: (rewarding-band gloss, aversive-band gloss)
+    "drive_relief": ("relieved a bodily need", "worsened a bodily need"),
+    "orient_relief": ("brought a stimulus toward centre", "pushed a stimulus off centre"),
+    "tool_success": ("the action succeeded", "the action failed"),
+    "operant": ("a caregiver's response rewarded it", "a caregiver's response punished it"),
+    "mixed": ("credited in more than one way", "credited in more than one way"),
+}
+
 # Truthy values that disable Wire-A's annotation at the agent-loop
 # producer site. Shared with the conftest scrub and the test suite
 # so a future env-var divergence here would be caught by tests AND
@@ -128,6 +166,7 @@ def _strip_tool_prefix(tool_signature: str) -> str:
 
 def compose_cluster_bias_annotation_section(
     biases: list[tuple[str, float]] | None,
+    sources: dict[str, str] | None = None,
 ) -> str:
     """Render top-N (tool, bias) pairs as a prompt section.
 
@@ -139,7 +178,8 @@ def compose_cluster_bias_annotation_section(
     Layout matches the plan's example output:
 
         === Substrate associations from prior experience ===
-          sense_food_source       [strongly rewarding from prior experience]
+          green_flame_warm_self  [strongly rewarding from prior experience — relieved a bodily need]
+          purple_flame_observe   [mildly rewarding from prior experience — the action succeeded]
           infant_humanoid_pick_up [neutral / mixed]
 
     The "from prior experience" suffix is appended to the rewarding /
@@ -148,6 +188,16 @@ def compose_cluster_bias_annotation_section(
     rendering choice for the LLM's reading: the rewarding/aversive
     bands carry decision-relevant content; neutral entries surface
     "the substrate has seen this tool but doesn't lean either way."
+
+    ``sources`` (S1 renderer) is ``NAc.get_cluster_reward_sources``
+    output, keyed by the RAW tool signature (``tool:<name>``) — the
+    join happens BEFORE the ``tool:`` prefix strip, since both the
+    bias list and the source map carry the raw signature. When a
+    non-neutral row has a recorded source, the bracket gains a
+    sign-appropriate gloss after ``ANNOTATION_SOURCE_SEPARATOR``.
+    ``None`` / missing / unrecognized sources render exactly the
+    pre-S1 format, so output over pre-S1 persisted state (which has
+    no provenance) is byte-identical to the pre-S1 renderer.
     """
     if not biases:
         return ""
@@ -167,20 +217,30 @@ def compose_cluster_bias_annotation_section(
     # to empty after the upstream non-empty guards passed — current code
     # paths can't reach this, but max([]) raises ValueError and that's
     # a silent-noise failure under a future caller addition.
-    rendered = [(_strip_tool_prefix(tool), bias) for tool, bias in biases]
-    max_name_len = max((len(name) for name, _ in rendered), default=0)
-    for name, bias in rendered:
+    # Join sources on the RAW signature before stripping — both maps key
+    # on ``tool:<name>``; joining post-strip would silently miss every
+    # entry if a future signature scheme collides on bare names.
+    rendered = [(_strip_tool_prefix(tool), bias, (sources or {}).get(tool)) for tool, bias in biases]
+    max_name_len = max((len(name) for name, _, _ in rendered), default=0)
+    for name, bias, source in rendered:
         band = bias_to_band(bias)
         if band == "neutral / mixed":
             annotation = f"[{band}]"
         else:
-            annotation = f"[{band} from prior experience]"
+            gloss_pair = CREDIT_SOURCE_GLOSSES.get(source) if source else None
+            if gloss_pair is not None:
+                gloss = gloss_pair[0] if bias > 0 else gloss_pair[1]
+                annotation = f"[{band} from prior experience{ANNOTATION_SOURCE_SEPARATOR}{gloss}]"
+            else:
+                annotation = f"[{band} from prior experience]"
         # Two-space minimum gap; pad name to max width.
         lines.append(f"  {name.ljust(max_name_len)}  {annotation}")
     return "\n".join(lines)
 
 
 __all__ = [
+    "ANNOTATION_SOURCE_SEPARATOR",
+    "CREDIT_SOURCE_GLOSSES",
     "TRUTHY_DISABLE_VALUES",
     "annotation_disabled_via_env",
     "bias_to_band",

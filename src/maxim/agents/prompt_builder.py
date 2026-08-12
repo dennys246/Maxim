@@ -1225,7 +1225,10 @@ class PromptBuilder:
 
         from maxim.prompts.cluster_bias_annotation import compose_cluster_bias_annotation_section
 
-        text = compose_cluster_bias_annotation_section(biases)
+        # S1 credit-source provenance rides the same context object; the
+        # composer joins on the raw tool signature. None → pre-S1 format.
+        sources = getattr(request.context, "cluster_bias_sources", None)
+        text = compose_cluster_bias_annotation_section(biases, sources)
         if text:
             budgeter.add(
                 "cluster_bias_annotations",

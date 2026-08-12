@@ -3642,6 +3642,14 @@ def run_agentic_loop(
                                 agent_id=_loop_agent_id,
                                 top_n=5,
                             )
+                            # S1 credit-source provenance: same agent-wide
+                            # aggregation, keyed by RAW tool signature so the
+                            # composer can join before the prefix strip.
+                            # Pre-S1 persisted state has no sources — the
+                            # empty dict renders the pre-S1 format.
+                            context.cluster_bias_sources = _loop_nac.get_cluster_reward_sources(
+                                agent_id=_loop_agent_id,
+                            )
                         except ValueError as e:
                             logger.warning(
                                 "Wire-A annotation skipped due to invalid agent_id (%s); "
@@ -3649,6 +3657,7 @@ def run_agentic_loop(
                                 e,
                             )
                             context.cluster_bias_annotations = None
+                            context.cluster_bias_sources = None
 
                     # W1 sense_tool_registry MVP (grayscale visibility).
                     # Surfaces SEM-derived tools the substrate has a
