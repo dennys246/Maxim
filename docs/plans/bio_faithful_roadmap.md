@@ -83,7 +83,7 @@ No egocentric↔allocentric translation exists. `azimuth` is explicitly head-rel
 head-frame incident was this gap in hardware form.
 | Gap | Intent | Trigger / target |
 |---|---|---|
-| ego↔allo frame translation (RSC role) | **OPEN → EARN on trigger** | Plan + triggers + re-validation registry: [deferred/retrosplenial_spatial_frames.md](deferred/retrosplenial_spatial_frames.md). Build on T1 place-memory-across-motion / T2 multi-vantage identity / T3 return-to-place / T4 a second frame-confusion incident. A cheap falsifiable pre-check may close it outright. |
+| ego↔allo frame translation (RSC role) | **OPEN → EARN on trigger** | Plan + triggers + re-validation registry: [deferred/retrosplenial_spatial_frames.md](deferred/retrosplenial_spatial_frames.md). Build on T1 place-memory-across-motion / T2 multi-vantage identity / T3 return-to-place / T4 a second frame-confusion incident. Pre-check RAN 2026-08-11 (`scripts/rsc_precheck.py`) and did NOT close it — but it refuted the predicted failure mode: the channel is RESOLUTION-bound (~3 well-placed nodes: left/centre/right), not frame-confused, and the plan was re-sequenced (resolution before frames). Place-code wiring shipped PR #499. |
 | place/grid coding | ANALOG for now | Only meaningful after the transform above exists. |
 
 ### Attention (`attention/`) — no bio-algorithm claims (checked clean)
