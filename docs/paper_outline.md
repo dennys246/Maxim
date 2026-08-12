@@ -132,7 +132,23 @@ not a caveat.
 - Falsifiable form for future work: pre-registered held-out-model bucket prediction from
   measured prior entropy (state as the follow-up, or run it — cheap via cached captures).
 
-### 4.5 Limitations & threats to validity (own section, not a paragraph)
+### 4.5 What the channel actually transmits (NEW — from the 44b pilot, see 44b_pilot.md)
+Reading the annotation text (not the statistics) reframed the mechanism claim:
+- The annotation lists **(entity, affordance) pairs**, both colours flagged rewarding;
+  what discriminates is which affordance each colour is paired with. So the directional
+  and commitment axes are **not independent** — correct an earlier framing.
+- "Rewarding" conflates drive relief, bare tool success, and cross-modal credit.
+- The producer **drops the cluster id** and max-aggregates agent-wide, so
+  context-dependent value is inexpressible in the prompt channel — while the no-LLM
+  policy path uses per-cluster value correctly. The no-LLM path is strictly better
+  informed than the LLM path from the same substrate.
+- Transfer is **signature-keyed, not semantic**: the affordance-concept layer exists and
+  is bypassed, which is why cross-world (renamed) transfer is weak.
+- Whether the effect is learned-content-following or **name-copying is not yet
+  separable** by any control we have run (the transplant control is name-mismatched).
+  Exp 51 design: ../plans/annotation_context_and_provenance.md.
+
+### 4.6 Limitations & threats to validity (own section, not a paragraph)
 - Confirmatory evidence on one model family; cross-model re-queries exploratory.
 - Ablated baseline is annotation-free, not experience-free (shared-context caveat).
 - Residual color association (quantified by the intrinsic baseline).
