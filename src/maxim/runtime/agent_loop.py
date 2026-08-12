@@ -1312,6 +1312,10 @@ def run_agentic_loop(
     aut_mode: str = "llm-primary",  # "llm-primary" | "substrate-primary" — Phase -1 of grounded_language_acquisition.md
     substrate_telemetry: Any
     | None = None,  # SubstrateTelemetry writer (Phase 0). Called after each substrate-primary tick when set.
+    substrate_action_gate: Any | None = None,  # Callable[[], bool] — turn-scoped action budget for the
+    # substrate-primary branch (the Exp 48 thrashing fix). When set and returning False, the branch
+    # skips proposing this cadence tick (telemetry still fires with proposal=None). The orchestrator
+    # wires SimulationBridge.substrate_action_allowed here; None = unbounded (pre-fix behavior).
     consolidation: Literal["full", "lightweight"] | None = None,  # HANDLE seam (b): explicit session-end flavor
     sim_adapter: Any | None = None,  # Pre-built NullSimulationAdapter (Stage 3, live_audio_orient_wiring.md):
     # lets a live producer (the DoA feed) hold the adapter and carry_percept() into the loop's
@@ -3519,12 +3523,24 @@ def run_agentic_loop(
         if aut_mode == "substrate-primary" and ctrl.pending_proposal is None:
             now = time.time()
             if now - ctrl.last_llm_submit_time > llm_submit_interval:
-                substrate_proposal = propose_via_substrate(
-                    nac=_loop_nac,
-                    agent_id=_loop_agent_id,
-                    executor=executor,
-                    sensor_encoder=_loop_sensor_encoder,
-                )
+                # Turn-scoped action budget (apparatus standard S6; the Exp 48
+                # thrashing fix). A denied tick skips the proposal — the AUT
+                # idles until the orchestrator opens the next turn window —
+                # but still advances last_llm_submit_time and fires telemetry
+                # (proposal=None) so the cadence stays observable. Drive
+                # drift is unaffected: it is wall-clock-lazy and the next
+                # propose_via_substrate applies the accumulated dt. The gate
+                # itself logs the first denial per window (sim_log EXEC), so
+                # gate-idle is distinguishable from substrate-no-opinion IDLE.
+                _substrate_gate_denied = substrate_action_gate is not None and not substrate_action_gate()
+                substrate_proposal = None
+                if not _substrate_gate_denied:
+                    substrate_proposal = propose_via_substrate(
+                        nac=_loop_nac,
+                        agent_id=_loop_agent_id,
+                        executor=executor,
+                        sensor_encoder=_loop_sensor_encoder,
+                    )
                 ctrl.last_llm_submit_time = now
                 if substrate_proposal is not None:
                     ctrl.pending_proposal = substrate_proposal

@@ -23,6 +23,37 @@ from maxim.simulation.spinner import Spinner
 logger = logging.getLogger(__name__)
 
 
+def read_substrate_actions_per_turn_env() -> int | None:
+    """Parse ``MAXIM_SUBSTRATE_ACTIONS_PER_TURN`` → per-turn budget or None.
+
+    Apparatus toggle (harness/experiment — env per the config-vs-env rule's
+    harness carve-out). Unset / empty → None (unbounded, the pre-fix
+    behavior). An invalid or non-positive value falls back to None WITH a
+    WARNING (the tau-clamp precedent: silently clamping would hide
+    misconfiguration, and silently inventing a bound of 1 would be worse).
+    """
+    import os
+
+    raw = os.environ.get("MAXIM_SUBSTRATE_ACTIONS_PER_TURN", "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "MAXIM_SUBSTRATE_ACTIONS_PER_TURN=%r is not an integer — substrate action budget DISABLED (unbounded)",
+            raw,
+        )
+        return None
+    if value < 1:
+        logger.warning(
+            "MAXIM_SUBSTRATE_ACTIONS_PER_TURN=%d is not >= 1 — substrate action budget DISABLED (unbounded)",
+            value,
+        )
+        return None
+    return value
+
+
 class SimulationBridge:
     """Bidirectional channel between simulation orchestrator and agent-under-test.
 
@@ -49,6 +80,7 @@ class SimulationBridge:
         prompt_gate: Any = None,
         max_actions_per_turn: int = 10,
         aut_mode: str = "llm-primary",
+        substrate_actions_per_turn: int | None = None,
     ) -> None:
         self.percept_source = ConversationalSource()
         self.action_sink = RecordingSink()
@@ -70,6 +102,26 @@ class SimulationBridge:
         # observes AUT-side actions during the settle window so the
         # orchestrator's campaign timing stays intact.
         self._aut_mode = aut_mode
+        # Substrate-primary per-turn action budget (apparatus bound; the
+        # Exp 48 thrashing fix). ``None`` = unbounded (the pre-fix
+        # behavior, byte-identical). When set, ``substrate_action_allowed``
+        # returns False once the AUT has recorded this many actions since
+        # the current turn window opened; ``send_and_wait`` opens a new
+        # window each turn. This is the DESIGNED replacement for the
+        # emergent bound actions/turn = mother-turn wall-clock ÷ 0.5 s,
+        # which made the metric a stopwatch reading of narrator latency
+        # (machine-dependent, never reproduced across hosts). Note the
+        # pre-existing ``max_actions_per_turn`` cap above bounds only the
+        # OBSERVER's settle loop — the AUT keeps acting through it; this
+        # budget bounds the AUT itself. Per apparatus standard S6
+        # (simulation_apparatus_standards.md) the bound is opt-in and
+        # experiment-visible: configure via MAXIM_SUBSTRATE_ACTIONS_PER_TURN,
+        # logged at run start and once per exhausted window.
+        self._substrate_actions_per_turn = (
+            max(1, int(substrate_actions_per_turn)) if substrate_actions_per_turn is not None else None
+        )
+        self._turn_start_action_idx = 0
+        self._budget_logged_this_turn = False
         # Early-termination context written by FinishSimulationTool so
         # the orchestrator can distinguish "LLM called finish with
         # status=failed" from a user /cancel or a crash.
@@ -141,6 +193,11 @@ class SimulationBridge:
                     logger.debug("percept_anxiety_hook failed: %s", e)
             self.percept_source.inject_cli(text, salience=salience, novelty=novelty)
         self._turn_count += 1
+        # Open a new substrate action-budget window (the turn boundary the
+        # substrate-primary AUT otherwise never sees — no percept is
+        # injected in that mode).
+        self._turn_start_action_idx = len(self.action_sink.actions)
+        self._budget_logged_this_turn = False
 
         timeout_s = timeout or self._response_timeout
         settle_timeout = settle_s or self._settle_s
@@ -234,6 +291,47 @@ class SimulationBridge:
     @property
     def turn_count(self) -> int:
         return self._turn_count
+
+    def substrate_action_allowed(self) -> bool:
+        """Turn-scoped action budget for the substrate-primary AUT.
+
+        The agent loop's substrate-primary branch consults this before
+        proposing (threaded through ``run_agentic_loop``'s
+        ``substrate_action_gate``). ``True`` while fewer than
+        ``substrate_actions_per_turn`` actions have been recorded since
+        the current turn window opened; ``send_and_wait`` opens a new
+        window each turn. Always ``True`` when no budget is configured.
+
+        Counts ``action_sink.actions`` — the same counter the observer's
+        settle-loop cap reads, so the two views cannot disagree about
+        what an "action" is. Thread-safe enough by construction: the
+        AUT thread reads two ints the orchestrator thread writes at turn
+        boundaries; a race window of one action at the boundary is
+        harmless (the budget is an apparatus bound, not an invariant).
+
+        The first denial per window logs once (INFO via sim_log) so a
+        run's JSONL shows the bound engaging — apparatus standard S6:
+        the change must be visible in the artifact, and a gate-idled AUT
+        must be distinguishable from a substrate-had-no-opinion IDLE.
+        """
+        if self._substrate_actions_per_turn is None:
+            return True
+        used = len(self.action_sink.actions) - self._turn_start_action_idx
+        if used < self._substrate_actions_per_turn:
+            return True
+        if not self._budget_logged_this_turn:
+            self._budget_logged_this_turn = True
+            try:
+                from maxim.simulation.sim_logger import sim_log
+
+                sim_log(
+                    "EXEC",
+                    f"substrate action budget reached ({used}/{self._substrate_actions_per_turn} "
+                    f"in turn {self._turn_count}) — AUT idles until next turn",
+                )
+            except Exception:
+                logger.debug("substrate budget sim_log failed", exc_info=True)
+        return False
 
     def finish(self) -> None:
         """Signal simulation complete. AUT's ConversationalSource is_exhausted() becomes True."""
