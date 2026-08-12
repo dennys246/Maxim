@@ -109,6 +109,14 @@ strength with flip outcome and with decision index. Answers F6 (bias decayed ≈
 0.059 within a capture while bands are absolute) using captures already on disk. Pure
 analysis; no new runs.
 
+**Post-S1 scope note (review fold):** S4 measures BAND non-stationarity only — the
+parser strips the S1 credit-source gloss before banding, so a mid-campaign gloss flip
+(one-way promotion to `"mixed"` while the band stays stable) is a treatment change the
+instrument does not see. Disclaimed in the script header; extend the parser to collect
+the post-separator text if a campaign's question depends on gloss stationarity. Capture
+rows carry a `renderer_s1` stamp so pre-S1 and post-S1 prompt generations are
+self-identifying.
+
 ---
 
 ## Exp 51 — Name-copying vs learned content (the decisive experiment)

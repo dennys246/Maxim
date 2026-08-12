@@ -66,10 +66,14 @@ _BAND_MILD_AVERSIVE = -0.5
 # band phrase and the credit-source gloss inside the bracket annotation.
 # This is a FORMAT CONTRACT shared with the S4 non-stationarity parser
 # (scripts/exp44/analyze_nonstationarity.py imports it, with a literal
-# fallback for standalone runs); the round-trip test in
-# tests/unit/test_exp44_nonstationarity.py renders through this module and
-# parses back, so a drift between the two fails there instead of silently
-# reporting "no annotation" across a whole campaign.
+# fallback for standalone runs). Two guards, each covering what the other
+# cannot: the round-trip test in tests/unit/test_exp44_nonstationarity.py
+# renders through this module and parses back (covers the imported path),
+# and the fallback-branch test there blocks the import and re-execs the
+# script (covers the standalone literal — in CI the import always succeeds,
+# so the round-trip alone can never see fallback drift). If you change this
+# constant, the script's fallback literal AND the round-trip test's
+# hardcoded em-dash literals must change in the same commit.
 ANNOTATION_SOURCE_SEPARATOR = " — "
 
 # S1 credit-source glosses — display-layer translation of NAc.CREDIT_SOURCES

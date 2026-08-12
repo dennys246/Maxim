@@ -39,9 +39,21 @@ HEADER = "=== Substrate associations from prior experience ==="
 # since the S1 renderer the bracket may also carry a credit-source gloss after an
 # em-dash separator (``[<band> from prior experience — <gloss>]``). The separator
 # is a shared format constant on the production composer; imported when the repo
-# is on sys.path, literal fallback for standalone runs. The round-trip test
-# (tests/unit/test_exp44_nonstationarity.py) renders through the real composer
-# and parses back, so the fallback cannot silently drift.
+# is on sys.path, literal fallback for standalone runs. The imported path is
+# guarded by the round-trip test (tests/unit/test_exp44_nonstationarity.py,
+# real composer → real parser); the FALLBACK literal is guarded separately by
+# the fallback-branch test there, which blocks the import and re-execs this
+# module — without that, the fallback would be the classic two-literals-
+# agreeing-by-luck (in CI the import always succeeds, so a round-trip test
+# alone can never see the fallback drift; review fold, cross-confirmed).
+#
+# SCOPE (review fold): this analyzer measures BAND non-stationarity only.
+# The S1 credit-source gloss is deliberately stripped before banding, so a
+# mid-campaign gloss flip (e.g. one-way promotion to "mixed" while the band
+# stays stable) is a treatment change this instrument does NOT see. If a
+# campaign's question depends on gloss stationarity, extend the parser to
+# also collect the post-separator text — do not infer gloss stability from
+# a stationary band trajectory.
 try:
     from maxim.prompts.cluster_bias_annotation import (
         ANNOTATION_SOURCE_SEPARATOR as _SOURCE_SEP,

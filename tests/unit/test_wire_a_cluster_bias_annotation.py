@@ -358,6 +358,17 @@ class TestComposeSectionWithSources:
         assert "green_flame_warm_self" in text
         assert "— relieved a bodily need]" in text
 
+    def test_sources_dark_under_reward_bias_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Exp 37 ablation arm 3 symmetry (review fold): when
+        MAXIM_NAC_REWARD_BIAS_DISABLED gates the bias surfaces off, the
+        provenance map goes dark with them — an 'annotation ablated' arm
+        must not carry substrate provenance in its context object."""
+        monkeypatch.setenv("MAXIM_NAC_REWARD_BIAS_DISABLED", "1")
+        nac = NAc(config=NACConfig())
+        nac.update_cluster_reward("sim_aut", "c1", "tool:x", reward=10.0, source="drive_relief")
+        assert nac.get_agent_tool_biases(agent_id="sim_aut", top_n=5) == []
+        assert nac.get_cluster_reward_sources(agent_id="sim_aut") == {}
+
     def test_gloss_vocabulary_matches_nac_credit_sources(self) -> None:
         """Adding a credit branch to NAc without a gloss (or a gloss
         without a branch) fails HERE, not as a silent bare band in

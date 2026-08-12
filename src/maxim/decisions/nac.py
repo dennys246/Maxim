@@ -2298,10 +2298,24 @@ class NAc:
 
         Mirrors ``get_agent_tool_biases``' agent-wide aggregation so the two can
         be zipped at the annotation site. A tool credited differently in
-        different clusters reports ``"mixed"`` — which is the true answer.
+        different clusters reports ``"mixed"`` — which is the true answer
+        AGENT-WIDE, though not necessarily of the single displayed number:
+        ``get_agent_tool_biases`` renders the max-|bias| single-cluster value,
+        so a bias earned wholly via one branch can still gloss ``"mixed"``
+        when another cluster holds a negligible credit from a different
+        branch. The mismatch can only degrade toward vagueness (a SPECIFIC
+        gloss requires every agent-wide credit to agree), never toward a
+        false specific claim — the right conservatism for an LLM-steering
+        string (review fold).
         """
         if not agent_id:
             raise ValueError("get_cluster_reward_sources requires non-empty agent_id")
+        # Exp 37 ablation arm 3 symmetry (review fold): when reward-bias
+        # surfaces are gated off, the annotation's provenance map must go
+        # dark with them — otherwise an "annotation ablated" arm still
+        # carries substrate provenance in its context object.
+        if self._reward_bias_disabled:
+            return {}
         out: dict[str, str] = {}
         with self._lock:
             for (aid, _cid, tsig), src in self._cluster_reward_source.items():

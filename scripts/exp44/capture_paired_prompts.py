@@ -54,6 +54,11 @@ def _ablate(request: Any) -> Any:
     """
     ctx = copy.copy(request.context)  # shallow copy; setattr on the copy only
     ctx.cluster_bias_annotations = None
+    # S1 provenance map: nulled on principle, not spared by renderer
+    # ordering — today the renderer short-circuits on empty biases before
+    # reading sources, but the ablation's completeness must not depend on
+    # a short-circuit in a different file (review fold, cross-confirmed).
+    ctx.cluster_bias_sources = None
     ctx.body_state = None
 
     coach = getattr(request, "acting_coach", None)
@@ -92,6 +97,11 @@ def _digest(request: Any, prompt_full: str) -> dict[str, Any]:
         "available_tools": sorted(getattr(request, "available_tools", []) or []),
         "body_state": getattr(ctx, "body_state", None),
         "has_cluster_bias": getattr(ctx, "cluster_bias_annotations", None) is not None,
+        # Renderer-generation stamp (review fold): pre-S1 and post-S1
+        # captures over source-carrying state are different prompt
+        # generations and are not byte-comparable; every row says which
+        # composer produced it (the Exp 42b self-auditing-artifact rule).
+        "renderer_s1": True,
         "prompt_full_sha1": hashlib.sha1(prompt_full.encode("utf-8")).hexdigest()[:12],
     }
 
