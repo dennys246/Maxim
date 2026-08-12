@@ -661,6 +661,28 @@ def _classify_status(
     )
 
 
+def _loggable_url(url: str) -> str:
+    """Strip query string + fragment from a URL before logging it.
+
+    2026-08-12 privacy audit: the ``_external`` endpoint's structured
+    log events (``http_request`` / ``http_request_failed`` — the latter
+    is WARNING, default-on) previously carried the full URL. For search
+    and fetch tools the query string IS the payload — an LLM-generated
+    search query, possibly echoing prompt or memory content — and the
+    events land in MAXIM_LOG_FILE and the leader proxy's remote-readable
+    log buffer. Scheme + host + path keep the events debuggable (which
+    endpoint failed) without the free text. A ``?…`` suffix marks that
+    a query was present.
+    """
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    base = f"{parts.scheme}://{parts.netloc}{parts.path}" if parts.scheme else parts.path
+    if parts.query or parts.fragment:
+        return base + "?…"
+    return base
+
+
 def _classify_httpx_error(endpoint: str, exc: BaseException) -> HTTPError:
     if isinstance(exc, httpx.TimeoutException):
         return HTTPTimeout(
@@ -847,7 +869,7 @@ def fetch_url(
             event="http_request_failed",
             data={
                 "endpoint": _EXTERNAL_ENDPOINT,
-                "url": url,
+                "url": _loggable_url(url),
                 "method": method.upper(),
                 "request_id": used_ctx.request_id,
                 "error": type(e).__name__,
@@ -866,7 +888,7 @@ def fetch_url(
         event="http_request",
         data={
             "endpoint": _EXTERNAL_ENDPOINT,
-            "url": url,
+            "url": _loggable_url(url),
             "method": method.upper(),
             "status": resp.status_code,
             "latency_ms": round(elapsed_ms, 1),

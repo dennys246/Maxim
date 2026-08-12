@@ -438,6 +438,26 @@ class TestEnsureLogBuffer:
         maxim_logger = logging.getLogger("maxim")
         assert buf in maxim_logger.handlers
 
+    def test_buffer_capped_at_info(self):
+        """2026-08-12 privacy audit: the buffer is served remotely via
+        GET /v1/debug/logs (`maxim peer logs`), so it must not capture
+        DEBUG records — a DEBUG-level handler on the root maxim logger
+        would remote-expose every subsystem's debug stream whenever the
+        process runs at DEBUG (e.g. under MAXIM_LOG_FILE)."""
+        from maxim.runtime.leader_proxy import _ensure_log_buffer
+
+        buf = _ensure_log_buffer()
+        assert buf.level == logging.INFO
+
+        log = logging.getLogger("maxim.privacy_buffer_test")
+        log.setLevel(logging.DEBUG)
+        log.debug("SENTINEL_DEBUG_LINE must stay local")
+        log.info("SENTINEL_INFO_LINE may be buffered")
+        entries = buf.get_since(limit=1000)
+        messages = [e["message"] for e in entries]
+        assert not any("SENTINEL_DEBUG_LINE" in m for m in messages)
+        assert any("SENTINEL_INFO_LINE" in m for m in messages)
+
 
 # ── _current_llama_server_n_ctx ────────────────────────────────────────────
 

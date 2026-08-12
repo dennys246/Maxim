@@ -718,7 +718,13 @@ def _ensure_log_buffer() -> _LogBuffer:
         return _log_buffer
     _log_buffer = _LogBuffer()
     _log_buffer.setFormatter(logging.Formatter("%(message)s"))
-    _log_buffer.setLevel(logging.DEBUG)
+    # INFO cap (2026-08-12 privacy audit): this buffer is served to any
+    # cluster-key holder via GET /v1/debug/logs (`maxim peer logs`), so a
+    # DEBUG-level handler on the root `maxim` logger would remote-expose
+    # every subsystem's debug stream (model paths, lane decisions, bio
+    # traces) whenever the process runs at DEBUG (e.g. MAXIM_LOG_FILE).
+    # Local DEBUG diagnostics belong in MAXIM_LOG_FILE, not on the wire.
+    _log_buffer.setLevel(logging.INFO)
     logging.getLogger("maxim").addHandler(_log_buffer)
     return _log_buffer
 

@@ -193,6 +193,36 @@ from maxim.tools.base import ToolErrorKind as ToolErrorKind  # noqa: F401
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+#: The Percept fields allowed on the peer↔leader wire — the single
+#: source of truth for BOTH directions. ``to_wire_dict`` writes exactly
+#: these (plus ``context``, serialized separately, and the
+#: ``_format_version`` envelope); ``from_wire_dict`` accepts ONLY these,
+#: so the wire-excluded fields (``embedding``, ``substrate_node_id``,
+#: ``salience``, ``novelty``, ``maxim_runtime``) cannot be injected by a
+#: peer either. See the ``to_wire_dict`` docstring for the exclusion
+#: rationale.
+_PERCEPT_WIRE_FIELDS: frozenset[str] = frozenset(
+    {
+        "timestamp",
+        "source",
+        "detections",
+        "transcript_chunk",
+        "transcript_chunk_index",
+        "file_changed",
+        "cli_input",
+        "has_voice_command",
+        "has_maxim_keyword",
+        "hard_override",
+        "explore_command",
+        "content",
+        "metadata",
+        "raw_transcript_text",
+        "sensory",
+        "modality",
+    }
+)
+
+
 @dataclass
 class Percept:
     """Structured perception output from PerceptionAgent."""
@@ -397,7 +427,13 @@ class Percept:
             data["context"] = PerceptContext.from_dict(ctx_raw)
         elif ctx_raw is not None:
             data["context"] = ctx_raw
-        valid_fields = {f.name for f in fields(cls)}
+        # Inbound allowlist mirrors the outbound one (2026-08-12 audit):
+        # filtering on valid DATACLASS fields alone would let a buggy or
+        # malicious peer inject the wire-EXCLUDED fields (embedding,
+        # substrate_node_id, salience, novelty, maxim_runtime) — derived
+        # values the leader must compute itself. Symmetric allowlists
+        # make the exclusion hold in both directions.
+        valid_fields = {f.name for f in fields(cls)} & (_PERCEPT_WIRE_FIELDS | {"context"})
         return cls(**{k: v for k, v in data.items() if k in valid_fields})
 
 

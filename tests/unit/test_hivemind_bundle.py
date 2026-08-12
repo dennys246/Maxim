@@ -807,3 +807,361 @@ def test_end_to_end_via_cli_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert (out_dir / "manifest.json").is_file()
     assert (out_dir / "nac.json").is_file()
     assert (out_dir / "ec.json").is_file()
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Bundle content scrub — model-generated text must not ship
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class TestBundleScrubsModelGeneratedText:
+    """The bundle composer must scrub LLM-generated / raw-tool-output text
+    from NAc links before serialization.
+
+    Three leak paths (all real producer paths on current HEAD):
+
+    1. ``event_context["goal"]`` — tool_dispatch.py sets it to the LLM's
+       own ``reasoning[:100]``.
+    2. ``outcome_signature`` — ``f"{{success|failure}}:{{outcome_summary}}"``
+       where outcome_summary is raw tool output / error text (paths,
+       hostnames, credentials). Also appears as ``outcome_index`` keys.
+    3. ``memory_ids`` — hippocampus episode IDs (episodes stay local by
+       the load-bearing privacy invariant; their IDs shouldn't ship
+       either).
+    """
+
+    def _leaky_nac(self) -> NAc:
+        from maxim.decisions.causal_link import Valence
+
+        nac = NAc(config=NACConfig())
+        nac.observe(
+            event_type="tool",
+            event_signature="tool:probe_scan",
+            outcome_type="tool_result",
+            outcome_signature="failure:SENTINEL_OUTCOME cred=hunter2 /Users/x/id_rsa",
+            outcome_valence=Valence.NEGATIVE,
+            delta_seconds=1.0,
+            context={
+                "agent_id": "agent1",
+                "goal": "SENTINEL_REASONING_XYZZY plan to open the vault",
+            },
+            memory_id="SENTINEL_EPISODE_MEM_42",
+        )
+        return nac
+
+    def test_sentinels_do_not_reach_serialized_nac_json(self, tmp_path: Path) -> None:
+        nac = self._leaky_nac()
+        output = tmp_path / "bundle.zip"
+        compose_bundle(
+            nac_state=nac.dump(),
+            ec_substrate_nodes=None,
+            output_path=output,
+            contributor_id="A",
+        )
+
+        with zipfile.ZipFile(output) as zf:
+            nac_json = zf.read("nac.json").decode("utf-8")
+
+        # 1. LLM reasoning via event_context["goal"]
+        assert "SENTINEL_REASONING_XYZZY" not in nac_json
+        # 2. raw tool output / credentials via outcome_signature
+        assert "SENTINEL_OUTCOME" not in nac_json
+        assert "hunter2" not in nac_json
+        # 3. hippocampus episode IDs via memory_ids
+        assert "SENTINEL_EPISODE_MEM_42" not in nac_json
+
+    def test_link_survives_scrub_with_allowlisted_fields(self, tmp_path: Path) -> None:
+        """Scrub, don't drop: the link ships with agent_id kept, the
+        outcome_signature truncated to its success/failure token, and
+        memory_ids emptied."""
+        nac = self._leaky_nac()
+        output = tmp_path / "bundle.zip"
+        compose_bundle(
+            nac_state=nac.dump(),
+            ec_substrate_nodes=None,
+            output_path=output,
+            contributor_id="A",
+        )
+
+        with zipfile.ZipFile(output) as zf:
+            data = json.loads(zf.read("nac.json").decode("utf-8"))
+
+        assert "tool:probe_scan" in data["links"]
+        (link,) = data["links"]["tool:probe_scan"]
+        assert link["event_context"] == {"agent_id": "agent1"}
+        assert link["outcome_signature"] == "failure"
+        assert link["memory_ids"] == []
+
+    def test_local_nac_state_is_not_mutated_by_composition(self, tmp_path: Path) -> None:
+        """compose_bundle is a pure function: the scrub applies to the
+        bundle only, the local dump keeps full debugging context."""
+        nac = self._leaky_nac()
+        state = nac.dump()
+        compose_bundle(
+            nac_state=state,
+            ec_substrate_nodes=None,
+            output_path=tmp_path / "bundle.zip",
+            contributor_id="A",
+        )
+        (link,) = state["links"]["tool:probe_scan"]
+        assert link["event_context"]["goal"].startswith("SENTINEL_REASONING_XYZZY")
+        assert link["outcome_signature"].startswith("failure:SENTINEL_OUTCOME")
+        assert link["memory_ids"] == ["SENTINEL_EPISODE_MEM_42"]
+
+    def test_ast_guard_every_nac_json_assignment_routes_through_scrubber(self) -> None:
+        """AST architectural check (CI): no dict may reach
+        ``bundle_contents["nac.json"]`` without passing through
+        ``scrub_nac_state_for_bundle`` inline in the ``json.dumps`` call.
+
+        Same style as the existing AST checks (test_phase0_fixes.py):
+        parse the source, walk, assert structure. A future edit that
+        serializes NAc state via a different path fails here loudly.
+        """
+        import ast
+
+        import maxim.hivemind.bundle as bundle_mod
+
+        source = Path(bundle_mod.__file__).read_text()
+        tree = ast.parse(source)
+
+        nac_json_assignments = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if (
+                    isinstance(target, ast.Subscript)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "bundle_contents"
+                    and isinstance(target.slice, ast.Constant)
+                    and target.slice.value == "nac.json"
+                ):
+                    nac_json_assignments.append(node)
+
+        assert nac_json_assignments, "no bundle_contents['nac.json'] assignment found — guard is stale, update it"
+
+        for assign in nac_json_assignments:
+            value = assign.value
+            assert isinstance(value, ast.Call), (
+                f"line {assign.lineno}: nac.json must be assigned from a json.dumps call"
+            )
+            func = value.func
+            is_json_dumps = (
+                isinstance(func, ast.Attribute)
+                and func.attr == "dumps"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "json"
+            )
+            assert is_json_dumps, f"line {assign.lineno}: nac.json must be serialized via json.dumps"
+            assert value.args, f"line {assign.lineno}: json.dumps must take the payload positionally"
+            payload = value.args[0]
+            assert (
+                isinstance(payload, ast.Call)
+                and isinstance(payload.func, ast.Name)
+                and payload.func.id == "scrub_nac_state_for_bundle"
+            ), (
+                f"line {assign.lineno}: the dict serialized into nac.json must be produced by "
+                f"scrub_nac_state_for_bundle(...) inline in the json.dumps call — "
+                f"model-generated text (LLM reasoning in event_context, raw tool output in "
+                f"outcome_signature, hippocampus episode IDs in memory_ids) must not ship"
+            )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Scrub extensions — 2026-08-12 five-lens privacy audit
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class TestBundleScrubsNacStateSurfaces:
+    """The audit's cross-confirmed findings beyond the CausalLink fields:
+    goal_reward_bias keys are raw goal text; tool:use:<action> signatures
+    embed verbatim LLM tool params across four surfaces; percept_refs are
+    the same reference class as memory_ids; priors is an unguarded
+    pass-through."""
+
+    def _compose(self, tmp_path: Path, state: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        output = tmp_path / "bundle.zip"
+        compose_bundle(
+            nac_state=state,
+            ec_substrate_nodes=None,
+            output_path=output,
+            contributor_id="A",
+            **kwargs,
+        )
+        with zipfile.ZipFile(output) as zf:
+            return json.loads(zf.read("nac.json").decode("utf-8"))
+
+    def test_goal_reward_bias_dropped(self, tmp_path: Path) -> None:
+        state = _empty_nac_state(goal_reward_bias={"help debug the auth tokens in ~/Scripts/.env SENTINEL_GOAL": 0.4})
+        data = self._compose(tmp_path, state)
+        assert data["goal_reward_bias"] == {}
+        assert "SENTINEL_GOAL" not in json.dumps(data)
+
+    def test_priors_dropped(self, tmp_path: Path) -> None:
+        state = _empty_nac_state(priors={"tool:SENTINEL_PRIOR": [0.5, 0.3]})
+        data = self._compose(tmp_path, state)
+        assert data["priors"] == {}
+
+    def test_use_action_free_text_truncated_across_all_surfaces(self, tmp_path: Path) -> None:
+        sig = "tool:use:pry open the rusted lock at /Users/x SENTINEL_ACTION"
+        link = _link_dict(event_sig=sig)
+        link["id"] = "1b6ffc729b3141cc"  # production ids are sha256[:16], not sig-derived
+        state = _empty_nac_state(
+            links={sig: [link]},
+            event_outcome_welford={f"aut\x1f{sig}": {"mean": 0.5, "m2": 0.1, "n": 2.0}},
+            cluster_reward_bias={f"aut\x1fcid-1\x1f{sig}": 0.5},
+            cluster_reward_source={f"aut\x1fcid-1\x1f{sig}": "causal"},
+        )
+        data = self._compose(tmp_path, state)
+        text = json.dumps(data)
+        assert "SENTINEL_ACTION" not in text
+        assert "tool:use" in data["links"]
+        (link,) = data["links"]["tool:use"]
+        assert link["event_signature"] == "tool:use"
+        assert "aut\x1ftool:use" in data["event_outcome_welford"]
+        assert "aut\x1fcid-1\x1ftool:use" in data["cluster_reward_bias"]
+        assert "aut\x1fcid-1\x1ftool:use" in data["cluster_reward_source"]
+
+    def test_use_action_identifier_kept(self, tmp_path: Path) -> None:
+        """tool:use:dodge is the documented transfer vocabulary — kept."""
+        sig = "tool:use:dodge"
+        state = _empty_nac_state(
+            links={sig: [_link_dict(event_sig=sig)]},
+            cluster_reward_bias={f"aut\x1fcid-1\x1f{sig}": 0.5},
+        )
+        data = self._compose(tmp_path, state)
+        assert sig in data["links"]
+        assert f"aut\x1fcid-1\x1f{sig}" in data["cluster_reward_bias"]
+
+    def test_truncation_collisions_merge(self, tmp_path: Path) -> None:
+        sig_a = "tool:use:pry the lock open"
+        sig_b = "tool:use:smash the window in"
+        state = _empty_nac_state(
+            links={
+                sig_a: [_link_dict(event_sig=sig_a, outcome_sig="ok-a")],
+                sig_b: [_link_dict(event_sig=sig_b, outcome_sig="ok-b")],
+            },
+            event_outcome_welford={
+                f"aut\x1f{sig_a}": {"mean": 1.0, "m2": 0.0, "n": 2.0},
+                f"aut\x1f{sig_b}": {"mean": 0.0, "m2": 0.0, "n": 2.0},
+            },
+            cluster_reward_bias={
+                f"aut\x1fcid-1\x1f{sig_a}": 0.4,
+                f"aut\x1fcid-1\x1f{sig_b}": 0.2,
+            },
+            cluster_reward_source={
+                f"aut\x1fcid-1\x1f{sig_a}": "causal",
+                f"aut\x1fcid-1\x1f{sig_b}": "reward_bias",
+            },
+        )
+        data = self._compose(tmp_path, state)
+        # links: lists concatenated under the truncated key
+        assert len(data["links"]["tool:use"]) == 2
+        # welford: parallel merge — n sums, mean averages (equal n)
+        merged = data["event_outcome_welford"]["aut\x1ftool:use"]
+        assert merged["n"] == 4.0
+        assert merged["mean"] == pytest.approx(0.5)
+        # bias: mean on collision
+        assert data["cluster_reward_bias"]["aut\x1fcid-1\x1ftool:use"] == pytest.approx(0.3)
+        # source: disagreement promotes to "mixed" (NAc's own semantics)
+        assert data["cluster_reward_source"]["aut\x1fcid-1\x1ftool:use"] == "mixed"
+
+    def test_percept_refs_zeroed(self, tmp_path: Path) -> None:
+        link = _link_dict(event_sig="tool:probe")
+        link["percept_refs"] = [{"percept_id": "SENTINEL_PERCEPT", "content_hash": "abc"}]
+        state = _empty_nac_state(links={"tool:probe": [link]})
+        data = self._compose(tmp_path, state)
+        (out_link,) = data["links"]["tool:probe"]
+        assert out_link["percept_refs"] == []
+        assert "SENTINEL_PERCEPT" not in json.dumps(data)
+
+    def test_identity_filter_extends_to_welford_keys(self, tmp_path: Path) -> None:
+        """An identity-quarantined event signature must not ship through
+        its Welford twin (the links filter alone leaves that gap)."""
+        idsig = "met Dave Smithers at the market"
+        state = _empty_nac_state(
+            links={idsig: [_link_dict(event_sig=idsig)]},
+            event_outcome_welford={
+                f"aut\x1f{idsig}": {"mean": 0.5, "m2": 0.0, "n": 1.0},
+                "aut\x1ftool:probe": {"mean": 0.5, "m2": 0.0, "n": 1.0},
+            },
+        )
+        data = self._compose(tmp_path, state, identity_threshold=1)
+        assert "Dave" not in json.dumps(data)
+        assert "aut\x1ftool:probe" in data["event_outcome_welford"]
+        # opt-out keeps them (trusted-internal backup semantics)
+        data_off = self._compose(tmp_path, state, apply_identity_filter=False)
+        assert f"aut\x1f{idsig}" in data_off["event_outcome_welford"]
+
+
+class TestManifestProvenancePathRedaction:
+    def _manifest(self, tmp_path: Path, provenance: dict[str, Any] | None) -> dict[str, Any]:
+        return compose_bundle(
+            nac_state=_empty_nac_state(),
+            ec_substrate_nodes=None,
+            output_path=tmp_path / "bundle.zip",
+            contributor_id="A",
+            encoder_provenance=provenance,
+        )
+
+    def test_local_model_path_redacted(self, tmp_path: Path) -> None:
+        manifest = self._manifest(
+            tmp_path,
+            {"linguistic": {"model_name": "/Users/denny/models/mpnet-finetuned", "embedding_dim": 384}},
+        )
+        recorded = manifest["encoder_provenance"]["recorded"]
+        assert recorded["linguistic"]["model_name"] == "[REDACTED_PATH]"
+        assert recorded["linguistic"]["embedding_dim"] == 384
+
+    def test_hub_model_name_kept_and_none_stays_none(self, tmp_path: Path) -> None:
+        manifest = self._manifest(tmp_path, {"linguistic": {"model_name": "paraphrase-mpnet-base-v2"}})
+        assert manifest["encoder_provenance"]["recorded"]["linguistic"]["model_name"] == "paraphrase-mpnet-base-v2"
+        assert self._manifest(tmp_path, None)["encoder_provenance"]["recorded"] is None
+
+
+class TestEcSliceBoundary:
+    """The EC payload's text-bearing keys (signatures carry goal_keywords
+    = the first words of LLM reasoning) must never ship. The slice
+    boundary is load-bearing and was previously unpinned."""
+
+    def test_ec_json_ships_only_substrate_nodes(self, tmp_path: Path) -> None:
+        output = tmp_path / "bundle.zip"
+        compose_bundle(
+            nac_state=None,
+            ec_substrate_nodes={"n1": _ec_node([1.0, 0.0])},
+            output_path=output,
+            contributor_id="A",
+        )
+        with zipfile.ZipFile(output) as zf:
+            data = json.loads(zf.read("ec.json").decode("utf-8"))
+        assert set(data.keys()) == {"substrate_nodes"}
+
+    def test_session_export_never_ships_ec_signatures(self, tmp_path: Path) -> None:
+        """CLI export reads only the substrate_nodes + encoder_provenance
+        slices of aut_ec.json — a signatures key carrying reasoning
+        fragments must not reach the bundle."""
+        from maxim.hivemind.cli import run_substrate_subcommand
+
+        session_dir = tmp_path / "session"
+        session_dir.mkdir()
+        (session_dir / "aut_nac.json").write_text(json.dumps(_empty_nac_state()))
+        (session_dir / "aut_ec.json").write_text(
+            json.dumps(
+                {
+                    "substrate_nodes": {"n1": _ec_node([1.0, 0.0])},
+                    "signatures": {"sig-1": {"goal_keywords": ["SENTINEL_REASONING_WORD"]}},
+                    "lsh": {"planes": "SENTINEL_LSH"},
+                    "inverted": {"SENTINEL_INVERTED": ["n1"]},
+                }
+            )
+        )
+        bundle_path = tmp_path / "out.zip"
+        rc = run_substrate_subcommand(
+            ["export", str(bundle_path), "--session", str(session_dir), "--contributor-id", "smoke"]
+        )
+        assert rc == 0
+        with zipfile.ZipFile(bundle_path) as zf:
+            all_content = b"".join(zf.read(n) for n in zf.namelist()).decode("utf-8")
+        assert "SENTINEL_REASONING_WORD" not in all_content
+        assert "SENTINEL_LSH" not in all_content
+        assert "SENTINEL_INVERTED" not in all_content

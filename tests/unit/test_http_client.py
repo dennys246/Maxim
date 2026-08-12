@@ -388,3 +388,23 @@ def test_raw_proxy_forward_streaming_stores_stream_ctx() -> None:
             http._registry._clients[http._EXTERNAL_ENDPOINT] = original_client
         else:
             http._registry._clients.pop(http._EXTERNAL_ENDPOINT, None)
+
+
+class TestLoggableUrl:
+    """2026-08-12 privacy audit: external-URL log events must not carry
+    query strings (LLM-generated search queries) into MAXIM_LOG_FILE or
+    the remote-readable proxy log buffer."""
+
+    def test_query_string_stripped(self):
+        from maxim.utils.http import _loggable_url
+
+        assert (
+            _loggable_url("https://api.duckduckgo.com/?q=secret+llm+query&format=json")
+            == "https://api.duckduckgo.com/?…"
+        )
+
+    def test_fragment_stripped_and_plain_url_kept(self):
+        from maxim.utils.http import _loggable_url
+
+        assert _loggable_url("https://example.com/page#token=abc") == "https://example.com/page?…"
+        assert _loggable_url("https://example.com/docs/page") == "https://example.com/docs/page"
