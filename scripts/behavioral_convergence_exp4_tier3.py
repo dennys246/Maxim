@@ -41,7 +41,6 @@ sys.path.insert(0, "src")
 # Enable substrate path so encoder generates node IDs
 os.environ.setdefault("MAXIM_SUBSTRATE_PATH", "1")
 
-from maxim.agents.bus import EdgeType
 from maxim.decisions.causal_link import Valence
 from maxim.decisions.nac import NAc
 from maxim.memory.episode import CaptureEvent, salience_spike_rule
