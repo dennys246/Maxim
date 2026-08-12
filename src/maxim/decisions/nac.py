@@ -662,6 +662,17 @@ class NAc:
         # propose_via_substrate, which captures the EC interoception cluster
         # id once per tick and passes it to recommend_action.
         self._cluster_reward_bias: dict[tuple[str, str, str], float] = {}
+        # S1 (annotation_context_and_provenance.md): WHY a cluster bias exists —
+        # the credit SOURCE, keyed identically to _cluster_reward_bias. The
+        # substrate distinguishes drive relief from a bare tool-success floor at
+        # write time (tool_dispatch branches on drive_potential_diff) and then
+        # throws that away, so "strongly rewarding" reads the same whether the
+        # agent's cold went away or a call merely returned True. Recording it
+        # lets the prompt say which, so the LLM can judge APPLICABILITY instead
+        # of pattern-matching a band. Vocabulary is CREDIT_SOURCES; a triple that
+        # accumulates two different sources promotes to "mixed" (honest, and the
+        # promotion is one-way — see _note_cluster_reward_source).
+        self._cluster_reward_source: dict[tuple[str, str, str], str] = {}
 
         # Operant delayed-reward memory (cradle_mother, 2026-07-21): the
         # last ``(cluster_id, tool_signature)`` the agent executed, per
@@ -2250,14 +2261,69 @@ class NAc:
 
     # -- Cluster-keyed tool reward bias (Track 2, Phase 0+) ---------------
 
+    # Credit-source vocabulary (S1). Deliberately small and closed: these are
+    # the branches tool_dispatch actually distinguishes when it books cluster
+    # reward. Adding a value means a new BRANCH exists, not a new adjective.
+    CREDIT_SOURCES: ClassVar[frozenset[str]] = frozenset(
+        {
+            "drive_relief",  # a drive moved toward comfort (interoceptive)
+            "orient_relief",  # exteroceptive relief — the sound got more centred
+            "tool_success",  # the floor: the call succeeded, no drive moved
+            "operant",  # a caregiver/world contingency credited it
+            "mixed",  # two or more of the above, over time
+        }
+    )
+
+    def _note_cluster_reward_source(self, key: tuple[str, str, str], source: str | None) -> None:
+        """Record/merge the credit source for one cluster-bias triple.
+
+        Caller holds ``self._lock``. First source wins; a DIFFERENT source
+        promotes to ``"mixed"`` and stays there — promotion is one-way, because
+        a triple that has ever been credited two ways cannot honestly be
+        narrated as either one. Unknown values are dropped (never stored), so a
+        typo degrades to "no provenance" rather than inventing a category.
+        """
+        if source is None:
+            return
+        if source not in self.CREDIT_SOURCES or source == "mixed":
+            return
+        existing = self._cluster_reward_source.get(key)
+        if existing is None:
+            self._cluster_reward_source[key] = source
+        elif existing != source:
+            self._cluster_reward_source[key] = "mixed"
+
+    def get_cluster_reward_sources(self, *, agent_id: str) -> dict[str, str]:
+        """``{tool_signature: source}`` for one agent, aggregated across clusters.
+
+        Mirrors ``get_agent_tool_biases``' agent-wide aggregation so the two can
+        be zipped at the annotation site. A tool credited differently in
+        different clusters reports ``"mixed"`` — which is the true answer.
+        """
+        if not agent_id:
+            raise ValueError("get_cluster_reward_sources requires non-empty agent_id")
+        out: dict[str, str] = {}
+        with self._lock:
+            for (aid, _cid, tsig), src in self._cluster_reward_source.items():
+                if aid != agent_id:
+                    continue
+                prev = out.get(tsig)
+                out[tsig] = src if prev is None or prev == src else "mixed"
+        return out
+
     def update_cluster_reward(
         self,
         agent_id: str,
         cluster_id: str | None,
         tool_signature: str,
         reward: float,
+        source: str | None = None,
     ) -> None:
         """Update cluster-keyed reward bias for a tool.
+
+        ``source`` (S1) records WHY, from ``CREDIT_SOURCES``. Optional and
+        defaulting to ``None`` so every existing caller is unchanged; unknown
+        values are ignored rather than stored.
 
         Used by substrate-primary action selection (Track 2 of
         grounded_language_acquisition.md Phase 0+) to record which
@@ -2286,6 +2352,7 @@ class NAc:
             updated = current + self.config.reward_bias_alpha * reward
             cap = self.config.max_cluster_reward_bias
             self._cluster_reward_bias[key] = max(-cap, min(updated, cap))
+            self._note_cluster_reward_source(key, source)
 
     def cluster_reward_bias(
         self,
@@ -2370,6 +2437,11 @@ class NAc:
             cluster_id=cluster_id,
             tool_signature=tool_signature,
             reward=reward,
+            # S1: the caregiver/world contingency is a DISTINCT credit source
+            # from drive relief — "the mother fed me for this" is a different
+            # reason than "my cold went away", and the annotation should be
+            # able to say which.
+            source="operant",
         )
         return pending
 
@@ -3105,6 +3177,12 @@ class NAc:
                 "cluster_reward_bias": {
                     f"{aid}\x1f{cid}\x1f{tsig}": bias for (aid, cid, tsig), bias in self._cluster_reward_bias.items()
                 },
+                # S1: credit provenance, same key encoding. Absent in pre-S1
+                # files -> loads as empty -> annotation renders without a "why"
+                # clause (degrades to the old behaviour, never fabricates one).
+                "cluster_reward_source": {
+                    f"{aid}\x1f{cid}\x1f{tsig}": src for (aid, cid, tsig), src in self._cluster_reward_source.items()
+                },
                 # Wire 2 (release_0_9_1.md Stage 3): per-agent Pavlovian
                 # percept valences.  Same ``\x1f`` separator as
                 # ``cluster_reward_bias`` so entity_class / failure_mode
@@ -3187,6 +3265,15 @@ class NAc:
                 self._cluster_reward_bias[(parts[0], parts[1], parts[2])] = float(bias)
             except (TypeError, ValueError):
                 continue
+
+        # S1 credit provenance. Missing field → empty (pre-S1 files).
+        self._cluster_reward_source = {}
+        for key_str, src in state.get("cluster_reward_source", {}).items():
+            parts = key_str.split("\x1f", 2)
+            if len(parts) != 3 or not isinstance(src, str):
+                continue
+            if src in self.CREDIT_SOURCES:
+                self._cluster_reward_source[(parts[0], parts[1], parts[2])] = src
 
         # Wire 2 (release_0_9_1.md Stage 3): per-agent percept valences.
         # Missing field → empty dict (backward-compat: any ``aut_nac.json``

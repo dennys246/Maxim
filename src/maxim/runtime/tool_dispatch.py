@@ -302,10 +302,18 @@ def record_outcome(
                 # imported biases instead of coexisting beside them. The
                 # tool-success floor NEVER routes extero (probe-3 rule).
                 credit_cluster = intero_cluster
+                # S1 credit provenance: the branch below ALREADY distinguishes
+                # why this reward exists — record it so the prompt annotation
+                # can say "relieved cold" rather than a bare band label
+                # (annotation_context_and_provenance.md, pilot finding F3).
+                credit_source: str | None = None
                 if drive_potential_diff is not None and abs(drive_potential_diff) > 1e-9:
                     cluster_reward: float | None = 1.0 if drive_potential_diff > 0.0 else -1.0
+                    credit_source = "drive_relief"
                     if drive_relief_channel == "exteroceptive":
                         credit_cluster = operant_cluster
+                        credit_source = "orient_relief"
+
                 elif operant_only or drive_relief_only or drive_credit_withheld:
                     # drive_credit_withheld (sem_motor_binding.md Phase 1):
                     # a motor-bound LIVE affordance touched a drive sensor a
@@ -327,6 +335,7 @@ def record_outcome(
                     cluster_reward = None
                 else:
                     cluster_reward = 1.0 if learn_success else -1.0
+                    credit_source = "tool_success"
                 # Seam routing: drive-relief AND generic tool-success write the
                 # INTEROCEPTION cluster only — never an exteroceptive cluster.
                 # Direction-bearing clusters (audio) are credited exclusively
@@ -353,6 +362,7 @@ def record_outcome(
                             cluster_id=credit_cluster,
                             tool_signature=sig,
                             reward=cluster_reward,
+                            source=credit_source,
                         )
                     except Exception:
                         # Mirrors the surrounding error policy — cluster
