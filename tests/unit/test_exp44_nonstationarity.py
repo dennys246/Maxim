@@ -128,7 +128,8 @@ class TestEndToEnd:
         assert rep["tools"]["green_flame_warm_self"]["present_count"] == 4
         assert rep["tools"]["green_flame_warm_self"]["mean_tier_second_half"] is None
         out = capsys.readouterr().out
-        assert "ANNOTATION VANISHES" in out and "4 later decision(s) are UNTREATED" in out
+        assert "ANNOTATION VANISHES (trailing cliff)" in out
+        assert "4 trailing decision(s) UNTREATED" in out
 
     def test_joins_results_and_buckets_flips(self, tmp_path, capsys):
         cap = self._capture(tmp_path, [0.9] * 4 + [0.0] * 4)
@@ -179,3 +180,63 @@ class TestEndToEnd:
         sys.argv = ["s4", "--capture", str(cap), "--json", str(tmp_path / "r3.json")]
         assert s4.main() == 0
         assert json.loads((tmp_path / "r3.json").read_text())["n_decisions"] == 2
+
+
+class TestUntreatedShapeAndNoiseProbe:
+    """Two fixes from the first REAL run (30/36 annotated, last annotated index 35):
+    the 'trailing cliff' headline was misleading when gaps are scattered, and a raw
+    half-split confounds effect decay with untreated decisions landing late."""
+
+    def _cap(self, tmp_path, biases_by_index):
+        from maxim.prompts.cluster_bias_annotation import compose_cluster_bias_annotation_section
+
+        p = tmp_path / "capture.jsonl"
+        rows = []
+        for i, b in enumerate(biases_by_index):
+            sec = compose_cluster_bias_annotation_section([("tool:t", b)])
+            rows.append(json.dumps({"decision_id": i, "prompt_full": f"x\n{sec}\ny", "prompt_ablated": "x\ny"}))
+        p.write_text("\n".join(rows))
+        return p
+
+    def test_scattered_gaps_not_called_a_cliff(self, tmp_path, capsys):
+        # annotated, missing, annotated, missing, annotated  -> scattered
+        cap = self._cap(tmp_path, [0.9, 0.0, 0.9, 0.0, 0.9])
+        import sys
+
+        sys.argv = ["s4", "--capture", str(cap), "--json", str(tmp_path / "s.json")]
+        assert s4.main() == 0
+        out = capsys.readouterr().out
+        assert "SCATTERED" in out and "ANNOTATION VANISHES" not in out
+        assert json.loads((tmp_path / "s.json").read_text())["untreated_shape"] == "scattered"
+
+    def test_trailing_cliff_still_detected(self, tmp_path, capsys):
+        cap = self._cap(tmp_path, [0.9, 0.9, 0.9, 0.0, 0.0])
+        import sys
+
+        sys.argv = ["s4", "--capture", str(cap), "--json", str(tmp_path / "t.json")]
+        assert s4.main() == 0
+        assert "ANNOTATION VANISHES (trailing cliff)" in capsys.readouterr().out
+        assert json.loads((tmp_path / "t.json").read_text())["untreated_shape"] == "trailing_cliff"
+
+    def test_annotated_only_split_and_noise_probe(self, tmp_path, capsys):
+        # 4 annotated (2 flip) + 2 untreated (0 flip, identical prompts)
+        cap = self._cap(tmp_path, [0.9, 0.9, 0.9, 0.9, 0.0, 0.0])
+        res = tmp_path / "r.jsonl"
+        res.write_text(
+            "\n".join(
+                json.dumps(
+                    {"decision_id": i, "action_full": "a" if i < 2 else "b", "action_ablated": "b", "flipped": i < 2}
+                )
+                for i in range(6)
+            )
+        )
+        import sys
+
+        sys.argv = ["s4", "--capture", str(cap), "--results", str(res), "--json", str(tmp_path / "n.json")]
+        assert s4.main() == 0
+        rep = json.loads((tmp_path / "n.json").read_text())
+        assert rep["untreated_noise_rate"] == 0.0 and rep["untreated_n"] == 2
+        # raw second half includes the 2 untreated; annotated-only excludes them
+        assert rep["flip_by_half_annotated"]["n_first"] == 3
+        assert rep["flip_by_half_annotated"]["n_second"] == 1
+        assert "free determinism probe" in capsys.readouterr().out

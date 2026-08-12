@@ -125,16 +125,36 @@ def main() -> int:
     # without signal"), so the treatment does not merely weaken across a run — it
     # switches OFF at a point. Locate that point; decisions after it are untreated
     # and must not be pooled with treated ones as if they were the same condition.
+    # BUT the untreated decisions are not necessarily a trailing cliff — they can be
+    # SCATTERED (a prompt whose top-N happened to render all-neutral, or a decision
+    # taken in a context with no biased tool). Reporting "N later decisions are
+    # UNTREATED" when the gaps are interspersed is misleading (caught on the first
+    # real run: 30/36 annotated, last annotated index 35, i.e. no cliff at all).
+    # Distinguish the two shapes explicitly.
     annotated_idx = [d["index"] for d in per_decision if d["has_annotation"]]
-    if annotated_idx and len(annotated_idx) < len(per_decision):
-        last_i = max(annotated_idx)
-        gap_after = [d["index"] for d in per_decision if d["index"] > last_i]
-        print(
-            f"     ANNOTATION VANISHES: last annotated decision index {last_i}; "
-            f"{len(gap_after)} later decision(s) are UNTREATED"
-        )
-    elif not annotated_idx:
+    missing_idx = [d["index"] for d in per_decision if not d["has_annotation"]]
+    shape = "none"
+    if not annotated_idx:
+        shape = "all_missing"
         print("     NO decision carries an annotation (substrate absent or fully decayed)")
+    elif missing_idx:
+        tail_start = max(annotated_idx) + 1
+        n_tail = sum(1 for i in missing_idx if i >= tail_start)
+        if n_tail == len(missing_idx):
+            shape = "trailing_cliff"
+            print(
+                f"     ANNOTATION VANISHES (trailing cliff): last annotated index "
+                f"{max(annotated_idx)}; {n_tail} trailing decision(s) UNTREATED"
+            )
+        else:
+            shape = "scattered"
+            print(
+                f"     {len(missing_idx)} decision(s) carry NO annotation, SCATTERED "
+                f"(not a trailing cliff) at indices {missing_idx[:10]}"
+                f"{'…' if len(missing_idx) > 10 else ''}"
+            )
+    report_head["untreated_shape"] = shape
+    report_head["untreated_indices"] = missing_idx
     print()
 
     # ── Per-tool trajectory: presence + mean tier, first vs second half ──────
@@ -192,6 +212,36 @@ def main() -> int:
         print(f"\n[S4] flip rate by RUN HALF (n={len(scored)} scored)")
         print(f"     first half : {rate(first_h):.3f}  (n={len(first_h)})")
         print(f"     second half: {rate(second_h):.3f}  (n={len(second_h)})")
+        # Unannotated decisions CANNOT flip (full == ablated by construction), so a
+        # raw half-split confounds "the effect weakened" with "more untreated
+        # decisions landed late". The annotated-only split is the honest comparison.
+        af = [(d, r) for d, r in first_h if d["has_annotation"]]
+        as_ = [(d, r) for d, r in second_h if d["has_annotation"]]
+        print(f"     ANNOTATED only — first: {rate(af):.3f} (n={len(af)}), second: {rate(as_):.3f} (n={len(as_)})")
+        report["flip_by_half_annotated"] = {
+            "first": rate(af),
+            "second": rate(as_),
+            "n_first": len(af),
+            "n_second": len(as_),
+        }
+        # Unannotated decisions double as a free determinism probe: with no
+        # annotation the two prompt variants are identical, so ANY flip there is
+        # decoder noise, not substrate effect.
+        untreated = [(d, r) for d, r in scored if not d["has_annotation"]]
+        if untreated:
+            noise = rate(untreated)
+            print(
+                f"\n[S4] free determinism probe — {len(untreated)} untreated decision(s) "
+                f"(prompts identical): flip rate {noise:.3f}"
+            )
+            print(
+                "     0.000 => temp-0 decoding agreed on every identical-prompt pair."
+                if noise == 0.0
+                else "     NONZERO => identical prompts produced different actions: decoder noise, "
+                "and a floor under every flip count in this run."
+            )
+            report["untreated_noise_rate"] = noise
+            report["untreated_n"] = len(untreated)
 
         # By max tier present in that decision's annotation — the treatment strength.
         buckets: dict[Any, list] = {}
