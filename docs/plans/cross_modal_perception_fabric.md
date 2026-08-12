@@ -1,6 +1,10 @@
 # Cross-Modal Perception Fabric (1.3 design direction)
 
-**Status:** DESIGN DRAFT, **rev 3** (2026-08-06). Zero code. Rev 1 went through a
+**Status:** DESIGN DRAFT, **rev 4** (2026-08-11). Zero code. Rev 4 folds the H1
+campaign result and the Exp 48 apparatus investigation: **Stage 0a is now
+COMPLETE** (fact 3 deleted), Stage 0b's gate gains an expressibility criterion,
+and Stage 0c gains a decisiveness clause — see "What changed in rev 4". Rev 1
+went through a
 four-lens review round (substrate/credit · persistence/hivemind ·
 perception/encoder · bio-fidelity/scope); all four returned BLOCKING findings.
 Rev 2 folds them AND an owner design pass that **simplified the architecture** —
@@ -36,17 +40,39 @@ convention, the two-level attention convention, and the artifact contract.
    correct turns behind the fold (Exp 49: 77 fold-divergent credits; arm C
    trapped on every far bin while the non-credit-following LLM crossed it). No
    threshold tunes this away.
-3. **CONTESTED — the sensor may not express graded magnitude.** The 2026-08-05
-   sweep measured a compressed staircase (~0.19/rad, plateaus, ~13° sectors).
-   This **contradicts the shipped 2026-07-16 characterization** (0.57/rad,
-   R²=0.9982, ~1° quantization, complete monotonicity, four cross-checked
-   measurements) and is a single run taken right after "fixing" a version skew.
-   Most probable reading: still instrument-compromised. See the CONTESTED banner
-   in [audio_localization.md](../embodiment/reachy_mini/audio_localization.md).
-   **Nothing here may rely on fact 3 until Stage 0a reconciles it.** The conv-net
-   exclusion below does NOT depend on it.
+3. **RESOLVED (rev 4) — the sensor DOES express graded magnitude.** Rev 3
+   carried a CONTESTED staircase (~0.19/rad, plateaus, ~13° sectors) that
+   contradicted the shipped 07-16 characterization. **The H1 campaign settled
+   it** (2026-08-08, [h1 pre-registration + results](../experiments/protocols/h1_healthy_hardware_doa_preregistration.md)):
+   version-verified, two geometries, **gain 0.578 replicated (0.575), R²
+   0.984–0.996, NO staircase**. The staircase was progressive degradation of
+   motors 2+3, broken for the entire 1.0+ era and replaced ~2026-08-05. The
+   CONTESTED banner is resolved and this fact is **deleted as a constraint** —
+   nothing downstream is blocked on it. (The conv-net exclusion never depended
+   on it and survives on its other three grounds.)
+
+4. **NEW (rev 4) — learned signal has a VISIBILITY FLOOR.** The Exp 48
+   apparatus investigation measured a steady-state exploration-novelty gap of
+   **~0.11** between the just-selected and not-just-selected action at explore
+   weight 1.5. **Any learned `cluster_reward_bias` below that cannot move the
+   argmax** — the learning can be correct, correctly-sourced, and still
+   behaviourally invisible. Confirmed empirically: at explore weight 0 the agent
+   emits *zero* proposals on a driveless body, so on affordances without drive
+   relevance the exploration bonus is not a modifier but the sole source of
+   action. This is a **design constraint on every stage below that changes
+   representation resolution** — see 0b.
 
 ---
+
+## What changed in rev 4 (2026-08-11)
+
+| Change | Why |
+|---|---|
+| **Fact 3 deleted; Stage 0a marked COMPLETE** | H1 passed 0a's own "artifact" branch — 0.578 replicated, R² 0.984–0.996, no staircase. The staircase was degraded motors 2+3, not the sensor |
+| **Fact 4 added — the ~0.11 visibility floor** | Measured in the Exp 48 investigation. Learned bias below the exploration novelty gap cannot move the argmax; at explore weight 0 a driveless body emits zero proposals |
+| **0b gains an expressibility criterion** | Resolution and expressibility trade against each other: PR #499's place code (3 → 7 nodes) satisfies 0b-(i) while potentially pushing per-node bias under the floor. A gate that only counts clusters can pass while making the policy worse |
+| **0c gains a decisiveness clause** | Exp 48 proved a learned signal can be present, repeatable, correctly-sourced and behaviourally inert. Presence-only evidence would transplant that failure onto the binding mechanism |
+| **Inherited-confidence note** | Exp 48 is CONTESTED; Exp 45's state is hand-binned `az_bin`, not EC. Neither blocks the plan; both bound what its justification is worth |
 
 ## What changed in rev 2 (the design pass)
 
@@ -323,13 +349,24 @@ it.
 
 | Stage | Content | Gate |
 |---|---|---|
-| **0a** | **Reconcile the DoA curve.** Version-verified re-sweep (daemon + SDK versions recorded in the run) at **≥2 source geometries**, against the 07-16 protocol. | Reproduces 0.57/R²≈0.998 → staircase was an artifact, delete it. Reproduces the staircase at both geometries → real, and the next question is what changed on the robot since 07-16. Fact 3 is UNUSABLE until this returns. |
-| **0b** | **Cluster-resolution precondition.** Measure distinguishable EC clusters for the audio channel across the working range. | ≥ as many clusters as distinct correct actions. Exp 46 measured **2**, and the cause is now known to be the CODE, not the sensor. Concrete levers, in order: **population coding for bearing** (Exp 45e, already earned), **band count** for the spectral channel, then per-channel `min_delta`/`pattern_threshold`. Sweep band count here — it is the same measurement. |
-| **0c** | **THE PIVOTAL TEST — co-activation.** Preferred form is **spectral** (cochlear filterbank → `"audio_content"`), which tests sensory association directly. The **speech path** (transcription → `"text"`, zero new encoders) is the cheap cross-check and fallback if the filterbank slips. Someone says a word off-axis → robot orients → foveal encoder fires on what is centered → does the `"text"` node co-activate with a stable `"vision"` node, repeatably, across sessions? Uses `MAXIM_EC_TRACE_ACTIVATIONS=1` + `scripts/analyze_roy_4_coactivation.py`. **One** new encoder, against content already flowing. | Measurable co-activation above the Roy-4 baseline. This earns the binding-plan revival. **Pre-registered limitation:** text content is *linguistic*, so a pass demonstrates the binding **mechanism**, not yet that identity emerges from raw sensation. |
+| **0a** | ✅ **COMPLETE (2026-08-08, H1 campaign).** Version-verified re-sweep, two geometries, healthy hardware. | **PASSED the "artifact" branch:** gain 0.578 (replicated 0.575), R² 0.984–0.996, no staircase; cause identified as progressive motor degradation. Fact 3 deleted; nothing downstream blocked. |
+| **0b** | **Cluster-resolution precondition — now TWO-SIDED (rev 4).** Measure distinguishable EC clusters for the audio channel across the working range, **and** the per-cluster learned bias that survives the split. | **(i) Resolution:** ≥ as many clusters as distinct correct actions. Exp 46 measured **2**; the cause is the CODE, not the sensor. Levers in order: **population coding for bearing** (Exp 45e earned; **shipped in PR #499**, 3 → 7 nodes — so this lever is already pulled and 0b is partly satisfied), **band count** for the spectral channel, then per-channel `min_delta` / `pattern_threshold`. **(ii) EXPRESSIBILITY (new, and it can fail while (i) passes):** splitting one cluster into N divides the same learned signal across N nodes, so per-node `cluster_reward_bias` drops ~proportionally. It **must stay above the ~0.11 novelty visibility floor** (fact 4) at the operating explore weight, or the added resolution makes the policy *less* expressible, not more. Measured with `explore_decisive` / `learned_margin` ([decision_provenance.md](decision_provenance.md) Stage 2). **A place-code gate run is uninterpretable until that instrument exists** — the flag-ON arm is held for this reason. |
+| **0c** | **THE PIVOTAL TEST — co-activation.** Preferred form is **spectral** (cochlear filterbank → `"audio_content"`), which tests sensory association directly. The **speech path** (transcription → `"text"`, zero new encoders) is the cheap cross-check and fallback if the filterbank slips. Someone says a word off-axis → robot orients → foveal encoder fires on what is centered → does the `"text"` node co-activate with a stable `"vision"` node, repeatably, across sessions? Uses `MAXIM_EC_TRACE_ACTIVATIONS=1` + `scripts/analyze_roy_4_coactivation.py`. **One** new encoder, against content already flowing. | **TWO clauses (rev 4).** **(i) Present:** measurable co-activation above the Roy-4 baseline. **(ii) USABLE:** the bound representation must be *decisive in selection* at a measurable rate (`explore_decisive` / `learned_margin`). Clause (ii) is new because Exp 48 demonstrated that a learned signal can be real, repeatable, and correctly-sourced while remaining behaviourally invisible — a 0c that passes on presence alone would transplant exactly that failure onto a new mechanism. This earns the binding-plan revival. **Pre-registered limitation:** text content is *linguistic*, so a pass demonstrates the binding **mechanism**, not yet that identity emerges from raw sensation. |
 | **1** | Perception resolution (§A) + fold veto (§B). Three-lens design review first. | Fold-resolved azimuth improves far-bin centering **with the policy's cluster space unchanged** (trained-policy key continuity is part of the gate). |
 | **2** | Hardware-faithful sim scenario — **only if 0a says the staircase is real.** Must include the **fold** and quantize **before** noise; insertion point is the `az_true → az_read` step in `SimulatedDoAScenario`. Note: shipped library code with three importers, not harness code. | Reproduces fold-divergent credit. |
 | **3** | Foveal vision encoder + orient-windowed binding + the two-level attention convention (§C). | Emergent clusters recur across sessions; binding gated on presence; both attention levels instrumented. |
 | **4** | Artifact contract + sharing rule (the acoustic front-end moved forward into 0c/3 — it is DSP, not a model, so it no longer needs deferring). Scope is larger than rev 1 drafted: binary payloads are **impossible today** (text-only `extract_bundle`, no `atomic_write_bytes`, closed `compose_bundle` signature) and it needs a `BUNDLE_SCHEMA_VERSION` bump + registered migration. | Requires 0c + 3. |
+
+**Inherited-confidence note (rev 4).** The perception-layer framing is justified
+partly by *"Policy's cluster space unchanged → Exp 45/46/48 trained policies
+survive."* That architectural argument still holds, but be precise about which
+rows it inherits confidence from: **Exp 48 is CONTESTED as of 2026-08-11** (its
+magnitudes do not reproduce; its action path oscillates ~60 near-balanced turns
+per sim turn; its metric is partly a wall-clock reading). Exp 45's orient row is
+EARNED and un-staled by H1 — but note its learner state is the hand-written
+`az_bin` discretisation, disclosed in its own doc, so it does **not** validate an
+EC-clustered orient policy. Neither fact blocks this plan; both change what a
+"trained policies survive" claim is worth.
 
 **Behavioral re-validation obligations:** rev 1's Stage 3 fired Exp 48's
 registered `Re-run on:` trigger verbatim. Rev 2's vision-as-encoder design
@@ -388,6 +425,10 @@ Stage 3, not at the release gate.
 - **0c finds no co-activation** → orienting does *not* manufacture the binding
   window, the cancelled plan stays cancelled, and emergent identity needs a
   different mechanism. **The single most informative outcome in the plan.**
+- **0c co-activates but is never decisive** (clause ii fails while clause i
+  passes) → the binding is real and behaviourally inert. This is the Exp 48
+  failure mode, and it is a **resolution/expressibility problem** (0b-ii), not
+  evidence against binding. Do not read a presence-only pass as a capability.
 - **0c passes but Stage 3 clusters do not recur across sessions** → correspondence-
   by-orienting works within a session but the clusters are not stable identities;
   suspect centering precision or persistence, not the binding rule.
