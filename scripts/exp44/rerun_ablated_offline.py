@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -78,6 +79,17 @@ def main() -> int:
     ap.add_argument("--entropy-temp", type=float, default=0.7)
     ap.add_argument("--entropy-hi", type=float, default=0.5, help="bits above which a prior is 'weak'")
     ap.add_argument("--max-decisions", type=int, default=0, help="0 = all")
+    ap.add_argument(
+        "--determinism-check",
+        type=int,
+        default=0,
+        help=(
+            "Before scoring, re-query the SAME prompt twice at temp 0 for N rows and "
+            "report the disagreement rate. The whole method assumes temp-0 decoding is "
+            "deterministic — if it is not, some 'flips' are decoder noise, not substrate "
+            "effect. 0 = skip."
+        ),
+    )
     args = ap.parse_args()
 
     rows = [json.loads(line) for line in Path(args.log).read_text().splitlines() if line.strip()]
@@ -90,6 +102,37 @@ def main() -> int:
 
     print(f"[exp44] building router + loading model (first call is slow)… scoring {len(rows)} decisions", flush=True)
     router = _build_router()
+
+    # ── Determinism check (instrument validity) ─────────────────────────────
+    # The counterfactual attributes a changed action to the prompt delta. That
+    # inference is only sound if temp-0 decoding returns the same action for
+    # the same prompt — otherwise a share of "flips" is decoder noise (batching,
+    # KV-cache reuse, and non-associative float reduction can all break
+    # determinism in practice, even at temperature 0). Reviewers will ask; this
+    # measures it instead of assuming it. Reported, never silently swallowed.
+    if args.determinism_check > 0:
+        n_check = min(args.determinism_check, len(rows))
+        disagreements = []
+        for i, r in enumerate(rows[:n_check], 1):
+            a1 = _action_of(router, r["prompt_full"], temperature=0.0)
+            a2 = _action_of(router, r["prompt_full"], temperature=0.0)
+            if a1 != a2:
+                disagreements.append({"decision_id": r.get("decision_id"), "first": a1, "second": a2})
+            print(f"[determinism {i}/{n_check}] {a1} vs {a2} {'MISMATCH' if a1 != a2 else 'ok'}", flush=True)
+        rate = len(disagreements) / n_check if n_check else 0.0
+        print(f"\n[exp44 determinism] {len(disagreements)}/{n_check} disagreed = {rate:.3f}")
+        if disagreements:
+            print(
+                "  WARNING: temp-0 decoding is NOT deterministic on this backend. Flip "
+                "counts include decoder noise at roughly this rate — report it as a floor "
+                "on the effect, and consider it when reading small NETs.",
+                file=sys.stderr,
+            )
+            for d in disagreements[:5]:
+                print(f"    id={d['decision_id']}: {d['first']!r} != {d['second']!r}", file=sys.stderr)
+        else:
+            print("  temp-0 decoding is deterministic on these prompts — flips are prompt-attributable.")
+
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
