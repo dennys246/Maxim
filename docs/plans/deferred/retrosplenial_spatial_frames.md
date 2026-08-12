@@ -43,12 +43,46 @@ Two consequences follow, and both are checkable:
 - **Different places, same vantage → one cluster.** Two genuinely different sources both
   at azimuth 0° from different body poses collapse into one node.
 
-**Falsifiable pre-check (cheap, do before any build):** drive the existing orient stack
-through a scripted sequence that visits one world-fixed source from ≥3 body yaws, dump
-`sim_ec_activation` (`MAXIM_EC_TRACE_ACTIVATIONS=1`), and count distinct `active_node_id`s
-for that source. If they collapse to one node, the sensor/EC path already generalises
-across vantage and this whole plan is unnecessary — record that and close it. If they
-fragment (expected), the fragmentation count is the baseline the RSC layer must reduce.
+**Falsifiable pre-check — RUN 2026-08-11, and it REFUTED the prediction above.**
+[`scripts/rsc_precheck.py`](../../../scripts/rsc_precheck.py) asks the real
+`SensorEncoder` + real `EntorhinalCortex` directly (offline: no robot, no sim, no LLM;
+the geometry is just `world_bearing − body_yaw` wrapped into `[-1, 1]`).
+
+| probe | measured | ideal |
+|---|---|---|
+| H-A one source, 5 vantages | **2 nodes** (and one is a wrap artifact) | 1 |
+| H-B 5 distinct places, all dead-ahead | **1 node** | 5 |
+| H-C full azimuth sweep, 21 readings @0.1 | **2 nodes** (`-1.0…+0.1`, `+0.2…+1.0`) | many |
+
+**The predicted failure mode was wrong.** I expected one source to FRAGMENT across
+vantage. It barely fragments — because the channel cannot resolve direction well enough
+to fragment. H-C is the governing fact: **the entire azimuth range encodes to two EC
+nodes, i.e. roughly one bit** ("left-ish/centre" vs "right-ish"). Full-left and
+dead-centre share a node.
+
+Consequences, in order of importance:
+
+1. **RESOLUTION IS THE PREREQUISITE, not a follow-up.** Frame translation alone buys
+   nothing: an allocentric bearing pushed through this same encoder collapses into the
+   same two buckets. Any spatial work must fix angular resolution FIRST, and the
+   pre-check re-run is the acceptance test (`H-C ≫ 2`).
+2. **The real deficit is ALIASING, not fragmentation** (H-B: five distinct places → one
+   node). "Generalising across vantage" by being blind to direction is not
+   generalisation.
+3. **This independently measures the "2-cluster ceiling"** already suspected in
+   [cross_modal_perception_fabric.md](../cross_modal_perception_fabric.md) — now with a
+   reproducible probe and a concrete number rather than an impression.
+4. **Azimuth is circular but encoded linearly**, so the wrap point (directly behind)
+   is a discontinuity: two identical physical directions (−1.0 and +1.0) receive
+   maximally-different encodings. Any fix needs a circular representation
+   (sin/cos pair, or a ring code) rather than a scalar.
+5. **Scope check — this does NOT invalidate the orient results.** Exp 45/49 control
+   loops ride the drive VALUE (`|azimuth|` reduction via `potential_diff`), not EC
+   cluster identity, so coarse clustering leaves them intact. What it bounds is
+   *cluster-keyed learning about direction* — which is exactly what a spatial memory
+   would need.
+
+The plan therefore STANDS but is **re-sequenced**: resolution before frames (§6).
 
 ## 3. Proposed shape (thin, riding existing seams)
 
@@ -117,12 +151,20 @@ graduation-ledger discipline, applied in advance.
 
 ## 6. Sequencing with what exists
 
-1. §2 pre-check (cheap, scripted, no build) — may close this plan outright.
-2. [cross_modal_perception_fabric.md](../cross_modal_perception_fabric.md) lands first;
-   its orient-windowed binding is where multi-vantage identity would consume this.
-3. RSC transform + `space` channel behind a flag, default OFF.
-4. Re-validation table (§5).
-5. Only then: place-conditioned recall in hippocampus.
+1. ~~§2 pre-check~~ **DONE 2026-08-11 — result re-sequenced everything below.**
+2. **ANGULAR RESOLUTION FIRST (new step 2, was not in the original plan).** Circular
+   encoding (sin/cos pair or ring code) + whatever threshold work `H-C ≫ 2` requires.
+   Acceptance test: re-run `scripts/rsc_precheck.py`; H-C must resolve the range into
+   many nodes and H-B must separate distinct places. Until this passes, every later step
+   is decoration. NOTE this touches the EC drift lesson's territory — thresholds are
+   pre-registered, never tuned on the outcome.
+3. [cross_modal_perception_fabric.md](../cross_modal_perception_fabric.md) — its
+   orient-windowed binding is where multi-vantage identity would consume this, and its
+   suspected "2-cluster ceiling" is the same measurement (see §2 item 3).
+4. RSC transform + `space` channel behind a flag, default OFF.
+5. Re-validation table (§5) — note step 2 alone probably triggers most of it, since
+   changing azimuth encoding changes cluster assignment.
+6. Only then: place-conditioned recall in hippocampus.
 
 ## Open questions (decide at build time, not now)
 
