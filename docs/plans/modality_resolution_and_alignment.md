@@ -276,16 +276,31 @@ identity claim in text space), and **Exp 43**; **Exp 47** flagged re-check-on-ad
 
 ## 7. Sequencing
 
+**SHIPPED 2026-08-11 (PR #499): the wiring landed** behind
+`MAXIM_PLACE_CODE_EXTEROCEPTION`, default OFF — `similarity/place_code.py` plus the
+`_read_exteroceptive_states` / `_read_exteroceptive_ranges` pair. Measured on the
+production path (`modality="audio"`, frozen, threshold 0.85): **raw scalar 3 nodes →
+place code 7 nodes**. The items below are now gates to DEFAULT-ON, not to the wiring.
+
 **REVISED after the review — the audit programme is mostly unnecessary.**
 
 1. **Reconcile with Exp 46 and CMPF Stage 0b first** (ownership + the contradictory
    threshold table). This may reduce the whole plan to step 3.
 2. **Re-run the pre-check against production** (`modality="audio"`, frozen, 0.85,
    isolated *and* sequential, shuffled orders) so the recorded number is production-true.
-3. **The actual open work:** promote `_place_code` from `scripts/orient_substrate/6` into
-   `_read_exteroceptive_states` behind a flag — caller-side only, so the blast radius is
-   the audio channel — plus `min_confidence` recalibration, the merge dim-guard question,
-   an `ec` invalidate command, and an Exp 48 re-run.
+3. ~~Promote `_place_code` into `_read_exteroceptive_states` behind a flag~~ **DONE
+   (PR #499).** Remaining gates to default-ON, in order:
+   a. **`min_confidence` recalibration** — `recommend_action` sums cluster bias
+      additively per channel; seven cells is not one scalar's contribution shape.
+   b. **Hivemind merge dimension-guard** — a place code keeps `dim=384` and the `"audio"`
+      tag, so old- and new-geometry nodes merge whenever partial cosine ≥ 0.44, and
+      because `audio` is frozen the corruption is INVISIBLE (counts inflate, centroid
+      never moves). Needs a geometry discriminator at merge, not only at export.
+   c. **An EC-invalidate command** — `MEMORY_PATHS` has no `ec` key, so a stale-geometry
+      substrate cannot be cleared today; invalidation must be NAc+EC in lockstep.
+   d. **Exp 48 re-run** (its claim is which cluster operant credit lands in) and **Exp 49
+      H3 + arm C**. Exp 42/44b untouched (no azimuth sensor on those bodies);
+      text/interoception byte-identical.
 4. Register this plan in `docs/plans/README.md` and the roadmap (it is currently in
    neither), and refresh the roadmap's stale *"a cheap pre-check may close it outright"*
    line.
