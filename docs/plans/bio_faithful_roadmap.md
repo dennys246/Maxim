@@ -77,6 +77,15 @@ not only at "death of session").
 | Sensitization kinetics | ANALOG | The severity latch (band-entry + material re-injury) is the documented engineering analog; the channel-split invariant depends on its exact semantics. |
 | Fiber classes / gate control | ANALOG | No consumer needs latency-class routing. |
 
+### Spatial frames (RSC) — NOT IMPLEMENTED (gap registered)
+No egocentric↔allocentric translation exists. `azimuth` is explicitly head-relative;
+`memory/spatial.py` is type-only ("no integration with Perception yet"); the 2026-07-16
+head-frame incident was this gap in hardware form.
+| Gap | Intent | Trigger / target |
+|---|---|---|
+| ego↔allo frame translation (RSC role) | **OPEN → EARN on trigger** | Plan + triggers + re-validation registry: [deferred/retrosplenial_spatial_frames.md](deferred/retrosplenial_spatial_frames.md). Build on T1 place-memory-across-motion / T2 multi-vantage identity / T3 return-to-place / T4 a second frame-confusion incident. A cheap falsifiable pre-check may close it outright. |
+| place/grid coding | ANALOG for now | Only meaningful after the transform above exists. |
+
 ### Attention (`attention/`) — no bio-algorithm claims (checked clean)
 Salience-map factor combination; inhibition-of-return is implemented-as-described.
 No tag needed; watch that future edits don't import claims.
