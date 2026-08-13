@@ -161,6 +161,16 @@ python scripts/analyze_cradle_mother.py --in docs/experiments/data/48_heartbeat_
 taught 0.875 vs no_feed 0.448. The `turn_left,turn_right` whitelist is part of
 the pinned setup — do not "fix" it for the re-run.
 
+**Declare the action-budget regime explicitly (S6).** Two apparatus regimes
+now exist: `MAXIM_SUBSTRATE_ACTIONS_PER_TURN` unset (the original stopwatch
+regime — actions/turn tracks narrator wall-clock, machine-dependent) or set
+(designed bound; taught-arm magnitudes are a NEW regime, see the S6 first-
+instance note in simulation_apparatus_standards.md). Before launching, either
+`unset MAXIM_SUBSTRATE_ACTIONS_PER_TURN` or set it deliberately — a value
+leaked from the shell flows into every sub-sim via `os.environ.copy()`. The
+harness stamps `substrate_actions_per_turn_env` into each JSONL record, so
+verify the first record matches your intent before letting the fleet run.
+
 **Timeout sizing (measured, 1.1 walk):** the harness default `--timeout-s
 1800` is sized for a fast GPU box. On the Mac the 56-turn taught arm was
 only at turn 32 when it hit 1800s — a healthy run, killed by the clock.

@@ -303,6 +303,15 @@ def main() -> int:
                         "arm": arm,
                         "seed": seed,
                         "explore_weight": args.explore_weight,
+                        # S6 apparatus stamp (review fold, BLOCKING): the
+                        # substrate action budget the sub-sim SAW — _run_one
+                        # copies os.environ, so an operator-shell value flows
+                        # into every sub-sim; without this stamp two sweeps
+                        # under different regimes produce indistinguishable
+                        # JSONLs (the Exp 42b self-auditing-artifact rule).
+                        # Raw env string (or null): records what the child
+                        # inherited, not an interpretation of it.
+                        "substrate_actions_per_turn_env": os.environ.get("MAXIM_SUBSTRATE_ACTIONS_PER_TURN"),
                         "mock": args.mock,
                         "git_hash": _git_hash(),
                         "fade": fade,

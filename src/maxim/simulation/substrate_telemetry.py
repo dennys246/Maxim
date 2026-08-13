@@ -64,6 +64,7 @@ class SubstrateTelemetry:
         ec: Any | None,
         executor: Any | None,
         proposal: Any | None,
+        gated: bool = False,
     ) -> None:
         """Write one tick of substrate state to the JSONL file.
 
@@ -75,7 +76,16 @@ class SubstrateTelemetry:
             executor: Executor with ``embodiment``. ``None`` or no
                 embodiment skips drive/sensor snapshots.
             proposal: ``LLMProposal`` from ``propose_via_substrate`` —
-                ``None`` for IDLE ticks (substrate had no opinion).
+                ``None`` when no proposal was made this tick. WHY it is
+                None is disambiguated by ``gated``: False = IDLE (the
+                substrate ran and had no opinion — a behavioral fact);
+                True = the turn-scoped action budget denied the tick
+                (an apparatus fact; ``propose_via_substrate`` never
+                ran). An analyzer computing an IDLE rate MUST exclude
+                ``gated`` rows or it mis-measures under a budget
+                (review fold, cross-confirmed by both lenses).
+            gated: True when the substrate action budget denied this
+                tick (MAXIM_SUBSTRATE_ACTIONS_PER_TURN engaged).
         """
         try:
             row = {
@@ -86,6 +96,7 @@ class SubstrateTelemetry:
                 "nac": _nac_snapshot(nac, self._agent_id),
                 "drives": _drive_snapshot(executor),
                 "proposal": _proposal_snapshot(proposal),
+                "gated": gated,
             }
         except Exception as e:  # never fail the loop on telemetry
             logger.debug("substrate telemetry snapshot failed: %s", e)

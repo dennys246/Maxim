@@ -99,6 +99,12 @@ class SimulationReport:
     # Bio-system telemetry (Track 3: rich event-level data for research)
     bio_telemetry_path: str = ""  # Path to bio_telemetry.jsonl if saved
 
+    # Apparatus configuration (simulation_apparatus_standards.md S6):
+    # experiment-visible bounds the run executed under, so the committed
+    # artifact is self-auditing about its regime (the Exp 42b rule).
+    # Currently: substrate_actions_per_turn (int | None = unbounded).
+    apparatus: dict[str, Any] = field(default_factory=dict)
+
 
 def _count_tokens(text: str, llm_router: Any | None) -> int:
     """Best-effort token count for a static template.
@@ -307,11 +313,19 @@ def build_report(
             logger.debug("provider failure snapshot failed: %s", e)
 
     ctx = llm_finish_context or {}
+    # S6 apparatus block: the bridge carries the substrate action budget it
+    # ran under; None = unbounded. Recorded so report.json is self-auditing
+    # about the regime (a budgeted run and an unbounded run must never look
+    # identical in the committed artifact — review fold, BLOCKING finding).
+    apparatus = {
+        "substrate_actions_per_turn": getattr(bridge, "_substrate_actions_per_turn", None),
+    }
     return SimulationReport(
         session_id=session_id,
         timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
         goal=goal,
         mode=mode,
+        apparatus=apparatus,
         language_model=language_model,
         language_provider=language_provider,
         language_backend_class=language_backend_class,

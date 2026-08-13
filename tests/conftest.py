@@ -317,6 +317,25 @@ def _isolate_maxim_cradle_mother_disable_care_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_substrate_actions_per_turn_env():
+    """Scrub ``MAXIM_SUBSTRATE_ACTIONS_PER_TURN`` across every test.
+
+    The Exp 48 thrashing fix: turn-scoped action budget for the
+    substrate-primary AUT, read at sim-orchestrator bridge construction.
+    Per CLAUDE.md "opt-in env vars in hot paths need autouse scrubs" — a
+    test that sets it must not leak a bound into other sim-constructing
+    tests (a leaked bound silently caps every later substrate run).
+    """
+    saved = os.environ.pop("MAXIM_SUBSTRATE_ACTIONS_PER_TURN", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_SUBSTRATE_ACTIONS_PER_TURN", None)
+        if saved is not None:
+            os.environ["MAXIM_SUBSTRATE_ACTIONS_PER_TURN"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_substrate_tool_whitelist_env():
     """Scrub ``MAXIM_SUBSTRATE_TOOL_WHITELIST`` across every test.
 

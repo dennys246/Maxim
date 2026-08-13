@@ -480,10 +480,33 @@ def start_simulation_mode(
         logger.info("Shared LLM router initialized")
 
     # ── Simulation bridge ────────────────────────────────────────────────
+    # Substrate-primary per-turn action budget (apparatus standard S6; the
+    # Exp 48 thrashing fix). Opt-in via MAXIM_SUBSTRATE_ACTIONS_PER_TURN;
+    # unset = unbounded (the pre-fix stopwatch regime: actions/turn =
+    # narrator wall-clock ÷ 0.5 s, machine-dependent). Logged here so every
+    # run's log states the apparatus configuration.
+    from maxim.simulation.bridge import read_substrate_actions_per_turn_env
+
+    _substrate_budget = read_substrate_actions_per_turn_env()
+    if _substrate_budget is not None and aut_mode == "substrate-primary":
+        logger.info(
+            "substrate-primary action budget: %d action(s) per sim turn (MAXIM_SUBSTRATE_ACTIONS_PER_TURN)",
+            _substrate_budget,
+        )
+    elif _substrate_budget is not None:
+        # Loud-misconfig norm (review fold): the env is set but the bound
+        # only applies to substrate-primary — say so instead of silently
+        # ignoring it.
+        logger.info(
+            "MAXIM_SUBSTRATE_ACTIONS_PER_TURN=%d set but aut_mode=%r — budget applies only to substrate-primary; ignored",
+            _substrate_budget,
+            aut_mode,
+        )
     bridge = SimulationBridge(
         response_timeout=response_timeout,
         stop_event=stop_event,
         aut_mode=aut_mode,
+        substrate_actions_per_turn=_substrate_budget,
     )
 
     # ── Wait for LLM to be ready (avoid cold-start stale drops) ────────
@@ -1884,6 +1907,13 @@ def start_simulation_mode(
                         thought_gate=_aut_thought_gate,
                         aut_mode=aut_mode,
                         substrate_telemetry=aut_substrate_telemetry,
+                        # Turn-scoped action budget (S6 apparatus bound) —
+                        # only meaningful in substrate-primary; the gate is
+                        # a no-op passthrough when the env is unset because
+                        # the bridge was constructed without a budget.
+                        substrate_action_gate=(
+                            bridge.substrate_action_allowed if aut_mode == "substrate-primary" else None
+                        ),
                         # HANDLE seam (a), branch 5: a persistent agent must
                         # NOT get the sim default ("lightweight") — its
                         # session-end consolidation is explicit "full" (#427).
