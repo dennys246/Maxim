@@ -45,6 +45,7 @@ _LIVE_SENSITIVE_HEADERS = [
     "=== EXISTING WORKSPACE (7 files) ===",
     "=== Your inner deliberation (private — not speech) ===",
     "=== Your prior reasoning ===",
+    "=== Recent Decisions (Working Memory) ===",
 ]
 
 # Source substrings the rules are pinned against (quote-agnostic so a
@@ -81,6 +82,7 @@ _SENSITIVE_SECTION_NAMES = frozenset(
         "bio_enrichment",
         "deliberation_transcript",
         "working_memory_thoughts",
+        "reasoning_carryover",
     }
 )
 
@@ -97,6 +99,19 @@ class TestSectionRulesPinnedToPromptBuilder:
                 f"pinned header literal {literal} no longer in prompt_builder.py — "
                 f"update _SECTION_RULES in cloud_redaction.py and this pin together"
             )
+
+    def test_reasoning_carryover_header_pinned_in_llm_fallback_source(self) -> None:
+        """The ReasoningCarryover header lives in llm_fallback.py, not
+        PromptBuilder — pin it separately so a rename there also forces
+        a rule update (this header was missed by the original audit for
+        exactly this reason)."""
+        import maxim.agents.llm_fallback as llm_fallback_mod
+
+        source = Path(llm_fallback_mod.__file__).read_text()
+        assert "=== Recent Decisions (Working Memory) ===" in source, (
+            "ReasoningCarryover header renamed in llm_fallback.py — "
+            "update _SECTION_RULES in cloud_redaction.py and this pin together"
+        )
 
     def test_sensitive_sections_are_not_cacheable(self) -> None:
         """The redaction filter runs only on the user segment (dynamic
@@ -144,6 +159,8 @@ class TestRedactionBehaviorOnLiveFormat:
             "SENTINEL_FILENAME.txt",
             "=== Your inner deliberation (private — not speech) ===",
             "SENTINEL_DELIBERATION plan to persuade the user",
+            "=== Recent Decisions (Working Memory) ===",
+            "- search_desk: SENTINEL_CARRYOVER the user mentioned a key [OK: found envelope]",
             "=== Instructions ===",
             "Do the thing.",
         ]
@@ -155,6 +172,7 @@ class TestRedactionBehaviorOnLiveFormat:
         assert "SENTINEL_ENRICHMENT" not in result.user
         assert "SENTINEL_FILENAME" not in result.user
         assert "SENTINEL_DELIBERATION" not in result.user
+        assert "SENTINEL_CARRYOVER" not in result.user
         assert "[REDACTED: memory_contents]" in result.user
         assert "[REDACTED: workspace_manifest]" in result.user
         assert "[REDACTED: inner_deliberation]" in result.user

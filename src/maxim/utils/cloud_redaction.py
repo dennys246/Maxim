@@ -111,6 +111,18 @@ _SECTION_RULES: list[tuple[re.Pattern, str, DataSensitivity, bool]] = [
         True,
     ),
     (re.compile(r"^=== Your prior reasoning ===$"), "inner_deliberation", DataSensitivity.PRIVATE, True),
+    # ReasoningCarryover (llm_fallback.py::get_prompt_text — NOT a
+    # PromptBuilder header): each line is `- {tool}: {reasoning[:80]}
+    # [OK|FAIL: {result_summary[:100]}]` — the LLM's own reasoning plus
+    # raw tool output, i.e. inner_deliberation + tool_outputs content
+    # under a header neither rule matched (found post-review while
+    # enumerating what strict still ships).
+    (
+        re.compile(r"^=== Recent Decisions \(Working Memory\) ===$"),
+        "inner_deliberation",
+        DataSensitivity.PRIVATE,
+        True,
+    ),
 ]
 
 _HEADER_PATTERN = re.compile(r"^=== .* ===$")
