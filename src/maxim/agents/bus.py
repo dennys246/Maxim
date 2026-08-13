@@ -193,6 +193,37 @@ from maxim.tools.base import ToolErrorKind as ToolErrorKind  # noqa: F401
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+#: The Percept fields allowed on the peer↔leader wire, in BOTH
+#: directions. ``from_wire_dict`` filters on this set structurally;
+#: ``to_wire_dict`` hand-builds its payload, and the two are held equal
+#: by ``test_wire_fields_constant_matches_to_wire_dict_output`` — so
+#: the wire-excluded fields (``embedding``, ``substrate_node_id``,
+#: ``salience``, ``novelty``, ``maxim_runtime``) can neither ship nor
+#: be injected by a peer. See the ``to_wire_dict`` docstring for the
+#: exclusion rationale. ``context`` rides separately (typed
+#: serialization) and ``_format_version`` is the envelope.
+_PERCEPT_WIRE_FIELDS: frozenset[str] = frozenset(
+    {
+        "timestamp",
+        "source",
+        "detections",
+        "transcript_chunk",
+        "transcript_chunk_index",
+        "file_changed",
+        "cli_input",
+        "has_voice_command",
+        "has_maxim_keyword",
+        "hard_override",
+        "explore_command",
+        "content",
+        "metadata",
+        "raw_transcript_text",
+        "sensory",
+        "modality",
+    }
+)
+
+
 @dataclass
 class Percept:
     """Structured perception output from PerceptionAgent."""
@@ -397,7 +428,13 @@ class Percept:
             data["context"] = PerceptContext.from_dict(ctx_raw)
         elif ctx_raw is not None:
             data["context"] = ctx_raw
-        valid_fields = {f.name for f in fields(cls)}
+        # Inbound allowlist mirrors the outbound one (PR #506 audit):
+        # filtering on valid DATACLASS fields alone would let a buggy or
+        # malicious peer inject the wire-EXCLUDED fields (embedding,
+        # substrate_node_id, salience, novelty, maxim_runtime) — derived
+        # values the leader must compute itself. Symmetric allowlists
+        # make the exclusion hold in both directions.
+        valid_fields = {f.name for f in fields(cls)} & (_PERCEPT_WIRE_FIELDS | {"context"})
         return cls(**{k: v for k, v in data.items() if k in valid_fields})
 
 

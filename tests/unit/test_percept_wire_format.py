@@ -281,3 +281,38 @@ def test_wire_dict_from_wire_strips_format_version_from_kwargs():
     # No raise → the filter or explicit pop is doing its job.
     restored = Percept.from_wire_dict(wire)
     assert not hasattr(restored, "_format_version")
+
+
+def test_from_wire_dict_rejects_injected_leader_only_fields():
+    """Inbound allowlist (2026-08-12 audit): a buggy or malicious peer
+    shipping wire-EXCLUDED fields must not get them rehydrated — they
+    are leader-derived values (substrate refs, salience) the leader
+    computes itself. Outbound exclusion alone is only half the
+    invariant."""
+    p = _make_representative_percept()
+    wire = p.to_wire_dict()
+    wire["embedding"] = [0.1, 0.2, 0.3]
+    wire["substrate_node_id"] = "ec-node-77"
+    wire["salience"] = 0.99
+    wire["novelty"] = 0.88
+    wire["maxim_runtime"] = {"internal": True}
+
+    restored = Percept.from_wire_dict(wire)
+
+    assert restored.embedding is None
+    assert restored.substrate_node_id is None
+    assert restored.salience == 0.0
+    assert restored.novelty == 0.0
+    assert restored.maxim_runtime is None
+
+
+def test_wire_fields_constant_matches_to_wire_dict_output():
+    """_PERCEPT_WIRE_FIELDS is the single source of truth for both wire
+    directions — pin it against what to_wire_dict actually emits so the
+    two cannot drift apart."""
+    from maxim.agents.bus import _PERCEPT_WIRE_FIELDS
+
+    p = _make_representative_percept()
+    wire = p.to_wire_dict()
+    emitted = set(wire.keys()) - {"_format_version", "context"}
+    assert emitted == set(_PERCEPT_WIRE_FIELDS)

@@ -55,14 +55,74 @@ class RedactionResult:
     policy: str
 
 
+# Section rules are pinned against the headers PromptBuilder ACTUALLY
+# emits (tests/unit/test_cloud_redaction_headers.py) — the 2026-08-12
+# privacy audit found the previous rule set had silently drifted from
+# the live prompt format: the ``memory_contents`` and
+# ``workspace_manifest`` patterns matched no producer, so hippocampus
+# recalls and workspace file listings shipped to cloud verbatim under
+# every policy including ``strict``. When PromptBuilder renames or adds
+# a sensitive section header, the structural test fails and forces a
+# rule update here — pattern-based redaction with no header pin is a
+# silent no-op waiting to happen.
 _SECTION_RULES: list[tuple[re.Pattern, str, DataSensitivity, bool]] = [
     (re.compile(r"^=== Conversation History ===$"), "conversation_history", DataSensitivity.PRIVATE, True),
     (re.compile(r"^=== Recent Action Outcomes ===$"), "tool_outputs", DataSensitivity.PRIVATE, True),
     (re.compile(r"^=== Recent Speech ===$"), "speech_transcripts", DataSensitivity.PRIVATE, True),
+    # workspace_manifest: legacy static header + the two live
+    # parameterized headers from build_workspace_manifest.
     (re.compile(r"^=== Workspace Manifest ===$"), "workspace_manifest", DataSensitivity.PRIVATE, True),
+    (
+        re.compile(r"^=== PROJECT DIRECTORY \(\d+ entries, CWD: .*\) ===$"),
+        "workspace_manifest",
+        DataSensitivity.PRIVATE,
+        True,
+    ),
+    (
+        re.compile(r"^=== EXISTING WORKSPACE \(\d+ files?\) ===$"),
+        "workspace_manifest",
+        DataSensitivity.PRIVATE,
+        True,
+    ),
     (re.compile(r"^=== Context ===$"), "context_pool", DataSensitivity.PRIVATE, True),
+    # memory_contents: live PromptBuilder header, the bio-enrichment
+    # section (whose EnrichmentResult.memories lines are the same
+    # hippocampus recall content — half-redacting memories while their
+    # sibling section ships them was the review round's cross-confirmed
+    # gap), + legacy exec_agent prompt marker (still emitted by the
+    # standalone-agent path).
+    (re.compile(r"^=== Relevant Memories ===$"), "memory_contents", DataSensitivity.PRIVATE, True),
+    (
+        re.compile(r"^=== What your experience tells you about this situation ===$"),
+        "memory_contents",
+        DataSensitivity.PRIVATE,
+        True,
+    ),
     (re.compile(r"^RELEVANT MEMORIES:$"), "memory_contents", DataSensitivity.PRIVATE, False),
     (re.compile(r"^RECENT CLI INPUTS:$"), "cli_inputs", DataSensitivity.PRIVATE, False),
+    # inner_deliberation: the header itself classifies the section as
+    # private, and the content is the LLM's own verbatim reasoning —
+    # the exact leak class the hivemind bundle scrub closes on the
+    # substrate side.
+    (
+        re.compile(r"^=== Your inner deliberation \(private — not speech\) ===$"),
+        "inner_deliberation",
+        DataSensitivity.PRIVATE,
+        True,
+    ),
+    (re.compile(r"^=== Your prior reasoning ===$"), "inner_deliberation", DataSensitivity.PRIVATE, True),
+    # ReasoningCarryover (llm_fallback.py::get_prompt_text — NOT a
+    # PromptBuilder header): each line is `- {tool}: {reasoning[:80]}
+    # [OK|FAIL: {result_summary[:100]}]` — the LLM's own reasoning plus
+    # raw tool output, i.e. inner_deliberation + tool_outputs content
+    # under a header neither rule matched (found post-review while
+    # enumerating what strict still ships).
+    (
+        re.compile(r"^=== Recent Decisions \(Working Memory\) ===$"),
+        "inner_deliberation",
+        DataSensitivity.PRIVATE,
+        True,
+    ),
 ]
 
 _HEADER_PATTERN = re.compile(r"^=== .* ===$")
@@ -91,9 +151,20 @@ class CloudRedactionFilter:
 
     @staticmethod
     def _policy_from_name(name: str) -> RedactionPolicy:
+        """Map a policy name to its behavior.
+
+        ``standard`` currently has the same flags as ``strict`` (no
+        distinct middle behavior is implemented yet) but keeps its own
+        name so the cloud audit log reports the policy the operator
+        actually configured instead of silently claiming ``strict``.
+        Unknown names fall back to ``strict`` — over-redaction is the
+        safe direction.
+        """
         normalized = str(name or "").strip().lower()
         if normalized == "relaxed":
             return RedactionPolicy(name="relaxed", allow_internal=True, allow_private=True, allow_secret=False)
+        if normalized == "standard":
+            return RedactionPolicy(name="standard", allow_internal=True, allow_private=False, allow_secret=False)
         return RedactionPolicy(name="strict", allow_internal=True, allow_private=False, allow_secret=False)
 
     def redact(self, system: str, user: str) -> RedactionResult:
