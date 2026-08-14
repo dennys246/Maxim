@@ -170,8 +170,10 @@ class Reaction:
     """A typed evaluative signal that drives learning.
 
     Frozen so producers cannot mutate in-flight. ``kind`` is a
-    :data:`ReactionKind` literal for extensibility — new reaction kinds
-    don't require code changes, just documentation.
+    :data:`ReactionKind` literal for extensibility — a new reaction kind
+    needs only a Literal entry + documentation (the bus dispatches
+    per-kind by string; no dispatch-table changes), but the Literal entry
+    is mandatory: membership there is the only contract surface.
 
     SHAPE-FROZEN at 1.0 (CC3). Every field is load-bearing for the
     typed-evaluative-signal contract; an ``extra`` dict would dilute

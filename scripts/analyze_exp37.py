@@ -1500,13 +1500,16 @@ def main(argv: list[str] | None = None) -> int:
     arms = tuple(a.strip() for a in args.arms.split(",") if a.strip())
     scenarios = tuple(s.strip() for s in args.scenarios.split(",") if s.strip())
 
+    # Exit 6 (distinct from the documented verdict/error codes below) so
+    # automation can tell "target exists, pass --force" from a genuine
+    # AnalyzerError (#508 review fold).
     if args.out is not None and args.out.exists() and not args.force:
         print(
             f"ERROR: {args.out} already exists — refusing to overwrite a prior "
             "run's results. Pass --force to replace it, or pick a new path.",
             file=sys.stderr,
         )
-        return 2
+        return 6
 
     try:
         result = run_analysis(

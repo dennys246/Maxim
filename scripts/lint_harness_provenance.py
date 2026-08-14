@@ -13,6 +13,12 @@ a maxim-invocation pattern) and requires each to reference
 not a sub-sim spawn) opt out with a line containing ``# provenance-exempt:``
 followed by the reason.
 
+This lint catches FORGETTING, not evasion (house convention for heuristic
+lints): a docstring mention of ``assert_repo_interpreter`` counts as
+compliance, one exempt marker exempts the whole file, and ``shell=True``
+string spawns escape the regex. It is a forcing function for the honest
+author, not a security boundary.
+
 Exits: 0 clean; 1 violations (stderr).
 """
 

@@ -100,6 +100,13 @@ completion claim):
   tests/unit/test_roy_5_cosine_localization.py` — 41/41 passed at
   `a4bff3ef`. Per the runbook, full behavioral re-derivation is required
   only on a fired **Re-run on:** trigger (none has).
+- **Provenance caveat (deviation from runbook preflight §1):** these two runs
+  executed from the working fix branch at `a4bff3ef`, not the pinned walk
+  worktree (`f05c63aa`) — the branch's src changes verifiably do not touch
+  either row's code path, but the walk's value is UNIFORM attestation of one
+  candidate commit. Both rows are pytest-only (seconds): **re-attest them at
+  the final 1.1 RC commit** alongside the release cut, or record an explicit
+  operator waiver here.
 - Remaining after this continuation: Sim-Short (Exp 09 reflexes, Exp 10
   persistence — needs a local LLM server + the pinned walk worktree),
   Fleet (Exp 42 done 2026-07-29; **Exp 48 awaits its re-pre-registered

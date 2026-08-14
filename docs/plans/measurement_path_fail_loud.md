@@ -14,7 +14,11 @@ mechanism, no new bus, no new module.
 ## Scope — the measurement path ONLY
 
 NOT a repo-wide purge of all 1,749 handlers. Exactly these files (inventory 2026-08-10;
-`bare` = `except Exception:` with no binding, `swallow` = followed by bare `pass`/`continue`):
+`bare` = `except Exception:` with no binding, `swallow` = followed by bare `pass`/`continue`).
+**The machine copy of this table is `scripts/lint_no_silent_swallows.py::MEASUREMENT_PATH`
+(Stage 4's CI lock) — any edit to this table updates the lint in the same commit** (a
+file added here but not there is silently unlinted; a removed/renamed file fails the
+lint loudly):
 
 | File | except | bare | swallow |
 |---|---|---|---|

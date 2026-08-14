@@ -16,7 +16,13 @@ pattern missed 10 ``pass  # best-effort`` swallows):
    the SCN drive path was dead for months behind exactly one
    bare-except-swallowed TypeError.
 
-Exits: 0 clean; 1 violations (details on stderr); 2 git/repo state error.
+This lint catches FORGETTING, not evasion: known-unmatched shapes include a
+comment line between the `except` and the `pass`, `except (X, Exception):`,
+and same-line `except Exception: pass` (zero instances of any exist in
+src/maxim/ today — verified 2026-08-13). Extend `swallow_hits` if one of
+these ever appears in review.
+
+Exits: 0 clean; 1 violations (details on stderr); 2 unexpected error.
 """
 
 from __future__ import annotations
@@ -94,31 +100,41 @@ def main() -> int:
                 "(measurement_path_fail_loud.md policy)"
             )
 
-    # Check 2 — diff-scoped no-new-swallows across src/maxim/.
+    # Check 2 — diff-scoped no-new-swallows across src/maxim/. A shallow CI
+    # clone can lack a merge-base entirely (fetch-depth 1 + a tip-only fetch
+    # of main); check 1 needs no git and its results must never be discarded
+    # for a git failure, so a missing base ref SKIPS check 2 with an INFO —
+    # the same graceful-skip pattern as lint_multi_agent_marker.py. (The
+    # pre-fold version returned 2 here, which made every PR red in CI and
+    # threw away check 1's findings unprinted — caught by the #508 review.)
     try:
         base = _base_ref()
-        changed = [
-            f
-            for f in _git("diff", "--name-only", base, "HEAD", "--", "src/maxim/").split()
-            if f.endswith(".py") and f not in MEASUREMENT_PATH
-        ]
-        for rel in changed:
-            path = REPO_ROOT / rel
-            new_count = len(swallow_hits(path.read_text())) if path.exists() else 0
-            try:
-                old_text = _git("show", f"{base}:{rel}")
-            except RuntimeError:
-                old_text = ""  # new file — grandfathered at zero
-            old_count = len(swallow_hits(old_text))
-            if new_count > old_count:
-                failures.append(
-                    f"{rel}: swallow count rose {old_count} → {new_count} on this branch — "
-                    "no NEW bare `except Exception: pass/continue`; "
-                    "use log_swallowed_exception() or narrow the exception type"
-                )
     except RuntimeError as e:
-        print(f"lint_no_silent_swallows: git error: {e}", file=sys.stderr)
-        return 2
+        print(f"INFO: no base ref available; skipping diff-scoped check 2 ({e})")
+        base = None
+    if base is not None:
+        try:
+            changed = [
+                f
+                for f in _git("diff", "--name-only", base, "HEAD", "--", "src/maxim/").split()
+                if f.endswith(".py") and f not in MEASUREMENT_PATH
+            ]
+            for rel in changed:
+                path = REPO_ROOT / rel
+                new_count = len(swallow_hits(path.read_text())) if path.exists() else 0
+                try:
+                    old_text = _git("show", f"{base}:{rel}")
+                except RuntimeError:
+                    old_text = ""  # new file — grandfathered at zero
+                old_count = len(swallow_hits(old_text))
+                if new_count > old_count:
+                    failures.append(
+                        f"{rel}: swallow count rose {old_count} → {new_count} on this branch — "
+                        "no NEW bare `except Exception: pass/continue`; "
+                        "use log_swallowed_exception() or narrow the exception type"
+                    )
+        except RuntimeError as e:
+            print(f"INFO: diff-scoped check 2 skipped mid-run ({e})")
 
     if failures:
         print("no-silent-swallows lint FAILED:", file=sys.stderr)

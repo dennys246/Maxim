@@ -1440,3 +1440,18 @@ def _isolate_maxim_place_code_env():
         _os.environ["MAXIM_PLACE_CODE_EXTEROCEPTION"] = saved
     else:
         _os.environ.pop("MAXIM_PLACE_CODE_EXTEROCEPTION", None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_world_set_ownership_warn_dedup():
+    """Clear world_set_axis's per-sensor refusal-warning dedup between tests.
+
+    The set is module-level (matching the _warned_envs / _warned_fallbacks
+    precedent), so a refusal triggered by any test would otherwise mask the
+    WARNING assertion in every later test (#508 review fold).
+    """
+    from maxim.embodiment.audio_localization import _OWNERSHIP_REFUSAL_WARNED
+
+    _OWNERSHIP_REFUSAL_WARNED.clear()
+    yield
+    _OWNERSHIP_REFUSAL_WARNED.clear()

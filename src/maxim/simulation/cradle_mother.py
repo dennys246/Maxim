@@ -209,8 +209,11 @@ def reactive_mother_tick(
     if scaffold.stimulus_azimuths:
         stim = scaffold.stimulus_azimuths[turn_idx % len(scaffold.stimulus_azimuths)]
         try:
-            world_set_azimuth(embodiment, float(stim))
-            out["az_stimulus"] = stim
+            # Telemetry gated on the RETURN (#508 review fold): a refused or
+            # sensor-less write must not record a stimulus that never landed —
+            # the analyzer would read an arm whose stimuli didn't happen.
+            if world_set_azimuth(embodiment, float(stim)):
+                out["az_stimulus"] = stim
         except Exception:
             logger.debug("reactive_mother_tick: stimulus world_set_azimuth failed", exc_info=True)
 
@@ -220,8 +223,8 @@ def reactive_mother_tick(
     if scaffold.guide_strength > 0.0 and az_now is not None and abs(float(az_now)) > scaffold.oriented_threshold:
         target = float(az_now) * (1.0 - min(1.0, scaffold.guide_strength))
         try:
-            world_set_azimuth(embodiment, target)
-            out["guided"] = True
+            if world_set_azimuth(embodiment, target):
+                out["guided"] = True
         except Exception:
             logger.debug("reactive_mother_tick: guide world_set_azimuth failed", exc_info=True)
     out["az_guided"] = vm.get("azimuth")

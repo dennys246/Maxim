@@ -512,12 +512,13 @@ def run_add_node(argv: Sequence[str]) -> int:
         new_nodes = mesh.nodes + (new_node,)
 
     try:
-        # CC13 (closed 2026-08-13): the reserved mesh-auth fields are
-        # forwarded so activating them cannot be silently reset by
-        # add-node. NOTE what still gates activation: parse_mesh_config
-        # never populates these and to_yaml never emits them — extending
-        # the FROZEN dialect is the activation work's own architectural
-        # decision (TOML/PyYAML escape hatches per the parser invariant).
+        # CC13 (in-memory leg closed 2026-08-13): the reserved mesh-auth
+        # fields are forwarded so activating them cannot be silently reset
+        # by add-node's reconstruction. The SERIALIZATION leg remains with
+        # the activation work: parse_mesh_config never populates these and
+        # to_yaml never emits them — extending the FROZEN dialect is that
+        # work's own architectural decision (TOML/PyYAML escape hatches
+        # per the parser invariant).
         new_mesh = MeshConfig(
             cluster_key=mesh.cluster_key,
             self_name=mesh.self_name,

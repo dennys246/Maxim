@@ -716,10 +716,12 @@ def world_set_axis(
     a modeled/derived value would fabricate a reading the next real
     measurement reverts (the phantom-credit / ``head=None`` failure class).
     Legitimate live writers declare themselves via ``owner=`` (the DoA feed,
-    the motor backend's measured readback). The check lives HERE, not at the
-    callers, so forgetting the guard becomes a refusal rather than a silent
-    fabrication; un-gating a dormant caller (e.g. agent_loop §1.16) cannot
-    lie to a live-owned sensor.
+    the motor backend's measured readback). ``owner`` is a SELF-DECLARATION
+    for logs and review, not an ACL — do not "harden" it into a typed enum;
+    that would force this layer to enumerate hardware-layer writers. The
+    check lives HERE, not at the callers, so forgetting the guard becomes a
+    refusal rather than a silent fabrication; un-gating a dormant caller
+    (e.g. agent_loop §1.16) cannot lie to a live-owned sensor.
     """
     root = getattr(embodiment, "root", None)
     if root is None:
