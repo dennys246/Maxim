@@ -88,6 +88,23 @@ completion claim):
   non-heartbeat triggers have fired. Estimated remaining effort matches the
   roadmap's 1.5–2.5 wk.
 
+### Walk continuation — 2026-08-13, Free Chapter (runbook §Free)
+
+- **SEM pain → NAc cascade (Tier 1): GREEN.**
+  `tests/substrate/test_sem_pain_cascade.py + tests/unit/test_pain_bus.py`
+  — 37/37 passed at `a4bff3ef` (fix/1-1-doc-truth-findings, whose src
+  changes do not touch the cascade path). Row's evidence is the test
+  itself (EARNED de facto); heartbeat satisfied.
+- **EC pattern completion / separation (Tier 1 row 3, unit-guard level):
+  GREEN.** `tests/unit/test_ec_centroid_drift_fix.py +
+  tests/unit/test_roy_5_cosine_localization.py` — 41/41 passed at
+  `a4bff3ef`. Per the runbook, full behavioral re-derivation is required
+  only on a fired **Re-run on:** trigger (none has).
+- Remaining after this continuation: Sim-Short (Exp 09 reflexes, Exp 10
+  persistence — needs a local LLM server + the pinned walk worktree),
+  Fleet (Exp 42 done 2026-07-29; **Exp 48 awaits its re-pre-registered
+  gate**, not just a re-run), Cloud (Exp 37 per-model, budgeted).
+
 ### Tier 1 — Thesis-load-bearing (MUST graduate, or 1.0 is dishonest)
 
 These are the bio-claims of the product itself. Shipping 1.0 without cited experiments for these undermines the [framing strategy](../../CLAUDE.md) (bio-inspired LLM harness, not academic cog-sci).
