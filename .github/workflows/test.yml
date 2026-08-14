@@ -672,6 +672,28 @@ jobs:
           git fetch origin main --depth=1 || true
           python3 scripts/lint_multi_agent_marker.py
 
+      - name: No-silent-swallows lint (Stage 4 of measurement_path_fail_loud)
+        run: |
+          # Two checks per docs/plans/measurement_path_fail_loud.md Stage 4:
+          # (1) zero-total bare `except Exception: pass/continue` over the 16
+          #     measurement-path files (purged in Stage 1, PR #487 — this
+          #     lock keeps them at zero);
+          # (2) diff-scoped repo-wide: a branch may not RAISE any src/maxim/
+          #     file's swallow count (grandfathered at origin/main's count).
+          # Motivating incident: the SCN drive path was dead for months
+          # behind exactly one bare-except-swallowed TypeError.
+          git fetch origin main --depth=1 || true
+          python3 scripts/lint_no_silent_swallows.py
+
+      - name: Harness provenance lint (Exp 42b retraction lesson)
+        run: |
+          # Any scripts/**/*.py that spawns `maxim` sub-sims must call
+          # scripts/_provenance.py::assert_repo_interpreter before its first
+          # spawn — a harness that skips it can measure the WRONG CHECKOUT
+          # with authoritative-looking JSONL (the Exp 42b retraction).
+          # False positives opt out with '# provenance-exempt: <reason>'.
+          python3 scripts/lint_harness_provenance.py
+
   # ── PKG seam — the lean aarch64 (Raspberry Pi) install ────────────────────
   # Two jobs because there are two DISTINCT risks and neither covers the other:
   #   1. a dependency quietly drags in torch/CUDA  → resolution-level, cheap,

@@ -59,6 +59,12 @@ def _shebang_interpreter(binary: str) -> str:
     """
     try:
         first = Path(binary).read_text().splitlines()[0]
+    except UnicodeDecodeError:
+        # Not a text script — the caller passed a raw interpreter (e.g. a
+        # harness that spawns `[sys.executable, "-m", "maxim"]`). The binary
+        # IS the interpreter; probing through sys.executable here would
+        # re-open the harness-vs-subsim gap this module exists to close.
+        return binary
     except (OSError, IndexError):
         return sys.executable
     return first.lstrip("#!").strip() or sys.executable

@@ -243,7 +243,10 @@ def main() -> int:
     p.add_argument("--model", default="mistral-7b", help="narrator profile (prose-less arc → light use)")
     p.add_argument("--timeout-s", type=int, default=1800)
     p.add_argument("--out", required=True)
-    p.add_argument("--workdir", default="/tmp/cradle_mother_runs")
+    # Durable default per apparatus standard S4: Exp 48's graduation
+    # originals lived in /tmp and are permanently gone (macOS cleared it
+    # again mid-investigation). Never default an experiment workdir there.
+    p.add_argument("--workdir", default=os.path.expanduser("~/.maxim/experiments/cradle_mother_runs"))
     p.add_argument(
         "--explore-weight",
         type=float,
@@ -260,6 +263,23 @@ def main() -> int:
         if a not in _ARM_ENV:
             print(f"unknown arm {a!r}; valid: {list(_ARM_ENV)}", file=sys.stderr)
             return 2
+
+    # Provenance preflight (Exp 42b lesson — MANDATORY for any harness that
+    # spawns sub-sims): the `maxim` the sub-sims import must be THIS repo.
+    # This harness spawns `[sys.executable, "-m", "maxim"]`, so the probe
+    # interpreter is sys.executable itself.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _provenance import ProvenanceError, assert_repo_interpreter, executed_code_provenance
+
+    repo_root = Path(__file__).resolve().parent.parent
+    provenance: dict[str, str] = {}
+    try:
+        assert_repo_interpreter(repo_root, sys.executable, exempt=args.mock)
+    except ProvenanceError as exc:
+        print(f"PREFLIGHT FAIL: {exc}", file=sys.stderr)
+        return 3
+    if not args.mock:
+        provenance = executed_code_provenance(repo_root, sys.executable)
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -314,6 +334,10 @@ def main() -> int:
                         "substrate_actions_per_turn_env": os.environ.get("MAXIM_SUBSTRATE_ACTIONS_PER_TURN"),
                         "mock": args.mock,
                         "git_hash": _git_hash(),
+                        # Exp 42b self-auditing-artifact rule: harness hash
+                        # describes where the harness LIVES; these describe
+                        # the code the sub-sims IMPORTED.
+                        **provenance,
                         "fade": fade,
                     }
                     fh.write(json.dumps(rec) + "\n")
