@@ -149,9 +149,9 @@ class ReachyOrientMotorBackend:
 
             body = float(pose.get("body_yaw", 0.0) or 0.0)
             head_rel = float(pose["yaw"]) - body
-            world_set_axis(self._embodiment, "head_yaw", head_rel)
+            world_set_axis(self._embodiment, "head_yaw", head_rel, owner="motor_readback")
             if "body_yaw" in pose:
-                world_set_axis(self._embodiment, "body_yaw", body)
+                world_set_axis(self._embodiment, "body_yaw", body, owner="motor_readback")
         except Exception:
             logger.debug("motor backend: measured world-set failed", exc_info=True)
 
