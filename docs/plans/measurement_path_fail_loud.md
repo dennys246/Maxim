@@ -70,7 +70,12 @@ convert to propagate per the policy above. One PR per 3-5 files, each with the s
 two-lens pre-merge round (these flips CAN change behavior — that is the point — so each PR
 runs the fast suite + the memory-hub suite + one sim smoke).
 
-**Stage 4 — lock.** Extend the CI lint: the diff-scoped no-new-swallows lint already tracked
+**Stage 4 — lock. ✅ SHIPPED 2026-08-13 (ahead of Stages 2–3, which remain open).** The
+scoped files were already at zero swallows after Stage 1, so the lock was safe to land
+early: `scripts/lint_no_silent_swallows.py` in CI enforces (1) zero-total over the 16
+scoped files and (2) diff-scoped no-count-increase repo-wide. Stages 2 (measure which
+instrumented sites actually fire) and 3 (narrow/propagate per the policy) still to do.
+Original spec: extend the CI lint: the diff-scoped no-new-swallows lint already tracked
 in CLAUDE.md ships here, with the measurement-path files promoted to a **zero-total-swallows
 allow-list** (not just no-new). Grep form (COMMENT-TOLERANT — the PR #487 review found the
 original comment-blind pattern missed 10 `pass  # best-effort` swallows, including the
