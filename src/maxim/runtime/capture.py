@@ -63,6 +63,7 @@ class CaptureManager:
         audio_queue_size: int = 64,
         target_fps: float = 10.0,
         enable_segmentation: bool = True,
+        has_vision: bool = True,
     ) -> None:
         """Initialize capture manager.
 
@@ -73,6 +74,12 @@ class CaptureManager:
             audio_queue_size: Max audio samples to buffer
             target_fps: Target frame capture rate
             enable_segmentation: Whether to run YOLO on frames
+            has_vision: Whether the robot has a camera. False skips the
+                frame-capture and segmentation threads entirely so an
+                audio-only robot can still run the audio thread without
+                polling an absent camera (the 2026-08-01 capability-truth
+                lesson: capture workers against a missing device flood the
+                log at loop rate).
         """
         self._maxim = maxim
         self._robot = robot
@@ -81,7 +88,8 @@ class CaptureManager:
         if self._robot is None and maxim is not None:
             self._robot = getattr(maxim, "_robot", None)
         self._target_fps = target_fps
-        self._enable_segmentation = enable_segmentation
+        self._has_vision = has_vision
+        self._enable_segmentation = enable_segmentation and has_vision
 
         # Queues for captured data
         self._frame_queue: queue.Queue[CapturedFrame] = queue.Queue(maxsize=frame_queue_size)
@@ -133,13 +141,15 @@ class CaptureManager:
         # Create thread pool for hardware calls with timeout
         self._hw_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="HWCapture")
 
-        # Start frame capture thread
-        self._frame_thread = threading.Thread(
-            target=self._frame_capture_loop,
-            name="agentic.capture.frame",
-            daemon=True,
-        )
-        self._frame_thread.start()
+        # Start frame capture thread (only when a camera exists — an
+        # audio-only robot gets the audio thread below and nothing else)
+        if self._has_vision:
+            self._frame_thread = threading.Thread(
+                target=self._frame_capture_loop,
+                name="agentic.capture.frame",
+                daemon=True,
+            )
+            self._frame_thread.start()
 
         # Start async segmentation thread (decoupled from capture to prevent buffer underrun)
         if self._enable_segmentation:

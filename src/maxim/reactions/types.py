@@ -55,7 +55,12 @@ from maxim.time.circadian import CircadianContext
 # Type aliases
 # ---------------------------------------------------------------------------
 
-ReactionKind = Literal["pain", "fear", "hunger", "surprise", "fatigue", "satiation"]
+# "reward" was published by CerebellumModulator._emit_success_reaction
+# (Dormant backend) without being a member here — the taxonomy was
+# drifting unenforced (roadmap_1_1_to_1_3.md free finding). Every kind a
+# producer publishes MUST appear in this Literal; the bus does not
+# validate at runtime, so membership here is the only contract surface.
+ReactionKind = Literal["pain", "fear", "hunger", "surprise", "fatigue", "satiation", "reward"]
 
 
 # ---------------------------------------------------------------------------

@@ -376,12 +376,35 @@ class ReachyMiniController(RobotController):
                 automatic_body_yaw=self._automatic_body_yaw,
             )
 
-            # Create stream wrappers
-            self._video_stream = ReachyVideoStream(
-                self._mini,
-                resolution=(640, 480),  # Will be updated after recording starts
+            # Create stream wrappers — but only for devices that exist.
+            # Under media_backend="no_media" the SDK's media manager has
+            # camera=None / audio=None; wrapping it anyway made
+            # get_video_stream()/get_audio_stream() return live-looking
+            # objects for absent hardware, defeating the stream-surface
+            # contract derive_media_capabilities relies on ("a connected
+            # controller whose getter returns None has positively declared
+            # the device absent"). Mirror its semantics: downgrade only on
+            # positive evidence; an un-introspectable media shape keeps
+            # the wrapper.
+            _media = getattr(self._mini, "media", None)
+            _has_cam = not (hasattr(_media, "camera") and _media.camera is None) if _media is not None else True
+            _has_aud = not (hasattr(_media, "audio") and _media.audio is None) if _media is not None else True
+            self._video_stream = (
+                ReachyVideoStream(
+                    self._mini,
+                    resolution=(640, 480),  # Will be updated after recording starts
+                )
+                if _has_cam
+                else None
             )
-            self._audio_stream = ReachyAudioStream(self._mini)
+            self._audio_stream = ReachyAudioStream(self._mini) if _has_aud else None
+            if not _has_cam or not _has_aud:
+                logger.info(
+                    "Media streams gated by backend '%s': video=%s audio=%s",
+                    self._media_backend,
+                    _has_cam,
+                    _has_aud,
+                )
 
             # Build capabilities
             self._capabilities = dataclasses.replace(

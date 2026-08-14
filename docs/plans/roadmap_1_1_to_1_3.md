@@ -274,14 +274,22 @@ predicate's clothes.
   **and mis-describes the experiment** (says infant thermal contact; Exp 09 ran
   `bodies/base_humanoid` against dragon/fire narration). A Principle-5 defect on an
   EARNED row. — Row corrected + halo caveat added.
-- **`CaptureManager` is constructed only when `has_vision`** — an audio-only robot gets
-  no audio thread at all.
-- **`get_audio_stream()` returns non-`None` under `no_media`** — a capability lie at the
-  stream surface. Gate on `_capabilities.has_audio`, never on stream presence.
-- **`inhibit_during_tool_execution` is dead code** — zero callers, config field read by
-  nothing, while a plan doc claims it "covers half the race." It covers none.
-- **`Reaction(kind="reward")` is published** from `cerebellum_modulator.py` and is not a
-  member of `ReactionKind`. The taxonomy is drifting unenforced.
+- ✅ **RESOLVED (doc-truth fold, 2026-08-13):** **`CaptureManager` is constructed only
+  when `has_vision`** — an audio-only robot gets no audio thread at all. — Gate widened
+  to `has_vision or has_audio`; `CaptureManager(has_vision=)` skips the frame +
+  segmentation threads for camera-less robots.
+- ✅ **RESOLVED (doc-truth fold, 2026-08-13):** **`get_audio_stream()` returns
+  non-`None` under `no_media`** — a capability lie at the stream surface. —
+  `ReachyMiniController.connect()` now gates both stream wrappers on the SDK's actual
+  devices (positive-evidence downgrade, mirroring `derive_media_capabilities`).
+- ✅ **RESOLVED (doc-truth fold, 2026-08-13):** **`inhibit_during_tool_execution` is
+  dead code** — zero callers, while a plan doc claimed it "covers half the race." —
+  `inhibit_for_tool` docstring now states it is UNWIRED; the
+  live_audio_orient_wiring.md claim corrected. Wiring it (a behavior change on the
+  robot runtime) stays a deliberate decision, not a drive-by.
+- ✅ **RESOLVED (doc-truth fold, 2026-08-13):** **`Reaction(kind="reward")` is
+  published** from `cerebellum_modulator.py` and was not a member of `ReactionKind`. —
+  `"reward"` added to the Literal with a producers-must-be-members note.
 - ✅ **RESOLVED (doc-truth PR, 2026-08-07):** **`perception_placement.py`** — 267 LOC,
   zero `src/` callers, claimed "✅ shipped." Wire it or mark it Dormant per Principle 2.
   — Marked Dormant (module docstring, resurrection trigger = the 1.3 fabric actually
