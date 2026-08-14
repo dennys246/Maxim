@@ -512,15 +512,20 @@ def run_add_node(argv: Sequence[str]) -> int:
         new_nodes = mesh.nodes + (new_node,)
 
     try:
-        # TODO(1.1, CC13): when the reserved cluster_keys /
-        # cluster_trust_anchors / cluster_auth_mode fields are activated,
-        # forward them here too — otherwise add-node silently resets
-        # mesh-auth config to defaults. Harmless at 1.0 (always None).
+        # CC13 (closed 2026-08-13): the reserved mesh-auth fields are
+        # forwarded so activating them cannot be silently reset by
+        # add-node. NOTE what still gates activation: parse_mesh_config
+        # never populates these and to_yaml never emits them — extending
+        # the FROZEN dialect is the activation work's own architectural
+        # decision (TOML/PyYAML escape hatches per the parser invariant).
         new_mesh = MeshConfig(
             cluster_key=mesh.cluster_key,
             self_name=mesh.self_name,
             nodes=new_nodes,
             protocol_version=mesh.protocol_version,
+            cluster_keys=mesh.cluster_keys,
+            cluster_trust_anchors=mesh.cluster_trust_anchors,
+            cluster_auth_mode=mesh.cluster_auth_mode,
         )
     except ValueError as e:
         print(f"✗ Resulting mesh.yml would be invalid: {e}", file=sys.stderr)
@@ -655,14 +660,16 @@ def run_remove_node(argv: Sequence[str]) -> int:
 
     new_nodes = tuple(n for n in mesh.nodes if n.name != name)
     try:
-        # TODO(1.1, CC13): forward the reserved cluster_keys /
-        # cluster_trust_anchors / cluster_auth_mode fields here once
-        # activated (see add-node above). Harmless at 1.0 (always None).
+        # CC13 (closed 2026-08-13): reserved mesh-auth fields forwarded —
+        # see the add-node note above for what still gates activation.
         new_mesh = MeshConfig(
             cluster_key=mesh.cluster_key,
             self_name=mesh.self_name,
             nodes=new_nodes,
             protocol_version=mesh.protocol_version,
+            cluster_keys=mesh.cluster_keys,
+            cluster_trust_anchors=mesh.cluster_trust_anchors,
+            cluster_auth_mode=mesh.cluster_auth_mode,
         )
     except ValueError as e:
         # Should be unreachable — we just validated len > 1 — but
