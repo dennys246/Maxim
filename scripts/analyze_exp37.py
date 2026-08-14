@@ -1467,6 +1467,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--out", type=Path, default=None, help="Markdown output (default: stdout)")
     parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing --out file. Without it an existing target "
+        "refuses (a prior run's results — possibly a graduation record — "
+        "would be silently destroyed; this bit a real session, see "
+        "memory/project_exp37 gotcha).",
+    )
+    parser.add_argument(
         "--trials", type=int, default=5, help="Expected trials per (scenario, arm) — design-completeness check"
     )
     parser.add_argument(
@@ -1491,6 +1499,14 @@ def main(argv: list[str] | None = None) -> int:
 
     arms = tuple(a.strip() for a in args.arms.split(",") if a.strip())
     scenarios = tuple(s.strip() for s in args.scenarios.split(",") if s.strip())
+
+    if args.out is not None and args.out.exists() and not args.force:
+        print(
+            f"ERROR: {args.out} already exists — refusing to overwrite a prior "
+            "run's results. Pass --force to replace it, or pick a new path.",
+            file=sys.stderr,
+        )
+        return 2
 
     try:
         result = run_analysis(

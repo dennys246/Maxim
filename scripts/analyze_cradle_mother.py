@@ -78,14 +78,27 @@ def main() -> int:
 
     t_early = pooled("taught", EARLY_ACTS)
     t_late = pooled("taught", LATE_ACTS)
-    n_late = pooled("no_feed", LATE_ACTS)
+    # A missing control arm must be a VOID, never a PASS: _mean([]) is 0.0,
+    # so a single-arm run used to report MOTHER-TAUGHT: PASS against a
+    # control that never ran (found during the Exp 48 heartbeat
+    # investigation — the analyzer passed vacuously on absent data).
+    has_nofeed_late = any(arms.get("no_feed", {}).get(a) for a in LATE_ACTS)
+    n_late = pooled("no_feed", LATE_ACTS) if has_nofeed_late else None
 
     print("\n## Verdict")
-    print(f"  taught: early={t_early:.3f} late={t_late:.3f}   no_feed late={n_late:.3f}")
+    n_late_str = f"{n_late:.3f}" if n_late is not None else "-- (arm absent)"
+    print(f"  taught: early={t_early:.3f} late={t_late:.3f}   no_feed late={n_late_str}")
     learned = t_late >= LEARNED_MIN and (t_late - t_early) >= RISE_MARGIN
-    mother = (t_late - n_late) >= MOTHER_MARGIN
     print(f"  LEARNED (taught late ≥ {LEARNED_MIN} and rose ≥ {RISE_MARGIN}): {'PASS' if learned else 'FAIL'}")
-    print(f"  MOTHER-TAUGHT (taught late ≥ no_feed late + {MOTHER_MARGIN}): {'PASS' if mother else 'FAIL'}")
+    if has_nofeed_late:
+        mother = (t_late - n_late) >= MOTHER_MARGIN
+        print(f"  MOTHER-TAUGHT (taught late ≥ no_feed late + {MOTHER_MARGIN}): {'PASS' if mother else 'FAIL'}")
+    else:
+        mother = False
+        print(
+            f"  MOTHER-TAUGHT (taught late ≥ no_feed late + {MOTHER_MARGIN}): "
+            "VOID — no no_feed rows in the input; a single-arm run cannot pass this gate"
+        )
 
     if learned and mother:
         print("\n**GRADUATE — the infant learned to orient toward the mother's voice, taught by her feeding alone.**")
@@ -93,6 +106,12 @@ def main() -> int:
     if not any(arms.get("taught", {}).get(a) for a in LATE_ACTS):
         print("\n**VOID — no taught late-act data.**")
         return 4
+    if learned and not has_nofeed_late:
+        print(
+            "\n**INCOMPLETE — the taught arm cleared LEARNED but the no_feed"
+            " control never ran; run both arms before recording a verdict.**"
+        )
+        return 5
     print("\n**NOT GRADUATED — see the curve above.**")
     return 1
 
