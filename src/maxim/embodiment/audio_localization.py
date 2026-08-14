@@ -451,7 +451,7 @@ class DoAFeed:
                 # live_world_set_sensors filter removes ``azimuth`` from
                 # modeled self_effect application, so this feed is the
                 # sensor's single writer; a lost update is impossible.
-                if not world_set_azimuth(self._embodiment, az):
+                if not world_set_azimuth(self._embodiment, az, owner="doa_feed"):
                     logger.debug("DoAFeed: body has no azimuth sensor — value cached only")
                 if self._percept_sink is not None:
                     try:
@@ -651,7 +651,7 @@ def reflex_oriented_azimuth(azimuth: float, profile: OrientingProfile = _DEFAULT
     return 0.0
 
 
-def world_set_azimuth(embodiment: object, azimuth: float) -> bool:
+def world_set_azimuth(embodiment: object, azimuth: float, *, owner: "str | None" = None) -> bool:
     """World-set the body's ``azimuth`` root sensor from a DoA percept.
 
     Dimensionality note: orientation here is deliberately **1-D (horizontal
@@ -679,7 +679,13 @@ def world_set_azimuth(embodiment: object, azimuth: float) -> bool:
     docstring's dimensionality note asks for (Stage 2 of
     live_audio_orient_wiring.md picked this parameterization).
     """
-    return world_set_axis(embodiment, "azimuth", azimuth, default_range=(-1.0, 1.0))
+    return world_set_axis(embodiment, "azimuth", azimuth, default_range=(-1.0, 1.0), owner=owner)
+
+
+# Sensors whose ownership refusal already warned once (rate limit: the
+# refused caller typically retries at loop rate; one WARNING names the
+# problem, repeats stay silent — the refusal itself is the guard).
+_OWNERSHIP_REFUSAL_WARNED: "set[str]" = set()
 
 
 def world_set_axis(
@@ -688,6 +694,7 @@ def world_set_axis(
     value: float,
     *,
     default_range: "tuple[float, float] | None" = None,
+    owner: "str | None" = None,
 ) -> bool:
     """World-set any declared root sensor from an exteroceptive measurement.
 
@@ -702,12 +709,36 @@ def world_set_axis(
     float (a world-set write must not invent a range the body didn't
     declare). Returns True if the body declares the sensor and it was
     written; False fail-soft otherwise.
+
+    Ownership (reflex-canonicalization structural half, roadmap_1_1_to_1_3.md,
+    2026-08-13): when a LIVE measurement stream owns the sensor
+    (``embodiment.live_world_set_sensors``), an anonymous write is REFUSED —
+    a modeled/derived value would fabricate a reading the next real
+    measurement reverts (the phantom-credit / ``head=None`` failure class).
+    Legitimate live writers declare themselves via ``owner=`` (the DoA feed,
+    the motor backend's measured readback). ``owner`` is a SELF-DECLARATION
+    for logs and review, not an ACL — do not "harden" it into a typed enum;
+    that would force this layer to enumerate hardware-layer writers. The
+    check lives HERE, not at the callers, so forgetting the guard becomes a
+    refusal rather than a silent fabrication; un-gating a dormant caller
+    (e.g. agent_loop §1.16) cannot lie to a live-owned sensor.
     """
     root = getattr(embodiment, "root", None)
     if root is None:
         return False
     sensors = getattr(root, "sensors", None) or {}
     if sensor_name not in sensors:
+        return False
+    live_owned = getattr(embodiment, "live_world_set_sensors", None) or ()
+    if sensor_name in live_owned and not owner:
+        if sensor_name not in _OWNERSHIP_REFUSAL_WARNED:
+            _OWNERSHIP_REFUSAL_WARNED.add(sensor_name)
+            logger.warning(
+                "world_set_axis: refused anonymous write to live-owned sensor "
+                "'%s' — a live measurement stream owns it; pass owner=<writer> "
+                "only if this caller IS the measurement source",
+                sensor_name,
+            )
         return False
     vm = getattr(root, "vital_metrics", None)
     if vm is None:

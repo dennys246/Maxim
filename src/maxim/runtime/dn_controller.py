@@ -83,7 +83,16 @@ class DefaultNetworkController:
         self._last_mode = mode_name
 
     def inhibit_for_tool(self, mode_name: str) -> bool:
-        """Check if DN should be inhibited during tool execution."""
+        """Check if DN should be inhibited during tool execution.
+
+        UNWIRED (verified 2026-08-13): no production code path calls this
+        method, so ``DefaultNetworkModeConfig.inhibit_during_tool_execution``
+        (True in supervised mode) is currently a silent no-op — the DN keeps
+        running through tool execution regardless of the flag. Any plan that
+        counts on this inhibition (e.g. the Stage-5 reflex/voluntary race in
+        live_audio_orient_wiring.md) must wire a call site first; until then
+        the one-way voluntary-suppresses-reflex rule is the only guard.
+        """
         if not self.enabled or self._dn is None:
             return False
         from maxim.modes.definitions import get_mode

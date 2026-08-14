@@ -117,6 +117,62 @@ bypass) rather than only the symptom.
 
 ---
 
+## Pulled into 1.1 (adopted 2026-08-13 from the roadmap synthesis)
+
+Two additions to the cut line, both bug-class rather than mechanism-class so the
+"zero new mechanisms" discipline holds:
+
+1. **`maxim memory invalidate ec` (bugs ledger D2).** `MEMORY_PATHS` has no `ec` key, so
+   an operator cannot invalidate a stale EC substrate — and clearing `nac` alone violates
+   the NAc/EC persist-as-a-pair invariant (biases dangle on nodes a fresh EC never
+   re-allocates). Invalidation must be NAc+EC in lockstep. Also a place-code
+   default-ON gate, so doing it in 1.1 unblocks 1.1.x.
+2. **Annotation S4 — non-stationarity analysis** (`annotation_context_and_provenance.md`).
+   Pure offline analysis on captures already on disk (zero sim cost); answers Exp 44b
+   pilot finding F6 (0.997 → 0.059 within-run signal decay despite τ=1000) and feeds the
+   pre-registration freeze. Do it whenever a session has an hour.
+
+## 1.1.x follow-through (post-cut, pre-1.2 — adopted 2026-08-13)
+
+The 1.1 cut line stays closed; these are the next minor-stream items in rough order.
+Each POINTS at its owning plan — stages live there, not here:
+
+1. **Exp 44b pre-registration freeze → confirmatory campaign**
+   (`protocols/exp44b_preregistration.md`). The core research claim's power run.
+   Freeze blockers: F1 name-copying control (→ Exp 51), determinism measurement
+   (#496 built it — run it), invalid-action rule (F7), entangled-axes framing fix (F2).
+   Deliberately NOT a 1.1 gate — holding the release for a 10-seed/arm campaign was
+   considered and declined; it opens 1.1.x instead.
+2. **Decision provenance Stages 3+4** (`decision_provenance.md`): make the provenance
+   fields queryable + wire them into the S2 apparatus canaries. Stage 4 overlaps the
+   canary work — build together.
+3. **Annotation S2 (context-aware view) + Exp 51** (`annotation_context_and_provenance.md`):
+   the decisive name-copying-vs-learned-content experiment. Sequencing per the plan:
+   S4 → A3 channel-obedience probe → S2 → Exp 51 → S3.
+4. **Exp 50 — re-adaptation after plant change**
+   (`docs/experiments/50_readaptation_after_plant_change.md`). Pre-registered, unblocked
+   by H1, needs robot time (3 arms, n ≥ 3 sessions/arm). A PASS adds a graduation row.
+5. **Place-code default-ON** (`modality_resolution_and_alignment.md` §7). Gates: D2
+   (pulled into 1.1 above), the hivemind merge dim-guard for same-dimension geometry
+   changes (D4), `min_confidence` recalibration against the ~0.11 visibility floor
+   (instrument = #504's `explore_decisive`/`learned_margin`), then the Exp 48 + Exp 49
+   H3/arm-C re-runs the flag's own note requires.
+6. **Fail-loud Stages 2–3** (`measurement_path_fail_loud.md`): read the Stage-1
+   instrumentation's logs (Stage 2, nearly free), then narrow/propagate per the policy
+   (Stage 3). Stage 4's CI lock already shipped 2026-08-13.
+7. **God-function decomposition** (`god_function_decomposition.md`) — its own plan
+   sequences it after fail-loud Stages 1–2; start once item 6's Stage 2 lands.
+8. **n_ctx leg 3, cross-process** — a `served_n_ctx` handshake readable across processes
+   (today `maxim config` alignment is the documented mechanism; acceptable carry, close
+   it when touching the lane code anyway).
+9. **`agents/llm_agent.py` router migration** — retires the CI backend-import
+   grandfather clause and its positive control.
+10. **Memory-consolidation decision** — `deferred/memory_consolidation_practice.md`'s own
+    rule: "if 1.1 ships without touching consolidation, downgrade to archive at the next
+    sweep." Ship the decision either way at the 1.1 cut.
+
+---
+
 ## Why the reflex tier is NOT in 1.1
 
 The verb "enable" was doing enormous work. Verified against code:
@@ -274,14 +330,22 @@ predicate's clothes.
   **and mis-describes the experiment** (says infant thermal contact; Exp 09 ran
   `bodies/base_humanoid` against dragon/fire narration). A Principle-5 defect on an
   EARNED row. — Row corrected + halo caveat added.
-- **`CaptureManager` is constructed only when `has_vision`** — an audio-only robot gets
-  no audio thread at all.
-- **`get_audio_stream()` returns non-`None` under `no_media`** — a capability lie at the
-  stream surface. Gate on `_capabilities.has_audio`, never on stream presence.
-- **`inhibit_during_tool_execution` is dead code** — zero callers, config field read by
-  nothing, while a plan doc claims it "covers half the race." It covers none.
-- **`Reaction(kind="reward")` is published** from `cerebellum_modulator.py` and is not a
-  member of `ReactionKind`. The taxonomy is drifting unenforced.
+- ✅ **RESOLVED (doc-truth fold, 2026-08-13):** **`CaptureManager` is constructed only
+  when `has_vision`** — an audio-only robot gets no audio thread at all. — Gate widened
+  to `has_vision or has_audio`; `CaptureManager(has_vision=)` skips the frame +
+  segmentation threads for camera-less robots.
+- ✅ **RESOLVED (doc-truth fold, 2026-08-13):** **`get_audio_stream()` returns
+  non-`None` under `no_media`** — a capability lie at the stream surface. —
+  `ReachyMiniController.connect()` now gates both stream wrappers on the SDK's actual
+  devices (positive-evidence downgrade, mirroring `derive_media_capabilities`).
+- ✅ **RESOLVED (doc-truth fold, 2026-08-13):** **`inhibit_during_tool_execution` is
+  dead code** — zero callers, while a plan doc claimed it "covers half the race." —
+  `inhibit_for_tool` docstring now states it is UNWIRED; the
+  live_audio_orient_wiring.md claim corrected. Wiring it (a behavior change on the
+  robot runtime) stays a deliberate decision, not a drive-by.
+- ✅ **RESOLVED (doc-truth fold, 2026-08-13):** **`Reaction(kind="reward")` is
+  published** from `cerebellum_modulator.py` and was not a member of `ReactionKind`. —
+  `"reward"` added to the Literal with a producers-must-be-members note.
 - ✅ **RESOLVED (doc-truth PR, 2026-08-07):** **`perception_placement.py`** — 267 LOC,
   zero `src/` callers, claimed "✅ shipped." Wire it or mark it Dormant per Principle 2.
   — Marked Dormant (module docstring, resurrection trigger = the 1.3 fabric actually

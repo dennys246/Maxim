@@ -269,14 +269,24 @@ class AgenticRuntimeMixin:
         stop_event = threading.Event()
         self._agentic_stop_event = stop_event
 
-        # Phase 3: Initialize CaptureManager for direct frame access
+        # Phase 3: Initialize CaptureManager for direct frame/audio access.
+        # Gate on EITHER media capability — an audio-only robot (has_vision
+        # False, has_audio True) still needs the audio capture thread; the
+        # old vision-only gate silently gave it no CaptureManager at all
+        # (roadmap_1_1_to_1_3.md free finding). has_vision= threads through
+        # so a camera-less robot spawns no frame/segmentation workers.
         capture_manager = None
-        if use_capture_manager and hasattr(self, "_capabilities") and self._capabilities.has_vision:
+        if (
+            use_capture_manager
+            and hasattr(self, "_capabilities")
+            and (self._capabilities.has_vision or self._capabilities.has_audio)
+        ):
             try:
                 capture_manager = CaptureManager(
                     maxim=self,
                     target_fps=float(getattr(self, "video_fps", 10.0) or 10.0),
                     enable_segmentation=True,
+                    has_vision=bool(self._capabilities.has_vision),
                 )
                 self._capture_manager = capture_manager
             except Exception as e:

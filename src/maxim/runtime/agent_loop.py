@@ -1922,7 +1922,13 @@ def run_agentic_loop(
                     # sub-threshold sound it chose to notice. Capability-gated +
                     # fail-soft: bodies without an `azimuth` sensor are
                     # unaffected. Sim mirror of live DoA → azimuth (Track 2 L2).
-                    if _emb is not None:
+                    # Skipped when a LIVE measurement stream owns the sensor
+                    # (#508 review fold): on live, the DoA feed already wrote a
+                    # fresher value than this percept echo, and the anonymous
+                    # write would be refused by world_set_axis's ownership
+                    # guard anyway — skipping here keeps routine live audio
+                    # from opening every session with the refusal WARNING.
+                    if _emb is not None and "azimuth" not in (getattr(_emb, "live_world_set_sensors", None) or ()):
                         world_set_azimuth(_emb, _az)
 
                     _trace = audio_attention_profile(_sal, _nov)

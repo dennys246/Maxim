@@ -79,3 +79,56 @@ review, not a merge-on-green. One PR, reviewed as text.
 **Regression guard:** `scripts/lint_claude_md_invariants.py` (must stay green through the
 split) + a token-count assertion added to the same lint (fail if CLAUDE.md exceeds ~12K
 tokens, so the ledger cannot silently regrow).
+
+---
+
+## Appendix — session kickoff brief (added 2026-08-13)
+
+Saved here per `feedback_save_kickoff_prompts_durably`. A dedicated session executes this
+plan with one **scope extension** the operator requested: alongside the per-incident
+`docs/lessons/<slug>.md` archive, build a **`docs/agents/` satellite layer** — per-subsystem
+briefs an agent loads on demand instead of carrying everything in-context. Record this
+extension as a deliberate deviation in this plan (do not silently diverge from the Stages
+above; amend them).
+
+**Two output layers, different jobs:**
+- `docs/lessons/<slug>.md` — per-incident ARCHIVE (full narrative, dates, PR numbers,
+  dead-end hypotheses). Write-once, linked from compressed stubs. As specified above.
+- `docs/agents/<subsystem>.md` — per-subsystem WORKING BRIEF, synthesized not archived:
+  the mental model, key files table, that subsystem's invariants as one-liners with
+  `Regression guard:` pointers, live gotchas, links into `docs/lessons/`. Self-contained:
+  an agent working in that area reads the slim CLAUDE.md core + exactly one brief.
+  Suggested cut (validate against the actual invariant clusters in lens 5): `bio-memory`
+  (Hippocampus/EC/ATL/NAc/SCN + substrate encoding), `llm-routing` (lanes, backends,
+  proxy, timeouts, mesh/peer), `embodiment` (SEM, drives, pain channels, Reachy safety),
+  `simulation-experiments` (sim discipline, apparatus standards, provenance, graduation),
+  `persistence-config` (atomic_io, _format_version, config.json layers, role detection),
+  `runtime-tools` (agent loop, executor, builders, buses).
+- CLAUDE.md core keeps a **routing table**: "touching X → read docs/agents/X.md" — the
+  briefs only pay off if discovery is one hop.
+
+**Phase 0 (before any edit) — parallel multi-lens review.** Launch 5 parallel subagents
+over the current CLAUDE.md, each returning a structured report:
+1. **Enforcement lens** — for every invariant: is the guard real (does the cited
+   test/grep/type actually enforce it)? Classify mechanically-guarded (safe to compress
+   hard) vs prose-is-the-enforcement (keep full text, per the Exception above).
+2. **Condensation lens** — per entry: the ≤4-line compressed form per the contract above,
+   flagging duplicated content (several lessons retell the same incident) and candidates
+   for merging.
+3. **Retrieval lens** — what does a session actually need ALWAYS in context (commands,
+   checks, hard safety rules, the routing table) vs on-demand (subsystem briefs) vs
+   almost-never (incident archaeology)? This lens drives the three-layer split.
+4. **Truth lens** — entries whose claims have drifted from the code (stale line numbers,
+   "pending" items that shipped, superseded wording). Fix during the split, cite evidence.
+5. **Information-architecture lens** — cluster the invariants/lessons by subsystem and
+   propose the `docs/agents/` file cut with a table of contents per brief.
+Synthesize the five reports into a design fold recorded in this plan, THEN execute
+Stages 1–3 as amended.
+
+**Hard constraints (unchanged from the plan):** zero information deleted from the repo;
+rules kept verbatim as imperatives; every `Regression guard:` / `Roy experiment:` line
+survives in CLAUDE.md; `scripts/lint_claude_md_invariants.py` green throughout (+ add the
+token-count assertion); measure tokens before/after and report both; ≤10K-token target for
+CLAUDE.md core; Stage 3 is an operator text-review — open the PR, do NOT merge on green.
+Work in a fresh worktree from the start (`git worktree add ../Maxim-wt-claudemd -b
+chore/claude-md-diet`), `PYTHONPATH=<worktree>/src` absolute on its own line.
