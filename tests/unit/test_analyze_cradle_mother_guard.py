@@ -52,3 +52,56 @@ def test_both_arms_present_computes_mother_taught_normally(tmp_path):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "GRADUATE" in proc.stdout
     assert "VOID" not in proc.stdout
+
+
+def _row_turns(arm: str, directedness: dict[str, float], turns: int) -> dict:
+    return {"arm": arm, "fade": {a: {"directedness": directedness[a], "turns": turns} for a in _ACTS}}
+
+
+class TestGateV2:
+    """Gate v2 (frozen 2026-08-14): act1-only EARLY bin, S7 ceiling clause,
+    S5 exposure flag. 48_cradle_mother_seam.md §Gate v2."""
+
+    def test_early_bin_is_act1_only(self, tmp_path):
+        """act2 no longer pollutes the baseline: act1 low + act2 already-high
+        must still show a full rise (v1's mean(act1,act2) would shrink it)."""
+        d = {"act1_early": 0.30, "act2_warming": 0.90, "act3_consolidating": 0.90, "act4_autonomous": 0.90}
+        chance = {a: 0.5 for a in _ACTS}
+        proc = _run([_row("taught", d)] * 3 + [_row("no_feed", chance)] * 3, tmp_path)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "early=0.300" in proc.stdout
+
+    def test_ceiling_reports_learned_at_ceiling_not_fail(self, tmp_path):
+        """early >= 0.65 makes rise unattainable — S7 says report the ceiling,
+        never silently FAIL (the Exp 37 Mistral24B ceiling-void class)."""
+        d = {a: 0.90 for a in _ACTS}
+        chance = {a: 0.5 for a in _ACTS}
+        proc = _run([_row("taught", d)] * 3 + [_row("no_feed", chance)] * 3, tmp_path)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "LEARNED-AT-CEILING" in proc.stdout
+        assert "GRADUATE" in proc.stdout
+
+    def test_ceiling_with_degradation_fails(self, tmp_path):
+        d = {"act1_early": 0.90, "act2_warming": 0.80, "act3_consolidating": 0.70, "act4_autonomous": 0.60}
+        chance = {a: 0.5 for a in _ACTS}
+        proc = _run([_row("taught", d)] * 3 + [_row("no_feed", chance)] * 3, tmp_path)
+        assert proc.returncode == 1, proc.stdout + proc.stderr
+        assert "LEARNED-AT-CEILING" in proc.stdout
+        assert "FAIL" in proc.stdout
+
+    def test_exposure_skew_flags_instead_of_graduating(self, tmp_path):
+        """Both gates pass but taught got 2x the turns — S5 says flag, exit 7."""
+        d = {"act1_early": 0.30, "act2_warming": 0.60, "act3_consolidating": 0.90, "act4_autonomous": 0.90}
+        chance = {a: 0.5 for a in _ACTS}
+        rows = [_row_turns("taught", d, 24)] * 3 + [_row_turns("no_feed", chance, 12)] * 3
+        proc = _run(rows, tmp_path)
+        assert proc.returncode == 7, proc.stdout + proc.stderr
+        assert "EXPOSURE-FLAG" in proc.stdout
+
+    def test_matched_exposure_no_flag(self, tmp_path):
+        d = {"act1_early": 0.30, "act2_warming": 0.60, "act3_consolidating": 0.90, "act4_autonomous": 0.90}
+        chance = {a: 0.5 for a in _ACTS}
+        rows = [_row_turns("taught", d, 12)] * 3 + [_row_turns("no_feed", chance, 12)] * 3
+        proc = _run(rows, tmp_path)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "EXPOSURE-FLAG" not in proc.stdout

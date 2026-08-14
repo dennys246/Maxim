@@ -10,12 +10,17 @@ places the sound but never feeds/credits) stays at chance — it has no teacher.
 Metric: per time-bin ("act"), ``directedness`` = fraction of turns the infant
 turned TOWARD the sound (progress > 0). Logged in both arms.
 
-Verdict:
-  LEARNED       : taught LATE-bin directedness ≥ 0.65 AND rose from the EARLY bin
-                  by ≥ 0.15 (it learned over the session, not innate — with the
-                  drive removed, early should sit near chance).
+Verdict (GATE V2 — re-pre-registered 2026-08-14, frozen pre-data; see
+48_cradle_mother_seam.md §Gate v2. Do NOT retune post-hoc):
+  LEARNED       : taught LATE-bin (act3+act4) directedness ≥ 0.65 AND rose
+                  ≥ 0.15 from the EARLY bin (act1 ONLY — v1's mean(act1,act2)
+                  folded learned act2 behavior into the baseline).
+  CEILING (S7)  : early ≥ 0.65 makes the rise unattainable → LEARNED-AT-CEILING
+                  (late ≥ 0.65 + non-degradation), reported explicitly; the
+                  teaching claim then rests on MOTHER-TAUGHT.
   MOTHER-TAUGHT : taught late ≥ no_feed late + 0.20 (the mother is WHY — remove
-                  her and the infant stays at chance).
+                  her and the infant stays at chance). VOID if the control
+                  never ran; exposure skew >20% turns → EXPOSURE-FLAG (exit 7).
 """
 
 from __future__ import annotations
@@ -26,11 +31,21 @@ import sys
 from pathlib import Path
 
 ACT_ORDER = ("act1_early", "act2_warming", "act3_consolidating", "act4_autonomous")
-EARLY_ACTS = ("act1_early", "act2_warming")
+# Gate v2 (re-pre-registered 2026-08-14, frozen pre-data — 48_cradle_mother_seam.md
+# §Gate v2): EARLY is act1 ONLY. The v1 mean(act1, act2) folded already-learned
+# act2 behavior into the baseline (heartbeat bin-alignment finding).
+EARLY_ACTS = ("act1_early",)
 LATE_ACTS = ("act3_consolidating", "act4_autonomous")
 LEARNED_MIN = 0.65
 RISE_MARGIN = 0.15
 MOTHER_MARGIN = 0.20
+# S7 ceiling clause: early at/above LEARNED_MIN makes the rise criterion
+# structurally unattainable — report LEARNED-AT-CEILING (require late-level +
+# non-degradation), never a silent pass or fail.
+CEILING_MIN = 0.65
+CEILING_DEGRADE_TOL = 0.05
+# S5 exposure contract: flag a >20% mean-turns mismatch between arms.
+EXPOSURE_TOL = 0.20
 
 
 def _mean(xs: list[float]) -> float:
@@ -48,13 +63,18 @@ def main() -> int:
         print("no rows", file=sys.stderr)
         return 2
 
-    # per arm: per-act list of directedness
+    # per arm: per-act list of directedness (+ per-row total turns for the
+    # S5 exposure contract)
     arms: dict[str, dict[str, list[float]]] = {}
+    arm_turns: dict[str, list[float]] = {}
     for r in rows:
         arm = r["arm"]
         acts = arms.setdefault(arm, {})
+        row_turns = 0.0
         for act, m in (r.get("fade") or {}).items():
             acts.setdefault(act, []).append(float(m.get("directedness", 0.0)))
+            row_turns += float(m.get("turns", 0) or 0)
+        arm_turns.setdefault(arm, []).append(row_turns)
 
     def pooled(arm: str, act_names: tuple[str, ...]) -> float:
         vals: list[float] = []
@@ -85,11 +105,33 @@ def main() -> int:
     has_nofeed_late = any(arms.get("no_feed", {}).get(a) for a in LATE_ACTS)
     n_late = pooled("no_feed", LATE_ACTS) if has_nofeed_late else None
 
-    print("\n## Verdict")
+    print("\n## Verdict (gate v2 — 48_cradle_mother_seam.md, frozen 2026-08-14)")
     n_late_str = f"{n_late:.3f}" if n_late is not None else "-- (arm absent)"
     print(f"  taught: early={t_early:.3f} late={t_late:.3f}   no_feed late={n_late_str}")
-    learned = t_late >= LEARNED_MIN and (t_late - t_early) >= RISE_MARGIN
-    print(f"  LEARNED (taught late ≥ {LEARNED_MIN} and rose ≥ {RISE_MARGIN}): {'PASS' if learned else 'FAIL'}")
+
+    # S5 exposure contract: report mean recorded turns per arm; flag >20% skew.
+    exposure_flagged = False
+    t_turns = _mean(arm_turns.get("taught", []))
+    n_turns = _mean(arm_turns.get("no_feed", []))
+    if t_turns and n_turns:
+        skew = abs(t_turns - n_turns) / max(t_turns, n_turns)
+        flag = f"  ⚠ EXPOSURE-FLAG (skew {skew:.0%} > {EXPOSURE_TOL:.0%})" if skew > EXPOSURE_TOL else ""
+        exposure_flagged = bool(flag)
+        print(f"  exposure: taught {t_turns:.0f} turns/seed, no_feed {n_turns:.0f} turns/seed{flag}")
+
+    at_ceiling = t_early >= CEILING_MIN
+    if at_ceiling:
+        learned = t_late >= LEARNED_MIN and t_late >= (t_early - CEILING_DEGRADE_TOL)
+        print(
+            f"  LEARNED-AT-CEILING (early {t_early:.3f} ≥ {CEILING_MIN} — rise unattainable; "
+            f"late ≥ {LEARNED_MIN} and non-degrading): {'PASS' if learned else 'FAIL'} "
+            "— teaching claim rests on MOTHER-TAUGHT"
+        )
+    else:
+        learned = t_late >= LEARNED_MIN and (t_late - t_early) >= RISE_MARGIN
+        print(
+            f"  LEARNED (taught late ≥ {LEARNED_MIN} and rose ≥ {RISE_MARGIN} from act1): {'PASS' if learned else 'FAIL'}"
+        )
     if has_nofeed_late:
         mother = (t_late - n_late) >= MOTHER_MARGIN
         print(f"  MOTHER-TAUGHT (taught late ≥ no_feed late + {MOTHER_MARGIN}): {'PASS' if mother else 'FAIL'}")
@@ -100,6 +142,12 @@ def main() -> int:
             "VOID — no no_feed rows in the input; a single-arm run cannot pass this gate"
         )
 
+    if learned and mother and exposure_flagged:
+        print(
+            "\n**EXPOSURE-FLAGGED — both gates pass but the arms are exposure-skewed"
+            " (>20% turns mismatch); resolve the skew before recording a verdict (S5).**"
+        )
+        return 7
     if learned and mother:
         print("\n**GRADUATE — the infant learned to orient toward the mother's voice, taught by her feeding alone.**")
         return 0

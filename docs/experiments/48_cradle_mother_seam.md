@@ -57,6 +57,51 @@ PYTHONPATH=src python scripts/analyze_cradle_mother.py --in ~/exp48_cradle_mothe
 
 `--trials 12` per arm (Exp 42's per-arm n; raise to 20 if the taught/no_feed gap lands within seed noise of the 0.20 margin). `--resume` skips completed (arm, seed) cells so an interrupted overnight run continues without a full rerun. Each result row records `git_hash` — **verify it contains the seam (`26d8f901` or a descendant) before trusting any verdict** (the hard-won stale-checkout lesson).
 
+## Gate v2 — re-pre-registered for the apparatus-v2 re-baseline (FROZEN 2026-08-14)
+
+> Written and committed while the first apparatus-v2 campaign
+> (`48_rebaseline_v4.jsonl`, big-mac-mini) was mid-flight. **Disclosure:** at
+> freeze time the author had read the apparatus-v1 graduation data, the 1.1
+> heartbeat re-run (+0.055/+0.079), and the night's INVALID dead-narrator /
+> wrong-narrator attempts — and **zero valid apparatus-v2 rows** (none existed
+> yet). Per S7 the gate is fixed by re-pre-registration, never post-hoc.
+
+**Apparatus-v2 (S6 declaration)** — the fixed instrument this gate scores:
+turn-scoped action budget `MAXIM_SUBSTRATE_ACTIONS_PER_TURN=6` (#505, stamped
+per record), single-runner locks + fresh per-run sandboxes (#510 — no log
+merging, no NAc carry-over between attempts), narrator-liveness preflight
+(#511, mistral-7b in-process solo, resolution printed at launch), provenance
+stamping (#508). Apparatus-v1 magnitudes (the 0.875 late / +0.211 rise
+headline) are **retired as v1 artifacts** — not comparable, not a target.
+
+**Gate v2** (supersedes the v1 gate *for this re-baseline*; v1 text above is
+kept as the historical record):
+
+- **Bins:** EARLY = `act1_early` **only** (the v1 `mean(act1, act2)` folded
+  already-learned act2 behavior into the baseline — the heartbeat
+  investigation's bin-alignment finding). LATE = `act3 + act4` (unchanged).
+- **LEARNED-v2:** `t_late ≥ 0.65` AND `t_late − t_early ≥ 0.15`.
+- **Ceiling clause (S7):** if `t_early ≥ 0.65` the rise criterion is
+  structurally unattainable — then LEARNED-v2 requires `t_late ≥ 0.65` AND
+  `t_late ≥ t_early − 0.05` (non-degradation), reported as
+  **LEARNED-AT-CEILING**, and the teaching claim rests entirely on
+  MOTHER-TAUGHT. A ceiling is reported, never silently passed or failed.
+- **MOTHER-TAUGHT:** unchanged — `taught late ≥ no_feed late + 0.20`,
+  computable only when the control arm ran (the analyzer VOIDs otherwise,
+  post-#508).
+- **Exposure contract (S5):** both arms 12 seeds × 56 turns (4 acts × 12);
+  the analyzer reports mean recorded turns per arm and flags a >20% mismatch
+  as **EXPOSURE-FLAG** (verdict still computed, never silently pooled — the
+  v1 finding was an 86-vs-48 mother-turn asymmetry).
+- **PASS = LEARNED-v2 (or LEARNED-AT-CEILING) AND MOTHER-TAUGHT, unflagged.**
+  PASS → the graduation row re-baselines at apparatus-v2 with the v2
+  magnitudes as the new reference. The v1 outcome branches (partial → named
+  confound + pre-approved explore-weight sweep at 1.0/0.75; both-arms-chance
+  → divergence signal, bird's-eye) carry over unchanged.
+
+Scored by `analyze_cradle_mother.py`, which implements exactly this gate as
+of the same commit — the doc and the analyzer freeze together.
+
 ## Results
 
 > ### ⚠️ CONTESTED — do not cite this experiment pending resolution (2026-08-11)
