@@ -127,6 +127,52 @@ def _resolve_maxim() -> list[str]:
     return [sys.executable, "-m", "maxim"]
 
 
+def _narrator_preflight(model: str) -> str | None:
+    """Verify the narrator profile resolves to a loadable local model — with
+    the SUB-SIM's env view — before spawning run 1. Returns an error string
+    or None.
+
+    S3 (assert your own health), earned 2026-08-13: THREE campaigns completed
+    'ok' with a dead narrator — the in-process load failed (absent/mis-resolved
+    GGUF, config-layer profile override), the router fell back to
+    _llm_unavailable, and every run produced plausible-looking metronomic
+    ~712s results at \\$0. The probe runs in a subprocess with the same env
+    the sub-sims inherit, resolves the profile through the REAL
+    load_llm_config path, and requires the resolved GGUF to exist and
+    llama_cpp to import. It prints the resolved profile + path either way,
+    so a config-layer hijack (env says mistral, sub-sim loads qwen) is
+    visible at launch, not at 3am.
+    """
+    probe = (
+        "import os, sys\n"
+        "from maxim.models.language.config import load_llm_config\n"
+        "cfg = load_llm_config()\n"
+        "sys.stderr.write(f'narrator resolves to profile={cfg.profile} path={cfg.model_path}\\n')\n"
+        "if cfg.backend != 'llama_cpp':\n"
+        "    sys.stderr.write(f'ERROR: backend={cfg.backend} — this harness expects a local llama_cpp narrator\\n')\n"
+        "    sys.exit(3)\n"
+        "if not cfg.model_path or not os.path.isfile(cfg.model_path):\n"
+        "    sys.stderr.write(f'ERROR: resolved model file does not exist: {cfg.model_path!r}\\n')\n"
+        "    sys.exit(3)\n"
+        "try:\n"
+        "    import llama_cpp  # noqa: F401\n"
+        "except Exception as e:\n"
+        "    sys.stderr.write(f'ERROR: llama_cpp import failed: {e}\\n')\n"
+        "    sys.exit(3)\n"
+    )
+    env = os.environ.copy()
+    env["MAXIM_LLM_PROFILE"] = model
+    env["MAXIM_ROLE"] = "solo"
+    try:
+        r = subprocess.run([sys.executable, "-c", probe], env=env, capture_output=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        return "narrator preflight timed out (120s)"
+    sys.stderr.write(r.stderr)
+    if r.returncode != 0:
+        return f"narrator preflight failed (exit {r.returncode}) — fix the resolution above before burning a campaign"
+    return None
+
+
 def _git_hash() -> str:
     """Short git HEAD, recorded per result so a stale checkout is detectable
     (verify the results' git_hash before trusting them — the hard-won lesson)."""
@@ -346,6 +392,10 @@ def main() -> int:
         return 3
     if not args.mock:
         provenance = executed_code_provenance(repo_root, sys.executable)
+        err = _narrator_preflight(args.model)
+        if err is not None:
+            print(f"PREFLIGHT FAIL: {err}", file=sys.stderr)
+            return 3
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
