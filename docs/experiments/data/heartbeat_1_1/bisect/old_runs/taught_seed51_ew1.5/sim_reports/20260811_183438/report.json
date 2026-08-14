@@ -1,0 +1,131 @@
+{
+  "session_id": "20260811_183438",
+  "timestamp": "2026-08-11 18:57:27",
+  "goal": "cradle_mother",
+  "persona": "adversarial",
+  "language_model": "mistral-7b-instruct-v0.2",
+  "language_provider": "local",
+  "language_backend_class": "_LlamaCppBackend",
+  "language_endpoint": "",
+  "aut_model": "",
+  "aut_provider": "",
+  "aut_backend_class": "",
+  "aut_endpoint": "",
+  "duration_s": 1369.3,
+  "turns": 48,
+  "finish_reason": "cancel",
+  "total_actions": 2273,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "infant_operant_turn_right": 1156,
+    "infant_operant_turn_left": 1117
+  },
+  "tool_success_rates": {
+    "infant_operant_turn_right": 1.0,
+    "infant_operant_turn_left": 1.0
+  },
+  "response_texts": [],
+  "aut_memories_formed": 2309,
+  "aut_causal_links": 398,
+  "aut_nac_summary": {
+    "total_links": 398,
+    "top_links": [
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "tool:infant_operant_turn_right:positive",
+        "confidence": 0.941,
+        "observations": 1156
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "success:{'entity': 'infant_operant', 'affordance': 'turn_r",
+        "confidence": 0.941,
+        "observations": 36
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "plan:causal_pos=0.99; explore=0.08:success",
+        "confidence": 0.941,
+        "observations": 36
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "success:{'entity': 'infant_operant', 'affordance': 'turn_r",
+        "confidence": 0.941,
+        "observations": 170
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "plan:causal_pos=0.99; explore=0.07:success",
+        "confidence": 0.941,
+        "observations": 170
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "lane_breakdown": {
+    "small": {
+      "lane": "small",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    },
+    "large": {
+      "lane": "large",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    }
+  },
+  "latency_p50_ms": 0.0,
+  "latency_p99_ms": 0.0,
+  "pain_events_count": 0,
+  "fear_blocks_count": 0,
+  "learn_events_count": 1131,
+  "provider_failures": {},
+  "llm_summary": "The simulation test run for the robot assistant model mistral-7b-instruct-v0.2, interacting with an adversarial persona named cradle_mother, lasted for 1369.3 seconds and consisted of 48 turns. The robot made a total of 2273 actions, none of which were blocked. The tool usage included 1156 calls to 'infant_operant_turn_right' and 1117 calls to 'infant_operant_turn_left', both with a 100% success rate.",
+  "llm_issues_found": [
+    "The simulation was cancelled after 48 turns. It is important to investigate the reason for this cancellation to ensure proper functioning of the robot assistant.",
+    "The top causal links learned by the robot indicate a strong correlation between using 'infant_operant_turn_right' and achieving success, but it would be beneficial to explore more diverse actions and causal links to improve overall performance."
+  ],
+  "llm_recommendations": [
+    "Investigate the reason for simulation cancellation and implement necessary fixes.",
+    "Expand the robot's repertoire of actions and causal links to promote versatility and adaptability in various scenarios."
+  ],
+  "llm_finish_status": "",
+  "llm_finish_reason": "",
+  "llm_finish_summary": "",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/Users/dennyschaedig/Scripts/Maxim-heartbeat-1.1/heartbeat_data/bisect/old_runs/taught_seed51_ew1.5/sim_reports/20260811_183438/bio_telemetry.jsonl",
+  "_format_version": "1.0"
+}

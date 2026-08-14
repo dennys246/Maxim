@@ -1,0 +1,1 @@
+{"experiment": "cradle_mother", "arm": "taught", "seed": 42, "explore_weight": 0.0, "mock": false, "git_hash": "f05c63aa", "fade": {"act1_early": {"turns": 12, "directedness": 0.0, "measured": 11, "fed_rate": 0.08333333333333333, "credited_rate": 0.0}}}
