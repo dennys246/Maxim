@@ -68,6 +68,60 @@ _ARM_ENV: dict[str, dict[str, str]] = {
 }
 
 
+def _acquire_single_runner_lock(lock_path: Path) -> bool:
+    """Take the single-runner lock, or refuse loudly. Ported from
+    scripts/exp44/campaign.py::acquire_campaign_lock (#494).
+
+    The 2026-08-13 Exp 48 re-baseline was contaminated by concurrent
+    harness instances sharing one workdir + out file: duplicate
+    (arm, seed) rows, per-act `turns` inflating 12 -> 24 -> 36 (each
+    instance parsing the MERGED MAXIM_LOG_FILE of the shared run dirs),
+    and byte-identical curves across "different" seeds. The launch
+    ergonomics practically guarantee the double-launch (nohup +
+    block-buffered stdout makes a fresh launch LOOK dead, so the
+    operator relaunches), so structure has to make it safe — the same
+    push-into-structure rule as the silent-no-op invariants.
+
+    O_CREAT|O_EXCL is the atomic take; the lock records the holder pid.
+    A lock whose holder is dead is stale (crash/SIGKILL) and is retaken
+    automatically. Released via atexit.
+    """
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            break
+        except FileExistsError:
+            try:
+                holder = int(lock_path.read_text().strip() or "0")
+            except (OSError, ValueError):
+                holder = 0
+            alive = False
+            if holder > 0:
+                try:
+                    os.kill(holder, 0)
+                    alive = True
+                except ProcessLookupError:
+                    alive = False
+                except PermissionError:
+                    alive = True  # pid exists, owned by someone else
+            if alive:
+                print(
+                    f"ERROR: another harness (pid {holder}) already holds {lock_path} — "
+                    "exactly one runner per workdir/out. To watch progress, tail the "
+                    "log; do NOT relaunch.",
+                    file=sys.stderr,
+                )
+                return False
+            lock_path.unlink(missing_ok=True)  # stale (holder dead) — retake
+
+    import atexit
+
+    atexit.register(lambda: lock_path.unlink(missing_ok=True))
+    return True
+
+
 def _resolve_maxim() -> list[str]:
     """Invoke maxim as a module so the caller's PYTHONPATH=src worktree wins."""
     return [sys.executable, "-m", "maxim"]
@@ -164,6 +218,18 @@ def _run_one(
     arm: str, seed: int, *, model: str, max_turns: int, timeout_s: int, workdir: Path, explore_weight: float
 ) -> dict[str, Any]:
     data_home = workdir / f"{arm}_seed{seed}_ew{explore_weight}"
+    # ALWAYS a fresh sandbox (2026-08-13 contamination post-mortem): reusing a
+    # prior attempt's dir poisons the run through TWO channels — MAXIM_LOG_FILE
+    # appends, so the fade parse reads the MERGED telemetry of every attempt
+    # (turns 12 -> 24 -> 36); and MAXIM_DATA_HOME persists the substrate, so a
+    # re-run RESUMES the prior attempt's NAc (#446 cross-session persistence)
+    # and the "infant" starts pre-trained. Reaching here with an existing dir
+    # means a prior attempt never recorded its row (crash/timeout/kill) — a
+    # clean retry is the only valid semantics.
+    if data_home.exists():
+        import shutil
+
+        shutil.rmtree(data_home)
     data_home.mkdir(parents=True, exist_ok=True)
     src_models = Path(os.path.expanduser("~/.maxim/models"))
     link = data_home / "models"
@@ -283,6 +349,16 @@ def main() -> int:
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    # A second campaign appending to an existing out file contaminates it
+    # (duplicate (arm, seed) rows the analyzer pools as extra trials).
+    # Continuing a campaign is what --resume is for.
+    if out_path.exists() and out_path.stat().st_size > 0 and not args.resume:
+        print(
+            f"ERROR: {out_path} already has rows — appending a second campaign "
+            "contaminates it. Use --resume to continue it, or a new --out path.",
+            file=sys.stderr,
+        )
+        return 6
     done: set[tuple[str, int, float]] = set()
     if args.resume and out_path.exists():
         for line in out_path.read_text().splitlines():
@@ -294,6 +370,22 @@ def main() -> int:
 
     workdir = Path(args.workdir)
     workdir.mkdir(parents=True, exist_ok=True)
+    # Single-runner locks on BOTH shared surfaces (S8): the workdir (shared
+    # run sandboxes/logs) and the out file (the append surface). A relaunch
+    # becomes a loud refusal naming the holder pid instead of a silent
+    # contamination.
+    if not _acquire_single_runner_lock(workdir / "harness.lock"):
+        return 6
+    if not _acquire_single_runner_lock(Path(str(out_path) + ".lock")):
+        return 6
+    # Flushed immediately: under nohup with redirected stdout, Python
+    # block-buffers and the log looks dead for the first ~25-min run —
+    # which is precisely what tempts the operator into relaunching.
+    print(
+        f"harness pid {os.getpid()} holding locks — arms={arms} trials={args.trials} "
+        f"ew={args.explore_weight} -> {out_path} (first per-run line in ~20-45 min)",
+        flush=True,
+    )
     n_ok = n_fail = 0
     import time as _t
 
@@ -318,6 +410,16 @@ def main() -> int:
                             explore_weight=args.explore_weight,
                         )
                     )
+                    # S3 (assert your own health): a truncated run (sub-sim
+                    # died early) must be a FAIL, not an ok row with missing
+                    # acts — the analyzer pools per act, so a partial row
+                    # silently skews the bins it does have.
+                    _acts = ("act1_early", "act2_warming", "act3_consolidating", "act4_autonomous")
+                    _missing = [a for a in _acts if a not in fade]
+                    if _missing:
+                        raise RuntimeError(
+                            f"incomplete fade — sub-sim ended early, missing acts {_missing}; not recording a partial row"
+                        )
                     rec = {
                         "experiment": "cradle_mother",
                         "arm": arm,
@@ -347,7 +449,7 @@ def main() -> int:
                         f"{a.split('_')[0]}:{v['directedness']:.2f}" for a, v in sorted(fade.items())
                     )
                     dt = (_t.monotonic() - t0) if hasattr(_t, "monotonic") else 0
-                    print(f"ok {arm} seed={seed} directed[{acts_summary}] ({dt:.0f}s)")
+                    print(f"ok {arm} seed={seed} directed[{acts_summary}] ({dt:.0f}s)", flush=True)
                 except Exception as e:  # noqa: BLE001 — one run's failure must not kill the sweep
                     n_fail += 1
                     print(f"FAIL {arm} seed={seed}: {e}", file=sys.stderr)
