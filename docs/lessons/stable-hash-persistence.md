@@ -1,0 +1,10 @@
+# Values that cross a persistence boundary MUST be hashed with `utils/seeding.py::stable_hash_32` / `stable_hash_64_signed
+
+**Archived from CLAUDE.md on 2026-08-13** (claude_md_diet Stage 1). The enforced rule
+survives as a compressed stub — in the slim CLAUDE.md core or in the owning
+`docs/agents/<subsystem>.md` brief (see CLAUDE.md's routing table). This file preserves
+the full original narrative: incident history, dates, PR numbers, dead-end hypotheses.
+
+---
+
+- **[engineering] Values that cross a persistence boundary MUST be hashed with `utils/seeding.py::stable_hash_32` / `stable_hash_64_signed`, never builtin `hash()`** (nac_cross_session_persistence.md Step 0, 2026-07-30). Python's str hash is randomized per process (PYTHONHASHSEED); a persisted hash can never match one recomputed after a restart — measured: identical-situation `SituationSignature.similarity` fell 0.825 → 0.425 across a process boundary (straddling NAc's `min_similarity=0.5` EC gate, so causal-link matches silently dropped out via `--resume-sim`), and a reloaded `SimilarityIndex` reported `len==1` but returned `[]` for the exact text it stored (also the root cause of the ~2.5% CI flake in `test_context_index.py::test_similar_text_found`). Five sites converted: `similarity/signature.py` (structural/context hash), `memory/context_index.py` (MinHash), `similarity/lsh.py::SemanticLSH.hash` + `similarity/semantic.py::_fallback_hash` (both took a `seed` PARAMETER that routed through randomized `hash()` anyway — looking deterministic is not being deterministic), and `decisions/nac.py::_register_causal_in_ec`. Sum-then-branch-on-sign sites use the SIGNED 64-bit variant (an unsigned digest collapses every hyperplane bit to 1). Persisted files carry a `hash_scheme: "stable-sha256-v1"` marker; loaders WARN when it is absent (pre-fix files' hashes are permanently dead). A same-process test passes over this entire bug class — the guard MUST be two-process with differing PYTHONHASHSEED. Regression guard: [tests/unit/test_stable_hash_two_process.py](tests/unit/test_stable_hash_two_process.py) (verified to fail 5/5 against the pre-fix code).

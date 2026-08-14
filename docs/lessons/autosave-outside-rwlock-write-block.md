@@ -1,0 +1,10 @@
+# Auto-save must not run under the hippocampus RWLock write block — read-lock-under-write self-deadlocks
+
+**Archived from CLAUDE.md on 2026-08-13** (claude_md_diet Stage 1). The enforced rule
+survives as a compressed stub — in the slim CLAUDE.md core or in the owning
+`docs/agents/<subsystem>.md` brief (see CLAUDE.md's routing table). This file preserves
+the full original narrative: incident history, dates, PR numbers, dead-end hypotheses.
+
+---
+
+**[engineering] Auto-save must not run under the hippocampus RWLock write block — read-lock-under-write self-deadlocks** (HANDLE seam part a, PR #428, 2026-07-26): the pre-fix `ConsolidationMixin._sleep` / `_sleep_with_clustering` called `save_with_backup` (→ `dump`, which takes a READ lock) INSIDE `with self._rwlock.write():`. `memory/rwlock.py` is non-reentrant, so the consolidating thread parked forever — no exception, no log, just a hung session end. Masked in CI because `tests/conftest.py` sets `auto_save_after_sleep=False`; production-reachable by ANY hippocampus with `auto_save_after_sleep=True` (the default) + a live `persistence_path` — i.e. every persistent agent's full consolidation. Fix: auto-save hoisted into the public `sleep()` / `sleep_with_clustering()` wrappers AFTER the write block releases; NOTE tombstones at the old internal sites forbid re-adding it. **Rule:** before calling anything inside a held write block on a non-reentrant RWLock, audit the callee chain for ANY lock acquisition (save → dump → `read()`); a lock-taking persistence call belongs in the public wrapper after release. Corollary: a conftest fixture that globally disables a default-on config flag is a CI blind-spot signal — the disabled combination is exactly where the untested deadlock lived. Regression guard: [tests/integration/test_persistent_agent_campaign.py](tests/integration/test_persistent_agent_campaign.py) (`test_sleep_with_autosave_does_not_deadlock` — sleep runs in a thread with a bounded join, so a regression fails fast instead of hanging the suite).
