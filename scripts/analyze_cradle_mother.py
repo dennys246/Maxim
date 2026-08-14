@@ -10,12 +10,17 @@ places the sound but never feeds/credits) stays at chance — it has no teacher.
 Metric: per time-bin ("act"), ``directedness`` = fraction of turns the infant
 turned TOWARD the sound (progress > 0). Logged in both arms.
 
-Verdict:
-  LEARNED       : taught LATE-bin directedness ≥ 0.65 AND rose from the EARLY bin
-                  by ≥ 0.15 (it learned over the session, not innate — with the
-                  drive removed, early should sit near chance).
+Verdict (GATE V2 — re-pre-registered 2026-08-14, frozen pre-data; see
+48_cradle_mother_seam.md §Gate v2. Do NOT retune post-hoc):
+  LEARNED       : taught LATE-bin (act3+act4) directedness ≥ 0.65 AND rose
+                  ≥ 0.15 from the EARLY bin (act1 ONLY — v1's mean(act1,act2)
+                  folded learned act2 behavior into the baseline).
+  CEILING (S7)  : early ≥ 0.65 makes the rise unattainable → LEARNED-AT-CEILING
+                  (late ≥ 0.65 + non-degradation), reported explicitly; the
+                  teaching claim then rests on MOTHER-TAUGHT.
   MOTHER-TAUGHT : taught late ≥ no_feed late + 0.20 (the mother is WHY — remove
-                  her and the infant stays at chance).
+                  her and the infant stays at chance). VOID if the control
+                  never ran; exposure skew >20% turns → EXPOSURE-FLAG (exit 7).
 """
 
 from __future__ import annotations
