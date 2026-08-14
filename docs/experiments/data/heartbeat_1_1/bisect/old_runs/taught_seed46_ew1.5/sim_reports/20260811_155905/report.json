@@ -1,0 +1,132 @@
+{
+  "session_id": "20260811_155905",
+  "timestamp": "2026-08-11 16:36:53",
+  "goal": "cradle_mother",
+  "persona": "adversarial",
+  "language_model": "mistral-7b-instruct-v0.2",
+  "language_provider": "local",
+  "language_backend_class": "_LlamaCppBackend",
+  "language_endpoint": "",
+  "aut_model": "",
+  "aut_provider": "",
+  "aut_backend_class": "",
+  "aut_endpoint": "",
+  "duration_s": 2268.0,
+  "turns": 48,
+  "finish_reason": "cancel",
+  "total_actions": 3410,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "infant_operant_turn_right": 1726,
+    "infant_operant_turn_left": 1684
+  },
+  "tool_success_rates": {
+    "infant_operant_turn_right": 1.0,
+    "infant_operant_turn_left": 1.0
+  },
+  "response_texts": [],
+  "aut_memories_formed": 4019,
+  "aut_causal_links": 710,
+  "aut_nac_summary": {
+    "total_links": 710,
+    "top_links": [
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "tool:infant_operant_turn_right:positive",
+        "confidence": 0.941,
+        "observations": 1726
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "success:{'entity': 'infant_operant', 'affordance': 'turn_r",
+        "confidence": 0.941,
+        "observations": 106
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "plan:causal_pos=0.99; explore=0.07:success",
+        "confidence": 0.941,
+        "observations": 106
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "success:{'entity': 'infant_operant', 'affordance': 'turn_r",
+        "confidence": 0.941,
+        "observations": 130
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "plan:causal_pos=0.99; explore=0.06:success",
+        "confidence": 0.941,
+        "observations": 130
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "lane_breakdown": {
+    "small": {
+      "lane": "small",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    },
+    "large": {
+      "lane": "large",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    }
+  },
+  "latency_p50_ms": 0.0,
+  "latency_p99_ms": 0.0,
+  "pain_events_count": 0,
+  "fear_blocks_count": 0,
+  "learn_events_count": 3809,
+  "provider_failures": {},
+  "llm_summary": "The simulation test run for the robot assistant model mistral-7b-instruct-v0.2, with an adversarial persona, lasted for 2268 seconds and completed 48 turns without any blocked actions. The robot made a total of 3410 actions, primarily using the infant_operant_turn_right tool with 100% success rate. The cognitive state analysis revealed that the robot formed 4019 episodic memories and learned 710 causal links, with the most significant link being between the turn_right tool and its successful usage.",
+  "llm_issues_found": [
+    "The simulation was canceled after completing 48 turns, which might indicate an issue with the test scenario or the robot's ability to complete tasks within a reasonable timeframe. Further investigation is needed to determine if this is a recurring problem or an isolated incident.",
+    "There were no reported bugs or errors during the simulation run."
+  ],
+  "llm_recommendations": [
+    "Increase the complexity and diversity of test scenarios to challenge the robot's ability to learn and adapt, ensuring that it can handle various situations.",
+    "Improve the simulation environment by adding more realistic obstacles and distractions to better reflect real-world conditions and help the robot develop robust problem-solving skills.",
+    "Incorporate feedback mechanisms to provide the robot with constructive criticism and suggestions for improvement, enabling it to learn from its mistakes and enhance its performance."
+  ],
+  "llm_finish_status": "",
+  "llm_finish_reason": "",
+  "llm_finish_summary": "",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/Users/dennyschaedig/Scripts/Maxim-heartbeat-1.1/heartbeat_data/bisect/old_runs/taught_seed46_ew1.5/sim_reports/20260811_155905/bio_telemetry.jsonl",
+  "_format_version": "1.0"
+}

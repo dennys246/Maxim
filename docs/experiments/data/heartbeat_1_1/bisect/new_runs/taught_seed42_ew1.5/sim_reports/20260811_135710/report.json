@@ -1,0 +1,131 @@
+{
+  "session_id": "20260811_135710",
+  "timestamp": "2026-08-11 14:25:37",
+  "goal": "cradle_mother",
+  "mode": "generative",
+  "language_model": "mistral-7b-instruct-v0.2",
+  "language_provider": "local",
+  "language_backend_class": "_LlamaCppBackend",
+  "language_endpoint": "",
+  "aut_model": "",
+  "aut_provider": "",
+  "aut_backend_class": "",
+  "aut_endpoint": "",
+  "duration_s": 1706.9,
+  "turns": 48,
+  "finish_reason": "cancel",
+  "total_actions": 2820,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "infant_operant_turn_right": 1432,
+    "infant_operant_turn_left": 1388
+  },
+  "tool_success_rates": {
+    "infant_operant_turn_right": 1.0,
+    "infant_operant_turn_left": 1.0
+  },
+  "response_texts": [],
+  "aut_memories_formed": 2966,
+  "aut_causal_links": 478,
+  "aut_nac_summary": {
+    "total_links": 478,
+    "top_links": [
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "tool:infant_operant_turn_right:positive",
+        "confidence": 0.941,
+        "observations": 1432
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "success:{'entity': 'infant_operant', 'affordance': 'turn_r",
+        "confidence": 0.941,
+        "observations": 181
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "plan:causal_pos=0.99; explore=0.07:success",
+        "confidence": 0.941,
+        "observations": 181
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "success:{'entity': 'infant_operant', 'affordance': 'turn_r",
+        "confidence": 0.941,
+        "observations": 58
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "plan:causal_pos=0.99; cluster_bias[audio]=+0.11; explore=0.07:success",
+        "confidence": 0.941,
+        "observations": 58
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "lane_breakdown": {
+    "small": {
+      "lane": "small",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    },
+    "large": {
+      "lane": "large",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    }
+  },
+  "latency_p50_ms": 0.0,
+  "latency_p99_ms": 0.0,
+  "pain_events_count": 0,
+  "fear_blocks_count": 0,
+  "learn_events_count": 510,
+  "provider_failures": {},
+  "llm_summary": "The simulation test run of the robot assistant model mistral-7b-instruct-v0.2, using LlamaCppBackend and generative mode, lasted for 1706.9 seconds and completed 48 turns before being canceled. The robot made a total of 2820 actions, all of which were successful. The infant_operant_turn_right tool was used 1432 times with a 100% success rate, and the infant_operant_turn_left tool was used 1388 times also with a 100% success rate.",
+  "llm_issues_found": [
+    "The simulation was canceled before reaching its intended goal or completion. This may indicate an issue with the model's ability to handle complex tasks or reach desired outcomes within a reasonable timeframe.",
+    "It is concerning that no negative causal links were learned during this test run. The absence of negative causal links might limit the robot's ability to learn from mistakes and adapt to new situations."
+  ],
+  "llm_recommendations": [
+    "Increase the complexity of tasks given to the robot during simulation tests to evaluate its ability to handle more challenging scenarios.",
+    "Introduce negative causal links in the training data or modify the simulation environment to allow for learning from mistakes and failure scenarios. This will help the robot develop a more comprehensive understanding of cause-and-effect relationships."
+  ],
+  "llm_finish_status": "",
+  "llm_finish_reason": "",
+  "llm_finish_summary": "",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/Users/dennyschaedig/Scripts/Maxim-heartbeat-1.1/heartbeat_data/bisect/new_runs/taught_seed42_ew1.5/sim_reports/20260811_135710/bio_telemetry.jsonl",
+  "_format_version": "1.0"
+}

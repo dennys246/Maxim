@@ -1,0 +1,133 @@
+{
+  "session_id": "20260812_001448",
+  "timestamp": "2026-08-12 00:44:24",
+  "goal": "cradle_mother",
+  "mode": "generative",
+  "language_model": "mistral-7b-instruct-v0.2",
+  "language_provider": "local",
+  "language_backend_class": "_LlamaCppBackend",
+  "language_endpoint": "",
+  "aut_model": "",
+  "aut_provider": "",
+  "aut_backend_class": "",
+  "aut_endpoint": "",
+  "duration_s": 1775.8,
+  "turns": 48,
+  "finish_reason": "cancel",
+  "total_actions": 2353,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "infant_operant_turn_right": 2352,
+    "infant_operant_turn_left": 1
+  },
+  "tool_success_rates": {
+    "infant_operant_turn_right": 1.0,
+    "infant_operant_turn_left": 1.0
+  },
+  "response_texts": [],
+  "aut_memories_formed": 2658,
+  "aut_causal_links": 56,
+  "aut_nac_summary": {
+    "total_links": 56,
+    "top_links": [
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "tool:infant_operant_turn_right:positive",
+        "confidence": 0.941,
+        "observations": 2352
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "success:{'entity': 'infant_operant', 'affordance': 'turn_r",
+        "confidence": 0.941,
+        "observations": 2319
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "plan:causal_pos=0.99; explore=0.01:success",
+        "confidence": 0.941,
+        "observations": 2319
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "success:{'entity': 'infant_operant', 'affordance': 'turn_r",
+        "confidence": 0.76,
+        "observations": 9
+      },
+      {
+        "event": "tool:infant_operant_turn_right",
+        "outcome": "plan:causal_pos=0.99; explore=0.02:success",
+        "confidence": 0.76,
+        "observations": 9
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "lane_breakdown": {
+    "small": {
+      "lane": "small",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    },
+    "large": {
+      "lane": "large",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    }
+  },
+  "latency_p50_ms": 0.0,
+  "latency_p99_ms": 0.0,
+  "pain_events_count": 0,
+  "fear_blocks_count": 0,
+  "learn_events_count": 94,
+  "provider_failures": {},
+  "llm_summary": "The simulation test run of the robot assistant model 'mistral-7b-instruct-v0.2' in generative mode lasted for 1775.8 seconds and completed 48 turns before being canceled. The robot made a total of 2353 actions, all of which were successful except for one turn left operation. The tool 'infant_operant_turn_right' was used extensively with 100% success rate. The robot formed 2658 episodic memories and learned 56 causal links, with the most frequent link being the positive association between using the 'infant_operant_turn_right' tool and its successful execution.",
+  "llm_issues_found": [
+    "The simulation was canceled before completion which might have affected the overall performance evaluation. It is recommended to run the test for a complete cycle to get accurate results.",
+    "Only one type of tool, 'infant_operant_turn_right', was used in this test. Introducing more diverse tools and observing how the robot interacts with them can provide valuable insights.",
+    "The causal links learned by the robot were not thoroughly analyzed in this report. A deeper investigation into these links could reveal potential improvements or areas for optimization."
+  ],
+  "llm_recommendations": [
+    "Run a complete simulation cycle to get accurate performance evaluation.",
+    "Introduce more diverse tools and observe how the robot interacts with them.",
+    "Perform a thorough analysis of the causal links learned by the robot to identify potential improvements or areas for optimization."
+  ],
+  "llm_finish_status": "",
+  "llm_finish_reason": "",
+  "llm_finish_summary": "",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/Users/dennyschaedig/Scripts/Maxim-heartbeat-1.1/heartbeat_data/sweep/ew0.4_runs/no_feed_seed43_ew0.4/sim_reports/20260812_001448/bio_telemetry.jsonl",
+  "_format_version": "1.0"
+}
