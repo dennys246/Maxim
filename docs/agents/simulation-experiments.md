@@ -66,6 +66,7 @@ Core retains the three session-killing bullets (`--interactive false` from scrip
 - **`safe_pref` in Exp 42/42b is saturated** (SD 0.000) — it supports "did not break discrimination" but cannot detect a moderate regression; a future degradation arm needs a more sensitive statistic (S7's motivating case).
 - **The cradle_mother operant embodied DEMO is Dormant** (measured at chance embodied; the operant claim was validated on the scripted substrate, `scripts/orient_substrate/4-7` + docs/experiments/46). Its three env toggles below are default-OFF/inert and support the dormant demo only.
 - **Imagination distractors break controlled A/Bs**: LLM-primary AUTs engage improvised entities (merchant/book/pedestal) unless `MAXIM_DISABLE_IMAGINATION=1`. That flag does NOT gate narrator prose — use the fixture path for full scene determinism.
+- **ComponentIndex implementation constraints** (`embodiment/component_index.py`): reuses the `similarity.encoder._get_encoder` singleton (no duplicate embedding model); persistence is `.npy` + `.json` sidecar (no pickle); thread-safe via RLock; two-layer discovery = alias hash table (from `component.synonyms`, O(1)) + embedding cosine (threshold 0.65).
 - **Substrate-primary harness runs MUST pass `--embodiment bodies/infant_humanoid`** with `--aut-mode substrate-primary`.
 - `scripts/analyze_exp37.py --out` overwrites its target.
 - Opt-in experiment env vars in hot startup paths need autouse conftest scrubs in the same commit (see core cross-cutting rules); every var below lists its scrub.
