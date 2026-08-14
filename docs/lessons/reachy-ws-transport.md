@@ -1,0 +1,10 @@
+# Reachy Mini transport is WS-era (SDK >= 1.5): control = `ws://<host>:8000/ws/sdk`, liveness = `GET /api/daemon/status`, 
+
+**Archived from CLAUDE.md on 2026-08-13** (claude_md_diet Stage 1). The enforced rule
+survives as a compressed stub — in the slim CLAUDE.md core or in the owning
+`docs/agents/<subsystem>.md` brief (see CLAUDE.md's routing table). This file preserves
+the full original narrative: incident history, dates, PR numbers, dead-end hypotheses.
+
+---
+
+- **[engineering] Reachy Mini transport is WS-era (SDK >= 1.5): control = `ws://<host>:8000/ws/sdk`, liveness = `GET /api/daemon/status`, network DoA = `GET /api/state/doa`** (2026-07-15 hardware-validated pivot fold; Pollen removed zenoh in SDK v1.5.0, PR #858). Never re-introduce zenoh `:7447` probes/tunnels, multicast-discovery debugging, or client-side `mini.media.get_DoA()` for off-robot consumers (local-USB read — onboard only). Client and daemon MUST be on the same side of the v1.5.0 pivot — after any robot reflash, version-match FIRST (`curl http://<robot>:8000/api/daemon/status` vs `importlib.metadata.version("reachy-mini")`; pre-1.5 SDKs have no `__version__` attribute, so package metadata is the only cross-era probe). `ReachyMiniController.connect()` era-gates on this and fails loud with the upgrade hint. Torque is a separate explicit gate: the daemon boots `--no-wake-up-on-start` and `wake_up()` no longer enables torque — motion silently no-ops while reads work unless `enable_motors()` runs first (the controller's `wake_up()` does this). `goto_target(head=...)` takes a 4x4 pose matrix (zenoh-era euler tuples flatten to 3 where the daemon expects 16). Full guide: [docs/embodiment/reachy_mini/](docs/embodiment/reachy_mini/README.md). Regression guard: [tests/unit/test_reachy_connection_options.py](tests/unit/test_reachy_connection_options.py) (WS-era pins: probe :8000 not :7447, host/port threading, tunnel :8000 retarget, era gate fails loud) + ad-hoc `grep -rn "7447" src/maxim/` must match only historical comments.

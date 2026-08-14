@@ -1,0 +1,10 @@
+# `runtime/bootstrap.py::build_default_network` is the canonical DefaultNetwork construction site
+
+**Archived from CLAUDE.md on 2026-08-13** (claude_md_diet Stage 1). The enforced rule
+survives as a compressed stub — in the slim CLAUDE.md core or in the owning
+`docs/agents/<subsystem>.md` brief (see CLAUDE.md's routing table). This file preserves
+the full original narrative: incident history, dates, PR numbers, dead-end hypotheses.
+
+---
+
+- **[engineering] `runtime/bootstrap.py::build_default_network` is the canonical DefaultNetwork construction site** (Wave 2 of biosystem_unification, 2026-04-16). Layer 4 → Layer 5 upgrade: `nac` is now REQUIRED keyword-only; forgetting it is a `TypeError`. Pass `None` to explicitly opt out. `maxim=None` is the headless/sim opt-out — DN still provides pain detection + novelty tracking without motor control (previous version returned `None` early, which was wrong for sim). `pain_bus=` parameter closes Gap B from `pain_bus_unification.md`: when provided, DN uses the injected bus (which already has hippocampus + NAc subscribers from `build_pain_bus`) instead of constructing its own internally. This inverts DN from bus **constructor** to bus **consumer**, closing the split-subscriber-ownership problem where hippocampus was wired externally at `agentic_runtime.py:719`. Exception handling narrowed: `ImportError` → `None` + warning (optional dep); config/type errors propagate. `config=` parameter accepts pre-built `DefaultNetworkConfig` (sim mode) with precedence over `config_path=`. Two production callers: `agentic_runtime.py` (Reachy robot path — injects PainBus) and `simulation/orchestrator.py` (sim path — injects aut_pain_bus, `maxim=None`). CLI non-sim and api.py headless are explicit opt-outs (no DN — no robot → no vision → no reactive behaviors; documented per Gaps D+E). See [docs/plans/archive/default_network_unification.md](docs/plans/archive/default_network_unification.md). Regression guard: [src/maxim/runtime/bootstrap.py::build_default_network](src/maxim/runtime/bootstrap.py) — required keyword-only `nac=` parameter.
