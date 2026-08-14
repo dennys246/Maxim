@@ -1,15 +1,30 @@
 #!/usr/bin/env python3
-"""Lint CLAUDE.md to enforce Principle 5 (regression-guard / experiment citation per invariant).
+"""Lint CLAUDE.md + docs/agents/ briefs to enforce Principle 5 and the claude_md_diet contract.
 
-For each `[engineering]` invariant in the "Lessons learned" and "Architectural invariants"
-sections, the body must contain a `Regression guard:` reference. For each `[behavioral]`
-invariant, the body must contain a `Roy experiment:` reference.
+Three checks (the first is the original Principle 5 lint; the other two were added by
+docs/plans/claude_md_diet.md, 2026-08-13):
 
-Missing references are visible coverage gaps by design (per CLAUDE.md Principle 5) and fail
-the lint. Plural-tolerant matching ("Regression guards" / "Roy experiments" both count).
+1. **Guard citations.** For each `[engineering]` invariant, the body must contain a
+   `Regression guard:` reference; for each `[behavioral]` invariant, a `Roy experiment:`
+   reference. In CLAUDE.md the audit covers the "Lessons learned" and "Architectural
+   invariants" sections (as always); in `docs/agents/*.md` (the per-subsystem working
+   briefs) EVERY tagged opener anywhere in the file is audited — briefs carry relocated
+   invariant stubs and get no section exemption.
+   Missing references are visible coverage gaps by design and fail the lint.
+   Plural-tolerant matching ("Regression guards" / "Roy experiments" both count).
+
+2. **Token ceiling.** CLAUDE.md must stay under ~12K estimated tokens (`len(text) // 4`,
+   the same chars-per-token estimate family the proxy admission gate uses — deliberately
+   dependency-free). The diet target is ≤10K; the ceiling has headroom so the ledger
+   cannot silently regrow to its pre-2026-08 ~63K-token size.
+
+3. **Link existence.** Every markdown link in CLAUDE.md and the briefs whose target is a
+   repo-relative path (notably the `docs/lessons/<slug>.md` archive links the compressed
+   stubs point at) must resolve to an existing file. External URLs and paths escaping the
+   repo root are skipped.
 
 Exits:
-  0 — all tagged invariants in target sections carry the required field.
+  0 — all checks pass.
   1 — one or more violations; details printed to stderr.
   2 — CLAUDE.md missing or unreadable.
 
@@ -28,6 +43,11 @@ BEH_FIELD_PATTERN = re.compile(r"roy\s+experiments?\s*:", re.IGNORECASE)
 
 # Sections to audit. Section ends at the next "## " header.
 TARGET_SECTIONS = ("## Lessons learned", "## Architectural invariants")
+
+# claude_md_diet: CLAUDE.md must not regrow. Estimate is chars/4 (dependency-free).
+TOKEN_CEILING = 12_000
+
+MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 
 # Invariant opener: line starts with optional bullet prefix, then **[engineering] or **[behavioral].
 # Lessons learned uses no bullet; Architectural invariants uses "- ".
@@ -53,20 +73,15 @@ def _title_snippet(line: str, max_chars: int = 80) -> str:
     return (stripped[: max_chars - 1] + "…") if len(stripped) > max_chars else stripped
 
 
-def lint(claude_md_path: Path) -> int:
-    if not claude_md_path.exists():
-        print(f"ERROR: {claude_md_path} does not exist", file=sys.stderr)
-        return 2
+def _collect_guard_violations(lines: list[str], *, audit_whole_file: bool) -> list[tuple[int, str, str, str]]:
+    """Return (line_num, tag, title, missing_field) violations for one document.
 
-    try:
-        lines = claude_md_path.read_text().split("\n")
-    except OSError as exc:
-        print(f"ERROR: failed to read {claude_md_path}: {exc}", file=sys.stderr)
-        return 2
+    audit_whole_file=False keeps the original CLAUDE.md behavior (only the
+    TARGET_SECTIONS are audited); True audits every tagged opener (briefs).
+    """
+    violations: list[tuple[int, str, str, str]] = []
 
-    violations: list[tuple[int, str, str, str]] = []  # (line_num, tag, title, missing_field)
-
-    in_target = False
+    in_target = audit_whole_file
     opener_line: int | None = None
     current_tag: str | None = None
     current_title: str | None = None
@@ -90,7 +105,8 @@ def lint(claude_md_path: Path) -> int:
         # Section header — flush + flip in/out of target.
         if line.startswith("## "):
             flush()
-            in_target = any(line.startswith(h) for h in TARGET_SECTIONS)
+            if not audit_whole_file:
+                in_target = any(line.startswith(h) for h in TARGET_SECTIONS)
             continue
 
         if not in_target:
@@ -107,8 +123,10 @@ def lint(claude_md_path: Path) -> int:
             opener_line = i
             continue
 
-        # Blank line ends the body (most invariants are single-paragraph).
-        if current_tag is not None and line.strip() == "":
+        # In CLAUDE.md a blank line ends the body (invariants are single-paragraph).
+        # In briefs (audit_whole_file) merged stubs are legitimately multi-paragraph —
+        # the body extends to the next tagged opener or header instead.
+        if current_tag is not None and line.strip() == "" and not audit_whole_file:
             flush()
             continue
 
@@ -117,24 +135,99 @@ def lint(claude_md_path: Path) -> int:
             current_body.append(line)
 
     flush()
+    return violations
 
-    if not violations:
-        print(f"PASS: all tagged invariants in {claude_md_path.name} carry the required field.")
-        return 0
 
-    print(f"FAIL: {len(violations)} invariant(s) missing required field per CLAUDE.md Principle 5.", file=sys.stderr)
-    print(file=sys.stderr)
-    for line_num, tag, title, missing in violations:
-        print(f"  CLAUDE.md:{line_num}: [{tag}] missing '{missing}' field", file=sys.stderr)
-        print(f"    title: {title}", file=sys.stderr)
-        print(file=sys.stderr)
+def _broken_repo_links(doc_path: Path, repo_root: Path) -> list[tuple[int, str]]:
+    """(line_num, target) for markdown links to repo-relative paths that don't exist."""
+    broken: list[tuple[int, str]] = []
+    for i, line in enumerate(doc_path.read_text().split("\n"), start=1):
+        for m in MARKDOWN_LINK.finditer(line):
+            target = m.group(1).split("#")[0]
+            if not target or "://" in target or target.startswith("mailto:"):
+                continue
+            # Guard lines are copied byte-exact from CLAUDE.md (repo-root-relative paths),
+            # so accept a link if it resolves relative to EITHER the containing file's
+            # directory (standard markdown) or the repo root (the CLAUDE.md convention).
+            if target.startswith("/"):
+                candidates = [Path(target)]
+            else:
+                candidates = [(doc_path.parent / target).resolve(), (repo_root / target).resolve()]
+            inside = [p for p in candidates if p.is_relative_to(repo_root)]
+            if not inside:
+                continue  # e.g. links into ~/.claude memory — out of lint scope
+            if not any(p.exists() for p in inside):
+                broken.append((i, m.group(1)))
+    return broken
+
+
+def lint(claude_md_path: Path) -> int:
+    if not claude_md_path.exists():
+        print(f"ERROR: {claude_md_path} does not exist", file=sys.stderr)
+        return 2
+
+    try:
+        text = claude_md_path.read_text()
+    except OSError as exc:
+        print(f"ERROR: failed to read {claude_md_path}: {exc}", file=sys.stderr)
+        return 2
+
+    repo_root = claude_md_path.parent
+    failed = False
+
+    # Check 1 — guard citations, CLAUDE.md (target sections) + docs/agents briefs (whole file).
+    docs: list[tuple[Path, bool]] = [(claude_md_path, False)]
+    docs += [(p, True) for p in sorted((repo_root / "docs" / "agents").glob("*.md"))]
+    n_docs = 0
+    for doc, whole in docs:
+        n_docs += 1
+        violations = _collect_guard_violations(doc.read_text().split("\n"), audit_whole_file=whole)
+        if violations:
+            failed = True
+            rel = doc.relative_to(repo_root)
+            print(
+                f"FAIL: {len(violations)} invariant(s) in {rel} missing required field per CLAUDE.md Principle 5.",
+                file=sys.stderr,
+            )
+            for line_num, tag, title, missing in violations:
+                print(f"  {rel}:{line_num}: [{tag}] missing '{missing}' field", file=sys.stderr)
+                print(f"    title: {title}", file=sys.stderr)
+
+    # Check 2 — token ceiling on CLAUDE.md (chars/4 estimate; see module docstring).
+    est_tokens = len(text) // 4
+    if est_tokens > TOKEN_CEILING:
+        failed = True
+        print(
+            f"FAIL: CLAUDE.md is ~{est_tokens} estimated tokens (> ceiling {TOKEN_CEILING}). "
+            "Per docs/plans/claude_md_diet.md the core must not regrow: move the new entry's "
+            "full prose to docs/lessons/<slug>.md and its stub to the owning docs/agents/ brief.",
+            file=sys.stderr,
+        )
+
+    # Check 3 — repo-relative markdown links must resolve (CLAUDE.md + briefs).
+    for doc, _ in docs:
+        broken = _broken_repo_links(doc, repo_root)
+        if broken:
+            failed = True
+            rel = doc.relative_to(repo_root)
+            print(f"FAIL: {len(broken)} broken repo-relative link(s) in {rel}:", file=sys.stderr)
+            for line_num, target in broken:
+                print(f"  {rel}:{line_num}: {target}", file=sys.stderr)
+
+    if failed:
+        print(
+            "\nSee CLAUDE.md 'Working principles for new mechanisms' Principle 5 for the format "
+            "convention.\nEach [engineering] invariant declares 'Regression guard: <path>' at the "
+            "end of its body;\neach [behavioral] invariant declares 'Roy experiment: <path>'.",
+            file=sys.stderr,
+        )
+        return 1
+
     print(
-        "See CLAUDE.md 'Working principles for new mechanisms' Principle 5 for the format convention.\n"
-        "Each [engineering] invariant declares 'Regression guard: <path>' at the end of its body;\n"
-        "each [behavioral] invariant declares 'Roy experiment: <path>'.",
-        file=sys.stderr,
+        f"PASS: {n_docs} doc(s) audited — all tagged invariants carry the required field, "
+        f"CLAUDE.md ~{est_tokens} est. tokens (ceiling {TOKEN_CEILING}), all repo links resolve."
     )
-    return 1
+    return 0
 
 
 def main() -> int:
