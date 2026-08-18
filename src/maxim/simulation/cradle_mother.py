@@ -98,6 +98,17 @@ class MotherScaffold:
     thirst_ratio: float = 0.6
     stimulus_azimuths: tuple[float, ...] = ()
     speech: tuple[str, ...] = field(default_factory=lambda: DEFAULT_MOTHERESE)
+    # Stimulus ORDER (2026-08-18, the phase-lock fix): "cycle" replays
+    # stimulus_azimuths in declaration order every block — which, against a
+    # deterministic greedy agent, phase-locks the whole apparatus (directedness
+    # collapses to exact seed-invariant fractions; Exp 48 sweep finding).
+    # "shuffled" applies a seeded per-block permutation: every stimulus still
+    # appears exactly once per block (exposure contract preserved) but the
+    # order is unpredictable, dithering the measurement so directedness is a
+    # graded function of the learned policy again. Deterministic per
+    # (stimulus_seed, block) across processes (int seeding, never hash()).
+    stimulus_order: str = "cycle"
+    stimulus_seed: int = 0
 
 
 def reactive_mother_tick(
@@ -207,7 +218,16 @@ def reactive_mother_tick(
 
     # 2. STIMULUS — the mother calls from a direction this turn (world-set azimuth).
     if scaffold.stimulus_azimuths:
-        stim = scaffold.stimulus_azimuths[turn_idx % len(scaffold.stimulus_azimuths)]
+        n_stim = len(scaffold.stimulus_azimuths)
+        stim_idx = turn_idx % n_stim
+        if scaffold.stimulus_order == "shuffled":
+            import random as _random
+
+            block = turn_idx // n_stim
+            order = list(range(n_stim))
+            _random.Random(scaffold.stimulus_seed * 1000003 + block).shuffle(order)
+            stim_idx = order[stim_idx]
+        stim = scaffold.stimulus_azimuths[stim_idx]
         try:
             # Telemetry gated on the RETURN (#508 review fold): a refused or
             # sensor-less write must not record a stimulus that never landed —

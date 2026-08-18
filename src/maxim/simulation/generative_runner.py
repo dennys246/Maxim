@@ -491,6 +491,19 @@ def run_generative_campaign(
                 # so the harness selects the arm; the arc is unchanged.
                 if os.environ.get("MAXIM_CRADLE_MOTHER_DISABLE_CARE"):
                     _scaffold = replace(_scaffold, guide_strength=0.0, feed_amount=0.0)
+                # Stimulus-order toggle (the Exp 48 phase-lock fix): "shuffled"
+                # applies a seeded per-block permutation so the deterministic
+                # cycle can't phase-lock with a deterministic agent. Seeded
+                # from the run's --seed so runs stay reproducible per seed
+                # (and finally DIFFER across seeds on this apparatus).
+                if os.environ.get("MAXIM_CRADLE_MOTHER_STIMULUS_ORDER", "").strip().lower() == "shuffled":
+                    from maxim.utils.seeding import get_global_seed
+
+                    _scaffold = replace(
+                        _scaffold,
+                        stimulus_order="shuffled",
+                        stimulus_seed=int(get_global_seed() or 0),
+                    )
 
                 mtel = reactive_mother_tick(
                     embodiment,

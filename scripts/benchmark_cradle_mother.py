@@ -261,7 +261,15 @@ def _extract_fade(log_path: Path) -> dict[str, dict[str, float]]:
 
 
 def _run_one(
-    arm: str, seed: int, *, model: str, max_turns: int, timeout_s: int, workdir: Path, explore_weight: float
+    arm: str,
+    seed: int,
+    *,
+    model: str,
+    max_turns: int,
+    timeout_s: int,
+    workdir: Path,
+    explore_weight: float,
+    stimulus_order: str = "cycle",
 ) -> dict[str, Any]:
     data_home = workdir / f"{arm}_seed{seed}_ew{explore_weight}"
     # ALWAYS a fresh sandbox (2026-08-13 contamination post-mortem): reusing a
@@ -296,6 +304,7 @@ def _run_one(
     env.update(_ARM_ENV[arm])
     # CLI override wins over the arm default (explore-weight sweep).
     env["MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT"] = str(explore_weight)
+    env["MAXIM_CRADLE_MOTHER_STIMULUS_ORDER"] = stimulus_order
 
     cmd = _resolve_maxim() + [
         "--sim",
@@ -365,6 +374,15 @@ def main() -> int:
         default=1.5,
         help="MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT (sweepable). 1.5 bootstraps but may cap the ceiling; "
         "lower exploits the (small ~2-cluster) orient policy sooner.",
+    )
+    p.add_argument(
+        "--stimulus-order",
+        choices=("cycle", "shuffled"),
+        default="cycle",
+        help="Mother stimulus order. 'cycle' = the v1/v2 apparatus (deterministic replay — "
+        "phase-locks against a greedy agent; Exp 48 sweep finding). 'shuffled' = seeded "
+        "per-block permutation (exposure-balanced, phase-lock broken) — the apparatus-v3 "
+        "setting. S6: an apparatus change, stamped per record.",
     )
     p.add_argument("--mock", action="store_true", help="synthetic fade (CI smoke, no subprocess)")
     p.add_argument("--resume", action="store_true", help="skip (arm,seed,explore_weight) already in --out")
@@ -458,6 +476,7 @@ def main() -> int:
                             timeout_s=args.timeout_s,
                             workdir=workdir,
                             explore_weight=args.explore_weight,
+                            stimulus_order=args.stimulus_order,
                         )
                     )
                     # S3 (assert your own health): a truncated run (sub-sim
@@ -484,6 +503,9 @@ def main() -> int:
                         # Raw env string (or null): records what the child
                         # inherited, not an interpretation of it.
                         "substrate_actions_per_turn_env": os.environ.get("MAXIM_SUBSTRATE_ACTIONS_PER_TURN"),
+                        # S6 stamp: which stimulus-order apparatus produced this
+                        # row ("cycle" = phase-lockable v1/v2; "shuffled" = v3).
+                        "stimulus_order": args.stimulus_order,
                         "mock": args.mock,
                         "git_hash": _git_hash(),
                         # Exp 42b self-auditing-artifact rule: harness hash

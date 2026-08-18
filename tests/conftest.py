@@ -1455,3 +1455,18 @@ def _reset_world_set_ownership_warn_dedup():
     _OWNERSHIP_REFUSAL_WARNED.clear()
     yield
     _OWNERSHIP_REFUSAL_WARNED.clear()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_cradle_mother_stimulus_order_env():
+    """Scrub MAXIM_CRADLE_MOTHER_STIMULUS_ORDER between tests (CLAUDE.md
+    env-var rule): a leaked 'shuffled' would silently flip any test that
+    exercises the generative runner's mother tick onto the v3 apparatus."""
+    import os as _os
+
+    saved = _os.environ.pop("MAXIM_CRADLE_MOTHER_STIMULUS_ORDER", None)
+    yield
+    if saved is not None:
+        _os.environ["MAXIM_CRADLE_MOTHER_STIMULUS_ORDER"] = saved
+    else:
+        _os.environ.pop("MAXIM_CRADLE_MOTHER_STIMULUS_ORDER", None)
