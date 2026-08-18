@@ -143,11 +143,32 @@ placements unapproachable); (2) learning completes **within act1–act2**
 act-level granularity the rise criterion measures — from an act1 baseline
 of 0.545, +0.15 requires 0.695, arithmetically above the structural
 ceiling. This is an S7-class gate/apparatus mismatch in the LATE bin.
-Recorded, NOT retuned. If ew=0.75 (in flight) confirms the plateau, the
-sanctioned path is a **v3 re-pre-registration** informed by descriptive
-turn-level curves from the per-run `mother_log.jsonl` (finer-than-act
-baseline window), by the same freeze-before-data discipline as v2.
-Data: `48_sweep_ew1.0.jsonl`.
+Recorded, NOT retuned. Data: `48_sweep_ew1.0.jsonl`.
+
+**Sweep, ew=0.75 (2026-08-18, 24/24, exposure-matched): the informative
+negative — and the sweep's real conclusion.** taught late **4/12 = 0.333**
+(below its own early 0.455 AND below the control); no_feed late **6/12 =
+0.500** (up from 2/12 = 0.167 at both higher weights — the CONTROL moved,
+with zero teaching involved). Full sweep picture, every cell an exact
+twelfth and seed-invariant: taught 8/12 → 8/12 → 4/12; control 2/12 → 2/12
+→ 6/12 across ew 1.5/1.0/0.75. **Interpretation: on this deterministic
+apparatus (greedy narrator, cycling stimulus, alternating explorer),
+directedness measures PHASE ALIGNMENT between the turn cycle and the
+stimulus cycle — the explore weight selects which phase-locked attractor
+each arm falls into, and the operant credit tips the taught arm between
+attractors.** This is the 2026-08-11 contest's mechanism critique
+("directedness may measure a phase relationship"), demonstrated with clean
+apparatus. It also QUALIFIES the MOTHER-TAUGHT interpretation above: the
++0.482 arm gap is real and causally the mother's credit, but the honest
+description is credit-tipped attractor selection, not graded orienting
+skill — were it graded skill, lowering exploration would not invert the
+arms. **Sweep dimension exhausted; do not sweep further. The sanctioned
+next step is the contest's OTHER pre-registered control: randomised
+stimulus order** (breaks phase-locking, restores directedness as a
+meaningful measure) — a small seeded-shuffle change to
+`simulation/cradle_mother.py` plus a **v3 gate frozen on the randomised
+apparatus pre-data**, same discipline as v2.
+Data: `48_sweep_ew0.75.jsonl`.
 
 **Apparatus notes (v2 baseline properties):** runs are near-deterministic —
 ~712±4s each (≈6s narrator planning + ≈7.5s budget-capped turn × 56), with
