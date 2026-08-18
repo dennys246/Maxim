@@ -77,6 +77,8 @@ Core retains the three session-killing bullets (`--interactive false` from scrip
 One line per var (name = purpose = owning module). Long rationales: [docs/lessons/claude-md-2026-08-13-pre-diet.md](../lessons/claude-md-2026-08-13-pre-diet.md).
 
 - `MAXIM_PROVENANCE_VERBOSITY` = decision-log verbosity 0/1/2 → `~/.maxim/util/lane_decisions.jsonl`; inspect via `maxim doctor --last-decision` = runtime decision log.
+- `MAXIM_SIM_HARD_ABORT` = "0"/"false" opts OUT of the D12 stall hard-abort (default ON: a provably-wedged orchestrator LLM call terminates the sim loudly — exit 4 via forced-exit backstop — instead of hanging unboundedly; decision logic `runtime/stall_threshold.py::should_hard_abort`) = `simulation/orchestrator.py::_stall_detector`.
+- `MAXIM_CRADLE_MOTHER_STIMULUS_ORDER` = "shuffled" = apparatus-v3 seeded per-block stimulus permutation (the L2 phase-lock dither, #514); default cycle = `simulation/generative_runner.py`; scrub `_isolate_cradle_mother_stimulus_order_env`.
 - `MAXIM_DETERMINISTIC_SCENE_EMBODIMENT` = force scene-affordance `self_effect` onto the AUT body in LLM-primary (controlled Exp 44 harm attribution; Exp 37/38 must NOT set it) = `simulation/orchestrator.py`; scrub `_isolate_maxim_deterministic_scene_embodiment_env`.
 - `MAXIM_DISABLE_IMAGINATION` = THE single master switch for ALL imagination surfaces (per-turn design + world-builder manifest); does not gate narrator prose = `simulation/orchestrator.py` → `imagination/trigger.py`; scrub `_isolate_maxim_imagination_env`.
 - `MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL` = W2 ablation: drop NAc biases from the scene manifest, KEEP the manifest (distinct from the master switch) = sim orchestrator producer site.

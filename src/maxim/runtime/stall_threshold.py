@@ -111,6 +111,45 @@ def max_byte_silence_threshold_s() -> float:
     )
 
 
+def should_hard_abort(
+    *,
+    stall_duration_s: float,
+    threshold_s: float,
+    nudge_count: int,
+    byte_silence_s: float | None,
+    byte_silence_threshold_s: float,
+) -> bool:
+    """Hard-abort decision for a wedged orchestrator LLM call (bugs ledger D12).
+
+    The stall detector's only actuator used to be the NUDGE — an injected
+    percept telling the orchestrator LLM to get moving. Against a HUNG LLM
+    call that is useless: the orchestrator thread is blocked inside the call
+    and never reads the nudge (observed live 2026-08-18: 'planning first
+    probe' at 8,624s and again at 3,286s, server healthy and idle both
+    times). This function decides when nudging has provably failed and the
+    sim must be terminated loudly instead.
+
+    Two routes, both deliberately conservative (a hard abort kills a
+    campaign run — false positives are expensive):
+
+    1. KNOWN-wedged: an in-flight call's byte silence exceeded the
+       keepalive-derived threshold (connection provably dead per the PR #320
+       contract) AND the stall has additionally outlasted one full stall
+       threshold of grace.
+    2. PERSISTENT stall: >= 3 nudges have fired without any turn progress
+       AND the stall has lasted >= max(3x threshold, threshold + 120s) —
+       long enough that every recoverable cause (slow TTFT, one lost nudge,
+       a transient provider error with retry) is exhausted.
+
+    Pure function — fully unit-testable; the detector supplies the state.
+    """
+    if stall_duration_s <= 0 or threshold_s <= 0:
+        return False
+    if byte_silence_s is not None and byte_silence_s >= byte_silence_threshold_s:
+        return stall_duration_s >= byte_silence_threshold_s + threshold_s
+    return nudge_count >= 3 and stall_duration_s >= max(3.0 * threshold_s, threshold_s + 120.0)
+
+
 _DEPRECATED_FLOOR_ALIASES = {
     "MAXIM_STALL_FLOOR_S": ("MAXIM_SIM_STALL_THRESHOLD_S",),
     # Future deprecations can be added here without touching call sites.
