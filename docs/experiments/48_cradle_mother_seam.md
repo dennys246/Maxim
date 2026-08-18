@@ -104,7 +104,88 @@ of the same commit — the doc and the analyzer freeze together.
 
 ## Results
 
-> ### ⚠️ CONTESTED — do not cite this experiment pending resolution (2026-08-11)
+### Apparatus-v2 re-baseline — gate v2 verdict (2026-08-14)
+
+**The re-baseline the CONTESTED banner demanded has run.** First valid campaign
+on the fixed apparatus (locks + fresh sandboxes #510, narrator-liveness
+preflight #511, frozen gate #512): 12 seeds/arm, mistral-7b narrator
+(in-process solo, greedy), `MAXIM_SUBSTRATE_ACTIONS_PER_TURN=6`,
+`--explore-weight 1.5`, `executed_git_hash a9ea66fe` (src identical to main
+at #511), scored at `e7066b0e` under the pre-frozen gate v2. 24/24 runs,
+0 failed, exposure matched (48 turns/seed both arms, no flag).
+
+| arm | act1 | act2 | act3 | act4 |
+|---|---|---|---|---|
+| taught | 0.55 | 0.58 | 0.63 | 0.67 |
+| no_feed | 0.18 | 0.17 | 0.17 | 0.17 |
+
+- **MOTHER-TAUGHT: PASS, decisively** — taught late 0.649 vs no_feed 0.167
+  (**+0.482** against the 0.20 margin). The mother's operant teaching is the
+  difference, confirmed on the fixed apparatus.
+- **LEARNED-v2: FAIL** — late 0.649 vs the 0.65 level (a 0.001 miss — noted
+  and NOT retuned, per the S7 discipline this gate was frozen under) and
+  rise +0.104 vs 0.15 from the act1-only bin (the substantive miss).
+- **Verdict: NOT GRADUATED → the pre-registered PARTIAL branch** ("direction
+  learnable embodied; ceiling capped by a named confound"). The named
+  suspect matches the curve: at explore weight 1.5 the late-act plateau
+  ~0.67 ≈ two-in-three turns toward with a forced-exploration third. The
+  pre-approved lever — the explore-weight sweep at **1.0 / 0.75**, both
+  arms, 12 seeds — is the active next step.
+
+**Sweep, ew=1.0 (2026-08-17, 24/24, exposure-matched): NOT GRADUATED —
+level criterion recovers, rise criterion hits a structural wall.** Late
+0.667 ≥ 0.65 (the ew1.5 level miss resolved in the predicted direction);
+rise +0.122 vs 0.15 FAIL. Two findings the sweep surfaces: (1) the plateau
+is **exactly 8/12 = 0.667 at both weights** — a structural ceiling
+independent of exploration share (suspect: stimulus-cycle geometry, ~⅓ of
+placements unapproachable); (2) learning completes **within act1–act2**
+(taught act1 = 0.545 vs control 0.18; act2 already at plateau), below the
+act-level granularity the rise criterion measures — from an act1 baseline
+of 0.545, +0.15 requires 0.695, arithmetically above the structural
+ceiling. This is an S7-class gate/apparatus mismatch in the LATE bin.
+Recorded, NOT retuned. Data: `48_sweep_ew1.0.jsonl`.
+
+**Sweep, ew=0.75 (2026-08-18, 24/24, exposure-matched): the informative
+negative — and the sweep's real conclusion.** taught late **4/12 = 0.333**
+(below its own early 0.455 AND below the control); no_feed late **6/12 =
+0.500** (up from 2/12 = 0.167 at both higher weights — the CONTROL moved,
+with zero teaching involved). Full sweep picture, every cell an exact
+twelfth and seed-invariant: taught 8/12 → 8/12 → 4/12; control 2/12 → 2/12
+→ 6/12 across ew 1.5/1.0/0.75. **Interpretation: on this deterministic
+apparatus (greedy narrator, cycling stimulus, alternating explorer),
+directedness measures PHASE ALIGNMENT between the turn cycle and the
+stimulus cycle — the explore weight selects which phase-locked attractor
+each arm falls into, and the operant credit tips the taught arm between
+attractors.** This is the 2026-08-11 contest's mechanism critique
+("directedness may measure a phase relationship"), demonstrated with clean
+apparatus. It also QUALIFIES the MOTHER-TAUGHT interpretation above: the
++0.482 arm gap is real and causally the mother's credit, but the honest
+description is credit-tipped attractor selection, not graded orienting
+skill — were it graded skill, lowering exploration would not invert the
+arms. **Sweep dimension exhausted; do not sweep further. The sanctioned
+next step is the contest's OTHER pre-registered control: randomised
+stimulus order** (breaks phase-locking, restores directedness as a
+meaningful measure) — a small seeded-shuffle change to
+`simulation/cradle_mother.py` plus a **v3 gate frozen on the randomised
+apparatus pre-data**, same discipline as v2.
+Data: `48_sweep_ew0.75.jsonl`.
+
+**Apparatus notes (v2 baseline properties):** runs are near-deterministic —
+~712±4s each (≈6s narrator planning + ≈7.5s budget-capped turn × 56), with
+seed-to-seed curves nearly identical (greedy narrator at temperature 0.0 +
+budget-capped substrate trajectories). Record this as a REPRODUCIBILITY
+property of apparatus-v2; the v1 laptop runs' 1,288–2,854s variance was the
+thrashing regime, not a healthy baseline. Also newly interpretable:
+**no_feed sits at 0.167 — structurally BELOW chance** — the teacherless
+deterministic alternation against the cycling stimulus is anti-phase, a
+phenomenon worth its own note rather than an anomaly. The v1 headline
+magnitudes (0.875 / +0.211) remain retired as v1-apparatus artifacts.
+
+Raw records: `docs/experiments/data/48_rebaseline_v4.jsonl` (per S4; the
+invalid dead-narrator and wrong-narrator attempts from the same night are
+retained alongside, clearly suffixed, as apparatus-incident records).
+
+> ### ⚠️ CONTESTED (2026-08-11) — RESOLVED by the apparatus-v2 re-baseline above (2026-08-14); cite the v2 numbers
 >
 > The 1.1 heartbeat re-run could not reproduce the magnitudes below, and the
 > investigation that followed found a **conflict between this experiment's
