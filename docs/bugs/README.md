@@ -5,6 +5,9 @@
 *algorithmic* claims ([bio_faithful_roadmap.md](../plans/bio_faithful_roadmap.md)), and
 *engineering rules* (CLAUDE.md invariants). This tracks **what is verifiably wrong or
 bounded right now** — the axis on which findings otherwise evaporate into plan-doc asides.
+(A fifth ledger, [docs/limits/README.md](../limits/README.md), tracks measured
+*instrument* limits — nothing broken, but properties every experiment design must
+respect. Defects go here; characterized measurement limits go there.)
 
 **Why it matters more than a normal bug list.** The 2026-08-10 external critique's sharpest
 point was that unstated limitations quietly become false claims. A defect that lives only
