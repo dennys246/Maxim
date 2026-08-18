@@ -2603,6 +2603,7 @@ def start_simulation_mode(
         from maxim.runtime.stall_threshold import (
             compute_stall_threshold,
             max_byte_silence_threshold_s,
+            should_hard_abort,
         )
 
         _resolved_tier = "large"
@@ -2638,6 +2639,10 @@ def start_simulation_mode(
         # Clamp to sane bounds so a typo can't wedge the detector.
         check_interval_s = max(0.5, min(check_interval_s, _current_threshold()))
         ping_pong_budget = max(2, ping_pong_budget)
+        # Last observed byte-silence of a wedged in-flight call (None when the
+        # call is healthy or the registry has nothing) — feeds the D12
+        # hard-abort decision below.
+        _wedged_byte_silence: list[float | None] = [None]
 
         def _orch_action_count() -> int:
             """Best-effort read of orchestrator's total tool attempts.
@@ -2783,14 +2788,84 @@ def start_simulation_mode(
                     silence_s = oldest_byte_silence_s(tier=_resolved_tier)
                     if silence_s is None or silence_s < max_byte_silence_threshold_s():
                         # Call alive, bytes flowing — suppress nudge
+                        _wedged_byte_silence[0] = None
                         continue
                     # No bytes for >max_byte_silence_threshold_s — connection
                     # is wedged. Fall through and let the nudge fire as a
                     # stuck-call warning.
+                    _wedged_byte_silence[0] = silence_s
+                else:
+                    _wedged_byte_silence[0] = None
             except Exception:
                 # Defensive: registry consultation must never wedge the
                 # detector. On any failure, fall through to existing logic.
                 pass
+
+            # ── D12 hard-abort escalation (bugs ledger; observed 8,624s and
+            #    3,286s unbounded 'planning' hangs, 2026-08-18) ─────────────
+            # A nudge is an injected percept — useless against a HUNG LLM
+            # call, because the orchestrator thread is blocked inside the
+            # call and never reads it. When nudging has provably failed
+            # (decision in stall_threshold.should_hard_abort — pure,
+            # unit-tested), terminate the sim LOUDLY via the same
+            # finish-path the max-turns guard uses. The blocked thread may
+            # never unwind, so a forced-exit backstop guarantees the
+            # process dies with a nonzero code a harness records as FAIL —
+            # an eternal plausible-looking hang is the one unacceptable
+            # outcome. Opt-out: MAXIM_SIM_HARD_ABORT=0.
+            _stall_duration_now = time.time() - _last_activity_time[0]
+            _hard_abort_enabled = _os.environ.get("MAXIM_SIM_HARD_ABORT", "1").strip().lower() not in (
+                "0",
+                "false",
+                "no",
+                "off",
+            )
+            if _hard_abort_enabled and should_hard_abort(
+                stall_duration_s=_stall_duration_now,
+                threshold_s=_current_threshold(),
+                nudge_count=_nudge_count[0],
+                byte_silence_s=_wedged_byte_silence[0],
+                byte_silence_threshold_s=max_byte_silence_threshold_s(),
+            ):
+                _silence_str = (
+                    f"{_wedged_byte_silence[0]:.0f}s byte-silence on the in-flight call"
+                    if _wedged_byte_silence[0] is not None
+                    else f"{_nudge_count[0]} nudges unconsumed"
+                )
+                _abort_msg = (
+                    f"LLM WEDGED (bugs ledger D12): orchestrator {_resolved_tier}-lane call stuck "
+                    f"{_stall_duration_now:.0f}s ({_silence_str}). Nudges cannot reach a thread "
+                    f"blocked inside the call — TERMINATING the sim loudly instead of hanging. "
+                    f"Check the model server and relaunch; opt out with MAXIM_SIM_HARD_ABORT=0."
+                )
+                logger.error(_abort_msg)
+                _emit(f"🛑 {_abort_msg}", "turn")
+                try:
+                    bridge.finish_context.update(
+                        {
+                            "status": "llm_wedged",
+                            "reason": f"orchestrator LLM call stuck {_stall_duration_now:.0f}s",
+                            "summary": _abort_msg,
+                            "initiated_by": "stall_hard_abort",
+                        }
+                    )
+                except Exception as e:
+                    logger.debug("finish_context update failed: %s", e)
+                try:
+                    bridge.finish()
+                except Exception as e:
+                    logger.debug("bridge.finish failed: %s", e)
+                stop_event.set()
+
+                def _force_exit() -> None:
+                    time.sleep(20.0)
+                    import sys as _sys
+
+                    print(f"FATAL: {_abort_msg}", file=_sys.stderr, flush=True)
+                    _os._exit(4)
+
+                threading.Thread(target=_force_exit, name="sim.hard_abort", daemon=True).start()
+                break
 
             # Nudge cooldown: don't flood the orchestrator with nudges.
             if time.time() - _last_nudge_time[0] < _NUDGE_COOLDOWN_S:
