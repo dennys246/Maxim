@@ -132,6 +132,23 @@ at #511), scored at `e7066b0e` under the pre-frozen gate v2. 24/24 runs,
   pre-approved lever — the explore-weight sweep at **1.0 / 0.75**, both
   arms, 12 seeds — is the active next step.
 
+**Sweep, ew=1.0 (2026-08-17, 24/24, exposure-matched): NOT GRADUATED —
+level criterion recovers, rise criterion hits a structural wall.** Late
+0.667 ≥ 0.65 (the ew1.5 level miss resolved in the predicted direction);
+rise +0.122 vs 0.15 FAIL. Two findings the sweep surfaces: (1) the plateau
+is **exactly 8/12 = 0.667 at both weights** — a structural ceiling
+independent of exploration share (suspect: stimulus-cycle geometry, ~⅓ of
+placements unapproachable); (2) learning completes **within act1–act2**
+(taught act1 = 0.545 vs control 0.18; act2 already at plateau), below the
+act-level granularity the rise criterion measures — from an act1 baseline
+of 0.545, +0.15 requires 0.695, arithmetically above the structural
+ceiling. This is an S7-class gate/apparatus mismatch in the LATE bin.
+Recorded, NOT retuned. If ew=0.75 (in flight) confirms the plateau, the
+sanctioned path is a **v3 re-pre-registration** informed by descriptive
+turn-level curves from the per-run `mother_log.jsonl` (finer-than-act
+baseline window), by the same freeze-before-data discipline as v2.
+Data: `48_sweep_ew1.0.jsonl`.
+
 **Apparatus notes (v2 baseline properties):** runs are near-deterministic —
 ~712±4s each (≈6s narrator planning + ≈7.5s budget-capped turn × 56), with
 seed-to-seed curves nearly identical (greedy narrator at temperature 0.0 +
