@@ -31,10 +31,21 @@ your metric can actually see.
 3. **Design consequence is mandatory** — the one sentence a pre-registration
    author must act on. A limit without a consequence is trivia.
 4. **Claim linkage** when a limit bounds a graduated claim: name the row.
+5. **Every entry carries a `Re-measure on:` trigger** (mirroring the
+   graduation rows' `Re-run on:`) — limits move when the apparatus does, and
+   an unmeasured drift is how a MITIGATED entry silently rots.
+6. **A limit graduates to its own tracking doc** (`docs/limits/<slug>.md`:
+   measurement-history table, mitigation lineage, open questions, triggers)
+   when it has **≥2 measurements or active work** — never before (the
+   "living doc that never lived" lesson: empty satellites get archived, not
+   filled). The README entry stays as the compressed index + link.
 
 ## The limits
 
 ### L1 — Argmax novelty-visibility floor (~0.11) · MITIGATED
+
+- **Re-measure on:** exploration-policy change; `recommend_action` scoring
+  change; place-code default-ON (the split-bias interaction, see L3).
 
 - **Instrument:** substrate-primary action selection (`NAc.recommend_action`
   argmax) under an exploration bonus.
@@ -49,7 +60,7 @@ your metric can actually see.
   `learned_margin` measure the gap directly. Any sub-threshold-learning claim
   MUST cite them.
 
-### L2 — Deterministic-apparatus phase-locking · MITIGATED
+### L2 — Deterministic-apparatus phase-locking · MITIGATED · [tracking doc](l2_phase_locking.md)
 
 - **Instrument:** any cyclic scripted stimulus × deterministic (greedy,
   temperature-0) agent — canonically the `cradle_mother` directedness metric.
@@ -73,7 +84,7 @@ your metric can actually see.
   and causal, but interpreted as credit-tipped attractor selection, not
   graded orienting (ledger row qualifier, 2026-08-18).
 
-### L3 — Azimuth representational resolution (~3 nodes) · MITIGATED
+### L3 — Azimuth representational resolution (~3 nodes) · MITIGATED · [tracking doc](l3_azimuth_resolution.md)
 
 - **Instrument:** exteroceptive azimuth encoding → EC clustering (the raw
   scalar path).
@@ -101,6 +112,8 @@ your metric can actually see.
 - **Design consequence:** a green Exp 42 heartbeat means "not broken", never
   "no degradation"; a sensitivity-graded degradation arm is the tracked
   follow-up. Claim linkage: the Tier-1 Maintained row carries this caveat.
+- **Re-measure on:** the degradation arm landing; any change to the safe/harm
+  warmth sources or the B8 delta-attribution path.
 
 ### L5 — Actions/turn as a stopwatch (wall-clock ÷ 0.5s) · MITIGATED
 
@@ -113,6 +126,8 @@ your metric can actually see.
   `MAXIM_SUBSTRATE_ACTIONS_PER_TURN`, stamped per record). Unset = the
   stopwatch regime; any cross-machine magnitude comparison without the budget
   declared is invalid (S6).
+- **Re-measure on:** agent-loop pacing change (the 0.5s idle constant);
+  bridge `send_and_wait` window semantics change.
 
 ### L6 — Prior-agreement ceiling voids · MITIGATED
 
@@ -128,6 +143,8 @@ your metric can actually see.
 - **Mitigation:** S7 ceiling clauses in gates (gate v2's LEARNED-AT-CEILING is
   the canonical instance): a ceiling is *reported*, never silently
   passed/failed.
+- **Re-measure on:** every new model fire (each model's headroom is its own
+  measurement — the Goldilocks map grows per fire).
 
 ### L7 — Act-granularity vs fast convergence · BINDING (v3 design driver)
 
@@ -142,6 +159,8 @@ your metric can actually see.
 - **Design consequence:** the v3 gate's baseline window must be turn-level
   (first-K-turns), designed from the descriptive mother-log curves
   (`data/48_*_mother_log.jsonl`) and frozen pre-data.
+- **Re-measure on:** action-budget value change (convergence speed scales
+  with actions/turn); any arc whose act length changes.
 
 ---
 
