@@ -72,7 +72,7 @@ once. Ordered cheapest-first.
 | **Free Chapter** | pytest only | SEM cascade, EC guards |
 | **Sim-Short Chapter** | one local LLM server | Exp 09 reflexes, Exp 10 persistence |
 | **Fleet Chapter** | local narrator server, hours of wall-clock | Exp 48 operant, Exp 42 discrimination |
-| **Cloud Chapter** | cloud/large-model budget — never auto-fired | Exp 37 Goldilocks per model |
+| **Big-Model Chapter** (renamed 2026-08-19; was "Cloud Chapter" — a fossil from when the set included real API fires like Exp 38's Sonnet/GPT-4o/DeepSeek; the Exp 37 anchors are LOCAL heavyweights) | heavyweight budget — ½–1 day wall-clock per local 32B model OR real API spend; operator sign-off, never auto-fired | Exp 37 Goldilocks per model |
 | **Hardware Chapter** | robot + operator + the physical audio rig (speaker at a bearing) | Exp 45 orient rows |
 
 ## Row-by-row commands
@@ -194,7 +194,7 @@ sensitive degradation arm is tracked follow-up. The harness calls
 `assert_repo_interpreter` and stamps `executed_git_hash` per record — check
 them in the output JSONL before reading results.
 
-### Cloud Chapter
+### Big-Model Chapter (formerly "Cloud Chapter")
 
 #### 7. Cross-session Goldilocks under LLM-AUT (Exp 37, Tier 1 row 1b) — the expensive one
 

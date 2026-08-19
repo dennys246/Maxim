@@ -112,6 +112,52 @@ completion claim):
   Fleet (Exp 42 done 2026-07-29; **Exp 48 awaits its re-pre-registered
   gate**, not just a re-run), Cloud (Exp 37 per-model, budgeted).
 
+### Walk continuation — 2026-08-18/19, Sim-Short Chapter (runbook §Sim-Short) — COMPLETE
+
+Run on big-mac-mini, `Maxim-exp48-rebaseline` worktree, mistral-7b in the
+auto-spawn/singleton topology, `llm.n_ctx 8192` (raised from 4096 mid-chapter
+— see the apparatus note below). Sessions: p1 `20260818_010010`, p2
+`20260818_233844`, p3 `20260819_000740`.
+
+- **Exp 10 cross-session persistence (Tier 1 row 1): RE-VALIDATED — the
+  cleanest pass this row has ever recorded.** Phase 2 resumed phase 1's
+  session: the hippocampus opened at **exactly 108** (phase 1's closing
+  store — the load is visible in the first enrichment trace's
+  `hippocampus_size`), surfaced **3 memories/turn on 8 of 8 turns** (the
+  ~3/turn gate), grew the store 108 → 535, and ACCUMULATED causal links
+  (obs counts grew rather than re-deriving). Phase 3 (garden, same resume)
+  showed **no negative transfer**: 2 dungeon-flavored log lines against 5
+  enrichment passes, behavior fully garden-directed (`sense_presence`,
+  flower-seeking plans), post-consolidation store 295 (session-end pruning
+  working as designed).
+- **Exp 09 narrative reflexes (Tier 3 #9): heartbeat GREEN with a stated
+  caveat.** Firing confirmed — 7 reflex events incl. `reflex_attack` across
+  an 8-turn dragon sim. The habituation/sensitization TRAJECTORY was NOT
+  exercised: 0 `SEM_DAMAGE` events reached the body (the mistral-7b narrator
+  dropped ~half its tool calls, so harm delivery never happened — a
+  narrator-quality artifact, not a reflex defect). Original Exp 09 evidence
+  stands; a full-trajectory re-attestation needs a longer run or a stronger
+  narrator, noted as optional follow-up.
+- **Apparatus note (the chapter's real cost and real yield):** completing
+  these two rows surfaced and fixed FIVE apparatus defects — multi-runner
+  contamination (#510), dead/wrong-narrator campaigns (#511 preflight),
+  the D12 lock-inheritance deadlock (#517 hard-abort, #518 bounded lock,
+  #519 nudge-proof abort clock), and **D13** (silent planning-turn drop →
+  livelock, [bugs ledger](../bugs/README.md) — OPEN, fix contract recorded;
+  the wedge cost is capped at ~4min by the abort meanwhile). The n_ctx
+  raise 4096 → 8192 is an operator-config alignment (resume-enriched
+  prompts ran at 87% window occupancy, degrading small-model tool-format
+  fidelity — the D13 trigger); it is config-layer, not experiment-pinned
+  apparatus. Gate evidence above was measured ONLY on completed, unwedged
+  runs.
+- **Remaining walk:** Big-Model chapter (Exp 37, ≥1 in-zone model —
+  qwen32b on-disk, overnight wall-clock; renamed from "Cloud" 2026-08-19 —
+  the anchors are local heavyweights, the old name was an API-era fossil)
+  and Hardware (Exp 45 row template + the H1 8-rep delivered-shift block,
+  operator + robot). Fleet: Exp 42 Maintained
+  2026-07-29; Exp 48 re-baselined 2026-08-18 under gate v2 (PARTIAL —
+  see its row).
+
 ### Tier 1 — Thesis-load-bearing (MUST graduate, or 1.0 is dishonest)
 
 These are the bio-claims of the product itself. Shipping 1.0 without cited experiments for these undermines the [framing strategy](../../CLAUDE.md) (bio-inspired LLM harness, not academic cog-sci).
