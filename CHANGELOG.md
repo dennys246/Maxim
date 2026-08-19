@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **1.1 release-readiness ledgers** — repository scorecard plus a verified
+  stable-API/architecture/test defect cluster (D15–D20), with explicit 1.1 versus
+  1.1.x dispositions.
 - **Exp 49 two-joint centering** — harness + three arms complete: H1 supported
   (head-only 0/10 vs two-joint 4/10), H2 1.00 dense AND sparse (`--speech-density`
   knob for the pre-registered sparse arm), H3 1.00 (B) / 0.969 (C after the
@@ -32,6 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tier; hardware note: motors 2+3 were broken for the entire 1.0+ era. (#471)
 - **Cross-modal perception fabric (1.3) + three-factor credit assignment** design
   plans. (#468)
+
+### Changed
+
+- **1.1 scope reconciled around release closure** — D13/D14 liveness, stable API
+  contracts, hermetic tests, atomic NAc+EC invalidation, architecture-audit
+  enforcement, remaining heartbeat evidence, and release truth are the cut. Oasis
+  and Hivemind moved to gated 1.2 work. `AGENTS.md` is the selected future canonical
+  agent-guidance entrypoint; `CLAUDE.md` will be retained as a minimal compatibility
+  adapter until the migration is verified.
 
 ### Fixed
 

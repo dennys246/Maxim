@@ -2,9 +2,9 @@
 
 Comprehensive documentation for Maxim's systems and subsystems.
 
-**Version:** 1.0.0 | **Last updated:** 2026-06-15
+**Published version:** 1.0.6 | **Last updated:** 2026-08-19
 
-> **2026-05-09 architectural pivot** — Maxim is moving toward a **parallel-mode architecture** where the bio-substrate (NAc + EC + ATL + Hippocampus + Default Network + reflexes) can drive action selection directly, with LLMs demoted to supporting roles (orchestrator, NPCs, optional AUT). The existing **LLM-AUT mode** remains the user-facing default; the new **substrate-primary AUT mode** ships in parallel as opt-in via `--aut-mode substrate-primary`. The **Maxim Hivemind** shareability layer (infrastructure shipped in 0.9.x; `maxim substrate export|import|inspect` CLI available; Oasis persistent-substrate-primary instances target 1.1+) lets multiple Maxims share distilled bio-substrate across instances. See [Substrate-Primary Mode](substrate_primary.md) and [Hivemind + Oasis](hivemind.md) for the new docs.
+> **2026-05-09 architectural pivot** — Maxim is moving toward a **parallel-mode architecture** where the bio-substrate (NAc + EC + ATL + Hippocampus + Default Network + reflexes) can drive action selection directly, with LLMs demoted to supporting roles (orchestrator, NPCs, optional AUT). The existing **LLM-AUT mode** remains the user-facing default; the new **substrate-primary AUT mode** ships in parallel as opt-in via `--aut-mode substrate-primary`. The **Maxim Hivemind** shareability layer (infrastructure shipped in 0.9.x; `maxim substrate export|import|inspect` CLI available) is the foundation for Oasis/Hivemind in 1.2 after the provenance, compatibility, and threat-model gates. See [Substrate-Primary Mode](substrate_primary.md) and [Hivemind + Oasis](hivemind.md) for the architecture docs.
 
 ## Quick Links
 
@@ -14,6 +14,9 @@ Comprehensive documentation for Maxim's systems and subsystems.
 - [User Guides](user/index.md) — End-user documentation (install, CLI, API, modes)
 - [Troubleshooting](troubleshooting/index.md) — Runbooks and diagnostics
 - [Plans](plans/README.md) — Active roadmap and future plans
+- [Known defects](bugs/README.md) — Verified defects with evidence and dispositions
+- [Repository scorecard](limits/score_card.md) — Engineering grades and improvement criteria
+- [Measurement limits](limits/README.md) — Characterized apparatus limits experiment designs must respect
 - **[Substrate-Primary Mode](substrate_primary.md)** — NEW: parallel architecture where the substrate carries action selection without LLM mediation
 - **[Maxim Hivemind + Oasis](hivemind.md)** — NEW: federated bio-substrate layer for cross-instance learning
 
@@ -39,7 +42,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | Document | Description |
 |----------|-------------|
 | [Substrate-Primary Mode](substrate_primary.md) | NEW (2026-05-09) — parallel AUT mode where bio-substrate selects actions without LLM. Phase -1 prototype shipped; Phase 0 harness in 1.0 (B5). |
-| [Maxim Hivemind + Oasis](hivemind.md) | (2026-05-09) — federated peer-to-peer substrate-sharing layer. Hivemind shareability infrastructure (merge, bundle, identity, `maxim substrate` CLI) shipped in 0.9.x; Oasis persistent-substrate-primary instances target 1.1+. |
+| [Maxim Hivemind + Oasis](hivemind.md) | (2026-05-09) — federated peer-to-peer substrate-sharing layer. Hivemind shareability infrastructure (merge, bundle, identity, `maxim substrate` CLI) shipped in 0.9.x; Oasis/Hivemind target 1.2 after the provenance, compatibility, and threat-model gates. |
 | [Roy Harness — Persona Convergence Crucible](plans/deferred/persona_convergence_crucible.md) | NEW (2026-05-11) — long-horizon three-arm iteration runner: prime substrate via curriculum, run same held-out test across substrate-primed / persona-injected / neutral arms, report pairwise substrate divergence (`reward_bias_l2`, **`cluster_reward_bias_l2`**, episode + concept deltas). G3 fail-fast preflight + G4 cluster_id reward wire shipped 2026-05-11. CLI: `maxim roy run <spec.yaml>`. |
 
 ### Perception & Attention

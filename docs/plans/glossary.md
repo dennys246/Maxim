@@ -1,8 +1,8 @@
 # Maxim glossary — decoding the codes
 
-Maxim's plans, experiments, and CLAUDE.md invariants use terse coded IDs (`CC3`, `Wire-A`, `Roy-4`, `Exp 42`, `NAc`). They look opaque on day one, but they are **stable anchors**, not throwaway labels: each ties a docstring marker → a CI grep → a CLAUDE.md invariant → the PR that shipped it → a graduation-candidate row. **They are deliberately not renamed** (renaming severs that traceability — see the reasoning in any "opaque naming" discussion). This page is the decoder ring.
+Maxim's plans, experiments, and agent-guidance invariants use terse coded IDs (`CC3`, `Wire-A`, `Roy-4`, `Exp 42`, `NAc`). They look opaque on day one, but they are **stable anchors**, not throwaway labels: each ties a docstring marker → a CI grep → a tracked invariant → the PR that shipped it → a graduation-candidate row. **They are deliberately not renamed** (renaming severs that traceability — see the reasoning in any "opaque naming" discussion). This page is the decoder ring.
 
-**To resolve any code yourself:** `grep -rn "CC3" CLAUDE.md docs/` — the invariant, its regression guard, and the plan that introduced it are all findable by the code.
+**To resolve any code yourself:** `rg -n "CC3" AGENTS.md CLAUDE.md docs/` — during the 1.1 single-source migration, the invariant, its regression guard, and the plan that introduced it remain findable across both adapters and tracked docs.
 
 ---
 
@@ -17,7 +17,8 @@ Maxim's plans, experiments, and CLAUDE.md invariants use terse coded IDs (`CC3`,
 | 0.9.2 | Config unification + Hivemind shareability + LLM timeout scalability |
 | 0.9.3 | Loud optional-dependency failures (`utils/optional_deps.py`) |
 | 1.0 | Validation + stabilization + grounding (cross-session proof, protocol freeze, cradle) |
-| 1.1 | Embodiment grounding + substrate-primary validation (orient on Reachy, Exp 44, Oasis) |
+| 1.1 | Sensorimotor release closure: merged embodiment + correctness, contract, truth, and verification debt; zero new mechanisms |
+| 1.2 | Gated Oasis + Hivemind federation |
 
 ## 2. Work-item prefixes
 
@@ -74,7 +75,7 @@ Tell them apart by the plan or version in scope: "P2 Stage 2" + substrate → re
 | cradle | Sensorimotor developmental sim (infant body, narrative acts) |
 | `cradle_mother` / reactive mother | **The teacher mother** — the operant-conditioning caregiver NPC that feeds + credits the infant AUT to shape orienting (`NAc.credit_operant_reward`). SUPERSEDED/DORMANT; operant claim validated on scripted substrate + Exp 46/48. **Unrelated to "Mother Maxim."** |
 | LLM-AUT mode | The default individual agent — an LLM as action selector over the bio-substrate. The perpetual *data source* feeding Oases (1.1→1.2). |
-| Oasis | A persistent substrate-primary **instance** — a real bio-agent (own NAc/EC/ATL/Hippocampus, *not a database*; multiple coexist) that absorbs contributions, distills consensus, + broadcasts back. Ships 1.1. **The current name for the old "Mother Maxim."** |
+| Oasis | A persistent substrate-primary **instance** — a real bio-agent (own NAc/EC/ATL/Hippocampus, *not a database*; multiple coexist) that absorbs contributions, distills consensus, + broadcasts back. Gated for 1.2. **The current name for the old "Mother Maxim."** |
 | Hivemind | The P2P substrate-sharing **protocol / fabric** — a bundle format + exchange convention, **not a hosted service** ("nobody hosts the Hivemind"). Connects Oases + substrate-primary Maxims. `src/maxim/hivemind/` (1.0 bundle/merge; full P2P 1.2). |
 | — *axis* | Both federate **substrate** (NAc/EC/reflex/ATL), never **mind** (episodes/dialogue are local-only). Hivemind = the network; an Oasis = a hub-agent on it. |
 | Mother Maxim | **DEPRECATED** (superseded 2026-05-09). The old federated/database-backed parent that stored + redistributed *user memories*; renamed → **Oasis** (+ Hivemind). Not the teacher mother — see `cradle_mother`. |

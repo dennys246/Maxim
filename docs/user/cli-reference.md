@@ -268,7 +268,7 @@ The `maxim model` verbs manage user-defined model profiles in `~/.config/maxim/p
 
 ## Substrate Sharing
 
-The `maxim substrate` verbs manage substrate snapshot bundles — ZIP archives containing the NAc causal-learning state and EC substrate nodes from a session. Bundles are how Maxim instances share learned knowledge. The 1.0 `import` verb **extracts only** — it does not auto-merge into a live system. Merging requires calling `maxim.hivemind.nac_merge` / `ec_merge` on the extracted files (or using the 1.1+ Oasis ingestion pipeline).
+The `maxim substrate` verbs manage substrate snapshot bundles — ZIP archives containing the NAc causal-learning state and EC substrate nodes from a session. Bundles are how Maxim instances share learned knowledge. The 1.0 `import` verb **extracts only** — it does not auto-merge into a live system. Merging requires calling `maxim.hivemind.nac_merge` / `ec_merge` on the extracted files; a managed Oasis ingestion pipeline is gated 1.2 work.
 
 | Command | What it does |
 |---|---|

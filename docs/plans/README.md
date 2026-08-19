@@ -1,13 +1,16 @@
 # Maxim Plans
 
-Current version: **1.0.6** (1.0.0 published on PyPI as `pymaxim` 2026-06-17).
-Now: **1.1 "Sensorimotor"** — ship the merged embodiment work plus the truth/hygiene
-debt it incurred. **Zero new mechanisms.** Scoped 2026-08-07 by a four-lens design
-review (audio front-end · reflex wiring · bio-fidelity · release scope); see
+Current published version: **1.0.6** (1.0.0 published on PyPI as `pymaxim` 2026-06-17).
+Now: **1.1 "Sensorimotor" release closure** — ship the merged embodiment work plus
+the correctness, contract, truth, and verification debt it incurred. **Zero new
+mechanisms.** Reconciled 2026-08-19 after the D13/D14 investigation and repository
+review; see
 [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) for the cut line, the blockers, and
 why the reflex tier / loudness / Oasis moved.
 
-**Directory audited 2026-07-15** (deep plans review): every top-level plan verified against code + git history; 12 concluded plans archived, 19 paused plans moved to deferred/ with revive triggers. Root = active work only.
+**Directory last deeply audited 2026-07-15; release authority reconciled
+2026-08-19.** Root = active work only. Superseded release checklists belong in
+`archive/`; the 1.1 cut exists only in the roadmap above.
 
 **New here?** [glossary.md](glossary.md) decodes the coded IDs (`CC3`, `Wire-A`, `Roy-4`, `P2`, `NAc`, GRADUATE, …) — including the prefixes that mean different things in different plans.
 
@@ -22,11 +25,14 @@ why the reflex tier / loudness / Oasis moved.
 | **0.9.2** | **Config unification + Hivemind shareability + LLM timeout scalability** — `~/.config/maxim/config.json`, `maxim config/model/substrate` CLIs, `hivemind/` substrate bundle, TTFT keepalive, per-tier timeout, context-overflow admission, stall detector, leader-local harness singleton guard | **SHIPPED** (2026-06-05) |
 | **0.9.3** | **Loud optional-dependency failures** — `utils/optional_deps.py` centralises 45+ import sites; missing requested backend raises `OptionalDependencyError` instead of silently returning empty responses | **SHIPPED** (2026-06-06) |
 | **1.0** | **Validation + stabilization + grounding** — cross-session proof, bio-system protocol freeze, sensorimotor cradle, SEM world enrichment, SCN feedback loop, cleanup, docs | **SHIPPED** (2026-06-17) |
-| **1.1** | **"Sensorimotor"** — *the substrate leaves the simulator.* Ships already-merged work (Exp 42 GRADUATE ✓, perception placement ✓, Exp 45e ✓ #431, Exp 44 counterbalanced ✓ #429, Phase 1 ✓ #437, SEM motor binding ✓ #460/#461, Exp 49 ✓ #463, cross-session persistence ✓ #446, console seams) + release-truth debt: CHANGELOG for 1.0.0→1.0.6, n_ctx clamp, persona hard-remove, the first-ever graduation heartbeat walk, artifact stamping, orient-vocabulary audit. **Zero new mechanisms. One hardware session.** | In progress (5–7 wks) |
-| **1.2** | **Oasis + Hivemind** — peer substrate sharing (~800 LOC) + P2P protocol (~600 LOC), both de-risked with a cleared gate. Plus: orient arbitration mechanism, pain-on-startle (visual), Weeping Angel sim arm, cradle formalized as the standing measurement environment. | Planned |
+| **1.1** | **"Sensorimotor" release closure** — merged embodiment work plus D13/D14 liveness, stable Python API truth, hermetic fast tests, atomic NAc+EC invalidation, architecture-audit regression enforcement, S4, remaining heartbeat chapters, release mechanics, and agent-guidance convergence. **Zero new mechanisms.** | In progress — authoritative gates in [roadmap](roadmap_1_1_to_1_3.md#11-cut-line--reconciled-2026-08-19) |
+| **1.2** | **Oasis + Hivemind** — peer substrate sharing (~800 LOC) + P2P protocol (~600 LOC). Entry is gated on encoder provenance/compatibility, read-side EC safety, bundle-version threat modeling, and the 1.1 verification gates staying green. | Planned, gated |
 | **1.3** | **Perception fabric + reflex tier** — cochlear front-end, population coding, vision encoder, orient-windowed binding, three-factor calibration ([cross_modal_perception_fabric.md](cross_modal_perception_fabric.md), [three_factor_credit_assignment.md](three_factor_credit_assignment.md) — both self-targeted 1.3), and the DN-canonical orienting reflex. Contains the pivotal may-fail experiment (Stage 0c). | Planned |
 
-**Discipline:** 0.7 was the last major feature version. 0.8 matured cognition and embodiment. 1.0 stabilizes, validates, and grounds — every bio-system fully operational with closed feedback loops, interfaces frozen with future-proof protocols, and the agent demonstrably learns from its own body.
+**Discipline:** 1.1 is a mechanism freeze. Existing behavior is not assumed live
+because a type or bridge exists: release claims require an executed contract test or
+graduated behavioral row. New mechanism work resumes only after the 1.1 cut is
+releasable and the 1.2 entry gates are satisfied.
 
 ## 1.0 — SHIPPED (2026-06-17)
 
@@ -35,9 +41,20 @@ Release writeup: [The Honest Benchmark](../../html-guides/maxim-1-0-release.html
 
 ## Active
 
-Everything in the root is in-flight or a living doc. Audited 2026-07-15.
+Everything in the root is in-flight or a living doc. Deep-audited 2026-07-15;
+release authority reconciled 2026-08-19.
 
-### Exp 44 — LLM-primary embodied choice (current experiment line)
+### 1.1 release closure
+
+- [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) — **SOLE 1.1 SCOPE
+  AUTHORITY.** Gate order: planning liveness → stable API/hermetic tests →
+  persistence/architecture enforcement → evidence closure → release transaction.
+- [../bugs/repository_review_2026_08_19.md](../bugs/repository_review_2026_08_19.md)
+  — D15–D20 evidence and required contracts.
+- [../limits/score_card.md](../limits/score_card.md) — repo-grade baseline and
+  grade-improvement criteria.
+
+### Exp 44 — LLM-primary embodied choice (1.1.x experiment line; not a 1.1 gate)
 
 - [controlled_llm_primary_embodied_harness.md](controlled_llm_primary_embodied_harness.md) — **ACTIVE Exp 44 vehicle.** G1 deterministic scene embodiment SHIPPED (`MAXIM_DETERMINISTIC_SCENE_EMBODIMENT`, `7c052a3d`); `MAXIM_DISABLE_IMAGINATION` universal gate shipped (`d024ba63`). G2 (drive-gating) rerouted to [grounded_language_acquisition.md](grounded_language_acquisition.md); G3 (terse narrator) HELD as hygiene. Next: one validation seed confirming safe-vs-harm learning appears now that harm is deterministic, then the ablation arms below.
 - [acting_coach_body_state_ablation.md](acting_coach_body_state_ablation.md) — **Pre-registered Exp 44 ablation; prerequisites SHIPPED (PR #391)** — `MAXIM_ENABLE_BODY_STATE_PROMPT` opt-in wiring, `MAXIM_DISABLE_COACH_BODY_LAYERS` arm-B toggle, harness fork, observability. First launch (2026-07-15) blocked on the ops stack (wrong model served + n_ctx mismatch); arms not yet validly run. Gated behind G1 validation.
@@ -51,7 +68,7 @@ Everything in the root is in-flight or a living doc. Audited 2026-07-15.
 ### Substrate-primary spine (1.1 → 1.2)
 
 - [grounded_language_acquisition.md](grounded_language_acquisition.md) — **ACTIVE umbrella for the substrate-primary line.** Phase -1 + Phase 0 harness + EC sensor-encoding shipped (PR #228, 2026-05-09); substrate-primary mode GRADUATED via Exp 42 (PR #380). Actively absorbing intake: G2 substrate→LLM action-salience primitive rerouted here 2026-07-15 (`eec7369e`). Phase 0 validation + Phases 1–3 (vocabulary-constrained → symbol-binding → from-scratch sequence model) are the 1.1+/1.2 arc.
-- [maxim_hivemind.md](maxim_hivemind.md) — **Roadmap/architecture companion** to grounded_language_acquisition (three layers: LLM-AUT default + Oasis substrate-primary + Hivemind P2P). B5 shareability SHIPPED (PRs #305–#311; `src/maxim/hivemind/` verified). Next execution slice: Oasis software (1.1, ~800 LOC) once substrate-primary is stable enough to host a persistent instance; P2P protocol 1.2.
+- [maxim_hivemind.md](maxim_hivemind.md) — **Roadmap/architecture companion** to grounded_language_acquisition (three layers: LLM-AUT default + Oasis substrate-primary + Hivemind P2P). B5 shareability SHIPPED (PRs #305–#311; `src/maxim/hivemind/` verified). Oasis + the P2P protocol are now 1.2, gated by D1/D3/D4/D8 and the sharing threat model; they are not part of 1.1 release closure.
 - [sem_environmental_proximity_sensing.md](sem_environmental_proximity_sensing.md) — **NEW (2026-07-15) design doc, P1-ready.** Grounds interoception in sensed exteroception: field-query reader for `heat_output`/ambient entity fields (currently declared-but-inert), per-turn environmental-sense pass, dual-path wiring (LLM-primary §1.15 + substrate-primary tick). Explicitly NOT an Exp 44 blocker (that was G1); the medium-term "do it right" for embodied sensing.
 
 ### Substrate representation & provenance (1.1 → 1.2) — NEW 2026-08-11
@@ -71,8 +88,9 @@ record.**
 
 ### Living discipline docs
 
-- [../bugs/README.md](../bugs/README.md) — **KNOWN-DEFECTS LEDGER (new 2026-08-11).** The fourth ledger, alongside behavioral claims, algorithmic claims, and CLAUDE.md's engineering rules: what is verifiably WRONG or BOUNDED right now. Every row cites file:line or a measurement, carries a disposition (OPEN / ACCEPTED / FIXED), and names the claim it bounds. Rows EXPIRE — that discipline is what keeps it from becoming a second monotonic incident ledger. Seeded with 11 defects verified during the 2026-08-11 four-lens review that previously lived only as plan-doc asides.
-- [external_critique_response.md](external_critique_response.md) — **LIVING SCORECARD (new 2026-08-11).** Tracks the response to the 2026-08-10 external code critique (assessed ~85% correct): 7 items, current status each, plus the two places the critique was WRONG so they are not "fixed" by mistake. As of 2026-08-11: 1 done, 2 structurally addressed pending experiment runs, 1 quarter-done, 3 untouched (god functions, CLAUDE.md diet, CI gate scope). Its four sub-plans: [measurement_path_fail_loud.md](measurement_path_fail_loud.md) (Stage 1 merged #487; Stages 2-4 open), [claude_md_diet.md](claude_md_diet.md) (**not started, and CLAUDE.md has grown to ~62.5K tokens — highest-compounding item on the list**), [god_function_decomposition.md](god_function_decomposition.md) (not started; gated behind fail-loud Stage 2), [bio_docstring_truth_pass.md](bio_docstring_truth_pass.md) (**DONE**, merged #492).
+- [../bugs/README.md](../bugs/README.md) — **KNOWN-DEFECTS LEDGER.** What is verifiably wrong or bounded now, including the D13/D14 liveness pair and the D15–D20 API/architecture/test cluster from the 2026-08-19 review. Every row carries evidence and a disposition.
+- [../limits/score_card.md](../limits/score_card.md) — **REPOSITORY SCORECARD (2026-08-19).** Evidence-backed grades for research integrity, runtime correctness, maintainability, test/CI truthfulness, documentation, and release governance, with explicit conditions for improving each grade.
+- [external_critique_response.md](external_critique_response.md) — **LIVING EXTERNAL-CRITIQUE RESPONSE.** The bio-docstring truth pass and CLAUDE.md diet shipped; fail-loud Stages 2–3, god-function decomposition, and CI gate scope remain. The 2026-08-19 scorecard is the current repo-wide assessment rather than a replacement for this critique-specific history.
 
 - [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) — **Living doc + post-1.0 behavioral-regression discipline.** Actively maintained (Exp 42 GRADUATE recorded 2026-06-23; row #11 feeds Exp 44). Earned invariants re-run on triggers (encoder swap, bio-system refactor, minor-version heartbeat); `Stale`/`Broken` entries block the next release.
 - [tool_refinement_plan.md](tool_refinement_plan.md) — **Living tool-curation doc**, updated 2026-07-14 (records the introspection-tools hard-delete from the embodiment truth-restoration pass, PR #390, + rebuild guidance).
@@ -114,7 +132,7 @@ Earlier deferrals:
 - [deferred/bio_system_plugin_plan.md](deferred/bio_system_plugin_plan.md) — Plugin discovery for bio-systems. Revive when external contributors appear.
 - [deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md) — Two-agent stimulus pattern. Revive when behavioral convergence hits variety ceiling.
 - [deferred/pecking_order_graph_plan.md](deferred/pecking_order_graph_plan.md) — Unified hierarchy DAG. Revive when multi-node topology matters.
-- ~~deferred/mother_maxim_plan.md~~ → **SUPERSEDED** (2026-05-09) by [maxim_hivemind.md](maxim_hivemind.md). Old plan moved to [archive/mother_maxim_plan.md](archive/mother_maxim_plan.md). Reframed for the substrate-primary world: peer-to-peer Maxim Oases (sustaining gathering places) instead of central Mother server; Maxim Hivemind (collective cognition layer) instead of Pecking Order Graph; distilled bio-substrate snapshots instead of raw episodes. ~2,100 LOC instead of 3,800. Phasing: shareability infrastructure SHIPPED in 1.0 (B5, PRs #305–#311); Oasis software in 1.1; full Hivemind P2P protocol in 1.2.
+- ~~deferred/mother_maxim_plan.md~~ → **SUPERSEDED** (2026-05-09) by [maxim_hivemind.md](maxim_hivemind.md). Old plan moved to [archive/mother_maxim_plan.md](archive/mother_maxim_plan.md). Reframed for the substrate-primary world: peer-to-peer Maxim Oases (sustaining gathering places) instead of central Mother server; Maxim Hivemind (collective cognition layer) instead of Pecking Order Graph; distilled bio-substrate snapshots instead of raw episodes. ~2,100 LOC instead of 3,800. Phasing: shareability infrastructure SHIPPED in 1.0 (B5, PRs #305–#311); Oasis + full Hivemind protocol gated for 1.2.
 - [deferred/dungeon_master_extensions.md](deferred/dungeon_master_extensions.md) — DM post-MVP features.
 - [deferred/cross_platform_file_lock.md](deferred/cross_platform_file_lock.md) — Unify `process_lock` + `filelock`. Tech debt, blocks nothing.
 - [deferred/mesh_doc_transport.md](deferred/mesh_doc_transport.md) — Mesh-to-mesh doc exchange (C9). Not started.
@@ -129,6 +147,10 @@ Earlier deferrals:
 ## Archive
 
 Completed or superseded plans live in [archive/](archive/).
+
+- [archive/release_1_1_checklist.md](archive/release_1_1_checklist.md) —
+  **SUPERSEDED 2026-08-19.** Preserved July snapshot; its Oasis/Exp 44 critical path
+  was replaced by the current release-closure roadmap.
 
 Archived in the 2026-07-15 deep audit (each verified against code + git history; disposition banner at the top of each doc):
 - [archive/v1_refinement.md](archive/v1_refinement.md) — **✅ 1.0 SHIPPED (2026-06-17).** The release master plan; all hard requirements closed 2026-06-15. Residual 1.1 pointers live in sibling plans.
@@ -210,7 +232,11 @@ All 41/41 hypotheses confirmed. No fine-tuning. No prompt engineering beyond sur
 
 ## Review pattern
 
-Each plan implements on a `feat/<plan>` branch. Before opening/merging the PR, spawn two review Claudes (Executor + Architecture lens). Findings fold into the same branch, THEN the PR opens. See [feedback_review_before_ship.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_review_before_ship.md).
+Each implementation plan receives two independent pre-merge agent reviews: one
+execution/correctness lens and one architecture/maintenance lens. Findings fold into
+the implementation branch before the PR opens. The review protocol must be tracked in
+the repository; private `.claude/projects/.../memory` files are historical evidence,
+not load-bearing instructions.
 
 ## Rules for this directory
 

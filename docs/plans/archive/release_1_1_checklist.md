@@ -1,7 +1,12 @@
-# 1.1 release checklist — roadmap audit against actual merge state
+# 1.1 release checklist — superseded snapshot
+
+> **SUPERSEDED 2026-08-19.** Preserved as the 2026-07-23 planning snapshot.
+> Its Exp 44/Oasis critical path is no longer authoritative. The live release
+> cut and gate order are in
+> [roadmap_1_1_to_1_3.md](../roadmap_1_1_to_1_3.md#11-cut-line--reconciled-2026-08-19).
 
 **Created:** 2026-07-23. A tracked artifact so "what's left before 1.1" is a list, not a
-synthesis. 1.1 theme (from [README.md](README.md)): **embodiment grounding + substrate-primary
+synthesis. 1.1 theme (from [README.md](../README.md)): **embodiment grounding + substrate-primary
 validation** — orient-to-center on Reachy Mini, Exp 44 embodied choice, Oasis.
 
 **How to read:** ✅ done/merged · 🔵 in flight · ⬜ not started · ⏸ above-the-line (defer to 1.2).
@@ -36,11 +41,11 @@ release mechanics.
 ### 1. 🔵 Exp 44 — LLM-primary embodied choice (bounded experiment; NOT fire-and-forget)
 - Apparatus shipped: G1 deterministic scene harm (`MAXIM_DETERMINISTIC_SCENE_EMBODIMENT`),
   imagination gate (`MAXIM_DISABLE_IMAGINATION`), the `--aut-mode llm-primary` harness.
-- **Blockers before a valid run** (see [exp44_overnight_runcard.md](exp44_overnight_runcard.md)):
+- **Blockers before a valid run** (see [exp44_overnight_runcard.md](../exp44_overnight_runcard.md)):
   ops stack (model + n_ctx via `maxim config`), a **confirming validation seed** (does the AUT
   act? does harm fire? is arm A below ceiling?), and the **Track-1 drive-pain cadence** change
   that stales prior numbers.
-- **Dependency:** wants [transition_based_drive_pain.md](deferred/transition_based_drive_pain.md)
+- **Dependency:** wants [transition_based_drive_pain.md](../deferred/transition_based_drive_pain.md)
   to land first so the drive-pain it measures is onset-based, not the current state-based cadence.
 - **Open decision:** the harness doc + the calibrated A≈B≈C-null prior mean this may resolve as
   "body_state doesn't move LLM-primary behavior" — a legitimate, cheap-to-earn null that corrects
@@ -48,7 +53,7 @@ release mechanics.
   committing ~48h.
 
 ### 2. ⬜ Oasis — the substrate-sharing deliverable (THE LONG POLE)
-- The 1.1 back-half from [maxim_hivemind.md](maxim_hivemind.md): the persistent "gathering place"
+- The 1.1 back-half from [maxim_hivemind.md](../maxim_hivemind.md): the persistent "gathering place"
   where distilled substrate snapshots pool (~800 LOC). Shareability infra already shipped in 1.0
   (B5, `src/maxim/hivemind/`, PRs #305–#311).
 - **Gate now met:** it was blocked on "substrate-primary stable enough to host a persistent
@@ -74,7 +79,7 @@ release mechanics.
 - **S4 / S3 continuous orient magnitude** — Layer-2 research (population-vector readout is being
   hardware-tested now; if it earns, it lands as Exp 45e). Layer 1 is the 1.1 bar and is done.
 - **Reachy runtime integration** ("learning ON in production") —
-  [orient_runtime_integration.md](orient_runtime_integration.md), gated on S2 gain calibration.
+  [orient_runtime_integration.md](../orient_runtime_integration.md), gated on S2 gain calibration.
   1.2 unless explicitly pulled.
 - **Passive sense discovery**, **sem environmental proximity sensing**, **grounded-language
   Phases 1–3**, **mesh C5–C8** — all post-1.1 / 1.2 per their plan docs.

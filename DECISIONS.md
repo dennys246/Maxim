@@ -2,6 +2,45 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-08-19 — 1.1 release closure and provider-neutral agent guidance
+
+Decision:
+
+- 1.1 remains under a mechanism freeze. Its remaining scope is correctness,
+  stable-contract repair, verification, release truth, and completion of the
+  already-started heartbeat—not Oasis, Hivemind, or another cognitive mechanism.
+- `docs/plans/roadmap_1_1_to_1_3.md` is the sole 1.1 scope authority. The July
+  checklist is archived as a historical snapshot.
+- `AGENTS.md` becomes the canonical provider-neutral root instruction entrypoint.
+  Subsystem knowledge remains in tracked `docs/agents/` briefs and incident history
+  in `docs/lessons/`.
+- `CLAUDE.md` is not deleted until its unique knowledge has moved and a normal
+  Claude-based review proves instruction discovery still works. During migration it
+  becomes a minimal compatibility adapter pointing to `AGENTS.md`; CI prevents new
+  substantive rules from accumulating there.
+- Oasis and Hivemind move to gated 1.2 work. Encoder provenance/compatibility,
+  read-side EC safety, and a sharing threat model must close before implementation.
+
+Reason:
+
+- The 2026-08-19 review confirmed public API no-ops, planning liveness defects,
+  non-hermetic required tests, a permanently red architecture audit, and release
+  policy drift. Distributing state or adding mechanisms before closing those gaps
+  would amplify failure modes the current runtime cannot diagnose reliably.
+- Two large root instruction files had already diverged on Python support,
+  dependencies, and API count. A single canonical source avoids provider-specific
+  truth forks while a measured compatibility adapter avoids breaking Claude-based
+  workflows by assumption.
+
+Tradeoffs:
+
+- 1.1 takes longer and carries less novelty, but becomes a defensible release rather
+  than a bundle of already-merged features with unresolved contracts.
+- The temporary `CLAUDE.md` adapter means two filenames remain for one migration
+  interval, but only one may contain substantive guidance.
+- The 32 existing architecture findings may remain as reviewed debt in 1.1; CI must
+  reject additions, and 1.1.x owns the burn-down.
+
 ## 2026-03-31 — Claw-Code Upgrade: Cognitive Pain, Coding Tools, Session Persistence
 
 Adopted patterns from the claw-code Python port of Claude Code to improve Maxim's

@@ -3,7 +3,7 @@
 **What this is.** The fifth ledger. The repo tracks *behavioral* claims
 ([behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md)),
 *algorithmic* claims ([bio_faithful_roadmap.md](../plans/bio_faithful_roadmap.md)),
-*engineering rules* (CLAUDE.md invariants), and *defects*
+*engineering rules* (the repository's agent-guidance invariants), and *defects*
 ([bugs/README.md](../bugs/README.md)). This tracks **what each measurement
 instrument can and cannot resolve** — the characterized limits of the apparatus
 itself. Not defects (nothing is broken), not process rules
@@ -161,6 +161,17 @@ your metric can actually see.
   (`data/48_*_mother_log.jsonl`) and frozen pre-data.
 - **Re-measure on:** action-budget value change (convergence speed scales
   with actions/turn); any arc whose act length changes.
+
+## Repository capability assessment
+
+[score_card.md](score_card.md) records the 2026-08-19 repository grades for
+research integrity, runtime correctness, maintainability, tests/CI, documentation,
+and release governance. It also records the evidence required to improve each
+grade and assigns the corrective work to 1.1 or 1.1.x.
+
+The scorecard is intentionally **not** an `L*` entry: these `L*` rows describe
+measured properties of experimental instruments, while the scorecard evaluates the
+engineering system and its development process.
 
 ---
 
