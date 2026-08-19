@@ -33,6 +33,24 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class PlanningLivenessExhausted(RuntimeError):
+    """A sim's planning turns failed repeatedly and the bounded retry budget
+    is spent (bugs ledger D13).
+
+    Raised by ``run_agentic_loop`` AFTER its normal teardown (state persist +
+    bio session end) so the sim aborts loudly instead of idling forever on a
+    silently-dropped planning turn. Homed here, beside the
+    ``record_planning_failure`` state machine that decides it — ``runtime/
+    stall_threshold.py`` declares itself the single source of truth for
+    stall-THRESHOLD derivation, so a loop-control exception did not belong
+    there (pre-merge review, architecture lens S3).
+
+    Only raised by a loop that opted in via ``planning_liveness=True`` — in
+    practice the sim orchestrator, the one loop with no other wake source
+    between turns.
+    """
+
+
 class LoopController:
     """Manages agentic loop state and provides phase methods.
 
@@ -112,7 +130,10 @@ class LoopController:
         )
 
         # ── Transient loop state (typed — replaces local variables) ──────
-        self.pending_proposal: LLMProposal | None = None
+        # Backing field for the pending_proposal property below; planning-
+        # liveness fields are initialized further down, so the raw field is
+        # set here rather than going through the setter.
+        self._pending_proposal: LLMProposal | None = None
         self.pending_next_actions: list[dict[str, Any]] = []
         self.pending_plan_proposal: LLMProposal | None = None
         self.pending_action_followup: ActionFollowup | None = None
@@ -140,6 +161,29 @@ class LoopController:
         # ── Default Network ──────────────────────────────────────────────
         self.dn_ctrl = DefaultNetworkController(default_network)
         self.dn_enabled = self.dn_ctrl.enabled
+
+    # ── Pending proposal (planning-liveness recovery point) ──────────────
+
+    @property
+    def pending_proposal(self) -> LLMProposal | None:
+        return self._pending_proposal
+
+    @pending_proposal.setter
+    def pending_proposal(self, proposal: LLMProposal | None) -> None:
+        """Installing an executable proposal IS the recovery signal.
+
+        The reset used to live at one call site in ``run_agentic_loop``'s
+        section 2, which three other install sites bypassed — the multi-step
+        `next_actions` continuation and both PFC-deliberation sites — so a sim
+        recovering through those carried a stale failure streak forever and a
+        single later failure could abort a run that had been executing fine
+        for many turns (pre-merge review, executor lens F2). Making the reset
+        a consequence of the ASSIGNMENT means a future install site cannot
+        forget it: the invariant is in the type, not in a call site.
+        """
+        self._pending_proposal = proposal
+        if proposal is not None:
+            self.reset_planning_failures()
 
     # ── Typed state helpers ──────────────────────────────────────────────
 
@@ -214,6 +258,21 @@ class LoopController:
             self.planning_exhausted = True
             return "exhausted"
         return "retry"
+
+    def refund_planning_failure(self) -> None:
+        """Give back a strike spent on a TRANSPORT failure, not a planning one.
+
+        A requeue rejected because the worker queue is full says nothing about
+        whether the model can plan — and lane contention can produce several in
+        a row, which would abort a healthy campaign on the retry budget alone
+        (pre-merge review, executor lens S2). The caller still re-opens the
+        await window, so the expiry backstop retries; only the budget is
+        untouched. Never refunds below zero, and never un-latches an abort
+        that has already been reported.
+        """
+        if self.planning_exhausted:
+            return
+        self.planning_failure_streak = max(0, self.planning_failure_streak - 1)
 
     def reset_planning_failures(self) -> None:
         """An executable proposal arrived — planning is alive again."""

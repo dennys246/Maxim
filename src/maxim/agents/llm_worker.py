@@ -378,6 +378,7 @@ class LLMWorker:
         # requeue a planning turn whose response was silently lost (the
         # loop itself never holds the LLMRequest — submit_context builds it).
         self._last_request: LLMRequest | None = None
+        self._resubmit_seq = 0
 
         # Acting Coach config (B3): set after construction to inject
         # affordance exploration meta-prompting into LLMRequests.
@@ -500,6 +501,13 @@ class LLMWorker:
 
         if self._pool is None:
             return False
+
+        # Distinct job_id per attempt: JobRegistry.register overwrites the
+        # status entry and replaces the completion Event for a repeated id,
+        # so a retry colliding with a still-queued earlier retry would lose
+        # one of them (pre-merge review, architecture lens N3).
+        self._resubmit_seq += 1
+        job_suffix = f"{job_suffix}-{self._resubmit_seq}"
 
         def _retry_fn(prefetched=None):
             if self._stop_event.is_set():
@@ -941,6 +949,12 @@ class LLMWorker:
         if self._pool is not None:
             lane = "large"
             request.lane = lane
+            # D13: stash BEFORE the submit attempt. A submit rejected on
+            # queue.Full is itself a lost planning turn, and the loop's
+            # backstop recovers it via requeue_last_request() — which must
+            # hand back THIS request, not the previous (already answered)
+            # one (pre-merge review, executor lens F6).
+            self._last_request = request
 
             # WorkerPool mode: wrap _process_request in a job
             def _infer_job(prefetched=None):
@@ -964,8 +978,6 @@ class LLMWorker:
                     fn=_infer_job,
                     priority=-priority,
                 )
-                # D13 planning liveness: stash for requeue_last_request().
-                self._last_request = request
                 return True
             except queue.Full:
                 self._requests_dropped += 1

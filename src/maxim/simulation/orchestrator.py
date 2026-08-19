@@ -1922,6 +1922,36 @@ def start_simulation_mode(
         except Exception as e:
             aut_error.append(e)
             logger.error("AUT loop failed: %s", e)
+            # The AUT thread is DEAD from here on. Pre-2026-08-19 `aut_error`
+            # was write-only (appended, never read), so the orchestrator kept
+            # probing a corpse: `send_and_wait` increments `turn_count` BEFORE
+            # waiting, so turn progress kept resetting the hard-abort's clock
+            # and the campaign ran to full length emitting empty turns — a
+            # plausible-looking low-action RESULT rather than a failure
+            # (pre-merge review, architecture lens B1 / executor lens F4).
+            # Surface it the same way every other fatal sim condition is
+            # surfaced, so a dead AUT can never be mistaken for data.
+            try:
+                if not bridge.finish_context:
+                    bridge.finish_context.update(
+                        {
+                            "status": "aut_died",
+                            "reason": f"{type(e).__name__}: {e}",
+                            "summary": (
+                                f"The agent-under-test's loop raised {type(e).__name__} and its "
+                                f"thread exited; every later turn would be empty. Terminating "
+                                f"instead of reporting turns nothing produced."
+                            ),
+                            "initiated_by": "aut_worker",
+                        }
+                    )
+            except Exception as ctx_err:
+                logger.debug("finish_context update failed: %s", ctx_err)
+            try:
+                bridge.finish()
+            except Exception as fin_err:
+                logger.debug("bridge.finish failed: %s", fin_err)
+            stop_event.set()
 
     aut_thread = threading.Thread(target=_aut_worker, name="sim.aut", daemon=True)
     aut_thread.start()
@@ -2604,8 +2634,8 @@ def start_simulation_mode(
             compute_stall_threshold,
             max_byte_silence_threshold_s,
             should_hard_abort,
-            spinner_truth_message,
         )
+        from maxim.simulation.spinner import spinner_truth_message
 
         _resolved_tier = "large"
 
@@ -2808,9 +2838,9 @@ def start_simulation_mode(
                         # D14: a healthy call is in flight — the default
                         # "planning..." text is truthful again; restore it
                         # if an earlier tick overrode it.
-                        if _spinner_truth_overridden[0] and getattr(bridge, "between_turns", False):
+                        if _spinner_truth_overridden[0]:
                             try:
-                                bridge._spinner.update("Orchestrator planning next probe...")
+                                bridge._spinner.update_if_planning("Orchestrator planning next probe...")
                             except Exception as e:
                                 logger.debug("spinner truth restore failed: %s", e)
                             _spinner_truth_overridden[0] = False
@@ -2850,10 +2880,10 @@ def start_simulation_mode(
             # either NO call is in flight or the in-flight call is
             # byte-wedged; overwrite the spinner with what the registry
             # actually observes. Pure decision in
-            # stall_threshold.spinner_truth_message.
+            # spinner.spinner_truth_message.
             _truth_msg = spinner_truth_message(
-                between_turns=getattr(bridge, "between_turns", False),
-                in_flight=_wedged_byte_silence[0] is not None,
+                between_turns=bridge._spinner.planning_window,
+                in_flight_and_silent=_wedged_byte_silence[0] is not None,
                 stall_duration_s=_stall_duration_now,
                 threshold_s=_current_threshold(),
                 nudge_count=_nudge_count[0],
@@ -2862,8 +2892,10 @@ def start_simulation_mode(
             )
             if _truth_msg is not None:
                 try:
-                    bridge._spinner.update(_truth_msg)
-                    _spinner_truth_overridden[0] = True
+                    # Atomic test-and-set: a turn that starts between the
+                    # decision above and this write keeps its own text.
+                    if bridge._spinner.update_if_planning(_truth_msg):
+                        _spinner_truth_overridden[0] = True
                 except Exception as e:
                     logger.debug("spinner truth update failed: %s", e)
 
@@ -3002,8 +3034,8 @@ def start_simulation_mode(
     # The bridge spinner shows progress during send_and_wait(). Between
     # turns, show "Orchestrator planning..." using the bridge's spinner
     # so there's only one spinner managing the terminal line.
-    bridge.between_turns = True  # D14 spinner-truth window (pre-first-turn)
     bridge._spinner.start("Orchestrator planning first probe...")
+    bridge._spinner.set_planning_window(True)  # D14 (pre-first-turn window)
 
     # Stage 0b: bind RequestContext on the orchestrator thread so
     # orch-side action records (rare — most actions land on the AUT
@@ -3014,7 +3046,7 @@ def start_simulation_mode(
     # exactly the run_agentic_loop window. Per pre-merge review
     # architecture lens I5, this replaces a manual set_context /
     # reset_context try/finally with the canonical helper.
-    from maxim.runtime.stall_threshold import PlanningLivenessExhausted as _PlanningLivenessExhausted
+    from maxim.runtime.loop_controller import PlanningLivenessExhausted as _PlanningLivenessExhausted
     from maxim.utils.http import context_scope, new_request_context
 
     try:
@@ -3038,6 +3070,16 @@ def start_simulation_mode(
                     stop_event=stop_event,
                     target_hz=2.0,
                     percept_source=orchestrator_source,
+                    # Bugs ledger D13. THIS loop is the one that needs it: it has
+                    # no action_sink and no percept producer between turns, so a
+                    # planning turn dropped after a parse failure leaves nothing
+                    # to wake it — the observed 8,624s "planning" hang. The AUT
+                    # deliberately does NOT opt in (it already recovers via the
+                    # `_llm_unavailable` synthetic action breaking the bridge's
+                    # settle loop); enabling it there would turn a working
+                    # recovery into a dead thread whose campaign keeps emitting
+                    # empty turns (pre-merge review, architecture lens B1/B3).
+                    planning_liveness=True,
                 )
     except KeyboardInterrupt:
         display_summary(["Simulation stopped by user"])

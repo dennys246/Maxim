@@ -21,6 +21,7 @@ gets a real LLMWorker + FakeLLM behavioral test.
 from __future__ import annotations
 
 import inspect
+import pathlib
 import time
 from unittest.mock import MagicMock
 
@@ -399,9 +400,37 @@ class TestLoopWiringPins:
         # The backstop keys on "nothing came back since the last submit".
         assert "ctrl.last_proposal_time < ctrl.last_llm_submit_time" in loop_src
 
-    def test_backstop_excludes_substrate_primary(self, loop_src):
-        idle_gate = loop_src.split("await_window_expired")[0]
-        assert 'aut_mode != "substrate-primary"' in idle_gate.rsplit("if not (", 1)[-1]
+    def test_single_gate_covers_every_failure_site(self, loop_src):
+        """All five sites consult ONE precomputed gate, so none can drift
+        (arch lens S7: the substrate-primary exclusion was previously only
+        incidental — an aut_llm_worker IS built in substrate-primary runs)."""
+        assert loop_src.count("_planning_liveness_on") >= 5
+        gate_def = loop_src.split("_planning_liveness_on = (", 1)[1].split("\n    )", 1)[0]
+        assert "planning_liveness" in gate_def
+        assert 'aut_mode != "substrate-primary"' in gate_def
+        assert "llm_worker is not None" in gate_def
+        # No site may re-derive the gate from is_sim_mode.
+        assert "sim.is_sim_mode\n                        and new_proposal.error" not in loop_src
+
+    def test_liveness_is_opt_in_and_defaults_off(self):
+        """The mechanism belongs to the ONE loop with no other wake source.
+        Defaulting it on would convert the AUT's existing recovery into an
+        abort (arch lens B3) and its thread death into fabricated empty
+        turns (B1)."""
+        from maxim.runtime.agent_loop import run_agentic_loop
+
+        param = inspect.signature(run_agentic_loop).parameters["planning_liveness"]
+        assert param.default is False
+
+    def test_orchestrator_opts_in_and_aut_does_not(self):
+        from maxim.simulation import orchestrator
+
+        src = inspect.getsource(orchestrator.start_simulation_mode)
+        assert src.count("planning_liveness=True") == 1
+        # The opt-in must sit on the orchestrator's own loop call, which is
+        # the one passing percept_source=orchestrator_source.
+        orch_call = src.split("percept_source=orchestrator_source", 1)[1][:1400]
+        assert "planning_liveness=True" in orch_call
 
     def test_exhaustion_raises_after_teardown(self, loop_src):
         # The raise must come AFTER _end_bio_session so state persistence
@@ -413,9 +442,23 @@ class TestLoopWiringPins:
     def test_proposal_time_stamped_on_any_proposal(self, loop_src):
         assert "ctrl.last_proposal_time = time.time()" in loop_src
 
-    def test_streak_reset_on_executable_proposal(self, loop_src):
-        after_accept = loop_src.split("ctrl.pending_proposal = new_proposal", 1)[1]
-        assert "ctrl.reset_planning_failures()" in after_accept
+    def test_streak_reset_is_enforced_by_the_type(self):
+        """Reset used to live at ONE install site while three others bypassed
+        it (executor lens F2). It is now a consequence of assigning
+        pending_proposal, so a future install site cannot forget it."""
+        from maxim.runtime.loop_controller import LoopController
+
+        assert isinstance(LoopController.pending_proposal, property)
+        ctrl = _make_ctrl()
+        ctrl.record_planning_failure(reason="test")
+        ctrl.record_planning_failure(reason="test")
+        assert ctrl.planning_failure_streak == 2
+        ctrl.pending_proposal = MagicMock(name="executable_proposal")
+        assert ctrl.planning_failure_streak == 0
+        # Clearing must NOT count as recovery.
+        ctrl.record_planning_failure(reason="test")
+        ctrl.pending_proposal = None
+        assert ctrl.planning_failure_streak == 1
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -425,11 +468,11 @@ class TestLoopWiringPins:
 
 class TestSpinnerTruthMessage:
     def _call(self, **overrides):
-        from maxim.runtime.stall_threshold import spinner_truth_message
+        from maxim.simulation.spinner import spinner_truth_message
 
         kwargs = dict(
             between_turns=True,
-            in_flight=False,
+            in_flight_and_silent=False,
             stall_duration_s=200.0,
             threshold_s=30.0,
             nudge_count=0,
@@ -443,7 +486,7 @@ class TestSpinnerTruthMessage:
         assert self._call(between_turns=False) is None
 
     def test_healthy_in_flight_call_keeps_default_text(self):
-        assert self._call(in_flight=True, byte_silence_s=5.0) is None
+        assert self._call(in_flight_and_silent=True, byte_silence_s=5.0) is None
 
     def test_short_gap_keeps_default_text(self):
         assert self._call(stall_duration_s=10.0) is None
@@ -459,26 +502,48 @@ class TestSpinnerTruthMessage:
         assert msg is not None and "4 nudge(s)" in msg
 
     def test_wedged_in_flight_call_reports_byte_silence(self):
-        msg = self._call(in_flight=True, byte_silence_s=120.0)
+        msg = self._call(in_flight_and_silent=True, byte_silence_s=120.0)
         assert msg is not None
         assert "silent 120s" in msg
 
 
-class TestBridgeBetweenTurns:
-    def test_default_false_then_true_after_turn(self):
+class TestSpinnerPlanningWindow:
+    """D14 window ownership + the TOCTOU fix (executor lens F7, arch N5):
+    the flag lives on the spinner, and the correction is a lock-guarded
+    test-and-set so a turn starting mid-decision keeps its own text."""
+
+    def test_default_closed_then_open_after_turn(self):
         from maxim.simulation.bridge import SimulationBridge
 
         bridge = SimulationBridge(response_timeout=0.2, settle_s=0.05)
-        assert bridge.between_turns is False
+        assert bridge._spinner.planning_window is False
         bridge.send_and_wait("probe")  # times out — no AUT on the other side
-        assert bridge.between_turns is True, "send_and_wait must open the between-turns spinner-truth window on exit"
+        assert bridge._spinner.planning_window is True
 
     def test_send_and_wait_entry_closes_window(self):
         from maxim.simulation import bridge as bridge_mod
 
         src = inspect.getsource(bridge_mod.SimulationBridge.send_and_wait)
         entry = src.split("self._spinner.start(", 1)[0]
-        assert "self.between_turns = False" in entry
+        assert "set_planning_window(False)" in entry
+
+    def test_update_if_planning_respects_the_window(self):
+        from maxim.simulation.spinner import Spinner
+
+        sp = Spinner()
+        assert sp.update_if_planning("truth") is False, "closed window must reject"
+        sp.set_planning_window(True)
+        assert sp.update_if_planning("truth") is True
+        assert sp._message == "truth"
+        sp.set_planning_window(False)
+        assert sp.update_if_planning("later") is False
+        assert sp._message == "truth", "a closed window must not be overwritten"
+
+    def test_transport_no_longer_carries_the_display_flag(self):
+        from maxim.simulation.bridge import SimulationBridge
+
+        bridge = SimulationBridge(response_timeout=0.2, settle_s=0.05)
+        assert not hasattr(bridge, "between_turns")
 
 
 class TestOrchestratorWiringPins:
@@ -512,3 +577,149 @@ class TestOrchestratorWiringPins:
         assert "_last_turn_progress_time[0] = time.time()" in advance_block
         nudge_block = orch_src.split("_nudge_count[0] += 1", 1)[1].split("def _force_exit", 1)[0]
         assert "_last_turn_progress_time" not in nudge_block
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. Review-round fold guards (findings from the two-lens pre-merge round)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestParseFailureVsBadToolChoice:
+    """Executor F1 / architecture B2 (cross-confirmed): a well-formed proposal
+    naming an unregistered tool is a RESPONSIVE model making a bad choice, not
+    a lost planning turn. Calling it 'wedged' is a false diagnosis, and a
+    byte-identical requeue just reproduces the same name."""
+
+    def test_reasons_are_distinguished_at_the_call_site(self):
+        from maxim.runtime import agent_loop
+
+        src = inspect.getsource(agent_loop.run_agentic_loop)
+        assert '_is_parse_failure = getattr(new_proposal, "reasoning", "") == "llm_fallback"' in src
+        assert "unregistered_tool_proposed" in src
+        assert "fallback_proposal_dropped" in src
+
+    def test_bad_tool_name_is_recorded_for_correction(self):
+        from maxim.runtime import agent_loop
+
+        src = inspect.getsource(agent_loop.run_agentic_loop)
+        block = src.split("_is_parse_failure = ", 1)[1].split("new_proposal = None", 1)[0]
+        assert "_tools_hallucinated" in block, (
+            "the unregistered-tool case must feed the existing corrective channel, "
+            "not just be requeued byte-identically"
+        )
+
+
+class TestTransportFailureDoesNotSpendBudget:
+    """Executor S2: a requeue rejected because the worker queue is full is a
+    TRANSPORT failure. Lane contention must not abort a healthy campaign on
+    the retry budget alone."""
+
+    def _sim(self):
+        sim = MagicMock()
+        sim.is_sim_mode = True
+        return sim
+
+    def test_queue_full_refunds_the_strike(self):
+        from maxim.runtime.agent_loop import _handle_planning_failure
+
+        ctrl = _make_ctrl()
+        worker = MagicMock()
+        worker.requeue_request.return_value = False
+
+        for _ in range(6):
+            assert (
+                _handle_planning_failure(
+                    ctrl,
+                    worker,
+                    self._sim(),
+                    reason="fallback_proposal_dropped",
+                    original_request=MagicMock(),
+                )
+                is False
+            ), "repeated transport failures must never exhaust the budget"
+        assert ctrl.planning_failure_streak == 0
+        assert ctrl.planning_exhausted is False
+
+    def test_refund_never_goes_negative_or_unlatches(self):
+        ctrl = _make_ctrl()
+        ctrl.refund_planning_failure()
+        assert ctrl.planning_failure_streak == 0
+        for _ in range(4):
+            ctrl.record_planning_failure(reason="x")
+        assert ctrl.planning_exhausted is True
+        ctrl.refund_planning_failure()
+        assert ctrl.planning_exhausted is True, "a reported abort must stay latched"
+
+
+class TestLostTurnNeedsTwoObservations:
+    """Executor F5: 'call ended' and 'proposal enqueued' are not simultaneous.
+    Firing inside that gap executes the same planning turn twice — and only on
+    calls that already exceeded 120s, i.e. exactly the big-model case."""
+
+    def test_backstop_requires_two_consecutive_observations(self):
+        from maxim.runtime import agent_loop
+
+        src = inspect.getsource(agent_loop.run_agentic_loop)
+        assert "_lost_turn_observations += 1" in src
+        assert "if _lost_turn_observations >= 2:" in src
+        # And it must reset whenever the condition stops holding.
+        assert "_lost_turn_observations = 0" in src.split("await_window_expired", 1)[1]
+
+
+class TestRequeueUsesFreshRequest:
+    """Executor F6: a submit rejected on queue.Full is itself a lost turn; the
+    backstop must requeue THAT request, not the previous answered one."""
+
+    def test_last_request_is_stashed_before_the_submit_attempt(self):
+        from maxim.agents import llm_worker as lw
+
+        src = inspect.getsource(lw.LLMWorker.submit_context)
+        stash = src.index("self._last_request = request")
+        submit = src.index("self._pool.submit(")
+        assert stash < submit, "stash must precede the attempt that can raise queue.Full"
+
+    def test_retry_job_ids_are_unique_per_attempt(self):
+        from maxim.agents import llm_worker as lw
+
+        src = inspect.getsource(lw.LLMWorker._resubmit)
+        assert "_resubmit_seq" in src, "repeated retries must not collide on one job_id"
+
+
+class TestDeadAutIsSurfaced:
+    """Architecture B1 / executor F4 (cross-confirmed): a dead AUT thread used
+    to leave `aut_error` write-only while the orchestrator kept probing —
+    turn_count still advanced, so the hard-abort clock kept resetting and the
+    campaign produced a full run of empty turns that looked like data."""
+
+    def test_aut_worker_terminates_the_sim_on_loop_failure(self):
+        from maxim.simulation import orchestrator
+
+        src = inspect.getsource(orchestrator.start_simulation_mode)
+        handler = src.split("aut_error.append(e)", 1)[1][:2600]
+        assert '"status": "aut_died"' in handler
+        assert "stop_event.set()" in handler
+        assert "bridge.finish()" in handler
+
+
+class TestEnvOptOut:
+    """Architecture S5: an abort inside the measurement instrument must be
+    experiment-visible and disableable (mirrors MAXIM_SIM_HARD_ABORT)."""
+
+    def test_default_on(self, monkeypatch):
+        from maxim.runtime.agent_loop import _planning_liveness_enabled_via_env
+
+        monkeypatch.delenv("MAXIM_SIM_PLANNING_LIVENESS", raising=False)
+        assert _planning_liveness_enabled_via_env() is True
+
+    def test_opt_out_values(self, monkeypatch):
+        from maxim.runtime.agent_loop import _planning_liveness_enabled_via_env
+
+        for raw in ("0", "false", "no", "off", "OFF", " False "):
+            monkeypatch.setenv("MAXIM_SIM_PLANNING_LIVENESS", raw)
+            assert _planning_liveness_enabled_via_env() is False, raw
+
+    def test_has_an_autouse_scrub(self):
+        """CLAUDE.md: a new opt-in env var in a hot startup path must ship its
+        conftest scrub in the SAME commit."""
+        conftest = pathlib.Path(__file__).resolve().parents[1] / "conftest.py"
+        assert "MAXIM_SIM_PLANNING_LIVENESS" in conftest.read_text()

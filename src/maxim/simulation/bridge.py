@@ -134,12 +134,6 @@ class SimulationBridge:
         # the orchestrator can distinguish "LLM called finish with
         # status=failed" from a user /cancel or a crash.
         self.finish_context: dict[str, Any] = {}
-        # D14 spinner truth: True exactly while the spinner shows the
-        # between-turns "Orchestrator planning next probe..." text (set at
-        # send_and_wait EXIT, cleared at entry). The stall detector only
-        # overrides the spinner with registry-derived truth in this window —
-        # mid-turn the spinner belongs to the AUT exchange.
-        self.between_turns: bool = False
         # Optional percept-anxiety hook: a callable invoked with each
         # outgoing text BEFORE injection. Orchestrator wires this to the
         # AUT's PerceivedPainAssessor.assess_text so the AUT feels
@@ -182,7 +176,7 @@ class SimulationBridge:
             sim_log("EXEC", f"Bridge.send_and_wait ENTER turn={self._turn_count + 1} text_len={len(text)}")
         except Exception:
             pass
-        self.between_turns = False
+        self._spinner.set_planning_window(False)
         self._spinner.start(f'Turn {self._turn_count + 1}: Sending to AUT — "{short_text}"')
 
         # Wait for any pending user prompt to resolve before injecting.
@@ -274,11 +268,12 @@ class SimulationBridge:
 
         # Start spinner for orchestrator thinking phase (between turns).
         # D14: this text is set when the TURN ends, not when any planning
-        # call starts — between_turns marks the window so the stall detector
-        # can overwrite it with registry-derived truth (no call in flight,
-        # nudges, abort) instead of letting it count up over a dead loop.
-        self.between_turns = True
+        # call starts — the spinner's planning window marks it so the stall
+        # detector can atomically replace it with registry-derived truth (no
+        # call in flight, nudges, abort) instead of letting it count up over
+        # a dead loop.
         self._spinner.start("Orchestrator planning next probe...")
+        self._spinner.set_planning_window(True)
 
         # Stage 4 (F2 fix): don't count _deliberation_noop markers as
         # real actions for the timed_out flag.  Noop markers keep the

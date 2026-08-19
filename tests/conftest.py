@@ -239,6 +239,25 @@ def _isolate_maxim_nac_min_confidence():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_sim_planning_liveness_env():
+    """Scrub ``MAXIM_SIM_PLANNING_LIVENESS`` across every test.
+
+    Operator opt-OUT for the D13 planning-liveness abort (default ON). Per
+    CLAUDE.md "opt-in env vars in hot startup paths need autouse scrubs": a
+    test that disables the abort to reproduce the pre-fix livelock must not
+    leak that into later tests, which would silently restore the very bug the
+    guards exist to detect.
+    """
+    saved = os.environ.pop("MAXIM_SIM_PLANNING_LIVENESS", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_SIM_PLANNING_LIVENESS", None)
+        if saved is not None:
+            os.environ["MAXIM_SIM_PLANNING_LIVENESS"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_deterministic_scene_embodiment_env():
     """Scrub ``MAXIM_DETERMINISTIC_SCENE_EMBODIMENT`` across every test.
 
