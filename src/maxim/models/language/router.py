@@ -50,6 +50,25 @@ from maxim.models.language.cloud_dispatch import (
 )
 
 
+def _inference_lock_timeout_s() -> float:
+    """Ceiling on waiting for ``_inference_lock`` (bugs ledger D12).
+
+    Default 600s: far above any sane single inference (including
+    reasoning-model TTFTs), far below eternity. Clamped to [60, 3600] so a
+    typo cannot re-introduce the unbounded wait or make the lock
+    trigger-happy. Env: ``MAXIM_INFERENCE_LOCK_TIMEOUT_S``.
+    """
+    import os as _os
+
+    raw = _os.environ.get("MAXIM_INFERENCE_LOCK_TIMEOUT_S", "").strip()
+    if not raw:
+        return 600.0
+    try:
+        return max(60.0, min(3600.0, float(raw)))
+    except ValueError:
+        return 600.0
+
+
 def _record_unclassified_backend_error(provider_key: str) -> None:
     """Thin wrapper around
     :func:`maxim.models.language.lane_metrics.record_backend_unclassified_error`.
@@ -914,7 +933,28 @@ class LLMRouter:
         # Serialize inference — llama-cpp is not thread-safe for concurrent
         # calls on the same model.  In simulation mode two LLMWorkers share
         # one router; without this lock the second call segfaults.
-        with self._inference_lock:
+        #
+        # BOUNDED acquire (bugs ledger D12, root-caused 2026-08-18): the
+        # llm_worker timeout path abandons an orphan thread that may still
+        # be INSIDE the locked region; its executor-replacement fallback
+        # gives new calls a fresh thread but nothing ever frees this lock,
+        # so with an untimed acquire every subsequent call parks forever —
+        # observed live as 2.4h 'planning' hangs with ~75 lock-waiter
+        # threads, zero network activity, and a blind stall detector (the
+        # call registry is entered inside the lock, so queued calls are
+        # invisible to it). A bounded acquire converts the eternal silent
+        # hang into a loud per-call failure the retry/stall machinery can
+        # actually see. The ceiling is generous (default 600s — far above
+        # any sane single inference incl. reasoning-model TTFT, far below
+        # eternity); tune via MAXIM_INFERENCE_LOCK_TIMEOUT_S.
+        if not self._inference_lock.acquire(timeout=_inference_lock_timeout_s()):
+            logger.error(
+                "inference lock held > %.0fs — an orphaned/wedged call is holding it "
+                "(bugs ledger D12). Failing this call loudly instead of queuing forever.",
+                _inference_lock_timeout_s(),
+            )
+            return "", None
+        try:
             result = self._complete_text_locked(
                 system,
                 user,
@@ -926,6 +966,8 @@ class LLMRouter:
                 thinking=thinking,
                 stream=stream,
             )
+        finally:
+            self._inference_lock.release()
 
         # Plan 4 C4.5: flush pending auto-drains OUTSIDE _inference_lock.
         # The threshold checks in _try_provider populated the buffer under

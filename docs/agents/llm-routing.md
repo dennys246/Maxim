@@ -121,6 +121,7 @@ Core keeps the two command lines and the safe/unsafe verb split. Details: `maxim
 - `MAXIM_LLM_ENABLED` = enable LLM inference = `models/language/router.py`
 - `MAXIM_LLM_PROFILE` = default model profile = `models/language/config.py`
 - `MAXIM_LLM_N_CTX` = override llama.cpp n_ctx (prefer `maxim config set llm.n_ctx` — see gotcha above) = `runtime/lane_backends.py`
+- `MAXIM_INFERENCE_LOCK_TIMEOUT_S` = ceiling on waiting for `router._inference_lock` (default 600, clamped [60, 3600]) — the D12 bounded-acquire fix: a wedged orphan holding the lock produces loud per-call failures instead of parking every future call forever = `models/language/router.py`; scrub `_isolate_maxim_inference_lock_timeout_env`
 - `MAXIM_AUTO_DOWNLOAD_MODELS` = skip the auto-download prompt = model download path
 - `MAXIM_SKIP_REMOTE_PROBE` = bypass remote-URL probe (CI escape hatch) = probe path
 - `MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S` / `_RETRY_TIMEOUT_S` / `_CACHE_TTL_S` = probe timeouts (clamped) + cache freshness = `maxim_peer_backend.py`
