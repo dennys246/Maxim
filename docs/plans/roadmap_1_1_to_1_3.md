@@ -70,6 +70,28 @@ The remaining scope is release closure, not a new feature phase. Estimates belon
 the implementation PRs after each item's failing contract test exists; this roadmap
 does not convert uncertain debugging into calendar promises.
 
+**Operator-ratified 2026-08-19** (the 9→16 expansion), with this severity split
+from the claims-verification round — blocking vs 1.1.x *within* the gated items:
+
+- **Blocking for the 1.1 cut:** D15's `goal`/`robot` (the flagship API silently
+  ignoring its two most meaningful arguments), D17 (partial restore + corrupt-state
+  swallows on the stable load path), D18 (documented contract silently one-shot),
+  D16 for `run()` only (move the cleanup boundary above `llm_worker.start()`),
+  D20's network-dependence + CI-suite-truth half, item 15's baseline+CI gate
+  (cheap), and item 16 — which now explicitly includes correcting the **false
+  "shipped to PyPI" claims**: PyPI's latest release is 1.0.0; v1.0.1–v1.0.6 are
+  git-tag-only and both CLAUDE.md and the CHANGELOG said otherwise.
+- **1.1.x hardening:** D16 for `imagine()`/`campaign()`, D15's `home_dir` (document
+  the partial behavior if not surgical), D19 zero-debt burn-down, D20's
+  `~/.maxim`-write-hygiene half (global data-home isolation fixture).
+- **Also folded into item 12:** the #519 abort-clock fix shipped without a guard
+  test (scorecard finding) — the D13/D14 fix PR adds it.
+- **Also folded into gate-order step 4 (evidence closure):** the S4 backfill gap —
+  zero committed raw data exists for Exp 09/10/43/44/46/47/49 including the Tier-1
+  EARNED Exp 10 row; each Earned row either gets its data committed (re-run under
+  S4 where originals are lost — Exp 10's re-run already happened 2026-08-18/19,
+  commit its heartbeat records) or carries an explicit data-lost annotation.
+
 ### Release-gate order
 
 1. **D13/D14 first:** restore planning liveness and make the display observationally
@@ -83,19 +105,32 @@ does not convert uncertain debugging into calendar promises.
 5. **Release transaction:** reconcile version policy and docs, build/check the
    package, cut `1.1.0`, tag it, publish matching release notes and artifact.
 
-### Agent-guidance single-source decision (1.1 docs gate)
+### Agent-guidance single-source decision (1.1 docs gate) — RATIFIED 2026-08-19, inverse direction
 
-Two independent root instruction corpora are not sustainable. **`AGENTS.md` becomes
-the canonical provider-neutral entrypoint.** Subsystem knowledge stays in tracked
-`docs/agents/` briefs and incident history in `docs/lessons/`; procedures that need
-scripts/checklists belong in reusable skills or tracked runbooks.
+Two independent root instruction corpora are not sustainable — but the review round
+found the original proposal's mechanism backwards. The diet architecture (#509,
+operator-reviewed) already delivers the single source: **`CLAUDE.md` stays the
+canonical core** — 9.1K tokens, CI-linted (`scripts/lint_claude_md_invariants.py`:
+invariant format, guard citations, token ceiling, link existence), auto-loaded by
+the tooling doing most work here — with subsystem knowledge in `docs/agents/`
+briefs and incident history in `docs/lessons/`.
 
-Do **not** delete `CLAUDE.md` in the same change that moves its knowledge. First
-replace it with a minimal compatibility adapter that directs Claude-based tooling to
-read `AGENTS.md`, and add CI that prevents substantive rules from accumulating in
-the adapter. Remove the adapter only after a normal Claude review session proves the
-tooling still loads the canonical instructions without it. This obtains one source
-of truth without making instruction discovery an unmeasured assumption.
+**`AGENTS.md` is the thin provider-neutral ADAPTER** (rewritten 2026-08-19): the
+routing table, required checks, and hard-rule summaries pointing into the canonical
+corpus, capped at ~80 lines with an explicit no-rule-accumulation banner. The
+previous AGENTS.md had silently diverged since 2026-06-06 (wrong Python floor,
+dead pointers) — which is itself the evidence for why an adapter must carry no
+substantive rules of its own. Its one unique live artifact (the cross-system
+naming-conventions table) was rehomed to docs/agents/bio-memory.md §4b.
+
+Rationale for the inversion: demoting CLAUDE.md to an adapter would have (a) made
+the invariant lint pass vacuously with no replacement drafted, (b) taxed every
+Claude session with an indirection read in a weaker instruction position, and
+(c) obsoleted an operator-reviewed artifact six days after its review — all to buy
+a filename. The inverse buys the same single-source property (non-Claude agents now
+load a truthful adapter) at zero migration risk. If a canonical-filename migration
+is ever wanted, the mechanism is content-identity (generated copy + CI byte-check),
+never indirection, and the lint retarget ships in the same commit.
 
 ### H1 buys three things at once — now four
 
@@ -169,7 +204,7 @@ Two additions to the cut line, both bug-class rather than mechanism-class so the
    pilot finding F6 (0.997 → 0.059 within-run signal decay despite τ=1000) and feeds the
    pre-registration freeze. Do it whenever a session has an hour.
 
-## 1.1.x follow-through (post-cut, pre-1.2 — adopted 2026-08-13)
+## 1.1.x follow-through (post-cut, pre-1.2 — items 1–10 adopted 2026-08-13; items 11–14 added 2026-08-19 and ratified with the cut-line reconciliation)
 
 The 1.1 cut line stays closed; these are the next minor-stream items in rough order.
 Each POINTS at its owning plan — stages live there, not here:

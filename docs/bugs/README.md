@@ -75,8 +75,10 @@ during that review and currently lives nowhere else.
 
 ### Stable API / release enforcement
 
-Verified 2026-08-19 during the release-readiness review. Detailed evidence and
-required contracts: [repository_review_2026_08_19.md](repository_review_2026_08_19.md).
+D15–D20 verified 2026-08-19 during the release-readiness review — detailed evidence
+and required contracts: [repository_review_2026_08_19.md](repository_review_2026_08_19.md).
+D21 comes from the same day's independent claims-verification round (scorecard,
+documentation-honesty axis).
 
 | # | Defect | Disposition | Evidence |
 |---|---|---|---|
@@ -86,6 +88,7 @@ required contracts: [repository_review_2026_08_19.md](repository_review_2026_08_
 | D18 | **`register_tool()` is one-shot although the public extension contract implies continuing availability.** Injection clears the pending list while each API invocation builds a fresh registry. | **OPEN — 1.1 gate**; choose persistent registration or explicitly one-shot semantics and test it. | `api.py::_inject_pending_tools`; `api.py::register_tool`; investigation doc §D18 |
 | D19 | **The architecture audit is permanently red and therefore cannot detect regression.** The real audit reports 32 violations; the unit test only checks that it returns a list, and CI does not enforce a reviewed baseline. | **OPEN — 1.1 baseline + CI regression gate; 1.1.x debt burn-down.** | `tests/unit/test_architecture_audit.py::TestRealCodebase`; `maxim --audit-architecture`; investigation doc §D19 |
 | D20 | **The required fast suite is not offline/hermetic.** Installed optional ML dependencies can trigger model downloads; subprocess harnesses and teardown write under `~/.maxim`; CI runs only the narrower unit suite. | **OPEN — 1.1 gate.** Default fast tests must require no network, hardware, model cache, or writes outside their temporary root. | `tests/unit/test_clip_encoder.py`; `tests/behavioral/test_cradle_mother_pipeline.py`; `.github/workflows/test.yml`; investigation doc §D20 |
+| D21 | **`similarity/ec.py`'s `EntorhinalCortex` class docstring claims "O(1) approximate nearest neighbor via LSH", but the substrate hot path (`pattern_complete_or_separate`) is a pure-Python linear scan over embedding centroids (O(N·384) per call) that never touches the LSH index.** The module docstring itself is honest ("cosine-threshold clustering over embedding centroids; does NOT implement DG/CA3 attractor dynamics") — the class docstring contradicts it. Stale performance confessions are worse than ordinary staleness because readers extend them extra trust (2026-08-19 scorecard, documentation-honesty axis). | **OPEN — 1.1.x doc-truth fix** (docstring correction only; making LSH actually serve the hot path would be a mechanism change requiring its own justification under the freeze). | `src/maxim/similarity/ec.py::EntorhinalCortex` (class docstring, "Fast similarity queries" bullet) vs `::pattern_complete_or_separate` + module docstring lines 7–8 |
 
 ## Pending, not yet a defect
 

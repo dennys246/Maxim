@@ -11,11 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > [HTML roadmap](html-guides/maxim-roadmap.html). The 0.9.0 entry below
 > picks up the convention again.
 
-> **Note (2026-08-07):** versions 1.0.0 → 1.0.6 shipped to PyPI without CHANGELOG
-> entries or git tags past `v1.0.0` (88+ PRs, ~14,000 `src/` lines). The entries
-> below were reconstructed from the git history during the 1.1 release-truth pass
-> (roadmap item 2); annotated tags `v1.0.1`–`v1.0.6` were created at the verified
-> version-bump commits at the same time.
+> **Note (2026-08-07, corrected 2026-08-19):** versions 1.0.1 → 1.0.6 were version
+> bumps in-repo WITHOUT CHANGELOG entries, git tags, **or PyPI publication — PyPI's
+> latest `pymaxim` release is 1.0.0**; the original form of this note ("shipped to
+> PyPI") was itself false. The entries below were reconstructed from the git history
+> during the 1.1 release-truth pass (roadmap item 2); annotated tags
+> `v1.0.1`–`v1.0.6` were created at the verified version-bump commits at the same
+> time. Publishing a current release (or explicitly deciding not to) is part of
+> roadmap item 16.
 
 ## [Unreleased]
 
@@ -41,9 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **1.1 scope reconciled around release closure** — D13/D14 liveness, stable API
   contracts, hermetic tests, atomic NAc+EC invalidation, architecture-audit
   enforcement, remaining heartbeat evidence, and release truth are the cut. Oasis
-  and Hivemind moved to gated 1.2 work. `AGENTS.md` is the selected future canonical
-  agent-guidance entrypoint; `CLAUDE.md` will be retained as a minimal compatibility
-  adapter until the migration is verified.
+  and Hivemind moved to gated 1.2 work. Agent guidance ratified in the INVERSE of
+  the first draft: `CLAUDE.md` stays the canonical (CI-linted) core; `AGENTS.md`
+  rewritten as a thin provider-neutral adapter (see DECISIONS.md 2026-08-19).
 
 ### Fixed
 

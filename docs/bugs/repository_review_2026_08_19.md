@@ -8,7 +8,7 @@ and advertised-fast-suite execution. No hardware or paid-model experiments were 
 
 This document preserves the detailed evidence behind D15–D20 in the
 [known-defects ledger](README.md). The score and prioritization live separately in
-[the repository scorecard](../limits/score_card.md).
+[the repository scorecards](../limits/score_cards/).
 
 ## D15 — stable `maxim.run()` arguments do not fulfill their contracts
 
@@ -77,8 +77,10 @@ choice.
 
 `_inject_pending_tools()` clears the global pending list after creating a registry.
 Each subsequent API call constructs a fresh registry, so a registered tool is
-available only to the next injection. User documentation describes registration as
-applying to all subsequent runs.
+available only to the next injection. The public contract says otherwise in two
+places: the `register_tool` docstring promises a tool "available to all agents"
+(`src/maxim/api.py::register_tool`), and `docs/user/extension_api.md` declares
+`register_tool` **stable, part of the 1.0 contract** (§2 stability note).
 
 ### Required contract
 
@@ -119,7 +121,10 @@ Direct execution found multiple environment leaks:
 - `tests/unit/test_clip_encoder.py` loads a remote model whenever
   `sentence_transformers` is importable, rather than requiring a cached-model or
   network marker;
-- a substrate fixture test may load the same model family;
+- a substrate fixture test may load the same model family
+  (`tests/substrate/test_p4_fixture_validation.py` — though its loader-requiring
+  tests are gated behind `pytest.importorskip` + skip-on-missing-cache, so the leak
+  is narrower than the clip-encoder one);
 - `tests/behavioral/test_cradle_mother_pipeline.py` launches a subprocess harness
   that defaults part of its work under `~/.maxim` despite using pytest `tmp_path` for
   the explicit output;
@@ -145,7 +150,9 @@ These are important but do not need standalone defect IDs yet:
 
 - the 30 Hz loop performs synchronous atomic persistence on the control thread;
 - normal-tail session cleanup is not protected by a whole-loop `finally` for all
-  callers;
+  callers (UNVERIFIED in the 2026-08-19 claims-check round — kept as a hardening
+  lead, not an established finding; verify against `run_agentic_loop`'s exit paths
+  before acting on it);
 - persistence failures in `runtime/loop_state.py::_persist_state_json` are silently
   swallowed;
 - Python support, dependency, API-count, architecture, and decision docs disagree
@@ -154,4 +161,4 @@ These are important but do not need standalone defect IDs yet:
   provenance risk but requiring deliberate cleanup to preserve WIP.
 
 These are assigned in the [1.1→1.3 roadmap](../plans/roadmap_1_1_to_1_3.md) and
-[scorecard](../limits/score_card.md) rather than expanded into speculative bugs.
+[scorecards](../limits/score_cards/) rather than expanded into speculative bugs.

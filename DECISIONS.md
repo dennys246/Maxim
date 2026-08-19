@@ -11,13 +11,18 @@ Decision:
   already-started heartbeat—not Oasis, Hivemind, or another cognitive mechanism.
 - `docs/plans/roadmap_1_1_to_1_3.md` is the sole 1.1 scope authority. The July
   checklist is archived as a historical snapshot.
-- `AGENTS.md` becomes the canonical provider-neutral root instruction entrypoint.
-  Subsystem knowledge remains in tracked `docs/agents/` briefs and incident history
-  in `docs/lessons/`.
-- `CLAUDE.md` is not deleted until its unique knowledge has moved and a normal
-  Claude-based review proves instruction discovery still works. During migration it
-  becomes a minimal compatibility adapter pointing to `AGENTS.md`; CI prevents new
-  substantive rules from accumulating there.
+- **Single agent-guidance source, ratified 2026-08-19 in the INVERSE direction of
+  this entry's first draft:** `CLAUDE.md` stays the canonical core (CI-linted,
+  operator-reviewed, auto-loaded by the primary tooling); `AGENTS.md` was rewritten
+  as the thin provider-neutral ADAPTER (routing table + required checks + hard-rule
+  summaries, ~80-line cap, explicit no-rule-accumulation banner). Subsystem
+  knowledge remains in tracked `docs/agents/` briefs and incident history in
+  `docs/lessons/`. The first draft (AGENTS.md canonical, CLAUDE.md demoted to an
+  adapter) was reversed in review: it would have made the invariant lint pass
+  vacuously, taxed every Claude session with indirection, and obsoleted a
+  freshly operator-reviewed artifact — rationale recorded in the roadmap's
+  single-source section. Any future canonical-filename migration uses content
+  identity (generated copy + CI byte-check), never indirection.
 - Oasis and Hivemind move to gated 1.2 work. Encoder provenance/compatibility,
   read-side EC safety, and a sharing threat model must close before implementation.
 

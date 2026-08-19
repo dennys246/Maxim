@@ -1,6 +1,6 @@
 # Maxim Plans
 
-Current published version: **1.0.6** (1.0.0 published on PyPI as `pymaxim` 2026-06-17).
+Current version: **1.0.6** (git tag; the latest release published on PyPI as `pymaxim` is still 1.0.0, 2026-06-17 — closing that gap is roadmap item 16).
 Now: **1.1 "Sensorimotor" release closure** — ship the merged embodiment work plus
 the correctness, contract, truth, and verification debt it incurred. **Zero new
 mechanisms.** Reconciled 2026-08-19 after the D13/D14 investigation and repository
@@ -51,8 +51,8 @@ release authority reconciled 2026-08-19.
   persistence/architecture enforcement → evidence closure → release transaction.
 - [../bugs/repository_review_2026_08_19.md](../bugs/repository_review_2026_08_19.md)
   — D15–D20 evidence and required contracts.
-- [../limits/score_card.md](../limits/score_card.md) — repo-grade baseline and
-  grade-improvement criteria.
+- [../limits/score_cards/](../limits/score_cards/) — repo-grade baselines and
+  grade-improvement criteria (2026-08-19: Codex + Claude cards).
 
 ### Exp 44 — LLM-primary embodied choice (1.1.x experiment line; not a 1.1 gate)
 
@@ -89,8 +89,8 @@ record.**
 ### Living discipline docs
 
 - [../bugs/README.md](../bugs/README.md) — **KNOWN-DEFECTS LEDGER.** What is verifiably wrong or bounded now, including the D13/D14 liveness pair and the D15–D20 API/architecture/test cluster from the 2026-08-19 review. Every row carries evidence and a disposition.
-- [../limits/score_card.md](../limits/score_card.md) — **REPOSITORY SCORECARD (2026-08-19).** Evidence-backed grades for research integrity, runtime correctness, maintainability, test/CI truthfulness, documentation, and release governance, with explicit conditions for improving each grade.
-- [external_critique_response.md](external_critique_response.md) — **LIVING EXTERNAL-CRITIQUE RESPONSE.** The bio-docstring truth pass and CLAUDE.md diet shipped; fail-loud Stages 2–3, god-function decomposition, and CI gate scope remain. The 2026-08-19 scorecard is the current repo-wide assessment rather than a replacement for this critique-specific history.
+- [../limits/score_cards/](../limits/score_cards/) — **REPOSITORY SCORECARDS** (dual-assessor cadence from 2026-08-19: Codex + Claude, same eight axes, independent evidence). Evidence-backed grades for research integrity, runtime correctness, maintainability, test/CI truthfulness, documentation, and release governance, with explicit conditions for improving each grade. Re-scored at each release cut; divergence between the two cards is itself signal.
+- [external_critique_response.md](external_critique_response.md) — **LIVING EXTERNAL-CRITIQUE RESPONSE.** The bio-docstring truth pass ([bio_docstring_truth_pass.md](bio_docstring_truth_pass.md)) and CLAUDE.md diet ([claude_md_diet.md](claude_md_diet.md)) shipped; fail-loud Stages 2–3 ([measurement_path_fail_loud.md](measurement_path_fail_loud.md)), god-function decomposition ([god_function_decomposition.md](god_function_decomposition.md)), and CI gate scope remain. The 2026-08-19 scorecards are the current repo-wide assessment rather than a replacement for this critique-specific history.
 
 - [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) — **Living doc + post-1.0 behavioral-regression discipline.** Actively maintained (Exp 42 GRADUATE recorded 2026-06-23; row #11 feeds Exp 44). Earned invariants re-run on triggers (encoder swap, bio-system refactor, minor-version heartbeat); `Stale`/`Broken` entries block the next release.
 - [tool_refinement_plan.md](tool_refinement_plan.md) — **Living tool-curation doc**, updated 2026-07-14 (records the introspection-tools hard-delete from the embodiment truth-restoration pass, PR #390, + rebuild guidance).

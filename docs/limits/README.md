@@ -164,7 +164,7 @@ your metric can actually see.
 
 ## Repository capability assessment
 
-[score_card.md](score_card.md) records the 2026-08-19 repository grades for
+[score_cards/](score_cards/) records the 2026-08-19 repository grades (one card per assessor, `YYYY-MM-DD-<assessor>.md`; 2026-08-19 has independent Codex and Claude cards) for
 research integrity, runtime correctness, maintainability, tests/CI, documentation,
 and release governance. It also records the evidence required to improve each
 grade and assigns the corrective work to 1.1 or 1.1.x.

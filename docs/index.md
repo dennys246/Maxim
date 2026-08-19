@@ -15,7 +15,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 - [Troubleshooting](troubleshooting/index.md) — Runbooks and diagnostics
 - [Plans](plans/README.md) — Active roadmap and future plans
 - [Known defects](bugs/README.md) — Verified defects with evidence and dispositions
-- [Repository scorecard](limits/score_card.md) — Engineering grades and improvement criteria
+- [Repository scorecards](limits/score_cards/) — Engineering grades and improvement criteria (dual-assessor: Codex + Claude, same axes, independent evidence)
 - [Measurement limits](limits/README.md) — Characterized apparatus limits experiment designs must respect
 - **[Substrate-Primary Mode](substrate_primary.md)** — NEW: parallel architecture where the substrate carries action selection without LLM mediation
 - **[Maxim Hivemind + Oasis](hivemind.md)** — NEW: federated bio-substrate layer for cross-instance learning
