@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Lint CLAUDE.md + docs/agents/ briefs to enforce Principle 5 and the claude_md_diet contract.
+"""Lint the canonical agent-guidance corpus and its provider-neutral adapter.
 
-Three checks (the first is the original Principle 5 lint; the other two were added by
-docs/plans/claude_md_diet.md, 2026-08-13):
+Four checks (the first is the original Principle 5 lint; the next two were added by
+docs/plans/claude_md_diet.md, 2026-08-13; the fourth closes the AGENTS.md drift seam):
 
 1. **Guard citations.** For each `[engineering]` invariant, the body must contain a
    `Regression guard:` reference; for each `[behavioral]` invariant, a `Roy experiment:`
@@ -22,6 +22,10 @@ docs/plans/claude_md_diet.md, 2026-08-13):
    repo-relative path (notably the `docs/lessons/<slug>.md` archive links the compressed
    stubs point at) must resolve to an existing file. External URLs and paths escaping the
    repo root are skipped.
+
+4. **Pointer-only AGENTS.md.** AGENTS.md must match the frozen provider-neutral adapter
+   exactly. It points auto-loading tools at CLAUDE.md but duplicates no checks, routing
+   entries, or project rules that could drift independently.
 
 Exits:
   0 — all checks pass.
@@ -46,6 +50,19 @@ TARGET_SECTIONS = ("## Lessons learned", "## Architectural invariants")
 
 # claude_md_diet: CLAUDE.md must not regrow. Estimate is chars/4 (dependency-free).
 TOKEN_CEILING = 12_000
+
+EXPECTED_AGENTS_ADAPTER = """# AGENTS.md — provider-neutral entrypoint
+
+> The canonical instruction corpus for this repository is [CLAUDE.md](CLAUDE.md).
+> This file exists only for tools that auto-load `AGENTS.md`.
+
+Before doing any work in this repository, read `CLAUDE.md` in full and follow its
+required checks, safety rules, routing table, and subsystem-reading instructions.
+
+Do not add project rules, commands, routing entries, or subsystem knowledge here.
+Put cross-cutting guidance in `CLAUDE.md` and scoped guidance in `docs/agents/`.
+CI enforces this pointer-only adapter byte-for-byte to prevent instruction drift.
+"""
 
 MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 
@@ -175,6 +192,22 @@ def lint(claude_md_path: Path) -> int:
     repo_root = claude_md_path.parent
     failed = False
 
+    # Check 0 — AGENTS.md is a frozen pointer, not a second instruction corpus.
+    agents_md_path = repo_root / "AGENTS.md"
+    try:
+        agents_text = agents_md_path.read_text()
+    except OSError as exc:
+        print(f"ERROR: failed to read {agents_md_path}: {exc}", file=sys.stderr)
+        return 2
+    if agents_text != EXPECTED_AGENTS_ADAPTER:
+        failed = True
+        print(
+            "FAIL: AGENTS.md must remain the exact pointer-only adapter defined in "
+            "scripts/lint_claude_md_invariants.py; put substantive guidance in CLAUDE.md "
+            "or docs/agents/.",
+            file=sys.stderr,
+        )
+
     # Check 1 — guard citations, CLAUDE.md (target sections) + docs/agents briefs (whole file).
     docs: list[tuple[Path, bool]] = [(claude_md_path, False)]
     docs += [(p, True) for p in sorted((repo_root / "docs" / "agents").glob("*.md"))]
@@ -204,8 +237,9 @@ def lint(claude_md_path: Path) -> int:
             file=sys.stderr,
         )
 
-    # Check 3 — repo-relative markdown links must resolve (CLAUDE.md + briefs).
-    for doc, _ in docs:
+    # Check 3 — repo-relative markdown links must resolve (CLAUDE.md + briefs + adapter).
+    link_docs = [doc for doc, _ in docs] + [agents_md_path]
+    for doc in link_docs:
         broken = _broken_repo_links(doc, repo_root)
         if broken:
             failed = True
@@ -225,7 +259,8 @@ def lint(claude_md_path: Path) -> int:
 
     print(
         f"PASS: {n_docs} doc(s) audited — all tagged invariants carry the required field, "
-        f"CLAUDE.md ~{est_tokens} est. tokens (ceiling {TOKEN_CEILING}), all repo links resolve."
+        f"CLAUDE.md ~{est_tokens} est. tokens (ceiling {TOKEN_CEILING}), AGENTS.md adapter "
+        "matches, all repo links resolve."
     )
     return 0
 

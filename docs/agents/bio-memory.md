@@ -100,6 +100,28 @@ Construction of this whole stack is owned by the builder family (`build_bio_stac
 
 Cross-refs: docs/agents/embodiment.md for the pain/credit channel map (B8 delta-attribution, channel split, motor credit — NAc is the consumer); docs/agents/runtime-tools.md for the builder family (`build_bio_stack`/`build_memory_hub`/`build_pain_bus`), per-agent stash rules, and agent-loop tick sites; docs/agents/persistence-config.md for the autosave-under-RWLock deadlock rule (subject: Hippocampus), stable-hash, `_format_version`, and the hivemind bundle/ZIP wire format; docs/agents/simulation-experiments.md for the ablation-arm index using the env vars below.
 
+## 4b. Naming conventions — cross-system consistency (rehomed from AGENTS.md, 2026-08-19)
+
+When multiple systems share a functional role they **must** use the same method and
+property names — the `MemoryLayer` protocol maps cleanly onto concrete
+implementations only because the names match. If two modules perform the same
+operation, name it identically; don't invent synonyms.
+
+| Operation | Canonical name | DO NOT use |
+|---|---|---|
+| Full sleep-cycle management (compress + remove + preserve) | `sleep()` | `cleanup()`, `gc()` |
+| Promote important memories to long-term | `consolidate()` | `promote()`, `commit()` |
+| Store a new record | `capture()` / `store()` | `add()`, `insert()`, `create()` |
+| Retrieve by ID | `get()` | `fetch()`, `find_by_id()` |
+| Query by filters | `recall()` | `search()`, `query()`, `find()` |
+| Persist to disk | `save()` / `load()` | `dump()`, `serialize()`, `write()` |
+| Internal association graph | `graph` (property) | `_graph`, `get_graph()` |
+| Layer identifier | `layer_name` (property) | `name`, `type`, `kind` |
+| Record access tracking | `touch()` | `update_access()`, `mark_read()` |
+
+**Extending:** add the canonical name here before implementing a new shared
+operation; rename inconsistent legacy names during the next change to that system.
+
 ## 5. Env vars owned
 
 - `MAXIM_SUBSTRATE_PATH` = enable LinguisticEncoder → EC → ATL dual-write = `runtime/agent_loop.py` / encoder wiring

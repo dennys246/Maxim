@@ -285,7 +285,7 @@ Load path is back-compat: pre-Stage-4 dumps without `substrate_nodes_shared` loa
 
 ## Stage 6 — Hivemind shareability (conditional, ~150 LOC)
 
-**Gated on Stage 5 PASS + `maxim_hivemind.md` 1.1 Oasis software shipping.**
+**Gated on Stage 5 PASS + the gated 1.2 Oasis software in `maxim_hivemind.md` shipping.**
 
 The trained projection becomes a sharable substrate artifact alongside NAc/EC/ATL. The `substrate_bundle.py` work scoped in v1_refinement §B5 extends to include `projections/*.pt` in the bundle format. Confidence aggregation across Oases follows the same Bayesian-merge shape as NAc weights: per-projection-pair, weighted by training-data provenance count.
 

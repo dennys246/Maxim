@@ -213,7 +213,7 @@ python -c "import maxim; print(maxim.__version__)"
 
 ### Month 1
 
-6. **Maxim Oasis MVP (1.1)** — single-Oasis instance hostable on Mac Mini class hardware. CLI: `maxim oasis serve`. LLM-AUT users opt in to contribute via `maxim contribute --to oasis://...`. ~800 LOC.
+6. **Maxim Oasis MVP (1.2, gated)** — single-Oasis instance hostable on Mac Mini class hardware. CLI: `maxim oasis serve`. LLM-AUT users opt in to contribute via `maxim contribute --to oasis://...`. ~800 LOC. Requires the provenance/compatibility/threat-model gates in the active roadmap.
 7. **Substrate-primary AUT mode (1.1)** — Phase 0 validation runs (raw substrate, no Hivemind); Phase 1 (vocabulary-constrained) starts.
 8. **Maxim Hivemind P2P protocol (1.2)** — peer discovery, substrate-snapshot exchange, conflict-resolution semantics, poison-resistance defenses. ~600 LOC.
 
@@ -224,8 +224,8 @@ python -c "import maxim; print(maxim.__version__)"
 | Version | What |
 |---------|------|
 | 1.0.0 | Stable API; substrate-primary harness (B5: Phase -1 + Phase 0 + Hivemind shareability infrastructure, all behind experimental flag); D1-D3 docs complete |
-| 1.1.x | Substrate-primary AUT mode lands (`--aut-mode substrate-primary`); first hostable Maxim Oasis; Phase 1 grounded-language work begins |
-| 1.2.x | Full Maxim Hivemind P2P protocol; multi-Oasis federation; substrate-primary Maxims pull bootstrap from Hivemind; Phase 2 (symbol binding) starts |
+| 1.1.x | Release hardening and the post-cut experiment line; no Oasis implementation |
+| 1.2.x | First hostable Maxim Oasis + full Hivemind P2P protocol; multi-Oasis federation; substrate-primary Maxims pull bootstrap after compatibility gates pass |
 | 1.3+ | Phase 3 from-scratch sequence model; substrate-primary becomes default-eligible for end users |
 
 ---

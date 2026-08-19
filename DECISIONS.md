@@ -2,6 +2,50 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-08-19 — 1.1 release closure and provider-neutral agent guidance
+
+Decision:
+
+- 1.1 remains under a mechanism freeze. Its remaining scope is correctness,
+  stable-contract repair, verification, release truth, and completion of the
+  already-started heartbeat—not Oasis, Hivemind, or another cognitive mechanism.
+- `docs/plans/roadmap_1_1_to_1_3.md` is the sole 1.1 scope authority. The July
+  checklist is archived as a historical snapshot.
+- **Single agent-guidance source, ratified 2026-08-19 in the INVERSE direction of
+  this entry's first draft:** `CLAUDE.md` stays the canonical core (CI-linted,
+  operator-reviewed, auto-loaded by the primary tooling); `AGENTS.md` was rewritten
+  as a pointer-only provider-neutral ADAPTER with no copied checks, routing table, or
+  hard rules. Its exact contents are enforced by the documentation lint. Subsystem
+  knowledge remains in tracked `docs/agents/` briefs and incident history in
+  `docs/lessons/`. The first draft (AGENTS.md canonical, CLAUDE.md demoted to an
+  adapter) was reversed in review: it would have made the invariant lint pass
+  vacuously, taxed every Claude session with indirection, and obsoleted a
+  freshly operator-reviewed artifact — rationale recorded in the roadmap's
+  single-source section. Any future canonical-filename migration uses content
+  identity (generated copy + CI byte-check), never indirection.
+- Oasis and Hivemind move to gated 1.2 work. Encoder provenance/compatibility,
+  read-side EC safety, and a sharing threat model must close before implementation.
+
+Reason:
+
+- The 2026-08-19 review confirmed public API no-ops, planning liveness defects,
+  non-hermetic required tests, a permanently red architecture audit, and release
+  policy drift. Distributing state or adding mechanisms before closing those gaps
+  would amplify failure modes the current runtime cannot diagnose reliably.
+- Two large root instruction files had already diverged on Python support,
+  dependencies, and API count. A single canonical source avoids provider-specific
+  truth forks while a measured compatibility adapter avoids breaking Claude-based
+  workflows by assumption.
+
+Tradeoffs:
+
+- 1.1 takes longer and carries less novelty, but becomes a defensible release rather
+  than a bundle of already-merged features with unresolved contracts.
+- The `AGENTS.md` adapter leaves two filenames in the repository, but its frozen,
+  pointer-only shape prevents a second substantive instruction corpus from forming.
+- The 32 existing architecture findings may remain as reviewed debt in 1.1; CI must
+  reject additions, and 1.1.x owns the burn-down.
+
 ## 2026-03-31 — Claw-Code Upgrade: Cognitive Pain, Coding Tools, Session Persistence
 
 Adopted patterns from the claw-code Python port of Claude Code to improve Maxim's

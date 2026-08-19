@@ -704,6 +704,9 @@ jobs:
   aarch64-resolve:
     name: aarch64 resolve (lean Pi extra, no heavy backends)
     runs-on: ubuntu-latest
+    # Healthy runs finish in well under a minute. Bound hosted-runner or apt
+    # mirror stalls so one package probe cannot hold a PR open for hours.
+    timeout-minutes: 10
     # Least privilege: this job only checks out and resolves dependencies.
     # An explicit block is also what CodeQL's actions/missing-workflow-permissions
     # query requires — without it these jobs raise alerts that BLOCK the merge
@@ -724,8 +727,19 @@ jobs:
       # Installing them here also keeps this job honest: it exercises the real
       # prerequisite rather than resolving a set the Pi could not install.
       - name: Sdist metadata build deps (pygobject/pycairo)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends
-             libgirepository1.0-dev libcairo2-dev pkg-config
+        run: |
+          sudo apt-get \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30 \
+            update
+          sudo apt-get \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30 \
+            -o DPkg::Lock::Timeout=60 \
+            install -y --no-install-recommends \
+            libgirepository1.0-dev libcairo2-dev pkg-config
       - name: Resolve pymaxim[pi] for linux aarch64 / cp311 and assert no torch/CUDA
         run: python3 scripts/check_aarch64_install.py --print-resolved
 

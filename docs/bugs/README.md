@@ -3,7 +3,7 @@
 **What this is.** The fourth ledger. The repo already tracks *behavioral* claims
 ([behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md)),
 *algorithmic* claims ([bio_faithful_roadmap.md](../plans/bio_faithful_roadmap.md)), and
-*engineering rules* (CLAUDE.md invariants). This tracks **what is verifiably wrong or
+*engineering rules* (the repository's agent-guidance invariants). This tracks **what is verifiably wrong or
 bounded right now** — the axis on which findings otherwise evaporate into plan-doc asides.
 (A fifth ledger, [docs/limits/README.md](../limits/README.md), tracks measured
 *instrument* limits — nothing broken, but properties every experiment design must
@@ -83,6 +83,22 @@ D23 remains open until non-TTY output and lifecycle ownership are fixed globally
 |---|---|---|---|
 | D22 | **A cleanly unwound aborted sim still exits 0, and no campaign harness reads its typed status.** D12 only reaches exit 4 through `_force_exit`; D13 now records `llm_wedged`, `planning_failed`, or `worker_unavailable` in `finish_context`, but those values still do not become process failure and scripts do not inspect them. A campaign can therefore count an aborted row as data. | **OPEN — 1.1 gate candidate.** Map terminal `finish_context.status` values to process exit codes and require harnesses to treat every abort status as FAIL rather than a short run. | `simulation/orchestrator.py::_stall_detector` (`_force_exit`, exit 4 only on non-unwind); no campaign consumer of the typed statuses under `scripts/` |
 | D23 | **Raw-terminal spinners can still outlive careless callers and write ANSI frames to captured stderr.** `Spinner._spin` has no `sys.stderr.isatty()` check, and not every bridge caller guarantees `finish()`. The D13 regression test now closes its bridge and `Spinner.stop()` closes the planning window, but those surgical fixes do not make all callers lifecycle-safe or captured output hermetic. | **OPEN — 1.1.x hygiene**, pairs with D20's hermetic-suite work. Add non-TTY suppression and audit bridge ownership/cleanup across tests. | fast-suite stderr tail 2026-08-19; `simulation/spinner.py::Spinner._spin` raw-ANSI branch |
+### Stable API / release enforcement
+
+D15–D20 verified 2026-08-19 during the release-readiness review — detailed evidence
+and required contracts: [repository_review_2026_08_19.md](repository_review_2026_08_19.md).
+D21 comes from the same day's independent claims-verification round (scorecard,
+documentation-honesty axis).
+
+| # | Defect | Disposition | Evidence |
+|---|---|---|---|
+| D15 | **Stable `maxim.run()` arguments are silently ineffective.** `goal` is accepted but never reaches the loop; `robot` connects but is not attached to the agent/executor/tool registry; `home_dir` is only partially honored because loop state remains CWD-relative. | **OPEN — 1.1 gate** for `goal`/`robot`; finish or explicitly document `home_dir` in 1.1/1.1.x. | `api.py::run`; `runtime/agent_loop.py::run_agentic_loop`; investigation doc §D15 |
+| D16 | **Stable API cleanup begins after fallible side effects.** Environment mutation and worker startup occur before `run()`'s cleanup boundary; related setup windows exist in `imagine()`/`campaign()`. | **OPEN — 1.1 gate** for stable-facade partial-initialization cleanup. | `api.py::run`; investigation doc §D16 |
+| D17 | **`maxim.load.agent()` does not immediately restore every promised subsystem and may silently substitute fresh state for corrupt state.** ATL loads only at later session start; Hippocampus/SCN corruption can be swallowed. | **OPEN — 1.1 gate**; load must restore fully or fail with actionable recovery state. | `load.py::agent`; `runtime/agent_factory.py`; `integration/memory_hub.py::on_session_start`; investigation doc §D17 |
+| D18 | **`register_tool()` is one-shot although the public extension contract implies continuing availability.** Injection clears the pending list while each API invocation builds a fresh registry. | **OPEN — 1.1 gate**; choose persistent registration or explicitly one-shot semantics and test it. | `api.py::_inject_pending_tools`; `api.py::register_tool`; investigation doc §D18 |
+| D19 | **The architecture audit is permanently red and therefore cannot detect regression.** The real audit reports 32 violations; the unit test only checks that it returns a list, and CI does not enforce a reviewed baseline. | **OPEN — 1.1 baseline + CI regression gate; 1.1.x debt burn-down.** | `tests/unit/test_architecture_audit.py::TestRealCodebase`; `maxim --audit-architecture`; investigation doc §D19 |
+| D20 | **The required fast suite is not offline/hermetic.** Installed optional ML dependencies can trigger model downloads; subprocess harnesses and teardown write under `~/.maxim`; CI runs only the narrower unit suite. | **OPEN — 1.1 gate.** Default fast tests must require no network, hardware, model cache, or writes outside their temporary root. | `tests/unit/test_clip_encoder.py`; `tests/behavioral/test_cradle_mother_pipeline.py`; `.github/workflows/test.yml`; investigation doc §D20 |
+| D21 | **`similarity/ec.py`'s `EntorhinalCortex` class docstring claimed "O(1) approximate nearest neighbor via LSH", but the substrate hot path (`pattern_complete_or_separate`) is a pure-Python linear scan over embedding centroids (O(Nd) per call) that never touches the LSH index.** The module docstring was already honest ("cosine-threshold clustering over embedding centroids; does NOT implement DG/CA3 attractor dynamics") — the class docstring contradicted it. | **FIXED (2026-08-19)** — the class docstring now distinguishes indexed signature queries from the exact substrate centroid scan. No runtime mechanism changed. Prune at the next ledger sweep. | `src/maxim/similarity/ec.py::EntorhinalCortex`; `::pattern_complete_or_separate` |
 
 ## Pending, not yet a defect
 
