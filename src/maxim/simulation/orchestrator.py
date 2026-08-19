@@ -1922,6 +1922,36 @@ def start_simulation_mode(
         except Exception as e:
             aut_error.append(e)
             logger.error("AUT loop failed: %s", e)
+            # The AUT thread is DEAD from here on. Pre-2026-08-19 `aut_error`
+            # was write-only (appended, never read), so the orchestrator kept
+            # probing a corpse: `send_and_wait` increments `turn_count` BEFORE
+            # waiting, so turn progress kept resetting the hard-abort's clock
+            # and the campaign ran to full length emitting empty turns — a
+            # plausible-looking low-action RESULT rather than a failure
+            # (pre-merge review, architecture lens B1 / executor lens F4).
+            # Surface it the same way every other fatal sim condition is
+            # surfaced, so a dead AUT can never be mistaken for data.
+            try:
+                if not bridge.finish_context:
+                    bridge.finish_context.update(
+                        {
+                            "status": "aut_died",
+                            "reason": f"{type(e).__name__}: {e}",
+                            "summary": (
+                                f"The agent-under-test's loop raised {type(e).__name__} and its "
+                                f"thread exited; every later turn would be empty. Terminating "
+                                f"instead of reporting turns nothing produced."
+                            ),
+                            "initiated_by": "aut_worker",
+                        }
+                    )
+            except Exception as ctx_err:
+                logger.debug("finish_context update failed: %s", ctx_err)
+            try:
+                bridge.finish()
+            except Exception as fin_err:
+                logger.debug("bridge.finish failed: %s", fin_err)
+            stop_event.set()
 
     aut_thread = threading.Thread(target=_aut_worker, name="sim.aut", daemon=True)
     aut_thread.start()
@@ -2605,6 +2635,7 @@ def start_simulation_mode(
             max_byte_silence_threshold_s,
             should_hard_abort,
         )
+        from maxim.simulation.spinner import spinner_truth_message
 
         _resolved_tier = "large"
 
@@ -2643,6 +2674,10 @@ def start_simulation_mode(
         # call is healthy or the registry has nothing) — feeds the D12
         # hard-abort decision below.
         _wedged_byte_silence: list[float | None] = [None]
+        # D14 spinner truth: True while the detector has overwritten the
+        # bridge's between-turns "planning..." text with registry-derived
+        # truth; used to restore the default once a healthy call appears.
+        _spinner_truth_overridden: list[bool] = [False]
         # The hard-abort's OWN clock: time of the last TURN advance. The
         # first shipped version fed the abort from _last_activity_time —
         # which the nudge path RESETS on every nudge, making ">=3 nudges
@@ -2732,6 +2767,8 @@ def start_simulation_mode(
                 _last_turn_progress_time[0] = time.time()
                 _last_orch_action_count[0] = current_actions
                 _nudge_count[0] = 0
+                # D14: bridge restarted the spinner with fresh turn text.
+                _spinner_truth_overridden[0] = False
                 # Restore normal status color on progress
                 display = get_active_display()
                 if display is not None:
@@ -2798,6 +2835,15 @@ def start_simulation_mode(
                     if silence_s is None or silence_s < max_byte_silence_threshold_s():
                         # Call alive, bytes flowing — suppress nudge
                         _wedged_byte_silence[0] = None
+                        # D14: a healthy call is in flight — the default
+                        # "planning..." text is truthful again; restore it
+                        # if an earlier tick overrode it.
+                        if _spinner_truth_overridden[0]:
+                            try:
+                                bridge._spinner.update_if_planning("Orchestrator planning next probe...")
+                            except Exception as e:
+                                logger.debug("spinner truth restore failed: %s", e)
+                            _spinner_truth_overridden[0] = False
                         continue
                     # No bytes for >max_byte_silence_threshold_s — connection
                     # is wedged. Fall through and let the nudge fire as a
@@ -2825,6 +2871,34 @@ def start_simulation_mode(
             # Turn-anchored, nudge-proof stall duration (see the
             # _last_turn_progress_time comment above).
             _stall_duration_now = time.time() - _last_turn_progress_time[0]
+
+            # ── D14 spinner truth (bugs ledger) ──────────────────────────
+            # The bridge sets "Orchestrator planning next probe..." when a
+            # turn ENDS and nothing corrects it on any failure path, so a
+            # dead loop shows "planning... (8624s)" — a display asserting
+            # work py-spy proves is not happening. Reaching this point means
+            # either NO call is in flight or the in-flight call is
+            # byte-wedged; overwrite the spinner with what the registry
+            # actually observes. Pure decision in
+            # spinner.spinner_truth_message.
+            _truth_msg = spinner_truth_message(
+                between_turns=bridge._spinner.planning_window,
+                in_flight_and_silent=_wedged_byte_silence[0] is not None,
+                stall_duration_s=_stall_duration_now,
+                threshold_s=_current_threshold(),
+                nudge_count=_nudge_count[0],
+                byte_silence_s=_wedged_byte_silence[0],
+                byte_silence_threshold_s=max_byte_silence_threshold_s(),
+            )
+            if _truth_msg is not None:
+                try:
+                    # Atomic test-and-set: a turn that starts between the
+                    # decision above and this write keeps its own text.
+                    if bridge._spinner.update_if_planning(_truth_msg):
+                        _spinner_truth_overridden[0] = True
+                except Exception as e:
+                    logger.debug("spinner truth update failed: %s", e)
+
             _hard_abort_enabled = _os.environ.get("MAXIM_SIM_HARD_ABORT", "1").strip().lower() not in (
                 "0",
                 "false",
@@ -2851,6 +2925,13 @@ def start_simulation_mode(
                 )
                 logger.error(_abort_msg)
                 _emit(f"🛑 {_abort_msg}", "turn")
+                # D14: correct the status line BEFORE the abort tears the
+                # display down — the last thing an operator sees must not be
+                # "planning... (Ns)" counting up over a dead loop.
+                try:
+                    bridge._spinner.update(f"🛑 llm_wedged — aborting sim ({_silence_str})")
+                except Exception as e:
+                    logger.debug("spinner abort update failed: %s", e)
                 try:
                     bridge.finish_context.update(
                         {
@@ -2954,6 +3035,7 @@ def start_simulation_mode(
     # turns, show "Orchestrator planning..." using the bridge's spinner
     # so there's only one spinner managing the terminal line.
     bridge._spinner.start("Orchestrator planning first probe...")
+    bridge._spinner.set_planning_window(True)  # D14 (pre-first-turn window)
 
     # Stage 0b: bind RequestContext on the orchestrator thread so
     # orch-side action records (rare — most actions land on the AUT
@@ -2964,6 +3046,7 @@ def start_simulation_mode(
     # exactly the run_agentic_loop window. Per pre-merge review
     # architecture lens I5, this replaces a manual set_context /
     # reset_context try/finally with the canonical helper.
+    from maxim.runtime.loop_controller import PlanningLivenessExhausted as _PlanningLivenessExhausted
     from maxim.utils.http import context_scope, new_request_context
 
     try:
@@ -2987,9 +3070,42 @@ def start_simulation_mode(
                     stop_event=stop_event,
                     target_hz=2.0,
                     percept_source=orchestrator_source,
+                    # Bugs ledger D13. THIS loop is the one that needs it: it has
+                    # no action_sink and no percept producer between turns, so a
+                    # planning turn dropped after a parse failure leaves nothing
+                    # to wake it — the observed 8,624s "planning" hang. The AUT
+                    # deliberately does NOT opt in (it already recovers via the
+                    # `_llm_unavailable` synthetic action breaking the bridge's
+                    # settle loop); enabling it there would turn a working
+                    # recovery into a dead thread whose campaign keeps emitting
+                    # empty turns (pre-merge review, architecture lens B1/B3).
+                    planning_liveness=True,
                 )
     except KeyboardInterrupt:
         display_summary(["Simulation stopped by user"])
+    except _PlanningLivenessExhausted as e:
+        # D13: the agent loop spent its bounded planning-retry budget and
+        # aborted through its normal teardown. Preserve the typed failure:
+        # provider/parse exhaustion is ``llm_wedged``, responsive but invalid
+        # planning is ``planning_failed``, and queue/worker exhaustion is
+        # ``worker_unavailable``.
+        _finish_status = getattr(e, "finish_status", "llm_wedged")
+        _liveness_msg = f"PLANNING LIVENESS EXHAUSTED [{_finish_status}] (bugs ledger D13): {e}"
+        logger.error(_liveness_msg)
+        _emit(f"🛑 {_liveness_msg}", "turn")
+        try:
+            bridge._spinner.update(f"🛑 {_finish_status} — aborting sim")
+        except Exception as spin_err:
+            logger.debug("spinner abort update failed: %s", spin_err)
+        if not bridge.finish_context:
+            bridge.finish_context.update(
+                {
+                    "status": _finish_status,
+                    "reason": str(e),
+                    "summary": _liveness_msg,
+                    "initiated_by": "planning_liveness",
+                }
+            )
     except Exception as e:
         orch_error.append(e)
         logger.error("Orchestrator loop failed: %s", e)

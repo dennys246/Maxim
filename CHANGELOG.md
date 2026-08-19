@@ -65,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   competing for runners (jobs previously sat unassigned and died at 15m01s as
   false-red `failure`). (#470)
 
+## [1.0.7] - 2026-08-19
+
+### Fixed
+
+- **Simulation planning liveness (D13/D14)** — failed or non-executable
+  planning turns now retry boundedly or terminate with a typed status instead
+  of idling forever. Recovery follows the exact `LLMWorker` job lifecycle,
+  separates planning failures from worker-transport failures, corrects
+  unregistered-tool retries, and keeps spinner state truthful.
+
 ## [1.0.6] - 2026-08-04
 
 ### Added

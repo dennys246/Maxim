@@ -33,6 +33,28 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class PlanningLivenessExhausted(RuntimeError):
+    """A sim's planning turns failed repeatedly and the bounded retry budget
+    is spent (bugs ledger D13).
+
+    Raised by ``run_agentic_loop`` AFTER its normal teardown (state persist +
+    bio session end) so the sim aborts loudly instead of idling forever on a
+    silently-dropped planning turn. Homed here, beside the
+    ``record_planning_failure`` state machine that decides it — ``runtime/
+    stall_threshold.py`` declares itself the single source of truth for
+    stall-THRESHOLD derivation, so a loop-control exception did not belong
+    there (pre-merge review, architecture lens S3).
+
+    Only raised by a loop that opted in via ``planning_liveness=True`` — in
+    practice the sim orchestrator, the one loop with no other wake source
+    between turns.
+    """
+
+    def __init__(self, message: str, *, finish_status: str = "llm_wedged") -> None:
+        super().__init__(message)
+        self.finish_status = finish_status
+
+
 class LoopController:
     """Manages agentic loop state and provides phase methods.
 
@@ -112,13 +134,29 @@ class LoopController:
         )
 
         # ── Transient loop state (typed — replaces local variables) ──────
-        self.pending_proposal: LLMProposal | None = None
+        # Backing field for the pending_proposal property below; planning-
+        # liveness fields are initialized further down, so the raw field is
+        # set here rather than going through the setter.
+        self._pending_proposal: LLMProposal | None = None
         self.pending_next_actions: list[dict[str, Any]] = []
         self.pending_plan_proposal: LLMProposal | None = None
         self.pending_action_followup: ActionFollowup | None = None
         self.pending_prefetch: Any | None = None
         self.last_llm_submit_time: float = 0.0
         self.llm_submit_interval: float = 0.5
+        # ── Planning liveness (bugs ledger D13) ──────────────────────────
+        # last_proposal_time: when get_latest_proposal() last returned ANY
+        # proposal (even one that was subsequently dropped as stale/fallback).
+        # last_proposal_time < last_llm_submit_time at idle-gate time means a
+        # planning submit went out and NOTHING ever came back — a lost turn.
+        self.last_proposal_time: float = 0.0
+        self.planning_failure_streak: int = 0
+        self.planning_retry_limit: int = 3
+        self.planning_transport_failure_streak: int = 0
+        self.planning_transport_retry_limit: int = 3
+        self.planning_exhausted: bool = False
+        self.planning_exhausted_status: str = "llm_wedged"
+        self.planning_exhausted_reason: str = ""
         self.processed_cli_inputs: collections.deque[str] = collections.deque(maxlen=20)
         self.recent_outcomes: list[dict[str, Any]] = []
         self.max_recent_outcomes: int = 10
@@ -131,6 +169,29 @@ class LoopController:
         # ── Default Network ──────────────────────────────────────────────
         self.dn_ctrl = DefaultNetworkController(default_network)
         self.dn_enabled = self.dn_ctrl.enabled
+
+    # ── Pending proposal (planning-liveness recovery point) ──────────────
+
+    @property
+    def pending_proposal(self) -> LLMProposal | None:
+        return self._pending_proposal
+
+    @pending_proposal.setter
+    def pending_proposal(self, proposal: LLMProposal | None) -> None:
+        """Installing an executable proposal IS the recovery signal.
+
+        The reset used to live at one call site in ``run_agentic_loop``'s
+        section 2, which three other install sites bypassed — the multi-step
+        `next_actions` continuation and both PFC-deliberation sites — so a sim
+        recovering through those carried a stale failure streak forever and a
+        single later failure could abort a run that had been executing fine
+        for many turns (pre-merge review, executor lens F2). Making the reset
+        a consequence of the ASSIGNMENT means a future install site cannot
+        forget it: the invariant is in the type, not in a call site.
+        """
+        self._pending_proposal = proposal
+        if proposal is not None:
+            self.reset_planning_failures()
 
     # ── Typed state helpers ──────────────────────────────────────────────
 
@@ -179,6 +240,63 @@ class LoopController:
         self.state.data.pop("pending_user_input", None)
         self.state.data.pop("pending_user_input_time", None)
         self.state.data.pop("pending_user_input_source", None)
+
+    # ── Planning liveness (bugs ledger D13) ──────────────────────────────
+
+    def record_planning_failure(self, *, reason: str, exhausted_status: str = "llm_wedged") -> str:
+        """Bounded-retry state machine for failed planning turns.
+
+        A planning submit that ends in parse failure, an invalid response,
+        a dropped proposal, or a silently-expired await window must LOUDLY
+        reschedule or abort — never fall through to idle (the D13 livelock).
+        This method only decides; the caller does the logging and requeueing.
+
+        Returns:
+            ``"retry"`` — within budget; caller requeues the request and
+            re-stamps ``last_llm_submit_time``.
+            ``"exhausted"`` — this failure spent the budget; caller emits the
+            loud abort. ``planning_exhausted`` latches True.
+            ``"already_exhausted"`` — budget was already spent; caller must
+            not retry or re-log.
+        """
+        if self.planning_exhausted:
+            return "already_exhausted"
+        self.planning_failure_streak += 1
+        if self.planning_failure_streak > self.planning_retry_limit:
+            self.planning_exhausted = True
+            self.planning_exhausted_status = exhausted_status
+            self.planning_exhausted_reason = reason
+            return "exhausted"
+        return "retry"
+
+    def record_planning_transport_failure(self, *, reason: str) -> str:
+        """Bound retries for a worker job that could not run or publish.
+
+        Transport failures do not spend the model-planning budget, but they
+        cannot retry forever either. Exhaustion is reported separately as
+        ``worker_unavailable`` so a healthy model is never labeled wedged.
+        """
+        if self.planning_exhausted:
+            return "already_exhausted"
+        self.planning_transport_failure_streak += 1
+        if self.planning_transport_failure_streak > self.planning_transport_retry_limit:
+            self.planning_exhausted = True
+            self.planning_exhausted_status = "worker_unavailable"
+            self.planning_exhausted_reason = reason
+            return "exhausted"
+        return "retry"
+
+    def reset_planning_transport_failures(self) -> None:
+        """A worker job completed and published; transport is healthy."""
+        self.planning_transport_failure_streak = 0
+
+    def reset_planning_failures(self) -> None:
+        """An executable proposal arrived — planning is alive again."""
+        self.planning_failure_streak = 0
+        self.reset_planning_transport_failures()
+        self.planning_exhausted = False
+        self.planning_exhausted_status = "llm_wedged"
+        self.planning_exhausted_reason = ""
 
     # ── Outcome recording (delegates to module-level helper) ─────────────
 

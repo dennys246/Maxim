@@ -33,8 +33,8 @@ if TYPE_CHECKING:
     from maxim.agents.autonomy import AutonomyController
     from maxim.agents.llm_worker import LLMWorker
 
-# Import LLMProposal for runtime use (multi-step action creation)
-from maxim.agents.llm_worker import LLMProposal
+# Import LLM types for runtime use (multi-step action creation + exact job state)
+from maxim.agents.llm_worker import LLMAttemptState, LLMProposal
 from maxim.agents.bus import StreamEvent
 from maxim.embodiment.sensory_streams import AUDIO_TAG, INTEROCEPTION_TAG, ModalityChannel
 
@@ -393,10 +393,19 @@ def _wait_for_proposal(
     llm_worker: Any,
     stop_event: Any,
     timeout: float = 300.0,
+    ctrl: Any | None = None,
 ) -> Any:
     """Block until LLM responds, checking stop_event every 100ms.
 
     Returns LLMProposal or None on timeout/cancellation.
+
+    ``ctrl`` (optional) is stamped with ``last_proposal_time`` when a proposal
+    arrives. This path consumes proposals OUTSIDE section 2's poll, so without
+    the stamp the planning-liveness backstop would see "submitted, nothing
+    came back" after every deliberation tick and requeue a turn the
+    deliberation had deliberately declined to act on — an extra, unsolicited
+    action in a loop whose actions/turn is a measured quantity (pre-merge
+    review, executor lens F3).
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -404,10 +413,183 @@ def _wait_for_proposal(
             return None
         proposal = llm_worker.get_latest_proposal()
         if proposal is not None:
+            if ctrl is not None:
+                ctrl.last_proposal_time = time.time()
             return proposal
         time.sleep(0.1)
     logger.warning("_wait_for_proposal timed out after %.0fs", timeout)
     return None
+
+
+def _planning_liveness_enabled_via_env() -> bool:
+    """Operator opt-OUT for the D13 planning-liveness abort.
+
+    The abort terminates a campaign, and it lives inside the measurement
+    instrument — apparatus standard S5/S6 say such a control must be
+    experiment-visible and disableable (pre-merge review, architecture lens
+    S5; mirrors ``MAXIM_SIM_HARD_ABORT`` for the D12 abort). Default ON;
+    set to 0/false/no/off to fall back to pre-fix behavior (a dropped
+    planning turn idles, which is the bug — use only to reproduce it).
+    """
+    # Deliberately the MAXIM_SIM_HARD_ABORT idiom, not the canonical
+    # ``annotation_disabled_via_env``: that parser is for MAXIM_DISABLE_*
+    # style vars where a TRUTHY value means "disable". This is an
+    # enable-with-opt-out control, so it mirrors its sibling abort toggle
+    # exactly — same file family, same falsy-set, same default-ON meaning.
+    return os.environ.get("MAXIM_SIM_PLANNING_LIVENESS", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+_ACTIVE_PLANNING_ATTEMPT_STATES = frozenset(
+    {
+        LLMAttemptState.PENDING,
+        LLMAttemptState.RUNNING,
+        LLMAttemptState.COMPLETED,
+    }
+)
+
+
+def _planning_attempt_is_active(state: LLMAttemptState) -> bool:
+    """Whether the exact worker job can still publish a proposal.
+
+    ``COMPLETED`` remains active until the loop consumes the queued result.
+    That closes the provider-return/result-publication race without guessing
+    how many control-loop ticks response parsing should take.
+    """
+    return state in _ACTIVE_PLANNING_ATTEMPT_STATES
+
+
+def _proposal_without_action_reason(proposal: Any) -> str | None:
+    """Classify a parsed proposal that supplied no executable action."""
+    if getattr(proposal, "action", None) or getattr(proposal, "error", None):
+        return None
+    if not getattr(proposal, "ready_to_act", True):
+        return "proposal_not_ready_to_act"
+    if getattr(proposal, "mode_goal_achieved", False):
+        return "proposal_completed_without_action"
+    return "proposal_without_action"
+
+
+def _report_planning_exhaustion(ctrl: Any, sim: Any, *, reason: str, kind: str) -> bool:
+    """Emit one terminal planning/transport failure and tell the loop to stop."""
+    status = ctrl.planning_exhausted_status
+    msg = (
+        f"planning {kind} exhausted: planning_failures={ctrl.planning_failure_streak}, "
+        f"transport_failures={ctrl.planning_transport_failure_streak} "
+        f"(last: {reason}, status: {status}) — aborting sim (bugs ledger D13)"
+    )
+    logger.error(msg)
+    sim.log("EXEC", f"🛑 {msg}")
+    log_agentic(
+        "agent_loop",
+        "planning_liveness_exhausted",
+        {
+            "planning_streak": ctrl.planning_failure_streak,
+            "transport_streak": ctrl.planning_transport_failure_streak,
+            "reason": reason,
+            "status": status,
+        },
+        level="ERROR",
+    )
+    return True
+
+
+def _handle_planning_failure(
+    ctrl: Any,
+    llm_worker: Any,
+    sim: Any,
+    *,
+    reason: str,
+    original_request: Any | None,
+    failed_tool: str | None = None,
+    exhausted_status: str = "llm_wedged",
+) -> bool:
+    """Planning-liveness handler (bugs ledger D13): a planning submit ended
+    without an executable proposal — parse failure, invalid response, a
+    dropped proposal, or an await window that expired with nothing back.
+
+    LOUDLY reschedules the turn with bounded retries (byte-identical requeue
+    of the original request — no fabricated percepts) or, when the budget is
+    spent, tells the caller to abort. Never silent, never a fall-through to
+    idle.
+
+    Returns True when planning liveness is exhausted (caller breaks the loop
+    and raises ``PlanningLivenessExhausted`` after normal teardown).
+    """
+    verdict = ctrl.record_planning_failure(reason=reason, exhausted_status=exhausted_status)
+    if verdict == "already_exhausted":
+        return True
+    if verdict == "exhausted":
+        return _report_planning_exhaustion(ctrl, sim, reason=reason, kind="retry budget")
+
+    # verdict == "retry"
+    if original_request is not None:
+        if failed_tool is None:
+            requeued = bool(llm_worker.requeue_request(original_request))
+        else:
+            requeued = bool(llm_worker.requeue_request(original_request, failed_tool=failed_tool))
+    else:
+        if failed_tool is None:
+            requeued = bool(llm_worker.requeue_last_request())
+        else:
+            requeued = bool(llm_worker.requeue_last_request(failed_tool=failed_tool))
+    attempt = ctrl.planning_failure_streak
+    limit = ctrl.planning_retry_limit
+    note = (
+        f"rescheduled (attempt {attempt}/{limit})"
+        if requeued
+        else "REQUEUE REJECTED — bounded worker-transport recovery will retry"
+    )
+    logger.warning("planning turn failed (%s) — %s", reason, note)
+    sim.log("EXEC", f"⚠ planning turn failed ({reason}) — {note}")
+    log_agentic(
+        "agent_loop",
+        "planning_retry",
+        {"reason": reason, "attempt": attempt, "limit": limit, "requeued": requeued},
+        level="WARNING",
+    )
+    # Retained for diagnostics and for non-liveness callers' legacy await
+    # window. The liveness-enabled orchestrator uses exact WorkerPool state.
+    ctrl.last_llm_submit_time = time.time()
+    return False
+
+
+def _handle_planning_transport_failure(
+    ctrl: Any,
+    llm_worker: Any,
+    sim: Any,
+    *,
+    reason: str,
+) -> bool:
+    """Bound retries for a worker attempt that failed before publication."""
+    verdict = ctrl.record_planning_transport_failure(reason=reason)
+    if verdict == "already_exhausted":
+        return True
+    if verdict == "exhausted":
+        return _report_planning_exhaustion(ctrl, sim, reason=reason, kind="transport budget")
+
+    requeued = bool(llm_worker.requeue_last_request())
+    attempt = ctrl.planning_transport_failure_streak
+    limit = ctrl.planning_transport_retry_limit
+    note = (
+        f"worker retry accepted (attempt {attempt}/{limit})"
+        if requeued
+        else f"worker retry rejected (attempt {attempt}/{limit})"
+    )
+    logger.warning("planning transport failed (%s) — %s", reason, note)
+    sim.log("EXEC", f"⚠ planning transport failed ({reason}) — {note}")
+    log_agentic(
+        "agent_loop",
+        "planning_transport_retry",
+        {"reason": reason, "attempt": attempt, "limit": limit, "requeued": requeued},
+        level="WARNING",
+    )
+    ctrl.last_llm_submit_time = time.time()
+    return False
 
 
 def _jaccard_similarity(keywords_a: set[str], keywords_b: set[str]) -> float:
@@ -463,6 +645,7 @@ def _run_deliberation_cycles(
     active_goal: str | None,
     step_num: int,
     max_cycles: int = 3,
+    ctrl: Any | None = None,
 ) -> Any | None:
     """PFC deliberation cycles 2+ — recurrence after first proposal.
 
@@ -624,7 +807,7 @@ def _run_deliberation_cycles(
             logger.warning("LLM worker queue full during deliberation cycle %d", cycle)
             break
 
-        proposal = _wait_for_proposal(llm_worker, stop_event)
+        proposal = _wait_for_proposal(llm_worker, stop_event, ctrl=ctrl)
         if proposal is None:
             break
 
@@ -1317,6 +1500,17 @@ def run_agentic_loop(
     # skips proposing this cadence tick (telemetry still fires with proposal=None). The orchestrator
     # wires SimulationBridge.substrate_action_allowed here; None = unbounded (pre-fix behavior).
     consolidation: Literal["full", "lightweight"] | None = None,  # HANDLE seam (b): explicit session-end flavor
+    planning_liveness: bool = False,  # Bugs ledger D13 — OPT-IN, and deliberately so.
+    # Enables bounded reschedule-or-abort for planning turns that end without an executable
+    # proposal. Correct ONLY for a loop with no other wake source between turns: the sim
+    # ORCHESTRATOR, which has no action_sink and no external percept producer, so a dropped
+    # planning turn idles it forever. Every other caller already has a re-arm path and must
+    # NOT opt in — the AUT recovers via the `_llm_unavailable` synthetic action breaking the
+    # bridge's settle loop (so the next probe re-arms it), HANDLE/interactive have a human,
+    # and the live-robot + headless paths have real percept producers. Enabling it wholesale
+    # would convert those existing RECOVERIES into aborts (pre-merge review, architecture
+    # lens B3) and, for a threaded AUT, into a silently dead thread whose campaign keeps
+    # emitting empty turns (B1).
     sim_adapter: Any | None = None,  # Pre-built NullSimulationAdapter (Stage 3, live_audio_orient_wiring.md):
     # lets a live producer (the DoA feed) hold the adapter and carry_percept() into the loop's
     # modality-preserving side-channel WITHOUT a percept_source (which would flip is_sim_mode).
@@ -1562,6 +1756,30 @@ def run_agentic_loop(
     _loop_name = _safe_agent_name(agent)
     _consecutive_llm_fallbacks = 0  # Track consecutive LLM failures for stall detection
     _LLM_STALL_THRESHOLD = 1  # Surface immediately — only one fallback per LLM request
+    # D13 planning liveness: set when the bounded retry budget is spent; the
+    # loop breaks through NORMAL teardown (state persist + bio session end)
+    # and raises PlanningLivenessExhausted afterwards, so the sim aborts
+    # loudly instead of idling forever on a dropped planning turn.
+    _planning_liveness_exhausted = False
+    # ONE gate for every planning-liveness failure site, computed once so no
+    # site can drift
+    # (pre-merge review, architecture lens S7: the substrate-primary exclusion
+    # was previously only incidental — an aut_llm_worker IS constructed in
+    # substrate-primary runs, so `if llm_worker:` does run there).
+    # Substrate-primary proposals never flow through get_latest_proposal.
+    _planning_liveness_on = (
+        bool(planning_liveness)
+        and aut_mode != "substrate-primary"
+        and llm_worker is not None
+        and _planning_liveness_enabled_via_env()
+    )
+    if planning_liveness and not _planning_liveness_on:
+        logger.info(
+            "planning liveness requested but inactive (aut_mode=%s, llm_worker=%s, env_opt_out=%s)",
+            aut_mode,
+            "yes" if llm_worker is not None else "no",
+            "yes" if not _planning_liveness_enabled_via_env() else "no",
+        )
 
     for step_num in step_iter:
         loop_start = time.time()
@@ -1672,12 +1890,32 @@ def run_agentic_loop(
         # when typed input happened to wake the loop in the same window.
         _has_carried_percept = bool(getattr(sim, "has_carried_percept", lambda: False)())
         _is_first_step = step_num == 0
-        # If we submitted to the LLM recently, we're awaiting a proposal —
-        # don't idle-gate or we'll never pick up the result.
-        _awaiting_llm = (
-            llm_worker is not None
+        # If we submitted to the LLM, keep polling until the exact WorkerPool
+        # job reaches a terminal state. ``COMPLETED`` remains active until
+        # get_latest_proposal() consumes the result, which closes the old
+        # provider-return/result-publication race without a timing guess.
+        #
+        # Non-liveness callers retain their legacy 120s window. The exact
+        # state machine is deliberately scoped to the orchestrator opt-in;
+        # it must not alter unrelated agent-loop lifecycle policy.
+        _planning_attempt_state = LLMAttemptState.NONE
+        if _planning_liveness_on:
+            try:
+                _planning_attempt_state = llm_worker.latest_attempt_state()
+            except Exception as e:
+                logger.warning("planning worker state unavailable: %s", e)
+                _planning_attempt_state = LLMAttemptState.MISSING
+            if _planning_attempt_state is LLMAttemptState.COMPLETED:
+                ctrl.reset_planning_transport_failures()
+
+        _submitted_recently = bool(
+            not _planning_liveness_on
+            and llm_worker is not None
             and ctrl.pending_proposal is None
             and (time.time() - ctrl.last_llm_submit_time) < 120.0
+        )
+        _awaiting_llm = (
+            _planning_attempt_is_active(_planning_attempt_state) if _planning_liveness_on else _submitted_recently
         )
 
         if not (
@@ -1688,6 +1926,44 @@ def run_agentic_loop(
             or _is_first_step
             or _awaiting_llm
         ):
+            # D13 planning-liveness backstop: the loop is about to idle, but
+            # the exact job for the last planning submit is terminal and no
+            # executable proposal was installed. Worker execution failures
+            # use a separate bounded transport budget; completed-but-empty
+            # results are planning failures. Neither can silently fall
+            # through to idle or retry forever.
+            if (
+                _planning_liveness_on
+                and not ctrl.planning_exhausted
+                and ctrl.last_llm_submit_time > 0
+                and ctrl.last_proposal_time < ctrl.last_llm_submit_time
+            ):
+                if _planning_attempt_state in {
+                    LLMAttemptState.FAILED,
+                    LLMAttemptState.CANCELLED,
+                    LLMAttemptState.MISSING,
+                }:
+                    if _handle_planning_transport_failure(
+                        ctrl,
+                        llm_worker,
+                        sim,
+                        reason=f"worker_job_{_planning_attempt_state.value}",
+                    ):
+                        _planning_liveness_exhausted = True
+                        break
+                elif _planning_attempt_state in {
+                    LLMAttemptState.NONE,
+                    LLMAttemptState.CONSUMED,
+                } and _handle_planning_failure(
+                    ctrl,
+                    llm_worker,
+                    sim,
+                    reason="planning_job_completed_without_proposal",
+                    original_request=None,
+                    exhausted_status="planning_failed",
+                ):
+                    _planning_liveness_exhausted = True
+                    break
             time.sleep(idle_sleep_s)
             continue
 
@@ -2359,6 +2635,13 @@ def run_agentic_loop(
         # ─────────────────────────────────────────────────────────────────
         if llm_worker:
             new_proposal = llm_worker.get_latest_proposal()
+            if new_proposal is not None:
+                # D13 planning liveness: ANY proposal (even one dropped below
+                # as stale/fallback) proves the worker answered this submit —
+                # the await-expiry backstop keys on last_proposal_time <
+                # last_llm_submit_time.
+                ctrl.last_proposal_time = time.time()
+                ctrl.reset_planning_transport_failures()
             # Sim-mode periodic traces
             if sim.is_sim_mode and step_num % 20 == 0:
                 sim.log("PIPELINE", f"Loop step {step_num}, proposal={'YES' if new_proposal else 'none'}")
@@ -2390,7 +2673,19 @@ def run_agentic_loop(
                         new_proposal.request_id,
                     )
                     sim.log("EXEC", f"DROPPED: stale proposal (age={proposal_age:.1f}s)")
+                    _stale_original_request = new_proposal.original_request
                     new_proposal = None
+                    # D13: a dropped stale proposal is a consumed planning
+                    # turn with nothing executed — reschedule, don't idle.
+                    if _planning_liveness_on and _handle_planning_failure(
+                        ctrl,
+                        llm_worker,
+                        sim,
+                        reason="stale_proposal_dropped",
+                        original_request=_stale_original_request,
+                        exhausted_status="planning_failed",
+                    ):
+                        _planning_liveness_exhausted = True
             # In simulation mode, skip fallback proposals — wait for real LLM
             if new_proposal and sim.should_skip_fallback_proposal(new_proposal):
                 _consecutive_llm_fallbacks += 1
@@ -2399,7 +2694,46 @@ def run_agentic_loop(
                     _consecutive_llm_fallbacks,
                 )
                 sim.log("EXEC", f"DROPPED: fallback proposal (sim mode, #{_consecutive_llm_fallbacks})")
+                _fallback_original_request = new_proposal.original_request
+                # ``should_skip_fallback_proposal`` rejects for TWO different
+                # reasons and they are not the same defect (review round,
+                # executor lens F1). ``llm_fallback`` means the LLM never
+                # produced a usable answer — a lost planning turn. A proposal
+                # naming an unregistered tool is a RESPONSIVE model making a
+                # bad choice; calling that "wedged" would be a false
+                # diagnosis, and requeueing it byte-identically just
+                # reproduces the same bad name. Record the name through the
+                # existing hallucinated-tool channel so the retry can differ.
+                _is_parse_failure = getattr(new_proposal, "reasoning", "") == "llm_fallback"
+                if not _is_parse_failure:
+                    _bad_action = new_proposal.action if isinstance(new_proposal.action, dict) else {}
+                    _bad_tool = str(_bad_action.get("tool_name", "") or "")
+                    if _bad_tool:
+                        try:
+                            _hallucinated = getattr(executor, "_tools_hallucinated", None)
+                            if _hallucinated is not None and _bad_tool not in _hallucinated:
+                                _hallucinated.append(_bad_tool)
+                        except Exception as e:
+                            log_swallowed_exception(e, operation="record_hallucinated_tool")
                 new_proposal = None
+                # D13: pre-fix this drop was terminal — pending_action_followup
+                # was already cleared and the triggering input deduped when the
+                # failed request was BUILT, so nothing ever re-armed the loop
+                # (status 200 → parse failure → idle forever). Reschedule the
+                # turn, bounded. Both drop kinds must reschedule (either one
+                # left the loop with nothing to wake it), but they carry
+                # different reasons so the abort report names what actually
+                # happened.
+                if _planning_liveness_on and _handle_planning_failure(
+                    ctrl,
+                    llm_worker,
+                    sim,
+                    reason=("fallback_proposal_dropped" if _is_parse_failure else "unregistered_tool_proposed"),
+                    original_request=_fallback_original_request,
+                    failed_tool=None if _is_parse_failure else _bad_tool,
+                    exhausted_status="llm_wedged" if _is_parse_failure else "planning_failed",
+                ):
+                    _planning_liveness_exhausted = True
                 # Clear pending input so the loop doesn't block on a
                 # response that will never come.  Without this, the
                 # has_pending_llm_input guard (30s timeout) prevents
@@ -2457,6 +2791,11 @@ def run_agentic_loop(
                             "requires_approval": getattr(new_proposal, "requires_approval", False),
                         },
                     )
+                    # D13: installing an executable proposal resets the
+                    # planning-failure streak — enforced by the property
+                    # setter on LoopController, so every install site
+                    # (including the multi-step and deliberation paths)
+                    # recovers, not just this one.
                     ctrl.pending_proposal = new_proposal
                     # Record surfaced-but-unused signal for learned tool index
                     _bridge = getattr(executor, "_tool_pain_bridge", None)
@@ -2490,6 +2829,48 @@ def run_agentic_loop(
                         {"context": "llm_proposal", "error": str(new_proposal.error)[:100]},
                         level="WARNING",
                     )
+                    # D13: an error proposal is also a consumed planning turn
+                    # with nothing executed. Shutdown is deliberate, not a
+                    # liveness failure.
+                    if (
+                        _planning_liveness_on
+                        and new_proposal.error != "shutdown"
+                        and _handle_planning_failure(
+                            ctrl,
+                            llm_worker,
+                            sim,
+                            reason=f"proposal_error:{str(new_proposal.error)[:60]}",
+                            original_request=new_proposal.original_request,
+                        )
+                    ):
+                        _planning_liveness_exhausted = True
+                elif _planning_liveness_on:
+                    # A syntactically valid response can still contain no
+                    # action and no error. Pre-fix this was stamped as
+                    # received and then ignored forever, permanently
+                    # disabling the idle backstop. Treat it as an explicit
+                    # non-executable planning outcome and retry boundedly.
+                    _no_action_reason = _proposal_without_action_reason(new_proposal)
+                    if _no_action_reason is not None:
+                        state.data.pop("pending_user_input", None)
+                        state.data.pop("pending_user_input_time", None)
+                        state.data.pop("pending_user_input_source", None)
+                        logger.warning("LLM proposal had no executable action: %s", _no_action_reason)
+                        sim.log("EXEC", f"DROPPED: {_no_action_reason}")
+                        if _handle_planning_failure(
+                            ctrl,
+                            llm_worker,
+                            sim,
+                            reason=_no_action_reason,
+                            original_request=new_proposal.original_request,
+                            exhausted_status="planning_failed",
+                        ):
+                            _planning_liveness_exhausted = True
+
+        # D13: retry budget spent inside section 2 — leave through the normal
+        # teardown path (state persist + bio session end), then raise.
+        if _planning_liveness_exhausted:
+            break
 
         # Check for queued next_actions if no pending proposal
         if ctrl.pending_proposal is None and pending_next_actions:
@@ -4431,7 +4812,7 @@ def run_agentic_loop(
                         # proposal says ready_to_act=False, run cycles 2+
                         # right here where all submission params are in scope.
                         if submitted and _pfc_gate_passed and bio_enrichment_pipeline is not None:
-                            _first = _wait_for_proposal(llm_worker, stop_event)
+                            _first = _wait_for_proposal(llm_worker, stop_event, ctrl=ctrl)
                             if _first is not None:
                                 _max_cyc = 3 if percept_source is not None else 2
                                 if not _first.ready_to_act:
@@ -4472,6 +4853,7 @@ def run_agentic_loop(
                                         active_goal=_active_goal,
                                         step_num=step_num,
                                         max_cycles=_max_cyc,
+                                        ctrl=ctrl,
                                     )
                                     if _delib is not None:
                                         ctrl.pending_proposal = _delib
@@ -4609,3 +4991,19 @@ def run_agentic_loop(
     # Stop Default Network if running (skip in sim — no DN)
     if dn_enabled and not sim.is_sim_mode:
         ctrl.dn_ctrl.stop()
+
+    # D13 planning liveness: raise AFTER teardown so state persistence and
+    # the bio session end ran, but the sim still aborts loudly (the
+    # orchestrator converts this into a typed finish report) instead of
+    # having idled forever on a silently-dropped planning turn.
+    if _planning_liveness_exhausted:
+        from maxim.runtime.loop_controller import PlanningLivenessExhausted
+
+        raise PlanningLivenessExhausted(
+            f"planning failures={ctrl.planning_failure_streak} "
+            f"(limit {ctrl.planning_retry_limit}), transport failures="
+            f"{ctrl.planning_transport_failure_streak} "
+            f"(limit {ctrl.planning_transport_retry_limit}); "
+            f"last={ctrl.planning_exhausted_reason or 'unknown'} — see bugs ledger D13",
+            finish_status=ctrl.planning_exhausted_status,
+        )

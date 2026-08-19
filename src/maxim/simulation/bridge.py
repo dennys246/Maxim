@@ -176,6 +176,7 @@ class SimulationBridge:
             sim_log("EXEC", f"Bridge.send_and_wait ENTER turn={self._turn_count + 1} text_len={len(text)}")
         except Exception:
             pass
+        self._spinner.set_planning_window(False)
         self._spinner.start(f'Turn {self._turn_count + 1}: Sending to AUT — "{short_text}"')
 
         # Wait for any pending user prompt to resolve before injecting.
@@ -265,8 +266,14 @@ class SimulationBridge:
         else:
             self._spinner.stop(f"Turn {self._turn_count}: timed out ({elapsed:.1f}s)")
 
-        # Start spinner for orchestrator thinking phase (between turns)
+        # Start spinner for orchestrator thinking phase (between turns).
+        # D14: this text is set when the TURN ends, not when any planning
+        # call starts — the spinner's planning window marks it so the stall
+        # detector can atomically replace it with registry-derived truth (no
+        # call in flight, nudges, abort) instead of letting it count up over
+        # a dead loop.
         self._spinner.start("Orchestrator planning next probe...")
+        self._spinner.set_planning_window(True)
 
         # Stage 4 (F2 fix): don't count _deliberation_noop markers as
         # real actions for the timed_out flag.  Noop markers keep the

@@ -1172,6 +1172,7 @@ class SpawnSubSimulationTool(Tool):
 
         # Stop parent spinner, show sub-sim banner
         if self._parent_bridge:
+            self._parent_bridge._spinner.set_planning_window(False)  # D14
             self._parent_bridge._spinner.stop()
         short_goal = goal[:60] + ("..." if len(goal) > 60 else "")
         sys.stderr.write(f'\n  ┌─ Sub-simulation: "{short_goal}"\n')
@@ -1202,6 +1203,7 @@ class SpawnSubSimulationTool(Tool):
         sys.stderr.flush()
         if self._parent_bridge:
             self._parent_bridge._spinner.start("Orchestrator planning next probe...")
+            self._parent_bridge._spinner.set_planning_window(True)  # D14
 
         sub_report["duration_s"] = round(elapsed, 1)
         if approach:
