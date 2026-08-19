@@ -1,0 +1,153 @@
+# Repository scorecard — Claude, 2026-08-19
+
+**Assessor:** Claude (Fable 5), via three evidence-gathering agents graded blind.
+**Scope:** branch `docs/1.1-release-truth` @ `486203d7` (= main + the Codex docs draft).
+**Rubric:** A exemplary / B solid, minor gaps / C functional with significant known gaps /
+D serious deficiency actively costing the project / F absent-broken. +/- allowed.
+Grades reflect CURRENT state, not trajectory. Hard grading by design — this card's
+value over time depends on headroom.
+
+**Independence disclosure.** This card shares its eight axes with the Codex scorecard
+(`score_card.md`) by operator request. The assembling agent was incidentally exposed to
+Codex's letter grades (they were embedded in that file's section headers) before grading;
+the three evidence-gathering agents were firewalled from both Codex documents and derived
+all evidence independently, and their grades were assembled without adjustment. Weight
+the independence of the two cards' *evidence* fully, and of the letter-grade coincidences
+partially.
+
+## Summary
+
+| Area | Grade |
+|---|---|
+| Research integrity | **A−** |
+| Ambition and originality | **B+** |
+| Documentation honesty | **B+** |
+| Runtime correctness | **D+** |
+| Maintainability | **C+** |
+| Test quantity | **A−** |
+| Test/CI truthfulness | **C+** |
+| Release governance | **D+** |
+
+**Signature finding:** the repo's *process* engineering (integrity machinery: five
+ledgers, pre-registration, retraction discipline, provenance enforcement) currently
+outruns both its runtime correctness and its release hygiene — the reverse of most
+research codebases, and the reason the low grades are recoverable.
+
+## Why each grade was earned
+
+### Research integrity — A−
+- Retraction record exemplary and load-bearing (Exp 42b retracted with root cause,
+  data kept and reused as baseline; two further in-doc retractions found).
+- Contested-claim handling passed a hard live test: Exp 48 CONTESTED → apparatus
+  fixed (#510/#511) → gate v2 frozen pre-data (#512) → verdict recorded a **0.001
+  gate miss without retuning**. Failed campaigns committed under shame-labels
+  (`.CONTAMINATED_multirunner`, `.LLMDEAD`).
+- Provenance enforced at runtime (exit 3) AND in CI (`lint_harness_provenance.py`),
+  with a guard that documents its own limits ("catches forgetting, not evasion").
+- Pre-registration real: 36 protocol files; Exp 50 edit-locked pre-hardware; Exp 44
+  honestly EXPLORATORY; a pre-registered ablation flag exists to falsify the central
+  claim (`MAXIM_NAC_REWARD_BIAS_DISABLED`).
+- **Held from A:** S4 archival is not backfilled — zero committed raw data for
+  Exp 09/10/43/44/46/47/49 including the Tier-1 EARNED cross-session row (Exp 10);
+  the Tier-3 seed table is stagnant since 2026-05-27 (14 of 20 still Pending).
+- **Upgrade to A:** every Earned/Maintained row's guard points at committed raw
+  JSONL (re-run Exp 10-class rows under S4 if originals are lost); Tier-3 gets the
+  dispositions the 1.0 readiness review promised.
+
+### Ambition and originality — B+
+- The central claim (cross-session behavioral change, zero gradient updates) is
+  mechanically real, on disk, with three distinct session-N+1 effects and hardware
+  evidence (Exp 45 s2 loads a trained NAc, probes 1.00 at trial 0).
+- Genuinely novel mechanisms the standard stack would not produce: the
+  reward-modulated perceptual threshold (NAc→EC admission-radius widening), the
+  default-on Kuramoto oscillator network with Hebbian-learned coupling, and the
+  measured-hardware credit loop persisting across restarts.
+- Counter-interest publication (Exp 38: substrate does NOT override wrong priors;
+  claim pulled) and the graduation methodology itself may be the most original
+  artifact.
+- **Held from A−:** ~60% of bio-naming is mnemonic (SCN/ATL/AngularGyrus are an
+  index, a store, and a graph walk; "pattern separation" = threshold clustering;
+  the "5-agent pipeline" is an event-driven monolith with one LLM caller), and the
+  demonstrated learning is small tabular policies while the LLM-side effect
+  survives only in the Goldilocks band.
+- **Upgrade to A−:** one at-power confirmatory result where a specific
+  bio-mechanism is indispensable under an LLM — Exp 44b run as pre-registered.
+
+### Documentation honesty — B+
+- Six spot-checked claims verified true (version sync, banned identifiers,
+  keyword-only `pain_bus`, dated Dormant markers, CI-wired correction lints).
+- The Bio-mapping docstring taxonomy (MECHANISM/FUNCTIONAL/NAME-ONLY) is accurate —
+  the repo mostly tells the truth about its own naming.
+- **Held from A−:** the honesty layer itself rots — CLAUDE.md's KNOWN-GAP admits
+  "~7" hand-rolled `os.replace` sites when the count is **17**; `similarity/ec.py`
+  claims "O(1) ANN via LSH" while the substrate hot path is a pure-Python O(N·384)
+  linear scan bypassing the LSH. Stale confessions are worse than ordinary
+  staleness because readers extend them extra trust.
+- **Upgrade to A−:** mechanize every quantified admission (CI emits the counts);
+  one docstring-truth pass over `similarity/`.
+
+### Runtime correctness — D+
+- 16 OPEN ledger defects skewing severe: D13 core-loop livelock (root-caused, fix
+  contract recorded, NOT implemented — only the ~4-min hard-abort mitigation);
+  D15 public `run()` silently ignores `goal` and `robot` (verified firsthand);
+  D17 `load.agent()` partial restore + corrupt-state swallows; D6/D9 silent no-ops
+  on learning paths.
+- Fix:feat commit ratio ~1:1 over the last 40; the two deepest runtime bugs were
+  root-caused only in the last 48 hours.
+- ~406 grandfathered bare swallows outside the 16-file enforced clean zone.
+- Held OFF the D floor by: exemplary root-causing (py-spy → D13 in one capture),
+  loud mitigations, honest ledgering, and a properly-guarded D12 fix.
+- **Upgrade to C:** implement the D13 fix contract (with a guard test verified to
+  fail on current code) AND make `run()`'s `goal`/`robot` thread through or raise.
+
+### Maintainability — C+
+- Knowledge architecture genuinely excellent (9K-token core → 6 briefs → 76
+  lessons; five ledgers); 508 granular modules; dormancy discipline in real use;
+  dense, self-documenting CI guardrails with a positive control on the grep guards.
+- **Held from B:** the three god-functions (3,331 + 3,226 + 1,737 lines) sit
+  exactly where the open correctness defects live; the drafted split plan is
+  unexecuted; mypy covers 5 of 508 files; complexity has handrails at the
+  perimeter, none at the center.
+- **Upgrade to B−:** execute the drafted split for `run_agentic_loop` — extracting
+  the planning-submit/await/reschedule machinery is also the D13 fix's prerequisite.
+
+### Test quantity — A−
+- 8,850 test functions / 430 files; bio, routing, persistence, and hardware-safety
+  paths each carry dedicated suites; the verified-to-fail culture is real (21
+  citations with quantified prefix-failure rates; a two-process PYTHONHASHSEED
+  guard).
+- **Held from A:** #519 shipped a behavioral fix to an abort path with zero test
+  changes — the guard-test-per-fix discipline slipped on the newest commit; the
+  behavioral suite is thin (5 files) relative to the experiment surface.
+- **Upgrade to A:** mechanize guard-test-per-fix (diff-scoped lint: `fix(...)`
+  commits touching `src/` must touch `tests/`), 90 days clean.
+
+### Test/CI truthfulness — C+
+- The grep-guard steps match their claimed invariants exactly and include a
+  positive control; mypy scope honestly documented and pinned; 63 autouse scrubs.
+- **Held from B:** CI runs ONLY `tests/unit/` — ~900 integration/substrate/
+  behavioral/learning tests, including every suite guarding the research claims,
+  are enforced by nothing but habit; the unit suite goes network-dependent when
+  sentence-transformers is installed; no global `MAXIM_DATA_HOME` isolation
+  (tests can touch the real `~/.maxim`).
+- **Upgrade to B:** a main-branch/nightly job running the non-unit suites; a
+  global autouse data-home→tmpdir fixture.
+
+### Release governance — D+
+- Tags v1.0.1–v1.0.6 exist and are honestly labeled as reconstructed; the
+  publication guide is substantive; the repo *knows* (roadmap item 16 is open).
+- **Held at D+:** **PyPI's latest release is 1.0.0 — 1.0.1–1.0.6 were never
+  published — while CLAUDE.md ("v1.0.6 on PyPI") and the CHANGELOG's own
+  release-truth note ("shipped to PyPI") claim otherwise.** The remediation pass
+  itself wrote a falsehood into the record. `[Unreleased]` is ~50 merged PRs
+  stale; a dead duplicate changelog (docs/CHANGELOG.md, frozen at 0.3.0) persists.
+- **Upgrade to C:** publish 1.0.6/1.1.0 to PyPI *or* correct every doc to say
+  git-tag-only; kill the duplicate changelog; bring `[Unreleased]` current.
+  To B: a CI check that version-bump commits carry a CHANGELOG entry.
+
+## Cadence
+
+Re-score at each release cut and at any point a grade's upgrade condition is
+claimed complete. Paired with the Codex card intentionally: same axes, independent
+evidence. Divergence between the two cards is itself signal — investigate before
+averaging.
