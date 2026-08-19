@@ -2643,6 +2643,14 @@ def start_simulation_mode(
         # call is healthy or the registry has nothing) — feeds the D12
         # hard-abort decision below.
         _wedged_byte_silence: list[float | None] = [None]
+        # The hard-abort's OWN clock: time of the last TURN advance. The
+        # first shipped version fed the abort from _last_activity_time —
+        # which the nudge path RESETS on every nudge, making ">=3 nudges
+        # AND >=150s stall" mutually exclusive by construction (observed
+        # live 2026-08-18: guards provably imported, 2,224s wedge, nudges
+        # firing, abort structurally unreachable). Turn progress is the
+        # one signal a nudge cannot fake.
+        _last_turn_progress_time: list[float] = [time.time()]
 
         def _orch_action_count() -> int:
             """Best-effort read of orchestrator's total tool attempts.
@@ -2721,6 +2729,7 @@ def start_simulation_mode(
             if current_turns > _last_turn_count[0]:
                 _last_turn_count[0] = current_turns
                 _last_activity_time[0] = time.time()
+                _last_turn_progress_time[0] = time.time()
                 _last_orch_action_count[0] = current_actions
                 _nudge_count[0] = 0
                 # Restore normal status color on progress
@@ -2813,7 +2822,9 @@ def start_simulation_mode(
             # process dies with a nonzero code a harness records as FAIL —
             # an eternal plausible-looking hang is the one unacceptable
             # outcome. Opt-out: MAXIM_SIM_HARD_ABORT=0.
-            _stall_duration_now = time.time() - _last_activity_time[0]
+            # Turn-anchored, nudge-proof stall duration (see the
+            # _last_turn_progress_time comment above).
+            _stall_duration_now = time.time() - _last_turn_progress_time[0]
             _hard_abort_enabled = _os.environ.get("MAXIM_SIM_HARD_ABORT", "1").strip().lower() not in (
                 "0",
                 "false",
