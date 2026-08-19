@@ -1470,3 +1470,18 @@ def _isolate_cradle_mother_stimulus_order_env():
         _os.environ["MAXIM_CRADLE_MOTHER_STIMULUS_ORDER"] = saved
     else:
         _os.environ.pop("MAXIM_CRADLE_MOTHER_STIMULUS_ORDER", None)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_maxim_inference_lock_timeout_env():
+    """Scrub MAXIM_INFERENCE_LOCK_TIMEOUT_S between tests (CLAUDE.md env-var
+    rule): a leaked override would silently change every router call's
+    lock-wait ceiling (D12 bounded-acquire fix)."""
+    import os as _os
+
+    saved = _os.environ.pop("MAXIM_INFERENCE_LOCK_TIMEOUT_S", None)
+    yield
+    if saved is not None:
+        _os.environ["MAXIM_INFERENCE_LOCK_TIMEOUT_S"] = saved
+    else:
+        _os.environ.pop("MAXIM_INFERENCE_LOCK_TIMEOUT_S", None)
