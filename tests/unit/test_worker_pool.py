@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import queue
 import threading
 import time
 
@@ -447,6 +448,20 @@ class TestLane:
 
         cancelled = lane.cancel_pending()
         assert cancelled == 3
+
+    def test_queue_rejection_discards_registry_entry(self):
+        """A job the bounded queue rejects must not remain PENDING forever."""
+        reg = JobRegistry()
+        lane = Lane(LaneConfig("test", max_workers=1, queue_size=1), reg)
+        # Do not start the dispatcher: the first job deterministically fills
+        # the queue and the second is rejected.
+        lane.submit(Job(job_id="accepted", fn=lambda: None))
+
+        with pytest.raises(queue.Full):
+            lane.submit(Job(job_id="rejected", fn=lambda: None))
+
+        assert reg.get_status("accepted") == JobStatus.PENDING
+        assert reg.get_status("rejected") is None
 
     def test_job_failure_marks_failed(self):
         """A job that raises is marked FAILED, not COMPLETED."""

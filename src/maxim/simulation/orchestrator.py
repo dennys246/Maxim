@@ -3085,20 +3085,22 @@ def start_simulation_mode(
         display_summary(["Simulation stopped by user"])
     except _PlanningLivenessExhausted as e:
         # D13: the agent loop spent its bounded planning-retry budget and
-        # aborted through its normal teardown. Convert into the same loud
-        # finish report the D12 hard-abort produces — the campaign harness
-        # sees an honest llm_wedged status instead of an eternal hang.
-        _liveness_msg = f"PLANNING LIVENESS EXHAUSTED (bugs ledger D13): {e}"
+        # aborted through its normal teardown. Preserve the typed failure:
+        # provider/parse exhaustion is ``llm_wedged``, responsive but invalid
+        # planning is ``planning_failed``, and queue/worker exhaustion is
+        # ``worker_unavailable``.
+        _finish_status = getattr(e, "finish_status", "llm_wedged")
+        _liveness_msg = f"PLANNING LIVENESS EXHAUSTED [{_finish_status}] (bugs ledger D13): {e}"
         logger.error(_liveness_msg)
         _emit(f"🛑 {_liveness_msg}", "turn")
         try:
-            bridge._spinner.update("🛑 planning liveness exhausted — aborting sim")
+            bridge._spinner.update(f"🛑 {_finish_status} — aborting sim")
         except Exception as spin_err:
             logger.debug("spinner abort update failed: %s", spin_err)
         if not bridge.finish_context:
             bridge.finish_context.update(
                 {
-                    "status": "llm_wedged",
+                    "status": _finish_status,
                     "reason": str(e),
                     "summary": _liveness_msg,
                     "initiated_by": "planning_liveness",

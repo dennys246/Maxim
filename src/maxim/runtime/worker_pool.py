@@ -298,6 +298,16 @@ class JobRegistry:
             if job_id in self._jobs:
                 self._jobs[job_id] = JobStatus.RUNNING
 
+    def discard(self, job_id: str) -> None:
+        """Remove a job that was registered but never accepted by its lane."""
+        with self._lock:
+            self._jobs.pop(job_id, None)
+            self._events.pop(job_id, None)
+            self._results.pop(job_id, None)
+            self._errors.pop(job_id, None)
+            self._lanes.pop(job_id, None)
+            self._timestamps.pop(job_id, None)
+
     def mark_completed(self, job_id: str, result: Any = None) -> None:
         """Mark a job as completed and wake any waiters."""
         with self._lock:
@@ -535,7 +545,15 @@ class Lane:
             job.gate = DependencyGate(job.deps, self._registry)
             job.gate.start_early_prefetch()
         self._registry.register(job)
-        self._queue.put_nowait((job.priority, next(self._counter), job))
+        try:
+            self._queue.put_nowait((job.priority, next(self._counter), job))
+        except queue.Full:
+            # Registration precedes enqueue so the dispatcher can never race
+            # an unknown job. Roll it back if the bounded queue rejects the
+            # submission; otherwise the registry retains a PENDING job that
+            # can never run and liveness observers wait forever.
+            self._registry.discard(job.job_id)
+            raise
 
     def cancel_pending(self) -> int:
         """Drain and cancel all pending jobs."""

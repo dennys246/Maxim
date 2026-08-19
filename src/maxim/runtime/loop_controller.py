@@ -50,6 +50,10 @@ class PlanningLivenessExhausted(RuntimeError):
     between turns.
     """
 
+    def __init__(self, message: str, *, finish_status: str = "llm_wedged") -> None:
+        super().__init__(message)
+        self.finish_status = finish_status
+
 
 class LoopController:
     """Manages agentic loop state and provides phase methods.
@@ -148,7 +152,11 @@ class LoopController:
         self.last_proposal_time: float = 0.0
         self.planning_failure_streak: int = 0
         self.planning_retry_limit: int = 3
+        self.planning_transport_failure_streak: int = 0
+        self.planning_transport_retry_limit: int = 3
         self.planning_exhausted: bool = False
+        self.planning_exhausted_status: str = "llm_wedged"
+        self.planning_exhausted_reason: str = ""
         self.processed_cli_inputs: collections.deque[str] = collections.deque(maxlen=20)
         self.recent_outcomes: list[dict[str, Any]] = []
         self.max_recent_outcomes: int = 10
@@ -235,7 +243,7 @@ class LoopController:
 
     # ── Planning liveness (bugs ledger D13) ──────────────────────────────
 
-    def record_planning_failure(self, *, reason: str) -> str:
+    def record_planning_failure(self, *, reason: str, exhausted_status: str = "llm_wedged") -> str:
         """Bounded-retry state machine for failed planning turns.
 
         A planning submit that ends in parse failure, an invalid response,
@@ -256,28 +264,39 @@ class LoopController:
         self.planning_failure_streak += 1
         if self.planning_failure_streak > self.planning_retry_limit:
             self.planning_exhausted = True
+            self.planning_exhausted_status = exhausted_status
+            self.planning_exhausted_reason = reason
             return "exhausted"
         return "retry"
 
-    def refund_planning_failure(self) -> None:
-        """Give back a strike spent on a TRANSPORT failure, not a planning one.
+    def record_planning_transport_failure(self, *, reason: str) -> str:
+        """Bound retries for a worker job that could not run or publish.
 
-        A requeue rejected because the worker queue is full says nothing about
-        whether the model can plan — and lane contention can produce several in
-        a row, which would abort a healthy campaign on the retry budget alone
-        (pre-merge review, executor lens S2). The caller still re-opens the
-        await window, so the expiry backstop retries; only the budget is
-        untouched. Never refunds below zero, and never un-latches an abort
-        that has already been reported.
+        Transport failures do not spend the model-planning budget, but they
+        cannot retry forever either. Exhaustion is reported separately as
+        ``worker_unavailable`` so a healthy model is never labeled wedged.
         """
         if self.planning_exhausted:
-            return
-        self.planning_failure_streak = max(0, self.planning_failure_streak - 1)
+            return "already_exhausted"
+        self.planning_transport_failure_streak += 1
+        if self.planning_transport_failure_streak > self.planning_transport_retry_limit:
+            self.planning_exhausted = True
+            self.planning_exhausted_status = "worker_unavailable"
+            self.planning_exhausted_reason = reason
+            return "exhausted"
+        return "retry"
+
+    def reset_planning_transport_failures(self) -> None:
+        """A worker job completed and published; transport is healthy."""
+        self.planning_transport_failure_streak = 0
 
     def reset_planning_failures(self) -> None:
         """An executable proposal arrived — planning is alive again."""
         self.planning_failure_streak = 0
+        self.reset_planning_transport_failures()
         self.planning_exhausted = False
+        self.planning_exhausted_status = "llm_wedged"
+        self.planning_exhausted_reason = ""
 
     # ── Outcome recording (delegates to module-level helper) ─────────────
 

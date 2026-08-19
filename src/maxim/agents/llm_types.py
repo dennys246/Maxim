@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol
 
 from maxim.agents.autonomy import AutonomyLevel
@@ -41,6 +42,26 @@ class LLMBackend(Protocol):
 # ─────────────────────────────────────────────────────────────────────────────
 # Data Classes
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+class LLMAttemptState(str, Enum):
+    """Lifecycle of the most recently submitted LLM worker job.
+
+    This state is scoped to one ``LLMWorker``. It remains ``RUNNING`` through
+    response parsing, then ``COMPLETED`` from result publication until the
+    loop consumes that result. It is therefore safe for deciding whether one
+    planning turn is still alive; the process-global provider-call registry
+    is not.
+    """
+
+    NONE = "none"
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    CONSUMED = "consumed"
+    MISSING = "missing"
 
 
 @dataclass
@@ -200,10 +221,10 @@ class LLMProposal:
     # The user input that triggered this response (for conversation history)
     triggering_input: str = ""
 
-    # Planning liveness (bugs ledger D13): the original LLMRequest, attached
-    # ONLY to invalid-response/parse-failure proposals so the agent loop can
-    # requeue the planning turn byte-identically (bounded retries) instead of
-    # dropping it into the idle livelock. None on successful proposals.
+    # Planning liveness (bugs ledger D13): the original LLMRequest so the
+    # agent loop can retry the exact turn after any non-executable outcome.
+    # Parse failures are resubmitted byte-identically; a well-formed proposal
+    # naming an unavailable tool adds explicit corrective feedback first.
     # Runtime-ephemeral — never persisted, never crosses a wire.
     original_request: Any | None = None
 

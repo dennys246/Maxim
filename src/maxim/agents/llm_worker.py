@@ -25,6 +25,7 @@ from maxim.utils.optional_deps import OptionalDependencyError
 # ─────────────────────────────────────────────────────────────────────────────
 
 from maxim.agents.llm_types import (  # noqa: F401
+    LLMAttemptState,
     LLMBackend,
     LLMProposal,
     LLMRequest,
@@ -378,6 +379,9 @@ class LLMWorker:
         # requeue a planning turn whose response was silently lost (the
         # loop itself never holds the LLMRequest — submit_context builds it).
         self._last_request: LLMRequest | None = None
+        self._last_job_id: str | None = None
+        self._last_attempt_rejected = False
+        self._last_attempt_consumed = False
         self._resubmit_seq = 0
 
         # Acting Coach config (B3): set after construction to inject
@@ -474,24 +478,75 @@ class LLMWorker:
         logger.info("Retrying LLM request with timeout=%.0fs (was %.0fs)", timeout_s, old_timeout)
         return self._resubmit(request, job_suffix="retry")
 
-    def requeue_request(self, request: LLMRequest) -> bool:
+    def requeue_request(self, request: LLMRequest, *, failed_tool: str | None = None) -> bool:
         """Requeue a planning turn whose response was invalid or lost
-        (bugs ledger D13). Byte-identical retry: same context, same timeout —
-        no fabricated percepts contaminating the prompt. The caller owns the
-        bounded-retry accounting (``LoopController.record_planning_failure``).
+        (bugs ledger D13). Parse-failure retries are byte-identical apart from
+        freshness metadata. When ``failed_tool`` is supplied, the exact
+        rejected name is added to this request's corrective prompt context so
+        a responsive model is not asked the same question byte-identically.
 
         Returns True if queued, False if queue full or the pool is gone.
         """
+        self._add_failed_tool_feedback(request, failed_tool)
         return self._resubmit(request, job_suffix="liveness-retry")
 
-    def requeue_last_request(self) -> bool:
+    def requeue_last_request(self, *, failed_tool: str | None = None) -> bool:
         """Requeue the most recently submitted request (D13 await-window
         backstop — the loop holds no LLMRequest of its own). False when
         nothing was ever submitted."""
         request = self._last_request
         if request is None:
             return False
-        return self._resubmit(request, job_suffix="liveness-retry")
+        return self.requeue_request(request, failed_tool=failed_tool)
+
+    @staticmethod
+    def _add_failed_tool_feedback(request: LLMRequest, failed_tool: str | None) -> None:
+        """Attach turn-local corrective feedback for an unavailable tool."""
+        if failed_tool and failed_tool not in request.failed_tools:
+            request.failed_tools.append(failed_tool)
+
+    def latest_attempt_state(self) -> LLMAttemptState:
+        """Return the exact WorkerPool state for this worker's latest job.
+
+        ``COMPLETED`` remains observable until ``get_latest_proposal`` pops
+        the result, closing the provider-return/result-publication race that a
+        wall-clock delay cannot close. A rejected submit is reported as
+        ``FAILED`` even when no pool exists to hold a registry entry.
+        """
+        if self._last_job_id is None:
+            return LLMAttemptState.NONE
+        if self._last_attempt_rejected:
+            return LLMAttemptState.FAILED
+        if self._last_attempt_consumed:
+            return LLMAttemptState.CONSUMED
+        if self._pool is None:
+            return LLMAttemptState.MISSING
+
+        from maxim.runtime.worker_pool import JobStatus
+
+        status = self._pool.registry.get_status(self._last_job_id)
+        if status is None:
+            return LLMAttemptState.MISSING
+        return {
+            JobStatus.PENDING: LLMAttemptState.PENDING,
+            JobStatus.RUNNING: LLMAttemptState.RUNNING,
+            JobStatus.COMPLETED: LLMAttemptState.COMPLETED,
+            JobStatus.FAILED: LLMAttemptState.FAILED,
+            JobStatus.CANCELLED: LLMAttemptState.CANCELLED,
+        }.get(status, LLMAttemptState.MISSING)
+
+    def _begin_attempt(self, job_id: str) -> None:
+        """Install one exact job as the lifecycle source of truth."""
+        self._last_job_id = job_id
+        self._last_attempt_rejected = False
+        self._last_attempt_consumed = False
+
+    def _reject_attempt(self) -> None:
+        self._last_attempt_rejected = True
+
+    def _consume_attempt(self, job_id: str) -> None:
+        if job_id == self._last_job_id:
+            self._last_attempt_consumed = True
 
     def _resubmit(self, request: LLMRequest, *, job_suffix: str) -> bool:
         """Shared requeue body: refresh the timestamp so the staleness guard
@@ -499,15 +554,18 @@ class LLMWorker:
         request.timestamp = time.time()
         request.sort_index = (-request.priority, request.timestamp)
 
-        if self._pool is None:
-            return False
-
         # Distinct job_id per attempt: JobRegistry.register overwrites the
         # status entry and replaces the completion Event for a repeated id,
         # so a retry colliding with a still-queued earlier retry would lose
         # one of them (pre-merge review, architecture lens N3).
         self._resubmit_seq += 1
         job_suffix = f"{job_suffix}-{self._resubmit_seq}"
+        job_id = f"{request.request_id}-{job_suffix}"
+        self._begin_attempt(job_id)
+
+        if self._pool is None:
+            self._reject_attempt()
+            return False
 
         def _retry_fn(prefetched=None):
             if self._stop_event.is_set():
@@ -519,12 +577,13 @@ class LLMWorker:
         try:
             self._pool.submit(
                 lane="large",
-                job_id=f"{request.request_id}-{job_suffix}",
+                job_id=job_id,
                 fn=_retry_fn,
                 priority=-request.priority,
             )
             return True
         except queue.Full:
+            self._reject_attempt()
             self._requests_dropped += 1
             return False
 
@@ -955,6 +1014,7 @@ class LLMWorker:
             # hand back THIS request, not the previous (already answered)
             # one (pre-merge review, executor lens F6).
             self._last_request = request
+            self._begin_attempt(request.request_id)
 
             # WorkerPool mode: wrap _process_request in a job
             def _infer_job(prefetched=None):
@@ -980,6 +1040,7 @@ class LLMWorker:
                 )
                 return True
             except queue.Full:
+                self._reject_attempt()
                 self._requests_dropped += 1
                 logger.warning(
                     "LLM request dropped (queue full): %s (total dropped: %d)",
@@ -1003,8 +1064,10 @@ class LLMWorker:
             return None
         for lane in self._INFER_LANES:
             completed = self._pool.get_completed(lane)
-            if completed is not None and completed.result is not None:
-                return completed.result
+            if completed is not None:
+                self._consume_attempt(completed.job_id)
+                if completed.result is not None:
+                    return completed.result
         return None
 
     def get_all_proposals(self) -> list[LLMProposal]:
@@ -1015,9 +1078,11 @@ class LLMWorker:
         for lane in self._INFER_LANES:
             while True:
                 completed = self._pool.get_completed(lane)
-                if completed is None or completed.result is None:
+                if completed is None:
                     break
-                proposals.append(completed.result)
+                self._consume_attempt(completed.job_id)
+                if completed.result is not None:
+                    proposals.append(completed.result)
         return proposals
 
     def _process_request(self, request: LLMRequest) -> LLMProposal | None:
@@ -1049,6 +1114,7 @@ class LLMWorker:
                         citations=[],
                         latency_ms=latency_ms,
                         triggering_input=request.triggering_input,
+                        original_request=request,
                     )
                 except Exception:
                     pass  # Fall through to LLM if parse fails
@@ -1066,6 +1132,7 @@ class LLMWorker:
                     latency_ms=(time.time() - start_time) * 1000,
                     error="shutdown",
                     triggering_input=request.triggering_input,
+                    original_request=request,
                 )
 
             # Use mode-specific max tokens for dynamic response length
@@ -1135,6 +1202,7 @@ class LLMWorker:
                     citations=[],
                     latency_ms=(time.time() - start_time) * 1000,
                     triggering_input=request.triggering_input,
+                    original_request=request,
                 )
 
             # Check for shutdown after LLM call
@@ -1150,6 +1218,7 @@ class LLMWorker:
                     latency_ms=(time.time() - start_time) * 1000,
                     error="shutdown",
                     triggering_input=request.triggering_input,
+                    original_request=request,
                 )
 
             latency_ms = (time.time() - start_time) * 1000
@@ -1237,6 +1306,7 @@ class LLMWorker:
                 next_actions=next_actions,
                 parallel_actions=parallel_actions,
                 triggering_input=request.triggering_input,
+                original_request=request,
                 plan_text=plan_text,
                 requires_approval=requires_approval,
                 ready_to_act=ready_to_act,

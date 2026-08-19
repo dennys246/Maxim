@@ -156,6 +156,11 @@ class Spinner:
 
     def stop(self, final_message: str | None = None) -> None:
         """Stop the spinner and optionally print a final message."""
+        # The planning window belongs to this spinner lifecycle. Leaving it
+        # open after stop lets a stale monitor update mutate the next turn's
+        # message and makes tests leak state across a stopped bridge.
+        with self._lock:
+            self._planning_window = False
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=1.0)

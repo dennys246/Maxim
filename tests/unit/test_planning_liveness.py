@@ -1,15 +1,15 @@
 """Planning-liveness guards (bugs ledger D13 + D14).
 
-D13: a planning submit that ends in parse-failure/exhaustion (or whose await
-window expires) must LOUDLY reschedule with bounded retries or abort the sim
+D13: a planning submit that ends in parse-failure/exhaustion (or whose exact
+worker job terminates without a proposal) must LOUDLY reschedule with bounded retries or abort the sim
 — never fall through to idle. Pre-fix, a dropped fallback/error/stale
 proposal was terminal: ``pending_action_followup`` was already cleared and
 the triggering input deduped when the failed request was BUILT, so nothing
 ever re-armed the loop (traced live 2026-08-18: narrator returned status 200,
 tool-parse failed, zero further backend calls, orchestrator idle forever).
 
-D14: the between-turns spinner must report OBSERVED state (the LLM call
-registry), never intent — pre-fix it showed "planning... (8624s)" over a
+D14: the between-turns spinner must report OBSERVED state, never intent —
+pre-fix it showed "planning... (8624s)" over a
 loop py-spy proved was doing nothing.
 
 Test strategy follows house style for the 3,000-line loop (see
@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import inspect
 import pathlib
+import threading
 import time
 from unittest.mock import MagicMock
 
@@ -48,10 +49,30 @@ class NoneLLM:
 
     def __init__(self):
         self.call_count = 0
+        self.prompts: list[str] = []
 
     def generate_json(self, prompt: str, temperature: float = 0.3, max_tokens: int = 1024, **kwargs):
         self.call_count += 1
+        self.prompts.append(prompt)
         return None
+
+
+class BlockingLLM:
+    """Valid backend whose release is controlled by the test."""
+
+    def __init__(self):
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def generate_json(self, prompt: str, temperature: float = 0.3, max_tokens: int = 1024, **kwargs):
+        self.started.set()
+        if not self.release.wait(timeout=4.0):
+            raise TimeoutError("test did not release BlockingLLM")
+        return {
+            "action": {"tool_name": "respond", "params": {"message": "done"}},
+            "reasoning": "valid response",
+            "confidence": 0.9,
+        }
 
 
 def _make_mode_info():
@@ -90,6 +111,16 @@ def _wait_for_proposal(worker, timeout_s: float = 4.0):
             return proposal
         time.sleep(0.05)
     return None
+
+
+def _wait_for_attempt_state(worker, expected, timeout_s: float = 4.0):
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        state = worker.latest_attempt_state()
+        if state is expected:
+            return state
+        time.sleep(0.02)
+    return worker.latest_attempt_state()
 
 
 def _make_ctrl():
@@ -146,7 +177,26 @@ class TestRecordPlanningFailure:
         ctrl = _make_ctrl()
         assert ctrl.last_proposal_time == 0.0
         assert ctrl.planning_failure_streak == 0
+        assert ctrl.planning_transport_failure_streak == 0
         assert ctrl.planning_exhausted is False
+
+    def test_planning_failure_preserves_typed_finish_status(self):
+        ctrl = _make_ctrl()
+        for _ in range(3):
+            ctrl.record_planning_failure(reason="bad_tool", exhausted_status="planning_failed")
+        assert ctrl.record_planning_failure(reason="bad_tool", exhausted_status="planning_failed") == "exhausted"
+        assert ctrl.planning_exhausted_status == "planning_failed"
+        assert ctrl.planning_exhausted_reason == "bad_tool"
+
+    def test_transport_budget_is_separate_and_bounded(self):
+        ctrl = _make_ctrl()
+        assert ctrl.planning_transport_retry_limit == 3
+        for expected_streak in (1, 2, 3):
+            assert ctrl.record_planning_transport_failure(reason="queue_full") == "retry"
+            assert ctrl.planning_transport_failure_streak == expected_streak
+        assert ctrl.planning_failure_streak == 0
+        assert ctrl.record_planning_transport_failure(reason="queue_full") == "exhausted"
+        assert ctrl.planning_exhausted_status == "worker_unavailable"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -188,7 +238,11 @@ class TestHandlePlanningFailure:
         worker.requeue_last_request.return_value = True
 
         exhausted = _handle_planning_failure(
-            ctrl, worker, self._sim(), reason="await_window_expired", original_request=None
+            ctrl,
+            worker,
+            self._sim(),
+            reason="planning_job_completed_without_proposal",
+            original_request=None,
         )
 
         assert exhausted is False
@@ -216,8 +270,7 @@ class TestHandlePlanningFailure:
         assert ctrl.planning_exhausted is True
 
     def test_failed_requeue_still_paces_the_window(self):
-        """Queue-full requeue must still re-stamp the window so the expiry
-        backstop retries once per window, not once per 50ms idle tick."""
+        """A rejected requeue still stamps the attempt for exact-state recovery."""
         from maxim.runtime.agent_loop import _handle_planning_failure
 
         ctrl = _make_ctrl()
@@ -230,6 +283,28 @@ class TestHandlePlanningFailure:
         )
         assert exhausted is False
         assert ctrl.last_llm_submit_time >= before
+
+    def test_bad_tool_retry_carries_explicit_correction(self):
+        from maxim.runtime.agent_loop import _handle_planning_failure
+
+        ctrl = _make_ctrl()
+        worker = MagicMock()
+        worker.requeue_request.return_value = True
+        original = MagicMock(name="original_request")
+
+        assert (
+            _handle_planning_failure(
+                ctrl,
+                worker,
+                self._sim(),
+                reason="unregistered_tool_proposed",
+                original_request=original,
+                failed_tool="ghost_tool",
+                exhausted_status="planning_failed",
+            )
+            is False
+        )
+        worker.requeue_request.assert_called_once_with(original, failed_tool="ghost_tool")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -311,6 +386,45 @@ class TestWorkerParseFailurePath:
         finally:
             worker.stop()
 
+    def test_bad_tool_retry_changes_the_next_prompt(self):
+        from maxim.agents.llm_worker import LLMWorker
+
+        llm = NoneLLM()
+        worker = LLMWorker(llm=llm, stale_threshold_s=10.0)
+        worker.start()
+        try:
+            assert _submit_test_context(worker) is True
+            first = _wait_for_proposal(worker)
+            assert first is not None and first.original_request is not None
+            assert worker.requeue_request(first.original_request, failed_tool="ghost_tool") is True
+            assert _wait_for_proposal(worker) is not None
+            assert len(llm.prompts) >= 2
+            assert "ghost_tool" not in llm.prompts[0]
+            assert "previously called 'ghost_tool'" in llm.prompts[1]
+        finally:
+            worker.stop()
+
+    def test_latest_attempt_tracks_running_completed_and_consumed(self):
+        from maxim.agents.llm_worker import LLMAttemptState, LLMWorker
+
+        llm = BlockingLLM()
+        worker = LLMWorker(llm=llm, stale_threshold_s=10.0)
+        worker.start()
+        try:
+            assert _submit_test_context(worker) is True
+            assert llm.started.wait(timeout=2.0)
+            assert worker.latest_attempt_state() is LLMAttemptState.RUNNING
+
+            llm.release.set()
+            assert _wait_for_attempt_state(worker, LLMAttemptState.COMPLETED) is LLMAttemptState.COMPLETED
+            proposal = worker.get_latest_proposal()
+            assert proposal is not None
+            assert proposal.original_request is not None
+            assert worker.latest_attempt_state() is LLMAttemptState.CONSUMED
+        finally:
+            llm.release.set()
+            worker.stop()
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3b. Slow model != lost turn (the false-abort guard)
@@ -323,52 +437,39 @@ class TestSlowCallIsNotALostTurn:
     the liveness backstop keyed on that literal alone it would requeue a
     healthy slow call (doubling load) and abort the campaign after 3 —
     killing exactly the big-model runs the fix is meant to protect. The
-    discriminator must be the OBSERVED registry state."""
+    discriminator must be the OBSERVED state of this worker's exact job."""
 
-    def test_in_flight_call_is_reported(self, monkeypatch):
-        from maxim.runtime import agent_loop
+    @pytest.mark.parametrize("state_name", ["PENDING", "RUNNING", "COMPLETED"])
+    def test_active_job_states_hold_the_gate_open(self, state_name):
+        from maxim.agents.llm_worker import LLMAttemptState
+        from maxim.runtime.agent_loop import _planning_attempt_is_active
 
-        monkeypatch.setattr("maxim.runtime.llm_call_registry.any_call_in_flight", lambda *a, **k: True)
-        assert agent_loop._planning_call_in_flight() is True
+        assert _planning_attempt_is_active(LLMAttemptState[state_name]) is True
 
-    def test_no_call_in_flight_is_reported(self, monkeypatch):
-        from maxim.runtime import agent_loop
+    @pytest.mark.parametrize("state_name", ["NONE", "FAILED", "CANCELLED", "CONSUMED", "MISSING"])
+    def test_terminal_or_absent_job_states_release_the_gate(self, state_name):
+        from maxim.agents.llm_worker import LLMAttemptState
+        from maxim.runtime.agent_loop import _planning_attempt_is_active
 
-        monkeypatch.setattr("maxim.runtime.llm_call_registry.any_call_in_flight", lambda *a, **k: False)
-        assert agent_loop._planning_call_in_flight() is False
+        assert _planning_attempt_is_active(LLMAttemptState[state_name]) is False
 
-    def test_registry_failure_never_wedges_the_loop(self, monkeypatch):
-        """Registry trouble must degrade to 'not in flight' (the loop keeps
-        its pre-fix behavior), never propagate into the loop thread."""
-        from maxim.runtime import agent_loop
-
-        def _boom(*a, **k):
-            raise RuntimeError("registry exploded")
-
-        monkeypatch.setattr("maxim.runtime.llm_call_registry.any_call_in_flight", _boom)
-        assert agent_loop._planning_call_in_flight() is False
-
-    def test_idle_gate_holds_open_while_a_call_is_in_flight(self):
-        """Structural pin: an observed in-flight call keeps _awaiting_llm
-        True past the 120s literal. Without this the loop idles past
-        section 2's proposal poll and a slow call's answer is never
-        consumed — the second flavor of the same livelock."""
+    def test_idle_gate_uses_exact_worker_state(self):
+        """A running or completed-unconsumed job keeps section 2 reachable."""
         from maxim.runtime import agent_loop
 
         src = inspect.getsource(agent_loop.run_agentic_loop)
         gate = src.split("if not (", 1)[0]
-        assert "_call_in_flight" in gate
-        assert "_planning_call_in_flight()" in gate
-        assert "_awaiting_llm = _submitted_recently or _call_in_flight" in gate
+        assert "llm_worker.latest_attempt_state()" in gate
+        assert "_planning_attempt_is_active(_planning_attempt_state)" in gate
+        assert "any_call_in_flight" not in gate
 
-    def test_backstop_is_structurally_gated_behind_no_call_in_flight(self):
-        """The backstop lives INSIDE the idle branch, which is unreachable
-        while _awaiting_llm (and therefore an in-flight call) holds."""
+    def test_completed_state_is_active_until_proposal_poll(self):
+        """The backstop cannot race the result queue publication."""
         from maxim.runtime import agent_loop
 
         src = inspect.getsource(agent_loop.run_agentic_loop)
-        gate_idx = src.index("_awaiting_llm = _submitted_recently or _call_in_flight")
-        backstop_idx = src.index("await_window_expired")
+        gate_idx = src.index("_planning_attempt_is_active(_planning_attempt_state)")
+        backstop_idx = src.index("planning_job_completed_without_proposal")
         assert gate_idx < backstop_idx
 
 
@@ -395,13 +496,19 @@ class TestLoopWiringPins:
     def test_stale_drop_calls_handler(self, loop_src):
         assert "stale_proposal_dropped" in loop_src
 
-    def test_idle_gate_has_expiry_backstop(self, loop_src):
-        assert "await_window_expired" in loop_src
+    def test_idle_gate_has_terminal_job_backstop(self, loop_src):
+        assert "planning_job_completed_without_proposal" in loop_src
         # The backstop keys on "nothing came back since the last submit".
         assert "ctrl.last_proposal_time < ctrl.last_llm_submit_time" in loop_src
 
+    def test_no_action_no_error_proposal_calls_handler(self, loop_src):
+        from maxim.runtime.agent_loop import _proposal_without_action_reason
+
+        assert "_proposal_without_action_reason(new_proposal)" in loop_src
+        assert "proposal_without_action" in inspect.getsource(_proposal_without_action_reason)
+
     def test_single_gate_covers_every_failure_site(self, loop_src):
-        """All five sites consult ONE precomputed gate, so none can drift
+        """All outcome sites consult ONE precomputed gate, so none can drift
         (arch lens S7: the substrate-primary exclusion was previously only
         incidental — an aut_llm_worker IS built in substrate-primary runs)."""
         assert loop_src.count("_planning_liveness_on") >= 5
@@ -442,6 +549,9 @@ class TestLoopWiringPins:
     def test_proposal_time_stamped_on_any_proposal(self, loop_src):
         assert "ctrl.last_proposal_time = time.time()" in loop_src
 
+    def test_global_call_registry_does_not_control_loop_liveness(self, loop_src):
+        assert "any_call_in_flight" not in loop_src
+
     def test_streak_reset_is_enforced_by_the_type(self):
         """Reset used to live at ONE install site while three others bypassed
         it (executor lens F2). It is now a consequence of assigning
@@ -459,6 +569,26 @@ class TestLoopWiringPins:
         ctrl.record_planning_failure(reason="test")
         ctrl.pending_proposal = None
         assert ctrl.planning_failure_streak == 1
+
+
+class TestProposalWithoutAction:
+    def test_action_or_error_is_executable_or_explicit(self):
+        from maxim.runtime.agent_loop import _proposal_without_action_reason
+
+        assert _proposal_without_action_reason(MagicMock(action={"tool_name": "respond"}, error=None)) is None
+        assert _proposal_without_action_reason(MagicMock(action=None, error="bad response")) is None
+
+    def test_parsed_empty_proposal_is_a_failure(self):
+        from maxim.runtime.agent_loop import _proposal_without_action_reason
+
+        proposal = MagicMock(action=None, error=None, ready_to_act=True, mode_goal_achieved=False)
+        assert _proposal_without_action_reason(proposal) == "proposal_without_action"
+
+    def test_not_ready_proposal_is_classified(self):
+        from maxim.runtime.agent_loop import _proposal_without_action_reason
+
+        proposal = MagicMock(action=None, error=None, ready_to_act=False, mode_goal_achieved=False)
+        assert _proposal_without_action_reason(proposal) == "proposal_not_ready_to_act"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -516,9 +646,13 @@ class TestSpinnerPlanningWindow:
         from maxim.simulation.bridge import SimulationBridge
 
         bridge = SimulationBridge(response_timeout=0.2, settle_s=0.05)
+        try:
+            assert bridge._spinner.planning_window is False
+            bridge.send_and_wait("probe")  # times out — no AUT on the other side
+            assert bridge._spinner.planning_window is True
+        finally:
+            bridge.finish()
         assert bridge._spinner.planning_window is False
-        bridge.send_and_wait("probe")  # times out — no AUT on the other side
-        assert bridge._spinner.planning_window is True
 
     def test_send_and_wait_entry_closes_window(self):
         from maxim.simulation import bridge as bridge_mod
@@ -556,12 +690,14 @@ class TestOrchestratorWiringPins:
     def test_stall_detector_consults_spinner_truth(self, orch_src):
         assert "spinner_truth_message(" in orch_src
 
-    def test_orchestrator_converts_liveness_abort_to_wedged_finish(self, orch_src):
+    def test_orchestrator_preserves_typed_liveness_finish(self, orch_src):
         assert "except _PlanningLivenessExhausted" in orch_src
+        assert 'getattr(e, "finish_status", "llm_wedged")' in orch_src
+        assert '"status": _finish_status' in orch_src
         assert '"initiated_by": "planning_liveness"' in orch_src
 
     def test_abort_path_corrects_spinner_before_finish(self, orch_src):
-        assert "llm_wedged — aborting sim" in orch_src
+        assert '_spinner.update(f"🛑 {_finish_status} — aborting sim")' in orch_src
 
     def test_519_abort_clock_is_nudge_proof(self, orch_src):
         """Guard-test debt from #519 (scorecard finding): the hard-abort's
@@ -607,63 +743,60 @@ class TestParseFailureVsBadToolChoice:
             "the unregistered-tool case must feed the existing corrective channel, "
             "not just be requeued byte-identically"
         )
+        retry_call = src.split("reason=(", 1)[1].split("state.data.pop", 1)[0]
+        assert "failed_tool=None if _is_parse_failure else _bad_tool" in retry_call
+        assert '"planning_failed"' in retry_call
 
 
-class TestTransportFailureDoesNotSpendBudget:
+class TestTransportFailureIsSeparateAndBounded:
     """Executor S2: a requeue rejected because the worker queue is full is a
-    TRANSPORT failure. Lane contention must not abort a healthy campaign on
-    the retry budget alone."""
+    TRANSPORT failure. It must not spend more planning strikes, but it also
+    must not retry forever."""
 
     def _sim(self):
         sim = MagicMock()
         sim.is_sim_mode = True
         return sim
 
-    def test_queue_full_refunds_the_strike(self):
-        from maxim.runtime.agent_loop import _handle_planning_failure
+    def test_rejected_requeues_exhaust_the_transport_budget(self):
+        from maxim.runtime.agent_loop import _handle_planning_failure, _handle_planning_transport_failure
 
         ctrl = _make_ctrl()
         worker = MagicMock()
         worker.requeue_request.return_value = False
+        worker.requeue_last_request.return_value = False
 
-        for _ in range(6):
-            assert (
-                _handle_planning_failure(
-                    ctrl,
-                    worker,
-                    self._sim(),
-                    reason="fallback_proposal_dropped",
-                    original_request=MagicMock(),
-                )
-                is False
-            ), "repeated transport failures must never exhaust the budget"
-        assert ctrl.planning_failure_streak == 0
-        assert ctrl.planning_exhausted is False
-
-    def test_refund_never_goes_negative_or_unlatches(self):
-        ctrl = _make_ctrl()
-        ctrl.refund_planning_failure()
-        assert ctrl.planning_failure_streak == 0
-        for _ in range(4):
-            ctrl.record_planning_failure(reason="x")
+        assert (
+            _handle_planning_failure(
+                ctrl,
+                worker,
+                self._sim(),
+                reason="fallback_proposal_dropped",
+                original_request=MagicMock(),
+            )
+            is False
+        )
+        results = [
+            _handle_planning_transport_failure(ctrl, worker, self._sim(), reason="worker_job_failed") for _ in range(4)
+        ]
+        assert results == [False, False, False, True]
+        assert ctrl.planning_failure_streak == 1
+        assert ctrl.planning_transport_failure_streak == 4
         assert ctrl.planning_exhausted is True
-        ctrl.refund_planning_failure()
-        assert ctrl.planning_exhausted is True, "a reported abort must stay latched"
+        assert ctrl.planning_exhausted_status == "worker_unavailable"
 
 
-class TestLostTurnNeedsTwoObservations:
-    """Executor F5: 'call ended' and 'proposal enqueued' are not simultaneous.
-    Firing inside that gap executes the same planning turn twice — and only on
-    calls that already exceeded 120s, i.e. exactly the big-model case."""
+class TestExactJobStateClosesPublicationRace:
+    """Executor F5: provider return and result consumption are not simultaneous.
+    COMPLETED stays active until get_latest_proposal consumes the queued job."""
 
-    def test_backstop_requires_two_consecutive_observations(self):
+    def test_backstop_has_no_timing_heuristic(self):
         from maxim.runtime import agent_loop
 
         src = inspect.getsource(agent_loop.run_agentic_loop)
-        assert "_lost_turn_observations += 1" in src
-        assert "if _lost_turn_observations >= 2:" in src
-        # And it must reset whenever the condition stops holding.
-        assert "_lost_turn_observations = 0" in src.split("await_window_expired", 1)[1]
+        assert "_lost_turn_observations" not in src
+        assert "LLMAttemptState.COMPLETED" in src
+        assert "planning_job_completed_without_proposal" in src
 
 
 class TestRequeueUsesFreshRequest:
