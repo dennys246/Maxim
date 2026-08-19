@@ -150,9 +150,11 @@ auto-spawn/singleton topology, `llm.n_ctx 8192` (raised from 4096 mid-chapter
   fidelity — the D13 trigger); it is config-layer, not experiment-pinned
   apparatus. Gate evidence above was measured ONLY on completed, unwedged
   runs.
-- **Remaining walk:** Cloud (Exp 37, ≥1 in-zone model — qwen32b on-disk,
-  overnight wall-clock) and Hardware (Exp 45 row template + the H1 8-rep
-  delivered-shift block, operator + robot). Fleet: Exp 42 Maintained
+- **Remaining walk:** Big-Model chapter (Exp 37, ≥1 in-zone model —
+  qwen32b on-disk, overnight wall-clock; renamed from "Cloud" 2026-08-19 —
+  the anchors are local heavyweights, the old name was an API-era fossil)
+  and Hardware (Exp 45 row template + the H1 8-rep delivered-shift block,
+  operator + robot). Fleet: Exp 42 Maintained
   2026-07-29; Exp 48 re-baselined 2026-08-18 under gate v2 (PARTIAL —
   see its row).
 
