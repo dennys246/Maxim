@@ -26,9 +26,23 @@ __all__ = [
     "DEFAULT_MAX_BYTE_SILENCE_S",
     "DEFAULT_STALL_FLOOR_S",
     "DEFAULT_STALL_MARGIN_S",
+    "PlanningLivenessExhausted",
     "compute_stall_threshold",
     "max_byte_silence_threshold_s",
+    "spinner_truth_message",
 ]
+
+
+class PlanningLivenessExhausted(RuntimeError):
+    """A sim's planning turns failed repeatedly and the bounded retry budget
+    is spent (bugs ledger D13).
+
+    Raised by ``run_agentic_loop`` AFTER its normal teardown (state persist +
+    bio session end) so the sim aborts loudly instead of idling forever on a
+    silently-dropped planning turn. Sim-mode only: an interactive session has
+    a human percept source that can always re-arm the loop, so it logs and
+    stops retrying instead of raising.
+    """
 
 
 DEFAULT_STALL_FLOOR_S = 30.0
@@ -148,6 +162,48 @@ def should_hard_abort(
     if byte_silence_s is not None and byte_silence_s >= byte_silence_threshold_s:
         return stall_duration_s >= byte_silence_threshold_s + threshold_s
     return nudge_count >= 3 and stall_duration_s >= max(3.0 * threshold_s, threshold_s + 120.0)
+
+
+def spinner_truth_message(
+    *,
+    between_turns: bool,
+    in_flight: bool,
+    stall_duration_s: float,
+    threshold_s: float,
+    nudge_count: int,
+    byte_silence_s: float | None,
+    byte_silence_threshold_s: float,
+) -> str | None:
+    """Status-line truth for the between-turns spinner (bugs ledger D14).
+
+    The bridge sets "Orchestrator planning next probe..." when a turn ENDS
+    and nothing updates it on any failure path, so during a dropped planning
+    turn the display asserts work that py-spy proves is not happening — the
+    defect that steered hours of diagnosis toward server/network theories.
+    A status display must report OBSERVED state, never intent.
+
+    Returns the corrected spinner text, or ``None`` when the default text is
+    truthful (a call really is in flight, or the inter-call gap is still
+    within the stall threshold) — the caller leaves the spinner alone.
+    ``between_turns=False`` always returns ``None``: mid-turn the spinner
+    belongs to the AUT exchange, not the orchestrator.
+
+    Pure function — fully unit-testable; the stall detector supplies the
+    same registry-derived state it already polls.
+    """
+    if not between_turns:
+        return None
+    if in_flight:
+        if byte_silence_s is not None and byte_silence_s >= byte_silence_threshold_s:
+            return f"⚠ planning call in flight but silent {int(byte_silence_s)}s (connection may be wedged)"
+        return None
+    if stall_duration_s >= threshold_s:
+        nudge_note = f", {nudge_count} nudge(s) sent" if nudge_count > 0 else ""
+        return (
+            f"⚠ no LLM call in flight — planning turn may be lost "
+            f"({int(stall_duration_s)}s since last turn{nudge_note})"
+        )
+    return None
 
 
 _DEPRECATED_FLOOR_ALIASES = {

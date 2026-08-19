@@ -1,0 +1,514 @@
+"""Planning-liveness guards (bugs ledger D13 + D14).
+
+D13: a planning submit that ends in parse-failure/exhaustion (or whose await
+window expires) must LOUDLY reschedule with bounded retries or abort the sim
+— never fall through to idle. Pre-fix, a dropped fallback/error/stale
+proposal was terminal: ``pending_action_followup`` was already cleared and
+the triggering input deduped when the failed request was BUILT, so nothing
+ever re-armed the loop (traced live 2026-08-18: narrator returned status 200,
+tool-parse failed, zero further backend calls, orchestrator idle forever).
+
+D14: the between-turns spinner must report OBSERVED state (the LLM call
+registry), never intent — pre-fix it showed "planning... (8624s)" over a
+loop py-spy proved was doing nothing.
+
+Test strategy follows house style for the 3,000-line loop (see
+test_substrate_action_budget.py): pure decision seams get behavioral tests;
+the loop wiring gets structural pins on the source; the worker requeue path
+gets a real LLMWorker + FakeLLM behavioral test.
+"""
+
+from __future__ import annotations
+
+import inspect
+import time
+from unittest.mock import MagicMock
+
+import pytest
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _make_context(triggering_input: str):
+    """A REAL StructuredContext — the parse-failure path must be reached
+    through production prompt building, not short-circuited by an
+    incomplete fake raising AttributeError into the catch-all branch."""
+    from maxim.agents.bus import StructuredContext
+
+    return StructuredContext(timestamp=time.time(), cli_inputs=[triggering_input])
+
+
+class NoneLLM:
+    """LLM backend whose every response fails to parse (returns None) —
+    the exact D13 trigger: HTTP 200, empty/unparseable tool response."""
+
+    def __init__(self):
+        self.call_count = 0
+
+    def generate_json(self, prompt: str, temperature: float = 0.3, max_tokens: int = 1024, **kwargs):
+        self.call_count += 1
+        return None
+
+
+def _make_mode_info():
+    from maxim.agents.llm_worker import ModeInfo
+
+    return ModeInfo(
+        name="active",
+        goal="assist the user",
+        context_prompt="You are a helpful assistant.",
+        max_response_tokens=512,
+        context_window_tokens=2048,
+    )
+
+
+def _submit_test_context(worker, triggering_input: str = "probe the AUT") -> bool:
+    from maxim.agents.autonomy import AutonomyLevel
+
+    return worker.submit_context(
+        context=_make_context(triggering_input),
+        mode=_make_mode_info(),
+        autonomy_level=AutonomyLevel.SUPERVISED,
+        internet_access=False,
+        internet_policy_summary="",
+        triggering_input=triggering_input,
+        use_tool_prompting=True,
+        available_tools={"respond"},
+        tool_descriptions={"respond": "Send a message"},
+    )
+
+
+def _wait_for_proposal(worker, timeout_s: float = 4.0):
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        proposal = worker.get_latest_proposal()
+        if proposal is not None:
+            return proposal
+        time.sleep(0.05)
+    return None
+
+
+def _make_ctrl():
+    """Real LoopController with mocked dependencies — the planning-liveness
+    fields and methods are what's under test."""
+    from maxim.agents.autonomy import AutonomyController
+    from maxim.runtime.loop_controller import LoopController
+
+    return LoopController(
+        MagicMock(),  # agent
+        MagicMock(),  # environment
+        MagicMock(),  # state
+        MagicMock(),  # memory
+        MagicMock(),  # decision_engine
+        MagicMock(),  # executor
+        autonomy_controller=MagicMock(spec=AutonomyController),
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. LoopController bounded-retry state machine
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestRecordPlanningFailure:
+    def test_within_budget_returns_retry(self):
+        ctrl = _make_ctrl()
+        assert ctrl.planning_retry_limit == 3
+        for expected_streak in (1, 2, 3):
+            assert ctrl.record_planning_failure(reason="test") == "retry"
+            assert ctrl.planning_failure_streak == expected_streak
+        assert ctrl.planning_exhausted is False
+
+    def test_budget_spent_returns_exhausted_and_latches(self):
+        ctrl = _make_ctrl()
+        for _ in range(3):
+            ctrl.record_planning_failure(reason="test")
+        assert ctrl.record_planning_failure(reason="test") == "exhausted"
+        assert ctrl.planning_exhausted is True
+        # Latched: further failures never re-log or re-retry.
+        assert ctrl.record_planning_failure(reason="test") == "already_exhausted"
+
+    def test_reset_on_executable_proposal(self):
+        ctrl = _make_ctrl()
+        ctrl.record_planning_failure(reason="test")
+        ctrl.record_planning_failure(reason="test")
+        ctrl.reset_planning_failures()
+        assert ctrl.planning_failure_streak == 0
+        assert ctrl.planning_exhausted is False
+        # Fresh budget after recovery.
+        assert ctrl.record_planning_failure(reason="test") == "retry"
+
+    def test_liveness_fields_default(self):
+        ctrl = _make_ctrl()
+        assert ctrl.last_proposal_time == 0.0
+        assert ctrl.planning_failure_streak == 0
+        assert ctrl.planning_exhausted is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. _handle_planning_failure — the loop's failure handler
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestHandlePlanningFailure:
+    def _sim(self):
+        sim = MagicMock()
+        sim.is_sim_mode = True
+        return sim
+
+    def test_retry_requeues_original_request_and_reopens_window(self):
+        from maxim.runtime.agent_loop import _handle_planning_failure
+
+        ctrl = _make_ctrl()
+        worker = MagicMock()
+        worker.requeue_request.return_value = True
+        original = MagicMock(name="original_request")
+
+        before = time.time()
+        exhausted = _handle_planning_failure(
+            ctrl, worker, self._sim(), reason="fallback_proposal_dropped", original_request=original
+        )
+
+        assert exhausted is False
+        worker.requeue_request.assert_called_once_with(original)
+        worker.requeue_last_request.assert_not_called()
+        # The await window MUST re-open or the idle gate closes at 120s
+        # and the loop falls back into the pre-fix livelock.
+        assert ctrl.last_llm_submit_time >= before
+
+    def test_retry_without_request_uses_last_request_backstop(self):
+        from maxim.runtime.agent_loop import _handle_planning_failure
+
+        ctrl = _make_ctrl()
+        worker = MagicMock()
+        worker.requeue_last_request.return_value = True
+
+        exhausted = _handle_planning_failure(
+            ctrl, worker, self._sim(), reason="await_window_expired", original_request=None
+        )
+
+        assert exhausted is False
+        worker.requeue_last_request.assert_called_once_with()
+        worker.requeue_request.assert_not_called()
+
+    def test_exhaustion_reports_abort_and_stops_requeueing(self):
+        from maxim.runtime.agent_loop import _handle_planning_failure
+
+        ctrl = _make_ctrl()
+        worker = MagicMock()
+        worker.requeue_request.return_value = True
+        sim = self._sim()
+
+        results = [
+            _handle_planning_failure(
+                ctrl, worker, sim, reason="fallback_proposal_dropped", original_request=MagicMock()
+            )
+            for _ in range(5)
+        ]
+
+        # 3 bounded retries, then exhausted (True), then latched (True).
+        assert results == [False, False, False, True, True]
+        assert worker.requeue_request.call_count == 3
+        assert ctrl.planning_exhausted is True
+
+    def test_failed_requeue_still_paces_the_window(self):
+        """Queue-full requeue must still re-stamp the window so the expiry
+        backstop retries once per window, not once per 50ms idle tick."""
+        from maxim.runtime.agent_loop import _handle_planning_failure
+
+        ctrl = _make_ctrl()
+        worker = MagicMock()
+        worker.requeue_request.return_value = False
+
+        before = time.time()
+        exhausted = _handle_planning_failure(
+            ctrl, worker, self._sim(), reason="stale_proposal_dropped", original_request=MagicMock()
+        )
+        assert exhausted is False
+        assert ctrl.last_llm_submit_time >= before
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. Worker: original_request attachment + requeue path (behavioral,
+#    real LLMWorker + pool — the D13 parse-failure trigger end to end)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestWorkerParseFailurePath:
+    def test_invalid_response_proposal_carries_original_request(self):
+        from maxim.agents.llm_types import LLMRequest
+        from maxim.agents.llm_worker import LLMWorker
+
+        worker = LLMWorker(llm=NoneLLM(), stale_threshold_s=10.0)
+        worker.start()
+        try:
+            assert _submit_test_context(worker) is True
+            proposal = _wait_for_proposal(worker)
+            assert proposal is not None
+            # Fallback or error proposal — either way the original request
+            # rides along so the loop can requeue instead of dropping.
+            assert proposal.reasoning in ("llm_fallback", "LLM returned invalid response")
+            assert isinstance(proposal.original_request, LLMRequest)
+            assert proposal.original_request.triggering_input == "probe the AUT"
+        finally:
+            worker.stop()
+
+    def test_requeue_request_produces_second_proposal(self):
+        from maxim.agents.llm_worker import LLMWorker
+
+        llm = NoneLLM()
+        worker = LLMWorker(llm=llm, stale_threshold_s=10.0)
+        worker.start()
+        try:
+            _submit_test_context(worker)
+            first = _wait_for_proposal(worker)
+            assert first is not None and first.original_request is not None
+
+            assert worker.requeue_request(first.original_request) is True
+            second = _wait_for_proposal(worker)
+            assert second is not None
+            assert llm.call_count >= 2
+            # The retry is byte-identical: same request object resubmitted.
+            assert second.request_id == first.request_id
+        finally:
+            worker.stop()
+
+    def test_requeue_refreshes_timestamp_past_staleness_guard(self):
+        """The staleness guard drops requests older than stale_threshold —
+        a requeue that keeps the original timestamp would be dropped
+        silently, turning the retry into a no-op."""
+        from maxim.agents.llm_worker import LLMWorker
+
+        llm = NoneLLM()
+        worker = LLMWorker(llm=llm, stale_threshold_s=0.5)
+        worker.start()
+        try:
+            _submit_test_context(worker)
+            first = _wait_for_proposal(worker)
+            assert first is not None
+            time.sleep(0.6)  # original timestamp is now stale
+            assert worker.requeue_request(first.original_request) is True
+            second = _wait_for_proposal(worker)
+            assert second is not None, "stale-guard swallowed the requeue"
+        finally:
+            worker.stop()
+
+    def test_requeue_last_request_after_submit(self):
+        from maxim.agents.llm_worker import LLMWorker
+
+        worker = LLMWorker(llm=NoneLLM(), stale_threshold_s=10.0)
+        worker.start()
+        try:
+            assert worker.requeue_last_request() is False, "nothing submitted yet"
+            _submit_test_context(worker)
+            _wait_for_proposal(worker)
+            assert worker.requeue_last_request() is True
+            assert _wait_for_proposal(worker) is not None
+        finally:
+            worker.stop()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3b. Slow model != lost turn (the false-abort guard)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestSlowCallIsNotALostTurn:
+    """The await window's 120s is a wall-clock GUESS a big model routinely
+    exceeds — qwen2.5-32b measured ~140s/turn in the Exp 37 heartbeat. If
+    the liveness backstop keyed on that literal alone it would requeue a
+    healthy slow call (doubling load) and abort the campaign after 3 —
+    killing exactly the big-model runs the fix is meant to protect. The
+    discriminator must be the OBSERVED registry state."""
+
+    def test_in_flight_call_is_reported(self, monkeypatch):
+        from maxim.runtime import agent_loop
+
+        monkeypatch.setattr("maxim.runtime.llm_call_registry.any_call_in_flight", lambda *a, **k: True)
+        assert agent_loop._planning_call_in_flight() is True
+
+    def test_no_call_in_flight_is_reported(self, monkeypatch):
+        from maxim.runtime import agent_loop
+
+        monkeypatch.setattr("maxim.runtime.llm_call_registry.any_call_in_flight", lambda *a, **k: False)
+        assert agent_loop._planning_call_in_flight() is False
+
+    def test_registry_failure_never_wedges_the_loop(self, monkeypatch):
+        """Registry trouble must degrade to 'not in flight' (the loop keeps
+        its pre-fix behavior), never propagate into the loop thread."""
+        from maxim.runtime import agent_loop
+
+        def _boom(*a, **k):
+            raise RuntimeError("registry exploded")
+
+        monkeypatch.setattr("maxim.runtime.llm_call_registry.any_call_in_flight", _boom)
+        assert agent_loop._planning_call_in_flight() is False
+
+    def test_idle_gate_holds_open_while_a_call_is_in_flight(self):
+        """Structural pin: an observed in-flight call keeps _awaiting_llm
+        True past the 120s literal. Without this the loop idles past
+        section 2's proposal poll and a slow call's answer is never
+        consumed — the second flavor of the same livelock."""
+        from maxim.runtime import agent_loop
+
+        src = inspect.getsource(agent_loop.run_agentic_loop)
+        gate = src.split("if not (", 1)[0]
+        assert "_call_in_flight" in gate
+        assert "_planning_call_in_flight()" in gate
+        assert "_awaiting_llm = _submitted_recently or _call_in_flight" in gate
+
+    def test_backstop_is_structurally_gated_behind_no_call_in_flight(self):
+        """The backstop lives INSIDE the idle branch, which is unreachable
+        while _awaiting_llm (and therefore an in-flight call) holds."""
+        from maxim.runtime import agent_loop
+
+        src = inspect.getsource(agent_loop.run_agentic_loop)
+        gate_idx = src.index("_awaiting_llm = _submitted_recently or _call_in_flight")
+        backstop_idx = src.index("await_window_expired")
+        assert gate_idx < backstop_idx
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. Loop wiring pins (house style for run_agentic_loop — see
+#    test_substrate_action_budget.py's source pins)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestLoopWiringPins:
+    @pytest.fixture(scope="class")
+    def loop_src(self):
+        from maxim.runtime import agent_loop
+
+        return inspect.getsource(agent_loop.run_agentic_loop)
+
+    def test_fallback_drop_calls_handler(self, loop_src):
+        assert "fallback_proposal_dropped" in loop_src
+
+    def test_error_drop_calls_handler_and_excludes_shutdown(self, loop_src):
+        assert "proposal_error:" in loop_src
+        assert 'new_proposal.error != "shutdown"' in loop_src
+
+    def test_stale_drop_calls_handler(self, loop_src):
+        assert "stale_proposal_dropped" in loop_src
+
+    def test_idle_gate_has_expiry_backstop(self, loop_src):
+        assert "await_window_expired" in loop_src
+        # The backstop keys on "nothing came back since the last submit".
+        assert "ctrl.last_proposal_time < ctrl.last_llm_submit_time" in loop_src
+
+    def test_backstop_excludes_substrate_primary(self, loop_src):
+        idle_gate = loop_src.split("await_window_expired")[0]
+        assert 'aut_mode != "substrate-primary"' in idle_gate.rsplit("if not (", 1)[-1]
+
+    def test_exhaustion_raises_after_teardown(self, loop_src):
+        # The raise must come AFTER _end_bio_session so state persistence
+        # and the bio session end run before the sim aborts.
+        teardown_idx = loop_src.rindex("_end_bio_session(")
+        raise_idx = loop_src.rindex("raise PlanningLivenessExhausted(")
+        assert raise_idx > teardown_idx
+
+    def test_proposal_time_stamped_on_any_proposal(self, loop_src):
+        assert "ctrl.last_proposal_time = time.time()" in loop_src
+
+    def test_streak_reset_on_executable_proposal(self, loop_src):
+        after_accept = loop_src.split("ctrl.pending_proposal = new_proposal", 1)[1]
+        assert "ctrl.reset_planning_failures()" in after_accept
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. D14: spinner truth decision (pure) + wiring pins
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestSpinnerTruthMessage:
+    def _call(self, **overrides):
+        from maxim.runtime.stall_threshold import spinner_truth_message
+
+        kwargs = dict(
+            between_turns=True,
+            in_flight=False,
+            stall_duration_s=200.0,
+            threshold_s=30.0,
+            nudge_count=0,
+            byte_silence_s=None,
+            byte_silence_threshold_s=90.0,
+        )
+        kwargs.update(overrides)
+        return spinner_truth_message(**kwargs)
+
+    def test_mid_turn_never_overrides(self):
+        assert self._call(between_turns=False) is None
+
+    def test_healthy_in_flight_call_keeps_default_text(self):
+        assert self._call(in_flight=True, byte_silence_s=5.0) is None
+
+    def test_short_gap_keeps_default_text(self):
+        assert self._call(stall_duration_s=10.0) is None
+
+    def test_no_call_in_flight_past_threshold_tells_the_truth(self):
+        msg = self._call(stall_duration_s=3286.0)
+        assert msg is not None
+        assert "no LLM call in flight" in msg
+        assert "3286" in msg
+
+    def test_nudges_appear_in_message(self):
+        msg = self._call(stall_duration_s=200.0, nudge_count=4)
+        assert msg is not None and "4 nudge(s)" in msg
+
+    def test_wedged_in_flight_call_reports_byte_silence(self):
+        msg = self._call(in_flight=True, byte_silence_s=120.0)
+        assert msg is not None
+        assert "silent 120s" in msg
+
+
+class TestBridgeBetweenTurns:
+    def test_default_false_then_true_after_turn(self):
+        from maxim.simulation.bridge import SimulationBridge
+
+        bridge = SimulationBridge(response_timeout=0.2, settle_s=0.05)
+        assert bridge.between_turns is False
+        bridge.send_and_wait("probe")  # times out — no AUT on the other side
+        assert bridge.between_turns is True, "send_and_wait must open the between-turns spinner-truth window on exit"
+
+    def test_send_and_wait_entry_closes_window(self):
+        from maxim.simulation import bridge as bridge_mod
+
+        src = inspect.getsource(bridge_mod.SimulationBridge.send_and_wait)
+        entry = src.split("self._spinner.start(", 1)[0]
+        assert "self.between_turns = False" in entry
+
+
+class TestOrchestratorWiringPins:
+    @pytest.fixture(scope="class")
+    def orch_src(self):
+        from maxim.simulation import orchestrator
+
+        return inspect.getsource(orchestrator.start_simulation_mode)
+
+    def test_stall_detector_consults_spinner_truth(self, orch_src):
+        assert "spinner_truth_message(" in orch_src
+
+    def test_orchestrator_converts_liveness_abort_to_wedged_finish(self, orch_src):
+        assert "except _PlanningLivenessExhausted" in orch_src
+        assert '"initiated_by": "planning_liveness"' in orch_src
+
+    def test_abort_path_corrects_spinner_before_finish(self, orch_src):
+        assert "llm_wedged — aborting sim" in orch_src
+
+    def test_519_abort_clock_is_nudge_proof(self, orch_src):
+        """Guard-test debt from #519 (scorecard finding): the hard-abort's
+        clock is written ONLY on turn advance — a nudge must not be able to
+        reset it (pre-#519, nudges reset the clock and made the abort
+        structurally unreachable: '>=3 nudges AND >=150s stall' were
+        mutually exclusive by construction)."""
+        writes = orch_src.count("_last_turn_progress_time[0] = time.time()")
+        assert writes == 1, f"expected exactly one abort-clock write site, found {writes}"
+        # And that one write is in the turn-advance branch, not the nudge path.
+        turn_advance = orch_src.split("if current_turns > _last_turn_count[0]:", 1)[1]
+        advance_block = turn_advance.split("continue", 1)[0]
+        assert "_last_turn_progress_time[0] = time.time()" in advance_block
+        nudge_block = orch_src.split("_nudge_count[0] += 1", 1)[1].split("def _force_exit", 1)[0]
+        assert "_last_turn_progress_time" not in nudge_block

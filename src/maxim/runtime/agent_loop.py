@@ -410,6 +410,98 @@ def _wait_for_proposal(
     return None
 
 
+def _planning_call_in_flight() -> bool:
+    """True when the large lane has a live LLM call per the process-global
+    call registry (bugs ledger D13).
+
+    The await window's 120s literal is a WALL-CLOCK guess, and a big model
+    routinely exceeds it — qwen2.5-32b measured ~140s/turn in the Exp 37
+    heartbeat. Two things therefore key on this observed signal instead of
+    the literal: the idle gate stays awake while a call is genuinely in
+    flight (otherwise a slow call's proposal is never polled — a second
+    flavor of the same livelock), and the liveness backstop only declares a
+    turn LOST when nothing is actually running.
+
+    Attribution is per-lane, not per-loop: in a sim the orchestrator and AUT
+    loops share the large lane, so a busy AUT reads as "in flight" for the
+    orchestrator too. That bias is deliberate — it can only DELAY a liveness
+    abort, never manufacture one, and a false abort kills a campaign run
+    (same conservatism as ``stall_threshold.should_hard_abort``). A call
+    that is in flight but WEDGED stays the D12 hard-abort's job (byte
+    silence); a turn lost with nothing running is this fix's job.
+
+    Never raises: registry trouble must not wedge the loop.
+    """
+    try:
+        from maxim.runtime.llm_call_registry import any_call_in_flight
+
+        return bool(any_call_in_flight(tier="large"))
+    except Exception as e:
+        log_swallowed_exception(e, operation="planning_liveness:any_call_in_flight")
+        return False
+
+
+def _handle_planning_failure(
+    ctrl: Any,
+    llm_worker: Any,
+    sim: Any,
+    *,
+    reason: str,
+    original_request: Any | None,
+) -> bool:
+    """Planning-liveness handler (bugs ledger D13): a planning submit ended
+    without an executable proposal — parse failure, invalid response, a
+    dropped proposal, or an await window that expired with nothing back.
+
+    LOUDLY reschedules the turn with bounded retries (byte-identical requeue
+    of the original request — no fabricated percepts) or, when the budget is
+    spent, tells the caller to abort. Never silent, never a fall-through to
+    idle.
+
+    Returns True when planning liveness is exhausted (caller breaks the loop
+    and raises ``PlanningLivenessExhausted`` after normal teardown).
+    """
+    verdict = ctrl.record_planning_failure(reason=reason)
+    if verdict == "already_exhausted":
+        return True
+    if verdict == "exhausted":
+        msg = (
+            f"planning liveness exhausted: {ctrl.planning_failure_streak} consecutive "
+            f"planning-turn failures (last: {reason}) — aborting sim (bugs ledger D13)"
+        )
+        logger.error(msg)
+        sim.log("EXEC", f"🛑 {msg}")
+        log_agentic(
+            "agent_loop",
+            "planning_liveness_exhausted",
+            {"streak": ctrl.planning_failure_streak, "reason": reason},
+            level="ERROR",
+        )
+        return True
+
+    # verdict == "retry"
+    if original_request is not None:
+        requeued = bool(llm_worker.requeue_request(original_request))
+    else:
+        requeued = bool(llm_worker.requeue_last_request())
+    attempt = ctrl.planning_failure_streak
+    limit = ctrl.planning_retry_limit
+    note = "rescheduled" if requeued else "REQUEUE FAILED — the expiry backstop will retry"
+    logger.warning("planning turn failed (%s) — %s (attempt %d/%d)", reason, note, attempt, limit)
+    sim.log("EXEC", f"⚠ planning turn failed ({reason}) — {note} (attempt {attempt}/{limit})")
+    log_agentic(
+        "agent_loop",
+        "planning_retry",
+        {"reason": reason, "attempt": attempt, "limit": limit, "requeued": requeued},
+        level="WARNING",
+    )
+    # Re-open the await window in BOTH outcomes: on a successful requeue it
+    # tracks the new in-flight turn; on a failed one it paces the expiry
+    # backstop to one attempt per window instead of one per idle tick.
+    ctrl.last_llm_submit_time = time.time()
+    return False
+
+
 def _jaccard_similarity(keywords_a: set[str], keywords_b: set[str]) -> float:
     """Jaccard similarity between two keyword sets.  Returns 0.0-1.0."""
     if not keywords_a or not keywords_b:
@@ -1562,6 +1654,11 @@ def run_agentic_loop(
     _loop_name = _safe_agent_name(agent)
     _consecutive_llm_fallbacks = 0  # Track consecutive LLM failures for stall detection
     _LLM_STALL_THRESHOLD = 1  # Surface immediately — only one fallback per LLM request
+    # D13 planning liveness: set when the bounded retry budget is spent; the
+    # loop breaks through NORMAL teardown (state persist + bio session end)
+    # and raises PlanningLivenessExhausted afterwards, so the sim aborts
+    # loudly instead of idling forever on a dropped planning turn.
+    _planning_liveness_exhausted = False
 
     for step_num in step_iter:
         loop_start = time.time()
@@ -1674,11 +1771,26 @@ def run_agentic_loop(
         _is_first_step = step_num == 0
         # If we submitted to the LLM recently, we're awaiting a proposal —
         # don't idle-gate or we'll never pick up the result.
-        _awaiting_llm = (
+        #
+        # D13: the 120s literal is a wall-clock GUESS that a big model
+        # routinely exceeds (qwen2.5-32b ~140s/turn in the Exp 37
+        # heartbeat). Pre-fix, the window lapsing mid-call made the loop
+        # idle straight past section 2's proposal poll, so the answer to a
+        # slow call was never consumed — a livelock indistinguishable from
+        # the lost-turn one. An observed in-flight call now holds the gate
+        # open no matter what the clock says.
+        _submitted_recently = (
             llm_worker is not None
             and ctrl.pending_proposal is None
             and (time.time() - ctrl.last_llm_submit_time) < 120.0
         )
+        _call_in_flight = (
+            llm_worker is not None
+            and ctrl.pending_proposal is None
+            and not _submitted_recently
+            and _planning_call_in_flight()
+        )
+        _awaiting_llm = _submitted_recently or _call_in_flight
 
         if not (
             _has_pending_input
@@ -1688,6 +1800,35 @@ def run_agentic_loop(
             or _is_first_step
             or _awaiting_llm
         ):
+            # D13 planning-liveness backstop: the loop is about to idle, but
+            # the last planning submit never produced ANY proposal — the
+            # await window expired silently (lost turn: worker died, stale
+            # drop, queue race). Reaching here PROVES no call is in flight:
+            # _awaiting_llm above is False, and it stays True for as long as
+            # the registry observes a live call. So a merely SLOW model is
+            # never mistaken for a lost turn, and a call that is in flight
+            # but wedged remains the D12 hard-abort's job (byte silence).
+            # Sim-only: an interactive session has a human percept source; a
+            # sim orchestrator has no other wake source and idles forever.
+            # Substrate-primary proposals never flow through
+            # get_latest_proposal, so that mode is excluded.
+            if (
+                sim.is_sim_mode
+                and aut_mode != "substrate-primary"
+                and llm_worker is not None
+                and not ctrl.planning_exhausted
+                and ctrl.last_llm_submit_time > 0
+                and ctrl.last_proposal_time < ctrl.last_llm_submit_time
+            ):
+                if _handle_planning_failure(
+                    ctrl,
+                    llm_worker,
+                    sim,
+                    reason="await_window_expired",
+                    original_request=None,
+                ):
+                    _planning_liveness_exhausted = True
+                    break
             time.sleep(idle_sleep_s)
             continue
 
@@ -2359,6 +2500,12 @@ def run_agentic_loop(
         # ─────────────────────────────────────────────────────────────────
         if llm_worker:
             new_proposal = llm_worker.get_latest_proposal()
+            if new_proposal is not None:
+                # D13 planning liveness: ANY proposal (even one dropped below
+                # as stale/fallback) proves the worker answered this submit —
+                # the await-expiry backstop keys on last_proposal_time <
+                # last_llm_submit_time.
+                ctrl.last_proposal_time = time.time()
             # Sim-mode periodic traces
             if sim.is_sim_mode and step_num % 20 == 0:
                 sim.log("PIPELINE", f"Loop step {step_num}, proposal={'YES' if new_proposal else 'none'}")
@@ -2390,7 +2537,18 @@ def run_agentic_loop(
                         new_proposal.request_id,
                     )
                     sim.log("EXEC", f"DROPPED: stale proposal (age={proposal_age:.1f}s)")
+                    _stale_original_request = new_proposal.original_request
                     new_proposal = None
+                    # D13: a dropped stale proposal is a consumed planning
+                    # turn with nothing executed — reschedule, don't idle.
+                    if sim.is_sim_mode and _handle_planning_failure(
+                        ctrl,
+                        llm_worker,
+                        sim,
+                        reason="stale_proposal_dropped",
+                        original_request=_stale_original_request,
+                    ):
+                        _planning_liveness_exhausted = True
             # In simulation mode, skip fallback proposals — wait for real LLM
             if new_proposal and sim.should_skip_fallback_proposal(new_proposal):
                 _consecutive_llm_fallbacks += 1
@@ -2399,7 +2557,21 @@ def run_agentic_loop(
                     _consecutive_llm_fallbacks,
                 )
                 sim.log("EXEC", f"DROPPED: fallback proposal (sim mode, #{_consecutive_llm_fallbacks})")
+                _fallback_original_request = new_proposal.original_request
                 new_proposal = None
+                # D13: pre-fix this drop was terminal — pending_action_followup
+                # was already cleared and the triggering input deduped when the
+                # failed request was BUILT, so nothing ever re-armed the loop
+                # (status 200 → parse failure → idle forever). Reschedule the
+                # turn byte-identically, bounded.
+                if _handle_planning_failure(
+                    ctrl,
+                    llm_worker,
+                    sim,
+                    reason="fallback_proposal_dropped",
+                    original_request=_fallback_original_request,
+                ):
+                    _planning_liveness_exhausted = True
                 # Clear pending input so the loop doesn't block on a
                 # response that will never come.  Without this, the
                 # has_pending_llm_input guard (30s timeout) prevents
@@ -2458,6 +2630,8 @@ def run_agentic_loop(
                         },
                     )
                     ctrl.pending_proposal = new_proposal
+                    # D13: an executable proposal — planning is alive again.
+                    ctrl.reset_planning_failures()
                     # Record surfaced-but-unused signal for learned tool index
                     _bridge = getattr(executor, "_tool_pain_bridge", None)
                     _tidx = getattr(_bridge, "_tool_index", None) if _bridge else None
@@ -2490,6 +2664,26 @@ def run_agentic_loop(
                         {"context": "llm_proposal", "error": str(new_proposal.error)[:100]},
                         level="WARNING",
                     )
+                    # D13: an error proposal is also a consumed planning turn
+                    # with nothing executed. Shutdown is deliberate, not a
+                    # liveness failure.
+                    if (
+                        sim.is_sim_mode
+                        and new_proposal.error != "shutdown"
+                        and _handle_planning_failure(
+                            ctrl,
+                            llm_worker,
+                            sim,
+                            reason=f"proposal_error:{str(new_proposal.error)[:60]}",
+                            original_request=new_proposal.original_request,
+                        )
+                    ):
+                        _planning_liveness_exhausted = True
+
+        # D13: retry budget spent inside section 2 — leave through the normal
+        # teardown path (state persist + bio session end), then raise.
+        if _planning_liveness_exhausted:
+            break
 
         # Check for queued next_actions if no pending proposal
         if ctrl.pending_proposal is None and pending_next_actions:
@@ -4609,3 +4803,16 @@ def run_agentic_loop(
     # Stop Default Network if running (skip in sim — no DN)
     if dn_enabled and not sim.is_sim_mode:
         ctrl.dn_ctrl.stop()
+
+    # D13 planning liveness: raise AFTER teardown so state persistence and
+    # the bio session end ran, but the sim still aborts loudly (the
+    # orchestrator converts this into a llm_wedged finish report) instead of
+    # having idled forever on a silently-dropped planning turn.
+    if _planning_liveness_exhausted:
+        from maxim.runtime.stall_threshold import PlanningLivenessExhausted
+
+        raise PlanningLivenessExhausted(
+            f"{ctrl.planning_failure_streak} consecutive planning-turn failures "
+            f"with the retry budget spent (limit {ctrl.planning_retry_limit}) — "
+            f"see bugs ledger D13"
+        )

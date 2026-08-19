@@ -119,6 +119,15 @@ class LoopController:
         self.pending_prefetch: Any | None = None
         self.last_llm_submit_time: float = 0.0
         self.llm_submit_interval: float = 0.5
+        # ── Planning liveness (bugs ledger D13) ──────────────────────────
+        # last_proposal_time: when get_latest_proposal() last returned ANY
+        # proposal (even one that was subsequently dropped as stale/fallback).
+        # last_proposal_time < last_llm_submit_time at idle-gate time means a
+        # planning submit went out and NOTHING ever came back — a lost turn.
+        self.last_proposal_time: float = 0.0
+        self.planning_failure_streak: int = 0
+        self.planning_retry_limit: int = 3
+        self.planning_exhausted: bool = False
         self.processed_cli_inputs: collections.deque[str] = collections.deque(maxlen=20)
         self.recent_outcomes: list[dict[str, Any]] = []
         self.max_recent_outcomes: int = 10
@@ -179,6 +188,37 @@ class LoopController:
         self.state.data.pop("pending_user_input", None)
         self.state.data.pop("pending_user_input_time", None)
         self.state.data.pop("pending_user_input_source", None)
+
+    # ── Planning liveness (bugs ledger D13) ──────────────────────────────
+
+    def record_planning_failure(self, *, reason: str) -> str:
+        """Bounded-retry state machine for failed planning turns.
+
+        A planning submit that ends in parse failure, an invalid response,
+        a dropped proposal, or a silently-expired await window must LOUDLY
+        reschedule or abort — never fall through to idle (the D13 livelock).
+        This method only decides; the caller does the logging and requeueing.
+
+        Returns:
+            ``"retry"`` — within budget; caller requeues the request and
+            re-stamps ``last_llm_submit_time``.
+            ``"exhausted"`` — this failure spent the budget; caller emits the
+            loud abort. ``planning_exhausted`` latches True.
+            ``"already_exhausted"`` — budget was already spent; caller must
+            not retry or re-log.
+        """
+        if self.planning_exhausted:
+            return "already_exhausted"
+        self.planning_failure_streak += 1
+        if self.planning_failure_streak > self.planning_retry_limit:
+            self.planning_exhausted = True
+            return "exhausted"
+        return "retry"
+
+    def reset_planning_failures(self) -> None:
+        """An executable proposal arrived — planning is alive again."""
+        self.planning_failure_streak = 0
+        self.planning_exhausted = False
 
     # ── Outcome recording (delegates to module-level helper) ─────────────
 

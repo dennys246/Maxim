@@ -200,6 +200,13 @@ class LLMProposal:
     # The user input that triggered this response (for conversation history)
     triggering_input: str = ""
 
+    # Planning liveness (bugs ledger D13): the original LLMRequest, attached
+    # ONLY to invalid-response/parse-failure proposals so the agent loop can
+    # requeue the planning turn byte-identically (bounded retries) instead of
+    # dropping it into the idle livelock. None on successful proposals.
+    # Runtime-ephemeral — never persisted, never crosses a wire.
+    original_request: Any | None = None
+
     # Planning mode: human-readable plan (shown to user for approval)
     plan_text: str | None = None
     # Whether this proposal requires user approval before execution

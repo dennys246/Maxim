@@ -373,6 +373,12 @@ class LLMWorker:
         self._requests_dropped = 0
         self._avg_latency_ms = 0.0
 
+        # Planning liveness (bugs ledger D13): the most recently queued
+        # request, so the agent loop's await-window-expiry backstop can
+        # requeue a planning turn whose response was silently lost (the
+        # loop itself never holds the LLMRequest — submit_context builds it).
+        self._last_request: LLMRequest | None = None
+
         # Acting Coach config (B3): set after construction to inject
         # affordance exploration meta-prompting into LLMRequests.
         self.acting_coach: Any | None = None
@@ -464,31 +470,55 @@ class LLMWorker:
         """
         old_timeout = self._llm_timeout
         request.timeout_override = timeout_s
-        # Refresh timestamp so staleness checks don't drop it
+        logger.info("Retrying LLM request with timeout=%.0fs (was %.0fs)", timeout_s, old_timeout)
+        return self._resubmit(request, job_suffix="retry")
+
+    def requeue_request(self, request: LLMRequest) -> bool:
+        """Requeue a planning turn whose response was invalid or lost
+        (bugs ledger D13). Byte-identical retry: same context, same timeout —
+        no fabricated percepts contaminating the prompt. The caller owns the
+        bounded-retry accounting (``LoopController.record_planning_failure``).
+
+        Returns True if queued, False if queue full or the pool is gone.
+        """
+        return self._resubmit(request, job_suffix="liveness-retry")
+
+    def requeue_last_request(self) -> bool:
+        """Requeue the most recently submitted request (D13 await-window
+        backstop — the loop holds no LLMRequest of its own). False when
+        nothing was ever submitted."""
+        request = self._last_request
+        if request is None:
+            return False
+        return self._resubmit(request, job_suffix="liveness-retry")
+
+    def _resubmit(self, request: LLMRequest, *, job_suffix: str) -> bool:
+        """Shared requeue body: refresh the timestamp so the staleness guard
+        doesn't drop the retry, then submit to the large lane."""
         request.timestamp = time.time()
         request.sort_index = (-request.priority, request.timestamp)
-        logger.info("Retrying LLM request with timeout=%.0fs (was %.0fs)", timeout_s, old_timeout)
 
-        if self._pool is not None:
+        if self._pool is None:
+            return False
 
-            def _retry_fn(prefetched=None):
-                if self._stop_event.is_set():
-                    return None
-                proposal = self._process_request(request)
-                self._requests_processed += 1
-                return proposal
+        def _retry_fn(prefetched=None):
+            if self._stop_event.is_set():
+                return None
+            proposal = self._process_request(request)
+            self._requests_processed += 1
+            return proposal
 
-            try:
-                self._pool.submit(
-                    lane="large",
-                    job_id=f"{request.request_id}-retry",
-                    fn=_retry_fn,
-                    priority=-request.priority,
-                )
-                return True
-            except queue.Full:
-                self._requests_dropped += 1
-                return False
+        try:
+            self._pool.submit(
+                lane="large",
+                job_id=f"{request.request_id}-{job_suffix}",
+                fn=_retry_fn,
+                priority=-request.priority,
+            )
+            return True
+        except queue.Full:
+            self._requests_dropped += 1
+            return False
 
     def start(self) -> None:
         """Start the LLM worker via WorkerPool."""
@@ -934,6 +964,8 @@ class LLMWorker:
                     fn=_infer_job,
                     priority=-priority,
                 )
+                # D13 planning liveness: stash for requeue_last_request().
+                self._last_request = request
                 return True
             except queue.Full:
                 self._requests_dropped += 1
@@ -1131,7 +1163,9 @@ class LLMWorker:
                 pass
 
             if not response or not isinstance(response, dict):
-                # LLM failed - generate a fallback response for the user
+                # LLM failed - generate a fallback response for the user.
+                # original_request rides along so the agent loop can requeue
+                # the planning turn instead of dropping it (bugs ledger D13).
                 fallback = self._generate_llm_fallback(request)
                 if fallback:
                     return LLMProposal(
@@ -1144,6 +1178,7 @@ class LLMWorker:
                         citations=[],
                         latency_ms=latency_ms,
                         triggering_input=request.triggering_input,
+                        original_request=request,
                     )
 
                 return LLMProposal(
@@ -1157,6 +1192,7 @@ class LLMWorker:
                     latency_ms=latency_ms,
                     error="Invalid LLM response",
                     triggering_input=request.triggering_input,
+                    original_request=request,
                 )
 
             # Extract next_actions if present (sequential execution)
@@ -1223,6 +1259,8 @@ class LLMWorker:
                 latency_ms=latency_ms,
                 error=str(e),
                 triggering_input=request.triggering_input,
+                # D13: an exception-path failure is a lost planning turn too.
+                original_request=request,
             )
 
     # ── Delegation to extracted modules ──────────────────────────────────
