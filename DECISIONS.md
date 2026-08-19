@@ -14,8 +14,8 @@ Decision:
 - **Single agent-guidance source, ratified 2026-08-19 in the INVERSE direction of
   this entry's first draft:** `CLAUDE.md` stays the canonical core (CI-linted,
   operator-reviewed, auto-loaded by the primary tooling); `AGENTS.md` was rewritten
-  as the thin provider-neutral ADAPTER (routing table + required checks + hard-rule
-  summaries, ~80-line cap, explicit no-rule-accumulation banner). Subsystem
+  as a pointer-only provider-neutral ADAPTER with no copied checks, routing table, or
+  hard rules. Its exact contents are enforced by the documentation lint. Subsystem
   knowledge remains in tracked `docs/agents/` briefs and incident history in
   `docs/lessons/`. The first draft (AGENTS.md canonical, CLAUDE.md demoted to an
   adapter) was reversed in review: it would have made the invariant lint pass
@@ -41,8 +41,8 @@ Tradeoffs:
 
 - 1.1 takes longer and carries less novelty, but becomes a defensible release rather
   than a bundle of already-merged features with unresolved contracts.
-- The temporary `CLAUDE.md` adapter means two filenames remain for one migration
-  interval, but only one may contain substantive guidance.
+- The `AGENTS.md` adapter leaves two filenames in the repository, but its frozen,
+  pointer-only shape prevents a second substantive instruction corpus from forming.
 - The 32 existing architecture findings may remain as reviewed debt in 1.1; CI must
   reject additions, and 1.1.x owns the burn-down.
 

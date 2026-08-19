@@ -265,7 +265,8 @@ class EntorhinalCortex:
     components. Just as the biological EC serves as the gateway between
     the hippocampus and neocortex, this subsystem enables:
 
-    - Fast similarity queries - O(1) approximate nearest neighbor via LSH
+    - Indexed signature queries - approximate nearest-neighbor lookup via LSH
+    - Substrate pattern completion - exact same-modality centroid scan, O(Nd)
     - Multi-modal matching - Combine semantic, structural, temporal signals
     - Composite signatures - Compress features into hashable representations
 

@@ -50,6 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **EC performance-contract documentation** — `EntorhinalCortex` now distinguishes
+  LSH-indexed signature queries from the substrate hot path's exact O(Nd) centroid
+  scan; no runtime mechanism changed.
 - **`ec_merge` silent cross-space corruption** — vectors from different encoder
   spaces (384-dim vs 768-dim, same modality tag) were compared over the shorter
   prefix by `zip` truncation and MERGED when the partial cosine cleared the

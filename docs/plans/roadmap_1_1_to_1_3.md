@@ -57,7 +57,7 @@ by delaying Oasis two versions.
 | 6 | H1 healthy-hardware re-characterization | **BASE SESSION DONE**; follow-up block remains part of item 5. |
 | 7 | Artifact stamping | **DONE**. |
 | 8 | Orient-vocabulary audit + workspace-limit bypass safety | **DONE** (#472); retain hardware-safety guards in the final RC suite. |
-| 9 | Documentation truth pass | **SUBSTANTIALLY DONE, CONTINUOUS THROUGH RC**. Reconcile plans, architecture, decisions, API count/dependencies, and release surfaces. |
+| 9 | Documentation truth pass | **SUBSTANTIALLY DONE, CONTINUOUS THROUGH RC**. Reconcile plans, architecture, decisions, API count/dependencies, and release surfaces. D21's EC performance claim was corrected on 2026-08-19. |
 | 10 | Atomic NAc + EC invalidation | **OPEN — 1.1 GATE** (D2). An operator must not be able to clear one half of the persisted pair. |
 | 11 | Annotation S4 non-stationarity analysis | **OPEN — 1.1 GATE**. Offline analysis only; record the result, not merely the analyzer. |
 | 12 | Planning-turn liveness + truthful progress state | **OPEN — 1.1 GATE** (D13/D14). Bounded reschedule or loud terminal abort; no false spinner. |
@@ -77,13 +77,13 @@ from the claims-verification round — blocking vs 1.1.x *within* the gated item
   ignoring its two most meaningful arguments), D17 (partial restore + corrupt-state
   swallows on the stable load path), D18 (documented contract silently one-shot),
   D16 for `run()` only (move the cleanup boundary above `llm_worker.start()`),
-  D20's network-dependence + CI-suite-truth half, item 15's baseline+CI gate
-  (cheap), and item 16 — which now explicitly includes correcting the **false
+  D20 in full (network/cache isolation, the wider CI suite, and temporary data-home
+  isolation), item 15's baseline+CI gate (cheap), and item 16 — which now explicitly
+  includes correcting the **false
   "shipped to PyPI" claims**: PyPI's latest release is 1.0.0; v1.0.1–v1.0.6 are
   git-tag-only and both CLAUDE.md and the CHANGELOG said otherwise.
 - **1.1.x hardening:** D16 for `imagine()`/`campaign()`, D15's `home_dir` (document
-  the partial behavior if not surgical), D19 zero-debt burn-down, D20's
-  `~/.maxim`-write-hygiene half (global data-home isolation fixture).
+  the partial behavior if not surgical), and D19 zero-debt burn-down.
 - **Also folded into item 12:** the #519 abort-clock fix shipped without a guard
   test (scorecard finding) — the D13/D14 fix PR adds it.
 - **Also folded into gate-order step 4 (evidence closure):** the S4 backfill gap —
@@ -115,9 +115,10 @@ invariant format, guard citations, token ceiling, link existence), auto-loaded b
 the tooling doing most work here — with subsystem knowledge in `docs/agents/`
 briefs and incident history in `docs/lessons/`.
 
-**`AGENTS.md` is the thin provider-neutral ADAPTER** (rewritten 2026-08-19): the
-routing table, required checks, and hard-rule summaries pointing into the canonical
-corpus, capped at ~80 lines with an explicit no-rule-accumulation banner. The
+**`AGENTS.md` is the pointer-only provider-neutral ADAPTER** (tightened 2026-08-19):
+it tells auto-loading tools to read `CLAUDE.md` in full and contains no copied routing
+table, checks, or hard-rule summaries. `scripts/lint_claude_md_invariants.py` enforces
+the adapter byte-for-byte, so rule accumulation fails CI. The
 previous AGENTS.md had silently diverged since 2026-06-06 (wrong Python floor,
 dead pointers) — which is itself the evidence for why an adapter must carry no
 substantive rules of its own. Its one unique live artifact (the cross-system
