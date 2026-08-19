@@ -67,6 +67,6 @@ but dims alone cannot distinguish a 384-dim fallback from a real 384-dim model.
 ## See also
 
 - [Substrate Sharing](substrate-sharing.md) — the user-facing export / import / merge workflow
-- [Maxim Hivemind + Oasis](../hivemind.md) — the 1.1 Oasis and 1.2 P2P roadmap this format feeds
+- [Maxim Hivemind + Oasis](../hivemind.md) — the gated 1.2 Oasis/P2P roadmap this format feeds
 - [Auth Format-Freeze Audit](../plans/archive/auth_format_freeze_audit.md) — CC13, the freeze decision behind this registry
 - [Stable API](stable_api.md) — the broader 1.0 contract surface (including the `api_key_ref` URI namespace reservation)

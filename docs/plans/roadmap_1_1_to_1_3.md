@@ -1,7 +1,8 @@
 # Roadmap 1.1 → 1.3 (scoped 2026-08-07 by four-lens review)
 
-**Status:** ACTIVE. Supersedes [release_1_1_checklist.md](release_1_1_checklist.md)
-(which was itself stale on half its items) as the 1.1 scope authority.
+**Status:** ACTIVE. This is the single 1.1 scope authority. It supersedes the
+[2026-07-23 release checklist](archive/release_1_1_checklist.md), whose Oasis/Exp 44
+critical path no longer matches the evidence.
 **Method:** four parallel review lenses — audio front-end, reflex wiring,
 bio-fidelity, release scope — each grounded in code rather than plan docs.
 **Headline finding:** *the roadmap was being drafted from the plans' ambitions
@@ -14,7 +15,7 @@ down somewhere in this repo by someone being careful.
 
 | | Theme | Contains | Risk |
 |---|---|---|---|
-| **1.1** | **"Sensorimotor"** — *the substrate leaves the simulator* | Already-merged embodiment work + the truth/hygiene debt it incurred. **Zero new mechanisms.** | Low. One hardware session, currently unblocked. |
+| **1.1** | **"Sensorimotor"** — *the substrate leaves the simulator* | Already-merged embodiment work + release correctness, contract truth, and the verification debt it incurred. **Zero new mechanisms.** | Medium. Remaining work is concentrated in liveness, stable API, tests, and release closure. |
 | **1.2** | **Oasis + Hivemind** | ~1,400 LOC of de-risked engineering with a cleared gate | Low-medium. Known shape. |
 | **1.3** | **Perception fabric + reflex tier** | Cochlear front-end, vision encoder, binding, three-factor calibration, DN-canonical orienting reflex | **High — contains a pivotal may-fail experiment.** |
 
@@ -41,24 +42,96 @@ by delaying Oasis two versions.
 
 ---
 
-## 1.1 cut line
+## 1.1 cut line — reconciled 2026-08-19
 
-> **Ship the work that is already merged, plus the truth and hygiene debt that work
-> incurred. Zero new mechanisms. One hardware session.**
+> **Ship the work that is already merged, plus the correctness, contract, truth,
+> and verification debt that work incurred. Zero new mechanisms.**
 
-| # | Item | Est. |
+| # | Item | State / release contract |
 |---|---|---|
-| 1 | **PR #467** — `_cosine` dimension guards (hivemind **and** EC), frozen-modality parity, CLAUDE.md correction | open, green |
-| 2 | **CHANGELOG + git tags** for 1.0.0→1.0.6 — **88 PRs, ~14,000 `src/` lines, zero entries, no tags past `v1.0.0`** | 3–5 d |
-| 3 | **n_ctx clamp** (`llm_worker.py:299`) — `max()` twice where CLAUDE.md says `min`, inside a bare `except`, gated on `_has_cloud_providers()` so local runs never clamp | 1 d |
-| 4 | **Persona hard-remove** — "removed in 1.1" promised in 7 shipped user-facing files; needs the Option A/B/C decision blocked since April | ~1 wk |
-| 5 | **Graduation heartbeat walk** (9 rows) — the **first ever**; no row has ever been marked `Maintained` | 1.5–2.5 wk |
-| 6 | **H1 hardware session** — version-verified DoA re-sweep (≥2 geometries, 07-16 protocol) + `yaw_verify` + motor-bound delivered-shift measurement | 2–3 d |
-| 7 | **Artifact stamping** — `embedding_dim`, `using_fallback`, sensor-name set, normalization mode. Pulled forward from the fabric plan's Stage 4 | 80–150 LOC |
-| 8 | **Orient-vocabulary audit + workspace-limit bypass fix** — ⚠️ **SAFETY**: the two `goto_target`-bypassing paths are the likely cause of the motor destruction (see hardware note). Highest priority after #467 | 3–5 d |
-| 9 | Doc-truth pass — this file, README, `perception_placement.py` disposition, Exp 09 citation | 2–3 d |
+| 1 | `_cosine` dimension guards + frozen-modality parity | **DONE** (#467). Same-dimension geometry compatibility remains a pre-1.2 gate (D4). |
+| 2 | CHANGELOG reconstruction + historical tags for 1.0.0→1.0.6 | **DONE** for the historical interval. The post-1.0.6 unreleased record and final 1.1 release transaction remain. |
+| 3 | n_ctx clamp and headroom truth | **DONE**. Re-attest through the Big-Model heartbeat. |
+| 4 | Persona hard-remove | **DONE**. Keep compatibility/error behavior covered. |
+| 5 | Graduation heartbeat walk | **IN PROGRESS** — Sim-Short complete; Big-Model, H1 8-repetition delivered-shift block, and final-RC reattestation remain. |
+| 6 | H1 healthy-hardware re-characterization | **BASE SESSION DONE**; follow-up block remains part of item 5. |
+| 7 | Artifact stamping | **DONE**. |
+| 8 | Orient-vocabulary audit + workspace-limit bypass safety | **DONE** (#472); retain hardware-safety guards in the final RC suite. |
+| 9 | Documentation truth pass | **SUBSTANTIALLY DONE, CONTINUOUS THROUGH RC**. Reconcile plans, architecture, decisions, API count/dependencies, and release surfaces. D21's EC performance claim was corrected on 2026-08-19. |
+| 10 | Atomic NAc + EC invalidation | **OPEN — 1.1 GATE** (D2). An operator must not be able to clear one half of the persisted pair. |
+| 11 | Annotation S4 non-stationarity analysis | **OPEN — 1.1 GATE**. Offline analysis only; record the result, not merely the analyzer. |
+| 12 | Planning-turn liveness + truthful progress state | **OPEN — 1.1 GATE** (D13/D14). Bounded reschedule or loud terminal abort; no false spinner. |
+| 13 | Stable Python API contract repair | **OPEN — 1.1 GATE** (D15–D18): `run(goal, robot)`, lifecycle cleanup, complete load semantics, and tool-registration lifetime. |
+| 14 | Hermetic required fast suite | **OPEN — 1.1 GATE** (D20). No network, hardware, model cache, or writes outside the test root by default. |
+| 15 | Architecture-audit enforcement | **OPEN — 1.1 GATE** (D19). Classify the 32 findings, store a reviewed accepted-debt baseline, and fail CI on additions. Zero debt is 1.1.x, not a release blocker. |
+| 16 | Release and agent-guidance truth | **OPEN — 1.1 DOCS GATE**. One release ledger, realistic version policy, synchronized changelog/tag/GitHub/PyPI cut, and one canonical agent-guidance source. |
 
-**Total: 5–7 weeks**, one external dependency (H1), currently unblocked.
+The remaining scope is release closure, not a new feature phase. Estimates belong on
+the implementation PRs after each item's failing contract test exists; this roadmap
+does not convert uncertain debugging into calendar promises.
+
+**Operator-ratified 2026-08-19** (the 9→16 expansion), with this severity split
+from the claims-verification round — blocking vs 1.1.x *within* the gated items:
+
+- **Blocking for the 1.1 cut:** D15's `goal`/`robot` (the flagship API silently
+  ignoring its two most meaningful arguments), D17 (partial restore + corrupt-state
+  swallows on the stable load path), D18 (documented contract silently one-shot),
+  D16 for `run()` only (move the cleanup boundary above `llm_worker.start()`),
+  D20 in full (network/cache isolation, the wider CI suite, and temporary data-home
+  isolation), item 15's baseline+CI gate (cheap), and item 16 — which now explicitly
+  includes correcting the **false
+  "shipped to PyPI" claims**: PyPI's latest release is 1.0.0; v1.0.1–v1.0.6 are
+  git-tag-only and both CLAUDE.md and the CHANGELOG said otherwise.
+- **1.1.x hardening:** D16 for `imagine()`/`campaign()`, D15's `home_dir` (document
+  the partial behavior if not surgical), and D19 zero-debt burn-down.
+- **Also folded into item 12:** the #519 abort-clock fix shipped without a guard
+  test (scorecard finding) — the D13/D14 fix PR adds it.
+- **Also folded into gate-order step 4 (evidence closure):** the S4 backfill gap —
+  zero committed raw data exists for Exp 09/10/43/44/46/47/49 including the Tier-1
+  EARNED Exp 10 row; each Earned row either gets its data committed (re-run under
+  S4 where originals are lost — Exp 10's re-run already happened 2026-08-18/19,
+  commit its heartbeat records) or carries an explicit data-lost annotation.
+
+### Release-gate order
+
+1. **D13/D14 first:** restore planning liveness and make the display observationally
+   true. This unblocks trustworthy long heartbeat runs.
+2. **Stable API + hermetic tests in parallel:** write black-box failing tests for
+   D15–D18 and isolate D20's home/network/model state.
+3. **Persistence/architecture correctness:** D2 atomic invalidation and D19's
+   accepted-debt baseline/regression gate.
+4. **Evidence closure:** record S4, run Big-Model and hardware heartbeat chapters,
+   then re-attest cheap rows at the exact RC commit.
+5. **Release transaction:** reconcile version policy and docs, build/check the
+   package, cut `1.1.0`, tag it, publish matching release notes and artifact.
+
+### Agent-guidance single-source decision (1.1 docs gate) — RATIFIED 2026-08-19, inverse direction
+
+Two independent root instruction corpora are not sustainable — but the review round
+found the original proposal's mechanism backwards. The diet architecture (#509,
+operator-reviewed) already delivers the single source: **`CLAUDE.md` stays the
+canonical core** — 9.1K tokens, CI-linted (`scripts/lint_claude_md_invariants.py`:
+invariant format, guard citations, token ceiling, link existence), auto-loaded by
+the tooling doing most work here — with subsystem knowledge in `docs/agents/`
+briefs and incident history in `docs/lessons/`.
+
+**`AGENTS.md` is the pointer-only provider-neutral ADAPTER** (tightened 2026-08-19):
+it tells auto-loading tools to read `CLAUDE.md` in full and contains no copied routing
+table, checks, or hard-rule summaries. `scripts/lint_claude_md_invariants.py` enforces
+the adapter byte-for-byte, so rule accumulation fails CI. The
+previous AGENTS.md had silently diverged since 2026-06-06 (wrong Python floor,
+dead pointers) — which is itself the evidence for why an adapter must carry no
+substantive rules of its own. Its one unique live artifact (the cross-system
+naming-conventions table) was rehomed to docs/agents/bio-memory.md §4b.
+
+Rationale for the inversion: demoting CLAUDE.md to an adapter would have (a) made
+the invariant lint pass vacuously with no replacement drafted, (b) taxed every
+Claude session with an indirection read in a weaker instruction position, and
+(c) obsoleted an operator-reviewed artifact six days after its review — all to buy
+a filename. The inverse buys the same single-source property (non-Claude agents now
+load a truthful adapter) at zero migration risk. If a canonical-filename migration
+is ever wanted, the mechanism is content-identity (generated copy + CI byte-check),
+never indirection, and the lint retarget ships in the same commit.
 
 ### H1 buys three things at once — now four
 
@@ -132,7 +205,7 @@ Two additions to the cut line, both bug-class rather than mechanism-class so the
    pilot finding F6 (0.997 → 0.059 within-run signal decay despite τ=1000) and feeds the
    pre-registration freeze. Do it whenever a session has an hour.
 
-## 1.1.x follow-through (post-cut, pre-1.2 — adopted 2026-08-13)
+## 1.1.x follow-through (post-cut, pre-1.2 — items 1–10 adopted 2026-08-13; items 11–14 added 2026-08-19 and ratified with the cut-line reconciliation)
 
 The 1.1 cut line stays closed; these are the next minor-stream items in rough order.
 Each POINTS at its owning plan — stages live there, not here:
@@ -170,6 +243,31 @@ Each POINTS at its owning plan — stages live there, not here:
 10. **Memory-consolidation decision** — `deferred/memory_consolidation_practice.md`'s own
     rule: "if 1.1 ships without touching consolidation, downgrade to archive at the next
     sweep." Ship the decision either way at the 1.1 cut.
+11. **Architecture-debt burn-down** (D19) — move shared graph/event contracts out of
+    dependency-inverted packages and drive the accepted baseline toward zero. The 1.1
+    gate prevents new violations; 1.1.x removes old ones.
+12. **Control-loop lifecycle and I/O hardening** — after fail-loud Stage 2, extract the
+    planning-failure/lifecycle seams from `start_simulation_mode` and
+    `run_agentic_loop`; move durable writes off the 30 Hz thread with a bounded queue,
+    and protect final persistence/session shutdown with structural cleanup.
+13. **Dormant-path decisions for D6/D9** — either wire and behaviorally graduate
+    Hebbian multi-node binding / temporal-event producers, or mark the unused contract
+    dormant and stop implying it learns in production.
+14. **Published-support truth** — test the Python versions claimed by
+    `requires-python`, or narrow the claim; reconcile the declared core dependencies
+    and API verb count across package and guidance docs.
+
+## Gates before 1.2 Oasis + Hivemind
+
+Distribution amplifies silent state errors. Before shared substrate becomes an
+execution priority:
+
+1. D1 live encoder-provenance validation must reject or migrate incompatible state.
+2. D3/D4 threshold and same-dimension geometry compatibility must be explicit and
+   tested, not inferred from vector length.
+3. EC read-side mutation (D8) must be measured and accepted or separated from recall.
+4. Bundle/version compatibility and the sharing threat model must be frozen.
+5. The 1.1 architecture-audit and hermetic-suite gates must remain green.
 
 ---
 

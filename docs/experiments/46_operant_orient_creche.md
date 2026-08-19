@@ -41,7 +41,7 @@ A hungry infant with **no intrinsic drive to orient** learns to turn toward a so
 
 Twelve barely-taught infants (0.73 alone) merge into the **full-experience policy (1.00)**. The no-mother crèche stays at chance — **the merge pools *learning*, not noise.**
 
-**Honest scope of the federation PoC:** the infants share a perceptual encoder, so a left sound maps to the *same* EC cluster id for every infant, and `nac_merge` combines (rather than unions) their `cluster_reward_bias`. This is biologically honest — every infant has the same cochlea, so the same sound clusters the same way; only the *learned policy* differs and is pooled. Fully-independent agents encode to *different* uuid clusters and would need `ec_merge` alignment first — that is the 1.1 Oasis ingestion pipeline. This PoC proves the pooling *concept* on the real merge function.
+**Honest scope of the federation PoC:** the infants share a perceptual encoder, so a left sound maps to the *same* EC cluster id for every infant, and `nac_merge` combines (rather than unions) their `cluster_reward_bias`. This is biologically honest — every infant has the same cochlea, so the same sound clusters the same way; only the *learned policy* differs and is pooled. Fully-independent agents encode to *different* uuid clusters and would need `ec_merge` alignment first — that is now the gated 1.2 Oasis ingestion pipeline (re-scoped 2026-08-19). This PoC proves the pooling *concept* on the real merge function.
 
 ## Why scripted, not embodied (the honest methods note)
 

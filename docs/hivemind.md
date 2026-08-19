@@ -1,6 +1,6 @@
 # Maxim Hivemind + Oasis
 
-> **Status:** Design complete (2026-05-09). Implementation phased: shareability infrastructure in 1.0 (B5), Oasis software in 1.1, full Hivemind P2P protocol in 1.2. **Supersedes the older Mother Maxim plan.**
+> **Status:** Design complete (2026-05-09), re-scoped 2026-08-19. Shareability infrastructure shipped in 1.0 (B5); Oasis software and the Hivemind P2P protocol are gated 1.2 work. **Supersedes the older Mother Maxim plan.**
 
 ## What this is
 
@@ -44,7 +44,7 @@ The headline insight that motivated promoting the old Mother Maxim plan from def
 That changes the federated-learning calculus radically:
 
 1. **The Hivemind has rich seed data immediately.** It doesn't have to wait for substrate-primary mode to mature. Day-1 contributions come from existing LLM-AUT users.
-2. **Substrate-primary Maxims bootstrap from accumulated experience.** When substrate-primary mode lands in 1.1, new instances can pull a baseline substrate from the Hivemind rather than starting from zero. Massively accelerates substrate-primary development.
+2. **Substrate-primary Maxims bootstrap from accumulated experience.** Once gated 1.2 sharing lands, new instances can pull a baseline substrate from the Hivemind rather than starting from zero. Massively accelerates substrate-primary development.
 3. **The privacy surface collapses.** Distilled bio-substrate (NAc weights, EC centroids) doesn't carry the same PII risk as raw episodes. The 700-LOC dual-pass deidentification pipeline from the old Mother Maxim plan becomes optional polish rather than load-bearing safety.
 4. **LLM-AUT mode gets a permanent role.** It's not transitional waiting to be replaced; it's the perpetual data-collection mechanism that feeds the Hivemind. Users running D&D campaigns today are inadvertently training tomorrow's substrate-primary cognition.
 
@@ -81,7 +81,7 @@ A bio-coherent metaphor: an oasis is a sustaining gathering place that travelers
 ### Hardware footprint
 
 - A Mac Mini, an old laptop, or a Raspberry Pi 5 cluster is sufficient to run an Oasis IF substrate-primary mode is the operating mode (no LLM, just bio-systems running)
-- During the transitional phase (1.1) when substrate-primary is still maturing, Oases may need a small LLM (e.g., qwen-7B) to process LLM-AUT contributions and produce reasonable behavior. Hardware budget grows accordingly.
+- During the 1.2 transitional phase, Oases may need a small LLM (e.g., qwen-7B) to process LLM-AUT contributions and produce reasonable behavior. Hardware budget grows accordingly.
 - Once substrate-primary works (post-Phase 0/1), Oases can run pure-substrate and Mac-Mini-class hardware suffices.
 
 ### Multiple Oases, no central authority
@@ -107,7 +107,7 @@ maxim-substrate.zip
 └── ec.json                 # concept centroids + cluster metadata          (1.0)
 ```
 
-ATL, reflexes, and Cerebellum payloads are reserved for 1.1 (the migration-registry seam is in place to add them without a format break). Schema-stable, version-aware, scrubbable. Extends the existing `_format_version` contract per [CLAUDE.md](../CLAUDE.md) v1.0 freeze.
+ATL, reflexes, and Cerebellum payloads remain future/reserved for gated 1.2 work (the migration-registry seam is in place to add them without a format break). Schema-stable, version-aware, scrubbable. Extends the existing `_format_version` contract per [CLAUDE.md](../CLAUDE.md) v1.0 freeze.
 
 ### Substrate domains
 
@@ -146,13 +146,13 @@ This won't be perfect — pure peer-to-peer systems with open contribution alway
 | Version | Substrate-primary | Oasis | Hivemind |
 |---|---|---|---|
 | **1.0** | B5: Phase -1 + Phase 0 harness + shareability infrastructure (snapshot bundle format, NAc/EC merge ops, provenance tagging, identity-bearing concept detection, substrate domains, export/import CLI). ~1,360 LOC. | Format exists. No Oasis software runs yet. | None. |
-| **1.1** | Substrate-primary AUT mode lands. Phase 0 validation runs (raw substrate, no Hivemind). Phase 1 starts. | **Oasis software ships** (~800 LOC). Single-Oasis instance hostable on a Mac Mini. CLI: `maxim oasis serve`. LLM-AUT users can opt in to contribute via `maxim contribute --to oasis://...`. Direct Oasis-to-Oasis sync. | Direct Oasis-to-Oasis sync only. No mesh discovery yet. |
-| **1.2** | Phase 1 ships. Phase 2 starts. Substrate-primary Maxims pull bootstrap from Hivemind. | Multi-Oasis federation. Curation tools (mark-trusted, mark-untrusted). Domain maintainer roles. | **Full Hivemind protocol** (~600 LOC): peer discovery, substrate-snapshot exchange, conflict-resolution semantics, poison-resistance defenses, optional well-known reference servers. |
+| **1.1** | Existing substrate-primary behavior is re-attested; release correctness and provenance gates are closed. | No Oasis software. | No live P2P protocol. |
+| **1.2** | Phase 1 ships. Phase 2 starts. Substrate-primary Maxims may pull bootstrap after compatibility gates pass. | **Oasis software ships** (~800 LOC), followed by federation and curation tools. | **Full Hivemind protocol** (~600 LOC): peer discovery, substrate-snapshot exchange, conflict-resolution semantics, poison-resistance defenses, optional well-known reference servers. |
 | **1.3+** | Phase 3 starts (from-scratch sequence model). | Oasis becomes a substrate-primary instance (no LLM needed). Mac-Mini-class hardware suffices. | Cross-version migration tooling. Curation registry. Domain ecosystem. |
 
 ## Using the substrate CLI today (1.0)
 
-Everything above the Oasis/P2P layers is design rationale for 1.1+. What ships **today** in 1.0 is the shareability foundation: the bundle format, the NAc/EC merge utilities, and the `maxim substrate` CLI verbs. You can export a session's learned substrate, share the ZIP, and merge it into another Maxim right now.
+Everything above the Oasis/P2P layers is design rationale for gated 1.2 work. What ships **today** in 1.0 is the shareability foundation: the bundle format, the NAc/EC merge utilities, and the `maxim substrate` CLI verbs. You can export a session's learned substrate, share the ZIP, and merge it into another Maxim right now.
 
 ```bash
 maxim substrate export my-substrate.zip --session <id> --contributor-id <id> [--domain X]

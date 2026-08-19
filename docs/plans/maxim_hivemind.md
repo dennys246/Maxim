@@ -1,6 +1,8 @@
 # Maxim Hivemind + Oasis (federated bio-substrate)
 
-**Status:** ACTIVE design. Implementation phased across 1.1 + 1.2.
+**Status:** ACTIVE design. Shareability foundation shipped in 1.0; Oasis and the
+P2P protocol are gated 1.2 work. Removed from the 1.1 cut on 2026-08-19 so release
+correctness is completed before distributed state is introduced.
 **Supersedes:** [archive/mother_maxim_plan.md](archive/mother_maxim_plan.md) (2,224 lines, designed pre-substrate-primary pivot — wrong architecture for the post-pivot world).
 **Companion plans:** [grounded_language_acquisition.md](grounded_language_acquisition.md) (substrate-primary AUT mode — the cognition layer the Hivemind shares), [v1_refinement.md](archive/v1_refinement.md) §B5 (the 1.0 shareability infrastructure that enables this).
 **Operating context:** the substrate-primary pivot decided 2026-05-09 reframed Maxim's headline thesis from "LLM with bio-augmentation" toward "bio-substrate carries the cognition; LLM is one possible action selector among others." That reframing makes the substrate itself naturally shareable — which the old Mother Maxim plan didn't anticipate, because it was designed when memories (LLM dialogue + episode traces) were the unit of value rather than learned bio-substrate (NAc weights, EC concepts, reflexes).
@@ -25,11 +27,11 @@ Added 2026-05-27 per CLAUDE.md Principle 3. Analyzed per-layer because Oasis and
 
 **Verdict (B5):** yes-needs-own. Bundle format + merge functions + provenance tags + domain tagging are all genuinely new — no current code composes across bio-systems into a single artifact.
 
-**Oasis software (1.1, ~800 LOC):** **split verdict** — bio-stack + percept pipeline rides-on (~400 LOC); substrate-bundle ingestion contract is yes-needs-own (~400 LOC, small but real). Reuses `build_bio_stack` for the agent layer. Specific reason: the substrate-bundle-ingestion path is **not** a PerceptSource — it calls B5's merge functions, routes through NAc/EC/ATL merge semantics, honors provenance tags, and runs substrate-domain subscriptions that other modules will depend on. Per Principle 3's "additive method that introduces new semantics other modules depend on is functionally a new mechanism" test, the ingestion adapter is genuinely new contract surface, not peripheral conversion. The Maxim-instance shell rides on existing infrastructure; the ingestion side does not.
+**Oasis software (1.2, ~800 LOC):** **split verdict** — bio-stack + percept pipeline rides-on (~400 LOC); substrate-bundle ingestion contract is yes-needs-own (~400 LOC, small but real). Reuses `build_bio_stack` for the agent layer. Specific reason: the substrate-bundle-ingestion path is **not** a PerceptSource — it calls B5's merge functions, routes through NAc/EC/ATL merge semantics, honors provenance tags, and runs substrate-domain subscriptions that other modules will depend on. Per Principle 3's "additive method that introduces new semantics other modules depend on is functionally a new mechanism" test, the ingestion adapter is genuinely new contract surface, not peripheral conversion. The Maxim-instance shell rides on existing infrastructure; the ingestion side does not.
 
 **Hivemind P2P protocol (1.2, ~600 LOC):** yes-needs-own. No existing peer-to-peer surface in Maxim — mesh layer is leader/peer hierarchical, not P2P. Specific reason: substrate-bundle exchange needs conflict resolution, poison resistance, gossip propagation — none of which the existing mesh layer models. Existing `_MaximPeerBackend` handles inference proxying only.
 
-**Verdict aggregate:** B5 (bundle format + merge functions), Oasis ingestion contract (substrate-bundle → bio-pipeline integration), and Hivemind P2P (peer protocol + conflict resolution) all introduce genuinely new mechanisms. Only the Oasis agent shell rides on the existing bio-stack. The phasing (B5 in 1.0 → Oasis in 1.1 → P2P in 1.2) keeps each new-mechanism slice tractable.
+**Verdict aggregate:** B5 (bundle format + merge functions), Oasis ingestion contract (substrate-bundle → bio-pipeline integration), and Hivemind P2P (peer protocol + conflict resolution) all introduce genuinely new mechanisms. Only the Oasis agent shell rides on the existing bio-stack. The phasing is now B5 in 1.0 → release hardening in 1.1 → gated Oasis + P2P slices in 1.2.
 
 **Specific reason for new mechanisms:** the old Mother Maxim plan tried to store and redistribute *user memories* (episodes, dialogue); the substrate-primary pivot reframed shareability around *distilled bio-substrate* (NAc weights, EC centroids). No current code composes across bio-systems into a single bundle, and no current code does P2P substrate exchange — both are net-new at the system layer.
 
@@ -41,7 +43,7 @@ Two complementary layers form the federated cognition fabric:
 
 - **Maxim Hivemind** — the peer-to-peer substrate-sharing layer that connects Oases to each other and to substrate-primary Maxims. Substrate snapshots (NAc graphs, EC centroids, reflex thresholds, ATL concepts — never raw episodes) flow as portable bundles. Confidence aggregates across instances. Patterns confirmed by many Maxims become axiomatic; patterns from one Maxim stay local.
 
-Both layers run alongside (not replacing) the existing **LLM-AUT mode**, which becomes the Hivemind's primary data source during the 1.1 → 1.2 window.
+Both layers run alongside (not replacing) the existing **LLM-AUT mode**, which becomes the Hivemind's primary data source during the 1.2 transition.
 
 ```
        ┌────────────────────────────────────────────────────────────┐
@@ -81,7 +83,7 @@ The pivot reframes what's worth sharing. **Every LLM-AUT run already trains a bi
 That changes everything:
 
 1. **The Hivemind has rich seed data immediately.** It doesn't have to wait for substrate-primary mode to mature. Day-1 contributions come from existing LLM-AUT users.
-2. **Substrate-primary Maxims bootstrap from accumulated experience.** When substrate-primary mode lands in 1.1, new instances can pull a baseline substrate from the Hivemind rather than starting from zero. This radically accelerates the substrate-primary work.
+2. **Substrate-primary Maxims bootstrap from accumulated experience.** Once gated 1.2 sharing lands, new instances can pull a baseline substrate from the Hivemind rather than starting from zero. This radically accelerates the substrate-primary work.
 3. **The privacy surface collapses.** Distilled bio-substrate (NAc weights, EC centroids) doesn't carry the same PII risk as raw episodes. The 700-LOC dual-pass deidentification pipeline from the old plan becomes optional polish rather than a load-bearing safety system.
 4. **LLM-AUT mode gets a permanent role.** It's not a transitional thing waiting to be replaced; it's the data-collection mechanism that perpetually feeds the Hivemind. Users running D&D campaigns today are inadvertently training tomorrow's substrate-primary cognition.
 
@@ -139,7 +141,7 @@ Bio fit: an oasis is a sustaining gathering place that travelers approach to ref
 ### Hardware footprint
 
 - A Mac Mini, an old laptop, or a Raspberry Pi 5 cluster is sufficient to run an Oasis IF substrate-primary mode is the operating mode (no LLM, just bio-systems running)
-- During the transitional phase (1.1) when substrate-primary is still maturing, Oases may need a small LLM (e.g., qwen-7B) to process LLM-AUT contributions and produce reasonable behavior. Hardware budget grows accordingly.
+- During the 1.2 transitional phase, Oases may need a small LLM (e.g., qwen-7B) to process LLM-AUT contributions and produce reasonable behavior. Hardware budget grows accordingly.
 - Once substrate-primary works (post-Phase 0/1), Oases can run pure-substrate and Mac-Mini-class hardware suffices.
 
 ### Multiple Oases, no central authority
@@ -249,8 +251,8 @@ on `nac_merge`/`ec_merge` (default `None` at 1.0) carry the consumer-side policy
 Queen's inward gate; provenance tags + the `_consensus` namespace carry tier attribution.
 
 **Phasing:** orient merge-arm demo with the probe gauntlet — now (see the runbook's
-post-Step-3 follow-up); bundle-signature verification — 1.1 (decision point 2); Queen-tier
-release channel + curation tools — 1.2 (extends the existing 1.2 curation row).
+post-Step-3 follow-up); bundle-signature verification — pre-1.2 gate (decision point 2);
+Queen-tier release channel + curation tools — 1.2 (extends the existing curation row).
 
 ---
 
@@ -284,7 +286,7 @@ Maxim Hivemind (peer-to-peer protocol)
        │    between substrate-primary Maxims, and bidirectionally
        │
        ▼
-Substrate-primary Maxim (1.1+, bootstrapped from Hivemind)
+Substrate-primary Maxim (1.2+, bootstrapped from Hivemind)
        │
        │ 7. Pulls bootstrap substrate from Hivemind
        │
@@ -309,11 +311,11 @@ Substrate-primary Maxim (1.1+, bootstrapped from Hivemind)
 | Version | Substrate-primary | Oasis | Hivemind |
 |---|---|---|---|
 | **1.0** | B5: Phase -1 + Phase 0 harness (SHIPPED PR #228, 2026-05-09) + shareability infrastructure (SHIPPED PRs #305/#308/#309/#310, 2026-05-30/31): snapshot bundle format at `src/maxim/hivemind/bundle.py`, `nac_merge` + `ec_merge` at `src/maxim/hivemind/merge.py`, provenance + domain + contributors tags on CausalLink + EC nodes, identity heuristic at `src/maxim/hivemind/identity.py`, `maxim substrate export/import/inspect` CLI. ~1,360 LOC total. | Format + CLI exist. No Oasis software runs yet. | None. |
-| **1.1** | Substrate-primary AUT mode lands. Phase 0 validation runs (raw substrate, no Hivemind). Phase 1 starts. | **Oasis software ships** (~800 LOC). Single-Oasis instance hostable on a Mac Mini. CLI: `maxim oasis serve`. LLM-AUT users can opt in to contribute via `maxim contribute --to oasis://...`. Each Oasis can sync substrate with another Oasis directly (`maxim oasis sync --peer ...`). | Direct Oasis-to-Oasis sync only. No mesh discovery yet. |
-| **1.2** | Phase 1 ships. Phase 2 starts. Substrate-primary Maxims pull bootstrap from Hivemind. | Multi-Oasis federation. Curation tools (mark-trusted, mark-untrusted). Domain maintainer roles. | **Full Hivemind protocol** (~600 LOC): peer discovery, substrate-snapshot exchange protocol, conflict-resolution semantics, poison-resistance defenses, well-known reference servers (optional). |
+| **1.1** | Existing substrate-primary behavior is re-attested; release correctness and provenance gates are closed. | No Oasis software. | No live P2P protocol. |
+| **1.2** | Phase 1 ships. Phase 2 starts. Substrate-primary Maxims may pull bootstrap after compatibility gates pass. | **Oasis software ships** (~800 LOC), then multi-Oasis federation and curation tools. | **Full Hivemind protocol** (~600 LOC): peer discovery, substrate-snapshot exchange protocol, conflict-resolution semantics, poison-resistance defenses, well-known reference servers (optional). |
 | **1.3+** | Phase 3 starts (from-scratch sequence model). | Oasis becomes a substrate-primary instance (no LLM needed). Mac-Mini-class hardware suffices. | Cross-version migration tooling. Curation registry. Domain ecosystem. |
 
-**Total scope across 1.0 + 1.1 + 1.2:** ~2,100 LOC of net-new work. The old Mother Maxim plan was 3,800 LOC; this synthesis is ~55% the scope and does more.
+**Total scope across 1.0 + 1.2:** ~2,100 LOC of net-new work. The old Mother Maxim plan was 3,800 LOC; this synthesis is ~55% the scope and does more. The 1.1 interval is deliberately release hardening, not federation implementation.
 
 ---
 
@@ -328,7 +330,7 @@ The grounded-language plan's B5 (Phase -1 + Phase 0 harness, ~700 LOC) needs the
 | Provenance tags on NAc links + EC nodes (source + domain + contributors fields) | ~100 | #305 MERGED | Trust management + experimental hygiene + fan-in audit trail |
 | Substrate domain tagging (per-pattern domain field) | (shipped with PR A) | #305 MERGED | Selective sharing |
 | `nac_merge` / `ec_merge` Bayesian-aggregation library functions | ~340 | #308 MERGED | Conflict resolution math; respects `frozen_centroid_modalities` per bio-fidelity-lens fold |
-| Identity-bearing concept detection (substrate-only heuristic; full ATL/SEM walk deferred to 1.1+) | ~140 | #309 MERGED | Privacy from concepts that map to specific named entities |
+| Identity-bearing concept detection (substrate-only heuristic; full ATL/SEM walk deferred to gated 1.2 work) | ~140 | #309 MERGED | Privacy from concepts that map to specific named entities |
 | Substrate snapshot bundle format (zip + manifest + reserved signature slot + migration-registry seam) | ~280 | #310 OPEN | Shareable unit |
 | `maxim substrate export / import / inspect` CLI verbs | ~210 | #310 OPEN | Manual exchange (no service required yet) |
 
@@ -336,7 +338,7 @@ The grounded-language plan's B5 (Phase -1 + Phase 0 harness, ~700 LOC) needs the
 
 **Reserved hooks for 1.2 P2P:** `trusted_sources` / `validate_link` / `validate_node` callback slots on merge functions; manifest `signature` + `signature_algorithm` slots; bundle migration-registry skeleton (`register_bundle_migration` + `migrate_bundle_envelope` + `isolated_bundle_migrations`). Reserved namespaces in `src/maxim/hivemind/`: `_consensus` (`CONSENSUS_SOURCE`), `_identity` (`IDENTITY_DOMAIN_MARKER`). The `_*` prefix is rejected at every public entry via shared `_validate_source`.
 
-**Real-session smoke test:** `maxim substrate export ... && maxim substrate import ...` round-tripped cleanly on a captured sim_report dir (2026-05-31). The 1.1 Oasis ingestion contract + 1.2 P2P protocol now build on this surface without retrofitting.
+**Real-session smoke test:** `maxim substrate export ... && maxim substrate import ...` round-tripped cleanly on a captured sim_report dir (2026-05-31). The 1.2 Oasis ingestion contract + P2P protocol build on this surface without retrofitting.
 
 ---
 
@@ -357,13 +359,13 @@ The hippocampus-episodes-stay-local rule is the load-bearing privacy invariant. 
 
 ## Open hard problems
 
-These don't block 1.0 or even 1.1, but need design before any cross-Oasis sharing goes live (1.2):
+These do not block 1.1, but they **do** gate Oasis/Hivemind implementation in 1.2:
 
 | Problem | Why it's hard | When |
 |---|---|---|
 | **Schema evolution across Maxim versions** | NAc structure changes between v1.0 and v1.1. How do v1.0-distilled patterns merge with v1.1 substrates? | 1.2 — when first cross-version share happens. Mitigated by `_format_version` infrastructure + migration registry. |
 | **Catastrophic forgetting via merge** | Pulling in a large bootstrap could overwrite carefully-learned local patterns. | 1.2 — solved by provenance + merge weighting (local Maxim's own patterns weighted higher). |
-| **Pattern-quality filtering** | LLM-AUT might do something stupid that the substrate over-learns. Mother's aggregation needs to filter on multi-source consensus + outcome-valence. | 1.1 — Oasis distillation engine. Handled by requiring N-source consensus + valence weighting. |
+| **Pattern-quality filtering** | LLM-AUT might do something stupid that the substrate over-learns. Oasis aggregation needs to filter on multi-source consensus + outcome-valence. | 1.2 — Oasis distillation engine. Require N-source consensus + valence weighting. |
 | **Poison resistance under sock-puppet attack** | Adversary spins up many fake Maxims to inject poisoned patterns. | 1.2+ — practical mitigations only (rate limits, domain curation, provenance blacklists). No theoretical solution. |
 | **Discovery and bootstrap** | First user has no patterns. How does a fresh Maxim find an Oasis? | 1.2 — published reference Oases + manual peer addition. |
 
@@ -389,10 +391,10 @@ These don't block 1.0 or even 1.1, but need design before any cross-Oasis sharin
 ## Decision points still open
 
 1. **CLI naming convention** — `maxim oasis ...` and `maxim hivemind ...` (long but clear) vs `maxim oasis ...` and `maxim hive ...` (shorter, branded "Hive" as the network). Tentative: `oasis` + `hivemind` formal, `hive` as user-facing shorthand.
-2. **Bundle signing** — required signatures on contributions (more friction, more trust) vs optional (easier onboarding, weaker trust). Tentative: optional in 1.1, recommended in 1.2, required for promoted-to-canonical-domains in 1.3.
+2. **Bundle signing** — required signatures on contributions (more friction, more trust) vs optional (easier onboarding, weaker trust). Decide before 1.2 implementation; require a documented trust policy before promoted-domain sharing.
 3. **Substrate domains shipped at 1.0** — define a starter set (combat, cooking, medical, fantasy, robotics, conversation, generic) vs let the community define them post-1.2. Tentative: starter set in B5 to seed the format; community-extensible later.
 4. **Public reference Oasis** — does the project run a public Oasis at e.g. `oasis.maxim-project.org`? Operational burden vs. ecosystem-bootstrapping value. Tentative: defer to post-1.2 once the protocol is stable; community can run its own reference Oases meanwhile.
-5. **Hardware floor for an Oasis in 1.1** — does the 1.1 Oasis (which still needs an LLM during the transitional phase) target Mac-Mini-class hardware (~16GB unified memory + CPU inference) or assume a leader-class GPU? Tentative: Mac-Mini-class with optional GPU offload.
+5. **Hardware floor for an Oasis in 1.2** — does the transitional Oasis target Mac-Mini-class hardware (~16GB unified memory + CPU inference) or assume a leader-class GPU? Tentative: Mac-Mini-class with optional GPU offload.
 
 ---
 

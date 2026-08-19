@@ -4,7 +4,7 @@
 
 Every Maxim run trains a bio-substrate as a side effect. As an agent acts, the NAc forms causal links from tool outcomes (`tool:X → outcome:Y, confidence Z`) and the EC clusters concepts into centroids. **Substrate sharing** lets you package that learned substrate into a portable bundle, hand it to another Maxim, and merge it into a live system -- so a second instance can start from accumulated experience rather than from zero.
 
-This is the 1.0 foundation for the [Maxim Hivemind](../hivemind.md) -- the peer-to-peer substrate-exchange layer. The 1.0 ship gives you the **bundle format**, the **merge utilities**, and the **`maxim substrate` CLI verbs**. The Oasis software (1.1) and full P2P protocol (1.2) build on these surfaces.
+This is the 1.0 foundation for the [Maxim Hivemind](../hivemind.md) -- the peer-to-peer substrate-exchange layer. The 1.0 ship gives you the **bundle format**, the **merge utilities**, and the **`maxim substrate` CLI verbs**. The gated Oasis and P2P work in 1.2 builds on these surfaces.
 
 ## What's in a bundle
 
@@ -19,7 +19,7 @@ maxim-substrate.zip
 
 That's it. Two payloads, plus a manifest.
 
-**Hippocampus episodes are NEVER bundled.** This is the load-bearing privacy invariant. Episodes are literal experience records -- the full PII surface -- and they are local-only by construction. Only distilled substrate (NAc weights, EC centroids) ever leaves a Maxim. The bundle composer has no code path that reads episodes, so this is enforced structurally, not by policy. ATL, reflexes, and Cerebellum payloads are reserved for 1.1; the 1.0 bundle is NAc + EC only because those are the components with merge math.
+**Hippocampus episodes are NEVER bundled.** This is the load-bearing privacy invariant. Episodes are literal experience records -- the full PII surface -- and they are local-only by construction. Only distilled substrate (NAc weights, EC centroids) ever leaves a Maxim. The bundle composer has no code path that reads episodes, so this is enforced structurally, not by policy. ATL, reflexes, and Cerebellum payloads remain future/reserved; the 1.0 bundle is NAc + EC only because those are the components with merge math.
 
 ## The workflow
 
@@ -177,7 +177,7 @@ The manifest also reserves `signature`, `signature_algorithm`, and `signer_ident
 
 ## See also
 
-- [Maxim Hivemind + Oasis](../hivemind.md) -- the design rationale and the 1.1/1.2 roadmap this format feeds
+- [Maxim Hivemind + Oasis](../hivemind.md) -- the design rationale and gated 1.2 roadmap this format feeds
 - [Hivemind Bundle Format registry](hivemind_bundle_format.md) -- the reserved signature / identity vocabulary (CC13 format-freeze)
 - [Memory User Guide](memory-user-guide.md) -- how the substrate is built in the first place
 - [Concept Decomposition](concept-decomposition.md) -- finer-grained EC nodes make for cleaner merges
