@@ -5,7 +5,8 @@ Kept short on purpose — this repo is a static content site, not a codebase.
 
 ## What this repo is
 
-The **public front door** for Maxim: the landing (`pymaxim.bio`) + docs (`docs.pymaxim.bio`).
+The **public front door** for Maxim: landing and docs under `pymaxim.bio`.
+`docs.pymaxim.bio` is a path-preserving redirect alias, not a second content origin.
 **Astro + Starlight**, static, deployed on **Cloudflare Pages**. See [README.md](README.md) for
 structure, domains, and the ecosystem map (pymaxim = engine, maxim-pulse = product, this = front
 door).
@@ -43,8 +44,9 @@ pnpm build      # → dist/ (what Cloudflare Pages serves)
 
 ## Deploy
 
-Cloudflare Pages from this repo (build `astro build`, output `dist`), custom domains
-`pymaxim.bio` + `docs.pymaxim.bio`. See README § Deploy.
+Cloudflare Pages from this repo (build `astro build`, output `dist`), with
+`pymaxim.bio` canonical. Redirect `docs.pymaxim.bio/<path>` permanently to the
+same path on `pymaxim.bio`; its root lands on `/getting-started/`. See README § Deploy.
 
 ## Versioning / license
 

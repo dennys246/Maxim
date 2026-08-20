@@ -101,6 +101,7 @@ class TestFixtureDescriptorPin:
         assert len(set(indices)) == len(indices), f"duplicate class_idx values in fixture: {indices}"
 
 
+@pytest.mark.requires_model_cache
 class TestFixtureImageLoader:
     """These tests require the torchvision Flowers102 cache to be
     present at ~/.cache/maxim/p4_flowers. CI without the cache skips."""
@@ -141,6 +142,7 @@ class TestFixtureImageLoader:
         assert len(images) > 0
 
 
+@pytest.mark.requires_model_cache
 class TestFixtureRetrievalGate:
     """Stage 2 v2 fold — Arch #6. The plan's Stage 2 deliverable (5)
     explicitly specified "Forward AND reverse retrieval rate ≥ 0.70

@@ -6,7 +6,7 @@ Documentation for users of Maxim (pymaxim) — a bio-inspired cognitive architec
 
 - [Getting Started](getting-started.md) — Installation, first run, prerequisites
 - **`maxim`** (no args) — launches a Rich interactive menu with campaign discovery, recent sessions, and quick-start options
-- [Python API](python-api.md) — All 17 API verbs with examples
+- [Python API](python-api.md) — All API verbs with examples
 
 ## Core Guides
 

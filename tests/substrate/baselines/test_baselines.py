@@ -79,6 +79,7 @@ class TestEmbeddingBaseline:
         assert result.details.get("error")
 
     @pytest.mark.slow
+    @pytest.mark.requires_model_cache
     def test_full_baseline_run(self):
         """Full baseline with model — slow, requires sentence-transformers."""
         pytest.importorskip("sentence_transformers")
@@ -97,6 +98,7 @@ class TestEmbeddingBaseline:
         assert result.easy_collapse >= result.hard_collapse
 
     @pytest.mark.slow
+    @pytest.mark.requires_model_cache
     def test_deterministic_across_seeds(self):
         """Same seed → same result."""
         pytest.importorskip("sentence_transformers")
@@ -106,6 +108,7 @@ class TestEmbeddingBaseline:
         assert r1.cross_cluster_rate == r2.cross_cluster_rate
 
     @pytest.mark.slow
+    @pytest.mark.requires_model_cache
     def test_different_seeds_same_result(self):
         """Embedding baseline is deterministic regardless of seed (no randomness in pipeline)."""
         pytest.importorskip("sentence_transformers")

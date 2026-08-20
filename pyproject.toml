@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pymaxim"
 version = "1.0.9"
-description = "Bio-inspired cognitive architecture for LLM agents — embodied sensation, homeostatic drives, and brain-modeled persistent memory enable cross-session learning without fine-tuning."
+description = "Bio-inspired LLM agent harness with embodied sensation, homeostatic drives, and experience-grounded persistent context across sessions without fine-tuning."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -33,8 +33,8 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 
@@ -55,7 +55,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://pymaxim.bio"
-Documentation = "https://docs.pymaxim.bio"
+Documentation = "https://pymaxim.bio/getting-started/"
 Repository = "https://github.com/dennys246/Maxim"
 Issues = "https://github.com/dennys246/Maxim/issues"
 
@@ -240,6 +240,7 @@ python_functions = ["test_*"]
 addopts = "-v --tb=short -ra"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "requires_model_cache: requires pretrained model or dataset assets (opt in with MAXIM_RUN_MODEL_TESTS=1)",
     "learning: marks learning/convergence tests that verify ML algorithms",
     "integration: marks tests requiring multiple subsystems",
     "robot: marks tests requiring Reachy hardware",

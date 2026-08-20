@@ -6,11 +6,15 @@ Long-term maintenance reference for the `pymaxim` package on PyPI. For first-tim
 
 ## Versioning policy
 
-- **Semver,** `MAJOR.MINOR.PATCH`. The current line is `0.x` — research preview, API may move between minor versions.
+- **Semver,** `MAJOR.MINOR.PATCH`. The current stable line is `1.0.x`; public
+  1.x contracts may only move compatibly within the major line.
 - **Bump rules:**
-  - **Patch** (`0.2.1 → 0.2.2`) — bug fixes, doc-only releases, packaging hotfixes, no API changes.
-  - **Minor** (`0.2.x → 0.3.0`) — new features, additive API changes, may include breaking changes while in `0.x`.
-  - **Major** (`0.x → 1.0.0`) — reserved for the version that demonstrably improves on a task across sessions without fine-tuning the underlying LLM, with a test that proves it. See [plans/substrate_p0_pilot.md](plans/archive/substrate_p0_pilot.md) and the substrate plan series.
+  - **Patch** (`1.0.8 → 1.0.9`) — compatible correctness, packaging,
+    security, and documentation fixes; no public-contract breakage.
+  - **Minor** (`1.0.x → 1.1.0`) — compatible additive features and explicitly
+    documented deprecations.
+  - **Major** (`1.x → 2.0.0`) — intentionally incompatible public-contract
+    changes with a migration path.
 - **Two version files must stay in sync:** [pyproject.toml](../pyproject.toml) and [src/maxim/__init__.py](../src/maxim/__init__.py). Mismatch = release bug.
 - **Verify after bump:**
   ```bash
@@ -28,7 +32,8 @@ ruff check src/ tests/
 ruff format src/ tests/
 
 # 2. Fast test suite green
-python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py
+python -m pytest tests/ -x -q -m "not slow" \
+  --ignore=tests/integration/test_memory_hub.py
 
 # 3. Public API mypy clean (if api.py / session.py / __init__.py changed)
 mypy src/maxim/__init__.py src/maxim/api.py src/maxim/session.py \
@@ -41,6 +46,8 @@ grep -n '__version__' src/maxim/__init__.py
 # 5. Canonical website metadata is release-ready
 grep -A5 '^\[project.urls\]' pyproject.toml
 # Then complete publication_guide.md's pymaxim.bio content/link audit.
+# Documentation must resolve to https://pymaxim.bio/getting-started/;
+# docs.pymaxim.bio is an optional redirect alias, never a duplicate authority.
 
 # 6. CHANGELOG entry exists for the new version
 head -20 CHANGELOG.md
@@ -51,21 +58,34 @@ If any step fails, do not proceed.
 ## Build + check + upload
 
 ```bash
-# Always start clean — local build/ shadows the installed `build` package
-rm -rf build/ dist/pymaxim-<OLD-VERSION>*
+# Give the candidate a unique directory; keep this shell active through upload.
+export MAXIM_RELEASE_DIR="$(mktemp -d)"
 
 # Build wheel + sdist
-python -m build
+# setuptools' scratch tree is NOT pruned between builds and is NOT what
+# --outdir controls: build_py copies the package into ./build/lib and ships
+# whatever it finds there. A file deleted from src/ but still sitting in
+# build/lib lands in the wheel. That is the documented mechanism behind
+# "15 dead modules (~8,500 LOC) shipping in the wheel" — and a repo-root
+# build/ tree from an earlier run is the normal state, not the exception.
+# Measured 2026-08-20: the DEFAULT command below (sdist -> wheel) is protected
+# by the sdist round-trip and did NOT pick up a planted build/lib/maxim/
+# module. But `--wheel` and `--no-isolation` build in place and BOTH shipped
+# it. Those are one habit away, so clean first rather than depending on which
+# build mode someone reaches for.
+rm -rf build/ *.egg-info
+
+python -I -m build --outdir "$MAXIM_RELEASE_DIR"
 
 # Validate metadata renders + license file is included
-twine check dist/*
+twine check "$MAXIM_RELEASE_DIR"/pymaxim-*
 
 # Smoke check: confirm the wheel does NOT contain repo-root junk
-python -m zipfile -l dist/pymaxim-*.whl | grep -iE "htmls-guides|outputs|^[^/]*sandbox" \
+python -m zipfile -l "$MAXIM_RELEASE_DIR"/pymaxim-*.whl | grep -iE "htmls-guides|outputs|^[^/]*sandbox" \
   && echo "FAIL: wheel contains repo-root files" || echo "OK: wheel clean"
 
 # Upload (always with --verbose so 4xx errors are diagnosable)
-twine upload --verbose dist/pymaxim-<NEW-VERSION>*
+twine upload --verbose "$MAXIM_RELEASE_DIR"/pymaxim-<NEW-VERSION>*
 ```
 
 After successful upload:
@@ -150,7 +170,7 @@ Common 400/403 causes and fixes:
 | `400 File already exists` | Version slot was previously used (even partial uploads sometimes count). | Bump version. PyPI version slots are immutable. |
 | `403 Invalid API Token: project-scoped token is not valid for project: 'X'` | Token is scoped to a different project, or to no project at all. | Use an account-scoped token, or generate a new project-scoped token for the correct project. |
 | `403` after recent token rotation | Old token still cached. | Verify `~/.pypirc` was actually saved; check there's no stray comment after `password = pypi-...` (some INI parsers append the comment to the value). |
-| `python -m build` fails with `No module named build.__main__` | Local `build/` directory at repo root shadows the installed `build` package. | `rm -rf build/` (it's gitignored, regenerated each build). |
+| `python -m build` fails with `No module named build.__main__` | A repo-root `build/` directory shadows the installed `build` package. | Invoke the module in isolated mode: `python -I -m build --outdir "$MAXIM_RELEASE_DIR"`. |
 
 ## Post-release housekeeping
 

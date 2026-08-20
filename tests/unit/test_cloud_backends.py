@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 
 from maxim.models.language.config import LLMConfig
@@ -704,7 +704,14 @@ class TestPromptCacheConfigWiring:
 
         cfg = _make_cfg(providers={}, backend="openai", base_url="https://api.deepseek.com/v1")
         backend = _OpenAIBackend(cfg, provider_key="local")
-        assert backend._get_base_url() == "https://api.deepseek.com/v1"
+        # This test guards config wiring, not DNS. Keep SSRF validation in the
+        # call path while making its network-dependent resolver deterministic.
+        with patch(
+            "maxim.models.language.openai_backend._validate_base_url",
+            side_effect=lambda url, allow_local: url,
+        ) as validate:
+            assert backend._get_base_url() == "https://api.deepseek.com/v1"
+        validate.assert_called_once_with("https://api.deepseek.com/v1", False)
 
     def test_normalize_providers_surfaces_prompt_cache(self):
         from maxim.models.language.cloud_dispatch import normalize_providers

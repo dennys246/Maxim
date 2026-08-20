@@ -25,9 +25,7 @@ Pass criteria (validation suite):
 
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -428,6 +426,12 @@ class TestDecompositionMechanism:
 # ─────────────────────────────────────────────────────────────────────────
 
 
+# Needs the real encoder WEIGHTS, not just the packages: its autouse fixture
+# checks that sentence-transformers and spaCy are INSTALLED, which the D20
+# hermeticity work established is not evidence the weights are available. Left
+# unmarked, an offline run degrades the encoder and reports the degradation as
+# a decomposition result.
+@pytest.mark.requires_model_cache
 @pytest.mark.slow
 class TestDecompositionValidation:
     """Real-embedding validation that decomposition improves cross-modal recall.
@@ -439,10 +443,17 @@ class TestDecompositionValidation:
 
     @pytest.fixture(autouse=True)
     def _require_deps(self) -> None:
+        # INSTALLED is not CACHED. Skipping on a missing package is right;
+        # continuing on missing WEIGHTS is not — the encoder degrades to hash
+        # embeddings and the recall assertions below become a decomposition
+        # "result" that is really an artifact of the missing model (D26).
+        from maxim.similarity.encoder import require_semantic_encoder
+
         if not _has_sentence_transformers():
             pytest.skip("sentence-transformers not installed")
         if not _has_spacy():
             pytest.skip("spaCy or en_core_web_sm not installed")
+        require_semantic_encoder(context="concept-decomposition validation")
 
     def _make_encoder(self, *, with_decomposer: bool):
         """Build a LinguisticEncoder with real sentence-transformers."""
@@ -552,7 +563,7 @@ class TestDecompositionValidation:
             "ec_substrate_nodes": ec.substrate_node_count,
         }
 
-    def test_decomposition_improves_cross_modal_recall(self) -> None:
+    def test_decomposition_improves_cross_modal_recall(self, publish_sweep_results) -> None:
         """The primary validation test.
 
         Runs both arms (baseline vs decomposed) and asserts:
@@ -597,10 +608,7 @@ class TestDecompositionValidation:
         print(f"  Decomposed recall:  {decomposed['aggregate_recall']:.3f}")
         print(f"  Delta:              {delta:+.3f}")
 
-        # -- Save results --
-        results_path = Path(__file__).resolve().parents[2] / "docs" / "experiments" / "results"
-        results_path.mkdir(parents=True, exist_ok=True)
-        output_file = results_path / "concept_decomposition_validation.json"
+        # -- Save results (D25: tmp by default) --
 
         report = {
             "test": "concept_decomposition_validation",
@@ -612,8 +620,7 @@ class TestDecompositionValidation:
                 "minimum_bar": decomposed["aggregate_recall"] >= 0.60,
             },
         }
-        output_file.write_text(json.dumps(report, indent=2))
-        print(f"  Results saved to: {output_file}")
+        publish_sweep_results("concept_decomposition_validation.json", report)
 
         # -- Assertions --
         assert decomposed["aggregate_recall"] > baseline["aggregate_recall"], (

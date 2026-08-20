@@ -157,10 +157,6 @@ def _memory_linux() -> dict[str, Any] | None:
 
 def _memory_macos() -> dict[str, Any] | None:
     try:
-        import sysctl_fallback  # noqa: F401 — not a real import, use subprocess
-    except ImportError:
-        pass
-    try:
         # Total memory via sysctl
         result = subprocess.run(
             ["sysctl", "-n", "hw.memsize"],
@@ -168,7 +164,11 @@ def _memory_macos() -> dict[str, Any] | None:
             text=True,
             timeout=2,
         )
-        total_bytes = int(result.stdout.strip())
+        total_bytes = int(result.stdout.strip()) if result.returncode == 0 else 0
+        if total_bytes <= 0:
+            # Sandboxed macOS processes may be denied the sysctl command even
+            # though POSIX sysconf remains available.
+            total_bytes = int(os.sysconf("SC_PHYS_PAGES")) * int(os.sysconf("SC_PAGE_SIZE"))
         total_gb = round(total_bytes / (1024**3), 2)
 
         # vm_stat for page-level usage

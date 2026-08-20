@@ -10,6 +10,12 @@ Step-by-step guide for publishing pymaxim to PyPI.
 
 ## Pre-Publication Checklist
 
+Start in a fresh shell and reserve one unique directory for the exact candidate:
+
+```bash
+export MAXIM_RELEASE_DIR="$(mktemp -d)"
+```
+
 ### 1. Verify simulations work
 
 Run the core scenarios end-to-end to verify the new infrastructure doesn't break existing behavior:
@@ -35,11 +41,30 @@ maxim --sim benchmark --models mistral-7b --campaign scenarios/benchmarks/quick_
 ### 2. Verify tests pass
 
 ```bash
-# Full suite (exclude known slow integration test)
-python -m pytest tests/ -q --ignore=tests/integration/test_memory_hub.py
+# Required fast suite (offline and hermetic)
+python -m pytest tests/ -x -q -m "not slow" \
+  --ignore=tests/integration/test_memory_hub.py
 
-# Expected: 7800+ passed, 0 failed (1 pre-existing flaky ordering issue in test_lane_backends passes in isolation)
+# MemoryHub integration is a separate required gate when its surface changed
+python -m pytest tests/integration/test_memory_hub.py -q
 ```
+
+Expected: zero failures, no network/model downloads, no hardware access, and no
+writes outside the test-owned temporary root. Do not waive an ordering failure as
+"pre-existing." Do NOT treat a specific pass/skip count as the expectation: skip counts are
+environment-dependent by construction (installed extras, platform, model
+cache), and the totals move with every added test. Judge the run by
+**exit code 0 with zero failures**, plus a clean `git status` afterwards.
+
+Pretrained model/dataset checks are a separate, cache-backed opt-in lane:
+
+```bash
+MAXIM_RUN_MODEL_TESTS=1 HF_HOME=/path/to/preloaded/huggingface \
+  python -m pytest tests/ -q -m requires_model_cache
+```
+
+They remain offline unless the operator separately overrides the standard model-
+hub offline variables; they are not part of the correction-release gate.
 
 ### 3. Verify clean import
 
@@ -76,7 +101,7 @@ Known items from Phase 12b that may be blocking:
 ### 5. Verify version consistency
 
 ```bash
-# Both must show the same version (e.g. 1.0.0)
+# Both must show the same version (1.0.9 for this release)
 grep 'version = ' pyproject.toml
 python -c "import maxim; print(maxim.__version__)"
 ```
@@ -84,9 +109,13 @@ python -c "import maxim; print(maxim.__version__)"
 ### 6. Audit the canonical website and PyPI project links
 
 The 1.0.9 correction release makes [pymaxim.bio](https://pymaxim.bio) the
-canonical landing page and [docs.pymaxim.bio](https://docs.pymaxim.bio) the
-canonical documentation site. The historical `dennyschaedig.com/maxim` guides
-remain a migration source, not a second authority.
+canonical site and
+[pymaxim.bio/getting-started](https://pymaxim.bio/getting-started/) the
+documentation entry point. The historical `dennyschaedig.com/maxim` guides
+remain a migration source, not a second authority. `docs.pymaxim.bio` currently
+serves a duplicate homepage; before publication it must redirect every path to
+the corresponding canonical `pymaxim.bio` path, with `/` landing on
+`/getting-started/`.
 
 Complete this audit against the **exact release candidate**, not a moving branch:
 
@@ -119,14 +148,14 @@ The package metadata must contain these exact destinations:
 ```toml
 [project.urls]
 Homepage = "https://pymaxim.bio"
-Documentation = "https://docs.pymaxim.bio"
+Documentation = "https://pymaxim.bio/getting-started/"
 ```
 
 After building, inspect the wheel metadata rather than assuming `pyproject.toml`
 was carried through:
 
 ```bash
-unzip -p dist/pymaxim-1.0.9-py3-none-any.whl \
+unzip -p "$MAXIM_RELEASE_DIR/pymaxim-1.0.9-py3-none-any.whl" \
   'pymaxim-1.0.9.dist-info/METADATA' | grep '^Project-URL:'
 ```
 
@@ -139,28 +168,41 @@ site, a dead documentation URL, or metadata from a different artifact.
 ## Build Steps
 
 ```bash
-# 1. Clean old builds
-rm -rf dist/ build/ *.egg-info
+# 1. Keep using the candidate directory reserved above.
+test -n "$MAXIM_RELEASE_DIR"
 
 # 1b. VENDOR THE CONSOLE UI (release-only step — see below)
 python scripts/vendor_console_ui.py <path-to>/Maxim-pulse/apps/console/dist
 python scripts/vendor_console_ui.py --check     # confirms it took
 
 # 2. Build wheel + sdist
-python -m build
+# setuptools' scratch tree is NOT pruned between builds and is NOT what
+# --outdir controls: build_py copies the package into ./build/lib and ships
+# whatever it finds there. A file deleted from src/ but still sitting in
+# build/lib lands in the wheel. That is the documented mechanism behind
+# "15 dead modules (~8,500 LOC) shipping in the wheel" — and a repo-root
+# build/ tree from an earlier run is the normal state, not the exception.
+# Measured 2026-08-20: the DEFAULT command below (sdist -> wheel) is protected
+# by the sdist round-trip and did NOT pick up a planted build/lib/maxim/
+# module. But `--wheel` and `--no-isolation` build in place and BOTH shipped
+# it. Those are one habit away, so clean first rather than depending on which
+# build mode someone reaches for.
+rm -rf build/ *.egg-info
+
+python -I -m build --outdir "$MAXIM_RELEASE_DIR"
 
 # 3. Validate package metadata
-twine check dist/pymaxim-*
+twine check "$MAXIM_RELEASE_DIR"/pymaxim-*
 # Expected: PASSED for both .whl and .tar.gz
 
 # 4. Confirm the Console bundle actually shipped in the wheel
-python -c "import zipfile,glob; n=zipfile.ZipFile(sorted(glob.glob('dist/pymaxim-*.whl'))[-1]).namelist(); \
+python -c "import glob,os,zipfile; n=zipfile.ZipFile(sorted(glob.glob(os.environ['MAXIM_RELEASE_DIR'] + '/pymaxim-*.whl'))[-1]).namelist(); \
 assert any(x.endswith('console/ui_dist/index.html') for x in n), 'Console UI MISSING from wheel'; print('Console UI: OK')"
 
 # 4. Verify bundled data is in the wheel
 python -c "
-import zipfile, glob
-whl = sorted(glob.glob('dist/pymaxim-*-py3-none-any.whl'))[-1]
+import glob, os, zipfile
+whl = sorted(glob.glob(os.environ['MAXIM_RELEASE_DIR'] + '/pymaxim-*-py3-none-any.whl'))[-1]
 with zipfile.ZipFile(whl) as z:
     data = [f for f in z.namelist() if '_data/' in f]
     print(f'{len(data)} bundled data files')
@@ -212,7 +254,7 @@ cannot drift.
 
 ```bash
 # 1. Upload to Test PyPI
-twine upload --repository testpypi dist/pymaxim-*
+twine upload --repository testpypi "$MAXIM_RELEASE_DIR"/pymaxim-*
 
 # 2. Test install in clean venv
 python -m venv /tmp/test-maxim-install
@@ -248,12 +290,44 @@ Only after Test PyPI verification passes:
 
 ```bash
 # The big moment
-twine upload dist/pymaxim-*
+twine upload "$MAXIM_RELEASE_DIR"/pymaxim-*
 
 # Verify real install
 pip install pymaxim
 python -c "import maxim; print(maxim.__version__)"
 ```
+
+### Tag the released commit (do NOT defer this)
+
+PyPI is immutable but carries no git history; without a tag, nothing records
+*which commit* produced the artifact. Versions 1.0.1–1.0.6 skipped this step and
+had to be reconstructed months later from version-bump commits — the incident
+behind the 1.1 release-truth pass. Tag before you close the terminal:
+
+```bash
+git tag -a "v$(python -c 'import maxim; print(maxim.__version__)')" \
+  -m "pymaxim $(python -c 'import maxim; print(maxim.__version__)')"
+git push origin --tags
+
+# Verify: the tag exists, points at the published commit, and matches PyPI
+git describe --exact-match --tags HEAD
+```
+
+Any version with a `## [X.Y.Z]` CHANGELOG section must have a matching
+`vX.Y.Z` tag. Check for drift with:
+
+```bash
+comm -23 \
+  <(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | tr -d '## []' | sort -u) \
+  <(git tag -l 'v*' | sed 's/^v//' | sort -u)
+# Any output = a released version with no tag.
+```
+
+The historical backlog this check found was reconstructed and pushed on
+2026-08-20 (`scripts/audit_release_tags.py --write-tags`), so the tag chain is
+now unbroken through v1.0.8. The check should therefore report only the
+in-development version until it is published — any OTHER output means a
+release shipped without a tag.
 
 ---
 
@@ -306,3 +380,13 @@ pip install twine
 | `pyproject.toml` | `version = "X.Y.Z"` | All three must be the same version |
 | `src/maxim/__init__.py` | `__version__ = "X.Y.Z"` | |
 | `CHANGELOG.md` | `## [X.Y.Z]` header | |
+| git tag | `vX.Y.Z` on the published commit | created at publish time, never deferred |
+| `CLAUDE.md` | "Current version:" line under *Active initiatives* | version + true PyPI state |
+| `docs/plans/README.md` | "Current version:" line at the top | version + true PyPI state |
+| `docs/index.md` | "Release candidate / Published on PyPI" banner | version + true PyPI state |
+
+The last two are prose, so nothing fails loudly when they drift — and they drift
+in the *confessional* direction ("PyPI still serves X"), which readers trust more
+than ordinary docs. Both were corrected in the 1.1 release-truth pass and were
+stale again five commits later. Update them with the version bump, in the same
+commit, not as a follow-up.

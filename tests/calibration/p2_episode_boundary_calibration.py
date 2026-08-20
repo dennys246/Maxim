@@ -212,7 +212,7 @@ def _format_table(results: list[SweepResult]) -> str:
 # Module-level mark applied by pytest at collection time. Importable
 # regardless of pytest's presence (the bare list is a no-op outside
 # pytest collection).
-pytestmark = [pytest.mark.slow] if _HAS_PYTEST else []
+pytestmark = [pytest.mark.slow, pytest.mark.requires_model_cache] if _HAS_PYTEST else []
 
 
 def test_default_threshold_passes_calibration() -> None:

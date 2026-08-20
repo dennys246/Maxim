@@ -9,6 +9,11 @@ on:
   # PRs). Without this its `github.event_name == 'workflow_dispatch'` condition
   # could never fire, so the job would only ever execute post-merge on main.
   workflow_dispatch:
+  # Nightly lane for the model-cache tests, which are skipped by default so the
+  # required fast suite stays offline and hermetic (D20). Without a scheduled
+  # run they would execute NOWHERE — see the `model-cache-tests` job below.
+  schedule:
+    - cron: "17 8 * * *"
 
 # Supersede in-flight runs for the same ref instead of letting them compete
 # for runners (2026-08-06 CI starvation incident).
@@ -30,10 +35,185 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+# Least-privilege default for EVERY job, including ones added later.
+#
+# CodeQL's `actions/missing-workflow-permissions` fires per job that does not
+# declare a scope, and this repo's ruleset blocks merges on
+# `alerts_threshold: all` — so a new job without this is not a style nit, it
+# is a blocked PR. That had already been learned once (see the per-job blocks
+# on the aarch64 jobs below, which carry the same explanation); the two jobs
+# this branch added rediscovered it. Declaring the default at workflow level
+# fixes the class instead of the instance: a job may still narrow or widen its
+# own scope, but it can no longer inherit an implicit one by omission.
+#
+# `contents: read` is all any job here needs — every one of them checks out
+# code and runs tests. Nothing writes to the repo, comments on PRs, or
+# publishes packages.
+permissions:
+  contents: read
+
 jobs:
+  python-compatibility:
+    name: Python ${{ matrix.python-version }} compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # The full unit job covers 3.12. These lanes enforce the rest of the
+        # public Requires-Python range without multiplying the expensive
+        # optional-backend suite.
+        python-version: ["3.10", "3.11", "3.13", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install the core package
+        run: python -m pip install .
+
+      - name: Compile and import public surfaces
+        run: |
+          python -m compileall -q src/maxim
+          python - <<'EOF'
+          from importlib.metadata import version
+
+          import maxim
+
+          assert maxim.__version__ == version("pymaxim"), maxim.__version__
+          # Must stay in sync with maxim._API_VERBS — the lane advertises that it
+          # checks the public surface, so an omitted verb is an undetectable break.
+          for name in (
+              "run", "imagine", "connect", "diagnose", "observe",
+              "configure", "introspect", "campaign", "benchmark",
+              "research", "on", "register_tool", "register_persona",
+              "tool", "list_models", "download_model", "delete_model", "recall",
+          ):
+              assert callable(getattr(maxim, name)), name
+          print(f"Python compatibility smoke OK: {maxim.__version__}")
+          EOF
+          python -m maxim --help >/dev/null
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Model-cache tests — nightly + on demand, never on PRs.
+  #
+  # `tests/conftest.py` skips everything marked `requires_model_cache` unless
+  # MAXIM_RUN_MODEL_TESTS=1, so the required fast suite needs no network and no
+  # pretrained weights (D20). The cost of that correctness is that 12 substrate
+  # and encoder tests — including the P4 fixture recall gate, whose docstring
+  # says it exists so a regression "fires this test instead of silently passing
+  # CI" — would otherwise run in no lane at all. A guard that cannot execute
+  # cannot detect its failure, so it gets its own scheduled lane.
+  #
+  # The HuggingFace cache is keyed on the encoder-pinning files; a cache miss
+  # downloads once and every later night reuses it.
+  # ───────────────────────────────────────────────────────────────────────
+  model-cache-tests:
+    name: Model-cache tests (nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # `semantic` brings sentence-transformers + torch; torchvision and Pillow
+      # are NOT in any extra but several marked tests importorskip them, and a
+      # skipped test in a lane built to run them is exactly the vacuous-guard
+      # problem this job exists to prevent.
+      - name: Install package with model-test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[semantic,test]" torchvision Pillow
+
+      - name: Restore model cache
+        id: model-cache
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/huggingface
+          key: hf-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'src/maxim/similarity/encoder.py', 'src/maxim/models/vision/clip_encoder.py') }}
+          restore-keys: hf-${{ runner.os }}-
+
+      # First run (or after an encoder change) populates the cache; later runs
+      # are offline. Downloads are confined to this step so a network failure
+      # here is distinguishable from a real test failure below.
+      - name: Warm the cache on a miss
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        env:
+          HF_HOME: /home/runner/.cache/huggingface
+        run: |
+          python - <<'PY'
+          from sentence_transformers import SentenceTransformer
+
+          # Must match what production actually loads: similarity/encoder.py
+          # defaults to all-mpnet-base-v2, the P2 path uses
+          # paraphrase-mpnet-base-v2, and clip_encoder.py uses clip-ViT-B-32.
+          # Caching the wrong name leaves the offline run unable to load any
+          # model, so every marked test would skip and the lane would pass
+          # while testing nothing.
+          # Every model any marked test loads. test_model_comparison sweeps a
+          # FOURTH (paraphrase-MiniLM-L6-v2); omitting it let that arm fall back
+          # to hash embeddings and print a comparison table for a model it never
+          # loaded — D26 one level down, inside the lane built to prevent it.
+          for name in (
+              "all-mpnet-base-v2",
+              "paraphrase-mpnet-base-v2",
+              "paraphrase-MiniLM-L6-v2",
+              "clip-ViT-B-32",
+          ):
+              SentenceTransformer(name)
+              print(f"cached {name}")
+          PY
+
+      # --runtime-skip-check would be ideal; absent that, assert the lane
+      # actually EXECUTED its tests. Without this, a missing dependency or a
+      # renamed marker turns the whole job into a green no-op — the failure
+      # mode that let these guards rot in the first place.
+      - name: Run model-cache tests
+        env:
+          MAXIM_RUN_MODEL_TESTS: "1"
+          # MUST be set explicitly and absolutely. tests/conftest.py only
+          # `setdefault`s HF_HOME under MAXIM_RUN_MODEL_TESTS, so without this
+          # the suite runs offline against an EMPTY temp root and every model
+          # test errors on a missing encoder — the warmed cache above would be
+          # unreachable and this whole lane would be the vacuous guard it
+          # exists to prevent. `~` is not expanded in GitHub `env:`, and HOME
+          # is redirected by conftest, so the literal path is required.
+          HF_HOME: /home/runner/.cache/huggingface
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+        run: |
+          python -m pytest tests/ -q -m "requires_model_cache" --tb=short \
+            --junitxml=model-cache-results.xml
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          suite = ET.parse("model-cache-results.xml").getroot()
+          if suite.tag == "testsuites":
+              suite = suite[0]
+          total = int(suite.get("tests", 0))
+          skipped = int(suite.get("skipped", 0))
+          executed = total - skipped
+          print(f"model-cache tests: {executed} executed, {skipped} skipped, {total} collected")
+          if executed < 12:
+              raise SystemExit(
+                  f"FAIL: only {executed} model-cache tests executed (expected >= 12). "
+                  "A dependency or cache problem is making this lane vacuous."
+              )
+          PY
+
   unit-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -68,8 +248,17 @@ jobs:
                src/maxim/create.py src/maxim/load.py \
                --ignore-missing-imports --follow-imports=silent
 
-      - name: Run unit tests
-        run: python -m pytest tests/unit/ -x -q -m "not slow" --tb=short
+      - name: Run required fast suite
+        run: >-
+          python -m pytest tests/ -x -q -m "not slow" --tb=short
+          --ignore=tests/integration/test_memory_hub.py
+
+      # The project's required-checks block is TWO commands, and the fast suite
+      # above excludes this file. Without this step the MemoryHub gate is
+      # enforced by nothing but developer habit — the same "advertised suite is
+      # not the executed suite" defect D20 exists to close. It runs in ~1s.
+      - name: MemoryHub integration gate
+        run: python -m pytest tests/integration/test_memory_hub.py -q
 
   lint:
     runs-on: ubuntu-latest

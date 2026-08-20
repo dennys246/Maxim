@@ -67,6 +67,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.9] - 2026-08-19
 
+### Upgrade note — arguments that were silently ignored now take effect
+
+PyPI's previous release is **1.0.0**, so most users arrive here across ~90 merged
+PRs. The stable-API repairs below change *runtime behavior for code that already
+compiles*, because the old behavior was a no-op or a race rather than a
+documented contract. Review these before upgrading unattended:
+
+- `run(goal=...)` previously never reached the loop. It now enters through the
+  runtime's CLI-input mailbox and seeds initial work, so an agent that used to
+  sit idle will start acting. (The facade stays interruption-scoped: a goal does
+  not stop the service loop on completion.)
+- `run(robot=...)` previously connected a controller and attached it to nothing.
+  It now drives motion, wakes the robot for the run, and attempts to restore
+  sleep and connection ownership on exit — **this moves real hardware.** The
+  contradictory combination `robot=..., headless=True` is now rejected instead
+  of silently ignored.
+- Overlapping `run()` calls in one process previously raced on process-global
+  routing state; the second call now raises `ConfigurationError`.
+
+### Deprecated
+
+- **`maxim.register_persona()` is accepted and ignored, and raises from 1.1.**
+  The persona system was hard-deleted in #482 (marked `feat(1.1)!`), and the
+  version bumps carried that removal into the 1.0.7–1.0.9 patch line where
+  1.0.0 — PyPI's previous release — has a working call. Raising here would
+  break a public contract in a patch, which this project's own versioning
+  policy forbids, so the symbol is restored as a warning shim for 1.0.x and
+  version-gated to start raising the moment the version reaches 1.1 (keeping
+  the 0.9 deprecation's literal "raises in 1.1" promise). Nothing is lost
+  behaviorally: the registry was label-only and the `context_prompt` was never
+  injected, even in 1.0.0. Use `imagine(mode=...)` for the report label.
+  `imagine(persona=...)` continues to warn and alias to `mode`.
+
 ### Fixed
 
 - **Stable `maxim.run()` contract (D15/D16)** — `goal` now enters through the
@@ -84,11 +117,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   does not stop the service loop automatically, and `goal=None` installs no stdin
   reader. Full `home_dir` ownership and equivalent cleanup for
   `imagine()`/`campaign()` remain explicitly tracked as 1.1.x hardening.
+- **Hermetic required fast suite (D20)** — pytest now runs under a unique
+  temporary HOME/config/cache root inherited by subprocesses, resets cached
+  Maxim paths between tests, defaults model hubs to offline mode, and requires
+  explicit `MAXIM_RUN_MODEL_TESTS=1` opt-in for pretrained model/dataset assets.
+  CI now executes the documented full `tests/ -m "not slow"` gate instead of
+  only `tests/unit/`. Hidden host dependencies found by the wider run were
+  removed: benchmark CLI resolution follows the active interpreter, cloud URL
+  wiring tests no longer perform DNS, proxy admission tests no longer bind real
+  sockets, restart tests skip production backoff waits, and macOS memory metrics
+  fall back to POSIX `sysconf` when sandbox policy blocks the `sysctl` command.
+- **Published Python/dependency contract** — lightweight CI install/import/CLI
+  lanes now exercise Python 3.10, 3.11, 3.13, and 3.14 while the full suite runs
+  on 3.12. Contributor guidance now matches the wheel's seven declared core
+  dependencies instead of incorrectly naming only four.
 - **Canonical project website** — package metadata and the PyPI-rendered README
-  now point to `pymaxim.bio` for the landing page and `docs.pymaxim.bio` for
-  documentation. The release checklist requires a full content, claim, command,
-  migration/redirect, and link audit before those sites are treated as the
-  authoritative replacement for the legacy long-form guides.
+  now point to `pymaxim.bio` for the landing page and the canonical
+  `pymaxim.bio/getting-started/` documentation entry point. The release checklist
+  requires a full content, claim, command, migration/redirect, and link audit
+  before the site is treated as the authoritative replacement for the legacy
+  long-form guides. `docs.pymaxim.bio` must redirect path-preservingly instead of
+  serving duplicate canonical content.
 
 ## [1.0.8] - 2026-08-19
 

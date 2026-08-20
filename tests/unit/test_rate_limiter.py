@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 import threading
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -102,79 +104,57 @@ class TestPeerRateLimiter:
 
 
 class TestLeaderProxyAdmission:
-    """Integration: LeaderProxy admission control."""
+    """LeaderProxy admission control without opening a real listener."""
 
     def test_concurrency_semaphore_rejects(self) -> None:
         """When concurrency cap is hit, proxy should reject."""
-        import json
-        import urllib.request
+        from maxim.runtime.leader_proxy import _ProxyHandler
 
-        from maxim.runtime.leader_proxy import start_leader_proxy
+        semaphore = threading.Semaphore(1)
+        assert semaphore.acquire(blocking=False)
 
-        # Start proxy with max_concurrent=1, no upstream (will 502 on forward)
-        import os
+        handler = object.__new__(_ProxyHandler)
+        handler.concurrency_semaphore = semaphore
+        handler.rate_limiter = None
+        handler.lane_metrics = None
+        handler.client_address = ("127.0.0.1", 12345)
+        handler._sent = []
+        handler._send_json = lambda code, body: handler._sent.append((code, body))
 
-        old = os.environ.get("MAXIM_PROXY_MAX_CONCURRENT")
-        os.environ["MAXIM_PROXY_MAX_CONCURRENT"] = "1"
-        try:
-            server = start_leader_proxy(
-                proxy_port=18199,
-                upstream_port=19999,
-                bind_host="127.0.0.1",
-            )
-            assert server is not None
+        assert handler._check_admission() is False
+        assert handler._sent == [(429, {"error": "Too many concurrent requests", "queue_depth": 0})]
 
-            # First POST should get through (will 502 since no upstream)
-            # We just verify the semaphore logic works
-            # The actual 429 vs 502 depends on timing, so we just verify
-            # the server starts and responds
-            try:
-                req = urllib.request.Request(
-                    "http://127.0.0.1:18199/v1/debug/status",
-                    method="GET",
-                )
-                with urllib.request.urlopen(req, timeout=2) as resp:
-                    data = json.loads(resp.read())
-                    assert data["status"] == "ok"
-            except Exception:
-                pass
-
-            server.shutdown()
-        finally:
-            if old is None:
-                os.environ.pop("MAXIM_PROXY_MAX_CONCURRENT", None)
-            else:
-                os.environ["MAXIM_PROXY_MAX_CONCURRENT"] = old
+        semaphore.release()
+        assert handler._check_admission() is True
+        handler._release_concurrency()
 
     def test_queue_depth_header_present(self) -> None:
         """Proxied responses should include X-Maxim-Queue-Depth."""
-        import urllib.error
-        import urllib.request
+        from maxim.runtime.leader_proxy import _ProxyHandler
 
-        from maxim.runtime.leader_proxy import start_leader_proxy
+        handler = object.__new__(_ProxyHandler)
+        handler.headers = {}
+        handler.client_address = ("127.0.0.1", 12345)
+        handler.path = "/v1/chat/completions"
+        handler.upstream_url = "http://127.0.0.1:19998"
+        handler.rfile = BytesIO()
+        handler.wfile = BytesIO()
+        handler.lane_metrics = None
+        handler.request_log = None
+        handler._status = []
+        handler._headers = []
+        handler.send_response = lambda status: handler._status.append(status)
+        handler.send_header = lambda key, value: handler._headers.append((key, value))
+        handler.end_headers = lambda: None
 
-        server = start_leader_proxy(
-            proxy_port=18198,
-            upstream_port=19998,
-            bind_host="127.0.0.1",
-        )
-        assert server is not None
+        with (
+            patch(
+                "maxim.utils.http.raw_proxy_forward_streaming",
+                side_effect=ConnectionError("offline test upstream"),
+            ),
+            patch("maxim.runtime.leader_proxy._query_nvidia_smi", return_value=None),
+        ):
+            handler._proxy_request("POST")
 
-        try:
-            # POST to a non-existent upstream — will 502 but headers should be there
-            req = urllib.request.Request(
-                "http://127.0.0.1:18198/v1/chat/completions",
-                data=b'{"test": true}',
-                method="POST",
-                headers={"Content-Type": "application/json"},
-            )
-            try:
-                with urllib.request.urlopen(req, timeout=3) as resp:
-                    depth = resp.headers.get("X-Maxim-Queue-Depth")
-                    assert depth is not None
-            except urllib.error.HTTPError as e:
-                # 502 expected — but check headers
-                depth = e.headers.get("X-Maxim-Queue-Depth")
-                assert depth is not None
-        finally:
-            server.shutdown()
+        assert handler._status == [502]
+        assert ("X-Maxim-Queue-Depth", "0") in handler._headers
