@@ -10,6 +10,12 @@ Step-by-step guide for publishing pymaxim to PyPI.
 
 ## Pre-Publication Checklist
 
+Start in a fresh shell and reserve one unique directory for the exact candidate:
+
+```bash
+export MAXIM_RELEASE_DIR="$(mktemp -d)"
+```
+
 ### 1. Verify simulations work
 
 Run the core scenarios end-to-end to verify the new infrastructure doesn't break existing behavior:
@@ -35,11 +41,28 @@ maxim --sim benchmark --models mistral-7b --campaign scenarios/benchmarks/quick_
 ### 2. Verify tests pass
 
 ```bash
-# Full suite (exclude known slow integration test)
-python -m pytest tests/ -q --ignore=tests/integration/test_memory_hub.py
+# Required fast suite (offline and hermetic)
+python -m pytest tests/ -x -q -m "not slow" \
+  --ignore=tests/integration/test_memory_hub.py
 
-# Expected: 7800+ passed, 0 failed (1 pre-existing flaky ordering issue in test_lane_backends passes in isolation)
+# MemoryHub integration is a separate required gate when its surface changed
+python -m pytest tests/integration/test_memory_hub.py -q
 ```
+
+Expected: zero failures, no network/model downloads, no hardware access, and no
+writes outside the test-owned temporary root. Do not waive an ordering failure as
+"pre-existing." D20's 2026-08-19 reference run completed this exact command with
+9,303 passed, 44 explicit resource/platform skips, and 41 slow deselections.
+
+Pretrained model/dataset checks are a separate, cache-backed opt-in lane:
+
+```bash
+MAXIM_RUN_MODEL_TESTS=1 HF_HOME=/path/to/preloaded/huggingface \
+  python -m pytest tests/ -q -m requires_model_cache
+```
+
+They remain offline unless the operator separately overrides the standard model-
+hub offline variables; they are not part of the correction-release gate.
 
 ### 3. Verify clean import
 
@@ -76,7 +99,7 @@ Known items from Phase 12b that may be blocking:
 ### 5. Verify version consistency
 
 ```bash
-# Both must show the same version (e.g. 1.0.0)
+# Both must show the same version (1.0.9 for this release)
 grep 'version = ' pyproject.toml
 python -c "import maxim; print(maxim.__version__)"
 ```
@@ -84,9 +107,13 @@ python -c "import maxim; print(maxim.__version__)"
 ### 6. Audit the canonical website and PyPI project links
 
 The 1.0.9 correction release makes [pymaxim.bio](https://pymaxim.bio) the
-canonical landing page and [docs.pymaxim.bio](https://docs.pymaxim.bio) the
-canonical documentation site. The historical `dennyschaedig.com/maxim` guides
-remain a migration source, not a second authority.
+canonical site and
+[pymaxim.bio/getting-started](https://pymaxim.bio/getting-started/) the
+documentation entry point. The historical `dennyschaedig.com/maxim` guides
+remain a migration source, not a second authority. `docs.pymaxim.bio` currently
+serves a duplicate homepage; before publication it must redirect every path to
+the corresponding canonical `pymaxim.bio` path, with `/` landing on
+`/getting-started/`.
 
 Complete this audit against the **exact release candidate**, not a moving branch:
 
@@ -119,14 +146,14 @@ The package metadata must contain these exact destinations:
 ```toml
 [project.urls]
 Homepage = "https://pymaxim.bio"
-Documentation = "https://docs.pymaxim.bio"
+Documentation = "https://pymaxim.bio/getting-started/"
 ```
 
 After building, inspect the wheel metadata rather than assuming `pyproject.toml`
 was carried through:
 
 ```bash
-unzip -p dist/pymaxim-1.0.9-py3-none-any.whl \
+unzip -p "$MAXIM_RELEASE_DIR/pymaxim-1.0.9-py3-none-any.whl" \
   'pymaxim-1.0.9.dist-info/METADATA' | grep '^Project-URL:'
 ```
 
@@ -139,28 +166,28 @@ site, a dead documentation URL, or metadata from a different artifact.
 ## Build Steps
 
 ```bash
-# 1. Clean old builds
-rm -rf dist/ build/ *.egg-info
+# 1. Keep using the candidate directory reserved above.
+test -n "$MAXIM_RELEASE_DIR"
 
 # 1b. VENDOR THE CONSOLE UI (release-only step — see below)
 python scripts/vendor_console_ui.py <path-to>/Maxim-pulse/apps/console/dist
 python scripts/vendor_console_ui.py --check     # confirms it took
 
 # 2. Build wheel + sdist
-python -m build
+python -I -m build --outdir "$MAXIM_RELEASE_DIR"
 
 # 3. Validate package metadata
-twine check dist/pymaxim-*
+twine check "$MAXIM_RELEASE_DIR"/pymaxim-*
 # Expected: PASSED for both .whl and .tar.gz
 
 # 4. Confirm the Console bundle actually shipped in the wheel
-python -c "import zipfile,glob; n=zipfile.ZipFile(sorted(glob.glob('dist/pymaxim-*.whl'))[-1]).namelist(); \
+python -c "import glob,os,zipfile; n=zipfile.ZipFile(sorted(glob.glob(os.environ['MAXIM_RELEASE_DIR'] + '/pymaxim-*.whl'))[-1]).namelist(); \
 assert any(x.endswith('console/ui_dist/index.html') for x in n), 'Console UI MISSING from wheel'; print('Console UI: OK')"
 
 # 4. Verify bundled data is in the wheel
 python -c "
-import zipfile, glob
-whl = sorted(glob.glob('dist/pymaxim-*-py3-none-any.whl'))[-1]
+import glob, os, zipfile
+whl = sorted(glob.glob(os.environ['MAXIM_RELEASE_DIR'] + '/pymaxim-*-py3-none-any.whl'))[-1]
 with zipfile.ZipFile(whl) as z:
     data = [f for f in z.namelist() if '_data/' in f]
     print(f'{len(data)} bundled data files')
@@ -212,7 +239,7 @@ cannot drift.
 
 ```bash
 # 1. Upload to Test PyPI
-twine upload --repository testpypi dist/pymaxim-*
+twine upload --repository testpypi "$MAXIM_RELEASE_DIR"/pymaxim-*
 
 # 2. Test install in clean venv
 python -m venv /tmp/test-maxim-install

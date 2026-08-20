@@ -62,9 +62,9 @@ by delaying Oasis two versions.
 | 11 | Annotation S4 non-stationarity analysis | **OPEN — 1.1 GATE**. Offline analysis only; record the result, not merely the analyzer. |
 | 12 | Planning-turn liveness + truthful progress state | **DONE** (D13/D14/D22). Bounded recovery or typed terminal abort, observationally true progress display, and non-zero process/harness propagation for unusable results. |
 | 13 | Stable Python API contract repair | **IN PROGRESS — 1.1 GATE** (D15–D18). D15 `goal`/`robot` and D16 `run()` cleanup are DONE in v1.0.9; D17 complete load semantics and D18 tool-registration lifetime remain OPEN. `home_dir` completeness plus `imagine()`/`campaign()` cleanup stay 1.1.x. |
-| 14 | Hermetic required fast suite | **OPEN — 1.1 GATE** (D20). No network, hardware, model cache, or writes outside the test root by default. |
+| 14 | Hermetic required fast suite | **DONE in v1.0.9** (D20). Unique temporary user/config/cache roots, offline model-hub defaults, explicit pretrained-asset opt-in, per-test path-cache reset, and the wider CI gate are executable. |
 | 15 | Architecture-audit enforcement | **OPEN — 1.1 GATE** (D19). Classify the 33 current findings, store a reviewed accepted-debt baseline, and fail CI on additions. Zero debt is 1.1.x, not a release blocker. |
-| 16 | Release, website, and agent-guidance truth | **OPEN — 1.1 DOCS GATE; pymaxim.bio audit is also a 1.0.9 publication gate.** One release ledger, realistic version policy, synchronized changelog/tag/GitHub/PyPI cut, one canonical agent-guidance source, and one canonical public website. Audit `pymaxim.bio`/`docs.pymaxim.bio` against the exact release artifact, migrate or redirect every legacy deep link, then verify PyPI renders the new Homepage and Documentation metadata. |
+| 16 | Release, website, and agent-guidance truth | **OPEN — 1.1 DOCS GATE; D24 blocks the 1.0.9 publication transaction.** The 38-route live content audit is DONE and its cross-repo handoff is recorded; maxim-web corrections, path-preserving `docs.pymaxim.bio` redirects, visual/accessibility verification, exact-wheel command checks, legacy deep-link migration, and post-upload PyPI link verification remain. Repo metadata now points directly to the canonical getting-started route. |
 
 The remaining scope is release closure, not a new feature phase. Estimates belong on
 the implementation PRs after each item's failing contract test exists; this roadmap
@@ -76,8 +76,7 @@ from the claims-verification round — blocking vs 1.1.x *within* the gated item
 - **Blocking for the 1.1 cut:** ~~D15's `goal`/`robot` and D16 for `run()`~~
   **DONE in v1.0.9**; D17 (partial restore + corrupt-state swallows on the
   stable load path), D18 (documented contract silently one-shot),
-  D20 in full (network/cache isolation, the wider CI suite, and temporary data-home
-  isolation), item 15's baseline+CI gate (cheap), and item 16 — which now explicitly
+  item 15's baseline+CI gate (cheap), and item 16 — which now explicitly
   includes correcting the **false
   "shipped to PyPI" claims**: PyPI's latest release is 1.0.0; v1.0.1–v1.0.6 are
   git-tag-only and both CLAUDE.md and the CHANGELOG said otherwise.
@@ -95,10 +94,9 @@ from the claims-verification round — blocking vs 1.1.x *within* the gated item
 
 1. **DONE — D13/D14/D22:** planning liveness, observationally true display, and
    trustworthy terminal-status propagation now unblock long heartbeat runs.
-2. **Stable API + hermetic tests in parallel:** D15 and `run()`'s D16 slice are
-   DONE with facade, registry-lifecycle, and controller guards; finish D17/D18
-   and isolate D20's
-   home/network/model state.
+2. **Stable API + hermetic tests:** D15, `run()`'s D16 slice, and D20 are DONE
+   with facade, registry-lifecycle, controller, temporary-state, offline-model,
+   and wider-CI guards; finish D17/D18.
 3. **Persistence/architecture correctness:** D2 atomic invalidation and D19's
    accepted-debt baseline/regression gate.
 4. **Evidence closure:** record S4, run Big-Model and hardware heartbeat chapters,
@@ -255,9 +253,11 @@ Each POINTS at its owning plan — stages live there, not here:
 13. **Dormant-path decisions for D6/D9** — either wire and behaviorally graduate
     Hebbian multi-node binding / temporal-event producers, or mark the unused contract
     dormant and stop implying it learns in production.
-14. **Published-support truth** — test the Python versions claimed by
-    `requires-python`, or narrow the claim; reconcile the declared core dependencies
-    and API verb count across package and guidance docs.
+14. **Published-support truth** — **PARTIAL in v1.0.9:** lightweight CI
+    install/import/CLI lanes now cover Python 3.10, 3.11, 3.13, and 3.14 while
+    the full suite covers 3.12; contributor guidance now matches the seven core
+    dependencies and 17 API verbs declared by the package. Keep dependency and
+    verb-count drift checks executable as those surfaces change.
 
 ## Gates before 1.2 Oasis + Hivemind
 

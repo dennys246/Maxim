@@ -327,9 +327,14 @@ def _resolve_maxim_binary() -> str:
     where a globally-installed `maxim` shadows the dev venv)."""
     global _MAXIM_BIN_CACHE
     if _MAXIM_BIN_CACHE is None:
-        resolved = shutil.which("maxim")
+        # Prefer the console script installed beside the active interpreter.
+        # A bare PATH lookup can miss the current venv and silently select a
+        # globally installed Maxim instead.
+        resolved = shutil.which("maxim", path=str(Path(sys.executable).parent))
         if resolved is None:
-            raise RuntimeError("Could not locate `maxim` on PATH. Activate the venv or pip-install.")
+            resolved = shutil.which("maxim")
+        if resolved is None:
+            raise RuntimeError("Could not locate `maxim` beside the active Python or on PATH. Install pymaxim first.")
         _MAXIM_BIN_CACHE = resolved
     return _MAXIM_BIN_CACHE
 
@@ -1657,9 +1662,7 @@ def main(argv: list[str] | None = None) -> int:
     from _provenance import ProvenanceError, assert_repo_interpreter
 
     try:
-        assert_repo_interpreter(
-            Path(__file__).resolve().parent.parent, _resolve_maxim_binary(), exempt=False
-        )
+        assert_repo_interpreter(Path(__file__).resolve().parent.parent, _resolve_maxim_binary(), exempt=False)
     except ProvenanceError as exc:
         print(f"PREFLIGHT FAIL: {exc}", file=sys.stderr)
         return 3

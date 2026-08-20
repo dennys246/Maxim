@@ -1,7 +1,8 @@
 # maxim-web
 
-The **public front door** for Maxim: the landing page (`pymaxim.bio`) + the docs
-(`docs.pymaxim.bio`). A static site — **Astro + Starlight**, deployed on **Cloudflare Pages**.
+The **public front door** for Maxim: landing and docs under `pymaxim.bio`.
+`docs.pymaxim.bio` is a permanent redirect alias. The site is static — **Astro +
+Starlight**, deployed on **Cloudflare Pages**.
 
 ## Where this sits in the ecosystem
 
@@ -20,7 +21,8 @@ stay code-adjacent in `pymaxim/docs` — see "Docs source" below).
 - **Astro** (content-first, fast static output) + **Starlight** (the docs theme).
 - Markdown/MDX content. React components can be dropped in where interactivity is wanted
   (consistent with maxim-pulse's stack), but default to static.
-- Build → `dist/` → **Cloudflare Pages** (custom domains `pymaxim.bio` + `docs.pymaxim.bio`).
+- Build → `dist/` → **Cloudflare Pages** (`pymaxim.bio` canonical;
+  `docs.pymaxim.bio` redirects path-preservingly).
 
 ## Proposed structure
 
@@ -30,7 +32,7 @@ maxim-web/
 ├─ package.json
 ├─ src/
 │  ├─ pages/index.astro    # the landing (hero + links) at the apex
-│  └─ content/docs/        # Starlight docs (getting-started, guides…) → docs.pymaxim.bio
+│  └─ content/docs/        # Starlight docs (getting-started, guides…) under pymaxim.bio
 ├─ public/                 # favicon, og image, static assets
 ├─ LICENSE                 # Apache-2.0 (copy from pymaxim); optional CC-BY-4.0 for docs content
 └─ README.md
@@ -38,10 +40,11 @@ maxim-web/
 
 ## Domains
 
-- `pymaxim.bio` → the landing (`src/pages/index.astro`).
-- `docs.pymaxim.bio` → the Starlight docs (`src/content/docs/`).
-- Both served by one Cloudflare Pages project (or two — a Pages project can host both with a
-  base-path split, or run docs as a Starlight sub-site; decide when wiring Pages).
+- `pymaxim.bio` → the landing plus Starlight docs under normal paths.
+- `docs.pymaxim.bio/<path>` → permanent redirect to
+  `pymaxim.bio/<path>`; `/` redirects to `pymaxim.bio/getting-started/`.
+- Never serve the same HTML from both hosts. Duplicate origins split canonical,
+  analytics, link, and search truth.
 
 ## Docs source (a decision to defer — don't block the bare version on it)
 
@@ -55,20 +58,24 @@ existing guides. Migrate/curate the real guides as a follow-up once the shell is
 ## Homepage hero (seed copy — refine, don't overclaim; the project values honesty)
 
 - **Name:** Maxim
-- **Tagline:** *A bio-inspired cognitive architecture for AI agents — embodied sensation,
-  homeostatic drives, and brain-modeled memory that learns across sessions without fine-tuning.*
+- **Tagline:** *A bio-inspired LLM harness with embodied sensation, homeostatic
+  drives, and persistent experience-grounded context across sessions — without
+  fine-tuning model weights.*
 - **Install:** `pip install pymaxim`
 - **Primary links:** GitHub (`github.com/dennys246/Maxim`) · PyPI (`pypi.org/project/pymaxim`)
-  · Docs (`docs.pymaxim.bio`) · (later) the Reachy app on Hugging Face.
-- **Voice:** honest and specific over hype. Maxim's differentiator is *cross-session learning
-  without fine-tuning* + embodiment — say that plainly; don't inflate it.
+  · Docs (`pymaxim.bio/getting-started/`) · (later) the Reachy app on Hugging Face.
+- **Voice:** honest and specific over hype. The default LLM-primary path is
+  augmented by persisted substrate context; do not imply general prior override
+  or biological fidelity.
 
 ## Deploy (Cloudflare Pages)
 
 1. `pnpm build` (or `npm run build`) → `dist/`.
 2. Cloudflare → Workers & Pages → create Pages project from this repo (build command
    `astro build`, output `dist`).
-3. Custom domains → add `pymaxim.bio` (+ `docs.pymaxim.bio`) — Pages auto-creates DNS.
+3. Custom domains → add `pymaxim.bio`. Configure `docs.pymaxim.bio` as the
+   path-preserving permanent redirect alias described above; verify it never
+   serves duplicate HTML.
 
 ## Standards
 

@@ -94,6 +94,7 @@ def _prepare_mug_test_hippocampus():
 
 
 class TestP4MugTestRoundTrip:
+    @pytest.mark.requires_model_cache
     def test_real_clip_mug_test_survives_session_snapshot_round_trip(self) -> None:
         pytest.importorskip("sentence_transformers")
         pytest.importorskip("torchvision")

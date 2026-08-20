@@ -52,9 +52,10 @@ def no_probe_clear(monkeypatch):
 
 @pytest.fixture
 def no_proxy_ping(monkeypatch):
-    """Prevent proxy ping from making real HTTP calls."""
-    mock = MagicMock(return_value=None)
+    """Report immediate recovery without network calls or backoff sleeps."""
+    mock = MagicMock(return_value={"llm_ready": True})
     monkeypatch.setattr("maxim.peer.cli._check_proxy_ping", mock)
+    monkeypatch.setattr("time.sleep", MagicMock())
     return mock
 
 
@@ -216,6 +217,7 @@ class TestRestartOnTarget:
         call_args = mock.call_args
         assert "/v1/admin/restart" in call_args[0][0]
         assert call_args[1]["json"]["delay_s"] == 1.5
+        no_proxy_ping.assert_called_once()
 
     def test_auth_failure_returns_1(self, no_probe_clear, capsys):
         from maxim.peer.admin_core import restart_on_target

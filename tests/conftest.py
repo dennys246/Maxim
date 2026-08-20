@@ -5,8 +5,11 @@ This module provides reusable fixtures for testing core components.
 
 from __future__ import annotations
 
+import atexit
 import os
+import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Mapping
@@ -17,28 +20,73 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-# Isolate the L2 user-profile loader (leader_ux_profile_management.md)
-# from the developer's real ~/.config/maxim/profiles.yml. The loader
-# fires at maxim.models.language.config import time, which happens
-# transitively via many test files. Point XDG_CONFIG_HOME at an empty
-# tmp directory BEFORE any maxim import so the import-time merge sees
-# no operator profiles. Shared across parallel pytest workers — they
-# just need an empty dir; no contention concern.
-#
-# Pre-merge architecture review caught this as a missing scrub paired
-# with a new module-import side-effect path (the CLAUDE.md
-# "opt-in env vars in hot startup paths need autouse scrubs" pattern,
-# generalized from env vars to import-time config files).
-import tempfile as _tempfile  # noqa: E402
+# Establish one process-scoped test root before any Maxim import. Redirecting
+# HOME isolates both canonical default data paths and legacy direct
+# ``Path.home()`` paths, including subprocesses and atexit persistence. We do
+# not export MAXIM_DATA_HOME here: config-precedence tests must still see that
+# operator override as absent unless they set it themselves.
+_TEST_ISOLATION_ROOT = Path(tempfile.mkdtemp(prefix="maxim-tests-"))
+_TEST_HOME = _TEST_ISOLATION_ROOT / "home"
+_TEST_HOME.mkdir(parents=True)
 
-_PROFILE_ISOLATION_DIR = Path(_tempfile.gettempdir()) / "maxim-test-empty-xdg-config"
-_PROFILE_ISOLATION_DIR.mkdir(parents=True, exist_ok=True)
-os.environ["XDG_CONFIG_HOME"] = str(_PROFILE_ISOLATION_DIR)
+os.environ["HOME"] = str(_TEST_HOME)
+os.environ["XDG_CONFIG_HOME"] = str(_TEST_ISOLATION_ROOT / "xdg-config")
+os.environ["XDG_CACHE_HOME"] = str(_TEST_ISOLATION_ROOT / "xdg-cache")
+
+_MODEL_TESTS_ENABLED = os.environ.get("MAXIM_RUN_MODEL_TESTS", "").strip().lower() in {"1", "true", "yes", "on"}
+if _MODEL_TESTS_ENABLED:
+    # Explicit opt-in may point at a preloaded external cache. Offline remains
+    # the default; callers must separately and deliberately enable downloads.
+    os.environ.setdefault("HF_HOME", str(_TEST_ISOLATION_ROOT / "huggingface"))
+    os.environ.setdefault("TORCH_HOME", str(_TEST_ISOLATION_ROOT / "torch"))
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+else:
+    os.environ["HF_HOME"] = str(_TEST_ISOLATION_ROOT / "huggingface")
+    os.environ["TORCH_HOME"] = str(_TEST_ISOLATION_ROOT / "torch")
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
+# Registered before runtime routers register their CostTracker flushes. Python
+# executes atexit callbacks LIFO, so late persistence lands first and this root
+# is removed last.
+atexit.register(shutil.rmtree, _TEST_ISOLATION_ROOT, ignore_errors=True)
 
 # Multi-agent isolation fixture (P4 rule, CLAUDE.md L43). Importing
 # the module is enough to register the `multi_agent_modes` fixture for
 # all tests via the `pytest_plugins` mechanism below.
 pytest_plugins = ["tests.multi_agent_fixtures"]
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Keep pretrained-model and dataset-cache tests opt-in.
+
+    Having an optional ML package installed is not evidence that its weights are
+    available locally. Without this collection gate, developer caches can make
+    the required fast suite attempt a live model download.
+    """
+    del config
+    if _MODEL_TESTS_ENABLED:
+        return
+
+    skip = pytest.mark.skip(
+        reason="requires pretrained model/dataset assets; set MAXIM_RUN_MODEL_TESTS=1 with a local cache"
+    )
+    for item in items:
+        if "requires_model_cache" in item.keywords:
+            item.add_marker(skip)
+
+
+@pytest.fixture(autouse=True)
+def _reset_maxim_path_caches() -> None:
+    """Prevent one test's MAXIM_DATA_HOME override from surviving in caches."""
+    from maxim.utils.paths import _reset_caches
+
+    _reset_caches()
+    try:
+        yield
+    finally:
+        _reset_caches()
 
 
 @pytest.fixture(autouse=True)

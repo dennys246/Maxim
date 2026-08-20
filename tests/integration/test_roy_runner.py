@@ -979,6 +979,14 @@ class TestPreflightHelper:
             return fake_cfg
 
         monkeypatch.setattr("maxim.peer.config.read_peer_config", fake_read_peer_config)
+        # A normal peer.yml-only install is auto-migrated into config.json
+        # before preflight. Simulate the documented leader-with-cloudflared
+        # case where migration is intentionally skipped so this test reaches
+        # the legacy peer.yml fallback it is meant to guard.
+        monkeypatch.setattr(
+            "maxim.runtime.role._cloudflared_config_exists",
+            lambda: Path("/test/cloudflared/config.yml"),
+        )
 
         captured: dict[str, Any] = {}
 

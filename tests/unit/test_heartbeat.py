@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from unittest.mock import MagicMock, patch
 
 from maxim.runtime.system_metrics import (
     collect_all,
@@ -41,6 +42,28 @@ class TestSystemMetrics:
         assert mem["total_gb"] > 0
         assert mem["used_gb"] >= 0
         assert 0 <= mem["usage_pct"] <= 100
+
+    def test_macos_memory_falls_back_when_sysctl_is_blocked(self) -> None:
+        from maxim.runtime.system_metrics import _memory_macos
+
+        denied = MagicMock(returncode=1, stdout="")
+        vm_stat = MagicMock(
+            returncode=0,
+            stdout=(
+                "Mach Virtual Memory Statistics: (page size of 4096 bytes)\nPages free: 100.\nPages inactive: 200.\n"
+            ),
+        )
+        page_size = MagicMock(returncode=1, stdout="")
+
+        with (
+            patch("maxim.runtime.system_metrics.subprocess.run", side_effect=[denied, vm_stat, page_size]),
+            patch("maxim.runtime.system_metrics.os.sysconf", side_effect=[1_000_000, 4096]),
+        ):
+            mem = _memory_macos()
+
+        assert mem is not None
+        assert mem["total_gb"] > 0
+        assert mem["used_gb"] >= 0
 
     def test_collect_disk(self) -> None:
         disk = collect_disk()

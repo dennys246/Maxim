@@ -1,6 +1,8 @@
 # Exp 42 — Substrate-Primary Preference: does the unmasked substrate learn to prefer the safe source over the harmful one? (GRADUATE — frozen result folded; gating-OFF ablation graduates identically → B7 redundant, B8 load-bearing)
 
-**Status:** DRAFT — not frozen, not fired. Metrics freeze on authorization **after** Phase-0 triage confirms measurability (the Exp 41 discipline: never freeze a metric that can floor).
+**Status:** FIRED 2026-06-23 — **GRADUATE #6**; MAINTAINED by the
+[Exp 42b](42b_drive_pain_fold_revalidation.md) re-validation on 2026-07-29.
+The pre-fire draft and frozen decision rules remain below as the historical record.
 **Graduates:** [behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md) Tier 1 row **#6** (substrate-primary AUT mode).
 **Builds on:** [41_substrate_primary_exploration.md](41_substrate_primary_exploration.md) (VOID — see §1). Reuses the shipped exploration policy ([../plans/substrate_exploration_policy.md](../plans/archive/substrate_exploration_policy.md)), drive-need derivation, scene-harm wiring (B4/B5), cold body, and the dedicated harness/analyzer pattern.
 

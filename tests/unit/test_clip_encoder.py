@@ -29,6 +29,7 @@ def test_import_does_not_require_semantic_extra() -> None:
     assert encoder._model is None
 
 
+@pytest.mark.requires_model_cache
 def test_encode_image_returns_512d_numpy_array() -> None:
     pytest.importorskip("sentence_transformers")
     pytest.importorskip("PIL")
@@ -54,6 +55,7 @@ def test_encode_image_returns_512d_numpy_array() -> None:
     assert float(np.linalg.norm(embedding)) > 0.0
 
 
+@pytest.mark.requires_model_cache
 def test_encode_text_returns_512d_numpy_array() -> None:
     pytest.importorskip("sentence_transformers")
 
@@ -69,6 +71,7 @@ def test_encode_text_returns_512d_numpy_array() -> None:
     assert float(np.linalg.norm(embedding)) > 0.0
 
 
+@pytest.mark.requires_model_cache
 def test_encode_image_and_text_share_embedding_space() -> None:
     """CLIP's whole point: a text string and a matching image land close
     together in the same 512-dim space. This is the precondition for
@@ -101,6 +104,7 @@ def test_encode_image_and_text_share_embedding_space() -> None:
     assert -1.0 <= cos_sim <= 1.0
 
 
+@pytest.mark.requires_model_cache
 def test_singleton_cache_reuses_model_across_instances() -> None:
     """Two ``VisionEncoder`` instances with the same model_name must
     share the underlying SentenceTransformer — instantiating multiple

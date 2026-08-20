@@ -160,8 +160,14 @@ explicit marker and opt-in CI job.
 
 ### Disposition
 
-**1.1 release gate.** A release cannot claim the required suite is green if the
-documented command is environment-dependent.
+**FIXED for 1.1 in v1.0.9 (2026-08-19).** The default pytest process now uses a
+unique temporary HOME/config/cache root inherited by subprocesses, resets Maxim
+path caches between tests, and keeps Hugging Face/Transformers offline. Tests
+requiring pretrained model or dataset assets carry `requires_model_cache` and
+need explicit `MAXIM_RUN_MODEL_TESTS=1` opt-in. CI runs the same wider fast-suite
+command as the contributor guide. The exact command completed locally with
+9,303 passed, 44 explicit resource/platform skips, and 41 slow deselections in
+4m57s.
 
 ## Additional hardening findings
 

@@ -1,6 +1,12 @@
 # Exp 48 — Does the extero/intero seam make the EMBODIED infant orient?
 
-**Status:** PRE-REGISTERED (2026-07-23). Runs after the extero/intero multi-modality seam (PR #411, `26d8f901`). Pre-registration is authoritative; fill Results/Verdict only from a completed run whose `git_hash` contains the seam.
+**Status:** FIRED; **PARTIAL after apparatus-v2 re-baseline** (2026-08-14,
+sweep completed 2026-08-18). MOTHER-TAUGHT re-earned at `0.649 vs 0.167`
+(`+0.482`); LEARNED-v2 failed (`0.649 < 0.65`, rise `+0.104 < 0.15`). The
+completed sweep attributes directedness to credit-tipped phase-locked attractor
+selection rather than graded orienting skill. The original pre-registration and
+retired v1-apparatus result remain below as the historical record; cite the
+apparatus-v2 section.
 
 ## The one-sentence question
 

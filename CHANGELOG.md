@@ -84,11 +84,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   does not stop the service loop automatically, and `goal=None` installs no stdin
   reader. Full `home_dir` ownership and equivalent cleanup for
   `imagine()`/`campaign()` remain explicitly tracked as 1.1.x hardening.
+- **Hermetic required fast suite (D20)** — pytest now runs under a unique
+  temporary HOME/config/cache root inherited by subprocesses, resets cached
+  Maxim paths between tests, defaults model hubs to offline mode, and requires
+  explicit `MAXIM_RUN_MODEL_TESTS=1` opt-in for pretrained model/dataset assets.
+  CI now executes the documented full `tests/ -m "not slow"` gate instead of
+  only `tests/unit/`. Hidden host dependencies found by the wider run were
+  removed: benchmark CLI resolution follows the active interpreter, cloud URL
+  wiring tests no longer perform DNS, proxy admission tests no longer bind real
+  sockets, restart tests skip production backoff waits, and macOS memory metrics
+  fall back to POSIX `sysconf` when sandbox policy blocks the `sysctl` command.
+- **Published Python/dependency contract** — lightweight CI install/import/CLI
+  lanes now exercise Python 3.10, 3.11, 3.13, and 3.14 while the full suite runs
+  on 3.12. Contributor guidance now matches the wheel's seven declared core
+  dependencies instead of incorrectly naming only four.
 - **Canonical project website** — package metadata and the PyPI-rendered README
-  now point to `pymaxim.bio` for the landing page and `docs.pymaxim.bio` for
-  documentation. The release checklist requires a full content, claim, command,
-  migration/redirect, and link audit before those sites are treated as the
-  authoritative replacement for the legacy long-form guides.
+  now point to `pymaxim.bio` for the landing page and the canonical
+  `pymaxim.bio/getting-started/` documentation entry point. The release checklist
+  requires a full content, claim, command, migration/redirect, and link audit
+  before the site is treated as the authoritative replacement for the legacy
+  long-form guides. `docs.pymaxim.bio` must redirect path-preservingly instead of
+  serving duplicate canonical content.
 
 ## [1.0.8] - 2026-08-19
 

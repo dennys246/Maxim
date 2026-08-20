@@ -168,7 +168,36 @@ Companion reproduction runbooks are in [protocols/](protocols/).
 
 | Entry | Date | Status | Decision |
 |---|---|---|---|
-| [37_cross_session_graduation.md](37_cross_session_graduation.md) | 2026-05-30 (pre-reg) | pre-registered, in flight | **PRIMARY 1.0 GATE.** Cross-session behavioral delta (fire avoidance) via cradle + Exp 37 harness. Metric: `positive_approach_engagement_fraction`; statistical test: SD-shift. Decision pending trial execution. |
+| [37_cross_session_graduation.md](37_cross_session_graduation.md) | 2026-05-30 → 2026-06-13 | fired; mixed/partial | Cross-session memory persists, but behavioral shift is Goldilocks-dependent and does not establish general prior override. See the cross-model row below. |
+
+### Post-1.0 substrate, embodiment, and heartbeat experiments (38–50)
+
+This index is generated manually from the experiment records and therefore does
+not publish a hard-coded total. Status in the linked record wins if this summary
+ever drifts.
+
+| Entry | Date | Status | Decision |
+|---|---|---|---|
+| [37_cross_model_results.md](37_cross_model_results.md) | 2026-06-13 | in progress; four local-model fires complete | Substrate visibility is Goldilocks-dependent; the R1 variant produced the first clean Wire-A attribution. Deferred cloud comparisons are not results. |
+| [38_counter_prior_substrate.md](38_counter_prior_substrate.md) | 2026-06-13 | fired | Across the completed model set, carried substrate did not override a strong wrong prior. |
+| [39_substrate_primary_counter_prior.md](39_substrate_primary_counter_prior.md) | 2026-06-13 | pre-registered predecessor | Frozen counter-prior design; the executable line continued through Exp 41/42. |
+| [40_counter_prior_goldilocks.md](40_counter_prior_goldilocks.md) | 2026-06-16 | fired | Counter-prior dominance also held on Qwen2.5-32B, where the prior-aligned task had shown headroom. |
+| [41_substrate_primary_exploration.md](41_substrate_primary_exploration.md) | 2026-06-19 | void | Mechanism operated, but the experiment could not isolate exploration and the primary metric floored. |
+| [42_substrate_primary_preference.md](42_substrate_primary_preference.md) | 2026-06-23 | **graduate; maintained** | Substrate-primary safe-vs-harm discrimination passed; scope is discrimination without an LLM, not override of an LLM prior. |
+| [42b_drive_pain_fold_revalidation.md](42b_drive_pain_fold_revalidation.md) | 2026-07-29 | fired + verified | Exp 42's graduation held post-fold; the saturated metric detects breakage but not moderate degradation. |
+| [43_gaze_operant_substrate.md](43_gaze_operant_substrate.md) | 2026-06-28 | complete feasibility study | EC category generalization beat the lookup baseline in simulation; no production behavior claim. |
+| [44_substrate_counterfactual.md](44_substrate_counterfactual.md) | 2026-07-28 | exploratory | Counterbalanced positive at modest N; not EARNED-clean. |
+| [44b_pilot.md](44b_pilot.md) | 2026-08-10 | pilot complete; not a result | Apparatus works, but name-mismatched control and non-independent axes must be resolved before confirmatory freeze. |
+| [45_reachy_orient_live.md](45_reachy_orient_live.md) | 2026-07-15 | complete | Live substrate-primary direction learning; current graduation scope and healthy-hardware caveats live in the behavioral ledger. |
+| [45b_orient_magnitude.md](45b_orient_magnitude.md) | 2026-07-16 | pass on recorded hardware | Magnitude mechanism result; interpret with the later hardware/DoA re-characterization. |
+| [45c_flip_bins.md](45c_flip_bins.md) | 2026-07-16 | pass on recorded hardware | Derived bin boundary removed the measured magnitude ceiling. |
+| [45d_magnitude_replication.md](45d_magnitude_replication.md) | 2026-07-23 | complete | Replication and cross-session policy transfer recorded. |
+| [45e_orient_s4_population_readout.md](45e_orient_s4_population_readout.md) | 2026-07-27 | complete | Population readout resolved the recorded cell-starvation ceiling. |
+| [46_operant_orient_creche.md](46_operant_orient_creche.md) | 2026-07-22 | complete | Scripted operant learning and NAc merge/federation, with no LLM in the action path. |
+| [47_habituation_novel_in_noise.md](47_habituation_novel_in_noise.md) | 2026-07-22 | complete | Scripted habituation enabled novelty detection under dense noise. |
+| [48_cradle_mother_seam.md](48_cradle_mother_seam.md) | 2026-08-14 → 2026-08-18 | **partial, apparatus-v2** | Mother effect re-earned; LEARNED-v2 failed and the sweep indicates credit-tipped phase locking, not graded orienting. Retired v1 numbers are not current evidence. |
+| [49_two_joint_centering.md](49_two_joint_centering.md) | 2026-08-04 | complete | H1 supported; H2 and H3 passed after corrected credit attribution. |
+| [50_readaptation_after_plant_change.md](50_readaptation_after_plant_change.md) | 2026-08-07 | pre-registered | No result yet; runs only after its healthy-hardware preconditions. |
 
 ### V1 phased attribution
 
