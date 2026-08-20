@@ -62,6 +62,19 @@ If any step fails, do not proceed.
 export MAXIM_RELEASE_DIR="$(mktemp -d)"
 
 # Build wheel + sdist
+# setuptools' scratch tree is NOT pruned between builds and is NOT what
+# --outdir controls: build_py copies the package into ./build/lib and ships
+# whatever it finds there. A file deleted from src/ but still sitting in
+# build/lib lands in the wheel. That is the documented mechanism behind
+# "15 dead modules (~8,500 LOC) shipping in the wheel" — and a repo-root
+# build/ tree from an earlier run is the normal state, not the exception.
+# Measured 2026-08-20: the DEFAULT command below (sdist -> wheel) is protected
+# by the sdist round-trip and did NOT pick up a planted build/lib/maxim/
+# module. But `--wheel` and `--no-isolation` build in place and BOTH shipped
+# it. Those are one habit away, so clean first rather than depending on which
+# build mode someone reaches for.
+rm -rf build/ *.egg-info
+
 python -I -m build --outdir "$MAXIM_RELEASE_DIR"
 
 # Validate metadata renders + license file is included

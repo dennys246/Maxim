@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 FIXTURE_PATH = Path(__file__).parent.parent.parent / "scenarios" / "substrate" / "paraphrase_clusters.yaml"
 # Sweep output no longer lands here directly — see the publish_sweep_results
-# fixture in tests/substrate/conftest.py (bugs ledger D24).
+# fixture in tests/substrate/conftest.py (bugs ledger D25).
 
 
 def _has_sentence_transformers() -> bool:
@@ -46,7 +46,7 @@ class TestP1RecognitionSweep:
 
     @pytest.fixture(autouse=True)
     def _require_real_encoder(self) -> None:
-        """Refuse to measure on the hash fallback (bugs ledger D25).
+        """Refuse to measure on the hash fallback (bugs ledger D26).
 
         Without this the sweep still produces numbers, and they read as a
         substrate regression rather than a missing model.
@@ -133,7 +133,7 @@ class TestP1RecognitionSweep:
         print(f"  Seeds passing individually: {seeds_passing}/{len(results)}")
         print(f"{'=' * 60}")
 
-        # Save results (D24: tmp by default; --write-experiment-results to
+        # Save results (D25: tmp by default; --write-experiment-results to
         # update the committed S4 record deliberately).
         publish_sweep_results("p1_recognition_sweep.json", summary)
 
@@ -237,10 +237,15 @@ class TestP1RecognitionSweep:
                 atl=ATL(),
                 config=EncoderConfig(model_name=model_name),
             )
-            try:
-                warmup_encoder.embed("warmup")
-            except Exception as e:
-                print(f"\n⚠ Skipping {model_name}: {e}")
+            # `embed` does NOT raise when the model is missing — it returns
+            # hash-fallback vectors, so this guard used to be dead code and the
+            # arm printed a full comparison table for a model it never loaded
+            # (D26, one level below the class-wide assertion, which only covers
+            # the default model). Check the realized state instead of waiting
+            # for an exception that never comes.
+            warmup_encoder.embed("warmup")
+            if warmup_encoder.using_fallback:
+                print(f"\n⚠ Skipping {model_name}: encoder fell back to hash embeddings (weights unavailable)")
                 continue
 
             print(f"\n{'=' * 80}")

@@ -51,8 +51,10 @@ python -m pytest tests/integration/test_memory_hub.py -q
 
 Expected: zero failures, no network/model downloads, no hardware access, and no
 writes outside the test-owned temporary root. Do not waive an ordering failure as
-"pre-existing." D20's 2026-08-19 reference run completed this exact command with
-9,303 passed, 44 explicit resource/platform skips, and 41 slow deselections.
+"pre-existing." Do NOT treat a specific pass/skip count as the expectation: skip counts are
+environment-dependent by construction (installed extras, platform, model
+cache), and the totals move with every added test. Judge the run by
+**exit code 0 with zero failures**, plus a clean `git status` afterwards.
 
 Pretrained model/dataset checks are a separate, cache-backed opt-in lane:
 
@@ -174,6 +176,19 @@ python scripts/vendor_console_ui.py <path-to>/Maxim-pulse/apps/console/dist
 python scripts/vendor_console_ui.py --check     # confirms it took
 
 # 2. Build wheel + sdist
+# setuptools' scratch tree is NOT pruned between builds and is NOT what
+# --outdir controls: build_py copies the package into ./build/lib and ships
+# whatever it finds there. A file deleted from src/ but still sitting in
+# build/lib lands in the wheel. That is the documented mechanism behind
+# "15 dead modules (~8,500 LOC) shipping in the wheel" — and a repo-root
+# build/ tree from an earlier run is the normal state, not the exception.
+# Measured 2026-08-20: the DEFAULT command below (sdist -> wheel) is protected
+# by the sdist round-trip and did NOT pick up a planted build/lib/maxim/
+# module. But `--wheel` and `--no-isolation` build in place and BOTH shipped
+# it. Those are one habit away, so clean first rather than depending on which
+# build mode someone reaches for.
+rm -rf build/ *.egg-info
+
 python -I -m build --outdir "$MAXIM_RELEASE_DIR"
 
 # 3. Validate package metadata
@@ -308,11 +323,11 @@ comm -23 \
 # Any output = a released version with no tag.
 ```
 
-As of 2026-08-19 that check reports **12** untagged released versions
-(`0.1.0`–`0.5.0`, `0.9.2`, `0.9.3`, `1.0.7`–`1.0.9`): the gap is older and wider
-than the 1.0.1–1.0.6 reconstruction found. Backfilling the pre-1.0 tags is
-optional archaeology, but **every version from 1.0.7 on must be tagged** — those
-commits are all still identifiable on `main`.
+The historical backlog this check found was reconstructed and pushed on
+2026-08-20 (`scripts/audit_release_tags.py --write-tags`), so the tag chain is
+now unbroken through v1.0.8. The check should therefore report only the
+in-development version until it is published — any OTHER output means a
+release shipped without a tag.
 
 ---
 
@@ -368,6 +383,7 @@ pip install twine
 | git tag | `vX.Y.Z` on the published commit | created at publish time, never deferred |
 | `CLAUDE.md` | "Current version:" line under *Active initiatives* | version + true PyPI state |
 | `docs/plans/README.md` | "Current version:" line at the top | version + true PyPI state |
+| `docs/index.md` | "Release candidate / Published on PyPI" banner | version + true PyPI state |
 
 The last two are prose, so nothing fails loudly when they drift — and they drift
 in the *confessional* direction ("PyPI still serves X"), which readers trust more

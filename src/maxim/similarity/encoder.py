@@ -91,7 +91,7 @@ def require_semantic_encoder(model_name: str = "paraphrase-mpnet-base-v2", *, co
     a validation sweep running on hash embeddings still produces numbers, and
     those numbers look like a substrate regression rather than a missing model.
 
-    Observed 2026-08-20 (bugs ledger D25): with the weights absent,
+    Observed 2026-08-20 (bugs ledger D26): with the weights absent,
     ``test_p1_recognition`` reported "Substrate only beats random by -0.9%,
     need >30pp" — the exact shape of a genuine failure of the project's central
     claim. Nothing distinguished "the substrate is broken" from "the encoder
@@ -120,9 +120,12 @@ def require_semantic_encoder(model_name: str = "paraphrase-mpnet-base-v2", *, co
         f"{context}: refusing to measure — the encoder '{model_name}' did not load, so "
         f"embeddings would come from the deterministic hash fallback, which cannot "
         f"represent paraphrase similarity. Any metric produced here would be an artifact "
-        f"of the missing model, not a property of the substrate. Fix: install the "
-        f"'semantic' extra, or pre-populate the model cache and unset HF_HUB_OFFLINE / "
-        f"TRANSFORMERS_OFFLINE.",
+        f"of the missing model, not a property of the substrate. Fixes, most likely "
+        f"first: (1) point HF_HOME at your populated cache — the test suite "
+        f"redirects HOME/HF_HOME to a temp root by default, so an installed extra "
+        f"and a warm ~/.cache can both be present and still unreachable; "
+        f"(2) install the 'semantic' extra; (3) pre-populate the cache, or unset "
+        f"HF_HUB_OFFLINE / TRANSFORMERS_OFFLINE to allow a download.",
         model_name=model_name,
     )
 

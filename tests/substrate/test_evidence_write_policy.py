@@ -1,15 +1,15 @@
-"""Evidence-integrity guards (bugs ledger D24 + D25).
+"""Evidence-integrity guards (bugs ledger D25 + D26).
 
 Substrate sweeps produce EVIDENCE — the numbers in `docs/experiments/results/`
 back graduated behavioral claims. Two failure modes, both observed live on
 2026-08-20, are guarded here:
 
-D24 — the sweeps wrote those committed records as a side effect of running, so
+D25 — the sweeps wrote those committed records as a side effect of running, so
 an ordinary run replaced real evidence. One offline run rewrote
 `p1_recognition_sweep.json` from `seeds_passing: 7` to `0`; it was caught in
 `git status` by luck, not by a guard.
 
-D25 — with the encoder weights absent, `LinguisticEncoder` degraded to hash
+D26 — with the encoder weights absent, `LinguisticEncoder` degraded to hash
 embeddings and the sweep asserted on the SCIENCE ("Substrate only beats random
 by -0.9%") instead of erroring on the APPARATUS. That reads as a refutation of
 the project's central claim; the true cause was a missing file.
@@ -38,7 +38,7 @@ EVIDENCE_SUITES = (
 
 
 class TestNoDirectEvidenceWrites:
-    """D24: no test may write the committed records except through the fixture."""
+    """D25: no test may write the committed records except through the fixture."""
 
     def test_no_suite_writes_the_committed_results_dir(self) -> None:
         offenders = []
@@ -53,13 +53,13 @@ class TestNoDirectEvidenceWrites:
                     offenders.append(path.name)
         assert not offenders, (
             f"{offenders} reference the committed results tree without going through "
-            "publish_sweep_results — a sweep must not overwrite evidence as a side effect (D24)"
+            "publish_sweep_results — a sweep must not overwrite evidence as a side effect (D25)"
         )
 
     def test_evidence_suites_use_the_publishing_fixture(self) -> None:
         for name in EVIDENCE_SUITES:
             src = (SUBSTRATE_TESTS / name).read_text()
-            assert "publish_sweep_results" in src, f"{name} must publish through the fixture (D24)"
+            assert "publish_sweep_results" in src, f"{name} must publish through the fixture (D25)"
 
     def test_fixture_defaults_to_tmp_and_gates_the_committed_write(self) -> None:
         src = (SUBSTRATE_TESTS / "conftest.py").read_text()
@@ -74,7 +74,7 @@ class TestNoDirectEvidenceWrites:
 
 
 class TestApparatusAssertion:
-    """D25: a measurement path must refuse to run on the fallback encoder."""
+    """D26: a measurement path must refuse to run on the fallback encoder."""
 
     def test_missing_model_raises_typed_error_not_a_science_assertion(self, monkeypatch) -> None:
         import maxim.similarity.encoder as enc
@@ -97,18 +97,35 @@ class TestApparatusAssertion:
         require_semantic_encoder(context="guard test")  # must not raise
 
     def test_evidence_suites_check_the_apparatus_before_measuring(self) -> None:
-        """The check must be an autouse fixture, so no sweep can skip it."""
-        for name in ("test_p1_recognition.py", "test_p2_reward_modulation.py"):
+        """Each evidence suite must CALL the assertion from an autouse fixture.
+
+        This looks for an `ast.Call` and not the bare name: an earlier version
+        matched `"require_semantic_encoder" in src`, which the `import` line
+        alone satisfies — so deleting the actual call still passed. A guard
+        that cannot detect its own removal is the failure mode this file exists
+        to prevent.
+        """
+        for name in EVIDENCE_SUITES:
             src = (SUBSTRATE_TESTS / name).read_text()
-            assert "require_semantic_encoder" in src, f"{name} must assert its apparatus (D25)"
             tree = ast.parse(src)
-            found = False
+            called_in_autouse = False
             for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef) and "require_semantic_encoder" in ast.dump(node):
-                    decorators = ast.dump(ast.Module(body=node.decorator_list, type_ignores=[]))
-                    if "autouse" in decorators:
-                        found = True
-            assert found, f"{name}'s apparatus check must be autouse, not opt-in per test"
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                is_autouse = "autouse" in ast.dump(ast.Module(body=node.decorator_list, type_ignores=[]))
+                if not is_autouse:
+                    continue
+                for inner in ast.walk(node):
+                    if (
+                        isinstance(inner, ast.Call)
+                        and isinstance(inner.func, ast.Name)
+                        and inner.func.id == "require_semantic_encoder"
+                    ):
+                        called_in_autouse = True
+            assert called_in_autouse, (
+                f"{name} must CALL require_semantic_encoder() from an autouse fixture, "
+                "so a sweep cannot measure on the hash fallback (D26)"
+            )
 
 
 class TestCommittedEvidenceIsWellFormed:

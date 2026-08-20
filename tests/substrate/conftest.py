@@ -13,24 +13,11 @@ from tests.substrate.persistence_harness import RoundTripResult, run_round_trip
 COMMITTED_RESULTS_DIR = Path(__file__).parent.parent.parent / "docs" / "experiments" / "results"
 
 
-def pytest_addoption(parser: pytest.Parser) -> None:
-    parser.addoption(
-        "--write-experiment-results",
-        action="store_true",
-        default=False,
-        help=(
-            "Let substrate sweeps overwrite the COMMITTED records in "
-            "docs/experiments/results/. Off by default: those files are S4 raw "
-            "evidence, and an ordinary test run must not rewrite them."
-        ),
-    )
-
-
 @pytest.fixture
 def publish_sweep_results(request: pytest.FixtureRequest, tmp_path: Path):
     """Write sweep output somewhere safe, and only overwrite evidence on purpose.
 
-    Bugs ledger D24. These sweeps used to `json.dump` straight into
+    Bugs ledger D25. These sweeps used to `json.dump` straight into
     ``docs/experiments/results/*.json`` as a side effect of running. Those files
     are S4 committed raw records, so any run — including one on a degraded
     apparatus — silently replaced real evidence. Observed 2026-08-20: an offline
@@ -44,7 +31,7 @@ def publish_sweep_results(request: pytest.FixtureRequest, tmp_path: Path):
     reviewable act rather than a side effect.
 
     The apparatus check is the caller's job and must happen BEFORE measuring —
-    see ``similarity/encoder.require_semantic_encoder`` (D25). This fixture
+    see ``similarity/encoder.require_semantic_encoder`` (D26). This fixture
     refuses to publish results it cannot attribute to a real encoder.
     """
 

@@ -22,7 +22,7 @@ ruff format src/ tests/
 
 - **Linter:** ruff (configured in `pyproject.toml`)
 - **Line length:** 120 characters
-- **Imports:** Use lazy/deferred imports inside function bodies for optional dependencies. Module-level imports only for core deps (numpy, scipy, pyyaml, json-repair, rich).
+- **Imports:** Use lazy/deferred imports inside function bodies for optional dependencies. Module-level imports only for the seven core deps (numpy, scipy, pyyaml, json-repair, httpx, rich, filelock — `pyproject.toml` is the authority).
 - **Naming:** Don't rename bio-system classes (Hippocampus, ATL, NAc, SCN, EC, AngularGyrus) — names are load-bearing for the mental model.
 
 ## Architecture Rules
@@ -114,7 +114,7 @@ See [`docs/architecture/structural_enforcement.md`](docs/architecture/structural
 
 ## Adding a dependency-gated feature
 
-Maxim ships a small core (`numpy`, `scipy`, `pyyaml`, `json-repair`) and gates everything heavier behind optional extras. **Do not write a bare `try: import X except ImportError: ... return None` block** — route through `maxim/utils/optional_deps.py`, which makes the behavior uniform and intentional, split by intent:
+Maxim ships a small core (`numpy`, `scipy`, `pyyaml`, `json-repair`, `httpx`, `rich`, `filelock` — seven packages; `pyproject.toml` is the authority) and gates everything heavier behind optional extras. **Do not write a bare `try: import X except ImportError: ... return None` block** — route through `maxim/utils/optional_deps.py`, which makes the behavior uniform and intentional, split by intent:
 
 - **`require_optional_dependency(import_name, *, extra=None, feature=None)`** — for a feature the caller *explicitly* requested (a configured cloud backend, a `--vision` flag, a selected TTS voice). A missing dependency here is a setup error, so this **raises** `OptionalDependencyError` with an actionable `pip install pymaxim[<extra>]` hint. `OptionalDependencyError` subclasses `ImportError`, so legacy `except ImportError` sites still catch it, but fail-soft layers (the LLM router) can distinguish "requested feature not installed → abort loudly" from "transient runtime failure → try next provider".
 - **`optional_dependency_available(import_name)`** — for a capability *probe* ("use X if it happens to be present", GPU detection). Absence is normal here, so this returns a `bool` and never logs.

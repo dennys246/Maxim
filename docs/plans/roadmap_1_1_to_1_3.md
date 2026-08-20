@@ -256,7 +256,7 @@ Each POINTS at its owning plan — stages live there, not here:
 14. **Published-support truth** — **PARTIAL in v1.0.9:** lightweight CI
     install/import/CLI lanes now cover Python 3.10, 3.11, 3.13, and 3.14 while
     the full suite covers 3.12; contributor guidance now matches the seven core
-    dependencies and 17 API verbs declared by the package. Keep dependency and
+    dependencies and 18 API verbs declared by the package (`recall` landed post-1.0.0 and is still undocumented — see below). Keep dependency and
     verb-count drift checks executable as those surfaces change.
 
 ## Gates before 1.2 Oasis + Hivemind

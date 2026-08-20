@@ -443,10 +443,17 @@ class TestDecompositionValidation:
 
     @pytest.fixture(autouse=True)
     def _require_deps(self) -> None:
+        # INSTALLED is not CACHED. Skipping on a missing package is right;
+        # continuing on missing WEIGHTS is not — the encoder degrades to hash
+        # embeddings and the recall assertions below become a decomposition
+        # "result" that is really an artifact of the missing model (D26).
+        from maxim.similarity.encoder import require_semantic_encoder
+
         if not _has_sentence_transformers():
             pytest.skip("sentence-transformers not installed")
         if not _has_spacy():
             pytest.skip("spaCy or en_core_web_sm not installed")
+        require_semantic_encoder(context="concept-decomposition validation")
 
     def _make_encoder(self, *, with_decomposer: bool):
         """Build a LinguisticEncoder with real sentence-transformers."""
@@ -601,7 +608,7 @@ class TestDecompositionValidation:
         print(f"  Decomposed recall:  {decomposed['aggregate_recall']:.3f}")
         print(f"  Delta:              {delta:+.3f}")
 
-        # -- Save results (D24: tmp by default) --
+        # -- Save results (D25: tmp by default) --
 
         report = {
             "test": "concept_decomposition_validation",

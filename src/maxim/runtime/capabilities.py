@@ -150,6 +150,17 @@ def _detect_ram_gb() -> float:
                     return int(line.split()[1]) / (1024**2)
     except Exception:
         pass
+    # POSIX fallback. Without it, every macOS install that lacks psutil — which
+    # is core-optional and in NO extra, so that is the DEFAULT pip install —
+    # reported 0.0 GB, collapsing tier selection to "small" and exiting
+    # `maxim doctor` non-zero on a 24 GB machine. `system_metrics._memory_macos`
+    # already carries the same fallback; this path was missed.
+    try:
+        import os
+
+        return (os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")) / (1024**3)
+    except (ValueError, OSError, AttributeError):
+        pass
     return 0.0
 
 

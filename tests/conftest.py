@@ -58,6 +58,28 @@ atexit.register(shutil.rmtree, _TEST_ISOLATION_ROOT, ignore_errors=True)
 pytest_plugins = ["tests.multi_agent_fixtures"]
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register the evidence-write opt-in.
+
+    MUST live in the ROOT conftest: pytest only honours ``pytest_addoption`` from
+    the rootdir conftest or a plugin, so defining it in ``tests/substrate/``
+    made ``pytest tests/ --write-experiment-results`` fail with "unrecognized
+    arguments" — i.e. the documented invocation could not reach the flag
+    (pre-merge review, architecture lens). Consumed by
+    ``tests/substrate/conftest.py::publish_sweep_results`` (bugs ledger D25).
+    """
+    parser.addoption(
+        "--write-experiment-results",
+        action="store_true",
+        default=False,
+        help=(
+            "Let substrate sweeps overwrite the COMMITTED records in "
+            "docs/experiments/results/. Off by default: those files are S4 raw "
+            "evidence, and an ordinary test run must not rewrite them."
+        ),
+    )
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Keep pretrained-model and dataset-cache tests opt-in.
 

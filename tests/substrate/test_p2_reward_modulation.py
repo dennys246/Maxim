@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 FIXTURE_PATH = Path(__file__).parent.parent.parent / "scenarios" / "substrate" / "p2_reward_modulation.yaml"
 # Sweep output no longer lands here directly — see the publish_sweep_results
-# fixture in tests/substrate/conftest.py (bugs ledger D24).
+# fixture in tests/substrate/conftest.py (bugs ledger D25).
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -331,7 +331,7 @@ class TestP2ValidationSweep:
 
     @pytest.fixture(autouse=True)
     def _require_real_encoder(self) -> None:
-        """Refuse to measure on the hash fallback (bugs ledger D25).
+        """Refuse to measure on the hash fallback (bugs ledger D26).
 
         Without this the sweep still produces numbers, and they read as a
         substrate regression rather than a missing model.
@@ -462,7 +462,7 @@ class TestP2ValidationSweep:
         print(f"  Seeds passing individually: {seeds_passing}/{len(results)}")
         print(f"{'=' * 60}")
 
-        # D24: tmp by default; --write-experiment-results updates the record.
+        # D25: tmp by default; --write-experiment-results updates the record.
         publish_sweep_results("p2_reward_modulation_sweep.json", summary)
 
         assert means_pass, (
