@@ -12,7 +12,6 @@ for lab notebook recording.
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
@@ -21,7 +20,8 @@ import pytest
 logger = logging.getLogger(__name__)
 
 FIXTURE_PATH = Path(__file__).parent.parent.parent / "scenarios" / "substrate" / "paraphrase_clusters.yaml"
-RESULTS_DIR = Path(__file__).parent.parent.parent / "docs" / "experiments" / "results"
+# Sweep output no longer lands here directly — see the publish_sweep_results
+# fixture in tests/substrate/conftest.py (bugs ledger D24).
 
 
 def _has_sentence_transformers() -> bool:
@@ -44,6 +44,17 @@ def _has_sentence_transformers() -> bool:
 class TestP1RecognitionSweep:
     """Run the P1 recognition sweep against paraphrase clusters."""
 
+    @pytest.fixture(autouse=True)
+    def _require_real_encoder(self) -> None:
+        """Refuse to measure on the hash fallback (bugs ledger D25).
+
+        Without this the sweep still produces numbers, and they read as a
+        substrate regression rather than a missing model.
+        """
+        from maxim.similarity.encoder import require_semantic_encoder
+
+        require_semantic_encoder(context="P1 recognition sweep")
+
     def test_single_seed(self):
         """Single-seed smoke test — verifies the pipeline runs end-to-end."""
         metrics = self._run_seed(seed=42)
@@ -53,7 +64,7 @@ class TestP1RecognitionSweep:
         assert metrics.total_nodes > 0
         assert metrics.modality_violations == 0
 
-    def test_sweep_10_seeds(self):
+    def test_sweep_10_seeds(self, publish_sweep_results):
         """Full 10-seed sweep — the actual P1 gate.
 
         Uses shuffled sentence order (node growth is an ordering artifact
@@ -122,12 +133,9 @@ class TestP1RecognitionSweep:
         print(f"  Seeds passing individually: {seeds_passing}/{len(results)}")
         print(f"{'=' * 60}")
 
-        # Save results
-        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = RESULTS_DIR / "p1_recognition_sweep.json"
-        with open(out_path, "w") as f:
-            json.dump(summary, f, indent=2)
-        print(f"Results saved to {out_path}")
+        # Save results (D24: tmp by default; --write-experiment-results to
+        # update the committed S4 record deliberately).
+        publish_sweep_results("p1_recognition_sweep.json", summary)
 
         # Gate on means, not individual seeds — per plan spec
         assert means_pass, (

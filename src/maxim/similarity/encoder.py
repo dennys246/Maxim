@@ -81,6 +81,52 @@ def _fallback_embed(text: str, dim: int = 384) -> list[float]:
     return vec
 
 
+def require_semantic_encoder(model_name: str = "paraphrase-mpnet-base-v2", *, context: str) -> None:
+    """Assert that the REAL sentence-transformers model loads (apparatus check).
+
+    ``_fallback_embed`` exists so the substrate pipeline can run end-to-end
+    without sentence-transformers, and its own docstring says the vectors are
+    "not semantically meaningful — paraphrase collapse will NOT work". That is
+    the right behaviour for plumbing and the wrong behaviour for MEASUREMENT:
+    a validation sweep running on hash embeddings still produces numbers, and
+    those numbers look like a substrate regression rather than a missing model.
+
+    Observed 2026-08-20 (bugs ledger D25): with the weights absent,
+    ``test_p1_recognition`` reported "Substrate only beats random by -0.9%,
+    need >30pp" — the exact shape of a genuine failure of the project's central
+    claim. Nothing distinguished "the substrate is broken" from "the encoder
+    never loaded".
+
+    Any code path whose OUTPUT IS EVIDENCE — validation sweeps, calibration
+    runs, experiment harnesses — must call this before measuring, so an
+    apparatus failure raises instead of being published (apparatus standard S3:
+    pathologies get assertions inside the run).
+
+    Args:
+        model_name: The model the caller will actually encode with.
+        context: What is being measured, echoed in the error so the operator
+            knows which run was refused.
+
+    Raises:
+        ModelLoadError: The real model is unavailable, naming the reason and
+            the two ways to fix it.
+    """
+    from maxim.exceptions import ModelLoadError
+
+    if _get_encoder(model_name) is not None:
+        return
+
+    raise ModelLoadError(
+        f"{context}: refusing to measure — the encoder '{model_name}' did not load, so "
+        f"embeddings would come from the deterministic hash fallback, which cannot "
+        f"represent paraphrase similarity. Any metric produced here would be an artifact "
+        f"of the missing model, not a property of the substrate. Fix: install the "
+        f"'semantic' extra, or pre-populate the model cache and unset HF_HUB_OFFLINE / "
+        f"TRANSFORMERS_OFFLINE.",
+        model_name=model_name,
+    )
+
+
 @dataclass
 class EncoderConfig:
     """Configuration for the LinguisticEncoder."""

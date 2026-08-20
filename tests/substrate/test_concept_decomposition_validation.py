@@ -25,9 +25,7 @@ Pass criteria (validation suite):
 
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -558,7 +556,7 @@ class TestDecompositionValidation:
             "ec_substrate_nodes": ec.substrate_node_count,
         }
 
-    def test_decomposition_improves_cross_modal_recall(self) -> None:
+    def test_decomposition_improves_cross_modal_recall(self, publish_sweep_results) -> None:
         """The primary validation test.
 
         Runs both arms (baseline vs decomposed) and asserts:
@@ -603,10 +601,7 @@ class TestDecompositionValidation:
         print(f"  Decomposed recall:  {decomposed['aggregate_recall']:.3f}")
         print(f"  Delta:              {delta:+.3f}")
 
-        # -- Save results --
-        results_path = Path(__file__).resolve().parents[2] / "docs" / "experiments" / "results"
-        results_path.mkdir(parents=True, exist_ok=True)
-        output_file = results_path / "concept_decomposition_validation.json"
+        # -- Save results (D24: tmp by default) --
 
         report = {
             "test": "concept_decomposition_validation",
@@ -618,8 +613,7 @@ class TestDecompositionValidation:
                 "minimum_bar": decomposed["aggregate_recall"] >= 0.60,
             },
         }
-        output_file.write_text(json.dumps(report, indent=2))
-        print(f"  Results saved to: {output_file}")
+        publish_sweep_results("concept_decomposition_validation.json", report)
 
         # -- Assertions --
         assert decomposed["aggregate_recall"] > baseline["aggregate_recall"], (
