@@ -27,6 +27,22 @@ maxim --sim scenarios/campaigns/heist_v1.yaml  # DM campaign
 
 `maxim --sim interactive` redirects to the generative sim with the full interactive stack (rich display, bidirectional input, SimPromptHandler).
 
+### Process exit contract
+
+The CLI treats process success as **run integrity**, not as a favorable result:
+
+- `0` — the run completed with usable evidence. Semantic outcomes such as
+  `failed`, `blocked`, and `inconclusive` are still valid observations.
+- `1` — a generic runtime error (or a rejected research review).
+- `4` — the run was incomplete or aborted (`llm_wedged`, `planning_failed`,
+  `worker_unavailable`, `aut_died`, `aborted`, `cancel`, or `stuck`). This is the
+  same code used whether teardown completed normally or the hard-abort backstop
+  had to terminate the process.
+
+Automation must reject non-zero exits before including a session in analysis.
+Embeddable Python surfaces return a structured `finish_reason`; they do not exit
+the caller's process.
+
 ## Interactive Mode (Default)
 
 Interactive mode is **ON by default** when running from a terminal (TTY) and always ON for DM campaigns (since 0.4). It provides a rich, bidirectional experience where you talk to the agent and the agent asks you questions.

@@ -283,3 +283,40 @@ class TestResearchResult:
         assert r.goal == "test hippocampal recall"
         assert r.review_verdict == "not_reviewed"
         assert r.revision_rounds == 0
+        assert r.finish_reason == ""
+
+    def test_runtime_abort_skips_writer_and_persists_terminal_status(self, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+
+        from maxim.simulation.research_orchestrator import start_research_mode
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("maxim.runtime.lane_backends.build_primary_router", lambda **kwargs: (None, None))
+        monkeypatch.setattr(
+            "maxim.models.language.router.load_llm_config",
+            lambda: SimpleNamespace(enabled=False),
+        )
+        monkeypatch.setattr(
+            "maxim.simulation.orchestrator.start_simulation_mode",
+            lambda **kwargs: SimpleNamespace(
+                finish_reason="planning_failed",
+                campaign_analysis={},
+                duration_s=0.1,
+                turns=1,
+                total_actions=0,
+            ),
+        )
+        monkeypatch.setattr(
+            "maxim.simulation.research_agents.WriterAgent.run",
+            lambda *args, **kwargs: pytest.fail("writer must not run on unusable experiment data"),
+        )
+
+        result = start_research_mode(goal="abort contract")
+
+        assert result.finish_reason == "planning_failed"
+        assert result.review_verdict == "aborted"
+        payload = json.loads(
+            (tmp_path / "data" / "sim_reports" / f"research_{result.session_id}" / "research_result.json").read_text()
+        )
+        assert payload["finish_reason"] == "planning_failed"
+        assert payload["review_verdict"] == "aborted"

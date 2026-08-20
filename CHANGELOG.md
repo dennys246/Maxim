@@ -65,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   competing for runners (jobs previously sat unassigned and died at 15m01s as
   false-red `failure`). (#470)
 
+## [1.0.8] - 2026-08-19
+
+### Fixed
+
+- **Simulation run-integrity propagation (D22)** — cleanly unwound runtime
+  aborts now exit the CLI with code 4, matching the forced-abort path. Benchmark,
+  curriculum, Roy, research, and Console campaign consumers reject typed aborts
+  instead of treating partial sessions as usable evidence; library APIs retain
+  structured `finish_reason` results.
+
 ## [1.0.7] - 2026-08-19
 
 ### Fixed

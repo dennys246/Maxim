@@ -49,6 +49,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from maxim.simulation.sim_types import is_simulation_run_failure
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,7 +65,8 @@ class StageResult:
 
     ``session_id`` / ``session_dir`` are populated when the underlying
     sim ran far enough to write a report; on early failure they may be
-    empty. ``error`` is set iff the stage raised.
+    empty. ``error`` is set when the stage raised or returned an unusable
+    run-integrity status.
     """
 
     name: str
@@ -353,12 +356,14 @@ def run_curriculum(
         stage_record.duration_s = round(time.time() - stage_start, 2)
         result.stages.append(stage_record)
 
-        if stage_record.finish_reason == "error":
+        if is_simulation_run_failure(stage_record.finish_reason):
+            stage_record.error = f"unusable simulation result: finish_reason={stage_record.finish_reason}"
             result.aborted_at = stage.name
             logger.error(
-                "Curriculum %r aborted at stage %r: sim finished with finish_reason=error",
+                "Curriculum %r aborted at stage %r: sim finished with finish_reason=%s",
                 spec.name,
                 stage.name,
+                stage_record.finish_reason,
             )
             break
 
@@ -386,7 +391,7 @@ def run_curriculum(
     logger.info(
         "Curriculum %r complete: %d/%d stages, final_session=%s, aborted_at=%s, duration=%.1fs",
         spec.name,
-        sum(1 for s in result.stages if s.error is None and s.finish_reason != "error"),
+        sum(1 for s in result.stages if s.error is None and not is_simulation_run_failure(s.finish_reason)),
         len(spec.stages),
         result.final_session_id or "<none>",
         result.aborted_at or "<none>",

@@ -38,6 +38,51 @@ class ResearchResult:
     aut_model: str = ""
     orchestrator_model: str = ""
     session_id: str = ""
+    finish_reason: str = ""
+
+
+def _persist_research_result(
+    result: ResearchResult,
+    session_dir: Path,
+    bus: LocalMessageBus,
+    *,
+    review_issues: list[str] | None = None,
+) -> None:
+    """Persist the protocol result and bus history for every terminal path."""
+    result_path = session_dir / "research_result.json"
+    result_path.write_text(
+        json.dumps(
+            {
+                "goal": result.goal,
+                "experiments_count": result.experiments_count,
+                "paper_path": result.paper_path,
+                "review_verdict": result.review_verdict,
+                "review_confidence": result.review_confidence,
+                "revision_rounds": result.revision_rounds,
+                "duration_s": round(result.duration_s, 1),
+                "cost_usd": round(result.cost_usd, 4),
+                "aut_model": result.aut_model,
+                "orchestrator_model": result.orchestrator_model,
+                "session_id": result.session_id,
+                "finish_reason": result.finish_reason,
+                "bus_messages": bus.message_count,
+                "review_issues": review_issues or [],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    bus_path = session_dir / "bus_history.json"
+    bus_history = bus.get_history()
+    bus_path.write_text(
+        json.dumps(
+            [message.to_dict() for message in bus_history],
+            indent=2,
+            default=str,
+        ),
+        encoding="utf-8",
+    )
 
 
 def start_research_mode(
@@ -157,6 +202,37 @@ def start_research_mode(
         experiment_log=experiment_log,
     )
 
+    from maxim.simulation.sim_types import is_simulation_run_failure
+
+    sim_finish_reason = str(sim_result.finish_reason or "")
+    if is_simulation_run_failure(sim_finish_reason):
+        duration = time.time() - start_time
+        result = ResearchResult(
+            goal=goal,
+            review_verdict="aborted",
+            duration_s=duration,
+            aut_model=aut_model or "",
+            orchestrator_model=language_model or "",
+            session_id=session_id,
+            finish_reason=sim_finish_reason,
+        )
+        _persist_research_result(
+            result,
+            session_dir,
+            bus,
+            review_issues=[f"Underlying simulation was unusable: {sim_finish_reason}"],
+        )
+        display_summary(
+            [
+                "RESEARCH PROTOCOL ABORTED",
+                f"Goal: {goal}",
+                f"Simulation finish: {sim_finish_reason}",
+                "Writer/reviewer skipped: underlying experiment is not valid evidence",
+                f"Session: {session_dir}",
+            ]
+        )
+        return result
+
     # Record analysis as an experiment — works for both campaign and non-campaign runs (D-0b fix).
     if sim_result.campaign_analysis:
         analysis = sim_result.campaign_analysis
@@ -259,43 +335,10 @@ def start_research_mode(
         aut_model=aut_model or "",
         orchestrator_model=language_model or "",
         session_id=session_id,
+        finish_reason=sim_finish_reason,
     )
 
-    # Save protocol result
-    result_path = session_dir / "research_result.json"
-    result_path.write_text(
-        json.dumps(
-            {
-                "goal": result.goal,
-                "experiments_count": result.experiments_count,
-                "paper_path": result.paper_path,
-                "review_verdict": result.review_verdict,
-                "review_confidence": result.review_confidence,
-                "revision_rounds": result.revision_rounds,
-                "duration_s": round(result.duration_s, 1),
-                "cost_usd": round(result.cost_usd, 4),
-                "aut_model": result.aut_model,
-                "orchestrator_model": result.orchestrator_model,
-                "session_id": result.session_id,
-                "bus_messages": bus.message_count,
-                "review_issues": review.issues,
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-    # Save bus message history
-    bus_path = session_dir / "bus_history.json"
-    bus_history = bus.get_history()
-    bus_path.write_text(
-        json.dumps(
-            [m.to_dict() for m in bus_history],
-            indent=2,
-            default=str,
-        ),
-        encoding="utf-8",
-    )
+    _persist_research_result(result, session_dir, bus, review_issues=review.issues)
 
     # Print summary
     summary_lines = [

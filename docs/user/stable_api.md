@@ -57,7 +57,7 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 
 | Symbol | Stable | Notes |
 |---|---|---|
-| `ResearchResult` | ⚠️ Experimental | Returned by `research()`. Field set may grow. |
+| `ResearchResult` | ⚠️ Experimental | Returned by `research()`. Field set may grow; `finish_reason` carries underlying simulation run integrity. |
 | `EventHandle` | ⚠️ Experimental | Returned by `on()`. |
 | `ToolCallEvent` | ⚠️ Experimental | Payload type for `on("tool_call", ...)`. |
 | `MemoryCaptureEvent` | ⚠️ Experimental | RESERVED payload type — `"memory_capture"` is not yet a bridged event name (it was declared but never fired; removed from `on()`'s supported set in the EVENT-seam cleanup). |

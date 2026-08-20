@@ -84,6 +84,7 @@ def _make_fake_sim_runner(
     *,
     growth_per_call: int = 5,
     fail_on_arm: str | None = None,
+    finish_reason_on_arm: tuple[str, str] | None = None,
 ) -> Callable[..., SimulationResult]:
     """Build a fake ``start_simulation_mode`` substitute.
 
@@ -101,6 +102,8 @@ def _make_fake_sim_runner(
 
     ``fail_on_arm`` raises during the matching arm's sim so we can
     exercise the partial-success path through pairwise_diffs.
+    ``finish_reason_on_arm`` returns a persisted session carrying a cleanly
+    unwound runtime failure so the harness cannot mistake it for evidence.
     """
     call_log: list[dict[str, Any]] = []
 
@@ -189,6 +192,10 @@ def _make_fake_sim_runner(
             }
         )
 
+        finish_reason = "complete"
+        if finish_reason_on_arm is not None and goal.endswith(f":arm_{finish_reason_on_arm[0]}"):
+            finish_reason = finish_reason_on_arm[1]
+
         return SimulationResult(
             goal=goal,
             mode=kwargs.get("mode", ""),
@@ -196,7 +203,7 @@ def _make_fake_sim_runner(
             total_actions=growth_per_call,
             blocked_actions=0,
             duration_s=0.01,
-            finish_reason="complete",
+            finish_reason=finish_reason,
             session_id=session_id,
             session_dir=str(session_dir),
         )
@@ -524,6 +531,24 @@ class TestRoyFailureHandling:
         assert result.arms["c"].error is None
 
         # Pairs involving A are unavailable; b_vs_c is fine.
+        assert result.pairwise_diffs["a_vs_b"]["available"] is False
+        assert result.pairwise_diffs["a_vs_c"]["available"] is False
+        assert result.pairwise_diffs["b_vs_c"]["available"] is True
+
+    def test_typed_abort_arm_is_excluded_from_pairwise_evidence(self, isolated_data_home, tmp_path):
+        spec_path = _build_smoke_spec(tmp_path)
+        runner = _make_fake_sim_runner(finish_reason_on_arm=("a", "worker_unavailable"))
+
+        result = run_roy_iteration(
+            spec_path,
+            sim_runner=runner,
+            artifact_root=tmp_path / "roy",
+        )
+
+        assert result.arms["a"].finish_reason == "worker_unavailable"
+        assert "unusable simulation result" in (result.arms["a"].error or "")
+        assert result.arms["b"].error is None
+        assert result.arms["c"].error is None
         assert result.pairwise_diffs["a_vs_b"]["available"] is False
         assert result.pairwise_diffs["a_vs_c"]["available"] is False
         assert result.pairwise_diffs["b_vs_c"]["available"] is True

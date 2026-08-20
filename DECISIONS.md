@@ -2,6 +2,33 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-08-19 — Simulation process status represents run integrity (D22)
+
+Decision:
+
+- Simulation libraries continue to return structured results and never terminate
+  the embedding process.
+- Process-level CLI entry points map generic `error` to exit 1 and incomplete or
+  runtime-aborted outcomes to exit 4, matching the existing D12 hard-abort code.
+- Benchmark, curriculum, Roy, research, and Console consumers apply the same
+  centralized run-integrity classification before accepting metrics or artifacts.
+- Semantic experiment verdicts (`failed`, `blocked`, `inconclusive`) remain valid
+  data and therefore do not imply process failure.
+
+Reason:
+
+- D13/D14 made planning failures unwind cleanly with typed statuses, but the CLI
+  still returned 0 and multi-run harnesses only recognized literal `error`. A
+  partial campaign could therefore be counted as evidence precisely because its
+  teardown worked.
+
+Tradeoffs:
+
+- Exit 4 covers both forced and clean aborts, so callers use `finish_reason` and
+  the saved report when they need the precise cause.
+- LLM-selected `failed` remains exit 0 because it describes the system under test,
+  not a failure of the experimental apparatus.
+
 ## 2026-08-19 — 1.1 release closure and provider-neutral agent guidance
 
 Decision:

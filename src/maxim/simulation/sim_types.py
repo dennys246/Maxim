@@ -14,6 +14,54 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+# Exit 4 is already the simulation hard-abort contract used by the D12 stall
+# detector.  A clean unwind must report the same process outcome or campaign
+# subprocesses can mistake an infrastructure abort for usable evidence.
+SIMULATION_ABORT_EXIT_CODE = 4
+SIMULATION_ABORT_FINISH_REASONS = frozenset(
+    {
+        "aborted",
+        "aut_died",
+        "cancel",
+        "llm_wedged",
+        "planning_failed",
+        "stuck",
+        "worker_unavailable",
+    }
+)
+SIMULATION_FAILURE_FINISH_REASONS = SIMULATION_ABORT_FINISH_REASONS | {"error"}
+
+
+def _normalize_finish_reason(finish_reason: str) -> str:
+    """Normalize a persisted/runtime finish reason for policy checks."""
+    return str(finish_reason or "").strip().lower()
+
+
+def is_simulation_run_failure(finish_reason: str) -> bool:
+    """Return whether a result is unusable because the run itself failed.
+
+    This intentionally differs from the simulation's semantic verdict.  An
+    orchestrator-confirmed ``failed``/``blocked``/``inconclusive`` outcome is
+    valid experiment data; runtime aborts, cancellation, and ``error`` are not.
+    """
+    return _normalize_finish_reason(finish_reason) in SIMULATION_FAILURE_FINISH_REASONS
+
+
+def simulation_exit_code(finish_reason: str) -> int:
+    """Map a structured simulation finish reason to a process exit code.
+
+    Library callers keep receiving structured results.  Process-level callers
+    use this helper so clean and forced aborts share exit code 4, while a generic
+    orchestrator exception retains the conventional exit code 1.
+    """
+    normalized = _normalize_finish_reason(finish_reason)
+    if normalized in SIMULATION_ABORT_FINISH_REASONS:
+        return SIMULATION_ABORT_EXIT_CODE
+    if normalized == "error":
+        return 1
+    return 0
+
+
 @dataclass
 class SimulationResult:
     """Result from a completed simulation session.

@@ -30,6 +30,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from maxim.simulation.sim_types import is_simulation_run_failure
+
 
 logger = logging.getLogger(__name__)
 
@@ -375,6 +377,9 @@ class BenchmarkRunner:
                             response_timeout=self.response_timeout,
                             debug=self.debug,
                         )
+
+                        if is_simulation_run_failure(exp_result.finish_reason):
+                            raise RuntimeError(f"unusable simulation result: finish_reason={exp_result.finish_reason}")
 
                         # Compute metrics from the enriched SimulationResult
                         # (Phase 0a populated tool_stats, actions, subsystem_snapshot)

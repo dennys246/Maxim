@@ -60,7 +60,7 @@ by delaying Oasis two versions.
 | 9 | Documentation truth pass | **SUBSTANTIALLY DONE, CONTINUOUS THROUGH RC**. Reconcile plans, architecture, decisions, API count/dependencies, and release surfaces. D21's EC performance claim was corrected on 2026-08-19. |
 | 10 | Atomic NAc + EC invalidation | **OPEN — 1.1 GATE** (D2). An operator must not be able to clear one half of the persisted pair. |
 | 11 | Annotation S4 non-stationarity analysis | **OPEN — 1.1 GATE**. Offline analysis only; record the result, not merely the analyzer. |
-| 12 | Planning-turn liveness + truthful progress state | **OPEN — 1.1 GATE** (D13/D14). Bounded reschedule or loud terminal abort; no false spinner. |
+| 12 | Planning-turn liveness + truthful progress state | **DONE** (D13/D14/D22). Bounded recovery or typed terminal abort, observationally true progress display, and non-zero process/harness propagation for unusable results. |
 | 13 | Stable Python API contract repair | **OPEN — 1.1 GATE** (D15–D18): `run(goal, robot)`, lifecycle cleanup, complete load semantics, and tool-registration lifetime. |
 | 14 | Hermetic required fast suite | **OPEN — 1.1 GATE** (D20). No network, hardware, model cache, or writes outside the test root by default. |
 | 15 | Architecture-audit enforcement | **OPEN — 1.1 GATE** (D19). Classify the 32 findings, store a reviewed accepted-debt baseline, and fail CI on additions. Zero debt is 1.1.x, not a release blocker. |
@@ -94,8 +94,8 @@ from the claims-verification round — blocking vs 1.1.x *within* the gated item
 
 ### Release-gate order
 
-1. **D13/D14 first:** restore planning liveness and make the display observationally
-   true. This unblocks trustworthy long heartbeat runs.
+1. **DONE — D13/D14/D22:** planning liveness, observationally true display, and
+   trustworthy terminal-status propagation now unblock long heartbeat runs.
 2. **Stable API + hermetic tests in parallel:** write black-box failing tests for
    D15–D18 and isolate D20's home/network/model state.
 3. **Persistence/architecture correctness:** D2 atomic invalidation and D19's
