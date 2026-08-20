@@ -72,8 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 PyPI's previous release is **1.0.0**, so most users arrive here across ~90 merged
 PRs. The stable-API repairs below change *runtime behavior for code that already
 compiles*, because the old behavior was a no-op or a race rather than a
-documented contract. Nothing was renamed or removed; review these three before
-upgrading unattended:
+documented contract. Review these before upgrading unattended:
 
 - `run(goal=...)` previously never reached the loop. It now enters through the
   runtime's CLI-input mailbox and seeds initial work, so an agent that used to
@@ -86,6 +85,20 @@ upgrading unattended:
   of silently ignored.
 - Overlapping `run()` calls in one process previously raced on process-global
   routing state; the second call now raises `ConfigurationError`.
+
+### Deprecated
+
+- **`maxim.register_persona()` is accepted and ignored, and raises from 1.1.**
+  The persona system was hard-deleted in #482 (marked `feat(1.1)!`), and the
+  version bumps carried that removal into the 1.0.7–1.0.9 patch line where
+  1.0.0 — PyPI's previous release — has a working call. Raising here would
+  break a public contract in a patch, which this project's own versioning
+  policy forbids, so the symbol is restored as a warning shim for 1.0.x and
+  version-gated to start raising the moment the version reaches 1.1 (keeping
+  the 0.9 deprecation's literal "raises in 1.1" promise). Nothing is lost
+  behaviorally: the registry was label-only and the `context_prompt` was never
+  injected, even in 1.0.0. Use `imagine(mode=...)` for the report label.
+  `imagine(persona=...)` continues to warn and alias to `mode`.
 
 ### Fixed
 

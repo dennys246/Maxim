@@ -309,6 +309,76 @@ class TestToolRegistration:
 # ---------------------------------------------------------------------------
 
 
+class TestRegisterPersonaCompatShim:
+    """`register_persona` is a 1.0.x compatibility shim, version-gated to raise
+    from 1.1.
+
+    It was hard-deleted in #482 (`feat(1.1)!`), but the version bumps carried
+    that removal into the 1.0.7-1.0.9 PATCH line while PyPI's previous release
+    (1.0.0) has a working call — so raising there would break a public contract
+    in a patch, which docs/pypi_maintenance.md forbids. The gate keeps the 0.9
+    deprecation's literal "raises in 1.1" promise without depending on anyone
+    remembering the date, which is the part a comment cannot enforce.
+    """
+
+    def test_accepted_with_a_deprecation_warning_on_the_1_0_line(self, monkeypatch):
+        import warnings
+
+        import maxim
+        import maxim.api as api_mod
+
+        monkeypatch.setattr(maxim, "__version__", "1.0.9")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", DeprecationWarning)
+            api_mod.register_persona("analyst", description="x")
+
+        dep = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+        assert dep, "a silently-ignored call is worse than a warned one"
+        assert "1.1" in str(dep[0].message), "the warning must name when it starts raising"
+
+    def test_raises_from_1_1_onward(self, monkeypatch):
+        import pytest as _pytest
+
+        import maxim
+        import maxim.api as api_mod
+
+        for version in ("1.1.0", "1.1.0rc1", "1.2.0", "2.0.0"):
+            monkeypatch.setattr(maxim, "__version__", version)
+            with _pytest.raises(RuntimeError, match="removed in 1.1"):
+                api_mod.register_persona("analyst")
+
+    def test_unparseable_version_prefers_compatibility(self, monkeypatch):
+        """An unrecognised version string must not break a caller."""
+        import warnings
+
+        import maxim
+        import maxim.api as api_mod
+
+        monkeypatch.setattr(maxim, "__version__", "not-a-version")
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            api_mod.register_persona("analyst")  # must not raise
+
+    def test_v1_0_0_callers_are_not_broken(self, monkeypatch):
+        """The concrete upgrade path this shim exists for: code written against
+        PyPI's 1.0.0 keeps working on 1.0.x."""
+        import warnings
+
+        import maxim
+        import maxim.api as api_mod
+
+        monkeypatch.setattr(maxim, "__version__", "1.0.9")
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            api_mod.register_persona(
+                "researcher",
+                description="d",
+                focus="f",
+                context_prompt="p",
+                max_initiative=0.7,
+            )
+
+
 class TestImaginePersonaAlias:
     def test_persona_kwarg_warns_and_maps_to_mode(self, monkeypatch):
         """imagine(persona=...) is a 1.1 deprecation alias: it must warn AND
@@ -344,14 +414,24 @@ class TestImaginePersonaAlias:
 
 
 class TestPersonaRegistration:
-    def test_register_persona_raises_removed_error(self):
+    def test_register_persona_raises_removed_error(self, monkeypatch):
         """1.1 keeps the deprecation promise: register_persona() raises with a
         pointer (symbol survives one cycle so old code fails loudly, not
-        with an AttributeError)."""
+        with an AttributeError).
+
+        Now version-GATED rather than unconditional: the removal landed in
+        #482 (`feat(1.1)!`) but the version bumps carried it into the 1.0.7-
+        1.0.9 patch line, where breaking a call that works in PyPI's 1.0.0
+        would violate this project's own patch policy. The promise is kept
+        from 1.1 onward — which is what this test now pins. See
+        TestRegisterPersonaCompatShim for the 1.0.x half.
+        """
         import pytest as _pytest
 
+        import maxim
         from maxim.api import register_persona
 
+        monkeypatch.setattr(maxim, "__version__", "1.1.0")
         with _pytest.raises(RuntimeError, match="removed in 1.1"):
             register_persona(name="test_api_persona")
 

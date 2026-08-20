@@ -2057,23 +2057,64 @@ def register_persona(
     context_prompt: str = "",
     max_initiative: float = 0.5,
 ) -> None:
-    """REMOVED in 1.1 — always raises ``RuntimeError``.
+    """DEPRECATED — accepted and ignored on 1.0.x; raises from 1.1 onward.
 
-    The persona system was hard-deleted per
-    [docs/plans/deferred/persona_cleanup_and_mode_transition.md](../../docs/plans/deferred/persona_cleanup_and_mode_transition.md)
-    (deprecated in 0.9 with the promise "raises in 1.1" — this is that
-    promise kept; the symbol survives one cycle so old code fails loudly
-    with a pointer instead of an ``AttributeError``). Registered personas
-    never shaped orchestrator behavior — the ``context_prompt`` was never
-    injected (audit finding in the plan). Use ``imagine(mode=...)`` for
-    the report/log label; behavioral disposition is bio-emergent
+    The persona system was hard-deleted in #482 per
+    [docs/plans/deferred/persona_cleanup_and_mode_transition.md](../../docs/plans/deferred/persona_cleanup_and_mode_transition.md).
+    Registered personas never shaped orchestrator behaviour — the
+    ``context_prompt`` was never injected and the registry was label-only
+    (audit finding in the plan) — so ignoring the call costs no behaviour
+    that ever existed. Use ``imagine(mode=...)`` for the report/log label;
+    behavioural disposition is bio-emergent
     (``docs/plans/deferred/bio_emergent_persona_foundations.md``).
+
+    **Why this is version-gated rather than simply raising.** 0.9 deprecated
+    this with the promise "raises in 1.1", and the removal commit is marked
+    ``feat(1.1)!``. But the version bumps carried it into the 1.0.7-1.0.9
+    patch line, where PyPI's previous release (1.0.0) has a working call —
+    so raising would have broken a public contract in a PATCH, which
+    ``docs/pypi_maintenance.md`` defines as "no public-contract breakage".
+    The gate keeps the 0.9 promise literally (it starts raising the moment
+    the version reaches 1.1) without a maintainer having to remember the
+    date. It mirrors ``imagine(persona=...)`` immediately above, which
+    already warns-and-degrades instead of raising.
+
+    Args:
+        name: Persona name. Ignored.
+        description: Ignored.
+        focus: Ignored.
+        context_prompt: Ignored — it was never injected, even in 1.0.0.
+        max_initiative: Ignored.
     """
-    raise RuntimeError(
-        "maxim.register_persona() was removed in 1.1 — the persona system was "
-        "hard-deleted (its context_prompt was never injected; the registry was "
-        "label-only). Use imagine(mode=...) for the report label. See "
-        "docs/plans/deferred/persona_cleanup_and_mode_transition.md."
+    import warnings
+
+    from maxim import __version__
+
+    def _series(raw: str) -> tuple[int, int]:
+        parts = raw.split(".")
+        try:
+            return int(parts[0]), int("".join(c for c in parts[1] if c.isdigit()) or 0)
+        except (IndexError, ValueError):
+            # Unparseable version: prefer the compatible branch over breaking
+            # a caller on a version string we do not understand.
+            return (0, 0)
+
+    if _series(__version__) >= (1, 1):
+        raise RuntimeError(
+            "maxim.register_persona() was removed in 1.1 — the persona system was "
+            "hard-deleted (its context_prompt was never injected; the registry was "
+            "label-only). Use imagine(mode=...) for the report label. See "
+            "docs/plans/deferred/persona_cleanup_and_mode_transition.md."
+        )
+
+    warnings.warn(
+        "maxim.register_persona() is deprecated and does nothing: the persona "
+        "system was removed and the registry was label-only (the context_prompt "
+        "was never injected, even in 1.0.0). This call is accepted for 1.0.x "
+        "compatibility and RAISES from 1.1. Pass imagine(mode=...) for the "
+        "report label. See docs/plans/deferred/persona_cleanup_and_mode_transition.md.",
+        DeprecationWarning,
+        stacklevel=2,
     )
 
 
