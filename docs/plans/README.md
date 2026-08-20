@@ -1,6 +1,6 @@
 # Maxim Plans
 
-Current version: **1.0.6** (git tag; the latest release published on PyPI as `pymaxim` is still 1.0.0, 2026-06-17 — closing that gap is roadmap item 16).
+Current version: **1.0.9** (`pyproject.toml` + `src/maxim/__init__.py`). PyPI still serves **1.0.0** (2026-06-17) until the 1.0.9 correction release is uploaded — that publish is roadmap item 16.
 Now: **1.1 "Sensorimotor" release closure** — ship the merged embodiment work plus
 the correctness, contract, truth, and verification debt it incurred. **Zero new
 mechanisms.** Reconciled 2026-08-19 after the D13/D14 investigation and repository

@@ -275,12 +275,44 @@ Only after Test PyPI verification passes:
 
 ```bash
 # The big moment
-twine upload dist/pymaxim-*
+twine upload "$MAXIM_RELEASE_DIR"/pymaxim-*
 
 # Verify real install
 pip install pymaxim
 python -c "import maxim; print(maxim.__version__)"
 ```
+
+### Tag the released commit (do NOT defer this)
+
+PyPI is immutable but carries no git history; without a tag, nothing records
+*which commit* produced the artifact. Versions 1.0.1–1.0.6 skipped this step and
+had to be reconstructed months later from version-bump commits — the incident
+behind the 1.1 release-truth pass. Tag before you close the terminal:
+
+```bash
+git tag -a "v$(python -c 'import maxim; print(maxim.__version__)')" \
+  -m "pymaxim $(python -c 'import maxim; print(maxim.__version__)')"
+git push origin --tags
+
+# Verify: the tag exists, points at the published commit, and matches PyPI
+git describe --exact-match --tags HEAD
+```
+
+Any version with a `## [X.Y.Z]` CHANGELOG section must have a matching
+`vX.Y.Z` tag. Check for drift with:
+
+```bash
+comm -23 \
+  <(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | tr -d '## []' | sort -u) \
+  <(git tag -l 'v*' | sed 's/^v//' | sort -u)
+# Any output = a released version with no tag.
+```
+
+As of 2026-08-19 that check reports **12** untagged released versions
+(`0.1.0`–`0.5.0`, `0.9.2`, `0.9.3`, `1.0.7`–`1.0.9`): the gap is older and wider
+than the 1.0.1–1.0.6 reconstruction found. Backfilling the pre-1.0 tags is
+optional archaeology, but **every version from 1.0.7 on must be tagged** — those
+commits are all still identifiable on `main`.
 
 ---
 
@@ -333,3 +365,12 @@ pip install twine
 | `pyproject.toml` | `version = "X.Y.Z"` | All three must be the same version |
 | `src/maxim/__init__.py` | `__version__ = "X.Y.Z"` | |
 | `CHANGELOG.md` | `## [X.Y.Z]` header | |
+| git tag | `vX.Y.Z` on the published commit | created at publish time, never deferred |
+| `CLAUDE.md` | "Current version:" line under *Active initiatives* | version + true PyPI state |
+| `docs/plans/README.md` | "Current version:" line at the top | version + true PyPI state |
+
+The last two are prose, so nothing fails loudly when they drift — and they drift
+in the *confessional* direction ("PyPI still serves X"), which readers trust more
+than ordinary docs. Both were corrected in the 1.1 release-truth pass and were
+stale again five commits later. Update them with the version bump, in the same
+commit, not as a follow-up.

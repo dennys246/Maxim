@@ -116,6 +116,13 @@ jobs:
           python -m pytest tests/ -x -q -m "not slow" --tb=short
           --ignore=tests/integration/test_memory_hub.py
 
+      # The project's required-checks block is TWO commands, and the fast suite
+      # above excludes this file. Without this step the MemoryHub gate is
+      # enforced by nothing but developer habit — the same "advertised suite is
+      # not the executed suite" defect D20 exists to close. It runs in ~1s.
+      - name: MemoryHub integration gate
+        run: python -m pytest tests/integration/test_memory_hub.py -q
+
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 5
