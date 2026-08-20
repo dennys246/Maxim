@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pymaxim"
-version = "1.0.7"
+version = "1.0.8"
 description = "Bio-inspired cognitive architecture for LLM agents — embodied sensation, homeostatic drives, and brain-modeled persistent memory enable cross-session learning without fine-tuning."
 readme = "README.md"
 requires-python = ">=3.10"

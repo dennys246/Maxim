@@ -100,6 +100,7 @@ class TestVerbsWired:
         mock_result.paper_path = ""
         mock_result.review_verdict = "accept"
         mock_result.experiments_count = 1
+        mock_result.finish_reason = "completed"
         monkeypatch.setattr("maxim.simulation.research_orchestrator.start_research_mode", lambda **kw: mock_result)
 
         with warnings.catch_warnings(record=True) as w:
@@ -108,6 +109,7 @@ class TestVerbsWired:
             stub_warnings = [x for x in w if "not yet wired" in str(x.message).lower()]
             assert len(stub_warnings) == 0
             assert result.goal == "test memory"
+            assert result.finish_reason == "completed"
 
 
 # ── 0c: Error honesty ─────────────────────────────────────────────────

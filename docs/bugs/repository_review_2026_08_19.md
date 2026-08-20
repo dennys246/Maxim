@@ -121,13 +121,12 @@ Direct execution found multiple environment leaks:
 - `tests/unit/test_clip_encoder.py` loads a remote model whenever
   `sentence_transformers` is importable, rather than requiring a cached-model or
   network marker;
-- a substrate fixture test may load the same model family
-  (`tests/substrate/test_p4_fixture_validation.py` — though its loader-requiring
-  tests are gated behind `pytest.importorskip` + skip-on-missing-cache, so the leak
-  is narrower than the clip-encoder one);
-- `tests/behavioral/test_cradle_mother_pipeline.py` launches a subprocess harness
-  that defaults part of its work under `~/.maxim` despite using pytest `tmp_path` for
-  the explicit output;
+- `tests/substrate/test_p4_fixture_validation.py` attempts a live Hugging Face
+  lookup for `paraphrase-mpnet-base-v2` when `sentence_transformers` is installed
+  but the model is not cached (reproduced again during D22 verification);
+- `tests/behavioral/test_cradle_mother_pipeline.py` launched a subprocess harness
+  whose workdir defaulted under `~/.maxim`; the D22 verification pass now passes
+  its existing `--workdir` option under `tmp_path`, closing that one leak;
 - cost tracking can write `~/.maxim/util/cost_state.json` during teardown.
 
 CI currently runs only `tests/unit/`, while the required project check is the wider

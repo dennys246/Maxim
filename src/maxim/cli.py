@@ -29,6 +29,21 @@ from maxim.cli_utils import MEMORY_PATHS  # noqa: F401
 # ── Discrete subcommand handlers (extracted from main() for clarity) ────────
 
 
+def _simulation_result_exit_code(result: object) -> int:
+    """Return process status for a structured simulation result."""
+    from maxim.simulation.sim_types import simulation_exit_code
+
+    return simulation_exit_code(str(getattr(result, "finish_reason", "") or ""))
+
+
+def _research_result_exit_code(result: object) -> int:
+    """Combine research-review semantics with its underlying sim integrity."""
+    sim_code = _simulation_result_exit_code(result)
+    if sim_code:
+        return sim_code
+    return 1 if getattr(result, "review_verdict", "") == "reject" else 0
+
+
 def _resolve_mode(args, default: str = "generative") -> str:
     """Resolve the --sim-mode arg, falling back to the supplied default."""
     return getattr(args, "sim_mode", default) or default
@@ -1281,7 +1296,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     debug=bool(_debug_raw),
                     sandbox_backend=getattr(args, "sandbox_backend", "auto"),
                 )
-                sys.exit(0 if result.review_verdict != "reject" else 1)
+                sys.exit(_research_result_exit_code(result))
             else:
                 # Pure generative campaign — use the orchestrator.
                 # When the goal matches a builtin narrative arc (cradle,
@@ -1321,7 +1336,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     entity_ref=_sim_entity_ref,
                     generative=_use_generative,
                 )
-                sys.exit(0 if result.finish_reason != "error" else 1)
+                sys.exit(_simulation_result_exit_code(result))
 
         # ── Legacy: agent mode (deprecated alias) ──
         _sim_agent = _is_legacy_agent
@@ -1348,7 +1363,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
                 entity_ref=_sim_entity_ref,
             )
-            sys.exit(0 if result.finish_reason != "error" else 1)
+            sys.exit(_simulation_result_exit_code(result))
 
         # Check for benchmark mode (multi-model comparison)
         _sim_benchmark = str(sim_path).strip().lower() == "benchmark"
@@ -1420,7 +1435,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 debug=debug,
                 sandbox_backend=getattr(args, "sandbox_backend", "auto"),
             )
-            sys.exit(0 if result.review_verdict != "reject" else 1)
+            sys.exit(_research_result_exit_code(result))
 
         # ── Auto-detect Roy curriculum YAMLs ──
         # A curriculum YAML has a top-level ``stages:`` list and chains
@@ -1485,7 +1500,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                             max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
                             entity_ref=_sim_entity_ref,
                         )
-                        sys.exit(0 if result.finish_reason != "error" else 1)
+                        sys.exit(_simulation_result_exit_code(result))
                 except Exception:
                     pass  # Not a DM campaign — fall through to normal YAML handling
 
@@ -1505,7 +1520,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
                 entity_ref=_sim_entity_ref,
             )
-            sys.exit(0 if result.finish_reason != "error" else 1)
+            sys.exit(_simulation_result_exit_code(result))
 
         # Check for interactive mode
         if _is_interactive:
@@ -2015,7 +2030,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                             debug=_sim_debug,
                             entity_ref=_sim_entity_ref,
                         )
-                        sys.exit(0 if result.finish_reason != "error" else 1)
+                        sys.exit(_simulation_result_exit_code(result))
                     finally:
                         if llm_worker:
                             llm_worker.stop()

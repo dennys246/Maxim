@@ -530,7 +530,13 @@ def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str, premise: 
     )
     try:
         result = handle.play_premise(premise) if premise else handle.play_campaign(campaign_path)
-        log.info("console run %s finished: %s", run_id, getattr(result, "finish_reason", "?"))
+        from maxim.simulation.sim_types import is_simulation_run_failure
+
+        finish_reason = str(getattr(result, "finish_reason", "") or "")
+        run_failed = is_simulation_run_failure(finish_reason)
+        event_status = "failed" if run_failed else "ended"
+        log_fn = log.error if run_failed else log.info
+        log_fn("console run %s %s: %s", run_id, event_status, finish_reason or "?")
         # SimulationResult has session_id/session_dir (empty-string defaults),
         # NOT a report_path field — the report convention is
         # session_dir/report.json (review fold: getattr(result, "report_path")
@@ -538,11 +544,11 @@ def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str, premise: 
         session_dir = str(getattr(result, "session_dir", "") or "")
         _event_hub.publish(
             "run",
-            f"run {run_id} ended",
+            f"run {run_id} {event_status}",
             {
                 "run_id": run_id,
-                "status": "ended",
-                "finish_reason": str(getattr(result, "finish_reason", "") or "") or None,
+                "status": event_status,
+                "finish_reason": finish_reason or None,
                 "sim_session_id": str(getattr(result, "session_id", "") or "") or None,
                 "report_path": str(Path(session_dir) / "report.json") if session_dir else None,
             },

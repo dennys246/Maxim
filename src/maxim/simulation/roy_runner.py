@@ -77,6 +77,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from maxim.simulation.sim_types import is_simulation_run_failure
+
 logger = logging.getLogger(__name__)
 
 
@@ -505,6 +507,9 @@ def _run_arm(
     record.turns_run = int(getattr(sim_result, "turns", 0) or 0)
     record.finish_reason = getattr(sim_result, "finish_reason", "") or ""
     record.duration_s = round(time.time() - start, 2)
+    if is_simulation_run_failure(record.finish_reason):
+        record.error = f"unusable simulation result: finish_reason={record.finish_reason}"
+        logger.error("Roy arm %r: %s", arm.name, record.error)
     if not record.session_id:
         record.error = "arm returned empty session_id; diff against this arm will be unavailable"
         logger.warning("Roy arm %r: %s", arm.name, record.error)
@@ -700,13 +705,19 @@ def run_roy_iteration(
     pairs = (("a", "b"), ("a", "c"), ("b", "c"))
     for left, right in pairs:
         key = f"{left}_vs_{right}"
-        dir_l = result.arms[left].session_dir
-        dir_r = result.arms[right].session_dir
-        if not dir_l or not dir_r:
+        arm_l = result.arms[left]
+        arm_r = result.arms[right]
+        dir_l = arm_l.session_dir
+        dir_r = arm_r.session_dir
+        if arm_l.error or arm_r.error or not dir_l or not dir_r:
+            unusable = [
+                side
+                for side, arm, directory in ((left, arm_l, dir_l), (right, arm_r, dir_r))
+                if arm.error or not directory
+            ]
             result.pairwise_diffs[key] = {
                 "available": False,
-                "reason": f"missing session_dir for arm(s): "
-                f"{','.join(side for side, d in ((left, dir_l), (right, dir_r)) if not d)}",
+                "reason": f"unusable result for arm(s): {','.join(unusable)}",
             }
             continue
         try:

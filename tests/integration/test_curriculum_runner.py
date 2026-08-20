@@ -53,6 +53,7 @@ def _make_fake_sim_runner(
     growth_per_call: int = 5,
     fail_on_call: int | None = None,
     return_empty_session_on_call: int | None = None,
+    finish_reason_on_call: tuple[int, str] | None = None,
 ) -> Callable[..., SimulationResult]:
     """Build a fake ``start_simulation_mode`` substitute.
 
@@ -71,6 +72,8 @@ def _make_fake_sim_runner(
     ``return_empty_session_on_call`` returns a SimulationResult with
     ``session_id=""`` to simulate an early-bail orchestrator (proves
     the runner refuses to chain into a missing session).
+    ``finish_reason_on_call`` returns an otherwise complete session with the
+    supplied terminal status, exercising cleanly unwound runtime aborts.
     """
     call_log: list[dict[str, Any]] = []
 
@@ -154,6 +157,10 @@ def _make_fake_sim_runner(
             }
         )
 
+        finish_reason = "complete"
+        if finish_reason_on_call is not None and call_idx == finish_reason_on_call[0]:
+            finish_reason = finish_reason_on_call[1]
+
         return SimulationResult(
             goal=kwargs.get("goal", ""),
             mode=kwargs.get("mode", ""),
@@ -161,7 +168,7 @@ def _make_fake_sim_runner(
             total_actions=growth_per_call,
             blocked_actions=0,
             duration_s=0.01,
-            finish_reason="complete",
+            finish_reason=finish_reason,
             session_id=session_id,
             session_dir=str(session_dir),
         )
@@ -370,6 +377,30 @@ class TestSubstrateChain:
 
 
 class TestFailureHandling:
+    def test_clean_runtime_abort_stops_chain_and_marks_stage_failed(self, isolated_sim_reports, tmp_path):
+        """A typed D13 abort must not become the substrate for stage 2."""
+        fixture = _smoke_fixture(tmp_path)
+        spec = _write_yaml(
+            tmp_path / "curriculum.yaml",
+            "name: typed-abort\n"
+            "stages:\n"
+            "  - name: stage1\n"
+            f"    fixture: {fixture.name}\n"
+            "    turns: 3\n"
+            "  - name: stage2\n"
+            f"    fixture: {fixture.name}\n"
+            "    turns: 3\n",
+        )
+
+        runner = _make_fake_sim_runner(finish_reason_on_call=(1, "planning_failed"))
+        result = run_curriculum(spec, sim_runner=runner)
+
+        assert result.aborted_at == "stage1"
+        assert len(runner.call_log) == 1  # type: ignore[attr-defined]
+        assert result.stages[0].finish_reason == "planning_failed"
+        assert "unusable simulation result" in (result.stages[0].error or "")
+        assert result.final_session_id == ""
+
     def test_stage1_exception_aborts_chain_cleanly(self, isolated_sim_reports, tmp_path):
         """A sim_runner exception on stage 1 records ``aborted_at`` and
         prevents stage 2 from running — no orphan substrate from a

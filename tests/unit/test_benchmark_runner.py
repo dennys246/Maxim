@@ -119,6 +119,25 @@ class _FakeScenario:
         self.expectations = []
 
 
+class TestRunIntegrity:
+    def test_runtime_abort_is_recorded_as_error_not_metrics(self, tmp_path, monkeypatch):
+        scenario = tmp_path / "scenario.yaml"
+        scenario.write_text("name: abort-test\npercepts: []\n")
+        aborted = _FakeExperimentResult(
+            finish_reason="llm_wedged",
+            analysis={"system_stats": {"hippocampus_memories": 999}},
+        )
+        monkeypatch.setattr("maxim.simulation.experiment.run_campaign", lambda **kwargs: aborted)
+
+        report = BenchmarkRunner(models=["test-model"], suite_path=str(scenario)).run()
+        run = report.results["test-model"].runs[0]
+
+        assert run.metrics == {}
+        assert "unusable simulation result" in (run.error or "")
+        assert "llm_wedged" in (run.error or "")
+        assert not report.results["test-model"].passed
+
+
 class TestMetricComputation:
     def _make_runner(self):
         yaml_content = "name: test\npercepts: []\n"

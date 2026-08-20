@@ -459,6 +459,43 @@ class TestWsEndToEnd:
 
 
 class TestRunLifecycleEvents:
+    def test_clean_runtime_abort_publishes_failed_not_ended(self):
+        from maxim.console.server import _event_hub, _run_campaign_thread
+        from maxim.simulation.sim_types import SimulationResult
+
+        result = SimulationResult(
+            goal="g",
+            mode="m",
+            turns=1,
+            total_actions=0,
+            blocked_actions=0,
+            duration_s=0.1,
+            finish_reason="worker_unavailable",
+            session_id="sim_abort",
+            session_dir="/tmp/sessions/sim_abort",
+        )
+
+        class FakeHandle:
+            def play_campaign(self, path):
+                return result
+
+        conn = _WsConn()
+        loop = asyncio.new_event_loop()
+        try:
+            _event_hub.attach(loop)
+            _event_hub.add_conn(conn)
+            _run_campaign_thread(FakeHandle(), "camp.yaml", "run_abort")
+            loop.run_until_complete(asyncio.sleep(0))
+            events = _drain(conn)
+        finally:
+            _event_hub.remove_conn(conn)
+            _event_hub.detach()
+            loop.close()
+
+        assert [event["data"]["status"] for event in events] == ["started", "failed"]
+        assert events[-1]["data"]["finish_reason"] == "worker_unavailable"
+        assert events[-1]["data"]["report_path"].endswith("sim_abort/report.json")
+
     def test_run_ended_payload_derives_report_path(self):
         # Review fold (BLOCKING): SimulationResult has session_id/session_dir,
         # NOT report_path — the pre-fold getattr(result, "report_path") was

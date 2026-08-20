@@ -192,6 +192,13 @@ maxim substrate import in.zip --output-dir ./imported     # extract bundle (does
 maxim substrate inspect bundle.zip                        # print manifest without extracting
 ```
 
+Simulation process exits distinguish run integrity from experimental verdicts:
+exit `0` means the run produced usable evidence (including semantic outcomes such
+as `failed`, `blocked`, or `inconclusive`), exit `1` is a generic error, and exit
+`4` is an incomplete/runtime-aborted run. Campaign scripts must reject every
+non-zero exit before analyzing its report. Python APIs return the structured
+`finish_reason` instead of terminating the host process.
+
 See [docs/user/cli-reference.md](docs/user/cli-reference.md) for all flags.
 
 ## Documentation

@@ -57,7 +57,7 @@ Top-level functions for common operations. All heavy imports are deferred.
 |------|---------|---------|
 | `campaign(path, model, party_mode)` | Run a DM campaign | `CampaignResult` |
 | `benchmark(models, suite, runs)` | Multi-model comparison | `BenchmarkResult` |
-| `research(goal, campaign, model)` | Experiment + paper protocol | `ResearchResult` |
+| `research(goal, campaign, model)` | Experiment + paper protocol; inspect `finish_reason` before consuming the paper | `ResearchResult` |
 
 ### Extension Verbs
 

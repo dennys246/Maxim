@@ -6,6 +6,7 @@ the extracted functions.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 
@@ -56,6 +57,58 @@ class TestSimulationResult:
         assert r.actions == []
         assert r.subsystem_snapshot == {}
         assert r.router_stats == {}
+
+
+class TestSimulationExitContract:
+    """Process and harness consumers must agree on run integrity."""
+
+    def test_runtime_aborts_use_the_hard_abort_exit_code(self):
+        from maxim.simulation.sim_types import simulation_exit_code
+
+        for finish_reason in (
+            "aut_died",
+            "llm_wedged",
+            "planning_failed",
+            "worker_unavailable",
+            "aborted",
+            "cancel",
+            "stuck",
+        ):
+            assert simulation_exit_code(finish_reason) == 4
+
+    def test_generic_error_uses_generic_failure_exit_code(self):
+        from maxim.simulation.sim_types import simulation_exit_code
+
+        assert simulation_exit_code("error") == 1
+
+    def test_semantic_outcomes_remain_valid_experiment_data(self):
+        from maxim.simulation.sim_types import is_simulation_run_failure, simulation_exit_code
+
+        for finish_reason in ("completed", "failed", "blocked", "inconclusive", "max_turns"):
+            assert not is_simulation_run_failure(finish_reason)
+            assert simulation_exit_code(finish_reason) == 0
+
+    def test_failure_classification_is_normalized_and_fail_closed_for_known_failures(self):
+        from maxim.simulation.sim_types import is_simulation_run_failure
+
+        assert is_simulation_run_failure("  PLANNING_FAILED  ")
+        assert is_simulation_run_failure("error")
+        assert not is_simulation_run_failure("unknown")
+
+    def test_cli_maps_structured_simulation_abort_to_process_failure(self):
+        from maxim.cli import _simulation_result_exit_code
+
+        assert _simulation_result_exit_code(SimpleNamespace(finish_reason="worker_unavailable")) == 4
+        assert _simulation_result_exit_code(SimpleNamespace(finish_reason="completed")) == 0
+
+    def test_research_cli_does_not_hide_underlying_simulation_abort(self):
+        from maxim.cli import _research_result_exit_code
+
+        assert (
+            _research_result_exit_code(SimpleNamespace(finish_reason="planning_failed", review_verdict="not_reviewed"))
+            == 4
+        )
+        assert _research_result_exit_code(SimpleNamespace(finish_reason="completed", review_verdict="reject")) == 1
 
 
 class TestBuildResumePrompt:

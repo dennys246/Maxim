@@ -101,7 +101,17 @@ def _run_analyzer(results_path: Path) -> tuple[int, str]:
 def test_mock_pipeline_taught_graduates(tmp_path):
     out = tmp_path / "cm.jsonl"
     rc = subprocess.run(
-        [sys.executable, str(_HARNESS), "--mock", "--trials", "3", "--out", str(out)],
+        [
+            sys.executable,
+            str(_HARNESS),
+            "--mock",
+            "--trials",
+            "3",
+            "--out",
+            str(out),
+            "--workdir",
+            str(tmp_path / "work"),
+        ],
         capture_output=True,
         text=True,
     ).returncode

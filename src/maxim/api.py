@@ -1374,6 +1374,7 @@ class ResearchResult:
     paper_draft: str = ""
     review: str = ""
     experiment_count: int = 0
+    finish_reason: str = ""
 
 
 def research(
@@ -1402,7 +1403,8 @@ def research(
         verbosity: Logging verbosity (0-3).
 
     Returns:
-        ResearchResult with paper draft, review verdict, and experiment count.
+        ResearchResult with paper draft, review verdict, experiment count, and
+        the underlying simulation ``finish_reason``.
 
     Example::
 
@@ -1442,6 +1444,7 @@ def research(
         paper_draft=paper_text,
         review=orch_result.review_verdict,
         experiment_count=orch_result.experiments_count,
+        finish_reason=str(getattr(orch_result, "finish_reason", "") or ""),
     )
 
 
