@@ -1,6 +1,13 @@
 # Exp 48 — Does the extero/intero seam make the EMBODIED infant orient?
 
-**Status:** PRE-REGISTERED (2026-07-23). Runs after the extero/intero multi-modality seam (PR #411, `26d8f901`). Pre-registration is authoritative; fill Results/Verdict only from a completed run whose `git_hash` contains the seam.
+**Status:** **COMPLETE — NOT GRADUATED, the pre-registered PARTIAL branch** (verdict 2026-08-14 on the apparatus-v2 re-baseline; explore-weight sweep complete 2026-08-18). Pre-registered 2026-07-23, after the extero/intero multi-modality seam (PR #411, `26d8f901`).
+
+- **MOTHER-TAUGHT: PASS, decisively** — taught late 0.649 vs no_feed 0.167 (**+0.482** against a 0.20 margin). The mother's contingent feeding is the difference, on the fixed apparatus.
+- **LEARNED-v2: FAIL** — the level criterion recovers at explore weight 1.0 (late 0.667 ≥ 0.65) but the rise criterion hits a structural wall (+0.122 vs 0.15).
+- **The sweep (ew 1.5 / 1.0 / 0.75, COMPLETE 2026-08-18) is decisive in a third direction and QUALIFIES the mother-effect.** Every cell is an exact, seed-invariant twelfth — taught late 8/12 → 8/12 → 4/12, control 2/12 → 2/12 → 6/12 — so the control moved with zero teaching and **at ew 0.75 the arms invert**. On this deterministic apparatus, directedness measures PHASE ALIGNMENT between the turn and stimulus cycles (the L2 limit — see [docs/limits/l2_phase_locking.md](../limits/l2_phase_locking.md)); the credit tips the taught arm between phase-locked attractors. The mother-effect is real and causal, but it is **credit-tipped attractor selection, not graded orienting skill**. Sweep dimension exhausted; the sanctioned next step is randomised stimulus order plus a v3 gate frozen pre-data.
+- The 2026-08-11 **CONTESTED** banner is **RESOLVED** by that re-baseline; cite the v2 numbers, never the pre-#510 magnitudes.
+
+The pre-registration below is unchanged and remains authoritative for how the gate was set; Results and Verdict are filled from completed runs whose `executed_git_hash` contains the seam. Read this header WITH §Results — an earlier version of this line still said PRE-REGISTERED after the verdict landed, which is the exact drift the release-truth pass exists to catch.
 
 ## The one-sentence question
 
