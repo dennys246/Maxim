@@ -35,6 +35,23 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+# Least-privilege default for EVERY job, including ones added later.
+#
+# CodeQL's `actions/missing-workflow-permissions` fires per job that does not
+# declare a scope, and this repo's ruleset blocks merges on
+# `alerts_threshold: all` — so a new job without this is not a style nit, it
+# is a blocked PR. That had already been learned once (see the per-job blocks
+# on the aarch64 jobs below, which carry the same explanation); the two jobs
+# this branch added rediscovered it. Declaring the default at workflow level
+# fixes the class instead of the instance: a job may still narrow or widen its
+# own scope, but it can no longer inherit an implicit one by omission.
+#
+# `contents: read` is all any job here needs — every one of them checks out
+# code and runs tests. Nothing writes to the repo, comments on PRs, or
+# publishes packages.
+permissions:
+  contents: read
+
 jobs:
   python-compatibility:
     name: Python ${{ matrix.python-version }} compatibility
