@@ -196,6 +196,12 @@ class AgentInstance:
                     self.memory_hub.on_session_end()
             except Exception as e:
                 log.warning("Agent %s: memory_hub shutdown failed: %s", self.agent_id, e)
+            finally:
+                # MemoryHub owns a ConceptExtractor thread from construction,
+                # even if no session became active and on_session_end() no-ops.
+                shutdown_fn = getattr(self.memory_hub, "shutdown", None)
+                if callable(shutdown_fn):
+                    shutdown_fn()
 
         if self.hippocampus is not None:
             try:
@@ -454,12 +460,31 @@ class AgentFactory:
             from maxim.runtime.bio_stack import build_bio_stack
 
             agent_dir = self._resolve_persistence_dir(config)
-            bio = build_bio_stack(
-                persistence_dir=str(agent_dir),
-                pain_bus=pain_bus,
-                agent_id=config.agent_id,
-                load_persisted=config.load_persisted,
-            )
+            skeleton_memory_hub = instance.memory_hub
+            try:
+                bio = build_bio_stack(
+                    persistence_dir=str(agent_dir),
+                    pain_bus=pain_bus,
+                    agent_id=config.agent_id,
+                    load_persisted=config.load_persisted,
+                )
+            except BaseException:
+                # The fresh skeleton has not loaded persisted memory. Stop
+                # only its constructor-owned worker: AgentInstance.shutdown()
+                # would save empty Hippocampus/NAc state over existing files.
+                if skeleton_memory_hub is not None:
+                    try:
+                        skeleton_memory_hub.shutdown()
+                    except BaseException as cleanup_error:
+                        log.warning(
+                            "Agent %s: skeleton MemoryHub rollback failed: %s",
+                            config.agent_id,
+                            cleanup_error,
+                        )
+                raise
+            # Transfer ownership before any further fallible cleanup. If
+            # skeleton shutdown is interrupted, instance.shutdown() can now
+            # still reach the new bio-stack worker.
             instance.bio_stack = bio
             instance.pain_bus = bio.pain_bus
             # Upgrade memory subsystems from bio-stack (they have
@@ -478,6 +503,22 @@ class AgentFactory:
             instance.nac = bio.nac
             instance.atl = bio.atl
             instance.memory_hub = bio.memory_hub
+            if skeleton_memory_hub is not None and skeleton_memory_hub is not bio.memory_hub:
+                try:
+                    skeleton_memory_hub.shutdown()
+                except BaseException:
+                    try:
+                        instance.shutdown()
+                    finally:
+                        try:
+                            skeleton_memory_hub.shutdown()
+                        except BaseException as cleanup_error:
+                            log.warning(
+                                "Agent %s: superseded MemoryHub cleanup failed: %s",
+                                config.agent_id,
+                                cleanup_error,
+                            )
+                    raise
 
         # Step 3: Executor (tool execution with ToolPainBridge)
         if config.with_executor and instance.tool_registry is not None:
@@ -488,7 +529,7 @@ class AgentFactory:
                 )
             from maxim.runtime.bootstrap import build_executor
 
-            bio = instance.bio_stack
+            active_bio = instance.bio_stack
             # with_pain_bridge controls whether the ToolPainBridge
             # subscribes to the PainBus for out-of-band pain signals.
             # Bridge CONSTRUCTION is always gated on nac (see
@@ -496,23 +537,30 @@ class AgentFactory:
             # is None so the bridge exists for direct attribution
             # (record_tool_complete / record_tool_embodiment_failure).
             _exec_pain_bus = instance.pain_bus if config.with_pain_bridge else None
-            executor = build_executor(
-                instance.tool_registry,
-                pain_bus=_exec_pain_bus,
-                nac=instance.nac,
-                hippocampus=instance.hippocampus,
-                scn=bio.scn if bio is not None else None,
-                entity_ref=config.embodiment_ref,
-                component_registry=self._component_registry,
-                cerebellum=bio.cerebellum if bio is not None else None,
-                distributor=bio.distributor if bio is not None else None,
-                agent_id=config.agent_id,
-            )
-            # Review fix (Exec #1): attribute is `embodiment`, not `_embodiment`.
-            # The old CLI code had the identical bug — always returned None.
-            instance.embodiment = getattr(executor, "embodiment", None)
-            instance.executor = executor
-            _maybe_wire_body_state(instance)
+            try:
+                executor = build_executor(
+                    instance.tool_registry,
+                    pain_bus=_exec_pain_bus,
+                    nac=instance.nac,
+                    hippocampus=instance.hippocampus,
+                    scn=active_bio.scn if active_bio is not None else None,
+                    entity_ref=config.embodiment_ref,
+                    component_registry=self._component_registry,
+                    cerebellum=active_bio.cerebellum if active_bio is not None else None,
+                    distributor=active_bio.distributor if active_bio is not None else None,
+                    agent_id=config.agent_id,
+                )
+                # Review fix (Exec #1): attribute is `embodiment`, not `_embodiment`.
+                # The old CLI code had the identical bug — always returned None.
+                instance.embodiment = getattr(executor, "embodiment", None)
+                instance.executor = executor
+                _maybe_wire_body_state(instance)
+            except BaseException:
+                # The factory owns the partially built bio stack until it
+                # returns the instance. Persist/close it before propagating a
+                # failed executor or body-state wiring step.
+                instance.shutdown()
+                raise
 
         # Step 4: Fear gating (wraps executor with FearGatedExecutor)
         if config.with_fear_gate and instance.executor is not None:

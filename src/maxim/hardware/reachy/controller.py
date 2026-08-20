@@ -902,8 +902,14 @@ class ReachyMiniController(RobotController):
         try:
             try:
                 self._mini.enable_motors()
-            except Exception as e:  # noqa: BLE001 - older SDKs may lack it
-                logger.warning("enable_motors() failed (%s) — motion may be ignored", e)
+            except Exception as e:  # noqa: BLE001 - hardware boundary must fail closed
+                logger.error("enable_motors() failed (%s) — refusing to claim the robot is awake", e)
+                try:
+                    self._mini.goto_sleep()
+                except Exception as sleep_error:  # noqa: BLE001 - best-effort safety restore
+                    logger.error("Safety sleep after torque-enable failure also failed: %s", sleep_error)
+                self._update_state(is_awake=False)
+                return False
             # The wake motion moves the robot outside goto_target's stash —
             # forget BEFORE dispatching so a raise after partial motion
             # cannot leave stale values (spurious clear costs one seed).

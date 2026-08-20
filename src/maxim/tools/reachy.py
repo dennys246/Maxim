@@ -33,6 +33,13 @@ def _get_robot_from_registry(
         robot = getattr(maxim, "_robot", None)
         if robot is not None:
             return robot
+        # Stable ``maxim.run(robot=..., headless=False)`` passes the selected
+        # RobotController itself. Returning it directly avoids accidentally
+        # commanding a different registry primary in multi-robot processes.
+        from maxim.hardware.controller import RobotController
+
+        if isinstance(maxim, RobotController):
+            return maxim
 
     # Look up from global registry
     try:
@@ -46,6 +53,13 @@ def _get_robot_from_registry(
             return registry.primary
     except Exception:
         return None
+
+
+def _is_robot_controller(value: Any) -> bool:
+    """Return whether *value* is a nominal pluggable robot controller."""
+    from maxim.hardware.controller import RobotController
+
+    return isinstance(value, RobotController)
 
 
 class FocusInterestsTool(Tool):
@@ -682,7 +696,7 @@ class MoveTool(Tool):
         "+1 = look full RIGHT — same sign as a heard sound's azimuth, so to face a sound pass "
         "target_x ≈ its azimuth) and target_y (-1 = up, +1 = down). Or raw angles in degrees: "
         "yaw (POSITIVE = LEFT, negative = RIGHT), pitch (positive = down), roll. "
-        "Optionally robot_id for a specific robot."
+        "Optionally robot_id for a specific robot. Raw x/y/z translation requires the full legacy runtime."
     )
 
     # Mark as always allowed - bypasses autonomy approval
@@ -704,6 +718,11 @@ class MoveTool(Tool):
     def __init__(self, maxim: Any) -> None:
         super().__init__()
         self._maxim = maxim
+        self._controller_bound = _is_robot_controller(maxim)
+        if self._controller_bound:
+            # Stable run() leases exactly one controller. Do not advertise a
+            # global-registry escape hatch that could target unrelated hardware.
+            self.input_schema = {key: value for key, value in self.input_schema.items() if key != "robot_id"}
 
     def execute(self, **kwargs: Any) -> ToolResult:
         maxim = self._maxim
@@ -741,11 +760,29 @@ class MoveTool(Tool):
             pitch = ty * _MAX_GAZE_PITCH_DEG  # +pitch = DOWN, matching -1=up/+1=down
 
         try:
-            # If robot_id specified, use RobotController directly
-            if robot_id is not None:
+            # Stable ``maxim.run(robot=..., headless=False)`` supplies the
+            # selected RobotController directly rather than the legacy
+            # all-in-one Maxim runtime.
+            if self._controller_bound and robot_id is not None:
+                return ToolResult(
+                    success=False,
+                    error="robot_id cannot retarget a controller-bound move tool; omit robot_id",
+                )
+
+            use_controller = robot_id is not None or self._controller_bound
+            if use_controller:
                 robot = _get_robot_from_registry(robot_id, maxim)
                 if robot is None:
-                    return ToolResult(success=False, error=f"Robot not found: {robot_id}")
+                    target = robot_id or "primary"
+                    return ToolResult(success=False, error=f"Robot not found: {target}")
+                if any(value is not None for value in (x, y, z)):
+                    return ToolResult(
+                        success=False,
+                        error=(
+                            "x/y/z head translation is unavailable through RobotController; "
+                            "use target_x/target_y or roll/pitch/yaw"
+                        ),
+                    )
 
                 from maxim.hardware import MotionTarget
                 import math
@@ -770,7 +807,7 @@ class MoveTool(Tool):
                 clamped_axes = tuple(getattr(robot, "last_clamped_axes", ()) or ())
                 output: dict[str, Any] = {
                     "moved": True,
-                    "robot_id": robot_id,
+                    "robot_id": robot_id or getattr(robot, "robot_id", None),
                     "target_x": target_x,
                     "target_y": target_y,
                     "roll": roll,

@@ -289,3 +289,31 @@ class TestBuildBioStackComposesBuilders:
 
         bio = build_bio_stack(agent_id="default_agent")
         assert bio.memory_hub.atl is bio.atl
+
+    def test_post_hub_failure_has_no_worker_to_leak(self, monkeypatch):
+        """Background extraction starts only after transactional assembly."""
+        import maxim.integration.memory_hub as memory_hub_module
+        import maxim.proprioception.pain_bus as pain_bus_module
+        from maxim.runtime.bio_stack import build_bio_stack
+
+        captured_hubs = []
+        original_build_hub = memory_hub_module.build_memory_hub
+
+        def capture_hub(**kwargs):
+            hub = original_build_hub(**kwargs)
+            captured_hubs.append(hub)
+            return hub
+
+        def fail_pain_bus(**kwargs):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(memory_hub_module, "build_memory_hub", capture_hub)
+        monkeypatch.setattr(pain_bus_module, "build_pain_bus", fail_pain_bus)
+
+        with pytest.raises(KeyboardInterrupt):
+            build_bio_stack(agent_id="rollback_probe")
+
+        assert len(captured_hubs) == 1
+        extractor = captured_hubs[0]._concept_extractor
+        assert extractor is not None
+        assert extractor._worker.is_alive() is False

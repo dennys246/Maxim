@@ -149,8 +149,17 @@ state = maxim.observe("memory")
 # Diagnose environment
 report = maxim.diagnose()
 
-# Start the agentic loop  (requires a configured LLM backend)
-maxim.run(model="mistral-7b")
+# Start with a goal (requires a configured LLM backend)
+maxim.run(model="mistral-7b", goal="inspect the workspace")
+
+# Controller-backed direct motion; full capture/vision remains on the CLI runtime
+# Hardware intent is explicit: robot and headless=True are contradictory
+maxim.run(
+    model="mistral-7b",
+    goal="turn your head 20 degrees left",
+    robot="reachy_mini",
+    headless=False,
+)
 
 # Manage models
 models = maxim.list_models()

@@ -30,6 +30,15 @@ class RobotRegistration:
     is_primary: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class RobotConnectionResult:
+    """Atomic result of connecting or reusing a registered robot."""
+
+    controller: RobotController
+    registration_key: str
+    created: bool
+
+
 class RobotRegistry:
     """Singleton registry for managing multiple robot connections.
 
@@ -185,14 +194,61 @@ class RobotRegistry:
         Returns:
             Connected RobotController, or None if connection failed.
         """
+        result = self.connect_robot_with_status(
+            robot_id=robot_id,
+            robot_type=robot_type,
+            config=config,
+            set_primary=set_primary,
+            timeout=timeout,
+        )
+        return result.controller if result is not None else None
+
+    def connect_robot_with_status(
+        self,
+        robot_id: str,
+        robot_type: str,
+        config: dict[str, Any] | None = None,
+        *,
+        set_primary: bool = False,
+        timeout: float = 30.0,
+    ) -> RobotConnectionResult | None:
+        """Atomically connect or reuse a robot and report ownership.
+
+        Unlike a preflight ``get_robot()`` followed by ``connect_robot()``, the
+        ``created`` flag is decided under the registry lock. This lets callers
+        clean up only connections they actually created.
+        """
         if robot_type not in self._controller_types:
             logger.error("Unknown robot type: %s (registered: %s)", robot_type, list(self._controller_types.keys()))
             return None
 
         with self._robots_lock:
             if robot_id in self._robots:
-                logger.warning("Robot already connected: %s", robot_id)
-                return self._robots[robot_id].controller
+                registration = self._robots[robot_id]
+                try:
+                    registration_is_live = registration.controller.is_connected()
+                except Exception:
+                    registration_is_live = False
+                if not registration_is_live:
+                    logger.warning("Replacing stale disconnected robot registration: %s", robot_id)
+                    self.disconnect_robot(robot_id)
+                elif registration.robot_type != robot_type:
+                    logger.error(
+                        "Robot ID %s is already registered as type %s, not requested type %s",
+                        robot_id,
+                        registration.robot_type,
+                        robot_type,
+                    )
+                    return None
+                else:
+                    logger.warning("Robot already connected: %s", robot_id)
+                    if set_primary:
+                        self.set_primary(robot_id)
+                    return RobotConnectionResult(
+                        controller=registration.controller,
+                        registration_key=robot_id,
+                        created=False,
+                    )
 
             config = config or {}
             controller_class = self._controller_types[robot_type]
@@ -235,8 +291,28 @@ class RobotRegistry:
 
             logger.info("Connecting robot: %s (type=%s)", robot_id, robot_type)
 
-            if not controller.connect(timeout=timeout):
+            try:
+                connected = controller.connect(timeout=timeout)
+            except BaseException:
+                try:
+                    controller.disconnect()
+                except BaseException as cleanup_error:
+                    logger.warning(
+                        "Failed to clean up robot %s after connection error: %s",
+                        robot_id,
+                        cleanup_error,
+                    )
+                raise
+            if not connected:
                 logger.error("Failed to connect robot: %s", robot_id)
+                try:
+                    controller.disconnect()
+                except BaseException as cleanup_error:
+                    logger.warning(
+                        "Failed to clean up robot %s after unsuccessful connection: %s",
+                        robot_id,
+                        cleanup_error,
+                    )
                 return None
 
             registration = RobotRegistration(
@@ -260,7 +336,11 @@ class RobotRegistry:
                     logger.error("Connect callback error: %s", e)
 
             logger.info("Robot connected: %s (primary=%s)", robot_id, set_primary or self._primary_id == robot_id)
-            return controller
+            return RobotConnectionResult(
+                controller=controller,
+                registration_key=robot_id,
+                created=True,
+            )
 
     def disconnect_robot(self, robot_id: str) -> bool:
         """Disconnect a robot.
@@ -282,6 +362,7 @@ class RobotRegistry:
                 registration.controller.disconnect()
             except Exception as e:
                 logger.error("Error disconnecting robot %s: %s", robot_id, e)
+                return False
 
             del self._robots[robot_id]
 

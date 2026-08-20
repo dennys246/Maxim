@@ -102,6 +102,24 @@ class TestBuildMemoryHub:
         hub = build_memory_hub(agent_id="default_agent", **core_systems)
         assert isinstance(hub, MemoryHub)
 
+    def test_connect_failure_cannot_leak_eager_worker(self, core_systems, monkeypatch):
+        """The worker starts only after all builder wiring has succeeded."""
+        from maxim.integration.memory_hub import MemoryHub, build_memory_hub
+        from maxim.memory.atl import ATL
+
+        captured = []
+
+        def fail_connect(hub, **kwargs):
+            captured.append(hub)
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(MemoryHub, "connect", fail_connect)
+
+        with pytest.raises(KeyboardInterrupt):
+            build_memory_hub(agent_id="failed_build", atl=ATL(), **core_systems)
+
+        assert captured[0]._concept_extractor._worker.is_alive() is False
+
     def test_plan_bridge_always_created(self, core_systems):
         """PlanHistoryBridge is alive on every hub from the builder.
 

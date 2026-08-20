@@ -363,6 +363,7 @@ def build_bio_stack(
         atl=atl,
         angular_gyrus=angular_gyrus,
         agent_id=agent_id,
+        start_background_workers=False,
     )
 
     # -- Step 4: PainBus ---------------------------------------------------
@@ -513,6 +514,15 @@ def build_bio_stack(
             config=dn_config,
             frame_size=dn_frame_size,
         )
+
+    # The hub's ConceptExtractor is assembled in a stopped state so any
+    # failure in Steps 4-5 has no background thread to leak. Transfer to the
+    # live state only after every other component has been constructed.
+    try:
+        memory_hub.start_background_workers()
+    except BaseException:
+        memory_hub.shutdown()
+        raise
 
     return BioStack(
         hippocampus=hippocampus,

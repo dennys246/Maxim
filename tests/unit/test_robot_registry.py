@@ -109,6 +109,76 @@ class TestRobotConnection:
 
         assert robot1 is robot2
 
+    def test_connect_status_reports_atomic_ownership(self, registry):
+        """Only the call that creates the live registration owns it."""
+        first = registry.connect_robot_with_status(robot_id="owned", robot_type="simulated")
+        second = registry.connect_robot_with_status(robot_id="owned", robot_type="simulated")
+
+        assert first is not None and first.created is True
+        assert second is not None and second.created is False
+        assert second.controller is first.controller
+        assert first.registration_key == "owned"
+
+    def test_connect_replaces_stale_disconnected_registration(self, registry):
+        """A direct disconnect cannot poison subsequent registry connects."""
+        first = registry.connect_robot(robot_id="stale", robot_type="simulated")
+        assert first is not None
+        first.disconnect()
+
+        second = registry.connect_robot(robot_id="stale", robot_type="simulated")
+
+        assert second is not None
+        assert second is not first
+        assert second.is_connected()
+
+    def test_connect_rejects_live_id_with_different_type(self, registry):
+        """An ID collision must not silently return the wrong robot type."""
+        registry.register_controller_type("other", SimulatedController)
+        first = registry.connect_robot(robot_id="collision", robot_type="simulated")
+
+        second = registry.connect_robot(robot_id="collision", robot_type="other")
+
+        assert first is not None
+        assert second is None
+        assert registry.get_robot("collision") is first
+
+    @pytest.mark.parametrize("failure_mode", ["false", "raise", "interrupt"])
+    def test_connect_failure_disconnects_partial_controller(self, registry, failure_mode):
+        """The registry unwinds controller state created before a failed connect."""
+
+        class PartialController(SimulatedController):
+            instances = []
+
+            def __init__(self, robot_id):
+                super().__init__(robot_id)
+                self.cleaned = False
+                self.__class__.instances.append(self)
+
+            def connect(self, timeout=30.0):
+                if failure_mode == "interrupt":
+                    raise KeyboardInterrupt
+                if failure_mode == "raise":
+                    raise RuntimeError("partial connection")
+                return False
+
+            def disconnect(self):
+                self.cleaned = True
+                super().disconnect()
+
+        registry.register_controller_type("partial", PartialController)
+
+        if failure_mode == "interrupt":
+            with pytest.raises(KeyboardInterrupt):
+                registry.connect_robot(robot_id="partial", robot_type="partial")
+        elif failure_mode == "raise":
+            with pytest.raises(RuntimeError, match="partial connection"):
+                registry.connect_robot(robot_id="partial", robot_type="partial")
+        else:
+            assert registry.connect_robot(robot_id="partial", robot_type="partial") is None
+
+        assert PartialController.instances[0].cleaned is True
+        assert registry.get_robot("partial") is None
+
     def test_disconnect_robot(self, registry):
         """Can disconnect a robot."""
         registry.connect_robot(robot_id="to_disconnect", robot_type="simulated")
@@ -118,6 +188,19 @@ class TestRobotConnection:
 
         assert result is True
         assert "to_disconnect" not in registry.list_robots()
+
+    def test_disconnect_failure_retains_recovery_registration(self, registry):
+        """A failed transport close must not discard the operator handle."""
+
+        class FailedDisconnectController(SimulatedController):
+            def disconnect(self):
+                raise RuntimeError("transport still live")
+
+        registry.register_controller_type("failed_disconnect", FailedDisconnectController)
+        controller = registry.connect_robot(robot_id="recoverable", robot_type="failed_disconnect")
+
+        assert registry.disconnect_robot("recoverable") is False
+        assert registry.get_robot("recoverable") is controller
 
     def test_disconnect_nonexistent_returns_false(self, registry):
         """Disconnecting nonexistent robot returns False."""

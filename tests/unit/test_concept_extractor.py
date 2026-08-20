@@ -493,6 +493,21 @@ class TestQueueBehavior:
         ext.shutdown()
         assert not ext._worker.is_alive()
 
+    def test_flush_timeout_is_bounded_when_worker_is_deferred(self, atl, cross_layer):
+        """A queued item with no worker cannot hang lifecycle cleanup."""
+        ext = ConceptExtractor(
+            atl=atl,
+            cross_layer=cross_layer,
+            scn=None,
+            start_worker=False,
+        )
+        ext.on_memory_captured("queued", _make_episode(memory_id="queued", objects=["mug"]))
+
+        started = time.monotonic()
+        assert ext.flush(timeout=0.02) is False
+        assert time.monotonic() - started < 0.2
+        ext.shutdown()
+
 
 class TestSCNIntegration:
     def test_registers_with_scn_when_available(self, atl, cross_layer):

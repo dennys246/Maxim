@@ -41,7 +41,7 @@ Top-level functions for common operations. All heavy imports are deferred.
 | Verb | Purpose | Returns |
 |------|---------|---------|
 | `configure(verbosity, log_file, debug, show)` | Set logging + tracing | None |
-| `run(model, goal, headless, learning)` | Run the agentic cycle | None (blocks) |
+| `run(model, goal, headless, robot, home_dir, learning)` | Run the agentic cycle; `goal` is initial input and `robot` requires `headless=False` | None (blocks until interruption) |
 | `imagine(goal, mode, scenario, model, resume)` | Run a simulation | `Session` |
 | `connect(robot_type, name, config)` | Connect to a robot | `RobotController` |
 | `diagnose(peer, api_key)` | Environment diagnostics | `DiagnosticReport` |
@@ -50,6 +50,16 @@ Top-level functions for common operations. All heavy imports are deferred.
 | `list_models()` | Available LLM profiles (with download/ready status) | `dict[str, list[ModelInfo]]` |
 | `download_model(name)` | Download a local LLM model | `bool` |
 | `delete_model(name)` | Delete a downloaded model to free disk space | `bool` |
+
+`run(home_dir=...)` roots API-owned memory, data, and session files there.
+Low-level runtime step snapshots still use CWD-relative `data/agents/`; complete
+`home_dir` ownership is tracked for 1.1.x as D15.
+
+`run()` installs no terminal-input reader: `goal=None` starts an idle service
+loop, and completing an initial goal does not currently stop that loop. Only one
+`run()` may be active per process. Robot mode wakes the selected controller and
+exposes direct `move` operations; full capture, vision, and DoA use the CLI
+runtime.
 
 ### Simulation & Research Verbs
 

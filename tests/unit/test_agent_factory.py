@@ -206,6 +206,34 @@ class TestCreateFullAgent:
         with pytest.raises(ValueError, match="tool_registry"):
             factory.create_full_agent(cfg)
 
+    def test_full_agent_shutdowns_partial_bio_stack_on_executor_failure(self, factory, monkeypatch):
+        """A late factory failure cannot orphan an unreturned bio stack."""
+        from maxim.tools.registry import ToolRegistry
+
+        cfg = AgentConfig(
+            agent_id="partial_exec",
+            with_bio_stack=True,
+            with_executor=True,
+        )
+        shutdown_instances = []
+        original_shutdown = AgentInstance.shutdown
+
+        def record_shutdown(instance, **kwargs):
+            shutdown_instances.append(instance)
+            return original_shutdown(instance, **kwargs)
+
+        def fail_executor(*args, **kwargs):
+            raise RuntimeError("executor failed")
+
+        monkeypatch.setattr(AgentInstance, "shutdown", record_shutdown)
+        monkeypatch.setattr("maxim.runtime.bootstrap.build_executor", fail_executor)
+
+        with pytest.raises(RuntimeError, match="executor failed"):
+            factory.create_full_agent(cfg, tool_registry=ToolRegistry())
+
+        assert len(shutdown_instances) == 1
+        assert shutdown_instances[0].bio_stack is not None
+
     def test_full_agent_with_fear_gate(self, factory):
         """FearGatedExecutor wraps the executor when with_fear_gate=True."""
         from maxim.tools.registry import ToolRegistry
@@ -235,6 +263,97 @@ class TestCreateFullAgent:
         assert instance.hippocampus is instance.bio_stack.hippocampus
         assert instance.nac is instance.bio_stack.nac
         assert instance.memory_hub is instance.bio_stack.memory_hub
+
+    def test_full_agent_stops_superseded_skeleton_worker(self, factory, monkeypatch):
+        """Bio-stack upgrade leaves exactly its returned MemoryHub worker alive."""
+        skeleton_hubs = []
+        original_create = factory.create_agent
+
+        def capture_skeleton(*args, **kwargs):
+            instance = original_create(*args, **kwargs)
+            skeleton_hubs.append(instance.memory_hub)
+            return instance
+
+        monkeypatch.setattr(factory, "create_agent", capture_skeleton)
+        cfg = AgentConfig(agent_id="worker_ownership", with_bio_stack=True)
+        instance = factory.create_full_agent(cfg)
+
+        skeleton = skeleton_hubs[0]
+        assert skeleton is not instance.memory_hub
+        assert skeleton._concept_extractor._worker.is_alive() is False
+        assert instance.memory_hub._concept_extractor._worker.is_alive() is True
+
+        instance.shutdown()
+        assert instance.memory_hub._concept_extractor._worker.is_alive() is False
+
+    def test_full_agent_interrupt_during_skeleton_cleanup_unwinds_both_hubs(self, factory, monkeypatch):
+        """Ownership transfers before superseded-hub cleanup can be interrupted."""
+        import maxim.runtime.bio_stack as bio_stack_module
+
+        skeleton_hubs = []
+        returned_bio = []
+        original_create = factory.create_agent
+        original_build_bio = bio_stack_module.build_bio_stack
+
+        def capture_skeleton(*args, **kwargs):
+            instance = original_create(*args, **kwargs)
+            skeleton = instance.memory_hub
+            original_shutdown = skeleton.shutdown
+            shutdown_calls = 0
+
+            def interrupt_once():
+                nonlocal shutdown_calls
+                shutdown_calls += 1
+                if shutdown_calls == 1:
+                    raise KeyboardInterrupt
+                original_shutdown()
+
+            skeleton.shutdown = interrupt_once
+            skeleton_hubs.append(skeleton)
+            return instance
+
+        def capture_bio(**kwargs):
+            bio = original_build_bio(**kwargs)
+            returned_bio.append(bio)
+            return bio
+
+        monkeypatch.setattr(factory, "create_agent", capture_skeleton)
+        monkeypatch.setattr(bio_stack_module, "build_bio_stack", capture_bio)
+        cfg = AgentConfig(agent_id="interrupt_ownership", with_bio_stack=True)
+
+        with pytest.raises(KeyboardInterrupt):
+            factory.create_full_agent(cfg)
+
+        assert skeleton_hubs[0]._concept_extractor._worker.is_alive() is False
+        assert returned_bio[0].memory_hub._concept_extractor._worker.is_alive() is False
+
+    def test_full_agent_bio_failure_does_not_persist_empty_skeleton(self, factory, monkeypatch):
+        """Resource rollback cannot overwrite restored agent memory."""
+        from unittest.mock import MagicMock
+
+        skeletons = []
+        original_create = factory.create_agent
+
+        def capture_skeleton(*args, **kwargs):
+            instance = original_create(*args, **kwargs)
+            instance.hippocampus.save = MagicMock()
+            instance.nac.save = MagicMock()
+            skeletons.append(instance)
+            return instance
+
+        def fail_bio(**kwargs):
+            raise RuntimeError("bio construction failed")
+
+        monkeypatch.setattr(factory, "create_agent", capture_skeleton)
+        monkeypatch.setattr("maxim.runtime.bio_stack.build_bio_stack", fail_bio)
+
+        with pytest.raises(RuntimeError, match="bio construction failed"):
+            factory.create_full_agent(AgentConfig(agent_id="rollback", with_bio_stack=True))
+
+        skeleton = skeletons[0]
+        skeleton.hippocampus.save.assert_not_called()
+        skeleton.nac.save.assert_not_called()
+        assert skeleton.memory_hub._concept_extractor._worker.is_alive() is False
 
     def test_full_agent_pre_built_pain_bus(self, factory):
         """Pre-built PainBus is passed through to build_bio_stack."""

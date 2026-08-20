@@ -383,6 +383,10 @@ class MaximAgent(Agent):
         self._execution_tracker = execution_tracker
         self.goal.execution_tracker = execution_tracker
         self.goal.preemption_circuit = preemption_circuit
+        self.wire_robot(robot)
+
+    def wire_robot(self, robot: Any) -> None:
+        """Expose the active controller to goal/preemption bookkeeping."""
         self.goal.robot = robot
 
     def publish_tool_result(

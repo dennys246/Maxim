@@ -207,6 +207,7 @@ class MemoryHub:
     # through build_memory_hub. Keyword-only, kept out of repr/compare so
     # the existing dataclass surface is unchanged.
     _allow_raw: bool = field(default=False, kw_only=True, repr=False, compare=False)
+    _start_background_workers: bool = field(default=True, kw_only=True, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         """Initialize and wire core systems."""
@@ -415,6 +416,7 @@ class MemoryHub:
             scn=self.scn,
             worker_pool=self.worker_pool,
             decomposer=self._decomposer,
+            start_worker=self._start_background_workers,
         )
         # Hook into hippocampus capture/delete/compress lifecycle
         self.hippocampus.register_capture_callback(self._concept_extractor.on_memory_captured)
@@ -613,7 +615,7 @@ class MemoryHub:
         # makes the loss invisible). restart_worker() is a no-op when alive.
         if self._concept_extractor is not None:
             try:
-                if self._concept_extractor.restart_worker():
+                if self.start_background_workers():
                     results["concept_extractor_restarted"] = 1
             except Exception as e:
                 logger.warning("ConceptExtractor restart failed: %s", e)
@@ -686,6 +688,44 @@ class MemoryHub:
 
         logger.info("Session started: %s", results)
         return results
+
+    def shutdown(self) -> None:
+        """Stop constructor-owned background workers without requiring a session.
+
+        ``on_session_end`` is intentionally a no-op when no session started,
+        but the ConceptExtractor worker starts during construction. Factory
+        rollback and superseded hubs therefore need this independent,
+        idempotent lifecycle seam.
+        """
+        if self._concept_extractor is not None:
+            try:
+                if not self._concept_extractor.flush(timeout=5.0):
+                    logger.warning("ConceptExtractor flush timed out during shutdown")
+                self._concept_extractor.shutdown()
+            except Exception as e:
+                logger.warning("ConceptExtractor shutdown failed: %s", e)
+
+        # Defensive shutdown for grounder/completer (no-op today — they share
+        # the LLMWorker's pool and own no threads — but future background work
+        # should not leak if someone adds threads here).
+        for name, component in (
+            ("ConceptGrounder", self._concept_grounder),
+            ("PatternCompleter", self._pattern_completer),
+        ):
+            if component is None:
+                continue
+            shutdown_fn = getattr(component, "shutdown", None)
+            if callable(shutdown_fn):
+                try:
+                    shutdown_fn()
+                except Exception as e:
+                    logger.warning("%s shutdown failed: %s", name, e)
+
+    def start_background_workers(self) -> bool:
+        """Start constructor-deferred workers after transactional assembly."""
+        if self._concept_extractor is None:
+            return False
+        return self._concept_extractor.restart_worker()
 
     def on_session_end(self) -> dict[str, int]:
         """End session and consolidate learning.
@@ -763,29 +803,8 @@ class MemoryHub:
             except Exception as e:
                 logger.warning("AG consolidation failed: %s", e)
 
-        # Flush and shutdown ConceptExtractor before saving
-        if self._concept_extractor is not None:
-            try:
-                self._concept_extractor.flush(timeout=5.0)
-                self._concept_extractor.shutdown()
-            except Exception as e:
-                logger.warning("ConceptExtractor shutdown failed: %s", e)
-
-        # Defensive shutdown for grounder/completer (no-op today — they share
-        # the LLMWorker's pool and own no threads — but future background
-        # work shouldn't leak if someone adds threads here).
-        for name, component in (
-            ("ConceptGrounder", self._concept_grounder),
-            ("PatternCompleter", self._pattern_completer),
-        ):
-            if component is None:
-                continue
-            shutdown_fn = getattr(component, "shutdown", None)
-            if callable(shutdown_fn):
-                try:
-                    shutdown_fn()
-                except Exception as e:
-                    logger.warning("%s shutdown failed: %s", name, e)
+        # Flush and stop constructor-owned background workers before saving.
+        self.shutdown()
 
         # Save SCN state. F0.5: SCN now carries ``persistence_path`` as a
         # typed field set at construction time. Legacy underscore fallback
@@ -931,7 +950,8 @@ class MemoryHub:
         # Also prevents daemon thread accumulation in long sim loops.
         if self._concept_extractor is not None:
             try:
-                self._concept_extractor.flush(timeout=5.0)
+                if not self._concept_extractor.flush(timeout=5.0):
+                    logger.warning("ConceptExtractor flush timed out during lightweight session end")
             except Exception as e:
                 logger.warning("ConceptExtractor flush failed: %s", e)
 
@@ -955,6 +975,8 @@ class MemoryHub:
                 self._cross_layer.save()
             except Exception as e:
                 logger.warning("Failed to save cross-layer graph: %s", e)
+
+        self.shutdown()
 
         # (_session_active was cleared atomically at entry.)
         session_duration = time.time() - self._session_start_time
@@ -1816,6 +1838,7 @@ def build_memory_hub(
     # divergence at the AgentFactory production door. Mirrors
     # ``build_bio_stack``'s required-keyword-only contract.
     agent_id: str,
+    start_background_workers: bool = True,
 ) -> MemoryHub:
     """Construct a MemoryHub with bridges ALWAYS wired.
 
@@ -1846,6 +1869,8 @@ def build_memory_hub(
         salience: SalienceNetwork for salience memory bridge.
         fear_agent: FearAgent reference (stored, not used by any bridge today).
         novelty_tracker: NoveltyTracker for sensitization wiring.
+        start_background_workers: Start the ConceptExtractor immediately.
+            Transactional builders may defer it until assembly succeeds.
     """
     hub = MemoryHub(
         hippocampus=hippocampus,
@@ -1859,14 +1884,23 @@ def build_memory_hub(
         embodiment=embodiment,
         agent_id=agent_id,
         _allow_raw=True,
+        # Construction and bridge wiring are fallible. Defer worker start
+        # until the complete builder transaction has succeeded.
+        _start_background_workers=False,
     )
-    hub.connect(
-        spatial=spatial,
-        attention=attention,
-        salience=salience,
-        fear_agent=fear_agent,
-        novelty_tracker=novelty_tracker,
-    )
+    try:
+        hub.connect(
+            spatial=spatial,
+            attention=attention,
+            salience=salience,
+            fear_agent=fear_agent,
+            novelty_tracker=novelty_tracker,
+        )
+        if start_background_workers:
+            hub.start_background_workers()
+    except BaseException:
+        hub.shutdown()
+        raise
     return hub
 
 

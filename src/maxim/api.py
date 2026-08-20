@@ -144,6 +144,17 @@ def configure(
 
 
 _API_DEFAULT_MODEL = "mistral-7b"
+_RUN_LOCK = threading.Lock()
+
+
+@dataclass(frozen=True, slots=True)
+class _RunRobotLease:
+    """Robot state acquired by one stable ``run()`` invocation."""
+
+    controller: "RobotController"
+    registration_key: str
+    owns_connection: bool
+    woke_for_run: bool
 
 
 def _restore_env(saved: dict[str, str | None]) -> None:
@@ -153,6 +164,132 @@ def _restore_env(saved: dict[str, str | None]) -> None:
             os.environ.pop(key, None)
         else:
             os.environ[key] = value
+
+
+def _release_run_robot(lease: _RunRobotLease) -> None:
+    """Restore awake state and release a connection acquired by ``run()``."""
+    from maxim.hardware.registry import RobotRegistry
+
+    if lease.woke_for_run and not _sleep_run_robot(lease.controller, context="before disconnect"):
+        from maxim.exceptions import HardwareError
+
+        raise HardwareError(
+            "Robot could not be put to sleep; its registry connection was retained because motor state is unknown"
+        )
+
+    if not lease.owns_connection:
+        return
+
+    registry = RobotRegistry()
+    if registry.get_robot(lease.registration_key) is lease.controller:
+        if not registry.disconnect_robot(lease.registration_key):
+            from maxim.exceptions import HardwareError
+
+            raise HardwareError("Robot disconnect failed; its registry connection was retained for operator recovery")
+        return
+    lease.controller.disconnect()
+
+
+def _sleep_run_robot(controller: "RobotController", *, context: str) -> bool:
+    """Try twice to restore a safe sleeping state before releasing hardware."""
+    last_error: BaseException | None = None
+    for _attempt in range(2):
+        try:
+            if controller.goto_sleep():
+                return True
+        except BaseException as e:
+            last_error = e
+    if last_error is not None:
+        logger.warning("Robot sleep failed %s: %s", context, last_error)
+    else:
+        logger.warning("Robot reported that sleep failed %s", context)
+    return False
+
+
+def _unwind_failed_robot_acquisition(
+    controller: "RobotController",
+    *,
+    registry: Any,
+    registration_key: str,
+    created: bool,
+) -> tuple[bool, bool]:
+    """Restore failed wake-up state and report whether a new lease remains."""
+    slept = _sleep_run_robot(controller, context="after failed wake-up")
+    if slept and created and registry.get_robot(registration_key) is controller:
+        registry.disconnect_robot(registration_key)
+    retained = created and registry.get_robot(registration_key) is controller
+    return slept, retained
+
+
+def _connect_robot_for_run(robot_type: str) -> _RunRobotLease:
+    """Atomically acquire and wake the selected controller for ``run()``."""
+    from maxim.hardware.registry import RobotRegistry
+
+    registry = RobotRegistry()
+    if robot_type not in registry.get_controller_types():
+        _discover_robot_plugins(registry)
+
+    result = registry.connect_robot_with_status(
+        robot_id=robot_type,
+        robot_type=robot_type,
+        timeout=30.0,
+        set_primary=False,
+    )
+    if result is None:
+        from maxim.exceptions import MaximConnectionError
+
+        available = registry.get_controller_types()
+        raise MaximConnectionError(
+            f"Failed to connect to robot '{robot_type}'. "
+            f"Available types: {', '.join(available) or 'none'}. "
+            "Install a robot package (e.g. 'pymaxim[reachy]') to register controllers."
+        )
+
+    controller = result.controller
+    was_awake = bool(getattr(getattr(controller, "state", None), "is_awake", False))
+    woke_for_run = False
+    if not was_awake:
+        try:
+            woke_for_run = bool(controller.wake_up())
+        except BaseException as wake_error:
+            _slept, retained = _unwind_failed_robot_acquisition(
+                controller,
+                registry=registry,
+                registration_key=result.registration_key,
+                created=result.created,
+            )
+            if retained:
+                retention_note = (
+                    "The newly opened robot connection was retained because safe cleanup could not be confirmed."
+                )
+                add_note = getattr(wake_error, "add_note", None)
+                if callable(add_note):
+                    add_note(retention_note)
+                logger.error(retention_note)
+            raise
+        if not woke_for_run:
+            # A failed wake may still have partially enabled hardware. Restore
+            # the prior asleep state before unwinding a newly opened connection.
+            slept, retained = _unwind_failed_robot_acquisition(
+                controller,
+                registry=registry,
+                registration_key=result.registration_key,
+                created=result.created,
+            )
+            from maxim.exceptions import MaximConnectionError
+
+            retained_reason = ""
+            if retained:
+                failure = "sleep also failed" if not slept else "disconnect could not be confirmed"
+                retained_reason = f" and its connection was retained because {failure}"
+            raise MaximConnectionError(f"Robot '{robot_type}' connected but failed to wake up{retained_reason}")
+
+    return _RunRobotLease(
+        controller=controller,
+        registration_key=result.registration_key,
+        owns_connection=result.created,
+        woke_for_run=woke_for_run,
+    )
 
 
 def _resolve_model(model: str) -> str:
@@ -375,8 +512,9 @@ def run(
     """Run Maxim's agentic cycle.
 
     Bootstraps the full agent pipeline (LLM router, memory systems,
-    planning, tools, safety) and enters the main loop.  Blocks until
-    the user interrupts (Ctrl+C) or the goal is completed.
+    planning, tools, safety) and enters the main loop. Blocks until the
+    caller interrupts it (normally with Ctrl+C). Goal completion does not
+    currently stop the service loop automatically.
 
     Bio-learning (episodic memory, causal learning, pain attribution)
     is **enabled by default**.  Memories persist to ``~/.maxim/sessions/``
@@ -384,12 +522,21 @@ def run(
 
     Args:
         model: LLM profile name (e.g. ``"mistral-7b"``, ``"claude-sonnet"``).
-        goal: Optional goal string.  If provided, the agent works toward
-            it with a utility prompt.  If ``None``, enters interactive mode.
+        goal: Optional initial goal string delivered through the canonical
+            runtime input path. If ``None``, the loop starts idle; this Python
+            facade does not install a terminal-input reader.
         headless: If ``True`` (default), run without robot hardware.
-        robot: Robot type to connect (e.g. ``"reachy_mini"``).  Requires
-            the corresponding package to be installed.
-        home_dir: Data/persistence directory (default ``~/.maxim``).
+        robot: Robot type to connect and wake (e.g. ``"reachy_mini"``).
+            Requires ``headless=False`` and the corresponding package. The
+            stable facade exposes controller-backed direct motion only; full
+            capture, vision, and DoA remain on the CLI runtime. Cleanup attempts
+            to restore awake state and connection ownership; if safe sleep or
+            disconnect cannot be confirmed, it retains the registration and
+            raises ``HardwareError``.
+        home_dir: Root for API-owned memory, data, and session persistence
+            (default ``~/.maxim``). Runtime step snapshots still use the
+            CWD-relative ``data/agents/`` path; complete ownership is tracked
+            for 1.1.x under D15.
         verbosity: Logging verbosity (0-3).
         learning: Enable bio-learning (episodic memory, causal learning,
             pain attribution).  Default ``True``.  Pass ``False`` to run
@@ -400,135 +547,171 @@ def run(
 
     Raises:
         maxim.exceptions.ConfigurationError: If the requested model
-            is not available (missing files or API key).
+            is not available (missing files or API key), if ``goal`` is
+            blank, robot hardware is requested while ``headless=True``, or a
+            second ``run()`` invocation is already active in this process.
+        maxim.exceptions.MaximConnectionError: If the selected robot cannot
+            connect or wake.
+        maxim.exceptions.HardwareError: If cleanup cannot confirm a safe sleep
+            or disconnect; the live registry connection is retained for
+            operator recovery.
     """
-    model = _resolve_model(model)
-    _validate_model(model)
+    if goal is not None:
+        goal = goal.strip()
+        if not goal:
+            from maxim.exceptions import ConfigurationError
 
-    import threading
+            raise ConfigurationError("goal must be a non-empty string when provided")
 
-    from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
-    from maxim.agents.llm_worker import LLMWorker
-    from maxim.agents.maxim_agent import MaximAgent
-    from maxim.runtime.agent_loop import run_agentic_loop
-    from maxim.runtime.bootstrap import (
-        build_decision_engine,
-        build_environment,
-        build_evaluators,
-        build_executor,
-        build_memory,
-        build_state,
-        build_tool_registry,
-    )
-    from maxim.runtime.lane_backends import build_primary_router
-
-    configure(verbosity=verbosity)
-
-    # Pre-startup auto-curation
-    if auto_curate:
-        try:
-            from maxim.simulation.foundry import auto_curate as _auto_curate
-
-            _auto_curate(genre=curate_genre)
-        except Exception as e:
-            logger.warning("Auto-curation failed: %s", e)
-            print(f"  WARNING: Auto-curation failed ({e})", file=sys.stderr)
-
-    effective_home = os.path.expanduser(home_dir or "~/.maxim")
-    os.makedirs(effective_home, exist_ok=True)
-
-    # ── LLM router ───────────────────────────────────────────────────────
-    _saved_env = {k: os.environ.get(k) for k in ("MAXIM_LLM_ENABLED", "MAXIM_LLM_PROFILE")}
-    os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
-    os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
-
-    router, lane_manager = build_primary_router()
-    if router is None:
+    if robot is not None:
         from maxim.exceptions import ConfigurationError
 
-        raise ConfigurationError("No LLM backend available. Set --language-model or MAXIM_LLM_PROFILE.")
-    # n_ctx=router.n_ctx (review fold, 1.1 item 3): this was the ONE
-    # LLMWorker construction site that resolved no n_ctx at all — the
-    # constructor default (4096) applied, and only the old cloud max()
-    # raise compensated by lifting it to the declared provider window.
-    # With the clamp now lower-only, omitting n_ctx here would pin every
-    # headless cloud run to a 4096-token prompt budget. Same pattern as
-    # console/handle.py.
-    llm_worker = LLMWorker(llm=router, n_ctx=router.n_ctx, token_counter=router.get_token_counter())
-    llm_worker.start()
+        robot = robot.strip()
+        if not robot:
+            raise ConfigurationError("robot must be a non-empty registered robot type")
+        if headless:
+            raise ConfigurationError("robot requires headless=False; headless mode cannot connect hardware")
 
-    # ── Agent pipeline ───────────────────────────────────────────────────
-    agent = MaximAgent(
-        llm_profile=model,
-        memory_persistence_path=os.path.join(effective_home, "memory"),
-        data_folder=os.path.join(effective_home, "data"),
-    )
-    # Bridge user event subscriptions to the agent's bus
-    if hasattr(agent, "_bus"):
-        _bridge_event_subscriptions(agent._bus)
-
-    env = build_environment(root=effective_home)
-    state = build_state()
-    memory = build_memory()
-    decision_engine = build_decision_engine()
-    tool_registry = build_tool_registry(
-        maxim=None,  # No live robot instance in headless mode
-    )
-    _inject_pending_tools(tool_registry)
-
-    # F5: Headless bio-learning via AgentFactory. Bio-learning ON by
-    # default — learning is Maxim's identity. learning=False opts out.
-    _api_instance = None
+    _saved_env: dict[str, str | None] | None = None
+    llm_worker: Any | None = None
+    _api_instance: Any | None = None
+    _robot: RobotController | None = None
+    _robot_lease: _RunRobotLease | None = None
     _headless_hippocampus = None
     _headless_memory_hub = None
     _headless_pain_bus = None
-    if learning:
-        from maxim.runtime.agent_factory import AgentConfig, AgentFactory
-
-        _api_config = AgentConfig(
-            agent_id="api_agent",
-            role="pc",
-            persistence_dir=os.path.join(effective_home, "sessions"),
-            with_bio_stack=True,
-            with_executor=True,
-            with_pain_bridge=True,
-        )
-        _api_factory = AgentFactory(
-            base_data_dir=os.path.join(effective_home, "sessions"),
-        )
-        _api_instance = _api_factory.create_full_agent(
-            _api_config,
-            tool_registry=tool_registry,
-        )
-        executor = _api_instance.executor
-        _headless_hippocampus = _api_instance.hippocampus
-        _headless_memory_hub = _api_instance.memory_hub
-        _headless_pain_bus = _api_instance.pain_bus
-        if _headless_memory_hub is not None:
-            agent.wire_memory_hub(_headless_memory_hub)
-        logger.info(
-            "Bio-learning enabled — memories persist to %s. Disable with learning=False.",
-            os.path.join(effective_home, "sessions"),
-        )
-    else:
-        executor = build_executor(tool_registry, pain_bus=None)
-
-    evaluators = build_evaluators()
-
-    autonomy = AutonomyController(
-        initial_level=AutonomyLevel.AUTONOMOUS,
-        supervision_policy=SupervisionPolicy(),
-    )
-
-    # ── Optional robot ───────────────────────────────────────────────────
-    if robot and not headless:
-        _robot = connect(robot, timeout=30.0)
-        logger.info("Robot connected: %s", robot)
-
-    # ── Stop event ───────────────────────────────────────────────────────
     stop_event = threading.Event()
 
+    if not _RUN_LOCK.acquire(blocking=False):
+        from maxim.exceptions import ConfigurationError
+
+        raise ConfigurationError("Only one maxim.run() invocation may be active per process")
+
     try:
+        model = _resolve_model(model)
+        _validate_model(model)
+
+        from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
+        from maxim.agents.llm_worker import LLMWorker
+        from maxim.agents.maxim_agent import MaximAgent
+        from maxim.runtime.agent_loop import run_agentic_loop
+        from maxim.runtime.bootstrap import (
+            build_decision_engine,
+            build_environment,
+            build_evaluators,
+            build_executor,
+            build_memory,
+            build_state,
+            build_tool_registry,
+        )
+        from maxim.runtime.lane_backends import build_primary_router
+
+        configure(verbosity=verbosity)
+
+        # Pre-startup auto-curation
+        if auto_curate:
+            try:
+                from maxim.simulation.foundry import auto_curate as _auto_curate
+
+                _auto_curate(genre=curate_genre)
+            except Exception as e:
+                logger.warning("Auto-curation failed: %s", e)
+                print(f"  WARNING: Auto-curation failed ({e})", file=sys.stderr)
+
+        effective_home = os.path.expanduser(home_dir or "~/.maxim")
+        os.makedirs(effective_home, exist_ok=True)
+
+        # ── LLM router ───────────────────────────────────────────────────
+        _saved_env = {k: os.environ.get(k) for k in ("MAXIM_LLM_ENABLED", "MAXIM_LLM_PROFILE")}
+        os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
+        os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
+
+        router, _lane_manager = build_primary_router()
+        if router is None:
+            from maxim.exceptions import ConfigurationError
+
+            raise ConfigurationError("No LLM backend available. Set --language-model or MAXIM_LLM_PROFILE.")
+        # n_ctx=router.n_ctx (review fold, 1.1 item 3): this was the ONE
+        # LLMWorker construction site that resolved no n_ctx at all — the
+        # constructor default (4096) applied, and only the old cloud max()
+        # raise compensated by lifting it to the declared provider window.
+        # With the clamp now lower-only, omitting n_ctx here would pin every
+        # headless cloud run to a 4096-token prompt budget. Same pattern as
+        # console/handle.py.
+        llm_worker = LLMWorker(llm=router, n_ctx=router.n_ctx, token_counter=router.get_token_counter())
+        llm_worker.start()
+
+        # ── Agent pipeline ───────────────────────────────────────────────────
+        agent = MaximAgent(
+            llm_profile=model,
+            memory_persistence_path=os.path.join(effective_home, "memory"),
+            data_folder=os.path.join(effective_home, "data"),
+        )
+        # Bridge user event subscriptions to the agent's bus
+        if hasattr(agent, "_bus"):
+            _bridge_event_subscriptions(agent._bus)
+
+        env = build_environment(root=effective_home)
+        state = build_state()
+        memory = build_memory()
+        decision_engine = build_decision_engine()
+
+        # Connect before registry/executor construction so hardware-backed tools
+        # receive the live controller instead of observation-only stubs.
+        if robot is not None:
+            _robot_lease = _connect_robot_for_run(robot)
+            _robot = _robot_lease.controller
+            agent.wire_robot(_robot)
+            logger.info("Robot connected and awake: %s", robot)
+
+        tool_registry = build_tool_registry(maxim=_robot)
+        _inject_pending_tools(tool_registry)
+
+        # F5: Headless bio-learning via AgentFactory. Bio-learning ON by
+        # default — learning is Maxim's identity. learning=False opts out.
+        if learning:
+            from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+
+            _api_config = AgentConfig(
+                agent_id="api_agent",
+                role="pc",
+                persistence_dir=os.path.join(effective_home, "sessions"),
+                with_bio_stack=True,
+                with_executor=True,
+                with_pain_bridge=True,
+            )
+            _api_factory = AgentFactory(
+                base_data_dir=os.path.join(effective_home, "sessions"),
+            )
+            _api_instance = _api_factory.create_full_agent(
+                _api_config,
+                tool_registry=tool_registry,
+            )
+            executor = _api_instance.executor
+            _headless_hippocampus = _api_instance.hippocampus
+            _headless_memory_hub = _api_instance.memory_hub
+            _headless_pain_bus = _api_instance.pain_bus
+            if _headless_memory_hub is not None:
+                agent.wire_memory_hub(_headless_memory_hub)
+            logger.info(
+                "Bio-learning enabled — memories persist to %s. Disable with learning=False.",
+                os.path.join(effective_home, "sessions"),
+            )
+        else:
+            executor = build_executor(tool_registry, pain_bus=None)
+
+        evaluators = build_evaluators()
+
+        autonomy = AutonomyController(
+            initial_level=AutonomyLevel.AUTONOMOUS,
+            supervision_policy=SupervisionPolicy(),
+        )
+
+        # Seed the same mailbox used by the interactive CLI. The loop owns
+        # ingestion, prefetch, memory recording, and LLM submission from here.
+        if goal is not None:
+            state.data["pending_cli_input"] = goal
+
         run_agentic_loop(
             agent=agent,
             environment=env,
@@ -547,18 +730,46 @@ def run(
     except KeyboardInterrupt:
         logger.info("Agent loop interrupted by user.")
     finally:
-        stop_event.set()
-        llm_worker.stop()
-        # Persist bio-system state on shutdown. shutdown() calls
-        # on_session_end() (consolidation) + hippocampus.save() +
-        # nac.save() + bio_stack.save_cerebellum(). Without save(),
-        # learned memories and causal links are lost on exit.
-        if _api_instance is not None:
+        active_error = sys.exc_info()[1]
+        cleanup_error: BaseException | None = None
+        try:
             try:
-                _api_instance.shutdown()
-            except Exception as e:
-                logger.debug("Agent instance shutdown failed: %s", e)
-        _restore_env(_saved_env)
+                stop_event.set()
+            except BaseException as e:
+                cleanup_error = e
+                logger.warning("Stop signal failed: %s", e)
+            if llm_worker is not None:
+                try:
+                    llm_worker.stop()
+                except BaseException as e:
+                    cleanup_error = cleanup_error or e
+                    logger.warning("LLM worker shutdown failed: %s", e)
+            # Persist bio-system state on shutdown. shutdown() calls
+            # on_session_end() (consolidation) + hippocampus.save() +
+            # nac.save() + bio_stack.save_cerebellum(). Without save(),
+            # learned memories and causal links are lost on exit.
+            if _api_instance is not None:
+                try:
+                    _api_instance.shutdown()
+                except BaseException as e:
+                    cleanup_error = cleanup_error or e
+                    logger.warning("Agent instance shutdown failed: %s", e)
+            if _robot_lease is not None:
+                try:
+                    _release_run_robot(_robot_lease)
+                except BaseException as e:
+                    cleanup_error = cleanup_error or e
+                    logger.warning("Robot lifecycle cleanup failed: %s", e)
+            if _saved_env is not None:
+                try:
+                    _restore_env(_saved_env)
+                except BaseException as e:
+                    cleanup_error = cleanup_error or e
+                    logger.warning("Process environment restoration failed: %s", e)
+        finally:
+            _RUN_LOCK.release()
+        if cleanup_error is not None and active_error is None:
+            raise cleanup_error
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -754,7 +965,14 @@ def _discover_robot_plugins(registry: Any) -> None:
     except Exception as e:
         logger.warning("Robot plugin discovery failed: %s", e)
 
-    # Always register the built-in simulated controller
+    # Register the two built-in controller classes. Reachy's optional SDK is
+    # imported lazily by ``connect()``, so registering the wrapper is safe in
+    # core-only environments and produces the normal actionable error on use.
+    if "reachy_mini" not in registry.get_controller_types():
+        from maxim.hardware.reachy import ReachyMiniController
+
+        registry.register_controller_type("reachy_mini", ReachyMiniController)
+
     if "simulated" not in registry.get_controller_types():
         from maxim.hardware.simulation import SimulatedController
 

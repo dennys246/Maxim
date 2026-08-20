@@ -49,10 +49,10 @@ Your model choice persists across sessions automatically:
 
 ```python
 # First session — sets qwen as default
-maxim.run(model="qwen2.5-14b-instruct")
+maxim.run(model="qwen2.5-14b-instruct", goal="inspect the workspace")
 
 # Next session — remembers qwen, no need to specify
-maxim.run()  # uses qwen2.5-14b-instruct
+maxim.run(goal="summarize the workspace")  # uses qwen2.5-14b-instruct
 ```
 
 From the CLI, `maxim --llm qwen2.5-14b-instruct` persists the same way.
@@ -88,12 +88,21 @@ state = maxim.introspect("causal")
 ## Run the Agent
 
 ```python
-# Blocks until Ctrl+C or goal is completed
+# Goal seeds initial work; the service loop blocks until Ctrl+C/runtime shutdown
 # Bio-learning is ON by default — memories persist to ~/.maxim/sessions/
 maxim.run(model="mistral-7b", goal="explore the environment")
 
 # Disable bio-learning (no persistent memory or causal learning)
 maxim.run(model="mistral-7b", goal="quick test", learning=False)
+
+# Controller-backed direct motion (full capture/vision uses the CLI runtime)
+# Hardware intent and initial work must be explicit
+maxim.run(
+    model="mistral-7b",
+    goal="turn your head 20 degrees left",
+    robot="reachy_mini",
+    headless=False,
+)
 ```
 
 ## Error Handling
