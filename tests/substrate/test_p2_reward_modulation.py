@@ -315,6 +315,11 @@ def _has_sentence_transformers() -> bool:
 
 
 @pytest.mark.slow
+# Needs the real encoder WEIGHTS, not just the package: offline, the encoder
+# falls back and the assertions below report a fake substrate REGRESSION
+# ('beats random by -0.9%') instead of a missing model. Installed-vs-cached
+# is the D20 distinction; skip cleanly rather than publish a false result.
+@pytest.mark.requires_model_cache
 @pytest.mark.skipif(not _has_sentence_transformers(), reason="sentence-transformers not installed")
 @pytest.mark.skipif(not FIXTURE_PATH.exists(), reason="p2_reward_modulation.yaml not found")
 class TestP2ValidationSweep:

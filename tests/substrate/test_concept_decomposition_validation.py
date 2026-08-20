@@ -428,6 +428,12 @@ class TestDecompositionMechanism:
 # ─────────────────────────────────────────────────────────────────────────
 
 
+# Needs the real encoder WEIGHTS, not just the packages: its autouse fixture
+# checks that sentence-transformers and spaCy are INSTALLED, which the D20
+# hermeticity work established is not evidence the weights are available. Left
+# unmarked, an offline run degrades the encoder and reports the degradation as
+# a decomposition result.
+@pytest.mark.requires_model_cache
 @pytest.mark.slow
 class TestDecompositionValidation:
     """Real-embedding validation that decomposition improves cross-modal recall.

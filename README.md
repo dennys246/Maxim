@@ -178,7 +178,7 @@ maxim --llm claude-sonnet                 # Claude
 # Simulations
 maxim --sim "test memory recall"          # generative campaign
 maxim --sim cradle --embodiment bodies/infant_humanoid  # sensorimotor development
-maxim --sim scenarios/campaigns/heist_v1.yaml           # DM campaign
+maxim --sim safety_boundary                # built-in arc, no files needed
 maxim --sim benchmark --models mistral-7b,qwen2.5-14b   # benchmark
 
 # Diagnostics

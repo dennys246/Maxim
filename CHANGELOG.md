@@ -67,6 +67,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.9] - 2026-08-19
 
+### Upgrade note — arguments that were silently ignored now take effect
+
+PyPI's previous release is **1.0.0**, so most users arrive here across ~90 merged
+PRs. The stable-API repairs below change *runtime behavior for code that already
+compiles*, because the old behavior was a no-op or a race rather than a
+documented contract. Nothing was renamed or removed; review these three before
+upgrading unattended:
+
+- `run(goal=...)` previously never reached the loop. It now enters through the
+  runtime's CLI-input mailbox and seeds initial work, so an agent that used to
+  sit idle will start acting. (The facade stays interruption-scoped: a goal does
+  not stop the service loop on completion.)
+- `run(robot=...)` previously connected a controller and attached it to nothing.
+  It now drives motion, wakes the robot for the run, and attempts to restore
+  sleep and connection ownership on exit — **this moves real hardware.** The
+  contradictory combination `robot=..., headless=True` is now rejected instead
+  of silently ignored.
+- Overlapping `run()` calls in one process previously raced on process-global
+  routing state; the second call now raises `ConfigurationError`.
+
 ### Fixed
 
 - **Stable `maxim.run()` contract (D15/D16)** — `goal` now enters through the
