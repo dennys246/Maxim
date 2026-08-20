@@ -2,7 +2,7 @@
 
 Step-by-step guide for publishing pymaxim to PyPI.
 
-**Current version:** 1.0.0
+**Current release candidate:** 1.0.9
 **Package name:** pymaxim (import name: `maxim`)
 **Build system:** setuptools + wheel
 
@@ -80,6 +80,59 @@ Known items from Phase 12b that may be blocking:
 grep 'version = ' pyproject.toml
 python -c "import maxim; print(maxim.__version__)"
 ```
+
+### 6. Audit the canonical website and PyPI project links
+
+The 1.0.9 correction release makes [pymaxim.bio](https://pymaxim.bio) the
+canonical landing page and [docs.pymaxim.bio](https://docs.pymaxim.bio) the
+canonical documentation site. The historical `dennyschaedig.com/maxim` guides
+remain a migration source, not a second authority.
+
+Complete this audit against the **exact release candidate**, not a moving branch:
+
+- Inventory every public page and map each historical
+  `dennyschaedig.com/maxim/*` guide to a migrated page, an intentional archive,
+  or an HTTP redirect. Do not silently strand deep links already present in the
+  README, repository docs, search results, or external articles.
+- Re-run every installation command and quickstart against a clean install of
+  the candidate wheel. Reconcile version numbers, supported Python versions,
+  extras, CLI flags, stable API behavior, robot/headless semantics, persistence
+  paths, and feature availability with the repository.
+- Reconcile every behavioral or biological claim with the graduation ledger,
+  bug ledger, limits/scorecards, and current benchmark evidence. Preserve the
+  existing honesty rules: influenced is not controlled; bio-inspired is not a
+  neuroscience simulation; Oasis/Hivemind must remain future work until shipped.
+- Check navigation, search, mobile layout, accessibility basics, canonical URLs,
+  Open Graph metadata, page titles/descriptions, and the complete internal and
+  external link graph. Record or fix every 404, redirect loop, mixed canonical,
+  and stale GitHub/PyPI link.
+- Confirm both canonical domains serve HTTPS successfully and that any `www` or
+  legacy variants redirect to one canonical URL rather than serving duplicate
+  content.
+- Review the existing copy specification in
+  [pymaxim_bio_update_suggestions.md](announcements/pymaxim_bio_update_suggestions.md),
+  updating it wherever later experiments or release-truth work changed the
+  evidence.
+
+The package metadata must contain these exact destinations:
+
+```toml
+[project.urls]
+Homepage = "https://pymaxim.bio"
+Documentation = "https://docs.pymaxim.bio"
+```
+
+After building, inspect the wheel metadata rather than assuming `pyproject.toml`
+was carried through:
+
+```bash
+unzip -p dist/pymaxim-1.0.9-py3-none-any.whl \
+  'pymaxim-1.0.9.dist-info/METADATA' | grep '^Project-URL:'
+```
+
+After the TestPyPI and real PyPI uploads, open the rendered project page and
+click both links. Publication is incomplete if PyPI still exposes the legacy
+site, a dead documentation URL, or metadata from a different artifact.
 
 ---
 

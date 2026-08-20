@@ -65,6 +65,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   competing for runners (jobs previously sat unassigned and died at 15m01s as
   false-red `failure`). (#470)
 
+## [1.0.9] - 2026-08-19
+
+### Fixed
+
+- **Stable `maxim.run()` contract (D15/D16)** — `goal` now enters through the
+  runtime's canonical CLI-input mailbox; robot mode rejects contradictory
+  `headless=True`, atomically acquires and wakes the selected controller for
+  direct motion, then attempts to restore sleep/connection ownership on every
+  exit. If safe sleep or disconnect cannot be confirmed, cleanup fails loudly
+  and retains the live registration for operator recovery. Setup
+  failures stop a partially started LLM worker and restore the two run-owned LLM
+  environment overrides; cleanup stages continue independently. Full-agent
+  construction now stops its superseded skeleton ConceptExtractor worker and
+  transactionally shuts down late factory failures. Overlapping
+  `run()` calls now fail loudly instead of racing process-global routing state.
+  The Python facade remains interruption-scoped: a goal seeds initial work but
+  does not stop the service loop automatically, and `goal=None` installs no stdin
+  reader. Full `home_dir` ownership and equivalent cleanup for
+  `imagine()`/`campaign()` remain explicitly tracked as 1.1.x hardening.
+- **Canonical project website** — package metadata and the PyPI-rendered README
+  now point to `pymaxim.bio` for the landing page and `docs.pymaxim.bio` for
+  documentation. The release checklist requires a full content, claim, command,
+  migration/redirect, and link audit before those sites are treated as the
+  authoritative replacement for the legacy long-form guides.
+
 ## [1.0.8] - 2026-08-19
 
 ### Fixed

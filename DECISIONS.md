@@ -2,6 +2,50 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-08-19 — `maxim.run()` uses canonical ingress and owns its resources (D15/D16)
+
+Decision:
+
+- A non-`None` `goal` is seeded into `RuntimeState.pending_cli_input`, the same
+  ingress consumed by interactive CLI input, so prefetch, memory capture, and LLM
+  submission keep one path.
+- `robot` requires `headless=False`; contradictory arguments raise
+  `ConfigurationError` instead of silently ignoring hardware intent.
+- Robot connection happens before tool-registry/executor construction. The
+  selected controller is wired into the agent context and direct-motion path;
+  controller-bound tools neither advertise nor accept `robot_id`, so a model
+  cannot redirect a command to unrelated process-global hardware.
+- `run()` wakes a controller that was asleep and attempts to restore that prior
+  state on exit. It disconnects only registrations it atomically created; live
+  pre-existing connections remain caller-owned. If safe sleep or disconnect
+  cannot be confirmed, cleanup raises `HardwareError` and retains the
+  registration for recovery.
+- Controller-only runs do not advertise legacy capture, vision, command, or DoA
+  tools whose required full-runtime state is absent.
+- `run()`'s cleanup boundary begins before its LLM environment overrides and
+  runtime-resource acquisition. Worker stop, bio shutdown, robot lifecycle, and
+  restoration of those two overrides are independently guarded.
+- Only one `run()` may be active per process because model routing uses process
+  environment state. A second call fails with `ConfigurationError`.
+- `goal` is initial input, not a lifecycle bound: goal completion does not stop
+  the service loop. `goal=None` starts idle and the Python facade installs no
+  terminal-input reader.
+
+Reason:
+
+- `goal` and `robot` were stable headline arguments with no effective runtime
+  behavior, while setup exceptions could leak threads, connections, and process
+  environment changes.
+
+Tradeoffs:
+
+- A caller must now say `headless=False` explicitly when requesting hardware.
+  This preserves the meaning of both stable arguments instead of letting one
+  silently override the other.
+- CWD-relative loop-state persistence is still outside complete `home_dir`
+  ownership, and equivalent early-cleanup work for `imagine()`/`campaign()` stays
+  in the 1.1.x hardening line.
+
 ## 2026-08-19 — Simulation process status represents run integrity (D22)
 
 Decision:
@@ -70,7 +114,7 @@ Tradeoffs:
   than a bundle of already-merged features with unresolved contracts.
 - The `AGENTS.md` adapter leaves two filenames in the repository, but its frozen,
   pointer-only shape prevents a second substantive instruction corpus from forming.
-- The 32 existing architecture findings may remain as reviewed debt in 1.1; CI must
+- The 33 current architecture findings may remain as reviewed debt in 1.1; CI must
   reject additions, and 1.1.x owns the burn-down.
 
 ## 2026-03-31 — Claw-Code Upgrade: Cognitive Pain, Coding Tools, Session Persistence

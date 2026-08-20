@@ -283,6 +283,20 @@ class TestAutomaticBodyYaw:
             assert c.wake_up()
         mini.set_automatic_body_yaw.assert_called_with(False)
 
+    def test_wake_fails_loudly_when_motor_enable_fails(self):
+        """Torque failure cannot be reported as an operational robot."""
+        c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
+        ctx, mod = _mock_sdk()
+        with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
+            assert c.connect()
+            mini = mod.ReachyMini.return_value
+            mini.enable_motors.side_effect = RuntimeError("torque unavailable")
+            assert c.wake_up() is False
+
+        mini.wake_up.assert_not_called()
+        mini.goto_sleep.assert_called_once_with()
+        assert c.state.is_awake is False
+
     def test_wake_survives_sdk_without_the_setter(self):
         c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
         ctx, mod = _mock_sdk()

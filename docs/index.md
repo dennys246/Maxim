@@ -91,7 +91,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 
 | Document | Description |
 |----------|-------------|
-| [Publication Guide](publication_guide.md) | PyPI publication checklist for pymaxim v1.0.0 |
+| [Publication Guide](publication_guide.md) | PyPI release checklist, including the canonical website and package-link audit |
 | [Reference](reference.md) | Module layout, bio-system mappings, configuration |
 | [Skills (tombstone)](skills.md) | Removed module — replaced by Cerebellum/motor programs |
 

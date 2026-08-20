@@ -92,6 +92,8 @@ class ConceptExtractor:
         queue_size: int = 200,
         worker_pool: WorkerPool | None = None,
         decomposer: Any | None = None,
+        *,
+        start_worker: bool = True,
     ) -> None:
         self._atl = atl
         self._cross_layer = cross_layer
@@ -115,7 +117,8 @@ class ConceptExtractor:
             name="concept-extractor-worker",
             daemon=True,
         )
-        self._worker.start()
+        if start_worker:
+            self._worker.start()
 
     # ------------------------------------------------------------------
     # Capture callback (enqueue — non-blocking)
@@ -460,7 +463,8 @@ class ConceptExtractor:
     def shutdown(self) -> None:
         """Stop the worker thread. Called during MemoryHub shutdown."""
         self._stop.set()
-        self._worker.join(timeout=5.0)
+        if self._worker.is_alive():
+            self._worker.join(timeout=5.0)
 
     def restart_worker(self) -> bool:
         """Revive the worker after a ``shutdown()`` (repeated-session support).
@@ -493,11 +497,16 @@ class ConceptExtractor:
         Useful for testing and ensuring all captures are processed
         before assertions.
         """
-        try:
-            self._queue.join()
-            return True
-        except Exception:
-            return False
+        deadline = _time.monotonic() + max(0.0, timeout)
+        # Queue.join() has no timeout. Use the same condition and unfinished
+        # task counter so cleanup remains bounded if a worker stalls or dies.
+        with self._queue.all_tasks_done:
+            while self._queue.unfinished_tasks:
+                remaining = deadline - _time.monotonic()
+                if remaining <= 0:
+                    return False
+                self._queue.all_tasks_done.wait(timeout=remaining)
+        return True
 
 
 __all__ = ["ConceptExtractor"]

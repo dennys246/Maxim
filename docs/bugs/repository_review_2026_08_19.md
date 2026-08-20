@@ -26,13 +26,25 @@ This document preserves the detailed evidence behind D15–D20 in the
 
 Every stable public argument must produce an observable effect, be rejected as an
 invalid combination, or be removed through the documented compatibility process.
-Black-box tests must exercise the effect rather than only inspect the signature.
+Facade tests must exercise the public-to-runtime seam; lower-level controller and
+registry tests must pin physical lifecycle and ownership behavior.
 
 ### Disposition
 
-- `goal` and `robot`: **1.1 release gate**.
-- complete `home_dir` ownership: **1.1 if surgical; otherwise 1.1.x with the
-  partial behavior documented explicitly before 1.1 ships**.
+- `goal` and `robot`: **FIXED for the 1.1 release gate in v1.0.9**. `goal` uses
+  the canonical CLI mailbox; `robot` requires `headless=False`, atomically
+  acquires and wakes the selected controller, reaches direct controller motion,
+  and attempts to restore prior awake/connection state on exit. A failed sleep
+  or disconnect raises `HardwareError` and retains the live registration for
+  operator recovery. Controller-bound motion cannot retarget another global
+  robot. Facade, registry-lifecycle, and controller guards live in
+  `test_api_core.py`, `test_robot_registry.py`, and `test_move_tool_gaze.py`.
+- Lifecycle scope is explicit: completing the initial goal does not currently
+  stop the service loop, and `goal=None` starts idle because this facade installs
+  no terminal-input reader. Those are documented semantics, not implicit
+  interactive behavior.
+- complete `home_dir` ownership: **OPEN — 1.1.x**, with partial behavior
+  documented before the 1.1 cut.
 
 ## D16 — API cleanup starts after fallible side effects
 
@@ -43,14 +55,22 @@ pre-cleanup parsing/setup windows exist in `imagine()` and `campaign()`.
 
 ### Required contract
 
-The cleanup boundary begins before the first reversible side effect. Environment
-restoration, worker stop, robot disconnect, and bio-system shutdown each run from a
-single structural cleanup path. Partial initialization must be safe.
+The cleanup boundary begins before run-owned LLM environment overrides and
+runtime-resource acquisition. Restoration of those two overrides, worker stop,
+robot lifecycle, and returned bio-system shutdown each run from one structural
+cleanup path. Cleanup stages continue after an earlier cleanup failure.
 
 ### Disposition
 
-**1.1 release gate** for `run()` and any identical stable-facade path; broader
-deduplication can follow in 1.1.x.
+**FIXED for the 1.1 release gate in v1.0.9** for `run()`: the structural cleanup
+boundary covers its LLM overrides, worker startup, returned agent/bio instance,
+atomic robot lease, and loop execution. Factory executor failure shuts down the
+partially built bio instance, and the superseded skeleton MemoryHub worker is
+stopped before its replacement is installed; robot connect/wake failure is
+transactionally unwound; each later cleanup stage still runs if an earlier one fails. Concurrent
+`run()` calls fail loudly rather than racing process-global model state.
+Equivalent cleanup for `imagine()`/`campaign()` and broader process-global
+configuration isolation remain **OPEN — 1.1.x**.
 
 ## D17 — `maxim.load.agent()` does not immediately restore everything promised
 
@@ -96,7 +116,7 @@ extension API.
 
 ## D19 — the architecture audit cannot enforce architectural change
 
-Direct execution of `python -m maxim --audit-architecture` reported **32 violations**
+Direct execution of `python -m maxim --audit-architecture` reported **33 violations**
 and exited 1. Findings included runtime imports across the documented `agents`,
 `tools`, `memory`, and `bridges` boundaries. Some may be typing-only or explicitly
 accepted debt, but no reviewed baseline distinguishes them.
@@ -106,7 +126,7 @@ returns a list. CI does not run the CLI audit or reject new findings.
 
 ### Required contract
 
-Classify the current 32 findings into fixed, accepted with rationale, and false
+Classify the current 33 findings into fixed, accepted with rationale, and false
 positive. Store an accepted-debt baseline and fail CI on any unreviewed addition.
 Burning the baseline to zero is valuable but not required to cut 1.1.
 

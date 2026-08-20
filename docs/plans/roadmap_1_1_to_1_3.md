@@ -61,10 +61,10 @@ by delaying Oasis two versions.
 | 10 | Atomic NAc + EC invalidation | **OPEN — 1.1 GATE** (D2). An operator must not be able to clear one half of the persisted pair. |
 | 11 | Annotation S4 non-stationarity analysis | **OPEN — 1.1 GATE**. Offline analysis only; record the result, not merely the analyzer. |
 | 12 | Planning-turn liveness + truthful progress state | **DONE** (D13/D14/D22). Bounded recovery or typed terminal abort, observationally true progress display, and non-zero process/harness propagation for unusable results. |
-| 13 | Stable Python API contract repair | **OPEN — 1.1 GATE** (D15–D18): `run(goal, robot)`, lifecycle cleanup, complete load semantics, and tool-registration lifetime. |
+| 13 | Stable Python API contract repair | **IN PROGRESS — 1.1 GATE** (D15–D18). D15 `goal`/`robot` and D16 `run()` cleanup are DONE in v1.0.9; D17 complete load semantics and D18 tool-registration lifetime remain OPEN. `home_dir` completeness plus `imagine()`/`campaign()` cleanup stay 1.1.x. |
 | 14 | Hermetic required fast suite | **OPEN — 1.1 GATE** (D20). No network, hardware, model cache, or writes outside the test root by default. |
-| 15 | Architecture-audit enforcement | **OPEN — 1.1 GATE** (D19). Classify the 32 findings, store a reviewed accepted-debt baseline, and fail CI on additions. Zero debt is 1.1.x, not a release blocker. |
-| 16 | Release and agent-guidance truth | **OPEN — 1.1 DOCS GATE**. One release ledger, realistic version policy, synchronized changelog/tag/GitHub/PyPI cut, and one canonical agent-guidance source. |
+| 15 | Architecture-audit enforcement | **OPEN — 1.1 GATE** (D19). Classify the 33 current findings, store a reviewed accepted-debt baseline, and fail CI on additions. Zero debt is 1.1.x, not a release blocker. |
+| 16 | Release, website, and agent-guidance truth | **OPEN — 1.1 DOCS GATE; pymaxim.bio audit is also a 1.0.9 publication gate.** One release ledger, realistic version policy, synchronized changelog/tag/GitHub/PyPI cut, one canonical agent-guidance source, and one canonical public website. Audit `pymaxim.bio`/`docs.pymaxim.bio` against the exact release artifact, migrate or redirect every legacy deep link, then verify PyPI renders the new Homepage and Documentation metadata. |
 
 The remaining scope is release closure, not a new feature phase. Estimates belong on
 the implementation PRs after each item's failing contract test exists; this roadmap
@@ -73,10 +73,9 @@ does not convert uncertain debugging into calendar promises.
 **Operator-ratified 2026-08-19** (the 9→16 expansion), with this severity split
 from the claims-verification round — blocking vs 1.1.x *within* the gated items:
 
-- **Blocking for the 1.1 cut:** D15's `goal`/`robot` (the flagship API silently
-  ignoring its two most meaningful arguments), D17 (partial restore + corrupt-state
-  swallows on the stable load path), D18 (documented contract silently one-shot),
-  D16 for `run()` only (move the cleanup boundary above `llm_worker.start()`),
+- **Blocking for the 1.1 cut:** ~~D15's `goal`/`robot` and D16 for `run()`~~
+  **DONE in v1.0.9**; D17 (partial restore + corrupt-state swallows on the
+  stable load path), D18 (documented contract silently one-shot),
   D20 in full (network/cache isolation, the wider CI suite, and temporary data-home
   isolation), item 15's baseline+CI gate (cheap), and item 16 — which now explicitly
   includes correcting the **false
@@ -96,14 +95,17 @@ from the claims-verification round — blocking vs 1.1.x *within* the gated item
 
 1. **DONE — D13/D14/D22:** planning liveness, observationally true display, and
    trustworthy terminal-status propagation now unblock long heartbeat runs.
-2. **Stable API + hermetic tests in parallel:** write black-box failing tests for
-   D15–D18 and isolate D20's home/network/model state.
+2. **Stable API + hermetic tests in parallel:** D15 and `run()`'s D16 slice are
+   DONE with facade, registry-lifecycle, and controller guards; finish D17/D18
+   and isolate D20's
+   home/network/model state.
 3. **Persistence/architecture correctness:** D2 atomic invalidation and D19's
    accepted-debt baseline/regression gate.
 4. **Evidence closure:** record S4, run Big-Model and hardware heartbeat chapters,
    then re-attest cheap rows at the exact RC commit.
-5. **Release transaction:** reconcile version policy and docs, build/check the
-   package, cut `1.1.0`, tag it, publish matching release notes and artifact.
+5. **Release transaction:** audit the canonical website against the exact release
+   artifact, reconcile version policy/docs/PyPI project links, build/check the
+   package, cut `1.1.0`, tag it, and publish matching release notes and artifact.
 
 ### Agent-guidance single-source decision (1.1 docs gate) — RATIFIED 2026-08-19, inverse direction
 

@@ -14,7 +14,7 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 | Symbol | Stable | Notes |
 |---|---|---|
 | `maxim.configure(...)` | ✅ | Logging + display settings. Keyword-only. |
-| `maxim.run(...)` | ✅ | Agentic cycle entry point. |
+| `maxim.run(...)` | ✅ | Blocking agentic-cycle entry point. `goal` seeds canonical ingress but does not auto-stop the loop; `goal=None` installs no stdin reader. One call may be active per process. `robot` wakes the selected controller for direct motion and requires `headless=False`; full capture/vision/DoA remain on the CLI runtime. |
 | `maxim.imagine(...) -> Session` | ✅ | Generative simulation. Returns persistent Session. |
 | `maxim.connect(robot_type, ...) -> RobotController` | ✅ | Robot registry connection. |
 | `maxim.diagnose(...) -> DiagnosticReport` | ✅ | Local + peer diagnostics. |

@@ -18,6 +18,7 @@ description names the sign conventions so no model has to guess.
 from __future__ import annotations
 
 import math
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -98,6 +99,81 @@ class TestRobotIdBranchHonorsGaze:
         result = MoveTool(_RecordingMaxim()).execute(target_x=1.0, robot_id="r1")
         assert result.success
         assert recorded["head_yaw"] == pytest.approx(math.radians(-45.0))
+
+    def test_controller_context_uses_selected_robot_without_robot_id(self):
+        """The stable run(robot=) path uses its controller, not another primary."""
+        from maxim.hardware.simulation import SimulatedController
+
+        recorded = {}
+        controller = SimulatedController(robot_id="selected")
+        controller.goto_target = lambda target: recorded.setdefault("head_yaw", target.head_yaw) is not None
+        result = MoveTool(controller).execute(target_x=-1.0)
+
+        assert result.success
+        assert recorded["head_yaw"] == pytest.approx(math.radians(45.0))
+        assert result.output["robot_id"] == "selected"
+
+    def test_controller_context_rejects_unsupported_translation(self):
+        from maxim.hardware.simulation import SimulatedController
+
+        controller = SimulatedController(robot_id="selected")
+        controller.goto_target = lambda target: pytest.fail("unsupported translation must not dispatch")
+        result = MoveTool(controller).execute(x=0.5)
+
+        assert result.success is False
+        assert "translation is unavailable" in result.error
+
+    def test_controller_context_rejects_global_registry_retarget(self):
+        """A run-owned tool cannot escape its lease through robot_id."""
+        from maxim.hardware.registry import RobotRegistry
+        from maxim.hardware.simulation import SimulatedController
+
+        RobotRegistry.reset_instance()
+        registry = RobotRegistry()
+        registry.register_controller_type("simulated", SimulatedController)
+        unrelated = registry.connect_robot(robot_id="unrelated", robot_type="simulated")
+        selected = SimulatedController(robot_id="selected")
+        selected.goto_target = lambda target: pytest.fail("rejected retarget must not dispatch")
+        unrelated.goto_target = lambda target: pytest.fail("unleased robot must not dispatch")
+        try:
+            result = MoveTool(selected).execute(target_x=1.0, robot_id="unrelated")
+
+            assert result.success is False
+            assert "cannot retarget" in result.error
+        finally:
+            registry.disconnect_all()
+            RobotRegistry.reset_instance()
+
+    def test_missing_context_does_not_fall_back_to_global_primary(self, monkeypatch):
+        """An absent context must never broaden into global robot actuation."""
+        import maxim.tools.reachy as reachy_mod
+
+        lookup = MagicMock()
+        monkeypatch.setattr(reachy_mod, "_get_robot_from_registry", lookup)
+        result = MoveTool(None).execute(target_x=1.0)
+
+        assert result.success is False
+        assert "No Maxim context" in result.error
+        lookup.assert_not_called()
+
+
+def test_controller_context_registers_only_usable_robot_tools(tmp_path, monkeypatch):
+    """A bare RobotController must not advertise legacy capture tools in CI."""
+    from maxim.hardware.simulation import SimulatedController
+    from maxim.runtime.bootstrap import build_tool_registry
+
+    monkeypatch.chdir(tmp_path)
+    controller = SimulatedController(robot_id="selected")
+    names = set(build_tool_registry(maxim=controller).list())
+    move = build_tool_registry(maxim=controller).get("move")
+
+    assert "move" in names
+    assert "robot_id" not in move.input_schema
+    assert "focus_interests" not in names
+    assert "focus_on_sound" not in names
+    assert "maxim_command" not in names
+    assert "track_target" not in names
+    assert "novelty_track" not in names
 
 
 class TestDescriptionNamesTheSigns:

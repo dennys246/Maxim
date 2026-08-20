@@ -76,7 +76,9 @@ def build_tool_registry(
     - singularity: Full filesystem access
 
     Args:
-        maxim: Maxim robot instance.
+        maxim: Live legacy Maxim runtime or ``RobotController`` context.
+            Controller-only contexts register only controller-backed tools;
+            legacy capture/vision/DoA tools require the full Maxim runtime.
         autonomy_controller: Autonomy level controller.
         internet_policy_getter: Function to get internet access policy.
         filesystem_policy: Instance-level filesystem policy.
@@ -155,12 +157,21 @@ def build_tool_registry(
                 TrackTargetTool,
             )
 
-            registry.register(FocusInterestsTool(maxim))
-            registry.register(FocusOnSoundTool(maxim))  # Closed-loop audio orienting (no numeric params)
-            registry.register(MaximCommandTool(maxim))
-            registry.register(MoveTool(maxim))  # Direct head movement control
-            registry.register(TrackTargetTool(maxim))
-            registry.register(NoveltyTrackTool(maxim))
+            from maxim.hardware.controller import RobotController
+
+            controller_only = isinstance(maxim, RobotController)
+            if controller_only:
+                # RobotController exposes safe direct motion, but not the
+                # legacy runtime's capture manager, detector, DoA feed, or
+                # command surface. Do not advertise tools guaranteed to fail.
+                registry.register(MoveTool(maxim))
+            else:
+                registry.register(FocusInterestsTool(maxim))
+                registry.register(FocusOnSoundTool(maxim))  # Closed-loop audio orienting (no numeric params)
+                registry.register(MaximCommandTool(maxim))
+                registry.register(MoveTool(maxim))  # Direct head movement control
+                registry.register(TrackTargetTool(maxim))
+                registry.register(NoveltyTrackTool(maxim))
         except ImportError:
             logger.debug("Reachy tools not available (optional dependency)")
         except Exception as e:

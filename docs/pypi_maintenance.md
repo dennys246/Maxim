@@ -38,7 +38,11 @@ mypy src/maxim/__init__.py src/maxim/api.py src/maxim/session.py \
 grep -n '^version' pyproject.toml
 grep -n '__version__' src/maxim/__init__.py
 
-# 5. CHANGELOG entry exists for the new version
+# 5. Canonical website metadata is release-ready
+grep -A5 '^\[project.urls\]' pyproject.toml
+# Then complete publication_guide.md's pymaxim.bio content/link audit.
+
+# 6. CHANGELOG entry exists for the new version
 head -20 CHANGELOG.md
 ```
 
