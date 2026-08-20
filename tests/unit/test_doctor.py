@@ -2139,3 +2139,116 @@ class TestCheckRobotReachable:
         ):
             (r,) = self._run()
         assert r.status != "ok" and r.retry_id == "robot"
+
+
+class TestLlamaCppServerCheckIsInferencePathAware:
+    """`llama-cpp-server` is an optional extra, so its absence is only a FAILURE
+    when nothing else can infer.
+
+    It cannot be a core dependency: llama-cpp-python publishes no binary wheels
+    on PyPI (measured 2026-08-20 — `--only-binary :all:` resolves nothing for
+    3.12 or 3.14; the sole artifact is a 74.9 MB sdist), so making it core would
+    turn every `pip install pymaxim` into a C++ build, break the 3.10-3.14
+    install matrix CI certifies, and contradict the `pymaxim[pi]`
+    no-heavy-backends guarantee.
+
+    Reporting `fail` unconditionally told users with a working cloud key that
+    their install was broken and made `maxim doctor` exit 1 on a correct setup —
+    the first command most people run after installing.
+    """
+
+    @staticmethod
+    def _without_llama_cpp(monkeypatch):
+        import builtins
+
+        real_import = builtins.__import__
+
+        def blocked(name, *args, **kwargs):
+            if name.startswith("llama_cpp"):
+                raise ImportError("simulated: not installed")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", blocked)
+
+    @staticmethod
+    def _clear_inference_env(monkeypatch):
+        import os
+
+        for key in list(os.environ):
+            if key.endswith("_API_KEY") or key.endswith("_REMOTE_URL"):
+                monkeypatch.delenv(key, raising=False)
+
+    def test_fails_only_when_there_is_no_inference_path_at_all(self, monkeypatch):
+        from maxim.doctor.checks import check_llama_cpp_server_installed
+
+        self._clear_inference_env(monkeypatch)
+        self._without_llama_cpp(monkeypatch)
+
+        result = check_llama_cpp_server_installed()
+        assert result.status == "fail"
+        assert "no inference path" in result.message
+        # The fix must name every route, not just the heavy one.
+        assert "pymaxim[llm-server]" in result.fix
+        assert "API_KEY" in result.fix
+        assert "peer connect" in result.fix
+
+    def test_cloud_key_downgrades_to_warn(self, monkeypatch):
+        """A working cloud setup must not be reported as a failure."""
+        from maxim.doctor.checks import check_llama_cpp_server_installed
+
+        self._clear_inference_env(monkeypatch)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        self._without_llama_cpp(monkeypatch)
+
+        result = check_llama_cpp_server_installed()
+        assert result.status == "warn", "a usable cloud path is not a failure"
+        assert "ANTHROPIC_API_KEY" in result.message
+
+    def test_remote_lane_downgrades_to_warn(self, monkeypatch):
+        from maxim.doctor.checks import check_llama_cpp_server_installed
+
+        self._clear_inference_env(monkeypatch)
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "https://leader.example/v1")
+        self._without_llama_cpp(monkeypatch)
+
+        result = check_llama_cpp_server_installed()
+        assert result.status == "warn"
+        assert "remote_url" in result.message
+
+    def test_cloud_key_list_is_not_a_second_copy(self):
+        """The provider list must stay the one cli_utils already maintains, or
+        it drifts from the bundled profile catalog."""
+        import inspect
+
+        from maxim.doctor import checks
+
+        src = inspect.getsource(checks._configured_cloud_key_env)
+        assert "_CLOUD_API_KEY_TO_PROFILE" in src
+
+    def test_fix_hints_are_runnable_by_a_pip_user(self):
+        """`pip install -e '.[extra]'` is an editable install of a directory a
+        pip user does not have. Any fix hint offering it must ALSO offer the
+        PyPI form — evaluated per fix string, since a multi-line hint may
+        legitimately put the two forms on different lines."""
+        import ast
+        import inspect
+
+        from maxim.doctor import checks
+
+        tree = ast.parse(inspect.getsource(checks))
+        offenders = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            for kw in node.keywords:
+                if kw.arg != "fix":
+                    continue
+                try:
+                    value = ast.literal_eval(kw.value)
+                except (ValueError, TypeError):
+                    continue  # f-string or computed: skip
+                if not isinstance(value, str):
+                    continue
+                if "-e '.[" in value and "pymaxim[" not in value:
+                    offenders.append(value.splitlines()[0][:70])
+        assert not offenders, f"dev-only install hints with no PyPI form: {offenders}"

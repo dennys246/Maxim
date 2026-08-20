@@ -42,7 +42,7 @@ def check_gpu() -> CheckResult:
             name="GPU / CUDA",
             status="warn",
             message="torch not installed — CPU-only mode",
-            fix="Install GPU stack: pip install -e '.[llm-torch]'",
+            fix="Install GPU stack: pip install 'pymaxim[llm-torch]'  # or -e '.[llm-torch]' from a checkout",
         )
     if not torch.cuda.is_available():
         import os
@@ -124,15 +124,91 @@ def check_tier_detection(caps=None) -> CheckResult:
     )
 
 
+def _configured_cloud_key_env() -> str | None:
+    """Name of a provider API key that is actually set, or None.
+
+    Reuses ``cli_utils._CLOUD_API_KEY_TO_PROFILE`` — the same list the solo
+    cloud auto-detect uses — rather than a second copy that would drift from
+    the bundled profile catalog.
+    """
+    try:
+        from maxim.cli_utils import _CLOUD_API_KEY_TO_PROFILE
+    except Exception:  # pragma: no cover — defensive; a doctor check must not crash
+        return None
+    import os as _os
+
+    for env_name, _profile in _CLOUD_API_KEY_TO_PROFILE:
+        if _os.environ.get(env_name, "").strip():
+            return env_name
+    return None
+
+
+def _configured_remote_lane() -> str | None:
+    """A lane pointed at a remote/leader URL, or None.
+
+    A leader/solo box whose large lane is remote does not need to spawn
+    anything locally.
+    """
+    import os as _os
+
+    for tier in ("large", "medium", "small"):
+        if _os.environ.get(f"MAXIM_LANE_{tier.upper()}_REMOTE_URL", "").strip():
+            return f"lanes.{tier}.remote_url (env)"
+    try:
+        from maxim.runtime.config_loader import load_config
+
+        cfg = load_config()
+        for tier in ("large", "medium", "small"):
+            tier_cfg = getattr(getattr(cfg, "lanes", None), tier, None)
+            if tier_cfg is not None and str(getattr(tier_cfg, "remote_url", "") or "").strip():
+                return f"lanes.{tier}.remote_url"
+    except Exception:  # pragma: no cover — config is optional; never crash doctor
+        return None
+    return None
+
+
 def check_llama_cpp_server_installed() -> CheckResult:
+    """Local auto-spawn readiness — a FAILURE only when nothing else can infer.
+
+    `llama-cpp-python` publishes no binary wheels on PyPI (measured 2026-08-20:
+    ``--only-binary :all:`` resolves nothing for 3.12 or 3.14; the only artifact
+    is a 74.9 MB sdist), so it is deliberately an optional extra rather than a
+    core dependency — making it core would turn every ``pip install pymaxim``
+    into a C++ build requiring a toolchain, break the 3.10-3.14 install matrix
+    CI certifies, and contradict the ``pymaxim[pi]`` no-heavy-backends
+    guarantee.
+
+    Because it is optional, its ABSENCE is only a problem when the operator has
+    no other route to inference. Reporting ``fail`` unconditionally told users
+    with a perfectly working cloud key that their install was broken, and made
+    ``maxim doctor`` exit 1 on a correct setup — the first command most people
+    run after installing.
+    """
     try:
         import llama_cpp.server  # noqa: F401
     except ImportError:
+        alternative = _configured_cloud_key_env() or _configured_remote_lane()
+        if alternative:
+            return CheckResult(
+                name="llama-cpp-server installed",
+                status="warn",
+                message=(f"not installed — local auto-spawn disabled, but inference is available via {alternative}"),
+                fix=(
+                    "Nothing to do unless you want LOCAL inference as well:\n"
+                    "  pip install 'pymaxim[llm-server]'    # installed from PyPI\n"
+                    "  pip install -e '.[llm-server]'       # from a source checkout"
+                ),
+            )
         return CheckResult(
             name="llama-cpp-server installed",
             status="fail",
-            message="llama_cpp.server not installed — auto-spawn disabled",
-            fix="pip install -e '.[llm-server]'",
+            message="llama_cpp.server not installed and no cloud key or remote lane configured — no inference path",
+            fix=(
+                "Pick ONE inference route:\n"
+                "  pip install 'pymaxim[llm-server]'    # local models (builds from source)\n"
+                "  export ANTHROPIC_API_KEY=...         # or any supported provider key\n"
+                "  maxim peer connect <leader-url>      # delegate to a leader"
+            ),
         )
     return CheckResult(
         name="llama-cpp-server installed",
@@ -2883,7 +2959,7 @@ def _probe_mesh_node_to_check(node: "MeshNode", cluster_key: str) -> CheckResult
             name=f"Node {node.name}",
             status="warn",
             message=f"peer backend import failed: {e}",
-            fix="Install the llm-server extra: pip install -e '.[llm-server]'",
+            fix="Install the llm-server extra: pip install 'pymaxim[llm-server]'  # or -e '.[llm-server]' from a checkout",
             retry_id=retry_id,
         )
 

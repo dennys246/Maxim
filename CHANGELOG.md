@@ -102,6 +102,23 @@ documented contract. Review these before upgrading unattended:
 
 ### Fixed
 
+- **`maxim doctor` failed on correctly configured installs** — the local
+  `llama-cpp-server` check reported a hard failure and exited 1 whenever
+  `llama-cpp-python` was absent, even for a user with a working cloud API key or
+  a remote lane. That is the first command most people run after installing, and
+  it told them a correct setup was broken. The check is now inference-path
+  aware: a missing local backend is a WARNING when another route exists, and a
+  FAILURE only when none does (no local server, no provider key, no remote
+  lane) — in which case the fix names all three routes rather than only the
+  heavy one. The provider list is read from the same `cli_utils` table the solo
+  cloud auto-detect uses, so it cannot drift from the bundled profile catalog.
+  Install hints across the doctor now give the PyPI form
+  (`pip install 'pymaxim[llm-server]'`) alongside the source-checkout form,
+  instead of telling pip users to run an editable install of a directory they do
+  not have. `llama-cpp-python` remains an optional extra deliberately: it
+  publishes no binary wheels on PyPI, so making it core would turn every
+  install into a 74.9 MB source build requiring a C++ toolchain.
+
 - **Stable `maxim.run()` contract (D15/D16)** — `goal` now enters through the
   runtime's canonical CLI-input mailbox; robot mode rejects contradictory
   `headless=True`, atomically acquires and wakes the selected controller for
