@@ -1,5 +1,13 @@
 # pymaxim.bio — website update suggestions (2026-07-28)
 
+> **RE-AUDIT REQUIRED BEFORE THE 1.0.9 PYPI CUT.** This copy specification
+> predates the August release-truth and stable-API reviews. Use the executable
+> website/PyPI checklist in [publication_guide.md](../publication_guide.md),
+> reconcile every claim below against the current graduation and bug ledgers,
+> and audit the complete `pymaxim.bio` + `docs.pymaxim.bio` page/link inventory.
+> Only after that pass should the new domains replace the legacy site as the
+> authoritative public and PyPI destinations.
+
 Spec for the **maxim-web** repo (Astro/Starlight → pymaxim.bio). This is *what to say
 and how to frame it*, not the Astro code. Everything here is discovery-only + honest —
 the site's credibility is the product's credibility, so under-claim before over-claim.

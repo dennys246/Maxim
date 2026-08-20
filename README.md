@@ -6,9 +6,9 @@ Maxim gives an LLM agent a **body** (sensors, modulators, pain), **drives** (hun
 
 > **Positioning** (per [Exp 37 2026-06-06 results](docs/experiments/37_cross_session_graduation.md)): Maxim is a **bio-inspired LLM harness**. The substrate provides cross-session infrastructure (memory, valence, causal links, drives) that LLM-driven agents use. Substrate-driven action selection independent of the LLM is post-1.0 research direction via Exp 38 substrate-primary work. See [docs/plans/behavioral_graduation_candidates.md](docs/plans/behavioral_graduation_candidates.md) for the Tier 1 graduation status.
 
-**Website:** 
-- [https://pymaxim.bio](https://pymaxim.bio)
-- [dennyschaedig.com/maxim](https://www.dennyschaedig.com/maxim)
+- **Website:** [pymaxim.bio](https://pymaxim.bio)
+- **Documentation:** [docs.pymaxim.bio](https://docs.pymaxim.bio)
+- **Legacy long-form guides:** [dennyschaedig.com/maxim](https://www.dennyschaedig.com/maxim)
 
 ## What Makes This Different
 
@@ -225,9 +225,14 @@ See [docs/user/cli-reference.md](docs/user/cli-reference.md) for all flags.
 | [Substrate & Hivemind](docs/hivemind.md) | Cross-session substrate sharing, bundle format |
 | [Troubleshooting](docs/user/troubleshooting.md) | Common issues and diagnostics |
 
-## Website Guides
+## Legacy Website Guides
 
-The [dennyschaedig.com/maxim](https://dennyschaedig.com/maxim) site hosts long-form topic guides covering the full architecture. These are the deep-dive companion to this README:
+The historical [dennyschaedig.com/maxim](https://dennyschaedig.com/maxim) site
+hosts long-form topic guides covering the full architecture. These remain available
+while their content is audited and migrated to
+[docs.pymaxim.bio](https://docs.pymaxim.bio); the new site becomes authoritative only
+after each migrated page is reconciled with the repository's current claims and
+release contracts.
 
 | Guide | Topic |
 |-------|-------|

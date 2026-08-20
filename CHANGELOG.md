@@ -84,6 +84,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   does not stop the service loop automatically, and `goal=None` installs no stdin
   reader. Full `home_dir` ownership and equivalent cleanup for
   `imagine()`/`campaign()` remain explicitly tracked as 1.1.x hardening.
+- **Canonical project website** — package metadata and the PyPI-rendered README
+  now point to `pymaxim.bio` for the landing page and `docs.pymaxim.bio` for
+  documentation. The release checklist requires a full content, claim, command,
+  migration/redirect, and link audit before those sites are treated as the
+  authoritative replacement for the legacy long-form guides.
 
 ## [1.0.8] - 2026-08-19
 

@@ -54,8 +54,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://www.dennyschaedig.com/maxim"
-Documentation = "https://www.dennyschaedig.com/maxim"
+Homepage = "https://pymaxim.bio"
+Documentation = "https://docs.pymaxim.bio"
 Repository = "https://github.com/dennys246/Maxim"
 Issues = "https://github.com/dennys246/Maxim/issues"
 
