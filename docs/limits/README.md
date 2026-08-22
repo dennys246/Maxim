@@ -162,6 +162,46 @@ your metric can actually see.
 - **Re-measure on:** action-budget value change (convergence speed scales
   with actions/turn); any arc whose act length changes.
 
+### L8 — Baseline drift makes cross-time Δ gates un-interpretable · BINDING
+
+- **Instrument:** any heartbeat that re-fires a delta gate and compares the
+  result to a number recorded months earlier — Exp 37's `Δ = B − A` is the
+  live case, but this binds every `Re-run on:` row whose criterion is a
+  difference between arms rather than an absolute.
+- **Limit:** the gate scores Δ, but Δ moves when **either** arm moves. A
+  heartbeat FAIL is therefore ambiguous between "the mechanism regressed" and
+  "the baseline rose and the model left the Goldilocks zone" — and the
+  instrument cannot separate them. The re-fire records only the new Δ against
+  the old verdict, so the information needed to disambiguate (the baseline
+  shift) is present in the data but not in the gate.
+- **Measured:** Exp 37 Qwen2.5-32B heartbeat, 2026-08-20/21, N=5, complete
+  design (60/60 rows). Prior fire (2026-06-13): A = 0.420 ± 0.27, B = 0.800,
+  **Δ = +1.43 SD PASS**. This fire: **A = 0.750**, B = 0.567, **Δ = −0.56 SD
+  FAIL** — a ~2 SD swing on a Tier-1 EARNED row where *the baseline nearly
+  doubled*. Arm B landed near where Arm A used to be. The comparison is also
+  confounded (~145 PRs between fires, and the runbook's "matching git hash"
+  condition was not met), so "the substrate regressed" is **not** established;
+  what is established is that the gate cannot tell.
+- **Cost paid:** one ½-day 32B campaign that produced an unusable verdict.
+- **Mitigation (not yet implemented):** score the fire by **position** rather
+  than by a remembered number — record `A`, `B`, `C` every time, and gate on
+  `B − C` (which controls for the ceiling arithmetic, since Arm C's
+  irrelevant-prior resume faces the same bound) plus where `(A, Δ)` lands on
+  the measured curve. Same single fire, same cost, different scoring. The curve
+  itself needs one pre-registered dose-response experiment — hold the model
+  fixed, sweep A deliberately via prompt scaffolding, measure `B − C` at each
+  level — before the heartbeat has a yardstick to read.
+- **Amends L6:** L6 says "each model's headroom is its own measurement." That
+  is too weak. Headroom is a property of the **(model, task, apparatus)**
+  triple and drifts as the harness changes; the same weights moved from
+  A = 0.420 to A = 0.750 with no model change. A per-model Goldilocks map has
+  a shelf life.
+- **Open confound:** Δ is mechanically anti-correlated with A (B is bounded, so
+  a high baseline leaves less room for positive Δ). Sorting all five Exp 37
+  fires by A gives a monotone decline in Δ — which is *also* what a do-nothing
+  null predicts. Any curve experiment must gate on `B − C`, not `B − A`, or it
+  measures arithmetic.
+
 ## Repository capability assessment
 
 [score_cards/](score_cards/) records the 2026-08-19 repository grades (one card per assessor, `YYYY-MM-DD-<assessor>.md`; 2026-08-19 has independent Codex and Claude cards) for
