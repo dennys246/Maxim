@@ -4,7 +4,7 @@ Bio-inspired cognitive harness for LLM agents — embodied sensation, homeostati
 
 Maxim gives an LLM agent a **body** (sensors, modulators, pain), **drives** (hunger, temperature, fatigue that drift and compete), and **biological memory systems** (Hippocampus, NAc, ATL, SCN, Angular Gyrus) that capture experience. When the agent's body touches fire, its thermal sensors register pain, NAc forms a causal link, and the enrichment pipeline surfaces that experience in subsequent sessions — providing the LLM with experience-grounded context alongside its pretraining. The bio-substrate doesn't replace the LLM's prior knowledge; it augments the LLM's prompt context with persistent, agent-specific lived experience.
 
-> **Positioning** (per [Exp 37 2026-06-06 results](docs/experiments/37_cross_session_graduation.md)): Maxim is a **bio-inspired LLM harness**. The substrate provides cross-session infrastructure (memory, valence, causal links, drives) that LLM-driven agents use. Substrate-driven action selection independent of the LLM is post-1.0 research direction via Exp 38 substrate-primary work. See [docs/plans/behavioral_graduation_candidates.md](docs/plans/behavioral_graduation_candidates.md) for the Tier 1 graduation status.
+> **Positioning** (per [Exp 37 2026-06-06 results](https://github.com/dennys246/Maxim/blob/main/docs/experiments/37_cross_session_graduation.md)): Maxim is a **bio-inspired LLM harness**. The substrate provides cross-session infrastructure (memory, valence, causal links, drives) that LLM-driven agents use. Substrate-driven action selection independent of the LLM is post-1.0 research direction via Exp 38 substrate-primary work. See [docs/plans/behavioral_graduation_candidates.md](https://github.com/dennys246/Maxim/blob/main/docs/plans/behavioral_graduation_candidates.md) for the Tier 1 graduation status.
 
 - **Website:** [pymaxim.bio](https://pymaxim.bio)
 - **Documentation:** [pymaxim.bio/getting-started](https://pymaxim.bio/getting-started/)
@@ -14,7 +14,7 @@ Maxim gives an LLM agent a **body** (sensors, modulators, pain), **drives** (hun
 
 | Traditional LLM Agent | Maxim Agent |
 |---|---|
-| Stateless between sessions | Cross-session memory via hippocampal recall + NAc causal links (EARNED, [Exp 10](docs/experiments/10_cross_session_enrichment.md)) |
+| Stateless between sessions | Cross-session memory via hippocampal recall + NAc causal links (EARNED, [Exp 10](https://github.com/dennys246/Maxim/blob/main/docs/experiments/10_cross_session_enrichment.md)) |
 | Text in, text out | Embodied: sensors, pain, homeostatic drives, reflexes |
 | Fine-tune to learn from new data | Bio-substrate captures experience: sensation → pain/reward → causal links → enrichment, surfaced as prompt context in subsequent sessions |
 | Flat tool list | Three interaction levels: observe, touch, acquire |
@@ -119,7 +119,7 @@ pip install pymaxim
 | `tts` | Text-to-speech via Piper |
 | `database` | PostgreSQL + pgvector memory stores |
 
-See [getting-started.md](docs/user/getting-started.md) for the full list of 16 extras.
+See [getting-started.md](https://github.com/dennys246/Maxim/blob/main/docs/user/getting-started.md) for the full list of 16 extras.
 
 > **Note:** `[all]` does **not** include `[semantic]` (sentence-transformers + spaCy). Without it, memory recall and substrate encoding fall back to bag-of-words hashing. For full memory quality:
 > ```bash
@@ -166,7 +166,7 @@ models = maxim.list_models()
 maxim.download_model("qwen2.5-14b-instruct")
 ```
 
-See [docs/user/python-api.md](docs/user/python-api.md) for the full API reference.
+See [docs/user/python-api.md](https://github.com/dennys246/Maxim/blob/main/docs/user/python-api.md) for the full API reference.
 
 ## CLI Quick Reference
 
@@ -208,22 +208,22 @@ as `failed`, `blocked`, or `inconclusive`), exit `1` is a generic error, and exi
 non-zero exit before analyzing its report. Python APIs return the structured
 `finish_reason` instead of terminating the host process.
 
-See [docs/user/cli-reference.md](docs/user/cli-reference.md) for all flags.
+See [docs/user/cli-reference.md](https://github.com/dennys246/Maxim/blob/main/docs/user/cli-reference.md) for all flags.
 
 ## Documentation
 
 | Guide | Description |
 |-------|-------------|
-| [Getting Started](docs/user/getting-started.md) | First-run walkthrough |
-| [CLI Reference](docs/user/cli-reference.md) | All command-line flags |
-| [Python API](docs/user/python-api.md) | Programmatic usage |
-| [Simulation](docs/user/simulation.md) | Campaigns, scenarios, cradle, benchmarks |
-| [Architecture](docs/reference.md) | Module map, bio-system glossary |
-| [LLM Setup](docs/user/llm-setup.md) | Model download and configuration |
-| [Peer Setup](docs/user/peer-setup.md) | Multi-machine / tunnel setup |
-| [Configuration](docs/user/configuration.md) | Env vars, config.json, operator reference |
-| [Substrate & Hivemind](docs/hivemind.md) | Cross-session substrate sharing, bundle format |
-| [Troubleshooting](docs/user/troubleshooting.md) | Common issues and diagnostics |
+| [Getting Started](https://github.com/dennys246/Maxim/blob/main/docs/user/getting-started.md) | First-run walkthrough |
+| [CLI Reference](https://github.com/dennys246/Maxim/blob/main/docs/user/cli-reference.md) | All command-line flags |
+| [Python API](https://github.com/dennys246/Maxim/blob/main/docs/user/python-api.md) | Programmatic usage |
+| [Simulation](https://github.com/dennys246/Maxim/blob/main/docs/user/simulation.md) | Campaigns, scenarios, cradle, benchmarks |
+| [Architecture](https://github.com/dennys246/Maxim/blob/main/docs/reference.md) | Module map, bio-system glossary |
+| [LLM Setup](https://github.com/dennys246/Maxim/blob/main/docs/user/llm-setup.md) | Model download and configuration |
+| [Peer Setup](https://github.com/dennys246/Maxim/blob/main/docs/user/peer-setup.md) | Multi-machine / tunnel setup |
+| [Configuration](https://github.com/dennys246/Maxim/blob/main/docs/user/configuration.md) | Env vars, config.json, operator reference |
+| [Substrate & Hivemind](https://github.com/dennys246/Maxim/blob/main/docs/hivemind.md) | Cross-session substrate sharing, bundle format |
+| [Troubleshooting](https://github.com/dennys246/Maxim/blob/main/docs/user/troubleshooting.md) | Common issues and diagnostics |
 
 ## Legacy Website Guides
 
@@ -270,4 +270,4 @@ Issues and PRs welcome at [github.com/dennys246/Maxim](https://github.com/dennys
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+See [LICENSE](https://github.com/dennys246/Maxim/blob/main/LICENSE) for details.
