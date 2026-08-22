@@ -476,16 +476,34 @@ class TestTemporalEligibility:
         return NAc(config=NACConfig(temporal_credit_weight=temporal_credit_weight))
 
     def _make_sig(self, **overrides):
+        """A temporal anchor phase-aligned with NOW, unless a test overrides.
+
+        These phases MUST default to the current ones. ``distribute_reward``'s
+        temporal fallback scores an anchor by ``anchor.similarity(
+        TemporalSignature.now())``, so hardcoding absolute phases makes the
+        result depend on what time the suite happens to run: the old defaults
+        (circadian 0.5 = midday) scored sim≈0.22 in US afternoons and sim≈0.09
+        in the UTC small hours, straddling the 0.01 credit threshold at
+        temporal_credit_weight=0.1. The suite passed all day in US time zones
+        and failed on UTC CI runners overnight — see the 2026-08-22 00:33 UTC
+        failure, reproducible locally with `TZ=UTC pytest`.
+
+        Anchoring to ``now()`` makes sim≈1.0 deterministically, which is what
+        these tests actually mean: they exercise how ``temporal_credit_weight``
+        scales credit, not what o'clock it is. A test that needs a DISTANT
+        anchor should pass explicit phases and assert on that distance.
+        """
         import time
 
         from maxim.time.temporal_signature import TemporalSignature
 
+        now = TemporalSignature.now()
         defaults = {
             "timestamp": time.time(),  # Recent timestamp so anchors survive pruning
-            "circadian_phase": 0.5,
-            "weekly_phase": 0.3,
-            "monthly_phase": 0.2,
-            "annual_phase": 0.1,
+            "circadian_phase": now.circadian_phase,
+            "weekly_phase": now.weekly_phase,
+            "monthly_phase": now.monthly_phase,
+            "annual_phase": now.annual_phase,
         }
         defaults.update(overrides)
         return TemporalSignature(**defaults)
