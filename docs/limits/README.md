@@ -162,6 +162,65 @@ your metric can actually see.
 - **Re-measure on:** action-budget value change (convergence speed scales
   with actions/turn); any arc whose act length changes.
 
+### L8 — Exp 37 fires are not reproducible across time, code held fixed · BINDING
+
+- **Instrument:** the Exp 37 LLM-AUT delta gate, and by extension any gate
+  whose verdict is compared against a number recorded months earlier.
+- **Limit (measured, not inferred):** re-running the **identical commit** on
+  the **identical seeds** today does not reproduce its own earlier result. The
+  serving environment moves the baseline more than the mechanism does, and the
+  run records capture nothing that would let anyone detect or reconstruct it.
+- **Measured 2026-08-22**, Arm A / `fire_pit` / Qwen2.5-32B, seeds 43–47, all
+  runs valid (`_llm_unavailable = 0`, durations 1528–1567 s against June's
+  1492–1641 s):
+
+  | fire | code | n | mean | SD |
+  |---|---|---|---|---|
+  | June 2026-06-13 | `54d60226` | 5 | **0.420** | 0.27 |
+  | today | `54d60226` (same commit) | 5 | **0.710** | 0.119 |
+  | today | current main | 5 | **0.750** | — |
+
+  Old code today (0.710) is indistinguishable from current code today (0.750);
+  both sit far above the same commit's own June result (0.420). **The ~145 PRs
+  between fires are exonerated.** The distribution also tightened (SD 0.27 →
+  0.119), so this is a relocation of the whole distribution, not drift in a
+  summary statistic.
+- **Consequence for the evidence base:** the Qwen32B **+1.43 SD PASS** — the
+  anchor of the four-model Goldilocks map — **cannot currently be re-derived**.
+  That does not make it false; it makes it unverifiable. Any citation of the
+  cross-model map must carry that caveat until the serving environment is
+  pinned. It also reframes the 1.1 heartbeat FAIL: current code scoring −0.56
+  SD is not a regression, it is Qwen32B leaving the Goldilocks zone because its
+  baseline rose to ~0.71–0.75 under today's serving stack, leaving no headroom.
+- **Root cause NOT established.** Suspects, none provable from the records:
+  serving topology (June's harness targeted a remote leader over the tunnel;
+  today reuses a local `Q4_K_M` on :8100), quantization, llama-cpp-server build,
+  or sampling defaults. `n_ctx` is partially excluded — 4096 overflows the
+  prompt (10 dead calls) under the same prompt-construction code, so June
+  cannot have been running there.
+- **Why it was undetectable:** the run record stamps `model` (the REQUESTED
+  profile name) and nothing else about what served it. No `n_ctx`, no
+  quantization, no endpoint, no server build. Every hour of the 2026-08-22
+  archaeology traces to that gap, and the same gap means we still cannot say
+  what changed.
+- **Cost paid:** one ½-day 32B heartbeat that produced an unusable verdict,
+  plus a day of reconstruction to find out why.
+- **Mitigation (required before the next Exp 37 fire):** stamp
+  `resolved_model`, `endpoint`, `n_ctx`, quantization, and server build into
+  every run record; and score fires by position (`A`, `B`, `C` recorded every
+  time, gate on `B − C`) rather than against a remembered number. Without the
+  first, a future re-fire will land in exactly this position again.
+- **Amends L6:** L6 says "each model's headroom is its own measurement." Too
+  weak in two directions — headroom belongs to the (model, task, **serving
+  environment**) triple, and it is not stable across time even with the model
+  and code held fixed.
+- **Open confound for any successor experiment:** Δ is mechanically
+  anti-correlated with A, so the monotone decline across the five Exp 37 fires
+  sorted by baseline is also what a do-nothing null predicts. Gate on `B − C`,
+  not `B − A`.
+- **Raw data:** `docs/experiments/data/37_oldhash_qwen32b_A_2026-08-22.jsonl`
+  (S4; the only evidence that the June environment is gone).
+
 ## Repository capability assessment
 
 [score_cards/](score_cards/) records the 2026-08-19 repository grades (one card per assessor, `YYYY-MM-DD-<assessor>.md`; 2026-08-19 has independent Codex and Claude cards) for
