@@ -162,45 +162,64 @@ your metric can actually see.
 - **Re-measure on:** action-budget value change (convergence speed scales
   with actions/turn); any arc whose act length changes.
 
-### L8 — Baseline drift makes cross-time Δ gates un-interpretable · BINDING
+### L8 — Exp 37 fires are not reproducible across time, code held fixed · BINDING
 
-- **Instrument:** any heartbeat that re-fires a delta gate and compares the
-  result to a number recorded months earlier — Exp 37's `Δ = B − A` is the
-  live case, but this binds every `Re-run on:` row whose criterion is a
-  difference between arms rather than an absolute.
-- **Limit:** the gate scores Δ, but Δ moves when **either** arm moves. A
-  heartbeat FAIL is therefore ambiguous between "the mechanism regressed" and
-  "the baseline rose and the model left the Goldilocks zone" — and the
-  instrument cannot separate them. The re-fire records only the new Δ against
-  the old verdict, so the information needed to disambiguate (the baseline
-  shift) is present in the data but not in the gate.
-- **Measured:** Exp 37 Qwen2.5-32B heartbeat, 2026-08-20/21, N=5, complete
-  design (60/60 rows). Prior fire (2026-06-13): A = 0.420 ± 0.27, B = 0.800,
-  **Δ = +1.43 SD PASS**. This fire: **A = 0.750**, B = 0.567, **Δ = −0.56 SD
-  FAIL** — a ~2 SD swing on a Tier-1 EARNED row where *the baseline nearly
-  doubled*. Arm B landed near where Arm A used to be. The comparison is also
-  confounded (~145 PRs between fires, and the runbook's "matching git hash"
-  condition was not met), so "the substrate regressed" is **not** established;
-  what is established is that the gate cannot tell.
-- **Cost paid:** one ½-day 32B campaign that produced an unusable verdict.
-- **Mitigation (not yet implemented):** score the fire by **position** rather
-  than by a remembered number — record `A`, `B`, `C` every time, and gate on
-  `B − C` (which controls for the ceiling arithmetic, since Arm C's
-  irrelevant-prior resume faces the same bound) plus where `(A, Δ)` lands on
-  the measured curve. Same single fire, same cost, different scoring. The curve
-  itself needs one pre-registered dose-response experiment — hold the model
-  fixed, sweep A deliberately via prompt scaffolding, measure `B − C` at each
-  level — before the heartbeat has a yardstick to read.
-- **Amends L6:** L6 says "each model's headroom is its own measurement." That
-  is too weak. Headroom is a property of the **(model, task, apparatus)**
-  triple and drifts as the harness changes; the same weights moved from
-  A = 0.420 to A = 0.750 with no model change. A per-model Goldilocks map has
-  a shelf life.
-- **Open confound:** Δ is mechanically anti-correlated with A (B is bounded, so
-  a high baseline leaves less room for positive Δ). Sorting all five Exp 37
-  fires by A gives a monotone decline in Δ — which is *also* what a do-nothing
-  null predicts. Any curve experiment must gate on `B − C`, not `B − A`, or it
-  measures arithmetic.
+- **Instrument:** the Exp 37 LLM-AUT delta gate, and by extension any gate
+  whose verdict is compared against a number recorded months earlier.
+- **Limit (measured, not inferred):** re-running the **identical commit** on
+  the **identical seeds** today does not reproduce its own earlier result. The
+  serving environment moves the baseline more than the mechanism does, and the
+  run records capture nothing that would let anyone detect or reconstruct it.
+- **Measured 2026-08-22**, Arm A / `fire_pit` / Qwen2.5-32B, seeds 43–47, all
+  runs valid (`_llm_unavailable = 0`, durations 1528–1567 s against June's
+  1492–1641 s):
+
+  | fire | code | n | mean | SD |
+  |---|---|---|---|---|
+  | June 2026-06-13 | `54d60226` | 5 | **0.420** | 0.27 |
+  | today | `54d60226` (same commit) | 5 | **0.710** | 0.119 |
+  | today | current main | 5 | **0.750** | — |
+
+  Old code today (0.710) is indistinguishable from current code today (0.750);
+  both sit far above the same commit's own June result (0.420). **The ~145 PRs
+  between fires are exonerated.** The distribution also tightened (SD 0.27 →
+  0.119), so this is a relocation of the whole distribution, not drift in a
+  summary statistic.
+- **Consequence for the evidence base:** the Qwen32B **+1.43 SD PASS** — the
+  anchor of the four-model Goldilocks map — **cannot currently be re-derived**.
+  That does not make it false; it makes it unverifiable. Any citation of the
+  cross-model map must carry that caveat until the serving environment is
+  pinned. It also reframes the 1.1 heartbeat FAIL: current code scoring −0.56
+  SD is not a regression, it is Qwen32B leaving the Goldilocks zone because its
+  baseline rose to ~0.71–0.75 under today's serving stack, leaving no headroom.
+- **Root cause NOT established.** Suspects, none provable from the records:
+  serving topology (June's harness targeted a remote leader over the tunnel;
+  today reuses a local `Q4_K_M` on :8100), quantization, llama-cpp-server build,
+  or sampling defaults. `n_ctx` is partially excluded — 4096 overflows the
+  prompt (10 dead calls) under the same prompt-construction code, so June
+  cannot have been running there.
+- **Why it was undetectable:** the run record stamps `model` (the REQUESTED
+  profile name) and nothing else about what served it. No `n_ctx`, no
+  quantization, no endpoint, no server build. Every hour of the 2026-08-22
+  archaeology traces to that gap, and the same gap means we still cannot say
+  what changed.
+- **Cost paid:** one ½-day 32B heartbeat that produced an unusable verdict,
+  plus a day of reconstruction to find out why.
+- **Mitigation (required before the next Exp 37 fire):** stamp
+  `resolved_model`, `endpoint`, `n_ctx`, quantization, and server build into
+  every run record; and score fires by position (`A`, `B`, `C` recorded every
+  time, gate on `B − C`) rather than against a remembered number. Without the
+  first, a future re-fire will land in exactly this position again.
+- **Amends L6:** L6 says "each model's headroom is its own measurement." Too
+  weak in two directions — headroom belongs to the (model, task, **serving
+  environment**) triple, and it is not stable across time even with the model
+  and code held fixed.
+- **Open confound for any successor experiment:** Δ is mechanically
+  anti-correlated with A, so the monotone decline across the five Exp 37 fires
+  sorted by baseline is also what a do-nothing null predicts. Gate on `B − C`,
+  not `B − A`.
+- **Raw data:** `docs/experiments/data/37_oldhash_qwen32b_A_2026-08-22.jsonl`
+  (S4; the only evidence that the June environment is gone).
 
 ## Repository capability assessment
 

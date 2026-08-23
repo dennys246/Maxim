@@ -50,3 +50,45 @@ def test_github_links_point_at_paths_that_exist() -> None:
         if not (REPO / target).exists():
             missing.append(target)
     assert not missing, f"README links to paths absent from the repo: {missing}"
+
+
+# Hosts the README is allowed to link to. An entry here is a DECISION, not a
+# default — adding one means someone judged that domain durable enough to sit
+# on the PyPI landing page, where the link is immutable for that version.
+_ALLOWED_HOSTS = {
+    "github.com",  # canonical source; blob paths additionally existence-checked above
+    "pymaxim.bio",  # canonical docs site
+    "pypi.org",
+    "img.shields.io",  # badges
+    # Legacy long-form guides. 27 of 29 of these 404'd when 1.0.9 shipped —
+    # they are only reachable because dennyschaedig.com now 301s them to
+    # pymaxim.bio. Kept deliberately (1.0.9's README is immutable and still
+    # links here), but this is DEBT: drop the "Legacy Website Guides" section
+    # and remove this entry when the migration finishes.
+    "dennyschaedig.com",
+    "www.dennyschaedig.com",
+}
+
+
+def test_readme_links_only_to_approved_hosts() -> None:
+    """Catch link ROT, not just link FORM.
+
+    The 1.0.9 README passed every check we had — no relative links, all GitHub
+    paths resolved — and still shipped 27 dead links, because every check
+    asked whether a link was well-formed and none asked where it pointed.
+    A new host slipping into the README should be a deliberate decision,
+    reviewed once, rather than something discovered by a reader hitting a 404
+    on a page that cannot be edited.
+    """
+    from urllib.parse import urlparse
+
+    body = README.read_text()
+    hosts = {urlparse(u).hostname for u in re.findall(r"\]\((https?://[^)]+)\)", body)}
+    hosts.discard(None)
+    unknown = sorted(h for h in hosts if h not in _ALLOWED_HOSTS)
+    assert not unknown, (
+        f"README links to unapproved host(s): {unknown}. PyPI renders this file as the "
+        "project page and the metadata is immutable per version, so a dead link ships "
+        "until the next release. Add to _ALLOWED_HOSTS only after deciding the domain "
+        "is durable."
+    )
