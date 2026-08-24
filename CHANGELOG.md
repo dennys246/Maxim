@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **H1 `_big` delivered-shift block measured (n=8/side)** through the production
+  affordance path via the new `scripts/orient_backbone/delivered_shift_block.py`:
+  0.943 ± 0.001 (left) / 0.942 ± 0.003 (right) of the commanded 51.6°, Δaz
+  +0.49 ± 0.07 / −0.40 ± 0.08. Clears the provisional flag on the Exp 45 row's
+  `_big` delivered-shift magnitude; the `_big` YAML magnitudes stay frozen (H2 did
+  not fire; the right-side asymmetry is a pre-registered follow-up). Two
+  instrument findings recorded: one folded DoA reading reached the credit path in
+  18 turns (L10, now observed in production) and head roll drifted to −8.7° under
+  repeated body-only turns (D30). Raw: `docs/experiments/data/h1_partc_big_block.jsonl`.
 - **`maxim.unregister_tool(name)` / `maxim.clear_registered_tools()` /
   `maxim.list_registered_tools()`** — removal and inspection verbs for the
   now-persistent custom-tool registry (D18). `maxim.MemoryCorruptionError` is

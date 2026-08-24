@@ -237,6 +237,9 @@ python scripts/orient_backbone/doa_sweep.py
 python scripts/orient_backbone/live_3_learn.py --readout population
 # 4. Merge/fleet arm — NO hardware needed, run it even on sim-only walks
 python scripts/orient_backbone/orient_merge_arm.py
+# 5. Delivered-shift block through the PRODUCTION affordance path (needs a continuous
+#    speech source dead ahead; 8 reps/side ≈ 4 min) — the _big magnitude evidence
+python scripts/orient_backbone/delivered_shift_block.py --reps 8 --log docs/experiments/data/h1_partc_big_block.jsonl
 ```
 
 **Gates:** yaw_verify ≈ +1.0 before anything else is trusted; sweep gain in

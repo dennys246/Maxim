@@ -219,7 +219,7 @@ asymmetry (54.8 vs 48.0) and ~7-8° came-from-side return lag (backlash-
 flavored) recorded. Controller clamp constants unchanged — the 65° command
 ceiling is inside the daemon's gracefully-handled range.
 
-## Part C — motor-bound delivered shift: MEASURED (normal arms complete; _big n=1/side)
+## Part C — motor-bound delivered shift: MEASURED (normal arms n=37; _big n=8/side — block appended below)
 
 39 turns through the PRODUCTION affordance path (SEM motor binding →
 controller → daemon), LLM-driven (qwen2.5-32b), 12 measured-credit events:
@@ -228,8 +228,8 @@ controller → daemon), LLM-driven (qwen2.5-32b), 12 measured-credit events:
 |---|---|---|---|---|
 | turn_left | 19 | 0.890 ± 0.042 | 0.923 | 0.867 |
 | turn_right | 18 | 0.937 ± 0.075 | 0.984 | 0.899 |
-| turn_left_big | 1 | 0.979 | — | — |
-| turn_right_big | 1 | 0.932 | — | — |
+| turn_left_big | 1 (session 2) → **8 (block, 2026-08-24)** | 0.979 → **0.943 ± 0.001** | — | — |
+| turn_right_big | 1 (session 2) → **8 (block, 2026-08-24)** | 0.932 → **0.942 ± 0.003** | — | — |
 
 - **Position-dependent load confirmed statistically:** turns toward center
   deliver ~0.92–0.98 of commanded; away from center ~0.87–0.90. This is the
@@ -251,6 +251,55 @@ controller → daemon), LLM-driven (qwen2.5-32b), 12 measured-credit events:
   arms carry the Phase-3 calibration need; the _big YAML magnitudes stay
   frozen per H2-did-not-fire).
 
+## Part C follow-up — the `_big` delivered-shift block: MEASURED 2026-08-24 (n=8/side)
+
+**Provenance:** operator Mac, `main` at `b01a6589` (+ the untracked block harness),
+SDK == daemon **1.8.3**, hardware_id `1c5d3b8f935996af`. Gate step 1 re-verified
+first: `yaw_verify` travel ratio **0.950**, d(head)/d(body) **+1.005**. Harness:
+[`scripts/orient_backbone/delivered_shift_block.py`](../../../scripts/orient_backbone/delivered_shift_block.py)
+— drives the PRODUCTION affordance path (`SpecModulator.execute` →
+`ReachyOrientMotorBackend` → `ReachyMiniController.goto_target`), reads the
+achieved rotation from the daemon's own `/api/state/full` body_yaw (never the
+commanded value), and records TWO azimuth transitions per turn: the backend's own
+frame-corrected before/after pair (the number the credit path uses) and an
+independent later-window median-of-5. Continuous speech source dead ahead
+(az ≈ +0.09), speech-gate rate 0.80–0.83. Raw: `data/h1_partc_big_block.jsonl`,
+admitted `run_id 20260824T213553Z-79752` (16/16 turns; an earlier
+`20260824T213320Z-76884` aborted at turn 3 on a daemon ack timeout and is marked
+`block_aborted` — exclude it).
+
+| affordance | n | commanded | achieved (daemon) | delivered ratio | Δaz backend | Δaz script | az/rad (backend) |
+|---|---|---|---|---|---|---|---|
+| turn_left_big | 8 | +51.6° | **+48.63° ± 0.04** | **0.943 ± 0.001** | **+0.489 ± 0.069** | +0.515 ± 0.049 | 0.576 ± 0.081 |
+| turn_right_big | 8 | −51.6° | **−48.57° ± 0.14** | **0.942 ± 0.003** | **−0.400 ± 0.078** | −0.399 ± 0.063 | 0.472 ± 0.093 |
+
+- **Delivered shift is settled:** 0.943 of command on BOTH sides, with sub-degree
+  spread — the `_big` step delivers ~48.6° for a 51.6° command, the same
+  ~0.94–0.95 travel ratio `yaw_verify` and the session-2 normal arms report. The
+  n=1 session-2 values (0.979 / 0.932) were single draws either side of it.
+- **The YAML `_big` magnitude (`azimuth: ±0.50`) holds on the LEFT and over-states
+  the RIGHT by ~20%:** measured +0.49 vs −0.40. Both estimators agree
+  (backend and script, sign agreement 16/16). Delivered ROTATION is identical
+  both sides, so the asymmetry is sensor/geometry-side — the same direction as
+  session 2's ~4% right>left tilt and the sweep's per-side tilt, larger here at
+  |az| ≈ 0.3–0.6 than near center. **YAML magnitudes stay frozen:** H2 did not
+  fire, retuning is reserved for a fired H2 with a sweep as source, and this is a
+  post-hoc observation — it spawns a pre-registered follow-up (separate sensor
+  tilt from source placement with a mirrored-source repeat), not a retune.
+- **Instrument finding 1 — a folded reading reached the production credit path
+  once in 18 turns.** In the aborted run's turn 2 (right turn, body −0.84 rad)
+  the backend's first post-settle window returned +0.289 while the later
+  median-of-5 read −0.289 — an exact mirror, i.e. an L10 sign-flip landing in
+  `measured_drive_transitions` and therefore in the credit sign. 0/16 in the
+  admitted run. Recorded under [L10](../../limits/README.md); the credit path
+  has no fold guard today.
+- **Instrument finding 2 — head roll drifts under repeated body-only `_big`
+  commands.** The controller's F1 early-warning fired on most recenters:
+  achieved head_roll diverged from the last commanded by −5.3° → −8.7° and
+  stayed there. The backend commands `body_yaw` only, so roll is not pinned
+  (session 2 pinned roll/pitch explicitly for the envelope test and saw ±4°).
+  Filed as bugs-ledger D30; not a Part C result.
+
 ## Session-2 operational lessons (recorded for the runbook)
 
 Live-session bring-up on a NEW machine hit, in order: reachy-mini SDK absent
@@ -271,7 +320,7 @@ separate inputs and scramble tool selection.
 | Part A | PASS (both sessions; post-recal improved) |
 | Part B | PASS — top branch; CONTESTED resolved; H2 does not fire |
 | Neck envelope | **~±50° delivered / 65° command ceiling** — conflict resolved |
-| Part C | Normal arms MEASURED (n=37); _big n=1/side, follow-up block queued |
+| Part C | Normal arms MEASURED (n=37); **_big MEASURED n=8/side (2026-08-24 block, below)** |
 | F1 retained-axes ratchet | **FIXED** (2026-08-09, `fix/goto-target-retained-axes-ratchet`): `goto_target` retains the last COMMANDED value per axis; readback seeds once; raw movers invalidate via `note_external_head_motion()`. Guard: [tests/unit/test_reachy_retained_axes.py](../../../tests/unit/test_reachy_retained_axes.py) (fails on the pre-fix controller) |
 | F2 motor-zero miscalibration | FIXED by per-motor recalibration, verified |
 | Exp 45 graduation row | **UN-STALED** (see row for the _big caveat) |

@@ -338,6 +338,8 @@ triggers, and it was less discoverable nested inside a MITIGATED entry.
   estimator replacement.
 - **Raw data:** as L9.
 
+- **Observed in the PRODUCTION credit path (2026-08-24):** during the H1 `_big` delivered-shift block, `ReachyOrientMotorBackend`'s first post-settle azimuth window returned +0.289 where an independent later median-of-5 read −0.289 (exact mirror) on a right turn at body yaw −0.84 rad — one folded reading in 18 turns, landing in `measured_drive_transitions` and therefore in the credit SIGN. The backend has no fold guard; a sign-consistency check across two windows is the obvious mitigation (follow-up, not yet built). Raw: `docs/experiments/data/h1_partc_big_block.jsonl`, run `20260824T213320Z-76884` turn 1.
+
 ## Repository capability assessment
 
 [score_cards/](score_cards/) records the 2026-08-19 repository grades (one card per assessor, `YYYY-MM-DD-<assessor>.md`; 2026-08-19 has independent Codex and Claude cards) for
