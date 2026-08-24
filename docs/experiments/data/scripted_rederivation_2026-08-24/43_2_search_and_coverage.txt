@@ -1,0 +1,39 @@
+### provenance (captured by this shell immediately before this run)
+maxim.__file__ = /Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py
+sys.executable = /Users/dennyschaedig/Scripts/Maxim/.venv/bin/python
+git rev-parse HEAD = b01a6589200bf462a06dcf6e4175d908baddfa13
+git status --short (src/scripts/decisions/similarity/embodiment) =  M scripts/gaze_substrate/1_operant_redirection.py;
+PYTHONPATH = /Users/dennyschaedig/Scripts/Maxim/src
+date = 2026-08-24T16:55:37Z
+### command: python scripts/gaze_substrate/2_search_and_coverage.py
+
+
+########## CONFIG A: search + finer bins + probabilistic reward ##########
+  subjects=1 fov_half=45.0 p_reward=0.4 habituation=False  | 16 agents x 2500 ticks
+  -- FOVEATION (pursuit) --
+     arm        w1     w2     w3     w4     w5     w6     
+     contingent 0.424  0.536  0.536  0.637  0.733  0.653  
+     yoked      0.105  0.079  0.057  0.062  0.081  0.098  
+     none       0.097  0.114  0.076  0.097  0.111  0.101  
+  -- IN-FOV / acquisition (search, Layer 0) --
+     arm        w1     w2     w3     w4     w5     w6     
+     contingent 0.690  0.778  0.756  0.826  0.880  0.783  
+     yoked      0.492  0.396  0.300  0.305  0.477  0.484  
+     none       0.399  0.472  0.366  0.399  0.447  0.407  
+  -- DIRECTEDNESS (mechanism) --
+     arm        w1     w2     w3     w4     w5     w6     
+     contingent 0.456  0.450  0.502  0.606  0.720  0.730  
+     yoked      0.327  0.323  0.371  0.361  0.295  0.327  
+     none       0.397  0.395  0.409  0.395  0.389  0.406  
+
+  == CROSS-SESSION (Config A): 16 pairs, 600-tick eval ==
+             w1     w2     w3     w4     w5     w6     
+     loaded  0.632  0.851  0.764  0.794  0.790  0.842  
+     fresh   0.265  0.409  0.526  0.563  0.568  0.654  
+     whole-eval foveation advantage (loaded-fresh) = +0.281 +/- 0.055 SE  over 16 pairs  (v1 was +0.107, noisy single-pair)
+
+########## ANTI-FIXATION: 3 PERSISTENT subjects, habituation ON vs OFF ##########
+  (persistent = lockable, so the 'beautiful starer' failure is now possible)
+  habituation OFF:  foveation=0.682   distinct/window=1.81/3   dwell-on-top-subject=0.765
+  habituation ON :  foveation=0.413   distinct/window=2.69/3   dwell-on-top-subject=0.497
+  (OFF fixates -> high dwell-on-top + low distinct. ON -> lower dwell concentration, more distinct subjects.)

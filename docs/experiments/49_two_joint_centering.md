@@ -210,3 +210,35 @@ Per-trial JSONL + provenance in the session scratchpad
   confidence gate (the clamp-vs-threshold asymmetry). Within-trial learning
   is visible in arm C traces: overshoot books negative credit, the policy
   switches to the opposite turn and servos onto center.
+
+## Sparse-speech follow-on arm (2026-08-04, post-registration; recorded 2026-08-24)
+
+The `--speech-density` knob (#464) exposed the pre-registered sparse condition the main
+arms deliberately removed. Arm B was re-run once at density 0.4 (10 trials, same
+bearings ±{40,60,90,120,160}°, harness + code at `83f83ce1`, 2026-08-04 22:46–23:14
+local; this is the "H2 1.00 dense AND sparse" line in the CHANGELOG, which until now
+had no record in this doc):
+
+| Metric | B full (LLM), sparse 0.4 |
+|---|---|
+| centering rate | 4/10 (−90, −40, +40, +120 — one far bin) |
+| first body turn correct (H2) | **10/10 = 1.00** |
+| body-turn usage | 1.0 |
+| mean time-to-center | 112.3 s |
+| credited turns (H3 sign acc.) | **21/21 = 1.00** |
+| credited fold-divergent | 7 |
+| plateaued at neck limit | 0 |
+
+H2 holds at 1.00 under sparse speech, so the 2026-08-04 live wrong-direction turns are
+not a speech-density effect either. Single arm, n=10, post-registration — a
+characterisation, not a gate.
+
+## Raw data (S4 status, 2026-08-24)
+
+- **Sparse arm B — COMMITTED:** [`data/49_armB_sparse_trials.jsonl`](data/49_armB_sparse_trials.jsonl)
+  (per-trial records with `provenance.executed_git_hash` + metrics) and
+  [`data/49_armB_sparse_summary.json`](data/49_armB_sparse_summary.json).
+- **Dense arms A/B/C (the results tables above) — LOST.** The per-trial JSONL lived in a
+  Claude session scratchpad (`exp49_arm{A,B,C}_full` / `exp49_armC_v2`), which is not
+  durable storage, and no copy was made. The tables above are the only record. Any
+  re-run goes to a durable `--out` (the harness already requires one).

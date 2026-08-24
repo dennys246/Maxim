@@ -1,0 +1,27 @@
+### provenance (captured by this shell immediately before this run)
+maxim.__file__ = /Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py
+sys.executable = /Users/dennyschaedig/Scripts/Maxim/.venv/bin/python
+git rev-parse HEAD = b01a6589200bf462a06dcf6e4175d908baddfa13
+git status --short (src/scripts/decisions/similarity/embodiment) =  M scripts/gaze_substrate/1_operant_redirection.py;
+PYTHONPATH = /Users/dennyschaedig/Scripts/Maxim/src
+date = 2026-08-24T16:55:43Z
+### command: python scripts/gaze_substrate/3_geometry_generalization.py
+
+
+Step 3 — EC generalization: train NEAR only, probe FAR (held-out)
+
+Chance directedness ~ 3/7 = 0.429 (random over 7 actions).
+
+  SYNTHETIC bins          near(trained) dir=1.000   FAR(held-out) dir=0.435   transfer=0.000 (distinct keys)
+
+  EC sigma  near dir  FAR dir   FAR wrong  transfer%  dir|matched 
+  4         0.870     0.435     0.421      0.000      0.000       
+  8         0.617     0.511     0.357      0.175      0.842       
+  15        0.262     0.379     0.135      0.690      0.312       
+  25        0.000     0.120     0.118      0.717      0.000       
+  40        0.000     0.000     0.000      1.000      0.000       
+
+  'dir|matched' = direction-correct GIVEN a transfer fired. High value =>
+  when EC pattern-completes an unseen far offset onto a trained node, it
+  inherits the CORRECT direction. 'transfer%' = how often that happens.
+  Synthetic's transfer is 0 by construction (distinct keys, never matches).

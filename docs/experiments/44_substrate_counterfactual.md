@@ -120,6 +120,19 @@ choke point) would make lived experience reinforce the substrate — dissolving 
 shelf-life and letting the agent self-build a substrate from use. See
 [substrate_learns_from_experience.md](../plans/substrate_learns_from_experience.md).
 
+## Raw data (S4 status, 2026-08-24)
+
+No raw record of this experiment is committed. The paired-prompt capture JSONL
+(`run_with_capture.py --capture-log <path>`) and the offline re-query output
+(`rerun_ablated_offline.py --out <path>`) behind the tables above were written to
+whatever paths the 2026-07 session passed — neither this doc nor PR #429 records them,
+and nothing was copied into `docs/experiments/data/`. Treat the originals as **LOST**
+unless those files surface; this is a statement of what is unrecorded, not a recovered
+provenance. The numbers above are the only record. The Exp 44b pilot
+captures (the S4 non-stationarity inputs, roadmap 1.1 item 11) are on big-mac-mini —
+see [44b_pilot.md](44b_pilot.md). A re-run under S4 discipline (durable `--workdir`,
+committed JSONL) is what the pre-registered confirmatory campaign will produce.
+
 ## Disposition
 
 A learned substrate causally steers an LLM-primary agent toward engaging the safe

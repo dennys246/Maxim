@@ -59,11 +59,11 @@ by delaying Oasis two versions.
 | 8 | Orient-vocabulary audit + workspace-limit bypass safety | **DONE** (#472); retain hardware-safety guards in the final RC suite. |
 | 9 | Documentation truth pass | **SUBSTANTIALLY DONE, CONTINUOUS THROUGH RC**. Reconcile plans, architecture, decisions, API count/dependencies, and release surfaces. D21's EC performance claim was corrected on 2026-08-19. |
 | 10 | Atomic NAc + EC invalidation | **DONE (2026-08-23)** (D2). `MEMORY_PATHS` gained the missing `ec` key and `MEMORY_PAIRS` declares `{nac, ec}` inseparable, so clearing either half pulls in the other and `all` no longer leaves a stale EC behind. |
-| 11 | Annotation S4 non-stationarity analysis | **OPEN — 1.1 GATE**. Offline analysis only; record the result, not merely the analyzer. |
+| 11 | Annotation S4 non-stationarity analysis | **OPEN — 1.1 GATE**. Offline analysis only; record the result, not merely the analyzer. **Inputs located 2026-08-24:** the Exp 44b pilot captures are NOT on the operator Mac — they live on big-mac-mini (the pilot machine; `~/exp44b/pilot/arms/<arm>/seed<n>/capture.jsonl` + `requery/`). Run `scripts/exp44/analyze_nonstationarity.py --json` there per capture and commit the JSON under `docs/experiments/data/44b_s4_nonstationarity/` with a results section in [44b_pilot.md](../experiments/44b_pilot.md); that commit closes the gate. |
 | 12 | Planning-turn liveness + truthful progress state | **DONE** (D13/D14/D22). Bounded recovery or typed terminal abort, observationally true progress display, and non-zero process/harness propagation for unusable results. |
 | 13 | Stable Python API contract repair | **IN PROGRESS — 1.1 GATE** (D15–D18). D15 `goal`/`robot` and D16 `run()` cleanup are DONE in v1.0.9; **D17 complete load semantics and D18 tool-registration lifetime are DONE (2026-08-23)** — `load.agent()` restores ATL before returning and raises `MemoryCorruptionError` naming every unreadable file (explicit `on_corrupt="fresh"` opt-in), and tool registration is persistent with `unregister_tool`/`clear_registered_tools`. `home_dir` completeness plus `imagine()`/`campaign()` cleanup stay 1.1.x. |
 | 14 | Hermetic required fast suite | **DONE in v1.0.9** (D20). Unique temporary user/config/cache roots, offline model-hub defaults, explicit pretrained-asset opt-in, per-test path-cache reset, and the wider CI gate are executable. |
-| 15 | Architecture-audit enforcement | **OPEN — 1.1 GATE** (D19). Classify the 33 current findings, store a reviewed accepted-debt baseline, and fail CI on additions. Zero debt is 1.1.x, not a release blocker. |
+| 15 | Architecture-audit enforcement | **DONE (2026-08-24)** (D19). The 33 findings are classified (10 typing-only / 16 function-local lazy imports, none a cycle-break / 7 module-level) in a reviewed baseline (`src/maxim/utils/architecture_baseline.json`, keyed by file + module + scope + accepted symbols); the fast suite fails on additions (incl. a widened symbol list), stale entries, and unreviewed entries. Zero debt is 1.1.x item 11, not a release blocker. |
 | 16 | Release, website, and agent-guidance truth | **OPEN — 1.1 DOCS GATE; D24 blocks the 1.0.9 publication transaction.** The 38-route live content audit is DONE and its cross-repo handoff is recorded; maxim-web corrections, path-preserving `docs.pymaxim.bio` redirects, visual/accessibility verification, exact-wheel command checks, legacy deep-link migration, and post-upload PyPI link verification remain. Repo metadata now points directly to the canonical getting-started route. |
 
 The remaining scope is release closure, not a new feature phase. Estimates belong on
@@ -77,7 +77,7 @@ from the claims-verification round — blocking vs 1.1.x *within* the gated item
   **DONE in v1.0.9**; ~~D17 (partial restore + corrupt-state swallows on the
   stable load path), D18 (documented contract silently one-shot)~~ **DONE
   2026-08-23**;
-  item 15's baseline+CI gate (cheap), and item 16 — which now explicitly
+  ~~item 15's baseline+CI gate (cheap)~~ **DONE 2026-08-24**, and item 16 — which now explicitly
   includes correcting the **false
   "shipped to PyPI" claims**: PyPI's latest release is 1.0.0; v1.0.1–v1.0.6 are
   git-tag-only and both CLAUDE.md and the CHANGELOG said otherwise.
@@ -99,8 +99,8 @@ from the claims-verification round — blocking vs 1.1.x *within* the gated item
    now D17/D18 are all landed with facade, registry-lifecycle, controller,
    temporary-state, offline-model, load-contract, tool-persistence, and
    wider-CI guards.
-3. **Persistence/architecture correctness:** ~~D2 atomic invalidation~~ **DONE
-   2026-08-23**; D19's accepted-debt baseline/regression gate remains.
+3. **DONE — Persistence/architecture correctness:** ~~D2 atomic invalidation~~ **DONE
+   2026-08-23**; ~~D19's accepted-debt baseline/regression gate~~ **DONE 2026-08-24**.
 4. **Evidence closure:** record S4, run Big-Model and hardware heartbeat chapters,
    then re-attest cheap rows at the exact RC commit.
 5. **Release transaction:** audit the canonical website against the exact release

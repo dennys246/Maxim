@@ -1,0 +1,25 @@
+### provenance (captured by this shell immediately before this run)
+maxim.__file__ = /Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py
+sys.executable = /Users/dennyschaedig/Scripts/Maxim/.venv/bin/python
+git rev-parse HEAD = b01a6589200bf462a06dcf6e4175d908baddfa13
+git status --short (src/scripts/decisions/similarity/embodiment) =  M scripts/gaze_substrate/1_operant_redirection.py;
+PYTHONPATH = /Users/dennyschaedig/Scripts/Maxim/src
+date = 2026-08-24T16:55:55Z
+### note: doc Result 1 states 8 seeds; the script default is 5 — run with --seeds 8 to match the doc
+### command: python scripts/orient_substrate/4_operant_learning_curve.py --seeds 8
+
+operant orient learning curve — regime=full ticks=400 bin=50 ε=0.2 seeds=8
+
+bin:          1     2     3     4     5     6     7     8
+---------------------------------------------------------
+taught     0.87  0.91  0.90  0.92  0.89  0.89  0.93  0.90
+yoked      0.30  0.35  0.35  0.44  0.42  0.39  0.39  0.46
+none       0.49  0.46  0.51  0.51  0.52  0.50  0.50  0.49
+
+verdict:
+  first-5-ticks (pre-learning baseline): taught=0.65 (chance ≈ 0.50)
+  settled: taught=0.90   yoked=0.41   none=0.50
+  LEARNED (settled ≥ 0.80 and rose from baseline ≥ 0.15): PASS
+  MOTHER-TAUGHT (taught settled ≥ controls + 0.20): PASS
+
+**the infant learned to orient toward the sound, taught by the mother's feeding alone.**

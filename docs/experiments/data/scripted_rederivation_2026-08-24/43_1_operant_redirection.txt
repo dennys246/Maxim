@@ -1,0 +1,44 @@
+### provenance (captured by this shell immediately before this run)
+maxim.__file__ = /Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py
+sys.executable = /Users/dennyschaedig/Scripts/Maxim/.venv/bin/python
+git rev-parse HEAD = b01a6589200bf462a06dcf6e4175d908baddfa13
+git status --short (src/scripts/decisions/similarity/embodiment) =  M scripts/gaze_substrate/1_operant_redirection.py;
+PYTHONPATH = /Users/dennyschaedig/Scripts/Maxim/src
+date = 2026-08-24T16:55:35Z
+### note: scripts/gaze_substrate/1_operant_redirection.py seeded via stable_hash_32 in this working tree (the committed script used builtin hash(); see README)
+### command: python scripts/gaze_substrate/1_operant_redirection.py
+
+
+Operant gaze probe  |  24 agents/arm  x  1500 ticks  |  6 windows
+
+== FOVEATION RATE (outcome) ==
+  window    w1      w2      w3      w4      w5      w6      
+  contingent0.445   0.642   0.761   0.857   0.896   0.894   
+  yoked     0.071   0.040   0.073   0.051   0.074   0.059   
+  none      0.101   0.103   0.093   0.094   0.104   0.120   
+
+== DIRECTEDNESS (mechanism) ==
+  window    w1      w2      w3      w4      w5      w6      
+  contingent0.502   0.559   0.717   0.860   0.882   0.887   
+  yoked     0.252   0.137   0.152   0.144   0.243   0.216   
+  none      0.385   0.378   0.383   0.376   0.369   0.378   
+
+== VERDICT (final-window foveation rate) ==
+  contingent = 0.894  (sd 0.052)
+  yoked      = 0.059
+  none       = 0.120
+
+  contingent - none  = +0.774   (reward changed behaviour?)
+  contingent - yoked = +0.835   (contingency, not just reward presence?)
+
+  -> Real operant redirection: reward bent gaze toward the subject,
+     and the effect needs the *contingency* (yoked control did not match).
+
+== CROSS-SESSION (loaded vs fresh-cold, identical dynamics) ==
+  window    w1      w2      w3      w4      w5      w6      
+  loaded    0.044   0.864   0.932   0.916   0.920   0.856   
+  fresh     0.024   0.592   0.904   0.872   0.940   0.912   
+
+  early (w1-3) advantage of loaded over fresh = +0.107
+  (>0 => learning survived dump/load: the loaded agent is competent
+   sooner than a cold agent on the same world.)

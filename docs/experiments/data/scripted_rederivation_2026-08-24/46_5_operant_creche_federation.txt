@@ -1,0 +1,22 @@
+### provenance (captured by this shell immediately before this run)
+maxim.__file__ = /Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py
+sys.executable = /Users/dennyschaedig/Scripts/Maxim/.venv/bin/python
+git rev-parse HEAD = b01a6589200bf462a06dcf6e4175d908baddfa13
+git status --short (src/scripts/decisions/similarity/embodiment) =  M scripts/gaze_substrate/1_operant_redirection.py;
+PYTHONPATH = /Users/dennyschaedig/Scripts/Maxim/src
+date = 2026-08-24T16:55:57Z
+### note: doc Result 2 states 12 infants x 2 ticks, 10 seeds; script defaults are 10 x 4, 8 seeds — run with the doc's parameters
+### command: python scripts/orient_substrate/5_operant_creche_federation.py --agents 12 --ticks 2 --seeds 10
+
+operant crèche — N=12 infants × K=2 ticks each (ε=0.2, 10 seeds)
+
+  single_partial (1 infant, 2 ticks)           : 0.73
+  single_full    (1 infant, 24 ticks)          : 1.00
+  creche_taught  (12 infants × 2, MERGED)   : 1.00
+  creche_none    (12 × 2, no mother, merged): 0.51
+
+verdict:
+  FEDERATION POOLS LEARNING (creche_taught ≥ single_partial+0.15 and ≈ single_full): PASS
+  MERGE POOLS SIGNAL NOT NOISE (creche_none ≤ 0.60): PASS
+
+**a crèche of sample-limited infants pooled their learning into the full-experience orient policy.**

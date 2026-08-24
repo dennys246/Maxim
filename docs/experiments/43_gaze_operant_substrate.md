@@ -53,7 +53,7 @@ multiple subjects + habituation.
 ## Probe 3 — gaze-geometry generalization ([`3_geometry_generalization.py`](../../scripts/gaze_substrate/3_geometry_generalization.py))
 
 Encode *bearing* as a place-cell population code (width σ); train NEAR offsets, probe held-out FAR.
-**Result:** inverted-U over σ; peak σ=8 → FAR directedness 0.51 (>chance 0.435), and **direction-
+**Result:** inverted-U over σ; peak σ=8 → FAR directedness 0.51 (>chance 0.429; synthetic bins sit at 0.435), and **direction-
 correct *given a transfer fired* = 0.84**, while synthetic dict transfers 0%. Too sharp → no
 transfer; too broad → left/right merge, discrimination collapses. **Real but modest** — on this
 low-dimensional axis a dict is nearly competitive.
@@ -103,6 +103,19 @@ on the visual-content axis. **Honest hardware pitch: "a camera that learns *what
 and generalizes it to subjects it has never seen,"** not "persisted dict + servo."
 
 ---
+
+## Raw data (S4 status, 2026-08-24)
+
+The original runs lived in a Claude session scratchpad and are **LOST**. Probes 1–4 are
+scripted, seeded and LLM-free (seconds each), so they were **re-derived on 2026-08-24**
+and their full stdout is committed under
+[`data/scripted_rederivation_2026-08-24/`](data/scripted_rederivation_2026-08-24/README.md)
+(`43_1_*` … `43_4_*`); the README carries the doc-vs-re-run comparison. The re-run
+found probe 1 was NOT reproducible run to run (its per-arm seed used the
+`PYTHONHASHSEED`-randomised builtin `hash()`); the script now seeds via
+`stable_hash_32` and the committed record is the deterministic run. Probe 5 needs
+the real sentence-transformer encoder and was NOT re-run — its numbers above stand on the
+original (uncaptured) run only.
 
 ## Hardware integration design (gated — do NOT start until prerequisites pass)
 

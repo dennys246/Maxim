@@ -48,6 +48,12 @@ findings. See [Exp 44](../experiments/44_substrate_counterfactual.md) and the
 3. **State architecture debt.** `/concepts/architecture/` says Maxim enforces
    strict one-way dependencies. The intended boundary currently has 33 audit
    findings and no CI regression gate. Baseline enforcement is a 1.1 gate.
+   **Update 2026-08-24 (D19 landed):** the 33 findings are now a reviewed
+   accepted-debt baseline and CI fails on additions — the page's "CI enforcement
+   gated on 1.1" wording should become "enforced against a reviewed accepted-debt
+   baseline shipped in the wheel; run `maxim --audit-architecture` for the current
+   count; burn-down is 1.1.x". Do NOT hard-code the count on the site (the 76 lesson):
+   it changes with the first burn-down commit.
 4. **State conditional safety wiring.** `/reference/tools/` says every
    non-introspection tool call passes the fear circuit. `with_fear_gate` defaults
    false, stable `maxim.run()` does not enable it, and wrapper construction logs

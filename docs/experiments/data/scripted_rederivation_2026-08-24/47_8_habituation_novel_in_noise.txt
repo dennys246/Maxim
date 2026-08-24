@@ -1,0 +1,30 @@
+### provenance (captured by this shell immediately before this run)
+maxim.__file__ = /Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py
+sys.executable = /Users/dennyschaedig/Scripts/Maxim/.venv/bin/python
+git rev-parse HEAD = b01a6589200bf462a06dcf6e4175d908baddfa13
+git status --short (src/scripts/decisions/similarity/embodiment) =  M scripts/gaze_substrate/1_operant_redirection.py;
+PYTHONPATH = /Users/dennyschaedig/Scripts/Maxim/src
+date = 2026-08-24T16:56:21Z
+### command: python scripts/orient_substrate/8_habituation_novel_in_noise.py
+
+habituation — novel sound in a wall of noise (reps=30, 200 seeds/level)
+
+ noises |  habituating catch-novel | flat (no habit.) catch-novel
+--------------------------------------------------------------------
+      1 |                     1.00 |                         0.46   (chance 0.50)
+      5 |                     1.00 |                         0.18   (chance 0.17)
+     10 |                     1.00 |                         0.07   (chance 0.09)
+     20 |                     1.00 |                         0.02   (chance 0.05)
+     40 |                     1.00 |                         0.04   (chance 0.02)
+
+reward protection (cocktail party) — mother's voice among 20 habituated noises:
+  attends to the mother's (equally-familiar) voice: 1.00  (habituation alone would suppress it)
+
+federation — individual vs COLLECTIVE habituation (20 noises, each infant hears half):
+  solo (heard half the noises) catches novel  : 0.06   (un-heard noises compete)
+  crèche (pooled counts) catches novel        : 1.00   (collective habituation)
+
+verdict:
+  HABITUATION ENABLES NOVELTY-IN-NOISE (habituating catches novel in 40-noise wall, flat drowns): PASS  (hab=1.00 flat=0.04)
+  REWARD PROTECTS SALIENCE (mother's voice survives habituation): PASS
+  COLLECTIVE > INDIVIDUAL HABITUATION (crèche catches novel more than solo): PASS  (solo=0.06 crèche=1.00)

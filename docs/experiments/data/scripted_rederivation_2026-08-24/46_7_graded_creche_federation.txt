@@ -1,0 +1,21 @@
+### provenance (captured by this shell immediately before this run)
+maxim.__file__ = /Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py
+sys.executable = /Users/dennyschaedig/Scripts/Maxim/.venv/bin/python
+git rev-parse HEAD = b01a6589200bf462a06dcf6e4175d908baddfa13
+git status --short (src/scripts/decisions/similarity/embodiment) =  M scripts/gaze_substrate/1_operant_redirection.py;
+PYTHONPATH = /Users/dennyschaedig/Scripts/Maxim/src
+date = 2026-08-24T16:56:07Z
+### command: python scripts/orient_substrate/7_graded_creche_federation.py
+
+graded crèche — N=12 × K=25 ticks (ε=0.2, 8 seeds, chance ≈ 0.17)
+
+  single_partial (1 infant, 25 ticks)          : 0.59
+  single_full    (1 infant, 300 ticks)         : 1.00
+  creche_taught  (12 × 25, MERGED)  : 1.00
+  creche_none    (12 × 25, no mother): 0.16
+
+verdict:
+  FEDERATION POOLS COVERAGE (creche ≥ single_partial+0.15 and ≈ single_full): PASS
+  MERGE POOLS SIGNAL NOT NOISE (creche_none ≤ 0.30): PASS
+
+**the crèche pooled its partial direction-coverage into the full graded orient policy.**

@@ -34,6 +34,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mirrored-source repeat). Two findings filed: one folded DoA reading reached the
   credit path in 18 turns (L10 onset extends to |body| 0.84 rad; fold guard = D31)
   and head roll drifted to −8.7° under repeated body-only turns (D30). Raw: `docs/experiments/data/h1_partc_big_block.jsonl`.
+- **Architecture-audit regression gate (D19).** `maxim.utils.audit` now tags every
+  finding with its import scope (module / function-local / `TYPE_CHECKING`) and
+  diffs against a reviewed accepted-debt baseline shipped in the wheel
+  (`maxim/utils/architecture_baseline.json`, 33 findings across 30 entries, each
+  with a rationale and its accepted symbol set — keyed by file, module, and import
+  scope, never by line). `tests/unit/test_architecture_audit.py` — and therefore CI —
+  fails on any finding outside the baseline, any stale entry, and any unreviewed
+  entry; `maxim --audit-architecture` reports against the same baseline instead
+  of being permanently red.
+- **S4 evidence backfill.** Exp 49 sparse-speech arm B committed and recorded;
+  Exp 43 probes 1–4, Exp 46 and Exp 47 re-derived at `b01a6589` with
+  instrument-stamped provenance under `docs/experiments/data/scripted_rederivation_2026-08-24/`
+  (every doc number reproduces at the doc's stated configuration);
+  Exp 09/10 originals annotated lost, with the heartbeat re-run records named as the
+  surviving evidence. `scripts/gaze_substrate/1_operant_redirection.py` now seeds via
+  `stable_hash_32` — its builtin-`hash()` seed made the "seeded" probe non-reproducible
+  across processes.
 - **`maxim.unregister_tool(name)` / `maxim.clear_registered_tools()` /
   `maxim.list_registered_tools()`** — removal and inspection verbs for the
   now-persistent custom-tool registry (D18). `maxim.MemoryCorruptionError` is
