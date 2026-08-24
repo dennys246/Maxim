@@ -1,0 +1,136 @@
+{
+  "session_id": "20260818_233844",
+  "timestamp": "2026-08-18 23:47:29",
+  "goal": "escape a dungeon with a sleeping guard",
+  "mode": "generative",
+  "language_model": "/Users/dennys/.maxim/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+  "language_provider": "lane-large",
+  "language_backend_class": "_MaximPeerBackend",
+  "language_endpoint": "http://127.0.0.1:8100/v1",
+  "aut_model": "",
+  "aut_provider": "",
+  "aut_backend_class": "",
+  "aut_endpoint": "",
+  "duration_s": 524.2,
+  "turns": 8,
+  "finish_reason": "max_turns",
+  "total_actions": 8,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "concept_query": 6,
+    "respond": 1,
+    "_llm_unavailable": 1
+  },
+  "tool_success_rates": {
+    "concept_query": 1.0,
+    "respond": 1.0,
+    "_llm_unavailable": 0.0
+  },
+  "response_texts": [
+    "{'delivered': True, 'mode': 'cli'}"
+  ],
+  "aut_memories_formed": 535,
+  "aut_causal_links": 28,
+  "aut_nac_summary": {
+    "total_links": 28,
+    "top_links": [
+      {
+        "event": "tool:respond",
+        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
+        "confidence": 0.726,
+        "observations": 7
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "plan:llm_fallback:success",
+        "confidence": 0.726,
+        "observations": 7
+      },
+      {
+        "event": "tool:concept_query",
+        "outcome": "tool:concept_query:positive",
+        "confidence": 0.687,
+        "observations": 5
+      },
+      {
+        "event": "tool:concept_query",
+        "outcome": "plan:To understand the guard's capabilities before deciding on my next move, I will use concept_query.:success",
+        "confidence": 0.64,
+        "observations": 3
+      },
+      {
+        "event": "tool:concept_query",
+        "outcome": "plan:I need to understand the guard's capabilities before deciding on my next move.:success",
+        "confidence": 0.609,
+        "observations": 2
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 121276,
+  "total_output_tokens": 3862,
+  "lane_breakdown": {
+    "large": {
+      "lane": "large",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    },
+    "small": {
+      "lane": "small",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    }
+  },
+  "latency_p50_ms": 0.0,
+  "latency_p99_ms": 0.0,
+  "pain_events_count": 0,
+  "fear_blocks_count": 0,
+  "learn_events_count": 16,
+  "provider_failures": {},
+  "llm_summary": "During the simulation, the robot assistant successfully completed 8 actions within a dungeon environment, using the 'concept_query' and 'respond' tools. The simulation ended due to reaching the maximum number of turns allowed. The robot formed 535 episodic memories and learned 28 causal links. However, there was one unsuccessful call to '_llm_unavailable'.",
+  "llm_issues_found": [
+    "An unsuccessful call to '_llm_unavailable' tool occurred during the simulation."
+  ],
+  "llm_recommendations": [
+    "Investigate the reason for the failure of the '_llm_unavailable' tool. This could involve checking the model or the connection to the backend. It is also recommended to increase the number of turns allowed in future simulations to allow for more complex problem-solving scenarios."
+  ],
+  "llm_finish_status": "max_turns",
+  "llm_finish_reason": "reached max_turns=8",
+  "llm_finish_summary": "Simulation stopped after 8 turns because the configured max_turns cap (8) was reached without an LLM-initiated finish. Raise --sim-max-turns or add finish_simulation calls to the orchestrator's decision policy if more turns are expected.",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/Users/dennys/.maxim/sim_reports/20260818_233844/bio_telemetry.jsonl",
+  "apparatus": {
+    "substrate_actions_per_turn": null
+  },
+  "_format_version": "1.0"
+}

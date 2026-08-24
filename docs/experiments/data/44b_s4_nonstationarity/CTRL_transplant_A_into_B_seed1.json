@@ -1,0 +1,79 @@
+{
+  "capture": "docs/experiments/data/44b_pilot/arms/CTRL_transplant_A_into_B/seed1/capture.jsonl",
+  "n_decisions": 35,
+  "n_annotated": 30,
+  "last_annotated_index": 34,
+  "untreated_shape": "scattered",
+  "untreated_indices": [
+    2,
+    3,
+    4,
+    23,
+    27
+  ],
+  "tools": {
+    "focus_on_sound": {
+      "present_count": 30,
+      "mean_tier_first_half": 1.7857142857142858,
+      "mean_tier_second_half": 1.0,
+      "tier_drift": -0.7857142857142858,
+      "last_present_index": 34
+    },
+    "green_flame_touch": {
+      "present_count": 30,
+      "mean_tier_first_half": 1.8571428571428572,
+      "mean_tier_second_half": 1.0,
+      "tier_drift": -0.8571428571428572,
+      "last_present_index": 34
+    },
+    "green_flame_warm_self": {
+      "present_count": 30,
+      "mean_tier_first_half": 1.7857142857142858,
+      "mean_tier_second_half": 1.0,
+      "tier_drift": -0.7857142857142858,
+      "last_present_index": 34
+    },
+    "infant_humanoid_chilled_listen": {
+      "present_count": 30,
+      "mean_tier_first_half": 1.7857142857142858,
+      "mean_tier_second_half": 1.0,
+      "tier_drift": -0.7857142857142858,
+      "last_present_index": 34
+    },
+    "purple_flame_observe": {
+      "present_count": 30,
+      "mean_tier_first_half": 1.8571428571428572,
+      "mean_tier_second_half": 1.0,
+      "tier_drift": -0.8571428571428572,
+      "last_present_index": 34
+    }
+  },
+  "flip_by_half_annotated": {
+    "first": 0.5,
+    "second": 0.6875,
+    "n_first": 14,
+    "n_second": 16
+  },
+  "untreated_noise_rate": 0.0,
+  "untreated_n": 5,
+  "flip_by_half": {
+    "first": 0.4117647058823529,
+    "second": 0.6111111111111112,
+    "n_first": 17,
+    "n_second": 18
+  },
+  "flip_by_tier": {
+    "2": {
+      "rate": 0.5,
+      "n": 12
+    },
+    "None": {
+      "rate": 0.0,
+      "n": 5
+    },
+    "1": {
+      "rate": 0.6666666666666666,
+      "n": 18
+    }
+  }
+}

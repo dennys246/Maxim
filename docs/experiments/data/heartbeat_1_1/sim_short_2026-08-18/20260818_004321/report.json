@@ -1,0 +1,133 @@
+{
+  "session_id": "20260818_004321",
+  "timestamp": "2026-08-18 00:48:09",
+  "goal": "You are an adventurer in a dark cave. A dragon attacks you repeatedly with claws and fire breath. The dragon roars deafeningly. It slams you against the wall. A freezing wind blows through the cave.",
+  "mode": "generative",
+  "language_model": "/Users/dennys/.maxim/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+  "language_provider": "lane-large",
+  "language_backend_class": "_MaximPeerBackend",
+  "language_endpoint": "http://127.0.0.1:8100/v1",
+  "aut_model": "",
+  "aut_provider": "",
+  "aut_backend_class": "",
+  "aut_endpoint": "",
+  "duration_s": 287.4,
+  "turns": 8,
+  "finish_reason": "max_turns",
+  "total_actions": 12,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "respond": 6,
+    "_llm_unavailable": 6
+  },
+  "tool_success_rates": {
+    "respond": 1.0,
+    "_llm_unavailable": 0.0
+  },
+  "response_texts": [
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}"
+  ],
+  "aut_memories_formed": 267,
+  "aut_causal_links": 4,
+  "aut_nac_summary": {
+    "total_links": 4,
+    "top_links": [
+      {
+        "event": "tool:respond",
+        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
+        "confidence": 0.708,
+        "observations": 6
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "plan:llm_fallback:success",
+        "confidence": 0.708,
+        "observations": 6
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "tool:respond:positive",
+        "confidence": 0.687,
+        "observations": 5
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "tool:respond:positive",
+        "confidence": 0.475,
+        "observations": 1
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 16066,
+  "total_output_tokens": 2108,
+  "lane_breakdown": {
+    "large": {
+      "lane": "large",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    },
+    "small": {
+      "lane": "small",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    }
+  },
+  "latency_p50_ms": 0.0,
+  "latency_p99_ms": 0.0,
+  "pain_events_count": 0,
+  "fear_blocks_count": 0,
+  "learn_events_count": 7,
+  "provider_failures": {},
+  "llm_summary": "During the simulation, the robot assistant interacted with the environment for 287.4 seconds or approximately 5 minutes and 3 seconds, before reaching the maximum number of turns allowed. The assistant used the 'respond' tool six times, each time delivering a response in the CLI mode with a 100% success rate. However, attempts to use the '_llm_unavailable' tool were unsuccessful. The robot formed 267 episodic memories and learned four causal links, primarily related to the successful usage of the 'respond' tool.",
+  "llm_issues_found": [
+    "The '_llm_unavailable' tool failed in all six attempts."
+  ],
+  "llm_recommendations": [
+    "Investigate why the '_llm_unavailable' tool is not functioning properly during simulations. This could involve checking the model configuration, updating the model, or troubleshooting any potential connectivity issues with the backend server."
+  ],
+  "llm_finish_status": "max_turns",
+  "llm_finish_reason": "reached max_turns=8",
+  "llm_finish_summary": "Simulation stopped after 8 turns because the configured max_turns cap (8) was reached without an LLM-initiated finish. Raise --sim-max-turns or add finish_simulation calls to the orchestrator's decision policy if more turns are expected.",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/Users/dennys/.maxim/sim_reports/20260818_004321/bio_telemetry.jsonl",
+  "apparatus": {
+    "substrate_actions_per_turn": null
+  },
+  "_format_version": "1.0"
+}

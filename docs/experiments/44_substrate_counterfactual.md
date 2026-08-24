@@ -128,7 +128,8 @@ No raw record of this experiment is committed. The paired-prompt capture JSONL
 whatever paths the 2026-07 session passed — neither this doc nor PR #429 records them,
 and nothing was copied into `docs/experiments/data/`. Treat the originals as **LOST**
 unless those files surface; this is a statement of what is unrecorded, not a recovered
-provenance. The numbers above are the only record. The Exp 44b pilot
+provenance. The Exp 44b PILOT captures (a later, separate run) ARE committed —
+see [44b_pilot.md §S4](44b_pilot.md) and `data/44b_pilot/`. The numbers above are the only record. The Exp 44b pilot
 captures (the S4 non-stationarity inputs, roadmap 1.1 item 11) are on big-mac-mini —
 see [44b_pilot.md](44b_pilot.md). A re-run under S4 discipline (durable `--workdir`,
 committed JSONL) is what the pre-registered confirmatory campaign will produce.

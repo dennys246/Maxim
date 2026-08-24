@@ -88,13 +88,60 @@ barely transfers.
 **F6 — The signal is non-stationary within a run.** Cluster bias fell ≈0.997 → 0.059
 across a capture despite the τ=1000 hold; bands are absolute (`≥0.5` = "strongly
 rewarding"), so early decisions get a strong annotation and late ones a weak or absent
-one. Early and late flips are not the same treatment. Unmeasured; cheap to measure
-offline from existing captures.
+one. Early and late flips are not the same treatment. **MEASURED 2026-08-24 — see
+[§S4](#s4-non-stationarity-measurement-2026-08-24-roadmap-11-item-11) below:** the
+prediction holds in kind but not in shape — bands degrade strongly→mildly for the
+non-target tools by the second half in every arm, the target's band holds, and no
+tool drops out late.
 
 **F7 — Hallucinated actions are being scored.** `approach_flame` appears in re-query
 output and exists nowhere in the codebase (real affordances: `observe`/`warm_self`/
 `touch`). Currently scored as neutral and not caught by the phantom guard. Needs an
 explicit pre-registered rule.
+
+## S4 non-stationarity measurement (2026-08-24, roadmap 1.1 item 11)
+
+Offline analysis of the three pilot captures (1 seed/arm, 30–36 decisions each)
+with [`scripts/exp44/analyze_nonstationarity.py`](../../scripts/exp44/analyze_nonstationarity.py)
+at `main` `7aed652b`, re-query results supplied (`qwen2.5-32b-instruct`, e8, t0.7).
+Captures + re-query JSONL are committed under
+[`data/44b_pilot/`](data/44b_pilot/) (copied from big-mac-mini `~/exp44b/pilot/`;
+per-arm model files excluded); the analyzer's JSON + stdout per arm under
+[`data/44b_s4_nonstationarity/`](data/44b_s4_nonstationarity/). Descriptive only —
+one seed per arm.
+
+**Band tier per tracked tool, first half → second half of the run** (tier 2 =
+"strongly rewarding", 1 = "mildly", 0 = neutral/absent; mean over decisions):
+
+| arm | non-target tools (4) | target `warm_self` | decisions without any annotation |
+|---|---|---|---|
+| A green_safe | 1.78–1.83 → **1.00** (drift −0.78 … −0.83) | 1.94 → 2.00 (+0.06) | 6/36, scattered at [21–23, 32–34], not a trailing cliff |
+| B purple_safe | 1.93–2.00 → **1.00–1.07** (−0.93 … −1.00) | 2.00 → 2.00 (0.00) | 0/30 |
+| CTRL transplant | 1.79–1.86 → **1.00** (−0.79 … −0.86) | 1.79 → 1.00 (−0.79) | 5/35, scattered at [2–4, 23, 27] |
+
+**Flip rate by run half** (re-query flip vs the ablated prompt): A **0.667 → 0.333**,
+B 0.600 → 0.533, CTRL 0.412 → 0.611 (annotated-only: 0.667→0.500, 0.600→0.533,
+0.500→0.688). **By strongest band in the prompt:** A strongly 0.600 (n=30) vs absent
+0.000 (n=6); CTRL mildly 0.667 (n=18) vs strongly 0.500 (n=12) — not monotone in
+the predicted direction. **Free determinism probe** (decisions whose full and
+ablated prompts are byte-identical, so any flip is decoding noise): **0.000 on 11
+pairs** (6 in A, 5 in CTRL) — temp-0 re-query agreed on every identical-prompt
+pair. This is the first measurement of the method's core assumption (settle-item
+2 below); one seed per arm, so it bounds noise at "not observed", not at zero.
+
+**Reading.** F6 is confirmed in kind: the treatment is NOT stationary within a run
+— in every arm the non-target tools' bands fall from strongly to mildly rewarding by
+the second half while the target tool's band holds (in A and B; in the transplant
+control it falls with the rest, which is itself consistent with F1's
+signature-keyed transfer). It is NOT the shape F6 hypothesised: nothing decays to
+neutral (the 0.997 → 0.059 bias fall lands in the "mildly" band, not below it), and
+tools do not drop out of the annotation late — the unannotated decisions are
+scattered. Flip rate does not track band tier monotonically and the half-to-half
+change differs in sign across arms, so at n=1 seed/arm the *dose→flip* relation is
+unmeasured, only the *dose drift* is. **Consequence for the freeze:** the
+confirmatory analysis must either stratify decisions by run half (or by band tier
+as a covariate) or the apparatus must hold the band tier across the run; pooling
+early and late decisions pools two doses. Added as settle-item 5.
 
 ## Instrument bugs the pilot caught (before any claim rested on them)
 
@@ -127,9 +174,13 @@ fragility; both belong in the paper's limitations section.
 
 1. **Name-copying vs learned content** — F1 makes this the central open question. Design:
    [../plans/annotation_context_and_provenance.md](../plans/annotation_context_and_provenance.md).
-2. **Determinism of temp-0 re-query** (#496) — the method's core assumption, currently
-   assumed rather than measured.
+2. **Determinism of temp-0 re-query** (#496) — the method's core assumption. **First
+   measurement 2026-08-24 (§S4): 0.000 flips on 11 identical-prompt pairs** across
+   two arms; one seed per arm, so the freeze should still budget a determinism
+   arm at power rather than treat this as zero.
 3. **Invalid-action rule** (F7) — recommendation: score as neutral (an unexecutable action
    *is* disengagement) and report the rate; frozen in the pre-registration either way.
 4. **Corrected framing for the entangled axes** (F2) in both this doc's parent
    ([44_substrate_counterfactual.md](44_substrate_counterfactual.md)) and the paper outline.
+5. **Non-stationary dose** (F6, measured in §S4) — stratify by run half / band tier,
+   or hold the tier across the run, and say which in the frozen analysis parameters.

@@ -1,0 +1,23 @@
+[S4] 30 captured decisions; 30 carry an annotation
+     tracking 5 tool(s)
+
+tool                                present  tier 1st  tier 2nd   drift
+focus_on_sound                           30     +2.00     +1.00   -1.00
+infant_humanoid_chilled_listen           30     +2.00     +1.07   -0.93
+purple_flame_b_observe                   30     +1.93     +1.00   -0.93
+purple_flame_b_warm_self                 30     +2.00     +2.00   +0.00
+sense_presence                           30     +1.93     +1.00   -0.93
+
+[S4] flip rate by RUN HALF (n=30 scored)
+     first half : 0.600  (n=15)
+     second half: 0.533  (n=15)
+     ANNOTATED only — first: 0.600 (n=15), second: 0.533 (n=15)
+
+[S4] flip rate by STRONGEST tracked band in the prompt
+     strongly rewarding   0.567  (n=30)
+
+     READ: a large half-to-half gap, or a monotone flip rate across tiers,
+     means the treatment is NON-STATIONARY within a run — pooling early and
+     late decisions pools two doses. Report it; do not average it away.
+
+report written: docs/experiments/data/44b_s4_nonstationarity/B_purple_safe_seed1.json

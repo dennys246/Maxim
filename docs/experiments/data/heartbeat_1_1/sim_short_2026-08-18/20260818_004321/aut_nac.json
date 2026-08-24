@@ -1,0 +1,190 @@
+{
+  "version": "1.0",
+  "links": {
+    "tool:respond": [
+      {
+        "id": "255c1566d57471f8",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "params": {
+            "message": "I heard your question about 'given your current situation, what is your first s', but I'm having trouble processing it right now. Could you try rephrasing?"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:respond:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.00023508071899414062,
+            0.0001239776611328125,
+            0.00014472007751464844,
+            0.0002448558807373047,
+            0.00021004676818847656
+          ]
+        },
+        "predicted_value": 0.7647864912000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001,
+          0.6819720000000001,
+          0.7264959200000001
+        ],
+        "observation_count": 5,
+        "confidence": 0.6874264578624799,
+        "last_observed": 1787035535.458247,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.2735040799999999,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "1fa3fbf3d81453f8",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "llm_fallback"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "predicted_value": 0.797716382432,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001,
+          0.6819720000000001,
+          0.7264959200000001,
+          0.7647864912000001
+        ],
+        "observation_count": 6,
+        "confidence": 0.7077015255644018,
+        "last_observed": 1787035672.5085819,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.23521350879999992,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "2c7b23b1ea3b8e6f",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "goal": "llm_fallback"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:llm_fallback:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1
+          ]
+        },
+        "predicted_value": 0.797716382432,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001,
+          0.6819720000000001,
+          0.7264959200000001,
+          0.7647864912000001
+        ],
+        "observation_count": 6,
+        "confidence": 0.7077015255644018,
+        "last_observed": 1787035672.509164,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.23521350879999992,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "06435b46f1444c7e",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "params": {
+            "message": "I heard your question about 'given your current situation, what is your next st', but I'm having trouble processing it right now. Could you try rephrasing?"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:respond:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.00016379356384277344
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787035672.506384,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ]
+  },
+  "outcome_index": {
+    "tool:respond:positive": [
+      "255c1566d57471f8",
+      "06435b46f1444c7e"
+    ],
+    "success:{'delivered': True, 'mode': 'cli'}": [
+      "1fa3fbf3d81453f8"
+    ],
+    "plan:llm_fallback:success": [
+      "2c7b23b1ea3b8e6f"
+    ]
+  },
+  "priors": {},
+  "total_observations": 18,
+  "reward_bias": {},
+  "goal_reward_bias": {
+    "You are an adventurer in a dark cave. A dragon attacks you repeatedly with claws and fire breath. The dragon roars deafeningly. It slams you against the wall. A freezing wind blows through the cave.": 0.09009813097312956
+  },
+  "cluster_reward_bias": {},
+  "cluster_reward_source": {},
+  "percept_valences": {
+    "sim_aut\u001fbody\u001freflex_attack": -0.018815076777331113
+  },
+  "event_outcome_welford": {},
+  "saved_at": 1787035689.081336,
+  "_format_version": "1.3"
+}

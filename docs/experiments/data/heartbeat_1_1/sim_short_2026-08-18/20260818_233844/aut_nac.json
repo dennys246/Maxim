@@ -1,0 +1,1022 @@
+{
+  "version": "1.0",
+  "links": {
+    "tool:concept_query": [
+      {
+        "id": "94207b5c48eba6ff",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "params": {
+            "name": "guard",
+            "limit": 5
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:concept_query:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.00016260147094726562
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1787036466.079663,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "16411d42a723d88a",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand the capabilities and behaviors of this guard before devising a plan."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'count': 0, 'concepts': []}",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1787036466.0817978,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "f2ecd4cd462cc8ac",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "goal": "I need to understand the capabilities and behaviors of this guard before devising a plan."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to understand the capabilities and behaviors of this guard before devising a plan.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1787036466.083297,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "cd3d0d462d4f5d37",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "params": {
+            "name": "guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:concept_query:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            5.602836608886719e-05,
+            0.0001628398895263672,
+            0.00023674964904785156,
+            0.000286102294921875,
+            5.793571472167969e-05
+          ]
+        },
+        "predicted_value": 0.7647864912000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001,
+          0.6819720000000001,
+          0.7264959200000001
+        ],
+        "observation_count": 5,
+        "confidence": 0.6874264578624799,
+        "last_observed": 1787118247.648005,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.2735040799999999,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "34a15662c6b1135f",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand the guard's capabilities before devising a plan to escape with him sleeping."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'count': 0, 'concepts': []}",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1787036486.876648,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "577ac356d3d78b63",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "goal": "I need to understand the guard's capabilities before devising a plan to escape with him sleeping."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to understand the guard's capabilities before devising a plan to escape with him sleeping.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1787036486.8768299,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "d48d21fc6c320493",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand the guard's capabilities before deciding on my next move."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'count': 0, 'concepts': []}",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787118046.225471,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "7129669a60829e41",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "goal": "I need to understand the guard's capabilities before deciding on my next move."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to understand the guard's capabilities before deciding on my next move.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1,
+            0.1
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.609350288425444,
+        "last_observed": 1787118414.2224681,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "7dec2f1d85ea8d9f",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "To understand the guard's capabilities before deciding on my next move, I will use concept_query."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'count': 0, 'concepts': []}",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787118100.677897,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "57410c23e1a93349",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "goal": "To understand the guard's capabilities before deciding on my next move, I will use concept_query."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:To understand the guard's capabilities before deciding on my next move, I will use concept_query.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1,
+            0.1,
+            0.1
+          ]
+        },
+        "predicted_value": 0.6819720000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001
+        ],
+        "observation_count": 3,
+        "confidence": 0.6395448267190432,
+        "last_observed": 1787118306.5643342,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.3697999999999999,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "578a8a7c2c52090e",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "To understand the guard's capabilities, I will use concept_query."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'count': 1, 'concepts': [{'id': '5440090f-4a38-44",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787118156.230078,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "4962b11c7cd70b06",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "goal": "To understand the guard's capabilities, I will use concept_query."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:To understand the guard's capabilities, I will use concept_query.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787118156.231494,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "89614fcc8ebb485b",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "To understand the guard's capabilities before deciding on my next move, I will use concept_query."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'count': 1, 'concepts': [{'id': '5440090f-4a38-44",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787118247.6484249,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "8a45abc0ca68cdac",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "params": {
+            "concept_id": "5440090f-4a38-44ba-99ed-2c57c68ba2fb"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:concept_query:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            8.678436279296875e-05
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787118306.5633762,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ea1574321eb8c4cd",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "To understand the guard's capabilities before deciding on my next move, I will use concept_query."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'concept_id': '5440090f-4a38-44ba-99ed-2c57c68ba2",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787118306.5640872,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "2842e7f3a26f1288",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "params": {
+            "query": "guard capabilities"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:concept_query:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.00011181831359863281
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787118414.2215738,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "4e5757de02748737",
+        "event_type": "tool",
+        "event_signature": "tool:concept_query",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand the guard's capabilities before deciding on my next move."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'count': 10, 'concepts': [{'id': 'ca1999d1-74f4-4",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787118414.2222562,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:respond": [
+      {
+        "id": "5fcad41df45fc5ee",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "params": {
+            "message": "I heard your question about 'can you describe the dungeon layout and the guard'', but I'm having trouble processing it right now. Could you try rephrasing?"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:respond:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            7.486343383789062e-05
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1787036495.684221,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "1fa3fbf3d81453f8",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "llm_fallback"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "predicted_value": 0.82603608889152,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001,
+          0.6819720000000001,
+          0.7264959200000001,
+          0.7647864912000001,
+          0.797716382432
+        ],
+        "observation_count": 7,
+        "confidence": 0.726346374551136,
+        "last_observed": 1787118339.6323578,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.20228361756799995,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "2c7b23b1ea3b8e6f",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "goal": "llm_fallback"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:llm_fallback:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1
+          ]
+        },
+        "predicted_value": 0.82603608889152,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001,
+          0.6819720000000001,
+          0.7264959200000001,
+          0.7647864912000001,
+          0.797716382432
+        ],
+        "observation_count": 7,
+        "confidence": 0.726346374551136,
+        "last_observed": 1787118339.633108,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.20228361756799995,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "452c2a476c466bab",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "params": {
+            "message": "I heard your question about 'please wake up the guard and proceed with escaping', but I'm having trouble processing it right now. Could you try rephrasing?"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:respond:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0002200603485107422
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1787036510.474921,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "1691ce9b199a4b33",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "params": {
+            "message": "I heard your question about 'try to move quietly past the guard while he's slee', but I'm having trouble processing it right now. Could you try rephrasing?"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:respond:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0002498626708984375
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1787036526.159214,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "9571f7dbdd063e2a",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "params": {
+            "message": "I heard your question about 'please wake the guard up before trying to escape. ', but I'm having trouble processing it right now. Could you try rephrasing?"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:respond:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0002911090850830078
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1787036541.946392,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "2cf33789c3d6c786",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "params": {
+            "message": "I heard your question about 'i need to understand the layout of the dungeon and', but I'm having trouble processing it right now. Could you try rephrasing?"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:respond:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0002720355987548828
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1787036556.456428,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "c088051bc924b2c9",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "params": {
+            "message": "I heard your question about 'i've observed the guard sleeping. please wake him ', but I'm having trouble processing it right now. Could you try rephrasing?"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:respond:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0001418590545654297
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1787036571.70888,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "6011d76a2f1f3ee1",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "params": {
+            "message": "I'm not sure how to answer 'what is your next step toward: escape a dungeon with a sleeping guard?'. Could you rephrase that or ask something else?"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:respond:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0002448558807373047
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787118339.6297128,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:speak": [
+      {
+        "id": "0b805ce3167aa204",
+        "event_type": "tool",
+        "event_signature": "tool:speak",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "The user requested waking the guard before trying to escape and suggested using the 'poke' tool if i"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "failure:[ERROR: Missing required input: text]",
+        "outcome_valence": "negative",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.43,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1787036545.343672,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "83179ef9498e67e2",
+        "event_type": "tool",
+        "event_signature": "tool:speak",
+        "event_context": {
+          "goal": "The user requested waking the guard before trying to escape and suggested using the 'poke' tool if it exists. However, since there is no explicit instruction to use 'poke', I assume the user meant spe"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:The user requested waking the guard before trying to escape and suggested using the 'poke' tool if it exists. However, since there is no explicit instruction to use 'poke', I assume the user meant spe:failure",
+        "outcome_valence": "negative",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.43,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1787036545.343889,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ]
+  },
+  "outcome_index": {
+    "tool:concept_query:positive": [
+      "94207b5c48eba6ff",
+      "cd3d0d462d4f5d37",
+      "2842e7f3a26f1288",
+      "8a45abc0ca68cdac"
+    ],
+    "success:{'count': 0, 'concepts': []}": [
+      "34a15662c6b1135f",
+      "7dec2f1d85ea8d9f",
+      "16411d42a723d88a",
+      "d48d21fc6c320493"
+    ],
+    "plan:I need to understand the capabilities and behaviors of this guard before devising a plan.:success": [
+      "f2ecd4cd462cc8ac"
+    ],
+    "plan:I need to understand the guard's capabilities before devising a plan to escape with him sleeping.:success": [
+      "577ac356d3d78b63"
+    ],
+    "tool:respond:positive": [
+      "1691ce9b199a4b33",
+      "9571f7dbdd063e2a",
+      "6011d76a2f1f3ee1",
+      "2cf33789c3d6c786",
+      "5fcad41df45fc5ee",
+      "452c2a476c466bab",
+      "c088051bc924b2c9"
+    ],
+    "success:{'delivered': True, 'mode': 'cli'}": [
+      "1fa3fbf3d81453f8"
+    ],
+    "plan:llm_fallback:success": [
+      "2c7b23b1ea3b8e6f"
+    ],
+    "failure:[ERROR: Missing required input: text]": [
+      "0b805ce3167aa204"
+    ],
+    "plan:The user requested waking the guard before trying to escape and suggested using the 'poke' tool if it exists. However, since there is no explicit instruction to use 'poke', I assume the user meant spe:failure": [
+      "83179ef9498e67e2"
+    ],
+    "plan:I need to understand the guard's capabilities before deciding on my next move.:success": [
+      "7129669a60829e41"
+    ],
+    "plan:To understand the guard's capabilities before deciding on my next move, I will use concept_query.:success": [
+      "57410c23e1a93349"
+    ],
+    "success:{'count': 1, 'concepts': [{'id': '5440090f-4a38-44": [
+      "89614fcc8ebb485b",
+      "578a8a7c2c52090e"
+    ],
+    "plan:To understand the guard's capabilities, I will use concept_query.:success": [
+      "4962b11c7cd70b06"
+    ],
+    "success:{'concept_id': '5440090f-4a38-44ba-99ed-2c57c68ba2": [
+      "ea1574321eb8c4cd"
+    ],
+    "success:{'count': 10, 'concepts': [{'id': 'ca1999d1-74f4-4": [
+      "4e5757de02748737"
+    ]
+  },
+  "priors": {},
+  "total_observations": 47,
+  "reward_bias": {},
+  "goal_reward_bias": {
+    "escape a dungeon with a sleeping guard": 0.05601602712543749
+  },
+  "cluster_reward_bias": {},
+  "cluster_reward_source": {},
+  "percept_valences": {},
+  "event_outcome_welford": {},
+  "saved_at": 1787118449.095793,
+  "_format_version": "1.3"
+}
