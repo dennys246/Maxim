@@ -226,7 +226,7 @@ include = ["maxim*"]
 # .gitignore'd — a source checkout has none, and `maxim serve` then falls back
 # to the "no UI installed" page. A wheel built after vendoring ships it, so a
 # pip-installed user gets a working Console with no flag and no config.
-maxim = ["_data/**/*", "py.typed", "console/openapi.json", "console/contract_surface.json", "console/ui_dist/**/*"]
+maxim = ["_data/**/*", "py.typed", "console/openapi.json", "console/contract_surface.json", "console/ui_dist/**/*", "utils/architecture_baseline.json"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Testing Configuration

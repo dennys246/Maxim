@@ -72,6 +72,19 @@ With the place code (8 seeds): taught **0.19 → 0.82** (0.82 is the ε=0.2 expl
 
 The crèche's coverage pooling recovers the full graded policy that no single partial infant has — this is where federation earns its keep (vs the modest payoff on the trivially-easy 2-alternative task). The merge pools learning, not noise (creche_none at chance).
 
+## Raw data (S4 status, 2026-08-24)
+
+The original 2026-07 runs printed to the terminal and were not captured. These probes are
+scripted, seeded, LLM-free and run in seconds, so they were **re-derived on 2026-08-24**
+and the full stdout of each is committed under
+[`data/scripted_rederivation_2026-08-24/`](data/scripted_rederivation_2026-08-24/README.md)
+(`46_4_*` … `46_7_*`), each run at the configuration stated in its Result section (Results
+1 and 2 need explicit flags — `--seeds 8`, and `--agents 12 --ticks 2 --seeds 10` — because
+the script defaults differ from what the doc reports). Every number above reproduces to
+within rounding (the one visible move is Result 1's yoked control, 0.36 → 0.41, at chance
+either way) and every pre-registered verdict reproduces. The tables above remain the
+original measurement; the README carries the side-by-side and the per-run provenance.
+
 ## Next
 
 - **Experiment 47 — habituation (DONE, see 47_habituation_novel_in_noise.md), individual vs collective:** modulate the orient response by novelty so the infant habituates to a constant familiar sound (city traffic) and still orients to novel ones (dishabituation). The novelty-decay machinery already exists (`tools/novelty.py::NoveltyRecord.novelty_score` decays with repetition; `attention/salience_map.py` weights novelty + inhibition-of-return). The new wire: familiarity (poolable EC cluster count) modulates orienting. **The novel question:** run habituation WITH and WITHOUT federation — because `ec_merge` accumulates cluster counts across contributors, a crèche-raised agent may habituate to sounds it never personally heard but the collective did (collective vs individual habituation in a hivemind). The rewarded direction (mother's voice) should *resist* habituation while unrewarded background habituates away — the "cocktail party" effect.

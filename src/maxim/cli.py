@@ -1600,17 +1600,32 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
     # Architecture audit if requested
     if getattr(args, "audit_architecture", False):
-        from maxim.utils.audit import audit_architecture
+        from maxim.utils.audit import (
+            BASELINE_PATH,
+            BaselineFormatError,
+            audit_architecture,
+            compare_to_baseline,
+            format_diff,
+            load_baseline,
+        )
 
         violations = audit_architecture()
-        if violations:
-            print(f"Found {len(violations)} architecture violations:")
+        try:
+            baseline = load_baseline()
+        except FileNotFoundError:
+            # No reviewed baseline shipped alongside this build: fall back to
+            # the raw report (every finding is red) rather than pretending the
+            # debt was reviewed.
+            print(f"No architecture baseline at {BASELINE_PATH}; reporting every finding.")
             for v in violations:
-                print(f"  {v.file}:{v.line} — {v.rule} (imports {v.imported_module})")
+                print(f"  {v.file}:{v.line} — {v.rule} (imports {v.imported_module}; scope={v.scope})")
+            sys.exit(1 if violations else 0)
+        except BaselineFormatError as exc:
+            print(f"Architecture baseline is malformed: {exc}")
             sys.exit(1)
-        else:
-            print("No architecture violations found.")
-            sys.exit(0)
+        diff = compare_to_baseline(violations, baseline)
+        print(format_diff(diff))
+        sys.exit(0 if diff.ok else 1)
 
     # If no meaningful action was specified, show quick-start guidance
     _has_sim = sim_path is not None

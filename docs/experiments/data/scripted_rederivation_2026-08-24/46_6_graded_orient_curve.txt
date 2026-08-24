@@ -1,0 +1,25 @@
+### provenance (captured by this shell immediately before this run)
+maxim.__file__ = /Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py
+sys.executable = /Users/dennyschaedig/Scripts/Maxim/.venv/bin/python
+git rev-parse HEAD = b01a6589200bf462a06dcf6e4175d908baddfa13
+git status --short (src/scripts/decisions/similarity/embodiment) =  M scripts/gaze_substrate/1_operant_redirection.py;
+PYTHONPATH = /Users/dennyschaedig/Scripts/Maxim/src
+date = 2026-08-24T16:55:59Z
+### command: python scripts/orient_substrate/6_graded_orient_curve.py
+
+graded operant orient — 6 directions × 6 turns (chance ≈ 0.17)
+ticks=600 bin=50 ε=0.2 seeds=8
+
+bin:          1     2     3     4     5     6     7     8     9    10    11    12
+---------------------------------------------------------------------------------
+taught     0.44  0.82  0.80  0.81  0.83  0.85  0.85  0.83  0.83  0.79  0.83  0.87
+yoked      0.13  0.08  0.04  0.06  0.06  0.02  0.06  0.08  0.07  0.06  0.07  0.03
+none       0.17  0.16  0.17  0.15  0.15  0.17  0.16  0.14  0.14  0.15  0.16  0.14
+
+verdict:
+  first-6-ticks baseline: taught=0.19 (chance ≈ 0.17)
+  settled: taught=0.83   yoked=0.05   none=0.15
+  LEARNED (settled ≥ 0.70 and rose ≥ 0.30): PASS
+  MOTHER-TAUGHT (taught ≥ controls + 0.30): PASS
+
+**the infant learned to face the sound's direction, taught by the mother's feeding alone.**

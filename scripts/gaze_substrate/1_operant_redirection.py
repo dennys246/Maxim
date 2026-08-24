@@ -57,6 +57,7 @@ import numpy as np
 os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None)
 
 from maxim.decisions.nac import NAc, NACConfig  # noqa: E402
+from maxim.utils.seeding import stable_hash_32  # noqa: E402
 
 # ---- world / policy constants -------------------------------------------------
 GAZE_LIMIT = 90.0
@@ -168,7 +169,11 @@ def main() -> None:
         for a in range(agents):
             nac = NAc(NACConfig())
             agent_id = f"{arm}_agent_{a}"
-            fov, good = run_session(arm, seed=1000 * a + hash(arm) % 97, ticks=ticks, nac=nac, agent_id=agent_id)
+            # stable_hash_32, not builtin hash(): PYTHONHASHSEED randomises str hashes per
+            # process, which made this "seeded" probe non-reproducible run to run (S4 backfill, 2026-08-24).
+            fov, good = run_session(
+                arm, seed=1000 * a + stable_hash_32(arm) % 97, ticks=ticks, nac=nac, agent_id=agent_id
+            )
             fov_curves.append(windowed(fov, n_windows))
             good_curves.append(windowed(good, n_windows))
         results[arm] = {

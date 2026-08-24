@@ -134,6 +134,13 @@ Burning the baseline to zero is valuable but not required to cut 1.1.
 
 **Baseline + regression gate in 1.1; debt burn-down in 1.1.x.**
 
+**Resolved 2026-08-24 (gate half):** the 33 findings were classified by import scope —
+10 typing-only (`if TYPE_CHECKING:`), 16 function-local lazy imports (none breaks an import cycle — verified by a transitive import-graph check), 7 module-level —
+and recorded with per-entry rationale in `src/maxim/utils/architecture_baseline.json`.
+`tests/unit/test_architecture_audit.py::TestRealCodebase` fails on additions, stale
+entries, and unreviewed entries; `maxim --audit-architecture` reports against the same
+baseline. Zero-debt burn-down remains the 1.1.x list's item 11 in the roadmap.
+
 ## D20 — the advertised offline fast suite is not hermetic
 
 Direct execution found multiple environment leaks:

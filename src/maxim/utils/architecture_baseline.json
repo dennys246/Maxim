@@ -1,0 +1,373 @@
+{
+  "_comment": "Reviewed accepted-debt baseline for maxim.utils.audit (bugs ledger D19). Keyed by file::imported_module::scope with a count and the accepted symbol set — never by line. CI fails on findings not listed here, on a wider symbol set than accepted, on entries whose count or symbols exceed the live code (stale), and on UNREVIEWED entries. To accept new debt: add/extend the entry WITH a rationale. To burn debt down: fix the import and shrink/remove the entry in the same commit. `maxim --audit-architecture` lists the diff; there is no writer — edit this file by hand. Accepted debt should use `from X import name` — a bare `import maxim.x.y` records the module path as its only symbol and accepts every attribute, so the symbol check is vacuous for that shape (rejected by the gate's format test).",
+  "baseline_format_version": 1,
+  "reviewed": "2026-08-24",
+  "entries": [
+    {
+      "file": "maxim/agents/bus.py",
+      "imported_module": "maxim.tools.base",
+      "rule": "agents must_not_import tools",
+      "scope": "module",
+      "count": 1,
+      "symbols": [
+        "ToolErrorKind"
+      ],
+      "disposition": "accepted",
+      "rationale": "compatibility re-export of ToolErrorKind (`# noqa: F401`) kept so `from maxim.agents.bus import ToolErrorKind` keeps working; in-package importers via agents.bus: runtime/executor.py and proprioception/pain.py (x2), plus the unit tests that pin the alias (tests/unit/test_tools_standalone_import.py and seven tool/pain tests) — migrate all of them to maxim.tools.base, then drop the re-export"
+    },
+    {
+      "file": "maxim/agents/exec_agent.py",
+      "imported_module": "maxim.runtime.gating",
+      "rule": "agents must_not_import runtime",
+      "scope": "function-local",
+      "count": 2,
+      "symbols": [
+        "GatingContext"
+      ],
+      "disposition": "accepted",
+      "rationale": "ExecAgent builds a GatingContext for the pre-deliberation and contemplation gates; runtime/gating.py is a LEAF module (no cycle — hoisting is safe but would escalate this key to module scope). Burn-down = the gating context type belongs below both layers (1.1.x item 11)"
+    },
+    {
+      "file": "maxim/agents/llm_worker.py",
+      "imported_module": "maxim.runtime.worker_pool",
+      "rule": "agents must_not_import runtime",
+      "scope": "function-local",
+      "count": 2,
+      "symbols": [
+        "JobStatus",
+        "LaneConfig",
+        "WorkerPool"
+      ],
+      "disposition": "accepted",
+      "rationale": "LLMWorker is the worker-pool client (JobStatus/LaneConfig/WorkerPool); the agents layer owns the worker because it is where planning turns are consumed. Burn-down: the pool types are a contract that belongs below both layers"
+    },
+    {
+      "file": "maxim/agents/llm_worker.py",
+      "imported_module": "maxim.runtime.worker_pool",
+      "rule": "agents must_not_import runtime",
+      "scope": "type-checking",
+      "count": 1,
+      "symbols": [
+        "WorkerPool"
+      ],
+      "disposition": "typing-only",
+      "rationale": "LLMWorker is the worker-pool client (JobStatus/LaneConfig/WorkerPool); the agents layer owns the worker because it is where planning turns are consumed. Burn-down: the pool types are a contract that belongs below both layers"
+    },
+    {
+      "file": "maxim/agents/maxim_agent.py",
+      "imported_module": "maxim.runtime.capture",
+      "rule": "agents must_not_import runtime",
+      "scope": "type-checking",
+      "count": 1,
+      "symbols": [
+        "CaptureManager"
+      ],
+      "disposition": "typing-only",
+      "rationale": "type annotation for the injected CaptureManager; no runtime edge"
+    },
+    {
+      "file": "maxim/agents/memory_agent.py",
+      "imported_module": "maxim.runtime.tool_dispatch",
+      "rule": "agents must_not_import runtime",
+      "scope": "function-local",
+      "count": 1,
+      "symbols": [
+        "build_tool_signature"
+      ],
+      "disposition": "accepted",
+      "rationale": "causal context is keyed by tool signature; build_tool_signature is the canonical tool-identity key and lives in runtime/tool_dispatch.py, a LEAF module (it imports nothing from this layer) — there is no import cycle; the lazy form is habit, and hoisting it would only escalate this key to module scope. Burn-down = move the signature helper below runtime (1.1.x item 11)"
+    },
+    {
+      "file": "maxim/agents/perception_agent.py",
+      "imported_module": "maxim.runtime.capture",
+      "rule": "agents must_not_import runtime",
+      "scope": "type-checking",
+      "count": 1,
+      "symbols": [
+        "CaptureManager",
+        "CapturedFrame"
+      ],
+      "disposition": "typing-only",
+      "rationale": "type annotations for the capture manager the runtime injects; no runtime edge"
+    },
+    {
+      "file": "maxim/bridges/planning_bridge.py",
+      "imported_module": "maxim.runtime.tool_dispatch",
+      "rule": "bridges must_not_import runtime",
+      "scope": "function-local",
+      "count": 2,
+      "symbols": [
+        "build_tool_signature"
+      ],
+      "disposition": "accepted",
+      "rationale": "build_tool_signature is the canonical tool-identity key and lives in runtime/tool_dispatch.py, a LEAF module (it imports nothing from this layer) — there is no import cycle; the lazy form is habit, and hoisting it would only escalate this key to module scope. Burn-down = move the signature helper below runtime (1.1.x item 11)"
+    },
+    {
+      "file": "maxim/bridges/tool_pain_bridge.py",
+      "imported_module": "maxim.agents.bus",
+      "rule": "bridges must_not_import agents",
+      "scope": "function-local",
+      "count": 1,
+      "symbols": [
+        "EdgeType"
+      ],
+      "disposition": "accepted",
+      "rationale": "pain-driven causal edges are typed with EdgeType; the causal-graph contract (DependencyGraph/EdgeType) lives in agents/bus.py and memory is its heaviest consumer; moving the shared graph/event contracts into a neutral package is the 1.1.x burn-down (roadmap 1.1.x item 11)"
+    },
+    {
+      "file": "maxim/bridges/tool_pain_bridge.py",
+      "imported_module": "maxim.runtime.tool_dispatch",
+      "rule": "bridges must_not_import runtime",
+      "scope": "function-local",
+      "count": 1,
+      "symbols": [
+        "build_tool_signature"
+      ],
+      "disposition": "accepted",
+      "rationale": "build_tool_signature is the canonical tool-identity key and lives in runtime/tool_dispatch.py, a LEAF module (it imports nothing from this layer) — there is no import cycle; the lazy form is habit, and hoisting it would only escalate this key to module scope. Burn-down = move the signature helper below runtime (1.1.x item 11)"
+    },
+    {
+      "file": "maxim/memory/atl.py",
+      "imported_module": "maxim.agents.bus",
+      "rule": "memory must_not_import agents",
+      "scope": "module",
+      "count": 1,
+      "symbols": [
+        "DependencyGraph"
+      ],
+      "disposition": "accepted",
+      "rationale": "the causal-graph contract (DependencyGraph/EdgeType) lives in agents/bus.py and memory is its heaviest consumer; moving the shared graph/event contracts into a neutral package is the 1.1.x burn-down (roadmap 1.1.x item 11)"
+    },
+    {
+      "file": "maxim/memory/base.py",
+      "imported_module": "maxim.agents.bus",
+      "rule": "memory must_not_import agents",
+      "scope": "function-local",
+      "count": 1,
+      "symbols": [
+        "StructuredContext"
+      ],
+      "disposition": "accepted",
+      "rationale": "StructuredContext (the memory→goal-proposal handoff shape built by MemoryLayer.build_context) lives in agents/bus.py; typing-only at module scope, lazy at the build_context call. Same neutral-package move (1.1.x item 11)"
+    },
+    {
+      "file": "maxim/memory/base.py",
+      "imported_module": "maxim.agents.bus",
+      "rule": "memory must_not_import agents",
+      "scope": "type-checking",
+      "count": 1,
+      "symbols": [
+        "StructuredContext"
+      ],
+      "disposition": "typing-only",
+      "rationale": "StructuredContext (the memory→goal-proposal handoff shape built by MemoryLayer.build_context) lives in agents/bus.py; typing-only at module scope, lazy at the build_context call. Same neutral-package move (1.1.x item 11)"
+    },
+    {
+      "file": "maxim/memory/concept_extractor.py",
+      "imported_module": "maxim.runtime.worker_pool",
+      "rule": "memory must_not_import runtime",
+      "scope": "type-checking",
+      "count": 1,
+      "symbols": [
+        "WorkerPool"
+      ],
+      "disposition": "typing-only",
+      "rationale": "type annotation for the injected WorkerPool; no runtime edge"
+    },
+    {
+      "file": "maxim/memory/concept_grounder.py",
+      "imported_module": "maxim.runtime.worker_pool",
+      "rule": "memory must_not_import runtime",
+      "scope": "type-checking",
+      "count": 1,
+      "symbols": [
+        "WorkerPool"
+      ],
+      "disposition": "typing-only",
+      "rationale": "type annotation for the injected WorkerPool; no runtime edge"
+    },
+    {
+      "file": "maxim/memory/episode.py",
+      "imported_module": "maxim.agents.bus",
+      "rule": "memory must_not_import agents",
+      "scope": "function-local",
+      "count": 1,
+      "symbols": [
+        "EdgeType"
+      ],
+      "disposition": "accepted",
+      "rationale": "the causal-graph contract (DependencyGraph/EdgeType) lives in agents/bus.py and memory is its heaviest consumer; moving the shared graph/event contracts into a neutral package is the 1.1.x burn-down (roadmap 1.1.x item 11)"
+    },
+    {
+      "file": "maxim/memory/episode.py",
+      "imported_module": "maxim.agents.modality",
+      "rule": "memory must_not_import agents",
+      "scope": "module",
+      "count": 1,
+      "symbols": [
+        "SubstrateModality"
+      ],
+      "disposition": "accepted",
+      "rationale": "SubstrateModality is declared in agents/modality.py but is a substrate-wide enum; same neutral-package move as the graph contract (1.1.x item 11)"
+    },
+    {
+      "file": "maxim/memory/hippocampus.py",
+      "imported_module": "maxim.agents.bus",
+      "rule": "memory must_not_import agents",
+      "scope": "module",
+      "count": 1,
+      "symbols": [
+        "DependencyGraph",
+        "EdgeType"
+      ],
+      "disposition": "accepted",
+      "rationale": "the causal-graph contract (DependencyGraph/EdgeType) lives in agents/bus.py and memory is its heaviest consumer; moving the shared graph/event contracts into a neutral package is the 1.1.x burn-down (roadmap 1.1.x item 11)"
+    },
+    {
+      "file": "maxim/memory/hippocampus.py",
+      "imported_module": "maxim.agents.modality",
+      "rule": "memory must_not_import agents",
+      "scope": "module",
+      "count": 1,
+      "symbols": [
+        "SubstrateModality"
+      ],
+      "disposition": "accepted",
+      "rationale": "SubstrateModality is declared in agents/modality.py but is a substrate-wide enum; same neutral-package move as the graph contract (1.1.x item 11)"
+    },
+    {
+      "file": "maxim/memory/hippocampus_persistence.py",
+      "imported_module": "maxim.agents.bus",
+      "rule": "memory must_not_import agents",
+      "scope": "module",
+      "count": 1,
+      "symbols": [
+        "DependencyGraph",
+        "EdgeType"
+      ],
+      "disposition": "accepted",
+      "rationale": "the causal-graph contract (DependencyGraph/EdgeType) lives in agents/bus.py and memory is its heaviest consumer; moving the shared graph/event contracts into a neutral package is the 1.1.x burn-down (roadmap 1.1.x item 11)"
+    },
+    {
+      "file": "maxim/memory/hippocampus_retrieval.py",
+      "imported_module": "maxim.agents.bus",
+      "rule": "memory must_not_import agents",
+      "scope": "function-local",
+      "count": 1,
+      "symbols": [
+        "EdgeType"
+      ],
+      "disposition": "accepted",
+      "rationale": "the causal-graph contract (DependencyGraph/EdgeType) lives in agents/bus.py and memory is its heaviest consumer; moving the shared graph/event contracts into a neutral package is the 1.1.x burn-down (roadmap 1.1.x item 11)"
+    },
+    {
+      "file": "maxim/memory/hippocampus_retrieval.py",
+      "imported_module": "maxim.agents.working_memory",
+      "rule": "memory must_not_import agents",
+      "scope": "function-local",
+      "count": 1,
+      "symbols": [
+        "WorkingMemoryKind"
+      ],
+      "disposition": "accepted",
+      "rationale": "RECALL reconsolidation pulls recalled memories into the WorkingMemorySet (the Hippocampus.recall touch + reconsolidation graduation row); the working-memory types belong below memory. 1.1.x burn-down"
+    },
+    {
+      "file": "maxim/memory/hippocampus_retrieval.py",
+      "imported_module": "maxim.agents.working_memory",
+      "rule": "memory must_not_import agents",
+      "scope": "type-checking",
+      "count": 1,
+      "symbols": [
+        "WorkingMemorySet"
+      ],
+      "disposition": "typing-only",
+      "rationale": "RECALL reconsolidation pulls recalled memories into the WorkingMemorySet (the Hippocampus.recall touch + reconsolidation graduation row); the working-memory types belong below memory. 1.1.x burn-down"
+    },
+    {
+      "file": "maxim/memory/layer.py",
+      "imported_module": "maxim.agents.bus",
+      "rule": "memory must_not_import agents",
+      "scope": "type-checking",
+      "count": 1,
+      "symbols": [
+        "DependencyGraph"
+      ],
+      "disposition": "typing-only",
+      "rationale": "type annotation on the DependencyGraph the layer is handed; no runtime edge"
+    },
+    {
+      "file": "maxim/memory/semantics.py",
+      "imported_module": "maxim.agents.bus",
+      "rule": "memory must_not_import agents",
+      "scope": "module",
+      "count": 1,
+      "symbols": [
+        "DependencyGraph",
+        "EdgeType"
+      ],
+      "disposition": "accepted",
+      "rationale": "the causal-graph contract (DependencyGraph/EdgeType) lives in agents/bus.py and memory is its heaviest consumer; moving the shared graph/event contracts into a neutral package is the 1.1.x burn-down (roadmap 1.1.x item 11)"
+    },
+    {
+      "file": "maxim/memory/sleep_replay.py",
+      "imported_module": "maxim.agents.bus",
+      "rule": "memory must_not_import agents",
+      "scope": "function-local",
+      "count": 1,
+      "symbols": [
+        "EdgeType"
+      ],
+      "disposition": "accepted",
+      "rationale": "the causal-graph contract (DependencyGraph/EdgeType) lives in agents/bus.py and memory is its heaviest consumer; moving the shared graph/event contracts into a neutral package is the 1.1.x burn-down (roadmap 1.1.x item 11)"
+    },
+    {
+      "file": "maxim/tools/mode_switch.py",
+      "imported_module": "maxim.agents.autonomy",
+      "rule": "tools must_not_import agents",
+      "scope": "function-local",
+      "count": 1,
+      "symbols": [
+        "AutonomyLevel"
+      ],
+      "disposition": "accepted",
+      "rationale": "the mode-switch tool mutates the AutonomyController by design (it is the tool that changes autonomy level); the controller type belongs below tools. 1.1.x burn-down"
+    },
+    {
+      "file": "maxim/tools/mode_switch.py",
+      "imported_module": "maxim.agents.autonomy",
+      "rule": "tools must_not_import agents",
+      "scope": "type-checking",
+      "count": 1,
+      "symbols": [
+        "AutonomyController"
+      ],
+      "disposition": "typing-only",
+      "rationale": "the mode-switch tool mutates the AutonomyController by design (it is the tool that changes autonomy level); the controller type belongs below tools. 1.1.x burn-down"
+    },
+    {
+      "file": "maxim/tools/sandbox.py",
+      "imported_module": "maxim.agents.autonomy",
+      "rule": "tools must_not_import agents",
+      "scope": "function-local",
+      "count": 1,
+      "symbols": [
+        "AutonomyLevel"
+      ],
+      "disposition": "accepted",
+      "rationale": "the sandbox tool consults the AutonomyController for its permission level; the controller type belongs below tools. 1.1.x burn-down"
+    },
+    {
+      "file": "maxim/tools/sandbox.py",
+      "imported_module": "maxim.agents.autonomy",
+      "rule": "tools must_not_import agents",
+      "scope": "type-checking",
+      "count": 1,
+      "symbols": [
+        "AutonomyController"
+      ],
+      "disposition": "typing-only",
+      "rationale": "the sandbox tool consults the AutonomyController for its permission level; the controller type belongs below tools. 1.1.x burn-down"
+    }
+  ]
+}

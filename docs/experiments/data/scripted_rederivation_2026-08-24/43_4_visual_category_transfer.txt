@@ -1,0 +1,26 @@
+### provenance (captured by this shell immediately before this run)
+maxim.__file__ = /Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py
+sys.executable = /Users/dennyschaedig/Scripts/Maxim/.venv/bin/python
+git rev-parse HEAD = b01a6589200bf462a06dcf6e4175d908baddfa13
+git status --short (src/scripts/decisions/similarity/embodiment) =  M scripts/gaze_substrate/1_operant_redirection.py;
+PYTHONPATH = /Users/dennyschaedig/Scripts/Maxim/src
+date = 2026-08-24T16:55:49Z
+### command: python scripts/gaze_substrate/4_visual_category_transfer.py
+
+
+Step 4 — visual-category transfer to NOVEL instances
+discrimination = P(orient|person) - P(orient|distractor);  1.0=perfect, 0=chance
+
+  DICT (exact vec)      seen=1.000   NOVEL=-0.005   (novel = brand-new key -> chance)
+
+  EC eps    seen     NOVEL    person-nodes(approx)  
+  0.10      0.988    0.944    3.8                   
+  0.15      0.988    0.938    3.9                   
+  0.30      0.953    0.641    8.0                   
+  0.60      0.852    0.183    10.9                  
+  1.00      0.810    0.091    11.6                  
+
+  Read: EC NOVEL >> dict NOVEL => the substrate recognized never-seen people
+  as people and transferred the learned 'orient'. As eps grows (people more
+  visually diverse than the encoder can cluster) EC NOVEL collapses toward dict
+  and node count explodes -> substrate transfer is bounded by embedding geometry.
