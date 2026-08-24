@@ -53,8 +53,8 @@ by delaying Oasis two versions.
 | 2 | CHANGELOG reconstruction + historical tags for 1.0.0→1.0.6 | **DONE** for the historical interval. The post-1.0.6 unreleased record and final 1.1 release transaction remain. |
 | 3 | n_ctx clamp and headroom truth | **DONE**. Re-attest through the Big-Model heartbeat. |
 | 4 | Persona hard-remove | **DONE**. Keep compatibility/error behavior covered. |
-| 5 | Graduation heartbeat walk | **IN PROGRESS** — Sim-Short complete; Big-Model, H1 8-repetition delivered-shift block, and final-RC reattestation remain. |
-| 6 | H1 healthy-hardware re-characterization | **BASE SESSION DONE**; follow-up block remains part of item 5. |
+| 5 | Graduation heartbeat walk | **IN PROGRESS** — Sim-Short complete; Big-Model chapter RAN 2026-08-21 (Qwen32B re-fire → instrument finding L8, row stays PARTIAL); **H1 8-rep delivered-shift block DONE 2026-08-24**; final-RC re-attestation of the pytest-only rows remains (minutes, at the RC commit). |
+| 6 | H1 healthy-hardware re-characterization | **DONE** — base session 2026-08-08 + the `_big` delivered-shift block 2026-08-24 (n=8/side in one session, 0.943 of command both sides; `_big` YAML magnitudes stay frozen; the right-side Δaz asymmetry is a follow-up still to be pre-registered; D30/D31 filed). |
 | 7 | Artifact stamping | **DONE**. |
 | 8 | Orient-vocabulary audit + workspace-limit bypass safety | **DONE** (#472); retain hardware-safety guards in the final RC suite. |
 | 9 | Documentation truth pass | **SUBSTANTIALLY DONE, CONTINUOUS THROUGH RC**. Reconcile plans, architecture, decisions, API count/dependencies, and release surfaces. D21's EC performance claim was corrected on 2026-08-19. |
