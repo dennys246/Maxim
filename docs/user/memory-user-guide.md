@@ -96,7 +96,8 @@ In agentic mode, use the ExplainTool to query what the system remembers and why 
 ```bash
 # Clear specific types
 maxim --clear-memory hippo           # Episodic memories
-maxim --clear-memory nac             # Causal learning + reward biases
+maxim --clear-memory nac             # Causal learning + reward biases (also clears ec)
+maxim --clear-memory ec              # EC substrate (also clears nac — they are a pair)
 maxim --clear-memory scn             # Temporal patterns
 maxim --clear-memory atl             # ATL substrate nodes
 maxim --clear-memory semantic        # Embedding vectors

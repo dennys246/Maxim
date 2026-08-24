@@ -81,6 +81,59 @@ class AgentConfig:
     # that create_full_agent discards when with_bio_stack=True.
     load_persisted: bool = True
 
+    # D17: what to do when a persisted subsystem file is unreadable.
+    #   "warn"  — log a WARNING and continue with fresh state (DEFAULT).
+    #   "raise" — abort with MemoryCorruptionError naming every corrupt file.
+    # The default is deliberately NOT "raise": SCN/hippocampus restore runs
+    # inside this canonical builder for EVERY caller, so raising by default
+    # would change behaviour far outside the stable load path (the
+    # shared-builder activation rule). ``maxim.load.agent()`` — an API named
+    # `load`, whose contract is to restore or fail — opts in to "raise".
+    # Either way the failure is now LOUD; it used to be `except: pass`.
+    on_corrupt: str = "warn"
+
+
+# ---------------------------------------------------------------------------
+# D17 — corrupt persisted state is reported, never silently replaced
+# ---------------------------------------------------------------------------
+
+
+def _note_corruption(
+    corrupt: list[dict[str, str]] | None,
+    subsystem: str,
+    path: "Path",
+    error: object,
+) -> None:
+    """Record one unreadable persistence file and log it loudly.
+
+    Fresh state still replaces the corrupt file in memory so construction can
+    finish, but the caller now learns that it happened. Whether that becomes a
+    hard failure is the caller's choice via ``AgentConfig.on_corrupt``.
+    """
+    detail = str(error) if not isinstance(error, Exception) else f"{type(error).__name__}: {error}"
+    log.warning("Corrupt %s state at %s (%s) — continuing with fresh %s", subsystem, path, detail, subsystem)
+    if corrupt is not None:
+        corrupt.append({"subsystem": subsystem, "path": str(path), "error": detail})
+
+
+def _corruption_error(agent_id: str, corrupt: list[dict[str, str]]) -> Exception:
+    """Build the actionable MemoryCorruptionError for ``on_corrupt="raise"``."""
+    from maxim.exceptions import MemoryCorruptionError
+
+    lines = [f"  - {c['subsystem']}: {c['path']} ({c['error']})" for c in corrupt]
+    plural = "file" if len(corrupt) == 1 else "files"
+    message = (
+        f"Agent '{agent_id}' has {len(corrupt)} unreadable persistence {plural}; "
+        f"refusing to silently substitute fresh state:\n" + "\n".join(lines) + "\n"
+        "Recover by repairing or moving the listed file(s), or call "
+        'load.agent(..., on_corrupt="fresh") to start those subsystems empty '
+        "(the corrupt file is left on disk until the agent next saves)."
+    )
+    return MemoryCorruptionError(
+        message,
+        context={"agent_id": agent_id, "corrupt": corrupt},
+    )
+
 
 # ---------------------------------------------------------------------------
 # Agent Instance
@@ -306,8 +359,16 @@ class AgentFactory:
             auto_load: If True, restore persisted state from the agent's
                 persistence directory.  Used by ``maxim.load.agent()``.
                 Default False = always start fresh (``maxim.create.agent()``).
+
+        Raises:
+            MemoryCorruptionError: If ``config.on_corrupt == "raise"`` and any
+                persisted subsystem file could not be read.  The error names
+                every corrupt file so the caller can repair or discard them.
         """
         agent_dir = self._resolve_persistence_dir(config)
+        # D17: corruption reports accrue here and are raised together after
+        # construction, so the caller sees EVERY bad file, not just the first.
+        corrupt: list[dict[str, str]] = []
 
         # Create memory subsystems
         hippocampus = None
@@ -316,13 +377,22 @@ class AgentFactory:
         memory_hub = None
 
         if config.remembers:
-            hippocampus = self._create_hippocampus(agent_dir, auto_load=auto_load)
+            hippocampus = self._create_hippocampus(agent_dir, auto_load=auto_load, corrupt=corrupt)
 
         if config.learns:
-            nac = self._create_nac(agent_dir, auto_load=auto_load)
+            nac = self._create_nac(agent_dir, auto_load=auto_load, corrupt=corrupt)
 
-        atl = self._create_atl(agent_dir)
-        memory_hub = self._create_memory_hub(hippocampus, nac, atl, agent_dir=agent_dir, agent_id=config.agent_id)
+        # D17: ATL is restored HERE, not deferred to MemoryHub.on_session_start.
+        # load.agent() returns without calling on_session_start, so an ATL that
+        # loaded later made the public "restores Hippocampus, NAc, ATL" promise
+        # false for every caller that just read the returned object.
+        atl = self._create_atl(agent_dir, auto_load=auto_load, corrupt=corrupt)
+        memory_hub = self._create_memory_hub(
+            hippocampus, nac, atl, agent_dir=agent_dir, agent_id=config.agent_id, corrupt=corrupt
+        )
+
+        if corrupt and config.on_corrupt == "raise":
+            raise _corruption_error(config.agent_id, corrupt)
 
         # Create tool registry (scoped by whitelist)
         tool_registry = self._create_tool_registry(config.tool_whitelist)
@@ -596,7 +666,9 @@ class AgentFactory:
         p.mkdir(parents=True, exist_ok=True)
         return p
 
-    def _create_hippocampus(self, agent_dir: Path, *, auto_load: bool = False) -> Any:
+    def _create_hippocampus(
+        self, agent_dir: Path, *, auto_load: bool = False, corrupt: list[dict[str, str]] | None = None
+    ) -> Any:
         """Create a Hippocampus with per-agent persistence.
 
         Args:
@@ -616,14 +688,16 @@ class AgentFactory:
             if auto_load and hippo_path.exists():
                 try:
                     hippo.load(str(hippo_path))
-                except Exception:
-                    pass  # Start fresh if corrupt
+                except Exception as e:  # D17: report, never swallow silently
+                    _note_corruption(corrupt, "hippocampus", hippo_path, e)
             return hippo
         except Exception as e:
             log.warning("Failed to create Hippocampus: %s", e)
             return None
 
-    def _create_nac(self, agent_dir: Path, *, auto_load: bool = False) -> Any:
+    def _create_nac(
+        self, agent_dir: Path, *, auto_load: bool = False, corrupt: list[dict[str, str]] | None = None
+    ) -> Any:
         """Create a NAc with per-agent persistence.
 
         Args:
@@ -636,22 +710,37 @@ class AgentFactory:
             nac_path = str(agent_dir / "nac.json")
             nac = NAc(NACConfig(persistence_path=nac_path))
             if auto_load and (agent_dir / "nac.json").exists():
-                nac.load_safe(nac_path)
+                # load_safe recovers internally and REPORTS via its return
+                # value; the factory used to discard it (D17).
+                ok, err = nac.load_safe(nac_path)
+                if not ok:
+                    _note_corruption(corrupt, "nac", Path(nac_path), err or "unreadable NAc state")
             return nac
         except Exception as e:
             log.warning("Failed to create NAc: %s", e)
             return None
 
-    def _create_atl(self, agent_dir: Path) -> Any:
-        """Create an ATL with per-agent persistence."""
+    def _create_atl(
+        self, agent_dir: Path, *, auto_load: bool = False, corrupt: list[dict[str, str]] | None = None
+    ) -> Any:
+        """Create an ATL with per-agent persistence, restoring it when asked.
+
+        D17: this used to construct the ATL with a persistence path but never
+        read it, leaving the restore to ``MemoryHub.on_session_start()``.
+        ``maxim.load.agent()`` returns before that runs, so its documented
+        "restores Hippocampus, NAc, ATL" promise was false for ATL.
+        """
         try:
             from maxim.memory.atl import ATL, ATLConfig
 
-            return ATL(
-                ATLConfig(
-                    persistence_path=str(agent_dir / "atl.json"),
-                )
-            )
+            atl_path = agent_dir / "atl.json"
+            atl = ATL(ATLConfig(persistence_path=str(atl_path)))
+            if auto_load and atl_path.exists():
+                try:
+                    atl.load(str(atl_path))
+                except Exception as e:
+                    _note_corruption(corrupt, "atl", atl_path, e)
+            return atl
         except Exception as e:
             log.warning("Failed to create ATL: %s", e)
             return None
@@ -664,6 +753,7 @@ class AgentFactory:
         *,
         agent_dir: Path | None = None,
         agent_id: str,
+        corrupt: list[dict[str, str]] | None = None,
     ) -> Any:
         """Create a MemoryHub coordinating the agent's memory systems."""
         try:
@@ -686,8 +776,8 @@ class AgentFactory:
                 if scn_file.exists():
                     try:
                         scn.load(scn_path_str)
-                    except Exception:
-                        pass  # Start fresh if corrupt
+                    except Exception as e:  # D17: report, never swallow silently
+                        _note_corruption(corrupt, "scn", scn_file, e)
             # build_memory_hub calls .connect() internally, so NPC agents
             # now get PlanHistoryBridge + EscalationLearningBridge +
             # FearCircuitBridge.  Pre-Wave-2 these were permanently dead

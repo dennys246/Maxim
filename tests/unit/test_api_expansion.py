@@ -262,10 +262,10 @@ class TestEventSubscription:
 
 class TestToolRegistration:
     def test_register_tool_class(self):
-        from maxim.api import register_tool, _pending_tools
+        from maxim.api import register_tool, _registered_tools
         from maxim.tools.base import Tool, ToolOutput
 
-        initial = len(_pending_tools)
+        initial = len(_registered_tools)
 
         class TestTool(Tool):
             name = "api_test_tool"
@@ -276,24 +276,24 @@ class TestToolRegistration:
                 return ToolOutput(success=True, output="ok")
 
         register_tool(TestTool())
-        assert len(_pending_tools) > initial
+        assert len(_registered_tools) > initial
 
     def test_tool_decorator(self):
-        from maxim.api import tool, _pending_tools
+        from maxim.api import tool, _registered_tools
 
-        initial = len(_pending_tools)
+        initial = len(_registered_tools)
 
         @tool
         def my_analysis(data: str, depth: int = 3) -> str:
             """Analyze data."""
             return f"analyzed: {data}"
 
-        assert len(_pending_tools) > initial
+        assert len(_registered_tools) > initial
         # Function still works normally
         assert my_analysis("hello") == "analyzed: hello"
 
         # Schema inferred from type annotations
-        registered = _pending_tools[-1]
+        registered = _registered_tools[-1]
         schema = registered.input_schema
         assert schema["type"] == "object"
         assert "data" in schema["properties"]

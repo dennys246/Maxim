@@ -169,28 +169,50 @@ def sessions(*, limit: int = 20) -> "list[Session]":
     return list_sessions(limit=limit)
 
 
-def agent(name: str, *, base_dir: str | None = None) -> "AgentInstance":
+def agent(
+    name: str,
+    *,
+    base_dir: str | None = None,
+    on_corrupt: str = "raise",
+) -> "AgentInstance":
     """Load a persisted agent by name.
 
-    Restores all subsystems (Hippocampus, NAc, ATL) from the agent's
-    persistence directory.
+    Restores Hippocampus, NAc, ATL and SCN from the agent's persistence
+    directory before returning. This function either hands back a fully
+    restored agent or raises — it will not silently give you fresh state
+    wearing a loaded agent's name (D17).
 
     Args:
         name: Agent identifier (matches the name used in ``create.agent()``).
         base_dir: Override the base agent directory (default ``~/.maxim/agents``).
+        on_corrupt: What to do when a persisted file cannot be read.
+            ``"raise"`` (default) aborts with a
+            :class:`~maxim.exceptions.MemoryCorruptionError` naming every bad
+            file. ``"fresh"`` is the explicit opt-in to start those subsystems
+            empty; the corrupt file stays on disk until the agent next saves,
+            so nothing is destroyed by the choice.
 
     Returns:
         ``AgentInstance`` with persisted state restored.
 
     Raises:
         FileNotFoundError: If no persisted state found for this agent.
+        ValueError: If ``on_corrupt`` is not ``"raise"`` or ``"fresh"``.
+        MemoryCorruptionError: If a persisted file is unreadable and
+            ``on_corrupt="raise"``.
 
     Example::
 
         agent = maxim.load.agent("scout")
         # agent.hippocampus has memories from previous sessions
         memories = agent.export_memories()
+
+        # Accept fresh state for whatever could not be read:
+        agent = maxim.load.agent("scout", on_corrupt="fresh")
     """
+    if on_corrupt not in ("raise", "fresh"):
+        raise ValueError(f"on_corrupt must be 'raise' or 'fresh', got {on_corrupt!r}")
+
     from pathlib import Path
 
     from maxim.runtime.agent_factory import AgentConfig, AgentFactory
@@ -214,6 +236,9 @@ def agent(name: str, *, base_dir: str | None = None) -> "AgentInstance":
     config = AgentConfig(
         agent_id=name,
         persistence_dir=str(agent_dir),
+        # "fresh" maps to the factory's loud-but-continue mode; the corrupt
+        # file is reported as a WARNING either way.
+        on_corrupt="raise" if on_corrupt == "raise" else "warn",
     )
     return factory.create_agent(config, auto_load=True)
 

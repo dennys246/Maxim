@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`maxim.unregister_tool(name)` / `maxim.clear_registered_tools()`** — removal
+  verbs for the now-persistent custom-tool registry (D18).
 - **1.1 release-readiness ledgers** — repository scorecard plus a verified
   stable-API/architecture/test defect cluster (D15–D20), with explicit 1.1 versus
   1.1.x dispositions.
@@ -49,6 +51,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rewritten as a thin provider-neutral adapter (see DECISIONS.md 2026-08-19).
 
 ### Fixed
+
+- **NAc and EC are invalidated together (D2).** `MEMORY_PATHS` had no `ec` key,
+  so a stale EC substrate was unreachable from the CLI and `--clear-memory all`
+  wiped NAc while leaving EC on disk. NAc's reward biases are keyed by EC node
+  ids, so half-clearing leaves every restored bias pointing at nodes a fresh EC
+  will never re-allocate. `MEMORY_PAIRS` now declares the pair inseparable and
+  clearing either half pulls in the other.
+- **`maxim.load.agent()` restores fully or fails loudly (D17).** The ATL is now
+  restored inside `create_agent` rather than deferred to
+  `MemoryHub.on_session_start()`, which `load.agent()` returns without calling —
+  so the documented "restores Hippocampus, NAc, ATL" promise is true at return.
+  Corrupt Hippocampus/SCN files were caught by `except Exception: pass` and
+  NAc's `load_safe` error return was discarded; all three now log a WARNING and
+  are collected, and `load.agent()` raises a single `MemoryCorruptionError`
+  naming every unreadable file. Pass `on_corrupt="fresh"` to explicitly accept
+  empty state — the corrupt file is left on disk either way. The factory
+  default stays lenient so the change does not reach callers outside the stable
+  load path.
+- **`register_tool()` registration is persistent, not one-shot (D18).**
+  `_inject_registered_tools` no longer clears the pending list, so a registered
+  tool is available to every later `run()`/`imagine()`/`campaign()` — matching
+  the 1.0-stable extension contract. This also fixes a silent second symptom:
+  the sim orchestrator injects from a second site, so whichever site ran first
+  consumed the registrations and the other silently got none.
 
 - **EC performance-contract documentation** — `EntorhinalCortex` now distinguishes
   LSH-indexed signature queries from the substrate hot path's exact O(Nd) centroid

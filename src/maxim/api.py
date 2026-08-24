@@ -665,7 +665,7 @@ def run(
             logger.info("Robot connected and awake: %s", robot)
 
         tool_registry = build_tool_registry(maxim=_robot)
-        _inject_pending_tools(tool_registry)
+        _inject_registered_tools(tool_registry)
 
         # F5: Headless bio-learning via AgentFactory. Bio-learning ON by
         # default — learning is Maxim's identity. learning=False opts out.
@@ -1912,20 +1912,50 @@ def _bridge_event_subscriptions(bus: Any) -> None:
 # Tool registration (new in Phase 8)
 # ─────────────────────────────────────────────────────────────────────────────
 
-_pending_tools: list[Any] = []
-_pending_tools_lock = threading.Lock()
+# D18: registration is PERSISTENT, not one-shot. `register_tool` is a
+# 1.0-stable extension surface documented as making a tool "available to all
+# agents" (docs/user/extension_api.md §2), so the list must survive injection.
+# It used to be cleared on inject, which meant only the NEXT run()/imagine()/
+# campaign() saw the tool — and, because orchestrator.py injects into the AUT
+# registry from a second site, whichever site ran first consumed the tools and
+# the other silently got none.
+_registered_tools: list[Any] = []
+_registered_tools_lock = threading.Lock()
 
 
-def _inject_pending_tools(registry: Any) -> int:
-    """Inject all pending user-registered tools into a ToolRegistry.
+def _record_registration(tool: Any) -> None:
+    """Store one registration, replacing any earlier one with the same name.
 
-    Returns the number of tools injected.  Thread-safe — clears the
-    pending list after injection so tools aren't double-registered on
-    the next ``run()``/``imagine()``/``campaign()`` call.
+    Registration is persistent (D18), so appending blindly would grow without
+    bound in a long-lived process that re-registers — and would leave
+    ``unregister_tool`` with several entries to reason about. Replacing in
+    place keeps the list a true picture of what will be injected, and matches
+    the documented "same name replaces" semantics at the list level and not
+    merely at ``ToolRegistry.register``.
     """
-    with _pending_tools_lock:
-        tools = list(_pending_tools)
-        _pending_tools.clear()
+    name = getattr(tool, "name", None)
+    with _registered_tools_lock:
+        if name is not None:
+            for i, existing in enumerate(_registered_tools):
+                if getattr(existing, "name", None) == name:
+                    _registered_tools[i] = tool
+                    return
+        _registered_tools.append(tool)
+
+
+def _inject_registered_tools(registry: Any) -> int:
+    """Inject all user-registered tools into a ToolRegistry.
+
+    Returns the number of tools injected.  Thread-safe.  The registration
+    list is **not** cleared (D18): registration is process-wide and
+    persistent, so every subsequent ``run()``/``imagine()``/``campaign()``
+    call sees the tool.  Re-injection is safe because
+    ``ToolRegistry.register`` keys on ``tool.name`` and last-wins, and each
+    API call builds a fresh registry.  Use :func:`unregister_tool` or
+    :func:`clear_registered_tools` to remove.
+    """
+    with _registered_tools_lock:
+        tools = list(_registered_tools)
     injected = 0
     for t in tools:
         try:
@@ -1960,10 +1990,50 @@ def register_tool(tool: Any) -> None:
                 return ToolOutput(success=True, output="analyzed")
 
         maxim.register_tool(MyTool())
-        maxim.run(model="mistral-7b")  # MyTool is available to the agent
+        maxim.run(model="mistral-7b")   # MyTool is available to the agent
+        maxim.run(model="mistral-7b")   # ...and to every later call too
+
+    Registration is process-wide and persistent.  Registering a tool whose
+    ``name`` matches an existing registration replaces it.  Remove with
+    :func:`unregister_tool` or :func:`clear_registered_tools`.
     """
-    with _pending_tools_lock:
-        _pending_tools.append(tool)
+    _record_registration(tool)
+
+
+def unregister_tool(name: str) -> bool:
+    """Remove a previously registered custom tool by name.
+
+    Args:
+        name: The tool's ``name`` attribute, as given to
+            :func:`register_tool` or the ``@tool`` decorator.
+
+    Returns:
+        True if a registration was found and removed, False otherwise.
+        Agents built by calls already in flight are unaffected; the change
+        takes effect on the next ``run()``/``imagine()``/``campaign()``.
+
+    Example::
+
+        maxim.register_tool(MyTool())
+        maxim.unregister_tool("my_analysis")  # -> True
+    """
+    with _registered_tools_lock:
+        before = len(_registered_tools)
+        _registered_tools[:] = [t for t in _registered_tools if getattr(t, "name", None) != name]
+        return len(_registered_tools) < before
+
+
+def clear_registered_tools() -> int:
+    """Remove every custom tool registered in this process.
+
+    Returns:
+        The number of registrations removed.  Useful in tests and notebooks
+        where persistent registration would otherwise leak between cases.
+    """
+    with _registered_tools_lock:
+        removed = len(_registered_tools)
+        _registered_tools.clear()
+        return removed
 
 
 def _infer_input_schema(fn: Any) -> dict[str, Any]:
@@ -2039,8 +2109,7 @@ def tool(fn: Any) -> Any:
             except Exception as e:
                 return ToolOutput(success=False, error=str(e))
 
-    with _pending_tools_lock:
-        _pending_tools.append(FunctionTool())
+    _record_registration(FunctionTool())
     return fn
 
 
