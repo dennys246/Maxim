@@ -27,6 +27,12 @@ OPERATOR PROTOCOL:
 
 Offline logic check: --dry-run (linear world, stationary source) — expect
 slope ~0.64 in the central region, clean saturation at |az|=1, no hysteresis.
+Dry-run REJECTS on full-range admission by design: its saturation makes the
+full-range fit non-linear (R2 ~0.98). That is the rig, not a failure.
+
+Every record carries a run_id unique to the invocation; group by run_id, NOT by
+--label (labels get reused across re-runs). Only a run whose log ends in
+sweep_done is complete — sweep_aborted marks a killed run, exclude it.
 
 Findings feed: the Step-3 placement targets/limits (set from the measured
 curve), docs/embodiment/porting_orient_loop.md calibration step, and the
@@ -36,6 +42,8 @@ runbook's calibration-unknowns table.
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import statistics
 import sys
 import time
@@ -66,20 +74,58 @@ def collect_pose_reads(reader, *, reads: int, poll_s: float, timeout_s: float = 
     return samples, attempts
 
 
-def fit_central_slope(points: list[tuple[float, float]], psi_max: float = 0.5) -> float | None:
-    """Least-squares slope d(az)/d(psi) over the central |psi| <= psi_max region."""
-    pts = [(p, a) for p, a in points if abs(p) <= psi_max]
-    if len(pts) < 3:
-        return None
+def labels_in_log(path: str) -> set[str]:
+    """Labels already present in an append-only sweep log (may be empty/absent)."""
+    seen: set[str] = set()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                label = rec.get("label")
+                if isinstance(label, str):
+                    seen.add(label)
+    except OSError:
+        pass
+    return seen
+
+
+# L9 (2026-08-23): score the FULL-RANGE fit, never the central one. The gate
+# band [0.52, 0.62] around 0.578 was derived from full-range fits, but this
+# script used to print only central gain (|psi| <= 0.5, ~11 points over a short
+# lever arm) with no R² — a units mismatch that made a healthy instrument read
+# as un-scoreable. Across four sessions the admitted full-range fits span 0.013;
+# the same curves scored centrally span 0.086. See docs/limits/README.md L9.
+ADMIT_R2 = 0.99
+ADMIT_N = 25
+
+
+def fit_line(points: list[tuple[float, float]], psi_max: float | None = None) -> tuple[float, float, int] | None:
+    """Least-squares d(az)/d(psi) -> (slope, r_squared, n_points).
+
+    psi_max restricts to |psi| <= psi_max (the central region); None fits the
+    full swept range, which is the statistic the H2 gate band was built from.
+    """
+    pts = [(p, a) for p, a in points if psi_max is None or abs(p) <= psi_max]
     n = len(pts)
-    sx = sum(p for p, _ in pts)
-    sy = sum(a for _, a in pts)
-    sxx = sum(p * p for p, _ in pts)
-    sxy = sum(p * a for p, a in pts)
-    denom = n * sxx - sx * sx
-    if abs(denom) < 1e-12:
+    if n < 3:
         return None
-    return (n * sxy - sx * sy) / denom
+    mean_p = sum(p for p, _ in pts) / n
+    mean_a = sum(a for _, a in pts) / n
+    sxx = sum((p - mean_p) ** 2 for p, _ in pts)
+    if sxx < 1e-12:
+        return None
+    slope = sum((p - mean_p) * (a - mean_a) for p, a in pts) / sxx
+    intercept = mean_a - slope * mean_p
+    ss_tot = sum((a - mean_a) ** 2 for _, a in pts)
+    ss_res = sum((a - (slope * p + intercept)) ** 2 for p, a in pts)
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else float("nan")
+    return slope, r2, n
 
 
 def main() -> int:
@@ -97,7 +143,26 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="offline logic check (no robot)")
     args = ap.parse_args()
 
+    # Records are keyed by run_id, NOT by --label. The log is append-only and
+    # operators reuse labels across re-runs: on 2026-08-23 an aborted attempt
+    # (19% yield, 59% outlier samples) and its clean re-run both wrote under
+    # 'heartbeat-1.1-2026-08-23-run2', so any consumer filtering on label
+    # silently merged garbage into the analysed set. run_id is unique per
+    # invocation; only a run that reaches sweep_done is complete.
+    run_id = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.getpid()}"
     log = JsonlLog(args.log)
+
+    written = {"sweep_point": 0}
+
+    def emit(event: str, **fields: object) -> None:
+        written[event] = written.get(event, 0) + 1
+        log.write(event, run_id=run_id, label=args.label, **fields)
+
+    if args.label in labels_in_log(args.log):
+        print(
+            f"[warn] label {args.label!r} already appears in {args.log}; this run is"
+            f" run_id={run_id} — group by run_id, not label, when analysing."
+        )
     poll_s = 0.0 if args.dry_run else 0.15
 
     def pace(seconds: float) -> None:
@@ -123,16 +188,15 @@ def main() -> int:
             ans = input("        Source placed and playing? [y/N] ").strip().lower()
             if ans not in ("y", "yes"):
                 print("[abort] place the source, then rerun.")
-                log.write("abort", reason="source_not_placed")
+                emit("abort", reason="source_not_placed")
                 log.close()
                 return 1
 
     n_poses = int(round((args.max_yaw - args.min_yaw) / args.step)) + 1
     ascending = [round(args.min_yaw + i * args.step, 3) for i in range(n_poses)]
     passes = [("ascending", ascending), ("descending", list(reversed(ascending)))]
-    log.write(
+    emit(
         "sweep_start",
-        label=args.label,
         min_yaw=args.min_yaw,
         max_yaw=args.max_yaw,
         step=args.step,
@@ -142,6 +206,37 @@ def main() -> int:
     )
 
     results: dict[str, list[tuple[float, float]]] = {}
+    try:
+        run_passes(
+            passes,
+            rig=rig,
+            args=args,
+            emit=emit,
+            pace=pace,
+            poll_s=poll_s,
+            results=results,
+        )
+    except BaseException as exc:  # KeyboardInterrupt included — the common case
+        points_written = written["sweep_point"]
+        emit("sweep_aborted", reason=type(exc).__name__, points_written=points_written)
+        log.close()
+        print(
+            f"\n[aborted] {type(exc).__name__} after {points_written} points."
+            f" run_id={run_id} is marked sweep_aborted — exclude it from analysis."
+        )
+        raise
+
+    if not args.dry_run:
+        rig.recenter()
+
+    _analyse(results)
+    emit("sweep_done")
+    log.close()
+    print(f"\n[done] full data in {args.log} (run_id={run_id}, label={args.label}) — send it back for curve analysis.")
+    return 0
+
+
+def run_passes(passes, *, rig, args, emit, pace, poll_s, results) -> None:
     for pass_name, poses in passes:
         print(f"\n[{pass_name}] {len(poses)} poses, {args.reads} gated reads each")
         print(f"      {'psi':>6}  {'n':>4}  {'median':>7}  {'min':>6}  {'max':>6}  {'gate%':>5}")
@@ -160,9 +255,8 @@ def main() -> int:
                 med = lo = hi = None
                 gate = 0.0
                 print(f"      {psi:+.2f}  {0:>4}     (no gated readings)")
-            log.write(
+            emit(
                 "sweep_point",
-                label=args.label,
                 sweep_pass=pass_name,
                 psi=psi,
                 n=len(samples),
@@ -174,18 +268,26 @@ def main() -> int:
             )
         results[pass_name] = pass_points
 
-    if not args.dry_run:
-        rig.recenter()
 
-    # --- analysis ---
+def _analyse(results: dict[str, list[tuple[float, float]]]) -> None:
     print("\n[analysis]")
+    admitted: list[float] = []
     for pass_name, pts in results.items():
-        slope = fit_central_slope(pts)
-        print(
-            f"  {pass_name}: central gain (|psi|<=0.5) = {slope:+.3f}/rad"
-            if slope is not None
-            else f"  {pass_name}: too few central points to fit"
-        )
+        full = fit_line(pts)
+        central = fit_line(pts, psi_max=0.5)
+        if full is None:
+            print(f"  {pass_name}: too few points to fit")
+        else:
+            slope, r2, n = full
+            ok = r2 >= ADMIT_R2 and n >= ADMIT_N
+            if ok:
+                admitted.append(slope)
+            verdict = "ADMIT" if ok else f"REJECT (needs R2>={ADMIT_R2}, n>={ADMIT_N})"
+            print(f"  {pass_name}: full-range gain = {slope:+.3f}/rad  R2={r2:.4f}  n={n}  -> {verdict}")
+            if central is not None:
+                print(
+                    f"      (central |psi|<=0.5 = {central[0]:+.3f}, R2={central[1]:.4f} — NOT the gate statistic, see L9)"
+                )
         # non-monotonic zones: where az moves OPPOSITE to psi between adjacent poses
         flips = [(p1, a1, p2, a2) for (p1, a1), (p2, a2) in zip(pts, pts[1:]) if (a2 - a1) * (p2 - p1) < -0.03]
         for p1, a1, p2, a2 in flips:
@@ -199,12 +301,19 @@ def main() -> int:
         print(
             f"  hysteresis: mean |asc-desc| = {statistics.mean(hys):.3f}, worst {abs(asc[worst] - desc[worst]):.3f} at psi {worst:+.2f}"
         )
+    if admitted:
+        lo, hi = min(admitted), max(admitted)
+        print(
+            f"  ADMITTED: {len(admitted)} pass(es), gain {lo:+.3f}..{hi:+.3f}"
+            f" (spread {hi - lo:.3f}, mean {sum(admitted) / len(admitted):+.3f})"
+        )
+        if len(admitted) < 2:
+            print("      WARNING: <2 admitted passes — sign-flip contamination rejects ~half;")
+            print("               re-run for more passes before scoring a gate (L9).")
+    else:
+        print("  ADMITTED: none — no pass met the admission criterion; this sweep is not scoreable.")
     geo = 2.0 / 3.141592653589793
     print(f"  (geometric prediction: {geo:+.3f}/rad; s1 apparatus EMA landed ~0.3-0.4)")
-    log.write("sweep_done", label=args.label)
-    log.close()
-    print(f"\n[done] full data in {args.log} (label={args.label}) — send it back for curve analysis.")
-    return 0
 
 
 if __name__ == "__main__":
