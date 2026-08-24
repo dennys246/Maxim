@@ -40,6 +40,14 @@ The habituating agent catches the novel sound even in a 40-noise wall; the non-h
 
 Alone, an infant's un-heard noises are not habituated and compete with the novel sound. The crèche pools everyone's familiarity, so collectively every noise is habituated — **a hivemind suppresses noise no single member personally experienced**, and the novel sound triumphs. This is the collective-expectation claim: shared substrate → shared model of "what comes from where is normal" → shared surprise.
 
+## Raw data (S4 status, 2026-08-24)
+
+The original 2026-07-22 run printed to the terminal and was not captured. The script is
+seeded, numpy-only and runs in under a second, so it was **re-derived on 2026-08-24** and
+the full stdout is committed at
+[`data/scripted_rederivation_2026-08-24/47_8_habituation_novel_in_noise.txt`](data/scripted_rederivation_2026-08-24/47_8_habituation_novel_in_noise.txt).
+Every number in the tables above reproduces exactly.
+
 ## Next
 
 - **EC-native joint novelty:** once the substrate's percept representation supports clean joint `(content × direction)` clustering, move novelty onto the EC cluster count so habituation *generalizes* (a novel sound *similar* to a familiar one partially habituates). Needs an encoder-representation pass (the text-based `LinguisticEncoder` is the current limit).

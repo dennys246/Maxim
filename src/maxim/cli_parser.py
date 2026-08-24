@@ -604,7 +604,7 @@ def _build_parser() -> argparse.ArgumentParser:
     util.add_argument(
         "--audit-architecture",
         action="store_true",
-        help="[experimental] Audit codebase for architecture rule violations and exit.",
+        help="Audit layer imports against the reviewed accepted-debt baseline (utils/architecture_baseline.json) and exit; exit 1 on new, stale, or unreviewed findings.",
     )
     util.add_argument(
         "--generate-simulation",

@@ -1,0 +1,13 @@
+{
+  "arm": "B",
+  "trials": 10,
+  "centering_rate": 0.4,
+  "mean_time_to_center_s": 112.33,
+  "mean_actions_to_center": 3.5,
+  "first_body_turn_correct_rate": 1.0,
+  "body_turn_usage_rate": 1.0,
+  "credited_turns": 21,
+  "credited_sign_accuracy": 1.0,
+  "credited_fold_divergent": 7,
+  "plateau_rate": 0.0
+}

@@ -375,7 +375,7 @@ directly rather than running a full scenario.
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--clear-cache` | flag | | Clear Python bytecode cache |
-| `--audit-architecture` | flag | | Check for architecture violations and exit |
+| `--audit-architecture` | flag | | Audit layer imports against the reviewed accepted-debt baseline (`maxim/utils/architecture_baseline.json`); exit 1 on new, stale, or unreviewed findings |
 | `--generate-simulation` | str | None | Generate a YAML scenario from natural language |
 | `-o`, `--output` | str | None | Output path for `--generate-simulation` |
 | `--last` | int | None | Re-run a recent invocation: `--last` (most recent), `--last 2` (second most recent) |
