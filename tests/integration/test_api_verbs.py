@@ -197,14 +197,14 @@ class TestResearchIntegration:
 class TestToolDecoratorIntegration:
     def test_schema_inferred_from_annotations(self):
         """@maxim.tool infers JSON Schema from type hints."""
-        from maxim.api import tool, _pending_tools
+        from maxim.api import tool, _registered_tools
 
         @tool
         def search_db(query: str, limit: int = 10, fuzzy: bool = False) -> list:
             """Search the database."""
             return []
 
-        registered = _pending_tools[-1]
+        registered = _registered_tools[-1]
         schema = registered.input_schema
 
         assert schema["type"] == "object"
@@ -219,14 +219,14 @@ class TestToolDecoratorIntegration:
 
     def test_tool_execution_works(self):
         """Registered tool can be executed via its execute() method."""
-        from maxim.api import tool, _pending_tools
+        from maxim.api import tool, _registered_tools
 
         @tool
         def double(n: int) -> int:
             """Double a number."""
             return n * 2
 
-        registered = _pending_tools[-1]
+        registered = _registered_tools[-1]
         result = registered.execute(n=5)
         assert result.success is True
         assert result.output == 10

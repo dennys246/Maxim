@@ -1574,3 +1574,23 @@ def _isolate_maxim_inference_lock_timeout_env():
         _os.environ["MAXIM_INFERENCE_LOCK_TIMEOUT_S"] = saved
     else:
         _os.environ.pop("MAXIM_INFERENCE_LOCK_TIMEOUT_S", None)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_registered_tools():
+    """Drop process-wide custom-tool registrations between tests (D18).
+
+    ``register_tool`` became PERSISTENT — the pending list is no longer
+    cleared on injection — so without this scrub a tool registered by one test
+    would be injected into every ToolRegistry built by every later test. Same
+    hazard shape as the env-var scrubs above: a leaked global that silently
+    changes behaviour far from where it was set.
+    """
+    yield
+    try:
+        from maxim.api import _registered_tools, _registered_tools_lock
+
+        with _registered_tools_lock:
+            _registered_tools.clear()
+    except ImportError:  # pragma: no cover - api unimportable is its own failure
+        pass

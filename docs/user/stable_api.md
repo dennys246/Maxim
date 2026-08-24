@@ -25,7 +25,9 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 | `maxim.list_models() -> dict[str, list[ModelInfo]]` | ✅ | Profile discovery. |
 | `maxim.download_model(name) -> bool` | ✅ | Local LLM download. |
 | `maxim.delete_model(name) -> bool` | ✅ | Local LLM cleanup. |
-| `maxim.register_tool(tool)` | ✅ | Custom tool registration. |
+| `maxim.register_tool(tool)` | ✅ | Custom tool registration. Process-wide and **persistent** — every later `run()`/`imagine()`/`campaign()` sees the tool; same-name re-registration replaces. |
+| `maxim.unregister_tool(name) -> bool` | ✅ | Remove one registration; `True` if found. |
+| `maxim.clear_registered_tools() -> int` | ✅ | Remove all registrations; returns the count. |
 | `maxim.tool` (decorator) | ✅ | Function-as-tool decorator. |
 | `maxim.get_version_info() -> dict` | ✅ | Version + git hash. |
 | `maxim.__version__` | ✅ | Package version string. |
@@ -68,7 +70,10 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 
 ## Stable error hierarchy
 
-All exceptions are importable from `maxim.*`:
+**Category-level** exceptions are importable from `maxim.*` (leaf subclasses live in
+`maxim.exceptions` — catch the category, or import the leaf explicitly). The one leaf
+exported directly is `MemoryCorruptionError`, because `load.agent()` documents it as its
+raise type:
 
 | Symbol | Stable | Notes |
 |---|---|---|
@@ -113,7 +118,7 @@ All exceptions are importable from `maxim.*`:
 | `load.atl(path) -> ATL` | ✅ | |
 | `load.session(session_id) -> Session` | ✅ | |
 | `load.sessions(*, limit=20) -> list[Session]` | ✅ | |
-| `load.agent(name, *, base_dir=None) -> AgentInstance` | ✅ | |
+| `load.agent(name, *, base_dir=None, on_corrupt="raise") -> AgentInstance` | ✅ | Restores Hippocampus, NAc, ATL and SCN **before returning**. Raises `MemoryCorruptionError` naming every unreadable file; pass `on_corrupt="fresh"` to accept empty state for those subsystems (the corrupt file is left on disk). |
 | `load.entity(path) -> Entity` | ✅ | |
 
 `AgentInstance`, `AgentPool`, `LLMRouter`, `Hippocampus`, `NAc`, `ATL`, and `Embodiment` are returned by these factory/loader functions; their **public** methods (the ones documented in [python-api.md](python-api.md)) are stable. Internal helper methods (leading underscore) are not.

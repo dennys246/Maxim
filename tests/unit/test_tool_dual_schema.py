@@ -618,14 +618,14 @@ class TestAgentLoopParamRendering:
         """Integration: the @maxim.tool decorator authors JSONSchema. The
         dynamic-tool prompt builder must surface its params correctly.
         """
-        from maxim.api import _pending_tools, tool
+        from maxim.api import _registered_tools, tool
 
         @tool
         def my_thing(query: str, limit: int = 5) -> list:
             """test tool."""
             return []
 
-        registered = _pending_tools[-1]
+        registered = _registered_tools[-1]
         params = self._render_params_via_to_json_schema(registered)
         assert "query" in params and "limit" in params
         assert params["query"] == "string"

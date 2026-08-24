@@ -525,12 +525,41 @@ MEMORY_PATHS: dict[str, tuple[str, ...]] = {
         "util/hippocampus.json",
     ),
     "nac": ("agents/*/nac.json", "util/nac_state.json"),
+    "ec": ("agents/*/ec.json",),
     "scn": ("agents/*/scn.json", "util/scn_state.json"),
     "atl": ("agents/*/atl.json", "util/atl_state.json"),
     "angular_gyrus": ("agents/*/angular_gyrus.json",),
     # Planning artifacts (directory)
     "planning": ("planning",),
 }
+
+# D2: memory types that MUST be invalidated together. NAc's ``reward_bias`` /
+# ``cluster_reward_bias`` are keyed by EC node ids, so clearing one half leaves
+# the other referring to nodes that will never be re-allocated — persistence
+# that LOOKS like it works while the biases silently dangle (the reasoning is
+# stated at ``runtime/bio_stack.py``'s EC construction). Before this existed
+# there was no ``ec`` key at all, so ``--clear-memory all`` wiped NAc and left
+# EC behind on every run.
+MEMORY_PAIRS: tuple[frozenset[str], ...] = (frozenset({"nac", "ec"}),)
+
+
+def expand_paired_types(requested: list[str]) -> list[str]:
+    """Add the partner of any memory type that may not be cleared alone.
+
+    Order is preserved and each type appears once; a partner is appended
+    directly after the type that pulled it in so the printed output reads in
+    the order the operator will see it happen.
+    """
+    out: list[str] = []
+    for mem_type in requested:
+        if mem_type not in out:
+            out.append(mem_type)
+        for pair in MEMORY_PAIRS:
+            if mem_type in pair:
+                for partner in sorted(pair - {mem_type}):
+                    if partner not in out:
+                        out.append(partner)
+    return out
 
 
 def clear_memory(memory_types: str, home_dir: str | None = None) -> dict[str, bool]:
@@ -541,12 +570,17 @@ def clear_memory(memory_types: str, home_dir: str | None = None) -> dict[str, bo
     ``agents/<id>/`` directory; every matched file or directory is removed.
 
     Args:
-        memory_types: Comma-separated memory types or 'all'.
+        memory_types: Comma-separated memory types or 'all'. Types listed in
+            :data:`MEMORY_PAIRS` cannot be cleared alone — requesting one pulls
+            in its partner (D2), because clearing half a pair leaves dangling
+            cross-references.
         home_dir: Base data directory (deprecated, uses ~/.maxim/ by default).
 
     Returns:
         Dict mapping memory type to success (True if at least one target was
-        cleared, False if none were found).
+        cleared, False if none were found). May contain types the caller did
+        NOT request: a paired type pulls in its partner (see
+        :data:`MEMORY_PAIRS`), and the partner appears in this dict too.
     """
     import shutil
     from pathlib import Path
@@ -557,7 +591,11 @@ def clear_memory(memory_types: str, home_dir: str | None = None) -> dict[str, bo
     if memory_types == "all":
         types_to_clear = list(MEMORY_PATHS.keys())
     else:
-        types_to_clear = [t.strip().lower() for t in memory_types.split(",")]
+        requested = [t.strip().lower() for t in memory_types.split(",")]
+        types_to_clear = expand_paired_types(requested)
+        for added in [t for t in types_to_clear if t not in requested]:
+            partner = next(sorted(pair - {added})[0] for pair in MEMORY_PAIRS if added in pair)
+            print(f"  Also clearing: {added} (must be invalidated with {partner} — see MEMORY_PAIRS)")
 
     base = Path(home_dir) if home_dir is not None else data_home()
 

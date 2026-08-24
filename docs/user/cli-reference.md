@@ -55,7 +55,7 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 | `--memory-path` | str | `{home_dir}/memory/memories.json` | Custom memory storage path |
 | `--reset` | flag | | Clear memory on startup |
 | `--enable-embeddings` | flag | | Enable semantic embeddings for similarity |
-| `--clear-memory` | str | `all` | Clear persistent memory and exit. Types: `all` (default), `focus`, `bounds`, `escalation`, `fear`, `threshold`, `nac`, `scn`, `hippo`, `pain`, `semantic`. Comma-separated. |
+| `--clear-memory` | str | `all` | Clear persistent memory and exit. Types: `all` (default), `focus`, `bounds`, `escalation`, `fear`, `threshold`, `nac`, `ec`, `scn`, `hippo`, `pain`, `semantic`, `atl`, `angular_gyrus`, `statistician`, `cross_layer`, `planning`. Comma-separated. `nac` and `ec` are a pair — clearing either clears both, because NAc's reward biases are keyed by EC node ids. |
 
 ## Hardware and Perception
 

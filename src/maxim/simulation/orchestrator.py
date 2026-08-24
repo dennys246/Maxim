@@ -642,9 +642,9 @@ def start_simulation_mode(
             prompt_handler=aut_prompt_handler,
         )
     # Inject user-registered tools from maxim.register_tool() / @maxim.tool
-    from maxim.api import _inject_pending_tools
+    from maxim.api import _inject_registered_tools
 
-    _inject_pending_tools(aut_registry)
+    _inject_registered_tools(aut_registry)
 
     aut_decision_engine = build_decision_engine()
     aut_agent = MaximAgent()

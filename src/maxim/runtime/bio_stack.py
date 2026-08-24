@@ -297,8 +297,23 @@ def build_bio_stack(
     # Mirror the cerebellum pattern: load-when-file-exists, recover on
     # corruption (load_safe warns + starts empty). load() applies the
     # wall-clock decay-on-load from the payload's saved_at stamp.
-    if load_persisted and p is not None and (p / "nac.json").exists():
-        nac.load_safe()
+    if load_persisted and p is not None:
+        # Review fold (cross-confirmed): the pair is loaded by two independent
+        # `if exists()` blocks, so a half-present pair — a manual rm, an
+        # interrupted write, a partial backup restore — restored NAc biases
+        # keyed to EC node ids a fresh EC will never re-allocate, silently.
+        # D2 guards the CLI clear path; this is the LOAD path where the damage
+        # actually manifests.
+        from maxim.runtime.agent_factory import check_nac_ec_pairing
+
+        check_nac_ec_pairing(p)  # advisory WARNING only
+        if (p / "nac.json").exists():
+            # load_safe recovers internally and REPORTS via its return value;
+            # this caller used to discard it, so nothing downstream could tell a
+            # clean restore from a recovered-from-corrupt one.
+            ok, err = nac.load_safe()
+            if not ok:
+                logger.warning("NAc restore fell back to an empty causal model: %s", err)
     scn = SCN()
     scn.enable_oscillator()  # B2: close SCN→NAc feedback loop
     # EC persists beside NAc (nac_cross_session_persistence.md): NAc's

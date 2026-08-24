@@ -117,7 +117,19 @@ class WeatherTool(Tool):
 
 maxim.register_tool(WeatherTool())
 maxim.run(model="mistral-7b")  # WeatherTool is now available to the agent
+maxim.run(model="mistral-7b")  # ...and to this call too — registration persists
 ```
+
+**Registration lifetime.** `register_tool` and `@tool` register **process-wide
+and persistently**: the tool is injected into every agent registry built for the
+rest of the process, matching this page's "available to all agents" contract.
+Registering a tool whose `name` matches an existing registration replaces it, so
+re-registering is idempotent rather than cumulative. Remove registrations with
+`maxim.unregister_tool(name)` (returns `True` if one was removed) or
+`maxim.clear_registered_tools()` (returns how many were removed); `maxim.list_registered_tools()` reports what will be injected next. All take
+effect on the next `run()`/`imagine()`/`campaign()`, leaving in-flight agents
+alone. Earlier builds registered silently one-shot: only the next registry build saw
+the tool (D18).
 
 ### Minimal example — decorator
 
@@ -140,6 +152,7 @@ The decorator infers `input_schema` from type hints and exports it as JSONSchema
 
 - ABC: [`src/maxim/tools/base.py`](../../src/maxim/tools/base.py)
 - Registration verbs: [`src/maxim/api.py::register_tool`](../../src/maxim/api.py), [`src/maxim/api.py::tool`](../../src/maxim/api.py)
+- Removal verbs: [`src/maxim/api.py::unregister_tool`](../../src/maxim/api.py), [`src/maxim/api.py::clear_registered_tools`](../../src/maxim/api.py)
 - Schema export: `Tool.to_json_schema()` returns JSONSchema 2020-12 / MCP-compatible output
 - Cancellation hook: `Tool.cancel()` is a non-abstract no-op on the ABC, reserved for 1.1+ MCP-subprocess and async-cancel work. No 1.0 dispatch path calls it; heavy tools (HTTP fetch, web search) override it to set a `threading.Event` for cooperative cancellation. See CLAUDE.md "Tool.cancel" invariant.
 - Side-effects channel: [tool_side_effects.md](tool_side_effects.md)
