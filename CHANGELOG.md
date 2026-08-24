@@ -24,8 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`maxim.unregister_tool(name)` / `maxim.clear_registered_tools()`** — removal
-  verbs for the now-persistent custom-tool registry (D18).
+- **`maxim.unregister_tool(name)` / `maxim.clear_registered_tools()` /
+  `maxim.list_registered_tools()`** — removal and inspection verbs for the
+  now-persistent custom-tool registry (D18). `maxim.MemoryCorruptionError` is
+  now importable directly, since `load.agent()` documents it as its raise type.
 - **1.1 release-readiness ledgers** — repository scorecard plus a verified
   stable-API/architecture/test defect cluster (D15–D20), with explicit 1.1 versus
   1.1.x dispositions.
@@ -68,7 +70,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   naming every unreadable file. Pass `on_corrupt="fresh"` to explicitly accept
   empty state — the corrupt file is left on disk either way. The factory
   default stays lenient so the change does not reach callers outside the stable
-  load path.
+  load path. The EC is restored alongside the NAc on this path — it was
+  previously constructed blank, which produced exactly the dangling-bias state
+  the NAc/EC pairing exists to prevent — and a half-present pair on disk now
+  raises a WARNING via `check_nac_ec_pairing`, wired into both `load.agent()`
+  and `build_bio_stack` (advisory, not fatal — agents saved before EC was
+  persisted legitimately have no `ec.json`). `AgentConfig.on_corrupt` is a validated `Literal`, so a
+  typo on the safety switch raises instead of silently degrading to lenient.
 - **`register_tool()` registration is persistent, not one-shot (D18).**
   `_inject_registered_tools` no longer clears the pending list, so a registered
   tool is available to every later `run()`/`imagine()`/`campaign()` — matching

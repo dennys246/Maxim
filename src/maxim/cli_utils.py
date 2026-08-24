@@ -578,7 +578,9 @@ def clear_memory(memory_types: str, home_dir: str | None = None) -> dict[str, bo
 
     Returns:
         Dict mapping memory type to success (True if at least one target was
-        cleared, False if none were found).
+        cleared, False if none were found). May contain types the caller did
+        NOT request: a paired type pulls in its partner (see
+        :data:`MEMORY_PAIRS`), and the partner appears in this dict too.
     """
     import shutil
     from pathlib import Path

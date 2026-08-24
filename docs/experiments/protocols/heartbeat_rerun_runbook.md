@@ -244,6 +244,18 @@ the healthy band (H2 branch fires only if outside ≈[0.52, 0.62]); probe 1.00
 direction. Version-match SDK/daemon first (skew fails silently on sensing AND
 control).
 
+**Which sweep number scores H2 — read this before comparing anything ([L9](../../limits/README.md)):**
+score the **full-range** fit, admitted at **R² ≥ 0.99, n ≥ 25, `dry_run == false`**,
+grouped by **`run_id`** (never by `--label` — labels get reused across re-runs, and
+merging two same-label sweeps is what produced a wrong rejection list once already).
+The **central** (`|psi| ≤ 0.5`) gain is NOT the gate statistic: across the committed
+corpus the admitted full-range fits span 0.013 while the same curves scored centrally
+span 0.086, most of the band width. `doa_sweep.py` now prints `H2: PASS/FIRES/
+PROVISIONAL/UNSCOREABLE` itself and stamps the verdict into `sweep_done`, so read that
+rather than eyeballing a slope. **Budget ≥ 4 passes** — sign-flips at `|psi| ≳ 1.0`
+reject roughly half of them ([L10](../../limits/README.md)), and a single admitted pass
+reports `PROVISIONAL` rather than scoring.
+
 ### Rows that do NOT re-run on heartbeat
 
 - **Exp 37/38 behavioral-override claim** — settled-dominated (row 2); the

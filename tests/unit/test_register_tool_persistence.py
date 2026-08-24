@@ -176,3 +176,46 @@ def test_concurrent_injection_is_thread_safe():
 
     assert not errors
     assert seen == [1] * 8, f"some threads saw an emptied list: {seen}"
+
+
+# ---------------------------------------------------------------------------
+# Review-fold guards (two-lens round, 2026-08-23)
+# ---------------------------------------------------------------------------
+
+
+def test_nameless_tool_is_rejected_at_registration():
+    """Now that registration is permanent, a nameless object would be appended
+    unboundedly and warn inside registry.register on EVERY later run()."""
+
+    class _Nameless:
+        description = "no name attribute"
+
+    with pytest.raises(TypeError, match="non-empty string"):
+        maxim.register_tool(_Nameless())
+    assert maxim.list_registered_tools() == []
+
+
+def test_empty_name_is_rejected_by_the_tool_abc():
+    """Documents which layer owns this: Tool.__init__ rejects it before
+    register_tool ever sees the instance, so api.py guards only the
+    duck-typed/non-Tool case above."""
+
+    class _Blank(_Probe):
+        name = ""
+
+    with pytest.raises(ValueError, match="non-empty name"):
+        _Blank()
+    assert maxim.list_registered_tools() == []
+
+
+def test_list_registered_tools_reports_what_will_be_injected():
+    maxim.register_tool(_Probe())
+    maxim.register_tool(_Other())
+    assert maxim.list_registered_tools() == ["d18_probe", "d18_other"]
+
+    maxim.unregister_tool("d18_probe")
+    assert maxim.list_registered_tools() == ["d18_other"]
+
+    reg = ToolRegistry()
+    _inject_registered_tools(reg)
+    assert reg.list_all() == ["d18_other"]

@@ -221,78 +221,122 @@ your metric can actually see.
 - **Raw data:** `docs/experiments/data/37_oldhash_qwen32b_A_2026-08-22.jsonl`
   (S4; the only evidence that the June environment is gone).
 
-### L9 — DoA sweep central-region gain is the wrong statistic · MITIGATED
+### L9 — DoA sweep gain: score the full-range fit under an R² gate, not the central fit · MITIGATED
 
 - **Instrument:** `scripts/orient_backbone/doa_sweep.py` gain, and the H2
-  heartbeat gate that scores it against a healthy band `[0.52, 0.62]` around
-  H1's 0.578.
-- **The defect was a units mismatch, not a broken sensor.** The script reports
-  **central** gain (`|psi| <= 0.5` — 11 points over a short lever arm). The gate
-  band was derived from **full-range** fits: 0.578 is exactly the `post-headfix`
-  ascending full-range value. Scoring central against a full-range band made a
-  healthy, reproducible instrument read as un-scoreable for a full session.
-- **Measured 2026-08-23** over every committed sweep — four sessions spanning
-  months and the head-frame fix — admitting full-range fits at **R² >= 0.99 and
-  n >= 25**:
+  heartbeat gate that scores it against `[0.52, 0.62]`.
+- **Where the band actually comes from — NOT a fit statistic.** The H1
+  pre-registration derives it from the big-step decision boundary: `|az| ≈ 0.33`
+  was set from a gain of **0.55–0.57**, and H2 fires when the measured gain
+  implies a boundary moving more than **0.03 az**, i.e. gain outside
+  `[0.52, 0.62]` via `boundary ∝ 1/g`. Its midpoint is 0.57. An earlier draft of
+  this entry claimed the band "was derived from full-range fits: 0.578 is
+  exactly the `post-headfix` ascending full-range value" — **that was wrong**.
+  0.578 is an H1 *result*, produced by a three-parameter fold model
+  (`az = g·fold(psi − psi0)`), and its coincidence with one OLS full-range fit
+  from a different session a month earlier is just that: a coincidence.
+- **So the statistic is a decision made HERE, not a recovered one.** The
+  historical 0.55–0.57 corpus does not record which fit produced it, and the
+  surviving citations are mixed (`45c_flip_bins.md` quotes "sweep 0.546–0.578",
+  where 0.546 is a central value and 0.578 a full-range one). This entry
+  *chooses* the full-range fit, on the evidence below, and that choice is the
+  contribution — it is not an archaeology finding.
+- **Why full-range:** across every committed sweep, admitting fits at
+  **R² ≥ 0.99, n ≥ 25, non-dry-run**, grouped **per `sweep_start`** (see the
+  grouping note below):
 
-  | curve | full-range gain | R² |
-  |---|---|---|
-  | `mag1-setup` descending | +0.577 | 0.997 |
-  | `post-headfix` ascending | +0.578 | 0.998 |
-  | `post-headfix` descending | +0.571 | 0.998 |
-  | `h1-healthy-geom1-front` ascending | +0.574 | 0.996 |
-  | `h1-healthy-geom1-front` descending | +0.584 | 0.995 |
-  | heartbeat 2026-08-23 run1 ascending | +0.573 | 0.998 |
+  | sweep | pass | full-range | R² | central |
+  |---|---|---|---|---|
+  | `mag1-setup` | desc | +0.5768 | 0.9971 | +0.605 |
+  | `post-headfix` | asc | +0.5776 | 0.9982 | +0.549 |
+  | `post-headfix` | desc | +0.5705 | 0.9982 | +0.546 |
+  | `h1-geom1-front` | asc | +0.5735 | 0.9959 | +0.519 |
+  | `h1-geom1-front` | desc | +0.5835 | 0.9954 | +0.556 |
+  | `h1-geom2` run 2 | asc | +0.5758 | 0.9958 | +0.543 |
+  | `h1-geom2` run 2 | desc | +0.5746 | 0.9980 | +0.555 |
+  | heartbeat 2026-08-23 run 1 | asc | +0.5725 | 0.9978 | +0.519 |
 
-  **Spread 0.013, mean +0.576, every value inside the band.** The *same six
-  curves* scored centrally span 0.519–0.605 — spread 0.086, or 86% of the whole
-  band width. The full-range fit is the stable statistic; the central fit is
-  not.
-- **R² is the discriminator, and it is decisive.** Every curve whose gain
-  disagrees fails admission (`baseline` 0.78/0.83, `h1-geom2-displaced`
-  0.60/0.63, run1 descending 0.861, run2 ascending 0.901). No admitted curve
-  disagrees. An R² gate separates real measurements from contaminated ones
-  without any appeal to judgement.
-- **H2 verdict: PASS.** The 2026-08-23 heartbeat's admitted curve is +0.573 at
-  R² 0.998 — within **0.001** of H1's healthy 0.574.
-- **Residual limit (BINDING):** sign-flip contamination at `|psi| >~ 1.0`
-  rejects roughly half of all passes (3 of 4 on 2026-08-23). Flips arrive at
-  full signal strength — attempts-per-accepted-read is the same for clean and
-  outlier-bearing points (1.81 vs 2.16; 1.72 vs 1.80) — so they are an estimator
-  failure, not a weak source, and cannot be cured by a louder speaker.
-  **Budget >= 4 passes so >= 2 admit.**
-- **Triage numbers for a suspect sweep** (from a genuinely dead run in the same
-  session): 19% yield, 59% outlier samples, 6.0 attempts/accepted, gain +0.104
-  at R² 0.10 — near-constant azimuth regardless of head angle. A dead run is
-  unmistakable; use these before interpreting any gain.
-- **Design consequence:** score the **full-range** fit under **R² >= 0.99 and
-  n >= 25**; never the central fit; report every pass with its admission status
-  and the admitted spread, not one number. Any A/B use of this sweep (the
-  pinnae/shell mods are the planned one) must diff admitted curves only — the
-  historical `baseline` vs `post-headfix` comparison would have compared a
-  rejected curve against an admitted one.
+  **Full-range spread 0.0130** (mean +0.5756, all inside the band). The *same
+  eight curves* scored centrally span **0.0859** — 86% of the band width. The
+  central fit uses ~11 points over a short lever arm and is the noisy one.
+- **H2 verdict for the 1.1 heartbeat: PASS.** The admitted curve is **+0.5725 at
+  R² 0.9978**, within 0.002 of H1's front-geometry OLS (+0.5735).
+- **Group by `run_id`, never by `--label`.** The first draft of this table
+  merged same-label sweeps and consequently reported
+  `h1-geom2-displaced` as a *failing* curve at "R² 0.60/0.63". Those were the R²
+  of two different geometries merged into one fit. Split properly, that label's
+  **run 2 ADMITS** (+0.5758 / +0.5746) — and H1's own results section already
+  records why: *"The first 'geom2-displaced'-labelled run was a placement
+  misunderstanding — the source stayed in front… the label in the JSONL is
+  wrong."* The lesson generalises: **this file's own analyses are subject to the
+  discipline the tooling enforces.**
+- **What the R² gate is, precisely: a LINEARITY detector — not a
+  contamination detector.** An earlier draft claimed it "separates real
+  measurements from contaminated ones without any appeal to judgement." It does
+  not. It rejects the genuinely displaced geometry (`h1-geom2` run 3, R²
+  0.61/0.53) because the ±π/2 array fold falls inside the swept range and no
+  straight line fits — that is a real measurement of a real geometry, correctly
+  refused rather than mis-measured. **Consequence: the full-range statistic
+  cannot MEASURE off-axis placements at all, only decline them.** The central
+  fit can — run 3's central value (+0.650/+0.644) reproduces H1's displaced
+  0.645. Use full-range for the H2 gate; keep the central fit for geometry work.
+- **The gate is a cliff — that is why ≥ 4 passes matter.** At R² ≥ 0.98 three
+  more curves enter (+0.5693/+0.5708/+0.5983), all still in band. At R² ≥ 0.97
+  `mag1-setup` ascending enters at **+0.4178** and the picture breaks. There is
+  roughly 0.005 of margin on the admit side and 0.010 on the reject side.
+- **Committed sweep data can be SYNTHETIC.** The first `sweep_start` in
+  `45_doa_sweep_baseline.jsonl` / `45_doa_sweep_post_headfix.jsonl` carries
+  `"dry_run": true` — re-running `--dry-run` on this build reproduces its
+  numbers exactly (+0.569/+0.571). That file is cited as a regression guard in
+  the graduation ledger and is half simulated. `dry_run` now rides on every
+  record, not just `sweep_start`, so a point can no longer be mistaken for a
+  measurement.
+- **Design consequence:** score the **full-range** fit under **R² ≥ 0.99, n ≥ 25,
+  `dry_run == false`**, grouped by `run_id`; report every pass with its
+  admission status and the admitted spread. The script now scores this itself
+  (`H2_BAND`, `ADMIT_R2`, `ADMIT_N`) and stamps `h2`, `admitted_gains`, and the
+  thresholds into the `sweep_done` record, so no consumer has to re-fit — the
+  re-fitting is what produced the grouping error above.
 - **Claim linkage:** clears the H2 branch of the 1.1 heartbeat walk. Does not
   disturb the orient Layer 1 EARNED row (scored on orient outcome, not gain).
-- **Relation to L8:** the mirror case, and the useful contrast. L8 is a gate
-  that genuinely cannot be scored because the environment moved. L9 *looked*
-  like L8 for a session and was not — the apparatus was fine and the metric
-  definition was wrong. Check that the statistic being compared is the
-  statistic the baseline was derived from **before** concluding an instrument
-  has drifted.
-- **Apparatus defects found and fixed alongside:** (a) the sweep log was keyed
-  by the operator-supplied `--label`, so an aborted attempt and its clean re-run
-  both wrote under `heartbeat-1.1-2026-08-23-run2` in one append-only file —
-  records now carry a per-invocation `run_id`, a killed run is recorded as
-  `sweep_aborted`, and label reuse warns at startup; (b) the `[analysis]` block
-  printed only central gain with no R², which is what made the mismatch
-  invisible — it now reports full-range gain, R², and admission status.
+- **Relation to L8:** the instructive contrast. L8 is a gate that genuinely
+  cannot be scored because the environment moved. L9 *looked* like L8 for a
+  session and was not: the apparatus was fine and the metric definition was
+  wrong. Check that the statistic you are comparing is the statistic the
+  baseline was derived from — and, if the provenance is unrecorded, say you are
+  choosing rather than recovering.
 - **Re-measure on:** shell/pinnae acoustic mods, XVF3800 firmware or Reachy
-  SDK/daemon version change, source hardware or placement protocol change,
-  mic sample-rate change.
+  SDK/daemon version change, source hardware or placement protocol change, mic
+  sample-rate change.
 - **Raw data:** `docs/experiments/data/doa_sweep_heartbeat_1.1_2026-08-23.jsonl`
-  (S4; three sweeps — `sweep_start` #2 is the aborted attempt, exclude it),
-  compared against committed `h1_doa_sweep.jsonl` and
-  `45_doa_sweep_post_headfix.jsonl`.
+  (S4; three sweeps — `sweep_start` #2 is an aborted attempt, exclude it),
+  compared against `h1_doa_sweep.jsonl` and `45_doa_sweep_post_headfix.jsonl`.
+
+### L10 — DoA sign-flips reject roughly half of all sweep passes · BINDING
+
+Split out of L9 (review fold): it has its own design consequence and its own
+triggers, and it was less discoverable nested inside a MITIGATED entry.
+
+- **Instrument:** the same speech-gated DoA read, at `|psi| ≳ 1.0`.
+- **Limit (measured 2026-08-23):** 3 of 4 passes in one session failed the L9
+  admission criterion because of sporadic mirror-image reads at large `|psi|`.
+  Run 1 descending fell to R² 0.861, run 2 ascending to 0.901.
+- **Not a weak source.** Attempts-per-accepted-read for clean vs
+  outlier-bearing points: run 1 descending **1.77 vs 2.31**, run 3 ascending
+  **1.59 vs 1.50**. The second pair is flat; the first shows a ~30% gap. On
+  n = 2 passes that is **within noise, not identical** — an earlier draft called
+  it "the same", which overstated one of the two data points. Supporting
+  evidence that it is estimator behaviour rather than signal strength: run 3's
+  flip at `psi = +1.00` occurred at 9 attempts, an entirely normal yield.
+- **A genuinely dead run is unmistakable** and should be triaged out first:
+  19% yield, 59% outlier samples, 6.0 attempts/accepted, gain +0.104 at R² 0.10
+  — near-constant azimuth regardless of head angle.
+- **Design consequence:** **budget ≥ 4 passes per sweep** so at least 2 admit.
+  A 2-pass sweep has a substantial chance of yielding one admitted curve, which
+  the script now reports as `PROVISIONAL` rather than scoring.
+- **Re-measure on:** XVF3800 firmware, mic geometry or shell change, DoA
+  estimator replacement.
+- **Raw data:** as L9.
 
 ## Repository capability assessment
 

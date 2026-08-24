@@ -103,6 +103,14 @@ def labels_in_log(path: str) -> set[str]:
 # the same curves scored centrally span 0.086. See docs/limits/README.md L9.
 ADMIT_R2 = 0.99
 ADMIT_N = 25
+# The H2 gate band, in CODE rather than only in prose. It lives in three docs
+# with three phrasings (the L9 entry, the heartbeat runbook, the H1
+# pre-registration) and the operator used to read a number off a terminal and
+# compare it by eye — which is the operation that failed and cost a session.
+# Provenance: NOT a fit statistic. The H1 pre-registration derives it from a
+# +/-0.03-az tolerance on the |az| ~ 0.33 big-step boundary around gain
+# 0.55-0.57, mapped through boundary ~ 1/g.
+H2_BAND = (0.52, 0.62)
 
 
 def fit_line(points: list[tuple[float, float]], psi_max: float | None = None) -> tuple[float, float, int] | None:
@@ -155,8 +163,12 @@ def main() -> int:
     written = {"sweep_point": 0}
 
     def emit(event: str, **fields: object) -> None:
+        # dry_run rides on EVERY record, not just sweep_start: a consumer reading
+        # sweep_points could not otherwise tell synthetic from measured without a
+        # timestamp join, and docs/experiments/data/45_doa_sweep_baseline.jsonl is
+        # half dry-run data with nothing in its point records saying so.
         written[event] = written.get(event, 0) + 1
-        log.write(event, run_id=run_id, label=args.label, **fields)
+        log.write(event, run_id=run_id, label=args.label, dry_run=args.dry_run, **fields)
 
     if args.label in labels_in_log(args.log):
         print(
@@ -202,7 +214,6 @@ def main() -> int:
         step=args.step,
         reads=args.reads,
         settle=args.settle,
-        dry_run=args.dry_run,
     )
 
     results: dict[str, list[tuple[float, float]]] = {}
@@ -218,6 +229,11 @@ def main() -> int:
         )
     except BaseException as exc:  # KeyboardInterrupt included — the common case
         points_written = written["sweep_point"]
+        if not args.dry_run:
+            try:
+                rig.recenter()  # do not leave the body parked at the last yaw
+            except Exception as recenter_err:
+                print(f"[warn] recenter after abort failed: {recenter_err}")
         emit("sweep_aborted", reason=type(exc).__name__, points_written=points_written)
         log.close()
         print(
@@ -229,8 +245,8 @@ def main() -> int:
     if not args.dry_run:
         rig.recenter()
 
-    _analyse(results)
-    emit("sweep_done")
+    verdict = _analyse(results)
+    emit("sweep_done", **verdict)
     log.close()
     print(f"\n[done] full data in {args.log} (run_id={run_id}, label={args.label}) — send it back for curve analysis.")
     return 0
@@ -269,7 +285,7 @@ def run_passes(passes, *, rig, args, emit, pace, poll_s, results) -> None:
         results[pass_name] = pass_points
 
 
-def _analyse(results: dict[str, list[tuple[float, float]]]) -> None:
+def _analyse(results: dict[str, list[tuple[float, float]]]) -> dict[str, object]:
     print("\n[analysis]")
     admitted: list[float] = []
     for pass_name, pts in results.items():
@@ -314,6 +330,30 @@ def _analyse(results: dict[str, list[tuple[float, float]]]) -> None:
         print("  ADMITTED: none — no pass met the admission criterion; this sweep is not scoreable.")
     geo = 2.0 / 3.141592653589793
     print(f"  (geometric prediction: {geo:+.3f}/rad; s1 apparatus EMA landed ~0.3-0.4)")
+
+    # Score the gate here, and stamp it into the log, so no downstream consumer
+    # has to re-fit (re-fitting by --label is what produced a wrong rejection
+    # list in the first draft of L9).
+    lo, hi = H2_BAND
+    if not admitted:
+        h2 = "UNSCOREABLE"
+    elif len(admitted) < 2:
+        h2 = "PROVISIONAL"
+    else:
+        h2 = "PASS" if all(lo <= g <= hi for g in admitted) else "FIRES"
+    print(f"  H2 [{lo}, {hi}]: {h2}  ({len(admitted)} admitted pass(es))")
+    if h2 == "PROVISIONAL":
+        print("      one admitted pass is not enough to score H2 — re-run for more (L9).")
+    if h2 == "FIRES":
+        print("      at least one admitted gain is outside the band — H2 fires.")
+    return {
+        "admitted_gains": [round(g, 4) for g in admitted],
+        "admitted_n": len(admitted),
+        "admit_r2": ADMIT_R2,
+        "admit_min_points": ADMIT_N,
+        "h2_band": list(H2_BAND),
+        "h2": h2,
+    }
 
 
 if __name__ == "__main__":

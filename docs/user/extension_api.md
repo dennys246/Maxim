@@ -126,10 +126,10 @@ rest of the process, matching this page's "available to all agents" contract.
 Registering a tool whose `name` matches an existing registration replaces it, so
 re-registering is idempotent rather than cumulative. Remove registrations with
 `maxim.unregister_tool(name)` (returns `True` if one was removed) or
-`maxim.clear_registered_tools()` (returns how many were removed) — both take
+`maxim.clear_registered_tools()` (returns how many were removed); `maxim.list_registered_tools()` reports what will be injected next. All take
 effect on the next `run()`/`imagine()`/`campaign()`, leaving in-flight agents
-alone. Before 1.1 registration was silently one-shot: only the next registry
-build saw the tool (D17/D18 fold).
+alone. Earlier builds registered silently one-shot: only the next registry build saw
+the tool (D18).
 
 ### Minimal example — decorator
 

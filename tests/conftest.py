@@ -1592,5 +1592,5 @@ def _isolate_registered_tools():
 
         with _registered_tools_lock:
             _registered_tools.clear()
-    except Exception:  # pragma: no cover - api import failure is its own error
+    except ImportError:  # pragma: no cover - api unimportable is its own failure
         pass

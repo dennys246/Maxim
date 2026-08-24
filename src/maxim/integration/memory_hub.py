@@ -653,13 +653,23 @@ class MemoryHub:
                 logger.error("Escalation bridge startup failed: %s", e)
                 self._disabled_bridges.add("escalation")
 
-        # Load ATL state
+        # Load ATL state.
+        # Skipped exactly once when AgentFactory already restored it (i.e. the
+        # maxim.load.agent() path): ATL.load_state clears before restoring, so
+        # re-reading here would silently discard concepts stored between the
+        # load and the session start. The flag is consumed, so the next session
+        # — which follows an on_session_end save — reloads normally.
         if self.atl is not None:
-            try:
-                self.atl.load()
+            if getattr(self.atl, "restored_at_construction", False):
+                self.atl.restored_at_construction = False
                 results["atl_concepts"] = len(self.atl)
-            except Exception as e:
-                logger.warning("Failed to load ATL state: %s", e)
+                logger.debug("ATL already restored at construction; skipping session-start reload")
+            else:
+                try:
+                    self.atl.load()
+                    results["atl_concepts"] = len(self.atl)
+                except Exception as e:
+                    logger.warning("Failed to load ATL state: %s", e)
 
         # Load Angular Gyrus state
         if self.angular_gyrus is not None:

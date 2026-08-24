@@ -70,7 +70,10 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 
 ## Stable error hierarchy
 
-All exceptions are importable from `maxim.*`:
+**Category-level** exceptions are importable from `maxim.*` (leaf subclasses live in
+`maxim.exceptions` — catch the category, or import the leaf explicitly). The one leaf
+exported directly is `MemoryCorruptionError`, because `load.agent()` documents it as its
+raise type:
 
 | Symbol | Stable | Notes |
 |---|---|---|

@@ -84,13 +84,21 @@ class AgentConfig:
     # D17: what to do when a persisted subsystem file is unreadable.
     #   "warn"  — log a WARNING and continue with fresh state (DEFAULT).
     #   "raise" — abort with MemoryCorruptionError naming every corrupt file.
+    # Typed + validated in __post_init__ (review fold, cross-confirmed): a bare
+    # str compared with `== "raise"` means "Raise"/"fail"/"" silently degrade to
+    # lenient — a silent no-op on a SAFETY switch, in a change whose whole thesis
+    # is that silent failures are the defect. Forgetting is now a ValueError.
     # The default is deliberately NOT "raise": SCN/hippocampus restore runs
     # inside this canonical builder for EVERY caller, so raising by default
     # would change behaviour far outside the stable load path (the
     # shared-builder activation rule). ``maxim.load.agent()`` — an API named
     # `load`, whose contract is to restore or fail — opts in to "raise".
     # Either way the failure is now LOUD; it used to be `except: pass`.
-    on_corrupt: str = "warn"
+    on_corrupt: Literal["warn", "raise"] = "warn"
+
+    def __post_init__(self) -> None:
+        if self.on_corrupt not in ("warn", "raise"):
+            raise ValueError(f"AgentConfig.on_corrupt must be 'warn' or 'raise', got {self.on_corrupt!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -116,15 +124,50 @@ def _note_corruption(
         corrupt.append({"subsystem": subsystem, "path": str(path), "error": detail})
 
 
+def check_nac_ec_pairing(agent_dir: "Path") -> str | None:
+    """Report a half-present NAc/EC pair on disk.
+
+    D2's invariant is that these two are inseparable: NAc's reward biases are
+    keyed by EC node ids, so restoring one without the other yields biases
+    pointing at nodes the other side will never re-allocate. The CLI guard
+    (``cli_utils.MEMORY_PAIRS``) stops an operator CLEARING half the pair; this
+    catches the state that actually reaches a loader — a manual ``rm``, an
+    interrupted write, or a restore from a partial backup (review fold,
+    cross-confirmed by both lenses).
+
+    WARNS, never raises, and deliberately does NOT count as corruption for
+    ``on_corrupt="raise"``. A half-present pair is not an unreadable file: every
+    agent persisted before EC restore existed on this path has ``nac.json`` and
+    no ``ec.json``, so treating it as corruption would refuse to load every
+    pre-existing agent. The biases in those files already dangle — that is a
+    property of the saved data, not a reason to make the agent unloadable — and
+    the fix is to re-save, which requires loading first.
+
+    Returns the warning text if the pair is half-present, else None.
+    """
+    nac_p, ec_p = agent_dir / "nac.json", agent_dir / "ec.json"
+    have_nac, have_ec = nac_p.exists(), ec_p.exists()
+    if have_nac == have_ec:
+        return None
+    present, missing = (nac_p, ec_p) if have_nac else (ec_p, nac_p)
+    msg = (
+        f"Half-present NAc/EC pair: {present.name} exists but {missing.name} does not. "
+        "NAc reward biases are keyed by EC node ids, so restoring one without the "
+        "other leaves those biases pointing at nodes that will never be re-allocated."
+    )
+    log.warning("%s (%s)", msg, agent_dir)
+    return msg
+
+
 def _corruption_error(agent_id: str, corrupt: list[dict[str, str]]) -> Exception:
     """Build the actionable MemoryCorruptionError for ``on_corrupt="raise"``."""
     from maxim.exceptions import MemoryCorruptionError
 
     lines = [f"  - {c['subsystem']}: {c['path']} ({c['error']})" for c in corrupt]
-    plural = "file" if len(corrupt) == 1 else "files"
+    plural = "problem" if len(corrupt) == 1 else "problems"
     message = (
-        f"Agent '{agent_id}' has {len(corrupt)} unreadable persistence {plural}; "
-        f"refusing to silently substitute fresh state:\n" + "\n".join(lines) + "\n"
+        f"Agent '{agent_id}' has {len(corrupt)} persistence {plural} and could not be "
+        f"fully restored; refusing to silently substitute fresh state:\n" + "\n".join(lines) + "\n"
         "Recover by repairing or moving the listed file(s), or call "
         'load.agent(..., on_corrupt="fresh") to start those subsystems empty '
         "(the corrupt file is left on disk until the agent next saves)."
@@ -376,6 +419,9 @@ class AgentFactory:
         atl = None
         memory_hub = None
 
+        if auto_load:
+            check_nac_ec_pairing(agent_dir)
+
         if config.remembers:
             hippocampus = self._create_hippocampus(agent_dir, auto_load=auto_load, corrupt=corrupt)
 
@@ -388,10 +434,26 @@ class AgentFactory:
         # false for every caller that just read the returned object.
         atl = self._create_atl(agent_dir, auto_load=auto_load, corrupt=corrupt)
         memory_hub = self._create_memory_hub(
-            hippocampus, nac, atl, agent_dir=agent_dir, agent_id=config.agent_id, corrupt=corrupt
+            hippocampus,
+            nac,
+            atl,
+            agent_dir=agent_dir,
+            agent_id=config.agent_id,
+            auto_load=auto_load,
+            corrupt=corrupt,
         )
 
         if corrupt and config.on_corrupt == "raise":
+            # Release the hub before aborting (review fold): its ConceptExtractor
+            # worker starts at construction, so raising past it leaks one live
+            # thread and the whole Hippocampus/ATL/SCN/EC graph per attempt — and
+            # a caller that retries on MemoryCorruptionError retries in a loop.
+            # create_full_agent already does this on its own failure path (D16).
+            if memory_hub is not None:
+                try:
+                    memory_hub.shutdown()
+                except Exception as e:  # shutdown must not mask the real error
+                    log.warning("Failed to shut down MemoryHub while aborting load: %s", e)
             raise _corruption_error(config.agent_id, corrupt)
 
         # Create tool registry (scoped by whitelist)
@@ -692,7 +754,11 @@ class AgentFactory:
                     _note_corruption(corrupt, "hippocampus", hippo_path, e)
             return hippo
         except Exception as e:
+            # Review fold: report, don't just warn — a subsystem that could not be
+            # built is a subsystem that was NOT restored, which is exactly what
+            # on_corrupt="raise" exists to refuse to do silently.
             log.warning("Failed to create Hippocampus: %s", e)
+            _note_corruption(corrupt, "hippocampus", agent_dir / "hippocampus.json", e)
             return None
 
     def _create_nac(
@@ -717,7 +783,12 @@ class AgentFactory:
                     _note_corruption(corrupt, "nac", Path(nac_path), err or "unreadable NAc state")
             return nac
         except Exception as e:
+            # Covers the OSError family that NAc.load_safe deliberately does not
+            # catch (PermissionError, IsADirectoryError, EIO) — it used to escape
+            # here and leave `corrupt` empty, so load.agent() returned nac=None
+            # and memory_hub=None at WARNING level (review fold).
             log.warning("Failed to create NAc: %s", e)
+            _note_corruption(corrupt, "nac", agent_dir / "nac.json", e)
             return None
 
     def _create_atl(
@@ -738,11 +809,18 @@ class AgentFactory:
             if auto_load and atl_path.exists():
                 try:
                     atl.load(str(atl_path))
+                    # Tell MemoryHub.on_session_start it must not re-read this
+                    # file: ATL.load_state CLEARS before restoring, so a second
+                    # read would wipe anything the caller stored between
+                    # load.agent() returning and the session starting — a window
+                    # this restore itself creates (review fold).
+                    atl.restored_at_construction = True
                 except Exception as e:
                     _note_corruption(corrupt, "atl", atl_path, e)
             return atl
         except Exception as e:
             log.warning("Failed to create ATL: %s", e)
+            _note_corruption(corrupt, "atl", agent_dir / "atl.json", e)
             return None
 
     def _create_memory_hub(
@@ -753,12 +831,12 @@ class AgentFactory:
         *,
         agent_dir: Path | None = None,
         agent_id: str,
+        auto_load: bool = False,
         corrupt: list[dict[str, str]] | None = None,
     ) -> Any:
         """Create a MemoryHub coordinating the agent's memory systems."""
         try:
             from maxim.integration.memory_hub import build_memory_hub
-            from maxim.similarity.ec import EntorhinalCortex
             from maxim.time.scn import SCN
 
             # F0.5: SCN persistence path is bound at construction time, not
@@ -787,13 +865,45 @@ class AgentFactory:
                 hippocampus=hippocampus,
                 scn=scn,
                 nac=nac,
-                ec=EntorhinalCortex(),
+                ec=self._create_ec(agent_dir, auto_load=auto_load, corrupt=corrupt),
                 atl=atl,
                 agent_id=agent_id,
             )
         except Exception as e:
             log.warning("Failed to create MemoryHub: %s", e)
+            _note_corruption(corrupt, "memory_hub", agent_dir / "memory_hub" if agent_dir else Path("memory_hub"), e)
             return None
+
+    def _create_ec(
+        self, agent_dir: Path | None, *, auto_load: bool = False, corrupt: list[dict[str, str]] | None = None
+    ) -> Any:
+        """Create an EntorhinalCortex, restoring it alongside the NAc.
+
+        Review fold (cross-confirmed). This used to be a bare
+        ``EntorhinalCortex()`` — no path, no load — so ``load.agent()`` returned a
+        RESTORED NAc bolted to a FRESH EC. NAc's ``reward_bias`` /
+        ``cluster_reward_bias`` are keyed by EC node ids, so that is exactly the
+        dangling-bias state D2 exists to prevent, produced by the same commit that
+        fixed D2's CLI half. ``build_bio_stack`` already restores the pair for full
+        agents; this closes the skeleton path that ``load.agent()`` actually uses.
+        """
+        from maxim.similarity.ec import ECConfig, EntorhinalCortex
+
+        if agent_dir is None:
+            return EntorhinalCortex()
+        ec_path = agent_dir / "ec.json"
+        ec = EntorhinalCortex(config=ECConfig(persistence_path=str(ec_path)))
+        if auto_load and ec_path.exists():
+            try:
+                ec.load(str(ec_path))
+            except Exception as e:
+                # Reconstruct rather than keep the partially-mutated instance:
+                # EC.load mutates _lsh -> _inverted -> _signatures -> substrate
+                # nodes in sequence, so a mid-load raise leaves an internally
+                # inconsistent EC (same reasoning as bio_stack.py).
+                _note_corruption(corrupt, "ec", ec_path, e)
+                ec = EntorhinalCortex(config=ECConfig(persistence_path=str(ec_path)))
+        return ec
 
     def _create_tool_registry(self, whitelist: set[str] | None) -> Any:
         """Create a ToolRegistry, optionally filtered by whitelist."""

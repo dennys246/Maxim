@@ -1934,6 +1934,11 @@ def _record_registration(tool: Any) -> None:
     merely at ``ToolRegistry.register``.
     """
     name = getattr(tool, "name", None)
+    if not isinstance(name, str) or not name:
+        # Fail at the call site rather than warning on EVERY later run(): now
+        # that registration is permanent, a nameless object would be appended
+        # unboundedly and fail inside registry.register forever (review fold).
+        raise TypeError(f"register_tool() requires a Tool with a non-empty string `name`; got {tool!r}")
     with _registered_tools_lock:
         if name is not None:
             for i, existing in enumerate(_registered_tools):
@@ -1998,6 +2003,16 @@ def register_tool(tool: Any) -> None:
     :func:`unregister_tool` or :func:`clear_registered_tools`.
     """
     _record_registration(tool)
+
+
+def list_registered_tools() -> list[str]:
+    """Names of the custom tools currently registered in this process.
+
+    Registration is persistent, so this is what will be injected into the next
+    agent built. Handy for debugging an ``unregister_tool`` that did not take.
+    """
+    with _registered_tools_lock:
+        return [t.name for t in _registered_tools]
 
 
 def unregister_tool(name: str) -> bool:
