@@ -239,7 +239,7 @@ python scripts/orient_backbone/live_3_learn.py --readout population
 python scripts/orient_backbone/orient_merge_arm.py
 # 5. Delivered-shift block through the PRODUCTION affordance path (needs a continuous
 #    speech source dead ahead; 8 reps/side ≈ 4 min) — the _big magnitude evidence
-python scripts/orient_backbone/delivered_shift_block.py --reps 8 --log docs/experiments/data/h1_partc_big_block.jsonl
+python scripts/orient_backbone/delivered_shift_block.py --reps 8 --log docs/experiments/data/h1_partc_big_block_$(date +%F).jsonl   # new dated file per session; never append to a committed one
 ```
 
 **Gates:** yaw_verify ≈ +1.0 before anything else is trusted; sweep gain in

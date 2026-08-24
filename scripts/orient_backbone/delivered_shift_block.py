@@ -117,8 +117,14 @@ def provenance(repo_root: Path) -> dict:
         )
     except Exception:  # noqa: BLE001
         git_hash, dirty = "unknown", True
+    executed = Path(getattr(maxim, "__file__", "") or "").resolve()
+    if not executed.is_relative_to((repo_root / "src").resolve()):
+        # The harness-provenance lesson, in-process form: a result whose
+        # code-under-test cannot be established is not a measurement.
+        print(f"[FAIL] the imported maxim is {executed}, not this repo's src/ — fix PYTHONPATH (absolute) and re-run.")
+        raise SystemExit(3)
     return {
-        "executed_maxim_file": getattr(maxim, "__file__", None),
+        "executed_maxim_file": str(executed),
         "executed_git_hash": git_hash,
         "working_tree_dirty_src_scripts": dirty,
         "python": sys.executable,
@@ -160,21 +166,22 @@ class LiveBlockRig:
         # the Embodiment wrapper is handed to it).
         self.entity = ComponentRegistry().instantiate(BODY_REF)
         self.stop = threading.Event()
+        # Backend first (it attaches to the raw entity, as build_executor does),
+        # then the Embodiment wrapper, then the feed with that wrapper.
+        self.shim = _MaximShim(None)
+        attach_backends(self.entity, modulator_factory=make_reachy_orient_factory(self.robot, maxim=self.shim))
+        self.embodiment = Embodiment(self.entity)
+        owned = getattr(self.embodiment, "live_world_set_sensors", None)
+        if owned is not None:
+            owned.update(ReachyOrientMotorBackend.world_owned_sensors)
         self.feed = DoAFeed(
             self.reader,
-            None,  # embodiment bound below (feed writes azimuth via world_set_azimuth; None → cache only)
+            self.embodiment,
             stop_event=self.stop,
             head_yaw_provider=self._head_rel_yaw_deg,
             body_yaw_provider=self._body_yaw_deg,
         )
-        self.shim = _MaximShim(self.feed)
-        attach_backends(self.entity, modulator_factory=make_reachy_orient_factory(self.robot, maxim=self.shim))
-        self.embodiment = Embodiment(self.entity)
-        self.feed._embodiment = self.embodiment
-        owned = getattr(self.embodiment, "live_world_set_sensors", None)
-        if owned is not None:
-            owned.add("azimuth")
-            owned.update(ReachyOrientMotorBackend.world_owned_sensors)
+        self.shim._doa_feed = self.feed
         self.orient = self.entity.modulators["orient"]
         backend = getattr(self.orient, "_backend", None)
         if backend is None:
@@ -187,6 +194,18 @@ class LiveBlockRig:
     # providers for the feed's capture-frame stamps (degrees, as the runtime wires them)
     def _pose(self) -> dict:
         return self.robot.get_current_pose() or {}
+
+    def head_pose_deg(self) -> dict:
+        """World head yaw/pitch/roll + body yaw in degrees, from the controller readback
+        (D30 / the Exp 45 "mics must actually rotate" trigger — recorded per turn)."""
+        p = self._pose()
+        out = {}
+        for k in ("yaw", "pitch", "roll", "body_yaw"):
+            if k in p:
+                out[f"head_{k}_deg" if k != "body_yaw" else "body_yaw_deg"] = round(math.degrees(float(p[k])), 2)
+        if "yaw" in p and "body_yaw" in p:
+            out["head_rel_yaw_deg"] = round(math.degrees(float(p["yaw"]) - float(p["body_yaw"])), 2)
+        return out
 
     def _head_rel_yaw_deg(self) -> float:
         p = self._pose()
@@ -272,6 +291,9 @@ class DryBlockRig:
                 "measured_drive_transitions": {"azimuth": (before, after)},
             },
         )
+
+    def head_pose_deg(self) -> dict:
+        return {"body_yaw_deg": round(math.degrees(self.body), 2), "head_rel_yaw_deg": 0.0, "head_roll_deg": 0.0}
 
     def close(self) -> None:
         pass
@@ -399,12 +421,14 @@ def main() -> int:
             rig.recenter()
             time.sleep(args.settle)
             body_pre = rig.body if args.dry_run else daemon_body_yaw(rig.host)
+            head_pre = rig.head_pose_deg()
             az_pre = gated(args.reads)
             t0 = time.monotonic()
             res = rig.execute(aff)
             t_turn = round(time.monotonic() - t0, 2)
             time.sleep(args.settle)
             body_post = rig.body if args.dry_run else daemon_body_yaw(rig.host)
+            head_post = rig.head_pose_deg()
             az_post = gated(args.reads)
             meta = dict(getattr(res, "metadata", None) or {})
             commanded = float(rig.deltas[aff])
@@ -432,6 +456,8 @@ def main() -> int:
                 "d_az": d_az,
                 "implied_gain": gain,
                 "turn_wall_s": t_turn,
+                "head_pre": head_pre,
+                "head_post": head_post,
                 "backend_metadata": meta,
             }
             emit("turn", **rec)

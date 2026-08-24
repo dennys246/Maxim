@@ -317,10 +317,18 @@ your metric can actually see.
 Split out of L9 (review fold): it has its own design consequence and its own
 triggers, and it was less discoverable nested inside a MITIGATED entry.
 
-- **Instrument:** the same speech-gated DoA read, at `|psi| ≳ 1.0`.
+- **Instrument:** the same speech-gated DoA read, at `|psi| ≳ 1.0` in the sweeps —
+  and, observed 2026-08-24, at `|body| = 0.84` rad with the head riding along in the
+  production orient path (the onset is lower than the sweep-only figure).
 - **Limit (measured 2026-08-23):** 3 of 4 passes in one session failed the L9
   admission criterion because of sporadic mirror-image reads at large `|psi|`.
   Run 1 descending fell to R² 0.861, run 2 ascending to 0.901.
+- **Limit, production credit path (measured 2026-08-24):** during the H1 `_big`
+  delivered-shift block, `ReachyOrientMotorBackend`'s first post-settle azimuth
+  window returned +0.289 where an independent later median-of-5 read −0.289 (an
+  exact mirror) on a right turn — one folded reading in 18 turns, landing in
+  `measured_drive_transitions` and therefore in the credit SIGN of a graduated
+  mechanism (Exp 45 row). 0/16 in the admitted run.
 - **Not a weak source.** Attempts-per-accepted-read for clean vs
   outlier-bearing points: run 1 descending **1.77 vs 2.31**, run 3 ascending
   **1.59 vs 1.50**. The second pair is flat; the first shows a ~30% gap. On
@@ -333,12 +341,15 @@ triggers, and it was less discoverable nested inside a MITIGATED entry.
   — near-constant azimuth regardless of head angle.
 - **Design consequence:** **budget ≥ 4 passes per sweep** so at least 2 admit.
   A 2-pass sweep has a substantial chance of yielding one admitted curve, which
-  the script now reports as `PROVISIONAL` rather than scoring.
+  the script now reports as `PROVISIONAL` rather than scoring. **Credit path:** a
+  single post-settle window cannot detect a fold; a sign-consistency check across
+  two windows before a transition is credited is the mitigation — tracked as
+  bugs-ledger D31 (not yet built).
 - **Re-measure on:** XVF3800 firmware, mic geometry or shell change, DoA
   estimator replacement.
-- **Raw data:** as L9.
-
-- **Observed in the PRODUCTION credit path (2026-08-24):** during the H1 `_big` delivered-shift block, `ReachyOrientMotorBackend`'s first post-settle azimuth window returned +0.289 where an independent later median-of-5 read −0.289 (exact mirror) on a right turn at body yaw −0.84 rad — one folded reading in 18 turns, landing in `measured_drive_transitions` and therefore in the credit SIGN. The backend has no fold guard; a sign-consistency check across two windows is the obvious mitigation (follow-up, not yet built). Raw: `docs/experiments/data/h1_partc_big_block.jsonl`, run `20260824T213320Z-76884` turn 1.
+- **Raw data:** as L9; production-path observation in
+  `docs/experiments/data/h1_partc_big_block.jsonl`, run `20260824T213320Z-76884`,
+  record `i=1` (0-based turn index).
 
 ## Repository capability assessment
 
