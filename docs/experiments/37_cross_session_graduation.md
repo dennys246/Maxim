@@ -83,6 +83,24 @@ Pass rule: ≥1 ablation shrinks Arm B's primary-metric mean toward Arm A's mean
 
 Replication on a second model backend. Local qwen2.5-14b-instruct re-run of Arm A vs Arm B baseline (no ablations). If the delta replicates on local, the result is more robust; if it doesn't, the delta may be Sonnet-prompt-driven (worth flagging but doesn't fail the primary).
 
+## Retained runs that are NOT evidence (S4 — committed 2026-08-25 so they cannot be mistaken for lost data)
+
+Two full 60-session Claude-Sonnet runs from the PR #5 pilot era were kept on the
+operator Mac and are now committed, each with the reason it is excluded from every
+table in this doc. Both are `claude-sonnet`, harness `git_hash 2207d7e` (the PR #315
+analyzer merge), `version 0.9.1`, 12 turns/session, all six arms × 10:
+
+| File | Run | Why it is not scored |
+|---|---|---|
+| [data/37_results_pre_fix_bug.jsonl](data/37_results_pre_fix_bug.jsonl) + [.md](data/37_results_pre_fix_bug.md) | **PR #5 pilot, run 1** — sessions `20260531_203238` → `20260531_234106` (wall-clock 2026-06-01 02:38–05:43 UTC), $21.43 | This is the run that exposed the per-turn primary metric as structurally degenerate on Cradle (zero `say`/`respond` calls collapse every session to one bucket) and triggered the **2026-05-31 per-action amendment** above. Its `.md` is the analyzer's output under the pre-amendment metric — a harness-bug artifact, not a result. |
+| [data/37_results_invalid_llm_outage.jsonl](data/37_results_invalid_llm_outage.jsonl) | **post-amendment re-run**, sessions `20260601_004310` → `20260601_101157` (wall-clock 2026-06-01 06:45–16:13 UTC), workdirs `exp37_full_workdir_postfix` + two resume attempts | Total cost **$0.12 for 60 sessions** (the pilot cost $21.43): the LLM backend stopped serving partway through and the sessions ran without real inference. Invalidated on the day; the resume attempts (`exp37_resume_workdir`, `trial5`) are in the same file. |
+
+Neither run appears in the graduation row, the cross-model results, or L8. They are here
+because a raw record that exists but is uncommitted is indistinguishable, six months on,
+from one that was lost — and because the outage file is a clean example of what a
+dead-backend Exp 37 run looks like (near-zero cost with a full row count), which the
+apparatus canaries should recognise.
+
 ## Trial structure
 
 Per scenario (fire_pit, sharp_rock):
