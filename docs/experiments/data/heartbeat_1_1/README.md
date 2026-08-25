@@ -35,3 +35,22 @@ including those files and the uncompressed `actions.jsonl` — is archived at:
 
 The original untracked copy in `Maxim-heartbeat-1.1/heartbeat_data/` is now redundant;
 the worktree is safe to prune.
+
+## Sim-Short chapter — added 2026-08-24 (records from big-mac-mini `~/.maxim/sim_reports/`)
+
+The 2026-08-18/19 Sim-Short heartbeat runs (mistral-7b, `Maxim-exp48-rebaseline`
+worktree, `llm.n_ctx 8192`) that RE-VALIDATED the Exp 10 row and re-attested Exp 09
+(walk log in [behavioral_graduation_candidates.md](../../../plans/behavioral_graduation_candidates.md)).
+Copied verbatim; `actions.jsonl` and `bio_telemetry.jsonl` gzipped.
+
+| Path | Experiment | What it is |
+|---|---|---|
+| `sim_short_2026-08-18/20260818_004321/` | **Exp 09** reflexes | dragon-cave sim, 8 turns (`20260818_004107` on the mini is a 0-turn false start, not copied) |
+| `sim_short_2026-08-18/20260818_010010/` | **Exp 10** phase 1 | dungeon, 8 turns; hippocampus closes at **108** memories |
+| `sim_short_2026-08-18/20260818_233844/` | **Exp 10** phase 2 (resume of p1) | dungeon, 8 turns; hippocampus opens at 108 and closes at **535** — the row's re-validation evidence |
+| `sim_short_2026-08-18/20260819_000740/` | **Exp 10** phase 3 (garden, same resume) | 5 turns; post-consolidation store **295** (no negative transfer) |
+
+Each dir: `report.json`, `actions.jsonl.gz`, `bio_telemetry.jsonl.gz`, and the
+persisted `aut_{hippocampus,nac,ec,atl,scn}.json`. The hippocampus counts above were
+re-derived from the copied `aut_hippocampus.json` files on 2026-08-24.
+

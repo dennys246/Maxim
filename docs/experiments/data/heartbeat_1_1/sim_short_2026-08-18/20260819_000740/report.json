@@ -1,0 +1,132 @@
+{
+  "session_id": "20260819_000740",
+  "timestamp": "2026-08-19 00:13:14",
+  "goal": "you are in a peaceful garden, enjoy the flowers",
+  "mode": "generative",
+  "language_model": "/Users/dennys/.maxim/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+  "language_provider": "lane-large",
+  "language_backend_class": "_MaximPeerBackend",
+  "language_endpoint": "http://127.0.0.1:8100/v1",
+  "aut_model": "",
+  "aut_provider": "",
+  "aut_backend_class": "",
+  "aut_endpoint": "",
+  "duration_s": 334.1,
+  "turns": 5,
+  "finish_reason": "max_turns",
+  "total_actions": 4,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "sense": 1,
+    "sense_presence": 3
+  },
+  "tool_success_rates": {
+    "sense": 0.0,
+    "sense_presence": 1.0
+  },
+  "response_texts": [],
+  "aut_memories_formed": 295,
+  "aut_causal_links": 25,
+  "aut_nac_summary": {
+    "total_links": 25,
+    "top_links": [
+      {
+        "event": "tool:respond",
+        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
+        "confidence": 0.672,
+        "observations": 6
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "plan:llm_fallback:success",
+        "confidence": 0.672,
+        "observations": 6
+      },
+      {
+        "event": "tool:sense_presence",
+        "outcome": "tool:sense_presence:positive",
+        "confidence": 0.64,
+        "observations": 3
+      },
+      {
+        "event": "tool:sense",
+        "outcome": "failure:[ERROR: Unknown entity: environment. Known entitie",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense",
+        "outcome": "plan:To enjoy the flowers in this peaceful garden, I first need to explore the environment and locate them.:failure",
+        "confidence": 0.475,
+        "observations": 1
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 74822,
+  "total_output_tokens": 1726,
+  "lane_breakdown": {
+    "large": {
+      "lane": "large",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    },
+    "small": {
+      "lane": "small",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    }
+  },
+  "latency_p50_ms": 0.0,
+  "latency_p99_ms": 0.0,
+  "pain_events_count": 0,
+  "fear_blocks_count": 0,
+  "learn_events_count": 13,
+  "provider_failures": {},
+  "llm_summary": "During the simulation run, the robot assistant interacted with the environment for 334.1 seconds and completed 5 turns before reaching the maximum turn limit. It used the 'sense_presence' tool three times successfully, leading to the formation of 295 episodic memories and the learning of 25 causal links. However, it failed to use the 'sense' tool once. The top causal links learned involved the robot's response actions leading to success or fallback plans.",
+  "llm_issues_found": [
+    "The failure of the 'sense' tool could indicate a problem with the perception system. It should be investigated and resolved to ensure the robot can effectively interact with its environment."
+  ],
+  "llm_recommendations": [
+    "Improve the robustness of the 'sense' tool by implementing error handling or redundancy mechanisms. This could involve using multiple sensors for the same task, or implementing fallback plans when one sensor fails. Additionally, consider expanding the robot's repertoire of tools to better adapt to various situations."
+  ],
+  "llm_finish_status": "max_turns",
+  "llm_finish_reason": "reached max_turns=5",
+  "llm_finish_summary": "Simulation stopped after 5 turns because the configured max_turns cap (5) was reached without an LLM-initiated finish. Raise --sim-max-turns or add finish_simulation calls to the orchestrator's decision policy if more turns are expected.",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/Users/dennys/.maxim/sim_reports/20260819_000740/bio_telemetry.jsonl",
+  "apparatus": {
+    "substrate_actions_per_turn": null
+  },
+  "_format_version": "1.0"
+}

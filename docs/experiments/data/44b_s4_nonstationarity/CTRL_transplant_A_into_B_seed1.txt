@@ -1,0 +1,29 @@
+[S4] 35 captured decisions; 30 carry an annotation
+     tracking 5 tool(s)
+     5 decision(s) carry NO annotation, SCATTERED (not a trailing cliff) at indices [2, 3, 4, 23, 27]
+
+tool                                present  tier 1st  tier 2nd   drift
+focus_on_sound                           30     +1.79     +1.00   -0.79
+green_flame_touch                        30     +1.86     +1.00   -0.86
+green_flame_warm_self                    30     +1.79     +1.00   -0.79
+infant_humanoid_chilled_listen           30     +1.79     +1.00   -0.79
+purple_flame_observe                     30     +1.86     +1.00   -0.86
+
+[S4] flip rate by RUN HALF (n=35 scored)
+     first half : 0.412  (n=17)
+     second half: 0.611  (n=18)
+     ANNOTATED only — first: 0.500 (n=14), second: 0.688 (n=16)
+
+[S4] free determinism probe — 5 untreated decision(s) (prompts identical): flip rate 0.000
+     0.000 => temp-0 decoding agreed on every identical-prompt pair.
+
+[S4] flip rate by STRONGEST tracked band in the prompt
+     mildly rewarding     0.667  (n=18)
+     strongly rewarding   0.500  (n=12)
+     absent               0.000  (n=5)
+
+     READ: a large half-to-half gap, or a monotone flip rate across tiers,
+     means the treatment is NON-STATIONARY within a run — pooling early and
+     late decisions pools two doses. Report it; do not average it away.
+
+report written: docs/experiments/data/44b_s4_nonstationarity/CTRL_transplant_A_into_B_seed1.json

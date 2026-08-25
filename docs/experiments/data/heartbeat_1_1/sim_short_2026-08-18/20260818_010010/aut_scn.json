@@ -1,0 +1,3405 @@
+{
+  "version": "3.0",
+  "circadian_bins": {
+    "1": [
+      {
+        "memory_id": "caf501f5-624e-453c-9da6-dcbe66806724",
+        "significance": 0.75,
+        "registered_at": 1787036571.712916
+      },
+      {
+        "memory_id": "b801e252b0b94365b33b43a5700a7097",
+        "significance": 0.3,
+        "registered_at": 1787036571.7095392
+      },
+      {
+        "memory_id": "332160ea-e696-4470-aeb4-2541510176b5",
+        "significance": 0.5,
+        "registered_at": 1787036570.528352
+      },
+      {
+        "memory_id": "c546eab3-3473-47a5-9411-d9851656fd5a",
+        "significance": 0.5,
+        "registered_at": 1787036569.935908
+      },
+      {
+        "memory_id": "075d3e6b-30e8-4d9c-84c8-aa553f0aea4a",
+        "significance": 0.5,
+        "registered_at": 1787036569.29658
+      },
+      {
+        "memory_id": "dc181e85-3d18-4eb2-a68e-765eb48a96fc",
+        "significance": 0.5,
+        "registered_at": 1787036568.766704
+      },
+      {
+        "memory_id": "8de1c9dc-09fe-4b37-9863-8362b680be88",
+        "significance": 0.5,
+        "registered_at": 1787036568.116655
+      },
+      {
+        "memory_id": "20b905e3-6546-49b5-a8e4-baf849438396",
+        "significance": 0.5,
+        "registered_at": 1787036567.51629
+      },
+      {
+        "memory_id": "bd926e1b-9d5a-41d2-be35-123debb34600",
+        "significance": 0.5,
+        "registered_at": 1787036566.950837
+      },
+      {
+        "memory_id": "dafec896-b37d-437a-beca-f25b7e876f37",
+        "significance": 0.5,
+        "registered_at": 1787036566.437164
+      },
+      {
+        "memory_id": "076793d4-802f-4caa-adec-83a2b2ad8bcc",
+        "significance": 0.5,
+        "registered_at": 1787036565.898033
+      },
+      {
+        "memory_id": "9da4bcbd-fd43-487b-b3ba-c3720872b479",
+        "significance": 0.5,
+        "registered_at": 1787036565.253919
+      },
+      {
+        "memory_id": "7082dc49-adda-4c94-a2c1-1cab7718f778",
+        "significance": 0.5,
+        "registered_at": 1787036564.6360471
+      },
+      {
+        "memory_id": "e2e4334f-4862-49d8-b9f5-65864dcc3ed7",
+        "significance": 0.5,
+        "registered_at": 1787036564.1231139
+      },
+      {
+        "memory_id": "f1a6df00-0bc9-49fd-9102-4ef4146b9bf2",
+        "significance": 0.5,
+        "registered_at": 1787036563.5833302
+      },
+      {
+        "memory_id": "5168f22f-cf90-4683-8a38-944c07b62292",
+        "significance": 0.5,
+        "registered_at": 1787036563.078329
+      },
+      {
+        "memory_id": "afec504b-9198-4581-b76a-c28f5db8e6aa",
+        "significance": 0.5,
+        "registered_at": 1787036562.46293
+      },
+      {
+        "memory_id": "5113c7eb-c63b-4405-852e-eca914ef138e",
+        "significance": 0.5,
+        "registered_at": 1787036561.809958
+      },
+      {
+        "memory_id": "fa726059-19d4-4647-a04a-323f67955a41",
+        "significance": 0.5,
+        "registered_at": 1787036561.160219
+      },
+      {
+        "memory_id": "b265db07-9076-47f3-b8ed-b8e6627c32b3",
+        "significance": 0.5,
+        "registered_at": 1787036560.5679371
+      },
+      {
+        "memory_id": "aeeb2b63-3caf-4c86-a350-0535cc8c57d4",
+        "significance": 0.5,
+        "registered_at": 1787036559.931421
+      },
+      {
+        "memory_id": "b3570c31-a4da-4de7-abd5-d823d514ac5b",
+        "significance": 0.5,
+        "registered_at": 1787036559.281645
+      },
+      {
+        "memory_id": "1902d842-a26f-4d69-99ae-61a742bdf0db",
+        "significance": 0.75,
+        "registered_at": 1787036556.463625
+      },
+      {
+        "memory_id": "722b59718a304009a195a16514bae73a",
+        "significance": 0.3,
+        "registered_at": 1787036556.457772
+      },
+      {
+        "memory_id": "33a14826-8f76-4b84-ad05-9bf4bec6f277",
+        "significance": 0.5,
+        "registered_at": 1787036555.362688
+      },
+      {
+        "memory_id": "cdf57536-003d-4165-ae71-1d4fcf6d44d4",
+        "significance": 0.5,
+        "registered_at": 1787036554.708632
+      },
+      {
+        "memory_id": "3f637dd6-dce8-4567-94c3-bec6f16191ff",
+        "significance": 0.5,
+        "registered_at": 1787036554.127744
+      },
+      {
+        "memory_id": "cac6868a-983e-4e68-af2b-b1616fa537af",
+        "significance": 0.5,
+        "registered_at": 1787036553.483924
+      },
+      {
+        "memory_id": "31d78e11-61bb-4feb-bb3f-02e80c4c9229",
+        "significance": 0.5,
+        "registered_at": 1787036552.954916
+      },
+      {
+        "memory_id": "5efbe1d9-25f5-42ea-93c5-69814ee049ab",
+        "significance": 0.5,
+        "registered_at": 1787036552.322731
+      },
+      {
+        "memory_id": "c892b7b2-e552-4b76-947e-32980fbd9cd1",
+        "significance": 0.5,
+        "registered_at": 1787036551.672479
+      },
+      {
+        "memory_id": "c39ec9fd-e869-46c5-a48d-97208c3fa7ab",
+        "significance": 0.5,
+        "registered_at": 1787036551.040469
+      },
+      {
+        "memory_id": "31f446f7-0155-49a1-9f49-e2a78f0d65b5",
+        "significance": 0.5,
+        "registered_at": 1787036550.483527
+      },
+      {
+        "memory_id": "b59c0aaa-00c3-4ba1-acd3-f468f6e12a34",
+        "significance": 0.5,
+        "registered_at": 1787036549.897902
+      },
+      {
+        "memory_id": "2fd7de23-1414-4d41-9d3e-81c6dce4650d",
+        "significance": 0.5,
+        "registered_at": 1787036549.252699
+      },
+      {
+        "memory_id": "95af069f-4769-4912-93ea-98b3e96727da",
+        "significance": 0.5,
+        "registered_at": 1787036548.7212958
+      },
+      {
+        "memory_id": "c02cf96a-6924-4c1c-97b6-2247c90ed72e",
+        "significance": 0.5,
+        "registered_at": 1787036548.2034829
+      },
+      {
+        "memory_id": "f8d57fb5-2cc4-4f44-8535-9ab6b19cf2f9",
+        "significance": 0.5,
+        "registered_at": 1787036547.602796
+      },
+      {
+        "memory_id": "2fdae572-56b1-49df-9d4f-2daf71f6705e",
+        "significance": 0.5,
+        "registered_at": 1787036546.998028
+      },
+      {
+        "memory_id": "bcf4690d-8d43-474d-bd5b-ac0731ecb068",
+        "significance": 0.5,
+        "registered_at": 1787036546.4834151
+      },
+      {
+        "memory_id": "e3f41bc2-beab-4ea6-a83f-4215d55afc18",
+        "significance": 0.5,
+        "registered_at": 1787036545.875635
+      },
+      {
+        "memory_id": "c32f1764-12df-48ce-884d-6a47fdd18ba2",
+        "significance": 0.5,
+        "registered_at": 1787036545.344824
+      },
+      {
+        "memory_id": "436b9f02-1459-4a3a-81fb-a2f113fbe7f7",
+        "significance": 0.75,
+        "registered_at": 1787036545.344575
+      },
+      {
+        "memory_id": "02da1475-3757-4b45-ba63-d9b825bf4639",
+        "significance": 0.75,
+        "registered_at": 1787036541.955723
+      },
+      {
+        "memory_id": "5aec889eb02c4aad99bed5744b41d85e",
+        "significance": 0.3,
+        "registered_at": 1787036541.948203
+      },
+      {
+        "memory_id": "8665a8be-b757-4c96-b0fb-e67365802459",
+        "significance": 0.5,
+        "registered_at": 1787036540.6618612
+      },
+      {
+        "memory_id": "c7b7c1f1-ac8d-4293-9313-c8b60aa69b86",
+        "significance": 0.5,
+        "registered_at": 1787036540.007534
+      },
+      {
+        "memory_id": "9aa9b7b3-7d7c-4746-a63c-668d014c0ee9",
+        "significance": 0.5,
+        "registered_at": 1787036539.42541
+      },
+      {
+        "memory_id": "03035b25-c672-4a94-a4d7-5091ea7c0adf",
+        "significance": 0.5,
+        "registered_at": 1787036538.908237
+      },
+      {
+        "memory_id": "bbb1aa8d-3e20-42ec-a36b-4fba3bba0d26",
+        "significance": 0.5,
+        "registered_at": 1787036538.405623
+      },
+      {
+        "memory_id": "53883aae-dcd6-44fc-a699-edc2f6413ee9",
+        "significance": 0.5,
+        "registered_at": 1787036537.903542
+      },
+      {
+        "memory_id": "6522af8e-ad76-48a5-89a2-00b2940dcb66",
+        "significance": 0.5,
+        "registered_at": 1787036537.26103
+      },
+      {
+        "memory_id": "b583e436-4666-405f-95f7-b7184742c560",
+        "significance": 0.5,
+        "registered_at": 1787036536.699049
+      },
+      {
+        "memory_id": "6ef744c6-92ca-4053-bf47-f02b75c6743d",
+        "significance": 0.5,
+        "registered_at": 1787036536.173584
+      },
+      {
+        "memory_id": "397fe787-f606-4006-ab4f-66e275a13705",
+        "significance": 0.5,
+        "registered_at": 1787036535.531522
+      },
+      {
+        "memory_id": "61a29f92-4ba8-443b-ba0e-85a213d49a57",
+        "significance": 0.5,
+        "registered_at": 1787036534.920253
+      },
+      {
+        "memory_id": "690b6d3e-d0fa-4b4b-a8f0-76af9419d1c1",
+        "significance": 0.5,
+        "registered_at": 1787036534.39085
+      },
+      {
+        "memory_id": "306aeffe-b9df-4da7-b9de-0031164cb589",
+        "significance": 0.5,
+        "registered_at": 1787036533.888057
+      },
+      {
+        "memory_id": "34523ed6-adf7-4cd6-8443-73f933f0e7e2",
+        "significance": 0.5,
+        "registered_at": 1787036533.239149
+      },
+      {
+        "memory_id": "21e7d178-110f-42d0-b31b-b17827c2242f",
+        "significance": 0.5,
+        "registered_at": 1787036532.734636
+      },
+      {
+        "memory_id": "1fa91fc7-b903-4909-bfb7-0a0a32bc1476",
+        "significance": 0.5,
+        "registered_at": 1787036532.110463
+      },
+      {
+        "memory_id": "92ea211e-e403-4b78-b234-b905509ae292",
+        "significance": 0.5,
+        "registered_at": 1787036531.47721
+      },
+      {
+        "memory_id": "0a29b8f4-e89f-4aec-88f7-ee77b441e48b",
+        "significance": 0.5,
+        "registered_at": 1787036530.96108
+      },
+      {
+        "memory_id": "8fca1a6c-5d2d-411d-b594-1e512a0b8031",
+        "significance": 0.5,
+        "registered_at": 1787036530.394615
+      },
+      {
+        "memory_id": "88cff19b-e9d2-4045-a156-aca98995df08",
+        "significance": 0.5,
+        "registered_at": 1787036529.7548149
+      },
+      {
+        "memory_id": "83e585dd-d978-435b-8de4-43572eeaaa88",
+        "significance": 0.5,
+        "registered_at": 1787036529.1076632
+      },
+      {
+        "memory_id": "59bba5f8-9b70-492f-9fc3-4678106bc603",
+        "significance": 0.5,
+        "registered_at": 1787036528.4884531
+      },
+      {
+        "memory_id": "d13e762a-9166-43ee-acb0-addc5123b7a9",
+        "significance": 0.75,
+        "registered_at": 1787036526.162741
+      },
+      {
+        "memory_id": "fa66e60f899943cd9b2c043eaf10e310",
+        "significance": 0.3,
+        "registered_at": 1787036526.159662
+      },
+      {
+        "memory_id": "4b64807c-5e5c-4bce-b4fd-46f5a432b708",
+        "significance": 0.5,
+        "registered_at": 1787036524.906698
+      },
+      {
+        "memory_id": "c2941645-71ca-4ad6-8572-32dc94c8a0a7",
+        "significance": 0.5,
+        "registered_at": 1787036524.2493749
+      },
+      {
+        "memory_id": "023176fa-a6f6-4a40-8103-577d4519739f",
+        "significance": 0.5,
+        "registered_at": 1787036523.648094
+      },
+      {
+        "memory_id": "5ab020d4-149f-4a8b-abeb-222dc9d91c20",
+        "significance": 0.5,
+        "registered_at": 1787036522.998094
+      },
+      {
+        "memory_id": "4fa2166a-8542-4bef-bb5d-59083fb820a0",
+        "significance": 0.5,
+        "registered_at": 1787036522.3486001
+      },
+      {
+        "memory_id": "fd3cb271-d1a7-43d9-a6df-1708f564a94f",
+        "significance": 0.5,
+        "registered_at": 1787036521.7021189
+      },
+      {
+        "memory_id": "10ef908f-c0cb-4a17-9dc1-6453c93efe81",
+        "significance": 0.5,
+        "registered_at": 1787036521.140606
+      },
+      {
+        "memory_id": "3667e07c-675c-47ce-9f6e-ea9993509c97",
+        "significance": 0.5,
+        "registered_at": 1787036520.578519
+      },
+      {
+        "memory_id": "52b80634-8a36-4178-82dd-a2412d3d5270",
+        "significance": 0.5,
+        "registered_at": 1787036519.927883
+      },
+      {
+        "memory_id": "7bc65f26-767b-4aec-861b-1f1b3cf13dd9",
+        "significance": 0.5,
+        "registered_at": 1787036519.418137
+      },
+      {
+        "memory_id": "85ffa2d9-502c-46ce-b9e2-1045c1defff0",
+        "significance": 0.5,
+        "registered_at": 1787036518.882258
+      },
+      {
+        "memory_id": "78cdb39d-ac0f-44a7-8192-46345e0d654e",
+        "significance": 0.5,
+        "registered_at": 1787036518.2956219
+      },
+      {
+        "memory_id": "bab45808-5a72-4c9e-8b3a-293829c89768",
+        "significance": 0.5,
+        "registered_at": 1787036517.757222
+      },
+      {
+        "memory_id": "a018b864-a6de-4ab4-ada6-38dadbbe6f17",
+        "significance": 0.5,
+        "registered_at": 1787036517.1099288
+      },
+      {
+        "memory_id": "8acaa5ca-dd8e-4551-88b4-86bb58d3d4c6",
+        "significance": 0.5,
+        "registered_at": 1787036516.5526872
+      },
+      {
+        "memory_id": "29a88cf3-c567-4219-86aa-75fddc814a91",
+        "significance": 0.5,
+        "registered_at": 1787036515.901508
+      },
+      {
+        "memory_id": "5af481a8-7c51-49db-8857-b9a259a70cee",
+        "significance": 0.5,
+        "registered_at": 1787036515.383069
+      },
+      {
+        "memory_id": "c26b4ce9-1c4b-42d9-baf5-f3defa507f97",
+        "significance": 0.5,
+        "registered_at": 1787036514.730058
+      },
+      {
+        "memory_id": "6ac0c08c-5127-4f4d-938a-71fd5ce6440e",
+        "significance": 0.5,
+        "registered_at": 1787036514.092391
+      },
+      {
+        "memory_id": "2085c899-5768-4c87-ad79-e1c5abe78ee5",
+        "significance": 0.5,
+        "registered_at": 1787036513.445784
+      },
+      {
+        "memory_id": "bf1d112b-fa68-4280-a82c-4667627951a3",
+        "significance": 0.75,
+        "registered_at": 1787036510.481281
+      },
+      {
+        "memory_id": "9cac38310bc148158299159830b0acce",
+        "significance": 0.3,
+        "registered_at": 1787036510.4758132
+      },
+      {
+        "memory_id": "52ffc4c7-9df4-44c7-a071-bc977c6344d6",
+        "significance": 0.5,
+        "registered_at": 1787036509.184005
+      },
+      {
+        "memory_id": "25ff9f8c-ca6f-4583-9ed6-02a0db8abe9c",
+        "significance": 0.5,
+        "registered_at": 1787036508.556982
+      },
+      {
+        "memory_id": "86db2332-f43d-4ba5-94f8-f5ce408c346e",
+        "significance": 0.5,
+        "registered_at": 1787036507.90751
+      },
+      {
+        "memory_id": "8d2be0ef-d171-4597-9f7b-637e451aae61",
+        "significance": 0.5,
+        "registered_at": 1787036507.396666
+      },
+      {
+        "memory_id": "8385e082-8180-4d3d-80cc-e17652433f3b",
+        "significance": 0.5,
+        "registered_at": 1787036506.817133
+      },
+      {
+        "memory_id": "3ba656a1-3928-4d26-9b02-353a08bd9057",
+        "significance": 0.5,
+        "registered_at": 1787036506.289629
+      },
+      {
+        "memory_id": "26979218-32b5-4c19-979c-151138378013",
+        "significance": 0.5,
+        "registered_at": 1787036505.735651
+      },
+      {
+        "memory_id": "2b17c90e-7d88-4791-9e3b-d8a019f633d6",
+        "significance": 0.5,
+        "registered_at": 1787036505.229635
+      },
+      {
+        "memory_id": "59e7d322-d983-41a5-9882-3975be9e8b39",
+        "significance": 0.5,
+        "registered_at": 1787036504.578228
+      },
+      {
+        "memory_id": "a602920d-bedf-4841-98ec-f1a45e008c39",
+        "significance": 0.5,
+        "registered_at": 1787036504.0732439
+      },
+      {
+        "memory_id": "c7fecc63-dc47-4262-b6f9-9210608de583",
+        "significance": 0.5,
+        "registered_at": 1787036503.517239
+      },
+      {
+        "memory_id": "3c492208-bad5-46b5-8896-0594f6ec181c",
+        "significance": 0.5,
+        "registered_at": 1787036503.007849
+      },
+      {
+        "memory_id": "9eac7b08-9187-41fe-b6c0-ad20466205ab",
+        "significance": 0.5,
+        "registered_at": 1787036502.497825
+      },
+      {
+        "memory_id": "68541271-86e5-4a0d-b2d7-8596c095a7a4",
+        "significance": 0.5,
+        "registered_at": 1787036501.956425
+      },
+      {
+        "memory_id": "8d4d8979-cd61-4bed-bc37-bf151dc67eab",
+        "significance": 0.5,
+        "registered_at": 1787036501.3146398
+      },
+      {
+        "memory_id": "e5791362-d88f-44f9-850a-f43dd932c106",
+        "significance": 0.5,
+        "registered_at": 1787036500.660767
+      },
+      {
+        "memory_id": "9b28bfa0-6e88-47eb-b30c-79cddbdeb257",
+        "significance": 0.5,
+        "registered_at": 1787036500.0613482
+      },
+      {
+        "memory_id": "3cbe21eb-0e8f-4560-a0aa-d3b346b7fe08",
+        "significance": 0.5,
+        "registered_at": 1787036499.417846
+      },
+      {
+        "memory_id": "daa2f709-36fd-4384-bc72-8f057e3b70fb",
+        "significance": 0.5,
+        "registered_at": 1787036498.77204
+      },
+      {
+        "memory_id": "be8888ae-6f57-4813-9416-1fbd4804714f",
+        "significance": 0.5,
+        "registered_at": 1787036498.1268559
+      },
+      {
+        "memory_id": "ca1999d1-74f4-45ac-bd22-9c5cc89f242c",
+        "significance": 0.5,
+        "registered_at": 1787036495.688212
+      },
+      {
+        "memory_id": "5db50f05-96b0-46fb-83d7-4d6ddea5818f",
+        "significance": 0.5,
+        "registered_at": 1787036495.6880991
+      },
+      {
+        "memory_id": "2d00a96b-ba1b-459f-b038-b4c339e760ef",
+        "significance": 0.5,
+        "registered_at": 1787036495.687969
+      },
+      {
+        "memory_id": "61ffcd66-fbe4-48c3-b043-12b9a472a487",
+        "significance": 0.75,
+        "registered_at": 1787036495.687315
+      },
+      {
+        "memory_id": "f20cdf381f5a458ca43988c645c2f824",
+        "significance": 0.3,
+        "registered_at": 1787036495.684541
+      },
+      {
+        "memory_id": "tool:respond",
+        "significance": 0.3,
+        "registered_at": 1787036495.6844668
+      },
+      {
+        "memory_id": "e63d89ef-ea16-4a8f-82b3-23ba543adc8f",
+        "significance": 0.75,
+        "registered_at": 1787036486.8773818
+      },
+      {
+        "memory_id": "ccc330b385f04215b792a6441cbe93c1",
+        "significance": 0.3,
+        "registered_at": 1787036486.876417
+      },
+      {
+        "memory_id": "76dc6982-9767-4831-b45a-46b7616fe0d7",
+        "significance": 0.5,
+        "registered_at": 1787036466.085498
+      },
+      {
+        "memory_id": "5e642d49-7f63-4d24-a8ea-1445b8a33dca",
+        "significance": 0.75,
+        "registered_at": 1787036466.0849888
+      },
+      {
+        "memory_id": "11774a67fbad493f9994bdcc5c0e7511",
+        "significance": 0.3,
+        "registered_at": 1787036466.080402
+      },
+      {
+        "memory_id": "tool:concept_query",
+        "significance": 0.3,
+        "registered_at": 1787036466.080204
+      }
+    ]
+  },
+  "weekly_bins": {
+    "1": [
+      {
+        "memory_id": "caf501f5-624e-453c-9da6-dcbe66806724",
+        "significance": 0.75,
+        "registered_at": 1787036571.7129211
+      },
+      {
+        "memory_id": "b801e252b0b94365b33b43a5700a7097",
+        "significance": 0.3,
+        "registered_at": 1787036571.709546
+      },
+      {
+        "memory_id": "332160ea-e696-4470-aeb4-2541510176b5",
+        "significance": 0.5,
+        "registered_at": 1787036570.528353
+      },
+      {
+        "memory_id": "c546eab3-3473-47a5-9411-d9851656fd5a",
+        "significance": 0.5,
+        "registered_at": 1787036569.93591
+      },
+      {
+        "memory_id": "075d3e6b-30e8-4d9c-84c8-aa553f0aea4a",
+        "significance": 0.5,
+        "registered_at": 1787036569.296582
+      },
+      {
+        "memory_id": "dc181e85-3d18-4eb2-a68e-765eb48a96fc",
+        "significance": 0.5,
+        "registered_at": 1787036568.766706
+      },
+      {
+        "memory_id": "8de1c9dc-09fe-4b37-9863-8362b680be88",
+        "significance": 0.5,
+        "registered_at": 1787036568.116656
+      },
+      {
+        "memory_id": "20b905e3-6546-49b5-a8e4-baf849438396",
+        "significance": 0.5,
+        "registered_at": 1787036567.5162911
+      },
+      {
+        "memory_id": "bd926e1b-9d5a-41d2-be35-123debb34600",
+        "significance": 0.5,
+        "registered_at": 1787036566.9508421
+      },
+      {
+        "memory_id": "dafec896-b37d-437a-beca-f25b7e876f37",
+        "significance": 0.5,
+        "registered_at": 1787036566.437166
+      },
+      {
+        "memory_id": "076793d4-802f-4caa-adec-83a2b2ad8bcc",
+        "significance": 0.5,
+        "registered_at": 1787036565.8980439
+      },
+      {
+        "memory_id": "9da4bcbd-fd43-487b-b3ba-c3720872b479",
+        "significance": 0.5,
+        "registered_at": 1787036565.25392
+      },
+      {
+        "memory_id": "7082dc49-adda-4c94-a2c1-1cab7718f778",
+        "significance": 0.5,
+        "registered_at": 1787036564.6360478
+      },
+      {
+        "memory_id": "e2e4334f-4862-49d8-b9f5-65864dcc3ed7",
+        "significance": 0.5,
+        "registered_at": 1787036564.123116
+      },
+      {
+        "memory_id": "f1a6df00-0bc9-49fd-9102-4ef4146b9bf2",
+        "significance": 0.5,
+        "registered_at": 1787036563.583331
+      },
+      {
+        "memory_id": "5168f22f-cf90-4683-8a38-944c07b62292",
+        "significance": 0.5,
+        "registered_at": 1787036563.078333
+      },
+      {
+        "memory_id": "afec504b-9198-4581-b76a-c28f5db8e6aa",
+        "significance": 0.5,
+        "registered_at": 1787036562.4629388
+      },
+      {
+        "memory_id": "5113c7eb-c63b-4405-852e-eca914ef138e",
+        "significance": 0.5,
+        "registered_at": 1787036561.8099682
+      },
+      {
+        "memory_id": "fa726059-19d4-4647-a04a-323f67955a41",
+        "significance": 0.5,
+        "registered_at": 1787036561.160226
+      },
+      {
+        "memory_id": "b265db07-9076-47f3-b8ed-b8e6627c32b3",
+        "significance": 0.5,
+        "registered_at": 1787036560.5679739
+      },
+      {
+        "memory_id": "aeeb2b63-3caf-4c86-a350-0535cc8c57d4",
+        "significance": 0.5,
+        "registered_at": 1787036559.9314291
+      },
+      {
+        "memory_id": "b3570c31-a4da-4de7-abd5-d823d514ac5b",
+        "significance": 0.5,
+        "registered_at": 1787036559.281672
+      },
+      {
+        "memory_id": "1902d842-a26f-4d69-99ae-61a742bdf0db",
+        "significance": 0.75,
+        "registered_at": 1787036556.4636312
+      },
+      {
+        "memory_id": "722b59718a304009a195a16514bae73a",
+        "significance": 0.3,
+        "registered_at": 1787036556.457781
+      },
+      {
+        "memory_id": "33a14826-8f76-4b84-ad05-9bf4bec6f277",
+        "significance": 0.5,
+        "registered_at": 1787036555.362698
+      },
+      {
+        "memory_id": "cdf57536-003d-4165-ae71-1d4fcf6d44d4",
+        "significance": 0.5,
+        "registered_at": 1787036554.7086332
+      },
+      {
+        "memory_id": "3f637dd6-dce8-4567-94c3-bec6f16191ff",
+        "significance": 0.5,
+        "registered_at": 1787036554.127745
+      },
+      {
+        "memory_id": "cac6868a-983e-4e68-af2b-b1616fa537af",
+        "significance": 0.5,
+        "registered_at": 1787036553.483925
+      },
+      {
+        "memory_id": "31d78e11-61bb-4feb-bb3f-02e80c4c9229",
+        "significance": 0.5,
+        "registered_at": 1787036552.9549172
+      },
+      {
+        "memory_id": "5efbe1d9-25f5-42ea-93c5-69814ee049ab",
+        "significance": 0.5,
+        "registered_at": 1787036552.322734
+      },
+      {
+        "memory_id": "c892b7b2-e552-4b76-947e-32980fbd9cd1",
+        "significance": 0.5,
+        "registered_at": 1787036551.672481
+      },
+      {
+        "memory_id": "c39ec9fd-e869-46c5-a48d-97208c3fa7ab",
+        "significance": 0.5,
+        "registered_at": 1787036551.0404701
+      },
+      {
+        "memory_id": "31f446f7-0155-49a1-9f49-e2a78f0d65b5",
+        "significance": 0.5,
+        "registered_at": 1787036550.483528
+      },
+      {
+        "memory_id": "b59c0aaa-00c3-4ba1-acd3-f468f6e12a34",
+        "significance": 0.5,
+        "registered_at": 1787036549.8979049
+      },
+      {
+        "memory_id": "2fd7de23-1414-4d41-9d3e-81c6dce4650d",
+        "significance": 0.5,
+        "registered_at": 1787036549.2527092
+      },
+      {
+        "memory_id": "95af069f-4769-4912-93ea-98b3e96727da",
+        "significance": 0.5,
+        "registered_at": 1787036548.7212968
+      },
+      {
+        "memory_id": "c02cf96a-6924-4c1c-97b6-2247c90ed72e",
+        "significance": 0.5,
+        "registered_at": 1787036548.2034838
+      },
+      {
+        "memory_id": "f8d57fb5-2cc4-4f44-8535-9ab6b19cf2f9",
+        "significance": 0.5,
+        "registered_at": 1787036547.602798
+      },
+      {
+        "memory_id": "2fdae572-56b1-49df-9d4f-2daf71f6705e",
+        "significance": 0.5,
+        "registered_at": 1787036546.998035
+      },
+      {
+        "memory_id": "bcf4690d-8d43-474d-bd5b-ac0731ecb068",
+        "significance": 0.5,
+        "registered_at": 1787036546.483428
+      },
+      {
+        "memory_id": "e3f41bc2-beab-4ea6-a83f-4215d55afc18",
+        "significance": 0.5,
+        "registered_at": 1787036545.8756359
+      },
+      {
+        "memory_id": "c32f1764-12df-48ce-884d-6a47fdd18ba2",
+        "significance": 0.5,
+        "registered_at": 1787036545.3448262
+      },
+      {
+        "memory_id": "436b9f02-1459-4a3a-81fb-a2f113fbe7f7",
+        "significance": 0.75,
+        "registered_at": 1787036545.344577
+      },
+      {
+        "memory_id": "02da1475-3757-4b45-ba63-d9b825bf4639",
+        "significance": 0.75,
+        "registered_at": 1787036541.955727
+      },
+      {
+        "memory_id": "5aec889eb02c4aad99bed5744b41d85e",
+        "significance": 0.3,
+        "registered_at": 1787036541.948213
+      },
+      {
+        "memory_id": "8665a8be-b757-4c96-b0fb-e67365802459",
+        "significance": 0.5,
+        "registered_at": 1787036540.6618712
+      },
+      {
+        "memory_id": "c7b7c1f1-ac8d-4293-9313-c8b60aa69b86",
+        "significance": 0.5,
+        "registered_at": 1787036540.0075378
+      },
+      {
+        "memory_id": "9aa9b7b3-7d7c-4746-a63c-668d014c0ee9",
+        "significance": 0.5,
+        "registered_at": 1787036539.425411
+      },
+      {
+        "memory_id": "03035b25-c672-4a94-a4d7-5091ea7c0adf",
+        "significance": 0.5,
+        "registered_at": 1787036538.9082382
+      },
+      {
+        "memory_id": "bbb1aa8d-3e20-42ec-a36b-4fba3bba0d26",
+        "significance": 0.5,
+        "registered_at": 1787036538.405625
+      },
+      {
+        "memory_id": "53883aae-dcd6-44fc-a699-edc2f6413ee9",
+        "significance": 0.5,
+        "registered_at": 1787036537.903544
+      },
+      {
+        "memory_id": "6522af8e-ad76-48a5-89a2-00b2940dcb66",
+        "significance": 0.5,
+        "registered_at": 1787036537.261031
+      },
+      {
+        "memory_id": "b583e436-4666-405f-95f7-b7184742c560",
+        "significance": 0.5,
+        "registered_at": 1787036536.699053
+      },
+      {
+        "memory_id": "6ef744c6-92ca-4053-bf47-f02b75c6743d",
+        "significance": 0.5,
+        "registered_at": 1787036536.173586
+      },
+      {
+        "memory_id": "397fe787-f606-4006-ab4f-66e275a13705",
+        "significance": 0.5,
+        "registered_at": 1787036535.5315268
+      },
+      {
+        "memory_id": "61a29f92-4ba8-443b-ba0e-85a213d49a57",
+        "significance": 0.5,
+        "registered_at": 1787036534.920254
+      },
+      {
+        "memory_id": "690b6d3e-d0fa-4b4b-a8f0-76af9419d1c1",
+        "significance": 0.5,
+        "registered_at": 1787036534.3908522
+      },
+      {
+        "memory_id": "306aeffe-b9df-4da7-b9de-0031164cb589",
+        "significance": 0.5,
+        "registered_at": 1787036533.8880599
+      },
+      {
+        "memory_id": "34523ed6-adf7-4cd6-8443-73f933f0e7e2",
+        "significance": 0.5,
+        "registered_at": 1787036533.23915
+      },
+      {
+        "memory_id": "21e7d178-110f-42d0-b31b-b17827c2242f",
+        "significance": 0.5,
+        "registered_at": 1787036532.734637
+      },
+      {
+        "memory_id": "1fa91fc7-b903-4909-bfb7-0a0a32bc1476",
+        "significance": 0.5,
+        "registered_at": 1787036532.110469
+      },
+      {
+        "memory_id": "92ea211e-e403-4b78-b234-b905509ae292",
+        "significance": 0.5,
+        "registered_at": 1787036531.4772182
+      },
+      {
+        "memory_id": "0a29b8f4-e89f-4aec-88f7-ee77b441e48b",
+        "significance": 0.5,
+        "registered_at": 1787036530.96109
+      },
+      {
+        "memory_id": "8fca1a6c-5d2d-411d-b594-1e512a0b8031",
+        "significance": 0.5,
+        "registered_at": 1787036530.394625
+      },
+      {
+        "memory_id": "88cff19b-e9d2-4045-a156-aca98995df08",
+        "significance": 0.5,
+        "registered_at": 1787036529.7548249
+      },
+      {
+        "memory_id": "83e585dd-d978-435b-8de4-43572eeaaa88",
+        "significance": 0.5,
+        "registered_at": 1787036529.107672
+      },
+      {
+        "memory_id": "59bba5f8-9b70-492f-9fc3-4678106bc603",
+        "significance": 0.5,
+        "registered_at": 1787036528.488472
+      },
+      {
+        "memory_id": "d13e762a-9166-43ee-acb0-addc5123b7a9",
+        "significance": 0.75,
+        "registered_at": 1787036526.162743
+      },
+      {
+        "memory_id": "fa66e60f899943cd9b2c043eaf10e310",
+        "significance": 0.3,
+        "registered_at": 1787036526.159681
+      },
+      {
+        "memory_id": "4b64807c-5e5c-4bce-b4fd-46f5a432b708",
+        "significance": 0.5,
+        "registered_at": 1787036524.906707
+      },
+      {
+        "memory_id": "c2941645-71ca-4ad6-8572-32dc94c8a0a7",
+        "significance": 0.5,
+        "registered_at": 1787036524.249376
+      },
+      {
+        "memory_id": "023176fa-a6f6-4a40-8103-577d4519739f",
+        "significance": 0.5,
+        "registered_at": 1787036523.648096
+      },
+      {
+        "memory_id": "5ab020d4-149f-4a8b-abeb-222dc9d91c20",
+        "significance": 0.5,
+        "registered_at": 1787036522.998096
+      },
+      {
+        "memory_id": "4fa2166a-8542-4bef-bb5d-59083fb820a0",
+        "significance": 0.5,
+        "registered_at": 1787036522.348601
+      },
+      {
+        "memory_id": "fd3cb271-d1a7-43d9-a6df-1708f564a94f",
+        "significance": 0.5,
+        "registered_at": 1787036521.702121
+      },
+      {
+        "memory_id": "10ef908f-c0cb-4a17-9dc1-6453c93efe81",
+        "significance": 0.5,
+        "registered_at": 1787036521.140608
+      },
+      {
+        "memory_id": "3667e07c-675c-47ce-9f6e-ea9993509c97",
+        "significance": 0.5,
+        "registered_at": 1787036520.5785291
+      },
+      {
+        "memory_id": "52b80634-8a36-4178-82dd-a2412d3d5270",
+        "significance": 0.5,
+        "registered_at": 1787036519.927884
+      },
+      {
+        "memory_id": "7bc65f26-767b-4aec-861b-1f1b3cf13dd9",
+        "significance": 0.5,
+        "registered_at": 1787036519.418138
+      },
+      {
+        "memory_id": "85ffa2d9-502c-46ce-b9e2-1045c1defff0",
+        "significance": 0.5,
+        "registered_at": 1787036518.882259
+      },
+      {
+        "memory_id": "78cdb39d-ac0f-44a7-8192-46345e0d654e",
+        "significance": 0.5,
+        "registered_at": 1787036518.2956228
+      },
+      {
+        "memory_id": "bab45808-5a72-4c9e-8b3a-293829c89768",
+        "significance": 0.5,
+        "registered_at": 1787036517.757223
+      },
+      {
+        "memory_id": "a018b864-a6de-4ab4-ada6-38dadbbe6f17",
+        "significance": 0.5,
+        "registered_at": 1787036517.1099362
+      },
+      {
+        "memory_id": "8acaa5ca-dd8e-4551-88b4-86bb58d3d4c6",
+        "significance": 0.5,
+        "registered_at": 1787036516.5527081
+      },
+      {
+        "memory_id": "29a88cf3-c567-4219-86aa-75fddc814a91",
+        "significance": 0.5,
+        "registered_at": 1787036515.901514
+      },
+      {
+        "memory_id": "5af481a8-7c51-49db-8857-b9a259a70cee",
+        "significance": 0.5,
+        "registered_at": 1787036515.3830771
+      },
+      {
+        "memory_id": "c26b4ce9-1c4b-42d9-baf5-f3defa507f97",
+        "significance": 0.5,
+        "registered_at": 1787036514.730068
+      },
+      {
+        "memory_id": "6ac0c08c-5127-4f4d-938a-71fd5ce6440e",
+        "significance": 0.5,
+        "registered_at": 1787036514.092402
+      },
+      {
+        "memory_id": "2085c899-5768-4c87-ad79-e1c5abe78ee5",
+        "significance": 0.5,
+        "registered_at": 1787036513.445794
+      },
+      {
+        "memory_id": "bf1d112b-fa68-4280-a82c-4667627951a3",
+        "significance": 0.75,
+        "registered_at": 1787036510.481285
+      },
+      {
+        "memory_id": "9cac38310bc148158299159830b0acce",
+        "significance": 0.3,
+        "registered_at": 1787036510.475822
+      },
+      {
+        "memory_id": "52ffc4c7-9df4-44c7-a071-bc977c6344d6",
+        "significance": 0.5,
+        "registered_at": 1787036509.184012
+      },
+      {
+        "memory_id": "25ff9f8c-ca6f-4583-9ed6-02a0db8abe9c",
+        "significance": 0.5,
+        "registered_at": 1787036508.556983
+      },
+      {
+        "memory_id": "86db2332-f43d-4ba5-94f8-f5ce408c346e",
+        "significance": 0.5,
+        "registered_at": 1787036507.907511
+      },
+      {
+        "memory_id": "8d2be0ef-d171-4597-9f7b-637e451aae61",
+        "significance": 0.5,
+        "registered_at": 1787036507.396668
+      },
+      {
+        "memory_id": "8385e082-8180-4d3d-80cc-e17652433f3b",
+        "significance": 0.5,
+        "registered_at": 1787036506.8171341
+      },
+      {
+        "memory_id": "3ba656a1-3928-4d26-9b02-353a08bd9057",
+        "significance": 0.5,
+        "registered_at": 1787036506.2896352
+      },
+      {
+        "memory_id": "26979218-32b5-4c19-979c-151138378013",
+        "significance": 0.5,
+        "registered_at": 1787036505.7356632
+      },
+      {
+        "memory_id": "2b17c90e-7d88-4791-9e3b-d8a019f633d6",
+        "significance": 0.5,
+        "registered_at": 1787036505.229645
+      },
+      {
+        "memory_id": "59e7d322-d983-41a5-9882-3975be9e8b39",
+        "significance": 0.5,
+        "registered_at": 1787036504.578229
+      },
+      {
+        "memory_id": "a602920d-bedf-4841-98ec-f1a45e008c39",
+        "significance": 0.5,
+        "registered_at": 1787036504.0732448
+      },
+      {
+        "memory_id": "c7fecc63-dc47-4262-b6f9-9210608de583",
+        "significance": 0.5,
+        "registered_at": 1787036503.517241
+      },
+      {
+        "memory_id": "3c492208-bad5-46b5-8896-0594f6ec181c",
+        "significance": 0.5,
+        "registered_at": 1787036503.0078511
+      },
+      {
+        "memory_id": "9eac7b08-9187-41fe-b6c0-ad20466205ab",
+        "significance": 0.5,
+        "registered_at": 1787036502.497826
+      },
+      {
+        "memory_id": "68541271-86e5-4a0d-b2d7-8596c095a7a4",
+        "significance": 0.5,
+        "registered_at": 1787036501.956428
+      },
+      {
+        "memory_id": "8d4d8979-cd61-4bed-bc37-bf151dc67eab",
+        "significance": 0.5,
+        "registered_at": 1787036501.3146482
+      },
+      {
+        "memory_id": "e5791362-d88f-44f9-850a-f43dd932c106",
+        "significance": 0.5,
+        "registered_at": 1787036500.660776
+      },
+      {
+        "memory_id": "9b28bfa0-6e88-47eb-b30c-79cddbdeb257",
+        "significance": 0.5,
+        "registered_at": 1787036500.061356
+      },
+      {
+        "memory_id": "3cbe21eb-0e8f-4560-a0aa-d3b346b7fe08",
+        "significance": 0.5,
+        "registered_at": 1787036499.417855
+      },
+      {
+        "memory_id": "daa2f709-36fd-4384-bc72-8f057e3b70fb",
+        "significance": 0.5,
+        "registered_at": 1787036498.772046
+      },
+      {
+        "memory_id": "be8888ae-6f57-4813-9416-1fbd4804714f",
+        "significance": 0.5,
+        "registered_at": 1787036498.126865
+      },
+      {
+        "memory_id": "ca1999d1-74f4-45ac-bd22-9c5cc89f242c",
+        "significance": 0.5,
+        "registered_at": 1787036495.688213
+      },
+      {
+        "memory_id": "5db50f05-96b0-46fb-83d7-4d6ddea5818f",
+        "significance": 0.5,
+        "registered_at": 1787036495.6881
+      },
+      {
+        "memory_id": "2d00a96b-ba1b-459f-b038-b4c339e760ef",
+        "significance": 0.5,
+        "registered_at": 1787036495.687971
+      },
+      {
+        "memory_id": "61ffcd66-fbe4-48c3-b043-12b9a472a487",
+        "significance": 0.75,
+        "registered_at": 1787036495.687316
+      },
+      {
+        "memory_id": "f20cdf381f5a458ca43988c645c2f824",
+        "significance": 0.3,
+        "registered_at": 1787036495.684541
+      },
+      {
+        "memory_id": "tool:respond",
+        "significance": 0.3,
+        "registered_at": 1787036495.684473
+      },
+      {
+        "memory_id": "e63d89ef-ea16-4a8f-82b3-23ba543adc8f",
+        "significance": 0.75,
+        "registered_at": 1787036486.877383
+      },
+      {
+        "memory_id": "ccc330b385f04215b792a6441cbe93c1",
+        "significance": 0.3,
+        "registered_at": 1787036486.8764212
+      },
+      {
+        "memory_id": "76dc6982-9767-4831-b45a-46b7616fe0d7",
+        "significance": 0.5,
+        "registered_at": 1787036466.0855
+      },
+      {
+        "memory_id": "5e642d49-7f63-4d24-a8ea-1445b8a33dca",
+        "significance": 0.75,
+        "registered_at": 1787036466.084992
+      },
+      {
+        "memory_id": "11774a67fbad493f9994bdcc5c0e7511",
+        "significance": 0.3,
+        "registered_at": 1787036466.080404
+      },
+      {
+        "memory_id": "tool:concept_query",
+        "significance": 0.3,
+        "registered_at": 1787036466.0802188
+      }
+    ]
+  },
+  "monthly_bins": {
+    "2": [
+      {
+        "memory_id": "caf501f5-624e-453c-9da6-dcbe66806724",
+        "significance": 0.75,
+        "registered_at": 1787036571.7129228
+      },
+      {
+        "memory_id": "b801e252b0b94365b33b43a5700a7097",
+        "significance": 0.3,
+        "registered_at": 1787036571.709548
+      },
+      {
+        "memory_id": "332160ea-e696-4470-aeb4-2541510176b5",
+        "significance": 0.5,
+        "registered_at": 1787036570.528353
+      },
+      {
+        "memory_id": "c546eab3-3473-47a5-9411-d9851656fd5a",
+        "significance": 0.5,
+        "registered_at": 1787036569.93591
+      },
+      {
+        "memory_id": "075d3e6b-30e8-4d9c-84c8-aa553f0aea4a",
+        "significance": 0.5,
+        "registered_at": 1787036569.296582
+      },
+      {
+        "memory_id": "dc181e85-3d18-4eb2-a68e-765eb48a96fc",
+        "significance": 0.5,
+        "registered_at": 1787036568.766707
+      },
+      {
+        "memory_id": "8de1c9dc-09fe-4b37-9863-8362b680be88",
+        "significance": 0.5,
+        "registered_at": 1787036568.1166568
+      },
+      {
+        "memory_id": "20b905e3-6546-49b5-a8e4-baf849438396",
+        "significance": 0.5,
+        "registered_at": 1787036567.516292
+      },
+      {
+        "memory_id": "bd926e1b-9d5a-41d2-be35-123debb34600",
+        "significance": 0.5,
+        "registered_at": 1787036566.9508429
+      },
+      {
+        "memory_id": "dafec896-b37d-437a-beca-f25b7e876f37",
+        "significance": 0.5,
+        "registered_at": 1787036566.4371672
+      },
+      {
+        "memory_id": "076793d4-802f-4caa-adec-83a2b2ad8bcc",
+        "significance": 0.5,
+        "registered_at": 1787036565.898048
+      },
+      {
+        "memory_id": "9da4bcbd-fd43-487b-b3ba-c3720872b479",
+        "significance": 0.5,
+        "registered_at": 1787036565.25392
+      },
+      {
+        "memory_id": "7082dc49-adda-4c94-a2c1-1cab7718f778",
+        "significance": 0.5,
+        "registered_at": 1787036564.6360488
+      },
+      {
+        "memory_id": "e2e4334f-4862-49d8-b9f5-65864dcc3ed7",
+        "significance": 0.5,
+        "registered_at": 1787036564.123116
+      },
+      {
+        "memory_id": "f1a6df00-0bc9-49fd-9102-4ef4146b9bf2",
+        "significance": 0.5,
+        "registered_at": 1787036563.583332
+      },
+      {
+        "memory_id": "5168f22f-cf90-4683-8a38-944c07b62292",
+        "significance": 0.5,
+        "registered_at": 1787036563.078335
+      },
+      {
+        "memory_id": "afec504b-9198-4581-b76a-c28f5db8e6aa",
+        "significance": 0.5,
+        "registered_at": 1787036562.462944
+      },
+      {
+        "memory_id": "5113c7eb-c63b-4405-852e-eca914ef138e",
+        "significance": 0.5,
+        "registered_at": 1787036561.809972
+      },
+      {
+        "memory_id": "fa726059-19d4-4647-a04a-323f67955a41",
+        "significance": 0.5,
+        "registered_at": 1787036561.1602292
+      },
+      {
+        "memory_id": "b265db07-9076-47f3-b8ed-b8e6627c32b3",
+        "significance": 0.5,
+        "registered_at": 1787036560.567979
+      },
+      {
+        "memory_id": "aeeb2b63-3caf-4c86-a350-0535cc8c57d4",
+        "significance": 0.5,
+        "registered_at": 1787036559.931433
+      },
+      {
+        "memory_id": "b3570c31-a4da-4de7-abd5-d823d514ac5b",
+        "significance": 0.5,
+        "registered_at": 1787036559.2816799
+      },
+      {
+        "memory_id": "1902d842-a26f-4d69-99ae-61a742bdf0db",
+        "significance": 0.75,
+        "registered_at": 1787036556.4636328
+      },
+      {
+        "memory_id": "722b59718a304009a195a16514bae73a",
+        "significance": 0.3,
+        "registered_at": 1787036556.4577842
+      },
+      {
+        "memory_id": "33a14826-8f76-4b84-ad05-9bf4bec6f277",
+        "significance": 0.5,
+        "registered_at": 1787036555.3627021
+      },
+      {
+        "memory_id": "cdf57536-003d-4165-ae71-1d4fcf6d44d4",
+        "significance": 0.5,
+        "registered_at": 1787036554.7086332
+      },
+      {
+        "memory_id": "3f637dd6-dce8-4567-94c3-bec6f16191ff",
+        "significance": 0.5,
+        "registered_at": 1787036554.127745
+      },
+      {
+        "memory_id": "cac6868a-983e-4e68-af2b-b1616fa537af",
+        "significance": 0.5,
+        "registered_at": 1787036553.483925
+      },
+      {
+        "memory_id": "31d78e11-61bb-4feb-bb3f-02e80c4c9229",
+        "significance": 0.5,
+        "registered_at": 1787036552.954918
+      },
+      {
+        "memory_id": "5efbe1d9-25f5-42ea-93c5-69814ee049ab",
+        "significance": 0.5,
+        "registered_at": 1787036552.322735
+      },
+      {
+        "memory_id": "c892b7b2-e552-4b76-947e-32980fbd9cd1",
+        "significance": 0.5,
+        "registered_at": 1787036551.672493
+      },
+      {
+        "memory_id": "c39ec9fd-e869-46c5-a48d-97208c3fa7ab",
+        "significance": 0.5,
+        "registered_at": 1787036551.0404701
+      },
+      {
+        "memory_id": "31f446f7-0155-49a1-9f49-e2a78f0d65b5",
+        "significance": 0.5,
+        "registered_at": 1787036550.483528
+      },
+      {
+        "memory_id": "b59c0aaa-00c3-4ba1-acd3-f468f6e12a34",
+        "significance": 0.5,
+        "registered_at": 1787036549.8979058
+      },
+      {
+        "memory_id": "2fd7de23-1414-4d41-9d3e-81c6dce4650d",
+        "significance": 0.5,
+        "registered_at": 1787036549.252713
+      },
+      {
+        "memory_id": "95af069f-4769-4912-93ea-98b3e96727da",
+        "significance": 0.5,
+        "registered_at": 1787036548.721298
+      },
+      {
+        "memory_id": "c02cf96a-6924-4c1c-97b6-2247c90ed72e",
+        "significance": 0.5,
+        "registered_at": 1787036548.203485
+      },
+      {
+        "memory_id": "f8d57fb5-2cc4-4f44-8535-9ab6b19cf2f9",
+        "significance": 0.5,
+        "registered_at": 1787036547.602798
+      },
+      {
+        "memory_id": "2fdae572-56b1-49df-9d4f-2daf71f6705e",
+        "significance": 0.5,
+        "registered_at": 1787036546.998036
+      },
+      {
+        "memory_id": "bcf4690d-8d43-474d-bd5b-ac0731ecb068",
+        "significance": 0.5,
+        "registered_at": 1787036546.483433
+      },
+      {
+        "memory_id": "e3f41bc2-beab-4ea6-a83f-4215d55afc18",
+        "significance": 0.5,
+        "registered_at": 1787036545.875637
+      },
+      {
+        "memory_id": "c32f1764-12df-48ce-884d-6a47fdd18ba2",
+        "significance": 0.5,
+        "registered_at": 1787036545.3448262
+      },
+      {
+        "memory_id": "436b9f02-1459-4a3a-81fb-a2f113fbe7f7",
+        "significance": 0.75,
+        "registered_at": 1787036545.344577
+      },
+      {
+        "memory_id": "02da1475-3757-4b45-ba63-d9b825bf4639",
+        "significance": 0.75,
+        "registered_at": 1787036541.9557278
+      },
+      {
+        "memory_id": "5aec889eb02c4aad99bed5744b41d85e",
+        "significance": 0.3,
+        "registered_at": 1787036541.948216
+      },
+      {
+        "memory_id": "8665a8be-b757-4c96-b0fb-e67365802459",
+        "significance": 0.5,
+        "registered_at": 1787036540.661875
+      },
+      {
+        "memory_id": "c7b7c1f1-ac8d-4293-9313-c8b60aa69b86",
+        "significance": 0.5,
+        "registered_at": 1787036540.007541
+      },
+      {
+        "memory_id": "9aa9b7b3-7d7c-4746-a63c-668d014c0ee9",
+        "significance": 0.5,
+        "registered_at": 1787036539.425411
+      },
+      {
+        "memory_id": "03035b25-c672-4a94-a4d7-5091ea7c0adf",
+        "significance": 0.5,
+        "registered_at": 1787036538.9082382
+      },
+      {
+        "memory_id": "bbb1aa8d-3e20-42ec-a36b-4fba3bba0d26",
+        "significance": 0.5,
+        "registered_at": 1787036538.405626
+      },
+      {
+        "memory_id": "53883aae-dcd6-44fc-a699-edc2f6413ee9",
+        "significance": 0.5,
+        "registered_at": 1787036537.9035451
+      },
+      {
+        "memory_id": "6522af8e-ad76-48a5-89a2-00b2940dcb66",
+        "significance": 0.5,
+        "registered_at": 1787036537.2610319
+      },
+      {
+        "memory_id": "b583e436-4666-405f-95f7-b7184742c560",
+        "significance": 0.5,
+        "registered_at": 1787036536.699054
+      },
+      {
+        "memory_id": "6ef744c6-92ca-4053-bf47-f02b75c6743d",
+        "significance": 0.5,
+        "registered_at": 1787036536.173586
+      },
+      {
+        "memory_id": "397fe787-f606-4006-ab4f-66e275a13705",
+        "significance": 0.5,
+        "registered_at": 1787036535.531529
+      },
+      {
+        "memory_id": "61a29f92-4ba8-443b-ba0e-85a213d49a57",
+        "significance": 0.5,
+        "registered_at": 1787036534.920255
+      },
+      {
+        "memory_id": "690b6d3e-d0fa-4b4b-a8f0-76af9419d1c1",
+        "significance": 0.5,
+        "registered_at": 1787036534.3908522
+      },
+      {
+        "memory_id": "306aeffe-b9df-4da7-b9de-0031164cb589",
+        "significance": 0.5,
+        "registered_at": 1787036533.8880599
+      },
+      {
+        "memory_id": "34523ed6-adf7-4cd6-8443-73f933f0e7e2",
+        "significance": 0.5,
+        "registered_at": 1787036533.23915
+      },
+      {
+        "memory_id": "21e7d178-110f-42d0-b31b-b17827c2242f",
+        "significance": 0.5,
+        "registered_at": 1787036532.734638
+      },
+      {
+        "memory_id": "1fa91fc7-b903-4909-bfb7-0a0a32bc1476",
+        "significance": 0.5,
+        "registered_at": 1787036532.110472
+      },
+      {
+        "memory_id": "92ea211e-e403-4b78-b234-b905509ae292",
+        "significance": 0.5,
+        "registered_at": 1787036531.477222
+      },
+      {
+        "memory_id": "0a29b8f4-e89f-4aec-88f7-ee77b441e48b",
+        "significance": 0.5,
+        "registered_at": 1787036530.961094
+      },
+      {
+        "memory_id": "8fca1a6c-5d2d-411d-b594-1e512a0b8031",
+        "significance": 0.5,
+        "registered_at": 1787036530.394629
+      },
+      {
+        "memory_id": "88cff19b-e9d2-4045-a156-aca98995df08",
+        "significance": 0.5,
+        "registered_at": 1787036529.7548292
+      },
+      {
+        "memory_id": "83e585dd-d978-435b-8de4-43572eeaaa88",
+        "significance": 0.5,
+        "registered_at": 1787036529.1076758
+      },
+      {
+        "memory_id": "59bba5f8-9b70-492f-9fc3-4678106bc603",
+        "significance": 0.5,
+        "registered_at": 1787036528.488477
+      },
+      {
+        "memory_id": "d13e762a-9166-43ee-acb0-addc5123b7a9",
+        "significance": 0.75,
+        "registered_at": 1787036526.162743
+      },
+      {
+        "memory_id": "fa66e60f899943cd9b2c043eaf10e310",
+        "significance": 0.3,
+        "registered_at": 1787036526.159682
+      },
+      {
+        "memory_id": "4b64807c-5e5c-4bce-b4fd-46f5a432b708",
+        "significance": 0.5,
+        "registered_at": 1787036524.90671
+      },
+      {
+        "memory_id": "c2941645-71ca-4ad6-8572-32dc94c8a0a7",
+        "significance": 0.5,
+        "registered_at": 1787036524.249377
+      },
+      {
+        "memory_id": "023176fa-a6f6-4a40-8103-577d4519739f",
+        "significance": 0.5,
+        "registered_at": 1787036523.648097
+      },
+      {
+        "memory_id": "5ab020d4-149f-4a8b-abeb-222dc9d91c20",
+        "significance": 0.5,
+        "registered_at": 1787036522.998097
+      },
+      {
+        "memory_id": "4fa2166a-8542-4bef-bb5d-59083fb820a0",
+        "significance": 0.5,
+        "registered_at": 1787036522.348602
+      },
+      {
+        "memory_id": "fd3cb271-d1a7-43d9-a6df-1708f564a94f",
+        "significance": 0.5,
+        "registered_at": 1787036521.702121
+      },
+      {
+        "memory_id": "10ef908f-c0cb-4a17-9dc1-6453c93efe81",
+        "significance": 0.5,
+        "registered_at": 1787036521.140608
+      },
+      {
+        "memory_id": "3667e07c-675c-47ce-9f6e-ea9993509c97",
+        "significance": 0.5,
+        "registered_at": 1787036520.578534
+      },
+      {
+        "memory_id": "52b80634-8a36-4178-82dd-a2412d3d5270",
+        "significance": 0.5,
+        "registered_at": 1787036519.927884
+      },
+      {
+        "memory_id": "7bc65f26-767b-4aec-861b-1f1b3cf13dd9",
+        "significance": 0.5,
+        "registered_at": 1787036519.41814
+      },
+      {
+        "memory_id": "85ffa2d9-502c-46ce-b9e2-1045c1defff0",
+        "significance": 0.5,
+        "registered_at": 1787036518.88226
+      },
+      {
+        "memory_id": "78cdb39d-ac0f-44a7-8192-46345e0d654e",
+        "significance": 0.5,
+        "registered_at": 1787036518.2956228
+      },
+      {
+        "memory_id": "bab45808-5a72-4c9e-8b3a-293829c89768",
+        "significance": 0.5,
+        "registered_at": 1787036517.7572238
+      },
+      {
+        "memory_id": "a018b864-a6de-4ab4-ada6-38dadbbe6f17",
+        "significance": 0.5,
+        "registered_at": 1787036517.109938
+      },
+      {
+        "memory_id": "8acaa5ca-dd8e-4551-88b4-86bb58d3d4c6",
+        "significance": 0.5,
+        "registered_at": 1787036516.552712
+      },
+      {
+        "memory_id": "29a88cf3-c567-4219-86aa-75fddc814a91",
+        "significance": 0.5,
+        "registered_at": 1787036515.9015172
+      },
+      {
+        "memory_id": "5af481a8-7c51-49db-8857-b9a259a70cee",
+        "significance": 0.5,
+        "registered_at": 1787036515.383081
+      },
+      {
+        "memory_id": "c26b4ce9-1c4b-42d9-baf5-f3defa507f97",
+        "significance": 0.5,
+        "registered_at": 1787036514.730072
+      },
+      {
+        "memory_id": "6ac0c08c-5127-4f4d-938a-71fd5ce6440e",
+        "significance": 0.5,
+        "registered_at": 1787036514.092406
+      },
+      {
+        "memory_id": "2085c899-5768-4c87-ad79-e1c5abe78ee5",
+        "significance": 0.5,
+        "registered_at": 1787036513.4458141
+      },
+      {
+        "memory_id": "bf1d112b-fa68-4280-a82c-4667627951a3",
+        "significance": 0.75,
+        "registered_at": 1787036510.481287
+      },
+      {
+        "memory_id": "9cac38310bc148158299159830b0acce",
+        "significance": 0.3,
+        "registered_at": 1787036510.475824
+      },
+      {
+        "memory_id": "52ffc4c7-9df4-44c7-a071-bc977c6344d6",
+        "significance": 0.5,
+        "registered_at": 1787036509.184015
+      },
+      {
+        "memory_id": "25ff9f8c-ca6f-4583-9ed6-02a0db8abe9c",
+        "significance": 0.5,
+        "registered_at": 1787036508.556984
+      },
+      {
+        "memory_id": "86db2332-f43d-4ba5-94f8-f5ce408c346e",
+        "significance": 0.5,
+        "registered_at": 1787036507.907511
+      },
+      {
+        "memory_id": "8d2be0ef-d171-4597-9f7b-637e451aae61",
+        "significance": 0.5,
+        "registered_at": 1787036507.396669
+      },
+      {
+        "memory_id": "8385e082-8180-4d3d-80cc-e17652433f3b",
+        "significance": 0.5,
+        "registered_at": 1787036506.817135
+      },
+      {
+        "memory_id": "3ba656a1-3928-4d26-9b02-353a08bd9057",
+        "significance": 0.5,
+        "registered_at": 1787036506.2896361
+      },
+      {
+        "memory_id": "26979218-32b5-4c19-979c-151138378013",
+        "significance": 0.5,
+        "registered_at": 1787036505.7356632
+      },
+      {
+        "memory_id": "2b17c90e-7d88-4791-9e3b-d8a019f633d6",
+        "significance": 0.5,
+        "registered_at": 1787036505.2296488
+      },
+      {
+        "memory_id": "59e7d322-d983-41a5-9882-3975be9e8b39",
+        "significance": 0.5,
+        "registered_at": 1787036504.578229
+      },
+      {
+        "memory_id": "a602920d-bedf-4841-98ec-f1a45e008c39",
+        "significance": 0.5,
+        "registered_at": 1787036504.0732448
+      },
+      {
+        "memory_id": "c7fecc63-dc47-4262-b6f9-9210608de583",
+        "significance": 0.5,
+        "registered_at": 1787036503.5172422
+      },
+      {
+        "memory_id": "3c492208-bad5-46b5-8896-0594f6ec181c",
+        "significance": 0.5,
+        "registered_at": 1787036503.0078511
+      },
+      {
+        "memory_id": "9eac7b08-9187-41fe-b6c0-ad20466205ab",
+        "significance": 0.5,
+        "registered_at": 1787036502.497826
+      },
+      {
+        "memory_id": "68541271-86e5-4a0d-b2d7-8596c095a7a4",
+        "significance": 0.5,
+        "registered_at": 1787036501.956428
+      },
+      {
+        "memory_id": "8d4d8979-cd61-4bed-bc37-bf151dc67eab",
+        "significance": 0.5,
+        "registered_at": 1787036501.314652
+      },
+      {
+        "memory_id": "e5791362-d88f-44f9-850a-f43dd932c106",
+        "significance": 0.5,
+        "registered_at": 1787036500.66078
+      },
+      {
+        "memory_id": "9b28bfa0-6e88-47eb-b30c-79cddbdeb257",
+        "significance": 0.5,
+        "registered_at": 1787036500.0613592
+      },
+      {
+        "memory_id": "3cbe21eb-0e8f-4560-a0aa-d3b346b7fe08",
+        "significance": 0.5,
+        "registered_at": 1787036499.417859
+      },
+      {
+        "memory_id": "daa2f709-36fd-4384-bc72-8f057e3b70fb",
+        "significance": 0.5,
+        "registered_at": 1787036498.772049
+      },
+      {
+        "memory_id": "be8888ae-6f57-4813-9416-1fbd4804714f",
+        "significance": 0.5,
+        "registered_at": 1787036498.126869
+      },
+      {
+        "memory_id": "ca1999d1-74f4-45ac-bd22-9c5cc89f242c",
+        "significance": 0.5,
+        "registered_at": 1787036495.688213
+      },
+      {
+        "memory_id": "5db50f05-96b0-46fb-83d7-4d6ddea5818f",
+        "significance": 0.5,
+        "registered_at": 1787036495.6881
+      },
+      {
+        "memory_id": "2d00a96b-ba1b-459f-b038-b4c339e760ef",
+        "significance": 0.5,
+        "registered_at": 1787036495.687971
+      },
+      {
+        "memory_id": "61ffcd66-fbe4-48c3-b043-12b9a472a487",
+        "significance": 0.75,
+        "registered_at": 1787036495.687317
+      },
+      {
+        "memory_id": "f20cdf381f5a458ca43988c645c2f824",
+        "significance": 0.3,
+        "registered_at": 1787036495.684542
+      },
+      {
+        "memory_id": "tool:respond",
+        "significance": 0.3,
+        "registered_at": 1787036495.6844742
+      },
+      {
+        "memory_id": "e63d89ef-ea16-4a8f-82b3-23ba543adc8f",
+        "significance": 0.75,
+        "registered_at": 1787036486.877383
+      },
+      {
+        "memory_id": "ccc330b385f04215b792a6441cbe93c1",
+        "significance": 0.3,
+        "registered_at": 1787036486.876422
+      },
+      {
+        "memory_id": "76dc6982-9767-4831-b45a-46b7616fe0d7",
+        "significance": 0.5,
+        "registered_at": 1787036466.0855
+      },
+      {
+        "memory_id": "5e642d49-7f63-4d24-a8ea-1445b8a33dca",
+        "significance": 0.75,
+        "registered_at": 1787036466.0849931
+      },
+      {
+        "memory_id": "11774a67fbad493f9994bdcc5c0e7511",
+        "significance": 0.3,
+        "registered_at": 1787036466.080405
+      },
+      {
+        "memory_id": "tool:concept_query",
+        "significance": 0.3,
+        "registered_at": 1787036466.080223
+      }
+    ]
+  },
+  "annual_bins": {
+    "7": [
+      {
+        "memory_id": "caf501f5-624e-453c-9da6-dcbe66806724",
+        "significance": 0.75,
+        "registered_at": 1787036571.712925
+      },
+      {
+        "memory_id": "b801e252b0b94365b33b43a5700a7097",
+        "significance": 0.3,
+        "registered_at": 1787036571.7095501
+      },
+      {
+        "memory_id": "332160ea-e696-4470-aeb4-2541510176b5",
+        "significance": 0.5,
+        "registered_at": 1787036570.528354
+      },
+      {
+        "memory_id": "c546eab3-3473-47a5-9411-d9851656fd5a",
+        "significance": 0.5,
+        "registered_at": 1787036569.935911
+      },
+      {
+        "memory_id": "075d3e6b-30e8-4d9c-84c8-aa553f0aea4a",
+        "significance": 0.5,
+        "registered_at": 1787036569.296583
+      },
+      {
+        "memory_id": "dc181e85-3d18-4eb2-a68e-765eb48a96fc",
+        "significance": 0.5,
+        "registered_at": 1787036568.766707
+      },
+      {
+        "memory_id": "8de1c9dc-09fe-4b37-9863-8362b680be88",
+        "significance": 0.5,
+        "registered_at": 1787036568.1166568
+      },
+      {
+        "memory_id": "20b905e3-6546-49b5-a8e4-baf849438396",
+        "significance": 0.5,
+        "registered_at": 1787036567.516293
+      },
+      {
+        "memory_id": "bd926e1b-9d5a-41d2-be35-123debb34600",
+        "significance": 0.5,
+        "registered_at": 1787036566.9508438
+      },
+      {
+        "memory_id": "dafec896-b37d-437a-beca-f25b7e876f37",
+        "significance": 0.5,
+        "registered_at": 1787036566.4371672
+      },
+      {
+        "memory_id": "076793d4-802f-4caa-adec-83a2b2ad8bcc",
+        "significance": 0.5,
+        "registered_at": 1787036565.898052
+      },
+      {
+        "memory_id": "9da4bcbd-fd43-487b-b3ba-c3720872b479",
+        "significance": 0.5,
+        "registered_at": 1787036565.253921
+      },
+      {
+        "memory_id": "7082dc49-adda-4c94-a2c1-1cab7718f778",
+        "significance": 0.5,
+        "registered_at": 1787036564.6360488
+      },
+      {
+        "memory_id": "e2e4334f-4862-49d8-b9f5-65864dcc3ed7",
+        "significance": 0.5,
+        "registered_at": 1787036564.123117
+      },
+      {
+        "memory_id": "f1a6df00-0bc9-49fd-9102-4ef4146b9bf2",
+        "significance": 0.5,
+        "registered_at": 1787036563.583333
+      },
+      {
+        "memory_id": "5168f22f-cf90-4683-8a38-944c07b62292",
+        "significance": 0.5,
+        "registered_at": 1787036563.078336
+      },
+      {
+        "memory_id": "afec504b-9198-4581-b76a-c28f5db8e6aa",
+        "significance": 0.5,
+        "registered_at": 1787036562.462948
+      },
+      {
+        "memory_id": "5113c7eb-c63b-4405-852e-eca914ef138e",
+        "significance": 0.5,
+        "registered_at": 1787036561.809976
+      },
+      {
+        "memory_id": "fa726059-19d4-4647-a04a-323f67955a41",
+        "significance": 0.5,
+        "registered_at": 1787036561.1602318
+      },
+      {
+        "memory_id": "b265db07-9076-47f3-b8ed-b8e6627c32b3",
+        "significance": 0.5,
+        "registered_at": 1787036560.5679832
+      },
+      {
+        "memory_id": "aeeb2b63-3caf-4c86-a350-0535cc8c57d4",
+        "significance": 0.5,
+        "registered_at": 1787036559.931437
+      },
+      {
+        "memory_id": "b3570c31-a4da-4de7-abd5-d823d514ac5b",
+        "significance": 0.5,
+        "registered_at": 1787036559.2816849
+      },
+      {
+        "memory_id": "1902d842-a26f-4d69-99ae-61a742bdf0db",
+        "significance": 0.75,
+        "registered_at": 1787036556.463635
+      },
+      {
+        "memory_id": "722b59718a304009a195a16514bae73a",
+        "significance": 0.3,
+        "registered_at": 1787036556.4577868
+      },
+      {
+        "memory_id": "33a14826-8f76-4b84-ad05-9bf4bec6f277",
+        "significance": 0.5,
+        "registered_at": 1787036555.362707
+      },
+      {
+        "memory_id": "cdf57536-003d-4165-ae71-1d4fcf6d44d4",
+        "significance": 0.5,
+        "registered_at": 1787036554.7086341
+      },
+      {
+        "memory_id": "3f637dd6-dce8-4567-94c3-bec6f16191ff",
+        "significance": 0.5,
+        "registered_at": 1787036554.127746
+      },
+      {
+        "memory_id": "cac6868a-983e-4e68-af2b-b1616fa537af",
+        "significance": 0.5,
+        "registered_at": 1787036553.483926
+      },
+      {
+        "memory_id": "31d78e11-61bb-4feb-bb3f-02e80c4c9229",
+        "significance": 0.5,
+        "registered_at": 1787036552.9549189
+      },
+      {
+        "memory_id": "5efbe1d9-25f5-42ea-93c5-69814ee049ab",
+        "significance": 0.5,
+        "registered_at": 1787036552.322736
+      },
+      {
+        "memory_id": "c892b7b2-e552-4b76-947e-32980fbd9cd1",
+        "significance": 0.5,
+        "registered_at": 1787036551.672493
+      },
+      {
+        "memory_id": "c39ec9fd-e869-46c5-a48d-97208c3fa7ab",
+        "significance": 0.5,
+        "registered_at": 1787036551.0404701
+      },
+      {
+        "memory_id": "31f446f7-0155-49a1-9f49-e2a78f0d65b5",
+        "significance": 0.5,
+        "registered_at": 1787036550.4835289
+      },
+      {
+        "memory_id": "b59c0aaa-00c3-4ba1-acd3-f468f6e12a34",
+        "significance": 0.5,
+        "registered_at": 1787036549.897908
+      },
+      {
+        "memory_id": "2fd7de23-1414-4d41-9d3e-81c6dce4650d",
+        "significance": 0.5,
+        "registered_at": 1787036549.252718
+      },
+      {
+        "memory_id": "95af069f-4769-4912-93ea-98b3e96727da",
+        "significance": 0.5,
+        "registered_at": 1787036548.721299
+      },
+      {
+        "memory_id": "c02cf96a-6924-4c1c-97b6-2247c90ed72e",
+        "significance": 0.5,
+        "registered_at": 1787036548.203486
+      },
+      {
+        "memory_id": "f8d57fb5-2cc4-4f44-8535-9ab6b19cf2f9",
+        "significance": 0.5,
+        "registered_at": 1787036547.6027992
+      },
+      {
+        "memory_id": "2fdae572-56b1-49df-9d4f-2daf71f6705e",
+        "significance": 0.5,
+        "registered_at": 1787036546.998037
+      },
+      {
+        "memory_id": "bcf4690d-8d43-474d-bd5b-ac0731ecb068",
+        "significance": 0.5,
+        "registered_at": 1787036546.483434
+      },
+      {
+        "memory_id": "e3f41bc2-beab-4ea6-a83f-4215d55afc18",
+        "significance": 0.5,
+        "registered_at": 1787036545.875637
+      },
+      {
+        "memory_id": "c32f1764-12df-48ce-884d-6a47fdd18ba2",
+        "significance": 0.5,
+        "registered_at": 1787036545.344827
+      },
+      {
+        "memory_id": "436b9f02-1459-4a3a-81fb-a2f113fbe7f7",
+        "significance": 0.75,
+        "registered_at": 1787036545.344578
+      },
+      {
+        "memory_id": "02da1475-3757-4b45-ba63-d9b825bf4639",
+        "significance": 0.75,
+        "registered_at": 1787036541.95573
+      },
+      {
+        "memory_id": "5aec889eb02c4aad99bed5744b41d85e",
+        "significance": 0.3,
+        "registered_at": 1787036541.9482188
+      },
+      {
+        "memory_id": "8665a8be-b757-4c96-b0fb-e67365802459",
+        "significance": 0.5,
+        "registered_at": 1787036540.661879
+      },
+      {
+        "memory_id": "c7b7c1f1-ac8d-4293-9313-c8b60aa69b86",
+        "significance": 0.5,
+        "registered_at": 1787036540.0075421
+      },
+      {
+        "memory_id": "9aa9b7b3-7d7c-4746-a63c-668d014c0ee9",
+        "significance": 0.5,
+        "registered_at": 1787036539.4254122
+      },
+      {
+        "memory_id": "03035b25-c672-4a94-a4d7-5091ea7c0adf",
+        "significance": 0.5,
+        "registered_at": 1787036538.9082382
+      },
+      {
+        "memory_id": "bbb1aa8d-3e20-42ec-a36b-4fba3bba0d26",
+        "significance": 0.5,
+        "registered_at": 1787036538.405626
+      },
+      {
+        "memory_id": "53883aae-dcd6-44fc-a699-edc2f6413ee9",
+        "significance": 0.5,
+        "registered_at": 1787036537.9035451
+      },
+      {
+        "memory_id": "6522af8e-ad76-48a5-89a2-00b2940dcb66",
+        "significance": 0.5,
+        "registered_at": 1787036537.2610319
+      },
+      {
+        "memory_id": "b583e436-4666-405f-95f7-b7184742c560",
+        "significance": 0.5,
+        "registered_at": 1787036536.699054
+      },
+      {
+        "memory_id": "6ef744c6-92ca-4053-bf47-f02b75c6743d",
+        "significance": 0.5,
+        "registered_at": 1787036536.1735868
+      },
+      {
+        "memory_id": "397fe787-f606-4006-ab4f-66e275a13705",
+        "significance": 0.5,
+        "registered_at": 1787036535.531531
+      },
+      {
+        "memory_id": "61a29f92-4ba8-443b-ba0e-85a213d49a57",
+        "significance": 0.5,
+        "registered_at": 1787036534.920255
+      },
+      {
+        "memory_id": "690b6d3e-d0fa-4b4b-a8f0-76af9419d1c1",
+        "significance": 0.5,
+        "registered_at": 1787036534.3908532
+      },
+      {
+        "memory_id": "306aeffe-b9df-4da7-b9de-0031164cb589",
+        "significance": 0.5,
+        "registered_at": 1787036533.888061
+      },
+      {
+        "memory_id": "34523ed6-adf7-4cd6-8443-73f933f0e7e2",
+        "significance": 0.5,
+        "registered_at": 1787036533.239151
+      },
+      {
+        "memory_id": "21e7d178-110f-42d0-b31b-b17827c2242f",
+        "significance": 0.5,
+        "registered_at": 1787036532.7346392
+      },
+      {
+        "memory_id": "1fa91fc7-b903-4909-bfb7-0a0a32bc1476",
+        "significance": 0.5,
+        "registered_at": 1787036532.110475
+      },
+      {
+        "memory_id": "92ea211e-e403-4b78-b234-b905509ae292",
+        "significance": 0.5,
+        "registered_at": 1787036531.477227
+      },
+      {
+        "memory_id": "0a29b8f4-e89f-4aec-88f7-ee77b441e48b",
+        "significance": 0.5,
+        "registered_at": 1787036530.961098
+      },
+      {
+        "memory_id": "8fca1a6c-5d2d-411d-b594-1e512a0b8031",
+        "significance": 0.5,
+        "registered_at": 1787036530.394634
+      },
+      {
+        "memory_id": "88cff19b-e9d2-4045-a156-aca98995df08",
+        "significance": 0.5,
+        "registered_at": 1787036529.754833
+      },
+      {
+        "memory_id": "83e585dd-d978-435b-8de4-43572eeaaa88",
+        "significance": 0.5,
+        "registered_at": 1787036529.107679
+      },
+      {
+        "memory_id": "59bba5f8-9b70-492f-9fc3-4678106bc603",
+        "significance": 0.5,
+        "registered_at": 1787036528.488481
+      },
+      {
+        "memory_id": "d13e762a-9166-43ee-acb0-addc5123b7a9",
+        "significance": 0.75,
+        "registered_at": 1787036526.162744
+      },
+      {
+        "memory_id": "fa66e60f899943cd9b2c043eaf10e310",
+        "significance": 0.3,
+        "registered_at": 1787036526.159683
+      },
+      {
+        "memory_id": "4b64807c-5e5c-4bce-b4fd-46f5a432b708",
+        "significance": 0.5,
+        "registered_at": 1787036524.9067142
+      },
+      {
+        "memory_id": "c2941645-71ca-4ad6-8572-32dc94c8a0a7",
+        "significance": 0.5,
+        "registered_at": 1787036524.249377
+      },
+      {
+        "memory_id": "023176fa-a6f6-4a40-8103-577d4519739f",
+        "significance": 0.5,
+        "registered_at": 1787036523.648097
+      },
+      {
+        "memory_id": "5ab020d4-149f-4a8b-abeb-222dc9d91c20",
+        "significance": 0.5,
+        "registered_at": 1787036522.998097
+      },
+      {
+        "memory_id": "4fa2166a-8542-4bef-bb5d-59083fb820a0",
+        "significance": 0.5,
+        "registered_at": 1787036522.3486028
+      },
+      {
+        "memory_id": "fd3cb271-d1a7-43d9-a6df-1708f564a94f",
+        "significance": 0.5,
+        "registered_at": 1787036521.702122
+      },
+      {
+        "memory_id": "10ef908f-c0cb-4a17-9dc1-6453c93efe81",
+        "significance": 0.5,
+        "registered_at": 1787036521.140609
+      },
+      {
+        "memory_id": "3667e07c-675c-47ce-9f6e-ea9993509c97",
+        "significance": 0.5,
+        "registered_at": 1787036520.578538
+      },
+      {
+        "memory_id": "52b80634-8a36-4178-82dd-a2412d3d5270",
+        "significance": 0.5,
+        "registered_at": 1787036519.927885
+      },
+      {
+        "memory_id": "7bc65f26-767b-4aec-861b-1f1b3cf13dd9",
+        "significance": 0.5,
+        "registered_at": 1787036519.41814
+      },
+      {
+        "memory_id": "85ffa2d9-502c-46ce-b9e2-1045c1defff0",
+        "significance": 0.5,
+        "registered_at": 1787036518.88226
+      },
+      {
+        "memory_id": "78cdb39d-ac0f-44a7-8192-46345e0d654e",
+        "significance": 0.5,
+        "registered_at": 1787036518.295624
+      },
+      {
+        "memory_id": "bab45808-5a72-4c9e-8b3a-293829c89768",
+        "significance": 0.5,
+        "registered_at": 1787036517.7572238
+      },
+      {
+        "memory_id": "a018b864-a6de-4ab4-ada6-38dadbbe6f17",
+        "significance": 0.5,
+        "registered_at": 1787036517.109941
+      },
+      {
+        "memory_id": "8acaa5ca-dd8e-4551-88b4-86bb58d3d4c6",
+        "significance": 0.5,
+        "registered_at": 1787036516.552716
+      },
+      {
+        "memory_id": "29a88cf3-c567-4219-86aa-75fddc814a91",
+        "significance": 0.5,
+        "registered_at": 1787036515.901519
+      },
+      {
+        "memory_id": "5af481a8-7c51-49db-8857-b9a259a70cee",
+        "significance": 0.5,
+        "registered_at": 1787036515.383085
+      },
+      {
+        "memory_id": "c26b4ce9-1c4b-42d9-baf5-f3defa507f97",
+        "significance": 0.5,
+        "registered_at": 1787036514.730075
+      },
+      {
+        "memory_id": "6ac0c08c-5127-4f4d-938a-71fd5ce6440e",
+        "significance": 0.5,
+        "registered_at": 1787036514.09241
+      },
+      {
+        "memory_id": "2085c899-5768-4c87-ad79-e1c5abe78ee5",
+        "significance": 0.5,
+        "registered_at": 1787036513.4458182
+      },
+      {
+        "memory_id": "bf1d112b-fa68-4280-a82c-4667627951a3",
+        "significance": 0.75,
+        "registered_at": 1787036510.48129
+      },
+      {
+        "memory_id": "9cac38310bc148158299159830b0acce",
+        "significance": 0.3,
+        "registered_at": 1787036510.475827
+      },
+      {
+        "memory_id": "52ffc4c7-9df4-44c7-a071-bc977c6344d6",
+        "significance": 0.5,
+        "registered_at": 1787036509.184018
+      },
+      {
+        "memory_id": "25ff9f8c-ca6f-4583-9ed6-02a0db8abe9c",
+        "significance": 0.5,
+        "registered_at": 1787036508.5569851
+      },
+      {
+        "memory_id": "86db2332-f43d-4ba5-94f8-f5ce408c346e",
+        "significance": 0.5,
+        "registered_at": 1787036507.907511
+      },
+      {
+        "memory_id": "8d2be0ef-d171-4597-9f7b-637e451aae61",
+        "significance": 0.5,
+        "registered_at": 1787036507.396669
+      },
+      {
+        "memory_id": "8385e082-8180-4d3d-80cc-e17652433f3b",
+        "significance": 0.5,
+        "registered_at": 1787036506.817135
+      },
+      {
+        "memory_id": "3ba656a1-3928-4d26-9b02-353a08bd9057",
+        "significance": 0.5,
+        "registered_at": 1787036506.289637
+      },
+      {
+        "memory_id": "26979218-32b5-4c19-979c-151138378013",
+        "significance": 0.5,
+        "registered_at": 1787036505.735666
+      },
+      {
+        "memory_id": "2b17c90e-7d88-4791-9e3b-d8a019f633d6",
+        "significance": 0.5,
+        "registered_at": 1787036505.229653
+      },
+      {
+        "memory_id": "59e7d322-d983-41a5-9882-3975be9e8b39",
+        "significance": 0.5,
+        "registered_at": 1787036504.578229
+      },
+      {
+        "memory_id": "a602920d-bedf-4841-98ec-f1a45e008c39",
+        "significance": 0.5,
+        "registered_at": 1787036504.0732448
+      },
+      {
+        "memory_id": "c7fecc63-dc47-4262-b6f9-9210608de583",
+        "significance": 0.5,
+        "registered_at": 1787036503.5172422
+      },
+      {
+        "memory_id": "3c492208-bad5-46b5-8896-0594f6ec181c",
+        "significance": 0.5,
+        "registered_at": 1787036503.007852
+      },
+      {
+        "memory_id": "9eac7b08-9187-41fe-b6c0-ad20466205ab",
+        "significance": 0.5,
+        "registered_at": 1787036502.497827
+      },
+      {
+        "memory_id": "68541271-86e5-4a0d-b2d7-8596c095a7a4",
+        "significance": 0.5,
+        "registered_at": 1787036501.9564319
+      },
+      {
+        "memory_id": "8d4d8979-cd61-4bed-bc37-bf151dc67eab",
+        "significance": 0.5,
+        "registered_at": 1787036501.314656
+      },
+      {
+        "memory_id": "e5791362-d88f-44f9-850a-f43dd932c106",
+        "significance": 0.5,
+        "registered_at": 1787036500.6607842
+      },
+      {
+        "memory_id": "9b28bfa0-6e88-47eb-b30c-79cddbdeb257",
+        "significance": 0.5,
+        "registered_at": 1787036500.061362
+      },
+      {
+        "memory_id": "3cbe21eb-0e8f-4560-a0aa-d3b346b7fe08",
+        "significance": 0.5,
+        "registered_at": 1787036499.417862
+      },
+      {
+        "memory_id": "daa2f709-36fd-4384-bc72-8f057e3b70fb",
+        "significance": 0.5,
+        "registered_at": 1787036498.7720509
+      },
+      {
+        "memory_id": "be8888ae-6f57-4813-9416-1fbd4804714f",
+        "significance": 0.5,
+        "registered_at": 1787036498.126873
+      },
+      {
+        "memory_id": "ca1999d1-74f4-45ac-bd22-9c5cc89f242c",
+        "significance": 0.5,
+        "registered_at": 1787036495.688214
+      },
+      {
+        "memory_id": "5db50f05-96b0-46fb-83d7-4d6ddea5818f",
+        "significance": 0.5,
+        "registered_at": 1787036495.6881
+      },
+      {
+        "memory_id": "2d00a96b-ba1b-459f-b038-b4c339e760ef",
+        "significance": 0.5,
+        "registered_at": 1787036495.687972
+      },
+      {
+        "memory_id": "61ffcd66-fbe4-48c3-b043-12b9a472a487",
+        "significance": 0.75,
+        "registered_at": 1787036495.687317
+      },
+      {
+        "memory_id": "f20cdf381f5a458ca43988c645c2f824",
+        "significance": 0.3,
+        "registered_at": 1787036495.684542
+      },
+      {
+        "memory_id": "tool:respond",
+        "significance": 0.3,
+        "registered_at": 1787036495.684475
+      },
+      {
+        "memory_id": "e63d89ef-ea16-4a8f-82b3-23ba543adc8f",
+        "significance": 0.75,
+        "registered_at": 1787036486.877384
+      },
+      {
+        "memory_id": "ccc330b385f04215b792a6441cbe93c1",
+        "significance": 0.3,
+        "registered_at": 1787036486.876422
+      },
+      {
+        "memory_id": "76dc6982-9767-4831-b45a-46b7616fe0d7",
+        "significance": 0.5,
+        "registered_at": 1787036466.085501
+      },
+      {
+        "memory_id": "5e642d49-7f63-4d24-a8ea-1445b8a33dca",
+        "significance": 0.75,
+        "registered_at": 1787036466.084994
+      },
+      {
+        "memory_id": "11774a67fbad493f9994bdcc5c0e7511",
+        "significance": 0.3,
+        "registered_at": 1787036466.080406
+      },
+      {
+        "memory_id": "tool:concept_query",
+        "significance": 0.3,
+        "registered_at": 1787036466.080225
+      }
+    ]
+  },
+  "signatures": {
+    "tool:concept_query": {
+      "timestamp": 1787036486.876353,
+      "circadian_phase": 0.04266203703703704,
+      "weekly_phase": 0.14895171957671957,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "11774a67fbad493f9994bdcc5c0e7511": {
+      "timestamp": 1787036466.0803578,
+      "circadian_phase": 0.042430555555555555,
+      "weekly_phase": 0.1489186507936508,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "5e642d49-7f63-4d24-a8ea-1445b8a33dca": {
+      "timestamp": 1787036466.084619,
+      "circadian_phase": 0.042430555555555555,
+      "weekly_phase": 0.1489186507936508,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "76dc6982-9767-4831-b45a-46b7616fe0d7": {
+      "timestamp": 1787036486.877255,
+      "circadian_phase": 0.04266203703703704,
+      "weekly_phase": 0.14895171957671957,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "ccc330b385f04215b792a6441cbe93c1": {
+      "timestamp": 1787036486.876404,
+      "circadian_phase": 0.04266203703703704,
+      "weekly_phase": 0.14895171957671957,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "e63d89ef-ea16-4a8f-82b3-23ba543adc8f": {
+      "timestamp": 1787036486.877255,
+      "circadian_phase": 0.04266203703703704,
+      "weekly_phase": 0.14895171957671957,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "tool:respond": {
+      "timestamp": 1787036571.7093382,
+      "circadian_phase": 0.043645833333333335,
+      "weekly_phase": 0.1490922619047619,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "f20cdf381f5a458ca43988c645c2f824": {
+      "timestamp": 1787036495.684525,
+      "circadian_phase": 0.0427662037037037,
+      "weekly_phase": 0.14896660052910052,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "61ffcd66-fbe4-48c3-b043-12b9a472a487": {
+      "timestamp": 1787036495.6861708,
+      "circadian_phase": 0.0427662037037037,
+      "weekly_phase": 0.14896660052910052,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "2d00a96b-ba1b-459f-b038-b4c339e760ef": {
+      "timestamp": 1787036571.711473,
+      "circadian_phase": 0.043645833333333335,
+      "weekly_phase": 0.1490922619047619,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "5db50f05-96b0-46fb-83d7-4d6ddea5818f": {
+      "timestamp": 1787036571.711473,
+      "circadian_phase": 0.043645833333333335,
+      "weekly_phase": 0.1490922619047619,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "ca1999d1-74f4-45ac-bd22-9c5cc89f242c": {
+      "timestamp": 1787036571.711473,
+      "circadian_phase": 0.043645833333333335,
+      "weekly_phase": 0.1490922619047619,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "be8888ae-6f57-4813-9416-1fbd4804714f": {
+      "timestamp": 1787036498.126291,
+      "circadian_phase": 0.04280092592592592,
+      "weekly_phase": 0.14897156084656085,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "daa2f709-36fd-4384-bc72-8f057e3b70fb": {
+      "timestamp": 1787036498.7716212,
+      "circadian_phase": 0.04280092592592592,
+      "weekly_phase": 0.14897156084656085,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "3cbe21eb-0e8f-4560-a0aa-d3b346b7fe08": {
+      "timestamp": 1787036499.4170592,
+      "circadian_phase": 0.0428125,
+      "weekly_phase": 0.14897321428571428,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "9b28bfa0-6e88-47eb-b30c-79cddbdeb257": {
+      "timestamp": 1787036500.060904,
+      "circadian_phase": 0.04282407407407408,
+      "weekly_phase": 0.14897486772486773,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "e5791362-d88f-44f9-850a-f43dd932c106": {
+      "timestamp": 1787036500.660191,
+      "circadian_phase": 0.04282407407407408,
+      "weekly_phase": 0.14897486772486773,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "8d4d8979-cd61-4bed-bc37-bf151dc67eab": {
+      "timestamp": 1787036501.314004,
+      "circadian_phase": 0.04283564814814815,
+      "weekly_phase": 0.14897652116402116,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "68541271-86e5-4a0d-b2d7-8596c095a7a4": {
+      "timestamp": 1787036501.956316,
+      "circadian_phase": 0.04283564814814815,
+      "weekly_phase": 0.14897652116402116,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "9eac7b08-9187-41fe-b6c0-ad20466205ab": {
+      "timestamp": 1787036502.49774,
+      "circadian_phase": 0.042847222222222224,
+      "weekly_phase": 0.1489781746031746,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "3c492208-bad5-46b5-8896-0594f6ec181c": {
+      "timestamp": 1787036503.007777,
+      "circadian_phase": 0.0428587962962963,
+      "weekly_phase": 0.14897982804232804,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "c7fecc63-dc47-4262-b6f9-9210608de583": {
+      "timestamp": 1787036503.517112,
+      "circadian_phase": 0.0428587962962963,
+      "weekly_phase": 0.14897982804232804,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "a602920d-bedf-4841-98ec-f1a45e008c39": {
+      "timestamp": 1787036504.073183,
+      "circadian_phase": 0.04287037037037037,
+      "weekly_phase": 0.1489814814814815,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "59e7d322-d983-41a5-9882-3975be9e8b39": {
+      "timestamp": 1787036504.5781682,
+      "circadian_phase": 0.04287037037037037,
+      "weekly_phase": 0.1489814814814815,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "2b17c90e-7d88-4791-9e3b-d8a019f633d6": {
+      "timestamp": 1787036505.229079,
+      "circadian_phase": 0.042881944444444445,
+      "weekly_phase": 0.14898313492063492,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "26979218-32b5-4c19-979c-151138378013": {
+      "timestamp": 1787036505.735465,
+      "circadian_phase": 0.042881944444444445,
+      "weekly_phase": 0.14898313492063492,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "3ba656a1-3928-4d26-9b02-353a08bd9057": {
+      "timestamp": 1787036506.28948,
+      "circadian_phase": 0.04289351851851852,
+      "weekly_phase": 0.14898478835978837,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "8385e082-8180-4d3d-80cc-e17652433f3b": {
+      "timestamp": 1787036506.817069,
+      "circadian_phase": 0.04289351851851852,
+      "weekly_phase": 0.14898478835978837,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "8d2be0ef-d171-4597-9f7b-637e451aae61": {
+      "timestamp": 1787036507.396596,
+      "circadian_phase": 0.04290509259259259,
+      "weekly_phase": 0.1489864417989418,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "86db2332-f43d-4ba5-94f8-f5ce408c346e": {
+      "timestamp": 1787036507.907445,
+      "circadian_phase": 0.04290509259259259,
+      "weekly_phase": 0.1489864417989418,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "25ff9f8c-ca6f-4583-9ed6-02a0db8abe9c": {
+      "timestamp": 1787036508.556897,
+      "circadian_phase": 0.042916666666666665,
+      "weekly_phase": 0.14898809523809523,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "52ffc4c7-9df4-44c7-a071-bc977c6344d6": {
+      "timestamp": 1787036509.1830919,
+      "circadian_phase": 0.04292824074074074,
+      "weekly_phase": 0.14898974867724868,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "9cac38310bc148158299159830b0acce": {
+      "timestamp": 1787036510.475765,
+      "circadian_phase": 0.04293981481481481,
+      "weekly_phase": 0.1489914021164021,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "bf1d112b-fa68-4280-a82c-4667627951a3": {
+      "timestamp": 1787036510.47918,
+      "circadian_phase": 0.04293981481481481,
+      "weekly_phase": 0.1489914021164021,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "2085c899-5768-4c87-ad79-e1c5abe78ee5": {
+      "timestamp": 1787036513.445238,
+      "circadian_phase": 0.04297453703703704,
+      "weekly_phase": 0.14899636243386244,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "6ac0c08c-5127-4f4d-938a-71fd5ce6440e": {
+      "timestamp": 1787036514.0918038,
+      "circadian_phase": 0.042986111111111114,
+      "weekly_phase": 0.14899801587301587,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "c26b4ce9-1c4b-42d9-baf5-f3defa507f97": {
+      "timestamp": 1787036514.729433,
+      "circadian_phase": 0.042986111111111114,
+      "weekly_phase": 0.14899801587301587,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "5af481a8-7c51-49db-8857-b9a259a70cee": {
+      "timestamp": 1787036515.382508,
+      "circadian_phase": 0.04299768518518519,
+      "weekly_phase": 0.14899966931216932,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "29a88cf3-c567-4219-86aa-75fddc814a91": {
+      "timestamp": 1787036515.901078,
+      "circadian_phase": 0.04299768518518519,
+      "weekly_phase": 0.14899966931216932,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "8acaa5ca-dd8e-4551-88b4-86bb58d3d4c6": {
+      "timestamp": 1787036516.5518458,
+      "circadian_phase": 0.04300925925925926,
+      "weekly_phase": 0.14900132275132275,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "a018b864-a6de-4ab4-ada6-38dadbbe6f17": {
+      "timestamp": 1787036517.109539,
+      "circadian_phase": 0.043020833333333335,
+      "weekly_phase": 0.1490029761904762,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "bab45808-5a72-4c9e-8b3a-293829c89768": {
+      "timestamp": 1787036517.75715,
+      "circadian_phase": 0.043020833333333335,
+      "weekly_phase": 0.1490029761904762,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "78cdb39d-ac0f-44a7-8192-46345e0d654e": {
+      "timestamp": 1787036518.295562,
+      "circadian_phase": 0.04303240740740741,
+      "weekly_phase": 0.14900462962962963,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "85ffa2d9-502c-46ce-b9e2-1045c1defff0": {
+      "timestamp": 1787036518.88219,
+      "circadian_phase": 0.04303240740740741,
+      "weekly_phase": 0.14900462962962963,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "7bc65f26-767b-4aec-861b-1f1b3cf13dd9": {
+      "timestamp": 1787036519.418072,
+      "circadian_phase": 0.04304398148148148,
+      "weekly_phase": 0.14900628306878308,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "52b80634-8a36-4178-82dd-a2412d3d5270": {
+      "timestamp": 1787036519.92782,
+      "circadian_phase": 0.04304398148148148,
+      "weekly_phase": 0.14900628306878308,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "3667e07c-675c-47ce-9f6e-ea9993509c97": {
+      "timestamp": 1787036520.5778959,
+      "circadian_phase": 0.043055555555555555,
+      "weekly_phase": 0.1490079365079365,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "10ef908f-c0cb-4a17-9dc1-6453c93efe81": {
+      "timestamp": 1787036521.1405041,
+      "circadian_phase": 0.04306712962962963,
+      "weekly_phase": 0.14900958994708996,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "fd3cb271-d1a7-43d9-a6df-1708f564a94f": {
+      "timestamp": 1787036521.702039,
+      "circadian_phase": 0.04306712962962963,
+      "weekly_phase": 0.14900958994708996,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "4fa2166a-8542-4bef-bb5d-59083fb820a0": {
+      "timestamp": 1787036522.348526,
+      "circadian_phase": 0.0430787037037037,
+      "weekly_phase": 0.14901124338624339,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "5ab020d4-149f-4a8b-abeb-222dc9d91c20": {
+      "timestamp": 1787036522.998007,
+      "circadian_phase": 0.0430787037037037,
+      "weekly_phase": 0.14901124338624339,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "023176fa-a6f6-4a40-8103-577d4519739f": {
+      "timestamp": 1787036523.64803,
+      "circadian_phase": 0.043090277777777776,
+      "weekly_phase": 0.1490128968253968,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "c2941645-71ca-4ad6-8572-32dc94c8a0a7": {
+      "timestamp": 1787036524.249302,
+      "circadian_phase": 0.04310185185185185,
+      "weekly_phase": 0.14901455026455027,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "4b64807c-5e5c-4bce-b4fd-46f5a432b708": {
+      "timestamp": 1787036524.9061298,
+      "circadian_phase": 0.04310185185185185,
+      "weekly_phase": 0.14901455026455027,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "fa66e60f899943cd9b2c043eaf10e310": {
+      "timestamp": 1787036526.159648,
+      "circadian_phase": 0.043125,
+      "weekly_phase": 0.14901785714285715,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "d13e762a-9166-43ee-acb0-addc5123b7a9": {
+      "timestamp": 1787036526.161675,
+      "circadian_phase": 0.043125,
+      "weekly_phase": 0.14901785714285715,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "59bba5f8-9b70-492f-9fc3-4678106bc603": {
+      "timestamp": 1787036528.487773,
+      "circadian_phase": 0.04314814814814815,
+      "weekly_phase": 0.14902116402116403,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "83e585dd-d978-435b-8de4-43572eeaaa88": {
+      "timestamp": 1787036529.10729,
+      "circadian_phase": 0.043159722222222224,
+      "weekly_phase": 0.14902281746031745,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "88cff19b-e9d2-4045-a156-aca98995df08": {
+      "timestamp": 1787036529.7543302,
+      "circadian_phase": 0.043159722222222224,
+      "weekly_phase": 0.14902281746031745,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "8fca1a6c-5d2d-411d-b594-1e512a0b8031": {
+      "timestamp": 1787036530.393975,
+      "circadian_phase": 0.0431712962962963,
+      "weekly_phase": 0.1490244708994709,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "0a29b8f4-e89f-4aec-88f7-ee77b441e48b": {
+      "timestamp": 1787036530.960446,
+      "circadian_phase": 0.0431712962962963,
+      "weekly_phase": 0.1490244708994709,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "92ea211e-e403-4b78-b234-b905509ae292": {
+      "timestamp": 1787036531.47678,
+      "circadian_phase": 0.04318287037037037,
+      "weekly_phase": 0.14902612433862433,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "1fa91fc7-b903-4909-bfb7-0a0a32bc1476": {
+      "timestamp": 1787036532.110046,
+      "circadian_phase": 0.043194444444444445,
+      "weekly_phase": 0.1490277777777778,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "21e7d178-110f-42d0-b31b-b17827c2242f": {
+      "timestamp": 1787036532.734561,
+      "circadian_phase": 0.043194444444444445,
+      "weekly_phase": 0.1490277777777778,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "34523ed6-adf7-4cd6-8443-73f933f0e7e2": {
+      "timestamp": 1787036533.239093,
+      "circadian_phase": 0.04320601851851852,
+      "weekly_phase": 0.1490294312169312,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "306aeffe-b9df-4da7-b9de-0031164cb589": {
+      "timestamp": 1787036533.887944,
+      "circadian_phase": 0.04320601851851852,
+      "weekly_phase": 0.1490294312169312,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "690b6d3e-d0fa-4b4b-a8f0-76af9419d1c1": {
+      "timestamp": 1787036534.390781,
+      "circadian_phase": 0.04321759259259259,
+      "weekly_phase": 0.14903108465608467,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "61a29f92-4ba8-443b-ba0e-85a213d49a57": {
+      "timestamp": 1787036534.9201941,
+      "circadian_phase": 0.04321759259259259,
+      "weekly_phase": 0.14903108465608467,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "397fe787-f606-4006-ab4f-66e275a13705": {
+      "timestamp": 1787036535.5312462,
+      "circadian_phase": 0.043229166666666666,
+      "weekly_phase": 0.1490327380952381,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "6ef744c6-92ca-4053-bf47-f02b75c6743d": {
+      "timestamp": 1787036536.173505,
+      "circadian_phase": 0.04324074074074074,
+      "weekly_phase": 0.14903439153439155,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "b583e436-4666-405f-95f7-b7184742c560": {
+      "timestamp": 1787036536.6989398,
+      "circadian_phase": 0.04324074074074074,
+      "weekly_phase": 0.14903439153439155,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "6522af8e-ad76-48a5-89a2-00b2940dcb66": {
+      "timestamp": 1787036537.260947,
+      "circadian_phase": 0.04325231481481481,
+      "weekly_phase": 0.14903604497354497,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "53883aae-dcd6-44fc-a699-edc2f6413ee9": {
+      "timestamp": 1787036537.9034612,
+      "circadian_phase": 0.04325231481481481,
+      "weekly_phase": 0.14903604497354497,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "bbb1aa8d-3e20-42ec-a36b-4fba3bba0d26": {
+      "timestamp": 1787036538.405558,
+      "circadian_phase": 0.043263888888888886,
+      "weekly_phase": 0.1490376984126984,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "03035b25-c672-4a94-a4d7-5091ea7c0adf": {
+      "timestamp": 1787036538.908177,
+      "circadian_phase": 0.043263888888888886,
+      "weekly_phase": 0.1490376984126984,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "9aa9b7b3-7d7c-4746-a63c-668d014c0ee9": {
+      "timestamp": 1787036539.425348,
+      "circadian_phase": 0.04327546296296296,
+      "weekly_phase": 0.14903935185185185,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "c7b7c1f1-ac8d-4293-9313-c8b60aa69b86": {
+      "timestamp": 1787036540.007376,
+      "circadian_phase": 0.043287037037037034,
+      "weekly_phase": 0.14904100529100528,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "8665a8be-b757-4c96-b0fb-e67365802459": {
+      "timestamp": 1787036540.6605692,
+      "circadian_phase": 0.043287037037037034,
+      "weekly_phase": 0.14904100529100528,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "5aec889eb02c4aad99bed5744b41d85e": {
+      "timestamp": 1787036541.94815,
+      "circadian_phase": 0.043298611111111114,
+      "weekly_phase": 0.14904265873015873,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "02da1475-3757-4b45-ba63-d9b825bf4639": {
+      "timestamp": 1787036541.953383,
+      "circadian_phase": 0.043298611111111114,
+      "weekly_phase": 0.14904265873015873,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "436b9f02-1459-4a3a-81fb-a2f113fbe7f7": {
+      "timestamp": 1787036545.344209,
+      "circadian_phase": 0.04334490740740741,
+      "weekly_phase": 0.1490492724867725,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "c32f1764-12df-48ce-884d-6a47fdd18ba2": {
+      "timestamp": 1787036545.344209,
+      "circadian_phase": 0.04334490740740741,
+      "weekly_phase": 0.1490492724867725,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "e3f41bc2-beab-4ea6-a83f-4215d55afc18": {
+      "timestamp": 1787036545.8755682,
+      "circadian_phase": 0.04334490740740741,
+      "weekly_phase": 0.1490492724867725,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "bcf4690d-8d43-474d-bd5b-ac0731ecb068": {
+      "timestamp": 1787036546.483231,
+      "circadian_phase": 0.04335648148148148,
+      "weekly_phase": 0.14905092592592592,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "2fdae572-56b1-49df-9d4f-2daf71f6705e": {
+      "timestamp": 1787036546.997898,
+      "circadian_phase": 0.04335648148148148,
+      "weekly_phase": 0.14905092592592592,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "f8d57fb5-2cc4-4f44-8535-9ab6b19cf2f9": {
+      "timestamp": 1787036547.6027179,
+      "circadian_phase": 0.043368055555555556,
+      "weekly_phase": 0.14905257936507937,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "c02cf96a-6924-4c1c-97b6-2247c90ed72e": {
+      "timestamp": 1787036548.203417,
+      "circadian_phase": 0.04337962962962963,
+      "weekly_phase": 0.1490542328042328,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "95af069f-4769-4912-93ea-98b3e96727da": {
+      "timestamp": 1787036548.7212212,
+      "circadian_phase": 0.04337962962962963,
+      "weekly_phase": 0.1490542328042328,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "2fd7de23-1414-4d41-9d3e-81c6dce4650d": {
+      "timestamp": 1787036549.2521238,
+      "circadian_phase": 0.0433912037037037,
+      "weekly_phase": 0.14905588624338625,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "b59c0aaa-00c3-4ba1-acd3-f468f6e12a34": {
+      "timestamp": 1787036549.897704,
+      "circadian_phase": 0.0433912037037037,
+      "weekly_phase": 0.14905588624338625,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "31f446f7-0155-49a1-9f49-e2a78f0d65b5": {
+      "timestamp": 1787036550.483469,
+      "circadian_phase": 0.043402777777777776,
+      "weekly_phase": 0.14905753968253968,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "c39ec9fd-e869-46c5-a48d-97208c3fa7ab": {
+      "timestamp": 1787036551.040405,
+      "circadian_phase": 0.04341435185185185,
+      "weekly_phase": 0.14905919312169313,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "c892b7b2-e552-4b76-947e-32980fbd9cd1": {
+      "timestamp": 1787036551.672395,
+      "circadian_phase": 0.04341435185185185,
+      "weekly_phase": 0.14905919312169313,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "5efbe1d9-25f5-42ea-93c5-69814ee049ab": {
+      "timestamp": 1787036552.322631,
+      "circadian_phase": 0.04342592592592592,
+      "weekly_phase": 0.14906084656084656,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "31d78e11-61bb-4feb-bb3f-02e80c4c9229": {
+      "timestamp": 1787036552.9548428,
+      "circadian_phase": 0.04342592592592592,
+      "weekly_phase": 0.14906084656084656,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "cac6868a-983e-4e68-af2b-b1616fa537af": {
+      "timestamp": 1787036553.483862,
+      "circadian_phase": 0.0434375,
+      "weekly_phase": 0.1490625,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "3f637dd6-dce8-4567-94c3-bec6f16191ff": {
+      "timestamp": 1787036554.127677,
+      "circadian_phase": 0.04344907407407408,
+      "weekly_phase": 0.14906415343915344,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "cdf57536-003d-4165-ae71-1d4fcf6d44d4": {
+      "timestamp": 1787036554.708501,
+      "circadian_phase": 0.04344907407407408,
+      "weekly_phase": 0.14906415343915344,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "33a14826-8f76-4b84-ad05-9bf4bec6f277": {
+      "timestamp": 1787036555.362226,
+      "circadian_phase": 0.04346064814814815,
+      "weekly_phase": 0.14906580687830687,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "722b59718a304009a195a16514bae73a": {
+      "timestamp": 1787036556.45772,
+      "circadian_phase": 0.043472222222222225,
+      "weekly_phase": 0.14906746031746032,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "1902d842-a26f-4d69-99ae-61a742bdf0db": {
+      "timestamp": 1787036556.461304,
+      "circadian_phase": 0.043472222222222225,
+      "weekly_phase": 0.14906746031746032,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "b3570c31-a4da-4de7-abd5-d823d514ac5b": {
+      "timestamp": 1787036559.2809489,
+      "circadian_phase": 0.043506944444444445,
+      "weekly_phase": 0.14907242063492063,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "aeeb2b63-3caf-4c86-a350-0535cc8c57d4": {
+      "timestamp": 1787036559.930893,
+      "circadian_phase": 0.043506944444444445,
+      "weekly_phase": 0.14907242063492063,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "b265db07-9076-47f3-b8ed-b8e6627c32b3": {
+      "timestamp": 1787036560.567335,
+      "circadian_phase": 0.04351851851851852,
+      "weekly_phase": 0.14907407407407408,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "fa726059-19d4-4647-a04a-323f67955a41": {
+      "timestamp": 1787036561.15977,
+      "circadian_phase": 0.04353009259259259,
+      "weekly_phase": 0.1490757275132275,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "5113c7eb-c63b-4405-852e-eca914ef138e": {
+      "timestamp": 1787036561.809321,
+      "circadian_phase": 0.04353009259259259,
+      "weekly_phase": 0.1490757275132275,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "afec504b-9198-4581-b76a-c28f5db8e6aa": {
+      "timestamp": 1787036562.462398,
+      "circadian_phase": 0.043541666666666666,
+      "weekly_phase": 0.14907738095238096,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "5168f22f-cf90-4683-8a38-944c07b62292": {
+      "timestamp": 1787036563.078218,
+      "circadian_phase": 0.04355324074074074,
+      "weekly_phase": 0.1490790343915344,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "f1a6df00-0bc9-49fd-9102-4ef4146b9bf2": {
+      "timestamp": 1787036563.583221,
+      "circadian_phase": 0.04355324074074074,
+      "weekly_phase": 0.1490790343915344,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "e2e4334f-4862-49d8-b9f5-65864dcc3ed7": {
+      "timestamp": 1787036564.123023,
+      "circadian_phase": 0.04356481481481481,
+      "weekly_phase": 0.14908068783068784,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "7082dc49-adda-4c94-a2c1-1cab7718f778": {
+      "timestamp": 1787036564.6359732,
+      "circadian_phase": 0.04356481481481481,
+      "weekly_phase": 0.14908068783068784,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "9da4bcbd-fd43-487b-b3ba-c3720872b479": {
+      "timestamp": 1787036565.2538218,
+      "circadian_phase": 0.04357638888888889,
+      "weekly_phase": 0.14908234126984127,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "076793d4-802f-4caa-adec-83a2b2ad8bcc": {
+      "timestamp": 1787036565.896812,
+      "circadian_phase": 0.04357638888888889,
+      "weekly_phase": 0.14908234126984127,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "dafec896-b37d-437a-beca-f25b7e876f37": {
+      "timestamp": 1787036566.437084,
+      "circadian_phase": 0.04358796296296296,
+      "weekly_phase": 0.14908399470899472,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "bd926e1b-9d5a-41d2-be35-123debb34600": {
+      "timestamp": 1787036566.9507341,
+      "circadian_phase": 0.04358796296296296,
+      "weekly_phase": 0.14908399470899472,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "20b905e3-6546-49b5-a8e4-baf849438396": {
+      "timestamp": 1787036567.516184,
+      "circadian_phase": 0.043599537037037034,
+      "weekly_phase": 0.14908564814814815,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "8de1c9dc-09fe-4b37-9863-8362b680be88": {
+      "timestamp": 1787036568.116576,
+      "circadian_phase": 0.043611111111111114,
+      "weekly_phase": 0.14908730158730157,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "dc181e85-3d18-4eb2-a68e-765eb48a96fc": {
+      "timestamp": 1787036568.766637,
+      "circadian_phase": 0.043611111111111114,
+      "weekly_phase": 0.14908730158730157,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "075d3e6b-30e8-4d9c-84c8-aa553f0aea4a": {
+      "timestamp": 1787036569.296522,
+      "circadian_phase": 0.04362268518518519,
+      "weekly_phase": 0.14908895502645503,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "c546eab3-3473-47a5-9411-d9851656fd5a": {
+      "timestamp": 1787036569.935838,
+      "circadian_phase": 0.04362268518518519,
+      "weekly_phase": 0.14908895502645503,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "332160ea-e696-4470-aeb4-2541510176b5": {
+      "timestamp": 1787036570.5282931,
+      "circadian_phase": 0.04363425925925926,
+      "weekly_phase": 0.14909060846560845,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "b801e252b0b94365b33b43a5700a7097": {
+      "timestamp": 1787036571.709492,
+      "circadian_phase": 0.043645833333333335,
+      "weekly_phase": 0.1490922619047619,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    },
+    "caf501f5-624e-453c-9da6-dcbe66806724": {
+      "timestamp": 1787036571.711473,
+      "circadian_phase": 0.043645833333333335,
+      "weekly_phase": 0.1490922619047619,
+      "monthly_phase": 0.5483870967741935,
+      "annual_phase": 0.6269678302532512
+    }
+  },
+  "priors": {},
+  "oscillator": {
+    "phases": [
+      0.9100699412193648,
+      1.0254774393750952,
+      3.4693555459071597,
+      3.939760468027496
+    ],
+    "coupling": [
+      [
+        0.0,
+        1.1783264928537598,
+        -0.5,
+        -0.5
+      ],
+      [
+        1.1783264928537598,
+        0.0,
+        -0.5,
+        -0.5
+      ],
+      [
+        -0.5,
+        -0.5,
+        0.0,
+        1.192211700724388
+      ],
+      [
+        -0.5,
+        -0.5,
+        1.192211700724388,
+        0.0
+      ]
+    ],
+    "observation_count": 145,
+    "prediction_error_ema": 0.17951156290058626,
+    "event_phases": {
+      "tool:concept_query": [
+        0.26659904324213385,
+        0.26805348428546244
+      ],
+      "tool:respond": [
+        0.26870798275496033,
+        0.26979881353745677,
+        0.2709623663721196,
+        0.2720531971546161,
+        0.27314402793711257,
+        0.274234858719609
+      ]
+    },
+    "config": {
+      "coupling_strength": 0.1,
+      "learning_rate": 0.01,
+      "weight_decay": 0.999,
+      "max_weight": 2.0,
+      "min_weight": -0.5,
+      "dt": 0.041666666666666664,
+      "integration_steps": 1,
+      "max_event_phases": 50,
+      "anticipatory_weight": 0.2
+    }
+  },
+  "_format_version": "1.0"
+}

@@ -1,0 +1,63 @@
+{
+  "capture": "docs/experiments/data/44b_pilot/arms/B_purple_safe/seed1/capture.jsonl",
+  "n_decisions": 30,
+  "n_annotated": 30,
+  "last_annotated_index": 29,
+  "untreated_shape": "none",
+  "untreated_indices": [],
+  "tools": {
+    "focus_on_sound": {
+      "present_count": 30,
+      "mean_tier_first_half": 2.0,
+      "mean_tier_second_half": 1.0,
+      "tier_drift": -1.0,
+      "last_present_index": 29
+    },
+    "infant_humanoid_chilled_listen": {
+      "present_count": 30,
+      "mean_tier_first_half": 2.0,
+      "mean_tier_second_half": 1.0666666666666667,
+      "tier_drift": -0.9333333333333333,
+      "last_present_index": 29
+    },
+    "purple_flame_b_observe": {
+      "present_count": 30,
+      "mean_tier_first_half": 1.9333333333333333,
+      "mean_tier_second_half": 1.0,
+      "tier_drift": -0.9333333333333333,
+      "last_present_index": 29
+    },
+    "purple_flame_b_warm_self": {
+      "present_count": 30,
+      "mean_tier_first_half": 2.0,
+      "mean_tier_second_half": 2.0,
+      "tier_drift": 0.0,
+      "last_present_index": 29
+    },
+    "sense_presence": {
+      "present_count": 30,
+      "mean_tier_first_half": 1.9333333333333333,
+      "mean_tier_second_half": 1.0,
+      "tier_drift": -0.9333333333333333,
+      "last_present_index": 29
+    }
+  },
+  "flip_by_half_annotated": {
+    "first": 0.6,
+    "second": 0.5333333333333333,
+    "n_first": 15,
+    "n_second": 15
+  },
+  "flip_by_half": {
+    "first": 0.6,
+    "second": 0.5333333333333333,
+    "n_first": 15,
+    "n_second": 15
+  },
+  "flip_by_tier": {
+    "2": {
+      "rate": 0.5666666666666667,
+      "n": 30
+    }
+  }
+}
