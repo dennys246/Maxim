@@ -15,7 +15,7 @@ down somewhere in this repo by someone being careful.
 
 | | Theme | Contains | Risk |
 |---|---|---|---|
-| **1.1** | **"Sensorimotor"** — *the substrate leaves the simulator* | Already-merged embodiment work + release correctness, contract truth, and the verification debt it incurred. **Zero new mechanisms.** | Medium. Remaining work is concentrated in liveness, stable API, tests, and release closure. |
+| **1.1** | **"Sensorimotor"** — *the substrate leaves the simulator, and learns to want* | Already-merged embodiment work + release correctness, contract truth, and the verification debt it incurred (all landed by 2026-08-24, published as `1.1.0rc1`) — **plus, reopened 2026-08-25: a recorded, gated result for caregiver-taught orienting (item 17) and the loudness bench tests (item 18)** before `1.1.0` final. | Medium-high: item 17 is the thesis experiment and may fail; a recorded fail still ships (as a fail). |
 | **1.2** | **Oasis + Hivemind** | ~1,400 LOC of de-risked engineering with a cleared gate | Low-medium. Known shape. |
 | **1.3** | **Perception fabric + reflex tier** | Cochlear front-end, vision encoder, binding, three-factor calibration, DN-canonical orienting reflex | **High — contains a pivotal may-fail experiment.** |
 
@@ -42,10 +42,29 @@ by delaying Oasis two versions.
 
 ---
 
-## 1.1 cut line — reconciled 2026-08-19
+## 1.1 cut line — reconciled 2026-08-19, REOPENED 2026-08-25
 
 > **Ship the work that is already merged, plus the correctness, contract, truth,
-> and verification debt that work incurred. Zero new mechanisms.**
+> and verification debt that work incurred. Zero new mechanisms.** *(2026-08-19 wording —
+> items 1–16 closed under it on 2026-08-24; #537 cut the release commit.)*
+
+> **Reopened 2026-08-25 — operator decision, recorded so it is a decision and not
+> drift.** "Sensorimotor learning" as the project owner means it is *learning to want
+> to orient from a primary reward* (a caregiver feeding a hungry infant), not
+> orienting under a hand-declared centering drive. The Exp 45 row earns the latter on
+> real hardware; the former is the caregiver experiment (Exp 48), which is PARTIAL —
+> not because learning failed, but because the instrument cannot score it
+> (directedness under deterministic alternation measures phase alignment; LEARNED-v2
+> missed by 0.001 under a ceiling) and the reward was credited by fiat
+> (`MAXIM_OPERANT_ONLY_CREDIT`), never through hunger relief. Three iterations of that is
+> the divergence signal, and the divergence rule's answer is an *audit-shaped*
+> experiment, not another arm. Releasing "Sensorimotor" while the experiment that
+> tests the owner's version of the claim is unresolved would be the weaker claim wearing
+> the stronger name. So: **the merged `main` ships now as `1.1.0rc1` (users get the
+> correctness fixes; no announcement); `1.1.0` final ships when item 17 has a recorded,
+> gated result — PASS or an honestly-named FAIL — and item 18's bench tests are done.**
+> Two mechanism-class additions are admitted by this decision, each with its
+> front-gate answer in its row. Oasis + Hivemind stay 1.2.
 
 | # | Item | State / release contract |
 |---|---|---|
@@ -65,6 +84,8 @@ by delaying Oasis two versions.
 | 14 | Hermetic required fast suite | **DONE in v1.0.9** (D20). Unique temporary user/config/cache roots, offline model-hub defaults, explicit pretrained-asset opt-in, per-test path-cache reset, and the wider CI gate are executable. |
 | 15 | Architecture-audit enforcement | **DONE (2026-08-24)** (D19). The 33 findings are classified (10 typing-only / 16 function-local lazy imports, none a cycle-break / 7 module-level) in a reviewed baseline (`src/maxim/utils/architecture_baseline.json`, keyed by file + module + scope + accepted symbols); the fast suite fails on additions (incl. a widened symbol list), stale entries, and unreviewed entries. Zero debt is 1.1.x item 11, not a release blocker. |
 | 16 | Release, website, and agent-guidance truth | **OPEN — 1.1 DOCS GATE.** (1.0.9 was published to PyPI on 2026-08-23 at tag `v1.0.9`/`5cb4413b` after the 2026-08-20 maxim-web corrections went live; D24's remaining items now gate the 1.1 cut, not 1.0.9.) The 38-route live content audit is DONE and its cross-repo handoff is recorded; maxim-web corrections, path-preserving `docs.pymaxim.bio` redirects, visual/accessibility verification, exact-wheel command checks, legacy deep-link migration, and post-upload PyPI link verification remain. Repo metadata now points directly to the canonical getting-started route. |
+| 17 | **Nurture — hunger-relief-taught orienting (Exp 52, to be pre-registered)** | **OPEN — 1.1 FINAL GATE (added 2026-08-25).** The audit-shaped successor to Exp 48. Reward flows *through the hunger drive* the `infant_operant` body already declares (entropic, threshold 0.7) — the mother's feed is a real hunger delta and the operant shortcut is OFF — so the turn that preceded the feed must be credited across the delay by the temporal-credit path (`TemporalCreditDistributor.record_event` intake; the drive-event producer is currently dead — that bridge is the mechanism, and where a fail is expected first). **Front-gate:** rides the existing drive specs, value-progress credit and temporal-credit intake; the only new contract is the delayed-credit bridge. **Order:** scripted first (`scripts/orient_substrate/`, like Exp 46) with taught / no-feed / **yoked-feed** (feeds on a schedule, not contingent) arms — if the bridge cannot carry credit there, no embodied runs; then embodied `cradle_mother` under gate v3 with `MAXIM_CRADLE_MOTHER_STIMULUS_ORDER=shuffled` (sanctioned, never run), S5 exposure matching, S7 ceiling clause, n ≥ 12 seeds/arm, designed against the ~0.11 visibility floor and L2 phase-locking. **Stop rule (pre-registered):** one embodied iteration; a second divergence → record the FAIL and ship 1.1.0 with it named. |
+| 18 | **Loudness / onset salience** | **OPEN — 1.1 FINAL GATE, bench tests only (added 2026-08-25).** The two half-day bench tests in §Loudness precede any design: (a) does `media_backend: default` yield audio on the live rig; (b) does the XVF3800's AGC flatten RMS. Then salience in the DoA feed becomes a function of onset (and level, if (b) allows) instead of the constant `audio_salience` — **rides the existing `percept.salience` field**, no new mechanism. The *forced* startle look (action below deliberation) stays the 1.3 reflex tier. |
 
 The remaining scope is release closure, not a new feature phase. Estimates belong on
 the implementation PRs after each item's failing contract test exists; this roadmap
@@ -103,9 +124,15 @@ from the claims-verification round — blocking vs 1.1.x *within* the gated item
 3. **DONE — Persistence/architecture correctness:** ~~D2 atomic invalidation~~ **DONE
    2026-08-23**; ~~D19's accepted-debt baseline/regression gate~~ **DONE 2026-08-24**.
 4. **DONE 2026-08-24 — Evidence closure:** S4 recorded (item 11, #536), Big-Model chapter ran (2026-08-21 → L8), hardware chapter done (#535), cheap rows re-attested at the RC commit `88739318` (37/37, 41/41).
-5. **IN PROGRESS — Release transaction:** audit the canonical website against the exact release
-   artifact, reconcile version policy/docs/PyPI project links, build/check the
-   package, cut `1.1.0`, tag it, and publish matching release notes and artifact.
+5. **Release transaction — split 2026-08-25:**
+   - **5a (now): publish `1.1.0rc1`** from the merged release commit (#537, `e027e071`):
+     bump both version files + the CHANGELOG header to `1.1.0rc1` in one commit, vendor
+     the Console UI, build/`twine check`, TestPyPI → PyPI, tag `v1.1.0rc1` on the
+     published commit, flip the "PyPI serves" sync lines. No announcement.
+   - **5b (after items 17 + 18): `1.1.0` final** — audit the canonical website against
+     the exact release artifact, reconcile version policy/docs/PyPI project links,
+     build/check, cut `1.1.0`, tag it, publish matching release notes (the
+     announcement waits for this).
 
 ### Agent-guidance single-source decision (1.1 docs gate) — RATIFIED 2026-08-19, inverse direction
 
