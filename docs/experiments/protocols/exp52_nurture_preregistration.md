@@ -161,6 +161,40 @@ Verdict constants live in `scripts/analyze_cradle_mother.py` (v2) and are extend
 retuned, for v3 — `HUNGER_MARGIN = 0.20`, `SATIATED_RISE_MAX = 0.15`, and the seed-spread
 apparatus check — in the same commit as the harness change.
 
+## Phase A — RESULT (2026-08-25, frozen parameters, `main` @ `e367f526`) — PASS
+
+Run by the operator from the merged harness commit (`executed_git_hash e367f526`,
+`executed_maxim_file <repo>/src/maxim/__init__.py`), 8 seeds × 600 ticks, bin 50,
+ε = 0.2 — exactly the frozen parameters. Raw record:
+[`data/52_phaseA_scripted.json`](../data/52_phaseA_scripted.json).
+
+| arm | first-5-ticks baseline | settled (last 4 bins) | feeds / credits per seed |
+|---|---|---|---|
+| taught | 0.650 | **0.892** | 532–544 / 532–544 (every feed credited, all +1) |
+| satiated | 0.475 | **0.496** | 274–315 / **0** |
+| yoked | 0.575 | **0.496** | = taught seed's feeds / all credited |
+| no_feed | 0.475 | **0.496** | 0 / 0 |
+
+- **LEARNED: PASS** — settled 0.892 ≥ 0.80, rose +0.24 ≥ 0.15 (not at ceiling).
+- **HUNGER-NECESSARY: PASS** — taught − satiated = +0.40 ≥ 0.20; satiated 0.496 ≤ 0.60.
+- **MOTHER-NECESSARY: PASS** — taught − max(yoked, no_feed) = +0.40 ≥ 0.20.
+- **Mechanism sanity: OK** — satiated credits 0/8 seeds; taught credits == feeds
+  (4305/4305), every reward +1; yoked feeds == taught feeds per seed.
+- Hunger at feed (taught, median of per-seed medians): **0.050** — the steady state
+  the §Arms caveat predicted; this result is "nonzero vs zero relief", as declared.
+
+**Two things worth reading off the record.** (1) The satiated and no_feed curves are
+**identical to the last digit** (`curves.satiated == curves.no_feed`): with no credit
+ever minted, both arms are the same seeded random walk — the feed without need had
+literally zero effect on behaviour, which is the strongest form the HUNGER-NECESSARY
+claim can take on this substrate. (2) The yoked arm received the taught arm's 4305
+feeds and credits — all landing on whatever action was pending — and stayed at chance
+(0.496): the *contingency*, not the reward volume, carries the learning.
+
+**Consequence per the outcome tree:** Phase A passes → **Phase B runs** (once), on the
+mini, with `--stimulus-order shuffled --credit relief`, arms taught / satiated /
+no_feed, n = 12/arm.
+
 ## Outcome tree (decided now)
 
 | outcome | reading | action |
@@ -284,10 +318,11 @@ python scripts/analyze_cradle_mother.py --in docs/experiments/data/52_phaseB_emb
 
 ## Sign-off (operator fills before first run)
 
-- [ ] Gates + parameters above reviewed and FROZEN at the commit that lands the harness
-      (amendments 1–2 included); hash: `________`
-- [ ] Harness change (relief-sourced credit + satiated body + v3 analyzer constants) merged
-      with its guard tests; under `--credit relief` the satiated arm mints zero credits and
+- [x] Gates + parameters above reviewed and FROZEN at the commit that lands the harness
+      (amendments 1–2 included); hash: `e367f526` (#543)
+- [x] Harness change (relief-sourced credit + satiated body + v3 analyzer constants) merged
+      with its guard tests (#543); under `--credit relief` the satiated arm mints zero credits and
       under `--credit constant` it is credited on every feed (the A/B's actual content)
-- [ ] Phase A run: date `________` — LEARNED `__` HUNGER-NECESSARY `__` MOTHER-NECESSARY `__`
+- [x] Phase A run: date `2026-08-25` @ `e367f526` — LEARNED `PASS` HUNGER-NECESSARY `PASS` MOTHER-NECESSARY `PASS`
+      (sanity OK; record `data/52_phaseA_scripted.json`)
 - [ ] Phase B started: date `________`, machine `________`, seeds `________`
