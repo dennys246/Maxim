@@ -1,0 +1,425 @@
+{
+  "experiment": "exp52_phaseA_scripted",
+  "credit": "relief",
+  "params": {
+    "ticks": 600,
+    "bin": 50,
+    "seeds": 8,
+    "epsilon": 0.2,
+    "hunger_drift": 0.05,
+    "feed_amount": 0.5
+  },
+  "curves": {
+    "taught": [
+      0.8675,
+      0.9125,
+      0.8975000000000001,
+      0.9175,
+      0.8875,
+      0.885,
+      0.9274999999999999,
+      0.8999999999999999,
+      0.9199999999999999,
+      0.875,
+      0.895,
+      0.8775
+    ],
+    "satiated": [
+      0.4875,
+      0.455,
+      0.51,
+      0.51,
+      0.515,
+      0.5025000000000001,
+      0.5,
+      0.4925,
+      0.4975,
+      0.495,
+      0.48,
+      0.51
+    ],
+    "yoked": [
+      0.56,
+      0.52,
+      0.3875,
+      0.45,
+      0.44999999999999996,
+      0.505,
+      0.5125000000000001,
+      0.495,
+      0.4475,
+      0.5175000000000001,
+      0.495,
+      0.5225
+    ],
+    "no_feed": [
+      0.4875,
+      0.455,
+      0.51,
+      0.51,
+      0.515,
+      0.5025000000000001,
+      0.5,
+      0.4925,
+      0.4975,
+      0.495,
+      0.48,
+      0.51
+    ]
+  },
+  "baseline_first_ticks": {
+    "taught": 0.65,
+    "satiated": 0.475,
+    "yoked": 0.575,
+    "no_feed": 0.475
+  },
+  "baseline_n_ticks": 5,
+  "at_ceiling": false,
+  "settled": {
+    "taught": 0.891875,
+    "satiated": 0.495625,
+    "yoked": 0.495625,
+    "no_feed": 0.495625
+  },
+  "telemetry": {
+    "taught": [
+      {
+        "fed": 535,
+        "credits": 535,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      },
+      {
+        "fed": 543,
+        "credits": 543,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      },
+      {
+        "fed": 532,
+        "credits": 532,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      },
+      {
+        "fed": 544,
+        "credits": 544,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      },
+      {
+        "fed": 539,
+        "credits": 539,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      },
+      {
+        "fed": 534,
+        "credits": 534,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      },
+      {
+        "fed": 542,
+        "credits": 542,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      },
+      {
+        "fed": 536,
+        "credits": 536,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      }
+    ],
+    "satiated": [
+      {
+        "fed": 287,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": 0.0,
+        "relief_max": 0.0,
+        "hunger_at_feed_min": 0.0,
+        "hunger_at_feed_median": 0.0
+      },
+      {
+        "fed": 306,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": 0.0,
+        "relief_max": 0.0,
+        "hunger_at_feed_min": 0.0,
+        "hunger_at_feed_median": 0.0
+      },
+      {
+        "fed": 284,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": 0.0,
+        "relief_max": 0.0,
+        "hunger_at_feed_min": 0.0,
+        "hunger_at_feed_median": 0.0
+      },
+      {
+        "fed": 303,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": 0.0,
+        "relief_max": 0.0,
+        "hunger_at_feed_min": 0.0,
+        "hunger_at_feed_median": 0.0
+      },
+      {
+        "fed": 305,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": 0.0,
+        "relief_max": 0.0,
+        "hunger_at_feed_min": 0.0,
+        "hunger_at_feed_median": 0.0
+      },
+      {
+        "fed": 308,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": 0.0,
+        "relief_max": 0.0,
+        "hunger_at_feed_min": 0.0,
+        "hunger_at_feed_median": 0.0
+      },
+      {
+        "fed": 315,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": 0.0,
+        "relief_max": 0.0,
+        "hunger_at_feed_min": 0.0,
+        "hunger_at_feed_median": 0.0
+      },
+      {
+        "fed": 274,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": 0.0,
+        "relief_max": 0.0,
+        "hunger_at_feed_min": 0.0,
+        "hunger_at_feed_median": 0.0
+      }
+    ],
+    "yoked": [
+      {
+        "fed": 535,
+        "credits": 535,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      },
+      {
+        "fed": 543,
+        "credits": 543,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      },
+      {
+        "fed": 532,
+        "credits": 532,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      },
+      {
+        "fed": 544,
+        "credits": 544,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      },
+      {
+        "fed": 539,
+        "credits": 539,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      },
+      {
+        "fed": 534,
+        "credits": 534,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      },
+      {
+        "fed": 542,
+        "credits": 542,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      },
+      {
+        "fed": 536,
+        "credits": 536,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5,
+        "hunger_at_feed_min": 0.05,
+        "hunger_at_feed_median": 0.05
+      }
+    ],
+    "no_feed": [
+      {
+        "fed": 0,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": null,
+        "relief_max": null,
+        "hunger_at_feed_min": null,
+        "hunger_at_feed_median": null
+      },
+      {
+        "fed": 0,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": null,
+        "relief_max": null,
+        "hunger_at_feed_min": null,
+        "hunger_at_feed_median": null
+      },
+      {
+        "fed": 0,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": null,
+        "relief_max": null,
+        "hunger_at_feed_min": null,
+        "hunger_at_feed_median": null
+      },
+      {
+        "fed": 0,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": null,
+        "relief_max": null,
+        "hunger_at_feed_min": null,
+        "hunger_at_feed_median": null
+      },
+      {
+        "fed": 0,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": null,
+        "relief_max": null,
+        "hunger_at_feed_min": null,
+        "hunger_at_feed_median": null
+      },
+      {
+        "fed": 0,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": null,
+        "relief_max": null,
+        "hunger_at_feed_min": null,
+        "hunger_at_feed_median": null
+      },
+      {
+        "fed": 0,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": null,
+        "relief_max": null,
+        "hunger_at_feed_min": null,
+        "hunger_at_feed_median": null
+      },
+      {
+        "fed": 0,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": null,
+        "relief_max": null,
+        "hunger_at_feed_min": null,
+        "hunger_at_feed_median": null
+      }
+    ]
+  },
+  "gates": {
+    "LEARNED": true,
+    "HUNGER_NECESSARY": true,
+    "MOTHER_NECESSARY": true,
+    "MECHANISM_SANITY": true
+  },
+  "provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "e367f526dae1",
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python"
+  }
+}
