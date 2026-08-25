@@ -1562,6 +1562,21 @@ def _isolate_cradle_mother_stimulus_order_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_cradle_mother_credit_env():
+    """Scrub MAXIM_CRADLE_MOTHER_CREDIT between tests (CLAUDE.md env-var rule):
+    a leaked 'constant' would silently put any generative-runner mother-tick
+    test back on the pre-Exp-52 by-fiat credit."""
+    import os as _os
+
+    saved = _os.environ.pop("MAXIM_CRADLE_MOTHER_CREDIT", None)
+    yield
+    if saved is not None:
+        _os.environ["MAXIM_CRADLE_MOTHER_CREDIT"] = saved
+    else:
+        _os.environ.pop("MAXIM_CRADLE_MOTHER_CREDIT", None)
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_inference_lock_timeout_env():
     """Scrub MAXIM_INFERENCE_LOCK_TIMEOUT_S between tests (CLAUDE.md env-var
     rule): a leaked override would silently change every router call's

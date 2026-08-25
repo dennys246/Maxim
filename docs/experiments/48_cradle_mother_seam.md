@@ -57,7 +57,11 @@ Run from the **big-mac-mini leader**, NOT co-located with any other sim/leader c
 PYTHONPATH=src python scripts/benchmark_cradle_mother.py \
     --arms taught,no_feed --trials 12 --seed-base 42 \
     --sim-max-turns 56 --model mistral-7b \
-    --out ~/exp48_cradle_mother_seam.jsonl --workdir /tmp/exp48_runs
+    --credit constant \
+    --out ~/exp48_cradle_mother_seam.jsonl --workdir ~/exp48_runs
+# --credit constant (added 2026-08-25): the harness default is now Exp 52's relief-sourced
+# credit; this row's rows were produced under the constant by-fiat credit (rows without a
+# `credit` stamp are constant). Workdir on durable storage, never /tmp (S4).
 
 PYTHONPATH=src python scripts/analyze_cradle_mother.py --in ~/exp48_cradle_mother_seam.jsonl --trials 12
 ```

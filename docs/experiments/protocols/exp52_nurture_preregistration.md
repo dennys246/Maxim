@@ -12,6 +12,16 @@ the infant **learns to want to orient** — it acquires the value of turning tow
 caregiver from a primary reward (being fed while hungry), with no hand-declared
 orienting drive. Exp 45 earns orienting under a declared centering drive on real
 hardware; this experiment tests the acquisition of the drive-like policy itself.
+*Operationalisation, stated plainly (review fold):* the credit is the **sign** of
+relief, never its magnitude (the channel-3 invariant), so what the design
+discriminates is **nonzero vs exactly-zero relief** — "hungry" means hunger > 0. In
+steady state the taught infant is fed at hunger ≈ 0.05–0.10 (Phase A: drift +0.05/tick
+precedes each feed; Phase B: ≈ 0.08/turn of wall-clock drift against a −0.5 feed), well
+below the deprivation threshold. That is the right *plumbing* test of "is the credit
+sourced from relief"; a need-gated credit (mint only above the satisfaction threshold)
+would be a mechanism change and its own pre-registration. Both harnesses record hunger
+at feed (`hunger_at_feed_*` in Phase A; `relief=` per turn in Phase B's mother log) so
+the claim is auditable.
 
 ---
 
@@ -64,6 +74,15 @@ lines, guard tests in the same commit.
 `MAXIM_OPERANT_ONLY_CREDIT=1` stays ON in every arm: it suppresses the tool-success
 floor, which probe 3 showed drowns any operant signal; it does not supply reward.
 
+**What the `--credit constant` A/B does and does not test (review fold):** on the
+*taught* arm relief is > 0 on every contingent feed (drift precedes feed), so the relief
+credit stream is `+1` per feed — byte-identical to `constant` with `feed_reward=1.0`, same
+RNG, same trajectory. "The harness change did not move the taught curve" is therefore
+true and vacuous. The entire empirical content of the change is the **satiated** arm:
+under `relief` it mints nothing; under `constant` it is credited on every feed and learns.
+The −1 branch is unreachable with the bundled bodies (negative feed deltas on entropic
+"up" drives), so "every credit is +1" is an apparatus check, not a test of the sign logic.
+
 ## Arms (both phases)
 
 | arm | hunger | mother feeds when… | credit |
@@ -76,7 +95,9 @@ floor, which probe 3 showed drowns any operant signal; it does not supply reward
 `satiated` is the discriminating arm: identical feed events, identical contingency,
 zero need. If it learns, the credit is not coming from relief. `yoked` uses the taught
 seed's feed turn-indices (recorded in Phase A; in Phase B, the paired taught run's
-`fed` telemetry), so feed *rate* is matched by construction (S5).
+`fed` telemetry), so feed *rate* is matched by construction (S5) — but runs on an
+**independent RNG stream** (*amendment 1*): on the taught seed's stream it replays the
+taught trajectory action-for-action and learns by construction.
 
 ## Phase A — scripted (runs first; gates Phase B)
 
@@ -90,7 +111,9 @@ contingency, reward = sign(relief). No LLM, no sim machinery, seconds per seed.
 - **Metric:** per-bin directedness (fraction of turns with `progress > 0`), as Exp 46.
 - **Gates (frozen; Exp 46's LEARNED/MOTHER-TAUGHT plus the new one):**
   - **LEARNED:** taught settled (mean of last 4 bins) ≥ **0.80** AND rose ≥ **0.15** from
-    the first bin.
+    the **pre-learning baseline = the first 5 ticks of every seed, pooled** (probe 4's
+    convention; *amendment 1*). Baseline ≥ 0.80 → LEARNED-AT-CEILING (settled ≥ 0.80),
+    reported as such (S7).
   - **HUNGER-NECESSARY:** taught settled ≥ satiated settled + **0.20**, and satiated
     settled ≤ **0.60**.
   - **MOTHER-NECESSARY:** taught settled ≥ max(yoked, no_feed) settled + **0.20**.
@@ -130,7 +153,7 @@ made explicit):**
 | LEARNED | taught late (act3+act4) directedness ≥ **0.65** AND rose ≥ **0.15** from EARLY = act1 only |
 | CEILING (S7) | early ≥ 0.65 → LEARNED-AT-CEILING (late ≥ 0.65 and no degradation beyond the v2 tolerance), reported as such |
 | MOTHER-TAUGHT | taught late ≥ no_feed late + **0.20** |
-| **HUNGER-NECESSARY** (new) | taught late ≥ satiated late + **0.20**, and satiated shows no rise ≥ 0.15 |
+| **HUNGER-NECESSARY** (new) | taught late ≥ satiated late + **0.20**, satiated shows no rise ≥ 0.15, **and satiated late ≤ no_feed late + 0.20** (*amendment 2*: a cap mirroring Phase A's `satiated ≤ 0.60`, so a slowly-rising satiated arm cannot pass on the rise term alone) |
 | **APPARATUS (L2)** | per-cell directedness must vary across seeds: if any arm's late-bin value is a seed-invariant exact fraction (the v2 signature: 8/12 → 8/12 → 4/12 with zero seed spread), the shuffle did not break phase-locking and the **agent side needs dither too** — no science verdict is issued; record as an L2 amendment |
 | MARGIN (L1) | any claim of learning-without-behaviour-change, or of "no learning", must cite `learned_margin`/`explore_decisive` (#504); the argmax cannot see a bias below ~0.11 |
 
@@ -160,6 +183,17 @@ than a narrowing one — ends Exp 52 for 1.1: the result is recorded as it stand
   path (the narrator drives the world only).
 - Nothing about loudness or startle (item 18 / the 1.3 reflex tier).
 - Nothing beyond a one-turn contingency; multi-turn credit delay is out of scope.
+- What the operationalisation IS and IS NOT (bio-fidelity, review fold): primary
+  reinforcement of an action-in-context (sound-direction cluster → turn), Thorndike-style.
+  Not modeled: secondary reinforcement of the mother's voice (no value on the stimulus
+  itself) and incentive salience / devaluation — a learned bias is expressed identically
+  when sated (hunger does not gate readout), so "learns to want" is a state–action
+  policy, not a drive. The satiated arm also differs in its pain landscape (no
+  hunger/thirst PainBus events), a minor confound because the taught arm rarely reaches
+  deprivation either and `recommend_action` is positive-gated.
+- LEARNED's rise term is largely implied by its level term once the baseline is the
+  first-5-ticks window (≈ chance): read LEARNED as a level test; do not count "rose
+  +0.35" as separate evidence.
 
 ## Apparatus declarations (S1–S8)
 
@@ -167,16 +201,62 @@ than a narrowing one — ends Exp 52 for 1.1: the result is recorded as it stand
   `reactive_mother_tick`'s credit value changes; Exp 46's scripted rows are re-derived by
   the new harness's `taught` arm at `GAIN`-equivalent (the constant-credit path is kept
   behind `--credit constant` for the A/B). Exp 45 (hardware) does not ride on this.
-- **S3 in-sim assertions:** satiated arm credits == 0; credit sign == +1 on every fed
-  turn; feed count == credit count in taught.
+- **S3 in-sim assertions (enforced by `analyze_cradle_mother.py --gate v3` from the
+  per-turn mother telemetry the harness aggregates — `credited_rate`, `neg_reward`,
+  `credited_no_relief`):** satiated arm credits == 0; no negative reward; no credit
+  without relief. "feed count == credit count in taught" holds on **shaping turns**
+  (`progress > 0`) only: on turn 0 the mother's legacy fallback feeds a centered infant
+  (`|az| ≤ oriented_threshold`, azimuth initial 0) whose hunger is still 0 →
+  `fed=True, relief=0, credited=False`, one uncredited feed per run by construction.
+  Phase A asserts the strict form in-harness (its ticks are all shaping ticks) plus
+  `yoked feeds == taught feeds` (S5).
 - **S4:** per-run JSONL committed under `docs/experiments/data/52_*` (both phases) with
   `executed_git_hash`; workdirs on durable storage.
 - **S5:** exposure contract above; the mother's own turns are the declared asymmetry.
 - **S6:** `MAXIM_CRADLE_MOTHER_STIMULUS_ORDER=shuffled` and the relief-sourced credit are
   fidelity changes relative to Exp 48 v2 and are declared here; neither changes between
-  arms within a phase.
+  arms within a phase. The campaign harness refuses to start when an ambient env value
+  disagrees with its flags (exit 3), and stamps the credit mode the sub-sim *observed*
+  per act. Phase B's relief sign rides on wall-clock drift between feeds (`dt > 0`
+  between mother ticks, guaranteed by the narrator call in between) — an L5-class
+  timing dependency, named here.
 - **S7:** ceiling clause carried from v2.
 - **S8:** one harness at a time; Phase B runs on the mini, not co-located with a leader.
+
+## Amendments
+
+**Amendment 1 — 2026-08-25, PRE-DATA, structural (harness dry run at non-frozen
+parameters: 3 seeds × 300 ticks, run to verify the harness before the pre-registered
+Phase A).** Two apparatus defects in the harness/pre-registration as first written,
+neither about effect size:
+1. *LEARNED's rise was unattainable by construction.* The scripted mechanism learns
+   within ~10 ticks (probe 4's own note), so bin 1 (50 ticks) is already learned and
+   "rose ≥ 0.15 from bin 1" fails on every run that learns — the S7 ceiling defect,
+   one level down. Fixed to probe 4's convention: the pre-learning baseline is the
+   first 5 ticks pooled across seeds, with a LEARNED-AT-CEILING clause. Margin
+   unchanged (0.15).
+2. *The yoked arm replayed the taught arm.* Feeding on the taught seed's schedule
+   while sharing the taught seed's RNG stream reproduced the taught trajectory
+   action-for-action (same sounds, same ε draws, same empty NAc → same actions →
+   same feeds), so "yoked" learned identically. Fixed: the yoked infant runs on an
+   independent stream (`seed + 100_003`) with the taught seed's feed schedule.
+
+**Disclosure (per the Exp 48 gate-v2 precedent):** at amendment time the author had read
+the 3 × 300 relief-mode curves. Before the fixes: taught bin 1 = 0.85 (hence the rise
+defect) and yoked settled 0.90 (the replay defect). After the fixes: taught 0.90 /
+satiated 0.52 / yoked 0.47 / no_feed 0.52, all four gates PASS, sanity OK; `--credit
+constant`: satiated 0.90 (constant credit ignores need — the contrast the experiment is
+built on; the taught curve is identical in both modes by construction, see
+§Mechanism). The dry-run record is committed as
+`docs/experiments/data/52_dryrun_nonfrozen.json` (NOT the frozen run; non-frozen
+parameters). No gate constant was retuned; the frozen Phase A run has not yet happened.
+
+**Amendment 2 — 2026-08-25, PRE-DATA, structural (review round).** Phase B's
+HUNGER-NECESSARY had only relative terms (margin below taught; rise < 0.15) while Phase A
+has an absolute cap (satiated ≤ 0.60); a satiated arm rising slowly to 0.62 against a
+0.17 control would have passed B. Added the B-form cap `satiated late ≤ no_feed late +
+0.20` — the satiated infant must be indistinguishable from the teacherless control.
+Conservative direction (harder to pass); no other constant changed.
 
 ## Amendment rule
 
@@ -193,16 +273,21 @@ PYTHONPATH=$PWD/src python scripts/orient_substrate/9_hunger_relief_orient.py --
   --json docs/experiments/data/52_phaseA_scripted.json
 
 # Phase B (mini; ~12 h for 3 arms × 12 seeds at ~712 s/run)
-export PYTHONPATH=$PWD/src MAXIM_OPERANT_ONLY_CREDIT=1 MAXIM_CRADLE_MOTHER_STIMULUS_ORDER=shuffled
+export PYTHONPATH=$PWD/src
+# The FLAGS select the apparatus (the harness overwrites the sub-sim env from them and
+# refuses to start if an ambient MAXIM_CRADLE_MOTHER_* value disagrees — do not export those).
 python scripts/benchmark_cradle_mother.py --arms taught,satiated,no_feed --trials 12 --seed-base 42 \
+  --stimulus-order shuffled --credit relief \
   --model mistral-7b --workdir ~/exp52/phaseB --out docs/experiments/data/52_phaseB_embodied.jsonl
 python scripts/analyze_cradle_mother.py --in docs/experiments/data/52_phaseB_embodied.jsonl --gate v3
 ```
 
 ## Sign-off (operator fills before first run)
 
-- [ ] Gates + parameters above reviewed and FROZEN; this file committed, hash: `________`
+- [ ] Gates + parameters above reviewed and FROZEN at the commit that lands the harness
+      (amendments 1–2 included); hash: `________`
 - [ ] Harness change (relief-sourced credit + satiated body + v3 analyzer constants) merged
-      with its guard tests; `--credit constant` A/B reproduces Exp 46's taught curve
+      with its guard tests; under `--credit relief` the satiated arm mints zero credits and
+      under `--credit constant` it is credited on every feed (the A/B's actual content)
 - [ ] Phase A run: date `________` — LEARNED `__` HUNGER-NECESSARY `__` MOTHER-NECESSARY `__`
 - [ ] Phase B started: date `________`, machine `________`, seeds `________`

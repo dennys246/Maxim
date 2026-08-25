@@ -32,6 +32,34 @@ import yaml
 _DEFAULT_AUT_TURN_TIMEOUT_S: float = 30.0
 
 
+_MOTHER_CREDIT_MODES = ("relief", "constant")
+
+
+def resolve_mother_credit_mode(log=None) -> str:
+    """The cradle-mother operant credit's VALUE source (Exp 52), from
+    ``MAXIM_CRADLE_MOTHER_CREDIT``: ``"relief"`` (default — the sign of the drive
+    relief the feed produced) or ``"constant"`` (the pre-Exp-52 by-fiat
+    ``feed_reward``). Any other value raises — a typo must not silently run a
+    campaign on the wrong apparatus (S6). Logged once at INFO so the resolved
+    mode is in every run log. Scrub: tests/conftest.py::_isolate_cradle_mother_credit_env.
+    """
+    import os as _os
+
+    raw = _os.environ.get("MAXIM_CRADLE_MOTHER_CREDIT", "").strip().lower()
+    mode = raw or "relief"
+    if mode not in _MOTHER_CREDIT_MODES:
+        raise ValueError(
+            f"MAXIM_CRADLE_MOTHER_CREDIT={raw!r} is not one of {_MOTHER_CREDIT_MODES}; refusing to run the "
+            "cradle mother on an undefined credit mode"
+        )
+    if log is not None:
+        try:
+            log.info("cradle_mother operant credit mode: %s%s", mode, "" if raw else " (default)")
+        except Exception:
+            pass
+    return mode
+
+
 def _aut_turn_timeout_s() -> float:
     """AUT per-turn response timeout, resolved via the config precedence chain.
 
@@ -414,6 +442,10 @@ def run_generative_campaign(
     # this turn's ``prev_stimulus`` so the mother can reward the infant for
     # having turned TOWARD it (cradle_mother operant redesign).
     _mother_prev_stimulus: float | None = None
+    # Exp 52 credit-value source, validated ONCE before the loop (review fold): the
+    # per-turn mother tick sits inside a debug-swallowing try, so an invalid value
+    # would otherwise kill the mother for the whole campaign at DEBUG level.
+    _mother_credit_mode = resolve_mother_credit_mode(log)
 
     # Embodied arcs (any arc with world_entities) no longer deregister the
     # conversational ``respond`` / ``say`` tools. Instead, ``LLMWorker.is_embodied``
@@ -505,6 +537,11 @@ def run_generative_campaign(
                         stimulus_seed=int(get_global_seed() or 0),
                     )
 
+                # Credit-value source (Exp 52): "relief" (default — the sign of
+                # the drive relief the feed produced) or "constant" (the pre-Exp-52
+                # by-fiat value, kept for the A/B). S6: a declared fidelity toggle;
+                # never changes between arms within a campaign. Scrub:
+                # tests/conftest.py::_isolate_cradle_mother_credit_env.
                 mtel = reactive_mother_tick(
                     embodiment,
                     scaffold=_scaffold,
@@ -513,6 +550,7 @@ def run_generative_campaign(
                     nac=nac,
                     agent_id=agent_id,
                     prev_stimulus=_mother_prev_stimulus,
+                    credit=_mother_credit_mode,
                 )
                 # Feed this turn's sound back as next turn's shaping reference.
                 if mtel.get("az_stimulus") is not None:
@@ -521,6 +559,7 @@ def run_generative_campaign(
                     sim_log(
                         "mother",
                         f"act={_phase.act or '?'} fed={mtel['fed']} credited={mtel['credited']} "
+                        f"credit={mtel.get('credit_mode')} relief={mtel.get('relief')} reward={mtel.get('reward')} "
                         f"guided={mtel['guided']} progress={mtel['progress']} "
                         f"az_prior={mtel['az_prior']} az_stimulus={mtel['az_stimulus']} az_guided={mtel['az_guided']}",
                     )

@@ -121,6 +121,7 @@ def reactive_mother_tick(
     agent_id: str = "",
     feed_reward: float = 1.0,
     prev_stimulus: float | None = None,
+    credit: str = "relief",
 ) -> dict[str, Any]:
     """Apply one turn of the reactive mother's OPERANT caregiving to the infant.
 
@@ -132,8 +133,9 @@ def reactive_mother_tick(
     (``scripts/orient_substrate/4``) — infant_operant body (no intrinsic orient
     drive) + ``MAXIM_OPERANT_ONLY_CREDIT=1`` — this credit is the sole teacher of
     orienting (taught 0.90 vs chance; remove the mother and it stays at chance).
-    In the EMBODIED sim this path measures at CHANCE (see the module Dormant note):
-    the credit is drowned by every mechanically-successful tool. DEMO ONLY.
+    Embodied it measures at chance WITHOUT ``MAXIM_OPERANT_ONLY_CREDIT`` (the
+    tool-success floor drowns the credit) and teaches WITH it (Exp 48, PARTIAL
+    under gate v2 for apparatus reasons; Exp 52 is the successor).
 
     Order is LOAD-BEARING: **reward-for-prior-progress (on the PRIOR azimuth) →
     place the new stimulus → (optional guide) → speak.** The reward must read the
@@ -154,6 +156,25 @@ def reactive_mother_tick(
     so the honest operant curriculum is pure shaping and the "fade" is the
     EMERGENT learning curve (directedness rising across the session).
 
+    ``credit`` (Exp 52, 2026-08-25) selects WHERE the operant reward's VALUE comes
+    from. ``"relief"`` (default): the reward is the SIGN of the drive relief the
+    feed actually produced in the infant — ``Σ drive_comfort_progress`` over the
+    drive sensors the feed touched (the same value-progress signal channel 3 uses
+    for self-caused relief, via ``tool_bridge._drive_potential_diff``); a feed
+    that relieves nothing (a satiated infant, hunger already 0) mints NO credit,
+    never a fabricated ±1. ``"constant"``: the pre-Exp-52 behaviour — every feed
+    credits ``feed_reward`` regardless of the infant's state (kept for the A/B
+    against Exp 46/48; the value was credited by fiat). Anything else raises.
+    Telemetry adds ``credit_mode``, ``relief`` (the summed progress, or None when
+    not fed) and ``reward`` (what was credited, or None). With the bundled bodies
+    (entropic ``up`` hunger/thirst, negative feed deltas) relief is ≥ 0 and the
+    credit is +1 or nothing; a −1 is reachable only for a user body whose feed
+    moves a drive AWAY from comfort (homeostatic hunger past its set point).
+    ``_drive_potential_diff`` is documented as self_effect-only for the ACTOR's
+    credit; here it is deliberately scored on the RECIPIENT (the infant) and the
+    credit goes through the operant trace with ``source="operant"`` — the named
+    exception to that docstring.
+
     Returns telemetry: ``fed``/``credited``/``guided``/``spoke`` plus ``az_prior``
     (what the infant left), ``az_stimulus`` (mother's direction this turn — the
     caller feeds it back as next turn's ``prev_stimulus``), ``az_guided``,
@@ -168,7 +189,12 @@ def reactive_mother_tick(
         "az_stimulus": None,
         "az_guided": None,
         "progress": None,
+        "credit_mode": credit,
+        "relief": None,
+        "reward": None,
     }
+    if credit not in ("relief", "constant"):
+        raise ValueError(f"reactive_mother_tick: credit must be 'relief' or 'constant', got {credit!r}")
     root = getattr(embodiment, "root", None)
     if root is None:
         return out
@@ -200,18 +226,35 @@ def reactive_mother_tick(
         deltas = {"hunger": -scaffold.feed_amount}
         if scaffold.thirst_ratio > 0.0:
             deltas["thirst"] = -scaffold.feed_amount * scaffold.thirst_ratio
+        # Snapshot the touched drive sensors BEFORE the feed so the relief the
+        # infant experienced can be scored (Exp 52: the credit's value comes
+        # from the infant's own state change, not from a constant).
+        relief: float | None = None
         try:
-            from maxim.embodiment.tool_bridge import _apply_sensor_deltas
+            from maxim.embodiment.tool_bridge import _apply_sensor_deltas, _drive_potential_diff
 
+            drive_specs = getattr(root, "drive_specs", {}) or {}
+            pre_values = {name: float(vm[name]) for name in deltas if name in drive_specs and name in vm}
             _apply_sensor_deltas(root, deltas, delta_kind="target_effect")
             out["fed"] = True
+            relief = float(_drive_potential_diff(root, deltas, pre_values))
+            out["relief"] = relief
         except Exception:
             logger.debug("reactive_mother_tick: feed (_apply_sensor_deltas) failed", exc_info=True)
         # Operant credit: the relief reinforces the infant's OWN recent action on
         # the action-selection surface. This is the teacher (drive removed).
-        if nac is not None and agent_id:
+        # Its VALUE: the sign of the relief the feed produced ("relief"), or the
+        # constant feed_reward ("constant", pre-Exp-52). No relief → no credit.
+        if credit == "constant":
+            reward: float | None = float(feed_reward)
+        elif relief is None or abs(relief) <= 1e-9:
+            reward = None
+        else:
+            reward = 1.0 if relief > 0.0 else -1.0
+        out["reward"] = reward
+        if reward is not None and nac is not None and agent_id:
             try:
-                credited = nac.credit_operant_reward(agent_id, feed_reward)
+                credited = nac.credit_operant_reward(agent_id, reward)
                 out["credited"] = credited is not None
             except Exception:
                 logger.debug("reactive_mother_tick: credit_operant_reward failed", exc_info=True)

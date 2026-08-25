@@ -214,8 +214,13 @@ def _drive_potential_diff(
 
     Scores the acting body's own ``self_effect`` only; a ``target_effect`` (a
     caregiver acting on another body, e.g. a mother feeding an infant) is
-    intentionally NOT scored here — that relief is the other body's state, not
-    the actor's learned policy. The caller passes ``self_effect`` as ``effect``.
+    intentionally NOT scored here for the ACTOR — that relief is the other body's
+    state, not the actor's learned policy. The caller passes ``self_effect`` as
+    ``effect``. The one sanctioned exception is the recipient-side call in
+    ``simulation/cradle_mother.py::reactive_mother_tick`` (Exp 52): the mother's
+    feed is scored on the INFANT and credited to the infant's own pending action
+    through the operant trace (``source="operant"``) — the relief belongs to the
+    body whose policy is being taught, which is exactly this docstring's rationale.
     """
     from maxim.embodiment.sem import drive_comfort_progress
 
