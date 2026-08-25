@@ -50,10 +50,10 @@ by delaying Oasis two versions.
 | # | Item | State / release contract |
 |---|---|---|
 | 1 | `_cosine` dimension guards + frozen-modality parity | **DONE** (#467). Same-dimension geometry compatibility remains a pre-1.2 gate (D4). |
-| 2 | CHANGELOG reconstruction + historical tags for 1.0.0→1.0.6 | **DONE** for the historical interval. The post-1.0.6 unreleased record and final 1.1 release transaction remain. |
+| 2 | CHANGELOG reconstruction + historical tags for 1.0.0→1.0.6 | **DONE**. Historical interval reconstructed 2026-08-07; the post-1.0.6 record is now the `[1.1.0]` section (with an attribution note for bullets that shipped inside 1.0.7–1.0.9); the release transaction is gate-order step 5. |
 | 3 | n_ctx clamp and headroom truth | **DONE**. Re-attest through the Big-Model heartbeat. |
 | 4 | Persona hard-remove | **DONE**. Keep compatibility/error behavior covered. |
-| 5 | Graduation heartbeat walk | **IN PROGRESS** — Sim-Short complete; Big-Model chapter RAN 2026-08-21 (Qwen32B re-fire → instrument finding L8, row stays PARTIAL); **H1 8-rep delivered-shift block DONE 2026-08-24**; final-RC re-attestation of the pytest-only rows remains (minutes, at the RC commit). |
+| 5 | Graduation heartbeat walk | **DONE (2026-08-24)** — Sim-Short complete (records committed #536); Big-Model chapter RAN 2026-08-21 (Qwen32B re-fire → instrument finding L8, row stays PARTIAL); H1 8-rep delivered-shift block DONE (#535); pytest-only rows re-attested at the RC commit `88739318`. |
 | 6 | H1 healthy-hardware re-characterization | **DONE** — base session 2026-08-08 + the `_big` delivered-shift block 2026-08-24 (n=8/side in one session, 0.943 of command both sides; `_big` YAML magnitudes stay frozen; the right-side Δaz asymmetry is a follow-up still to be pre-registered; D30/D31 filed). |
 | 7 | Artifact stamping | **DONE**. |
 | 8 | Orient-vocabulary audit + workspace-limit bypass safety | **DONE** (#472); retain hardware-safety guards in the final RC suite. |
@@ -61,7 +61,7 @@ by delaying Oasis two versions.
 | 10 | Atomic NAc + EC invalidation | **DONE (2026-08-23)** (D2). `MEMORY_PATHS` gained the missing `ec` key and `MEMORY_PAIRS` declares `{nac, ec}` inseparable, so clearing either half pulls in the other and `all` no longer leaves a stale EC behind. |
 | 11 | Annotation S4 non-stationarity analysis | **DONE (2026-08-24)** — result recorded in [44b_pilot.md §S4](../experiments/44b_pilot.md) with the analyzer JSON under `docs/experiments/data/44b_s4_nonstationarity/` and the pilot captures under `docs/experiments/data/44b_pilot/`: the band treatment is NON-STATIONARY within a run (4 of 5 tracked tools fall strongly→mildly rewarding by the second half in every arm; the target `warm_self` holds strong), flip rate does not track band tier monotonically, and the identical-prompt determinism probe is 0.000 (11 pairs). Consequence: the 44b freeze must stratify early/late or hold the tier. *(Original note — inputs located 2026-08-24:* the Exp 44b pilot captures are NOT on the operator Mac — they live on big-mac-mini (the pilot machine; `~/exp44b/pilot/arms/<arm>/seed<n>/capture.jsonl` + `requery/`). Run `scripts/exp44/analyze_nonstationarity.py --json` there per capture and commit the JSON under `docs/experiments/data/44b_s4_nonstationarity/` with a results section in [44b_pilot.md](../experiments/44b_pilot.md); that commit closes the gate.)* |
 | 12 | Planning-turn liveness + truthful progress state | **DONE** (D13/D14/D22). Bounded recovery or typed terminal abort, observationally true progress display, and non-zero process/harness propagation for unusable results. |
-| 13 | Stable Python API contract repair | **IN PROGRESS — 1.1 GATE** (D15–D18). D15 `goal`/`robot` and D16 `run()` cleanup are DONE in v1.0.9; **D17 complete load semantics and D18 tool-registration lifetime are DONE (2026-08-23)** — `load.agent()` restores ATL before returning and raises `MemoryCorruptionError` naming every unreadable file (explicit `on_corrupt="fresh"` opt-in), and tool registration is persistent with `unregister_tool`/`clear_registered_tools`. `home_dir` completeness plus `imagine()`/`campaign()` cleanup stay 1.1.x. |
+| 13 | Stable Python API contract repair | **1.1 GATE DONE (2026-08-23)**; 1.1.x tail listed below (D15–D18). D15 `goal`/`robot` and D16 `run()` cleanup are DONE in v1.0.9; **D17 complete load semantics and D18 tool-registration lifetime are DONE (2026-08-23)** — `load.agent()` restores ATL before returning and raises `MemoryCorruptionError` naming every unreadable file (explicit `on_corrupt="fresh"` opt-in), and tool registration is persistent with `unregister_tool`/`clear_registered_tools`. `home_dir` completeness plus `imagine()`/`campaign()` cleanup stay 1.1.x. |
 | 14 | Hermetic required fast suite | **DONE in v1.0.9** (D20). Unique temporary user/config/cache roots, offline model-hub defaults, explicit pretrained-asset opt-in, per-test path-cache reset, and the wider CI gate are executable. |
 | 15 | Architecture-audit enforcement | **DONE (2026-08-24)** (D19). The 33 findings are classified (10 typing-only / 16 function-local lazy imports, none a cycle-break / 7 module-level) in a reviewed baseline (`src/maxim/utils/architecture_baseline.json`, keyed by file + module + scope + accepted symbols); the fast suite fails on additions (incl. a widened symbol list), stale entries, and unreviewed entries. Zero debt is 1.1.x item 11, not a release blocker. |
 | 16 | Release, website, and agent-guidance truth | **OPEN — 1.1 DOCS GATE.** (1.0.9 was published to PyPI on 2026-08-23 at tag `v1.0.9`/`5cb4413b` after the 2026-08-20 maxim-web corrections went live; D24's remaining items now gate the 1.1 cut, not 1.0.9.) The 38-route live content audit is DONE and its cross-repo handoff is recorded; maxim-web corrections, path-preserving `docs.pymaxim.bio` redirects, visual/accessibility verification, exact-wheel command checks, legacy deep-link migration, and post-upload PyPI link verification remain. Repo metadata now points directly to the canonical getting-started route. |
@@ -79,8 +79,9 @@ from the claims-verification round — blocking vs 1.1.x *within* the gated item
   2026-08-23**;
   ~~item 15's baseline+CI gate (cheap)~~ **DONE 2026-08-24**, and item 16 — which now explicitly
   includes correcting the **false
-  "shipped to PyPI" claims**: PyPI's latest release is 1.0.0; v1.0.1–v1.0.6 are
-  git-tag-only and both CLAUDE.md and the CHANGELOG said otherwise.
+  "shipped to PyPI" claims**: ~~PyPI's latest release is 1.0.0~~ (true as of
+  2026-08-19; 1.0.9 was published 2026-08-23); v1.0.1–v1.0.6 are
+  git-tag-only and both CLAUDE.md and the CHANGELOG said otherwise (corrected).
 - **1.1.x hardening:** D16 for `imagine()`/`campaign()`, D15's `home_dir` (document
   the partial behavior if not surgical), and D19 zero-debt burn-down.
 - **Also folded into item 12:** the #519 abort-clock fix shipped without a guard
@@ -101,9 +102,8 @@ from the claims-verification round — blocking vs 1.1.x *within* the gated item
    wider-CI guards.
 3. **DONE — Persistence/architecture correctness:** ~~D2 atomic invalidation~~ **DONE
    2026-08-23**; ~~D19's accepted-debt baseline/regression gate~~ **DONE 2026-08-24**.
-4. **Evidence closure:** record S4, run Big-Model and hardware heartbeat chapters,
-   then re-attest cheap rows at the exact RC commit.
-5. **Release transaction:** audit the canonical website against the exact release
+4. **DONE 2026-08-24 — Evidence closure:** S4 recorded (item 11, #536), Big-Model chapter ran (2026-08-21 → L8), hardware chapter done (#535), cheap rows re-attested at the RC commit `88739318` (37/37, 41/41).
+5. **IN PROGRESS — Release transaction:** audit the canonical website against the exact release
    artifact, reconcile version policy/docs/PyPI project links, build/check the
    package, cut `1.1.0`, tag it, and publish matching release notes and artifact.
 

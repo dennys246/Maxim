@@ -1,6 +1,6 @@
 # Maxim Plans
 
-Current version: **1.0.9** (`pyproject.toml` + `src/maxim/__init__.py`), published to PyPI **2026-08-23** (tag `v1.0.9` at `5cb4413b`). Post-tag merges (#530–#533 and later) are unreleased; the next cut is the 1.1 release transaction (roadmap gate-order step 5).
+Current version: **1.1.0** (`pyproject.toml` + `src/maxim/__init__.py`) — the 1.1 "Sensorimotor" release candidate. PyPI serves **1.0.9** (2026-08-23, tag `v1.0.9`) until the 1.1.0 upload and `v1.1.0` tag land (roadmap gate-order step 5).
 Now: **1.1 "Sensorimotor" release closure** — ship the merged embodiment work plus
 the correctness, contract, truth, and verification debt it incurred. **Zero new
 mechanisms.** Reconciled 2026-08-19 after the D13/D14 investigation and repository

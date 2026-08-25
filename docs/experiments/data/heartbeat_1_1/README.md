@@ -54,3 +54,4 @@ Each dir: `report.json`, `actions.jsonl.gz`, `bio_telemetry.jsonl.gz`, and the
 persisted `aut_{hippocampus,nac,ec,atl,scn}.json`. The hippocampus counts above were
 re-derived from the copied `aut_hippocampus.json` files on 2026-08-24.
 
+| `45_merge_arm_rc_2026-08-24.txt` | **Exp 45** merge/fleet arm (runbook Hardware step 4, hardware-free) | `orient_merge_arm.py` gauntlet at the 1.1.0 RC: left 1.00 / right 1.00 / merged 1.00 — PASS; provenance header inside |

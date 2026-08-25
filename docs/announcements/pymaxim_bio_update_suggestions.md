@@ -1,7 +1,8 @@
 # pymaxim.bio — 1.0.9 website handoff (live audit 2026-08-19)
 
-> **LIVE CONTENT AUDIT COMPLETE; WEBSITE FIXES STILL REQUIRED BEFORE THE 1.0.9
-> PYPI CUT.** All 38 routes in the 2026-08-19 sitemap were fetched and compared
+> **LIVE CONTENT AUDIT COMPLETE (2026-08-19); the P0 website fixes shipped 2026-08-20
+> and 1.0.9 was published 2026-08-23 — the remaining items below gate the 1.1
+> cut, not 1.0.9.** All 38 routes in the 2026-08-19 sitemap were fetched and compared
 > with the release-candidate ledgers. The browser surface was unavailable, so
 > responsive layout, visual accessibility, focus order, and copy-button behavior
 > still require a human/browser pass. D24 records the verified content and
