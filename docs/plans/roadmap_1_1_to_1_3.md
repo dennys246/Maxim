@@ -125,7 +125,7 @@ from the claims-verification round — blocking vs 1.1.x *within* the gated item
    2026-08-23**; ~~D19's accepted-debt baseline/regression gate~~ **DONE 2026-08-24**.
 4. **DONE 2026-08-24 — Evidence closure:** S4 recorded (item 11, #536), Big-Model chapter ran (2026-08-21 → L8), hardware chapter done (#535), cheap rows re-attested at the RC commit `88739318` (37/37, 41/41).
 5. **Release transaction — split 2026-08-25:**
-   - **5a (now): publish `1.1.0rc1`** from the merged release commit (#537, `e027e071`):
+   - **5a — DONE 2026-08-25: `1.1.0rc1` published** (tag `v1.1.0rc1` at `eae6559c`, #540). The recipe, kept for 5b:
      bump both version files + the CHANGELOG header to `1.1.0rc1` in one commit, vendor
      the Console UI, build/`twine check`, TestPyPI → PyPI, tag `v1.1.0rc1` on the
      published commit, flip the "PyPI serves" sync lines. No announcement.
