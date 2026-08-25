@@ -23,6 +23,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Exp 52 (Nurture) harness — relief-sourced operant credit.** `cradle_mother.reactive_mother_tick`
+  gains `credit="relief"|"constant"`: under `relief` (the new default) the mother's operant
+  credit is the SIGN of the drive relief her feed actually produced in the infant
+  (`_drive_potential_diff` over the drives the feed touched; zero relief → no credit),
+  instead of the constant `feed_reward` credited by fiat (`constant`, kept for the A/B).
+  New `bodies/infant_operant_satiated` (never hungry — the discriminating control), the
+  `satiated` arm + `--credit` in `benchmark_cradle_mother.py`, `--gate v3` in
+  `analyze_cradle_mother.py` (HUNGER-NECESSARY + the L2 seed-spread apparatus check), and
+  the scripted Phase-A harness `scripts/orient_substrate/9_hunger_relief_orient.py`.
+  `MAXIM_CRADLE_MOTHER_CREDIT` selects the mode in the runner (S6 toggle; conftest scrub
+  in the same commit). **The default is now `relief`:** to reproduce Exp 48's v2 rows pass
+  `--credit constant`; committed Exp 48 rows carry no `credit` stamp and are constant-credit. Pre-registration: `docs/experiments/protocols/exp52_nurture_preregistration.md`.
+
 ## [1.1.0rc1] - 2026-08-25 — "Sensorimotor" (release candidate)
 
 **Release candidate, published quietly.** `1.1.0` final follows roadmap items 17

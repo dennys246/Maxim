@@ -1,0 +1,29 @@
+component:
+  name: infant_operant_satiated
+  extends: bodies/infant_operant
+  category: bodies
+  archetype: humanoid
+  tags: [body, humanoid, infant, cradle, operant, developmental, control]
+  synonyms: [satiated infant, fed infant, never-hungry infant]
+  description: |
+    Exp 52 (Nurture) control body: identical to infant_operant — no intrinsic
+    orient drive, azimuth sensor kept — but NEVER HUNGRY. Hunger and thirst start
+    at 0 and do not drift, so the mother's contingent feed relieves nothing and,
+    under relief-sourced operant credit (reactive_mother_tick credit="relief"),
+    mints NO reward. Same feed events, same contingency, zero need: if this arm
+    learns to orient, the credit is not coming from relief. This is the arm that
+    separates "learns to want" from "learns to be fed"
+    (docs/experiments/protocols/exp52_nurture_preregistration.md).
+
+entity:
+  name: infant_operant_satiated
+  entity_type: body
+  sensors:
+    hunger:
+      initial: 0.0
+      drive:
+        drift_rate: 0.0
+    thirst:
+      initial: 0.0
+      drive:
+        drift_rate: 0.0

@@ -251,3 +251,103 @@ def test_stimulus_is_returned_for_next_turn_prev_stimulus():
         turn_idx=0,
     )
     assert out["az_stimulus"] == -0.7
+
+
+# ── Exp 52: relief-sourced operant credit ────────────────────────────────────
+# The credit's VALUE comes from the relief the feed produced in the infant, not
+# from a constant. Pins: hungry → +1; satiated (nothing to relieve) → NO credit
+# even though the feed happened; "constant" reproduces the pre-Exp-52 by-fiat
+# value; the telemetry says which; an unknown mode raises.
+
+
+def test_relief_credit_is_plus_one_when_the_feed_relieves_hunger():
+    body, emb = _infant(azimuth=-0.3, hunger=0.9)
+    nac = _RecordingNac()
+    out = reactive_mother_tick(
+        emb,
+        scaffold=MotherScaffold(feed_amount=0.5, stimulus_azimuths=(0.6,)),
+        nac=nac,
+        agent_id="infant",
+        feed_reward=7.0,  # must be IGNORED under credit="relief"
+        prev_stimulus=-0.7,
+    )
+    assert out["fed"] is True and out["credited"] is True
+    assert out["credit_mode"] == "relief"
+    assert out["relief"] is not None and out["relief"] > 0
+    assert out["reward"] == 1.0
+    assert nac.credits == [("infant", 1.0)]
+    assert body.vital_metrics["hunger"] < 0.9
+
+
+def test_satiated_infant_is_fed_but_earns_no_credit():
+    # Hunger already 0 (and thirst 0): the feed clamps at 0 → relief 0 → nothing to
+    # reinforce. The feed EVENT happens; the credit does not. This is the Exp 52
+    # satiated arm's mechanism-sanity assertion.
+    body, emb = _infant(azimuth=-0.3, hunger=0.0)
+    body.vital_metrics["thirst"] = 0.0
+    nac = _RecordingNac()
+    out = reactive_mother_tick(
+        emb,
+        scaffold=MotherScaffold(feed_amount=0.5, stimulus_azimuths=(0.6,)),
+        nac=nac,
+        agent_id="infant",
+        prev_stimulus=-0.7,
+    )
+    assert out["fed"] is True
+    assert out["credited"] is False
+    assert out["relief"] == 0.0 and out["reward"] is None
+    assert nac.credits == []
+
+
+def test_thirst_without_a_drive_spec_does_not_count_as_relief():
+    # The fixture's thirst sensor carries no drive spec: relieving it is not
+    # scored. Hunger 0 + thirst 0.8 → still zero relief → no credit.
+    body, emb = _infant(azimuth=-0.3, hunger=0.0)
+    nac = _RecordingNac()
+    out = reactive_mother_tick(
+        emb,
+        scaffold=MotherScaffold(feed_amount=0.5, stimulus_azimuths=(0.6,)),
+        nac=nac,
+        agent_id="infant",
+        prev_stimulus=-0.7,
+    )
+    assert out["fed"] is True and out["credited"] is False and out["reward"] is None
+
+
+def test_constant_credit_reproduces_the_pre_exp52_behaviour():
+    # credit="constant": every contingent feed credits feed_reward, hungry or not.
+    body, emb = _infant(azimuth=-0.3, hunger=0.0)
+    body.vital_metrics["thirst"] = 0.0
+    nac = _RecordingNac()
+    out = reactive_mother_tick(
+        emb,
+        scaffold=MotherScaffold(feed_amount=0.5, stimulus_azimuths=(0.6,)),
+        nac=nac,
+        agent_id="infant",
+        feed_reward=1.0,
+        prev_stimulus=-0.7,
+        credit="constant",
+    )
+    assert out["fed"] is True and out["credited"] is True
+    assert out["credit_mode"] == "constant" and out["reward"] == 1.0
+    assert nac.credits == [("infant", 1.0)]
+
+
+def test_unknown_credit_mode_raises():
+    import pytest
+
+    body, emb = _infant(azimuth=-0.3)
+    with pytest.raises(ValueError, match="credit must be"):
+        reactive_mother_tick(emb, scaffold=MotherScaffold(feed_amount=0.5), prev_stimulus=-0.7, credit="magic")
+
+
+def test_no_feed_arm_records_no_relief_or_reward():
+    body, emb = _infant(azimuth=-0.1, hunger=0.9)
+    out = reactive_mother_tick(
+        emb,
+        scaffold=MotherScaffold(feed_amount=0.0, stimulus_azimuths=(0.6,)),
+        nac=_RecordingNac(),
+        agent_id="infant",
+        prev_stimulus=-0.7,
+    )
+    assert out["fed"] is False and out["relief"] is None and out["reward"] is None

@@ -1,0 +1,178 @@
+{
+  "experiment": "exp52_phaseA_scripted",
+  "credit": "relief",
+  "params": {
+    "ticks": 300,
+    "bin": 50,
+    "seeds": 3,
+    "epsilon": 0.2,
+    "hunger_drift": 0.05,
+    "feed_amount": 0.5
+  },
+  "curves": {
+    "taught": [
+      0.8533333333333334,
+      0.8933333333333334,
+      0.9266666666666667,
+      0.8866666666666666,
+      0.9133333333333332,
+      0.8933333333333332
+    ],
+    "satiated": [
+      0.4466666666666667,
+      0.43333333333333335,
+      0.48666666666666664,
+      0.5133333333333333,
+      0.5266666666666667,
+      0.5466666666666667
+    ],
+    "yoked": [
+      0.6466666666666666,
+      0.6333333333333333,
+      0.48,
+      0.52,
+      0.48,
+      0.42
+    ],
+    "no_feed": [
+      0.4466666666666667,
+      0.43333333333333335,
+      0.48666666666666664,
+      0.5133333333333333,
+      0.5266666666666667,
+      0.5466666666666667
+    ]
+  },
+  "baseline_first_ticks": {
+    "taught": 0.4,
+    "satiated": 0.3333333333333333,
+    "yoked": 0.8,
+    "no_feed": 0.3333333333333333
+  },
+  "baseline_n_ticks": 5,
+  "at_ceiling": false,
+  "settled": {
+    "taught": 0.9049999999999999,
+    "satiated": 0.5183333333333334,
+    "yoked": 0.475,
+    "no_feed": 0.5183333333333334
+  },
+  "telemetry": {
+    "taught": [
+      {
+        "fed": 272,
+        "credits": 272,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5
+      },
+      {
+        "fed": 266,
+        "credits": 266,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5
+      },
+      {
+        "fed": 267,
+        "credits": 267,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5
+      }
+    ],
+    "satiated": [
+      {
+        "fed": 134,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": 0.0,
+        "relief_max": 0.0
+      },
+      {
+        "fed": 162,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": 0.0,
+        "relief_max": 0.0
+      },
+      {
+        "fed": 147,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": 0.0,
+        "relief_max": 0.0
+      }
+    ],
+    "yoked": [
+      {
+        "fed": 272,
+        "credits": 272,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5
+      },
+      {
+        "fed": 266,
+        "credits": 266,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5
+      },
+      {
+        "fed": 267,
+        "credits": 267,
+        "credit_rewards": [
+          1.0
+        ],
+        "relief_min": 0.05,
+        "relief_max": 0.5
+      }
+    ],
+    "no_feed": [
+      {
+        "fed": 0,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": null,
+        "relief_max": null
+      },
+      {
+        "fed": 0,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": null,
+        "relief_max": null
+      },
+      {
+        "fed": 0,
+        "credits": 0,
+        "credit_rewards": [],
+        "relief_min": null,
+        "relief_max": null
+      }
+    ]
+  },
+  "gates": {
+    "LEARNED": true,
+    "HUNGER_NECESSARY": true,
+    "MOTHER_NECESSARY": true,
+    "MECHANISM_SANITY": true
+  },
+  "provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "b9398dedd62d",
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python"
+  },
+  "_note": "NOT the frozen Phase A run: harness verification at non-frozen parameters (3 seeds x 300 ticks) behind pre-registration amendment 1; see exp52_nurture_preregistration.md \u00a7Amendments"
+}

@@ -38,9 +38,13 @@ from typing import Any
 
 ARC = "cradle_mother"
 EMBODIMENT = "bodies/infant_operant"  # hunger drive + DRIVELESS azimuth (no intrinsic orient)
-ARMS = ("taught", "no_feed")
+ARMS = ("taught", "no_feed", "satiated")
+# Exp 52 (Nurture): the satiated arm is a BODY variant, not an env flag — never
+# hungry, so the mother's contingent feed relieves nothing and (under
+# relief-sourced credit) mints no reward. Visible in provenance as the body ref.
+_ARM_EMBODIMENT: dict[str, str] = {"satiated": "bodies/infant_operant_satiated"}
 
-# Shared conditions for BOTH arms:
+# Shared conditions for ALL arms:
 #   MAXIM_OPERANT_ONLY_CREDIT — the tool-success floor never drowns the operant
 #     signal (probe 3 tool_floor arm).
 #   MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT — the infant must EXPLORE turns to
@@ -65,6 +69,8 @@ _ARM_ENV: dict[str, dict[str, str]] = {
     # Control: mother still PLACES the sound but never feeds/credits — with no
     # intrinsic orient drive the infant has NO teacher and stays at chance.
     "no_feed": {**_SHARED_ENV, "MAXIM_CRADLE_MOTHER_DISABLE_CARE": "1"},
+    # Exp 52: same contingency and feed as taught; the BODY is never hungry.
+    "satiated": {**_SHARED_ENV},
 }
 
 
@@ -243,16 +249,30 @@ def _extract_fade(log_path: Path) -> dict[str, dict[str, float]]:
         n = len(recs)
         fed = sum(1 for r in recs if r.get("fed"))
         credited = sum(1 for r in recs if r.get("credited"))
+        # Exp 52 S3 in-sim assertions (analyzer --gate v3 reads these):
+        neg_reward = sum(1 for r in recs if isinstance(r.get("reward"), (int, float)) and r["reward"] < 0)
+        credited_no_relief = sum(
+            1
+            for r in recs
+            if r.get("credited") and (not isinstance(r.get("relief"), (int, float)) or abs(r["relief"]) <= 1e-9)
+        )
         # directedness: of the turns where progress was measurable, how many moved
         # the infant toward the sound (progress > 0)? Arm-independent.
         measured = [r for r in recs if isinstance(r.get("progress"), (int, float))]
         directed = sum(1 for r in measured if r["progress"] > 0)
+        # Observed (not intended) apparatus stamp: the credit mode the sub-sim
+        # actually logged this act — what ran, not what the CLI asked for.
+        modes = [str(r["credit"]) for r in recs if r.get("credit") not in (None, "")]
+        credit_observed = max(set(modes), key=modes.count) if modes else None
         result[act] = {
             "turns": n,
+            "credit_observed": credit_observed,
             "directedness": directed / len(measured) if measured else 0.0,
             "measured": len(measured),
             "fed_rate": fed / n if n else 0.0,
             "credited_rate": credited / n if n else 0.0,
+            "neg_reward": neg_reward,
+            "credited_no_relief": credited_no_relief,
         }
     return result
 
@@ -270,6 +290,7 @@ def _run_one(
     workdir: Path,
     explore_weight: float,
     stimulus_order: str = "cycle",
+    credit: str = "relief",
 ) -> dict[str, Any]:
     data_home = workdir / f"{arm}_seed{seed}_ew{explore_weight}"
     # ALWAYS a fresh sandbox (2026-08-13 contamination post-mortem): reusing a
@@ -305,6 +326,8 @@ def _run_one(
     # CLI override wins over the arm default (explore-weight sweep).
     env["MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT"] = str(explore_weight)
     env["MAXIM_CRADLE_MOTHER_STIMULUS_ORDER"] = stimulus_order
+    # Exp 52 credit-value source (S6 fidelity toggle; identical across arms).
+    env["MAXIM_CRADLE_MOTHER_CREDIT"] = credit
 
     cmd = _resolve_maxim() + [
         "--sim",
@@ -312,7 +335,7 @@ def _run_one(
         "--aut-mode",
         "substrate-primary",
         "--embodiment",
-        EMBODIMENT,
+        _ARM_EMBODIMENT.get(arm, EMBODIMENT),
         "--interactive",
         "false",
         "--sim-max-turns",
@@ -355,7 +378,7 @@ def _mock_fade(arm: str, seed: int) -> dict[str, dict[str, float]]:
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Cradle-mother fade-curve harness")
-    p.add_argument("--arms", default=",".join(ARMS), help="comma-separated: taught,no_feed")
+    p.add_argument("--arms", default=",".join(ARMS), help="comma-separated: taught,no_feed,satiated")
     p.add_argument("--trials", type=int, default=6)
     p.add_argument("--seed-base", type=int, default=42)
     p.add_argument(
@@ -384,9 +407,32 @@ def main() -> int:
         "per-block permutation (exposure-balanced, phase-lock broken) — the apparatus-v3 "
         "setting. S6: an apparatus change, stamped per record.",
     )
+    p.add_argument(
+        "--credit",
+        default="relief",
+        choices=["relief", "constant"],
+        help="operant credit VALUE source (Exp 52): relief = sign of the infant's drive relief (default); constant = pre-Exp-52 by-fiat feed_reward (A/B)",
+    )
     p.add_argument("--mock", action="store_true", help="synthetic fade (CI smoke, no subprocess)")
     p.add_argument("--resume", action="store_true", help="skip (arm,seed,explore_weight) already in --out")
     args = p.parse_args()
+    # Assert the apparatus before measuring (review fold, BLOCKER): _run_one
+    # overwrites the sub-sim env from the CLI flags, so an operator who exported
+    # MAXIM_CRADLE_MOTHER_STIMULUS_ORDER=shuffled (or _CREDIT) and forgot the
+    # flag would run 12 h on the wrong apparatus while believing otherwise.
+    # A disagreement between the ambient env and the flag is refused loudly.
+    for _var, _flag, _val in (
+        ("MAXIM_CRADLE_MOTHER_STIMULUS_ORDER", "--stimulus-order", args.stimulus_order),
+        ("MAXIM_CRADLE_MOTHER_CREDIT", "--credit", args.credit),
+    ):
+        _amb = os.environ.get(_var, "").strip().lower()
+        if _amb and _amb != str(_val).lower():
+            print(
+                f"[FAIL] ambient {_var}={_amb!r} disagrees with {_flag} {_val!r}; the flag is what the "
+                "sub-sims will see. Unset the variable or pass the matching flag (exit 3).",
+                file=sys.stderr,
+            )
+            return 3
 
     arms = [a.strip() for a in args.arms.split(",") if a.strip()]
     for a in arms:
@@ -432,7 +478,8 @@ def main() -> int:
         for line in out_path.read_text().splitlines():
             try:
                 r = json.loads(line)
-                done.add((r["arm"], r["seed"], float(r.get("explore_weight", 1.5))))
+                # Rows without a credit stamp predate Exp 52 = constant credit.
+                done.add((r["arm"], r["seed"], float(r.get("explore_weight", 1.5)), r.get("credit", "constant")))
             except (json.JSONDecodeError, KeyError):
                 pass
 
@@ -461,7 +508,7 @@ def main() -> int:
         for arm in arms:
             for trial in range(args.trials):
                 seed = args.seed_base + trial
-                if (arm, seed, float(args.explore_weight)) in done:
+                if (arm, seed, float(args.explore_weight), args.credit) in done:
                     continue
                 t0 = _t.monotonic() if hasattr(_t, "monotonic") else 0
                 try:
@@ -477,6 +524,7 @@ def main() -> int:
                             workdir=workdir,
                             explore_weight=args.explore_weight,
                             stimulus_order=args.stimulus_order,
+                            credit=args.credit,
                         )
                     )
                     # S3 (assert your own health): a truncated run (sub-sim
@@ -506,6 +554,11 @@ def main() -> int:
                         # S6 stamp: which stimulus-order apparatus produced this
                         # row ("cycle" = phase-lockable v1/v2; "shuffled" = v3).
                         "stimulus_order": args.stimulus_order,
+                        # S6 stamp (Exp 52): where the operant credit's VALUE came
+                        # from — "relief" (sign of the infant's drive relief) or
+                        # "constant" (the pre-Exp-52 by-fiat feed_reward).
+                        "credit": args.credit,
+                        "embodiment": _ARM_EMBODIMENT.get(arm, EMBODIMENT),
                         "mock": args.mock,
                         "git_hash": _git_hash(),
                         # Exp 42b self-auditing-artifact rule: harness hash
