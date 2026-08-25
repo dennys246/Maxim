@@ -167,9 +167,11 @@ When implementing a non-trivial tool, mind these `Tool` contract surfaces:
 2. Follow the encounter format (see existing files)
 3. Test via `EncounterLibrary.get()`
 
-### Adding a simulation persona
-1. Add entry to `SIMULATION_PERSONAS` in `src/maxim/simulation/personas.py`
-2. Or use `maxim.register_persona()` at runtime
+### Simulation "personas" — removed
+The persona system was hard-deleted in #482 (`simulation/personas.py` no longer
+exists) and `maxim.register_persona()` raises from 1.1.0. Use `imagine(mode=...)`
+/ `--sim-mode` for the report/log label; behavioural disposition is bio-emergent.
+Background: `docs/plans/deferred/persona_cleanup_and_mode_transition.md`.
 
 ## License
 

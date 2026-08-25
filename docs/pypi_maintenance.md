@@ -12,7 +12,10 @@ Long-term maintenance reference for the `pymaxim` package on PyPI. For first-tim
   - **Patch** (`1.0.8 → 1.0.9`) — compatible correctness, packaging,
     security, and documentation fixes; no public-contract breakage.
   - **Minor** (`1.0.x → 1.1.0`) — compatible additive features and explicitly
-    documented deprecations.
+    documented deprecations. **Recorded exception:** 1.1.0 removes
+    `register_persona()` (it raises) under the 0.9-era deprecation promise
+    "raises in 1.1" — a pre-1.0 promise kept literally, not a precedent for
+    removals in minors.
   - **Major** (`1.x → 2.0.0`) — intentionally incompatible public-contract
     changes with a migration path.
 - **Two version files must stay in sync:** [pyproject.toml](../pyproject.toml) and [src/maxim/__init__.py](../src/maxim/__init__.py). Mismatch = release bug.

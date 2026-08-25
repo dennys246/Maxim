@@ -17,10 +17,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > PyPI") was itself false. The entries below were reconstructed from the git history
 > during the 1.1 release-truth pass (roadmap item 2); annotated tags
 > `v1.0.1`–`v1.0.6` were created at the verified version-bump commits at the same
-> time. Publishing a current release (or explicitly deciding not to) is part of
-> roadmap item 16.
+> time. **Update 2026-08-24:** 1.0.9 was published to PyPI on 2026-08-23 (tag
+> `v1.0.9` at `5cb4413b`), so the "latest release is 1.0.0" statement above is
+> historical (true as of 2026-08-19).
 
 ## [Unreleased]
+
+## [1.1.0] - 2026-08-24 — "Sensorimotor"
+
+The substrate leaves the simulator. This section is everything recorded as
+unreleased since the 1.0.6 reconstruction. **Read the attribution carefully:**
+the 1.0.7–1.0.9 wheels were cut from `main` while this section was still
+accumulating, so a number of the bullets below (Exp 49, the `_cosine`/`ec_merge`
+guards, the roadmap and readiness ledgers, the D21 EC-docstring correction, and
+others) already shipped inside 1.0.9 and are first *listed* here rather than
+first *shipped* here. The work that is genuinely post-`v1.0.9` (`5cb4413b`,
+2026-08-23) is: the stable-API contract repairs (D17 load-restores-or-raises,
+D18 persistent tool registration, D2 NAc/EC paired invalidation), the
+architecture-audit regression gate (D19), the healthy-hardware `_big`
+delivered-shift block (H1 Part C follow-up), and the evidence-closure pass (S4
+records committed for every Earned row, Exp 44b non-stationarity recorded).
+Zero new mechanisms, by design ([roadmap](docs/plans/roadmap_1_1_to_1_3.md));
+Oasis + Hivemind are 1.2.
+
+### Upgrade note — one promised removal and two behaviour changes for code that already compiles
+
+- **`maxim.register_persona()` now raises** (`RuntimeError` with a pointer)
+  instead of warning-and-ignoring. The persona system was hard-deleted in #482;
+  0.9 deprecated the call with the promise "raises in 1.1", and the shim was
+  version-gated so the promise kept literally when `__version__` reached 1.1.
+  This is a removal inside a minor, made under that pre-1.0 deprecation promise
+  (the one exception the [versioning policy](docs/pypi_maintenance.md) records).
+  The call never shaped behaviour (the `context_prompt` was never injected), so
+  no working behaviour is lost — only the symbol's tolerance. Use
+  `imagine(mode=...)` for the report/log label; the symbol and the
+  `imagine(persona=...)` alias are dropped entirely in 1.2.
+- **`maxim.load.agent()` now defaults to `on_corrupt="raise"`.** A corrupt or
+  unreadable persisted file (`hippocampus.json`, `nac.json`, `ec.json`,
+  `scn.json`, ATL) used to yield a silently-fresh agent; it now raises
+  `MemoryCorruptionError` naming every unreadable file. Pass
+  `on_corrupt="fresh"` to opt back into the old behaviour explicitly (D17).
+- **`maxim.register_tool()` registrations now persist** across every later
+  `run()`/`imagine()`/`campaign()` in the process instead of being consumed by
+  the first call. Code that relied on the one-shot behaviour will see the tool
+  everywhere until `unregister_tool(name)` / `clear_registered_tools()` (D18).
+- Signatures in the stable surface did not change shape. The public API
+  additions (`unregister_tool`, `clear_registered_tools`,
+  `list_registered_tools`, `MemoryCorruptionError`) are what make this a minor
+  rather than a patch.
 
 ### Added
 
