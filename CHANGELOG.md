@@ -23,7 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.1.0] - 2026-08-24 — "Sensorimotor"
+## [1.1.0rc1] - 2026-08-25 — "Sensorimotor" (release candidate)
+
+**Release candidate, published quietly.** `1.1.0` final follows roadmap items 17
+(Exp 52 — caregiver-taught orienting through hunger relief) and 18 (loudness bench
+tests); the cut was reopened 2026-08-25 for exactly that reason
+([roadmap](docs/plans/roadmap_1_1_to_1_3.md)). Everything below is in the rc.
 
 The substrate leaves the simulator. This section is everything recorded as
 unreleased since the 1.0.6 reconstruction. **Read the attribution carefully:**
