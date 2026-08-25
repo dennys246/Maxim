@@ -2,7 +2,7 @@
 
 Step-by-step guide for publishing pymaxim to PyPI.
 
-**Current release candidate:** 1.1.0rc1 (PyPI serves 1.0.9; install the rc with `pip install --pre pymaxim`)
+**Current release candidate:** 1.1.0rc1 — published to PyPI as a pre-release 2026-08-25 (tag `v1.1.0rc1`); `pip install --pre pymaxim`. Stable resolves to 1.0.9 until `1.1.0` final (roadmap step 5b).
 **Package name:** pymaxim (import name: `maxim`)
 **Build system:** setuptools + wheel
 
