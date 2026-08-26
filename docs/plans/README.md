@@ -1,6 +1,6 @@
 # Maxim Plans
 
-Current version: **1.1.0** (`pyproject.toml` + `src/maxim/__init__.py`) — the 1.1 "Sensorimotor" final cut, **publish pending** (step 5b: website audit DONE 2026-08-26; gated on item 19 = Exp 53 cross-context readout on the robot, recorded outcome; then build → PyPI → tag `v1.1.0` → flip this line). Until then PyPI serves **1.1.0rc1** as a pre-release (2026-08-25, tag `v1.1.0rc1` at `eae6559c`, `pip install --pre`) and plain installs get **1.0.9**. Item 17 DONE 2026-08-25 (Exp 52 PASS); item 18 → 1.1.1.
+Current version: **1.1.0** (`pyproject.toml` + `src/maxim/__init__.py`) — the 1.1 "Sensorimotor" final cut, **publish pending** (step 5b: website audit DONE 2026-08-26; item 19 DONE 2026-08-26 (Exp 53b PASS — cross-context readout on the robot); unblocked: build → PyPI → tag `v1.1.0` → flip this line). Until then PyPI serves **1.1.0rc1** as a pre-release (2026-08-25, tag `v1.1.0rc1` at `eae6559c`, `pip install --pre`) and plain installs get **1.0.9**. Item 17 DONE 2026-08-25 (Exp 52 PASS); item 18 → 1.1.1.
 Now: **1.1 "Sensorimotor" release closure** — ship the merged embodiment work plus
 the correctness, contract, truth, and verification debt it incurred. **Zero new
 mechanisms.** Reconciled 2026-08-19 after the D13/D14 investigation and repository
