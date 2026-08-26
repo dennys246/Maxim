@@ -25,6 +25,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **H2 loudness bench (roadmap item 18) — DONE; design deferred to 1.1.1.** One 75 s
+  trace on the live Reachy Mini answers both pre-registered bench questions: the
+  XVF3800's `AEC_SPENERGY_VALUES` (per-beam speech energy, measured before the AGC) and
+  the `PP_AGCGAIN` readback are both served by the daemon's existing
+  `GET /api/audio/config/parameter/{name}` — no vendor change, no onboard PCM, no
+  `media_backend: default`. AGC gain is a graded inverse loudness envelope (42–46 quiet
+  → 8.3 loud speech); speech energy is a VAD-gated magnitude that the AGC does not
+  flatten (it would flatten PCM ~5×). Note `docs/experiments/h2_loudness_bench_2026-08-25.md`,
+  raw `docs/experiments/data/h2_loudness_bench.jsonl`, poller
+  `scripts/orient_backbone/loudness_bench_poll.py`. `1.1.0` final now waits on release
+  step 5b only.
+
 - **Exp 52 (Nurture) — RESULT: caregiver-taught orienting through hunger relief is EARNED.**
   Phase A (scripted): taught 0.892 vs satiated/yoked/no_feed 0.496 — a feed without need
   had zero effect (satiated ≡ no_feed to the digit). Phase B (embodied `cradle_mother`,
