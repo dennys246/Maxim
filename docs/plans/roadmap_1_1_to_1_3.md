@@ -15,7 +15,7 @@ down somewhere in this repo by someone being careful.
 
 | | Theme | Contains | Risk |
 |---|---|---|---|
-| **1.1** | **"Sensorimotor"** — *the substrate leaves the simulator, and learns to want* | Already-merged embodiment work + release correctness, contract truth, and the verification debt it incurred (all landed by 2026-08-24, published as `1.1.0rc1`) — **plus, reopened 2026-08-25: a recorded, gated result for caregiver-taught orienting (item 17) and the loudness bench tests (item 18)** before `1.1.0` final. | Medium-high: item 17 is the thesis experiment and may fail; a recorded fail still ships (as a fail). |
+| **1.1** | **"Sensorimotor"** — *the substrate leaves the simulator, and learns to want* | Already-merged embodiment work + release correctness, contract truth, and the verification debt it incurred (all landed by 2026-08-24, published as `1.1.0rc1`) — **plus, reopened 2026-08-25: a recorded, gated result for caregiver-taught orienting (item 17) — DONE 2026-08-25, PASS — before `1.1.0` final.** The loudness bench tests (item 18) were run the same day and the item itself moved to 1.1.1 (bench done; the design is not part of the sensorimotor-learning claim). | Medium-high: item 17 is the thesis experiment and may fail; a recorded fail still ships (as a fail). |
 | **1.2** | **Oasis + Hivemind** | ~1,400 LOC of de-risked engineering with a cleared gate | Low-medium. Known shape. |
 | **1.3** | **Perception fabric + reflex tier** | Cochlear front-end, vision encoder, binding, three-factor calibration, DN-canonical orienting reflex | **High — contains a pivotal may-fail experiment.** |
 
@@ -62,7 +62,7 @@ by delaying Oasis two versions.
 > tests the owner's version of the claim is unresolved would be the weaker claim wearing
 > the stronger name. So: **the merged `main` ships now as `1.1.0rc1` (users get the
 > correctness fixes; no announcement); `1.1.0` final ships when item 17 has a recorded,
-> gated result — PASS or an honestly-named FAIL — and item 18's bench tests are done.**
+> gated result — PASS or an honestly-named FAIL — and item 18's bench tests are done.** *(Both happened 2026-08-25; item 18's design then moved to 1.1.1 — see its row.)*
 > Two mechanism-class additions are admitted by this decision, each with its
 > front-gate answer in its row. Oasis + Hivemind stay 1.2.
 
@@ -85,7 +85,7 @@ by delaying Oasis two versions.
 | 15 | Architecture-audit enforcement | **DONE (2026-08-24)** (D19). The 33 findings are classified (10 typing-only / 16 function-local lazy imports, none a cycle-break / 7 module-level) in a reviewed baseline (`src/maxim/utils/architecture_baseline.json`, keyed by file + module + scope + accepted symbols); the fast suite fails on additions (incl. a widened symbol list), stale entries, and unreviewed entries. Zero debt is 1.1.x item 11, not a release blocker. |
 | 16 | Release, website, and agent-guidance truth | **OPEN — 1.1 DOCS GATE.** (1.0.9 was published to PyPI on 2026-08-23 at tag `v1.0.9`/`5cb4413b` after the 2026-08-20 maxim-web corrections went live; D24's remaining items now gate the 1.1 cut, not 1.0.9.) The 38-route live content audit is DONE and its cross-repo handoff is recorded; maxim-web corrections, path-preserving `docs.pymaxim.bio` redirects, visual/accessibility verification, exact-wheel command checks, legacy deep-link migration, and post-upload PyPI link verification remain. Repo metadata now points directly to the canonical getting-started route. |
 | 17 | **Nurture — hunger-relief-taught orienting (Exp 52)** | **OPEN — 1.1 FINAL GATE (added 2026-08-25); PRE-REGISTERED 2026-08-25:** [exp52_nurture_preregistration.md](../experiments/protocols/exp52_nurture_preregistration.md). The audit-shaped successor to Exp 48. The mother's feed already writes a real hunger delta; what changes is the credit's VALUE — from a constant `feed_reward` to the sign of the relief the infant experienced (`drive_comfort_progress` on the drives the feed touched; zero relief → no credit) — delivered through the existing one-turn pending-operant trace. **Front-gate:** rides existing drive specs, value-progress credit and the operant trace; the only new contract is relief-sourced operant credit (the temporal-credit distributor is NOT needed for a one-turn contingency — an earlier wording of this row said otherwise). Arms taught / **satiated** (fed contingently, never hungry — the arm that separates "learns to want" from "learns to be fed") / yoked / no_feed. **Order:** Phase A scripted (`orient_substrate/9`, seconds; Exp 46 gates + HUNGER-NECESSARY) gates Phase B embodied (`cradle_mother` under gate v3: v2 constants + HUNGER-NECESSARY + an explicit L2 seed-spread apparatus gate, shuffled stimulus order, n = 12/arm, exposure-matched 48 turns). **Stop rules pre-registered:** A fails → B does not run; B runs once; a second divergence ships 1.1.0 with the result named. **DONE 2026-08-25 — both phases PASS.** Phase A @ `e367f526`: taught 0.89 / satiated 0.50 / yoked 0.50 / no_feed 0.50 (satiated ≡ no_feed to the digit). Phase B @ `60195a29` on the mini, apparatus v3: taught late 0.878 / satiated 0.441 (fed 35%, credited 0%) / no_feed 0.413 — GRADUATE under gate v3, L2 apparatus clean, S3 OK. Write-up [52_nurture.md](../experiments/52_nurture.md); new Earned row; Exp 48 row superseded. `1.1.0` final now waits on item 18 only. |
-| 18 | **Loudness / onset salience** | **OPEN — 1.1 FINAL GATE, bench tests only (added 2026-08-25).** The two half-day bench tests in §Loudness precede any design: (a) does `media_backend: default` yield audio on the live rig; (b) does the XVF3800's AGC flatten RMS. Then salience in the DoA feed becomes a function of onset (and level, if (b) allows) instead of the constant `audio_salience` — **rides the existing `percept.salience` field**, no new mechanism. The *forced* startle look (action below deliberation) stays the 1.3 reflex tier. |
+| 18 | **Loudness / onset salience** | **BENCH DONE 2026-08-25; DESIGN DEFERRED → 1.1.1 (decision 2026-08-25).** The bench tests ran in one 75 s trace on the live rig — [h2_loudness_bench_2026-08-25.md](../experiments/h2_loudness_bench_2026-08-25.md): the XVF3800 already computes a level (`AEC_SPENERGY_VALUES`, per-beam speech energy, pre-AGC) and the daemon we run serves it over `GET /api/audio/config/parameter/{name}` (reachy_mini ≥ 1.8.0), so neither of the two paths in §Loudness (Pollen's code / onboard PCM) is needed. (a) level IS available — two signals: `PP_AGCGAIN` readback = graded inverse loudness envelope (42–46 quiet → 8.3 loud speech, ~3 s attack / ~15 s release); `AEC_SPENERGY_VALUES[3]` = spiky, VAD-gated speech magnitude (3–4× quiet→loud on a 2 s window-max; 0 for loud non-speech). (b) the AGC does NOT flatten the register (energy peaks exactly where gain bottoms) — it WOULD flatten PCM ~5×, which is why the PCM path was the wrong path. **Why deferred:** loudness never entered the sensorimotor-learning claim that reopened 1.1 (item 17 tests it; Exp 52 PASSED without it); shipping a salience design under the release headline would be scope, not evidence. **1.1.1 plan:** salience in the DoA feed = f(onset, level) from those two REST reads, **riding the existing `percept.salience` field**, no PCM, no `media_backend: default`, no new mechanism; cost inside a live WebRTC-streaming orient session still to be measured. The *forced* startle look (action below deliberation) stays the 1.3 reflex tier. |
 
 The remaining scope is release closure, not a new feature phase. Estimates belong on
 the implementation PRs after each item's failing contract test exists; this roadmap
@@ -129,7 +129,7 @@ from the claims-verification round — blocking vs 1.1.x *within* the gated item
      bump both version files + the CHANGELOG header to `1.1.0rc1` in one commit, vendor
      the Console UI, build/`twine check`, TestPyPI → PyPI, tag `v1.1.0rc1` on the
      published commit, flip the "PyPI serves" sync lines. No announcement.
-   - **5b (after items 17 + 18): `1.1.0` final** — audit the canonical website against
+   - **5b (after item 17 — DONE; item 18 → 1.1.1): `1.1.0` final** — audit the canonical website against
      the exact release artifact, reconcile version policy/docs/PyPI project links,
      build/check, cut `1.1.0`, tag it, publish matching release notes (the
      announcement waits for this).
@@ -384,10 +384,16 @@ dispatch is ~10 LOC and the highest-value fix in this list.
 
 ---
 
-## Loudness — blocked outside this repo
+## Loudness — UNBLOCKED 2026-08-25 (the section below is the pre-bench reasoning, kept as the record)
+
+> **Superseded by the bench:** [h2_loudness_bench_2026-08-25.md](../experiments/h2_loudness_bench_2026-08-25.md).
+> The level exists (`AEC_SPENERGY_VALUES`, pre-AGC) and the daemon already serves it over
+> REST; both paths below were unnecessary. Test (a) as written (PCM) was the wrong test —
+> the register answers it without PCM. Test (b): the AGC flattens PCM, not the register.
+> Item 18's design is 1.1.1.
 
 `DoAReading = tuple[float, bool]`. The daemon serves `{"angle", "speech_detected"}`.
-There is no level anywhere. Two paths, both outside our control or against current
+There is no level anywhere *in what we read*. Two paths, both outside our control or against current
 config:
 
 1. **Daemon-side** — a new endpoint or extra fields. That is Pollen's code. Unbounded
@@ -485,7 +491,9 @@ predicate's clothes.
 ## Enthusiasm-to-evidence flags (recorded so they don't recur)
 
 1. **Loudness scoped as a 1.1 addition without checking the wire format.** It is
-   `(float, bool)`; the fix lives in a vendor's daemon.
+   `(float, bool)`; the fix lives in a vendor's daemon. *(Corrected 2026-08-25: the
+   vendor's daemon already served it — the flag was right, the diagnosis was one
+   register short. Check the vendor's parameter table before declaring a dependency.)*
 2. **"Enable the reflex tier"** — the verb implied a flag; the reality is ~1,000 LOC
    against a deliberate correctness fold.
 3. **Fabric pulled 1.3 → 1.2** against its own header, with no new evidence.

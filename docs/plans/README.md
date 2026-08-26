@@ -1,6 +1,6 @@
 # Maxim Plans
 
-Current version: **1.1.0rc1** (`pyproject.toml` + `src/maxim/__init__.py`) — the 1.1 "Sensorimotor" release candidate. PyPI serves **1.1.0rc1** as a pre-release (2026-08-25, tag `v1.1.0rc1` at `eae6559c`, `pip install --pre`); plain installs still get **1.0.9**. Step 5a done; `1.1.0` final is gated on items 17–18 (step 5b).
+Current version: **1.1.0rc1** (`pyproject.toml` + `src/maxim/__init__.py`) — the 1.1 "Sensorimotor" release candidate. PyPI serves **1.1.0rc1** as a pre-release (2026-08-25, tag `v1.1.0rc1` at `eae6559c`, `pip install --pre`); plain installs still get **1.0.9**. Step 5a done; item 17 DONE 2026-08-25 (Exp 52 PASS), item 18 → 1.1.1; `1.1.0` final is gated on step 5b only (website audit + cut).
 Now: **1.1 "Sensorimotor" release closure** — ship the merged embodiment work plus
 the correctness, contract, truth, and verification debt it incurred. **Zero new
 mechanisms.** Reconciled 2026-08-19 after the D13/D14 investigation and repository
