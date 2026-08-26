@@ -69,7 +69,7 @@ supersession — the site index is derived from that table, so the engine change
 - [x] `pnpm build` clean; 2,137 internal links + fragments resolve in `dist/`.
 - [x] **After merge/deploy (done 2026-08-26, #7 merged as `97fc13d4`, Workers Build auto-deployed):** all 39 routes 200, canonical only `pymaxim.bio`, `docs.pymaxim.bio/<path>` → 308, "84 experiments", Exp 52 card live, no stale strings (`currently one-shot`, `33 open audit`, `slated for v1.1`, `--persona`, v1 numbers, `[gstreamer]`). Recipe kept — re-crawl the sitemap (`curl -s https://pymaxim.bio/sitemap-0.xml | grep -o '<loc>[^<]*'`, then fetch each; on a sinkholed network use `curl --resolve pymaxim.bio:443:172.67.172.44`) and confirm "84 experiments", the Exp 52 card, and no `currently one-shot` / `33 open audit` strings.
 - [ ] **Human-only:** visual / mobile / keyboard / accessibility pass in a real browser (Starlight sidebar + the new home card at narrow widths; focus order on the copy-install button; contrast of the `reference-only` and `partial` status chips; alt text on the favicon/og image).
-- [ ] After `1.1.0` is published: `pip install pymaxim` in a fresh venv resolves 1.1.0 and `maxim --help` matches the wheel checked here (the site needs no text change for that).
+- [x] After `1.1.0` is published: `pip install pymaxim` in a fresh venv resolves 1.1.0 and `maxim --help` matches the wheel checked here (the site needs no text change for that). **DONE 2026-08-26** — verified by the web session post-publish (fresh venv → 1.1.0; flag set identical); Maxim-web #9 adds the release-notes pointers.
 
 ---
 
