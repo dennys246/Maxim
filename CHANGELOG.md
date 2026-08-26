@@ -23,6 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-26 — "Sensorimotor"
+
+**The 1.1 final cut.** Everything in `1.1.0rc1` below, plus the two items the cut was
+reopened for on 2026-08-25: the recorded, gated **Exp 52 (Nurture)** result — roadmap
+item 17, the thesis experiment of this release — and the **H2 loudness bench** (item
+18's bench tests; the salience *design* is 1.1.1 by decision). `1.1.0` is the first
+stable release since `1.0.9`; `pip install pymaxim` resolves to it. Release notes and
+the announcement are built from this section and the rc section together — the rc
+carried the stable-API contract repairs (D17/D18/D2), the architecture-audit gate
+(D19), the healthy-hardware `_big` block, and the evidence-closure pass; this cut
+adds the behavioural result the headline rests on. Zero new mechanisms beyond the
+relief-sourced operant credit named below ([roadmap](docs/plans/roadmap_1_1_to_1_3.md)).
+
 ### Added
 
 - **H2 loudness bench (roadmap item 18) — DONE; design deferred to 1.1.1.** One 75 s
