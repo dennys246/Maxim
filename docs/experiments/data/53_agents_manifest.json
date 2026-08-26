@@ -1,0 +1,572 @@
+{
+  "_format_version": "1.0",
+  "experiment": "53_cross_context_readout",
+  "archive": "/Users/dennyschaedig/Maxim-experiment-archives/exp52_phaseB_2026-08-25/phaseB",
+  "frozen": {
+    "body_ref": "bodies/infant_operant",
+    "agent_id": "sim_aut",
+    "deltas_rad": {
+      "turn_left": 0.55,
+      "turn_right": -0.55
+    },
+    "targets_az": [
+      -0.6,
+      -0.5,
+      0.5,
+      0.6
+    ],
+    "trials_per_agent": 12,
+    "explore_primary": 0.0,
+    "explore_secondary": 1.5
+  },
+  "agents": [
+    {
+      "arm": "taught",
+      "seed": 42,
+      "exploratory": false,
+      "label": "taught_seed42",
+      "nac_path": "docs/experiments/data/53_agents/taught_seed42/aut_nac.json",
+      "ec_path": "docs/experiments/data/53_agents/taught_seed42/aut_ec.json",
+      "nac_sha256": "613d609f13fbae37f811d9597e421f850e8b7b5f7caf8d1c25e7f640012131ac",
+      "ec_sha256": "23c188fdcf57cf0d4b447f6483b91ca99559e41bad5064a24af7955ebe125426",
+      "bias_entries": 3,
+      "biases": [
+        {
+          "agent": "sim_aut",
+          "cluster": "5db1e6cc-e136-4c8d-b83d-3ffacabb3851",
+          "tool": "tool:infant_operant_turn_left",
+          "bias": 0.6519
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "5be3a730-a11e-49bc-a261-d207d0bdd805",
+          "tool": "tool:infant_operant_turn_left",
+          "bias": 0.0062
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "5f6fab30-5b53-42b5-a9e2-0cca35a21765",
+          "tool": "tool:infant_operant_turn_right",
+          "bias": 0.9017
+        }
+      ],
+      "audio_nodes": [
+        "5db1e6cc-e136-4c8d-b83d-3ffacabb3851",
+        "5be3a730-a11e-49bc-a261-d207d0bdd805",
+        "5f6fab30-5b53-42b5-a9e2-0cca35a21765"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "arms.pressure",
+            "arms.thermal",
+            "core_temperature",
+            "head.thermal",
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787694614.816803,
+      "archive_session": null
+    },
+    {
+      "arm": "taught",
+      "seed": 43,
+      "exploratory": false,
+      "label": "taught_seed43",
+      "nac_path": "docs/experiments/data/53_agents/taught_seed43/aut_nac.json",
+      "ec_path": "docs/experiments/data/53_agents/taught_seed43/aut_ec.json",
+      "nac_sha256": "466d0726af3e52cfb9b9a5d6343240f6cb80a7173134efb00477d22750c59437",
+      "ec_sha256": "23cc8d94be414a0f651c358691ec9833d167e7581a929a15f52f8a4ec410ad53",
+      "bias_entries": 3,
+      "biases": [
+        {
+          "agent": "sim_aut",
+          "cluster": "49598399-b2f0-43c0-86e6-fe9ec31fcda4",
+          "tool": "tool:infant_operant_turn_left",
+          "bias": 0.5891
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "429e7f5a-7044-4ad1-9e0c-7f48c4df8602",
+          "tool": "tool:infant_operant_turn_right",
+          "bias": 0.9017
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "637dfcaf-bc86-4661-8536-893d2b1a1db3",
+          "tool": "tool:infant_operant_turn_left",
+          "bias": 0.0071
+        }
+      ],
+      "audio_nodes": [
+        "49598399-b2f0-43c0-86e6-fe9ec31fcda4",
+        "637dfcaf-bc86-4661-8536-893d2b1a1db3",
+        "429e7f5a-7044-4ad1-9e0c-7f48c4df8602"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "arms.pressure",
+            "arms.thermal",
+            "core_temperature",
+            "head.thermal",
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787695283.8879418,
+      "archive_session": null
+    },
+    {
+      "arm": "taught",
+      "seed": 44,
+      "exploratory": false,
+      "label": "taught_seed44",
+      "nac_path": "docs/experiments/data/53_agents/taught_seed44/aut_nac.json",
+      "ec_path": "docs/experiments/data/53_agents/taught_seed44/aut_ec.json",
+      "nac_sha256": "9a4149214b005a57055c740ef0287fb6bdb1636dce18d51f884142113accc50b",
+      "ec_sha256": "d941013151a2551acc93e87c51763fb0ff640ca39d53e6c141a980ab7dd294b5",
+      "bias_entries": 3,
+      "biases": [
+        {
+          "agent": "sim_aut",
+          "cluster": "cc015e57-b231-46c7-be3e-424cb8bc9482",
+          "tool": "tool:infant_operant_turn_left",
+          "bias": 0.0063
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "f1a249f9-f40e-4719-ac40-8109703b6563",
+          "tool": "tool:infant_operant_turn_right",
+          "bias": 0.9017
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "14445d6e-6f4d-4655-83b1-1652449f1703",
+          "tool": "tool:infant_operant_turn_left",
+          "bias": 0.6196
+        }
+      ],
+      "audio_nodes": [
+        "14445d6e-6f4d-4655-83b1-1652449f1703",
+        "f1a249f9-f40e-4719-ac40-8109703b6563",
+        "cc015e57-b231-46c7-be3e-424cb8bc9482"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "arms.pressure",
+            "arms.thermal",
+            "core_temperature",
+            "head.thermal",
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787695947.284079,
+      "archive_session": null
+    },
+    {
+      "arm": "satiated",
+      "seed": 42,
+      "exploratory": false,
+      "label": "satiated_seed42",
+      "nac_path": "docs/experiments/data/53_agents/satiated_seed42/aut_nac.json",
+      "ec_path": "docs/experiments/data/53_agents/satiated_seed42/aut_ec.json",
+      "nac_sha256": "1159836b06695942ebc27ab2860a127e78bc38736ea2afa114fef062acee0799",
+      "ec_sha256": "59a348f4c37530137fa7cf8e593bf06e8fcd5577d39aec9b3c538a9077c34663",
+      "bias_entries": 0,
+      "biases": [],
+      "audio_nodes": [
+        "ca52b9a8-381a-48ab-82f7-d37dd973225d",
+        "d73835a2-bd2a-4b0b-ace0-ba17733d1dd7",
+        "dc28ae12-2720-49ab-a580-2440a026a344"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "arms.pressure",
+            "arms.thermal",
+            "core_temperature",
+            "head.thermal",
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787702563.447371,
+      "archive_session": null
+    },
+    {
+      "arm": "satiated",
+      "seed": 43,
+      "exploratory": false,
+      "label": "satiated_seed43",
+      "nac_path": "docs/experiments/data/53_agents/satiated_seed43/aut_nac.json",
+      "ec_path": "docs/experiments/data/53_agents/satiated_seed43/aut_ec.json",
+      "nac_sha256": "d3350fd5c2a6b96e14b8c0fbe5d8618439ed953f9624343307752eca3440bc0f",
+      "ec_sha256": "ac7d7e7997e8f30c72e4949a3b9ed545c9a7fdd19d7ef96ffddbb656a7794116",
+      "bias_entries": 0,
+      "biases": [],
+      "audio_nodes": [
+        "2408399b-50bc-4048-b707-2e9a5b4ce92b",
+        "a05fddbe-39d5-4574-bb38-20807e50be77",
+        "11dc6c4f-0317-42ec-a873-dd87ecdfc3d0"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "arms.pressure",
+            "arms.thermal",
+            "core_temperature",
+            "head.thermal",
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787703227.439051,
+      "archive_session": null
+    },
+    {
+      "arm": "satiated",
+      "seed": 44,
+      "exploratory": false,
+      "label": "satiated_seed44",
+      "nac_path": "docs/experiments/data/53_agents/satiated_seed44/aut_nac.json",
+      "ec_path": "docs/experiments/data/53_agents/satiated_seed44/aut_ec.json",
+      "nac_sha256": "54120674618d9cd85bd03c16f8f758aa5a2b6462ce95db68c423c661b2539784",
+      "ec_sha256": "440d79ea6aeb857df8288e05c4fcfe9c960bed8fb39fc4a5bfc247583457534e",
+      "bias_entries": 0,
+      "biases": [],
+      "audio_nodes": [
+        "213cf416-3c8d-4132-aa82-ddcb8c943260",
+        "62d5a3fa-e702-4b49-8e76-29cccc6cabf6",
+        "ff8735cb-2653-491c-ac23-b07fa3262f59"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "arms.pressure",
+            "arms.thermal",
+            "core_temperature",
+            "head.thermal",
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787703885.501375,
+      "archive_session": null
+    },
+    {
+      "arm": "no_feed",
+      "seed": 42,
+      "exploratory": false,
+      "label": "no_feed_seed42",
+      "nac_path": "docs/experiments/data/53_agents/no_feed_seed42/aut_nac.json",
+      "ec_path": "docs/experiments/data/53_agents/no_feed_seed42/aut_ec.json",
+      "nac_sha256": "20d4ce0f861ac81d2b73895605afc6409e99753f114ac4809f71bb0b18315071",
+      "ec_sha256": "0ac87b6aca605ce20094ae791fe855eaf275448541ea7143871a439cd2fa1efc",
+      "bias_entries": 0,
+      "biases": [],
+      "audio_nodes": [
+        "b36b875f-c49c-450c-95b5-d0fa0c287e23",
+        "5e956304-8c92-4559-9a9f-507b84d23430",
+        "31323079-28b5-4c6e-82e8-4a46e0099c72"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "arms.pressure",
+            "arms.thermal",
+            "core_temperature",
+            "head.thermal",
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787710497.700477,
+      "archive_session": null
+    },
+    {
+      "arm": "no_feed",
+      "seed": 43,
+      "exploratory": false,
+      "label": "no_feed_seed43",
+      "nac_path": "docs/experiments/data/53_agents/no_feed_seed43/aut_nac.json",
+      "ec_path": "docs/experiments/data/53_agents/no_feed_seed43/aut_ec.json",
+      "nac_sha256": "dde26ed88f10e58ed5fc1e677ebd791c9526963ebbef9909ab12074785cce590",
+      "ec_sha256": "5a7b7ab3d782f54489ab85214692eab7df28cecd5a3db054d7e4e59d9cc02f9f",
+      "bias_entries": 0,
+      "biases": [],
+      "audio_nodes": [
+        "60eba2b4-5b67-4201-ae99-a3662f9de728",
+        "5b00def1-4e62-4d8b-bf09-43497dd7a766",
+        "b4aa113a-0b76-445e-8df3-c269827bb53d"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "arms.pressure",
+            "arms.thermal",
+            "core_temperature",
+            "head.thermal",
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787711156.9110909,
+      "archive_session": null
+    },
+    {
+      "arm": "no_feed",
+      "seed": 44,
+      "exploratory": false,
+      "label": "no_feed_seed44",
+      "nac_path": "docs/experiments/data/53_agents/no_feed_seed44/aut_nac.json",
+      "ec_path": "docs/experiments/data/53_agents/no_feed_seed44/aut_ec.json",
+      "nac_sha256": "963d1cf8f18bba8c6ea49491258074ab1e825e3038426fc2487ff4579cbb703f",
+      "ec_sha256": "b1d985ef004949b142fa31b616c62f290fbd28f1a8f3a7e9aa5386e497397e54",
+      "bias_entries": 0,
+      "biases": [],
+      "audio_nodes": [
+        "94d8b5fc-fdca-4490-9ad3-f8585b0c4ffb",
+        "747c7245-9d7f-437b-8a6e-cf302ad88d6c",
+        "7ef668ad-c36d-4b59-8d9c-f3785d738c0e"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "arms.pressure",
+            "arms.thermal",
+            "core_temperature",
+            "head.thermal",
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787711816.335691,
+      "archive_session": null
+    },
+    {
+      "arm": "taught",
+      "seed": 48,
+      "exploratory": true,
+      "label": "taught_seed48",
+      "nac_path": "docs/experiments/data/53_agents/taught_seed48/aut_nac.json",
+      "ec_path": "docs/experiments/data/53_agents/taught_seed48/aut_ec.json",
+      "nac_sha256": "818687626046a5dcc8a4374216f744e3c6efd00c6b3cf688a355de670754bcda",
+      "ec_sha256": "cd2ed8fdfb7fbacc024ad3b1e21ac7df1ed8fa93a945a4542f5b85f365824765",
+      "bias_entries": 3,
+      "biases": [
+        {
+          "agent": "sim_aut",
+          "cluster": "d7a3312d-1657-4ffa-b638-f5eb895aa846",
+          "tool": "tool:infant_operant_turn_left",
+          "bias": 0.388
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "33d88cf4-f722-4e3d-82ba-51a5b1191869",
+          "tool": "tool:infant_operant_turn_right",
+          "bias": 0.3065
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "b1417d48-77da-4cea-b930-1fbb1ede4f34",
+          "tool": "tool:infant_operant_turn_left",
+          "bias": 0.0607
+        }
+      ],
+      "audio_nodes": [
+        "33d88cf4-f722-4e3d-82ba-51a5b1191869",
+        "b1417d48-77da-4cea-b930-1fbb1ede4f34",
+        "d7a3312d-1657-4ffa-b638-f5eb895aa846"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "arms.pressure",
+            "arms.thermal",
+            "core_temperature",
+            "head.thermal",
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787698595.263388,
+      "archive_session": null
+    }
+  ],
+  "agents_dir": "docs/experiments/data/53_agents",
+  "note": "agent pairs copied byte-for-byte from the Phase B archive (SHA-256 verified); the archive path above is the origin"
+}

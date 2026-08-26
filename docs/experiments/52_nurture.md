@@ -105,4 +105,5 @@ decides 50% — a pure random walk, as designed.
 - [L2](../limits/README.md): mitigation now **measured** (the shuffle restores seed
   spread). [L1](../limits/README.md): the margin instrumentation explained the one weak
   seed exactly as designed.
-- Roadmap item 17 → DONE; item 18's bench ran the same day and its design moved to 1.1.1, so `1.1.0` final now waits only on release step 5b (website audit + cut).
+- Roadmap item 17 → DONE; item 18's bench ran the same day and its design moved to 1.1.1.
+- **2026-08-26 — these infants were read out on the physical Reachy Mini** ([Exp 53/53b](53_cross_context_readout.md)): files unchanged, taught 1.00 / satiated 0.00 / no_feed 0.50 — the cross-context half of the claim.

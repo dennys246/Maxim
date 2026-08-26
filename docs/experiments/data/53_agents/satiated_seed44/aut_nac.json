@@ -1,0 +1,4848 @@
+{
+  "version": "1.0",
+  "links": {
+    "tool:infant_operant_satiated_turn_right": [
+      {
+        "id": "5a3deee9e0317ba8",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "params": {}
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:infant_operant_satiated_turn_right:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.004410982131958008,
+            0.0030517578125,
+            0.007876873016357422,
+            0.003498077392578125,
+            0.006155967712402344,
+            0.0003979206085205078,
+            0.0009028911590576172,
+            0.0003719329833984375,
+            0.0008780956268310547,
+            0.00035500526428222656,
+            0.0008907318115234375,
+            0.0030782222747802734,
+            0.005877971649169922,
+            0.003268718719482422,
+            0.006650209426879883,
+            0.003013134002685547,
+            0.0008721351623535156,
+            0.00037789344787597656,
+            0.0009119510650634766,
+            0.0003039836883544922,
+            0.00040221214294433594,
+            0.002495288848876953,
+            0.0026290416717529297,
+            0.0021271705627441406,
+            0.002680063247680664,
+            0.002705812454223633,
+            0.00030303001403808594,
+            0.0003008842468261719,
+            0.00033402442932128906,
+            0.0003600120544433594,
+            0.0003571510314941406,
+            0.00039696693420410156,
+            0.0024940967559814453,
+            0.002295970916748047,
+            0.0016758441925048828,
+            0.0025873184204101562,
+            0.0016529560089111328,
+            0.00032591819763183594,
+            0.00032782554626464844,
+            0.00031280517578125,
+            0.0003151893615722656,
+            0.0015401840209960938,
+            0.002583742141723633,
+            0.0020847320556640625,
+            0.0022389888763427734,
+            0.0023529529571533203,
+            0.0003440380096435547,
+            0.00032901763916015625,
+            0.00031304359436035156,
+            0.00028896331787109375,
+            0.0002880096435546875,
+            0.0003466606140136719,
+            0.0002951622009277344,
+            0.002357959747314453,
+            0.0025229454040527344,
+            0.0017671585083007812,
+            0.0023539066314697266,
+            0.0024688243865966797,
+            0.00030803680419921875,
+            0.0003027915954589844,
+            0.0003209114074707031,
+            0.0002911090850830078,
+            0.000308990478515625,
+            0.00030684471130371094,
+            0.0017809867858886719,
+            0.002753019332885742,
+            0.002746105194091797,
+            0.0023102760314941406,
+            0.0023260116577148438,
+            0.0002830028533935547,
+            0.00039696693420410156,
+            0.0008902549743652344,
+            0.0004208087921142578,
+            0.00417780876159668,
+            0.0031087398529052734,
+            0.0068378448486328125,
+            0.0021686553955078125,
+            0.006829261779785156,
+            0.002379179000854492,
+            0.0008897781372070312,
+            0.0004189014434814453,
+            0.0008571147918701172,
+            0.00039505958557128906,
+            0.0008540153503417969,
+            0.001544952392578125,
+            0.00613093376159668,
+            0.0029268264770507812,
+            0.007339954376220703,
+            0.0024449825286865234,
+            0.0048868656158447266,
+            0.0003809928894042969,
+            0.0008928775787353516,
+            0.00038504600524902344,
+            0.000926971435546875,
+            0.00037288665771484375,
+            0.006832122802734375,
+            0.0027000904083251953,
+            0.00619196891784668,
+            0.003448009490966797,
+            0.006178855895996094
+          ]
+        },
+        "predicted_value": 0.9999999999999997,
+        "prediction_history": [
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997
+        ],
+        "observation_count": 537,
+        "confidence": 0.9405,
+        "last_observed": 1787703882.3134139,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 3.3306690738754696e-16,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "1320bd286fb0f77f",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "explore=1.50"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703244.346349,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "7ad255e4d21634fa",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "explore=1.50"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:explore=1.50:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703244.347203,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "5c192932a3fb4aeb",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.50; explore=0.77"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703245.57932,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "fc8869f9d6812e0e",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.50; explore=0.77"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.50; explore=0.77:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703245.5794492,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "e25db7d12c51c460",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.64; explore=0.52"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703246.648127,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "0aa37a2f9735bbdf",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.64; explore=0.52"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.64; explore=0.52:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703246.6482549,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "a25518e5b2758196",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.67; explore=0.40"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703247.893342,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "3ccb5acecbac3f45",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.67; explore=0.40"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.67; explore=0.40:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703247.89346,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "a31ae8365254f172",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.70; explore=0.32"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703249.128866,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "2ca2cb9209f22194",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.70; explore=0.32"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.70; explore=0.32:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703249.128979,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "b5f88a606fc9bd8c",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.72; explore=0.28"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703250.251752,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "28c045cd4f9563ac",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.72; explore=0.28"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.72; explore=0.28:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703250.251889,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "08eaac39f163733c",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.74; explore=0.24"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703251.4311638,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "923b347b445cc0f1",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.74; explore=0.24"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.74; explore=0.24:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703251.4312901,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "99f28cc75a5fc00d",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.76; explore=0.22"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703252.5537431,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "c9b417dffe5e1086",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.76; explore=0.22"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.76; explore=0.22:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703252.553879,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "8f7c5eabc92f8c8d",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.78; explore=0.19"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703253.780541,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "eee5f69f29821be6",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.78; explore=0.19"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.78; explore=0.19:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703253.781576,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "773889ef05d1ac1b",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.80; explore=0.18"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703255.0387561,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "4b48fa0b0bc7ae51",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.80; explore=0.18"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.80; explore=0.18:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703255.039645,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ca7d8851cc04a27e",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.82; explore=0.16"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703255.691212,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "91db01aa92905800",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.82; explore=0.16"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.82; explore=0.16:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703255.691723,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "cca8773c75a7ab4d",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.83; explore=0.15"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703256.8655958,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "e00043358505f23f",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.83; explore=0.15"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.83; explore=0.15:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703256.866289,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "13c21a673688b2aa",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.85; explore=0.14"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703257.4591072,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "6cfc492a8736fa33",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.85; explore=0.14"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.85; explore=0.14:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703257.460418,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "bec7001978c9d56d",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.86; explore=0.13"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703258.07651,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "0708db5e7c932f39",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.86; explore=0.13"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.86; explore=0.13:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703258.077565,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "dcd6fac7ea74a056",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.87; explore=0.12"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703258.714603,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "c93b4ea2ff266685",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.87; explore=0.12"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.87; explore=0.12:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703258.715229,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "f0a4c472bb07d9fd",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.89; explore=0.12"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703259.3572018,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ff876a2fbb806f46",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.89; explore=0.12"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.89; explore=0.12:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703259.357852,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ef31f77c6a37626f",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.90; explore=0.10"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703260.601612,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "dc2b786dec422b21",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.90; explore=0.10"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.90; explore=0.10:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703260.6017401,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ce4925739a76b74b",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.91; explore=0.10"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703261.1532958,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "179732fd7379a0fd",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.91; explore=0.10"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.91; explore=0.10:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703261.153419,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "3f19854644778b97",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.92; explore=0.09"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703261.721886,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "15edc9475f49d6cc",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.92; explore=0.09"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.92; explore=0.09:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703261.722008,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "78a4286d632e6cae",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.94; explore=0.09"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703262.307557,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "3afd486d3e3e3e27",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.94; explore=0.09"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.94; explore=0.09:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703262.307764,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "1ed3e9a9f7aecc01",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.95; explore=0.09"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703262.863673,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "6eb36ff91d25a3dd",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.95; explore=0.09"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.95; explore=0.09:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703262.863782,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "7c242bfda1954eec",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.96; explore=0.08"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703264.052226,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "efc6cb71bc8f12aa",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.96; explore=0.08"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.96; explore=0.08:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703264.05235,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "d284fac36f9d91a0",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.97; explore=0.08"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703264.623293,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "f196ddb3d4361f33",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.97; explore=0.08"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.97; explore=0.08:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703264.623408,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "9ced09ceedaac087",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.98; explore=0.08"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703265.19038,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "98cae6a3bbb945b1",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.98; explore=0.08"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.98; explore=0.08:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703265.190513,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ca32c7efe1a9e02e",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.99; explore=0.07"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "predicted_value": 0.9900932834616454,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001,
+          0.6819720000000001,
+          0.7264959200000001,
+          0.7647864912000001,
+          0.797716382432,
+          0.82603608889152,
+          0.8503910364467072,
+          0.8713362913441682,
+          0.8893492105559847,
+          0.9048403210781468,
+          0.9181626761272063,
+          0.9296199014693974,
+          0.9394731152636818,
+          0.9479468791267663,
+          0.9552343160490191,
+          0.9615015118021564,
+          0.9668913001498545,
+          0.9715265181288748,
+          0.9755128055908323,
+          0.9789410128081157,
+          0.9818892710149796,
+          0.9844247730728825,
+          0.9866053048426789,
+          0.9884805621647039
+        ],
+        "observation_count": 26,
+        "confidence": 0.9405,
+        "last_observed": 1787703315.271682,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.011519437835296076,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "f1c9831c4d3072d1",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.99; explore=0.07"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.99; explore=0.07:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1
+          ]
+        },
+        "predicted_value": 0.9900932834616454,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001,
+          0.6819720000000001,
+          0.7264959200000001,
+          0.7647864912000001,
+          0.797716382432,
+          0.82603608889152,
+          0.8503910364467072,
+          0.8713362913441682,
+          0.8893492105559847,
+          0.9048403210781468,
+          0.9181626761272063,
+          0.9296199014693974,
+          0.9394731152636818,
+          0.9479468791267663,
+          0.9552343160490191,
+          0.9615015118021564,
+          0.9668913001498545,
+          0.9715265181288748,
+          0.9755128055908323,
+          0.9789410128081157,
+          0.9818892710149796,
+          0.9844247730728825,
+          0.9866053048426789,
+          0.9884805621647039
+        ],
+        "observation_count": 26,
+        "confidence": 0.9405,
+        "last_observed": 1787703315.271775,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.011519437835296076,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "fc2b9b80410d21cf",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.99; explore=0.06"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "predicted_value": 0.9999999999999997,
+        "prediction_history": [
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997
+        ],
+        "observation_count": 485,
+        "confidence": 0.9405,
+        "last_observed": 1787703882.315579,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 3.3306690738754696e-16,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "202b69c204dcf8f7",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.99; explore=0.06"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.99; explore=0.06:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1
+          ]
+        },
+        "predicted_value": 0.9999999999999997,
+        "prediction_history": [
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997
+        ],
+        "observation_count": 485,
+        "confidence": 0.9405,
+        "last_observed": 1787703882.316115,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 3.3306690738754696e-16,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "9b4786859c98da77",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.99; explore=0.08"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0,
+            0.0
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.609350288425444,
+        "last_observed": 1787703288.385671,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "8ebca808bc996262",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_right",
+        "event_context": {
+          "goal": "causal_pos=0.99; explore=0.08"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.99; explore=0.08:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1,
+            0.1
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.609350288425444,
+        "last_observed": 1787703288.386657,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:infant_operant_satiated_turn_left": [
+      {
+        "id": "93fc1c7dad93147b",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "params": {}
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:infant_operant_satiated_turn_left:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.000308990478515625,
+            0.002624034881591797,
+            0.002534151077270508,
+            0.0025238990783691406,
+            0.0025818347930908203,
+            0.0021708011627197266,
+            0.00034618377685546875,
+            0.0003299713134765625,
+            0.00030803680419921875,
+            0.00029587745666503906,
+            0.0003368854522705078,
+            0.0015537738800048828,
+            0.0027036666870117188,
+            0.0020568370819091797,
+            0.002777099609375,
+            0.0025510787963867188,
+            0.0003819465637207031,
+            0.00029206275939941406,
+            0.00028586387634277344,
+            0.0002989768981933594,
+            0.0008661746978759766,
+            0.0010771751403808594,
+            0.005042076110839844,
+            0.0029799938201904297,
+            0.00681304931640625,
+            0.004830837249755859,
+            0.0009160041809082031,
+            0.0003790855407714844,
+            0.0009007453918457031,
+            0.00032806396484375,
+            0.0010139942169189453,
+            0.00037932395935058594,
+            0.007166147232055664,
+            0.0030930042266845703,
+            0.006567239761352539,
+            0.0029549598693847656,
+            0.007097959518432617,
+            0.00040221214294433594,
+            0.0008971691131591797,
+            0.0004031658172607422,
+            0.0009169578552246094,
+            0.00038504600524902344,
+            0.0074770450592041016,
+            0.0013988018035888672,
+            0.010455131530761719,
+            0.003003835678100586,
+            0.0067539215087890625,
+            0.000408172607421875,
+            0.0009019374847412109,
+            0.0003578662872314453,
+            0.0008668899536132812,
+            0.00034928321838378906,
+            0.0009059906005859375,
+            0.0015630722045898438,
+            0.0064771175384521484,
+            0.0030410289764404297,
+            0.0028870105743408203,
+            0.002892017364501953,
+            0.0015780925750732422,
+            0.00037670135498046875,
+            0.0009229183197021484,
+            0.0003712177276611328,
+            0.0008866786956787109,
+            0.0003681182861328125,
+            0.0008161067962646484,
+            0.0016560554504394531,
+            0.006709098815917969,
+            0.0031359195709228516,
+            0.007279157638549805,
+            0.00039505958557128906,
+            0.0003399848937988281,
+            0.0003190040588378906,
+            0.00035500526428222656,
+            0.00030994415283203125,
+            0.0025620460510253906,
+            0.002131938934326172,
+            0.0022478103637695312,
+            0.002554178237915039,
+            0.0027599334716796875,
+            0.0003399848937988281,
+            0.00033211708068847656,
+            0.00033092498779296875,
+            0.00031065940856933594,
+            0.0002930164337158203,
+            0.0002799034118652344,
+            0.0024750232696533203,
+            0.0026671886444091797,
+            0.002774953842163086,
+            0.0024459362030029297,
+            0.0023391246795654297,
+            0.00032901763916015625,
+            0.00031185150146484375,
+            0.00029587745666503906,
+            0.0003666877746582031,
+            0.00032520294189453125,
+            0.0008380413055419922,
+            0.002396106719970703,
+            0.0022268295288085938,
+            0.003168821334838867,
+            0.0021643638610839844
+          ]
+        },
+        "predicted_value": 0.9999999999999997,
+        "prediction_history": [
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997
+        ],
+        "observation_count": 525,
+        "confidence": 0.9405,
+        "last_observed": 1787703881.659465,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 3.3306690738754696e-16,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "046fecdea91bb317",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "explore=1.50"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703244.968006,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "adb951dbb6803890",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "explore=1.50"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:explore=1.50:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703244.968153,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "82a781017c752cb1",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.50; explore=0.77"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703246.141151,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "aa6c51ac3ca8ae4b",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.50; explore=0.77"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.50; explore=0.77:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703246.141276,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "0f44ad40434bc08b",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.64; explore=0.52"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703247.297118,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "c9ee544005b444a0",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.64; explore=0.52"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.64; explore=0.52:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703247.297264,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "19991984563438a4",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.67; explore=0.40"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703248.544074,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "d45b8b0e002826d9",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.67; explore=0.40"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.67; explore=0.40:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703248.5441952,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "3324b112b31c3bb5",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.70; explore=0.32"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703249.696307,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "32f8e962e3ea0acf",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.70; explore=0.32"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.70; explore=0.32:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703249.696428,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "f27616a8c2b6172f",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.72; explore=0.28"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703250.899055,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "e80776a1cda35395",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.72; explore=0.28"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.72; explore=0.28:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703250.899171,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "d0d1534564da3947",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.74; explore=0.24"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703252.043457,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "cb86b0fcc64fcf26",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.74; explore=0.24"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.74; explore=0.24:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703252.043572,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "75ee950ee46495e7",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.76; explore=0.22"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703253.166816,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "d7a8bd9878dba251",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.76; explore=0.22"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.76; explore=0.22:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703253.166933,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "df61232e47a119d7",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.78; explore=0.19"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703254.401736,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "3ade7de3bfaa505d",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.78; explore=0.19"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.78; explore=0.19:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703254.402496,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "b3410bf626cd2459",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.80; explore=0.18"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703256.228974,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "b4d1525e85574b24",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.80; explore=0.18"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.80; explore=0.18:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703256.229307,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "4808abaab8ff0252",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.82; explore=0.24"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703269.286442,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "0051f722c940fcbf",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.82; explore=0.24"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.82; explore=0.24:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703269.28655,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "f2d5de7cb88aca52",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.83; explore=0.22"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703271.723061,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "9d0b5660c61b2144",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.83; explore=0.22"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.83; explore=0.22:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703271.723988,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "c980c350c19c7310",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.85; explore=0.20"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703273.65079,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "4dae9d3b79579b0c",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.85; explore=0.20"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.85; explore=0.20:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703273.651666,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "10d38571c309f292",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.86; explore=0.19"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703275.475521,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "d8721f1f888cc22a",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.86; explore=0.19"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.86; explore=0.19:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703275.476327,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "6a024bd6195f71d1",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.87; explore=0.18"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703277.267863,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "a6498ef5f786e4a2",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.87; explore=0.18"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.87; explore=0.18:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703277.267993,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "9b7d411b39d07525",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.89; explore=0.16"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703277.911415,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ca13b3a6a34ae6e1",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.89; explore=0.16"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.89; explore=0.16:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703277.911532,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "7b0e0fa28ed84120",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.90; explore=0.15"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703279.108765,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "a1626159f98ff2dc",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.90; explore=0.15"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.90; explore=0.15:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703279.10889,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "b8bccb5379fe9d51",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.91; explore=0.14"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703279.627305,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "5b4e55de861f11b3",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.91; explore=0.14"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.91; explore=0.14:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703279.62742,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "b4d354aa390a0a45",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.92; explore=0.13"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703280.163392,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "bbcbc7d5201b3c9a",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.92; explore=0.13"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.92; explore=0.13:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703280.163528,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "623e1ef209deef7f",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.94; explore=0.12"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703280.686815,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "7d1a0ad599af5ba4",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.94; explore=0.12"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.94; explore=0.12:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703280.686943,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "8c369225d96f805a",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.95; explore=0.11"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703281.336731,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "64c792d2b5c4e9d3",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.95; explore=0.11"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.95; explore=0.11:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703281.33685,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "46a8ce156456fe2f",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.96; explore=0.10"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703282.50643,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "f0ee5b453e6da37a",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.96; explore=0.10"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.96; explore=0.10:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703282.506559,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "1300095dcc864de0",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.97; explore=0.10"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703283.0566232,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "5637b932872c9cb4",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.97; explore=0.10"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.97; explore=0.10:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703283.056746,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "86dd8b60acb35fb4",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.98; explore=0.09"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703283.596283,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "942487df9a644405",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.98; explore=0.09"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.98; explore=0.09:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1787703283.596412,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ca633452abc087ca",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.99; explore=0.09"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0,
+            0.0
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.609350288425444,
+        "last_observed": 1787703284.749908,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ff48b8595e54dcb8",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.99; explore=0.09"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.99; explore=0.09:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1,
+            0.1
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.609350288425444,
+        "last_observed": 1787703284.750596,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "73f8aceb43533ea0",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.99; explore=0.08"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "predicted_value": 0.7647864912000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001,
+          0.6819720000000001,
+          0.7264959200000001
+        ],
+        "observation_count": 5,
+        "confidence": 0.6874264578624799,
+        "last_observed": 1787703290.192054,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.2735040799999999,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "1b64a0050179b5e8",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.99; explore=0.08"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.99; explore=0.08:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1
+          ]
+        },
+        "predicted_value": 0.7647864912000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001,
+          0.6819720000000001,
+          0.7264959200000001
+        ],
+        "observation_count": 5,
+        "confidence": 0.6874264578624799,
+        "last_observed": 1787703290.192141,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.2735040799999999,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "a3386dee84c2e3c5",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.99; explore=0.07"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "predicted_value": 0.9818892710149796,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001,
+          0.6819720000000001,
+          0.7264959200000001,
+          0.7647864912000001,
+          0.797716382432,
+          0.82603608889152,
+          0.8503910364467072,
+          0.8713362913441682,
+          0.8893492105559847,
+          0.9048403210781468,
+          0.9181626761272063,
+          0.9296199014693974,
+          0.9394731152636818,
+          0.9479468791267663,
+          0.9552343160490191,
+          0.9615015118021564,
+          0.9668913001498545,
+          0.9715265181288748,
+          0.9755128055908323,
+          0.9789410128081157
+        ],
+        "observation_count": 22,
+        "confidence": 0.9205894971832258,
+        "last_observed": 1787703316.964,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.02105898719188426,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "9268a863629f4b33",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.99; explore=0.07"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.99; explore=0.07:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1
+          ]
+        },
+        "predicted_value": 0.9818892710149796,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001,
+          0.6819720000000001,
+          0.7264959200000001,
+          0.7647864912000001,
+          0.797716382432,
+          0.82603608889152,
+          0.8503910364467072,
+          0.8713362913441682,
+          0.8893492105559847,
+          0.9048403210781468,
+          0.9181626761272063,
+          0.9296199014693974,
+          0.9394731152636818,
+          0.9479468791267663,
+          0.9552343160490191,
+          0.9615015118021564,
+          0.9668913001498545,
+          0.9715265181288748,
+          0.9755128055908323,
+          0.9789410128081157
+        ],
+        "observation_count": 22,
+        "confidence": 0.9205894971832258,
+        "last_observed": 1787703316.964093,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.02105898719188426,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "f0b6b949a458a9ea",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "causal_pos=0.99; explore=0.06"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'infant_operant_satiated', 'affordance'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "predicted_value": 0.9999999999999997,
+        "prediction_history": [
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997
+        ],
+        "observation_count": 472,
+        "confidence": 0.9405,
+        "last_observed": 1787703881.661689,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 3.3306690738754696e-16,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "9358a33b8169cb27",
+        "event_type": "tool",
+        "event_signature": "tool:infant_operant_satiated_turn_left",
+        "event_context": {
+          "goal": "causal_pos=0.99; explore=0.06"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:causal_pos=0.99; explore=0.06:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1
+          ]
+        },
+        "predicted_value": 0.9999999999999997,
+        "prediction_history": [
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997,
+          0.9999999999999997
+        ],
+        "observation_count": 472,
+        "confidence": 0.9405,
+        "last_observed": 1787703881.662258,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 3.3306690738754696e-16,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ]
+  },
+  "outcome_index": {
+    "tool:infant_operant_satiated_turn_right:positive": [
+      "5a3deee9e0317ba8"
+    ],
+    "success:{'entity': 'infant_operant_satiated', 'affordance'": [
+      "d284fac36f9d91a0",
+      "623e1ef209deef7f",
+      "df61232e47a119d7",
+      "046fecdea91bb317",
+      "73f8aceb43533ea0",
+      "9ced09ceedaac087",
+      "86dd8b60acb35fb4",
+      "f27616a8c2b6172f",
+      "e25db7d12c51c460",
+      "8f7c5eabc92f8c8d",
+      "46a8ce156456fe2f",
+      "1300095dcc864de0",
+      "6a024bd6195f71d1",
+      "b8bccb5379fe9d51",
+      "bec7001978c9d56d",
+      "10d38571c309f292",
+      "5c192932a3fb4aeb",
+      "a25518e5b2758196",
+      "b3410bf626cd2459",
+      "8c369225d96f805a",
+      "9b4786859c98da77",
+      "ef31f77c6a37626f",
+      "0f44ad40434bc08b",
+      "ce4925739a76b74b",
+      "3324b112b31c3bb5",
+      "9b7d411b39d07525",
+      "a3386dee84c2e3c5",
+      "fc2b9b80410d21cf",
+      "19991984563438a4",
+      "c980c350c19c7310",
+      "dcd6fac7ea74a056",
+      "1320bd286fb0f77f",
+      "7c242bfda1954eec",
+      "4808abaab8ff0252",
+      "b4d354aa390a0a45",
+      "f0a4c472bb07d9fd",
+      "d0d1534564da3947",
+      "ca633452abc087ca",
+      "78a4286d632e6cae",
+      "08eaac39f163733c",
+      "82a781017c752cb1",
+      "7b0e0fa28ed84120",
+      "f0b6b949a458a9ea",
+      "3f19854644778b97",
+      "75ee950ee46495e7",
+      "a31ae8365254f172",
+      "99f28cc75a5fc00d",
+      "ca32c7efe1a9e02e",
+      "13c21a673688b2aa",
+      "f2d5de7cb88aca52",
+      "b5f88a606fc9bd8c",
+      "cca8773c75a7ab4d",
+      "ca7d8851cc04a27e",
+      "1ed3e9a9f7aecc01",
+      "773889ef05d1ac1b"
+    ],
+    "plan:explore=1.50:success": [
+      "7ad255e4d21634fa",
+      "adb951dbb6803890"
+    ],
+    "tool:infant_operant_satiated_turn_left:positive": [
+      "93fc1c7dad93147b"
+    ],
+    "plan:causal_pos=0.50; explore=0.77:success": [
+      "fc8869f9d6812e0e",
+      "aa6c51ac3ca8ae4b"
+    ],
+    "plan:causal_pos=0.64; explore=0.52:success": [
+      "0aa37a2f9735bbdf",
+      "c9ee544005b444a0"
+    ],
+    "plan:causal_pos=0.67; explore=0.40:success": [
+      "d45b8b0e002826d9",
+      "3ccb5acecbac3f45"
+    ],
+    "plan:causal_pos=0.70; explore=0.32:success": [
+      "2ca2cb9209f22194",
+      "32f8e962e3ea0acf"
+    ],
+    "plan:causal_pos=0.72; explore=0.28:success": [
+      "28c045cd4f9563ac",
+      "e80776a1cda35395"
+    ],
+    "plan:causal_pos=0.74; explore=0.24:success": [
+      "cb86b0fcc64fcf26",
+      "923b347b445cc0f1"
+    ],
+    "plan:causal_pos=0.76; explore=0.22:success": [
+      "d7a8bd9878dba251",
+      "c9b417dffe5e1086"
+    ],
+    "plan:causal_pos=0.78; explore=0.19:success": [
+      "3ade7de3bfaa505d",
+      "eee5f69f29821be6"
+    ],
+    "plan:causal_pos=0.80; explore=0.18:success": [
+      "b4d1525e85574b24",
+      "4b48fa0b0bc7ae51"
+    ],
+    "plan:causal_pos=0.82; explore=0.16:success": [
+      "91db01aa92905800"
+    ],
+    "plan:causal_pos=0.83; explore=0.15:success": [
+      "e00043358505f23f"
+    ],
+    "plan:causal_pos=0.85; explore=0.14:success": [
+      "6cfc492a8736fa33"
+    ],
+    "plan:causal_pos=0.86; explore=0.13:success": [
+      "0708db5e7c932f39"
+    ],
+    "plan:causal_pos=0.87; explore=0.12:success": [
+      "c93b4ea2ff266685"
+    ],
+    "plan:causal_pos=0.89; explore=0.12:success": [
+      "ff876a2fbb806f46"
+    ],
+    "plan:causal_pos=0.90; explore=0.10:success": [
+      "dc2b786dec422b21"
+    ],
+    "plan:causal_pos=0.91; explore=0.10:success": [
+      "179732fd7379a0fd"
+    ],
+    "plan:causal_pos=0.92; explore=0.09:success": [
+      "15edc9475f49d6cc"
+    ],
+    "plan:causal_pos=0.94; explore=0.09:success": [
+      "3afd486d3e3e3e27"
+    ],
+    "plan:causal_pos=0.95; explore=0.09:success": [
+      "6eb36ff91d25a3dd"
+    ],
+    "plan:causal_pos=0.96; explore=0.08:success": [
+      "efc6cb71bc8f12aa"
+    ],
+    "plan:causal_pos=0.97; explore=0.08:success": [
+      "f196ddb3d4361f33"
+    ],
+    "plan:causal_pos=0.98; explore=0.08:success": [
+      "98cae6a3bbb945b1"
+    ],
+    "plan:causal_pos=0.99; explore=0.07:success": [
+      "9268a863629f4b33",
+      "f1c9831c4d3072d1"
+    ],
+    "plan:causal_pos=0.99; explore=0.06:success": [
+      "9358a33b8169cb27",
+      "202b69c204dcf8f7"
+    ],
+    "plan:causal_pos=0.82; explore=0.24:success": [
+      "0051f722c940fcbf"
+    ],
+    "plan:causal_pos=0.83; explore=0.22:success": [
+      "9d0b5660c61b2144"
+    ],
+    "plan:causal_pos=0.85; explore=0.20:success": [
+      "4dae9d3b79579b0c"
+    ],
+    "plan:causal_pos=0.86; explore=0.19:success": [
+      "d8721f1f888cc22a"
+    ],
+    "plan:causal_pos=0.87; explore=0.18:success": [
+      "a6498ef5f786e4a2"
+    ],
+    "plan:causal_pos=0.89; explore=0.16:success": [
+      "ca13b3a6a34ae6e1"
+    ],
+    "plan:causal_pos=0.90; explore=0.15:success": [
+      "a1626159f98ff2dc"
+    ],
+    "plan:causal_pos=0.91; explore=0.14:success": [
+      "5b4e55de861f11b3"
+    ],
+    "plan:causal_pos=0.92; explore=0.13:success": [
+      "bbcbc7d5201b3c9a"
+    ],
+    "plan:causal_pos=0.94; explore=0.12:success": [
+      "7d1a0ad599af5ba4"
+    ],
+    "plan:causal_pos=0.95; explore=0.11:success": [
+      "64c792d2b5c4e9d3"
+    ],
+    "plan:causal_pos=0.96; explore=0.10:success": [
+      "f0ee5b453e6da37a"
+    ],
+    "plan:causal_pos=0.97; explore=0.10:success": [
+      "5637b932872c9cb4"
+    ],
+    "plan:causal_pos=0.98; explore=0.09:success": [
+      "942487df9a644405"
+    ],
+    "plan:causal_pos=0.99; explore=0.09:success": [
+      "ff48b8595e54dcb8"
+    ],
+    "plan:causal_pos=0.99; explore=0.08:success": [
+      "1b64a0050179b5e8",
+      "8ebca808bc996262"
+    ]
+  },
+  "priors": {},
+  "total_observations": 3186,
+  "reward_bias": {},
+  "goal_reward_bias": {
+    "cradle_mother": 0.196
+  },
+  "cluster_reward_bias": {},
+  "cluster_reward_source": {},
+  "percept_valences": {},
+  "event_outcome_welford": {},
+  "saved_at": 1787703885.501375,
+  "_format_version": "1.3"
+}

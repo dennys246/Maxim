@@ -25,10 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.0] - 2026-08-26 — "Sensorimotor"
 
-> Publication gated 2026-08-26 on roadmap item 19 — [Exp 53](docs/experiments/protocols/exp53_cross_context_readout_preregistration.md),
-> the Exp 52 infants read out on the physical Reachy Mini (cross-context transfer of the
-> learned want; recorded outcome required, PASS not required). The date above is the
-> intended publish day and moves with it.
+> Publication was gated 2026-08-26 on roadmap item 19 — [Exp 53](docs/experiments/53_cross_context_readout.md),
+> the Exp 52 infants read out on the physical Reachy Mini — and unblocked the same day by
+> Exp 53b's PASS. The date above is the intended publish day and moves with it.
 
 **The 1.1 final cut.** Everything in `1.1.0rc1` below, plus the two items the cut was
 reopened for on 2026-08-25: the recorded, gated **Exp 52 (Nurture)** result — roadmap
@@ -42,6 +41,32 @@ adds the behavioural result the headline rests on. Zero new mechanisms beyond th
 relief-sourced operant credit named below ([roadmap](docs/plans/roadmap_1_1_to_1_3.md)).
 
 ### Added
+
+- **Exp 53 / 53b — RESULT: cross-context transfer EARNED on the physical Reachy Mini.** The
+  Exp 52 Phase B infants' persisted `aut_nac.json` + `aut_ec.json`, loaded unchanged (no
+  credit, SHA-verified), read out through the production substrate-primary path on the
+  live robot. Instrument: 120/120 live percepts pattern-complete into the nursery's
+  clusters. Exp 53 (δ 0.55 rad): direction correct 36/36 but delivered directedness 0.75 —
+  every miss the −0.2 target (overshoot) → pre-registered APPARATUS. Exp 53b (δ 0.30 rad,
+  the robot's own step, the one declared change): taught **1.00 / 1.00 / 1.00**, satiated
+  0.00 (no action), no_feed 0.50 (side-blind) → PASS. The +0.2 placement turns the wrong
+  way 18/18, predicted pre-data (three-bin representation). Write-up
+  `docs/experiments/53_cross_context_readout.md`; new graduation row; roadmap item 19 DONE;
+  the agent files ship in-repo under `docs/experiments/data/53_agents/` so the readout is
+  reproducible on any Reachy Mini.
+
+- **Exp 53 harness — cross-context readout of the nursery-taught want on the robot**
+  (`scripts/orient_backbone/exp53_cross_context_readout.py`: `manifest` / `run --phase 1|2`
+  / `verdict`). Loads the Exp 52 Phase B infants' persisted `aut_nac.json` + `aut_ec.json`
+  unchanged (`apply_decay=False`, no credit, SHA-256 before/after) into the production
+  substrate-primary path — `bodies/infant_operant`, `DoAFeed`, `_encode_current_clusters`
+  → `propose_via_substrate`, `ReachyOrientMotorBackend` with an explicit δ map — on the
+  live Reachy Mini, with Exp 45's `--perturb` trial generation. Agents manifest
+  `docs/experiments/data/53_agents_manifest.json`; dry-run record (harness verification,
+  not a result) `docs/experiments/data/53_dry_run_nonfrozen.jsonl`. Pre-registration
+  amendment 1 (pre-data) records what the dry run found: the nursery's learned policy
+  lives on three azimuth bins (right → turn right; centre-left → turn left), so the
+  gated targets moved to where the learning is.
 
 - **H2 loudness bench (roadmap item 18) — DONE; design deferred to 1.1.1.** One 75 s
   trace on the live Reachy Mini answers both pre-registered bench questions: the
