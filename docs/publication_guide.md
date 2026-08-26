@@ -329,6 +329,31 @@ now unbroken through v1.0.8. The check should therefore report only the
 in-development version until it is published — any OTHER output means a
 release shipped without a tag.
 
+### Create the GitHub Release on the tag (same terminal, same artifacts)
+
+A tag says *which commit*; a Release says *what it was* and hands the reader the
+artifact. Until 2026-08-26 the repo's "Latest release" on GitHub was 1.0.0 while
+PyPI served 1.0.9 — the same truth-drift class as the tag backlog, one surface
+over. Attach the **exact** wheel + sdist you uploaded (same `$MAXIM_RELEASE_DIR`),
+and take the notes from a versioned file, never the web form:
+
+```bash
+V="$(python -c 'import maxim; print(maxim.__version__)')"
+gh release create "v$V" "$MAXIM_RELEASE_DIR"/pymaxim-"$V"* \
+  --title "pymaxim $V" \
+  --notes-file "docs/announcements/release_${V//./_}.md" \
+  --verify-tag
+# Pre-releases add --prerelease. Verify the attached checksums match PyPI:
+sha256sum "$MAXIM_RELEASE_DIR"/pymaxim-"$V"*
+gh release view "v$V" --json assets --jq '.assets[] | "\(.name) \(.size)"'
+```
+
+The notes file (`docs/announcements/release_<version>.md`) is written from the
+CHANGELOG section before the publish and is part of the release PR — facts only;
+the social announcement is a separate document. Every tag on PyPI must have a
+Release object; the 2026-08-26 backfill added `v1.1.0rc1` (pre-release) and
+`v1.0.9`; the reconstructed `v1.0.1`–`v1.0.8` tags deliberately have none.
+
 ---
 
 ## Post-Publication Priorities
