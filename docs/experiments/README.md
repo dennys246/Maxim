@@ -195,9 +195,11 @@ ever drifts.
 | [45e_orient_s4_population_readout.md](45e_orient_s4_population_readout.md) | 2026-07-27 | complete | Population readout resolved the recorded cell-starvation ceiling. |
 | [46_operant_orient_creche.md](46_operant_orient_creche.md) | 2026-07-22 | complete | Scripted operant learning and NAc merge/federation, with no LLM in the action path. |
 | [47_habituation_novel_in_noise.md](47_habituation_novel_in_noise.md) | 2026-07-22 | complete | Scripted habituation enabled novelty detection under dense noise. |
-| [48_cradle_mother_seam.md](48_cradle_mother_seam.md) | 2026-08-14 → 2026-08-18 | **partial, apparatus-v2** | Mother effect re-earned; LEARNED-v2 failed and the sweep indicates credit-tipped phase locking, not graded orienting. Retired v1 numbers are not current evidence. |
+| [48_cradle_mother_seam.md](48_cradle_mother_seam.md) | 2026-08-14 → 2026-08-18 | **partial, apparatus-v2 — superseded by Exp 52** | Mother effect re-earned; LEARNED-v2 failed and the sweep indicates credit-tipped phase locking, not graded orienting. Retired v1 numbers are not current evidence. Stays as the apparatus case study; its PARTIAL stands for the constant-credit apparatus (`--credit constant`). |
 | [49_two_joint_centering.md](49_two_joint_centering.md) | 2026-08-04 | complete | H1 supported; H2 and H3 passed after corrected credit attribution. |
 | [50_readaptation_after_plant_change.md](50_readaptation_after_plant_change.md) | 2026-08-07 | pre-registered | No result yet; runs only after its healthy-hardware preconditions. |
+| [52_nurture.md](52_nurture.md) | 2026-08-25 | **complete — EARNED (graduate)** | Caregiver-taught orienting through hunger relief: Phase A scripted taught 0.892 vs satiated/yoked/no_feed 0.496; Phase B embodied (apparatus v3, shuffled order, 12 seeds/arm) taught 0.878 vs satiated 0.441 (fed 35%, credited 0%) vs no_feed 0.413 — gate v3 PASS, L2 apparatus check clean. One session, n = 12/arm; sign-only relief credit. Supersedes Exp 48. |
+| [h2_loudness_bench_2026-08-25.md](h2_loudness_bench_2026-08-25.md) | 2026-08-25 | bench note; not a result | Sound level is one daemon REST read away (`AEC_SPENERGY_VALUES` pre-AGC + `PP_AGCGAIN`); loudness/onset salience is not part of 1.1 — design deferred to 1.1.1 (roadmap item 18). |
 
 ### V1 phased attribution
 
