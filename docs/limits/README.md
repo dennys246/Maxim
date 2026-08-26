@@ -90,6 +90,8 @@ your metric can actually see.
 
 ### L3 — Azimuth representational resolution (~3 nodes) · MITIGATED · [tracking doc](l3_azimuth_resolution.md)
 
+> **Third measurement, on live hardware (2026-08-26, [Exp 53/53b](../experiments/53_cross_context_readout.md)):** the nursery's three `audio` clusters partition the axis FAR-LEFT ≤ −0.5 / CENTRE −0.4…+0.3 / RIGHT ≥ +0.4 (identical across seeds 42/43/44); live percepts complete into them 120/120, and the centre bin's right half (+0.2) turns the *wrong* way 18/18 — predicted pre-data. Design consequence: a taught policy is only as fine as this partition; the place code (default-ON, 1.1.x item 5) is the mitigation. **Re-measure on:** `_sensor_embed` / range normalisation change, place-code default flip, a nursery re-run on a new body.
+
 - **Instrument:** exteroceptive azimuth encoding → EC clustering (the raw
   scalar path).
 - **Limit:** the raw scalar resolves ~**3** distinct place-like nodes

@@ -1,6 +1,6 @@
 # Substrate-Primary AUT Mode
 
-> **Status:** Phase -1 prototype landed (2026-05-09). Phase 0 harness in 1.0 (B5). Substrate-primary AUT mode lands in 1.1+. **Opt-in via `--aut-mode substrate-primary`** when wired (Session A in the next-steps queue).
+> **Status:** shipped — `--aut-mode substrate-primary` is an experimental opt-in in 1.1.0 (Phase -1 prototype 2026-05-09; Phase 0 harness in 1.0 B5). **Evidence it carries (all pre-registered, no LLM in the action path):** [Exp 42](experiments/42_substrate_primary_preference.md) safe-vs-harm discrimination (GRADUATE); [Exp 52](experiments/52_nurture.md) caregiver-taught orienting through hunger relief (EARNED — taught 0.878 / satiated 0.441 / no_feed 0.413); [Exp 53/53b](experiments/53_cross_context_readout.md) the same infants' files read out unchanged on the physical Reachy Mini (EARNED — 1.00 / 0.00 / 0.50). Limits: [docs/limits](limits/README.md).
 
 ## What this is
 
@@ -25,7 +25,7 @@ Substrate-primary mode runs **in parallel** to the existing LLM-AUT path. The us
 | Mode | Action selector | Use case |
 |---|---|---|
 | **`--aut-mode llm-primary`** (default) | LLM proposes; bio-substrate learns from outcomes | All current Maxim workloads — D&D campaigns, Reachy demos, headless agent runs |
-| **`--aut-mode substrate-primary`** (opt-in, 1.1+) | `NAc.recommend_action()` proposes; LLM not invoked at all on the AUT side | Substrate research; Phase 0/1 grounded-language experiments; eventual user-facing path once mature |
+| **`--aut-mode substrate-primary`** (opt-in, shipped 1.1.0, experimental) | `NAc.recommend_action()` proposes; LLM not invoked at all on the AUT side | Substrate research; Phase 0/1 grounded-language experiments; eventual user-facing path once mature |
 
 The orchestrator, environment NPCs, imagination designer, and Hivemind/Oasis distillation all continue to use LLMs. Substrate-primary mode is specifically about the AUT's action loop.
 

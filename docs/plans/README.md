@@ -1,12 +1,12 @@
 # Maxim Plans
 
 Current version: **1.1.0** (`pyproject.toml` + `src/maxim/__init__.py`) — the 1.1 "Sensorimotor" release. **PyPI serves 1.1.0** (2026-08-26, tag `v1.1.0` at `df881b87`, plain `pip install pymaxim`; GitHub Release with the artifacts attached). Step 5b DONE. Items 17 (Exp 52) + 19 (Exp 53b) DONE; item 18 → 1.1.1.
-Now: **1.1 "Sensorimotor" release closure** — ship the merged embodiment work plus
-the correctness, contract, truth, and verification debt it incurred. **Zero new
-mechanisms.** Reconciled 2026-08-19 after the D13/D14 investigation and repository
-review; see
-[roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) for the cut line, the blockers, and
-why the reflex tier / loudness / Oasis moved.
+Now: **1.1.x follow-through** (items 1–15 in [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) —
+first up: the Reachy-native nursery body, the loudness/onset-salience design, Exp 44b's
+confirmatory campaign) **and the gates before 1.2 Oasis + Hivemind** (gates 1–7 there),
+whose motivating case study is [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md).
+1.1 "Sensorimotor" shipped 2026-08-26 on two pre-registered results: Exp 52 (the want is
+learned) and Exp 53b (it reads out on the physical robot).
 
 **Directory last deeply audited 2026-07-15; release authority reconciled
 2026-08-19.** Root = active work only. Superseded release checklists belong in
@@ -25,14 +25,15 @@ why the reflex tier / loudness / Oasis moved.
 | **0.9.2** | **Config unification + Hivemind shareability + LLM timeout scalability** — `~/.config/maxim/config.json`, `maxim config/model/substrate` CLIs, `hivemind/` substrate bundle, TTFT keepalive, per-tier timeout, context-overflow admission, stall detector, leader-local harness singleton guard | **SHIPPED** (2026-06-05) |
 | **0.9.3** | **Loud optional-dependency failures** — `utils/optional_deps.py` centralises 45+ import sites; missing requested backend raises `OptionalDependencyError` instead of silently returning empty responses | **SHIPPED** (2026-06-06) |
 | **1.0** | **Validation + stabilization + grounding** — cross-session proof, bio-system protocol freeze, sensorimotor cradle, SEM world enrichment, SCN feedback loop, cleanup, docs | **SHIPPED** (2026-06-17) |
-| **1.1** | **"Sensorimotor" release closure** — merged embodiment work plus D13/D14 liveness, stable Python API truth, hermetic fast tests, atomic NAc+EC invalidation, architecture-audit regression enforcement, S4, remaining heartbeat chapters, release mechanics, and agent-guidance convergence. **Zero new mechanisms.** | In progress — authoritative gates in [roadmap](roadmap_1_1_to_1_3.md#11-cut-line--reconciled-2026-08-19) |
+| **1.1** | **"Sensorimotor" release closure** — merged embodiment work plus D13/D14 liveness, stable Python API truth, hermetic fast tests, atomic NAc+EC invalidation, architecture-audit regression enforcement, S4, remaining heartbeat chapters, release mechanics, and agent-guidance convergence. **Zero new mechanisms.** | **Published 2026-08-26** (tag `v1.1.0`; Exp 52 + Exp 53b recorded, item 18 → 1.1.1) — history in [roadmap](roadmap_1_1_to_1_3.md#11-cut-line--reconciled-2026-08-19-reopened-2026-08-25) |
 | **1.2** | **Oasis + Hivemind** — peer substrate sharing (~800 LOC) + P2P protocol (~600 LOC). Entry is gated on encoder provenance/compatibility, read-side EC safety, bundle-version threat modeling, and the 1.1 verification gates staying green. | Planned, gated |
 | **1.3** | **Perception fabric + reflex tier** — cochlear front-end, population coding, vision encoder, orient-windowed binding, three-factor calibration ([cross_modal_perception_fabric.md](cross_modal_perception_fabric.md), [three_factor_credit_assignment.md](three_factor_credit_assignment.md) — both self-targeted 1.3), and the DN-canonical orienting reflex. Contains the pivotal may-fail experiment (Stage 0c). | Planned |
 
-**Discipline:** 1.1 is a mechanism freeze. Existing behavior is not assumed live
-because a type or bridge exists: release claims require an executed contract test or
-graduated behavioral row. New mechanism work resumes only after the 1.1 cut is
-releasable and the 1.2 entry gates are satisfied.
+**Discipline (carried forward from the 1.1 freeze):** existing behavior is not assumed live
+because a type or bridge exists — release claims require an executed contract test or a
+graduated behavioral row. New mechanism work in 1.1.x is limited to the roadmap's
+follow-through list; Oasis/Hivemind mechanisms start only when the 1.2 entry gates are
+satisfied.
 
 ## 1.0 — SHIPPED (2026-06-17)
 
@@ -69,6 +70,7 @@ release authority reconciled 2026-08-19.
 
 - [grounded_language_acquisition.md](grounded_language_acquisition.md) — **ACTIVE umbrella for the substrate-primary line.** Phase -1 + Phase 0 harness + EC sensor-encoding shipped (PR #228, 2026-05-09); substrate-primary mode GRADUATED via Exp 42 (PR #380). Actively absorbing intake: G2 substrate→LLM action-salience primitive rerouted here 2026-07-15 (`eec7369e`). Phase 0 validation + Phases 1–3 (vocabulary-constrained → symbol-binding → from-scratch sequence model) are the 1.1+/1.2 arc.
 - [maxim_hivemind.md](maxim_hivemind.md) — **Roadmap/architecture companion** to grounded_language_acquisition (three layers: LLM-AUT default + Oasis substrate-primary + Hivemind P2P). B5 shareability SHIPPED (PRs #305–#311; `src/maxim/hivemind/` verified). Oasis + the P2P protocol are now 1.2, gated by D1/D3/D4/D8 and the sharing threat model; they are not part of 1.1 release closure.
+- [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md) — ADOPTED 2026-08-26 as the 1.2 motivating case study: sharing the nursery-taught want (typed bundles vs body-agnostic keys; Gauntlet #2 = the Exp 53 harness; `ec_merge` cluster re-keying is 1.2 gate 6).
 - [sem_environmental_proximity_sensing.md](sem_environmental_proximity_sensing.md) — **NEW (2026-07-15) design doc, P1-ready.** Grounds interoception in sensed exteroception: field-query reader for `heat_output`/ambient entity fields (currently declared-but-inert), per-turn environmental-sense pass, dual-path wiring (LLM-primary §1.15 + substrate-primary tick). Explicitly NOT an Exp 44 blocker (that was G1); the medium-term "do it right" for embodied sensing.
 
 ### Substrate representation & provenance (1.1 → 1.2) — NEW 2026-08-11

@@ -6,12 +6,12 @@ Long-term maintenance reference for the `pymaxim` package on PyPI. For first-tim
 
 ## Versioning policy
 
-- **Semver,** `MAJOR.MINOR.PATCH`. The current stable line is `1.0.x`; public
+- **Semver,** `MAJOR.MINOR.PATCH`. The current stable line is `1.1.x`; public
   1.x contracts may only move compatibly within the major line.
 - **Bump rules:**
-  - **Patch** (`1.0.8 → 1.0.9`) — compatible correctness, packaging,
+  - **Patch** (`1.1.0 → 1.1.1`) — compatible correctness, packaging,
     security, and documentation fixes; no public-contract breakage.
-  - **Minor** (`1.0.x → 1.1.0`) — compatible additive features and explicitly
+  - **Minor** (`1.1.x → 1.2.0`) — compatible additive features and explicitly
     documented deprecations. **Recorded exception:** 1.1.0 removes
     `register_persona()` (it raises) under the 0.9-era deprecation promise
     "raises in 1.1" — a pre-1.0 promise kept literally, not a precedent for

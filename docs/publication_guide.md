@@ -101,7 +101,7 @@ Known items from Phase 12b that may be blocking:
 ### 5. Verify version consistency
 
 ```bash
-# Both must show the same version (1.1.0rc1 for this release)
+# Both must show the same version (1.1.0 for this release)
 grep 'version = ' pyproject.toml
 python -c "import maxim; print(maxim.__version__)"
 ```
@@ -155,8 +155,8 @@ After building, inspect the wheel metadata rather than assuming `pyproject.toml`
 was carried through:
 
 ```bash
-unzip -p "$MAXIM_RELEASE_DIR/pymaxim-1.1.0rc1-py3-none-any.whl" \
-  'pymaxim-1.1.0rc1.dist-info/METADATA' | grep '^Project-URL:'
+unzip -p "$MAXIM_RELEASE_DIR/pymaxim-1.1.0-py3-none-any.whl" \
+  'pymaxim-1.1.0.dist-info/METADATA' | grep '^Project-URL:'
 ```
 
 After the TestPyPI and real PyPI uploads, open the rendered project page and

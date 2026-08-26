@@ -42,7 +42,7 @@ Also see [docs/agents/bio-memory.md](bio-memory.md) for the NAc consumer side (d
 | Pain bridges | `bridges/tool_pain_bridge.py` (direct attribution + `_pending_tools` guard), `proprioception/pain_bus.py` (PainBus, `build_pain_bus`) |
 | Reactions | `reactions/types.py` (Reaction, ReactionContext, TraceSnapshot), `reactions/bus.py` (ReactionBus), `reactions/protocols.py` (PerceptProducer, ReactionProducer) |
 | DN behaviors | `default_network/behaviors/` (Behavior ABC + shipped visual behaviors); authoring guide: [docs/behaviors/](../behaviors/README.md) (contract + gotchas), [vision](../behaviors/vision_behaviors.md) shipped, [audio](../behaviors/audio_behaviors.md) needs BL-1..BL-5 |
-| Robot runtime | `embodied_runtime/agentic_runtime.py` (Reachy wiring), `motion/movement.py::move_head` (sanctioned raw primitive) |
+| Robot runtime | `embodied_runtime/agentic_runtime.py` (Reachy wiring), `motion/movement.py::move_head` (sanctioned raw primitive), `embodiment/audio_localization.py::DoAFeed` (live azimuth world-set, owner `doa_feed`), `hardware/reachy/motor_backend.py::ReachyOrientMotorBackend` (production orient dispatch), `scripts/orient_backbone/exp53_cross_context_readout.py` (live-hardware readout harness) |
 | Seed data | `_data/components/`, `_data/encounters/`, `_data/reflexes/` |
 
 ## 4. Invariants & lessons
@@ -75,12 +75,12 @@ Also see [docs/agents/bio-memory.md](bio-memory.md) for the NAc consumer side (d
 
 - **Motion gotchas** (`head=None` retained-pose IK, torque gate, era-match) — see §1; they bite on every first session against a reflashed robot.
 - **Two latch polarities coexist:** `FailureMode.persistent` = keep firing until recovery; `Entity.drive_breach_severity` = stay quiet unless deepening. `persistent: true` on a drive does nothing — drives are not `FailureMode`s.
-- **`EmbodimentPerceptSource` is Dormant** — never production-wired; kept only as the CC8 protocol-shape template for the 1.1 remote-percept adapter.
+- **`EmbodimentPerceptSource` is Dormant** — never production-wired; kept only as the CC8 protocol-shape template for the remote-percept adapter (mesh perception transport, re-tagged 1.2/1.3 — 1.1.0 shipped without it).
 - **Exp 44 embodied llm-primary numbers still need re-validation against the Track-1 drift-tick cadence** (drift *timing* changed even though pain emission is now transition-latched). Live venue: [docs/experiments/44b_pilot.md](../experiments/44b_pilot.md) + [docs/experiments/protocols/exp44b_preregistration.md](../experiments/protocols/exp44b_preregistration.md).
 - **Path trap:** the channel-split plan lives at [docs/plans/deferred/transition_based_drive_pain.md](../plans/deferred/transition_based_drive_pain.md) even though the work SHIPPED (2026-07-28) — don't read the `deferred/` label as "not built".
 - **Drive `TemporalEvent`s have never reached the SCN oscillator** (unwired `distributor=` + malformed constructor swallowed by a bare except). Do NOT wire the distributor alone — both must be fixed together or neither; see [docs/agents/bio-memory.md](bio-memory.md) and [docs/plans/deferred/scn_event_producer_gap.md](../plans/deferred/scn_event_producer_gap.md).
 - **Signed sensors (azimuth) FOLD without a declared range**, and the audio place-code toggle changes EC cluster identity — encoder rules and `MAXIM_PLACE_CODE_EXTEROCEPTION` are owned by [docs/agents/bio-memory.md](bio-memory.md).
-- **All 1.0-era DoA magnitude claims are PROVISIONAL** — measured on the robot with degraded motors 2+3; healthy-hardware re-measurement is the H1 protocol ([docs/experiments/protocols/h1_healthy_hardware_doa_preregistration.md](../../docs/experiments/protocols/h1_healthy_hardware_doa_preregistration.md)).
+- **1.0-era DoA magnitude claims were PROVISIONAL (degraded motors 2+3) — H1 re-measured on the repaired platform 2026-08-08/24:** gain 0.578 replicated, no staircase, `_big` delivered shift 0.943/0.942 (#535), the provisional flag on the `_big` magnitudes CLEARED; open hardware findings are D30 (head drift, re-measured 13–19° roll in Exp 53) and D31 (fold guard). The protocol ([docs/experiments/protocols/h1_healthy_hardware_doa_preregistration.md](../../docs/experiments/protocols/h1_healthy_hardware_doa_preregistration.md)).
 
 ## 6. Env vars owned
 

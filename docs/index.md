@@ -41,7 +41,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 
 | Document | Description |
 |----------|-------------|
-| [Substrate-Primary Mode](substrate_primary.md) | NEW (2026-05-09) — parallel AUT mode where bio-substrate selects actions without LLM. Phase -1 prototype shipped; Phase 0 harness in 1.0 (B5). |
+| [Substrate-Primary Mode](substrate_primary.md) | NEW (2026-05-09) — parallel AUT mode where bio-substrate selects actions without LLM. Shipped as an experimental opt-in in 1.1.0; carries Exp 42 / 52 / 53b (see Experiments). |
 | [Maxim Hivemind + Oasis](hivemind.md) | (2026-05-09) — federated peer-to-peer substrate-sharing layer. Hivemind shareability infrastructure (merge, bundle, identity, `maxim substrate` CLI) shipped in 0.9.x; Oasis/Hivemind target 1.2 after the provenance, compatibility, and threat-model gates. |
 | [Roy Harness — Persona Convergence Crucible](plans/deferred/persona_convergence_crucible.md) | NEW (2026-05-11) — long-horizon three-arm iteration runner: prime substrate via curriculum, run same held-out test across substrate-primed / persona-injected / neutral arms, report pairwise substrate divergence (`reward_bias_l2`, **`cluster_reward_bias_l2`**, episode + concept deltas). G3 fail-fast preflight + G4 cluster_id reward wire shipped 2026-05-11. CLI: `maxim roy run <spec.yaml>`. |
 
@@ -99,6 +99,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 
 | Document | Description |
 |----------|-------------|
+| [Experiments lab notebook](experiments/README.md) | Every experiment with status — the 1.1.0 headline rows: [Exp 52 Nurture](experiments/52_nurture.md) (the want is learned; EARNED) and [Exp 53/53b](experiments/53_cross_context_readout.md) (it reads out on the physical robot; EARNED), with [limits](limits/README.md) and the [graduation ledger](plans/behavioral_graduation_candidates.md) |
 | [Hippocampal Recall Experiment](experiments/hippocampal_recall_experiment.md) | Design and infrastructure for memory interference testing |
 | [Run Notes](experiments/hippocampal_recall_run_notes.md) | Results from 2026-04-06: Verath recall experiment |
 
