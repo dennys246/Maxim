@@ -1,6 +1,8 @@
 # pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25)
 
-## 1.1 audit — 2026-08-25 (gates the `1.1.0` final cut; roadmap step 5b / item 16 / D24)
+## 1.1 audit — 2026-08-25 (gated the `1.1.0` final cut — published 2026-08-26; roadmap step 5b / item 16 / D24)
+
+> **Post-audit additions (2026-08-26):** the Exp 53/53b hardware-readout result landed after this table was written and went live via maxim-web #8 (evidence card + cradle/home pointers, caveats incl. the three-bin representation and "demo, not evidence" for the video) and #9 (release-notes link, video link). Engine sources: `docs/experiments/53_cross_context_readout.md`, `docs/experiments/README.md`.
 
 **Scope.** Every route in the live sitemap (39) plus the source of each page in
 maxim-web `main` (`ae3dfef`), compared against release truth at `cfe489de` (the local

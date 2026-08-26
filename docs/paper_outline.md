@@ -87,8 +87,7 @@ not a caveat.
 
 ### 3.8 Supporting system validation (brief)
 - No-LLM results establishing the substrate learns discriminative content at all:
-  Exp 42 (safe-vs-harm preference 0.98, counterbalanced, no LLM), Exp 48 (operant
-  caregiver teaching 0.875 vs 0.448 control, no LLM). Cited as apparatus validation,
+  Exp 42 (safe-vs-harm preference 0.98, counterbalanced, no LLM), Exp 52 (caregiver-taught orienting through hunger relief: taught 0.878 vs never-hungry 0.441 vs no-mother 0.413, no LLM in the action path — supersedes Exp 48's retired v1 numbers), Exp 53b (the same infants' files read out on the physical Reachy: 1.00 / 0.00 / 0.50). Cited as apparatus validation,
   not headline claims.
 
 ---
@@ -167,4 +166,4 @@ Reading the annotation text (not the statistics) reframed the mechanism claim:
 | 4.2 | <campaign>/stats.json + manifest.jsonl + exp44b_preregistration.md (frozen hash) |
 | 4.3 | docs/experiments/38_counter_prior_substrate.md, 40_counter_prior_goldilocks.md |
 | 4.4 | docs/experiments/37_cross_model_results.md + 44b slices |
-| 3.8 | docs/experiments/42_substrate_primary_preference.md (+42b), 48_cradle_mother_seam.md |
+| 3.8 | docs/experiments/42_substrate_primary_preference.md (+42b), 52_nurture.md, 53_cross_context_readout.md (48_cradle_mother_seam.md as the apparatus case study) |

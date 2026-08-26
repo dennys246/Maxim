@@ -114,7 +114,7 @@ NAc diff:
   goal_reward_bias L2: 0.0000  (0 keys differ)
   cluster_reward_bias L2: 0.2965  (3 keys differ)
     rusty_sword|grip|tool: Δ -0.2410
-  percept_valences: not persisted (reserved for 1.1)
+  percept_valences: persisted (NAc save/load; in the bundle scrub's identifier-only form)
   causal links: a=1  b=6  Δ=-5
 
 EC diff:

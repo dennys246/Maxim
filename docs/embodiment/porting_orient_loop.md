@@ -215,6 +215,7 @@ tiny (a handful of numbers), and privacy-clean by construction.
 3. **Distribute** — a published release (the "queen-mind" zip) is the channel at current
    scale; consumers `maxim substrate inspect` / `import`, `nac_merge`, and validate with
    the same probe. Cross-session bootstrap is hardware-validated (Exp 45 arm 2: probe
+   … and, for the nursery-taught want, Exp 53b: persisted NAc+EC files loaded byte-identical onto the robot, no credit, 1.00 / 0.00 / 0.50 — `docs/experiments/data/53_agents/` is the shipped example bundle-in-waiting;
    1.00 at trial 0); cross-*unit* is the designed follow-on, not yet run.
 4. **Cross-robot consumption** — the policy is keyed on normalized-azimuth bins and YAML
    action names, so a different robot satisfying this contract can consume the same

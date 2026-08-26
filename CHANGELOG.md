@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Publication was gated 2026-08-26 on roadmap item 19 — [Exp 53](docs/experiments/53_cross_context_readout.md),
 > the Exp 52 infants read out on the physical Reachy Mini — and unblocked the same day by
-> Exp 53b's PASS. The date above is the intended publish day and moves with it.
+> Exp 53b's PASS. Published 2026-08-26 (tag `v1.1.0` at `df881b87`; GitHub Release with the exact wheel + sdist).
 
 **The 1.1 final cut.** Everything in `1.1.0rc1` below, plus the two items the cut was
 reopened for on 2026-08-25: the recorded, gated **Exp 52 (Nurture)** result — roadmap
@@ -77,8 +77,7 @@ relief-sourced operant credit named below ([roadmap](docs/plans/roadmap_1_1_to_1
   → 8.3 loud speech); speech energy is a VAD-gated magnitude that the AGC does not
   flatten (it would flatten PCM ~5×). Note `docs/experiments/h2_loudness_bench_2026-08-25.md`,
   raw `docs/experiments/data/h2_loudness_bench.jsonl`, poller
-  `scripts/orient_backbone/loudness_bench_poll.py`. `1.1.0` final now waits on release
-  step 5b only.
+  `scripts/orient_backbone/loudness_bench_poll.py`. Shipped in `1.1.0`.
 
 - **Exp 52 (Nurture) — RESULT: caregiver-taught orienting through hunger relief is EARNED.**
   Phase A (scripted): taught 0.892 vs satiated/yoked/no_feed 0.496 — a feed without need

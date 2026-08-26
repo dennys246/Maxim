@@ -86,7 +86,7 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 | `--dm` | flag | | DM campaign mode. With `--sim <goal>`: generate. With `--sim <path.yaml>`: auto-detected. |
 | `--research` | flag | | Enable research report (Writer + Reviewer agents after sim) |
 | `--aut-model` | str | None | Separate model for AUT in dual-LLM research mode |
-| `--aut-mode` | str | `llm-primary` | **[experimental]** AUT action-selection mode. `llm-primary` (default) proposes actions via the LLM. `substrate-primary` skips the LLM and proposes via `NAc.recommend_action()` — Phase -1 of the grounded language acquisition program. See [docs/plans/grounded_language_acquisition.md](../plans/grounded_language_acquisition.md) and [substrate_primary.md](../substrate_primary.md). |
+| `--aut-mode` | str | `llm-primary` | **[experimental]** AUT action-selection mode. `llm-primary` (default) proposes actions via the LLM. `substrate-primary` skips the LLM and proposes via `NAc.recommend_action()` — the path Exp 42 / 52 / 53b were measured on (see `docs/substrate_primary.md`). See [docs/plans/grounded_language_acquisition.md](../plans/grounded_language_acquisition.md) and [substrate_primary.md](../substrate_primary.md). |
 | `--campaign` | str | None | Campaign YAML(s) for research mode. Glob patterns accepted. |
 | `--resume-sim` | str | None | Resume a previous simulation session by ID or date prefix |
 | `--sandbox` | str | `auto` | Sandbox type: `auto` (Docker if available, else tmpdir), `docker`, `tmpdir` |
