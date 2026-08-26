@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Exp 52 (Nurture) — RESULT: caregiver-taught orienting through hunger relief is EARNED.**
+  Phase A (scripted): taught 0.892 vs satiated/yoked/no_feed 0.496 — a feed without need
+  had zero effect (satiated ≡ no_feed to the digit). Phase B (embodied `cradle_mother`,
+  shuffled stimulus order, 12 seeds/arm): taught late 0.878 vs satiated 0.441 (fed 35% of
+  turns, credited 0%) vs no_feed 0.413 — GRADUATE under gate v3 with the L2 apparatus
+  check clean. New graduation row; Exp 48's PARTIAL superseded; roadmap item 17 DONE.
+  Write-up `docs/experiments/52_nurture.md`; raw records under `docs/experiments/data/52_*`.
+
 - **Exp 52 (Nurture) harness — relief-sourced operant credit.** `cradle_mother.reactive_mother_tick`
   gains `credit="relief"|"constant"`: under `relief` (the new default) the mother's operant
   credit is the SIGN of the drive relief her feed actually produced in the infant
