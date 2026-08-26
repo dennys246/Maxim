@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.0] - 2026-08-26 — "Sensorimotor"
 
+> Publication gated 2026-08-26 on roadmap item 19 — [Exp 53](docs/experiments/protocols/exp53_cross_context_readout_preregistration.md),
+> the Exp 52 infants read out on the physical Reachy Mini (cross-context transfer of the
+> learned want; recorded outcome required, PASS not required). The date above is the
+> intended publish day and moves with it.
+
 **The 1.1 final cut.** Everything in `1.1.0rc1` below, plus the two items the cut was
 reopened for on 2026-08-25: the recorded, gated **Exp 52 (Nurture)** result — roadmap
 item 17, the thesis experiment of this release — and the **H2 loudness bench** (item
