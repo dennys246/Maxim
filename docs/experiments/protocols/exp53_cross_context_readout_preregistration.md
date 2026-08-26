@@ -95,9 +95,10 @@ azimuth, re-centres between trials, and logs every apparatus move as `apparatus_
 Ground truth (the commanded offset, the gain estimate) **never reaches the substrate**
 — the agent sees only the speech-gated DoA-derived azimuth, as in the nursery.
 
-Targets are chosen to land where the nursery's clusters formed (stimuli
-`(-0.7, 0.6, -0.5, 0.8, -0.9, 0.4)`), capped for the front hemisphere (L9 fold):
-**az ∈ {−0.6, −0.5, +0.5, +0.6}** → commanded offsets ≈ ∓1.04 / ∓0.87 rad. Balanced
+Targets — **superseded by amendment 1 (pre-data)**: originally chosen from the stimulus
+list, they are now placed where the sweep shows the learning lives: **az ∈ {−0.3, −0.2,
++0.5, +0.6}** (+ two exploratory placements, −0.6 and +0.2, excluded from the gates), all
+front hemisphere (L9 fold). Balanced
 L/R schedule, seeded permutation per agent (int seed, never `hash()`).
 
 Speech gate: every azimuth used is the median of k=5 speech-flagged reads; a trial with
@@ -120,8 +121,9 @@ targets (base rotated by the apparatus, robot otherwise still), record:
 
 **GATE I (instrument), decided now:** for **≥ 2 of 3 taught seeds**, ≥ 80% of placements
 `completed` **and** the probe is correct with `|learned_margin| > 0.11` (the L1
-visibility floor) in ≥ 80% of placements. For every control agent the probe must return
-no positively-scored tool (there is no bias to read).
+visibility floor) in ≥ 80% of placements. For every control agent the probe must show
+**no learned preference** — consulted audio bias 0, `learned_margin` 0 — whether or not a
+causal-credit tool is returned (amendment 1, item 2).
 
 **Stop rule I (pre-registered):** GATE I fails → **Phase 2 does not run.** The outcome is
 recorded as an **apparatus finding** (the cluster/margin table per agent), `1.1.0` ships
@@ -132,9 +134,9 @@ mechanism and gets its own pre-registration.
 
 ## Phase 2 — READOUT TRIALS (motion) — runs once
 
-`substrate_explore_bonus_weight = 1.5` (Phase B's value; comparability — under it the
-controls random-walk at ≈ 0.5 and a taught agent reads out at ≈ 0.88 in sim). Per agent
-**12 trials** (4 targets × 3), one decision + one executed turn each, through the
+**Primary condition: `substrate_explore_bonus_weight = 0.0`** — frozen policy with motion
+(amendment 1, item 3; explore 1.5 is a secondary, reported block). Per agent **12 trials**
+(4 gated targets × 3; plus the 2 exploratory placements × 3, recorded, not gated), one decision + one executed turn each, through the
 production path: `propose_via_substrate(nac, executor, sensor_encoder)` → the chosen
 infant tool → the explicit-δ backend → speech-gated re-read.
 
@@ -203,6 +205,58 @@ loss) with the aborted block kept in the record. A FAIL is not re-run.
   d(head)/d(body) within 0.9–1.1 (the mics must actually rotate — the Exp 45 retraction
   class); recenter readback within 0.05 rad; speech-gate probe ≥ 0.70.
 
+## Amendments
+
+**Amendment 1 — 2026-08-26, PRE-DATA, structural (harness dry run, no robot).** Three
+findings from running the harness offline through the *production* encode → recommend
+path against the archived files (the dry rig fakes only the motor and the sensor):
+
+1. **Where the learning lives on the azimuth axis.** Sweeping az ∈ [−1, 1] through each
+   taught agent's loaded EC (fresh stash per value, nothing saved) shows the nursery's
+   three `audio` clusters partition the axis into **FAR-LEFT (az ≤ −0.5; seed 44:
+   ≤ −0.4) / CENTRE (−0.4 … +0.3) / RIGHT (≥ +0.4)** — identically for seeds 42, 43, 44
+   (48 differs). The learned biases sit: **`turn_right +0.90` on RIGHT** (all three),
+   **`turn_left +0.59–0.65` on CENTRE**, and only `turn_left +0.006` on FAR-LEFT.
+   Mechanism (read, not guessed): operant credit is keyed to the *decision-time*
+   cluster (`LLMProposal.clusters` → `set_pending_operant_action`), and the one-turn
+   trace credits the *last* action before a feed; from a left stimulus (−0.7 / −0.5)
+   the last action before the feed is taken from the centre bin, so the left credit
+   accrued there. A coherent learned policy — *right → turn right; centre-left → turn
+   left* — with a coarse representation (the centre bin also spans 0…+0.3). Every
+   value completed into an existing cluster (no separation) for all ten agents.
+   **Consequence:** the frozen targets ±0.5/±0.6 would have probed RIGHT (strong) and
+   FAR-LEFT (margin 0.006 < the 0.11 floor) — a Gate I failure manufactured by target
+   placement, not by the instrument. **Gated targets become az ∈ {−0.3, −0.2, +0.5,
+   +0.6}** (left targets in the centre bin, right targets in the right bin; commanded
+   offsets ≈ −0.52 / −0.35 / +0.87 / +1.04 rad). Two **exploratory placements**, recorded
+   and excluded from every gate: **−0.6** (FAR-LEFT, the weak bin) and **+0.2** (the
+   centre bin's right half, where the learned policy predicts a *wrong-way* turn — the
+   representation's limit, stated in advance).
+2. **Controls act on causal credit.** `no_feed` agents choose `turn_right` at explore 0
+   with `learned_bias 0.0` and `causal 0.94` — persisted execution-success links, side-
+   blind; `satiated` agents return no tool. The pre-registered control expectation ("no
+   positively-scored tool") is therefore replaced by the correct one: **a control's
+   consulted audio bias is 0 and its `learned_margin` is 0** — no learned preference —
+   whether or not it acts. Under Phase 2 this predicts control directedness ≈ 0.5
+   (one fixed direction against a balanced L/R schedule) or 0 (no action).
+3. **Explore-first is not persisted.** `_ever_selected` / `_visit_count` are session
+   state, so at explore 1.5 the first decision per tool is forced exploration and the
+   novelty term stays comparable to the learned bias for several trials — 12 trials
+   cannot reproduce Phase B's late-bin regime. **Phase 2 primary condition = explore
+   0.0** (frozen policy *with* motion and delivered measurement; Gate T applies to it);
+   **explore 1.5 is a secondary block**, run and reported per arm, not gated.
+
+4. **Ceiling vs the L2 spread check.** The APPARATUS clause "per-seed taught directedness
+   is not a single repeated value" contradicts S7 when all three seeds read 1.00 (the
+   dry run did exactly that). The spread check applies **below ceiling only**: three
+   seeds at 1.00 is a PASS; an identical repeated value below 1.00 is the phase-lock flag.
+
+**Disclosure:** at amendment time the author had seen the dry-run probe table for all
+ten agents (taught: correct at every placement, margins 0.90 right / 0.006 far-left;
+seed 48 wrong-way at +0.5/+0.6 as its `+0.061 turn_left` bias predicts) and the sweep
+table above. No robot data exists. The sweep is committed with the harness
+(`docs/experiments/data/53_dry_run_nonfrozen.jsonl`, harness verification, not a result).
+
 ## Amendment rule
 
 Structural, pre-data amendments only (a harness dry run may reveal a mechanical
@@ -237,7 +291,7 @@ python scripts/orient_backbone/exp53_cross_context_readout.py verdict \
 
 ## Sign-off (operator fills before the first robot run)
 
-1. Pre-registration read in full and frozen at commit `________` — ☐
-2. Seeds, targets, δ, gates and both stop rules accepted as written — ☐
-3. Harness dry run clean; any amendment appended above *before* Phase 1 — ☐
-4. Robot pre-conditions (S8) all pass, values recorded in the first JSONL line — ☐
+1. Pre-registration read in full and frozen at commit `0570aa8e7bfd` (+ amendment 1 in the harness commit) — ☑ 2026-08-26 (operator)
+2. Seeds, targets (as amended), δ, gates and both stop rules accepted as written — ☑ 2026-08-26 (operator)
+3. Harness dry run clean; amendment 1 appended above *before* Phase 1 — ☑ 2026-08-26
+4. Robot pre-conditions (S8) all pass, values recorded in the first JSONL line — ☐ (filled by the harness `start` record)

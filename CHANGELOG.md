@@ -43,6 +43,19 @@ relief-sourced operant credit named below ([roadmap](docs/plans/roadmap_1_1_to_1
 
 ### Added
 
+- **Exp 53 harness — cross-context readout of the nursery-taught want on the robot**
+  (`scripts/orient_backbone/exp53_cross_context_readout.py`: `manifest` / `run --phase 1|2`
+  / `verdict`). Loads the Exp 52 Phase B infants' persisted `aut_nac.json` + `aut_ec.json`
+  unchanged (`apply_decay=False`, no credit, SHA-256 before/after) into the production
+  substrate-primary path — `bodies/infant_operant`, `DoAFeed`, `_encode_current_clusters`
+  → `propose_via_substrate`, `ReachyOrientMotorBackend` with an explicit δ map — on the
+  live Reachy Mini, with Exp 45's `--perturb` trial generation. Agents manifest
+  `docs/experiments/data/53_agents_manifest.json`; dry-run record (harness verification,
+  not a result) `docs/experiments/data/53_dry_run_nonfrozen.jsonl`. Pre-registration
+  amendment 1 (pre-data) records what the dry run found: the nursery's learned policy
+  lives on three azimuth bins (right → turn right; centre-left → turn left), so the
+  gated targets moved to where the learning is.
+
 - **H2 loudness bench (roadmap item 18) — DONE; design deferred to 1.1.1.** One 75 s
   trace on the live Reachy Mini answers both pre-registered bench questions: the
   XVF3800's `AEC_SPENERGY_VALUES` (per-beam speech energy, measured before the AGC) and
