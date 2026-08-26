@@ -242,7 +242,10 @@ scale** — contributed substrate is re-run in simulation before it enters long-
 storage. **Gauntlet #1 exists today**: the orient-policy probe validator
 (`scripts/orient_backbone/live_3_learn.py::probe_policy`) evaluates a contributed
 `cluster_reward_bias` orient policy in milliseconds with no hardware — reject on
-correctness below threshold.
+correctness below threshold. **Gauntlet #2 exists since 2026-08-26**: the Exp 53
+cross-context readout harness (`scripts/orient_backbone/exp53_cross_context_readout.py`,
+dry rig or hardware, zero-bias controls, Gate I + Gate T) — the embodied gauntlet for a
+shared *want*, which already rejects a mis-learned nursery graduate (seed 48, 0/12).
 
 **Landing surfaces (all already reserved — no new mechanism):** the bundle manifest's
 `signature`/`signature_algorithm` slots (reserved-null at 1.0) carry the Queen's release
@@ -367,6 +370,7 @@ These do not block 1.1, but they **do** gate Oasis/Hivemind implementation in 1.
 | **Catastrophic forgetting via merge** | Pulling in a large bootstrap could overwrite carefully-learned local patterns. | 1.2 — solved by provenance + merge weighting (local Maxim's own patterns weighted higher). |
 | **Pattern-quality filtering** | LLM-AUT might do something stupid that the substrate over-learns. Oasis aggregation needs to filter on multi-source consensus + outcome-valence. | 1.2 — Oasis distillation engine. Require N-source consensus + valence weighting. |
 | **Poison resistance under sock-puppet attack** | Adversary spins up many fake Maxims to inject poisoned patterns. | 1.2+ — practical mitigations only (rate limits, domain curation, provenance blacklists). No theoretical solution. |
+| **Cluster identity across substrates** (added 2026-08-26) | Two nursery runs mint different EC cluster UUIDs for the same azimuth bins; `ec_merge` aligns the nodes by cosine but `nac_merge` averages biases on identical keys only, so a merged foreign `cluster_reward_bias` dangles on an id the local EC never emits. Needs `ec_merge` to return the right→left id map and a re-key of the bias/source tables before `nac_merge`; the fold semantics (two foreign clusters → one local) are the open part. | 1.2 — the case study's design pass; test pair = Exp 52 taught seeds 42 + 43 through Gauntlet #2. |
 | **Discovery and bootstrap** | First user has no patterns. How does a fresh Maxim find an Oasis? | 1.2 — published reference Oases + manual peer addition. |
 
 ---
@@ -399,6 +403,20 @@ These do not block 1.1, but they **do** gate Oasis/Hivemind implementation in 1.
 ---
 
 ## Iteration log
+
+### 2026-08-26 — Case study adopted: sharing the nursery-taught want
+
+Exp 52 (the want is learned) + Exp 53b (it reads out on the physical robot, files
+unchanged) give the project its first shareable learned substrate: two JSON files per
+agent, SHA-manifested, provenance-stamped, no episodes. Adopted as the 1.2 motivating
+case study — [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md).
+It forces three contracts: (1) bundle = NAc+EC pair + declared action namespace (bias
+keys are body-prefixed tool names — a typed-bundle vs body-agnostic-key decision);
+(2) **Gauntlet #2** = the Exp 53 readout harness with zero-bias controls, which already
+rejects a mis-learned graduate (seed 48, 0/12) — bundles ship with their gauntlet record;
+(3) merge = cluster identity across substrates: `ec_merge` aligns nodes but nothing
+re-keys `cluster_reward_bias` through the id map (new "Open hard problems" row). The
+result that earns the sharing claim: cross-unit readout on a second Reachy Mini.
 
 ### 2026-07-15 — Trust topology: Queen tier + promotion gauntlet
 

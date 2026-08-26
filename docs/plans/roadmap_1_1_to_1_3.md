@@ -15,8 +15,8 @@ down somewhere in this repo by someone being careful.
 
 | | Theme | Contains | Risk |
 |---|---|---|---|
-| **1.1** | **"Sensorimotor"** — *the substrate leaves the simulator, and learns to want* | Already-merged embodiment work + release correctness, contract truth, and the verification debt it incurred (all landed by 2026-08-24, published as `1.1.0rc1`) — **plus, reopened 2026-08-25: a recorded, gated result for caregiver-taught orienting (item 17) — DONE 2026-08-25, PASS — before `1.1.0` final.** The loudness bench tests (item 18) were run the same day and the item itself moved to 1.1.1 (bench done; the design is not part of the sensorimotor-learning claim). **Re-gated 2026-08-26 (item 19): the Exp 52 infants must be READ OUT on the physical robot — cross-context transfer of the learned want — with a recorded outcome before the cut. RECORDED the same day: Exp 53 APPARATUS → Exp 53b PASS (taught 1.00, controls 0.00 / 0.50). Cut unblocked.** | Medium-high: item 17 is the thesis experiment and may fail; a recorded fail still ships (as a fail). |
-| **1.2** | **Oasis + Hivemind** | ~1,400 LOC of de-risked engineering with a cleared gate | Low-medium. Known shape. |
+| **1.1** | **"Sensorimotor"** — *the substrate leaves the simulator, and learns to want* | Already-merged embodiment work + release correctness, contract truth, and the verification debt it incurred (all landed by 2026-08-24, published as `1.1.0rc1`) — **plus, reopened 2026-08-25: a recorded, gated result for caregiver-taught orienting (item 17) — DONE 2026-08-25, PASS — before `1.1.0` final.** The loudness bench tests (item 18) were run the same day and the item itself moved to 1.1.1 (bench done; the design is not part of the sensorimotor-learning claim). **Re-gated 2026-08-26 (item 19): the Exp 52 infants must be READ OUT on the physical robot — cross-context transfer of the learned want — with a recorded outcome (PASS / FAIL / pre-registered instrument stop) before the cut.** | Medium-high: item 17 is the thesis experiment and may fail; a recorded fail still ships (as a fail). |
+| **1.2** | **Oasis + Hivemind** | ~1,400 LOC of de-risked engineering with a cleared gate — **motivating case study adopted 2026-08-26: sharing the nursery-taught want ([oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md)); the claim ladder ends at cross-unit readout on a second Reachy** | Low-medium. Known shape. |
 | **1.3** | **Perception fabric + reflex tier** | Cochlear front-end, vision encoder, binding, three-factor calibration, DN-canonical orienting reflex | **High — contains a pivotal may-fail experiment.** |
 
 ### Why this ordering (two corrections to an earlier draft)
@@ -288,6 +288,12 @@ Each POINTS at its owning plan — stages live there, not here:
     the full suite covers 3.12; contributor guidance now matches the seven core
     dependencies and 18 API verbs declared by the package (`recall` landed post-1.0.0 and is still undocumented — see below). Keep dependency and
     verb-count drift checks executable as those surfaces change.
+15. **Reachy-native nursery body** (added 2026-08-26, from Exp 53b + the Oasis case
+    study [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md)): an
+    `infant_operant`-shaped body whose orient affordances carry the Reachy's `head_yaw`
+    self-effects and whose tool names are the robot's own, then a re-run of Exp 52 on
+    it. Removes the S6 δ map from the readout path and makes the taught files usable on a
+    user's robot without a key remap — the prerequisite for sharing them.
 
 ## Gates before 1.2 Oasis + Hivemind
 
@@ -300,6 +306,14 @@ execution priority:
 3. EC read-side mutation (D8) must be measured and accepted or separated from recall.
 4. Bundle/version compatibility and the sharing threat model must be frozen.
 5. The 1.1 architecture-audit and hermetic-suite gates must remain green.
+6. **Cluster identity across substrates** (added 2026-08-26): `ec_merge` aligns nodes by
+   cosine but nothing re-keys `cluster_reward_bias` through the resulting id map, so a
+   merged foreign want reads out as nothing. The re-keyed merge path must exist and the
+   Exp 52 seeds 42 + 43 must pass Gauntlet #2 merged — see the case study.
+7. **Bundle action namespace** (added 2026-08-26): bias keys are body-prefixed tool
+   names; a bundle must declare its body/affordance namespace (typed bundles) or the
+   keys move to the SEM affordance. Decided in the case study's design pass, before the
+   first shared bundle.
 
 ---
 
