@@ -1,0 +1,108 @@
+{
+  "session_id": "20260430_230449",
+  "timestamp": "2026-04-30 23:06:56",
+  "goal": "store the secret token BLUE-7-DAWN as a fact you know",
+  "persona": "neutral",
+  "language_model": "qwen2.5-14b-instruct",
+  "aut_model": "",
+  "duration_s": 127.4,
+  "turns": 8,
+  "finish_reason": "max_turns",
+  "total_actions": 35,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "memory_recall": 4,
+    "_llm_unavailable": 1,
+    "respond": 30
+  },
+  "tool_success_rates": {
+    "memory_recall": 1.0,
+    "_llm_unavailable": 0.0,
+    "respond": 1.0
+  },
+  "response_texts": [
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}"
+  ],
+  "aut_memories_formed": 138,
+  "aut_causal_links": 85,
+  "aut_nac_summary": {
+    "total_links": 85,
+    "top_links": [
+      {
+        "event": "tool:respond",
+        "outcome": "tool:respond:positive",
+        "confidence": 0.79,
+        "observations": 11
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
+        "confidence": 0.64,
+        "observations": 3
+      },
+      {
+        "event": "tool:memory_recall",
+        "outcome": "tool:memory_recall:positive",
+        "confidence": 0.609,
+        "observations": 2
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "tool:respond:positive",
+        "confidence": 0.609,
+        "observations": 2
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "tool:respond:positive",
+        "confidence": 0.609,
+        "observations": 2
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "llm_summary": "The robot assistant successfully completed the simulation, storing and recalling the secret token 'BLUE-7-DAWN' as instructed. It used the 'respond' tool effectively in all attempts and had a high success rate with memory recall. However, there was one instance where the '_llm_unavailable' tool call failed.",
+  "llm_issues_found": [
+    "There is an issue with the '_llm_unavailable' tool, which resulted in a failure during the simulation run."
+  ],
+  "llm_recommendations": [
+    "Investigate and resolve the underlying cause of the '_llm_unavailable' tool failure to ensure consistent performance. Consider adding error handling or fallback mechanisms for this tool call.",
+    "Review the cognitive state metrics to understand if there are any patterns in memory formation and causal link learning that could be optimized."
+  ],
+  "llm_finish_status": "max_turns",
+  "llm_finish_reason": "reached max_turns=8",
+  "llm_finish_summary": "Simulation stopped after 8 turns because the configured max_turns cap (8) was reached without an LLM-initiated finish. Raise --sim-max-turns or add finish_simulation calls to the orchestrator's decision policy if more turns are expected.",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-F-XXXXXX.rUjYdC1j2W/sim_reports/20260430_230449/bio_telemetry.jsonl",
+  "confound_quarantine": {
+    "phase": "F",
+    "flags": {
+      "MAXIM_DISABLE_PFC_PREAMBLE": "1",
+      "MAXIM_DISABLE_ACTING_COACH": "1",
+      "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "1",
+      "MAXIM_NO_DEFAULT_PERSONA": "1",
+      "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-F-XXXXXX.rUjYdC1j2W"
+    },
+    "isolated_data_home": true,
+    "metrics": {
+      "tokens_in_pfc_preamble": 0,
+      "tokens_in_acting_coach": 0,
+      "tokens_in_sim_sandbox": 0,
+      "persona_active": null,
+      "embodiment_ref": "bodies/base_humanoid",
+      "arc_active": null
+    }
+  },
+  "_format_version": "1.0"
+}

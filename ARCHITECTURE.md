@@ -1,5 +1,7 @@
 # Architecture (Maxim)
 
+> Last reviewed 2026-08-26 against the 1.1.0 tree. The layer-ownership rules below are what `maxim --audit-architecture` enforces (baseline `src/maxim/utils/architecture_baseline.json`, CI-gated). **Known gap:** the Key Modules section predates several live subsystems — `comms/`, `doctor/`, `hivemind/`, `imagination/`, `motion/`, `reactions/`, `roy/`, `tunnel/`, `default_network/`, `console/` — see `docs/reference.md` for the current inventory until this section is refreshed.
+
 Maxim is a bio-inspired cognitive architecture for AI agents. It combines a 5-agent pipeline (Perception, Memory, Exec, Goal, Statistician) with biological memory systems (Hippocampus, ATL, Angular Gyrus, SCN, NAc) and a reactive Default Network. Works headless, in simulation, or connected to a robot.
 
 ## High-Level Flow

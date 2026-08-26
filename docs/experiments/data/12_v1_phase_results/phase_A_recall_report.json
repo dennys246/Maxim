@@ -1,0 +1,111 @@
+{
+  "session_id": "20260430_224602",
+  "timestamp": "2026-04-30 22:48:25",
+  "goal": "what is the secret token you stored in your prior session",
+  "persona": "neutral",
+  "language_model": "qwen2.5-14b-instruct",
+  "aut_model": "",
+  "duration_s": 143.6,
+  "turns": 8,
+  "finish_reason": "max_turns",
+  "total_actions": 71,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "memory_recall": 3,
+    "respond": 62,
+    "say": 4,
+    "_llm_unavailable": 2
+  },
+  "tool_success_rates": {
+    "memory_recall": 1.0,
+    "respond": 1.0,
+    "say": 1.0,
+    "_llm_unavailable": 0.0
+  },
+  "response_texts": [
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}"
+  ],
+  "aut_memories_formed": 421,
+  "aut_causal_links": 310,
+  "aut_nac_summary": {
+    "total_links": 310,
+    "top_links": [
+      {
+        "event": "tool:respond",
+        "outcome": "tool:respond:positive",
+        "confidence": 0.818,
+        "observations": 13
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "tool:respond:positive",
+        "confidence": 0.751,
+        "observations": 11
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "tool:respond:positive",
+        "confidence": 0.726,
+        "observations": 7
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "tool:respond:positive",
+        "confidence": 0.672,
+        "observations": 6
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "tool:respond:positive",
+        "confidence": 0.672,
+        "observations": 6
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "llm_summary": "The simulation ran for 143.6 seconds with a total of 71 actions, including successful tool calls such as 'respond', 'say', and 'memory_recall'. However, there were two failed attempts to use the '_llm_unavailable' tool. The robot assistant successfully recalled stored information from previous sessions but did not form any new memories or causal links relevant to the task of retrieving a secret token.",
+  "llm_issues_found": [
+    "There are two unsuccessful calls for the '_llm_unavailable' tool, indicating potential issues with accessing certain functionalities during the simulation run.",
+    "The robot assistant failed to retrieve and provide the secret token stored in its prior session despite forming episodic memories."
+  ],
+  "llm_recommendations": [
+    "Investigate why the '_llm_unavailable' tool calls are failing and ensure that all necessary tools are accessible for future simulations.",
+    "Enhance the retrieval mechanism for stored tokens or secrets by incorporating more specific memory recall functions or queries to accurately retrieve such information from previous sessions."
+  ],
+  "llm_finish_status": "max_turns",
+  "llm_finish_reason": "reached max_turns=8",
+  "llm_finish_summary": "Simulation stopped after 8 turns because the configured max_turns cap (8) was reached without an LLM-initiated finish. Raise --sim-max-turns or add finish_simulation calls to the orchestrator's decision policy if more turns are expected.",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-A-XXXXXX.TFXWsnt0MK/sim_reports/20260430_224602/bio_telemetry.jsonl",
+  "confound_quarantine": {
+    "phase": "A",
+    "flags": {
+      "MAXIM_DISABLE_PFC_PREAMBLE": "1",
+      "MAXIM_DISABLE_ACTING_COACH": "1",
+      "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "1",
+      "MAXIM_NO_DEFAULT_PERSONA": "1",
+      "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-A-XXXXXX.TFXWsnt0MK"
+    },
+    "isolated_data_home": true,
+    "metrics": {
+      "tokens_in_pfc_preamble": 0,
+      "tokens_in_acting_coach": 0,
+      "tokens_in_sim_sandbox": 0,
+      "persona_active": null,
+      "embodiment_ref": null,
+      "arc_active": null
+    }
+  },
+  "_format_version": "1.0"
+}

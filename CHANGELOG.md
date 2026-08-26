@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > **Note (2026-05-11, updated 2026-06-06):** versions 0.6.0 → 0.8.1 shipped to PyPI without
 > matching CHANGELOG entries. The summaries for that window live in
 > [docs/plans/v1_refinement.md](docs/plans/v1_refinement.md) and the
-> [HTML roadmap](html-guides/maxim-roadmap.html). The 0.9.0 entry below
+> [HTML roadmap](docs/archive/html-guides/maxim-roadmap.html). The 0.9.0 entry below
 > picks up the convention again.
 
 > **Note (2026-08-07, corrected 2026-08-19):** versions 1.0.1 → 1.0.6 were version

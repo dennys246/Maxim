@@ -142,7 +142,7 @@ python scripts/analyze_exp41_exploration.py \
 
 Local fires report `cost=$0` (no LLM in the AUT action path; the generative
 narrator uses a small local profile, default `smollm-1.7b-instruct`). Telemetry
-lands at `data/sim_sandbox/substrate_telemetry_*.jsonl` (in-repo).
+lands at `data/sim_sandbox/substrate_telemetry_*.jsonl` (gitignored, local; the scored records are the committed `data/41_results.jsonl`).
 
 **Determinism caveat (validated 2026-06-19):** substrate-primary *selection* is
 deterministic, so cross-seed variance arises only from the LLM narrator's scene

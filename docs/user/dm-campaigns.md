@@ -477,4 +477,3 @@ Validation errors are printed before the campaign starts. Fix all errors before 
 - [Simulation Guide](simulation.md) — Other simulation modes (generative, research, benchmark)
 - [Troubleshooting: Bio-Systems](../troubleshooting/biosystems.md) — Diagnosing specific bio-system issues
 - [Embodiment Guide](../embodiment_guide.md) — SEM protocol for entity specs
-- [DM Campaigns HTML Guide](../../html-guides/maxim-dm-campaigns.html) — Full technical reference
