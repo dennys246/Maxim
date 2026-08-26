@@ -103,8 +103,8 @@ L/R schedule, seeded permutation per agent (int seed, never `hash()`).
 
 Speech gate: every azimuth used is the median of k=5 speech-flagged reads; a trial with
 no valid gated read before or after the turn is `invalid` (never fabricated) and
-re-drawn, counted in the S3 record. The block refuses to start below a 0.70 speech-gate
-rate over a 10 s probe.
+re-drawn, counted in the S3 record. The block refuses to start below a 0.50 speech-gate
+rate over a 30 s probe (amendment 2; originally 0.70 / 10 s).
 
 ## Phase 1 — INSTRUMENT CHECK (no motion) — gates Phase 2
 
@@ -203,7 +203,7 @@ loss) with the aborted block kept in the record. A FAIL is not re-run.
 - **S8 pre-conditions (H1's, verbatim):** `curl …/api/daemon/status` version ==
   `reachy-mini` client version; `motor_control_mode == "enabled"`; `yaw_verify.py`
   d(head)/d(body) within 0.9–1.1 (the mics must actually rotate — the Exp 45 retraction
-  class); recenter readback within 0.05 rad; speech-gate probe ≥ 0.70.
+  class); recenter readback within 0.05 rad; speech-gate probe ≥ 0.50 over 30 s (amendment 2).
 
 ## Amendments
 
@@ -256,6 +256,19 @@ ten agents (taught: correct at every placement, margins 0.90 right / 0.006 far-l
 seed 48 wrong-way at +0.5/+0.6 as its `+0.061 turn_left` bias predicts) and the sweep
 table above. No robot data exists. The sweep is committed with the harness
 (`docs/experiments/data/53_dry_run_nonfrozen.jsonl`, harness verification, not a result).
+
+**Amendment 2 — 2026-08-26, PRE-DATA, apparatus precondition (robot session, before the
+first probe record; the records file was empty).** The S8 speech-gate floor was set at
+0.70 of reads over 10 s — stricter than H1's precedent (0.50) and measured on the wrong
+indicator. Three different continuous-speech sources, dead ahead (bearing 1.55 rad), gave
+flag rates 0.39–0.73 across 10–30 s windows while the chip's own speech energy
+(`AEC_SPENERGY_VALUES`, auto beam) was non-zero **0.86** of the time (free beam 0.83) over
+a 30 s window; flag ∧ energy 0.60, energy-without-flag 0.26, flag-without-energy 0.02.
+The VAD flag is a hysteretic under-report of continuous speech, not evidence of an
+intermittent source. What the floor protects — five speech-flagged reads within 8 s per
+gated azimuth — needs ~1.3 s at a 0.62 flag rate. **Floor → 0.50 (H1's), probe window →
+30 s.** Invalid reads remain re-drawn and counted (S3). Gates, targets, δ, seeds and the
+stop rules are untouched.
 
 ## Amendment rule
 

@@ -89,7 +89,7 @@ GATE_T_MARGIN = 0.20
 GATE_T_SIGN_AGREEMENT = 0.80
 ARMS = {"taught": (42, 43, 44), "satiated": (42, 43, 44), "no_feed": (42, 43, 44)}
 EXPLORATORY = (("taught", 48),)
-MIN_SPEECH_RATE = 0.70
+MIN_SPEECH_RATE = 0.50  # H1's floor (amendment 2: the VAD flag under-reports speech energy by ~0.25)
 GATED_READS = 5
 
 
@@ -553,6 +553,9 @@ def _phase1_passed(records_path: Path) -> bool:
 
 def cmd_run(args: argparse.Namespace) -> int:
     os.environ["MAXIM_SUBSTRATE_TOOL_WHITELIST"] = "turn_left,turn_right"  # the nursery's repertoire (S6)
+    if args.delta is not None:
+        # Exp 53b: the declared step size is the one pre-registered change; stamped in every start record.
+        DELTAS.update({"turn_left": +float(args.delta), "turn_right": -float(args.delta)})
     os.environ.pop("MAXIM_PLACE_CODE_EXTEROCEPTION", None)  # place code OFF, as in Phase B (provenance)
     manifest = _load_manifest(args.manifest)
     out_path = Path(args.out)
@@ -573,7 +576,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     if args.dry_run:
         rig = DryReadoutRig()
-        emit("start", provenance=prov, frozen=manifest.get("frozen"), rig="dry")
+        emit("start", provenance=prov, frozen=manifest.get("frozen"), rig="dry", deltas=dict(DELTAS))
         print(f"[dry-run] run_id={run_id} phase={args.phase}")
     else:
         host, source = resolve_host(args.host)
@@ -744,7 +747,7 @@ def _phase2(agents, rig, sink, emit, args) -> int:
     for spec in agents:
         label = spec["label"]
         for condition, weight in (("primary", EXPLORE_PRIMARY), ("secondary", EXPLORE_SECONDARY)):
-            if args.primary_only and condition != "primary":
+            if args.condition != "both" and condition != args.condition:
                 continue
             agent = LoadedAgent(spec, weight)
             emit(
@@ -898,7 +901,12 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         per_seed[label] = round(d, 3)
         arm_dir.setdefault(arm, []).append(d)
     means = {arm: round(statistics.mean(v), 3) for arm, v in arm_dir.items()}
-    taught_rows = [r for rows in by_agent.values() for r in rows if r["arm"] == "taught" and r["affordance"]]
+    taught_rows = [
+        r
+        for label, rows in by_agent.items()
+        for r in rows
+        if r["arm"] == "taught" and r["affordance"] and not label.endswith("seed48")
+    ]
     sign_agree = (
         sum(1 for r in taught_rows if bool(r["sign_rule_correct"]) == bool(r["toward"])) / len(taught_rows)
         if taught_rows
@@ -973,10 +981,21 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--out", required=True)
     r.add_argument("--dry-run", action="store_true")
     r.add_argument("--settle", type=float, default=1.0)
-    r.add_argument("--probe-s", type=float, default=10.0)
+    r.add_argument("--probe-s", type=float, default=30.0)
     r.add_argument("--yes", action="store_true")
     r.add_argument("--only", nargs="*", default=None, help="agent labels to run (debugging; not a result)")
-    r.add_argument("--primary-only", action="store_true", help="skip the secondary explore-1.5 block")
+    r.add_argument(
+        "--delta",
+        type=float,
+        default=None,
+        help="body-yaw step per turn in rad (default: the frozen DELTA_RAD; Exp 53b pre-registers 0.30)",
+    )
+    r.add_argument(
+        "--condition",
+        choices=("both", "primary", "secondary"),
+        default="both",
+        help="Phase 2 block(s) to run — the two blocks may be run as separate invocations of one session",
+    )
     v = sub.add_parser("verdict")
     v.add_argument("--records", required=True)
     args = ap.parse_args(argv)
