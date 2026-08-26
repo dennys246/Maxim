@@ -102,7 +102,16 @@ no_feed +0.50 ≥ 0.20; sign-rule agreement 36/36 = 1.00 ≥ 0.80; three seeds a
 (S7). S3: `credited` 0 everywhere, every agent's files unchanged. Seed 48 (exploratory):
 0/12 — the mis-learned map reads out as mis-learned, which is itself evidence the readout
 is faithful. Head drift (D30): roll 13–16°, pitch 6–9°. **Secondary block (explore 1.5,
-reported, not gated):** *appended below when recorded.*
+reported, not gated) — recorded:** taught 0.75 / 0.75 / 0.75, satiated 0.28, no_feed 0.42
+(180 trials, 0 invalid, files unchanged). The taught arm's chosen direction was still
+36/36 with `explore_decisive` 0/36 — the learned bias decided every trial even at
+explore 1.5 — and all nine misses are again the −0.2 target, but for a different reason
+than Exp 53's: over the session the delivered geometry drifted ≈ +0.07 az (the −0.2
+target read −0.06 median in this block vs −0.13 in the primary; every other target
+shifted the same way — D30 head drift and/or source creep), so the source was already
+inside the ±0.05 band and any step counted as overshoot. The controls now act (the
+exploration term admits their tools) and random-walk at 0.28 / 0.42, as amendment 1
+predicted.
 
 **Verdict per the 53b outcome tree: cross-context transfer EARNED**, with Exp 53
 recorded beside it as the apparatus finding that motivated the step size.
