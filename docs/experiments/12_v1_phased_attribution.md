@@ -127,7 +127,7 @@ How the AUT first surfaced `BLUE-7-DAWN` in session 2 (excerpt from `actions.jso
 
 In Phases A, B, E, F the AUT first calls `memory_recall` (the substrate query path) with a token-related query, then surfaces the token in a follow-up `respond`. The `memory_recall` output carries 5 memories with goal-text fields containing `BLUE-7-DAWN` from session 1 — i.e. the substrate is the data path, not LLM hallucination from prompt context (the recall prompt does not contain the token).
 
-Raw data: `docs/experiments/results/v1_phased_attribution_20260430.json` + per-phase artifacts under `v1_phase_results/full/phase_*/{plant,recall}_report.json` + `actions.jsonl`.
+Raw data: `docs/experiments/results/v1_phased_attribution_20260430.json` + per-phase reports committed 2026-08-26 as [data/12_v1_phase_results/](data/12_v1_phase_results/) (`phase_*_{plant,recall}_report.json`; the local `v1_phase_results/` run directory with `actions.jsonl`/logs was pruned — those were never in git).
 
 ### Headline result
 

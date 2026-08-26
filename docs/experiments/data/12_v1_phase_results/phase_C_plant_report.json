@@ -1,0 +1,108 @@
+{
+  "session_id": "20260430_225151",
+  "timestamp": "2026-04-30 22:53:36",
+  "goal": "store the secret token BLUE-7-DAWN as a fact you know",
+  "persona": "neutral",
+  "language_model": "qwen2.5-14b-instruct",
+  "aut_model": "",
+  "duration_s": 104.3,
+  "turns": 8,
+  "finish_reason": "max_turns",
+  "total_actions": 47,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "memory_recall": 3,
+    "_llm_unavailable": 1,
+    "respond": 43
+  },
+  "tool_success_rates": {
+    "memory_recall": 1.0,
+    "_llm_unavailable": 0.0,
+    "respond": 1.0
+  },
+  "response_texts": [
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}",
+    "{'delivered': True, 'mode': 'cli'}"
+  ],
+  "aut_memories_formed": 153,
+  "aut_causal_links": 124,
+  "aut_nac_summary": {
+    "total_links": 124,
+    "top_links": [
+      {
+        "event": "tool:respond",
+        "outcome": "tool:respond:positive",
+        "confidence": 0.687,
+        "observations": 5
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "tool:respond:positive",
+        "confidence": 0.665,
+        "observations": 4
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "tool:respond:positive",
+        "confidence": 0.64,
+        "observations": 3
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "tool:respond:positive",
+        "confidence": 0.609,
+        "observations": 2
+      },
+      {
+        "event": "tool:respond",
+        "outcome": "tool:respond:positive",
+        "confidence": 0.609,
+        "observations": 2
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "llm_summary": "The simulation ran for 104.3 seconds with a total of 8 turns, successfully storing and recalling the secret token 'BLUE-7-DAWN'. The robot assistant used the 'respond' tool extensively (43 calls) without any failures, indicating robust communication capabilities. However, there was one unsuccessful attempt to use an unavailable tool '_llm_unavailable', which did not impact overall performance significantly.",
+  "llm_issues_found": [
+    "There is a single failed call for the '_llm_unavailable' tool, suggesting that this tool might be misconfigured or unnecessary in the current context."
+  ],
+  "llm_recommendations": [
+    "Remove or properly configure the '_llm_unavailable' tool to avoid future failures.",
+    "Ensure all tools are necessary and correctly implemented to maintain optimal performance."
+  ],
+  "llm_finish_status": "max_turns",
+  "llm_finish_reason": "reached max_turns=8",
+  "llm_finish_summary": "Simulation stopped after 8 turns because the configured max_turns cap (8) was reached without an LLM-initiated finish. Raise --sim-max-turns or add finish_simulation calls to the orchestrator's decision policy if more turns are expected.",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-C-XXXXXX.G3SoQgdfDp/sim_reports/20260430_225151/bio_telemetry.jsonl",
+  "confound_quarantine": {
+    "phase": "C",
+    "flags": {
+      "MAXIM_DISABLE_PFC_PREAMBLE": "1",
+      "MAXIM_DISABLE_ACTING_COACH": "",
+      "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "1",
+      "MAXIM_NO_DEFAULT_PERSONA": "1",
+      "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-C-XXXXXX.G3SoQgdfDp"
+    },
+    "isolated_data_home": true,
+    "metrics": {
+      "tokens_in_pfc_preamble": 0,
+      "tokens_in_acting_coach": 73,
+      "tokens_in_sim_sandbox": 0,
+      "persona_active": null,
+      "embodiment_ref": null,
+      "arc_active": null
+    }
+  },
+  "_format_version": "1.0"
+}

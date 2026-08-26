@@ -46,7 +46,7 @@ This file is the always-loaded core: commands, checks, hard safety rules, cross-
 | `utils/atomic_io.py`, `utils/format_version.py`, `utils/seeding.py`, `utils/paths.py`, `runtime/config_loader.py`, `runtime/config_writer.py`, `runtime/role.py`, any persisted-JSON shape, any frozen dataclass | [docs/agents/persistence-config.md](docs/agents/persistence-config.md) |
 | `runtime/agent_loop.py`, `runtime/executor.py`, `runtime/bootstrap.py`, `runtime/bio_stack.py`, `runtime/agent_factory.py`, `runtime/agent_pool.py`, `runtime/tool_dispatch.py`, `tools/`, `agents/`, `cli.py`, `api.py` | [docs/agents/runtime-tools.md](docs/agents/runtime-tools.md) |
 
-Multiple rows match → read all matched briefs. Adding an env var → add it to the owning brief's table (and pair it with a conftest scrub, see the lesson below). Project structure reference: [docs/reference.md](docs/reference.md).
+Decision records (why a contract is what it is) live in [DECISIONS.md](DECISIONS.md); the layer-ownership rules the architecture audit enforces live in [ARCHITECTURE.md](ARCHITECTURE.md). Multiple rows match → read all matched briefs. Adding an env var → add it to the owning brief's table (and pair it with a conftest scrub, see the lesson below). Project structure reference: [docs/reference.md](docs/reference.md).
 
 ## Lessons learned (bugs that bit us) — cross-cutting core
 

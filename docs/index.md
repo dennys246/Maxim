@@ -85,7 +85,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | Document | Description |
 |----------|-------------|
 | [Bridges](archive/bridges.md) | Cross-system integration, memory bridges |
-| Agent Mesh Guide ([HTML](../html-guides/maxim-agent-mesh.html)) | Identity, protocol, transport, knowledge sharing, delegation |
+| [Agent Mesh (archived plan)](archive/agent_mesh.md) | Identity, protocol, transport, knowledge sharing, delegation — status banner inside; the legacy HTML guide is in [archive/html-guides/](archive/html-guides/README.md) |
 
 ### Publication & Development
 
@@ -94,6 +94,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | [Publication Guide](publication_guide.md) | PyPI release checklist, including the canonical website and package-link audit |
 | [Reference](reference.md) | Module layout, bio-system mappings, configuration |
 | [Skills (tombstone)](skills.md) | Removed module — replaced by Cerebellum/motor programs |
+| [Legacy HTML guides (archived)](archive/html-guides/README.md) | The pre-pymaxim.bio documentation set, frozen 2026-06-17; 11 guides still have no Markdown/site equivalent |
 
 ### Experiments
 

@@ -48,7 +48,7 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/runtime/tool_dispatch.py` | Tool execution dispatch (extracted from executor) |
 | `src/maxim/runtime/bio_integration.py` | Bio-system wiring for the agent loop |
 | `src/maxim/runtime/llm_server.py` | Local llama-cpp server lifecycle management |
-| `src/maxim/runtime/rate_limit.py` | `KeyedRateLimiter` — per-key sliding-window rate limiter, cherry-picked from `mesh/admission.py` in R0. Consumed by Plan 4's admin API + per-agent router entry. |
+| `src/maxim/runtime/rate_limit.py` | `KeyedRateLimiter` — per-key sliding-window rate limiter, cherry-picked from `mesh/admission.py` in R0. **Dormant since 2026-07-14** (zero production callers; resurrection trigger = `reactive_peer_mesh_roadmap.md` C3; NOT superseded by `runtime/rate_limiter.py`, a token bucket). Formerly: consumed by Plan 4's admin API + per-agent router entry. |
 | `src/maxim/utils/http.py` | **Plan 1 R1 (2026-04-12).** Unified HTTP client: endpoint registry, `HTTPEndpoint`/`TimeoutPolicy`/`RequestContext` dataclasses, typed `HTTPError` hierarchy, header sanitizer (`MAX_HEADER_VALUE_LEN=256`), `contextvars.ContextVar` propagation of X-Maxim-* headers, dual-format logging (`MAXIM_LOG_FILE`). Every outbound HTTP call in `src/maxim/` goes through this module; `urllib.request` is banned by CI grep. |
 | `src/maxim/simulation/sim_types.py` | Shared type definitions for simulation subsystem |
 | `src/maxim/simulation/campaign_runner.py` | Campaign execution engine (generative + DM + fixture) |

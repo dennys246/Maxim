@@ -1,6 +1,6 @@
 # Maxim 1.0 — announcement copy
 
-Two registers below: a punchy short post (for social / the top of a blog) and a longer technical version (for the full writeup). Companion HTML guide: `html-guides/maxim-1-0-release.html`.
+Two registers below: a punchy short post (for social / the top of a blog) and a longer technical version (for the full writeup). Companion HTML guide (archived): `docs/archive/html-guides/maxim-1-0-release.html`.
 
 ---
 
