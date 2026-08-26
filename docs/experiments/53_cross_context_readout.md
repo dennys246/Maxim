@@ -116,6 +116,15 @@ predicted.
 **Verdict per the 53b outcome tree: cross-context transfer EARNED**, with Exp 53
 recorded beside it as the apparatus finding that motivated the step size.
 
+## Demo (not evidence)
+
+[Video](https://youtu.be/lLoPM2EkbPU) — the operator sneaks up on the robot and speaks;
+`taught_seed43` glances toward the voice, `satiated_seed43` loaded identically sits still.
+Shot with [scripts/orient_backbone/exp53_demo_readout.py](../../scripts/orient_backbone/exp53_demo_readout.py)
+(same loaded files and production path, no apparatus, one glance per speech onset,
+δ = 0.9 rad; records stamped `evidence: false`). The numbers above come from the
+pre-registered blocks, not from this footage.
+
 ## What this shows — and does not
 
 - **Shows:** learned state written by a nursery sim — two JSON files, loaded unchanged,

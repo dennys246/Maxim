@@ -34,7 +34,9 @@ direction 36/36 but overshot the smallest target with the step size we declared 
 as the pre-registered APPARATUS verdict; 53b changed only the step (the robot's own) and
 passed. → [docs/experiments/53_cross_context_readout.md](../experiments/53_cross_context_readout.md)
 — the agent files ship in-repo (`docs/experiments/data/53_agents/`), so the readout is
-reproducible on any Reachy Mini with the harness.
+reproducible on any Reachy Mini with the harness. [Video](https://youtu.be/lLoPM2EkbPU)
+(demo, not evidence): the taught infant glances toward a voice; the never-hungry one,
+loaded identically, sits still.
 
 ## Also in 1.1.0 (everything in 1.1.0rc1)
 
