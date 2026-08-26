@@ -80,6 +80,10 @@ your metric can actually see.
 - **Mitigation:** seeded stimulus-order shuffle (#514,
   `MotherScaffold.stimulus_order="shuffled"`) — exposure-balanced per block,
   order unpredictable, deterministic per seed. Apparatus-v3 runs MUST use it.
+  **Measured 2026-08-25 (Exp 52 Phase B, 12 seeds/arm):** per-seed late-bin SD
+  0.130 / 0.079 / 0.082 (taught / satiated / no_feed) with 6–8 distinct values per
+  arm — no seed-invariant fractions; the agent side needed no extra dither.
+  Directedness is a graded measure again ([52_nurture.md](../experiments/52_nurture.md)).
 - **Bounds:** the Exp 48 apparatus-v2 MOTHER-TAUGHT re-earn (+0.482) — real
   and causal, but interpreted as credit-tipped attractor selection, not
   graded orienting (ledger row qualifier, 2026-08-18).

@@ -195,6 +195,34 @@ feeds and credits — all landing on whatever action was pending — and stayed 
 mini, with `--stimulus-order shuffled --credit relief`, arms taught / satiated /
 no_feed, n = 12/arm.
 
+## Phase B — RESULT (2026-08-25, apparatus v3, big-mac-mini, `main` @ `60195a29`) — GRADUATE
+
+Run once, per stop rule B, by the operator from `~/RMSrv/scripts/Maxim` on the mini:
+`--arms taught,satiated,no_feed --trials 12 --seed-base 42 --stimulus-order shuffled
+--credit relief --model mistral-7b`, ~663 s/run, 36/36 runs recorded, exposure-matched
+48 turns/seed. Every row stamps `credit=relief`, `stimulus_order=shuffled`,
+`executed_git_hash 60195a29`, the satiated body on its arm, and `relief` as the
+*observed* credit mode on all 144 act records. Raw record:
+[`data/52_phaseB_embodied.jsonl`](../data/52_phaseB_embodied.jsonl); per-run provenance
+[`data/52_phaseB_runs/`](../data/52_phaseB_runs/README.md); full write-up
+[52_nurture.md](../52_nurture.md).
+
+| arm | act1 | late (act3+4) | per-seed late SD | fed / credited rate |
+|---|---|---|---|---|
+| taught | 0.614 | **0.878** | 0.130 | 0.73 / 0.73 |
+| satiated | 0.341 | 0.441 | 0.079 | 0.35 / **0.00** |
+| no_feed | 0.333 | 0.413 | 0.082 | 0.00 / 0.00 |
+
+- **LEARNED: PASS** (late ≥ 0.65; rise +0.26 ≥ 0.15; not at ceiling).
+- **MOTHER-TAUGHT: PASS** (+0.465 ≥ 0.20).
+- **HUNGER-NECESSARY: PASS** (+0.437 ≥ 0.20; satiated rise +0.10 < 0.15; satiated late ≤
+  no_feed + 0.20).
+- **APPARATUS L2: clean** — per-seed SD 0.08–0.13, 6–8 distinct late values per arm; no
+  seed-invariant fractions. **APPARATUS S3: OK.**
+- Outcome-tree branch: **"Learned to want."** Ledger consequences in
+  [52_nurture.md](../52_nurture.md) §Ledger consequences. One session, n = 12/arm —
+  cross-session replication outstanding, as for every embodied row.
+
 ## Outcome tree (decided now)
 
 | outcome | reading | action |
@@ -325,4 +353,4 @@ python scripts/analyze_cradle_mother.py --in docs/experiments/data/52_phaseB_emb
       under `--credit constant` it is credited on every feed (the A/B's actual content)
 - [x] Phase A run: date `2026-08-25` @ `e367f526` — LEARNED `PASS` HUNGER-NECESSARY `PASS` MOTHER-NECESSARY `PASS`
       (sanity OK; record `data/52_phaseA_scripted.json`)
-- [ ] Phase B started: date `________`, machine `________`, seeds `________`
+- [x] Phase B started: date `2026-08-25`, machine `big-mac-mini`, seeds `42–53` — COMPLETE the same day, **GRADUATE** (gate v3; record `data/52_phaseB_embodied.jsonl`)
