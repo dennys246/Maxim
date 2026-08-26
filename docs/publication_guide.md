@@ -2,7 +2,7 @@
 
 Step-by-step guide for publishing pymaxim to PyPI.
 
-**Current in-repo version:** 1.1.0 — the final cut, publish pending (roadmap step 5b). On PyPI: 1.1.0rc1 as a pre-release (2026-08-25, tag `v1.1.0rc1`; `pip install --pre pymaxim`); stable resolves to 1.0.9 until `1.1.0` is published.
+**Current release:** 1.1.0 — published to PyPI 2026-08-26 (tag `v1.1.0` at `df881b87`; GitHub Release with the exact wheel + sdist attached; `pip install pymaxim`).
 **Package name:** pymaxim (import name: `maxim`)
 **Build system:** setuptools + wheel
 
@@ -339,12 +339,14 @@ and take the notes from a versioned file, never the web form:
 
 ```bash
 V="$(python -c 'import maxim; print(maxim.__version__)')"
-gh release create "v$V" "$MAXIM_RELEASE_DIR"/pymaxim-"$V"* \
+gh release create "v$V" "$MAXIM_RELEASE_DIR"/pymaxim-"$V"-py3-none-any.whl "$MAXIM_RELEASE_DIR"/pymaxim-"$V".tar.gz \
   --title "pymaxim $V" \
   --notes-file "docs/announcements/release_${V//./_}.md" \
   --verify-tag
 # Pre-releases add --prerelease. Verify the attached checksums match PyPI:
-sha256sum "$MAXIM_RELEASE_DIR"/pymaxim-"$V"*
+sha256sum "$MAXIM_RELEASE_DIR"/pymaxim-"$V"-py3-none-any.whl "$MAXIM_RELEASE_DIR"/pymaxim-"$V".tar.gz
+# Name the two files explicitly: a bare pymaxim-1.1.0* glob also matches 1.1.0rc1
+# artifacts sitting in the same directory (it did, 2026-08-26 — moved by hand).
 gh release view "v$V" --json assets --jq '.assets[] | "\(.name) \(.size)"'
 ```
 

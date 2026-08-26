@@ -130,7 +130,7 @@ from the claims-verification round — blocking vs 1.1.x *within* the gated item
      bump both version files + the CHANGELOG header to `1.1.0rc1` in one commit, vendor
      the Console UI, build/`twine check`, TestPyPI → PyPI, tag `v1.1.0rc1` on the
      published commit, flip the "PyPI serves" sync lines. No announcement.
-   - **5b (item 17 DONE; item 18 → 1.1.1; item 19 DONE 2026-08-26 — Exp 53b PASS): `1.1.0` final** — the bump (#547) and the website audit (#548, maxim-web #7) are DONE 2026-08-26; **publication is unblocked**: site update for the hardware result, then: audit the canonical website against
+   - **5b — DONE 2026-08-26: `1.1.0` PUBLISHED** (PyPI latest 1.1.0; tag `v1.1.0` at `df881b87`; GitHub Release with artifacts; site flipped; release notes [release_1_1_0.md](../announcements/release_1_1_0.md)). The recipe as it ran: the bump (#547) and the website audit (#548, maxim-web #7) are DONE 2026-08-26; **publication is unblocked**: site update for the hardware result, then: audit the canonical website against
      the exact release artifact, reconcile version policy/docs/PyPI project links,
      build/check, cut `1.1.0`, tag it, publish matching release notes (the
      announcement waits for this).
