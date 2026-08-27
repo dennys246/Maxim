@@ -1498,7 +1498,10 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     out = {
         "_format_version": "1.0",
         "experiment": manifest.get("experiment"),
-        "incomplete": bool(decl["flags"]) or len(decl["gated_targets"]) != 4,
+        # Incomplete = a direction with fewer than two magnitudes (the procedure's
+        # inner-neighbour fallback is a COMPLETE set; its flag is informative only).
+        "incomplete": any(len(v.get("targets") or []) < 2 for v in decl["per_direction"].values())
+        or len(decl["gated_targets"]) != 4,
         "manifest": args.manifest,
         "body_ref": args.body_ref,
         "factory": bool(args.factory),
@@ -1518,7 +1521,7 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     for f in decl["flags"]:
         print(f"  [flag] {f}")
     print(f"[sweep] -> {out_path}")
-    return 0 if len(decl["gated_targets"]) >= 2 and not decl["flags"] else 1
+    return 0 if len(decl["gated_targets"]) == 4 and not out["incomplete"] else 1
 
 
 def main(argv: list[str] | None = None) -> int:

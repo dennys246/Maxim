@@ -287,7 +287,7 @@ Each POINTS at its owning plan — stages live there, not here:
     the full suite covers 3.12; contributor guidance now matches the seven core
     dependencies and 18 API verbs declared by the package (`recall` landed post-1.0.0 and is still undocumented — see below). Keep dependency and
     verb-count drift checks executable as those surfaces change.
-15. **Reachy-native nursery body — PRE-REGISTERED 2026-08-26 as [Exp 54](../experiments/protocols/exp54_nurture_reachy_body_preregistration.md)** (added 2026-08-26, from Exp 53b + the Oasis case
+15. **Reachy-native nursery body — Exp 54 [Phase A GRADUATE 2026-08-27](../experiments/54_nurture_reachy_body.md) (harness #561; taught 0.858 / satiated 0.472 / no_feed 0.514 on `bodies/reachy_mini_infant`; Phase B/C on the robot pending — item DONE only when all three phases are recorded); pre-registered 2026-08-26 as [Exp 54](../experiments/protocols/exp54_nurture_reachy_body_preregistration.md)** (added 2026-08-26, from Exp 53b + the Oasis case
     study [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md)): an
     `infant_operant`-shaped body whose orient affordances carry the Reachy's `head_yaw`
     self-effects and whose tool names are the robot's own, then a re-run of Exp 52 on

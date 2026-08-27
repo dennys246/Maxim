@@ -86,6 +86,41 @@ def test_sweep_procedure_reproduces_exp53_targets(h):
     assert decl["flags"] == []
 
 
+def test_inner_neighbour_fallback_is_a_complete_set(h):
+    """The procedure's 'one step closer if the outer neighbour is not eligible' yields
+    two magnitudes — a COMPLETE declaration, flagged informatively, never stamped
+    incomplete (the Exp 54 sweep hit exactly this: left bin at the −0.6 hemisphere edge)."""
+    per_agent = {}
+    for seed in (42, 43, 44):
+        rows = []
+        for az in h._sweep_values():
+            if az <= -0.5:
+                cid, biases, aff = "farleft", {"turn_left": 0.7}, "turn_left"
+            elif az <= 0.3:
+                cid, biases, aff = "centre", {"turn_right": 0.6}, "turn_right"
+            else:
+                cid, biases, aff = "right", {}, None
+            rows.append(
+                {
+                    "az": az,
+                    "audio_cluster": cid,
+                    "completed": True,
+                    "affordance": aff,
+                    "correct": h._correct_for(az, aff),
+                    "learned_margin": max(biases.values(), default=0.0),
+                    "consulted_audio": 0.0,
+                    "biases": biases,
+                }
+            )
+        per_agent[f"taught_seed{seed}"] = {"rows": rows, "bins": h._bins_from_rows(rows)}
+    decl = h._declare_targets(per_agent, majority=2)
+    assert decl["gated_targets"] == [-0.6, -0.5, 0.2, 0.3]
+    assert decl["exploratory_targets"] == [-0.2] and decl["predicted_wrong_way_region"] == [-0.4, -0.3, -0.2, -0.1]
+    assert any("inner -0.5 used" in f for f in decl["flags"])
+    incomplete = any(len(v["targets"]) < 2 for v in decl["per_direction"].values()) or len(decl["gated_targets"]) != 4
+    assert incomplete is False
+
+
 def test_sweep_procedure_flags_a_direction_with_no_bias(h):
     per_agent = {}
     for seed in (42, 43, 44):

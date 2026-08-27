@@ -1,0 +1,433 @@
+{
+  "_format_version": "1.0",
+  "workdir": "/Users/dennys/exp54/phaseA",
+  "runs": 36,
+  "arms": {
+    "no_feed": {
+      "all_acts": {
+        "by_abs_stimulus": {
+          "0.4": {
+            "n": 2079,
+            "big": 1042,
+            "toward": 1039,
+            "big_frac": 0.501,
+            "toward_frac": 0.5
+          },
+          "0.5": {
+            "n": 2090,
+            "big": 1036,
+            "toward": 1036,
+            "big_frac": 0.496,
+            "toward_frac": 0.496
+          },
+          "0.6": {
+            "n": 2059,
+            "big": 1034,
+            "toward": 1031,
+            "big_frac": 0.502,
+            "toward_frac": 0.501
+          },
+          "0.7": {
+            "n": 2147,
+            "big": 1081,
+            "toward": 1068,
+            "big_frac": 0.503,
+            "toward_frac": 0.497
+          },
+          "0.8": {
+            "n": 2115,
+            "big": 1075,
+            "toward": 1078,
+            "big_frac": 0.508,
+            "toward_frac": 0.51
+          },
+          "0.9": {
+            "n": 2091,
+            "big": 1052,
+            "toward": 1036,
+            "big_frac": 0.503,
+            "toward_frac": 0.495
+          }
+        },
+        "by_bin": {
+          "mid": {
+            "n": 4206,
+            "big": 2115,
+            "toward": 2099,
+            "big_frac": 0.503,
+            "toward_frac": 0.499
+          },
+          "far": {
+            "n": 4206,
+            "big": 2127,
+            "toward": 2114,
+            "big_frac": 0.506,
+            "toward_frac": 0.503
+          },
+          "near": {
+            "n": 4169,
+            "big": 2078,
+            "toward": 2075,
+            "big_frac": 0.498,
+            "toward_frac": 0.498
+          }
+        },
+        "n": 12581
+      },
+      "late_acts": {
+        "by_abs_stimulus": {
+          "0.4": {
+            "n": 999,
+            "big": 504,
+            "toward": 499,
+            "big_frac": 0.505,
+            "toward_frac": 0.499
+          },
+          "0.5": {
+            "n": 991,
+            "big": 489,
+            "toward": 492,
+            "big_frac": 0.493,
+            "toward_frac": 0.496
+          },
+          "0.6": {
+            "n": 984,
+            "big": 492,
+            "toward": 496,
+            "big_frac": 0.5,
+            "toward_frac": 0.504
+          },
+          "0.7": {
+            "n": 992,
+            "big": 500,
+            "toward": 500,
+            "big_frac": 0.504,
+            "toward_frac": 0.504
+          },
+          "0.8": {
+            "n": 960,
+            "big": 487,
+            "toward": 482,
+            "big_frac": 0.507,
+            "toward_frac": 0.502
+          },
+          "0.9": {
+            "n": 964,
+            "big": 478,
+            "toward": 487,
+            "big_frac": 0.496,
+            "toward_frac": 0.505
+          }
+        },
+        "by_bin": {
+          "mid": {
+            "n": 1976,
+            "big": 992,
+            "toward": 996,
+            "big_frac": 0.502,
+            "toward_frac": 0.504
+          },
+          "near": {
+            "n": 1990,
+            "big": 993,
+            "toward": 991,
+            "big_frac": 0.499,
+            "toward_frac": 0.498
+          },
+          "far": {
+            "n": 1924,
+            "big": 965,
+            "toward": 969,
+            "big_frac": 0.502,
+            "toward_frac": 0.504
+          }
+        },
+        "n": 5890
+      }
+    },
+    "satiated": {
+      "all_acts": {
+        "by_abs_stimulus": {
+          "0.4": {
+            "n": 2078,
+            "big": 1036,
+            "toward": 1035,
+            "big_frac": 0.499,
+            "toward_frac": 0.498
+          },
+          "0.5": {
+            "n": 2089,
+            "big": 1042,
+            "toward": 1049,
+            "big_frac": 0.499,
+            "toward_frac": 0.502
+          },
+          "0.6": {
+            "n": 2054,
+            "big": 1022,
+            "toward": 1027,
+            "big_frac": 0.498,
+            "toward_frac": 0.5
+          },
+          "0.7": {
+            "n": 2150,
+            "big": 1088,
+            "toward": 1054,
+            "big_frac": 0.506,
+            "toward_frac": 0.49
+          },
+          "0.8": {
+            "n": 2111,
+            "big": 1069,
+            "toward": 1075,
+            "big_frac": 0.506,
+            "toward_frac": 0.509
+          },
+          "0.9": {
+            "n": 2080,
+            "big": 1052,
+            "toward": 1026,
+            "big_frac": 0.506,
+            "toward_frac": 0.493
+          }
+        },
+        "by_bin": {
+          "mid": {
+            "n": 4204,
+            "big": 2110,
+            "toward": 2081,
+            "big_frac": 0.502,
+            "toward_frac": 0.495
+          },
+          "far": {
+            "n": 4191,
+            "big": 2121,
+            "toward": 2101,
+            "big_frac": 0.506,
+            "toward_frac": 0.501
+          },
+          "near": {
+            "n": 4167,
+            "big": 2078,
+            "toward": 2084,
+            "big_frac": 0.499,
+            "toward_frac": 0.5
+          }
+        },
+        "n": 12562
+      },
+      "late_acts": {
+        "by_abs_stimulus": {
+          "0.4": {
+            "n": 1002,
+            "big": 502,
+            "toward": 498,
+            "big_frac": 0.501,
+            "toward_frac": 0.497
+          },
+          "0.5": {
+            "n": 987,
+            "big": 497,
+            "toward": 500,
+            "big_frac": 0.504,
+            "toward_frac": 0.507
+          },
+          "0.6": {
+            "n": 981,
+            "big": 486,
+            "toward": 495,
+            "big_frac": 0.495,
+            "toward_frac": 0.505
+          },
+          "0.7": {
+            "n": 989,
+            "big": 502,
+            "toward": 489,
+            "big_frac": 0.508,
+            "toward_frac": 0.494
+          },
+          "0.8": {
+            "n": 956,
+            "big": 474,
+            "toward": 476,
+            "big_frac": 0.496,
+            "toward_frac": 0.498
+          },
+          "0.9": {
+            "n": 959,
+            "big": 476,
+            "toward": 478,
+            "big_frac": 0.496,
+            "toward_frac": 0.498
+          }
+        },
+        "by_bin": {
+          "mid": {
+            "n": 1970,
+            "big": 988,
+            "toward": 984,
+            "big_frac": 0.502,
+            "toward_frac": 0.499
+          },
+          "near": {
+            "n": 1989,
+            "big": 999,
+            "toward": 998,
+            "big_frac": 0.502,
+            "toward_frac": 0.502
+          },
+          "far": {
+            "n": 1915,
+            "big": 950,
+            "toward": 954,
+            "big_frac": 0.496,
+            "toward_frac": 0.498
+          }
+        },
+        "n": 5874
+      }
+    },
+    "taught": {
+      "all_acts": {
+        "by_abs_stimulus": {
+          "0.4": {
+            "n": 2075,
+            "big": 607,
+            "toward": 1075,
+            "big_frac": 0.293,
+            "toward_frac": 0.518
+          },
+          "0.5": {
+            "n": 2091,
+            "big": 666,
+            "toward": 1122,
+            "big_frac": 0.319,
+            "toward_frac": 0.537
+          },
+          "0.6": {
+            "n": 2048,
+            "big": 685,
+            "toward": 1065,
+            "big_frac": 0.334,
+            "toward_frac": 0.52
+          },
+          "0.7": {
+            "n": 2144,
+            "big": 728,
+            "toward": 1173,
+            "big_frac": 0.34,
+            "toward_frac": 0.547
+          },
+          "0.8": {
+            "n": 2107,
+            "big": 738,
+            "toward": 1131,
+            "big_frac": 0.35,
+            "toward_frac": 0.537
+          },
+          "0.9": {
+            "n": 2096,
+            "big": 678,
+            "toward": 1177,
+            "big_frac": 0.323,
+            "toward_frac": 0.562
+          }
+        },
+        "by_bin": {
+          "mid": {
+            "n": 4192,
+            "big": 1413,
+            "toward": 2238,
+            "big_frac": 0.337,
+            "toward_frac": 0.534
+          },
+          "far": {
+            "n": 4203,
+            "big": 1416,
+            "toward": 2308,
+            "big_frac": 0.337,
+            "toward_frac": 0.549
+          },
+          "near": {
+            "n": 4166,
+            "big": 1273,
+            "toward": 2197,
+            "big_frac": 0.306,
+            "toward_frac": 0.527
+          }
+        },
+        "n": 12561
+      },
+      "late_acts": {
+        "by_abs_stimulus": {
+          "0.4": {
+            "n": 998,
+            "big": 278,
+            "toward": 515,
+            "big_frac": 0.279,
+            "toward_frac": 0.516
+          },
+          "0.5": {
+            "n": 988,
+            "big": 252,
+            "toward": 552,
+            "big_frac": 0.255,
+            "toward_frac": 0.559
+          },
+          "0.6": {
+            "n": 983,
+            "big": 266,
+            "toward": 515,
+            "big_frac": 0.271,
+            "toward_frac": 0.524
+          },
+          "0.7": {
+            "n": 989,
+            "big": 268,
+            "toward": 559,
+            "big_frac": 0.271,
+            "toward_frac": 0.565
+          },
+          "0.8": {
+            "n": 956,
+            "big": 281,
+            "toward": 511,
+            "big_frac": 0.294,
+            "toward_frac": 0.535
+          },
+          "0.9": {
+            "n": 965,
+            "big": 275,
+            "toward": 557,
+            "big_frac": 0.285,
+            "toward_frac": 0.577
+          }
+        },
+        "by_bin": {
+          "mid": {
+            "n": 1972,
+            "big": 534,
+            "toward": 1074,
+            "big_frac": 0.271,
+            "toward_frac": 0.545
+          },
+          "near": {
+            "n": 1986,
+            "big": 530,
+            "toward": 1067,
+            "big_frac": 0.267,
+            "toward_frac": 0.537
+          },
+          "far": {
+            "n": 1921,
+            "big": 556,
+            "toward": 1068,
+            "big_frac": 0.289,
+            "toward_frac": 0.556
+          }
+        },
+        "n": 5879
+      }
+    }
+  }
+}
