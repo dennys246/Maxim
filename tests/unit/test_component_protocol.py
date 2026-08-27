@@ -215,19 +215,23 @@ class TestAffordances:
 
 
 class TestToolGeneration:
-    @pytest.fixture()
-    def tool_registry(self):
-        from maxim.tools.registry import ToolRegistry
+    def test_all_components_generate_tools(self, registry, component_refs):
+        """tool_bridge generates at least one tool per component.
 
-        return ToolRegistry()
-
-    def test_all_components_generate_tools(self, registry, component_refs, tool_registry):
-        """tool_bridge generates at least one tool per component."""
+        One ToolRegistry per component, as the runtime does (one body per
+        executor). A single shared registry would assert that every bundled
+        component has a globally unique ENTITY name — never a runtime property,
+        and deliberately false since Exp 54: ``bodies/reachy_mini_infant`` (+
+        ``_satiated``) reuse the entity name ``reachy_mini`` so a nursery's
+        learned keys are ``tool:reachy_mini_turn_*`` — the production body's
+        namespace (exp54_nurture_reachy_body_preregistration.md).
+        """
         from maxim.embodiment.tool_bridge import generate_tools_for_entity
+        from maxim.tools.registry import ToolRegistry
 
         for ref in component_refs:
             entity = registry.instantiate(ref)
-            tools = generate_tools_for_entity(entity, registry=tool_registry)
+            tools = generate_tools_for_entity(entity, registry=ToolRegistry())
             assert len(tools) >= 1, f"{ref}: generated 0 tools"
 
     def test_no_tool_name_collisions_within_entity(self, registry, component_refs):

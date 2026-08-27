@@ -1,0 +1,27 @@
+component:
+  name: reachy_mini_infant_satiated
+  extends: bodies/reachy_mini_infant
+  category: bodies
+  archetype: humanoid       # the parent reachy_mini's archetype (the pre-reg block said "robot", which is not a registered archetype — amendment 1 item 4)
+  tags: [body, robot, reachy, infant, cradle, operant, developmental, control]
+  synonyms: [satiated reachy infant, fed reachy infant, never-hungry reachy infant]
+  description: |
+    Exp 54 control body (the Exp 52 satiated pattern, verbatim): identical to
+    reachy_mini_infant — the robot's own four orient affordances, no intrinsic
+    orient drive, azimuth sensor kept, the SAME entity name reachy_mini — but NEVER
+    HUNGRY. Hunger and thirst start at 0 and do not drift, so the mother's
+    contingent feed relieves nothing and, under relief-sourced operant credit
+    (reactive_mother_tick credit="relief"), mints NO reward. Same feed events, same
+    contingency, zero need: if this arm learns to orient, the credit is not coming
+    from relief (docs/experiments/protocols/exp54_nurture_reachy_body_preregistration.md).
+entity:
+  name: reachy_mini            # inherited anyway; restated so the control's keys are visibly the robot's
+  sensors:
+    hunger:
+      initial: 0.0
+      drive:
+        drift_rate: 0.0
+    thirst:
+      initial: 0.0
+      drive:
+        drift_rate: 0.0
