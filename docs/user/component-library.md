@@ -2,7 +2,7 @@
 
 72 reusable SEM entity templates across 7 categories. Every component has sensors, affordances, and failure modes that drive Maxim's bio-cognitive systems during simulation.
 
-**Interactive version with search and filtering:** [dennyschaedig.com/maxim/component-library](https://www.dennyschaedig.com/maxim/component-library)
+**Interactive version with search and filtering:** [pymaxim.bio/reference/components](https://pymaxim.bio/reference/components/) — generated from this registry, so its count is derived rather than the hand-maintained totals in this file.
 
 ## Using Components
 
