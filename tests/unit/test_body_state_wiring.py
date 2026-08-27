@@ -1,4 +1,4 @@
-"""Exp 44 body_state wiring seam (docs/plans/acting_coach_body_state_ablation.md).
+"""Exp 44 body_state wiring seam (docs/plans/deferred/acting_coach_body_state_ablation.md).
 
 Pins the opt-in (default OFF) routing of the executor's Embodiment into
 ``MemoryHub.embodiment`` at AgentFactory wiring time. Default-off is

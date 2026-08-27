@@ -1,5 +1,7 @@
 # AGENTS.md — maxim-pulse
 
+> **✅ SEED CONSUMED 2026-08-01 — canonical copies live in the `Maxim-pulse` repo and have since diverged from this fork. Do not edit.**
+
 Durable architecture + development standards for the **Maxim UI monorepo**. Tool-agnostic;
 Claude Code also reads `CLAUDE.md` (operational checks + commands, which points here for the rest).
 

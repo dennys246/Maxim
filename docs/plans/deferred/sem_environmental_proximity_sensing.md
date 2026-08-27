@@ -1,5 +1,7 @@
 # SEM environmental proximity sensing for homeostatic drives
 
+> **⏸ DEFERRED 2026-08-27 — PLANNED 2026-07-15, zero code (no `heat_output` reader, no environmental-sense pass); explicitly not an Exp 44 blocker; no roadmap item. **Revive when** a homeostatic drive must be relieved by *sensed* ambient environment rather than by executing an affordance.**
+
 **Status:** PLANNED (2026-07-15). Motivated by the Exp 44 bring-up: the
 chilled-infant body's `cold` drive advances via an opaque internal drift
 ticked on tool execution, which (a) *feels* architecturally wrong — the

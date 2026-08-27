@@ -9,7 +9,7 @@ EARNED-clean); one honest residual-color caveat (arm B is not as clean as A).
 a persisted NAc, not weights.
 **Harness:** [scripts/exp44/](../../scripts/exp44/) (capture / offline re-query /
 directional+commitment analyzer). **Arc:** `cradle_pref_neutral` (leak-free flames).
-**Design:** [substrate_learns_from_experience.md](../plans/substrate_learns_from_experience.md)
+**Design:** [substrate_learns_from_experience.md](../plans/deferred/substrate_learns_from_experience.md)
 (the decay finding this experiment surfaced).
 
 ## Question
@@ -118,7 +118,7 @@ llm-primary (~208 ticks)** because the LLM-primary path can't reinforce cluster-
 elsewhere. Closing that write path (credit drive-relief-only at the `record_outcome`
 choke point) would make lived experience reinforce the substrate — dissolving the
 shelf-life and letting the agent self-build a substrate from use. See
-[substrate_learns_from_experience.md](../plans/substrate_learns_from_experience.md).
+[substrate_learns_from_experience.md](../plans/deferred/substrate_learns_from_experience.md).
 
 ## Raw data (S4 status, 2026-08-24)
 
@@ -146,6 +146,6 @@ residual color asymmetry** (2 harm-ward flips). **Verdict:** a defensible
 reward-driven "substrate steers the LLM" result, honestly caveated by the minor color
 confound and modest N (10-15 flips/arm). Worth more seeds to firm up N and quantify the
 residual. Not EARNED-clean; a real, counterbalanced positive. The natural stronger
-follow-up is **Phase 1** ([substrate_learns_from_experience.md](../plans/substrate_learns_from_experience.md),
+follow-up is **Phase 1** ([substrate_learns_from_experience.md](../plans/deferred/substrate_learns_from_experience.md),
 PR #437): let the agent *self-build* the substrate from its own llm-primary warming —
 no pre-load, no decay hold — the fuller-loop version of this claim.

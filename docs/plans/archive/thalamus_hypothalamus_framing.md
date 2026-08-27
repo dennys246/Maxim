@@ -1,5 +1,7 @@
 # Thalamus & hypothalamus — the organizing frame for percept ingress + drive integration
 
+> **⛔ SUPERSEDED 2026-07-17 by `thalamus_relay_design_pass.md` (the grow-vs-subsume fork resolved: SUBSUME) → shipped PR #402. Kept as the organizing frame (percept = thalamus, drives = hypothalamus).**
+
 **Status:** Framing note (2026-07-17). Not a build plan — an **organizing model** that explains the
 four-facet percept-testbed audit ([percept_testbed_audit.md](percept_testbed_audit.md)) and names
 where the missing pieces belong. Companion to the audit; the audit says *what's there and what's
@@ -30,13 +32,13 @@ work is to **recognize, unify, and complete** them, not to invent them.
 ## What's already here (fragmented, and explicitly named)
 
 ### The thalamus already exists three times — text/vision-only, relay-to-LLM-only
-- **`ThalamicGate`** ([default_network/gate.py](../../src/maxim/default_network/gate.py)) — "gates
+- **`ThalamicGate`** ([default_network/gate.py](../../../src/maxim/default_network/gate.py)) — "gates
   sensory information to cortex… only significant percepts are escalated for LLM deliberation." This is
   the **thalamic reticular nucleus** (the inhibitory gate), but only the escalation direction, and
   vision/DN-centric.
-- **`BioEnrichmentPipeline`** ([integration/bio_enrichment.py](../../src/maxim/integration/bio_enrichment.py))
+- **`BioEnrichmentPipeline`** ([integration/bio_enrichment.py](../../../src/maxim/integration/bio_enrichment.py))
   — its module docstring reads verbatim: *"The thalamic relay for text."*
-- **`exec_agent.py`** ([agents/exec_agent.py](../../src/maxim/agents/exec_agent.py)) — "the thalamus →
+- **`exec_agent.py`** ([agents/exec_agent.py](../../../src/maxim/agents/exec_agent.py)) — "the thalamus →
   PFC path: salient stimuli get automatic [enrichment]… the thalamus routes salient stimuli to PFC."
 
 **The missing part is exactly what the audit found missing:** a **modality-preserving multiplexing
@@ -47,12 +49,12 @@ That missing relay **is the body of the thalamus.** Naming it tells us the fix i
 relay, not N ad-hoc channel handlers** — the difference between an architecture and a config bolt-on.
 
 ### The hypothalamus already exists too — and is partly correctly named
-- **Homeostatic/entropic drives** ([embodiment/sem.py](../../src/maxim/embodiment/sem.py)) —
+- **Homeostatic/entropic drives** ([embodiment/sem.py](../../../src/maxim/embodiment/sem.py)) —
   temperature, hunger, energy: textbook hypothalamic homeostasis. Extended purely by **data** (a
   `HomeostaticDriveSpec`/`EntropicDriveSpec` in the SEM body YAML).
 - **Drive-pain integration** — `evaluate_failures` → `_publish_drive_pain` → PainBus → NAc: interoceptive
   breach → motivational signal.
-- **The `SCN`** ([time/scn.py](../../src/maxim/time/scn.py)) — the *suprachiasmatic nucleus*, literally a
+- **The `SCN`** ([time/scn.py](../../../src/maxim/time/scn.py)) — the *suprachiasmatic nucleus*, literally a
   hypothalamic structure (the master circadian clock).
 
 So "build a hypothalamus" is mostly **recognize + organize** the drives + SCN + drive-pain as one
@@ -99,7 +101,7 @@ LLM lanes earned:
 
 | Axis | Question | Owner |
 |---|---|---|
-| **Placement** | *Where* does each pipeline stage run (sensor / GPU leader / substrate owner)? | [perception_pipeline_placement.md](perception_pipeline_placement.md) (active, 1.1) |
+| **Placement** | *Where* does each pipeline stage run (sensor / GPU leader / substrate owner)? | [perception_pipeline_placement.md](../perception_pipeline_placement.md) (active, 1.1) |
 | **Thalamic relay / gating** | *Which* channels pass, *how much* (gate/gain), routed to *where in cognition* (LLM vs substrate)? | this frame |
 | **Hypothalamic drive** | *What* homeostatic/motivational state do interoceptive signals integrate to? | the drive system (already here) |
 
@@ -231,6 +233,6 @@ falls out of serving it.
 ## Related
 
 - [percept_testbed_audit.md](percept_testbed_audit.md) — the four-facet audit this frames.
-- [perception_pipeline_placement.md](perception_pipeline_placement.md) — the orthogonal *placement* axis (active, 1.1).
-- [embodiment_runtime_wiring.md](embodiment_runtime_wiring.md) / [hybrid_substrate_reflex_runtime.md](hybrid_substrate_reflex_runtime.md) — Track 1 (body wired) / Track 2 (the reflex); the runtime this lands in.
-- [substrate_native_orienting.md](substrate_native_orienting.md) — the azimuth "two learning signals" (signed EC state + folded drive reward) the dual-organ split explains.
+- [perception_pipeline_placement.md](../perception_pipeline_placement.md) — the orthogonal *placement* axis (active, 1.1).
+- [embodiment_runtime_wiring.md](embodiment_runtime_wiring.md) / [hybrid_substrate_reflex_runtime.md](../hybrid_substrate_reflex_runtime.md) — Track 1 (body wired) / Track 2 (the reflex); the runtime this lands in.
+- [substrate_native_orienting.md](../substrate_native_orienting.md) — the azimuth "two learning signals" (signed EC state + folded drive reward) the dual-organ split explains.

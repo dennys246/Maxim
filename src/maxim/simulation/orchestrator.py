@@ -194,7 +194,7 @@ def _setup_sim_sandbox(
 
 
 # ── HANDLE seam (a): persistent-agent campaign injection ────────────────────
-# docs/plans/console_handle_campaign_injection.md. A campaign run may ADOPT a
+# docs/plans/archive/console_handle_campaign_injection.md. A campaign run may ADOPT a
 # live persistent AgentInstance instead of constructing a throwaway "sim_aut".
 # Adoption is extracted into a helper (+ a registry lease) so the six
 # silent-mis-route branches are directly testable without spinning up the
@@ -361,7 +361,7 @@ def start_simulation_mode(
             (bridge needs it for direct attribution).
         persistent_agent: HANDLE seam (a) — a live ``AgentInstance`` to ADOPT
             as the AUT instead of constructing a throwaway ``sim_aut``
-            (docs/plans/console_handle_campaign_injection.md). When set: the
+            (docs/plans/archive/console_handle_campaign_injection.md). When set: the
             campaign learns into the persistent agent's own
             Hippocampus/NAc/MemoryHub (its home, its agent_id), the
             resume-session file-load is skipped (live state was already
@@ -3236,7 +3236,7 @@ def start_simulation_mode(
     # campaign-DECLARED fiction (the DM's ghost merchant) persists as real
     # learning. Episodes-as-real is the design's stated intent; fiction
     # provenance for campaign-declared entities is a tracked follow-up in
-    # docs/plans/console_handle_campaign_injection.md (needs a session-scoped
+    # docs/plans/archive/console_handle_campaign_injection.md (needs a session-scoped
     # tag set — decay_imagined_links decays ALL imagined links per call,
     # which compounds across a persistent agent's repeated campaigns).
     if aut_imagination_trigger is not None:

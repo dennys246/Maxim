@@ -2,7 +2,7 @@
 
 **Status:** DRAFT plan, REVISED after three-lens review (2026-07-17 —
 [reviews/hybrid_runtime_two_lens_review.md](reviews/hybrid_runtime_two_lens_review.md)).
-Track 2 of [embodiment_runtime_wiring.md](embodiment_runtime_wiring.md) — the piece that actually
+Track 2 of [embodiment_runtime_wiring.md](archive/embodiment_runtime_wiring.md) — the piece that actually
 **runs the Exp 45 orient policy on a live robot**, which Track 1 (body wiring) does not.
 
 > **Review correction (load-bearing):** the first draft's thesis — "just one DN `Behavior`, no new
@@ -48,7 +48,7 @@ Corrected against the code (spot-verified):
 
 **Corrected verdict: no new loop mode, but five owned generic-DN additions.** The reflex-under-
 continuous-cognition *architecture* is right and matches the *visual* `OrientingResponse` coexistence;
-this is still the same work as [orient_runtime_integration.md](orient_runtime_integration.md) Landing 2
+this is still the same work as [orient_runtime_integration.md](archive/orient_runtime_integration.md) Landing 2
 (**P1 and Landing 2 merge**). What changed is the honest cost: the additions in the ❌/⚠️ rows are
 this plan's real scope. Each is spelled out in **§Owned generic-DN additions** below.
 
@@ -289,8 +289,8 @@ robot proves the loop.
 
 - Behavior authoring guide (the `Behavior` contract this reflex implements): [../behaviors/README.md](../behaviors/README.md) + [../behaviors/audio_behaviors.md](../behaviors/audio_behaviors.md)
 
-- Track 1 (prereq): [embodiment_runtime_wiring.md](embodiment_runtime_wiring.md)
-- The reflex-as-DN-behavior Landing this merges with: [orient_runtime_integration.md](orient_runtime_integration.md) Landing 2
+- Track 1 (prereq): [embodiment_runtime_wiring.md](archive/embodiment_runtime_wiring.md)
+- The reflex-as-DN-behavior Landing this merges with: [orient_runtime_integration.md](archive/orient_runtime_integration.md) Landing 2
 - The policy + az_bin/sidecar convention: [substrate_native_orienting.md](substrate_native_orienting.md), [porting_orient_loop.md](../embodiment/porting_orient_loop.md)
 - The head-frame invariant that gates live dispatch: [CLAUDE.md](../../CLAUDE.md)
 - The `"audio"` EC modality (deferred alternative): [perception_pipeline_placement.md](perception_pipeline_placement.md)

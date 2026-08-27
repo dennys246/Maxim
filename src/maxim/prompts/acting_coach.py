@@ -35,7 +35,7 @@ class ActingCoachConfig:
         body_state_layers: Whether Layers 2+4 (pain anticipation + drive
             modulation) may render. Both layers also require a non-empty
             ``body_state`` — which no production path supplied before the
-            Exp 44 wiring (see docs/plans/acting_coach_body_state_ablation.md).
+            Exp 44 wiring (see docs/plans/deferred/acting_coach_body_state_ablation.md).
             This flag exists for the arm-B ablation (body_state present,
             coaching off); do NOT overload ``embodiment_guidance`` for that —
             it gates Layers 1-4 plus the exploration directives together.
@@ -59,7 +59,7 @@ def acting_coach_config_from_env() -> ActingCoachConfig:
     ``MAXIM_DISABLE_COACH_BODY_LAYERS`` (parsed by the canonical
     ``cluster_bias_annotation.annotation_disabled_via_env`` — 1/true/t/yes/
     y/on, case-insensitive, whitespace-tolerant) turns Layers 2+4 off for
-    the Exp 44 arm-B ablation (docs/plans/acting_coach_body_state_ablation.md).
+    the Exp 44 arm-B ablation (docs/plans/deferred/acting_coach_body_state_ablation.md).
     Producer sites (cli.py, simulation/orchestrator.py) call this instead of
     ``ActingCoachConfig()`` so the env read lives in ONE place;
     ``compose_acting_coach_section`` itself stays env-free (unit tests pass

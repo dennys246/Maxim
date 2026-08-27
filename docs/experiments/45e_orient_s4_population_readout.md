@@ -3,7 +3,7 @@
 **Status:** COMPLETE (2026-07-27). Live Reachy Mini, substrate-primary (`live_3_learn.py --perturb`, no LLM in the action path). Resolves the single-far-bin **cell-starvation** ceiling that [Exp 45d](45d_magnitude_replication.md) characterized, via the population-vector readout 45d named as the forward path.
 **Scripts:** [`scripts/orient_backbone/live_3_learn.py`](../../scripts/orient_backbone/live_3_learn.py) (`--readout population`).
 **Prior:** [45b](45b_orient_magnitude.md)/[45c](45c_flip_bins.md) (magnitude via the derived bin boundary, n=1 each) · [45d](45d_magnitude_replication.md) (replication + magnitude cross-session; starvation ceiling characterized).
-**Plan:** [orient_magnitude_learning.md](../plans/orient_magnitude_learning.md) (S4).
+**Plan:** [orient_magnitude_learning.md](../plans/deferred/orient_magnitude_learning.md) (S4).
 **Data provenance:** operator hardware session 2026-07-27, NAc at `~/.maxim/orient_live/nac_reachy_argmax_seed3.json` + `--log` JSONL. **Durable-data follow-up:** commit the seed-3 session JSONL to `docs/experiments/data/45e_*.jsonl` to complete the regression-guard citation (held on the operator's box at write time).
 
 ## Why this run exists

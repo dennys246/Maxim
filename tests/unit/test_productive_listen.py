@@ -5,7 +5,7 @@
 reads it back in its output so the agent can act on the direction. Capability-
 driven: any body that DECLARES an `azimuth` root sensor gets the behavior, no
 per-body code. Pins the round-trip for both shipped bodies + the fail-soft gate.
-See docs/plans/productive_orienting_affordance.md.
+See docs/plans/deferred/productive_orienting_affordance.md.
 """
 
 from __future__ import annotations

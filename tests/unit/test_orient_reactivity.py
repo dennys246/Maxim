@@ -7,7 +7,7 @@ Sound reactivity is a data-driven, per-entity gate (not hardcoded thresholds):
 Plus a physical-reach limit (max_orient_azimuth) so a body never "orients" past
 what it can physically turn. A body declares its own profile under `orienting:`
 in YAML → entity.metadata; absent → defaults. See
-docs/plans/productive_orienting_affordance.md + thalamus_hypothalamus_framing.md.
+docs/plans/deferred/productive_orienting_affordance.md + thalamus_hypothalamus_framing.md.
 """
 
 from __future__ import annotations

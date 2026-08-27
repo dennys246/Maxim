@@ -23,7 +23,7 @@ convention, the two-level attention convention, and the artifact contract.
 [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md)
 (**no longer on the near-term path**) ·
 [maxim_hivemind.md](maxim_hivemind.md) ·
-[exteroception_interoception_seam.md](exteroception_interoception_seam.md) ·
+[exteroception_interoception_seam.md](archive/exteroception_interoception_seam.md) ·
 [perception_pipeline_placement.md](perception_pipeline_placement.md).
 
 ---

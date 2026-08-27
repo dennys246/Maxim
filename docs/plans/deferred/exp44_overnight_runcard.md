@@ -1,10 +1,12 @@
 # Exp 44 — LLM-primary body_state ablation: overnight run-card
 
+> **⏸ DEFERRED 2026-08-27 — runbook for the body-state arms A/B/C that never validly ran. **Revive with** `acting_coach_body_state_ablation.md`; re-verify the drive-pain cadence caveat before any overnight burn.**
+
 **Purpose:** a step-by-step operational runbook for running the Exp 44 arms on the
 Mac Mini, with the **go/no-go gates baked in** so an overnight run doesn't burn ~48h
 reproducing the 2026-07-15 blockers. Pre-registration + arm design live in
 [acting_coach_body_state_ablation.md](acting_coach_body_state_ablation.md); the
-vehicle + validity floor in [controlled_llm_primary_embodied_harness.md](controlled_llm_primary_embodied_harness.md).
+vehicle + validity floor in [controlled_llm_primary_embodied_harness.md](../archive/controlled_llm_primary_embodied_harness.md).
 Read those for the *why*; this is the *how*.
 
 ## ⚠️ Read first — is it even worth running tonight?
@@ -15,7 +17,7 @@ answered before committing that:
 
 1. **Track 1 changed the drive-pain cadence** (per-iteration `evaluate_failures`, now
    state-based not onset-based). Prior Exp 44 numbers are stale, and
-   [transition_based_drive_pain.md](deferred/transition_based_drive_pain.md) (revival trigger
+   [transition_based_drive_pain.md](transition_based_drive_pain.md) (revival trigger
    fired) arguably should land first so the drive-pain being measured is onset-based. **If it
    hasn't landed, note that this run measures the state-based cadence** and flag it in the writeup.
 2. **Strategic:** the harness doc explicitly says decide "run the arms vs invest in

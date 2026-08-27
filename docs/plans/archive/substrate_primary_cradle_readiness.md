@@ -1,6 +1,6 @@
 # Substrate-Primary Cradle Readiness — consolidated findings + path to a valid Exp 41
 
-> **ARCHIVED (2026-07-15 plans audit):** ✅ CONCLUDED — B1–B5 all resolved (B4 scene-affordance `self_effect` threading + B5 `embodiment_failed` valence flip landed 2026-06-18); Exp 41 executed → VOID, Exp 42 GRADUATED (PR #380). Open question A1 (unify LLM-AUT onto `self_effect`) handed off to the Exp 44 G1 work ([controlled_llm_primary_embodied_harness.md](../controlled_llm_primary_embodied_harness.md)).
+> **ARCHIVED (2026-07-15 plans audit):** ✅ CONCLUDED — B1–B5 all resolved (B4 scene-affordance `self_effect` threading + B5 `embodiment_failed` valence flip landed 2026-06-18); Exp 41 executed → VOID, Exp 42 GRADUATED (PR #380). Open question A1 (unify LLM-AUT onto `self_effect`) handed off to the Exp 44 G1 work ([controlled_llm_primary_embodied_harness.md](controlled_llm_primary_embodied_harness.md)).
 
 
 **Target version:** 1.1

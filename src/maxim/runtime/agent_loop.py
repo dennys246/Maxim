@@ -1034,7 +1034,7 @@ def _read_exteroceptive_states(executor: Any) -> dict[str, float]:
     enter ``current_drives`` — nor the interoception encode (the pre-seam
     ``{**drives, **extero}`` merge diluted direction among the drives and
     collapsed left/right onto one cluster; see
-    docs/plans/exteroception_interoception_seam.md). Load-bearing for
+    docs/plans/archive/exteroception_interoception_seam.md). Load-bearing for
     ``bodies/infant_operant`` (cradle_mother operant experiment), whose azimuth
     sensor has ``drive: null``. A body whose azimuth ALSO carries a drive gets
     the value in BOTH encodes. The plan's intent is two representations of two
@@ -1050,7 +1050,7 @@ def _read_exteroceptive_states(executor: Any) -> dict[str, float]:
     the nursery-taught audio bias out under it, with nothing crediting, so the
     stacking interaction is out of that measurement's scope; folding drive-
     bearing signed sensors to discomfort magnitude in the intero read stays a
-    named deferred item in docs/plans/exteroception_interoception_seam.md
+    named deferred item in docs/plans/archive/exteroception_interoception_seam.md
     (its trigger has fired for the user path; it bites only with credit ON).
     """
     embodiment = getattr(executor, "embodiment", None)
@@ -1123,7 +1123,7 @@ def _read_exteroceptive_ranges(executor: Any) -> "dict[str, tuple[float, float]]
 #
 # Declarative registry: one entry per sensory stream, one
 # ``encode_sensors(modality=tag)`` call per non-empty channel — NEVER merged
-# into a single encode (docs/plans/exteroception_interoception_seam.md: the
+# into a single encode (docs/plans/archive/exteroception_interoception_seam.md: the
 # pre-seam ``{**drives, **extero}`` merge diluted exteroceptive direction
 # among the interoceptive drives in one text-embed cluster, collapsing
 # left/right onto the same EC node → the embodied orient sim at chance).
@@ -1315,7 +1315,7 @@ def propose_via_substrate(
     # merge encoded exteroceptive direction as one term in a text-embed sum
     # dominated by the drives, so left/right collapsed onto one EC cluster
     # and the agent was blind to direction (the dilution root cause,
-    # docs/plans/exteroception_interoception_seam.md). Fail-soft per channel:
+    # docs/plans/archive/exteroception_interoception_seam.md). Fail-soft per channel:
     # an encoding error must not block the action proposal or the other
     # channels. The resulting ``{modality: cluster_id}`` set flows into
     # recommend_action (additive cluster_reward_bias sum) and onto the

@@ -169,4 +169,4 @@ where practical).
 
 - [display_print_corruption.md](display_print_corruption.md) — the Rich-Live/stdout class of display bug.
 - [sim_embodiment_followups.md](sim_embodiment_followups.md) — **Issue 1 there is the `respond` loop**, observed 2026-04-19 and attributed to prompt framing (the orchestrator addressing the AUT as if it were a human). That is a **third** hypothesis for the "why does the agent fixate on `respond`" question, alongside credit-on-execution saturation (Issue 2 above) and the LLM's own prior. Worth reading before investigating: the phenomenon has been seen from three angles and is not yet attributed.
-- [reachy_app_maxim_seams.md](../plans/reachy_app_maxim_seams.md) — the seam specs these findings came out of.
+- [reachy_app_maxim_seams.md](../plans/deferred/reachy_app_maxim_seams.md) — the seam specs these findings came out of.

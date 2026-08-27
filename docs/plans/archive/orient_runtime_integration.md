@@ -1,8 +1,10 @@
 # Orienting in the runtime — sound as a percept, and a learned reflex, on every live Reachy
 
-**Status:** DRAFT plan (2026-07-16). Turns [Layer 1](substrate_native_orienting.md) —
-complete on hardware ([Exp 45](../experiments/45_reachy_orient_live.md) direction /
-[45c](../experiments/45c_flip_bins.md) magnitude 1.00) — from a bring-up script into
+> **⛔ SUPERSEDED — Landing 1 shipped as `../live_audio_orient_wiring.md` Stages 0b–4b (PRs #402/#411); Landings 2–3 are `../hybrid_substrate_reflex_runtime.md` (the 1.3 reflex tier). The header's "Target: 1.1" was false.**
+
+**Status:** DRAFT plan (2026-07-16). Turns [Layer 1](../substrate_native_orienting.md) —
+complete on hardware ([Exp 45](../../experiments/45_reachy_orient_live.md) direction /
+[45c](../../experiments/45c_flip_bins.md) magnitude 1.00) — from a bring-up script into
 runtime behavior every embodied Reachy gets. Target: **1.1**, alongside the
 `--embodiment` hardware work.
 
@@ -52,7 +54,7 @@ What it buys with zero arbitration risk:
 - The prompt can say *"a voice, to your left."*
 - **It is the Layer-2 prerequisite**: spatial co-activation of sound + sight + word at a
   shared pose needs the percept, not the reflex. The Roy-4-style co-activation
-  measurement ([`MAXIM_EC_TRACE_ACTIVATIONS=1`](substrate_native_orienting.md) Phase 3b)
+  measurement ([`MAXIM_EC_TRACE_ACTIVATIONS=1`](../substrate_native_orienting.md) Phase 3b)
   becomes runnable the day this lands.
 
 **New surface:** a non-blocking reader (the REST DoA path for off-robot; local
@@ -63,7 +65,7 @@ seam. Both already have shapes (`AzimuthDoASource`, `make_reachy_doa_reader`).
 
 ---
 
-> **Merged (2026-07-17):** Landing 2 (the reflex) is the same work as the hybrid substrate-primary reconciliation — designed in [hybrid_substrate_reflex_runtime.md](hybrid_substrate_reflex_runtime.md), which supersedes this section's sketch.
+> **Merged (2026-07-17):** Landing 2 (the reflex) is the same work as the hybrid substrate-primary reconciliation — designed in [hybrid_substrate_reflex_runtime.md](../hybrid_substrate_reflex_runtime.md), which supersedes this section's sketch.
 
 ## Landing 2 — the reflex (one real problem: the credit clock)
 
@@ -211,10 +213,10 @@ not the reflex ever ships. Landing 3 without its gate is worse than not shipping
 
 ## Pointers
 
-- Layer 1 result: [substrate_native_orienting.md](substrate_native_orienting.md) ·
-  [Exp 45](../experiments/45_reachy_orient_live.md) / [45c](../experiments/45c_flip_bins.md)
+- Layer 1 result: [substrate_native_orienting.md](../substrate_native_orienting.md) ·
+  [Exp 45](../../experiments/45_reachy_orient_live.md) / [45c](../../experiments/45c_flip_bins.md)
 - Porting contract + the derived-constants law:
-  [porting_orient_loop.md](../embodiment/porting_orient_loop.md)
-- Sensor truth: [audio_localization.md](../embodiment/reachy_mini/audio_localization.md)
-- The head-frame invariant: [CLAUDE.md](../../CLAUDE.md)
-- Gain calibration (S2) + bins line: [orient_magnitude_learning.md](orient_magnitude_learning.md)
+  [porting_orient_loop.md](../../embodiment/porting_orient_loop.md)
+- Sensor truth: [audio_localization.md](../../embodiment/reachy_mini/audio_localization.md)
+- The head-frame invariant: [CLAUDE.md](../../../CLAUDE.md)
+- Gain calibration (S2) + bins line: [orient_magnitude_learning.md](../deferred/orient_magnitude_learning.md)

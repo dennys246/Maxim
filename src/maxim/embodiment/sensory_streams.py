@@ -7,7 +7,7 @@ EntorhinalCortex` scans within-modality only, ``encode_sensors`` takes a
 CALLER honoring the seam: ``propose_via_substrate`` merged exteroceptive
 sensors (azimuth) into the interoception encode, so direction was one term in
 a text-embed sum dominated by the drives and left/right collapsed onto one EC
-cluster (docs/plans/exteroception_interoception_seam.md — the root cause of
+cluster (docs/plans/archive/exteroception_interoception_seam.md — the root cause of
 the embodied cradle orient sim measuring at chance).
 
 :class:`ModalityChannel` is the declarative unit of that seam: one channel =

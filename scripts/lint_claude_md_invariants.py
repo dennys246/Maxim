@@ -2,7 +2,7 @@
 """Lint the canonical agent-guidance corpus and its provider-neutral adapter.
 
 Four checks (the first is the original Principle 5 lint; the next two were added by
-docs/plans/claude_md_diet.md, 2026-08-13; the fourth closes the AGENTS.md drift seam):
+docs/plans/archive/claude_md_diet.md, 2026-08-13; the fourth closes the AGENTS.md drift seam):
 
 1. **Guard citations.** For each `[engineering]` invariant, the body must contain a
    `Regression guard:` reference; for each `[behavioral]` invariant, a `Roy experiment:`
@@ -232,7 +232,7 @@ def lint(claude_md_path: Path) -> int:
         failed = True
         print(
             f"FAIL: CLAUDE.md is ~{est_tokens} estimated tokens (> ceiling {TOKEN_CEILING}). "
-            "Per docs/plans/claude_md_diet.md the core must not regrow: move the new entry's "
+            "Per docs/plans/archive/claude_md_diet.md the core must not regrow: move the new entry's "
             "full prose to docs/lessons/<slug>.md and its stub to the owning docs/agents/ brief.",
             file=sys.stderr,
         )

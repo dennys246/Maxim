@@ -1,5 +1,7 @@
 # CLAUDE.md Diet — Live Invariants In, Archaeology Out
 
+> **✅ SHIPPED 2026-08-14 (PR #509) — CLAUDE.md 63.6K → ~9K tokens; `docs/agents/` briefs + `docs/lessons/` + `scripts/lint_claude_md_invariants.py` on main.**
+
 **Status:** DRAFT (2026-08-10)
 **Motivation:** External critique (2026-08-10), point 6, verified: CLAUDE.md is ~29.4K words
 / ~62K tokens — roughly a third of a 200K context consumed before any work starts, in long
@@ -25,7 +27,7 @@ Each Lessons-learned / Architectural-invariants entry compresses to at most ~4 l
 ```
 **[engineering] <rule statement — the imperative, kept verbatim where possible>.**
 <trigger: when this applies / the one-line failure signature>. Full history:
-[docs/lessons/<slug>.md](docs/lessons/<slug>.md). Regression guard: <unchanged>.
+[docs/lessons/<slug>.md](../docs/lessons/<slug>.md). Regression guard: <unchanged>.
 ```
 
 What stays in the compressed form, always: the tag, the rule as an imperative, the
@@ -138,7 +140,7 @@ chore/claude-md-diet`), `PYTHONPATH=<worktree>/src` absolute on its own line.
 ## Design fold — Phase 0 synthesis (2026-08-13)
 
 Five parallel lens reviews ran over the full document before any edit; reports live at
-[docs/plans/reviews/claude_md_diet_phase0/](reviews/claude_md_diet_phase0/) (1_enforcement,
+[docs/plans/reviews/claude_md_diet_phase0/](../reviews/claude_md_diet_phase0) (1_enforcement,
 2_condensation, 3_retrieval, 4_truth, 5_information_architecture). Headline findings:
 
 - **Inventory is 100 entries** (36 Lessons-learned + 64 Architectural-invariant bullets),

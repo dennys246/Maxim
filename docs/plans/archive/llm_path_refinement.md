@@ -303,5 +303,5 @@ Both were one-line bugs caused by responsibility scattered across many files wit
 - **Troubleshooting (created by sub-plans):** `http_debugging.md` (Plan 1), `peer_backend_debug.md` (Plan 3), `mesh_debug.md` (Plan 4)
 - **Related plans:**
   - [substrate_recognition.md](substrate_recognition.md) — P2 validation runs alongside Plan 3's stress test (Phase A)
-  - [tool_refinement_plan.md](../tool_refinement_plan.md) — tools migrate in Plan 1 R1 step 4
+  - [tool_refinement_plan.md](../deferred/tool_refinement_plan.md) — tools migrate in Plan 1 R1 step 4
 - **Related incident commits:** `d875fb9` + `8b52cbd` on main

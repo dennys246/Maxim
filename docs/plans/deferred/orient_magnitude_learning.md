@@ -1,16 +1,18 @@
 # Orient magnitude learning — and the parietal/cerebellar division of labor
 
+> **⏸ DEFERRED 2026-08-27 — S0/S1 shipped 2026-07-16 and **S4 completed via Exp 45e (2026-07-27, magnitude 1.00, readout-independent)**; only S3 (AG abstraction of the learned table) is open and nothing owns it. **Revive when** a held-out-bin generalization claim is pre-registered or a cross-state deriver exists.**
+
 **Status:** **S0 DONE; S1 SHIPPED but NOT sufficient (replication correction below).**
 S0 (magnitude action set) + S1 (`--flip-bins`) both passed on hardware 2026-07-16, and 45c
-scored magnitude 1.00 — but that was **n=1**. The [Exp 45d](../experiments/45d_magnitude_replication.md)
+scored magnitude 1.00 — but that was **n=1**. The [Exp 45d](../../experiments/45d_magnitude_replication.md)
 replication (2026-07-23, 3 clean seeds) lands magnitude at **0.75–1.00, mode 0.75**: direction
 unanimous 1.00, but the 1.00-magnitude draw does not reliably recur. **S1 is necessary but not
 sufficient** — the residual is a **single-far-bin big-turn-cell starvation** (per seed, exactly
 one far bin never gets a positive exploration sample of its big turn), which is a coverage limit
 of per-cell tabular argmax. That residual is now S3's concrete motivation and the new S4's target
 (below). S2 motivation weakened by measurement. Original draft 2026-07-16; replication +
-S3/S4 update 2026-07-23. Follow-on to [substrate_native_orienting.md](substrate_native_orienting.md)
-Layer 1 / [Exp 45](../experiments/45_reachy_orient_live.md) (all arms EARNED). Scope: the
+S3/S4 update 2026-07-23. Follow-on to [substrate_native_orienting.md](../substrate_native_orienting.md)
+Layer 1 / [Exp 45](../../experiments/45_reachy_orient_live.md) (all arms EARNED). Scope: the
 **magnitude** half of the orient policy, and — as its natural test case — whether the
 bio-regions that *should* own continuous magnitude (IPS, Angular Gyrus, Cerebellum) are
 wired to carry this kind of learning.
@@ -37,10 +39,10 @@ only to *offer* it.
 
 | Region | Exists? | Wired to what | Shape |
 |---|---|---|---|
-| **IPS** ([math/ips.py](../../src/maxim/math/ips.py)) | ✅ | `memory_hub` (constructs `IPS()`), `maxim_agent`, `statistician_agent`, `math_tool`, `concept_grounder` | **Stateless** Approximate Number System — Weber-Fechner log compression; `compare` / `categorize` / `detect_trend`. Cannot store; it is magnitude *intuition*, not magnitude *memory*. |
-| **Angular Gyrus** ([math/angular_gyrus.py](../../src/maxim/math/angular_gyrus.py)) | ✅ | `build_bio_stack` (persisted `angular_gyrus.json`), `memory_hub`, `maxim_agent`, `create.py` | MemoryLayer **+** compute engine: math facts, methods, **patterns**; dual verbal/code. The one region here that could *hold* a relationship. |
-| **IPS → AG escalation** ([agents/statistician_agent.py](../../src/maxim/agents/statistician_agent.py)) | ✅ | — | Already implemented: "dual number system (IPS fast/approximate + AG slow/precise)"; escalates to AG when IPS confidence is 0.3–0.65. **The abstraction pathway the magnitude idea wants already exists.** |
-| **Cerebellum** ([embodiment/cerebellum.py](../../src/maxim/embodiment/cerebellum.py)) | ✅ | `build_bio_stack` | Learned **forward** models (command → predicted sensory consequence) via Rescorla-Wagner prediction error, keyed `(entity, modulator, affordance, param_bucket)`. |
+| **IPS** ([math/ips.py](../../../src/maxim/math/ips.py)) | ✅ | `memory_hub` (constructs `IPS()`), `maxim_agent`, `statistician_agent`, `math_tool`, `concept_grounder` | **Stateless** Approximate Number System — Weber-Fechner log compression; `compare` / `categorize` / `detect_trend`. Cannot store; it is magnitude *intuition*, not magnitude *memory*. |
+| **Angular Gyrus** ([math/angular_gyrus.py](../../../src/maxim/math/angular_gyrus.py)) | ✅ | `build_bio_stack` (persisted `angular_gyrus.json`), `memory_hub`, `maxim_agent`, `create.py` | MemoryLayer **+** compute engine: math facts, methods, **patterns**; dual verbal/code. The one region here that could *hold* a relationship. |
+| **IPS → AG escalation** ([agents/statistician_agent.py](../../../src/maxim/agents/statistician_agent.py)) | ✅ | — | Already implemented: "dual number system (IPS fast/approximate + AG slow/precise)"; escalates to AG when IPS confidence is 0.3–0.65. **The abstraction pathway the magnitude idea wants already exists.** |
+| **Cerebellum** ([embodiment/cerebellum.py](../../../src/maxim/embodiment/cerebellum.py)) | ✅ | `build_bio_stack` | Learned **forward** models (command → predicted sensory consequence) via Rescorla-Wagner prediction error, keyed `(entity, modulator, affordance, param_bucket)`. |
 
 **Gap 1 (load-bearing): the orient loop is wired to NONE of them.** The Exp 45 scripts
 construct a bare `NAc(NACConfig())` — no `build_bio_stack`, no MemoryHub, no
@@ -67,14 +69,14 @@ is why it ranks last.
 **Result: direction 1.00, magnitude 0.75** (the pre-registered bar, and the exact
 predicted value), stable across 8 consecutive probes. `near_left` learned `turn_left`
 (+0.185) over `turn_left_big` (+0.072) — the substrate declining to overshoot, from
-relief alone. Full record: **[Exp 45b](../experiments/45b_orient_magnitude.md)**.
+relief alone. Full record: **[Exp 45b](../../experiments/45b_orient_magnitude.md)**.
 **Prerequisite discovered en route:** the `head=None` counter-rotation bug (the mics
 never turned); mag1 was incoherent, mag2 passed immediately after the fix.
 
 `bodies/reachy_mini.yaml` `orient` now declares 2×2: `turn_left`/`turn_right` (±0.3 rad,
 names+values unchanged → **queen-mind v0.1 still loads**) plus `turn_left_big`/
 `turn_right_big` (±0.9). Scripts read YAML magnitudes directly (`--step` → `--step-scale`).
-Full design + metrics + diagnostics: **[Exp 45b](../experiments/45b_orient_magnitude.md)**.
+Full design + metrics + diagnostics: **[Exp 45b](../../experiments/45b_orient_magnitude.md)**.
 - **Front-gate:** rides existing infra (YAML + NAc + `potential_diff`). No new mechanism.
 - **CORRECTION to this plan's first sketch (±0.12/±0.4 would have FAILED):**
   `potential_diff` has no cost for large moves, so big wins everywhere *unless it
@@ -90,7 +92,7 @@ Full design + metrics + diagnostics: **[Exp 45b](../experiments/45b_orient_magni
 - **Note:** trips Exp 45's "orient-affordance YAML change" re-run rule → fresh NAc,
   queen-mind **v0.2**.
 
-### S1 — bin boundaries at the DECISION BOUNDARY (was: "Weber-scaled bins"). **SHIPPED, necessary-not-sufficient ([Exp 45c](../experiments/45c_flip_bins.md) n=1 got 1.00; [Exp 45d](../experiments/45d_magnitude_replication.md) replication says 0.75–1.00, mode 0.75).**
+### S1 — bin boundaries at the DECISION BOUNDARY (was: "Weber-scaled bins"). **SHIPPED, necessary-not-sufficient ([Exp 45c](../../experiments/45c_flip_bins.md) n=1 got 1.00; [Exp 45d](../../experiments/45d_magnitude_replication.md) replication says 0.75–1.00, mode 0.75).**
 
 **Original result (45c, n=1): magnitude 0.75 → 1.00**, direction 1.00, stable across 13
 consecutive probes; greedy turned-toward 0.286 → 1.000 (below chance → perfect). Every bin
@@ -132,7 +134,7 @@ bin, opposite lessons, both right).
   is monotonic to |az| ≈ 0.87, so the endfire cap was chasing an artifact). Each bin then
   holds ONE correct magnitude.
 - **Sim result (6 seeds, stationary source):** legacy **0.375** vs derived **0.92**
-  (4/6 perfect). Pre-registered on hardware as [Exp 45c](../experiments/45c_flip_bins.md).
+  (4/6 perfect). Pre-registered on hardware as [Exp 45c](../../experiments/45c_flip_bins.md).
 - **Front-gate:** this is a boundary constant, not a mechanism — ~2 lines. **IPS
   routing is NOT needed** and would be bio-naming theater on arithmetic; the honest
   version of the Weber intuition is "put the boundary where the physics changes," and
@@ -152,7 +154,7 @@ reproducible* (0.562 / 0.574 / 0.549 / 0.58 across independent measurements). Th
 "sensor is unstable, therefore adaptive calibration" argument is **retracted**.
 
 **Update (2026-07-16): this weaker argument just became LOAD-BEARING.** The runtime
-plan ([orient_runtime_integration.md](orient_runtime_integration.md)) gates
+plan ([orient_runtime_integration.md](../archive/orient_runtime_integration.md)) gates
 "learning ON in production" on exactly it: the decision boundary derives from the gain,
 so a robot learning in a stranger's room with an inherited gain learns the *wrong
 magnitudes*, confidently. S2 is no longer a nice-to-have research step — it is the gate
@@ -257,7 +259,7 @@ needing its own big-cell sample.
    Same held-out-bin target as S4, heavier mechanism (needs a cross-state deriver, Gap 2). Run it
    *against* S4's result, not before: whichever earns the starvation fix, the other is its baseline.
 5. **S2** independently on the **portability/ship-gate** track (not the starvation track) — the
-   inverse-model gain calibration that [orient_runtime_integration.md](orient_runtime_integration.md)
+   inverse-model gain calibration that [orient_runtime_integration.md](../archive/orient_runtime_integration.md)
    gates "learning ON in production" on; natural pairing with the eared-shell experiment, which
    changes the gain for real. Needs no bio-stack.
 

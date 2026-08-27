@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 # ids are UUID-unique per modality, so the ``_cluster_reward_bias`` key
 # ``(agent_id, cluster_id, tool_signature)`` is unchanged — the modality
 # tag exists for ROUTING and observability, not for keying.
-# See docs/plans/exteroception_interoception_seam.md.
+# See docs/plans/archive/exteroception_interoception_seam.md.
 ModalityClusters = dict[str, str]
 
 # The interoceptive modality tag (mirrors

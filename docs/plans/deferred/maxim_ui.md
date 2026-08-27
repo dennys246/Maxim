@@ -1,5 +1,7 @@
 # Maxim UI — unified roadmap (cross-repo tracking)
 
+> **⏸ DEFERRED 2026-08-27 — cross-repo tracker; only Phase 0 rows are ✅ (#415 FIT harness, #416 serve, the Maxim-pulse scaffold); FIT on the Pi still pending hardware; no roadmap slot. **Revive with** `maxim_console.md` when the UI line is re-scheduled; the FIT Phase-0 gate runs first.**
+
 **Status:** Roadmap index, drafted 2026-07-23. The single doc that sequences the whole UI effort across **two repos** and links the five detailed plans. This is the tracker; the linked plans are the specs.
 **Scope:** Everything from the shared backend seams → the shared React kit → the two shells (Reachy app + Maxim Console) → the flagship Adventure → the full dashboard. Presentation-only above `api.py`; logic stays in pymaxim.
 **Gates:** **FIT** (does the substrate fit the Pi) gates every on-device/mesh claim — Phase 0, do it first.
@@ -11,7 +13,7 @@
 | **pymaxim** (this repo) | The seams ([reachy_app_maxim_seams.md](reachy_app_maxim_seams.md)) + `maxim serve` backend + FIT measurement | Layer 1 |
 | **maxim-pulse** (new monorepo) | The shared React kit + two build targets (Console shell + Reachy shell) | Layers 2 + 3 |
 
-Decisions locked (see [maxim_console.md](maxim_console.md) for rationale): **monorepo, two build targets** · **React + TypeScript / Vite over FastAPI `maxim serve`** · **localhost-only** (hosted = explicit non-goal) · **Adventure is the flagship** · **one persistent agent across modes** · **push-to-talk** voice. *(The seed [AGENTS.md/CLAUDE.md](maxim_pulse_seed/) are reframed to the `maxim-pulse` monorepo — shared React kit + Console + Reachy shells — ready to copy in on repo creation.)*
+Decisions locked (see [maxim_console.md](maxim_console.md) for rationale): **monorepo, two build targets** · **React + TypeScript / Vite over FastAPI `maxim serve`** · **localhost-only** (hosted = explicit non-goal) · **Adventure is the flagship** · **one persistent agent across modes** · **push-to-talk** voice. *(The seed [AGENTS.md/CLAUDE.md](../maxim_pulse_seed) are reframed to the `maxim-pulse` monorepo — shared React kit + Console + Reachy shells — ready to copy in on repo creation.)*
 
 ---
 
@@ -117,6 +119,6 @@ Phase 0 ──► Phase 1 ──► Phase 2 (Reachy MVP) ──┬──► Phas
 |---|---|---|
 | [reachy_app_maxim_seams.md](reachy_app_maxim_seams.md) | 1 | The pymaxim seams (FIT, SETUP, PROBE, RECALL, HANDLE, PKG, VOICE, CONTENT) |
 | [maxim_console.md](maxim_console.md) | 2 + 3 | The shared kit + the Console shell + `maxim serve` |
-| [reachy_mini_app.md](reachy_mini_app.md) | 3 | The Reachy shell (MVP: setup + Talk + memory) |
+| [reachy_mini_app.md](../archive/reachy_mini_app.md) | 3 | The Reachy shell (MVP: setup + Talk + memory) |
 | [reachy_dm_app.md](reachy_dm_app.md) | 3 | Adventure (the DM flagship) |
-| seed [AGENTS.md / CLAUDE.md](maxim_pulse_seed/) | — | The `maxim-pulse` monorepo's dev standards + architecture (three layers, React/TS, cardinal thin-over-pymaxim rule) |
+| seed [AGENTS.md / CLAUDE.md](../maxim_pulse_seed) | — | The `maxim-pulse` monorepo's dev standards + architecture (three layers, React/TS, cardinal thin-over-pymaxim rule) |

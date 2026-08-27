@@ -1,6 +1,6 @@
 # SEM Motor Binding — real body-turns through the Reachy component composition
 
-**Status:** DESIGNED (three-lens parallel pre-implementation review, 2026-08-04). Awaiting owner green-light for Phase 1.
+**Status:** Phases 1–2 SHIPPED (#460/#461); Phase 3 Arm 1 ran as Exp 49 (#463); `ReachyOrientMotorBackend` is the motor path Exp 53b/54 read out through. Open: Arm 2 + the Stage-5 pending map (a 1.3 reflex-tier prerequisite). Originally DESIGNED (three-lens parallel pre-implementation review, 2026-08-04). Awaiting owner green-light for Phase 1.
 **Owner ask:** a real body-turn capability, "unique to the Reachy SEM component composition," after the live LLM hallucinated a `turn_body` tool when `focus_on_sound`'s honesty note recommended a body turn no toolset offered. Plus sim validation that the runtime *uses* the capability appropriately.
 
 ## Decision record (what the three lenses agreed on)

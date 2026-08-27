@@ -29,7 +29,7 @@ Each prefix scopes to a **home plan**; the number is a sub-item. Where a prefix 
 | `CC` | **C**ontract **C**larification | 1.0 freeze ([v1_refinement.md](archive/v1_refinement.md)) — frozen-dataclass + API contracts | CC1 `_format_version`, CC3 frozen-dataclass audit, CC8 `PerceptSource`, CC9 dual-schema, CC10 CWD paths, CC11 `Tool.cancel` |
 | `C` | **C**leanup | 1.0 cleanup wave; also config_unification (C1–C4) | C1 format-version freeze, C2 config-writer, C3 role detection, C6 hard-error flip |
 | `B` | **B**io-system stabilization | v1_refinement / release_0_9_1 / Exp 42 | B2 SCN oscillator, B3 Acting Coach, B5 Hivemind shareability, B8 delta-attribution |
-| `G` | **G**ate | Exp 44 harness ([controlled_llm_primary_embodied_harness.md](controlled_llm_primary_embodied_harness.md)) | G1 deterministic scene embodiment, G2 drive-gating, G3 terse narrator |
+| `G` | **G**ate | Exp 44 harness ([controlled_llm_primary_embodied_harness.md](archive/controlled_llm_primary_embodied_harness.md)) | G1 deterministic scene embodiment, G2 drive-gating, G3 terse narrator |
 | `E` | **E**mbodiment | 0.6 sim wiring + Foundry | E0 sim wiring, E1 Asset Foundry, E2–E3 real-LLM + auto-curation |
 | `I` | **I**magination | 0.7 | I1 trigger, I2 real-time design, I3 scene-scoped tools |
 | `Wave` | biosystem-unification wave | biosystem_unification plans | Wave 1 buses, Wave 2 hubs, Wave 3 `build_bio_stack` |

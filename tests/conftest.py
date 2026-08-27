@@ -505,7 +505,7 @@ def _isolate_maxim_imagination_env():
 def _isolate_maxim_body_state_prompt_env():
     """Scrub ``MAXIM_ENABLE_BODY_STATE_PROMPT`` across every test.
 
-    Exp 44 opt-in (docs/plans/acting_coach_body_state_ablation.md): when
+    Exp 44 opt-in (docs/plans/deferred/acting_coach_body_state_ablation.md): when
     set, AgentFactory wires the executor's Embodiment into
     MemoryHub.embodiment, activating the body_state prompt section. Per
     CLAUDE.md "opt-in env vars in hot startup paths need autouse scrubs",

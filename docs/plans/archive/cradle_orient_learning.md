@@ -246,7 +246,7 @@ JEPA. So: build the mother + infant + fade + reward-wiring → run Acts 1–3 (v
 ## Related
 
 - [substrate_primary_orient_learning.md](substrate_primary_orient_learning.md) — the substrate mechanics (P1–P3); Arm B (drive-only) is defined here as the built-in-reward control.
-- [productive_orienting_affordance.md](productive_orienting_affordance.md) — the orient action + tiers + the `always_active` fix (shipped) this builds on; the 2-D elevation extension path.
+- [productive_orienting_affordance.md](../deferred/productive_orienting_affordance.md) — the orient action + tiers + the `always_active` fix (shipped) this builds on; the 2-D elevation extension path.
 - [deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md) — the full caregiver-NPC mechanism (the reactive script is the v1 stand-in).
 - [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) — the cross-modal projection Act 4 sets up + feeds.
 - [grounded_language_acquisition.md](grounded_language_acquisition.md) — motherese → grounded symbols.

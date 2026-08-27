@@ -185,7 +185,7 @@ def _corruption_error(agent_id: str, corrupt: list[dict[str, str]]) -> Exception
 
 def _maybe_wire_body_state(instance: "AgentInstance") -> None:
     """Exp 44 opt-in body_state wiring (arms B/C of the pre-registered
-    ablation, docs/plans/acting_coach_body_state_ablation.md).
+    ablation, docs/plans/deferred/acting_coach_body_state_ablation.md).
 
     Default OFF preserves the auto-sense status quo (arm A / all current
     behavior). When ``MAXIM_ENABLE_BODY_STATE_PROMPT`` is truthy AND the

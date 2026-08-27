@@ -4,7 +4,7 @@
 
 
 **Status:** Living document. Not a gated phase. Not on the critical path to 1.0.
-**Kin:** [tool_refinement_plan.md](../tool_refinement_plan.md) (same pattern — an ongoing practice, not a one-shot plan).
+**Kin:** [tool_refinement_plan.md](tool_refinement_plan.md) (same pattern — an ongoing practice, not a one-shot plan).
 **Related:** [substrate_recognition.md](../archive/substrate_recognition.md), [substrate_binding_persistence.md](../archive/substrate_binding_persistence.md) (this doc consumes substrate mechanisms; it does not define them). Master reference: [archive/substrate_plan.md](../archive/substrate_plan.md).
 
 ## What this document is for

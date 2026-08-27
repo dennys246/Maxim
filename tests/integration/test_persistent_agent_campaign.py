@@ -1,6 +1,6 @@
 """Regression guards for HANDLE seam (a) — persistent-agent campaign injection.
 
-docs/plans/console_handle_campaign_injection.md. The failure mode this seam
+docs/plans/archive/console_handle_campaign_injection.md. The failure mode this seam
 kills is SILENT mis-routing of learning (an Adventure run learning into a
 throwaway "sim_aut" the Talk agent never reads), so the guards pin, against a
 REAL bio-stack (no LLM, no full sim — house style per
@@ -175,7 +175,7 @@ class TestImaginedFictionProvenance:
     imagination trigger requires entity_ref, which injection forbids) —
     campaign-DECLARED fiction persists as real learning by design intent;
     provenance for campaign-declared entities is a tracked follow-up in
-    docs/plans/console_handle_campaign_injection.md. This test guards the
+    docs/plans/archive/console_handle_campaign_injection.md. This test guards the
     mechanism that follow-up will wire, not the current wiring.
     """
 

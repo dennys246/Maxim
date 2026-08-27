@@ -1,6 +1,6 @@
 # Measurement-Path Fail-Loud Purge
 
-**Status:** DRAFT (2026-08-10)
+**Status:** Stages 1 + 4 SHIPPED (#487; the CI lock `scripts/lint_no_silent_swallows.py` 2026-08-13); Stages 2–3 = roadmap 1.1.x item 6. (DRAFT 2026-08-10)
 **Motivation:** External deep-dive critique (2026-08-10), point 2 — cross-confirmed by our own
 history: the SCN drive path was dead for months behind exactly one bare-except-swallowed
 `TypeError` (see `scn_event_producer_gap.md`). The research claim rests on detecting ~1 SD

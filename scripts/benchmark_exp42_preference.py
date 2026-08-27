@@ -542,7 +542,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=["substrate-primary", "llm-primary"],
         help="AUT action-selection mode passed to the sub-sim. substrate-primary "
         "(default) preserves Exp 42 byte-for-byte. llm-primary is the Exp 44 "
-        "body_state ablation mode (docs/plans/acting_coach_body_state_ablation.md) — "
+        "body_state ablation mode (docs/plans/deferred/acting_coach_body_state_ablation.md) — "
         "export MAXIM_ENABLE_BODY_STATE_PROMPT / MAXIM_DISABLE_COACH_BODY_LAYERS "
         "per arm in the launching shell; both are recorded per-run for provenance. "
         "Raise --timeout-s: LLM-primary turns are order-of-magnitude slower.",

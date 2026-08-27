@@ -109,7 +109,7 @@ Two-layer permission system shipped in [agents/permissions.py](../../src/maxim/a
 
 - **No refactor of [sim_logger.py](../../src/maxim/simulation/sim_logger.py) beyond the display-tier changes.** It's load-bearing for sims; don't touch what works.
 - **No POG integration for permissions.** POG is deferred. Ship the permissions layer standalone.
-- **No new tools.** This wave is cleanup, not feature work. Tool additions go through [tool_refinement_plan.md](../tool_refinement_plan.md).
+- **No new tools.** This wave is cleanup, not feature work. Tool additions go through [tool_refinement_plan.md](../deferred/tool_refinement_plan.md).
 
 ## Risks
 

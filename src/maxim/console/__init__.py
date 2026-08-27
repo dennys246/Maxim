@@ -3,7 +3,7 @@
 This package is import-light on purpose: importing ``maxim.console`` must NOT pull
 FastAPI/pydantic (they live in the ``console`` extra, not core). The dep check runs
 first in :func:`run_serve_subcommand`; only then is :mod:`maxim.console.server`
-imported. See docs/plans/maxim_console.md § Backend.
+imported. See docs/plans/deferred/maxim_console.md § Backend.
 """
 
 from __future__ import annotations

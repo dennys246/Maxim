@@ -1,7 +1,9 @@
 # CLAUDE.md — maxim-pulse
 
+> **✅ SEED CONSUMED 2026-08-01 — canonical copies live in the `Maxim-pulse` repo and have since diverged from this fork. Do not edit.**
+
 Operational guide for Claude Code in this repo. **Architecture, execution flow, and
-development standards live in [AGENTS.md](AGENTS.md) — read it first.** This file is the
+development standards live in [AGENTS.md](../../maxim_pulse_seed/AGENTS.md) — read it first.** This file is the
 checks + commands + Claude-specific workflow layer.
 
 ## Project overview

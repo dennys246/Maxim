@@ -1,5 +1,7 @@
 # Sim percept/behavior testbed — four-facet audit + scoping
 
+> **✅ AUDIT CONCLUDED 2026-07-17 (PR #401). Verdict "do not build a percept-channel manifest as conceived" stands; the real gap went to `thalamus_relay_design_pass.md` → shipped PR #402.**
+
 **Date:** 2026-07-17. **Question:** can a declarative "percept-channel manifest"
 (`{modality, source, enabled, gain, noise}` per channel) ride the existing `PerceptSource`
 seam so we can **ablate and scale percept channels** in sims to measure their behavioral
