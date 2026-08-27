@@ -214,10 +214,18 @@ Phase A record exists).** Six items, none touching a gate, margin, seed count or
    seeds' frozen probe picks the wrong direction with |learned_margin| > 0.11; az = 0 has no
    direction and is excluded). **Validation:** run over the Exp 53 agents (infant body,
    δ map — harness verification only), the procedure reproduces Exp 53 amendment 1's
-   hand-declared placements exactly: gated {−0.3, −0.2, +0.5, +0.6}, exploratory +0.2
-   ([data/54_dry_run_nonfrozen/](../data/54_dry_run_nonfrozen/README.md)). The procedure
-   is frozen with this amendment; the *numbers* it yields for the Exp 54 seeds are declared
-   in the results doc before Phase B, as pre-registered.
+   hand-declared placements: gated {−0.3, −0.2, +0.5, +0.6}, exploratory +0.2
+   ([data/54_dry_run_nonfrozen/](../data/54_dry_run_nonfrozen/README.md)). **Two honesty
+   notes on that validation (review fold):** (i) the LEFT pair is *not* tie-free — the Exp 53
+   eligible set {−0.4 … −0.1} has centroid −0.25, an exact grid tie between −0.3 and −0.2, and
+   the toward-centre tie-break is the one degree of freedom that makes the left pair match
+   (the opposite rule yields {−0.3, −0.4}); it was chosen with Exp 53's answer in hand and is
+   frozen here so it cannot be chosen again with Exp 54's. The right pair and the exploratory
+   value are tie-free. (ii) "centroid of the bin" in the frozen text became "centroid of the
+   bin's *eligible* subset" (direction-filtered, |az| ≤ 0.6, majority of seeds) — for Exp 53's
+   CENTRE bin the literal bin centroid is ≈ −0.05, so this is a substantive operationalisation,
+   not a restatement. The procedure is frozen with this amendment; the *numbers* it yields for
+   the Exp 54 seeds are declared in the results doc before Phase B, as pre-registered.
 2. **The exploratory agent** = the taught seed outside the gated three (42, 43, 44) with the
    lowest Phase A late-bin (act3+act4) directedness (`manifest --experiment 54
    --phase-a-records`) — Exp 53's seed-48 choice, made a rule.
@@ -227,9 +235,23 @@ Phase A record exists).** Six items, none touching a gate, margin, seed count or
    `consulted_bias_by_modality.audio ≠ 0` **and** the chosen direction is correct (direction
    only: any leftward affordance for az < 0) ≥ 0.80; PASS needs ≥ 2 of 3 seeds. Every
    control placement must show `consulted…audio == 0`. A correct direction *without* a
-   consulted audio bias — the innate azimuth drive choosing — does not count, because the
-   sentence being measured is "the nursery's want is consulted", not "the robot turns".
-   `verdict --gate C` recomputes the verdict from the probe records.
+   consulted audio bias does not count, because the sentence being measured is "the nursery's
+   want is consulted", not "the robot turns". **What Phase C can and cannot see (review
+   fold):** at explore 0 with nothing crediting, the innate azimuth drive contributes *nothing*
+   to turn-tool selection — `recommend_action`'s drive term scores a drive against tools only
+   by name-substring or `_DRIVE_TOOL_AFFINITIES`, and neither matches `reachy_mini_turn_*`
+   (the dry Phase C records show `score_components.drive == 0.0` at every placement); the
+   only competitor to the audio bias is the side-blind causal prior. So Gate C measures: *the
+   audio cluster is re-found under a body whose azimuth also carries a drive, its bias is the
+   only non-zero learned term, and the intero channel encodes signed azimuth into bias-free
+   clusters.* The seam plan's deferred interaction (drive-relief credit on the intero cluster
+   stacking with operant credit on the audio cluster for one contingency) only bites *with
+   credit on* — a user's live runtime — and is explicitly out of Phase C's scope; the frozen
+   outcome row "pass/pass/fail = a seam finding" is read in that light. `verdict --gate C`
+   recomputes the verdict from the probe records; `run --gate C` also emits the informative
+   `gate_I` record (the frozen text's "Gate I only") so instrument completion is asserted, not
+   assumed. Arithmetic note: with four gated placements, "≥ 80 %" is 4/4 — the same arithmetic
+   Exp 53's Gate I used.
 4. **Harness facts corrected.** `benchmark_cradle_mother.py` had no `--embodiment` flag (the
    pre-registration's runbook assumed one) — added, with the satiated arm's body keyed on the
    chosen embodiment (`bodies/reachy_mini_infant` → `bodies/reachy_mini_infant_satiated`;
@@ -257,6 +279,48 @@ Phase A record exists).** Six items, none touching a gate, margin, seed count or
    the YAML — driven by *re-keyed copies* of the Exp 53 agents (`infant_operant_turn_*` →
    `reachy_mini_turn_*`), Phase 1, Phase 2 (both blocks) and Phase C all complete with the
    Exp 53 record/verdict shape. Harness verification, not a result.
+
+7. **A third S6 difference from Exp 52, declared (review fold):** the interoceptive landscape.
+   `infant_operant` inherits `core_temperature` (homeostatic, starting −0.15 — a standing
+   thermal breach) and four `arms.thermal`/`head.thermal` sub-sensor drives; `reachy_mini_infant`
+   carries hunger + thirst only. Checked to be inert for the learning problem: operant credit
+   keys on the *audio* cluster only (`tool_dispatch.py`, the direction-bearing cluster), the
+   turn tools are drive-irrelevant on both bodies (no name/affinity match), and under
+   `MAXIM_OPERANT_ONLY_CREDIT` the intero cluster accrues no turn bias — but the intero cluster
+   identity and the background PainBus signal differ, so it is declared, not assumed. Also
+   inert and declared: `reachy_mini`'s failure modes (thermal, battery, pose_drift, camera/mic)
+   trigger on sensors nothing drifts or writes in sim; the `head_yaw` self-effect is a modeled
+   write on the sim body (no live owner) that clamps at ±1.57 after ~5 same-direction normal
+   turns and is read by nothing in the substrate path (`_EXTEROCEPTIVE_ROOT_SENSORS` is
+   `("azimuth",)`; drives only).
+8. **The "reported, not gated" magnitude choice has a producer (review fold):** the frozen
+   Phase A text promises the fraction of big vs normal turns by |stimulus| bin, and neither
+   `benchmark_cradle_mother.py` nor `analyze_cradle_mother.py` reads tool names. It is
+   computed post hoc from each run's archived `mother_log.jsonl` (the `act=… az_stimulus=…`
+   mother records paired with the `Executing: <tool>` lines that follow before the next mother
+   tick) by `scripts/analyze_exp54_magnitude.py`, run on the Phase A workdir; its table goes in
+   the results doc. Verified on the Exp 52 archive (every turn normal, as that body has no
+   `_big`).
+
+9. **Phase C runs in the user's tool space (review fold, Executor lens).** The harness applied
+   the S6 nursery whitelist (`turn_left,turn_right`) to every `run`, so Phase C would have measured
+   "consulted on a user's robot" over a 4-candidate contest. A user's `agentic_runtime` on
+   `bodies/reachy_mini` offers `listen` (always active), `look_at`, `recenter`, `nod`, … to
+   `recommend_action`. `run --gate C` therefore drops the whitelist by default (the `start`
+   record stamps `tool_whitelist`); `--whitelist` keeps it on as a reported comparison, not the
+   gated block. `--gate C` is refused with `--phase 2` (the probe never moves the agent).
+   Also declared: an exact strength tie between two bins resolves to the bin nearer centre; a
+   `--targets` file with fewer than two magnitudes per direction (the sweep stamps
+   `incomplete: true`) is refused unless `--allow-incomplete-targets` is passed and recorded;
+   the exploratory-placement summary counts any leftward affordance (incl. `_big`).
+10. **Actions per turn, measured (review fold):** the magnitude reporter run over the Exp 52
+   Phase B archive counts ~12,600 turn actions per arm over 12 runs — **~22 actions per mother
+   turn** under the unbounded `MAXIM_SUBSTRATE_ACTIONS_PER_TURN` regime Phase A inherits (item
+   4). Directedness is scored once per turn on the azimuth after all of them, so on the Reachy
+   body a run of same-direction big steps saturates the sensor at ±1 well within a turn. Exp 52
+   learned under exactly this regime with ±0.3 steps; whether the robot's steps do is the
+   experiment. Declared, not changed (changing the budget between Exp 52 and Exp 54 would be an
+   S6 fidelity change).
 
 **Disclosure:** at amendment time the author had seen the harness dry run above (re-keyed Exp
 53 agents: Gate I 3/3, dry Phase 2 taught 1.00 / satiated 0.00 / no_feed 0.50, dry Gate C

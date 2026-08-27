@@ -17,6 +17,9 @@ component:
     Structural guard: tests/unit/test_reachy_mini_infant_body.py.
 entity:
   name: reachy_mini            # NOT reachy_mini_infant — the tool prefix must match the production body
+                               # HAZARD: never register this body and bodies/reachy_mini into ONE ToolRegistry —
+                               # tool_bridge's collision-rename would silently move these tools out of the
+                               # tool:reachy_mini_* namespace. One body per executor (no runtime path does this).
   sensors:
     azimuth:
       drive: null              # remove the innate centeredness drive (deep_merge replaces the dict with null)

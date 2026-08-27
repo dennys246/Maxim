@@ -88,6 +88,10 @@ class ReachyOrientMotorBackend:
         modulator_name: str,
         entity_name: str,
     ) -> None:
+        # Construction must stay robot-less-safe (no I/O here): the Exp 54 harness
+        # reads the factory's delta map OFFLINE by building this backend with
+        # robot=None (scripts/orient_backbone/exp53_cross_context_readout.py::
+        # _factory_deltas). Talk to the robot in execute(), never in __init__.
         self._robot = robot
         self._maxim = maxim
         self._entity = entity

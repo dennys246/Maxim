@@ -525,13 +525,22 @@ def main() -> int:
             file=sys.stderr,
         )
         return 6
-    done: set[tuple[str, int, float]] = set()
+    done: set[tuple[str, int, float, str, str]] = set()
     if args.resume and out_path.exists():
         for line in out_path.read_text().splitlines():
             try:
                 r = json.loads(line)
                 # Rows without a credit stamp predate Exp 52 = constant credit.
-                done.add((r["arm"], r["seed"], float(r.get("explore_weight", 1.5)), r.get("credit", "constant")))
+                # Rows without an embodiment stamp predate the flag = the infant body.
+                done.add(
+                    (
+                        r["arm"],
+                        r["seed"],
+                        float(r.get("explore_weight", 1.5)),
+                        r.get("credit", "constant"),
+                        r.get("embodiment", EMBODIMENT),
+                    )
+                )
             except (json.JSONDecodeError, KeyError):
                 pass
 
@@ -560,7 +569,7 @@ def main() -> int:
         for arm in arms:
             for trial in range(args.trials):
                 seed = args.seed_base + trial
-                if (arm, seed, float(args.explore_weight), args.credit) in done:
+                if (arm, seed, float(args.explore_weight), args.credit, arm_bodies[arm]) in done:
                     continue
                 t0 = _t.monotonic() if hasattr(_t, "monotonic") else 0
                 try:

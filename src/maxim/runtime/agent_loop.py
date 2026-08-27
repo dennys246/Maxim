@@ -1044,11 +1044,14 @@ def _read_exteroceptive_states(executor: Any) -> dict[str, float]:
     the raw signed value (not a comfort-distance fold), so for such a body the
     interoception encode carries the same signed azimuth as the audio encode,
     and drive-relief credit (interoception) plus operant credit (audio) can
-    reinforce the same directional contingency on two stacking clusters. No
-    shipped body has an azimuth drive + this sensor; folding drive-bearing
-    signed sensors to discomfort magnitude in the intero read is a named
-    deferred item in docs/plans/exteroception_interoception_seam.md (trigger:
-    the first body that gives azimuth a drive).
+    reinforce the same directional contingency on two stacking clusters.
+    ``bodies/reachy_mini`` IS such a body (innate azimuth centeredness drive +
+    this sensor, since live_audio_orient_wiring Stage 0b) — Exp 54 Phase C reads
+    the nursery-taught audio bias out under it, with nothing crediting, so the
+    stacking interaction is out of that measurement's scope; folding drive-
+    bearing signed sensors to discomfort magnitude in the intero read stays a
+    named deferred item in docs/plans/exteroception_interoception_seam.md
+    (its trigger has fired for the user path; it bites only with credit ON).
     """
     embodiment = getattr(executor, "embodiment", None)
     root = getattr(embodiment, "root", None)

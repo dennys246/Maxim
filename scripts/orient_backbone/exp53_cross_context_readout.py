@@ -125,6 +125,22 @@ GATE_C_RATE = 0.80
 GATE_C_SEEDS = 2
 
 
+def _affordance_of(tool_name: str | None, entity_name: str | None = None) -> str | None:
+    """Tool name → orient affordance, single-sourced. Tool names are
+    ``f"{entity.name}_{affordance}"`` (tool_bridge); strip the KNOWN entity prefix
+    when given (immune to an entity name containing ``_turn_``), else fall back to
+    the ``_turn_`` split the Exp 53 records were parsed with. ``tool:``-prefixed
+    NAc signatures are accepted."""
+    if not tool_name:
+        return None
+    name = tool_name[5:] if tool_name.startswith("tool:") else tool_name
+    if entity_name and name.startswith(entity_name + "_"):
+        return name[len(entity_name) + 1 :]
+    if "_turn_" in name:
+        return "turn_" + name.rsplit("_turn_", 1)[-1]
+    return None
+
+
 def _sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as fh:
@@ -173,10 +189,14 @@ def _weakest_taught_seed(records_path: str, exclude: tuple[int, ...]) -> tuple[i
     seeds (the Exp 53 rule — seed 48 was the weak learner — made a procedure)."""
     late = ("act3_consolidating", "act4_autonomous")
     best: tuple[int, float] | None = None
+    skipped = 0
     for line in Path(records_path).read_text().splitlines():
+        if not line.strip():
+            continue
         try:
             rec = json.loads(line)
         except json.JSONDecodeError:
+            skipped += 1
             continue
         if rec.get("arm") != "taught" or int(rec.get("seed", -1)) in exclude:
             continue
@@ -187,6 +207,8 @@ def _weakest_taught_seed(records_path: str, exclude: tuple[int, ...]) -> tuple[i
         d = sum(vals) / len(vals)
         if best is None or d < best[1]:
             best = (int(rec["seed"]), d)
+    if skipped:
+        print(f"  [warn] {records_path}: {skipped} undecodable line(s) skipped while picking the weakest seed")
     if best is None:
         raise RuntimeError(f"no taught seed outside {exclude} in {records_path}")
     return best
@@ -643,7 +665,7 @@ def decide(agent: LoadedAgent, rig, sink: _ProvenanceSink) -> dict:
         "audio_cluster": audio_cluster,
         "completed": (audio_cluster in agent.audio_nodes) if audio_cluster else None,
         "tool_name": tool,
-        "affordance": tool.rsplit("_turn_", 1)[-1].join(["turn_", ""]) if tool and "_turn_" in tool else None,
+        "affordance": _affordance_of(tool, getattr(getattr(rig, "entity", None), "name", None)),
         "learned_margin": prov.get("learned_margin"),
         "explore_decisive": prov.get("explore_decisive"),
         "score_components": prov.get("score_components"),
@@ -693,8 +715,13 @@ def _phase1_passed(records_path: Path) -> bool:
     return False
 
 
-def _apply_targets(path: str) -> dict:
-    """Replace the Exp 53 target constants with the sweep-declared placements."""
+def _apply_targets(path: str, allow_incomplete: bool = False) -> dict:
+    """Replace the Exp 53 target constants with the sweep-declared placements.
+
+    The frozen procedure is "two magnitudes each" side: a one-sided or 3-target
+    set would let an always-one-way policy satisfy the direction rule most of the
+    time, so an incomplete declaration is REFUSED unless the operator passes
+    ``--allow-incomplete-targets`` (recorded in the start record)."""
     global TARGETS, EXPLORATORY_TARGETS
     data = json.loads(Path(path).read_text())
     gated = [float(t) for t in data.get("gated_targets") or []]
@@ -704,20 +731,40 @@ def _apply_targets(path: str) -> dict:
     for t in gated:
         if t == 0.0 or abs(t) > FRONT_HEMISPHERE_MAX + 1e-9:
             raise RuntimeError(f"{path}: gated target {t:+.2f} is not in the front hemisphere (0 < |az| ≤ 0.6)")
+    left = sorted(t for t in gated if t < 0)
+    right = sorted(t for t in gated if t > 0)
+    complete = len(left) == 2 and len(right) == 2 and not data.get("incomplete")
+    if not complete and not allow_incomplete:
+        raise RuntimeError(
+            f"{path}: incomplete gated targets (left {left}, right {right}, flags {data.get('flags')}) — "
+            "the procedure declares two magnitudes per direction; pass --allow-incomplete-targets to run anyway"
+        )
     TARGETS = tuple(gated)
     EXPLORATORY_TARGETS = tuple(expl)
     return data
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    os.environ["MAXIM_SUBSTRATE_TOOL_WHITELIST"] = "turn_left,turn_right"  # the nursery's repertoire (S6)
+    if args.gate == "C" and args.phase != 1:
+        print("[FAIL] --gate C is the Phase C probe (no motion) — it runs with --phase 1 only.")
+        return 2
+    if args.gate == "C" and not args.whitelist:
+        # Phase C = the USER's tool space: a user's agentic_runtime on bodies/reachy_mini
+        # offers listen / look_at / recenter / nod … to recommend_action, and the
+        # sentence being measured is "consulted on a user's robot with no remap".
+        # The S6 nursery whitelist would shrink that to a 4-candidate contest.
+        os.environ.pop("MAXIM_SUBSTRATE_TOOL_WHITELIST", None)
+    else:
+        os.environ["MAXIM_SUBSTRATE_TOOL_WHITELIST"] = "turn_left,turn_right"  # the nursery's repertoire (S6)
     if args.delta is not None and args.factory:
         print("[FAIL] --delta is refused with --factory: the step size is the body's own (Exp 54, no δ map).")
         return 2
     if args.delta is not None:
         # Exp 53b: the declared step size is the one pre-registered change; stamped in every start record.
         DELTAS.update({"turn_left": +float(args.delta), "turn_right": -float(args.delta)})
-    targets_decl = _apply_targets(args.targets) if args.targets else None
+    targets_decl = (
+        _apply_targets(args.targets, allow_incomplete=args.allow_incomplete_targets) if args.targets else None
+    )
     os.environ.pop("MAXIM_PLACE_CODE_EXTEROCEPTION", None)  # place code OFF, as in Phase B (provenance)
     manifest = _load_manifest(args.manifest)
     out_path = Path(args.out)
@@ -741,6 +788,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         body_ref=args.body_ref,
         factory=bool(args.factory),
         gate=args.gate,
+        tool_whitelist=os.environ.get("MAXIM_SUBSTRATE_TOOL_WHITELIST"),
+        allow_incomplete_targets=bool(args.allow_incomplete_targets),
         targets=list(TARGETS),
         exploratory_targets=list(EXPLORATORY_TARGETS),
         targets_file=args.targets,
@@ -888,6 +937,11 @@ def _phase1(agents, rig, sink, emit, args) -> int:
             print(f"[FAIL] {label}: persisted files changed during readout — S3 violation")
             return 5
     if args.gate == "C":
+        # Informative: the frozen text's "Gate I only" — instrument completion is asserted,
+        # not assumed, even though Phase C's verdict is Gate C.
+        gate_i = _gate_I(agents, results)
+        emit("gate_I", informative=True, **gate_i)
+        print(f"[gate I, informative] {gate_i['verdict']}: {gate_i['summary']}")
         verdict = _gate_C(agents, results)
         emit("gate_C", **verdict)
         print(f"[gate C] {verdict['verdict']}: {verdict['summary']}")
@@ -902,11 +956,21 @@ def _is_exploratory_agent(spec: dict) -> bool:
     return bool(spec.get("exploratory")) or str(spec.get("label", "")).endswith("seed48")
 
 
-def _consulted_audio(row: dict) -> float:
-    try:
-        return float((row.get("consulted_bias_by_modality") or {}).get("audio") or 0.0)
-    except (TypeError, ValueError):
+def _consulted_audio(row: dict) -> float | None:
+    """The consulted audio bias, or ``None`` when the provenance record is malformed —
+    never 0.0, which would read as a control PASS (review fold)."""
+    cbm = row.get("consulted_bias_by_modality")
+    if cbm is None:
+        return 0.0  # no modality consulted at all (e.g. no candidate tools): a genuine zero
+    if not isinstance(cbm, dict):
+        return None
+    val = cbm.get("audio")
+    if val is None:
         return 0.0
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
 
 
 def _gate_C(agents, results) -> dict:
@@ -920,13 +984,17 @@ def _gate_C(agents, results) -> dict:
         rows = [r for r in results.get(spec["label"], []) if not r.get("exploratory")]
         if not rows:
             continue
-        consulted = [r for r in rows if _consulted_audio(r) != 0.0]
-        consulted_correct = sum(1 for r in consulted if r.get("correct")) / len(rows)
+        # Unknown (malformed provenance) counts AGAINST both sides: as "consulted" for the
+        # control zero-check and as not-consulted-correct for the taught seeds.
+        vals = [_consulted_audio(r) for r in rows]
+        consulted_n = sum(1 for v in vals if v is None or v != 0.0)
+        consulted_correct = sum(1 for r, v in zip(rows, vals) if v is not None and v != 0.0 and r.get("correct"))
         per_seed[spec["label"]] = {
             "arm": spec["arm"],
             "exploratory": _is_exploratory_agent(spec),
-            "consulted": round(len(consulted) / len(rows), 3),
-            "consulted_and_correct": round(consulted_correct, 3),
+            "consulted": round(consulted_n / len(rows), 3),
+            "consulted_and_correct": round(consulted_correct / len(rows), 3),
+            "malformed": sum(1 for v in vals if v is None),
             "acted": round(sum(1 for r in rows if r.get("tool_name")) / len(rows), 3),
         }
     taught = [v for v in per_seed.values() if v["arm"] == "taught" and not v["exploratory"]]
@@ -1209,7 +1277,7 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         e = expl_by_target.setdefault(key, {"n": 0, "toward": 0, "turn_left": 0})
         e["n"] += 1
         e["toward"] += int(bool(r["toward"]))
-        e["turn_left"] += int(r.get("affordance") == "turn_left")
+        e["turn_left"] += int(str(r.get("affordance") or "").startswith("turn_left"))  # any leftward incl. _big
     secondary = [
         r
         for r in recs
@@ -1255,13 +1323,13 @@ SWEEP_PROCEDURE = (
     "neighbour is not eligible). Exploratory placements = the grid value nearest the centroid of the "
     "predicted wrong-way region (values where a majority of seeds' frozen probe picks the wrong "
     "direction with |learned_margin| > 0.11; az = 0 has no direction and is excluded), if any. "
-    "Grid ties resolve toward centre."
+    "Grid ties resolve toward centre; an exact strength tie between bins resolves to the bin nearer centre."
 )
 
 
 def _sweep_values(step: float = SWEEP_STEP) -> list[float]:
-    n = int(round(2.0 / step))
-    return [round(-1.0 + i * step, 4) for i in range(n + 1)]
+    n = int(2.0 / step + 1e-9)
+    return [round(-1.0 + i * step, 4) for i in range(n + 1) if -1.0 + i * step <= 1.0 + 1e-9]
 
 
 def _cluster_biases(agent: LoadedAgent, cluster_id: str | None) -> dict[str, float]:
@@ -1274,7 +1342,7 @@ def _cluster_biases(agent: LoadedAgent, cluster_id: str | None) -> dict[str, flo
         if not (isinstance(key, tuple) and len(key) == 3 and key[1] == cluster_id):
             continue
         tsig = str(key[2])
-        aff = ("turn_" + tsig.rsplit("_turn_", 1)[-1]) if "_turn_" in tsig else tsig
+        aff = _affordance_of(tsig) or tsig
         out[aff] = round(float(val), 4)
     return out
 
@@ -1296,8 +1364,10 @@ def _bins_from_rows(rows: list[dict]) -> list[dict]:
 
 
 def _strongest(bins: list[dict], key: str) -> dict | None:
+    """The bin with the largest ``key`` strength; an exact tie resolves to the bin
+    whose centroid is nearer centre (declared, amendment 1)."""
     cands = [b for b in bins if b[key] > 0.0]
-    return max(cands, key=lambda b: b[key]) if cands else None
+    return max(cands, key=lambda b: (b[key], -abs(b["centroid"]))) if cands else None
 
 
 def _nearest_grid(x: float, grid: list[float]) -> float:
@@ -1397,7 +1467,7 @@ def cmd_sweep(args: argparse.Namespace) -> int:
                         "affordance": d["affordance"],
                         "correct": _correct_for(az, d["affordance"]),
                         "learned_margin": d["learned_margin"],
-                        "consulted_audio": _consulted_audio(d),
+                        "consulted_audio": _consulted_audio(d),  # None = malformed provenance
                         "biases": _cluster_biases(agent, d["audio_cluster"]),
                     }
                 )
@@ -1428,6 +1498,7 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     out = {
         "_format_version": "1.0",
         "experiment": manifest.get("experiment"),
+        "incomplete": bool(decl["flags"]) or len(decl["gated_targets"]) != 4,
         "manifest": args.manifest,
         "body_ref": args.body_ref,
         "factory": bool(args.factory),
@@ -1483,6 +1554,16 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--targets", default=None, help="Exp 54: the sweep's targets JSON (gated + exploratory placements)")
     r.add_argument(
         "--gate", choices=("I", "C"), default="I", help="Phase 1 gate: I (instrument) or C (Exp 54 user path)"
+    )
+    r.add_argument(
+        "--whitelist",
+        action="store_true",
+        help="keep the S6 nursery whitelist ON under --gate C (default: Phase C runs in the user's full tool space)",
+    )
+    r.add_argument(
+        "--allow-incomplete-targets",
+        action="store_true",
+        help="run with a --targets file the sweep marked incomplete (fewer than two magnitudes per direction); recorded",
     )
     r.add_argument("--settle", type=float, default=1.0)
     r.add_argument("--probe-s", type=float, default=30.0)

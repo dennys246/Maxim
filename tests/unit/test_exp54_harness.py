@@ -141,10 +141,23 @@ def test_apply_targets_refuses_outside_front_hemisphere(h, tmp_path):
     p.write_text(json.dumps({"gated_targets": [-0.3, 0.8], "exploratory_targets": []}))
     with pytest.raises(RuntimeError, match="front hemisphere"):
         h._apply_targets(str(p))
-    p.write_text(json.dumps({"gated_targets": [-0.3, 0.6], "exploratory_targets": [0.2]}))
-    h._apply_targets(str(p))
-    assert h.TARGETS == (-0.3, 0.6) and h.EXPLORATORY_TARGETS == (0.2,)
-    h.TARGETS, h.EXPLORATORY_TARGETS = (-0.3, -0.2, 0.5, 0.6), (-0.6, 0.2)  # restore the Exp 53 constants
+    saved = (h.TARGETS, h.EXPLORATORY_TARGETS)
+    try:
+        # Incomplete (one magnitude on the left) is refused unless explicitly allowed.
+        p.write_text(json.dumps({"gated_targets": [-0.3, 0.5, 0.6], "exploratory_targets": [0.2]}))
+        with pytest.raises(RuntimeError, match="incomplete"):
+            h._apply_targets(str(p))
+        h._apply_targets(str(p), allow_incomplete=True)
+        assert h.TARGETS == (-0.3, 0.5, 0.6)
+        # A sweep-stamped incomplete file is refused even when the count looks right.
+        p.write_text(json.dumps({"gated_targets": [-0.3, -0.2, 0.5, 0.6], "incomplete": True, "flags": ["x"]}))
+        with pytest.raises(RuntimeError, match="incomplete"):
+            h._apply_targets(str(p))
+        p.write_text(json.dumps({"gated_targets": [-0.3, -0.2, 0.5, 0.6], "exploratory_targets": [0.2]}))
+        h._apply_targets(str(p))
+        assert h.TARGETS == (-0.3, -0.2, 0.5, 0.6) and h.EXPLORATORY_TARGETS == (0.2,)
+    finally:
+        h.TARGETS, h.EXPLORATORY_TARGETS = saved  # the Exp 53 constants, whatever happened above
 
 
 def test_factory_deltas_bind_reachy_infant_and_refuse_infant_operant(h):
@@ -168,6 +181,21 @@ def test_dry_rig_factory_mode_builds_the_reachy_body_with_four_tools(h):
     # The Exp 53 default is byte-for-byte the old rig: infant body, explicit δ.
     old = h.DryReadoutRig()
     assert old.entity.name == "infant_operant" and old.deltas == h.DELTAS
+
+
+def test_bin_strength_tie_resolves_toward_centre_and_grid_never_overshoots(h):
+    rows = _exp53_rows(h)
+    for r in rows:  # give the FAR-LEFT bin the same left strength as CENTRE
+        if r["audio_cluster"] == "farleft":
+            r["biases"] = {"turn_left": 0.62}
+    bins = h._bins_from_rows(rows)
+    assert h._strongest(bins, "left_strength")["cluster"] == "centre"
+    assert h._sweep_values(0.3)[-1] <= 1.0 and h._sweep_values()[0] == -1.0 and h._sweep_values()[-1] == 1.0
+
+
+def test_gate_C_is_phase_1_only(h, capsys):
+    rc = h.main(["run", "--dry-run", "--gate", "C", "--manifest", "x.json", "--phase", "2", "--out", "y"])
+    assert rc == 2 and "phase 1 only" in capsys.readouterr().out
 
 
 def test_delta_is_refused_with_factory(h, capsys):
