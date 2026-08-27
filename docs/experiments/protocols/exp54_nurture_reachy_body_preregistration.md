@@ -331,4 +331,6 @@ Reachy body has run; no Phase A, B or C data exists.**
 
 1. Pre-registration read and frozen at commit `efdf5cd5` (#558) — ☑ 2026-08-26
 2. Body YAML, arms, gate v3 constants, the target procedure (amendment 1), Phase C, stop rules accepted — ☑ 2026-08-26
-3. Harness PR (`feat/exp54-harness`) with the body's structural tests; dry run clean; amendment 1 appended before Phase A — ☑ 2026-08-26 (PR number recorded in the results doc)
+3. Harness PR (`feat/exp54-harness`) with the body's structural tests; dry run clean; amendment 1 appended before Phase A — ☑ 2026-08-26 (#561, merged `93887e6e`)
+4. Phase A started: 2026-08-26 19:10 MDT, big-mac-mini, `main` @ `93887e6e`, seeds 42–53 — COMPLETE 2026-08-27 01:50, 36/36, **GRADUATE** (gate v3; record `data/54_phaseA_nursery.jsonl`; write-up [54_nurture_reachy_body.md](../54_nurture_reachy_body.md)). Targets declared by the sweep before Phase B: gated {−0.6, −0.5, +0.2, +0.3}, exploratory −0.2 (`data/54_targets.json`) — ☑ 2026-08-27
+5. Phase B/C: ☐ (operator present; the results doc records the outcome)

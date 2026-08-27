@@ -1,0 +1,590 @@
+{
+  "_format_version": "1.0",
+  "experiment": "54_nurture_reachy_body",
+  "archive": "docs/experiments/data/54_phaseA_runs",
+  "frozen": {
+    "body_ref": "bodies/reachy_mini_infant",
+    "user_body_ref": "bodies/reachy_mini",
+    "agent_id": "sim_aut",
+    "factory": true,
+    "deltas_rad": {
+      "turn_left": 0.3,
+      "turn_right": -0.3,
+      "turn_left_big": 0.9,
+      "turn_right_big": -0.9
+    },
+    "targets_az": "declared by the sweep procedure (54_targets.json), before Phase B",
+    "trials_per_target": 3,
+    "explore_primary": 0.0,
+    "explore_secondary": 1.5,
+    "phase_a_records": "docs/experiments/data/54_phaseA_nursery.jsonl"
+  },
+  "agents": [
+    {
+      "arm": "taught",
+      "seed": 42,
+      "exploratory": false,
+      "label": "taught_seed42",
+      "nac_path": "docs/experiments/data/54_agents/taught_seed42/aut_nac.json",
+      "ec_path": "docs/experiments/data/54_agents/taught_seed42/aut_ec.json",
+      "nac_sha256": "b642304f2678d3f912551bcb020d92305ef8e79074ec1a98937f7992d43d2b38",
+      "ec_sha256": "c25f565c9be1bedd5ed7ae18281b53770975bf05ff6e5abdf4b65ef4e36c4358",
+      "bias_entries": 4,
+      "biases": [
+        {
+          "agent": "sim_aut",
+          "cluster": "eccb5ea6-1891-46a5-9e1d-d0f8f4775578",
+          "tool": "tool:reachy_mini_turn_left_big",
+          "bias": 0.1045
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "af4e30f4-1446-44a4-99e4-d5ff49794d42",
+          "tool": "tool:reachy_mini_turn_right_big",
+          "bias": 0.0053
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "af4e30f4-1446-44a4-99e4-d5ff49794d42",
+          "tool": "tool:reachy_mini_turn_right",
+          "bias": 0.7863
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "eccb5ea6-1891-46a5-9e1d-d0f8f4775578",
+          "tool": "tool:reachy_mini_turn_left",
+          "bias": 0.5143
+        }
+      ],
+      "audio_nodes": [
+        "af4e30f4-1446-44a4-99e4-d5ff49794d42",
+        "eccb5ea6-1891-46a5-9e1d-d0f8f4775578",
+        "1206e109-5d30-4a49-aefb-09e213707fca"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787794091.771158,
+      "source_run": "taught_seed42"
+    },
+    {
+      "arm": "taught",
+      "seed": 43,
+      "exploratory": false,
+      "label": "taught_seed43",
+      "nac_path": "docs/experiments/data/54_agents/taught_seed43/aut_nac.json",
+      "ec_path": "docs/experiments/data/54_agents/taught_seed43/aut_ec.json",
+      "nac_sha256": "4ad38664b82c14d96a52972ee8b6393a2e17e13db94f645f20887d4adecc8619",
+      "ec_sha256": "4bab2930b5dce9d5b728cc0293cfefd327cbd62915ea20991f263e39df3646c2",
+      "bias_entries": 7,
+      "biases": [
+        {
+          "agent": "sim_aut",
+          "cluster": "b4bed4e8-af04-46f1-91b7-a98fa47b421f",
+          "tool": "tool:reachy_mini_turn_left",
+          "bias": 0.8708
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "f5b8ee04-6b5a-4a1d-9776-f5a9bc5b2fb5",
+          "tool": "tool:reachy_mini_turn_left_big",
+          "bias": 0.0049
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "b4bed4e8-af04-46f1-91b7-a98fa47b421f",
+          "tool": "tool:reachy_mini_turn_right_big",
+          "bias": 0.0074
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "dd042010-8b07-4973-bc58-fe677bb975b5",
+          "tool": "tool:reachy_mini_turn_left_big",
+          "bias": 0.0114
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "f5b8ee04-6b5a-4a1d-9776-f5a9bc5b2fb5",
+          "tool": "tool:reachy_mini_turn_right_big",
+          "bias": 0.4711
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "b4bed4e8-af04-46f1-91b7-a98fa47b421f",
+          "tool": "tool:reachy_mini_turn_right",
+          "bias": 0.0268
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "f5b8ee04-6b5a-4a1d-9776-f5a9bc5b2fb5",
+          "tool": "tool:reachy_mini_turn_right",
+          "bias": 0.1172
+        }
+      ],
+      "audio_nodes": [
+        "b4bed4e8-af04-46f1-91b7-a98fa47b421f",
+        "dd042010-8b07-4973-bc58-fe677bb975b5",
+        "f5b8ee04-6b5a-4a1d-9776-f5a9bc5b2fb5"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787794753.194667,
+      "source_run": "taught_seed43"
+    },
+    {
+      "arm": "taught",
+      "seed": 44,
+      "exploratory": false,
+      "label": "taught_seed44",
+      "nac_path": "docs/experiments/data/54_agents/taught_seed44/aut_nac.json",
+      "ec_path": "docs/experiments/data/54_agents/taught_seed44/aut_ec.json",
+      "nac_sha256": "a8b79c98b2b680456e1409fbbedb0af6131dc7601ac74942f86f8944af98297f",
+      "ec_sha256": "e5d31e9b83826f0a472fb0a618675073cdfbbb95def58fa0c3896ea0b28bf80b",
+      "bias_entries": 7,
+      "biases": [
+        {
+          "agent": "sim_aut",
+          "cluster": "f4a3d1f9-613f-469f-9ab7-18e499920508",
+          "tool": "tool:reachy_mini_turn_left",
+          "bias": 0.0336
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "c3905665-7684-4b70-80bc-bba027017cea",
+          "tool": "tool:reachy_mini_turn_right",
+          "bias": 0.0396
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "f4a3d1f9-613f-469f-9ab7-18e499920508",
+          "tool": "tool:reachy_mini_turn_left_big",
+          "bias": 0.0072
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "f4a3d1f9-613f-469f-9ab7-18e499920508",
+          "tool": "tool:reachy_mini_turn_right_big",
+          "bias": 0.4029
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "f6b845c0-e89d-4a28-98ae-58a98b41484e",
+          "tool": "tool:reachy_mini_turn_left_big",
+          "bias": 0.835
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "f6b845c0-e89d-4a28-98ae-58a98b41484e",
+          "tool": "tool:reachy_mini_turn_left",
+          "bias": 0.0931
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "f4a3d1f9-613f-469f-9ab7-18e499920508",
+          "tool": "tool:reachy_mini_turn_right",
+          "bias": 0.1451
+        }
+      ],
+      "audio_nodes": [
+        "f4a3d1f9-613f-469f-9ab7-18e499920508",
+        "c3905665-7684-4b70-80bc-bba027017cea",
+        "f6b845c0-e89d-4a28-98ae-58a98b41484e"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787795415.670582,
+      "source_run": "taught_seed44"
+    },
+    {
+      "arm": "satiated",
+      "seed": 42,
+      "exploratory": false,
+      "label": "satiated_seed42",
+      "nac_path": "docs/experiments/data/54_agents/satiated_seed42/aut_nac.json",
+      "ec_path": "docs/experiments/data/54_agents/satiated_seed42/aut_ec.json",
+      "nac_sha256": "b9ef091a4d26d3bf8b7af7e7a2d6f797f2608de1ec447ca35e5c7669d90ffaa3",
+      "ec_sha256": "baf9ed5b499c55da08397e7fe3dbda88c10b2f5c69e9ab68f5c0ac0e63899210",
+      "bias_entries": 0,
+      "biases": [],
+      "audio_nodes": [
+        "bd6be96e-a6b0-495a-8650-a2144937194a",
+        "88a0fe71-283f-4850-8210-321cf77d469f",
+        "456aede6-9c94-43b0-8277-73a4ed004519"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787802000.15759,
+      "source_run": "satiated_seed42"
+    },
+    {
+      "arm": "satiated",
+      "seed": 43,
+      "exploratory": false,
+      "label": "satiated_seed43",
+      "nac_path": "docs/experiments/data/54_agents/satiated_seed43/aut_nac.json",
+      "ec_path": "docs/experiments/data/54_agents/satiated_seed43/aut_ec.json",
+      "nac_sha256": "e115c1ec1af840c8d953d795cc487e9b3bb9ada4d93bdc41ef597705616fa23d",
+      "ec_sha256": "050667763487a74da29323ed63be7a610803db4e3b66720fc4bee76a9fa7939f",
+      "bias_entries": 0,
+      "biases": [],
+      "audio_nodes": [
+        "f075c9a6-0ad9-40ae-b098-6db712647c87",
+        "d2a27f05-5d5b-4dff-88d2-e05f4ed6e365",
+        "97df10bb-a403-498e-805e-0d871987f34c"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787802654.558827,
+      "source_run": "satiated_seed43"
+    },
+    {
+      "arm": "satiated",
+      "seed": 44,
+      "exploratory": false,
+      "label": "satiated_seed44",
+      "nac_path": "docs/experiments/data/54_agents/satiated_seed44/aut_nac.json",
+      "ec_path": "docs/experiments/data/54_agents/satiated_seed44/aut_ec.json",
+      "nac_sha256": "fb3ee422738fac9ec8c2033b3e319e01aebbc7513e4e4fce6da898096aaabb8a",
+      "ec_sha256": "5398d1b7f7885d5fc0a366a376bf851033fbbce2453d41bce53781ba8e10b536",
+      "bias_entries": 0,
+      "biases": [],
+      "audio_nodes": [
+        "70ee03ac-463b-4a43-bd09-e336d866cee3",
+        "72a3a372-67be-4e0e-bd36-b059705aa5e6",
+        "59cd4689-1527-4caa-9aba-2825b89da865"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787803313.448786,
+      "source_run": "satiated_seed44"
+    },
+    {
+      "arm": "no_feed",
+      "seed": 42,
+      "exploratory": false,
+      "label": "no_feed_seed42",
+      "nac_path": "docs/experiments/data/54_agents/no_feed_seed42/aut_nac.json",
+      "ec_path": "docs/experiments/data/54_agents/no_feed_seed42/aut_ec.json",
+      "nac_sha256": "779f9bc7c35d50f45c0d3d0c61b82b1475c05e784450c63a4440285b7cc09447",
+      "ec_sha256": "73bb790abc436445129afa73af14b6a637e00ff67b40c31f08425c63faa312d4",
+      "bias_entries": 0,
+      "biases": [],
+      "audio_nodes": [
+        "782b5a7f-456c-46a9-8beb-03e7997a8bbb",
+        "b960acab-61e7-4a19-8b86-eb08ce1b7f22",
+        "008dc972-5ca3-410b-8ccb-d7c403a211e7"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787809873.229158,
+      "source_run": "no_feed_seed42"
+    },
+    {
+      "arm": "no_feed",
+      "seed": 43,
+      "exploratory": false,
+      "label": "no_feed_seed43",
+      "nac_path": "docs/experiments/data/54_agents/no_feed_seed43/aut_nac.json",
+      "ec_path": "docs/experiments/data/54_agents/no_feed_seed43/aut_ec.json",
+      "nac_sha256": "c4bcd45599a9192128ee584dcc444f72838a88f17770034bdf89bb842507cbfc",
+      "ec_sha256": "bf36ec663d4d7a79d799f2ecbdc627c0a167db7db651cdba19f41d983404bdb9",
+      "bias_entries": 0,
+      "biases": [],
+      "audio_nodes": [
+        "f9c7067e-36df-4fe5-bd93-6867e1a1df70",
+        "f13b7bac-e7cd-463b-8997-5926117ae389",
+        "180916e4-d684-4876-b95d-ac1a546fe2af"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787810527.875231,
+      "source_run": "no_feed_seed43"
+    },
+    {
+      "arm": "no_feed",
+      "seed": 44,
+      "exploratory": false,
+      "label": "no_feed_seed44",
+      "nac_path": "docs/experiments/data/54_agents/no_feed_seed44/aut_nac.json",
+      "ec_path": "docs/experiments/data/54_agents/no_feed_seed44/aut_ec.json",
+      "nac_sha256": "6b82aa41226196224b9e7c9fde70c179429134c0341c66dc3f76ea15235378ab",
+      "ec_sha256": "35cbe449ae9cb0346b5ad706ec2aedbb1e7f3ec8f6a0e8b39da8ac845589b447",
+      "bias_entries": 0,
+      "biases": [],
+      "audio_nodes": [
+        "7a52ced7-2012-4483-8564-217fb4568461",
+        "2d26dea7-d16d-4cca-8877-2a375a024375",
+        "7ff917b1-da65-43a0-86b0-596b25b39862"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787811185.927862,
+      "source_run": "no_feed_seed44"
+    },
+    {
+      "arm": "taught",
+      "seed": 45,
+      "exploratory": true,
+      "label": "taught_seed45",
+      "nac_path": "docs/experiments/data/54_agents/taught_seed45/aut_nac.json",
+      "ec_path": "docs/experiments/data/54_agents/taught_seed45/aut_ec.json",
+      "nac_sha256": "c52c06ef38749bdfaea422cc647c3407f28d13e7a98ad6f82d9eee178a31de03",
+      "ec_sha256": "5f11a4477ce2756e7fa95193e9e4a64a4a3de2675e6d4440d38a7e67b25e1904",
+      "bias_entries": 4,
+      "biases": [
+        {
+          "agent": "sim_aut",
+          "cluster": "48c1bf7d-ecb0-43d7-a17a-7ac28cc4b089",
+          "tool": "tool:reachy_mini_turn_right",
+          "bias": 0.5786
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "dd4d9c4f-7967-46e8-aa29-aac3a5ead1eb",
+          "tool": "tool:reachy_mini_turn_left_big",
+          "bias": 0.0762
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "dd4d9c4f-7967-46e8-aa29-aac3a5ead1eb",
+          "tool": "tool:reachy_mini_turn_left",
+          "bias": 0.7028
+        },
+        {
+          "agent": "sim_aut",
+          "cluster": "7dc24eb3-6de6-4cb0-b4e1-01014254a257",
+          "tool": "tool:reachy_mini_turn_right_big",
+          "bias": 0.1008
+        }
+      ],
+      "audio_nodes": [
+        "48c1bf7d-ecb0-43d7-a17a-7ac28cc4b089",
+        "dd4d9c4f-7967-46e8-aa29-aac3a5ead1eb",
+        "7dc24eb3-6de6-4cb0-b4e1-01014254a257"
+      ],
+      "n_audio_nodes": 3,
+      "ec_hash_scheme": "stable-sha256-v1",
+      "ec_encoder_provenance": {
+        "sensor:interoception": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "hunger",
+            "thirst"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        },
+        "sensor:audio": {
+          "embedding_dim": 384,
+          "sensor_names": [
+            "azimuth"
+          ],
+          "normalization_modes": [
+            "range-aware"
+          ]
+        }
+      },
+      "nac_format_version": "1.3",
+      "nac_saved_at": 1787796074.484185,
+      "source_run": "taught_seed45"
+    }
+  ]
+}
