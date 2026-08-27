@@ -1,0 +1,32 @@
+component:
+  name: reachy_mini_infant
+  extends: bodies/reachy_mini
+  category: bodies
+  archetype: humanoid       # the parent reachy_mini's archetype (the pre-reg block said "robot", which is not a registered archetype — amendment 1 item 4)
+  tags: [body, robot, reachy, infant, cradle, operant, developmental]
+  synonyms: [reachy infant, infant reachy, reachy nursery body, reachy mini infant]
+  description: |
+    Exp 54 nursery body: the Reachy Mini's own body component — its four orient
+    affordances with the robot's own head_yaw/azimuth self-effects (what the
+    production ReachyOrientMotorBackend factory reads) and, load-bearing, the SAME
+    entity name, so learned bias keys are tool:reachy_mini_turn_left etc. — with the
+    innate azimuth centeredness drive REMOVED (drive: null, the Exp 52 rule: an
+    intrinsic orient drive teaches orienting by itself) and the infant's hunger and
+    thirst drives ADDED (infant_humanoid's specs) so the mother has something to relieve.
+    Pre-registration: docs/experiments/protocols/exp54_nurture_reachy_body_preregistration.md.
+    Structural guard: tests/unit/test_reachy_mini_infant_body.py.
+entity:
+  name: reachy_mini            # NOT reachy_mini_infant — the tool prefix must match the production body
+  sensors:
+    azimuth:
+      drive: null              # remove the innate centeredness drive (deep_merge replaces the dict with null)
+    hunger:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+      drive: {drift_mode: entropic, drift_direction: up, drift_rate: 0.006, deprivation_threshold: 0.7, deprivation_pain: 0.3}
+    thirst:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+      drive: {drift_mode: entropic, drift_direction: up, drift_rate: 0.008, deprivation_threshold: 0.6, deprivation_pain: 0.25}

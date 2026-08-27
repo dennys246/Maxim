@@ -1,0 +1,1349 @@
+{
+  "_format_version": "1.0",
+  "experiment": "53_cross_context_readout",
+  "manifest": "docs/experiments/data/53_agents_manifest.json",
+  "body_ref": "bodies/infant_operant",
+  "factory": false,
+  "step": 0.1,
+  "front_hemisphere_max": 0.6,
+  "margin_floor": 0.11,
+  "majority": 2,
+  "procedure": "az in [-1, 1] step 0.1 through each gated taught seed's loaded EC (fresh load per value, explore 0, nothing saved). Bins = maximal runs of consecutive az values completing into the same audio cluster; a bin's left/right strength = the max persisted bias among its turn_left*/turn_right* keys; the LEFT (RIGHT) bin = the bin with the strongest left (right) strength. Eligible left targets = az values in the LEFT bin of a majority of seeds with az < 0 and |az| <= 0.6 (right: az > 0); two magnitudes per direction = the grid value nearest the eligible centroid and its neighbour one step further from centre (one step closer if the outer neighbour is not eligible). Exploratory placements = the grid value nearest the centroid of the predicted wrong-way region (values where a majority of seeds' frozen probe picks the wrong direction with |learned_margin| > 0.11; az = 0 has no direction and is excluded), if any. Grid ties resolve toward centre.",
+  "provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim-wt-exp54/src/maxim/__init__.py",
+    "executed_git_hash": "abdb370575f9",
+    "working_tree_dirty_src_scripts": true,
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim-wt-exp54/src"
+  },
+  "gated_targets": [
+    -0.3,
+    -0.2,
+    0.5,
+    0.6
+  ],
+  "exploratory_targets": [
+    0.2
+  ],
+  "per_direction": {
+    "left": {
+      "seeds_with_bin": 3,
+      "eligible": [
+        -0.4,
+        -0.3,
+        -0.2,
+        -0.1
+      ],
+      "targets": [
+        -0.2,
+        -0.3
+      ],
+      "centroid": -0.25
+    },
+    "right": {
+      "seeds_with_bin": 3,
+      "eligible": [
+        0.4,
+        0.5,
+        0.6
+      ],
+      "targets": [
+        0.5,
+        0.6
+      ],
+      "centroid": 0.5
+    }
+  },
+  "predicted_wrong_way_region": [
+    0.1,
+    0.2,
+    0.3
+  ],
+  "flags": [],
+  "agents": {
+    "taught_seed42": {
+      "arm": "taught",
+      "seed": 42,
+      "exploratory": false,
+      "rows": [
+        {
+          "az": -1.0,
+          "audio_cluster": "5be3a730-a11e-49bc-a261-d207d0bdd805",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0062,
+          "consulted_audio": 0.0062,
+          "biases": {
+            "turn_left": 0.0062
+          }
+        },
+        {
+          "az": -0.9,
+          "audio_cluster": "5be3a730-a11e-49bc-a261-d207d0bdd805",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0062,
+          "consulted_audio": 0.0062,
+          "biases": {
+            "turn_left": 0.0062
+          }
+        },
+        {
+          "az": -0.8,
+          "audio_cluster": "5be3a730-a11e-49bc-a261-d207d0bdd805",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0062,
+          "consulted_audio": 0.0062,
+          "biases": {
+            "turn_left": 0.0062
+          }
+        },
+        {
+          "az": -0.7,
+          "audio_cluster": "5be3a730-a11e-49bc-a261-d207d0bdd805",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0062,
+          "consulted_audio": 0.0062,
+          "biases": {
+            "turn_left": 0.0062
+          }
+        },
+        {
+          "az": -0.6,
+          "audio_cluster": "5be3a730-a11e-49bc-a261-d207d0bdd805",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0062,
+          "consulted_audio": 0.0062,
+          "biases": {
+            "turn_left": 0.0062
+          }
+        },
+        {
+          "az": -0.5,
+          "audio_cluster": "5be3a730-a11e-49bc-a261-d207d0bdd805",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0062,
+          "consulted_audio": 0.0062,
+          "biases": {
+            "turn_left": 0.0062
+          }
+        },
+        {
+          "az": -0.4,
+          "audio_cluster": "5db1e6cc-e136-4c8d-b83d-3ffacabb3851",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.6519,
+          "consulted_audio": 0.6519,
+          "biases": {
+            "turn_left": 0.6519
+          }
+        },
+        {
+          "az": -0.3,
+          "audio_cluster": "5db1e6cc-e136-4c8d-b83d-3ffacabb3851",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.6519,
+          "consulted_audio": 0.6519,
+          "biases": {
+            "turn_left": 0.6519
+          }
+        },
+        {
+          "az": -0.2,
+          "audio_cluster": "5db1e6cc-e136-4c8d-b83d-3ffacabb3851",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.6519,
+          "consulted_audio": 0.6519,
+          "biases": {
+            "turn_left": 0.6519
+          }
+        },
+        {
+          "az": -0.1,
+          "audio_cluster": "5db1e6cc-e136-4c8d-b83d-3ffacabb3851",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.6519,
+          "consulted_audio": 0.6519,
+          "biases": {
+            "turn_left": 0.6519
+          }
+        },
+        {
+          "az": 0.0,
+          "audio_cluster": "5db1e6cc-e136-4c8d-b83d-3ffacabb3851",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.6519,
+          "consulted_audio": 0.6519,
+          "biases": {
+            "turn_left": 0.6519
+          }
+        },
+        {
+          "az": 0.1,
+          "audio_cluster": "5db1e6cc-e136-4c8d-b83d-3ffacabb3851",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.6519,
+          "consulted_audio": 0.6519,
+          "biases": {
+            "turn_left": 0.6519
+          }
+        },
+        {
+          "az": 0.2,
+          "audio_cluster": "5db1e6cc-e136-4c8d-b83d-3ffacabb3851",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.6519,
+          "consulted_audio": 0.6519,
+          "biases": {
+            "turn_left": 0.6519
+          }
+        },
+        {
+          "az": 0.3,
+          "audio_cluster": "5db1e6cc-e136-4c8d-b83d-3ffacabb3851",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.6519,
+          "consulted_audio": 0.6519,
+          "biases": {
+            "turn_left": 0.6519
+          }
+        },
+        {
+          "az": 0.4,
+          "audio_cluster": "5f6fab30-5b53-42b5-a9e2-0cca35a21765",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 0.5,
+          "audio_cluster": "5f6fab30-5b53-42b5-a9e2-0cca35a21765",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 0.6,
+          "audio_cluster": "5f6fab30-5b53-42b5-a9e2-0cca35a21765",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 0.7,
+          "audio_cluster": "5f6fab30-5b53-42b5-a9e2-0cca35a21765",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 0.8,
+          "audio_cluster": "5f6fab30-5b53-42b5-a9e2-0cca35a21765",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 0.9,
+          "audio_cluster": "5f6fab30-5b53-42b5-a9e2-0cca35a21765",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 1.0,
+          "audio_cluster": "5f6fab30-5b53-42b5-a9e2-0cca35a21765",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        }
+      ],
+      "bins": [
+        {
+          "cluster": "5be3a730-a11e-49bc-a261-d207d0bdd805",
+          "az": [
+            -1.0,
+            -0.9,
+            -0.8,
+            -0.7,
+            -0.6,
+            -0.5
+          ],
+          "biases": {
+            "turn_left": 0.0062
+          },
+          "az_min": -1.0,
+          "az_max": -0.5,
+          "centroid": -0.75,
+          "left_strength": 0.0062,
+          "right_strength": 0.0
+        },
+        {
+          "cluster": "5db1e6cc-e136-4c8d-b83d-3ffacabb3851",
+          "az": [
+            -0.4,
+            -0.3,
+            -0.2,
+            -0.1,
+            0.0,
+            0.1,
+            0.2,
+            0.3
+          ],
+          "biases": {
+            "turn_left": 0.6519
+          },
+          "az_min": -0.4,
+          "az_max": 0.3,
+          "centroid": -0.05,
+          "left_strength": 0.6519,
+          "right_strength": 0.0
+        },
+        {
+          "cluster": "5f6fab30-5b53-42b5-a9e2-0cca35a21765",
+          "az": [
+            0.4,
+            0.5,
+            0.6,
+            0.7,
+            0.8,
+            0.9,
+            1.0
+          ],
+          "biases": {
+            "turn_right": 0.9017
+          },
+          "az_min": 0.4,
+          "az_max": 1.0,
+          "centroid": 0.7,
+          "left_strength": 0.0,
+          "right_strength": 0.9017
+        }
+      ]
+    },
+    "taught_seed43": {
+      "arm": "taught",
+      "seed": 43,
+      "exploratory": false,
+      "rows": [
+        {
+          "az": -1.0,
+          "audio_cluster": "637dfcaf-bc86-4661-8536-893d2b1a1db3",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0071,
+          "consulted_audio": 0.0071,
+          "biases": {
+            "turn_left": 0.0071
+          }
+        },
+        {
+          "az": -0.9,
+          "audio_cluster": "637dfcaf-bc86-4661-8536-893d2b1a1db3",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0071,
+          "consulted_audio": 0.0071,
+          "biases": {
+            "turn_left": 0.0071
+          }
+        },
+        {
+          "az": -0.8,
+          "audio_cluster": "637dfcaf-bc86-4661-8536-893d2b1a1db3",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0071,
+          "consulted_audio": 0.0071,
+          "biases": {
+            "turn_left": 0.0071
+          }
+        },
+        {
+          "az": -0.7,
+          "audio_cluster": "637dfcaf-bc86-4661-8536-893d2b1a1db3",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0071,
+          "consulted_audio": 0.0071,
+          "biases": {
+            "turn_left": 0.0071
+          }
+        },
+        {
+          "az": -0.6,
+          "audio_cluster": "637dfcaf-bc86-4661-8536-893d2b1a1db3",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0071,
+          "consulted_audio": 0.0071,
+          "biases": {
+            "turn_left": 0.0071
+          }
+        },
+        {
+          "az": -0.5,
+          "audio_cluster": "637dfcaf-bc86-4661-8536-893d2b1a1db3",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0071,
+          "consulted_audio": 0.0071,
+          "biases": {
+            "turn_left": 0.0071
+          }
+        },
+        {
+          "az": -0.4,
+          "audio_cluster": "49598399-b2f0-43c0-86e6-fe9ec31fcda4",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.5891,
+          "consulted_audio": 0.5891,
+          "biases": {
+            "turn_left": 0.5891
+          }
+        },
+        {
+          "az": -0.3,
+          "audio_cluster": "49598399-b2f0-43c0-86e6-fe9ec31fcda4",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.5891,
+          "consulted_audio": 0.5891,
+          "biases": {
+            "turn_left": 0.5891
+          }
+        },
+        {
+          "az": -0.2,
+          "audio_cluster": "49598399-b2f0-43c0-86e6-fe9ec31fcda4",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.5891,
+          "consulted_audio": 0.5891,
+          "biases": {
+            "turn_left": 0.5891
+          }
+        },
+        {
+          "az": -0.1,
+          "audio_cluster": "49598399-b2f0-43c0-86e6-fe9ec31fcda4",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.5891,
+          "consulted_audio": 0.5891,
+          "biases": {
+            "turn_left": 0.5891
+          }
+        },
+        {
+          "az": 0.0,
+          "audio_cluster": "49598399-b2f0-43c0-86e6-fe9ec31fcda4",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.5891,
+          "consulted_audio": 0.5891,
+          "biases": {
+            "turn_left": 0.5891
+          }
+        },
+        {
+          "az": 0.1,
+          "audio_cluster": "49598399-b2f0-43c0-86e6-fe9ec31fcda4",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.5891,
+          "consulted_audio": 0.5891,
+          "biases": {
+            "turn_left": 0.5891
+          }
+        },
+        {
+          "az": 0.2,
+          "audio_cluster": "49598399-b2f0-43c0-86e6-fe9ec31fcda4",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.5891,
+          "consulted_audio": 0.5891,
+          "biases": {
+            "turn_left": 0.5891
+          }
+        },
+        {
+          "az": 0.3,
+          "audio_cluster": "49598399-b2f0-43c0-86e6-fe9ec31fcda4",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.5891,
+          "consulted_audio": 0.5891,
+          "biases": {
+            "turn_left": 0.5891
+          }
+        },
+        {
+          "az": 0.4,
+          "audio_cluster": "429e7f5a-7044-4ad1-9e0c-7f48c4df8602",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 0.5,
+          "audio_cluster": "429e7f5a-7044-4ad1-9e0c-7f48c4df8602",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 0.6,
+          "audio_cluster": "429e7f5a-7044-4ad1-9e0c-7f48c4df8602",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 0.7,
+          "audio_cluster": "429e7f5a-7044-4ad1-9e0c-7f48c4df8602",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 0.8,
+          "audio_cluster": "429e7f5a-7044-4ad1-9e0c-7f48c4df8602",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 0.9,
+          "audio_cluster": "429e7f5a-7044-4ad1-9e0c-7f48c4df8602",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 1.0,
+          "audio_cluster": "429e7f5a-7044-4ad1-9e0c-7f48c4df8602",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        }
+      ],
+      "bins": [
+        {
+          "cluster": "637dfcaf-bc86-4661-8536-893d2b1a1db3",
+          "az": [
+            -1.0,
+            -0.9,
+            -0.8,
+            -0.7,
+            -0.6,
+            -0.5
+          ],
+          "biases": {
+            "turn_left": 0.0071
+          },
+          "az_min": -1.0,
+          "az_max": -0.5,
+          "centroid": -0.75,
+          "left_strength": 0.0071,
+          "right_strength": 0.0
+        },
+        {
+          "cluster": "49598399-b2f0-43c0-86e6-fe9ec31fcda4",
+          "az": [
+            -0.4,
+            -0.3,
+            -0.2,
+            -0.1,
+            0.0,
+            0.1,
+            0.2,
+            0.3
+          ],
+          "biases": {
+            "turn_left": 0.5891
+          },
+          "az_min": -0.4,
+          "az_max": 0.3,
+          "centroid": -0.05,
+          "left_strength": 0.5891,
+          "right_strength": 0.0
+        },
+        {
+          "cluster": "429e7f5a-7044-4ad1-9e0c-7f48c4df8602",
+          "az": [
+            0.4,
+            0.5,
+            0.6,
+            0.7,
+            0.8,
+            0.9,
+            1.0
+          ],
+          "biases": {
+            "turn_right": 0.9017
+          },
+          "az_min": 0.4,
+          "az_max": 1.0,
+          "centroid": 0.7,
+          "left_strength": 0.0,
+          "right_strength": 0.9017
+        }
+      ]
+    },
+    "taught_seed44": {
+      "arm": "taught",
+      "seed": 44,
+      "exploratory": false,
+      "rows": [
+        {
+          "az": -1.0,
+          "audio_cluster": "cc015e57-b231-46c7-be3e-424cb8bc9482",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0063,
+          "consulted_audio": 0.0063,
+          "biases": {
+            "turn_left": 0.0063
+          }
+        },
+        {
+          "az": -0.9,
+          "audio_cluster": "cc015e57-b231-46c7-be3e-424cb8bc9482",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0063,
+          "consulted_audio": 0.0063,
+          "biases": {
+            "turn_left": 0.0063
+          }
+        },
+        {
+          "az": -0.8,
+          "audio_cluster": "cc015e57-b231-46c7-be3e-424cb8bc9482",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0063,
+          "consulted_audio": 0.0063,
+          "biases": {
+            "turn_left": 0.0063
+          }
+        },
+        {
+          "az": -0.7,
+          "audio_cluster": "cc015e57-b231-46c7-be3e-424cb8bc9482",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0063,
+          "consulted_audio": 0.0063,
+          "biases": {
+            "turn_left": 0.0063
+          }
+        },
+        {
+          "az": -0.6,
+          "audio_cluster": "cc015e57-b231-46c7-be3e-424cb8bc9482",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0063,
+          "consulted_audio": 0.0063,
+          "biases": {
+            "turn_left": 0.0063
+          }
+        },
+        {
+          "az": -0.5,
+          "audio_cluster": "cc015e57-b231-46c7-be3e-424cb8bc9482",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0063,
+          "consulted_audio": 0.0063,
+          "biases": {
+            "turn_left": 0.0063
+          }
+        },
+        {
+          "az": -0.4,
+          "audio_cluster": "cc015e57-b231-46c7-be3e-424cb8bc9482",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.0063,
+          "consulted_audio": 0.0063,
+          "biases": {
+            "turn_left": 0.0063
+          }
+        },
+        {
+          "az": -0.3,
+          "audio_cluster": "14445d6e-6f4d-4655-83b1-1652449f1703",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.6196,
+          "consulted_audio": 0.6196,
+          "biases": {
+            "turn_left": 0.6196
+          }
+        },
+        {
+          "az": -0.2,
+          "audio_cluster": "14445d6e-6f4d-4655-83b1-1652449f1703",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.6196,
+          "consulted_audio": 0.6196,
+          "biases": {
+            "turn_left": 0.6196
+          }
+        },
+        {
+          "az": -0.1,
+          "audio_cluster": "14445d6e-6f4d-4655-83b1-1652449f1703",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.6196,
+          "consulted_audio": 0.6196,
+          "biases": {
+            "turn_left": 0.6196
+          }
+        },
+        {
+          "az": 0.0,
+          "audio_cluster": "14445d6e-6f4d-4655-83b1-1652449f1703",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.6196,
+          "consulted_audio": 0.6196,
+          "biases": {
+            "turn_left": 0.6196
+          }
+        },
+        {
+          "az": 0.1,
+          "audio_cluster": "14445d6e-6f4d-4655-83b1-1652449f1703",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.6196,
+          "consulted_audio": 0.6196,
+          "biases": {
+            "turn_left": 0.6196
+          }
+        },
+        {
+          "az": 0.2,
+          "audio_cluster": "14445d6e-6f4d-4655-83b1-1652449f1703",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.6196,
+          "consulted_audio": 0.6196,
+          "biases": {
+            "turn_left": 0.6196
+          }
+        },
+        {
+          "az": 0.3,
+          "audio_cluster": "14445d6e-6f4d-4655-83b1-1652449f1703",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.6196,
+          "consulted_audio": 0.6196,
+          "biases": {
+            "turn_left": 0.6196
+          }
+        },
+        {
+          "az": 0.4,
+          "audio_cluster": "f1a249f9-f40e-4719-ac40-8109703b6563",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 0.5,
+          "audio_cluster": "f1a249f9-f40e-4719-ac40-8109703b6563",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 0.6,
+          "audio_cluster": "f1a249f9-f40e-4719-ac40-8109703b6563",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 0.7,
+          "audio_cluster": "f1a249f9-f40e-4719-ac40-8109703b6563",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 0.8,
+          "audio_cluster": "f1a249f9-f40e-4719-ac40-8109703b6563",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 0.9,
+          "audio_cluster": "f1a249f9-f40e-4719-ac40-8109703b6563",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        },
+        {
+          "az": 1.0,
+          "audio_cluster": "f1a249f9-f40e-4719-ac40-8109703b6563",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.9017,
+          "consulted_audio": 0.9017,
+          "biases": {
+            "turn_right": 0.9017
+          }
+        }
+      ],
+      "bins": [
+        {
+          "cluster": "cc015e57-b231-46c7-be3e-424cb8bc9482",
+          "az": [
+            -1.0,
+            -0.9,
+            -0.8,
+            -0.7,
+            -0.6,
+            -0.5,
+            -0.4
+          ],
+          "biases": {
+            "turn_left": 0.0063
+          },
+          "az_min": -1.0,
+          "az_max": -0.4,
+          "centroid": -0.7,
+          "left_strength": 0.0063,
+          "right_strength": 0.0
+        },
+        {
+          "cluster": "14445d6e-6f4d-4655-83b1-1652449f1703",
+          "az": [
+            -0.3,
+            -0.2,
+            -0.1,
+            0.0,
+            0.1,
+            0.2,
+            0.3
+          ],
+          "biases": {
+            "turn_left": 0.6196
+          },
+          "az_min": -0.3,
+          "az_max": 0.3,
+          "centroid": 0.0,
+          "left_strength": 0.6196,
+          "right_strength": 0.0
+        },
+        {
+          "cluster": "f1a249f9-f40e-4719-ac40-8109703b6563",
+          "az": [
+            0.4,
+            0.5,
+            0.6,
+            0.7,
+            0.8,
+            0.9,
+            1.0
+          ],
+          "biases": {
+            "turn_right": 0.9017
+          },
+          "az_min": 0.4,
+          "az_max": 1.0,
+          "centroid": 0.7,
+          "left_strength": 0.0,
+          "right_strength": 0.9017
+        }
+      ]
+    },
+    "taught_seed48": {
+      "arm": "taught",
+      "seed": 48,
+      "exploratory": true,
+      "rows": [
+        {
+          "az": -1.0,
+          "audio_cluster": "d7a3312d-1657-4ffa-b638-f5eb895aa846",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.388,
+          "consulted_audio": 0.388,
+          "biases": {
+            "turn_left": 0.388
+          }
+        },
+        {
+          "az": -0.9,
+          "audio_cluster": "d7a3312d-1657-4ffa-b638-f5eb895aa846",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.388,
+          "consulted_audio": 0.388,
+          "biases": {
+            "turn_left": 0.388
+          }
+        },
+        {
+          "az": -0.8,
+          "audio_cluster": "d7a3312d-1657-4ffa-b638-f5eb895aa846",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.388,
+          "consulted_audio": 0.388,
+          "biases": {
+            "turn_left": 0.388
+          }
+        },
+        {
+          "az": -0.7,
+          "audio_cluster": "d7a3312d-1657-4ffa-b638-f5eb895aa846",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.388,
+          "consulted_audio": 0.388,
+          "biases": {
+            "turn_left": 0.388
+          }
+        },
+        {
+          "az": -0.6,
+          "audio_cluster": "d7a3312d-1657-4ffa-b638-f5eb895aa846",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.388,
+          "consulted_audio": 0.388,
+          "biases": {
+            "turn_left": 0.388
+          }
+        },
+        {
+          "az": -0.5,
+          "audio_cluster": "d7a3312d-1657-4ffa-b638-f5eb895aa846",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.388,
+          "consulted_audio": 0.388,
+          "biases": {
+            "turn_left": 0.388
+          }
+        },
+        {
+          "az": -0.4,
+          "audio_cluster": "d7a3312d-1657-4ffa-b638-f5eb895aa846",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": true,
+          "learned_margin": 0.388,
+          "consulted_audio": 0.388,
+          "biases": {
+            "turn_left": 0.388
+          }
+        },
+        {
+          "az": -0.3,
+          "audio_cluster": "33d88cf4-f722-4e3d-82ba-51a5b1191869",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": false,
+          "learned_margin": 0.3065,
+          "consulted_audio": 0.3065,
+          "biases": {
+            "turn_right": 0.3065
+          }
+        },
+        {
+          "az": -0.2,
+          "audio_cluster": "33d88cf4-f722-4e3d-82ba-51a5b1191869",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": false,
+          "learned_margin": 0.3065,
+          "consulted_audio": 0.3065,
+          "biases": {
+            "turn_right": 0.3065
+          }
+        },
+        {
+          "az": -0.1,
+          "audio_cluster": "33d88cf4-f722-4e3d-82ba-51a5b1191869",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": false,
+          "learned_margin": 0.3065,
+          "consulted_audio": 0.3065,
+          "biases": {
+            "turn_right": 0.3065
+          }
+        },
+        {
+          "az": 0.0,
+          "audio_cluster": "33d88cf4-f722-4e3d-82ba-51a5b1191869",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.3065,
+          "consulted_audio": 0.3065,
+          "biases": {
+            "turn_right": 0.3065
+          }
+        },
+        {
+          "az": 0.1,
+          "audio_cluster": "33d88cf4-f722-4e3d-82ba-51a5b1191869",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.3065,
+          "consulted_audio": 0.3065,
+          "biases": {
+            "turn_right": 0.3065
+          }
+        },
+        {
+          "az": 0.2,
+          "audio_cluster": "33d88cf4-f722-4e3d-82ba-51a5b1191869",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.3065,
+          "consulted_audio": 0.3065,
+          "biases": {
+            "turn_right": 0.3065
+          }
+        },
+        {
+          "az": 0.3,
+          "audio_cluster": "33d88cf4-f722-4e3d-82ba-51a5b1191869",
+          "completed": true,
+          "affordance": "turn_right",
+          "correct": true,
+          "learned_margin": 0.3065,
+          "consulted_audio": 0.3065,
+          "biases": {
+            "turn_right": 0.3065
+          }
+        },
+        {
+          "az": 0.4,
+          "audio_cluster": "b1417d48-77da-4cea-b930-1fbb1ede4f34",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.0607,
+          "consulted_audio": 0.0607,
+          "biases": {
+            "turn_left": 0.0607
+          }
+        },
+        {
+          "az": 0.5,
+          "audio_cluster": "b1417d48-77da-4cea-b930-1fbb1ede4f34",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.0607,
+          "consulted_audio": 0.0607,
+          "biases": {
+            "turn_left": 0.0607
+          }
+        },
+        {
+          "az": 0.6,
+          "audio_cluster": "b1417d48-77da-4cea-b930-1fbb1ede4f34",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.0607,
+          "consulted_audio": 0.0607,
+          "biases": {
+            "turn_left": 0.0607
+          }
+        },
+        {
+          "az": 0.7,
+          "audio_cluster": "b1417d48-77da-4cea-b930-1fbb1ede4f34",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.0607,
+          "consulted_audio": 0.0607,
+          "biases": {
+            "turn_left": 0.0607
+          }
+        },
+        {
+          "az": 0.8,
+          "audio_cluster": "b1417d48-77da-4cea-b930-1fbb1ede4f34",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.0607,
+          "consulted_audio": 0.0607,
+          "biases": {
+            "turn_left": 0.0607
+          }
+        },
+        {
+          "az": 0.9,
+          "audio_cluster": "b1417d48-77da-4cea-b930-1fbb1ede4f34",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.0607,
+          "consulted_audio": 0.0607,
+          "biases": {
+            "turn_left": 0.0607
+          }
+        },
+        {
+          "az": 1.0,
+          "audio_cluster": "b1417d48-77da-4cea-b930-1fbb1ede4f34",
+          "completed": true,
+          "affordance": "turn_left",
+          "correct": false,
+          "learned_margin": 0.0607,
+          "consulted_audio": 0.0607,
+          "biases": {
+            "turn_left": 0.0607
+          }
+        }
+      ],
+      "bins": [
+        {
+          "cluster": "d7a3312d-1657-4ffa-b638-f5eb895aa846",
+          "az": [
+            -1.0,
+            -0.9,
+            -0.8,
+            -0.7,
+            -0.6,
+            -0.5,
+            -0.4
+          ],
+          "biases": {
+            "turn_left": 0.388
+          },
+          "az_min": -1.0,
+          "az_max": -0.4,
+          "centroid": -0.7,
+          "left_strength": 0.388,
+          "right_strength": 0.0
+        },
+        {
+          "cluster": "33d88cf4-f722-4e3d-82ba-51a5b1191869",
+          "az": [
+            -0.3,
+            -0.2,
+            -0.1,
+            0.0,
+            0.1,
+            0.2,
+            0.3
+          ],
+          "biases": {
+            "turn_right": 0.3065
+          },
+          "az_min": -0.3,
+          "az_max": 0.3,
+          "centroid": 0.0,
+          "left_strength": 0.0,
+          "right_strength": 0.3065
+        },
+        {
+          "cluster": "b1417d48-77da-4cea-b930-1fbb1ede4f34",
+          "az": [
+            0.4,
+            0.5,
+            0.6,
+            0.7,
+            0.8,
+            0.9,
+            1.0
+          ],
+          "biases": {
+            "turn_left": 0.0607
+          },
+          "az_min": 0.4,
+          "az_max": 1.0,
+          "centroid": 0.7,
+          "left_strength": 0.0607,
+          "right_strength": 0.0
+        }
+      ]
+    }
+  }
+}

@@ -42,7 +42,29 @@ ARMS = ("taught", "no_feed", "satiated")
 # Exp 52 (Nurture): the satiated arm is a BODY variant, not an env flag — never
 # hungry, so the mother's contingent feed relieves nothing and (under
 # relief-sourced credit) mints no reward. Visible in provenance as the body ref.
-_ARM_EMBODIMENT: dict[str, str] = {"satiated": "bodies/infant_operant_satiated"}
+# Keyed on the CHOSEN --embodiment (Exp 54 runs the same three arms on the
+# robot's own nursery body, bodies/reachy_mini_infant); --satiated-embodiment
+# overrides, and an embodiment with no mapping refuses the satiated arm loudly
+# rather than guessing a body name.
+_SATIATED_EMBODIMENT: dict[str, str] = {
+    "bodies/infant_operant": "bodies/infant_operant_satiated",
+    "bodies/reachy_mini_infant": "bodies/reachy_mini_infant_satiated",
+}
+
+
+def _arm_embodiment(arm: str, embodiment: str, satiated_embodiment: str | None = None) -> str:
+    """The body ref an arm runs on: the satiated arm's never-hungry variant of the
+    chosen embodiment; every other arm the embodiment itself."""
+    if arm != "satiated":
+        return embodiment
+    body = satiated_embodiment or _SATIATED_EMBODIMENT.get(embodiment)
+    if not body:
+        raise ValueError(
+            f"no satiated body known for {embodiment!r}; pass --satiated-embodiment <ref> "
+            f"(known: {sorted(_SATIATED_EMBODIMENT)})"
+        )
+    return body
+
 
 # Shared conditions for ALL arms:
 #   MAXIM_OPERANT_ONLY_CREDIT — the tool-success floor never drowns the operant
@@ -291,6 +313,7 @@ def _run_one(
     explore_weight: float,
     stimulus_order: str = "cycle",
     credit: str = "relief",
+    embodiment: str = EMBODIMENT,
 ) -> dict[str, Any]:
     data_home = workdir / f"{arm}_seed{seed}_ew{explore_weight}"
     # ALWAYS a fresh sandbox (2026-08-13 contamination post-mortem): reusing a
@@ -335,7 +358,7 @@ def _run_one(
         "--aut-mode",
         "substrate-primary",
         "--embodiment",
-        _ARM_EMBODIMENT.get(arm, EMBODIMENT),
+        embodiment,
         "--interactive",
         "false",
         "--sim-max-turns",
@@ -413,6 +436,18 @@ def main() -> int:
         choices=["relief", "constant"],
         help="operant credit VALUE source (Exp 52): relief = sign of the infant's drive relief (default); constant = pre-Exp-52 by-fiat feed_reward (A/B)",
     )
+    p.add_argument(
+        "--embodiment",
+        default=EMBODIMENT,
+        help="body ref for the taught/no_feed arms (Exp 52: bodies/infant_operant; Exp 54: bodies/reachy_mini_infant). "
+        "The satiated arm runs the never-hungry variant keyed on this ref (see --satiated-embodiment).",
+    )
+    p.add_argument(
+        "--satiated-embodiment",
+        default=None,
+        help="body ref for the satiated arm (default: the never-hungry variant of --embodiment; "
+        "required when --embodiment has no known variant)",
+    )
     p.add_argument("--mock", action="store_true", help="synthetic fade (CI smoke, no subprocess)")
     p.add_argument("--resume", action="store_true", help="skip (arm,seed,explore_weight) already in --out")
     args = p.parse_args()
@@ -439,6 +474,23 @@ def main() -> int:
         if a not in _ARM_ENV:
             print(f"unknown arm {a!r}; valid: {list(_ARM_ENV)}", file=sys.stderr)
             return 2
+    # Resolve every arm's body BEFORE the campaign and instantiate each once: a
+    # typo or a missing satiated variant fails in seconds here, not after the
+    # first 12-minute sub-sim (and the body ref is stamped into every row).
+    try:
+        arm_bodies = {a: _arm_embodiment(a, args.embodiment, args.satiated_embodiment) for a in arms}
+    except ValueError as exc:
+        print(f"[FAIL] {exc}", file=sys.stderr)
+        return 2
+    try:
+        from maxim.embodiment.component_registry import ComponentRegistry
+
+        _registry = ComponentRegistry()
+        for _ref in sorted(set(arm_bodies.values())):
+            _registry.instantiate(_ref)
+    except Exception as exc:  # noqa: BLE001 — any body that cannot build is a preflight failure
+        print(f"[FAIL] embodiment preflight: {exc}", file=sys.stderr)
+        return 2
 
     # Provenance preflight (Exp 42b lesson — MANDATORY for any harness that
     # spawns sub-sims): the `maxim` the sub-sims import must be THIS repo.
@@ -497,7 +549,7 @@ def main() -> int:
     # block-buffers and the log looks dead for the first ~25-min run —
     # which is precisely what tempts the operator into relaunching.
     print(
-        f"harness pid {os.getpid()} holding locks — arms={arms} trials={args.trials} "
+        f"harness pid {os.getpid()} holding locks — arms={arms} bodies={arm_bodies} trials={args.trials} "
         f"ew={args.explore_weight} -> {out_path} (first per-run line in ~20-45 min)",
         flush=True,
     )
@@ -525,6 +577,7 @@ def main() -> int:
                             explore_weight=args.explore_weight,
                             stimulus_order=args.stimulus_order,
                             credit=args.credit,
+                            embodiment=arm_bodies[arm],
                         )
                     )
                     # S3 (assert your own health): a truncated run (sub-sim
@@ -558,7 +611,7 @@ def main() -> int:
                         # from — "relief" (sign of the infant's drive relief) or
                         # "constant" (the pre-Exp-52 by-fiat feed_reward).
                         "credit": args.credit,
-                        "embodiment": _ARM_EMBODIMENT.get(arm, EMBODIMENT),
+                        "embodiment": arm_bodies[arm],
                         "mock": args.mock,
                         "git_hash": _git_hash(),
                         # Exp 42b self-auditing-artifact rule: harness hash

@@ -171,22 +171,100 @@ the first Phase A record.
 # Phase A (mini):
 export PYTHONPATH="$PWD/src"
 python scripts/benchmark_cradle_mother.py --embodiment bodies/reachy_mini_infant \
-    --stimulus-order shuffled --credit relief --explore-weight 1.5 --seeds 12 \
-    --out docs/experiments/data/54_phaseA_nursery.jsonl
+    --arms taught,satiated,no_feed --trials 12 --seed-base 42 \
+    --stimulus-order shuffled --credit relief --explore-weight 1.5 --model mistral-7b \
+    --workdir ~/exp54/phaseA --out docs/experiments/data/54_phaseA_nursery.jsonl
 python scripts/analyze_cradle_mother.py --gate v3 docs/experiments/data/54_phaseA_nursery.jsonl
 # Phase B / C (robot):
 python scripts/orient_backbone/exp53_cross_context_readout.py manifest --archive <phaseA workdir> \
-    --out docs/experiments/data/54_agents_manifest.json --experiment 54
-python scripts/orient_backbone/exp53_cross_context_readout.py sweep --manifest ... --out docs/experiments/data/54_targets.json
+    --experiment 54 --phase-a-records docs/experiments/data/54_phaseA_nursery.jsonl \
+    --out docs/experiments/data/54_agents_manifest.json
+python scripts/orient_backbone/exp53_cross_context_readout.py sweep \
+    --manifest docs/experiments/data/54_agents_manifest.json --out docs/experiments/data/54_targets.json
+# → declare the gated + exploratory placements in the results doc BEFORE Phase B
 python scripts/orient_backbone/exp53_cross_context_readout.py run --host 10.6.0.63 --factory \
     --body-ref bodies/reachy_mini_infant --targets docs/experiments/data/54_targets.json --phase 1 --out docs/experiments/data/54_phaseB_readout.jsonl
 python scripts/orient_backbone/exp53_cross_context_readout.py run ... --phase 2 --condition primary ...
+python scripts/orient_backbone/exp53_cross_context_readout.py run ... --phase 2 --condition secondary ...
+python scripts/orient_backbone/exp53_cross_context_readout.py verdict --records docs/experiments/data/54_phaseB_readout.jsonl
 python scripts/orient_backbone/exp53_cross_context_readout.py run --host 10.6.0.63 --factory \
-    --body-ref bodies/reachy_mini --phase 1 --out docs/experiments/data/54_phaseC_userpath.jsonl
+    --body-ref bodies/reachy_mini --gate C --targets docs/experiments/data/54_targets.json \
+    --manifest docs/experiments/data/54_agents_manifest.json --phase 1 \
+    --out docs/experiments/data/54_phaseC_userpath.jsonl
+python scripts/orient_backbone/exp53_cross_context_readout.py verdict --gate C --records docs/experiments/data/54_phaseC_userpath.jsonl
 ```
+
+## Amendments
+
+**Amendment 1 — 2026-08-26, PRE-DATA, structural (harness build + offline dry run; no
+Phase A record exists).** Six items, none touching a gate, margin, seed count or stop rule:
+
+1. **The target procedure, operationalised** (the phrase "centroids of the two bins carrying
+   the strongest left and right biases … two magnitudes each" needed a procedure a script can
+   execute). `sweep`: az ∈ [−1, 1] step 0.1 through each gated taught seed's loaded EC (a
+   fresh load per value, explore 0, nothing saved). *Bins* = maximal runs of consecutive az
+   values completing into the same `audio` cluster; a bin's left/right *strength* = the max
+   persisted bias among its `turn_left*` / `turn_right*` keys (the `_big` keys count); the
+   LEFT (RIGHT) bin = the bin with the strongest left (right) strength. *Eligible* left targets
+   = az values that lie in the LEFT bin of a majority of the three seeds, with az < 0 and
+   |az| ≤ 0.6 (right: az > 0). *Two magnitudes per direction* = the grid value nearest the
+   eligible centroid and its neighbour one step further from centre (one step closer if the
+   outer neighbour is not eligible; grid ties resolve toward centre). *Exploratory* = the grid
+   value nearest the centroid of the predicted wrong-way region (values where a majority of
+   seeds' frozen probe picks the wrong direction with |learned_margin| > 0.11; az = 0 has no
+   direction and is excluded). **Validation:** run over the Exp 53 agents (infant body,
+   δ map — harness verification only), the procedure reproduces Exp 53 amendment 1's
+   hand-declared placements exactly: gated {−0.3, −0.2, +0.5, +0.6}, exploratory +0.2
+   ([data/54_dry_run_nonfrozen/](../data/54_dry_run_nonfrozen/README.md)). The procedure
+   is frozen with this amendment; the *numbers* it yields for the Exp 54 seeds are declared
+   in the results doc before Phase B, as pre-registered.
+2. **The exploratory agent** = the taught seed outside the gated three (42, 43, 44) with the
+   lowest Phase A late-bin (act3+act4) directedness (`manifest --experiment 54
+   --phase-a-records`) — Exp 53's seed-48 choice, made a rule.
+3. **Gate C, operationalised.** Phase C is a Phase-1-shaped probe block (`run --phase 1
+   --body-ref bodies/reachy_mini --factory --gate C --targets …`, apparatus places, the
+   agent never moves). Per taught seed: the fraction of gated placements at which
+   `consulted_bias_by_modality.audio ≠ 0` **and** the chosen direction is correct (direction
+   only: any leftward affordance for az < 0) ≥ 0.80; PASS needs ≥ 2 of 3 seeds. Every
+   control placement must show `consulted…audio == 0`. A correct direction *without* a
+   consulted audio bias — the innate azimuth drive choosing — does not count, because the
+   sentence being measured is "the nursery's want is consulted", not "the robot turns".
+   `verdict --gate C` recomputes the verdict from the probe records.
+4. **Harness facts corrected.** `benchmark_cradle_mother.py` had no `--embodiment` flag (the
+   pre-registration's runbook assumed one) — added, with the satiated arm's body keyed on the
+   chosen embodiment (`bodies/reachy_mini_infant` → `bodies/reachy_mini_infant_satiated`;
+   `--satiated-embodiment` overrides; an unmapped embodiment refuses the satiated arm) and a
+   preflight that instantiates every arm's body before the first sub-sim. Runbook `--seeds 12`
+   → `--trials 12` (the flag's real name). The YAML block's `archetype: robot` is not a
+   registered archetype (`_data/components/archetypes/` has none; the parent `reachy_mini`
+   is `humanoid`, and `tests/unit/test_archetypes.py` rejects unregistered values) — both
+   bodies carry `archetype: humanoid`; the archetype is imagination-scaffolding metadata
+   and touches nothing the experiment measures. `cradle_mother.reactive_mother_tick` scores
+   directedness as `progress = |stim| − |az_after| > 0` — not on tool names — and over the
+   arc's stimulus band {±0.4 … ±0.9} that is exactly direction-only for both of the robot's
+   steps (a 0.50 big step from the nearest stimulus, |0.4|, lands at |0.1|). Declared, not
+   amended: Exp 52 Phase B ran with `MAXIM_SUBSTRATE_ACTIONS_PER_TURN` unset (all 36 rows)
+   and Phase A keeps that (S6), so a turn may hold more than one action; two same-direction
+   big steps from |0.4| overshoot to |0.6| and score as not-directed although each step's
+   direction was right. That is the robot's repertoire meeting this apparatus — part of what
+   Phase A measures (the pre-registered "the repertoire changes the learning problem"
+   outcome), not a tool-name keying to fix.
+5. **Records** carry `exploratory_agent` per probe/trial (the Exp 53 records' seed-48 rule is
+   the fallback), the `start` record stamps `body_ref`, `factory`, the deltas the factory read,
+   the targets file and the procedure text; `--delta` is refused with `--factory`.
+6. **Dry run** (the pre-registered sign-off item 3): the Reachy nursery body through the
+   production factory on the dry rig — four tools, deltas {+0.3, −0.3, +0.9, −0.9} read from
+   the YAML — driven by *re-keyed copies* of the Exp 53 agents (`infant_operant_turn_*` →
+   `reachy_mini_turn_*`), Phase 1, Phase 2 (both blocks) and Phase C all complete with the
+   Exp 53 record/verdict shape. Harness verification, not a result.
+
+**Disclosure:** at amendment time the author had seen the harness dry run above (re-keyed Exp
+53 agents: Gate I 3/3, dry Phase 2 taught 1.00 / satiated 0.00 / no_feed 0.50, dry Gate C
+PASS — an offline rig with a modeled source) and the Exp 53 sweep table. **No nursery on the
+Reachy body has run; no Phase A, B or C data exists.**
 
 ## Sign-off (operator fills before Phase A)
 
-1. Pre-registration read and frozen at commit `________` — ☐
-2. Body YAML, arms, gate v3 constants, the target procedure, Phase C, stop rules accepted — ☐
-3. Harness PR merged with the body's structural tests; dry run clean; amendments appended before Phase A — ☐
+1. Pre-registration read and frozen at commit `efdf5cd5` (#558) — ☑ 2026-08-26
+2. Body YAML, arms, gate v3 constants, the target procedure (amendment 1), Phase C, stop rules accepted — ☑ 2026-08-26
+3. Harness PR (`feat/exp54-harness`) with the body's structural tests; dry run clean; amendment 1 appended before Phase A — ☑ 2026-08-26 (PR number recorded in the results doc)

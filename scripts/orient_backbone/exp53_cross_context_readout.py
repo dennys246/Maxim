@@ -40,6 +40,29 @@ Subcommands::
 
 Phase 2 refuses to start unless the records file already holds a Phase 1
 ``gate_I`` record with verdict PASS (stop rule I).
+
+Exp 54 additions (``exp54_nurture_reachy_body_preregistration.md``; the Exp 53
+defaults are untouched, so the 53 records/verdict shape and the demo script
+keep working):
+
+* ``run --body-ref bodies/reachy_mini_infant --factory`` — the nursery body is
+  the ROBOT'S OWN (tool names ``reachy_mini_turn_left`` … ``_big``) and the
+  orient backend is attached through the production
+  ``make_reachy_orient_factory`` (deltas read from the YAML's ``head_yaw``
+  self-effects). ``--delta`` is refused with ``--factory``: no δ map anywhere.
+* ``sweep`` — az ∈ [−1, 1] step 0.1 through each taught seed's loaded EC (a
+  fresh load per value, nothing saved) → ``54_targets.json`` with the bins, the
+  strongest-bias bins, the gated targets by the declared procedure and the
+  predicted wrong-way region as exploratory placements (declared BEFORE Phase B).
+* ``run --targets 54_targets.json`` — the gated/exploratory placements from
+  the sweep instead of the Exp 53 constants.
+* ``manifest --experiment 54 --archive <phaseA workdir> --phase-a-records …`` —
+  reads Phase A's per-run ``sim_reports/*/aut_{nac,ec}.json``; the exploratory
+  agent is the weakest taught seed by late-bin directedness.
+* Phase C = ``run --phase 1 --body-ref bodies/reachy_mini --factory --gate C``
+  (the user's body, innate azimuth drive present, probe only) + ``verdict
+  --gate C``: consulted audio bias ≠ 0 AND correct direction at ≥ 80 % of the
+  gated placements for ≥ 2/3 taught seeds; controls consulted audio == 0.
 """
 
 from __future__ import annotations
@@ -77,6 +100,7 @@ DELTAS = {"turn_left": +DELTA_RAD, "turn_right": -DELTA_RAD}
 TARGETS = (-0.3, -0.2, 0.5, 0.6)  # gated az targets — where the sweep shows the learning lives (amendment 1)
 EXPLORATORY_TARGETS = (-0.6, 0.2)  # recorded, excluded from every gate (amendment 1)
 TRIALS_PER_AGENT = 12  # 4 gated targets × 3 (+ exploratory placements × 3, not gated)
+TRIALS_PER_TARGET = 3  # Phase 2: each gated target (and each exploratory placement) three times
 PROBE_PLACEMENTS = 1  # Phase 1: each target once
 MARGIN_FLOOR = 0.11  # L1 visibility floor
 TOWARD_EPS = 0.05  # |az_after| < |az_before| - eps
@@ -91,6 +115,14 @@ ARMS = {"taught": (42, 43, 44), "satiated": (42, 43, 44), "no_feed": (42, 43, 44
 EXPLORATORY = (("taught", 48),)
 MIN_SPEECH_RATE = 0.50  # H1's floor (amendment 2: the VAD flag under-reports speech energy by ~0.25)
 GATED_READS = 5
+
+# ── Exp 54 (frozen in exp54_nurture_reachy_body_preregistration.md) ──
+EXP54_BODY_REF = "bodies/reachy_mini_infant"  # the robot's own body, azimuth drive removed, hunger/thirst added
+EXP54_USER_BODY_REF = "bodies/reachy_mini"  # Phase C: the body a user's agentic_runtime instantiates
+SWEEP_STEP = 0.1  # az grid for the sweep
+FRONT_HEMISPHERE_MAX = 0.6  # gated targets are clamped to |az| ≤ 0.6
+GATE_C_RATE = 0.80
+GATE_C_SEEDS = 2
 
 
 def _sha256(path: Path) -> str:
@@ -135,11 +167,66 @@ def _describe_state(nac_path: Path, ec_path: Path) -> dict:
     }
 
 
+def _weakest_taught_seed(records_path: str, exclude: tuple[int, ...]) -> tuple[int, float]:
+    """The exploratory agent for Exp 54: the taught seed with the LOWEST late-bin
+    (act3+act4) directedness in the Phase A campaign record, outside the gated
+    seeds (the Exp 53 rule — seed 48 was the weak learner — made a procedure)."""
+    late = ("act3_consolidating", "act4_autonomous")
+    best: tuple[int, float] | None = None
+    for line in Path(records_path).read_text().splitlines():
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if rec.get("arm") != "taught" or int(rec.get("seed", -1)) in exclude:
+            continue
+        fade = rec.get("fade") or {}
+        vals = [float(fade[a].get("directedness", 0.0)) for a in late if a in fade]
+        if not vals:
+            continue
+        d = sum(vals) / len(vals)
+        if best is None or d < best[1]:
+            best = (int(rec["seed"]), d)
+    if best is None:
+        raise RuntimeError(f"no taught seed outside {exclude} in {records_path}")
+    return best
+
+
+def _factory_deltas(entity) -> dict[str, float]:
+    """The production factory's own read of the body: ``make_reachy_orient_factory``
+    over the orient modulator, robot-less (the backend constructor is offline-safe).
+    Raises when the body declares no ``head_yaw`` self-effect — i.e. the factory
+    path would attach nothing (the infant_operant case Exp 53 needed δ for)."""
+    from maxim.hardware.reachy.motor_backend import make_reachy_orient_factory
+
+    factory = make_reachy_orient_factory(robot=None)
+    for ent in entity.walk():
+        mod = ent.modulators.get("orient")
+        if mod is None:
+            continue
+        backend = factory(ent, "orient", mod)
+        if backend is None:
+            raise RuntimeError(
+                f"{getattr(ent, 'name', '?')}: orient affordances declare no head_yaw self-effect — "
+                "the production factory attaches nothing (use --delta on that body, not --factory)"
+            )
+        return dict(backend._deltas)
+    raise RuntimeError("body has no orient modulator")
+
+
 def cmd_manifest(args: argparse.Namespace) -> int:
     archive = Path(args.archive).expanduser()
     agents = []
     wanted = [(arm, seed, False) for arm, seeds in ARMS.items() for seed in seeds]
-    wanted += [(arm, seed, True) for arm, seed in EXPLORATORY]
+    if args.experiment == "54":
+        if not args.phase_a_records:
+            print("[FAIL] --experiment 54 needs --phase-a-records <54_phaseA_nursery.jsonl> (the weakest taught seed)")
+            return 2
+        weak_seed, weak_late = _weakest_taught_seed(args.phase_a_records, ARMS["taught"])
+        print(f"  exploratory agent: taught seed{weak_seed} (Phase A late-bin directedness {weak_late:.3f})")
+        wanted += [("taught", weak_seed, True)]
+    else:
+        wanted += [(arm, seed, True) for arm, seed in EXPLORATORY]
     for arm, seed, exploratory in wanted:
         run_dir = archive / f"{arm}_seed{seed}_ew1.5"
         pair = _find_pair(run_dir)
@@ -165,23 +252,43 @@ def cmd_manifest(args: argparse.Namespace) -> int:
             f"  {arm:9s} seed{seed}{' (exploratory)' if exploratory else ''}: "
             f"{desc['bias_entries']} bias entries, {desc['n_audio_nodes']} audio nodes, session {nac_path.parent.name}"
         )
+    if args.experiment == "54":
+        from maxim.embodiment.component_registry import ComponentRegistry
+
+        body = ComponentRegistry().instantiate(EXP54_BODY_REF)
+        frozen = {
+            "body_ref": EXP54_BODY_REF,
+            "user_body_ref": EXP54_USER_BODY_REF,
+            "agent_id": AGENT_ID,
+            "factory": True,
+            "deltas_rad": _factory_deltas(body),  # read by the production factory from the YAML — no δ map
+            "targets_az": "declared by the sweep procedure (54_targets.json), before Phase B",
+            "trials_per_target": TRIALS_PER_TARGET,
+            "explore_primary": EXPLORE_PRIMARY,
+            "explore_secondary": EXPLORE_SECONDARY,
+            "phase_a_records": args.phase_a_records,
+        }
+        experiment = "54_nurture_reachy_body"
+    else:
+        frozen = {
+            "body_ref": BODY_REF,
+            "agent_id": AGENT_ID,
+            "deltas_rad": DELTAS,
+            "targets_az": TARGETS,
+            "trials_per_agent": TRIALS_PER_AGENT,
+            "explore_primary": EXPLORE_PRIMARY,
+            "explore_secondary": EXPLORE_SECONDARY,
+        }
+        experiment = "53_cross_context_readout"
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         json.dumps(
             {
                 "_format_version": "1.0",
-                "experiment": "53_cross_context_readout",
+                "experiment": experiment,
                 "archive": str(archive),
-                "frozen": {
-                    "body_ref": BODY_REF,
-                    "agent_id": AGENT_ID,
-                    "deltas_rad": DELTAS,
-                    "targets_az": TARGETS,
-                    "trials_per_agent": TRIALS_PER_AGENT,
-                    "explore_primary": EXPLORE_PRIMARY,
-                    "explore_secondary": EXPLORE_SECONDARY,
-                },
+                "frozen": frozen,
                 "agents": agents,
             },
             indent=2,
@@ -264,34 +371,50 @@ class _Executor:
         self.embodiment = embodiment
 
 
-def _build_body(modulator_factory):
+def _orient_affordances(entity) -> list[str]:
+    """The body's orient affordances the ``turn_left,turn_right`` whitelist admits
+    (substring match — on the Reachy bodies that is the 4-tool repertoire, S6)."""
+    for ent in entity.walk():
+        mod = ent.modulators.get("orient")
+        if mod is not None:
+            affs = list(getattr(mod, "_affordances", None) or {})
+            return [a for a in affs if "turn_left" in a or "turn_right" in a]
+    raise RuntimeError(f"{getattr(entity, 'name', '?')}: no orient modulator")
+
+
+def _build_body(modulator_factory, body_ref: str = BODY_REF):
     from maxim.embodiment.body import Embodiment
     from maxim.embodiment.component_registry import ComponentRegistry
     from maxim.embodiment.spec import attach_backends
     from maxim.embodiment.tool_bridge import generate_tools_for_entity
     from maxim.tools.registry import ToolRegistry
 
-    entity = ComponentRegistry().instantiate(BODY_REF)
+    entity = ComponentRegistry().instantiate(body_ref)
     if modulator_factory is not None:
         attach_backends(entity, modulator_factory=modulator_factory)
     embodiment = Embodiment(entity)
     registry = ToolRegistry()
     generate_tools_for_entity(entity, registry, embodiment=embodiment)
     names = list(registry.list())
-    for want in ("infant_operant_turn_left", "infant_operant_turn_right"):
+    # The learned bias keys are tool:<entity.name>_<affordance>: the registered tool
+    # names ARE the namespace the nursery wrote — check every orient tool is there.
+    for aff in _orient_affordances(entity):
+        want = f"{entity.name}_{aff}"
         if want not in names:
             raise RuntimeError(f"tool {want!r} not registered — got {names}")
     return entity, embodiment, registry
 
 
 class LiveReadoutRig:
-    def __init__(self, host: str) -> None:
+    def __init__(self, host: str, body_ref: str = BODY_REF, factory_mode: bool = False) -> None:
         from maxim.embodiment.audio_localization import DoAFeed
         from maxim.hardware.reachy.controller import ReachyMiniController
-        from maxim.hardware.reachy.motor_backend import ReachyOrientMotorBackend
+        from maxim.hardware.reachy.motor_backend import ReachyOrientMotorBackend, make_reachy_orient_factory
 
         self.host = host
         self.dry = False
+        self.body_ref = body_ref
+        self.factory_mode = factory_mode
         self.robot = ReachyMiniController(host=host, connection_mode="network", media_backend="no_media")
         if not self.robot.connect():
             raise RuntimeError("controller.connect() failed")
@@ -304,19 +427,25 @@ class LiveReadoutRig:
         self.shim = _MaximShim(None)
         robot, shim = self.robot, self.shim
 
-        def factory(entity, mod_name, spec_modulator):
-            if mod_name != "orient":
-                return None
-            return ReachyOrientMotorBackend(
-                robot=robot,
-                maxim=shim,
-                entity=entity,
-                deltas=dict(DELTAS),
-                modulator_name=mod_name,
-                entity_name=getattr(entity, "name", "") or "",
-            )
+        if factory_mode:
+            # Exp 54: the PRODUCTION factory — deltas read from the body's own
+            # head_yaw self-effects; the harness declares no step size at all.
+            factory = make_reachy_orient_factory(robot, maxim=shim)
+        else:
 
-        self.entity, self.embodiment, self.registry = _build_body(factory)
+            def factory(entity, mod_name, spec_modulator):
+                if mod_name != "orient":
+                    return None
+                return ReachyOrientMotorBackend(
+                    robot=robot,
+                    maxim=shim,
+                    entity=entity,
+                    deltas=dict(DELTAS),
+                    modulator_name=mod_name,
+                    entity_name=getattr(entity, "name", "") or "",
+                )
+
+        self.entity, self.embodiment, self.registry = _build_body(factory, body_ref)
         owned = getattr(self.embodiment, "live_world_set_sensors", None)
         if owned is not None:
             owned.update(ReachyOrientMotorBackend.world_owned_sensors)
@@ -331,7 +460,10 @@ class LiveReadoutRig:
         self.orient = self.entity.modulators["orient"]
         backend = getattr(self.orient, "_backend", None)
         if backend is None:
-            raise RuntimeError("orient modulator has NO backend attached — the production path is not bound")
+            raise RuntimeError(
+                "orient modulator has NO backend attached — the production path is not bound"
+                + (" (does this body declare head_yaw self-effects? --factory needs them)" if factory_mode else "")
+            )
         backend.bind_embodiment(self.embodiment)
         self.deltas = dict(backend._deltas)
         self.executor = _Executor(self.registry, self.embodiment)
@@ -397,14 +529,21 @@ class LiveReadoutRig:
 
 
 class DryReadoutRig:
-    """Offline stand-in: infant body + a dry orient backend over a modeled source.
-    Same production body/tools/encode path; only the motor and the sensor are fake."""
+    """Offline stand-in: the body + a dry orient backend over a modeled source.
+    Same production body/tools/encode path; only the motor and the sensor are fake.
+    ``factory_mode`` takes the dry backend's deltas from the PRODUCTION factory's
+    own read of the body (``_factory_deltas``) — so a body the factory cannot bind
+    fails here, offline, exactly as it would on the robot."""
 
-    def __init__(self, ratio: float = 0.95, seed: int = 1) -> None:
+    def __init__(
+        self, ratio: float = 0.95, seed: int = 1, body_ref: str = BODY_REF, factory_mode: bool = False
+    ) -> None:
         from maxim.embodiment.audio_localization import world_set_axis
 
         self.dry = True
         self.host = "dry"
+        self.body_ref = body_ref
+        self.factory_mode = factory_mode
         self._rng = random.Random(seed)
         self.ratio = ratio
         self.body = 0.0
@@ -414,8 +553,9 @@ class DryReadoutRig:
 
         class _DryBackend:
             def __init__(self, entity, mod_name):
-                self._deltas = dict(DELTAS)
+                self._deltas = _factory_deltas(entity) if factory_mode else dict(DELTAS)
                 self._entity = entity
+                self._entity_name = getattr(entity, "name", "") or ""
 
             def bind_embodiment(self, embodiment):
                 self._embodiment = embodiment
@@ -431,7 +571,7 @@ class DryReadoutRig:
                 return ModulatorResult(
                     success=True,
                     modulator_name="orient",
-                    entity_name="infant_operant",
+                    entity_name=self._entity_name,
                     affordance=affordance,
                     params=params,
                     metadata={
@@ -444,9 +584,9 @@ class DryReadoutRig:
         def factory(entity, mod_name, spec_modulator):
             return _DryBackend(entity, mod_name) if mod_name == "orient" else None
 
-        self.entity, self.embodiment, self.registry = _build_body(factory)
+        self.entity, self.embodiment, self.registry = _build_body(factory, body_ref)
         self.orient = self.entity.modulators["orient"]
-        self.deltas = dict(DELTAS)
+        self.deltas = dict(self.orient._backend._deltas)
         self.executor = _Executor(self.registry, self.embodiment)
         self.sync_embodiment(self.az())
 
@@ -515,9 +655,11 @@ def decide(agent: LoadedAgent, rig, sink: _ProvenanceSink) -> dict:
 
 
 def _correct_for(az: float, affordance: str | None) -> bool | None:
+    """Direction-only: any leftward affordance (``turn_left`` OR ``turn_left_big``)
+    is correct for a source on the left — the Exp 52/54 directedness rule."""
     if affordance is None:
         return None
-    return (affordance == "turn_left") == (az < 0.0)
+    return affordance.startswith("turn_left") == (az < 0.0)
 
 
 def _schedule(rng: random.Random, reps: int) -> list[tuple[float, bool]]:
@@ -551,11 +693,31 @@ def _phase1_passed(records_path: Path) -> bool:
     return False
 
 
+def _apply_targets(path: str) -> dict:
+    """Replace the Exp 53 target constants with the sweep-declared placements."""
+    global TARGETS, EXPLORATORY_TARGETS
+    data = json.loads(Path(path).read_text())
+    gated = [float(t) for t in data.get("gated_targets") or []]
+    expl = [float(t) for t in data.get("exploratory_targets") or []]
+    if not gated:
+        raise RuntimeError(f"{path}: no gated_targets declared")
+    for t in gated:
+        if t == 0.0 or abs(t) > FRONT_HEMISPHERE_MAX + 1e-9:
+            raise RuntimeError(f"{path}: gated target {t:+.2f} is not in the front hemisphere (0 < |az| ≤ 0.6)")
+    TARGETS = tuple(gated)
+    EXPLORATORY_TARGETS = tuple(expl)
+    return data
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     os.environ["MAXIM_SUBSTRATE_TOOL_WHITELIST"] = "turn_left,turn_right"  # the nursery's repertoire (S6)
+    if args.delta is not None and args.factory:
+        print("[FAIL] --delta is refused with --factory: the step size is the body's own (Exp 54, no δ map).")
+        return 2
     if args.delta is not None:
         # Exp 53b: the declared step size is the one pre-registered change; stamped in every start record.
         DELTAS.update({"turn_left": +float(args.delta), "turn_right": -float(args.delta)})
+    targets_decl = _apply_targets(args.targets) if args.targets else None
     os.environ.pop("MAXIM_PLACE_CODE_EXTEROCEPTION", None)  # place code OFF, as in Phase B (provenance)
     manifest = _load_manifest(args.manifest)
     out_path = Path(args.out)
@@ -574,10 +736,22 @@ def cmd_run(args: argparse.Namespace) -> int:
     sink = _ProvenanceSink()
     sim_logger.register_sim_sink(sink)
 
+    common = dict(
+        experiment=manifest.get("experiment"),
+        body_ref=args.body_ref,
+        factory=bool(args.factory),
+        gate=args.gate,
+        targets=list(TARGETS),
+        exploratory_targets=list(EXPLORATORY_TARGETS),
+        targets_file=args.targets,
+        targets_declaration=(targets_decl or {}).get("procedure"),
+    )
     if args.dry_run:
-        rig = DryReadoutRig()
-        emit("start", provenance=prov, frozen=manifest.get("frozen"), rig="dry", deltas=dict(DELTAS))
-        print(f"[dry-run] run_id={run_id} phase={args.phase}")
+        rig = DryReadoutRig(body_ref=args.body_ref, factory_mode=args.factory)
+        emit("start", provenance=prov, frozen=manifest.get("frozen"), rig="dry", deltas=rig.deltas, **common)
+        print(
+            f"[dry-run] run_id={run_id} phase={args.phase} body={args.body_ref} factory={args.factory} deltas={rig.deltas}"
+        )
     else:
         host, source = resolve_host(args.host)
         if host is None:
@@ -595,7 +769,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             print("  The apparatus rotates the base to place the source at az ±0.5/±0.6; keep it still.")
             if input("  ready? [y/N] ").strip().lower() != "y":
                 return 1
-        rig = LiveReadoutRig(host)
+        rig = LiveReadoutRig(host, body_ref=args.body_ref, factory_mode=args.factory)
         status2 = daemon_status(host) or {}
         mode = (status2.get("backend_status") or {}).get("motor_control_mode")
         if mode != "enabled":
@@ -619,8 +793,9 @@ def cmd_run(args: argparse.Namespace) -> int:
             hardware_id=status.get("hardware_id"),
             speech_rate_probe=round(rate, 3),
             deltas=rig.deltas,
+            **common,
         )
-        print(f"[start] run_id={run_id} log={out_path}")
+        print(f"[start] run_id={run_id} log={out_path} body={args.body_ref} factory={args.factory} deltas={rig.deltas}")
 
     if args.dry_run:
         args.settle = 0.0  # the dry rig has nothing to settle; 360 trials × 2 s is robot time, not logic
@@ -659,6 +834,7 @@ def _phase1(agents, rig, sink, emit, args) -> int:
             agent=label,
             arm=spec["arm"],
             seed=spec["seed"],
+            exploratory_agent=bool(spec.get("exploratory")),
             explore_weight=EXPLORE_PRIMARY,
             bias_entries=agent._bias_entries(),
             audio_nodes=sorted(agent.audio_nodes),
@@ -691,7 +867,15 @@ def _phase1(agents, rig, sink, emit, args) -> int:
                 **d,
             }
             rows.append(row)
-            emit("probe", agent=label, arm=spec["arm"], seed=spec["seed"], head=rig.head_pose_deg(), **row)
+            emit(
+                "probe",
+                agent=label,
+                arm=spec["arm"],
+                seed=spec["seed"],
+                exploratory_agent=bool(spec.get("exploratory")),
+                head=rig.head_pose_deg(),
+                **row,
+            )
             print(
                 f"  [{label}] az {az:+.2f}{' (expl)' if exploratory else '       '} → cluster "
                 f"{str(d['audio_cluster'])[:8]} completed={d['completed']} "
@@ -703,10 +887,63 @@ def _phase1(agents, rig, sink, emit, args) -> int:
         if not unchanged:
             print(f"[FAIL] {label}: persisted files changed during readout — S3 violation")
             return 5
-    verdict = _gate_I(agents, results)
-    emit("gate_I", **verdict)
-    print(f"[gate I] {verdict['verdict']}: {verdict['summary']}")
+    if args.gate == "C":
+        verdict = _gate_C(agents, results)
+        emit("gate_C", **verdict)
+        print(f"[gate C] {verdict['verdict']}: {verdict['summary']}")
+    else:
+        verdict = _gate_I(agents, results)
+        emit("gate_I", **verdict)
+        print(f"[gate I] {verdict['verdict']}: {verdict['summary']}")
     return 0 if verdict["verdict"] == "PASS" else 6
+
+
+def _is_exploratory_agent(spec: dict) -> bool:
+    return bool(spec.get("exploratory")) or str(spec.get("label", "")).endswith("seed48")
+
+
+def _consulted_audio(row: dict) -> float:
+    try:
+        return float((row.get("consulted_bias_by_modality") or {}).get("audio") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _gate_C(agents, results) -> dict:
+    """Exp 54 Phase C — the user path: under plain ``bodies/reachy_mini`` (innate
+    azimuth drive present), is the nursery-taught audio bias CONSULTED and does it
+    pick the correct direction? Taught: ≥ 80 % of gated placements with a non-zero
+    consulted audio bias AND the correct direction, for ≥ 2 of 3 seeds. Controls:
+    consulted audio bias 0 at every placement."""
+    per_seed = {}
+    for spec in agents:
+        rows = [r for r in results.get(spec["label"], []) if not r.get("exploratory")]
+        if not rows:
+            continue
+        consulted = [r for r in rows if _consulted_audio(r) != 0.0]
+        consulted_correct = sum(1 for r in consulted if r.get("correct")) / len(rows)
+        per_seed[spec["label"]] = {
+            "arm": spec["arm"],
+            "exploratory": _is_exploratory_agent(spec),
+            "consulted": round(len(consulted) / len(rows), 3),
+            "consulted_and_correct": round(consulted_correct, 3),
+            "acted": round(sum(1 for r in rows if r.get("tool_name")) / len(rows), 3),
+        }
+    taught = [v for v in per_seed.values() if v["arm"] == "taught" and not v["exploratory"]]
+    taught_pass = sum(1 for v in taught if v["consulted_and_correct"] >= GATE_C_RATE)
+    controls = {k: v for k, v in per_seed.items() if v["arm"] != "taught"}
+    controls_zero = all(v["consulted"] == 0.0 for v in controls.values()) if controls else None
+    verdict = "PASS" if (taught_pass >= GATE_C_SEEDS and controls_zero is not False) else "FAIL"
+    return {
+        "verdict": verdict,
+        "taught_seeds_passing": taught_pass,
+        "controls_consulted_zero": controls_zero,
+        "per_seed": per_seed,
+        "summary": (
+            f"{taught_pass}/{len(taught)} taught seeds consulted+correct at ≥ {GATE_C_RATE:.0%} of placements; "
+            f"controls consulted audio bias 0 = {controls_zero}"
+        ),
+    }
 
 
 def _gate_I(agents, results) -> dict:
@@ -721,12 +958,13 @@ def _gate_I(agents, results) -> dict:
         no_pref = sum(1 for r in rows if r["no_learned_preference"]) / len(rows)
         per_seed[spec["label"]] = {
             "arm": spec["arm"],
+            "exploratory": _is_exploratory_agent(spec),
             "completed": round(completed, 3),
             "correct_with_margin": round(cwm, 3),
             "acted": round(acted, 3),
             "no_learned_preference": round(no_pref, 3),
         }
-    taught = [v for k, v in per_seed.items() if v["arm"] == "taught" and not k.endswith("seed48")]
+    taught = [v for v in per_seed.values() if v["arm"] == "taught" and not v["exploratory"]]
     taught_pass = sum(1 for v in taught if v["completed"] >= GATE_I_RATE and v["correct_with_margin"] >= GATE_I_RATE)
     controls = {k: v for k, v in per_seed.items() if v["arm"] != "taught"}
     controls_no_pref = all(v["no_learned_preference"] == 1.0 for v in controls.values()) if controls else None
@@ -755,6 +993,7 @@ def _phase2(agents, rig, sink, emit, args) -> int:
                 agent=label,
                 arm=spec["arm"],
                 seed=spec["seed"],
+                exploratory_agent=bool(spec.get("exploratory")),
                 condition=condition,
                 explore_weight=weight,
                 bias_entries=agent._bias_entries(),
@@ -762,7 +1001,7 @@ def _phase2(agents, rig, sink, emit, args) -> int:
                 ec_sha256=spec["ec_sha256"],
             )
             rng = random.Random(2000 + spec["seed"] + (7 if condition == "secondary" else 0))
-            trials = _schedule(rng, TRIALS_PER_AGENT // len(TARGETS))
+            trials = _schedule(rng, TRIALS_PER_TARGET)
             i = 0
             invalid = 0
             while i < len(trials):
@@ -842,7 +1081,14 @@ def _phase2(agents, rig, sink, emit, args) -> int:
                         )
                     },
                 }
-                emit("trial", agent=label, arm=spec["arm"], seed=spec["seed"], **row)
+                emit(
+                    "trial",
+                    agent=label,
+                    arm=spec["arm"],
+                    seed=spec["seed"],
+                    exploratory_agent=bool(spec.get("exploratory")),
+                    **row,
+                )
                 print(
                     f"  [{label}/{condition}] {i + 1:2d}/{len(trials)} az {az_before:+.2f} → {str(aff):10s} "
                     f"→ {az_after:+.2f}  toward={toward} sign={sign_rule} margin={d['learned_margin']}"
@@ -876,8 +1122,36 @@ def _read_records(path: str) -> list[dict]:
     return out
 
 
+def _record_is_exploratory_agent(r: dict) -> bool:
+    if "exploratory_agent" in r:
+        return bool(r["exploratory_agent"])
+    return str(r.get("agent", "")).endswith("seed48")  # Exp 53 records predate the flag
+
+
 def cmd_verdict(args: argparse.Namespace) -> int:
     recs = _read_records(args.records)
+    if args.gate == "C":
+        probes = [r for r in recs if r.get("event") == "probe" and not r.get("invalid")]
+        if not probes:
+            print("[gate C] no probe records")
+            return 1
+        by_agent: dict[str, list[dict]] = {}
+        specs: dict[str, dict] = {}
+        for r in probes:
+            by_agent.setdefault(r["agent"], []).append(r)
+            specs.setdefault(
+                r["agent"],
+                {
+                    "label": r["agent"],
+                    "arm": r.get("arm"),
+                    "seed": r.get("seed"),
+                    "exploratory": _record_is_exploratory_agent(r),
+                },
+            )
+        verdict = _gate_C(list(specs.values()), by_agent)
+        print(json.dumps(verdict, indent=2))
+        JsonlLog(args.records).write("gate_C", **verdict)
+        return 0 if verdict["verdict"] == "PASS" else 1
     gate_i = [r for r in recs if r.get("event") == "gate_I"]
     print(f"[gate I] {gate_i[-1]['verdict'] if gate_i else 'NOT RUN'}")
     all_primary = [
@@ -895,7 +1169,7 @@ def cmd_verdict(args: argparse.Namespace) -> int:
     per_seed = {}
     for label, rows in by_agent.items():
         arm = rows[0]["arm"]
-        if label.endswith("seed48"):
+        if _record_is_exploratory_agent(rows[0]):
             continue
         d = sum(1 for r in rows if r["toward"]) / len(rows)
         per_seed[label] = round(d, 3)
@@ -905,7 +1179,7 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         r
         for label, rows in by_agent.items()
         for r in rows
-        if r["arm"] == "taught" and r["affordance"] and not label.endswith("seed48")
+        if r["arm"] == "taught" and r["affordance"] and not _record_is_exploratory_agent(r)
     ]
     sign_agree = (
         sum(1 for r in taught_rows if bool(r["sign_rule_correct"]) == bool(r["toward"])) / len(taught_rows)
@@ -929,7 +1203,7 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         verdict = "FAIL"
     expl_by_target: dict[str, dict] = {}
     for r in expl:
-        if r["arm"] != "taught" or r["agent"].endswith("seed48"):
+        if r["arm"] != "taught" or _record_is_exploratory_agent(r):
             continue
         key = f"{r['target_az']:+.1f}"
         e = expl_by_target.setdefault(key, {"n": 0, "toward": 0, "turn_left": 0})
@@ -948,7 +1222,7 @@ def cmd_verdict(args: argparse.Namespace) -> int:
     if secondary:
         by_arm: dict[str, list[dict]] = {}
         for r in secondary:
-            if not r["agent"].endswith("seed48"):
+            if not _record_is_exploratory_agent(r):
                 by_arm.setdefault(r["arm"], []).append(r)
         sec_means = {arm: round(sum(1 for r in rows if r["toward"]) / len(rows), 3) for arm, rows in by_arm.items()}
     summary = {
@@ -968,18 +1242,248 @@ def cmd_verdict(args: argparse.Namespace) -> int:
     return 0 if verdict == "PASS" else 1
 
 
+# ── sweep (Exp 54: targets by declared procedure, not by number) ────────────
+
+SWEEP_PROCEDURE = (
+    "az in [-1, 1] step 0.1 through each gated taught seed's loaded EC (fresh load per value, "
+    "explore 0, nothing saved). Bins = maximal runs of consecutive az values completing into the "
+    "same audio cluster; a bin's left/right strength = the max persisted bias among its turn_left*/"
+    "turn_right* keys; the LEFT (RIGHT) bin = the bin with the strongest left (right) strength. "
+    "Eligible left targets = az values in the LEFT bin of a majority of seeds with az < 0 and "
+    "|az| <= 0.6 (right: az > 0); two magnitudes per direction = the grid value nearest the "
+    "eligible centroid and its neighbour one step further from centre (one step closer if the outer "
+    "neighbour is not eligible). Exploratory placements = the grid value nearest the centroid of the "
+    "predicted wrong-way region (values where a majority of seeds' frozen probe picks the wrong "
+    "direction with |learned_margin| > 0.11; az = 0 has no direction and is excluded), if any. "
+    "Grid ties resolve toward centre."
+)
+
+
+def _sweep_values(step: float = SWEEP_STEP) -> list[float]:
+    n = int(round(2.0 / step))
+    return [round(-1.0 + i * step, 4) for i in range(n + 1)]
+
+
+def _cluster_biases(agent: LoadedAgent, cluster_id: str | None) -> dict[str, float]:
+    """Persisted ``cluster_reward_bias`` entries for one cluster, keyed by affordance."""
+    out: dict[str, float] = {}
+    if not cluster_id:
+        return out
+    table = getattr(agent.nac, "_cluster_reward_bias", None) or {}
+    for key, val in table.items():
+        if not (isinstance(key, tuple) and len(key) == 3 and key[1] == cluster_id):
+            continue
+        tsig = str(key[2])
+        aff = ("turn_" + tsig.rsplit("_turn_", 1)[-1]) if "_turn_" in tsig else tsig
+        out[aff] = round(float(val), 4)
+    return out
+
+
+def _bins_from_rows(rows: list[dict]) -> list[dict]:
+    bins: list[dict] = []
+    for r in rows:
+        cid = r.get("audio_cluster")
+        if bins and bins[-1]["cluster"] == cid:
+            bins[-1]["az"].append(r["az"])
+        else:
+            bins.append({"cluster": cid, "az": [r["az"]], "biases": dict(r.get("biases") or {})})
+    for b in bins:
+        b["az_min"], b["az_max"] = min(b["az"]), max(b["az"])
+        b["centroid"] = round(sum(b["az"]) / len(b["az"]), 3)
+        b["left_strength"] = max([v for a, v in b["biases"].items() if a.startswith("turn_left")] or [0.0])
+        b["right_strength"] = max([v for a, v in b["biases"].items() if a.startswith("turn_right")] or [0.0])
+    return bins
+
+
+def _strongest(bins: list[dict], key: str) -> dict | None:
+    cands = [b for b in bins if b[key] > 0.0]
+    return max(cands, key=lambda b: b[key]) if cands else None
+
+
+def _nearest_grid(x: float, grid: list[float]) -> float:
+    return min(grid, key=lambda g: (abs(g - x), abs(g)))
+
+
+def _declare_targets(per_agent: dict[str, dict], majority: int, step: float = SWEEP_STEP) -> dict:
+    """The declared procedure over the gated taught seeds' sweeps → gated + exploratory targets."""
+    values = _sweep_values(step)
+    gated: list[float] = []
+    flags: list[str] = []
+    per_direction: dict[str, dict] = {}
+    for direction, key, sign in (("left", "left_strength", -1.0), ("right", "right_strength", +1.0)):
+        votes: dict[float, int] = {v: 0 for v in values}
+        seeds_with_bin = 0
+        for label, res in per_agent.items():
+            b = _strongest(res["bins"], key)
+            if b is None:
+                flags.append(f"{label}: no bin with a {direction} bias")
+                continue
+            seeds_with_bin += 1
+            for v in b["az"]:
+                votes[v] += 1
+        eligible = [
+            v for v in values if votes[v] >= majority and v * sign > 0.0 and abs(v) <= FRONT_HEMISPHERE_MAX + 1e-9
+        ]
+        info: dict = {"seeds_with_bin": seeds_with_bin, "eligible": eligible, "targets": []}
+        if not eligible:
+            flags.append(f"{direction}: no eligible placement (majority {majority}) — gated targets incomplete")
+            per_direction[direction] = info
+            continue
+        centroid = sum(eligible) / len(eligible)
+        t1 = _nearest_grid(centroid, eligible)
+        outer = round(t1 + sign * step, 4)
+        inner = round(t1 - sign * step, 4)
+        if outer in eligible:
+            t2 = outer
+        elif inner in eligible:
+            t2 = inner
+            flags.append(f"{direction}: outer neighbour of {t1:+.1f} not eligible; inner {inner:+.1f} used")
+        else:
+            t2 = None
+            flags.append(f"{direction}: a single eligible placement {t1:+.1f} — one magnitude only")
+        info.update({"centroid": round(centroid, 3), "targets": [t for t in (t1, t2) if t is not None]})
+        gated.extend(info["targets"])
+        per_direction[direction] = info
+    wrong_votes: dict[float, int] = {v: 0 for v in values}
+    for res in per_agent.values():
+        for r in res["rows"]:
+            m = r.get("learned_margin")
+            if r["az"] == 0.0:
+                continue  # dead ahead has no direction — neither correct nor wrong
+            if r.get("correct") is False and m is not None and abs(float(m)) > MARGIN_FLOOR:
+                wrong_votes[r["az"]] += 1
+    wrong_region = [v for v in values if wrong_votes[v] >= majority]
+    exploratory: list[float] = []
+    if wrong_region:
+        exploratory.append(_nearest_grid(sum(wrong_region) / len(wrong_region), wrong_region))
+    return {
+        "gated_targets": sorted(set(gated)),
+        "exploratory_targets": exploratory,
+        "per_direction": per_direction,
+        "predicted_wrong_way_region": wrong_region,
+        "flags": flags,
+    }
+
+
+def cmd_sweep(args: argparse.Namespace) -> int:
+    os.environ["MAXIM_SUBSTRATE_TOOL_WHITELIST"] = "turn_left,turn_right"
+    os.environ.pop("MAXIM_PLACE_CODE_EXTEROCEPTION", None)
+    manifest = _load_manifest(args.manifest)
+    from maxim.simulation import sim_logger
+
+    sink = _ProvenanceSink()
+    sim_logger.register_sim_sink(sink)
+    values = _sweep_values(args.step)
+    per_agent: dict[str, dict] = {}
+    all_agents: dict[str, dict] = {}
+    try:
+        for spec in manifest["agents"]:
+            if spec["arm"] != "taught":
+                continue
+            label = spec["label"]
+            rows = []
+            for az in values:
+                # Fresh per value: a new load of the persisted files and a new body, so
+                # nothing (drift, a separated node, encoder stash) carries between values.
+                agent = LoadedAgent(spec, EXPLORE_PRIMARY)
+                rig = DryReadoutRig(body_ref=args.body_ref, factory_mode=args.factory)
+                rig.sync_embodiment(az)
+                d = decide(agent, rig, sink)
+                rows.append(
+                    {
+                        "az": az,
+                        "audio_cluster": d["audio_cluster"],
+                        "completed": d["completed"],
+                        "affordance": d["affordance"],
+                        "correct": _correct_for(az, d["affordance"]),
+                        "learned_margin": d["learned_margin"],
+                        "consulted_audio": _consulted_audio(d),
+                        "biases": _cluster_biases(agent, d["audio_cluster"]),
+                    }
+                )
+                if not agent.files_unchanged():
+                    print(f"[FAIL] {label}: persisted files changed during the sweep — S3 violation")
+                    return 5
+            bins = _bins_from_rows(rows)
+            res = {
+                "arm": spec["arm"],
+                "seed": spec["seed"],
+                "exploratory": _is_exploratory_agent(spec),
+                "rows": rows,
+                "bins": bins,
+            }
+            all_agents[label] = res
+            if not res["exploratory"]:
+                per_agent[label] = res
+            print(f"  [{label}]{' (exploratory)' if res['exploratory'] else ''}")
+            for b in bins:
+                print(
+                    f"      {b['az_min']:+.1f} … {b['az_max']:+.1f}  cluster {str(b['cluster'])[:8]}  "
+                    f"L {b['left_strength']:.3f}  R {b['right_strength']:.3f}  biases {b['biases']}"
+                )
+    finally:
+        sim_logger.unregister_sim_sink(sink)
+    majority = args.majority or (len(per_agent) // 2 + 1)
+    decl = _declare_targets(per_agent, majority, args.step)
+    out = {
+        "_format_version": "1.0",
+        "experiment": manifest.get("experiment"),
+        "manifest": args.manifest,
+        "body_ref": args.body_ref,
+        "factory": bool(args.factory),
+        "step": args.step,
+        "front_hemisphere_max": FRONT_HEMISPHERE_MAX,
+        "margin_floor": MARGIN_FLOOR,
+        "majority": majority,
+        "procedure": SWEEP_PROCEDURE,
+        "provenance": provenance(_HERE.parent.parent),
+        **decl,
+        "agents": all_agents,
+    }
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(out, indent=2) + "\n")
+    print(f"[sweep] gated targets {decl['gated_targets']}  exploratory {decl['exploratory_targets']}")
+    for f in decl["flags"]:
+        print(f"  [flag] {f}")
+    print(f"[sweep] -> {out_path}")
+    return 0 if len(decl["gated_targets"]) >= 2 and not decl["flags"] else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     m = sub.add_parser("manifest")
     m.add_argument("--archive", required=True)
     m.add_argument("--out", required=True)
+    m.add_argument("--experiment", choices=("53", "54"), default="53")
+    m.add_argument("--phase-a-records", default=None, help="Exp 54: the Phase A campaign JSONL (weakest taught seed)")
+    sw = sub.add_parser("sweep", help="Exp 54: az sweep through each taught seed's loaded EC → targets JSON")
+    sw.add_argument("--manifest", required=True)
+    sw.add_argument("--out", required=True)
+    sw.add_argument("--body-ref", default=EXP54_BODY_REF)
+    sw.add_argument("--factory", action="store_true", default=True)
+    sw.add_argument("--no-factory", dest="factory", action="store_false", help="dry deltas from DELTAS (Exp 53 bodies)")
+    sw.add_argument("--step", type=float, default=SWEEP_STEP)
+    sw.add_argument("--majority", type=int, default=None, help="seeds that must agree (default: > half)")
     r = sub.add_parser("run")
     r.add_argument("--manifest", required=True)
     r.add_argument("--phase", type=int, choices=(1, 2), required=True)
     r.add_argument("--host", default=None)
     r.add_argument("--out", required=True)
     r.add_argument("--dry-run", action="store_true")
+    r.add_argument(
+        "--body-ref", default=BODY_REF, help=f"body component (Exp 53: {BODY_REF}; Exp 54: {EXP54_BODY_REF})"
+    )
+    r.add_argument(
+        "--factory",
+        action="store_true",
+        help="attach the orient backend through the production make_reachy_orient_factory (Exp 54; refuses --delta)",
+    )
+    r.add_argument("--targets", default=None, help="Exp 54: the sweep's targets JSON (gated + exploratory placements)")
+    r.add_argument(
+        "--gate", choices=("I", "C"), default="I", help="Phase 1 gate: I (instrument) or C (Exp 54 user path)"
+    )
     r.add_argument("--settle", type=float, default=1.0)
     r.add_argument("--probe-s", type=float, default=30.0)
     r.add_argument("--yes", action="store_true")
@@ -998,8 +1502,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     v = sub.add_parser("verdict")
     v.add_argument("--records", required=True)
+    v.add_argument(
+        "--gate", choices=("T", "C"), default="T", help="T = Phase 2 transfer (Exp 53); C = Exp 54 user path"
+    )
     args = ap.parse_args(argv)
-    return {"manifest": cmd_manifest, "run": cmd_run, "verdict": cmd_verdict}[args.cmd](args)
+    return {"manifest": cmd_manifest, "run": cmd_run, "sweep": cmd_sweep, "verdict": cmd_verdict}[args.cmd](args)
 
 
 if __name__ == "__main__":
