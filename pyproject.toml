@@ -234,6 +234,9 @@ maxim = ["_data/**/*", "py.typed", "console/openapi.json", "console/contract_sur
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Nested worktrees (CLAUDE.md "Parallel sessions use worktrees"): an explicit `pytest .`
+# must not collect .worktrees/*/tests twice with conflicting conftests.
+norecursedirs = [".worktrees", ".git", "build", "dist", "*.egg-info"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
