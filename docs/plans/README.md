@@ -1,10 +1,12 @@
 # Maxim Plans
 
 Current version: **1.1.0** (`pyproject.toml` + `src/maxim/__init__.py`) — the 1.1 "Sensorimotor" release. **PyPI serves 1.1.0** (2026-08-26, tag `v1.1.0` at `df881b87`, plain `pip install pymaxim`; GitHub Release with the artifacts attached). Step 5b DONE. Items 17 (Exp 52) + 19 (Exp 53b) DONE; item 18 → 1.1.1.
-Now: **1.1.x follow-through** (items 1–15 in [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) —
+Now: **1.1.x follow-through** (items 1–16 in [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) —
 first up: Exp 54 Phase B/C on the robot — Phase A GRADUATED 2026-08-27 on the Reachy-native nursery body — then the loudness/onset-salience design and Exp 44b's
-confirmatory campaign) **and the gates before 1.2 Oasis + Hivemind** (gates 1–7 there),
+confirmatory campaign) **and the gates before 1.2 Oasis + Hivemind** (gates 1–8 there),
 whose motivating case study is [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md).
+The 2026-08-19 scorecards were reconciled against post-1.1.0 `main` on 2026-08-27 (roadmap
+§"Scorecard → roadmap reconciliation": item 16 + gate 8 added; a 1.1.0 re-score is owed).
 1.1 "Sensorimotor" shipped 2026-08-26 on two pre-registered results: Exp 52 (the want is
 learned) and Exp 53b (it reads out on the physical robot).
 
@@ -48,12 +50,14 @@ Deep-audited 2026-08-27; release authority reconciled 2026-08-19.
 ### Roadmap + release
 
 - [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) — **SOLE SCOPE AUTHORITY.** 1.1
-  shipped 2026-08-26; the 1.1.x follow-through list (items 1–15) and the gates before
-  1.2 live here. Every other active plan below is named by one of its items.
+  shipped 2026-08-26; the 1.1.x follow-through list (items 1–16) and the gates before
+  1.2 (1–8) live here. Every other active plan below is named by one of its items.
 - [../bugs/README.md](../bugs/README.md) — **KNOWN-DEFECTS LEDGER.** Every row carries
   evidence and a disposition (D32/D33 filed 2026-08-26).
 - [../limits/score_cards/](../limits/score_cards/) — repo-grade baselines
-  (dual-assessor cadence from 2026-08-19), re-scored at each release cut.
+  (dual-assessor cadence from 2026-08-19), re-scored at each release cut. **The 1.1.0
+  re-score is owed** — the findings were reconciled into the roadmap 2026-08-27, but the
+  cards themselves have not been re-issued.
 
 ### Nurture → the shareable want (Exp 52 → 53/53b → 54; roadmap 1.1.x item 15)
 

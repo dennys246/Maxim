@@ -234,7 +234,29 @@ Two additions to the cut line, both bug-class rather than mechanism-class so the
    pilot finding F6 (0.997 → 0.059 within-run signal decay despite τ=1000) and feeds the
    pre-registration freeze. Do it whenever a session has an hour.
 
-## 1.1.x follow-through (post-cut, pre-1.2 — items 1–10 adopted 2026-08-13; items 11–14 added 2026-08-19 and ratified with the cut-line reconciliation)
+## Scorecard → roadmap reconciliation (2026-08-27)
+
+The two 2026-08-19 scorecards ([claude](../limits/score_cards/2026-08-19-claude.md) /
+[codex](../limits/score_cards/2026-08-19-codex.md)) were re-read against `main` after the
+1.1.0 cut. **Both cards say "re-score at each release cut"; 1.1.0 was cut 2026-08-26 and
+no re-score exists — one is owed, at the 1.1.0 commit, before any grade is cited again.**
+It should be a real move: most of the Runtime-correctness, Test/CI-truthfulness and
+Release-governance upgrade conditions are now *enforced* (the cards' own criterion for a
+grade to move) — D13/D14, D15–D21, D25/D26 fixed with guards; the required fast suite is
+hermetic (D20) and **CI runs the full documented command, not `tests/unit/`**
+([test.yml](../../.github/workflows/test.yml) "Run required fast suite" + MemoryHub gate +
+the nightly `requires_model_cache` job); the architecture audit is baselined (D19); PyPI
+serves 1.1.0 and every sync line says so; `[Unreleased]` is current; every `fix(` commit
+since the cards touches `tests/` (9/9).
+
+What the cards flagged that was on **no** list is folded in below as **item 16** (cheap
+enforcement, one PR) and **gate 8** (evidence/ledger coherence before anything is shared),
+plus three sharpenings (items 1, 7, 13). Card findings deliberately NOT adopted: reducing
+the number of ledgers (the ledgers are what the cards graded A — automate their drift
+checks instead), repo-wide mypy, a repo-wide swallow purge (D11 is ACCEPTED with a reasoned
+scope), and the ~60 %-mnemonic bio-naming (answered by the docstring taxonomy, #492).
+
+## 1.1.x follow-through (post-cut, pre-1.2 — items 1–10 adopted 2026-08-13; items 11–14 added 2026-08-19 and ratified with the cut-line reconciliation; item 15 added 2026-08-26; item 16 added 2026-08-27 from the scorecard reconciliation)
 
 The 1.1 cut line stays closed; these are the next minor-stream items in rough order.
 Each POINTS at its owning plan — stages live there, not here:
@@ -245,6 +267,15 @@ Each POINTS at its owning plan — stages live there, not here:
    (#496 built it — run it), invalid-action rule (F7), entangled-axes framing fix (F2).
    Deliberately NOT a 1.1 gate — holding the release for a 10-seed/arm campaign was
    considered and declined; it opens 1.1.x instead.
+   **Prerequisite added 2026-08-27 — the [L8](../limits/README.md) record-stamping fix.**
+   Run records stamp only the REQUESTED profile name; the 2026-08-22 re-fire showed the
+   serving environment moves an LLM-AUT baseline more than the mechanism does and nothing
+   in the record can detect it. Before 44b (or any Exp 37-class fire) runs, every run
+   record must carry `resolved_model`, `endpoint`, `n_ctx`, quantization and server build,
+   and the gate must score `B − C` by position, never against a remembered number. This is
+   the Claude card's only upgrade path for Ambition (one at-power confirmatory result) and
+   without the stamping a 44b fire lands exactly where the Qwen32B heartbeat did. Item 8
+   (cross-process `served_n_ctx`) is the same stamping surface — build them together.
 2. **Decision provenance Stages 3+4** (`decision_provenance.md`): make the provenance
    fields queryable + wire them into the S2 apparatus canaries. Stage 4 overlaps the
    canary work — build together.
@@ -264,9 +295,21 @@ Each POINTS at its owning plan — stages live there, not here:
    (Stage 3). Stage 4's CI lock already shipped 2026-08-13.
 7. **God-function decomposition** (`god_function_decomposition.md`) — its own plan
    sequences it after fail-loud Stages 1–2; start once item 6's Stage 2 lands.
+   **Sharpened 2026-08-27:** both scorecards' Maintainability finding, and the one axis
+   they disagree on hardest (C+ vs D+). The three functions **grew** while the plan waited
+   — `run_agentic_loop` 3,331 → 3,546, `start_simulation_mode` 3,226 → 3,342,
+   `_main_impl` 1,737 → 1,752 (2026-08-19 → 2026-08-27) — because the D13 fix went
+   *inline* into the exact planning-submit/await seam the Claude card named as the first
+   extraction. Two consequences: (a) a **no-growth guard ships NOW, ahead of the
+   decomposition** (item 16.4 — a function-length baseline in the fast suite, the D19
+   pattern: additions fail, shrinkage tightens the baseline); (b) the planning-liveness
+   block is now the best-tested code in the function (66 tests in
+   `test_planning_liveness.py`), which makes it the *safest* first cut, not the scariest —
+   extract it first.
 8. **n_ctx leg 3, cross-process** — a `served_n_ctx` handshake readable across processes
    (today `maxim config` alignment is the documented mechanism; acceptable carry, close
-   it when touching the lane code anyway).
+   it when touching the lane code anyway). **2026-08-27: folded into item 1's L8
+   stamping prerequisite — same record surface, one PR.**
 9. **`agents/llm_agent.py` router migration** — retires the CI backend-import
    grandfather clause and its positive control.
 10. **Memory-consolidation decision** — `deferred/memory_consolidation_practice.md`'s own
@@ -281,7 +324,13 @@ Each POINTS at its owning plan — stages live there, not here:
     and protect final persistence/session shutdown with structural cleanup.
 13. **Dormant-path decisions for D6/D9** — either wire and behaviorally graduate
     Hebbian multi-node binding / temporal-event producers, or mark the unused contract
-    dormant and stop implying it learns in production.
+    dormant and stop implying it learns in production. **Sharpened 2026-08-27: the 1.1.x
+    decision is DORMANCY, not building.** D6 (Hebbian binding inert on the percept path)
+    is a hard dependency of the 1.3 fabric's orient-windowed binding — wiring it here
+    would be 1.3 scope creep without 1.3's experiment; D9's producers are already
+    deferred (`deferred/scn_event_producer_gap.md`). Mark both `Dormant since <date>`
+    with the 1.3 stage as the resurrection trigger, and pull any docstring that implies
+    they learn in production.
 14. **Published-support truth** — **PARTIAL in v1.0.9:** lightweight CI
     install/import/CLI lanes now cover Python 3.10, 3.11, 3.13, and 3.14 while
     the full suite covers 3.12; contributor guidance now matches the seven core
@@ -293,6 +342,42 @@ Each POINTS at its owning plan — stages live there, not here:
     self-effects and whose tool names are the robot's own, then a re-run of Exp 52 on
     it. Removes the S6 δ map from the readout path and makes the taught files usable on a
     user's robot without a key remap — the prerequisite for sharing them.
+16. **Scorecard mechanization** (added 2026-08-27; one PR-sized cluster, every piece
+    rides an existing lint or CI step — no new mechanism). Both cards say a grade moves
+    only when the normal workflow *enforces* the improvement; these are the enforcement
+    gaps the cards named that no item owned. Front-gate: `lint_no_silent_swallows.py`'s
+    diff-scoped / grandfathered-count shape and the D19 baseline pattern already exist —
+    reuse them.
+    1. **Version-bump policy: decide, write it down, enforce it.** CLAUDE.md §Versioning
+       says "bump on any change affecting runtime behavior"; practice is "bump at the
+       release cut" (≈60 unbumped post-tag commits at scoring time; #561/#562 touched
+       `src/` post-1.1.0 unbumped). Written intent vs routine practice diverging is the
+       Codex card's *definition* of a D. Pick one — the honest option is "main is always
+       ahead of PyPI; the bump happens in the release transaction" — and rewrite the
+       CLAUDE.md paragraph to match. Then extend the existing "Version sync" CI step: if
+       a diff changes the `pyproject.toml` version, `CHANGELOG.md` must contain
+       `## [<that version>]` (`scripts/audit_release_tags.py` covers tag↔changelog, not
+       bump↔changelog — the Claude card's stated path to B for Release governance).
+    2. **Diff-scoped fix→tests lint:** a commit whose subject starts `fix(` and touches
+       `src/` must touch `tests/`. #519 is the incident (a behavioral fix to an abort path
+       with zero test changes); every fix since the cards has complied (9/9), so the lint
+       ratifies practice rather than changing it. The card's "90 days clean" then
+       becomes measurable at the next re-score instead of asserted.
+    3. **`atomic_io` violations get a guard.** CLAUDE.md's KNOWN-GAP admits 17 hand-rolled
+       `os.replace` sites, "detection-only, needs its own task" — still 17. A stale
+       quantified confession was the Claude card's specific Documentation-honesty
+       deduction. Either a grandfathered per-file count lint (the swallow-lint shape) or
+       a burn-down; the lint is the cheaper first step and makes the count self-updating.
+    4. **Function-length baseline** for the three god functions (item 7's no-growth
+       guard): `src/maxim/utils/architecture_baseline.json`'s pattern — a reviewed
+       ceiling per function, additions fail the fast suite, shrinkage must tighten the
+       ceiling in the same commit.
+    5. **Delete `docs/CHANGELOG.md`** — the dead duplicate frozen at 0.3.0 that both
+       cards named and that survived the 1.1.0 cut.
+    6. **Truth pass on [external_critique_response.md](external_critique_response.md)**
+       — row 7 still says "CI still runs `pytest tests/unit/` only" (false since D20);
+       rows 2 and 6 are stale (the plans README already flags them). The living-scorecard
+       label is only true if the rows are.
 
 ## Gates before 1.2 Oasis + Hivemind
 
@@ -313,6 +398,38 @@ execution priority:
    names; a bundle must declare its body/affordance namespace (typed bundles) or the
    keys move to the SEM affordance. Decided in the case study's design pass, before the
    first shared bundle.
+8. **Evidence and ledger coherence** (added 2026-08-27 from the scorecard
+   reconciliation). Gates 1–7 exist because distribution amplifies silent *state*
+   errors; this gate applies the same argument to the *evidence* behind the state that
+   would be shared and to the ledgers that describe it. Four sub-gates, all
+   doc-or-lint-sized except (a):
+   - **(a) D27 re-filed here.** The bugs ledger had it as "OPEN — 1.1 gate" for a
+     release that has shipped: seven `scripts/` harnesses still overwrite committed S4
+     evidence unconditionally and ~18 build an encoder without
+     `require_semantic_encoder`. The tests-side fix (D25/D26) exists; extend
+     `test_evidence_write_policy.py`'s scan to `scripts/` and give the harnesses the
+     `--write-experiment-results` opt-in. The Exp 52/54 files a bundle would carry are
+     produced by exactly this class of harness.
+   - **(b) D5 vs gate 6 — re-argue D5.** D5 (`nac_merge` never folds cluster biases
+     across agents) is ACCEPTED in the ledger; gate 6 (a re-keyed merge so a foreign
+     want reads out) *requires* the thing D5 accepts not doing. The case study made D5
+     load-bearing; its disposition is re-opened in the ledger and resolves with gate 6.
+   - **(c) D28 before the ingestion contract.** `create.agent()` silently restores SCN
+     regardless of `auto_load`, so "fresh" is not fresh. The Oasis ingestion contract
+     defines what a bundle merges *into*; it cannot be written while the fresh/loaded
+     distinction is incoherent. Lands before the contract is drafted, not merely in
+     1.1.x.
+   - **(d) Tier-3 dispositions.** [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md)
+     Tier 3 has had 14 of 20 rows Pending since 2026-05-27 — the item that held
+     Research integrity from A on the Claude card and the "Tier-3 gets the dispositions
+     the 1.0 readiness review promised" upgrade condition. Doc-only sweep: each Pending
+     row becomes scheduled (named experiment), Dropped, or Dormant. Not a code change; a
+     release with Stale rows is already forbidden by the ledger's own rule, and Pending
+     rows fifteen months old are Stale in everything but name.
+   - **Also under this gate, scoped to what 1.2 touches:** `hivemind/` gets added to the
+     existing CI mypy step (5 of 508 files today; repo-wide is not worth it, but the
+     bundle format is a wire boundary and 1.2 rewrites its merge path — that is where
+     typing pays).
 
 ---
 
