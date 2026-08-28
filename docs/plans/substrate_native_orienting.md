@@ -1,6 +1,6 @@
 # Substrate-Native Orienting — embodied sensorimotor learning as the substrate's first real-hardware policy
 
-**Status:** ACTIVE umbrella plan (consolidated 2026-07-15). This is the authoritative
+**Status:** ACTIVE umbrella plan (consolidated 2026-07-15). **Results on this line since:** Exp 45 (direction, hardware, EARNED) → Exp 52 (the want is learned in the nursery, EARNED 2026-08-25) → Exp 53b (it reads out on the physical Reachy, EARNED 2026-08-26) → Exp 54 (on the robot's own body: Phase A GRADUATE 2026-08-27, Phase B/C pending) — see `docs/experiments/README.md`. This is the authoritative
 plan for the orient-to-center line. It **absorbs** the former
 `audiovisual_orienting.md` (cross-track coordination) and sits above two execution
 layers it does NOT re-do:
@@ -309,7 +309,7 @@ the runbook is actively used on-device; the infra is broader than orienting).
 
 ## Runtime integration (1.1) — Layer 1 becomes standard equipment
 
-[`orient_runtime_integration.md`](orient_runtime_integration.md) (drafted 2026-07-16)
+[`orient_runtime_integration.md`](archive/orient_runtime_integration.md) (drafted 2026-07-16)
 turns the completed Layer 1 from a bring-up script into behavior every embodied Reachy
 gets. **The audit moved that plan a long way: DN already has the arbiter, the
 inhibition (voluntary action suppressing a reflex), novelty + inhibition-of-return, a
@@ -326,7 +326,7 @@ varies per room).
 ## Tracked follow-up experiments
 
 **Orient magnitude learning + the parietal/cerebellar division of labor
-([orient_magnitude_learning.md](orient_magnitude_learning.md), pre-registered
+([orient_magnitude_learning.md](deferred/orient_magnitude_learning.md), pre-registered
 2026-07-16).** Live observation on the Exp 45 policy: it learns direction but not
 *magnitude* — root cause is the 2-action fixed-step set (expression), NOT bin
 resolution (sensing). Four ranked, separately pre-registered steps: **S0** magnitude
@@ -404,7 +404,7 @@ processed stream) BEFORE investing in ear geometry.
 - Binding (cancelled / gated): [`cross_modal_substrate_binding.md`](archive/cross_modal_substrate_binding.md),
   [`jepa_cross_modal_alignment.md`](deferred/jepa_cross_modal_alignment.md)
 - Drive-pain refinement: [`transition_based_drive_pain.md`](deferred/transition_based_drive_pain.md)
-- Interoceptive-drive sibling (different axis): [`sem_environmental_proximity_sensing.md`](sem_environmental_proximity_sensing.md)
+- Interoceptive-drive sibling (different axis): [`sem_environmental_proximity_sensing.md`](deferred/sem_environmental_proximity_sensing.md)
 
 ## History
 

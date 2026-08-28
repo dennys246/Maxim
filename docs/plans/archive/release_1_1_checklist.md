@@ -41,7 +41,7 @@ release mechanics.
 ### 1. 🔵 Exp 44 — LLM-primary embodied choice (bounded experiment; NOT fire-and-forget)
 - Apparatus shipped: G1 deterministic scene harm (`MAXIM_DETERMINISTIC_SCENE_EMBODIMENT`),
   imagination gate (`MAXIM_DISABLE_IMAGINATION`), the `--aut-mode llm-primary` harness.
-- **Blockers before a valid run** (see [exp44_overnight_runcard.md](../exp44_overnight_runcard.md)):
+- **Blockers before a valid run** (see [exp44_overnight_runcard.md](../deferred/exp44_overnight_runcard.md)):
   ops stack (model + n_ctx via `maxim config`), a **confirming validation seed** (does the AUT
   act? does harm fire? is arm A below ceiling?), and the **Track-1 drive-pain cadence** change
   that stales prior numbers.
@@ -79,7 +79,7 @@ release mechanics.
 - **S4 / S3 continuous orient magnitude** — Layer-2 research (population-vector readout is being
   hardware-tested now; if it earns, it lands as Exp 45e). Layer 1 is the 1.1 bar and is done.
 - **Reachy runtime integration** ("learning ON in production") —
-  [orient_runtime_integration.md](../orient_runtime_integration.md), gated on S2 gain calibration.
+  [orient_runtime_integration.md](orient_runtime_integration.md), gated on S2 gain calibration.
   1.2 unless explicitly pulled.
 - **Passive sense discovery**, **sem environmental proximity sensing**, **grounded-language
   Phases 1–3**, **mesh C5–C8** — all post-1.1 / 1.2 per their plan docs.

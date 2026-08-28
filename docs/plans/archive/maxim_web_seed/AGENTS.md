@@ -1,5 +1,7 @@
 # AGENTS.md — maxim-web
 
+> **✅ SEED CONSUMED — canonical copies live in the `Maxim-web` repo (pymaxim.bio) and have since diverged from this fork. Do not edit.**
+
 Durable standards for the Maxim front-door site. Tool-agnostic; Claude Code also reads this.
 Kept short on purpose — this repo is a static content site, not a codebase.
 
@@ -7,7 +9,7 @@ Kept short on purpose — this repo is a static content site, not a codebase.
 
 The **public front door** for Maxim: landing and docs under `pymaxim.bio`.
 `docs.pymaxim.bio` is a path-preserving redirect alias, not a second content origin.
-**Astro + Starlight**, static, deployed on **Cloudflare Pages**. See [README.md](README.md) for
+**Astro + Starlight**, static, deployed on **Cloudflare Pages**. See [README.md](../../maxim_web_seed/README.md) for
 structure, domains, and the ecosystem map (pymaxim = engine, maxim-pulse = product, this = front
 door).
 

@@ -1,6 +1,6 @@
 # Simulation apparatus standards — keeping shared sim machinery from silently invalidating graduated claims
 
-**Status:** PROPOSED (2026-08-11), triggered by the Exp 48 heartbeat regression.
+**Status:** ADOPTED — S1–S8 are in force (S4 shipped #507/#536; the S2 canaries are roadmap 1.1.x item 2; Exp 52/53/54 pre-registrations declare against them). Originally PROPOSED 2026-08-11, triggered by the Exp 48 heartbeat regression — Exp 48 has since been superseded by Exp 52.
 **Owns:** the discipline around shared simulation machinery; companion to
 [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) (claims + triggers) and
 [docs/experiments/protocols/heartbeat_rerun_runbook.md](../experiments/protocols/heartbeat_rerun_runbook.md) (re-run commands).

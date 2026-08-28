@@ -1,5 +1,7 @@
 # Maxim Console — the general local web front door (+ the shared UI kit)
 
+> **⏸ DEFERRED 2026-08-27 — Phase 0 shipped (`maxim serve` #416, EVENT #434, HANDLE #428; `src/maxim/console/`), Phases 1–3 unstarted; the 1.1→1.3 roadmap has no console slot. **Revive when** the Reachy-app MVP (`maxim_ui.md` Phase 2) is greenlit or a user-facing local front door is scheduled into a release. Defer as a set with `maxim_ui.md` + the consumed `maxim_pulse_seed/`.**
+
 **Status:** Shell plan, drafted 2026-07-23. Sibling to the Reachy app plans; this one generalizes them. The Reachy app becomes the **first consumer** of the shared kit defined here.
 **Scope:** A general **localhost web console** (`maxim serve`) to configure, run, and observe Maxim — for *any* use (headless chat, sim, DM, config, diagnostics, memory), not just a robot. Plus the **shared UI kit** (components + design system + event client) that both the console and the Reachy app compose. Presentation layer only — **all logic stays in pymaxim behind `api.py`**.
 **Target:** Post Reachy-MVP (the Reachy app ships first as the kit's first consumer; the console follows and reuses the same components). Kit designed reusable from day one so nothing is rewritten.
@@ -58,7 +60,7 @@ Both front-ends are **a thin shell composing shared kit components over the pyma
 
 **RunSurface is the key abstraction:** Reachy's "Adventure" and the console's "run a DM campaign" are the *same component* with a different mode config and a different `HANDLE` flavor. Define it once.
 
-**RunSurface's panel model — port the interactive `Live` display's information architecture.** The existing Rich `MaximDisplay` ([interactive/display.py](../../src/maxim/interactive/display.py)) already validated the immersive-session spread in the terminal: status bar + **narrative/dialogue (bright)** + **bio-subsystem activity log (dimmed)** + a **thinking/deliberation panel** (accumulates the reasoning chain + which bio-systems enriched each cycle) + input/choices + **pluggable domain panels via the `DisplayExtension` ABC** (explicitly built for DM character-sheet/inventory/encounter, research, robot-joint panels). RunSurface should port this *IA* (not the Rich code): a **core layout** (narrative + input + activity + thinking) + **pluggable mode-panels** mirroring `DisplayExtension`. Crucially, **the terminal and the web are two renderers over one event model** — the `sim_log` record (the EVENT seam pins this: `subsystem`→`kind`, server-computed tier from `_SUBSYSTEM_TIERS`; `api.on()` stays the embedder-SDK surface) — so the kit's `EventClient` consumes the same stream `MaximDisplay` does. The "show Maxim think + learn *while the story unfolds*" surface (bio-dim under scene-bright) is what makes Adventure legible and is available from the start, since it's already an event stream, not a new mechanism.
+**RunSurface's panel model — port the interactive `Live` display's information architecture.** The existing Rich `MaximDisplay` ([interactive/display.py](../../../src/maxim/interactive/display.py)) already validated the immersive-session spread in the terminal: status bar + **narrative/dialogue (bright)** + **bio-subsystem activity log (dimmed)** + a **thinking/deliberation panel** (accumulates the reasoning chain + which bio-systems enriched each cycle) + input/choices + **pluggable domain panels via the `DisplayExtension` ABC** (explicitly built for DM character-sheet/inventory/encounter, research, robot-joint panels). RunSurface should port this *IA* (not the Rich code): a **core layout** (narrative + input + activity + thinking) + **pluggable mode-panels** mirroring `DisplayExtension`. Crucially, **the terminal and the web are two renderers over one event model** — the `sim_log` record (the EVENT seam pins this: `subsystem`→`kind`, server-computed tier from `_SUBSYSTEM_TIERS`; `api.on()` stays the embedder-SDK surface) — so the kit's `EventClient` consumes the same stream `MaximDisplay` does. The "show Maxim think + learn *while the story unfolds*" surface (bio-dim under scene-bright) is what makes Adventure legible and is available from the start, since it's already an event stream, not a new mechanism.
 
 ## One generalization the seams need: HANDLE has two flavors
 
@@ -116,7 +118,7 @@ The demo is a **near-free third output**: the Console shell built against the ki
 ## How the four plans wire together
 
 - **[reachy_app_maxim_seams.md](reachy_app_maxim_seams.md)** — *is Layer 1.* The seams are the shared backend contract, **not Reachy-specific**. (Reframed by this plan; the Reachy app is one consumer, the console another.)
-- **[reachy_mini_app.md](reachy_mini_app.md)** — the Reachy **shell** (Layer 3). Its GUI is built *as the first slice of the kit*, which resolves that plan's "served-UI vs Pollen-config-hook" open question → **served, shared kit**.
+- **[reachy_mini_app.md](../archive/reachy_mini_app.md)** — the Reachy **shell** (Layer 3). Its GUI is built *as the first slice of the kit*, which resolves that plan's "served-UI vs Pollen-config-hook" open question → **served, shared kit**.
 - **[reachy_dm_app.md](reachy_dm_app.md)** — Adventure is a **RunSurface mode** (Layer 2) over the embodied `HANDLE`.
 - **This plan** — Layer 2 (the kit) + the console shell (Layer 3) + `maxim serve`.
 
@@ -141,6 +143,6 @@ The demo is a **near-free third output**: the Console shell built against the ki
 
 ## References
 
-- Layer 1: [reachy_app_maxim_seams.md](reachy_app_maxim_seams.md) · `api.py` facades ([api.py](../../src/maxim/api.py))
-- Layer 3 shells: [reachy_mini_app.md](reachy_mini_app.md) · [reachy_dm_app.md](reachy_dm_app.md) · seed [AGENTS.md/CLAUDE.md](maxim_pulse_seed/)
-- Precedent: leader-proxy admin endpoints ([leader_proxy.py](../../src/maxim/runtime/leader_proxy.py)) · Rich terminal surface ([interactive/display.py](../../src/maxim/interactive/display.py)) — the console is its web sibling
+- Layer 1: [reachy_app_maxim_seams.md](reachy_app_maxim_seams.md) · `api.py` facades ([api.py](../../../src/maxim/api.py))
+- Layer 3 shells: [reachy_mini_app.md](../archive/reachy_mini_app.md) · [reachy_dm_app.md](reachy_dm_app.md) · seed [AGENTS.md/CLAUDE.md](../maxim_pulse_seed)
+- Precedent: leader-proxy admin endpoints ([leader_proxy.py](../../../src/maxim/runtime/leader_proxy.py)) · Rich terminal surface ([interactive/display.py](../../../src/maxim/interactive/display.py)) — the console is its web sibling

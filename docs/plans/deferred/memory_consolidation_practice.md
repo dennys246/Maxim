@@ -4,7 +4,7 @@
 
 
 **Status:** Living document. Kicks in once P8 ships in 0.5. Not a gated phase; refines the mechanism P8 puts in place.
-**Kin:** [tool_refinement_plan.md](../tool_refinement_plan.md), [behavioral_convergence_practice.md](behavioral_convergence_practice.md).
+**Kin:** [tool_refinement_plan.md](tool_refinement_plan.md), [behavioral_convergence_practice.md](behavioral_convergence_practice.md).
 **Related:** [substrate_binding_persistence.md](../archive/substrate_binding_persistence.md) P8 (the minimum-viable sleep replay mechanism this doc extends). Master reference: [archive/substrate_plan.md](../archive/substrate_plan.md).
 
 ## What this document is for

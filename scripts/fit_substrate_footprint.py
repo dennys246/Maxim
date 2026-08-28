@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """FIT — measure the Maxim *substrate* memory footprint.
 
-Answers the **FIT** gate ([docs/plans/reachy_app_maxim_seams.md](../docs/plans/reachy_app_maxim_seams.md)):
+Answers the **FIT** gate ([docs/plans/deferred/reachy_app_maxim_seams.md](../docs/plans/deferred/reachy_app_maxim_seams.md)):
 does the substrate (encoder + EC / NAc / Hippocampus / ATL / SCN) fit on the
 Reachy Mini's Raspberry Pi when the large LLM tier is **remote** (mesh)? The LLM is
 NOT loaded here — this measures the substrate only, which is what stays local on

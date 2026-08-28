@@ -45,7 +45,7 @@ See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current 
 - [memory_consolidation_practice.md](docs/plans/deferred/memory_consolidation_practice.md) — refines the P8 sleep-replay mechanism. Kicks in when P8 ships in 0.5.
 
 **Parallel:**
-- [tool_refinement_plan.md](docs/plans/tool_refinement_plan.md) — living doc for agent tool curation.
+- [tool_refinement_plan.md](docs/plans/deferred/tool_refinement_plan.md) — living doc for agent tool curation.
 
 **Deferred (post-1.0, revive on trigger):** Bio-System Plugin Discovery, Unified Event Bus, Mother NPC Stimulus, Mother Maxim, Pecking Order Graph, Asset Foundry, DM Extensions. See [docs/plans/deferred/](docs/plans/deferred/).
 

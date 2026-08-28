@@ -59,7 +59,7 @@ def body_state_prompt_enabled() -> bool:
     Default OFF: no production path has ever populated body_state (the
     prompt's body-state carrier is auto-sense), and flipping it on is a
     prompt-content behavioral delta that must go through the pre-registered
-    ablation in docs/plans/acting_coach_body_state_ablation.md before it
+    ablation in docs/plans/deferred/acting_coach_body_state_ablation.md before it
     can become the default. Autouse env scrub:
     tests/conftest.py::_isolate_maxim_body_state_prompt_env.
     """

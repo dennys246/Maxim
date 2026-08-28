@@ -67,7 +67,7 @@ The following env vars were documented in the old runbook and are no longer read
 
 You probably clicked through from one of:
 
-- A plan doc that references `PeerRegistry` or `PeerChannel` — those references are being updated piecemeal. See [tool_refinement_plan.md](../plans/tool_refinement_plan.md) which had a line-98 reference that was fixed in an earlier PR, and check whether the plan you're reading has been refreshed.
+- A plan doc that references `PeerRegistry` or `PeerChannel` — those references are being updated piecemeal. See [tool_refinement_plan.md](../plans/deferred/tool_refinement_plan.md) which had a line-98 reference that was fixed in an earlier PR, and check whether the plan you're reading has been refreshed.
 - An old git commit message mentioning `ExperienceBroker` or `TaskDelegator` — the commit is historical, the code is gone.
 - A CLAUDE.md lesson entry — those should all be current. If you find a stale one, it's a bug.
 

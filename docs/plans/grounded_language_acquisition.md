@@ -434,5 +434,5 @@ state gate/weight what the language model attends to and selects. Machinery
 partly exists — `GatingContext.drive_states` (runtime/gating.py:96) — and
 substrate-primary's `propose_via_substrate` + `INTROSPECTION_TOOL_NAMES`
 exclusion is the reference mechanism. Tracked from
-docs/plans/controlled_llm_primary_embodied_harness.md (G2) + memory
+docs/plans/archive/controlled_llm_primary_embodied_harness.md (G2) + memory
 `project_exp44_llm_primary_divergence`.

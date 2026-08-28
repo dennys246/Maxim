@@ -164,7 +164,7 @@ class PromptBudgeter:
         it into the prompt, with per-section char sizes.
 
         Exists for the Exp 44 mechanism checks
-        (docs/plans/acting_coach_body_state_ablation.md): with MAXIM_LOG_FILE
+        (docs/plans/deferred/acting_coach_body_state_ablation.md): with MAXIM_LOG_FILE
         set (root logger at DEBUG), the JSONL carries one ``prompt_sections``
         line per prompt build, so arm verification (body_state / acting_coach
         present, sizes changing across turns, no unintended section diffs

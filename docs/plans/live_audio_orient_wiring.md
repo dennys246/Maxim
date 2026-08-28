@@ -1,10 +1,10 @@
 # Live audio-orient wiring — DoA into the standard embodied runtime
 
-**Status:** Drafted 2026-07-28 from a four-lens parallel audit (runtime ingestion, audio front-end + sim wiring, hardware abstraction layer, body drives + DN behaviors). Not yet scheduled.
+**Status:** Drafted 2026-07-28 from a four-lens parallel audit (runtime ingestion, audio front-end + sim wiring, hardware abstraction layer, body drives + DN behaviors). Not yet scheduled [update 2026-08-27: roadmap item 18's 1.1.1 salience design rides this feed's Stage-2 surface — `AEC_SPENERGY_VALUES` / `PP_AGCGAIN` over the daemon REST API; Stage 5 remains the 1.3 reflex tier].
 
 **Goal:** the standard Maxim runtime, embodied on a Reachy Mini, *sees* live sound direction (DoA), *reacts* to it (reflex + learned orient policy), and *reflects* on it (LLM prompt) — wired through a robot-agnostic seam so any `maxim.robots` plugin can provide an audio-localization source, with the infra N-axis-ready (elevation lands later as body-YAML data + one tuple entry, no new schema).
 
-**Companion docs:** [perception_pipeline_placement.md](perception_pipeline_placement.md) (commits 4–5 umbrella; this plan supersedes its stale "background thread + RMW" text — the shipped front-end is pull-per-tick by design), [productive_orienting_affordance.md](productive_orienting_affordance.md) (elevation recipe + the one deferred 2-axis design decision), [docs/behaviors/audio_behaviors.md](../behaviors/audio_behaviors.md) (BL-1..BL-5 reflex-layer blockers), [deferred/transition_based_drive_pain.md](deferred/transition_based_drive_pain.md) (**its revive trigger names this plan**).
+**Companion docs:** [perception_pipeline_placement.md](perception_pipeline_placement.md) (commits 4–5 umbrella; this plan supersedes its stale "background thread + RMW" text — the shipped front-end is pull-per-tick by design), [productive_orienting_affordance.md](deferred/productive_orienting_affordance.md) (elevation recipe + the one deferred 2-axis design decision), [docs/behaviors/audio_behaviors.md](../behaviors/audio_behaviors.md) (BL-1..BL-5 reflex-layer blockers), [deferred/transition_based_drive_pain.md](deferred/transition_based_drive_pain.md) (**its revive trigger names this plan**).
 
 ---
 

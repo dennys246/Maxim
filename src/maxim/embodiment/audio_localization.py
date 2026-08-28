@@ -663,7 +663,7 @@ def world_set_azimuth(embodiment: object, azimuth: float, *, owner: "str | None"
     in agent_loop §1.16, add ``turn_up``/``turn_down`` affordances, and pick the
     2-D magnitude model. NOT done now (one axis = N=1; would force guessing the
     magnitude model). Full plan + the one open design decision:
-    docs/plans/productive_orienting_affordance.md § "Dimensionality".
+    docs/plans/deferred/productive_orienting_affordance.md § "Dimensionality".
 
 
     Capability-driven: ANY body that declares an ``azimuth`` root sensor gets

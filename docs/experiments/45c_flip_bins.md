@@ -2,7 +2,7 @@
 
 **Status:** **PASS** (hardware, 2026-07-16). **Magnitude 1.00** — the pre-registered
 prediction, hit exactly and held for 13 consecutive probes (trials 40→100).
-**Plan:** [orient_magnitude_learning.md](../plans/orient_magnitude_learning.md) S1.
+**Plan:** [orient_magnitude_learning.md](../plans/deferred/orient_magnitude_learning.md) S1.
 **Parent:** [Exp 45b](45b_orient_magnitude.md) (PASS: direction 1.00, magnitude 0.75).
 
 ## Claim under test

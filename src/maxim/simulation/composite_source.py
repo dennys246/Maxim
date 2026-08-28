@@ -8,7 +8,7 @@ a ``PerceptSource``, so the single-source loop is unchanged; the multiplexer
 hides inside the existing seam.
 
 This is the thalamic relay body in embryo (modality-preserving multiplex), the
-first slice of ``docs/plans/thalamus_relay_design_pass.md``. Deliberately a
+first slice of ``docs/plans/archive/thalamus_relay_design_pass.md``. Deliberately a
 **dumb multiplexer**, NOT a routing-policy engine:
 
 - ``next_percept()`` — deterministic ordered scan, **first non-None child wins**.

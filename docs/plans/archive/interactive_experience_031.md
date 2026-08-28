@@ -232,7 +232,7 @@ _FALLBACK_DEFAULT = "The story continues to unfold around you..."
 
 ### Stage 8 — Agent introspection tools
 
-**4 high-priority tools from [tool_refinement_plan.md](../tool_refinement_plan.md)** — ~100 LOC each, no prerequisites, all reading from existing data sources. These give the agent self-awareness about its own learning, memory, performance, and pain state.
+**4 high-priority tools from [tool_refinement_plan.md](../deferred/tool_refinement_plan.md)** — ~100 LOC each, no prerequisites, all reading from existing data sources. These give the agent self-awareness about its own learning, memory, performance, and pain state.
 
 **What's built:**
 

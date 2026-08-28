@@ -1,5 +1,7 @@
 # maxim-web
 
+> **✅ SEED CONSUMED — canonical copies live in the `Maxim-web` repo (pymaxim.bio) and have since diverged from this fork. Do not edit.**
+
 The **public front door** for Maxim: landing and docs under `pymaxim.bio`.
 `docs.pymaxim.bio` is a permanent redirect alias. The site is static — **Astro +
 Starlight**, deployed on **Cloudflare Pages**.
@@ -79,5 +81,5 @@ existing guides. Migrate/curate the real guides as a follow-up once the shell is
 
 ## Standards
 
-See [AGENTS.md](AGENTS.md). In short: content-first, static, fast, accessible; link to the
+See [AGENTS.md](../../maxim_web_seed/AGENTS.md). In short: content-first, static, fast, accessible; link to the
 code/app rather than duplicating; ship bare then grow; no secrets in the repo.

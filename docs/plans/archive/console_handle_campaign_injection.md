@@ -1,16 +1,18 @@
 # HANDLE seam — part (a): persistent-agent campaign injection
 
+> **✅ SHIPPED 2026-07-26 (PR #428; post-merge review round #430; part (b) in #427) — `_adopt_persistent_agent` / `persistent_agent=` live in `simulation/orchestrator.py`.**
+
 **Status:** design (dedicated PR home). Part (b), the explicit `consolidation` stop
 contract, shipped in #427 and this refactor consumes it.
 
-**Parent spec:** [reachy_app_maxim_seams.md](reachy_app_maxim_seams.md) § HANDLE (a);
-console framing in [maxim_console.md](maxim_console.md) § "HANDLE has two flavors".
+**Parent spec:** [reachy_app_maxim_seams.md](../deferred/reachy_app_maxim_seams.md) § HANDLE (a);
+console framing in [maxim_console.md](../deferred/maxim_console.md) § "HANDLE has two flavors".
 
 ---
 
 ## The problem (confirmed)
 
-[`simulation/orchestrator.py:533`](../../src/maxim/simulation/orchestrator.py#L533)
+[`simulation/orchestrator.py:533`](../../../src/maxim/simulation/orchestrator.py#L533)
 builds `AgentConfig(agent_id="sim_aut", persistence_dir=sim_tmpdir)` and calls
 `create_full_agent` → a **throwaway** AUT with session-scoped
 Hippocampus/NAc (`~/.maxim/sessions/{id}/aut_hippocampus.json`). An Adventure run

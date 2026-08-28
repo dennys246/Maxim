@@ -1,5 +1,7 @@
 # Bio-Docstring Truth Pass — Say What the Algorithm Is
 
+> **✅ SHIPPED 2026-08-11 (PR #492; NAc fix #486). Residual CI claim-lint is tracked in `../external_critique_response.md` row 3.**
+
 **Status:** DRAFT (2026-08-10); NAc already fixed in the kickoff session
 **Motivation:** External critique (2026-08-10), point 3, verified: `decisions/nac.py` line 2
 claimed "temporal difference learning" over an eligibility-trace proportional-credit scheme —

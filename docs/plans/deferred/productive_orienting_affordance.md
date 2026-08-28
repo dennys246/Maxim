@@ -1,5 +1,7 @@
 # Productive orienting affordance — make attending-to-sound pay off
 
+> **⏸ DEFERRED 2026-08-27 — Phases 1–2 ✅ SHIPPED (PR #403: hear, localize, turn toward sound); only the 2-axis/elevation decision is open, and `../live_audio_orient_wiring.md` already defers it per the N=1 rule. **Revive when** a second-axis body exists and forces the two-drives-vs-`√(az²+el²)` decision.**
+
 **Status:** Design draft (2026-07-19). Follows the audio/DoA recognition work in PR #402
 (`thalamus_relay_design_pass.md` stage 4). Recognition is done — a DoA percept reaches the agent's
 prompt. This draft addresses the next gap the first live run exposed: **the agent hears the sound and
@@ -184,6 +186,6 @@ actually has the second axis; until then, 1-D is the honest and correct shape.
 
 ## Related
 
-- [thalamus_relay_design_pass.md](thalamus_relay_design_pass.md) — the audio recognition this builds on.
-- [thalamus_hypothalamus_framing.md](thalamus_hypothalamus_framing.md) — dual-organ frame (attention vs drive).
+- [thalamus_relay_design_pass.md](../archive/thalamus_relay_design_pass.md) — the audio recognition this builds on.
+- [thalamus_hypothalamus_framing.md](../archive/thalamus_hypothalamus_framing.md) — dual-organ frame (attention vs drive).
 - `hybrid_substrate_reflex_runtime.md` / Track 2 — the directional-turn reflex this defers to.

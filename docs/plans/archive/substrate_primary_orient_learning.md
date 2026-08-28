@@ -17,7 +17,7 @@
 >   hardware — is owned by `orient_runtime_integration.md` (1.2 unless explicitly pulled).
 
 **Status:** Plan (2026-07-19). Follows the productive-orienting work (PR #403, Phase 1+2):
-[productive_orienting_affordance.md](productive_orienting_affordance.md). That shipped the orient
+[productive_orienting_affordance.md](../deferred/productive_orienting_affordance.md). That shipped the orient
 behavior in **llm-primary** — the agent *decides* to `listen`/`turn`. This plan takes it to
 **substrate-primary**, where the question is the project's actual 1.0 thesis: **does the agent *learn*
 to orient across sessions via NAc reward, with no LLM and no fine-tuning?**
@@ -178,7 +178,7 @@ useful and independently testable.
 ## Related
 
 - [cradle_orient_learning.md](cradle_orient_learning.md) — **the developmental reframing that SUPERSETS this plan.** P1–P3 here are shared prerequisites; this plan's drive-relief run becomes *Arm B* (the built-in-reward control) of the three-arm cradle study, where orienting is *taught* (caregiver + cross-modal feedback) rather than assumed innately rewarding. Prefer the cradle framing; keep this doc as the P1–P3 mechanics + the drive-only arm.
-- [productive_orienting_affordance.md](productive_orienting_affordance.md) — the llm-primary orient this extends (incl. the 2-D elevation extension path).
+- [productive_orienting_affordance.md](../deferred/productive_orienting_affordance.md) — the llm-primary orient this extends (incl. the 2-D elevation extension path).
 - [thalamus_relay_design_pass.md](thalamus_relay_design_pass.md) — Decision-4 first named these two preconditions.
 - [grounded_language_acquisition.md](grounded_language_acquisition.md) — the substrate-primary sensor-encode + cluster-reward-bias path this rides.
 - [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) — where a successful run graduates.

@@ -1,5 +1,7 @@
 # Exp 44 — substrate counterfactual harness (trajectory-matched)
 
+> **✅ SHIPPED 2026-07-26 (PR #429) — `scripts/exp44/capture_paired_prompts.py`, `rerun_ablated_offline.py`, `tests/unit/test_exp44_ablation.py`; Exp 44 ran 2026-07-28 (Gate 2 PASS).**
+
 **Question:** does the learned orient / substrate change the LLM-primary agent's
 *decision*, holding the world-state fixed? Isolate the substrate's contribution
 to the LLM's **input** (prompt), since it never touches the LLM's output.
@@ -21,7 +23,7 @@ identical world-state at every decision because they replay the same log.
 ### Pass 1 — live capture (status-quo, flags ON), ZERO core edits
 
 A harness monkeypatch wraps `LLMWorker._prompt_builder.build_prompt`
-([llm_worker.py:1190](../../src/maxim/agents/llm_worker.py#L1190)). At each LLM
+([llm_worker.py:1190](../../../src/maxim/agents/llm_worker.py#L1190)). At each LLM
 submission it logs one JSONL row:
 
 ```

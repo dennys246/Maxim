@@ -1,10 +1,12 @@
 # Tool Refinement Plan
 
+> **⏸ DEFERRED 2026-08-27 — a "living" doc that stopped accumulating after the audit PR #394: zero mentions of the 2026-07/08 tool wave (`focus_on_sound` #455, orient affordances, the `world_set_axis` guard). **Revive at** the next tool-surface curation wave (an add/remove/rename pass on the agent's action surface).**
+
 > **Status:** Living document. Ongoing as tools are added, refined, or deprecated.
 >
 > **Scope:** Expansion and curation of the tool surface the agent can call. Covers introspection tools (agent → agent's own state), action tools (agent → world), and composite tools. Tracks what's shipped, what's proposed, what's been removed, and the principles guiding additions.
 
-Where [cleanup_wave.md](archive/cleanup_wave.md) curates the human CLI surface and [archive/agent_mesh.md](../archive/agent_mesh.md) curates compute infrastructure, this plan curates **the agent's own action + introspection surface**. Those plans shape what humans can see; this one shapes what the *agent* can see and do.
+Where [cleanup_wave.md](../archive/cleanup_wave.md) curates the human CLI surface and [archive/agent_mesh.md](../../archive/agent_mesh.md) curates compute infrastructure, this plan curates **the agent's own action + introspection surface**. Those plans shape what humans can see; this one shapes what the *agent* can see and do.
 
 ---
 
@@ -18,7 +20,7 @@ Introspection tools → yes. Mutation tools → gated behind FearAgent + user ap
 
 ### 2. No cross-agent action in mesh setups
 
-Even in Phase 7 mesh topologies, the agent on node A MUST NOT directly command node B. Upholds "sovereign agents, cooperative network" from [agent_mesh.md](../archive/agent_mesh.md). All coordination via explicit message passing, not tool call.
+Even in Phase 7 mesh topologies, the agent on node A MUST NOT directly command node B. Upholds "sovereign agents, cooperative network" from [agent_mesh.md](../../archive/agent_mesh.md). All coordination via explicit message passing, not tool call.
 
 ### 3. Secrets stay opaque
 
@@ -44,9 +46,9 @@ Sim tools only registered in sim mode. Robot tools only registered when robot co
 
 ## Currently shipped (reference)
 
-Living registry — tools live in [src/maxim/tools/](../../src/maxim/tools/).
+Living registry — tools live in [src/maxim/tools/](../../../src/maxim/tools).
 
-### Introspection ([introspection.py](../../src/maxim/tools/introspection.py))
+### Introspection ([introspection.py](../../../src/maxim/tools/introspection.py))
 
 | Tool | What it does |
 |---|---|
@@ -63,20 +65,20 @@ Living registry — tools live in [src/maxim/tools/](../../src/maxim/tools/).
 
 ### Action tools
 
-- **Filesystem**: [filesystem.py](../../src/maxim/tools/filesystem.py) — read, write, list, search
-- **Code**: [code_tools.py](../../src/maxim/tools/code_tools.py) — execute, lint, analyze
-- **Git**: [git_tools.py](../../src/maxim/tools/git_tools.py) — status, diff, log
-- **Internet**: [internet_search.py](../../src/maxim/tools/internet_search.py), [http_fetch.py](../../src/maxim/tools/http_fetch.py)
-- **Robot**: [reachy.py](../../src/maxim/tools/reachy.py) — motor control, vision queries
-- **Communication**: [comms.py](../../src/maxim/tools/comms.py), [response.py](../../src/maxim/tools/response.py)
-- **Math**: [math_tool.py](../../src/maxim/tools/math_tool.py)
-- **Mode control**: [mode_switch.py](../../src/maxim/tools/mode_switch.py)
-- **Sandbox**: [sandbox.py](../../src/maxim/tools/sandbox.py)
-- **Explain**: [explain.py](../../src/maxim/tools/explain.py) — explain a specific decision's provenance
-- **Define intent**: [define_live_intent.py](../../src/maxim/tools/define_live_intent.py)
-- **Learned index**: [learned_index.py](../../src/maxim/tools/learned_index.py)
-- **Novelty**: [novelty.py](../../src/maxim/tools/novelty.py)
-- **RTSP bridge**: [rtsp_bridge.py](../../src/maxim/tools/rtsp_bridge.py)
+- **Filesystem**: [filesystem.py](../../../src/maxim/tools/filesystem.py) — read, write, list, search
+- **Code**: [code_tools.py](../../../src/maxim/tools/code_tools.py) — execute, lint, analyze
+- **Git**: [git_tools.py](../../../src/maxim/tools/git_tools.py) — status, diff, log
+- **Internet**: [internet_search.py](../../../src/maxim/tools/internet_search.py), [http_fetch.py](../../../src/maxim/tools/http_fetch.py)
+- **Robot**: [reachy.py](../../../src/maxim/tools/reachy.py) — motor control, vision queries
+- **Communication**: [comms.py](../../../src/maxim/tools/comms.py), [response.py](../../../src/maxim/tools/response.py)
+- **Math**: [math_tool.py](../../../src/maxim/tools/math_tool.py)
+- **Mode control**: [mode_switch.py](../../../src/maxim/tools/mode_switch.py)
+- **Sandbox**: [sandbox.py](../../../src/maxim/tools/sandbox.py)
+- **Explain**: [explain.py](../../../src/maxim/tools/explain.py) — explain a specific decision's provenance
+- **Define intent**: [define_live_intent.py](../../../src/maxim/tools/define_live_intent.py)
+- **Learned index**: [learned_index.py](../../../src/maxim/tools/learned_index.py)
+- **Novelty**: [novelty.py](../../../src/maxim/tools/novelty.py)
+- **RTSP bridge**: [rtsp_bridge.py](../../../src/maxim/tools/rtsp_bridge.py)
 
 ---
 
@@ -95,7 +97,7 @@ Exposes the agent's computational substrate — making compute legible alongside
 | `lane_status(lane)` | backend kind, model, p50/p99 latency, queue depth, failure rate, recent cost | Multi-LLM Phase 8 `LaneMetrics` | 🔥 |
 | `inference_trace(n=10)` | last N LLM calls: request_id, lane, backend_chosen, latency, tokens, cost_usd | Phase 8 + 7a `LeaderProxy` | 🔥 |
 | `compute_budget()` | spent_usd, limit_usd, breakdown_by_backend, projected_exhaustion | `CostTracker` + `LaneMetrics` | 🔥 |
-| `peer_list()` | per-peer node_id, host, device, vram_gb, models, is_alive, last_latency | Phase 7c — requires `mesh.yml` from [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md) | 🟡 |
+| `peer_list()` | per-peer node_id, host, device, vram_gb, models, is_alive, last_latency | Phase 7c — requires `mesh.yml` from [archive/llm_path_operator_visibility.md](../archive/llm_path_operator_visibility.md) | 🟡 |
 | `cluster_status()` | full mesh snapshot: local lanes + peers + their loads | Phase 7d | 🟡 |
 | `explain_backend_choice(request_id)` | why the router picked the backend it did | Phase 7d routing decisions | 🟡 |
 
@@ -223,8 +225,8 @@ All against existing data sources. Low-risk increments (~100 LOC each):
 
 ## Implementation notes
 
-- Tools follow the existing `Tool` base class in [src/maxim/tools/base.py](../../src/maxim/tools/base.py)
-- Register via the central tool registry in [src/maxim/tools/registry.py](../../src/maxim/tools/registry.py)
+- Tools follow the existing `Tool` base class in [src/maxim/tools/base.py](../../../src/maxim/tools/base.py)
+- Register via the central tool registry in [src/maxim/tools/registry.py](../../../src/maxim/tools/registry.py)
 - **One file per subsystem** (e.g., `mesh_introspection.py`, `runtime_introspection.py`) — easy selective disabling, easier testing
 - **Rate-limit verbose outputs** via LRU on results; agent shouldn't spam them every cycle
 - **Size-cap outputs** at ~4KB — paginate if needed

@@ -1,5 +1,7 @@
 # Acting Coach body-state ablation (proposed Exp 44)
 
+> **⏸ DEFERRED 2026-08-27 — prerequisites shipped (PR #391) but the arms were never validly run (2026-07-15 ops-stack block; the drive-pain cadence changed under it since) and no roadmap item owns them. **Revive when** graduation row #11 (B3 Acting Coach) is scheduled for a decision, or a live consumer forces the `embodiment=` wiring decision at the two production `build_memory_hub` call sites.**
+
 **Status:** PRE-REGISTERED + PREREQUISITES SHIPPED (2026-07-14, branch
 `exp/44-body-state-wiring`). Ready to run pending Phase 0 smoke.
 **Decision it settles:** whether to wire `embodiment=` into the production
@@ -103,7 +105,7 @@ deleting the helper + env var.
 `MAXIM_ENABLE_BODY_STATE_PROMPT` (default OFF = arm A byte-identical)
 routes `instance.embodiment` into `MemoryHub.embodiment` via
 `agent_factory._maybe_wire_body_state` (helper unit-tested in
-[tests/unit/test_body_state_wiring.py](../../tests/unit/test_body_state_wiring.py);
+[tests/unit/test_body_state_wiring.py](../../../tests/unit/test_body_state_wiring.py);
 parser in `integration/memory_hub.py::body_state_prompt_enabled`).
 Arm B's toggle is the new `ActingCoachConfig.body_state_layers` field
 (gates Layers 2+4 only; `embodiment_guidance` deliberately NOT repurposed —

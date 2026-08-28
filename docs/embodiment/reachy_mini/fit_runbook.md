@@ -1,7 +1,7 @@
 # FIT — does the Maxim substrate fit the Reachy Pi?
 
 **FIT** is the gate for the on-device / mesh story (the `maxim-pulse` app line; see
-`docs/plans/reachy_app_maxim_seams.md` once that lands). Question: with the large LLM
+`docs/plans/deferred/reachy_app_maxim_seams.md` once that lands). Question: with the large LLM
 tier **remote** (mesh), does the substrate that stays **local** on the robot — the
 encoder + EC / NAc / Hippocampus / ATL / SCN — fit in the Raspberry Pi's RAM alongside
 the `reachy-mini` daemon + GStreamer?

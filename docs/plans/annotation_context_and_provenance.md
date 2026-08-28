@@ -1,6 +1,6 @@
 # Annotation channel: context, provenance, and semantic keying
 
-**Status:** DRAFT (2026-08-11). Motivated by the Exp 44b pilot findings F1-F6
+**Status:** S1 SHIPPED (#501/#503), S4 DONE (1.1 cut item 11); S2 + Exp 51 + S3 = roadmap 1.1.x item 3. (DRAFT 2026-08-11.) Motivated by the Exp 44b pilot findings F1-F6
 ([../experiments/44b_pilot.md](../experiments/44b_pilot.md)).
 **Front-gate:** rides existing infrastructure — NAc already stores what we need
 per-cluster, the affordance-concept encoder already exists and is validated. This plan

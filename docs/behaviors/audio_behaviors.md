@@ -117,7 +117,7 @@ exteroceptive encoder) is the principled long-term path but is out of scope here
 
 - Plan (owns A0–A4 as steps): [../plans/hybrid_substrate_reflex_runtime.md](../plans/hybrid_substrate_reflex_runtime.md)
 - Review (why each addition is needed): [../plans/reviews/hybrid_runtime_two_lens_review.md](../plans/reviews/hybrid_runtime_two_lens_review.md)
-- Body wiring prerequisite (declaration seam): [../plans/embodiment_runtime_wiring.md](../plans/embodiment_runtime_wiring.md)
+- Body wiring prerequisite (declaration seam): [../plans/archive/embodiment_runtime_wiring.md](../plans/archive/embodiment_runtime_wiring.md)
 - The policy + az_bin/sidecar convention: [../embodiment/porting_orient_loop.md](../embodiment/porting_orient_loop.md)
 - The head-frame invariant gating any body dispatch: [CLAUDE.md](../../CLAUDE.md)
 

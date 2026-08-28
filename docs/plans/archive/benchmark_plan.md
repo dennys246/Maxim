@@ -712,6 +712,6 @@ Baseline comparison + paper generation + narrative transcriber + Tier 3 hooks.
 ## Related Plans
 
 - [Lane tier plan](../archive/lane_tier_plan.md) — small tier for narrative transcription
-- [Tool refinement plan](../tool_refinement_plan.md) — hallucination tracking feeding Tier 1
+- [Tool refinement plan](../deferred/tool_refinement_plan.md) — hallucination tracking feeding Tier 1
 - [Embodiment core plan](embodiment_core_plan.md) — Tier 3 metric sources
 - [Generative campaign plan](generative_campaign_plan.md) — auto-generated benchmark scenarios

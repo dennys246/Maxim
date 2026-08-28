@@ -1,6 +1,6 @@
 """Exteroception/interoception multi-modality seam — regression guards.
 
-Root cause pinned here (docs/plans/exteroception_interoception_seam.md +
+Root cause pinned here (docs/plans/archive/exteroception_interoception_seam.md +
 memory ``reference_extero_intero_dilution_root_cause``): the substrate-primary
 proposer merged exteroceptive sensors (azimuth) into ONE ``encode_sensors``
 call with the interoceptive drives, so direction was one term in a text-embed

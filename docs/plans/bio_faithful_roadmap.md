@@ -146,5 +146,5 @@ only mis-named, and the audit already fixed the claim.
 
 A new bio-named module declares its `Bio-mapping:` tag at birth (MECHANISM claims
 verified in review), gets a row here with every declared gap assigned EARN/ANALOG/OPEN,
-and the CI claim-lint ([bio_docstring_truth_pass.md](bio_docstring_truth_pass.md)
+and the CI claim-lint ([bio_docstring_truth_pass.md](archive/bio_docstring_truth_pass.md)
 follow-up) enforces that named algorithms outside earned tags fail CI.

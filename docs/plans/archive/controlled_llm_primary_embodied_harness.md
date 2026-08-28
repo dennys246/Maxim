@@ -1,5 +1,7 @@
 # Controlled LLM-primary embodied-choice harness (Exp 44 vehicle)
 
+> **✅ SHIPPED 2026-07-15 (G1: `7c052a3d` + `d024ba63`, codified in `scripts/exp44/campaign.py`). G2 rerouted to `../grounded_language_acquisition.md`; G3 held as hygiene. Vehicle role passed to `docs/experiments/protocols/exp44b_preregistration.md`.**
+
 **Status:** PLANNED (2026-07-15). Supersedes the "use the fixture
 orchestrator" idea — the fixture path is the wrong vehicle (below). This is
 the real set of changes to make the generative `cradle_pref` route a

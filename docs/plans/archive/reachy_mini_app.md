@@ -1,5 +1,7 @@
 # Reachy Mini App — bootstrap plan (the Reachy shell of the `maxim-pulse` monorepo)
 
+> **✅ SEED CONSUMED 2026-08-01 — the live plan is the `Maxim-pulse` repo (`apps/reachy`, `apps/console`, `packages/kit`). Kept for the front-gate reasoning only; the header's "pre-authorization, not committed work" is no longer true.**
+
 **Status:** Shell plan, drafted 2026-07-23. Pre-authorization — this is the doc to copy into the new repo as its `README`/`docs/plan.md` seed, not committed work.
 **Scope:** Ship a one-click-installable Reachy Mini app (a Pollen `ReachyMiniApp` published as a Hugging Face Space) that runs a Maxim agent on the robot, with a first-run **setup page** that guides an owner to either (a) point at their own Maxim leader (mesh) or (b) paste a cloud API key. The app is thin glue over pymaxim; anything hard discovered while building it is fixed **in pymaxim behind the existing seams**, not worked around in the app repo.
 **Target:** pymaxim 1.1+ (rides the shipped Reachy WS-era transport + Track 1 live body wiring). App repo versions on Pollen's SDK cadence, independently of pymaxim.
@@ -16,7 +18,7 @@
 | Candidate | Verdict |
 |---|---|
 | 1. Build a custom website / phone app for control | **Unnecessary — ride Pollen's dashboard.** A Reachy app is a `ReachyMiniApp` subclass published as a HF Space; owners install + start/stop it from the robot's built-in dashboard (a daemon-served web page, reachable from a phone browser) and Pollen's desktop app. The "website or phone" surface already exists. We ship an app, not a frontend. |
-| 2. Reimplement the Reachy control loop in the app | **No — reuse `AgenticRuntimeMixin._start_agentic_runtime`.** The full perception→cognition→action loop, capture manager, and body wiring already exist ([`embodied_runtime/agentic_runtime.py`](../../src/maxim/embodied_runtime/agentic_runtime.py); Track 1 / PR #400). The app's `run()` is a bootstrap shim + `stop_event` lifecycle. |
+| 2. Reimplement the Reachy control loop in the app | **No — reuse `AgenticRuntimeMixin._start_agentic_runtime`.** The full perception→cognition→action loop, capture manager, and body wiring already exist ([`embodied_runtime/agentic_runtime.py`](../../../src/maxim/embodied_runtime/agentic_runtime.py); Track 1 / PR #400). The app's `run()` is a bootstrap shim + `stop_event` lifecycle. |
 | 3. Build LLM routing / key handling in the app | **No — it's `config.json` + lane placement.** Mesh (peer→leader) and cloud both flow through `resolve_setting('lanes.large.…')` and `remote_api_key_ref`. The app writes config; the router does the rest. |
 | 4. New session/persistence layer for "remembers you" | **No — `~/.maxim/` on the robot already is it.** Bio-stack persistence + session-end consolidation are the memory. The app's job is to make the session boundary = the dashboard start/stop, and to call `save_cerebellum()` + session-end on stop. |
 | 5. Put the app in the pymaxim monorepo | **No — separate thin repo (see below).** |
@@ -30,7 +32,7 @@
 Recommendation: **its own repo**, for three code-grounded reasons.
 
 1. **The ecosystem forces the shape.** Each app *is* a HF Space with its own packaging, README, and store listing. That is naturally a separate artifact from the pymaxim wheel.
-2. **Release-cadence decoupling.** Pollen broke the world at SDK 1.5.0 (zenoh removed) and pins matter — pymaxim's `reachy` extra pins `reachy-mini[gstreamer]>=1.8.3,<2.0` ([pyproject.toml:75](../../pyproject.toml)). The app tracks Pollen's SDK schedule reactively; pymaxim should not.
+2. **Release-cadence decoupling.** Pollen broke the world at SDK 1.5.0 (zenoh removed) and pins matter — pymaxim's `reachy` extra pins `reachy-mini[gstreamer]>=1.8.3,<2.0` ([pyproject.toml:75](../../../pyproject.toml)). The app tracks Pollen's SDK schedule reactively; pymaxim should not.
 3. **The seam already exists.** The `reachy` optional extra and the robot-plugin discovery pattern exist precisely so robot integrations sit outside core. Honoring that keeps the core dep tree clean (no torch/CUDA leaking into a Pi install).
 
 **The discipline that makes "own repo" safe:** the app stays ~a few hundred lines of glue + assets. If it starts accumulating workarounds, that's the signal a pymaxim API has a gap — fix it **in pymaxim** (new keyword on `create_full_agent`, a headless-bootstrap helper, a config-writer verb), not in the app. This is the front-gate principle applied outward.
@@ -100,15 +102,15 @@ Guide the owner to run one command on their desktop/GPU box (pymaxim auto-detect
 llama-cpp + tunnel), then paste the leader URL back:
 
 - Leader URL `[ https://…  or  http://192.168.x.x:8099 ]` · Access key `[ ……… ]`
-- **[Test connection]** → pymaxim's `_peer_test(base_url, key, model)` ([doctor/cli.py:459](../../src/maxim/doctor/cli.py)) — friendly ok/fail + fix hint, no new probe logic.
+- **[Test connection]** → pymaxim's `_peer_test(base_url, key, model)` ([doctor/cli.py:459](../../../src/maxim/doctor/cli.py)) — friendly ok/fail + fix hint, no new probe logic.
 - On success: writes `lanes.large.placement = remote` + `remote_api_key_ref`.
 
 ### Cloud path (fallback)
 
-- Provider `[ Anthropic ▾ ]` · Model `[ 2–3 curated ▾ ]` — **populated from `_BUILTIN_PROFILES`** ([config.py:109](../../src/maxim/models/language/config.py); `--list-models` already enumerates them), not hardcoded; "Advanced" reveals the full list.
-- API key `[ ……… ]` · Monthly spend cap `[ $__ ]` (one number; Advanced exposes pymaxim's per-request/hour/day/month caps at [cloud_dispatch.py:143](../../src/maxim/models/language/cloud_dispatch.py)).
+- Provider `[ Anthropic ▾ ]` · Model `[ 2–3 curated ▾ ]` — **populated from `_BUILTIN_PROFILES`** ([config.py:109](../../../src/maxim/models/language/config.py); `--list-models` already enumerates them), not hardcoded; "Advanced" reveals the full list.
+- API key `[ ……… ]` · Monthly spend cap `[ $__ ]` (one number; Advanced exposes pymaxim's per-request/hour/day/month caps at [cloud_dispatch.py:143](../../../src/maxim/models/language/cloud_dispatch.py)).
 - **[Test connection]** → one cheap probe call.
-- On success: writes `cloud.enabled` + profile + `cloud.session_budget_usd` (default $5, [config_loader.py:241](../../src/maxim/runtime/config_loader.py)).
+- On success: writes `cloud.enabled` + profile + `cloud.session_budget_usd` (default $5, [config_loader.py:241](../../../src/maxim/runtime/config_loader.py)).
 
 ### Design constraints (all backed by existing code)
 
@@ -137,7 +139,7 @@ llama-cpp + tunnel), then paste the leader URL back:
 **Pollen app-config hook vs serve-your-own web UI — RESOLVED: serve-your-own, built as the shared UI kit.** A single key-entry form fits Pollen's config
 mechanism; a multi-step wizard + live status chip + memory view + smoke test does not — that wants
 a small self-contained page the app serves on a port the dashboard links to. **These views are not
-Reachy-bespoke** — they are the first slice of the shared **Maxim Console kit** ([maxim_console.md](maxim_console.md)):
+Reachy-bespoke** — they are the first slice of the shared **Maxim Console kit** ([maxim_console.md](../deferred/maxim_console.md)):
 SetupWizard, StatusChip, MemoryView, RunSurface. Build them as reusable kit components (Layer 2) binding to
 the seams (Layer 1) — the Reachy app is the kit's **first consumer**, and the general localhost console
 reuses the same components later. Still verify what the `reachy-mini` SDK affords for serving the page (open question #3).
@@ -201,7 +203,7 @@ Estimate: a scrappy MVP is **~1–2 focused weeks** *if P0 passes* — most of i
 
 ## Open questions / decisions for you
 
-1. **Day-one behavior loop — RESOLVED: Adventure (voice DM).** See [reachy_dm_app.md](reachy_dm_app.md). It's the flagship because the body is load-bearing (voice + expressive motion + face-the-speaker + persona + party memory) and it's the most legible showcase of cross-session learning. Talk + Rest support it. The MVP still ships *before* Adventure (Talk + memory view), but the product's headline is Adventure.
+1. **Day-one behavior loop — RESOLVED: Adventure (voice DM).** See [reachy_dm_app.md](../deferred/reachy_dm_app.md). It's the flagship because the body is load-bearing (voice + expressive motion + face-the-speaker + persona + party memory) and it's the most legible showcase of cross-session learning. Talk + Rest support it. The MVP still ships *before* Adventure (Talk + memory view), but the product's headline is Adventure.
 2. **Repo name + license + Space owner account.** (Publishing creates a Space under an account with write-scoped token.)
 3. **Config surface in Pollen's app model vs a served web UI** — which does the SDK afford? A single form fits Pollen's config hook; the wizard + status chip + memory view + smoke test wants a served page. Verify against `reachy-mini` SDK app hooks before building. *Leaning serve-your-own.*
 4. **Full vs lightweight session-end consolidation** for a long-running robot (CC8 `is_sim_mode` trade-off) — likely want full.
@@ -213,9 +215,9 @@ Estimate: a scrappy MVP is **~1–2 focused weeks** *if P0 passes* — most of i
 
 Ready to copy into the app repo root:
 
-- [`maxim_pulse_seed/AGENTS.md`](maxim_pulse_seed/AGENTS.md) — durable architecture + development
+- [`maxim_pulse_seed/AGENTS.md`](../maxim_pulse_seed/AGENTS.md) — durable architecture + development
   standards + Maxim topology/execution-flow + the Reachy hardware traps. The substantive one.
-- [`maxim_pulse_seed/CLAUDE.md`](maxim_pulse_seed/CLAUDE.md) — operational checks + commands +
+- [`maxim_pulse_seed/CLAUDE.md`](../maxim_pulse_seed/CLAUDE.md) — operational checks + commands +
   Claude-specific workflow; points at AGENTS.md for the rest.
 
 Both are distilled deliberately — they carry Maxim's *principles* (no-band-aid, front-gate,
@@ -224,10 +226,10 @@ because keeping the app repo thin is itself one of the standards.
 
 ## References (code-grounded)
 
-- [`embodied_runtime/agentic_runtime.py`](../../src/maxim/embodied_runtime/agentic_runtime.py) — `AgenticRuntimeMixin._start_agentic_runtime` (loop), `config.body` body-wiring gate
-- [`runtime/agent_factory.py`](../../src/maxim/runtime/agent_factory.py) — `create_full_agent` (:364)
-- [`runtime/config_writer.py`](../../src/maxim/runtime/config_writer.py) — sanctioned `config.json` writer (setup page writes through this)
-- [`docs/embodiment/reachy_mini/`](../embodiment/reachy_mini/README.md) — WS-era transport, connect, motion, audio (the hardware truth)
-- [`perception_pipeline_placement.md`](perception_pipeline_placement.md) — self-contained (all-local) vs distributed placement framing
-- pyproject `reachy` extra — `reachy-mini[gstreamer]>=1.8.3,<2.0` ([pyproject.toml:75](../../pyproject.toml))
+- [`embodied_runtime/agentic_runtime.py`](../../../src/maxim/embodied_runtime/agentic_runtime.py) — `AgenticRuntimeMixin._start_agentic_runtime` (loop), `config.body` body-wiring gate
+- [`runtime/agent_factory.py`](../../../src/maxim/runtime/agent_factory.py) — `create_full_agent` (:364)
+- [`runtime/config_writer.py`](../../../src/maxim/runtime/config_writer.py) — sanctioned `config.json` writer (setup page writes through this)
+- [`docs/embodiment/reachy_mini/`](../../embodiment/reachy_mini/README.md) — WS-era transport, connect, motion, audio (the hardware truth)
+- [`perception_pipeline_placement.md`](../perception_pipeline_placement.md) — self-contained (all-local) vs distributed placement framing
+- pyproject `reachy` extra — `reachy-mini[gstreamer]>=1.8.3,<2.0` ([pyproject.toml:75](../../../pyproject.toml))
 - Pollen: [Make and publish your Reachy Mini App](https://huggingface.co/blog/pollen-robotics/make-and-publish-your-reachy-mini-apps) · [Building & Publishing Apps (HF docs)](https://huggingface.co/docs/reachy_mini/SDK/apps) · [reachy-mini-desktop-app](https://github.com/pollen-robotics/reachy-mini-desktop-app)

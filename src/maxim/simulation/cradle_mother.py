@@ -6,7 +6,7 @@
 exteroception/interoception DILUTION (not the tool-competition confound the
 dormancy note first blamed): ``propose_via_substrate`` merged azimuth into the
 interoception encode, so left/right collapsed onto one EC cluster and the infant
-was blind to direction. The [extero/intero seam](docs/plans/exteroception_interoception_seam.md)
+was blind to direction. The [extero/intero seam](docs/plans/archive/exteroception_interoception_seam.md)
 (PR #411) fixed it, and [Exp 48](docs/experiments/48_cradle_mother_seam.md)
 re-ran this embodied sim: **taught late-bin directedness 0.875 vs no_feed control
 0.448 (+0.427), a clean developmental rise 0.51→0.90 — GRADUATE**. The infant

@@ -1,5 +1,7 @@
 # Thalamic relay — pre-implementation design pass (the fork, decided)
 
+> **✅ SHIPPED 2026-07-17 (PR #402: composite + side-channel + audio/DoA recognition in the loop); Decision 4 (substrate routing) landed with the extero/intero seam (PR #411). No open stage.**
+
 **Status:** Design decision (2026-07-17). Resolves the grow-vs-subsume fork sketched in
 [thalamus_hypothalamus_framing.md](thalamus_hypothalamus_framing.md) and answers the four questions
 that framing note deferred to "the first design pass." **Still `[engineering]`** — this decides
@@ -28,7 +30,7 @@ experiment that validates them is the gated half.
 coordinator does not exist until a second need forces it.**
 
 Grounding for rejecting Option A (grow `ThalamicGate`):
-- `ThalamicGate` ([default_network/gate.py:92](../../src/maxim/default_network/gate.py), ctor `:108`)
+- `ThalamicGate` ([default_network/gate.py:92](../../../src/maxim/default_network/gate.py), ctor `:108`)
   is a **Percept → `EscalationResult`** decision with adaptive thresholds, attention locks, and
   goal/interest biasing (`evaluate`, `set_active_goal`, `set_interests`, `adapt_thresholds`). Its
   entire job is *"escalate this DN vision percept to the LLM?"* — the reactive-vision layer's
@@ -42,7 +44,7 @@ Grounding for rejecting Option A (grow `ThalamicGate`):
 not "3 fragments").** `ThalamicGate` and `BioEnrichmentPipeline` (`enrich()`) are standalone classes
 with clean surfaces — genuinely wrappable. The third "fragment," the exec_agent thalamus→PFC path, is
 **not an independent component**: it is `ExecAgent._run_pre_deliberation`
-([agents/exec_agent.py:1275](../../src/maxim/agents/exec_agent.py)), a private method that invokes
+([agents/exec_agent.py:1275](../../../src/maxim/agents/exec_agent.py)), a private method that invokes
 `self._bio_enrichment_pipeline` inline. Subsuming it is a **call-site redirect through the
 coordinator, not a zero-touch wrap.** This matters because "everything just gets wrapped, no rewrite"
 was the load-bearing evidence for "subsume is low-risk" — it is accurate for the two components and an
@@ -53,8 +55,8 @@ correction, not a slice blocker.)
 1. **Un-flatten the sim percept via a typed side-channel** (Decision 2) so modality/salience/the
    Percept object survive the sim boundary **without entering the observation dict**.
 2. **A `CompositePerceptSource`** — multiplex N child `PerceptSource`s behind the single-source loop
-   seam ([agent_loop.py:1319](../../src/maxim/runtime/agent_loop.py),
-   [orchestrator.py:1609](../../src/maxim/simulation/orchestrator.py)). It **is a `PerceptSource`**, so
+   seam ([agent_loop.py:1319](../../../src/maxim/runtime/agent_loop.py),
+   [orchestrator.py:1609](../../../src/maxim/simulation/orchestrator.py)). It **is a `PerceptSource`**, so
    the loop is untouched — the multiplexer hides inside the existing seam. Its forwarding contract is
    spelled out in Decision 2 (the Executor lens found the draft's spec crashes the orchestrator).
 
@@ -65,7 +67,7 @@ routing), NOT `runtime/` (already the god-package). **The first slice does NOT c
 or `embodiment/` next to the concrete sources (`AzimuthDoASource`, `EmbodimentPerceptSource`), **not**
 in `simulation/sources.py`, which is protocol-only (Architecture NIT). The `perception/` name is
 *reserved* to coordinate with the active
-[perception_pipeline_placement.md](perception_pipeline_placement.md) `config.json::perception` **config
+[perception_pipeline_placement.md](../perception_pipeline_placement.md) `config.json::perception` **config
 section** (that plan creates a config surface, not a package — so this is a future coordination point,
 not an existing sibling to align with).
 
@@ -73,21 +75,21 @@ not an existing sibling to align with).
 
 ## Decision 2 — un-flatten via a typed side-channel, NOT a dict key (the draft's "additive key" leaks into persistence)
 
-The flatten at [sim_adapter.py:110-122](../../src/maxim/runtime/sim_adapter.py) reduces a `Percept` to
+The flatten at [sim_adapter.py:110-122](../../../src/maxim/runtime/sim_adapter.py) reduces a `Percept` to
 `{source, transcript, cli_input, hard_override, raw_transcript_text}`. The dropped fields already exist
 on `Percept` (`salience`, `novelty`, `sensory` typed `SensoryTag`, `modality`, `substrate_node_id`,
-`embedding` — [agents/bus.py:197-254](../../src/maxim/agents/bus.py)). So this is "stop discarding data
+`embedding` — [agents/bus.py:197-254](../../../src/maxim/agents/bus.py)). So this is "stop discarding data
 the type already carries," not "add new data."
 
 **The draft's plan — attach the object under an additive `observation["percept"]` key — is REJECTED.
 It does not have zero blast radius; it leaks the object into persisted state.** The corrected
 blast-radius survey (Architecture + Executor lenses, independently):
 - `agent_loop.py:1320` calls `state.update(observation)`; `RuntimeState.update`
-  ([runtime/state.py:22-26](../../src/maxim/runtime/state.py)) does `self.data.update(observation)` —
+  ([runtime/state.py:22-26](../../../src/maxim/runtime/state.py)) does `self.data.update(observation)` —
   a **whole-dict absorb**. Any new key lands in `state.data` and is never popped.
 - `state.data` is then serialized: `_persist_state_json` (`agent_loop.py:1048/3877/3918` →
   `state.save_json` → `atomic_write_json`) **and** every captured episode's `state_snapshot`
-  ([memory/hippocampus.py:768](../../src/maxim/memory/hippocampus.py), via a `deepcopy`). It doesn't
+  ([memory/hippocampus.py:768](../../../src/maxim/memory/hippocampus.py), via a `deepcopy`). It doesn't
   crash only because `atomic_write_json` passes `default=str` — so a `Percept(...)` `repr` string (with
   the full embedding list) gets written into `~/.maxim/sessions/.../state.json` and every episode
   snapshot, on every persist, with a deepcopy of the embedding on every `snapshot()`. Silent
@@ -102,13 +104,13 @@ current `Percept` on the adapter (`self._current_percept`) and exposes it as `si
 (returns `Percept | None`). The observation dict stays **scalar-only** (five text keys, byte-identical),
 so `state.update` → `state.data` → persistence stays clean. New thalamic/substrate consumers read the
 typed handle, not a dict key. This also sidesteps the second carrier problem: on the **non-sim path the
-observation IS a bare `Percept`** with no `.get` ([agent_loop.py:1659](../../src/maxim/runtime/agent_loop.py),
+observation IS a bare `Percept`** with no `.get` ([agent_loop.py:1659](../../../src/maxim/runtime/agent_loop.py),
 `NullSimulationAdapter.next_observation` returns `environment.observe()`) — a `"percept"` dict key
 would `AttributeError` there; a `current_percept` accessor scoped to the adapter does not.
 
 **Guardrails folded:**
 - `current_percept` is `None` on the idle/legacy path, and a *non-None* percept can still carry `None`
-  `modality`/`sensory` ([bus.py:235,247](../../src/maxim/agents/bus.py)) — consumers tolerate `None` at
+  `modality`/`sensory` ([bus.py:235,247](../../../src/maxim/agents/bus.py)) — consumers tolerate `None` at
   both levels.
 - Regression test pins: the five text keys byte-identical vs a pre-change golden; `state.data` gains
   **no** new key after `next_observation` + `state.update` (the anti-leak guard); `sim.current_percept`
@@ -120,9 +122,9 @@ would `AttributeError` there; a `current_percept` accessor scoped to the adapter
 
 The mode split is real: the same channel reaches cognition by **different delivery** per AUT mode —
 llm-primary via auto-sense prompt text / `BioEnrichmentPipeline`
-([agent_loop.py:1385](../../src/maxim/runtime/agent_loop.py)); substrate-primary via
-`SensorEncoder.encode_sensors` → EC cluster ([agent_loop.py:869](../../src/maxim/runtime/agent_loop.py))
-with text percepts suppressed ([bridge.py:136](../../src/maxim/simulation/bridge.py)).
+([agent_loop.py:1385](../../../src/maxim/runtime/agent_loop.py)); substrate-primary via
+`SensorEncoder.encode_sensors` → EC cluster ([agent_loop.py:869](../../../src/maxim/runtime/agent_loop.py))
+with text percepts suppressed ([bridge.py:136](../../../src/maxim/simulation/bridge.py)).
 
 **Semantics decided:** `enabled` is a **single per-channel boolean** ("this channel does / does not
 reach cognition"), applied at the **routing fork** (relay chooses LLM vs EC), *not* at the source —
@@ -144,20 +146,20 @@ exteroceptive→EC/LLM route; the *motivational* gain already lives in the right
 ## Decision 4 — substrate routing re-opens the azimuth dual cleanly ONLY after two preconditions on the relay's own EC route (Bio-fidelity lens: the draft's "no third representation" was false)
 
 The azimuth channel is double-represented by design, both already in
-[reachy_mini.yaml:61-98](../../src/maxim/_data/components/bodies/reachy_mini.yaml): a **signed EC
+[reachy_mini.yaml:61-98](../../../src/maxim/_data/components/bodies/reachy_mini.yaml): a **signed EC
 cluster** (*where the sound is* — thalamic "where") and a **sign-folded centeredness drive**
 (`evaluate_failures` folds `|azimuth|` for pain — hypothalamic magnitude). The draft claimed routing
 azimuth "to the substrate" reuses the existing signed route and adds no third representation. **The
 bio-fidelity lens refuted this against the code:**
 
-- The only `encode_sensors` call site ([agent_loop.py:871](../../src/maxim/runtime/agent_loop.py))
+- The only `encode_sensors` call site ([agent_loop.py:871](../../../src/maxim/runtime/agent_loop.py))
   passes `sensors=drives` with the **default `modality="interoception"`**
-  ([similarity/encoder.py:534](../../src/maxim/similarity/encoder.py)). `drives` comes from
-  `_read_drive_states` ([agent_loop.py:711-728](../../src/maxim/runtime/agent_loop.py)), which sweeps
+  ([similarity/encoder.py:534](../../../src/maxim/similarity/encoder.py)). `drives` comes from
+  `_read_drive_states` ([agent_loop.py:711-728](../../../src/maxim/runtime/agent_loop.py)), which sweeps
   **every** drive-spec — and azimuth has a `drive:` block — so `drives["azimuth"]` is today folded into
   the **interoception** embedding alongside hunger/thermal. That is not a thalamic/exteroceptive route;
   it is the interoceptive bundle. `encode_sensors`' own docstring
-  ([encoder.py:544-556](../../src/maxim/similarity/encoder.py)) says exteroceptive azimuth must pass
+  ([encoder.py:544-556](../../../src/maxim/similarity/encoder.py)) says exteroceptive azimuth must pass
   `modality="audio"` precisely so it forms a *separate* cluster space.
 - So the earning experiment's clean azimuth→`"audio"` EC route would land azimuth in EC **twice**
   (audio + interoception) plus the drive-pain fold = **three representations** — unless azimuth is
@@ -171,16 +173,16 @@ stays in the drive/hypothalamus path). This adds no third representation **iff**
    audio, not also as interoception.
 2. **`_normalize_value`'s zero-aliasing is fixed** — and this landmine is **on the relay's own EC
    route, not drive-side** (the draft mis-located it). `_normalize_value`
-   ([encoder.py:405-424](../../src/maxim/similarity/encoder.py)) is used only by `_sensor_embed` →
+   ([encoder.py:405-424](../../../src/maxim/similarity/encoder.py)) is used only by `_sensor_embed` →
    `encode_sensors` (the EC route), never by the drive-pain path (which uses `abs(current - set_point)`
-   at [embodiment/body.py:243](../../src/maxim/embodiment/body.py)). Worse than a point discontinuity:
+   at [embodiment/body.py:243](../../../src/maxim/embodiment/body.py)). Worse than a point discontinuity:
    the `if v < 0.0` branch **excludes exactly 0.0**, so `-1.0 → 0.0` **and** `0.0 → 0.0` produce the
    *identical* embedding — "centered" (the orient success state) is indistinguishable from "hard left."
    The signed EC route Decision 4 depends on **cannot represent the orient state at all** until this is
    fixed.
 
 **Genuinely orthogonal (Bio-fidelity: confirmed):** `pain_scale: 1.0`
-([reachy_mini.yaml:97](../../src/maxim/_data/components/bodies/reachy_mini.yaml)) is consumed only on
+([reachy_mini.yaml:97](../../../src/maxim/_data/components/bodies/reachy_mini.yaml)) is consumed only on
 the drive-pain path (`body.py:246` → PainBus → NAc reward), never on the EC route — a hypothalamus-side
 calibration (drop toward 0.2–0.3 when the feed lands), independent of the relay.
 
@@ -207,7 +209,7 @@ crashes the orchestrator):**
   banned priority selection; priority is exactly the N=1 policy-bake that earns the coordinator, not
   the first slice). `capabilities` unioned.
 - **Duck-typed method fan-out is per-child `hasattr`-gated** — `advance_step`, `has_pending`, **and
-  `inject_cli`** (the draft omitted the last). `inject_cli` ([bridge.py:142](../../src/maxim/simulation/bridge.py),
+  `inject_cli`** (the draft omitted the last). `inject_cli` ([bridge.py:142](../../../src/maxim/simulation/bridge.py),
   **un-guarded** — an `AttributeError` there kills the orchestrator turn loop) is the *primary*
   percept-delivery path in the orchestrator (~17 call sites). A composite must forward it **to each
   child that implements it**; for the first slice only the conversational child implements `inject_cli`
@@ -218,9 +220,9 @@ crashes the orchestrator):**
   advance); `has_pending` is an optimization (safe default `True`).
 - **`is_exhausted()` excludes perpetual-live sources.** Naive "all-children-exhausted" breaks
   termination: a live `AzimuthDoASource` returns `is_exhausted() == False` forever
-  ([sources.py:134-141](../../src/maxim/simulation/sources.py) pattern), so pairing it with a scripted
+  ([sources.py:134-141](../../../src/maxim/simulation/sources.py) pattern), so pairing it with a scripted
   child that *does* exhaust would make the composite never exhaust → the adapter's 180s-grace shutdown
-  ([sim_adapter.py:130-157](../../src/maxim/runtime/sim_adapter.py)) never fires and a scenario-complete
+  ([sim_adapter.py:130-157](../../../src/maxim/runtime/sim_adapter.py)) never fires and a scenario-complete
   sim can't self-terminate. Rule: exhaustion is driven by the **exhaustible (scripted) children**;
   perpetual-live sensors do not veto termination.
 
@@ -241,7 +243,7 @@ feed / motor repair, tracked in Decision 4, not built speculatively here.
   `capabilities` unioned; `isinstance(composite, PerceptSource)` (CC8 conformance).
 
 **What it unblocks:** attach the synthetic `AzimuthDoASource`
-([embodiment/audio_localization.py:64](../../src/maxim/embodiment/audio_localization.py)) as a second
+([embodiment/audio_localization.py:64](../../../src/maxim/embodiment/audio_localization.py)) as a second
 child in a sim — the audio channel reaches the loop with modality preserved, no hardware — so M2
 (per-run active-config record) + M3 (per-channel telemetry) have something real to record and the
 earning experiment can be scaffolded offline ahead of the motor repair (its Decision-4 preconditions
@@ -291,5 +293,5 @@ label — folded); the relay stays `[engineering]` with no behavioral claim (NIT
 
 - [thalamus_hypothalamus_framing.md](thalamus_hypothalamus_framing.md) — the organizing frame; this doc decides its fork.
 - [percept_testbed_audit.md](percept_testbed_audit.md) — the four-facet audit; M2/M3 are the measurement half this slice unblocks.
-- [perception_pipeline_placement.md](perception_pipeline_placement.md) — the orthogonal placement axis + the `config.json::perception` surface the eventual `gain`/`enabled` config rides.
+- [perception_pipeline_placement.md](../perception_pipeline_placement.md) — the orthogonal placement axis + the `config.json::perception` surface the eventual `gain`/`enabled` config rides.
 - [embodiment_runtime_wiring.md](embodiment_runtime_wiring.md) — Track 1 (body wired, merged #400); the runtime this lands in.

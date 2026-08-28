@@ -3,7 +3,7 @@
 **Status:** **PASS** (hardware, 2026-07-16). Direction 1.00 + magnitude 0.75,
 stable across 8 consecutive probes (trials 15→50). Pre-registered before the run;
 the predicted value (0.75, not 1.00) was hit exactly.
-**Plan:** [orient_magnitude_learning.md](../plans/orient_magnitude_learning.md) S0.
+**Plan:** [orient_magnitude_learning.md](../plans/deferred/orient_magnitude_learning.md) S0.
 **Parent:** [Exp 45](45_reachy_orient_live.md) (all arms EARNED) — this trips its own
 "orient-affordance YAML change" re-run rule, so: new pre-registration, fresh NAc, new
 bundle version (queen-mind v0.2).
@@ -147,7 +147,7 @@ placements happened to draw az **0.44 and 0.49** — the *top* of the near bin,
 where big genuinely is optimal (it centres them: +0.367, +0.444 relief).
 `near_left` drew lower placements and learned normal. **Same bin type, opposite
 lessons, because the near bin spans the flip point** — the S1/Weber-bins argument,
-predicted from sim in [orient_magnitude_learning.md](../plans/orient_magnitude_learning.md)
+predicted from sim in [orient_magnitude_learning.md](../plans/deferred/orient_magnitude_learning.md)
 and now reproduced on hardware. S1's motivation is upgraded from *sim-suggested*
 to *hardware-confirmed*.
 

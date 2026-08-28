@@ -245,6 +245,6 @@ tiny (a handful of numbers), and privacy-clean by construction.
 - Umbrella plan + rigor bar: [substrate_native_orienting.md](../plans/substrate_native_orienting.md)
 - Live runbook (this protocol's concrete instance): [reachy_orient_live.md](../plans/reachy_orient_live.md)
 - Sensor deep-dive + measured response: [reachy_mini/audio_localization.md](reachy_mini/audio_localization.md)
-- Magnitude/bins/boundary line: [orient_magnitude_learning.md](../plans/orient_magnitude_learning.md)
+- Magnitude/bins/boundary line: [orient_magnitude_learning.md](../plans/deferred/orient_magnitude_learning.md)
 - Results: [Exp 45](../experiments/45_reachy_orient_live.md) · [45b](../experiments/45b_orient_magnitude.md) · [45c](../experiments/45c_flip_bins.md)
 - Fleet sharing: [maxim_hivemind.md](../plans/maxim_hivemind.md) ("Trust topology")
