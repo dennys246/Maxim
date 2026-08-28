@@ -302,7 +302,15 @@ python -c "import maxim; print(maxim.__version__)"
 PyPI is immutable but carries no git history; without a tag, nothing records
 *which commit* produced the artifact. Versions 1.0.1–1.0.6 skipped this step and
 had to be reconstructed months later from version-bump commits — the incident
-behind the 1.1 release-truth pass. Tag before you close the terminal:
+behind the 1.1 release-truth pass. Tag before you close the terminal.
+
+**But not the same day as a gating experiment.** 1.1.0 was tagged the afternoon its
+gating hardware result (Exp 53b) ran — from a dirty tree at a commit the squash-merge
+made unreachable, with the pre-registration landing on `main` in the same commit as
+the data ([lesson](lessons/experiment-prereg-precedes-data.md)). The release gate is
+"the result is on `main` with its data and its pre-registration precedes it"; the tag
+waits at least one day after that, so provenance questions get asked without release
+pressure.
 
 ```bash
 git tag -a "v$(python -c 'import maxim; print(maxim.__version__)')" \
