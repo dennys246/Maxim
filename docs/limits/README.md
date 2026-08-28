@@ -359,7 +359,7 @@ triggers, and it was less discoverable nested inside a MITIGATED entry.
 
 ## Repository capability assessment
 
-[score_cards/](score_cards/) records the 2026-08-19 repository grades (one card per assessor, `YYYY-MM-DD-<assessor>.md`; 2026-08-19 has independent Codex and Claude cards) for
+[score_cards/](score_cards/) records the repository grades (one card per assessor, `YYYY-MM-DD-<assessor>.md`; 2026-08-19 has independent Codex and Claude cards; 2026-08-27 is the Claude 1.1.0 re-score) for
 research integrity, runtime correctness, maintainability, tests/CI, documentation,
 and release governance. It also records the evidence required to improve each
 grade and assigns the corrective work to 1.1 or 1.1.x.
@@ -369,12 +369,13 @@ measured properties of experimental instruments, while the scorecard evaluates t
 engineering system and its development process.
 
 **Cadence status (2026-08-27):** the cards say re-score at each release cut; 1.1.0 was
-cut 2026-08-26 and the re-score is owed. The findings were reconciled against post-1.1.0
-`main` on 2026-08-27 and placed in the roadmap
+cut 2026-08-26 and the Claude re-score is issued at the `v1.1.0` commit as
+[score_cards/2026-08-27-claude.md](score_cards/2026-08-27-claude.md) (blind to the
+reconciliation; its independence disclosure records where the two diverge). The Codex
+1.1.0 card is still owed. The 08-19 findings were reconciled against post-1.1.0 `main`
+on 2026-08-27 and placed in the roadmap
 ([§Scorecard → roadmap reconciliation](../plans/roadmap_1_1_to_1_3.md#scorecard--roadmap-reconciliation-2026-08-27):
-1.1.x item 16 + 1.2 gate 8). Grades move only on enforcement, so the re-score should be
-issued at the `v1.1.0` commit — not after item 16 lands — so that item 16's effect is
-visible as a delta at the following cut.
+1.1.x item 16 + 1.2 gate 8); item 16's effect becomes visible as a delta at the 1.2 cut.
 
 ---
 
