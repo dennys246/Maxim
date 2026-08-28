@@ -368,6 +368,14 @@ The scorecard is intentionally **not** an `L*` entry: these `L*` rows describe
 measured properties of experimental instruments, while the scorecard evaluates the
 engineering system and its development process.
 
+**Cadence status (2026-08-27):** the cards say re-score at each release cut; 1.1.0 was
+cut 2026-08-26 and the re-score is owed. The findings were reconciled against post-1.1.0
+`main` on 2026-08-27 and placed in the roadmap
+([§Scorecard → roadmap reconciliation](../plans/roadmap_1_1_to_1_3.md#scorecard--roadmap-reconciliation-2026-08-27):
+1.1.x item 16 + 1.2 gate 8). Grades move only on enforcement, so the re-score should be
+issued at the `v1.1.0` commit — not after item 16 lands — so that item 16's effect is
+visible as a delta at the following cut.
+
 ---
 
 **Adding an entry:** measured magnitude + source + disposition + design
