@@ -23,6 +23,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — enforcement (the 1.1.1 line, roadmap item 16)
+
+- **A `fix` that touches `src/` ships with a test** — `scripts/lint_fix_touches_tests.py` (CI):
+  the PR title (the subject that squash-merges onto `main`) against the aggregate diff, plus
+  every branch commit. Declared exceptions use a `No-Tests-Reason:` trailer and are echoed to
+  the step summary (item 16.2).
+- **Hand-rolled atomic renames are counted and ratcheted** — `scripts/lint_atomic_io_ratchet.py`
+  (CI) prints the per-file AST count of `os.replace`/`os.rename`/`Path.replace`/`Path.rename`
+  outside `utils/atomic_io.py` every run and fails any branch that raises a file's count;
+  CLAUDE.md's persistence invariant cites that output instead of a number (item 16.3).
+- **The god functions cannot grow** — `src/maxim/utils/function_length_baseline.json` pins
+  `run_agentic_loop` / `start_simulation_mode` / `_main_impl` at their v1.1.0 AST spans and
+  `tests/unit/test_function_length_baseline.py` fails the fast suite on growth, and on
+  shrinkage that does not tighten the ceiling in the same commit (item 16.4).
+- `scripts/_lint_git.py` — the base-ref + rename-aware count ratchet shared by the swallow
+  lint and both new lints; `lint_no_silent_swallows.py` now also prints its repo-wide total.
+
+### Fixed
+
+- **Every diff-scoped lint was a no-op on pull requests** (bugs ledger D37). The `lint` job
+  checked out at depth 1 and fetched `main` at depth 1, so no merge-base existed: the
+  multi-agent marker lint and the no-silent-swallows ratchet had been skipping on every PR
+  since they shipped (CI run `33259722155`). The job now checks out full history, and a
+  missing base ref is a hard error on `pull_request` instead of a graceful skip.
+
 ## [1.1.0] - 2026-08-26 — "Sensorimotor"
 
 > Publication was gated 2026-08-26 on roadmap item 19 — [Exp 53](docs/experiments/53_cross_context_readout.md),

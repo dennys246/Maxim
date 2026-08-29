@@ -342,8 +342,10 @@ Each POINTS at its owning plan — stages live there, not here:
     self-effects and whose tool names are the robot's own, then a re-run of Exp 52 on
     it. Removes the S6 δ map from the readout path and makes the taught files usable on a
     user's robot without a key remap — the prerequisite for sharing them.
-16. **Scorecard mechanization** (added 2026-08-27; one PR-sized cluster, every piece
-    rides an existing lint or CI step — no new mechanism). Both cards say a grade moves
+16. **Scorecard mechanization** (added 2026-08-27; every piece rides an existing lint or
+    CI step — no new mechanism. Shipped 2026-08-29 as the 1.1.1 "enforcement" release in
+    four PRs: **A** provenance 16.7–16.9 (#569), **B** ratchets 16.2–16.4 (#570), **C**
+    release truth 16.1/16.5/16.6 (#571), **D** the card's Runtime C+ items). Both cards say a grade moves
     only when the normal workflow *enforces* the improvement; these are the enforcement
     gaps the cards named that no item owned. Front-gate: `lint_no_silent_swallows.py`'s
     diff-scoped / grandfathered-count shape and the D19 baseline pattern already exist —
@@ -358,17 +360,27 @@ Each POINTS at its owning plan — stages live there, not here:
        a diff changes the `pyproject.toml` version, `CHANGELOG.md` must contain
        `## [<that version>]` (`scripts/audit_release_tags.py` covers tag↔changelog, not
        bump↔changelog — the Claude card's stated path to B for Release governance).
-    2. **DONE 2026-08-29 (1.1.1 Cluster B: `scripts/lint_fix_touches_tests.py`, CI + fixture tests) — Diff-scoped fix→tests lint:** a commit whose subject starts `fix(` and touches
+    2. **DONE 2026-08-29 (#570: `scripts/lint_fix_touches_tests.py` — the PR TITLE, i.e. the
+       subject that squash-merges onto `main` and the one the card counts, against the aggregate
+       diff, PLUS every branch commit; CI + fixture tests) — Diff-scoped fix→tests lint:** a commit whose subject starts `fix(` and touches
        `src/` must touch `tests/`. #519 is the incident (a behavioral fix to an abort path
        with zero test changes); every fix since the cards has complied (9/9), so the lint
        ratifies practice rather than changing it. The card's "90 days clean" then
        becomes measurable at the next re-score instead of asserted.
-    3. **DONE 2026-08-29 (1.1.1 Cluster B: `scripts/lint_atomic_io_ratchet.py` — AST count printed in CI, per-file no-growth ratchet; CLAUDE.md cites the CI output) — `atomic_io` violations get a guard.** CLAUDE.md's KNOWN-GAP admits 17 hand-rolled
-       `os.replace` sites, "detection-only, needs its own task" — still 17. A stale
-       quantified confession was the Claude card's specific Documentation-honesty
-       deduction. Either a grandfathered per-file count lint (the swallow-lint shape) or
-       a burn-down; the lint is the cheaper first step and makes the count self-updating.
-    4. **DONE 2026-08-29 (1.1.1 Cluster B: `src/maxim/utils/function_length_baseline.json` + `tests/unit/test_function_length_baseline.py`, fast suite; growth fails, shrinkage must tighten) — Function-length baseline** for the three god functions (item 7's no-growth
+    3. **DONE 2026-08-29 (#570: `scripts/lint_atomic_io_ratchet.py` — per-file AST count of
+       hand-rolled atomic renames printed in CI + a no-growth ratchet; CLAUDE.md cites that
+       output) — `atomic_io` violations get a guard.** The KNOWN-GAP note *had* admitted "17
+       hand-rolled `os.replace` sites, detection-only, needs its own task" — a stale quantified
+       confession, the Claude card's specific Documentation-honesty deduction. The 17 came from a
+       text grep that counted comments and docstrings and saw only ONE spelling; the AST count
+       across all four (`os.replace`/`os.rename`, `Path.replace`/`Path.rename`) is **12 call sites
+       in 12 files** as of 2026-08-29. The lint makes the count self-updating; the burn-down is
+       still its own task, and needs an `atomic_write_bytes` before the two BYTES writers
+       (`hivemind/bundle.py` zip, `models/download.py` GGUF) can move at all.
+    4. **DONE 2026-08-29 (#570: `src/maxim/utils/function_length_baseline.json` +
+       `tests/unit/test_function_length_baseline.py`, fast suite; growth fails, shrinkage must
+       tighten in the same commit). This is HALF the card's Maintainability C+ condition — the
+       other half is one merged extraction, which is item 7 / 1.1.2.** Function-length baseline for the three god functions (item 7's no-growth
        guard): `src/maxim/utils/architecture_baseline.json`'s pattern — a reviewed
        ceiling per function, additions fail the fast suite, shrinkage must tighten the
        ceiling in the same commit.

@@ -1,131 +1,139 @@
 #!/usr/bin/env python3
-"""`os.replace` outside utils/atomic_io.py — counted, printed, and ratcheted (roadmap 1.1.x item 16.3).
+"""Hand-rolled atomic renames outside utils/atomic_io.py — counted, printed, ratcheted (roadmap 1.1.x item 16.3).
 
-CLAUDE.md's atomic-persistence invariant: writers use ``maxim.utils.atomic_io.atomic_write_json``
-(fsync + tmp cleanup) and do not hand-roll ``open().write()`` + ``os.replace()``. The
-KNOWN-GAP note admitted a count of hand-rolled sites that was "detection-only, not enforced"
-— and the number in the note drifted from the code (the note said 17 from a text grep that
-also counted comments; the AST call-site count is what this lint prints). A stale quantified
-confession was the score card's specific Documentation-honesty deduction, so:
+CLAUDE.md's atomic-persistence invariant: writers go through
+``maxim.utils.atomic_io`` (fsync + tmp cleanup) instead of hand-rolling
+``open().write()`` + a rename. The KNOWN-GAP note admitted a count that was
+"detection-only, not enforced" — and the number in the note had drifted from the
+code (it counted comments and docstrings, and it saw only ONE spelling). A stale
+quantified confession was the 2026-08-27 score card's specific Documentation-honesty
+deduction, so:
 
-1. **Print the truth every run.** The per-file and total counts of ``os.replace(`` CALL
-   sites (AST, so comments and docstrings do not count) in ``src/maxim/`` outside
-   ``utils/atomic_io.py``. CLAUDE.md cites this output, not a number.
-2. **Ratchet, diff-scoped.** Every file is grandfathered at its ``origin/main`` count;
-   a branch may not raise any file's count (the lint_no_silent_swallows.py shape). New
-   files start at zero. Burn-down (count goes DOWN) is free and is the point.
+1. **Print the truth every run.** Per-file and total AST CALL-SITE counts of the four
+   hand-rolled-rename spellings — ``os.replace``/``os.rename`` (through any
+   ``import os as X`` alias) and ``Path.replace``/``Path.rename`` (an attribute call
+   with exactly one positional argument; ``dataclasses.replace`` is resolved and
+   excluded, and ``str.replace`` takes two arguments so it never matches) — in
+   ``src/maxim/`` outside the canonical writer. CLAUDE.md cites THIS output.
+2. **Ratchet, diff-scoped.** Every file is grandfathered at its ``origin/main``
+   count; a branch may not raise any file's count (shared ratchet from
+   ``scripts/_lint_git.py``). New files start at zero. Burn-down is free.
 
-Catches FORGETTING, not evasion: ``from os import replace`` / ``shutil.move`` / ``Path.replace``
-escape the AST match (module aliases ``import os as X`` are resolved); extend
-``replace_call_lines`` if one shows up in review.
+**What the number does and does not mean** (the review-round correction, 2026-08-29):
+it counts hand-rolled atomic renames, NOT "JSON written without ``atomic_write_json``"
+— as of 2026-08-29 not one counted site writes JSON. Five duplicate
+``atomic_write_text``; ``hivemind/bundle.py`` (zip) and ``models/download.py`` (GGUF)
+write BYTES, for which ``atomic_io`` exposes no writer at all, so burning those down
+needs an ``atomic_write_bytes`` first. The first draft of this lint matched only the
+bare ``os.replace`` spelling and reported 6 where the truth was 12 — it missed the
+``import os as _os`` alias in ``models/download.py``, ``Path.replace`` on the
+provenance decision log (``runtime/decision_log.py``), and ``os.rename`` in
+``inference/transcribe_audio.py``.
 
-Exits: 0 clean; 1 a file's count rose (stderr); INFO + 0 for the ratchet when no base ref.
+Catches FORGETTING, not evasion: ``shutil.move``, ``Path.replace`` reached through a
+variable holding the bound method, and renames in C extensions escape the AST match.
+
+Exits: 0 clean; 1 a file's count rose (stderr); 2 unexpected error.
 """
 
 from __future__ import annotations
 
 import ast
-import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _lint_git import GitUnavailable, base_ref, count_ratchet, must_not_skip  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC = Path("src/maxim")
 CANONICAL = Path("src/maxim/utils/atomic_io.py")
+_RENAME_ATTRS = ("replace", "rename")
 
 
-def replace_call_lines(text: str) -> list[int]:
-    """1-indexed lines of ``os.replace(...)`` call sites, through any ``import os as X`` alias.
+def _module_aliases(tree: ast.AST, module: str) -> set[str]:
+    names = {module}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == module:
+                    names.add(alias.asname or module)
+    return names
 
-    (The first draft matched the bare name only and missed ``models/download.py``'s
-    ``_os.replace`` — the count would have been 6, not 7.)
-    """
+
+def rename_call_sites(text: str) -> list[tuple[int, str]]:
+    """(line, spelling) for every hand-rolled atomic-rename call site."""
     try:
         tree = ast.parse(text)
     except SyntaxError:
         return []
-    os_names = {"os"}
+    os_names = _module_aliases(tree, "os")
+    dc_names = _module_aliases(tree, "dataclasses")
+    hits: list[tuple[int, str]] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name == "os":
-                    os_names.add(alias.asname or "os")
-    hits: list[int] = []
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "replace"
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id in os_names
-        ):
-            hits.append(node.lineno)
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        attr = node.func.attr
+        if attr not in _RENAME_ATTRS:
+            continue
+        recv = node.func.value
+        if isinstance(recv, ast.Name) and recv.id in os_names:
+            hits.append((node.lineno, f"os.{attr}"))
+        elif isinstance(recv, ast.Name) and recv.id in dc_names:
+            continue  # dataclasses.replace(obj) — same shape, unrelated
+        elif len(node.args) == 1 and not node.keywords:
+            hits.append((node.lineno, f"Path.{attr}"))  # str.replace takes two args
     return sorted(hits)
 
 
-def _git(*args: str, cwd: Path = REPO_ROOT) -> str:
-    r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=60)
-    if r.returncode != 0:
-        raise RuntimeError(f"git {' '.join(args)}: {r.stderr.strip()}")
-    return r.stdout
-
-
-def _base(cwd: Path) -> str | None:
-    for ref in ("origin/main", "main"):
-        try:
-            return _git("merge-base", ref, "HEAD", cwd=cwd).strip()
-        except RuntimeError:
-            continue
-    return None
-
-
-def counts(repo_root: Path = REPO_ROOT) -> dict[str, list[int]]:
-    """{repo-relative path: call-site lines} for every offending file, sorted by path."""
-    out: dict[str, list[int]] = {}
+def counts(repo_root: Path = REPO_ROOT) -> dict[str, list[tuple[int, str]]]:
+    """{repo-relative path: call sites} for every offending file, sorted by path."""
+    out: dict[str, list[tuple[int, str]]] = {}
     for path in sorted((repo_root / SRC).rglob("*.py")):
         rel = path.relative_to(repo_root)
         if rel == CANONICAL:
             continue
-        lines = replace_call_lines(path.read_text(errors="replace"))
-        if lines:
-            out[rel.as_posix()] = lines
+        sites = rename_call_sites(path.read_text(errors="replace"))
+        if sites:
+            out[rel.as_posix()] = sites
     return out
 
 
-def ratchet_violations(repo_root: Path, base: str, current: dict[str, list[int]]) -> list[str]:
-    fails: list[str] = []
-    changed = [
-        f
-        for f in _git("diff", "--name-only", base, "HEAD", "--", SRC.as_posix(), cwd=repo_root).split()
-        if f.endswith(".py") and f != CANONICAL.as_posix()
-    ]
-    for rel in changed:
-        new_count = len(current.get(rel, []))
-        try:
-            old_text = _git("show", f"{base}:{rel}", cwd=repo_root)
-        except RuntimeError:
-            old_text = ""  # new file — grandfathered at zero
-        old_count = len(replace_call_lines(old_text))
-        if new_count > old_count:
-            fails.append(
-                f"{rel}: os.replace() call sites rose {old_count} → {new_count} on this branch "
-                f"(lines {current.get(rel)}) — use maxim.utils.atomic_io.atomic_write_json "
-                "(CLAUDE.md atomic-persistence invariant); the count only ratchets down"
-            )
-    return fails
-
-
 def main() -> int:
-    current = counts()
+    try:
+        current = counts()
+    except OSError as exc:
+        print(f"ERROR: cannot scan {SRC}: {exc}", file=sys.stderr)
+        return 2
     total = sum(len(v) for v in current.values())
-    print(f"atomic_io ratchet: {total} os.replace() call site(s) outside {CANONICAL} in {len(current)} file(s):")
-    for rel, lines in current.items():
-        print(f"  {len(lines):2d}  {rel}  (lines {', '.join(map(str, lines))})")
-    base = _base(REPO_ROOT)
-    if base is None:
-        print("INFO: no base ref (origin/main) available; skipping the diff-scoped ratchet")
+    print(f"atomic_io ratchet: {total} hand-rolled rename call site(s) outside {CANONICAL} in {len(current)} file(s):")
+    for rel, sites in current.items():
+        spellings = ", ".join(f"{s} L{ln}" for ln, s in sites)
+        print(f"  {len(sites):2d}  {rel}  ({spellings})")
+    try:
+        base = base_ref(REPO_ROOT)
+    except GitUnavailable as exc:
+        if must_not_skip(str(exc)):
+            return 2
+        print(f"INFO: no base ref available; skipping the diff-scoped ratchet ({exc})")
         return 0
-    fails = ratchet_violations(REPO_ROOT, base, current)
+    try:
+        fails = count_ratchet(
+            REPO_ROOT,
+            base,
+            SRC.as_posix(),
+            rename_call_sites,
+            exclude=frozenset({CANONICAL.as_posix()}),
+            what="hand-rolled rename call sites",
+            advice=(
+                "persist through maxim.utils.atomic_io (atomic_write_text/json/secret); a BYTES payload has no "
+                "canonical writer yet, so adding one is the prerequisite for that burn-down, not a reason to "
+                "hand-roll (CLAUDE.md atomic-persistence invariant). The count only ratchets down."
+            ),
+        )
+    except GitUnavailable as exc:
+        print(f"INFO: diff-scoped ratchet skipped mid-run ({exc})")
+        return 0
     if fails:
         print("atomic_io ratchet FAILED:", file=sys.stderr)
         for f in fails:

@@ -1,6 +1,7 @@
 """No-growth ratchet for the god functions (roadmap 1.1.x item 16.4).
 
-`src/maxim/utils/function_length_baseline.json` pins `run_agentic_loop`,
+`src/maxim/utils/function_length_baseline.json` (co-located with the code it measures;
+deliberately NOT package data — nothing reads it at runtime) pins `run_agentic_loop`,
 `start_simulation_mode` and `_main_impl` at their v1.1.0 AST spans (3,546 / 3,342 / 1,752).
 Growth fails the fast suite; shrinkage ALSO fails until the ceiling is tightened in the same
 commit, so the file never overstates the debt. Verified to fail on revert: with the baseline
@@ -12,24 +13,33 @@ from __future__ import annotations
 
 import ast
 import json
-from importlib import resources
+import re
 from pathlib import Path
 
 import pytest
 
-import maxim
-
-REPO_SRC = Path(maxim.__file__).resolve().parent.parent
-BASELINE = Path(maxim.__file__).resolve().parent / "utils" / "function_length_baseline.json"
+# The CHECKOUT this test file lives in — never `Path(maxim.__file__)`. A worktree
+# session without `export PYTHONPATH="$PWD/src"` imports the MAIN checkout's maxim
+# (CLAUDE.md's worktree rule + the Exp 42b "assert the code under test is YOUR repo"
+# lesson), and this guard would then silently measure another tree's functions.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_SRC = REPO_ROOT / "src"
+BASELINE = REPO_SRC / "maxim" / "utils" / "function_length_baseline.json"
 
 
 def function_span(path: Path, name: str) -> int:
-    """AST span (end_lineno - lineno + 1; decorators excluded) of the top-level function ``name``."""
+    """AST span (end_lineno - lineno + 1; decorators excluded) of the top-level function ``name``.
+
+    A conditional redefinition would make "the first one" the wrong answer, so an
+    ambiguous name is an error rather than a silently-measured guess.
+    """
     tree = ast.parse(path.read_text())
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
-            return node.end_lineno - node.lineno + 1
-    raise LookupError(f"{name} not found at module level in {path}")
+    found = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name]
+    if not found:
+        raise LookupError(f"{name} not found at module level in {path}")
+    if len(found) > 1:
+        raise LookupError(f"{name} is defined {len(found)}x at module level in {path} — ambiguous span")
+    return found[0].end_lineno - found[0].lineno + 1
 
 
 def load_baseline() -> dict:
@@ -42,8 +52,13 @@ def load_baseline() -> dict:
     return data
 
 
-def test_baseline_ships_with_the_package() -> None:
-    assert resources.files("maxim.utils").joinpath("function_length_baseline.json").is_file()
+def test_baseline_declares_its_review_metadata() -> None:
+    """The D19 precedent fails on UNREVIEWED entries; the analogue here is that the
+    file says WHEN it was measured and reviewed, so a stale ceiling is visible."""
+    data = load_baseline()
+    assert data["measured_at"] == "v1.1.0"
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", data["reviewed"]), data["reviewed"]
+    assert "no writer" in data["_comment"]
 
 
 @pytest.mark.parametrize("entry", load_baseline()["entries"], ids=lambda e: e["function"])
@@ -69,3 +84,6 @@ def test_function_span_counts_the_ast_span(tmp_path: Path) -> None:
     assert function_span(p, "g") == 2
     with pytest.raises(LookupError):
         function_span(p, "h")
+    p.write_text("def f():\n    pass\n\n\ndef f():\n    pass\n")
+    with pytest.raises(LookupError, match="ambiguous span"):
+        function_span(p, "f")
