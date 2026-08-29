@@ -266,6 +266,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # FULL history. The diff-scoped lints below resolve a merge-base with
+          # origin/main; with the default depth-1 checkout plus a `--depth=1`
+          # fetch, the two histories are disjoint shallow roots, merge-base
+          # fails, and every one of them SKIPS — verified 2026-08-29 (run
+          # 33259722155): the multi-agent marker lint and the swallow lint's
+          # check 2 had been no-ops on every pull request since they shipped.
+          # scripts/_lint_git.py::must_not_skip now also turns that skip into a
+          # hard error on pull_request, so a regression here fails loudly.
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -848,6 +858,10 @@ jobs:
           python3 scripts/lint_claude_md_invariants.py
 
       - name: Multi-agent marker lint (Stage 3 of structural invariant tests)
+        # The `git fetch origin main --depth=1` that used to precede every
+        # diff-scoped lint here is GONE: with the job's `fetch-depth: 0`
+        # checkout it is unnecessary, and it was the direct cause of the
+        # merge-base failure that made these lints skip on every PR.
         run: |
           # Diff-scoped lint per docs/plans/archive/structural_invariant_tests.md
           # Stage 3. For each NEW test function on this branch in
@@ -863,7 +877,6 @@ jobs:
           # The lint is diff-scoped (compares against origin/main) so
           # existing tests are grandfathered; migration is done in a
           # focused sweep, not as a side effect of unrelated PRs.
-          git fetch origin main --depth=1 || true
           python3 scripts/lint_multi_agent_marker.py
 
       - name: No-silent-swallows lint (Stage 4 of measurement_path_fail_loud)
@@ -876,8 +889,32 @@ jobs:
           #     file's swallow count (grandfathered at origin/main's count).
           # Motivating incident: the SCN drive path was dead for months
           # behind exactly one bare-except-swallowed TypeError.
-          git fetch origin main --depth=1 || true
           python3 scripts/lint_no_silent_swallows.py
+
+      - name: A fix that touches src/ ships with a test (#519 lesson)
+        # Roadmap 1.1.x item 16.2. TWO populations: the PR TITLE — the subject
+        # that squash-merges onto main, and the one the score card counts —
+        # against the aggregate base...HEAD diff, plus every branch commit.
+        # Without PR_TITLE the lint would only see pre-squash subjects, so a PR
+        # titled `fix(...)` with `wip` commits would sail through. Opt-out for a
+        # genuine no-test fix is a `No-Tests-Reason: <why>` trailer (or
+        # `[no-tests: <why>]` in the PR title/body), echoed to stdout AND the
+        # step summary. Positive control: tests/unit/test_lint_fix_touches_tests.py.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python3 scripts/lint_fix_touches_tests.py
+
+      - name: Hand-rolled atomic renames outside utils/atomic_io.py (persistence invariant)
+        # Roadmap 1.1.x item 16.3.
+        run: |
+          # Prints the per-file AST count of os.replace() call sites outside
+          # the canonical writer EVERY run (CLAUDE.md's atomic-persistence
+          # invariant cites THIS output, not a number that can rot), and
+          # fails if any file's count rose vs origin/main (grandfathered
+          # per-file; new files start at zero; burn-down is free).
+          python3 scripts/lint_atomic_io_ratchet.py
 
       - name: Harness provenance lint (Exp 42b retraction lesson)
         run: |

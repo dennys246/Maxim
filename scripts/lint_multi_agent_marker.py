@@ -227,8 +227,15 @@ def _lint_file(
 def main() -> int:
     base_ref = _resolve_base_ref()
     if base_ref is None:
-        # No diff base available — likely a fresh clone without origin/main
-        # or an out-of-tree run. Silent pass; the lint is meant for PR CI.
+        # No diff base — a fresh clone without origin/main, or an out-of-tree run.
+        # On a PULL REQUEST this lint IS the gate, so skipping is a vacuous guard:
+        # verified 2026-08-29 (CI run 33259722155) that this branch had been taken on
+        # every PR since the lint shipped, because the lint job checked out at depth 1.
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        from _lint_git import must_not_skip
+
+        if must_not_skip("no origin/main or main to diff against"):
+            return 2
         print("INFO: no base ref (origin/main) available; skipping multi-agent marker lint")
         return 0
 

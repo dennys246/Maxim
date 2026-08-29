@@ -28,9 +28,11 @@ Exits: 0 clean; 1 violations (details on stderr); 2 unexpected error.
 from __future__ import annotations
 
 import re
-import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _lint_git import GitUnavailable, base_ref, count_ratchet, must_not_skip  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -68,22 +70,6 @@ def swallow_hits(text: str) -> list[int]:
     return hits
 
 
-def _git(*args: str) -> str:
-    r = subprocess.run(["git", *args], cwd=REPO_ROOT, capture_output=True, text=True)
-    if r.returncode != 0:
-        raise RuntimeError(f"git {' '.join(args)}: {r.stderr.strip()}")
-    return r.stdout
-
-
-def _base_ref() -> str:
-    for ref in ("origin/main", "main"):
-        try:
-            return _git("merge-base", ref, "HEAD").strip()
-        except RuntimeError:
-            continue
-    raise RuntimeError("no origin/main or main to diff against")
-
-
 def main() -> int:
     failures: list[str] = []
 
@@ -100,40 +86,53 @@ def main() -> int:
                 "(measurement_path_fail_loud.md policy)"
             )
 
-    # Check 2 — diff-scoped no-new-swallows across src/maxim/. A shallow CI
-    # clone can lack a merge-base entirely (fetch-depth 1 + a tip-only fetch
-    # of main); check 1 needs no git and its results must never be discarded
-    # for a git failure, so a missing base ref SKIPS check 2 with an INFO —
-    # the same graceful-skip pattern as lint_multi_agent_marker.py. (The
-    # pre-fold version returned 2 here, which made every PR red in CI and
+    # Check 0 — PRINT THE TOTALS every run. The 2026-08-27 score card's
+    # Documentation-honesty condition is that this lint and the atomic_io
+    # ratchet print their totals in CI so CLAUDE.md can cite the OUTPUT
+    # instead of a number that rots in the file (added 2026-08-29).
+    repo_total = 0
+    repo_files = 0
+    for path in sorted((REPO_ROOT / "src" / "maxim").rglob("*.py")):
+        n = len(swallow_hits(path.read_text(errors="replace")))
+        if n:
+            repo_total += n
+            repo_files += 1
+    print(
+        f"no-silent-swallows: {repo_total} bare `except Exception: pass/continue` site(s) in {repo_files} "
+        f"file(s) across src/maxim/ ({len(MEASUREMENT_PATH)} measurement-path files held at zero; "
+        "every other file grandfathered at its origin/main count)"
+    )
+
+    # Check 2 — diff-scoped no-new-swallows across src/maxim/, on the shared
+    # ratchet (scripts/_lint_git.py). A shallow CI clone can lack a merge-base
+    # entirely; check 1 needs no git and its results must never be discarded
+    # for a git failure, so a missing base ref SKIPS check 2 with an INFO.
+    # (The pre-fold version returned 2 here, which made every PR red in CI and
     # threw away check 1's findings unprinted — caught by the #508 review.)
     try:
-        base = _base_ref()
-    except RuntimeError as e:
+        base = base_ref(REPO_ROOT)
+    except GitUnavailable as e:
+        if must_not_skip(str(e)):
+            return 2
         print(f"INFO: no base ref available; skipping diff-scoped check 2 ({e})")
         base = None
     if base is not None:
         try:
-            changed = [
-                f
-                for f in _git("diff", "--name-only", base, "HEAD", "--", "src/maxim/").split()
-                if f.endswith(".py") and f not in MEASUREMENT_PATH
-            ]
-            for rel in changed:
-                path = REPO_ROOT / rel
-                new_count = len(swallow_hits(path.read_text())) if path.exists() else 0
-                try:
-                    old_text = _git("show", f"{base}:{rel}")
-                except RuntimeError:
-                    old_text = ""  # new file — grandfathered at zero
-                old_count = len(swallow_hits(old_text))
-                if new_count > old_count:
-                    failures.append(
-                        f"{rel}: swallow count rose {old_count} → {new_count} on this branch — "
-                        "no NEW bare `except Exception: pass/continue`; "
-                        "use log_swallowed_exception() or narrow the exception type"
-                    )
-        except RuntimeError as e:
+            failures.extend(
+                count_ratchet(
+                    REPO_ROOT,
+                    base,
+                    "src/maxim/",
+                    swallow_hits,
+                    exclude=frozenset(MEASUREMENT_PATH),
+                    what="bare-swallow count",
+                    advice=(
+                        "no NEW bare `except Exception: pass/continue`; use log_swallowed_exception() "
+                        "or narrow the exception type"
+                    ),
+                )
+            )
+        except GitUnavailable as e:
             print(f"INFO: diff-scoped check 2 skipped mid-run ({e})")
 
     if failures:
