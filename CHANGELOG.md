@@ -23,6 +23,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — runtime correctness (the 1.1.1 line)
+
+- **`create.agent()` / `load.agent()` → mutate → `shutdown()` now produces loadable state**
+  (bugs ledger D41, score card N2). The instance never opened the session it later closed, so
+  `on_session_end()` returned `{}` and the cycle wrote only `hippocampus.json` + `nac.json`,
+  dropping EC/SCN/ATL and making every later `load.agent()` warn "Half-present NAc/EC pair" on
+  the API's own output. The session lifecycle now belongs to the instance, and
+  `MemoryHub.on_session_start()` is idempotent so an adopted persistent agent is not re-restored.
+- **`api.campaign()` no longer accepts arguments it ignores** (D40, N1): `interactive` is
+  threaded into the sim (and restored afterwards); `npc_model` and `prompt_handler` raise
+  `NotImplementedError` before any side effect instead of being silently dropped.
+- **The drive `TemporalEvent` emitter was malformed and swallowed its own `TypeError` at
+  `log.debug`** (D9) — a dead path that looked alive at every log level anyone runs. The
+  construction is correct and errors report at WARNING. The path stays **dormant**: nothing in
+  production passes a distributor.
+
+### Changed
+
+- D6 (percept-driven Hebbian binding) and D9 (temporal-event producers) are marked
+  `Dormant since 2026-08-29` at their code sites and re-dispositioned in the bugs ledger —
+  wired, not deleted, resurrection trigger = the 1.3 fabric (roadmap item 13).
+
 ## [1.1.0] - 2026-08-26 — "Sensorimotor"
 
 > Publication was gated 2026-08-26 on roadmap item 19 — [Exp 53](docs/experiments/53_cross_context_readout.md),

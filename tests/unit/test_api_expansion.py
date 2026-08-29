@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import textwrap
+from types import SimpleNamespace
+
+import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -460,3 +464,63 @@ class TestObserve:
         from maxim.api import observe, introspect
 
         assert introspect is observe
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# N1 (score card 2026-08-27): every public argument has an observable effect.
+# `api.campaign()` documented npc_model / interactive / prompt_handler and
+# referenced none of them. Verified to fail 5/5 on the pre-fix api.py, where all
+# three were accepted and silently dropped.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestCampaignParametersAreThreadedOrRejected:
+    def _campaign_yaml(self, tmp_path):
+        path = tmp_path / "c.yaml"
+        path.write_text("campaign:\n  name: api_param_test\n  goal: test\n  seed: 1\nacts: []\nencounters: []\n")
+        return path
+
+    def test_npc_model_is_rejected_not_ignored(self, tmp_path):
+        from maxim.api import campaign
+
+        with pytest.raises(NotImplementedError, match="npc_model"):
+            campaign(str(self._campaign_yaml(tmp_path)), npc_model="small")
+
+    def test_prompt_handler_is_rejected_not_ignored(self, tmp_path):
+        from maxim.api import campaign
+
+        with pytest.raises(NotImplementedError, match="prompt_handler"):
+            campaign(str(self._campaign_yaml(tmp_path)), prompt_handler=lambda req: "x")
+
+    def test_rejection_happens_before_any_side_effect(self, tmp_path, monkeypatch):
+        """The refusal must precede env mutation and campaign loading (the D16 lesson)."""
+        from maxim.api import campaign
+
+        monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
+        called = []
+        monkeypatch.setattr("maxim.simulation.dm_schema.load_campaign", lambda *a, **k: called.append(1))
+        with pytest.raises(NotImplementedError):
+            campaign(str(self._campaign_yaml(tmp_path)), npc_model="small")
+        assert not called, "the campaign YAML was loaded before the argument was rejected"
+        assert "MAXIM_LLM_PROFILE" not in os.environ, "env was mutated before the argument was rejected"
+
+    @pytest.mark.parametrize("interactive,expected", [(True, "ON"), (False, "OFF")])
+    def test_interactive_is_threaded_into_the_sim_and_restored(self, tmp_path, monkeypatch, interactive, expected):
+        from maxim.api import campaign
+        from maxim.simulation import sim_logger
+
+        seen = {}
+
+        def _fake_sim(**kwargs):
+            seen["mode"] = sim_logger.get_interactive_mode().name
+            return SimpleNamespace(session_id="s", turns=0, finish_reason="done", campaign_analysis={})
+
+        monkeypatch.setattr("maxim.simulation.orchestrator.start_simulation_mode", _fake_sim)
+        monkeypatch.setattr(
+            "maxim.simulation.dm_schema.load_campaign",
+            lambda *a, **k: SimpleNamespace(name="api_param_test", goal="test", party_mode=False),
+        )
+        before = sim_logger.get_interactive_mode()
+        campaign(str(self._campaign_yaml(tmp_path)), interactive=interactive)
+        assert seen["mode"] == expected, "interactive= did not reach the orchestrator"
+        assert sim_logger.get_interactive_mode() == before, "interactive mode leaked out of the call"

@@ -599,10 +599,20 @@ class MemoryHub:
 
         Restores priors and learned patterns from Hippocampus.
 
+        Idempotent: opening a session that is already open is a no-op, mirroring
+        ``on_session_end``'s atomic test-and-clear. Without this, a persistent
+        ``AgentInstance`` adopted by a sim (the HANDLE seam) would run the restore
+        twice — and the second pass calls ``atl.load()``, which CLEARS before
+        restoring, discarding anything stored between the two starts.
+
         Returns:
-            Dict with counts of restored items per bridge
+            Dict with counts of restored items per bridge, or
+            ``{"already_active": 1}`` when a session was already open.
         """
         with self._session_flag_lock:
+            if self._session_active:
+                logger.debug("Session already active; on_session_start is a no-op")
+                return {"already_active": 1}
             self._session_active = True
             self._session_start_time = time.time()
 

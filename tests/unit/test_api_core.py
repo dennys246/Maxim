@@ -11,6 +11,8 @@ import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import logging
+
 import pytest
 
 
@@ -725,3 +727,125 @@ def test_event_subscription_thread_safe():
     # Unsubscribe all
     for h in handles:
         h.unsubscribe()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# N2 (score card 2026-08-27, Runtime "Upgrade to C+"): the API's own shutdown
+# must produce loadable state. Black-box, through the PUBLIC verbs only.
+#
+# Verified to fail on the pre-fix runtime: `AgentInstance.shutdown()` calls
+# `memory_hub.on_session_end()`, an atomic test-and-CLEAR that returns {} when no
+# session was started — and neither create.agent() nor load.agent() opened one. The
+# cycle wrote ONLY hippocampus.json + nac.json (saved directly by shutdown) and
+# dropped ec.json / scn.json / atl.json, so every later load.agent() logged
+# "Half-present NAc/EC pair" — the orphaned-bias state D2/D17 were fixed to DETECT,
+# produced by the API itself. Root cause fixed at the lifecycle (the instance opens
+# the session it later closes), not by making shutdown save more things.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def api_home(tmp_path, monkeypatch):
+    """An isolated MAXIM_DATA_HOME with the path caches reset around it."""
+    from maxim.utils.paths import _reset_caches
+
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path))
+    monkeypatch.setenv("MAXIM_LLM_ENABLED", "0")
+    _reset_caches()
+    yield tmp_path
+    _reset_caches()
+
+
+def _mutate_substrate(hub) -> str:
+    """Write one SCN signature, one EC signature and one ATL concept. Returns the concept id."""
+    from maxim.similarity.ec import SituationSignature
+    from maxim.time.temporal_signature import TemporalSignature
+
+    hub.scn.register("probe_memory_1", TemporalSignature.now(), significance=0.9)
+    hub.ec.register(
+        "probe_memory_1",
+        signature=SituationSignature(
+            semantic_hash=(1, 2, 3),
+            structural_hash=42,
+            temporal_hash=(9, 3, 1, 8),
+            context_hash=7,
+            tool_name="probe_tool",
+            outcome_type="success",
+            mode="test",
+            goal_keywords=("probe",),
+        ),
+    )
+    concept_id, _ = hub.atl.find_or_create("probe_concept", category="test", definition="a probe")
+    return concept_id
+
+
+def test_create_mutate_shutdown_load_round_trips_ec_scn_atl(api_home, caplog):
+    """create.agent → mutate SCN/EC/ATL → shutdown() → load.agent() (N2)."""
+    from maxim import create, load
+
+    caplog.set_level(logging.WARNING)
+    agent = create.agent("api_round_trip")
+    concept_id = _mutate_substrate(agent.memory_hub)
+    assert len(agent.memory_hub.scn) == 1
+    assert len(agent.memory_hub.ec) == 1
+    agent.shutdown()
+
+    agent_dir = api_home / "agents" / "api_round_trip"
+    for name in ("ec.json", "scn.json", "atl.json", "nac.json", "hippocampus.json"):
+        assert (agent_dir / name).exists(), f"{name} was not written by the API's own shutdown()"
+
+    caplog.clear()
+    reloaded = load.agent("api_round_trip")
+    try:
+        hub = reloaded.memory_hub
+        assert hub.scn.get_signature("probe_memory_1") is not None, "SCN signature did not round-trip"
+        assert hub.ec.get_signature("probe_memory_1") is not None, "EC signature did not round-trip"
+        assert hub.atl.get(concept_id) is not None, "ATL concept did not round-trip"
+        assert len(hub.scn) == 1 and len(hub.ec) == 1
+        half_present = [r.getMessage() for r in caplog.records if "Half-present" in r.getMessage()]
+        assert not half_present, f"load.agent() warned on the API's own output: {half_present}"
+    finally:
+        reloaded.shutdown()
+
+
+def test_load_mutate_shutdown_load_round_trips(api_home):
+    """The same contract on the LOAD path — a second session must persist too."""
+    from maxim import create, load
+
+    create.agent("api_second_session").shutdown()
+    first = load.agent("api_second_session")
+    concept_id = _mutate_substrate(first.memory_hub)
+    first.shutdown()
+
+    second = load.agent("api_second_session")
+    try:
+        assert second.memory_hub.scn.get_signature("probe_memory_1") is not None
+        assert second.memory_hub.ec.get_signature("probe_memory_1") is not None
+        assert second.memory_hub.atl.get(concept_id) is not None
+    finally:
+        second.shutdown()
+
+
+def test_session_start_is_idempotent(api_home):
+    """The runtime also opens a session (start_bio_session) on an adopted instance;
+    a second open must be a no-op, not a re-restore that clears ATL."""
+    from maxim import create
+
+    agent = create.agent("api_idempotent")
+    try:
+        concept_id, _ = agent.memory_hub.atl.find_or_create("kept", category="test", definition="in memory only")
+        assert agent.memory_hub.on_session_start() == {"already_active": 1}
+        assert agent.memory_hub.atl.get(concept_id) is not None, "a second session start discarded in-memory ATL state"
+    finally:
+        agent.shutdown()
+
+
+def test_shutdown_is_idempotent_and_does_not_reopen(api_home):
+    """A second shutdown() must not raise or resurrect the session."""
+    from maxim import create
+
+    agent = create.agent("api_double_shutdown")
+    _mutate_substrate(agent.memory_hub)
+    agent.shutdown()
+    agent.shutdown()
+    assert (api_home / "agents" / "api_double_shutdown" / "ec.json").exists()

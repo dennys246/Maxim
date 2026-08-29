@@ -490,6 +490,23 @@ class AgentFactory:
         except Exception:
             pass
 
+        # N2 (score card 2026-08-27): the instance must OPEN the session it later
+        # closes. `AgentInstance.shutdown()` calls `memory_hub.on_session_end()`,
+        # which is an atomic test-and-CLEAR that returns {} when no session was
+        # started — so before this, `create.agent()` / `load.agent()` → mutate →
+        # `shutdown()` wrote ONLY hippocampus.json + nac.json (saved directly by
+        # shutdown) and silently dropped EC, SCN, ATL and the Angular Gyrus. Every
+        # later `load.agent()` then logged "Half-present NAc/EC pair" on the API's
+        # own output: the orphaned-bias state D2/D17 were fixed to DETECT, produced
+        # by the API itself. The session lifecycle belongs to the instance, so it
+        # starts here (idempotent — the sim's start_bio_session no-ops on an adopted
+        # persistent agent) and ends in shutdown().
+        if memory_hub is not None:
+            try:
+                memory_hub.on_session_start()
+            except Exception as e:
+                log.warning("Agent %s: memory_hub session start failed: %s", config.agent_id, e)
+
         log.info(
             "Created agent '%s' (nickname='%s', role=%s, remembers=%s, learns=%s)",
             config.agent_id,

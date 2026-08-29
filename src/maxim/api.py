@@ -1386,15 +1386,32 @@ def campaign(
         model: LLM profile for the PC agent / orchestrator.
         party_mode: Override campaign's party_mode setting.  If ``None``,
             uses the value from the campaign YAML.
-        npc_model: LLM profile for NPC agents (default: ``"small"`` tier).
-        interactive: If ``True``, enable rich display + user prompts.
+        npc_model: **Not supported — passing a non-None value raises.**
+            Party-mode NPC agents do not exist in the runtime (``party_mode`` is
+            parsed into the campaign definition and read by nothing), so there is
+            no model to configure. Rejected rather than silently ignored (N1,
+            score card 2026-08-27; bugs ledger D40).
+        interactive: If ``True``, enable rich display + user prompts. Threaded
+            through ``sim_logger.set_interactive_mode`` — the orchestrator reads
+            the interactive mode when it builds the campaign's prompt handler.
+            The previous mode is restored before returning.
         verbosity: Logging verbosity (0-3).
-        prompt_handler: Callback for handling prompts programmatically.
-            Receives ``PromptRequest``, returns ``str``.  If ``None`` and
-            ``interactive=False``, uses ``NonInteractiveHandler``.
+        prompt_handler: **Not supported — passing a non-None value raises.**
+            The orchestrator builds its own handler from the interactive mode
+            (``SimPromptHandler`` when interactive, ``create_handler("auto")``
+            otherwise); threading a caller-supplied one needs a parameter on
+            ``start_simulation_mode`` that does not exist. Use ``interactive``
+            to choose between them. Rejected rather than silently ignored
+            (N1; bugs ledger D40).
 
     Returns:
         CampaignResult with choices, flags, NPC memories, and rollup.
+
+    Raises:
+        NotImplementedError: If ``npc_model`` or ``prompt_handler`` is passed.
+            Both were documented and referenced nowhere — a public argument with
+            no observable effect (N1). They raise until the runtime can honour
+            them; see bugs ledger D40.
 
     Example::
 
@@ -1403,6 +1420,21 @@ def campaign(
         for choice in result.choices_made:
             print(f"  {choice['encounter']}: {choice['choice']}")
     """
+    # N1: a documented argument that changes nothing is worse than no argument.
+    # These two have no consumer in the runtime, so they REJECT rather than lie.
+    if npc_model is not None:
+        raise NotImplementedError(
+            "campaign(npc_model=...) is not supported: party-mode NPC agents do not exist in the runtime "
+            "(`party_mode` is parsed into the campaign definition and read by nothing), so there is no "
+            "model to configure. Set the PC/orchestrator model with `model=` (bugs ledger D40)."
+        )
+    if prompt_handler is not None:
+        raise NotImplementedError(
+            "campaign(prompt_handler=...) is not supported: the orchestrator builds its own handler from the "
+            "interactive mode. Pass `interactive=True` for the interactive handler, or run non-interactively "
+            "for NonInteractiveHandler (bugs ledger D40)."
+        )
+
     model = _resolve_model(model)
     configure(verbosity=verbosity)
 
@@ -1424,6 +1456,13 @@ def campaign(
         campaign_def = replace(campaign_def, party_mode=party_mode)
 
     from maxim.simulation.orchestrator import start_simulation_mode
+    from maxim.simulation.sim_logger import InteractiveMode, get_interactive_mode, set_interactive_mode
+
+    # `interactive` is THREADED (not rejected): the orchestrator reads the global
+    # interactive mode when it builds the campaign's prompt handler. Restored below
+    # so a programmatic call cannot leave the process in interactive mode.
+    _saved_interactive = get_interactive_mode()
+    set_interactive_mode(InteractiveMode.ON if interactive else InteractiveMode.OFF)
 
     try:
         sim_result = start_simulation_mode(
@@ -1449,6 +1488,7 @@ def campaign(
             rollup=rollup,
         )
     finally:
+        set_interactive_mode(_saved_interactive)
         _restore_env(_saved_env)
 
 

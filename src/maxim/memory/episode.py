@@ -794,6 +794,16 @@ def apply_hebbian_on_close(
 
     nodes = episode.activated_nodes
     if len(nodes) < 2:
+        # DORMANT SINCE 2026-08-29 on the main percept path (bugs ledger D6): the
+        # llm-primary path stashes exactly ONE substrate node per percept
+        # (`MemoryHub.on_percept_received` → `bio_integration.record_substrate_nodes`),
+        # so this early return is taken every time and the binding graph never grows
+        # from percepts. Not a bug in THIS function — a property of its input. The
+        # 1.1.x decision is dormancy, not wiring (roadmap item 13): multi-node
+        # activation is a hard dependency of the 1.3 fabric's orient-windowed Hebbian
+        # binding, and wiring it here would be 1.3 scope creep without 1.3's
+        # experiment. The mechanism itself is exercised by tests/substrate/
+        # test_p3a_episode_binding.py, which supplies multi-node episodes directly.
         return
 
     # Ensure every activated node is a first-class graph node BEFORE any
