@@ -70,6 +70,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import math
 import os
 import random
@@ -90,6 +91,7 @@ from delivered_shift_block import (  # noqa: E402
     provenance,
     speech_rate_probe,
 )
+import live_common  # noqa: E402
 from live_common import JsonlLog, gated_azimuth, resolve_host  # noqa: E402
 
 # ── frozen pre-registration constants (do not edit after the first Phase 1 record) ──
@@ -303,6 +305,7 @@ def cmd_manifest(args: argparse.Namespace) -> int:
         }
         experiment = "53_cross_context_readout"
     out = Path(args.out)
+    live_common._provenance.preflight_gated_record_or_exit(_HERE.parent.parent, out, allow_dirty=args.allow_dirty)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         json.dumps(
@@ -771,9 +774,11 @@ def cmd_run(args: argparse.Namespace) -> int:
     if args.phase == 2 and not _phase1_passed(out_path):
         print(f"[STOP] no Phase 1 gate_I PASS record in {out_path} — stop rule I: Phase 2 does not run.")
         return 4
-    log = JsonlLog(str(out_path))
+    prov = provenance(
+        _HERE.parent.parent, out_path=out_path, allow_dirty=args.allow_dirty
+    )  # refuses before any file exists
+    log = JsonlLog(str(out_path), allow_dirty=args.allow_dirty)
     run_id = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.getpid()}"
-    prov = provenance(_HERE.parent.parent)
 
     def emit(event: str, **fields: object) -> None:
         log.write(event, run_id=run_id, phase=args.phase, dry_run=args.dry_run, **fields)
@@ -782,9 +787,16 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     sink = _ProvenanceSink()
     sim_logger.register_sim_sink(sink)
+    # D35: the controller's WARNINGs (the H1 F1 achieved-vs-commanded divergence early
+    # warning among them) were console-only; R1 could not archive its one body_yaw
+    # divergence. They are records now, joined to trials by ts.
+    warn_handler = _WarningsToJsonl(emit)
+    reachy_logger = logging.getLogger("maxim.hardware.reachy")
+    reachy_logger.addHandler(warn_handler)
 
     common = dict(
         experiment=manifest.get("experiment"),
+        only=list(args.only) if args.only else None,  # a subset run is debugging, never a result (D34)
         body_ref=args.body_ref,
         factory=bool(args.factory),
         gate=args.gate,
@@ -849,15 +861,53 @@ def cmd_run(args: argparse.Namespace) -> int:
     if args.dry_run:
         args.settle = 0.0  # the dry rig has nothing to settle; 360 trials × 2 s is robot time, not logic
     agents = [a for a in manifest["agents"] if not args.only or a["label"] in args.only]
+    # D36: every run closes with a `run_end` record — complete (rc 0), stopped (a stop
+    # rule returned non-zero), interrupted (Ctrl-C) or error (traceback) — so a file
+    # can say whether a partial run was interrupted or crashed. A run without one
+    # died before the harness could write it.
+    status, rc, err = "error", None, None
     try:
         if args.phase == 1:
             rc = _phase1(agents, rig, sink, emit, args)
         else:
             rc = _phase2(agents, rig, sink, emit, args)
+        status = "complete" if rc == 0 else "stopped"
+    except KeyboardInterrupt:
+        status = "interrupted"
+        raise
+    except BaseException as exc:
+        err = f"{type(exc).__name__}: {exc}"
+        raise
     finally:
-        rig.close()
-        sim_logger.unregister_sim_sink(sink)
+        try:
+            emit(
+                "run_end",
+                status=status,
+                rc=rc,
+                error=err,
+                # The dirty check ran at open; a 5 h robot session on a live branch is
+                # the incident's shape, so the tree is re-read at close and stamped here.
+                working_tree_dirty_src_scripts=live_common._provenance.working_tree_dirty(_HERE.parent.parent),
+            )
+        finally:
+            reachy_logger.removeHandler(warn_handler)
+            rig.close()
+            sim_logger.unregister_sim_sink(sink)
     return rc
+
+
+class _WarningsToJsonl(logging.Handler):
+    """WARNING+ log records from the controller become `controller_warning` records (D35)."""
+
+    def __init__(self, emit) -> None:
+        super().__init__(level=logging.WARNING)
+        self._emit = emit
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self._emit("controller_warning", logger=record.name, level=record.levelname, message=record.getMessage())
+        except Exception:  # noqa: BLE001 — logging handlers must never raise into the caller
+            self.handleError(record)
 
 
 def _place(rig, target: float, settle: float, emit, label: str) -> float | None:
@@ -1196,12 +1246,156 @@ def _record_is_exploratory_agent(r: dict) -> bool:
     return str(r.get("agent", "")).endswith("seed48")  # Exp 53 records predate the flag
 
 
+class VerdictError(RuntimeError):
+    """`verdict` refuses rather than guess which run a file's records belong to (D34)."""
+
+
+class Run:
+    """One `start` record and everything written under its run_id."""
+
+    def __init__(self, run_id: str, phase: int | None) -> None:
+        self.run_id = run_id
+        self.phase = phase
+        self.start: dict | None = None
+        self.loaded: set[str] = set()
+        self.done: set[str] = set()
+        self.conditions: set[str] = set()
+        self.run_end: dict | None = None
+        self.n_trials = 0
+        self.n_probes = 0
+
+    @property
+    def status(self) -> str:
+        """complete | stopped | interrupted | error | debug | partial.
+
+        `run_end` (D36) is authoritative. A `--only` subset run is `debug` — never a
+        result. Files that predate `run_end` are `complete` iff every agent that
+        loaded also finished, else `partial` (interrupted-vs-crashed unknowable).
+        Caveat for files that also predate the `only` key on `start` (before
+        2026-08-29): a legacy `--only` debugging run whose few agents all finished
+        reads as `complete` — pin the intended run with `--run-id` for those.
+        """
+        if self.start is not None and self.start.get("only"):
+            return "debug"
+        if self.run_end is not None:
+            return str(self.run_end.get("status"))
+        if self.loaded and self.loaded <= self.done:
+            return "complete"
+        return "partial"
+
+    def summary(self) -> dict:
+        return {
+            "run_id": self.run_id,
+            "phase": self.phase,
+            "status": self.status,
+            "conditions": sorted(c for c in self.conditions if c),
+            "agents_loaded": len(self.loaded),
+            "agents_done": len(self.done),
+            "probes": self.n_probes,
+            "trials": self.n_trials,
+        }
+
+
+def runs_of(recs: list[dict]) -> list[Run]:
+    """Group a records file by run_id, in first-seen order (gate summaries carry none)."""
+    runs: dict[str, Run] = {}
+    order: list[str] = []
+    for r in recs:
+        rid = r.get("run_id")
+        if rid is None:
+            continue
+        run = runs.get(rid)
+        if run is None:
+            run = runs[rid] = Run(rid, r.get("phase"))
+            order.append(rid)
+        ev = r.get("event")
+        if ev == "start":
+            run.start = r
+        elif ev == "agent_load":
+            run.loaded.add(str(r.get("agent")))
+        elif ev == "agent_done":
+            run.done.add(str(r.get("agent")))
+        elif ev == "trial":
+            run.n_trials += 1
+            run.conditions.add(str(r.get("condition")))
+        elif ev == "probe":
+            run.n_probes += 1
+        elif ev == "run_end":
+            run.run_end = r
+    return [runs[rid] for rid in order]
+
+
+def select_run(
+    runs: list[Run], *, phase: int, condition: str | None = None, pinned: tuple[str, ...] = ()
+) -> Run | None:
+    """The ONE complete run for (phase, condition), or None when there is none.
+
+    D34: `verdict` used to pool every trial in the file across run_ids — partial
+    starts, re-runs and debugging subsets included. Now a run is eligible only when
+    it is COMPLETE (every loaded agent has an `agent_done`; `run_end.status ==
+    complete` when present); `--run-id` restricts the eligible set; two eligible
+    runs for the same (phase, condition) is a refusal, never a silent "last one".
+    """
+    cands = [r for r in runs if r.phase == phase and (condition is None or condition in r.conditions)]
+    pinned_here = [r for r in cands if r.run_id in pinned]
+    if pinned_here:
+        # --run-id disambiguates the block(s) it names; other blocks select normally.
+        cands = pinned_here
+        not_complete = [r for r in cands if r.status != "complete"]
+        if not_complete:
+            raise VerdictError(
+                "pinned run(s) are not complete: "
+                + ", ".join(f"{r.run_id} ({r.status})" for r in not_complete)
+                + " — a partial run cannot back a verdict"
+            )
+    cands = [r for r in cands if r.status == "complete"]
+    if not cands:
+        return None
+    if len(cands) > 1:
+        label = f"phase {phase}" + (f" / {condition}" if condition else "")
+        raise VerdictError(
+            f"{len(cands)} complete {label} runs in the file ({', '.join(r.run_id for r in cands)}) — "
+            "pass --run-id <id> to say which one the verdict is about"
+        )
+    return cands[0]
+
+
 def cmd_verdict(args: argparse.Namespace) -> int:
+    # The gate record is appended to the records file — refuse a dirty-tree write
+    # BEFORE computing, so the refusal is the first thing printed, not the last.
+    out_log = JsonlLog(args.records, allow_dirty=args.allow_dirty)
     recs = _read_records(args.records)
+    runs = runs_of(recs)
+    pinned = tuple(args.run_id or ())
+    unknown = sorted(set(pinned) - {r.run_id for r in runs})
+    if unknown:
+        print(f"[verdict] REFUSED: --run-id names run(s) not in the file: {', '.join(unknown)}")
+        return 2
+    try:
+        run_p1 = select_run(runs, phase=1, pinned=pinned)
+        run_primary = select_run(runs, phase=2, condition="primary", pinned=pinned)
+        run_secondary = select_run(runs, phase=2, condition="secondary", pinned=pinned)
+    except VerdictError as exc:
+        print(f"[verdict] REFUSED: {exc}")
+        return 2
+    used = {r for r in (run_p1, run_primary, run_secondary) if r is not None}
+    runs_used = {
+        "phase1": run_p1.run_id if run_p1 else None,
+        "primary": run_primary.run_id if run_primary else None,
+        "secondary": run_secondary.run_id if run_secondary else None,
+    }
+    runs_excluded = [r.summary() for r in runs if r not in used]
+    for r in runs_excluded:
+        print(f"[verdict] excluded run {r['run_id']} phase={r['phase']} status={r['status']} trials={r['trials']}")
+
+    def _in(run: Run | None):
+        rid = run.run_id if run else None
+        return lambda r: r.get("run_id") == rid
+
     if args.gate == "C":
-        probes = [r for r in recs if r.get("event") == "probe" and not r.get("invalid")]
+        probes = [r for r in recs if r.get("event") == "probe" and not r.get("invalid") and _in(run_p1)(r)]
         if not probes:
-            print("[gate C] no probe records")
+            print("[gate C] no probe records from a complete Phase 1 run")
             return 1
         by_agent: dict[str, list[dict]] = {}
         specs: dict[str, dict] = {}
@@ -1217,18 +1411,24 @@ def cmd_verdict(args: argparse.Namespace) -> int:
                 },
             )
         verdict = _gate_C(list(specs.values()), by_agent)
+        verdict = {**verdict, "runs_used": runs_used, "runs_excluded": runs_excluded}
         print(json.dumps(verdict, indent=2))
-        JsonlLog(args.records).write("gate_C", **verdict)
+        out_log.write("gate_C", **verdict)
         return 0 if verdict["verdict"] == "PASS" else 1
-    gate_i = [r for r in recs if r.get("event") == "gate_I"]
+    gate_i = [r for r in recs if r.get("event") == "gate_I" and _in(run_p1)(r)]
     print(f"[gate I] {gate_i[-1]['verdict'] if gate_i else 'NOT RUN'}")
     all_primary = [
-        r for r in recs if r.get("event") == "trial" and not r.get("invalid") and r.get("condition") == "primary"
+        r
+        for r in recs
+        if r.get("event") == "trial"
+        and not r.get("invalid")
+        and r.get("condition") == "primary"
+        and _in(run_primary)(r)
     ]
     trials = [r for r in all_primary if not r.get("exploratory")]
     expl = [r for r in all_primary if r.get("exploratory")]
     if not trials:
-        print("[gate T] no primary Phase 2 trials")
+        print("[gate T] no primary Phase 2 trials from a complete run")
         return 1
     by_agent: dict[str, list[dict]] = {}
     for r in trials:
@@ -1285,6 +1485,7 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         and not r.get("invalid")
         and r.get("condition") == "secondary"
         and not r.get("exploratory")
+        and _in(run_secondary)(r)
     ]
     sec_means = {}
     if secondary:
@@ -1304,9 +1505,11 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         "taught_seed_spread": spread,
         "secondary_explore_1_5_by_arm": sec_means,
         "exploratory_placements_taught": expl_by_target,
+        "runs_used": runs_used,
+        "runs_excluded": runs_excluded,
     }
     print(json.dumps(summary, indent=2))
-    JsonlLog(args.records).write("gate_T", **summary)
+    out_log.write("gate_T", **summary)
     return 0 if verdict == "PASS" else 1
 
 
@@ -1510,7 +1713,7 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         "margin_floor": MARGIN_FLOOR,
         "majority": majority,
         "procedure": SWEEP_PROCEDURE,
-        "provenance": provenance(_HERE.parent.parent),
+        "provenance": provenance(_HERE.parent.parent, out_path=args.out, allow_dirty=args.allow_dirty),
         **decl,
         "agents": all_agents,
     }
@@ -1526,13 +1729,22 @@ def cmd_sweep(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="write a GATED record (docs/experiments/data/) from a dirty src/scripts tree; stamps allow_dirty: true "
+        "into every record (default: refuse, exit 3 — docs/lessons/experiment-prereg-precedes-data.md)",
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
-    m = sub.add_parser("manifest")
+    m = sub.add_parser("manifest", parents=[common])
     m.add_argument("--archive", required=True)
     m.add_argument("--out", required=True)
     m.add_argument("--experiment", choices=("53", "54"), default="53")
     m.add_argument("--phase-a-records", default=None, help="Exp 54: the Phase A campaign JSONL (weakest taught seed)")
-    sw = sub.add_parser("sweep", help="Exp 54: az sweep through each taught seed's loaded EC → targets JSON")
+    sw = sub.add_parser(
+        "sweep", parents=[common], help="Exp 54: az sweep through each taught seed's loaded EC → targets JSON"
+    )
     sw.add_argument("--manifest", required=True)
     sw.add_argument("--out", required=True)
     sw.add_argument("--body-ref", default=EXP54_BODY_REF)
@@ -1540,7 +1752,7 @@ def main(argv: list[str] | None = None) -> int:
     sw.add_argument("--no-factory", dest="factory", action="store_false", help="dry deltas from DELTAS (Exp 53 bodies)")
     sw.add_argument("--step", type=float, default=SWEEP_STEP)
     sw.add_argument("--majority", type=int, default=None, help="seeds that must agree (default: > half)")
-    r = sub.add_parser("run")
+    r = sub.add_parser("run", parents=[common])
     r.add_argument("--manifest", required=True)
     r.add_argument("--phase", type=int, choices=(1, 2), required=True)
     r.add_argument("--host", default=None)
@@ -1584,8 +1796,14 @@ def main(argv: list[str] | None = None) -> int:
         default="both",
         help="Phase 2 block(s) to run — the two blocks may be run as separate invocations of one session",
     )
-    v = sub.add_parser("verdict")
+    v = sub.add_parser("verdict", parents=[common])
     v.add_argument("--records", required=True)
+    v.add_argument(
+        "--run-id",
+        action="append",
+        default=None,
+        help="restrict the verdict to these run_id(s); required when a file holds two complete runs for one block",
+    )
     v.add_argument(
         "--gate", choices=("T", "C"), default="T", help="T = Phase 2 transfer (Exp 53); C = Exp 54 user path"
     )

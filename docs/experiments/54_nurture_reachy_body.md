@@ -18,6 +18,8 @@ off-repo) · [data/54_agents/](data/54_agents/) + [data/54_agents_manifest.json]
 (the sweep: bins, strengths, declared placements) · [data/54_dry_run_nonfrozen/](data/54_dry_run_nonfrozen/README.md)
 (harness verification, not a result).
 
+**Provenance disclosure (2026-08-29, surfaced by `scripts/lint_prereg_precedes_data.py`'s clean-tree rule).** `data/54_targets.json` (the sweep-declared Phase B targets, commit `93887e6e`) carries `working_tree_dirty_src_scripts: true` in its provenance block with no allowance — the `--allow-dirty` door did not exist when it was declared. It is grandfathered in the lint by explicit entry with this reason; Phase B/C must re-declare the targets from a clean tree (`exp53_cross_context_readout.py sweep` now refuses a dirty tree) or run with `--allow-dirty` and echo it here.
+
 ## The question
 
 Exp 52 showed a driveless infant learns to *want* to orient because being fed relieves hunger;

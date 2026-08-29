@@ -1,6 +1,6 @@
 # Maxim Plans
 
-Current version: **1.1.0** (`pyproject.toml` + `src/maxim/__init__.py`) — the 1.1 "Sensorimotor" release. **PyPI serves 1.1.0** (2026-08-26, tag `v1.1.0` at `df881b87`, plain `pip install pymaxim`; GitHub Release with the artifacts attached). Step 5b DONE. Items 17 (Exp 52) + 19 (Exp 53b) DONE; item 18 → 1.1.1.
+Current version: **1.1.0** (`pyproject.toml` + `src/maxim/__init__.py`; PyPI: https://pypi.org/project/pymaxim/ — `main` is ahead of PyPI by policy, CLAUDE.md §Versioning; checked by `scripts/lint_version_sync.py`). The 1.1 "Sensorimotor" line: step 5b DONE; items 17 (Exp 52) + 19 (Exp 53b) DONE; item 18 → 1.1.1.
 Now: **1.1.x follow-through** (items 1–16 in [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) —
 first up: Exp 54 Phase B/C on the robot — Phase A GRADUATED 2026-08-27 on the Reachy-native nursery body — then the loudness/onset-salience design and Exp 44b's
 confirmatory campaign) **and the gates before 1.2 Oasis + Hivemind** (gates 1–8 there),

@@ -24,9 +24,9 @@ See also:
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -321,36 +321,35 @@ def build_bio_stack(
     # temporal signatures between sessions — silently, because a pathless SCN is
     # indistinguishable from an empty one. Bound at CONSTRUCTION, not assigned after,
     # to close the same concurrent-construction race the factory closed.
+    #
+    # An UNREADABLE scn.json is left pathless: binding the path makes that file
+    # writable for the first time, so a corrupt one would otherwise be overwritten
+    # with empty state at session end and the recoverable original destroyed. Going
+    # pathless preserves it without touching it — this session simply does not
+    # persist temporal state, loudly.
     scn_path = str(p / "scn.json") if p is not None else None
-    scn = SCN(persistence_path=scn_path)
     # `load_persisted=False` is the documented write-but-don't-read agent (the
     # orchestrator NPC): it must not read a previous session's temporal state.
-    if load_persisted and scn_path is not None and Path(scn_path).exists():
+    scn_restorable = scn_path is not None and load_persisted and Path(scn_path).exists()
+    scn_unreadable = False
+    if scn_restorable:
+        try:
+            json.loads(Path(scn_path).read_text())
+        except (OSError, ValueError) as e:
+            scn_unreadable = True
+            logger.warning(
+                "SCN state at %s is unreadable (%s). It is left UNTOUCHED — this session runs with empty "
+                "temporal state and will NOT persist SCN, so the file stays recoverable. Move or repair it "
+                "to restore persistence.",
+                scn_path,
+                e,
+            )
+    scn = SCN(persistence_path=None if scn_unreadable else scn_path)
+    if scn_restorable and not scn_unreadable:
         try:
             scn.load(scn_path)
         except Exception as e:  # D17: report, never swallow silently
-            # Before D42 a pathless SCN could not overwrite anything; now that the
-            # path is bound, session end WOULD rewrite this file with empty state
-            # and destroy a recoverable original. Move it aside first (the
-            # cost_tracker precedent) so the failure is loud AND non-destructive.
-            aside = f"{scn_path}.corrupt.{time.strftime('%Y%m%d_%H%M%S')}"
-            try:
-                Path(scn_path).rename(aside)
-                logger.warning(
-                    "SCN restore failed (%s): %s. The unreadable file is preserved at %s and this session "
-                    "starts with empty temporal state — it will NOT be overwritten.",
-                    scn_path,
-                    e,
-                    aside,
-                )
-            except OSError as move_err:
-                logger.warning(
-                    "SCN restore failed (%s): %s — and the file could not be moved aside (%s), so session "
-                    "end will overwrite it with empty state.",
-                    scn_path,
-                    e,
-                    move_err,
-                )
+            logger.warning("SCN restore failed (%s); starting with empty temporal state: %s", scn_path, e)
     scn.enable_oscillator()  # B2: close SCN→NAc feedback loop
     # EC persists beside NAc (nac_cross_session_persistence.md): NAc's
     # reward_bias / cluster_reward_bias are keyed by EC node ids, so

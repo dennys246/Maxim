@@ -48,11 +48,17 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 import time
 from datetime import datetime, timezone
 
 # Library reader (CI-enforced single HTTP surface); needs PYTHONPATH=<repo>/src.
 from maxim.embodiment.audio_localization import doa_to_azimuth, make_reachy_rest_doa_reader
+
+# The in-process family's ONE record writer (gated-record refusal lives in its
+# constructor — roadmap 1.1.x item 16.7).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from live_common import JsonlLog  # noqa: E402
 
 AZIMUTH_GRID_DEG = list(range(-90, 91, 15))
 HEIGHTS = ("below", "level", "above")
@@ -125,6 +131,7 @@ def run_sweep(args) -> int:
         args.out
         or f"docs/experiments/data/ear_map_{args.shell}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.jsonl"
     )
+    log = JsonlLog(out_path, allow_dirty=args.allow_dirty, mode="w")
     header = {
         "record": "header",
         "experiment": "ear_map",
@@ -147,8 +154,8 @@ def run_sweep(args) -> int:
     print(f"ear_map: shell={args.shell} — {len(cells)} cells × {args.cell_seconds}s → {out_path}")
     print("Recenter the robot now. Do not touch it again until the sweep ends.\n")
 
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(json.dumps(header) + "\n")
+    log.write("header", **header)
+    try:
         for i, (gt_deg, height) in enumerate(cells, 1):
             side = "LEFT" if gt_deg < 0 else ("RIGHT" if gt_deg > 0 else "FRONT")
             input(
@@ -164,8 +171,7 @@ def run_sweep(args) -> int:
                 **stats,
                 "samples": samples,
             }
-            f.write(json.dumps(record) + "\n")
-            f.flush()
+            log.write("cell", **record)
             print(
                 f"    detection={stats['detection_rate']:.0%}"
                 + (
@@ -174,6 +180,8 @@ def run_sweep(args) -> int:
                     else "  (no speech detected)"
                 )
             )
+    finally:
+        log.close()
     print(f"\nSweep complete → {out_path}")
     return 0
 
@@ -232,6 +240,12 @@ def main() -> int:
     ap.add_argument("--cell-seconds", type=float, default=20.0)
     ap.add_argument("--heights", nargs="*", choices=HEIGHTS, help="Subset of heights (default: all three)")
     ap.add_argument("--out", default=None)
+    ap.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="write a GATED record (docs/experiments/data/) from a dirty src/scripts tree; stamps allow_dirty: true "
+        "into every record (default: refuse, exit 3 — docs/lessons/experiment-prereg-precedes-data.md)",
+    )
     ap.add_argument("--analyze", nargs="+", metavar="JSONL", help="Analyze/compare sweep files instead of sweeping")
     args = ap.parse_args()
     if args.analyze:

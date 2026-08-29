@@ -32,6 +32,28 @@ So: every harness that spawns `maxim` MUST call :func:`assert_repo_interpreter`
 before its first sub-sim, and SHOULD record :func:`executed_code_provenance`
 into each run record so the artifact is self-auditing forever after.
 
+THE SECOND DOOR (2026-08-26, Exp 53/53b — roadmap 1.1.x item 16.7)
+------------------------------------------------------------------
+The rule above was scoped to harnesses that SPAWN `maxim`. The in-process
+family (`scripts/orient_*/`, which imports `maxim` and drives the robot
+directly) inherited the vocabulary but not the enforcement: it *stamped*
+``working_tree_dirty_src_scripts: true`` into every Exp 53/53b start record
+and kept going. Stamping is detection; refusing is enforcement. So:
+
+* :func:`preflight_gated_record` — a harness about to write a GATED record
+  (anything under ``docs/experiments/data/``) from a dirty ``src``/``scripts``
+  tree gets :class:`DirtyTreeError` (harness policy: exit 3) unless the
+  operator passed ``--allow-dirty``; the returned dict then carries
+  ``allow_dirty: True`` and the harness stamps it into EVERY record so the
+  write-up cannot silently omit it.
+* :func:`in_process_code_provenance` — the in-process counterpart of
+  :func:`executed_code_provenance`: the caller hands over ``maxim.__file__``
+  (this module still imports nothing from `maxim`) and gets the executed
+  tree's hash + dirty flag, refusing when the imported package is not this
+  repo's ``src``.
+
+Full history: docs/lessons/experiment-prereg-precedes-data.md.
+
 This module is deliberately stdlib-only and does NOT import `maxim` — it is
 imported by path from the harness's own directory, so it is guaranteed to come
 from the same tree as the harness that calls it.
@@ -44,11 +66,39 @@ import subprocess
 import sys
 from pathlib import Path
 
-__all__ = ["ProvenanceError", "assert_repo_interpreter", "executed_code_provenance", "resolved_maxim_file"]
+__all__ = [
+    "GATED_DATA_DIR",
+    "DirtyTreeError",
+    "ProvenanceError",
+    "assert_repo_interpreter",
+    "executed_code_provenance",
+    "in_process_code_provenance",
+    "is_gated_path",
+    "preflight_gated_record",
+    "preflight_gated_record_or_exit",
+    "resolved_maxim_file",
+    "working_tree_dirty",
+]
+
+# Anything written here is a GATED record: it backs a ledger row, a result
+# doc, or a release gate. The refuse path below applies to this tree only.
+GATED_DATA_DIR = Path("docs/experiments/data")
+
+# The paths whose dirtiness makes a run's code-under-test unestablishable.
+DIRTY_SCOPE = ("src", "scripts")
 
 
 class ProvenanceError(RuntimeError):
     """The interpreter would import a `maxim` outside the harness's repo."""
+
+
+class DirtyTreeError(ProvenanceError):
+    """A gated record was about to be written from a dirty src/scripts tree.
+
+    Harness policy is exit 3 (the same code :func:`assert_repo_interpreter`
+    callers use), unless the operator passed ``--allow-dirty`` — in which case
+    the record itself must say so (``allow_dirty: true``).
+    """
 
 
 def _shebang_interpreter(binary: str) -> str:
@@ -135,21 +185,164 @@ def assert_repo_interpreter(repo_root: Path | str, binary: str, *, exempt: bool 
     )
 
 
-def executed_code_provenance(repo_root: Path | str, binary: str) -> dict[str, str]:
+def working_tree_dirty(repo_root: Path | str, scope: tuple[str, ...] = DIRTY_SCOPE) -> bool:
+    """True when ``git status`` reports any change (incl. untracked) under ``scope``.
+
+    A git failure counts as DIRTY: an unestablishable tree is the exact thing
+    the refuse path exists to stop, so unknown must not read as clean.
+    """
+    try:
+        r = subprocess.run(
+            ["git", "status", "--porcelain", "--", *scope],
+            cwd=Path(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return True
+    if r.returncode != 0:
+        return True
+    return bool(r.stdout.strip())
+
+
+def is_gated_path(repo_root: Path | str, out_path: Path | str | None) -> bool:
+    """True when ``out_path`` resolves inside ``<repo_root>/docs/experiments/data/``."""
+    if out_path is None:
+        return False
+    gated_root = (Path(repo_root) / GATED_DATA_DIR).resolve()
+    try:
+        return Path(out_path).resolve().is_relative_to(gated_root)
+    except (OSError, ValueError):
+        return False
+
+
+def preflight_gated_record(
+    repo_root: Path | str, out_path: Path | str | None, *, allow_dirty: bool = False
+) -> dict[str, bool]:
+    """Refuse to write a gated record from a dirty tree unless ``allow_dirty``.
+
+    Returns ``{"gated", "working_tree_dirty_src_scripts", "allow_dirty"}`` so
+    the caller can stamp the outcome into the record. ``allow_dirty`` in the
+    result is True only when it was needed AND granted (gated + dirty +
+    ``--allow-dirty``): a clean tree needs no allowance and must not claim one.
+    Raises :class:`DirtyTreeError` (harness policy: exit 3) when the write is
+    gated, the tree is dirty, and no allowance was given. Non-gated writes
+    (``/tmp`` logs, dry runs elsewhere) are never refused — the flag is still
+    reported so the record can carry it.
+    """
+    root = Path(repo_root).resolve()
+    gated = is_gated_path(root, out_path)
+    dirty = working_tree_dirty(root)
+    if gated and dirty and not allow_dirty:
+        raise DirtyTreeError(
+            f"refusing to write a GATED record ({Path(out_path).resolve().relative_to(root)}) "
+            f"from a DIRTY tree: `git status --porcelain -- {' '.join(DIRTY_SCOPE)}` is not empty in {root}.\n"
+            "  A result whose code-under-test cannot be established is not a validation "
+            "(Exp 42b corollary; Exp 53/53b release-day incident).\n"
+            "  Fix: commit (and merge) the harness/src changes first, then re-run from the clean tree —\n"
+            "       or pass --allow-dirty, which stamps `allow_dirty: true` into every record so the\n"
+            "       write-up cannot omit it (docs/lessons/experiment-prereg-precedes-data.md)."
+        )
+    return {
+        "gated": gated,
+        "working_tree_dirty_src_scripts": dirty,
+        "allow_dirty": bool(gated and dirty and allow_dirty),
+    }
+
+
+def preflight_gated_record_or_exit(
+    repo_root: Path | str, out_path: Path | str | None, *, allow_dirty: bool = False
+) -> dict[str, bool]:
+    """:func:`preflight_gated_record` with the harness policy applied: print + exit 3."""
+    try:
+        return preflight_gated_record(repo_root, out_path, allow_dirty=allow_dirty)
+    except DirtyTreeError as exc:
+        print(f"[FAIL] {exc}", file=sys.stderr)
+        raise SystemExit(3) from exc
+
+
+def in_process_code_provenance(
+    repo_root: Path | str,
+    maxim_file: str | None,
+    *,
+    out_path: Path | str | None = None,
+    allow_dirty: bool = False,
+) -> dict[str, object]:
+    """Provenance for a harness that IMPORTS `maxim` in-process (no sub-sim).
+
+    ``maxim_file`` is the caller's ``maxim.__file__`` — this module stays
+    maxim-free. Raises :class:`ProvenanceError` when that package is not this
+    repo's ``src`` (the run would measure the wrong code), and delegates the
+    gated-write refusal to :func:`preflight_gated_record` when ``out_path`` is
+    given. The returned dict is the ``provenance`` block harnesses stamp into
+    their start record; ``allow_dirty`` is present only when it was granted.
+    """
+    root = Path(repo_root).resolve()
+    src = (root / "src").resolve()
+    executed = Path(maxim_file or "").resolve() if maxim_file else None
+    if executed is None or not executed.is_relative_to(src):
+        raise ProvenanceError(
+            f"the imported `maxim` is {executed}, not this repo's src ({src}).\n"
+            "  The run would measure the WRONG CODE — fix PYTHONPATH (absolute, its own line) and re-run."
+        )
+    gate = preflight_gated_record(root, out_path, allow_dirty=allow_dirty)
+    prov: dict[str, object] = {
+        "executed_maxim_file": str(executed),
+        "executed_git_hash": _git_hash_short12(root),
+        "working_tree_dirty_src_scripts": gate["working_tree_dirty_src_scripts"],
+        "python": sys.executable,
+        "pythonpath": os.environ.get("PYTHONPATH", ""),
+    }
+    if gate["allow_dirty"]:
+        prov["allow_dirty"] = True
+    return prov
+
+
+def _git_hash_short12(cwd: Path) -> str:
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "--short=12", "HEAD"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        return r.stdout.strip() or "unknown"
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+
+
+def executed_code_provenance(
+    repo_root: Path | str,
+    binary: str,
+    *,
+    out_path: Path | str | None = None,
+    allow_dirty: bool = False,
+) -> dict[str, object]:
     """Provenance describing the CODE THAT RAN, for embedding in run records.
 
     ``harness_git_hash`` is where the harness file lives; ``executed_git_hash``
     is the tree the sub-sims actually import. When they disagree, the run is
     suspect — record both so the artifact can be audited long after the shell
-    history is gone.
+    history is gone. Since 2026-08-29 the block also carries
+    ``working_tree_dirty_src_scripts`` (both harness families stamp it), and
+    when ``out_path`` is given the gated-record refusal applies exactly as for
+    the in-process family (:func:`preflight_gated_record`; ``allow_dirty`` is
+    stamped only when it was needed and granted).
     """
     root = Path(repo_root).resolve()
+    gate = preflight_gated_record(root, out_path, allow_dirty=allow_dirty)
     resolved = resolved_maxim_file(binary)
     executed_root = Path(resolved).resolve().parent.parent.parent if resolved else None
-    return {
+    prov: dict[str, object] = {
         "harness_repo": str(root),
         "harness_git_hash": _git_hash(root),
         "executed_maxim_file": resolved or "unresolved",
         "executed_git_hash": _git_hash(executed_root) if executed_root else "unknown",
+        "working_tree_dirty_src_scripts": gate["working_tree_dirty_src_scripts"],
         "pythonpath": os.environ.get("PYTHONPATH", ""),
     }
+    if gate["allow_dirty"]:
+        prov["allow_dirty"] = True
+    return prov

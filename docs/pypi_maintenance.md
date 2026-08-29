@@ -177,8 +177,13 @@ Common 400/403 causes and fixes:
 
 ## Post-release housekeeping
 
-- Update [CHANGELOG.md](../CHANGELOG.md) — every release needs an entry, even patch releases. Format follows [Keep a Changelog](https://keepachangelog.com/).
-- Tag the commit (`git tag -a vX.Y.Z`) so the release is reproducible from git.
+> **The CHANGELOG entry and the tag are NOT housekeeping** (corrected 2026-08-29, roadmap item
+> 16.1). The `## [X.Y.Z]` section lands with the version bump, in the release PR, and the tag is
+> created at publish time — deferring it is what left 1.0.1–1.0.6 untagged for months. See
+> [publication_guide.md](publication_guide.md) §"Tag the released commit" and CLAUDE.md
+> §Versioning; `scripts/lint_version_sync.py` fails a bump without its CHANGELOG section.
+
+- Update https://pypi.org/manage/projects/pymaxim/ if any project URLs changed.
 - Update https://pypi.org/manage/projects/pymaxim/ if any project URLs changed.
 - Announce in CHANGELOG-driven channels (GitHub releases page, social, etc.) — the release isn't really "out" until users know it exists.
 - Smoke install from a clean venv on a different machine when possible — catches "works on my dev box" failures that the wheel inspection misses.

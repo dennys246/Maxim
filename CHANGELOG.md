@@ -23,6 +23,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — enforcement (the 1.1.1 line, roadmap item 16)
+
+- **A `fix` that touches `src/` ships with a test** — `scripts/lint_fix_touches_tests.py` (CI):
+  the PR title (the subject that squash-merges onto `main`) against the aggregate diff, plus
+  every branch commit. Declared exceptions use a `No-Tests-Reason:` trailer and are echoed to
+  the step summary (item 16.2).
+- **Hand-rolled atomic renames are counted and ratcheted** — `scripts/lint_atomic_io_ratchet.py`
+  (CI) prints the per-file AST count of `os.replace`/`os.rename`/`Path.replace`/`Path.rename`
+  outside `utils/atomic_io.py` every run and fails any branch that raises a file's count;
+  CLAUDE.md's persistence invariant cites that output instead of a number (item 16.3).
+- **The god functions cannot grow** — `src/maxim/utils/function_length_baseline.json` pins
+  `run_agentic_loop` / `start_simulation_mode` / `_main_impl` at their v1.1.0 AST spans and
+  `tests/unit/test_function_length_baseline.py` fails the fast suite on growth, and on
+  shrinkage that does not tighten the ceiling in the same commit (item 16.4).
+- `scripts/_lint_git.py` — the base-ref + rename-aware count ratchet shared by the swallow
+  lint and both new lints; `lint_no_silent_swallows.py` now also prints its repo-wide total.
+
+### Fixed
+
+- **Every diff-scoped lint was a no-op on pull requests** (bugs ledger D37). The `lint` job
+  checked out at depth 1 and fetched `main` at depth 1, so no merge-base existed: the
+  multi-agent marker lint and the no-silent-swallows ratchet had been skipping on every PR
+  since they shipped (CI run `33259722155`). The job now checks out full history, and a
+  missing base ref is a hard error on `pull_request` instead of a graceful skip.
+### Added — release truth (the 1.1.1 line, roadmap item 16)
+
+- **Version policy, decided and enforced** — `main` is ahead of PyPI; the bump happens in the
+  release transaction (CLAUDE.md §Versioning + a new architectural invariant).
+  `scripts/lint_version_sync.py` (CI) checks `pyproject` == `__init__` == the newest released
+  `CHANGELOG` header == the three sync lines, which now name the version and link PyPI instead
+  of describing what it serves (item 16.1).
+- **Release objects are audited** — `scripts/audit_release_tags.py --check-releases` plus a
+  `release-audit` CI job (push to main / nightly / dispatch): every version PyPI serves needs a
+  tag, a Release, the exact wheel + sdist with sha256 matching PyPI, and notes with absolute
+  links. Historical failures are grandfathered by explicit list with reasons (bugs ledger
+  D38/D39) and printed on every run.
+
+### Fixed
+
+- **The nightly `model-cache-tests` lane had failed every scheduled run since 2026-08-21** — the
+  warm list was a hand-kept comment missing `all-MiniLM-L6-v2`, and the cache key did not
+  include the list, so a stale cache hit skipped warming. The list is now derived from source
+  (`scripts/model_cache_names.py`), hashed into the cache key, and warmed unconditionally;
+  `scripts/check_model_cache_lane.py` replaces the `executed >= 12` floor with an explicit
+  skip allow-list validated against the lane's own collection.
+- `docs/CHANGELOG.md` (dead duplicate frozen at 0.3.0) deleted; `docs/pypi_maintenance.md` no
+  longer lists the CHANGELOG entry and the tag as post-release housekeeping.
+- Four rows of the living critique scorecard were stale, two describing this repo's own CI and
+  docs (item 16.6); every row now carries the date its numbers were measured.
 ### Fixed — runtime correctness (the 1.1.1 line)
 
 - **`shutdown()` now runs session-end consolidation where it previously no-oped.** That is the
@@ -38,9 +87,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`build_bio_stack` built a pathless SCN, so the RUNTIME path never persisted temporal
   state** (D42, found while verifying D41): every `api.run()` / CLI / orchestrator agent
   silently lost its SCN signatures between sessions. `scn.json` is now bound at construction
-  and restored only when `load_persisted`; an unreadable `scn.json` is moved aside to
-  `scn.json.corrupt.<ts>` rather than overwritten, since binding the path made that file
-  writable for the first time.
+  and restored only when `load_persisted`; an unreadable `scn.json` leaves the SCN pathless
+  for that session rather than being overwritten with empty state, since binding the path
+  made that file writable for the first time.
 - **The drive `TemporalEvent` emitter was malformed and swallowed its own `TypeError` at
   `log.debug`** (D9) — a dead path that looked alive at every log level anyone runs. The
   construction is correct and errors report at WARNING. The path stays **dormant**: nothing in

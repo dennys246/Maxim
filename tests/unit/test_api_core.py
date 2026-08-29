@@ -970,9 +970,10 @@ def test_a_corrupt_scn_file_is_preserved_not_overwritten(api_home, caplog):
     caplog.set_level(logging.WARNING)
     second = factory.create_full_agent(AgentConfig(agent_id="corrupt_scn", with_bio_stack=True))
     try:
-        aside = list((api_home / "agents" / "corrupt_scn").glob("scn.json.corrupt.*"))
-        assert aside, "the unreadable SCN file was not preserved"
-        assert aside[0].read_text() == "{not json at all"
-        assert any("preserved at" in r.getMessage() for r in caplog.records)
+        assert second.memory_hub.scn.persistence_path is None, (
+            "a corrupt scn.json stayed bound, so session end would overwrite it"
+        )
+        assert any("unreadable" in r.getMessage() for r in caplog.records)
     finally:
         second.shutdown()
+    assert scn_json.read_text() == "{not json at all", "the unreadable SCN file was destroyed"

@@ -133,51 +133,56 @@ jobs:
       - name: Install package with model-test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[semantic,test]" torchvision Pillow
+          python -m pip install -e ".[semantic,test]" torchvision Pillow spacy
+          # test_concept_decomposition_validation is a PRIMARY substrate validation; it
+          # was going to be allow-listed as "a dataset-class dependency" while the lane's
+          # own comment says a skipped test here is the vacuous-guard problem. en_core_web_sm
+          # is ~15 MB and pip-installable, so the lane runs it instead of excusing it.
+          python -m spacy download en_core_web_sm
+
+      # The warm list is part of the cache KEY. Without this the key ignores
+      # which models the lane needs: the 2026-08-21 → 08-29 failures were an
+      # EXACT key hit on a cache built before all-MiniLM-L6-v2 was required, so
+      # the warm step was skipped and every run failed offline on a model the
+      # cache did not hold. Deriving the list into a file first makes the key
+      # change the moment the required set changes.
+      - name: Derive the required model list
+        run: python3 scripts/model_cache_names.py > warm-list.txt && cat warm-list.txt
 
       - name: Restore model cache
         id: model-cache
         uses: actions/cache@v4
         with:
           path: /home/runner/.cache/huggingface
-          key: hf-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'src/maxim/similarity/encoder.py', 'src/maxim/models/vision/clip_encoder.py') }}
+          key: hf-${{ runner.os }}-${{ hashFiles('warm-list.txt', 'pyproject.toml', 'src/maxim/similarity/encoder.py', 'src/maxim/models/vision/clip_encoder.py') }}
           restore-keys: hf-${{ runner.os }}-
 
       # First run (or after an encoder change) populates the cache; later runs
       # are offline. Downloads are confined to this step so a network failure
       # here is distinguishable from a real test failure below.
-      - name: Warm the cache on a miss
-        if: steps.model-cache.outputs.cache-hit != 'true'
+      # Runs UNCONDITIONALLY, not `if: cache-hit != 'true'`: a restore-keys
+      # partial hit (or the exact-hit-on-a-stale-cache above) leaves models
+      # missing, and loading an already-cached model is a no-op. Fail here and
+      # the cause is "HF unreachable", distinguishable from a test failure.
+      - name: Warm the cache
         env:
           HF_HOME: /home/runner/.cache/huggingface
         run: |
           python - <<'PY'
           from sentence_transformers import SentenceTransformer
 
-          # Must match what production actually loads: similarity/encoder.py
-          # defaults to all-mpnet-base-v2, the P2 path uses
-          # paraphrase-mpnet-base-v2, and clip_encoder.py uses clip-ViT-B-32.
-          # Caching the wrong name leaves the offline run unable to load any
-          # model, so every marked test would skip and the lane would pass
-          # while testing nothing.
-          # Every model any marked test loads. test_model_comparison sweeps a
-          # FOURTH (paraphrase-MiniLM-L6-v2); omitting it let that arm fall back
-          # to hash embeddings and print a comparison table for a model it never
-          # loaded — D26 one level down, inside the lane built to prevent it.
-          for name in (
-              "all-mpnet-base-v2",
-              "paraphrase-mpnet-base-v2",
-              "paraphrase-MiniLM-L6-v2",
-              "clip-ViT-B-32",
-          ):
+          names = open("warm-list.txt").read().split()
+          if not names:
+              raise SystemExit("FAIL: warm list is empty — scripts/model_cache_names.py found no models")
+          for name in names:
               SentenceTransformer(name)
               print(f"cached {name}")
           PY
 
-      # --runtime-skip-check would be ideal; absent that, assert the lane
-      # actually EXECUTED its tests. Without this, a missing dependency or a
-      # renamed marker turns the whole job into a green no-op — the failure
-      # mode that let these guards rot in the first place.
+      # Assert the lane actually EXECUTED its tests (skip allow-list below).
+      # Without this, a missing dependency or a renamed marker turns the
+      # whole job into a green no-op — the failure mode that let these
+      # guards rot in the first place.
       - name: Run model-cache tests
         env:
           MAXIM_RUN_MODEL_TESTS: "1"
@@ -194,22 +199,42 @@ jobs:
         run: |
           python -m pytest tests/ -q -m "requires_model_cache" --tb=short \
             --junitxml=model-cache-results.xml
-          python - <<'PY'
-          import xml.etree.ElementTree as ET
+          # Every skipped test must be on the EXPLICIT allow-list in
+          # scripts/check_model_cache_lane.py with a reason (dataset-gated
+          # or missing-dependency-path tests); anything else skipping is
+          # the vacuous-guard failure this lane exists to catch. Replaces
+          # the old `executed >= 12` floor, which could not see WHICH tests
+          # were vacuous.
+          python3 scripts/check_model_cache_lane.py model-cache-results.xml
 
-          suite = ET.parse("model-cache-results.xml").getroot()
-          if suite.tag == "testsuites":
-              suite = suite[0]
-          total = int(suite.get("tests", 0))
-          skipped = int(suite.get("skipped", 0))
-          executed = total - skipped
-          print(f"model-cache tests: {executed} executed, {skipped} skipped, {total} collected")
-          if executed < 12:
-              raise SystemExit(
-                  f"FAIL: only {executed} model-cache tests executed (expected >= 12). "
-                  "A dependency or cache problem is making this lane vacuous."
-              )
-          PY
+  # ── Release truth ─────────────────────────────────────────────────────────
+  # Not a PR gate: it needs PyPI + the GitHub API, and a network flake must not
+  # block unrelated PRs. It runs where a release actually lands (push to main),
+  # nightly, and on demand. Every version PyPI serves must have a tag, a
+  # Release object, the exact wheel + sdist (sha256-matched), and notes with
+  # absolute links; historical failures are grandfathered BY EXPLICIT LIST with
+  # reasons inside the script and reported as still-failing on every run.
+  # Offline part (tag ↔ CHANGELOG drift) runs in the same invocation.
+  # NOTE: as of 2026-08-29 all 16 PyPI versions are grandfathered by explicit
+  # list, so green here means "no NEW release drifted", not "the back catalogue
+  # is clean" — the script prints every grandfathered failure on every run.
+  release-audit:
+    name: Release-object audit (tags, assets, sha256, links)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # tags
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Audit release tags and Release objects
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/audit_release_tags.py --check-releases
 
   unit-tests:
     runs-on: ubuntu-latest
@@ -266,6 +291,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # FULL history. The diff-scoped lints below resolve a merge-base with
+          # origin/main; with the default depth-1 checkout plus a `--depth=1`
+          # fetch, the two histories are disjoint shallow roots, merge-base
+          # fails, and every one of them SKIPS — verified 2026-08-29 (run
+          # 33259722155): the multi-agent marker lint and the swallow lint's
+          # check 2 had been no-ops on every pull request since they shipped.
+          # scripts/_lint_git.py::must_not_skip now also turns that skip into a
+          # hard error on pull_request, so a regression here fails loudly.
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -282,28 +317,15 @@ jobs:
           ruff check src/ tests/
           ruff format --check src/ tests/
 
-      - name: Version sync (pyproject.toml == src/maxim/__init__.py)
-        # CLAUDE.md "Versioning": the two version declarations must stay
-        # in sync. Promoted from a manual check to CI (1.0 guard promotion).
-        run: |
-          python3 - <<'EOF'
-          import re, sys, tomllib
-
-          with open("pyproject.toml", "rb") as f:
-              pyproject_version = tomllib.load(f)["project"]["version"]
-          init_src = open("src/maxim/__init__.py").read()
-          m = re.search(r'^__version__\s*=\s*"([^"]+)"', init_src, re.MULTILINE)
-          if m is None:
-              sys.exit("ERROR: __version__ not found in src/maxim/__init__.py")
-          init_version = m.group(1)
-          if pyproject_version != init_version:
-              sys.exit(
-                  f"ERROR: version drift — pyproject.toml={pyproject_version!r} "
-                  f"vs src/maxim/__init__.py={init_version!r}. "
-                  "Bump both in the same commit (CLAUDE.md 'Versioning')."
-              )
-          print(f"Version sync OK: {pyproject_version}")
-          EOF
+      - name: Version sync (pyproject == __init__ == CHANGELOG header == the three version lines)
+        # CLAUDE.md "Versioning" (policy decided 2026-08-29, roadmap 1.1.x item
+        # 16.1: main is ahead of PyPI; the bump happens in the release
+        # transaction). scripts/lint_version_sync.py asserts pyproject ==
+        # __init__, a `## [version]` CHANGELOG section exists, and the CLAUDE.md
+        # / docs/plans/README.md / docs/index.md version lines name that version
+        # with no "pending"/"rc"/"serves" prose (they link PyPI instead).
+        # Positive control: tests/unit/test_lint_version_sync.py.
+        run: python3 scripts/lint_version_sync.py
 
       - name: Check all Python files parse
         run: |
@@ -840,9 +862,18 @@ jobs:
           #
           # See CLAUDE.md "Working principles for new mechanisms" Principle 5
           # for the format convention.
+          #
+          # Check 5 (2026-08-29, roadmap 1.1.x item 16.9): every EARNED row in
+          # docs/plans/behavioral_graduation_candidates.md cites a resolving
+          # docs/experiments/data/ link or carries a dated data-lost
+          # annotation. Verified to fail 3/3 rows on the pre-fix ledger.
           python3 scripts/lint_claude_md_invariants.py
 
       - name: Multi-agent marker lint (Stage 3 of structural invariant tests)
+        # The `git fetch origin main --depth=1` that used to precede every
+        # diff-scoped lint here is GONE: with the job's `fetch-depth: 0`
+        # checkout it is unnecessary, and it was the direct cause of the
+        # merge-base failure that made these lints skip on every PR.
         run: |
           # Diff-scoped lint per docs/plans/archive/structural_invariant_tests.md
           # Stage 3. For each NEW test function on this branch in
@@ -858,7 +889,6 @@ jobs:
           # The lint is diff-scoped (compares against origin/main) so
           # existing tests are grandfathered; migration is done in a
           # focused sweep, not as a side effect of unrelated PRs.
-          git fetch origin main --depth=1 || true
           python3 scripts/lint_multi_agent_marker.py
 
       - name: No-silent-swallows lint (Stage 4 of measurement_path_fail_loud)
@@ -871,8 +901,32 @@ jobs:
           #     file's swallow count (grandfathered at origin/main's count).
           # Motivating incident: the SCN drive path was dead for months
           # behind exactly one bare-except-swallowed TypeError.
-          git fetch origin main --depth=1 || true
           python3 scripts/lint_no_silent_swallows.py
+
+      - name: A fix that touches src/ ships with a test (#519 lesson)
+        # Roadmap 1.1.x item 16.2. TWO populations: the PR TITLE — the subject
+        # that squash-merges onto main, and the one the score card counts —
+        # against the aggregate base...HEAD diff, plus every branch commit.
+        # Without PR_TITLE the lint would only see pre-squash subjects, so a PR
+        # titled `fix(...)` with `wip` commits would sail through. Opt-out for a
+        # genuine no-test fix is a `No-Tests-Reason: <why>` trailer (or
+        # `[no-tests: <why>]` in the PR title/body), echoed to stdout AND the
+        # step summary. Positive control: tests/unit/test_lint_fix_touches_tests.py.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python3 scripts/lint_fix_touches_tests.py
+
+      - name: Hand-rolled atomic renames outside utils/atomic_io.py (persistence invariant)
+        # Roadmap 1.1.x item 16.3.
+        run: |
+          # Prints the per-file AST count of os.replace() call sites outside
+          # the canonical writer EVERY run (CLAUDE.md's atomic-persistence
+          # invariant cites THIS output, not a number that can rot), and
+          # fails if any file's count rose vs origin/main (grandfathered
+          # per-file; new files start at zero; burn-down is free).
+          python3 scripts/lint_atomic_io_ratchet.py
 
       - name: Harness provenance lint (Exp 42b retraction lesson)
         run: |
@@ -881,7 +935,32 @@ jobs:
           # spawn — a harness that skips it can measure the WRONG CHECKOUT
           # with authoritative-looking JSONL (the Exp 42b retraction).
           # False positives opt out with '# provenance-exempt: <reason>'.
+          # Widened 2026-08-29 (roadmap 1.1.x item 16.7) to the IN-PROCESS family:
+          # every scripts/orient_*/ record writer must run the gated-record
+          # preflight (scripts/_provenance.py::preflight_gated_record — exit 3
+          # on a dirty src/scripts tree unless --allow-dirty) or write through
+          # the guarded live_common.JsonlLog; the lint also asserts JsonlLog
+          # still references the preflight. Verified to fail 4/4 in-process
+          # writers on the pre-fix tree.
           python3 scripts/lint_harness_provenance.py
+
+      - name: Pre-registration precedes data lint (roadmap 1.1.x item 16.8)
+        run: |
+          # For every docs/experiments/data/ entry whose experiment has a
+          # pre-registration, the prereg's (and each PRE-DATA amendment's)
+          # FIRST commit on origin/main must precede the data's first `ts`
+          # (fallback: the data's own first commit). Exp 53/53b landed the
+          # 53b prereg in the same squash as its data and got an EARNED row
+          # the same afternoon the 1.1.0 tag was placed; this step is what
+          # would have failed that PR. The original 53/53b files, the 53
+          # inputs and the 44b pilot are grandfathered BY EXPLICIT LIST with
+          # reasons (reported as still-failing, never silently passed).
+          # Needs full history of main: a --depth=1 checkout makes every
+          # file look freshly added, so a shallow repo is exit 2, not a pass.
+          # Positive control: tests/unit/test_lint_prereg_precedes_data.py
+          # builds a fixture repo with the order wrong and asserts the fail.
+          git fetch --unshallow origin main 2>/dev/null || git fetch origin main
+          python3 scripts/lint_prereg_precedes_data.py --ref origin/main
 
   # ── PKG seam — the lean aarch64 (Raspberry Pi) install ────────────────────
   # Two jobs because there are two DISTINCT risks and neither covers the other:
