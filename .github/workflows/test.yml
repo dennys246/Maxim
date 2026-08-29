@@ -133,37 +133,48 @@ jobs:
       - name: Install package with model-test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[semantic,test]" torchvision Pillow
+          python -m pip install -e ".[semantic,test]" torchvision Pillow spacy
+          # test_concept_decomposition_validation is a PRIMARY substrate validation; it
+          # was going to be allow-listed as "a dataset-class dependency" while the lane's
+          # own comment says a skipped test here is the vacuous-guard problem. en_core_web_sm
+          # is ~15 MB and pip-installable, so the lane runs it instead of excusing it.
+          python -m spacy download en_core_web_sm
+
+      # The warm list is part of the cache KEY. Without this the key ignores
+      # which models the lane needs: the 2026-08-21 → 08-29 failures were an
+      # EXACT key hit on a cache built before all-MiniLM-L6-v2 was required, so
+      # the warm step was skipped and every run failed offline on a model the
+      # cache did not hold. Deriving the list into a file first makes the key
+      # change the moment the required set changes.
+      - name: Derive the required model list
+        run: python3 scripts/model_cache_names.py > warm-list.txt && cat warm-list.txt
 
       - name: Restore model cache
         id: model-cache
         uses: actions/cache@v4
         with:
           path: /home/runner/.cache/huggingface
-          key: hf-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'src/maxim/similarity/encoder.py', 'src/maxim/models/vision/clip_encoder.py') }}
+          key: hf-${{ runner.os }}-${{ hashFiles('warm-list.txt', 'pyproject.toml', 'src/maxim/similarity/encoder.py', 'src/maxim/models/vision/clip_encoder.py') }}
           restore-keys: hf-${{ runner.os }}-
 
       # First run (or after an encoder change) populates the cache; later runs
       # are offline. Downloads are confined to this step so a network failure
       # here is distinguishable from a real test failure below.
-      - name: Warm the cache on a miss
-        if: steps.model-cache.outputs.cache-hit != 'true'
+      # Runs UNCONDITIONALLY, not `if: cache-hit != 'true'`: a restore-keys
+      # partial hit (or the exact-hit-on-a-stale-cache above) leaves models
+      # missing, and loading an already-cached model is a no-op. Fail here and
+      # the cause is "HF unreachable", distinguishable from a test failure.
+      - name: Warm the cache
         env:
           HF_HOME: /home/runner/.cache/huggingface
         run: |
-          # The list is DERIVED from source by scripts/model_cache_names.py
-          # (every sentence-transformers model-name literal in src/maxim and
-          # in the requires_model_cache-marked tests + their helpers). The
-          # previous hand-kept tuple omitted all-MiniLM-L6-v2 and this lane
-          # failed every scheduled run from 2026-08-21 to 2026-08-28 with
-          # LocalEntryNotFoundError — the lane built to stop vacuous guards
-          # was red under a stale comment. tests/unit/test_model_cache_names.py
-          # pins the derived set against the production defaults.
-          python3 scripts/model_cache_names.py | tee warm-list.txt
           python - <<'PY'
           from sentence_transformers import SentenceTransformer
 
-          for name in open("warm-list.txt").read().split():
+          names = open("warm-list.txt").read().split()
+          if not names:
+              raise SystemExit("FAIL: warm list is empty — scripts/model_cache_names.py found no models")
+          for name in names:
               SentenceTransformer(name)
               print(f"cached {name}")
           PY
@@ -204,6 +215,9 @@ jobs:
   # absolute links; historical failures are grandfathered BY EXPLICIT LIST with
   # reasons inside the script and reported as still-failing on every run.
   # Offline part (tag ↔ CHANGELOG drift) runs in the same invocation.
+  # NOTE: as of 2026-08-29 all 16 PyPI versions are grandfathered by explicit
+  # list, so green here means "no NEW release drifted", not "the back catalogue
+  # is clean" — the script prints every grandfathered failure on every run.
   release-audit:
     name: Release-object audit (tags, assets, sha256, links)
     if: github.event_name != 'pull_request'

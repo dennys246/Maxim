@@ -19,6 +19,12 @@ def _release(assets: list[tuple[str, str]], body: str = "See https://example.com
     return {"tagName": "v1.2.3", "body": body, "assets": [{"name": n, "digest": f"sha256:{d}"} for n, d in assets]}
 
 
+@pytest.fixture(autouse=True)
+def _gh_probe_ok(monkeypatch):
+    """The repo-level positive control is network; the unit tests exercise the logic."""
+    monkeypatch.setattr(A, "_gh_probe", lambda: None)
+
+
 @pytest.fixture
 def gh(monkeypatch):
     state: dict = {"release": _release([(n, d) for n, d in PYPI.items()])}
@@ -87,6 +93,36 @@ def test_audit_grandfathers_by_explicit_list_and_flags_stale_entries(gh, monkeyp
     assert "PyPI does not serve" in capsys.readouterr().err
 
 
+def test_repo_level_gh_failure_is_exit_2_not_a_grandfathered_pass(monkeypatch) -> None:
+    """A 404 for the whole repo used to read as 'no Release on every tag' — with every
+    version grandfathered that is a green run reporting nothing (the review BLOCKER)."""
+
+    def boom() -> None:
+        raise A.AuditError("HTTP 404: Not Found")
+
+    monkeypatch.setattr(A, "_gh_probe", boom)
+    monkeypatch.setattr(A, "_pypi_files", lambda timeout=30.0: {"1.2.3": PYPI})
+    assert A.audit_releases({"1.2.3": "the incident"}) == 2
+
+
+def test_gh_release_only_swallows_the_literal_release_not_found(monkeypatch) -> None:
+    calls = {}
+
+    class _Proc:
+        returncode = 1
+        stdout = ""
+
+        def __init__(self, stderr: str) -> None:
+            self.stderr = stderr
+
+    monkeypatch.setattr(A.subprocess, "run", lambda *a, **k: _Proc(calls["stderr"]))
+    calls["stderr"] = "release not found"
+    assert A._gh_release("v1.2.3") is None
+    calls["stderr"] = "HTTP 404: Not Found (repository not found)"
+    with pytest.raises(A.AuditError):
+        A._gh_release("v1.2.3")
+
+
 def test_network_failure_is_exit_2_not_pass(monkeypatch) -> None:
     def boom(timeout: float = 30.0):
         raise A.AuditError("network down")
@@ -100,13 +136,23 @@ def test_empty_pypi_is_exit_2_not_pass(monkeypatch) -> None:
     assert A.audit_releases({}) == 2
 
 
-def test_grandfather_reasons_are_real_versions() -> None:
-    for v in A.GRANDFATHERED_RELEASES:
-        assert A.GRANDFATHERED_RELEASES[v].strip(), v
+def test_grandfather_keys_parse_as_versions_and_carry_a_reason() -> None:
+    import re as _re
+
+    for v, reason in A.GRANDFATHERED_RELEASES.items():
+        assert _re.fullmatch(r"\d+\.\d+\.\d+(rc\d+)?", v), v
+        assert len(reason.strip()) > 30, f"{v}: a grandfather entry needs a real reason, not a label"
 
 
-def test_announcement_notes_sources_have_no_relative_links() -> None:
-    """The next release's --notes-file must publish clean; the 1.1.0 source was rewritten 2026-08-29."""
-    src = A.REPO / A.ANNOUNCEMENTS / "release_1_1_0.md"
-    assert src.exists()
-    assert A._REL_LINK.findall(src.read_text()) == []
+# Backfills describe releases already published with the dead links; they are
+# grandfathered in the audit and are not re-published from these files.
+_BACKFILLS = {"release_1_0_9_backfill.md", "release_1_1_0rc1_backfill.md"}
+
+
+def test_every_publishable_announcement_source_has_no_relative_links() -> None:
+    """Whatever `gh release create --notes-file` publishes NEXT must be clean — checked for
+    every release_*.md, not just 1.1.0, so release_1_1_1.md cannot ship with dead links."""
+    sources = [p for p in (A.REPO / A.ANNOUNCEMENTS).glob("release_*.md") if p.name not in _BACKFILLS]
+    assert sources, "no release notes sources found — the assertion would be vacuous"
+    for src in sources:
+        assert A._REL_LINK.findall(src.read_text()) == [], f"{src.name} carries repo-relative links"

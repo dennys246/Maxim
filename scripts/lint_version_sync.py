@@ -12,14 +12,19 @@ version lines point at PyPI instead of describing it, because prose that describ
 Checks (all mechanical; every one fails loudly):
 
 1. `pyproject.toml` version == `src/maxim/__init__.py` `__version__` (the original CI step).
-2. `CHANGELOG.md` has a `## [<that version>]` section header — so a bump commit that forgot
-   its CHANGELOG entry fails on the bump itself, and the top released header can never be
-   ahead of or behind the code's version.
+2. `CHANGELOG.md`'s NEWEST released `## [X.Y.Z]` header equals that version (sections above
+   it, like `## [Unreleased]`, are ignored) — so a bump commit that forgot its CHANGELOG
+   entry fails on the bump itself, and a pre-written future section cannot satisfy the check.
 3. The three version lines — CLAUDE.md "Current version:", docs/plans/README.md "Current
-   version:", docs/index.md "**Version:**" — name exactly the pyproject version and carry no
-   PyPI-state prose (`pending`, `rc`, `serves`, `published`, `release candidate`); they link
-   to PyPI for the served version. Each line must exist (a missing line is a failure, not a
-   pass).
+   version:", docs/index.md "**Version:**" — name exactly the pyproject version, link to
+   PyPI for the served version, and carry no PyPI-state prose (`pending`, `rc`, `serves`,
+   `published`, `release candidate`) *in the version claim itself* (up to the first sentence
+   break; the rest of the paragraph is ordinary prose). Each line must exist — a missing
+   line is a failure, not a pass.
+
+What this does NOT claim: that nothing anywhere in the repo describes PyPI. Dated CHANGELOG
+sections and release announcements record what was true when written and stay historical
+records; the rule is scoped to the three living sync lines that kept drifting.
 
 Exits: 0 clean; 1 violations (stderr).
 """
@@ -42,7 +47,11 @@ VERSION_LINES = (
         re.compile(r"^Current version: \*\*(?P<v>[^*]+)\*\*.*$", re.M),
         "docs/plans/README.md 'Current version:' line",
     ),
-    ("docs/index.md", re.compile(r"^\*\*Version:\*\* (?P<v>\S+).*$", re.M), "docs/index.md '**Version:**' line"),
+    (
+        "docs/index.md",
+        re.compile(r"^\*\*Package version:\*\* (?P<v>\S+).*$", re.M),
+        "docs/index.md '**Package version:**' line",
+    ),
 )
 FORBIDDEN_PROSE = re.compile(r"\b(pending|rc\d*|serves|published|release candidate|still on)\b", re.I)
 
@@ -69,10 +78,16 @@ def violations(repo_root: Path = REPO_ROOT) -> list[str]:
             "bump both in the same commit (CLAUDE.md 'Versioning')"
         )
     changelog = (repo_root / "CHANGELOG.md").read_text()
-    if not re.search(rf"^## \[{re.escape(version)}\]", changelog, re.M):
+    # The FIRST released header, not "a header anywhere": a pre-written `## [1.2.0]`
+    # section above the current one would otherwise pass while pyproject says 1.1.0.
+    released = re.findall(r"^## \[(\d+\.\d+\.\d+[^\]]*)\]", changelog, re.M)
+    if not released:
+        out.append("CHANGELOG.md has no released `## [X.Y.Z]` section at all")
+    elif released[0] != version:
         out.append(
-            f"CHANGELOG.md has no `## [{version}]` section — the bump commit adds it (the release transaction); "
-            "between releases pyproject carries the last published version"
+            f"CHANGELOG.md's newest released section is `## [{released[0]}]` but pyproject.toml says {version!r} — "
+            "the bump commit adds the matching section (the release transaction); between releases pyproject "
+            "carries the last published version"
         )
     for rel, pattern, label in VERSION_LINES:
         text = (repo_root / rel).read_text()
@@ -81,11 +96,15 @@ def violations(repo_root: Path = REPO_ROOT) -> list[str]:
             out.append(f"{rel}: {label} is missing — it must exist and name the pyproject version")
             continue
         line = m.group(0)
+        # Only the version CLAIM is judged for PyPI-state prose — up to the first
+        # sentence break. These lines continue into ordinary paragraph text where a
+        # word like "published" is innocent (CLAUDE.md's is a long paragraph).
+        claim = re.split(r"(?<=[.)])\s", line, maxsplit=1)[0]
         if m.group("v").strip() != version:
             out.append(f"{rel}: {label} says {m.group('v').strip()!r} but pyproject.toml says {version!r}")
-        if FORBIDDEN_PROSE.search(line):
+        if FORBIDDEN_PROSE.search(claim):
             out.append(
-                f"{rel}: {label} carries PyPI-state prose ({FORBIDDEN_PROSE.search(line).group(0)!r}) — "
+                f"{rel}: {label} carries PyPI-state prose ({FORBIDDEN_PROSE.search(claim).group(0)!r}) — "
                 f"the line names the version and links {PYPI_URL} for what is served; it does not describe PyPI"
             )
         if PYPI_URL not in line:

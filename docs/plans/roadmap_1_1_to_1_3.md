@@ -131,7 +131,9 @@ from the claims-verification round — blocking vs 1.1.x *within* the gated item
    - **5a — DONE 2026-08-25: `1.1.0rc1` published** (tag `v1.1.0rc1` at `eae6559c`, #540). The recipe, kept for 5b:
      bump both version files + the CHANGELOG header to `1.1.0rc1` in one commit, vendor
      the Console UI, build/`twine check`, TestPyPI → PyPI, tag `v1.1.0rc1` on the
-     published commit, flip the "PyPI serves" sync lines. No announcement.
+     published commit, update the three version sync lines (they NAME the version and
+     link PyPI; the "PyPI serves" prose was retired 2026-08-29 by item 16.1 and is now
+     rejected by `scripts/lint_version_sync.py`). No announcement.
    - **5b — DONE 2026-08-26: `1.1.0` PUBLISHED** (PyPI latest 1.1.0; tag `v1.1.0` at `df881b87`; GitHub Release with artifacts; site flipped; release notes [release_1_1_0.md](../announcements/release_1_1_0.md)). The recipe as it ran: the bump (#547) and the website audit (#548, maxim-web #7) are DONE 2026-08-26; **as it ran:** the site carried the hardware result (maxim-web #8) before the cut; wheel + sdist built from `main`, `twine check`, TestPyPI → PyPI, `v1.1.0` tagged on the published commit, GitHub Release with the exact artifacts and `docs/announcements/release_1_1_0.md` as notes; sync lines flipped in #554; announcement + video after.
 
 ### Agent-guidance single-source decision (1.1 docs gate) — RATIFIED 2026-08-19, inverse direction
@@ -372,6 +374,15 @@ Each POINTS at its owning plan — stages live there, not here:
        guard): `src/maxim/utils/architecture_baseline.json`'s pattern — a reviewed
        ceiling per function, additions fail the fast suite, shrinkage must tighten the
        ceiling in the same commit.
+    10. **Post-tag `src/` commits declare themselves** (added 2026-08-29 from the 1.1.1
+        Cluster C review). The version policy (16.1) says `main` is ahead of PyPI and
+        `CHANGELOG.md` accumulates under `## [Unreleased]` — the first half is enforced by
+        `scripts/lint_version_sync.py`, the second is convention: #561/#562 changed `src/`
+        post-1.1.0 with no `[Unreleased]` line. The Claude card's Release-governance
+        condition (4) is the enforcement: a diff-scoped check that a `src/`-touching commit
+        after the last tag either bumps or adds an `[Unreleased]` entry. Rides
+        `scripts/_lint_git.py` (#570). **A policy half-enforced is the divergence 16.1
+        exists to end.**
     5. **DONE 2026-08-29 (1.1.1 Cluster C) — Delete `docs/CHANGELOG.md`** — the dead duplicate frozen at 0.3.0 that both
        cards named and that survived the 1.1.0 cut.
     6. **DONE 2026-08-29 (1.1.1 Cluster C: rows 1/2/6/7 re-measured — row 7's CI claim had been false since #527, row 6's diet had shipped, row 2's Stage-4 lock had shipped; every row now carries the date its numbers were measured) — Truth pass on [external_critique_response.md](external_critique_response.md)**

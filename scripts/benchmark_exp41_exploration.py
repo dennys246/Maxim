@@ -352,9 +352,7 @@ def main(argv: list[str] | None = None) -> int:
     from _provenance import ProvenanceError, assert_repo_interpreter
 
     try:
-        assert_repo_interpreter(
-            Path(__file__).resolve().parent.parent, _resolve_maxim_binary(), exempt=args.mock
-        )
+        assert_repo_interpreter(Path(__file__).resolve().parent.parent, _resolve_maxim_binary(), exempt=args.mock)
     except ProvenanceError as exc:
         print(f"PREFLIGHT FAIL: {exc}", file=sys.stderr)
         return 3

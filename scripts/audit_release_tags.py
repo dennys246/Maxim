@@ -58,17 +58,17 @@ ANNOUNCEMENTS = Path("docs/announcements")
 # Release objects that predate the rule, by version → reason. Reported as still-failing.
 GRANDFATHERED_RELEASES: dict[str, str] = {
     "0.2.1": "pre-1.0 PyPI upload; no Release object was ever created (tag reconstructed 2026-08-20)",
-    "0.3.0": "pre-1.0 PyPI upload; no Release object",
-    "0.3.1": "pre-1.0 PyPI upload; no Release object",
-    "0.3.2": "pre-1.0 PyPI upload; no Release object",
-    "0.4.0": "pre-1.0 PyPI upload; no Release object",
-    "0.5.0": "pre-1.0 PyPI upload; no Release object",
+    "0.3.0": "pre-1.0 PyPI upload; no Release object was ever created (tag reconstructed 2026-08-20)",
+    "0.3.1": "pre-1.0 PyPI upload; no Release object was ever created (tag reconstructed 2026-08-20)",
+    "0.3.2": "pre-1.0 PyPI upload; no Release object was ever created (tag reconstructed 2026-08-20)",
+    "0.4.0": "pre-1.0 PyPI upload; no Release object was ever created (tag reconstructed 2026-08-20)",
+    "0.5.0": "pre-1.0 PyPI upload; no Release object was ever created (tag reconstructed 2026-08-20)",
     "0.6.0": "0.6.0–0.8.1 shipped to PyPI without CHANGELOG entries or Release objects (CHANGELOG note, 2026-05-11)",
-    "0.7.0": "see 0.6.0",
-    "0.8.0": "see 0.6.0",
-    "0.8.1": "see 0.6.0",
-    "0.9.0": "Release object exists but predates the attach-the-artifacts rule (0 assets)",
-    "0.9.1": "PyPI upload with no Release object; predates the rule",
+    "0.7.0": "0.6.0–0.8.1 shipped to PyPI without CHANGELOG entries or Release objects (CHANGELOG note, 2026-05-11)",
+    "0.8.0": "0.6.0–0.8.1 shipped to PyPI without CHANGELOG entries or Release objects (CHANGELOG note, 2026-05-11)",
+    "0.8.1": "0.6.0–0.8.1 shipped to PyPI without CHANGELOG entries or Release objects (CHANGELOG note, 2026-05-11)",
+    "0.9.0": "Release object exists but predates the attach-the-artifacts rule (2026-08-26) — 0 assets attached",
+    "0.9.1": "PyPI upload with no Release object at all; predates the attach-the-artifacts rule (2026-08-26)",
     "1.0.0": "Release object exists ('Maxim 1.0.0 — The Honest Benchmark') but predates the rule (0 assets)",
     "1.0.9": (
         "Release object backfilled 2026-08-26 from the CHANGELOG with NO assets — the 1.0.9 wheel/sdist were "
@@ -76,13 +76,17 @@ GRANDFATHERED_RELEASES: dict[str, str] = {
         "published artifact). Named by the 2026-08-27 score card; fixing it means re-uploading provably-identical "
         "files, which is a deliberate operator act, not a lint fix."
     ),
-    "1.1.0rc1": "pre-release backfilled 2026-08-26; its notes carry 2 repo-relative links (same defect as v1.1.0)",
+    "1.1.0rc1": (
+        "pre-release backfilled 2026-08-26; its published notes and its backfill source both carry a "
+        "repo-relative link (same defect as v1.1.0). Remove this entry in the same act that fixes them."
+    ),
     "1.1.0": (
         "published 2026-08-26 with the correct wheel + sdist attached (sha256 verified), but its PUBLISHED notes "
         "carry 7 repo-relative links, which 404 on the Releases page. The source "
         "(docs/announcements/release_1_1_0.md) was rewritten to absolute URLs on 2026-08-29, so the next release "
         "is clean and only the already-published body is wrong; editing it is an outward-facing act left to the "
-        "operator (`gh release edit v1.1.0 --notes-file docs/announcements/release_1_1_0.md`)."
+        "operator (`gh release edit v1.1.0 --notes-file docs/announcements/release_1_1_0.md`) — and this "
+        "entry must be removed in the same act, or the audit fails on 'now PASSES'."
     ),
 }
 
@@ -91,17 +95,45 @@ class AuditError(RuntimeError):
     """The release audit could not be performed (exit 2) — never a pass."""
 
 
+# Inline links only. Reference-style definitions (`[x]: ../foo`), bare autolinks
+# (`<../foo>`) and raw `<a href="../x">` escape it — a forgetting-catcher, not a
+# security boundary (the house convention for heuristic lints).
 _REL_LINK = re.compile(r"\[[^\]]*\]\((?!https?://|#|mailto:)([^)\s]+)\)")
 
 
 def _pypi_files(timeout: float = 30.0) -> dict[str, dict[str, str]]:
     """{version: {filename: sha256}} from PyPI."""
+    # Explicit User-Agent: the repo has a lesson about default `Python-urllib/3.12`
+    # being bot-filtered (docs/lessons/http-via-utils-http.md); this script is
+    # stdlib-only by design (it must run without the package installed), so it sets
+    # the header here rather than importing maxim.utils.http.
+    req = urllib.request.Request(
+        PYPI_JSON, headers={"User-Agent": "pymaxim-release-audit (+https://github.com/dennys246/Maxim)"}
+    )
     try:
-        with urllib.request.urlopen(PYPI_JSON, timeout=timeout) as r:  # noqa: S310 - fixed https URL
+        with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 - fixed https URL
             data = json.load(r)
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+        # `releases` is a deprecated PyPI JSON field and the digest shape is not
+        # guaranteed: a shape change must be "cannot check" (exit 2), not "violation".
+        return {
+            v: {f["filename"]: f["digests"]["sha256"] for f in files} for v, files in data["releases"].items() if files
+        }
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError, KeyError, TypeError) as exc:
         raise AuditError(f"cannot read {PYPI_JSON}: {exc}") from exc
-    return {v: {f["filename"]: f["digests"]["sha256"] for f in files} for v, files in data["releases"].items() if files}
+
+
+def _gh_probe() -> None:
+    """Positive control: prove `gh` can reach this repo's releases at all.
+
+    Without it, a repo-level failure (token without access, repo renamed or made
+    private) reads as "every tag simply has no Release" — with today's fully
+    grandfathered list that is a green run reporting nothing.
+    """
+    proc = subprocess.run(
+        ("gh", "release", "list", "--limit", "1"), cwd=REPO, capture_output=True, text=True, check=False
+    )
+    if proc.returncode != 0:
+        raise AuditError(f"gh cannot list this repo's releases ({proc.stderr.strip()}) — cannot check")
 
 
 def _gh_release(tag: str) -> dict | None:
@@ -114,8 +146,12 @@ def _gh_release(tag: str) -> dict | None:
         check=False,
     )
     if proc.returncode != 0:
-        err = proc.stderr.lower()
-        if "release not found" in err or "not found" in err:
+        # ONLY gh's literal "release not found" means "this tag has no Release". The
+        # first draft also accepted any stderr containing "not found", which made a
+        # whole-repo 404 (token without access, repo renamed or made private) read as
+        # "no Release" for EVERY version — all of them grandfathered, nothing flagged
+        # stale, audit returns 0. A truth audit must not have that shape.
+        if "release not found" in proc.stderr.lower():
             return None
         raise AuditError(f"gh release view {tag}: {proc.stderr.strip()}")
     try:
@@ -128,8 +164,16 @@ def release_problems(version: str, pypi: dict[str, str]) -> list[str]:
     """Everything wrong with the release object for ``version`` (empty = clean)."""
     tag = f"v{version}"
     problems: list[str] = []
-    if not _git("tag", "-l", tag).strip() and not _git("ls-remote", "--tags", "origin", tag).strip():
-        problems.append(f"PyPI serves {version} but there is no {tag} tag")
+    if not _git("tag", "-l", tag).strip():
+        # _git swallows failures (it is the offline audit's helper); a network/auth
+        # failure here would otherwise be reported as "there is no tag".
+        probe = subprocess.run(
+            ("git", "ls-remote", "--tags", "origin", tag), cwd=REPO, capture_output=True, text=True, check=False
+        )
+        if probe.returncode != 0:
+            raise AuditError(f"git ls-remote for {tag}: {probe.stderr.strip()}")
+        if not probe.stdout.strip():
+            problems.append(f"PyPI serves {version} but there is no {tag} tag")
     rel = _gh_release(tag)
     if rel is None:
         problems.append(f"no GitHub Release on {tag} — a tag says which commit, a Release hands over the artifact")
@@ -154,8 +198,12 @@ def release_problems(version: str, pypi: dict[str, str]) -> list[str]:
             f"{tag} Release notes carry {len(rel_links)} repo-relative link(s) that 404 on the Releases page "
             f"(e.g. {rel_links[0]}) — use absolute https://github.com/... URLs"
         )
-    notes_src = REPO / ANNOUNCEMENTS / f"release_{version.replace('.', '_')}.md"
-    if notes_src.exists():
+    # Glob, not an exact name: the backfills are release_1_1_0rc1_backfill.md /
+    # release_1_0_9_backfill.md, so an exact-name lookup silently skipped the
+    # source half of this check for exactly the releases that fail it.
+    stem = f"release_{version.replace('.', '_')}"
+    sources = sorted((REPO / ANNOUNCEMENTS).glob(f"{stem}*.md"))
+    for notes_src in sources:
         src_links = _REL_LINK.findall(notes_src.read_text())
         if src_links:
             problems.append(
@@ -169,6 +217,7 @@ def audit_releases(grandfathered: dict[str, str] | None = None) -> int:
     """0 clean; 1 violations; 2 cannot check."""
     grandfathered = GRANDFATHERED_RELEASES if grandfathered is None else grandfathered
     try:
+        _gh_probe()
         pypi = _pypi_files()
     except AuditError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

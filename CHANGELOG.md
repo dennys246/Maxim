@@ -23,6 +23,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — release truth (the 1.1.1 line, roadmap item 16)
+
+- **Version policy, decided and enforced** — `main` is ahead of PyPI; the bump happens in the
+  release transaction (CLAUDE.md §Versioning + a new architectural invariant).
+  `scripts/lint_version_sync.py` (CI) checks `pyproject` == `__init__` == the newest released
+  `CHANGELOG` header == the three sync lines, which now name the version and link PyPI instead
+  of describing what it serves (item 16.1).
+- **Release objects are audited** — `scripts/audit_release_tags.py --check-releases` plus a
+  `release-audit` CI job (push to main / nightly / dispatch): every version PyPI serves needs a
+  tag, a Release, the exact wheel + sdist with sha256 matching PyPI, and notes with absolute
+  links. Historical failures are grandfathered by explicit list with reasons (bugs ledger
+  D38/D39) and printed on every run.
+
+### Fixed
+
+- **The nightly `model-cache-tests` lane had failed every scheduled run since 2026-08-21** — the
+  warm list was a hand-kept comment missing `all-MiniLM-L6-v2`, and the cache key did not
+  include the list, so a stale cache hit skipped warming. The list is now derived from source
+  (`scripts/model_cache_names.py`), hashed into the cache key, and warmed unconditionally;
+  `scripts/check_model_cache_lane.py` replaces the `executed >= 12` floor with an explicit
+  skip allow-list validated against the lane's own collection.
+- `docs/CHANGELOG.md` (dead duplicate frozen at 0.3.0) deleted; `docs/pypi_maintenance.md` no
+  longer lists the CHANGELOG entry and the tag as post-release housekeeping.
+- Four rows of the living critique scorecard were stale, two describing this repo's own CI and
+  docs (item 16.6); every row now carries the date its numbers were measured.
+
 ## [1.1.0] - 2026-08-26 — "Sensorimotor"
 
 > Publication was gated 2026-08-26 on roadmap item 19 — [Exp 53](docs/experiments/53_cross_context_readout.md),
