@@ -378,6 +378,24 @@ Each POINTS at its owning plan — stages live there, not here:
        — row 7 still says "CI still runs `pytest tests/unit/` only" (false since D20);
        rows 2 and 6 are stale (the plans README already flags them). The living-scorecard
        label is only true if the rows are.
+    7. **Harnesses refuse on a dirty tree** (added 2026-08-27 from the 1.1.0 re-score —
+       [lesson](../lessons/experiment-prereg-precedes-data.md)). `scripts/_provenance.py`
+       already computes `working_tree_dirty_src_scripts`; a harness writing under
+       `docs/experiments/data/` exits 3 when it is true unless `--allow-dirty` is passed,
+       and then stamps `allow_dirty: true` into every record. Widen
+       `lint_harness_provenance.py` to `scripts/orient_*/` (in-process harnesses — the
+       door Exp 53/53b walked through). Guard: unit test on the refusal.
+    8. **Pre-registration precedes data, checked by CI** (added 2026-08-27). For every
+       `docs/experiments/data/<N>*.jsonl`, the prereg named in `docs/experiments/<N>_*.md`
+       must have a `git log --diff-filter=A` timestamp on `main` earlier than the file's
+       first `ts`; amendments likewise for the data they govern. Exp 52 passes today;
+       53b would have failed at 18:27 on release day. **If only one of 7–9 ships, ship
+       this one.**
+    9. **EARNED ledger rows need a data citation** (added 2026-08-27). Add
+       `behavioral_graduation_candidates.md` to `lint_claude_md_invariants.py`'s doc set:
+       any `EARNED` row carries a `Regression guard:` link to `docs/experiments/data/` or
+       a dated data-lost annotation. L185 (EC pattern completion) and L186 (SEM pain →
+       NAc) fail today. Pairs with gate 8(d).
 
 ## Gates before 1.2 Oasis + Hivemind
 
