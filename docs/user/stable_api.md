@@ -20,7 +20,7 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 | `maxim.diagnose(...) -> DiagnosticReport` | ✅ | Local + peer diagnostics. |
 | `maxim.observe(subsystem, ...)` | ✅ | Cognitive subsystem inspection. |
 | `maxim.introspect(...)` | ✅ | Alias for `observe`. |
-| `maxim.campaign(path, ...) -> CampaignResult` | ✅ | DM campaign runner. |
+| `maxim.campaign(path, ...) -> CampaignResult` | ✅ | DM campaign runner. **Two documented parameters now REJECT in 1.1.1** (they had no consumer and were silently ignored — score card N1, bugs ledger D40): `npc_model=` raises `NotImplementedError` (party-mode NPC agents do not exist — `party_mode` is parsed into the campaign definition and read by nothing), and `prompt_handler=` raises `NotImplementedError` (the orchestrator builds its own handler; use `interactive=`). `interactive=` is now honoured — `None` (default) leaves the process-wide mode alone, `True`/`False` force it for the run and restore it afterwards. **This is a behaviour change in a patch release:** code that passed either rejected argument worked on 1.1.0 and raises on 1.1.1 — deliberately, because a documented argument with no observable effect is a worse contract than a loud refusal. |
 | `maxim.benchmark(models, ...) -> BenchmarkResult` | ✅ | Multi-model benchmark. |
 | `maxim.list_models() -> dict[str, list[ModelInfo]]` | ✅ | Profile discovery. |
 | `maxim.download_model(name) -> bool` | ✅ | Local LLM download. |

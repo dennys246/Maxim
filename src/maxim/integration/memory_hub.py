@@ -600,10 +600,12 @@ class MemoryHub:
         Restores priors and learned patterns from Hippocampus.
 
         Idempotent: opening a session that is already open is a no-op, mirroring
-        ``on_session_end``'s atomic test-and-clear. Without this, a persistent
-        ``AgentInstance`` adopted by a sim (the HANDLE seam) would run the restore
-        twice — and the second pass calls ``atl.load()``, which CLEARS before
-        restoring, discarding anything stored between the two starts.
+        ``on_session_end``'s atomic test-and-clear. This matters because the
+        instance now opens its own session at construction (D41) AND the runtime
+        opens one via ``start_bio_session``: without idempotence the second pass
+        would call ``atl.load()``, which CLEARS before restoring, discarding
+        anything stored between the two opens (a hazard this pairing introduces,
+        not a pre-existing one).
 
         Returns:
             Dict with counts of restored items per bridge, or
@@ -760,6 +762,16 @@ class MemoryHub:
         # runs consolidation (see _session_flag_lock field comment).
         with self._session_flag_lock:
             if not self._session_active:
+                # Silence here IS D41/N2: an owner that never opened a session
+                # loses EC/SCN/ATL on every close and finds out only when a later
+                # load warns "Half-present NAc/EC pair". A concurrent second
+                # caller is legitimate (the first one is consolidating), so this
+                # cannot raise — but it must not be invisible either.
+                logger.warning(
+                    "on_session_end with no active session — nothing is consolidated or persisted "
+                    "beyond what the caller saves itself. If this is a session OWNER, it must call "
+                    "on_session_start()/AgentInstance.start_session() first (bugs ledger D41)."
+                )
                 return {}
             self._session_active = False
 

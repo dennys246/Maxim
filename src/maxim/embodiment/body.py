@@ -420,9 +420,11 @@ class Embodiment:
 
         # Emit TemporalEvent for SCN oscillator learning. DORMANT (D9): no production
         # path passes a distributor, so this is a no-op outside tests.
-        self._emit_drive_temporal_event(f"drive:{drive_name}:{event_suffix}", f"drive:{drive_name}")
+        self._emit_drive_temporal_event(
+            f"drive:{drive_name}:{event_suffix}", f"drive:{drive_name}", agent_id=self.agent_id or entity.name
+        )
 
-    def _emit_drive_temporal_event(self, event_type: str, event_signature: str) -> None:
+    def _emit_drive_temporal_event(self, event_type: str, event_signature: str, *, agent_id: str = "") -> None:
         """Emit a ``TemporalEvent`` for a drive state transition.
 
         **Dormant since 2026-08-29 (bugs ledger D9).** No production path wires a
@@ -453,7 +455,7 @@ class Embodiment:
                 event_id=uuid.uuid4().hex,
                 event_type="drive",
                 event_signature=event_signature,
-                agent_id=self.agent_id,
+                agent_id=agent_id or self.agent_id,
                 temporal_sig=TemporalSignature.now(),
                 context={"source": "drive_protocol", "transition": event_type},
             )

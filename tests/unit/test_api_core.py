@@ -840,12 +840,74 @@ def test_session_start_is_idempotent(api_home):
         agent.shutdown()
 
 
-def test_shutdown_is_idempotent_and_does_not_reopen(api_home):
-    """A second shutdown() must not raise or resurrect the session."""
+def test_shutdown_is_idempotent_and_does_not_reopen(api_home, caplog):
+    """A second shutdown() must not raise, resurrect the session, or re-save."""
     from maxim import create
 
     agent = create.agent("api_double_shutdown")
     _mutate_substrate(agent.memory_hub)
     agent.shutdown()
+    assert agent.memory_hub._session_active is False
+    ec = api_home / "agents" / "api_double_shutdown" / "ec.json"
+    assert ec.exists()
+    stamp = (ec.stat().st_mtime_ns, ec.read_bytes())
+
+    caplog.set_level(logging.WARNING)
     agent.shutdown()
-    assert (api_home / "agents" / "api_double_shutdown" / "ec.json").exists()
+    assert agent.memory_hub._session_active is False
+    assert (ec.stat().st_mtime_ns, ec.read_bytes()) == stamp, "the second shutdown re-wrote persisted state"
+    # Closing an unopened session is now LOUD — silence here is what made N2 invisible.
+    assert any("no active session" in r.getMessage() for r in caplog.records)
+
+
+def test_full_agent_construction_opens_the_session_on_the_hub_it_keeps(api_home):
+    """create_full_agent REPLACES instance.memory_hub with the bio-stack's hub, so a
+    session opened during create_agent lands on a throwaway skeleton and the real hub
+    stays closed — D41 one layer down, on the path every runtime caller uses
+    (api.run, cli, orchestrator AUT/NPC, console handle). Both lenses of the review
+    round found it; reproduced black-box before the fix:
+        with_bio_stack=True → shutdown wrote ONLY hippocampus.json + nac.json.
+    """
+    from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+    from maxim.time.temporal_signature import TemporalSignature
+
+    factory = AgentFactory()
+    agent = factory.create_full_agent(AgentConfig(agent_id="full_round_trip", with_bio_stack=True))
+    assert agent.memory_hub._session_active is True, "the session was opened on a hub that was then discarded"
+    agent.memory_hub.scn.register("probe_memory_1", TemporalSignature.now(), significance=0.9)
+    concept_id, _ = agent.memory_hub.atl.find_or_create("probe_concept", category="test", definition="a probe")
+    agent.shutdown()
+
+    agent_dir = api_home / "agents" / "full_round_trip"
+    for name in ("ec.json", "scn.json", "atl.json"):
+        assert (agent_dir / name).exists(), f"{name} was dropped by the bio-stack construction path"
+
+    reloaded = factory.create_full_agent(AgentConfig(agent_id="full_round_trip", with_bio_stack=True), auto_load=True)
+    try:
+        # D42: build_bio_stack used to construct a PATHLESS SCN, so on_session_end had
+        # nothing to save to and temporal state vanished between runtime sessions.
+        assert reloaded.memory_hub.scn.persistence_path is not None
+        assert reloaded.memory_hub.scn.get_signature("probe_memory_1") is not None
+        assert reloaded.memory_hub.atl.get(concept_id) is not None
+    finally:
+        reloaded.shutdown()
+
+
+def test_write_but_dont_read_agents_do_not_restore_scn(api_home):
+    """`load_persisted=False` (the orchestrator NPC) must not read a previous
+    session's temporal state — the D42 fix must not change that contract."""
+    from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+    from maxim.time.temporal_signature import TemporalSignature
+
+    factory = AgentFactory()
+    first = factory.create_full_agent(AgentConfig(agent_id="npc_style", with_bio_stack=True))
+    first.memory_hub.scn.register("probe_memory_1", TemporalSignature.now(), significance=0.9)
+    first.shutdown()
+
+    npc = factory.create_full_agent(
+        AgentConfig(agent_id="npc_style", with_bio_stack=True, load_persisted=False), auto_load=False
+    )
+    try:
+        assert npc.memory_hub.scn.get_signature("probe_memory_1") is None
+    finally:
+        npc.shutdown()

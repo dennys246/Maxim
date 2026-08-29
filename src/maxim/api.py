@@ -1369,7 +1369,7 @@ def campaign(
     model: str = _API_DEFAULT_MODEL,
     party_mode: bool | None = None,
     npc_model: str | None = None,
-    interactive: bool = False,
+    interactive: bool | None = None,
     verbosity: int = 1,
     prompt_handler: Any = None,
 ) -> CampaignResult:
@@ -1391,10 +1391,15 @@ def campaign(
             parsed into the campaign definition and read by nothing), so there is
             no model to configure. Rejected rather than silently ignored (N1,
             score card 2026-08-27; bugs ledger D40).
-        interactive: If ``True``, enable rich display + user prompts. Threaded
-            through ``sim_logger.set_interactive_mode`` — the orchestrator reads
-            the interactive mode when it builds the campaign's prompt handler.
-            The previous mode is restored before returning.
+        interactive: ``True``/``False`` force the interactive mode for this run
+            (threaded through ``sim_logger.set_interactive_mode``; the
+            orchestrator reads it when building the campaign's prompt handler,
+            and the previous mode is restored before returning). ``None``
+            (default) leaves the process-wide mode alone, so
+            ``maxim.configure(interactive=...)`` and ``InteractiveMode.AUTO``
+            remain reachable. **``True`` starts the raw stdin reader** — it is
+            for a human at a TTY, not for scripts, CI or notebooks (CLAUDE.md's
+            interactive-mode rule); a warning is logged if stdin is not a TTY.
         verbosity: Logging verbosity (0-3).
         prompt_handler: **Not supported — passing a non-None value raises.**
             The orchestrator builds its own handler from the interactive mode
@@ -1460,9 +1465,16 @@ def campaign(
 
     # `interactive` is THREADED (not rejected): the orchestrator reads the global
     # interactive mode when it builds the campaign's prompt handler. Restored below
-    # so a programmatic call cannot leave the process in interactive mode.
+    # so a programmatic call cannot leave the process in interactive mode. None ==
+    # "don't touch it", so configure(interactive=...) and AUTO stay reachable.
     _saved_interactive = get_interactive_mode()
-    set_interactive_mode(InteractiveMode.ON if interactive else InteractiveMode.OFF)
+    if interactive is not None:
+        if interactive and not sys.stdin.isatty():
+            logger.warning(
+                "campaign(interactive=True) starts the raw stdin reader, but stdin is not a TTY — "
+                "in a script, CI or notebook this competes for non-human stdin. Use interactive=False."
+            )
+        set_interactive_mode(InteractiveMode.ON if interactive else InteractiveMode.OFF)
 
     try:
         sim_result = start_simulation_mode(
@@ -1488,7 +1500,8 @@ def campaign(
             rollup=rollup,
         )
     finally:
-        set_interactive_mode(_saved_interactive)
+        if interactive is not None:
+            set_interactive_mode(_saved_interactive)
         _restore_env(_saved_env)
 
 

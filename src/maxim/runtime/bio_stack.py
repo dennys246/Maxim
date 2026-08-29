@@ -314,7 +314,21 @@ def build_bio_stack(
             ok, err = nac.load_safe()
             if not ok:
                 logger.warning("NAc restore fell back to an empty causal model: %s", err)
-    scn = SCN()
+    # SCN persists beside NAc/EC, exactly as AgentFactory._create_memory_hub does
+    # (bugs ledger D42, found while fixing D41): this path built a pathless SCN, so
+    # `on_session_end` had nothing to save to and every runtime agent lost its
+    # temporal signatures between sessions — silently, because a pathless SCN is
+    # indistinguishable from an empty one. Bound at CONSTRUCTION, not assigned after,
+    # to close the same concurrent-construction race the factory closed.
+    scn_path = str(p / "scn.json") if p is not None else None
+    scn = SCN(persistence_path=scn_path)
+    # `load_persisted=False` is the documented write-but-don't-read agent (the
+    # orchestrator NPC): it must not read a previous session's temporal state.
+    if load_persisted and scn_path is not None and Path(scn_path).exists():
+        try:
+            scn.load(scn_path)
+        except Exception as e:  # D17: report, never swallow silently
+            logger.warning("SCN restore failed (%s); starting with empty temporal state: %s", scn_path, e)
     scn.enable_oscillator()  # B2: close SCN→NAc feedback loop
     # EC persists beside NAc (nac_cross_session_persistence.md): NAc's
     # reward_bias / cluster_reward_bias are keyed by EC node ids, so
