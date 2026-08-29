@@ -1541,8 +1541,11 @@ def benchmark(
 
     Args:
         models: List of LLM profile names to compare.
-        suite: Benchmark suite name (``"cognitive"``, ``"biosystem"``)
-            or path to a custom suite YAML.
+        suite: Benchmark suite name or path to a suite YAML.  Only
+            ``scenarios/benchmarks/cognitive_suite.yaml`` ships in the repo;
+            a bare name resolves to ``scenarios/benchmarks/{suite}.yaml``
+            relative to the CWD, so ``"biosystem"`` raises FileNotFoundError
+            unless you wrote that file yourself.
         runs: Number of runs per model (for statistical robustness).
         verbosity: Logging verbosity (0-3).
 

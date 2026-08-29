@@ -33,7 +33,15 @@ maxim --sim benchmark \
 | `--runs` | No | 1 | Number of runs per model per scenario (for variance estimation) |
 | `--benchmark-output` | No | `~/.maxim/benchmarks` | Directory for output reports |
 | `--baseline` | No | -- | Path to a previous `benchmark_report.json` for delta comparison |
-| `--sim-mode` | No | `campaign` | Orchestrator mode to use during the run |
+| `--sim-mode` | No | `campaign` | Orchestrator flow-shape label recorded in reports and logs |
+| `--write-paper` | No | off | Also draft a comparative research paper from the report |
+
+There is a second entry point, `maxim --benchmark [tier1|tier2|tier3|all] --models ...`, which
+picks a default suite when `--campaign` is omitted. Only `tier1` and `all` resolve to a file
+that exists (`scenarios/benchmarks/cognitive_suite.yaml`); `tier2` and `tier3` map to
+`biosystem_suite.yaml` and `embodiment_suite.yaml`, which are not in the tree, so the run
+aborts with `FileNotFoundError: Suite/scenario not found`. Pass `--campaign` explicitly.
+This is a known defect — see the benchmark row in [docs/bugs/README.md](../bugs/README.md).
 
 ## Python API
 
@@ -94,6 +102,13 @@ Measures how the bio-systems responded during the scenario.
 | `observation_density` | NAc observations per causal link |
 | `pain_signal_count` | Number of pain/aversion signals triggered |
 | `type_token_ratio` | Lexical diversity of model output (unique / total tokens) |
+
+### Tier 3 -- Embodiment
+
+`BenchmarkRunner._collect_tier3_metrics` looks for an `embodiment_stats()` method on the
+run's introspector and merges whatever it returns. Nothing implements that method today, so
+the hook returns `{}` and no Tier 3 metric reaches a report. Treat published Tier 3 metric
+lists as a design sketch, not a measurement.
 
 ## Writing Custom Scenarios
 
@@ -162,7 +177,22 @@ Suite-level scoring is a dict keyed by metric name. Each metric entry may have:
 - **`pass_above`** -- The metric must be at or above this value to pass. Used for positive metrics like recall accuracy.
 - **`pass_below`** -- The metric must be at or below this value to pass. Used for negative metrics like hallucination rate.
 
-The **composite score** for a suite is the weighted average of per-scenario scores. Each scenario's score is the mean of its scored metrics (those listed in the scenario's `benchmark.metrics` list). Scenario weights from the `suite.scenarios` entries scale their contribution to the composite.
+The **composite score** is a flat mean, not a weighted one. `_compute_composite_score`
+normalises every metric aggregated for that model — ratio metrics as-is (capped at 1.0),
+`hallucination_rate` / `alias_redirect_rate` / `cost_per_turn` inverted because lower is
+better, counts above 10 divided by 100 — and averages them. Three things this file used to
+claim do not happen (filed in [docs/bugs/README.md](../bugs/README.md)):
+
+- **Per-scenario `weight` is parsed and never read.** `_load_suite` stores it on the
+  scenario descriptor; nothing downstream consumes it.
+- **There is no per-scenario score** for weights to compose from. `per_scenario` in the
+  report holds raw metrics, and repeated runs of the same scenario are folded with a running
+  half-mean (`(old + new) / 2`), which is only the true mean for two runs.
+- **`benchmark.metrics` does not select what is scored.** The composite uses every metric
+  collected; the list is documentation for the reader.
+
+Use the composite to rank models against each other in one run. Use `scoring` thresholds —
+which do behave as documented — for pass/fail.
 
 ## Baseline Comparison
 

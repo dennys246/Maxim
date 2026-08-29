@@ -315,8 +315,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--dm",
         action="store_true",
         default=False,
-        help="Dungeon Master mode. With --sim <goal>: generate a campaign. "
-        "With --sim <path.yaml>: run as DM campaign (auto-detected from YAML).",
+        help="Dungeon Master mode. With --sim <path.yaml>: run as a DM campaign "
+        "(redundant — campaign YAML is auto-detected). With --sim <goal>: run the "
+        "generative narrative campaign runner labelled 'dm'; it does NOT author "
+        "campaign YAML (the architect path is not implemented).",
     )
     sim.add_argument(
         "--reap-orphans",
@@ -556,7 +558,9 @@ def _build_parser() -> argparse.ArgumentParser:
         const="all",
         default=None,
         metavar="TIERS",
-        help="Run tiered benchmarks. Values: tier1, tier2, tier3, all, or comma-separated. Requires --models.",
+        help="Run tiered benchmarks. Values: tier1, tier2, tier3, all, or comma-separated. "
+        "Requires --models. Without --campaign only tier1/all resolve to a shipped suite "
+        "(cognitive_suite.yaml); tier2/tier3 name suites that do not exist — pass --campaign.",
     )
     bench.add_argument(
         "--models",

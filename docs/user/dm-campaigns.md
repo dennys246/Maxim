@@ -12,6 +12,14 @@ maxim
 maxim --sim scenarios/campaigns/heist_v1.yaml
 ```
 
+`--dm` is accepted but does less than its help text says. With a YAML path it is
+redundant — a campaign is auto-detected from the `campaign:` + `encounters:` keys. With a
+goal string (`maxim --sim "run a heist" --dm`) it starts the **generative narrative
+campaign** runner — the same one a plain `--sim "<goal>"` uses — with `dm` recorded as the
+flow-shape label (`cli.py::_main_impl`, the `_wants_dm and _is_goal_string` branch →
+`start_simulation_mode(mode="dm", generative=True)`). It does **not** author campaign YAML:
+the architect-writes-a-campaign design is not implemented.
+
 **Interactive mode is ON by default for DM campaigns** (since 0.4). When running interactively, the human picks choices via numbered prompts and can type free-text roleplay between choices. The campaign runs: scene delivery → human choice (or AUT choice if `--interactive false`) → branch resolution → next encounter → repeat until `__END__`.
 
 ### Human choice picker
@@ -131,6 +139,11 @@ Every campaign YAML has these sections:
 | `encounters` | Yes | Encounter definitions keyed by name |
 | `expectations` | No | Bio-system thresholds for automated validation |
 | `permissions` | No | Per-character enforced authority blocks (see below) |
+
+Two further campaign-level keys are parsed onto `CampaignDef` and then ignored by the 1.1
+runtime: `party_mode` (see [Party Mode](#party-mode-multi-agent-campaigns--planned-not-yet-implemented))
+and `choice_resolution` (default `"pc_decides"`, which is the only behaviour there is).
+Setting either changes nothing.
 
 ### Enforced Permissions
 
@@ -299,15 +312,17 @@ Flags are case-normalized (lowered) at load time.
 
 ## How Choice Classification Works
 
-When running **non-interactively** (`--interactive false`), the AUT responds to a scene and the DM runtime determines which choice was picked. Four layers:
+When running **non-interactively** (`--interactive false`), the AUT responds to a scene and the DM runtime determines which choice was picked. Five layers, tried in order:
 
 1. **ChooseTool** — A `choose` tool is available. The AUT can call `choose(option="fight")` directly. This is unambiguous.
 
 2. **Tool alias redirect** — If the AUT hallucinates a tool matching a choice name (e.g., calls `accept_job` as a tool), the alias system redirects to `choose(option="accept_job")`.
 
-3. **LLM fallback** — If neither works, the LLM classifies the response text against the choices. Returns `{"choice": "choice_name"}`.
+3. **Keyword match** — Before any LLM call, `_classify_choice` searches the response text *and the names of the tools the AUT called* for a choice name, matching both `snake_case` and the spaced form, in either direction (choice in tool name or tool name in choice). This is free and resolves most responses that phrase the choice in prose.
 
-4. **Default** — If all else fails, defaults to the first choice.
+4. **LLM fallback** — If keyword matching finds nothing, a one-shot prompt asks the LLM which choice the response matches. Returns `{"choice": "choice_name"}`.
+
+5. **Default** — If all else fails, defaults to the first choice (logged as a warning).
 
 **Tip:** Stronger models (Claude, Qwen-14b) use `choose` more reliably than small models (Mistral-7b). Small models tend to hallucinate tool names or use `think`/`respond` without picking a choice.
 
@@ -346,6 +361,56 @@ The following describes the intended design for a future release:
 When `party_mode: true` is set, each named NPC would run as an agent with its own bio-stack. Each NPC would receive scene narrative, generate dialogue, learn causal patterns, and remember prior encounters. The encounter loop would change so that NPC agents react first (generating dialogue and updating internal state), the PC observes NPC reactions alongside the scene and makes a choice, and all agents witness the outcome.
 
 For now, NPC behavior is limited to `dialogue_hints` seeds and `persona_prompt` metadata injected into the scene stimulus. NPCs do not learn or remember across encounters.
+
+## Cascades and Contextual Visibility
+
+Campaign entities are live SEM entities, so an affordance can read from one entity and write
+to another. A `cascade:` block on an affordance resolves in three phases — `reads` gather
+sensor values by role-qualified path into named roles, `writes` apply an absolute `value`,
+an additive `delta`, or a computed `expr` over those roles, and `side_effects` use the same
+mechanics for secondary consequences (`simulation/dm_schema.py::CascadeSpec`, resolved by
+`CascadeResolver` in `dm_runtime.py`):
+
+```yaml
+cascade:
+  reads:
+    - ref: wielder.strength.modifier
+      role: damage_bonus
+    - ref: self.sharpness
+      role: sharpness
+  writes:
+    - ref: target.hp
+      expr: "-(roll + damage_bonus)"     # computed from reads
+    - ref: self.durability
+      delta: -0.05                        # the sword degrades
+  side_effects:
+    - ref: target.alertness
+      value: 1.0                          # the target is now alert
+```
+
+Role names (`self`, `wielder`, `target`) resolve to real entities at execution time. A
+`CascadeRef` may also set `optional: true` to skip silently when the entity or sensor is
+absent.
+
+Sensors carry one of three visibilities: `visible` (always shown in scene prompts and tool
+output), `hidden` (never shown to the AUT — internal state only), and `contextual` (hidden
+until a `RevealCondition` is met). A reveal condition is a sensor path, a comparison
+operator (`>`, `<`, `>=`, `<=`, `==`) and a threshold:
+
+```yaml
+metadata:
+  visibility:
+    poison_resistance: contextual
+  reveal_when:
+    poison_resistance:
+      ref: pc.social.rel_guard.trust
+      op: ">="
+      value: 0.7          # revealed once trust is high enough
+```
+
+Reveal conditions are evaluated after each choice; once a condition passes the item stays
+visible. This lets a campaign model information the AUT must earn — and whether it then
+*uses* what was revealed is a strong signal for memory and reasoning quality.
 
 ## Live Entity State in Scenes
 
