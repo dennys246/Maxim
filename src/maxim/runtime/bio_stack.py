@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -328,7 +329,28 @@ def build_bio_stack(
         try:
             scn.load(scn_path)
         except Exception as e:  # D17: report, never swallow silently
-            logger.warning("SCN restore failed (%s); starting with empty temporal state: %s", scn_path, e)
+            # Before D42 a pathless SCN could not overwrite anything; now that the
+            # path is bound, session end WOULD rewrite this file with empty state
+            # and destroy a recoverable original. Move it aside first (the
+            # cost_tracker precedent) so the failure is loud AND non-destructive.
+            aside = f"{scn_path}.corrupt.{time.strftime('%Y%m%d_%H%M%S')}"
+            try:
+                Path(scn_path).rename(aside)
+                logger.warning(
+                    "SCN restore failed (%s): %s. The unreadable file is preserved at %s and this session "
+                    "starts with empty temporal state — it will NOT be overwritten.",
+                    scn_path,
+                    e,
+                    aside,
+                )
+            except OSError as move_err:
+                logger.warning(
+                    "SCN restore failed (%s): %s — and the file could not be moved aside (%s), so session "
+                    "end will overwrite it with empty state.",
+                    scn_path,
+                    e,
+                    move_err,
+                )
     scn.enable_oscillator()  # B2: close SCN→NAc feedback loop
     # EC persists beside NAc (nac_cross_session_persistence.md): NAc's
     # reward_bias / cluster_reward_bias are keyed by EC node ids, so

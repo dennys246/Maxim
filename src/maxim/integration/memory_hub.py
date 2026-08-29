@@ -139,6 +139,11 @@ class MemoryHub:
 
     # Session state
     _session_active: bool = False
+    # Whether a session was EVER opened on this hub. `_session_active` alone cannot
+    # tell "nobody ever opened one" (the D41 defect) from "an inner scope opened and
+    # already closed one" (the agent loop's normal start/end pair around a run) —
+    # and warning on the second makes the guard fire on every clean shutdown.
+    _session_ever_started: bool = False
     _session_start_time: float = 0.0
     # Guards the _session_active transitions. Post-merge review round
     # (2026-07-26, Exec #4 / Arch #1 cross-confirmed): the unlocked
@@ -616,6 +621,7 @@ class MemoryHub:
                 logger.debug("Session already active; on_session_start is a no-op")
                 return {"already_active": 1}
             self._session_active = True
+            self._session_ever_started = True
             self._session_start_time = time.time()
 
         results = {}
@@ -762,16 +768,22 @@ class MemoryHub:
         # runs consolidation (see _session_flag_lock field comment).
         with self._session_flag_lock:
             if not self._session_active:
-                # Silence here IS D41/N2: an owner that never opened a session
-                # loses EC/SCN/ATL on every close and finds out only when a later
-                # load warns "Half-present NAc/EC pair". A concurrent second
-                # caller is legitimate (the first one is consolidating), so this
-                # cannot raise — but it must not be invisible either.
-                logger.warning(
-                    "on_session_end with no active session — nothing is consolidated or persisted "
-                    "beyond what the caller saves itself. If this is a session OWNER, it must call "
-                    "on_session_start()/AgentInstance.start_session() first (bugs ledger D41)."
-                )
+                # Silence here IS D41/N2 — but only when this hub NEVER had a
+                # session: an owner that never opened one loses EC/SCN/ATL on
+                # every close and finds out when a later load warns "Half-present
+                # NAc/EC pair". A hub whose session was opened and already closed
+                # by an INNER scope (the agent loop's start/end_bio_session pair
+                # around a run) is the normal nesting and must stay quiet — a
+                # guard that fires on every clean shutdown is a guard nobody
+                # reads. Residual gap, deliberately not papered over: mutations
+                # made AFTER the loop closed and before shutdown() are not
+                # persisted by this call.
+                if not self._session_ever_started:
+                    logger.warning(
+                        "on_session_end with no session ever started on this MemoryHub — nothing is consolidated or "
+                        "persisted beyond what the caller saves itself. A session OWNER must call "
+                        "on_session_start() / AgentInstance.start_session() first (bugs ledger D41).",
+                    )
                 return {}
             self._session_active = False
 
@@ -923,9 +935,18 @@ class MemoryHub:
         ensures ATL concept extraction completes), and saves all persistence-backed
         subsystems so learning from sim sessions is not silently lost.
         """
-        # Atomic test-and-CLEAR — same discipline as on_session_end.
+        # Atomic test-and-CLEAR — same discipline as on_session_end, including
+        # its never-opened warning: sim mode resolves to the lightweight closer,
+        # so the D41 detector must live on BOTH paths or it is absent on the one
+        # most agents take.
         with self._session_flag_lock:
             if not self._session_active:
+                if not self._session_ever_started:
+                    logger.warning(
+                        "on_session_end_lightweight with no session ever started on this MemoryHub — "
+                        "nothing is persisted beyond what the caller saves itself. A session OWNER must "
+                        "call on_session_start() / AgentInstance.start_session() first (bugs ledger D41)."
+                    )
                 return {}
             self._session_active = False
 

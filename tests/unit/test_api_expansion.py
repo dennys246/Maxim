@@ -562,6 +562,9 @@ class TestCampaignParametersAreThreadedOrRejected:
 
         warnings: list[str] = []
         monkeypatch.setattr(api_mod.logger, "warning", lambda msg, *a: warnings.append(str(msg) % a if a else str(msg)))
+        # Explicit, so the test does not depend on pytest's stdin capture (it would
+        # fail under `pytest -s` in a real terminal).
+        monkeypatch.setattr(api_mod.sys, "stdin", SimpleNamespace(isatty=lambda: False))
         monkeypatch.setattr(
             "maxim.simulation.orchestrator.start_simulation_mode",
             lambda **k: SimpleNamespace(session_id="s", turns=0, finish_reason="done", campaign_analysis={}),

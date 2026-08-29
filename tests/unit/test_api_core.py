@@ -856,8 +856,9 @@ def test_shutdown_is_idempotent_and_does_not_reopen(api_home, caplog):
     agent.shutdown()
     assert agent.memory_hub._session_active is False
     assert (ec.stat().st_mtime_ns, ec.read_bytes()) == stamp, "the second shutdown re-wrote persisted state"
-    # Closing an unopened session is now LOUD — silence here is what made N2 invisible.
-    assert any("no active session" in r.getMessage() for r in caplog.records)
+    # Quiet: this hub DID have a session, the first shutdown closed it. The D41 guard
+    # fires only for a hub where none was ever opened (its own test below).
+    assert not [r for r in caplog.records if "no session ever started" in r.getMessage()]
 
 
 def test_full_agent_construction_opens_the_session_on_the_hub_it_keeps(api_home):
@@ -893,6 +894,44 @@ def test_full_agent_construction_opens_the_session_on_the_hub_it_keeps(api_home)
         reloaded.shutdown()
 
 
+def test_the_loop_closing_its_own_session_does_not_make_shutdown_cry_wolf(api_home, caplog):
+    """The agent loop opens and closes a session AROUND a run, nested inside the
+    instance's lifetime. That is normal, so the D41 detector must stay quiet — a guard
+    that fires on every clean runtime shutdown is a guard nobody reads (second review
+    round found it firing on api.run(), the CLI, the orchestrator and MaximHandle.stop()).
+    It must still fire for a hub where NO session was ever opened, which is the defect.
+    """
+    from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+    from maxim.runtime.bio_integration import end_bio_session, start_bio_session
+
+    agent = AgentFactory().create_full_agent(AgentConfig(agent_id="loop_nesting", with_bio_stack=True))
+    enabled = start_bio_session(memory_hub=agent.memory_hub, hippocampus=agent.hippocampus)
+    end_bio_session(memory_hub=agent.memory_hub, hippocampus=agent.hippocampus, memory_hub_enabled=enabled)
+    assert agent.memory_hub._session_active is False, "the loop should have closed the session"
+
+    caplog.set_level(logging.WARNING)
+    agent.shutdown()
+    cried = [r.getMessage() for r in caplog.records if "no session ever started" in r.getMessage()]
+    assert not cried, f"the D41 guard fired on a normal loop-then-shutdown sequence: {cried}"
+
+
+def test_a_hub_that_never_opened_a_session_still_warns_on_both_closers(caplog):
+    """The defect itself: closing a session nobody opened persists nothing."""
+    import threading
+
+    from maxim.integration.memory_hub import MemoryHub
+
+    for closer in ("on_session_end", "on_session_end_lightweight"):
+        hub = MemoryHub.__new__(MemoryHub)
+        hub._session_active = False
+        hub._session_ever_started = False
+        hub._session_flag_lock = threading.Lock()
+        caplog.clear()
+        with caplog.at_level(logging.WARNING):
+            assert getattr(MemoryHub, closer)(hub) == {}
+        assert any("no session ever started" in r.getMessage() for r in caplog.records), closer
+
+
 def test_write_but_dont_read_agents_do_not_restore_scn(api_home):
     """`load_persisted=False` (the orchestrator NPC) must not read a previous
     session's temporal state — the D42 fix must not change that contract."""
@@ -904,6 +943,9 @@ def test_write_but_dont_read_agents_do_not_restore_scn(api_home):
     first.memory_hub.scn.register("probe_memory_1", TemporalSignature.now(), significance=0.9)
     first.shutdown()
 
+    assert (api_home / "agents" / "npc_style" / "scn.json").exists(), (
+        "nothing was persisted, so the assertion below would pass vacuously"
+    )
     npc = factory.create_full_agent(
         AgentConfig(agent_id="npc_style", with_bio_stack=True, load_persisted=False), auto_load=False
     )
@@ -911,3 +953,26 @@ def test_write_but_dont_read_agents_do_not_restore_scn(api_home):
         assert npc.memory_hub.scn.get_signature("probe_memory_1") is None
     finally:
         npc.shutdown()
+
+
+def test_a_corrupt_scn_file_is_preserved_not_overwritten(api_home, caplog):
+    """D42 bound scn.json to the runtime path, which means session end can now REWRITE
+    it — so an unreadable file must be moved aside first, never silently destroyed."""
+    from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+
+    factory = AgentFactory()
+    first = factory.create_full_agent(AgentConfig(agent_id="corrupt_scn", with_bio_stack=True))
+    first.shutdown()
+    scn_json = api_home / "agents" / "corrupt_scn" / "scn.json"
+    assert scn_json.exists()
+    scn_json.write_text("{not json at all")
+
+    caplog.set_level(logging.WARNING)
+    second = factory.create_full_agent(AgentConfig(agent_id="corrupt_scn", with_bio_stack=True))
+    try:
+        aside = list((api_home / "agents" / "corrupt_scn").glob("scn.json.corrupt.*"))
+        assert aside, "the unreadable SCN file was not preserved"
+        assert aside[0].read_text() == "{not json at all"
+        assert any("preserved at" in r.getMessage() for r in caplog.records)
+    finally:
+        second.shutdown()

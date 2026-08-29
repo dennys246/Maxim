@@ -38,7 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`build_bio_stack` built a pathless SCN, so the RUNTIME path never persisted temporal
   state** (D42, found while verifying D41): every `api.run()` / CLI / orchestrator agent
   silently lost its SCN signatures between sessions. `scn.json` is now bound at construction
-  and restored only when `load_persisted`.
+  and restored only when `load_persisted`; an unreadable `scn.json` is moved aside to
+  `scn.json.corrupt.<ts>` rather than overwritten, since binding the path made that file
+  writable for the first time.
 - **The drive `TemporalEvent` emitter was malformed and swallowed its own `TypeError` at
   `log.debug`** (D9) — a dead path that looked alive at every log level anyone runs. The
   construction is correct and errors report at WARNING. The path stays **dormant**: nothing in

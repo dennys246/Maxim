@@ -680,6 +680,12 @@ class AgentFactory:
             instance.nac = bio.nac
             instance.atl = bio.atl
             instance.memory_hub = bio.memory_hub
+            # D41/N2: open on the hub the caller keeps, HERE rather than before the
+            # return — steps 3-4 below can roll back via instance.shutdown(), and a
+            # rollback that closes an unopened session consolidates nothing while
+            # still writing nac.json without ec.json (tripping check_nac_ec_pairing
+            # on the next load). Idempotent, so the later start_bio_session no-ops.
+            instance.start_session()
             if skeleton_memory_hub is not None and skeleton_memory_hub is not bio.memory_hub:
                 try:
                     skeleton_memory_hub.shutdown()
@@ -753,8 +759,9 @@ class AgentFactory:
             except Exception as e:
                 log.warning("Agent %s: FearGatedExecutor failed: %s", config.agent_id, e)
 
-        # D41 / N2: open the session on the hub the caller actually keeps —
-        # AFTER the bio-stack swap, once, for every construction path.
+        # Non-bio-stack construction keeps create_agent's hub, which deferred its
+        # open; the bio-stack path already opened above, and start_session is
+        # idempotent, so this is the single "every path ends with a session" line.
         instance.start_session()
 
         log.info(
