@@ -874,6 +874,27 @@ jobs:
           git fetch origin main --depth=1 || true
           python3 scripts/lint_no_silent_swallows.py
 
+      - name: fix→tests lint (roadmap 1.1.x item 16.2)
+        run: |
+          # Diff-scoped: every commit on this branch whose subject matches
+          # ^fix and touches src/ must also touch tests/ (#519 was a
+          # behavioural fix to an abort path with zero test changes). Opt-out
+          # for genuine no-test fixes is a `No-Tests-Reason: <why>` trailer,
+          # echoed in the output. Positive control: tests/unit/
+          # test_lint_fix_touches_tests.py (fixture repos).
+          git fetch origin main --depth=1 || true
+          python3 scripts/lint_fix_touches_tests.py
+
+      - name: atomic_io ratchet — os.replace() outside utils/atomic_io.py (roadmap 1.1.x item 16.3)
+        run: |
+          # Prints the per-file AST count of os.replace() call sites outside
+          # the canonical writer EVERY run (CLAUDE.md's atomic-persistence
+          # invariant cites THIS output, not a number that can rot), and
+          # fails if any file's count rose vs origin/main (grandfathered
+          # per-file; new files start at zero; burn-down is free).
+          git fetch origin main --depth=1 || true
+          python3 scripts/lint_atomic_io_ratchet.py
+
       - name: Harness provenance lint (Exp 42b retraction lesson)
         run: |
           # Any scripts/**/*.py that spawns `maxim` sub-sims must call

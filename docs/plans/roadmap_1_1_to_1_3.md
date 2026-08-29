@@ -358,17 +358,17 @@ Each POINTS at its owning plan — stages live there, not here:
        a diff changes the `pyproject.toml` version, `CHANGELOG.md` must contain
        `## [<that version>]` (`scripts/audit_release_tags.py` covers tag↔changelog, not
        bump↔changelog — the Claude card's stated path to B for Release governance).
-    2. **Diff-scoped fix→tests lint:** a commit whose subject starts `fix(` and touches
+    2. **DONE 2026-08-29 (1.1.1 Cluster B: `scripts/lint_fix_touches_tests.py`, CI + fixture tests) — Diff-scoped fix→tests lint:** a commit whose subject starts `fix(` and touches
        `src/` must touch `tests/`. #519 is the incident (a behavioral fix to an abort path
        with zero test changes); every fix since the cards has complied (9/9), so the lint
        ratifies practice rather than changing it. The card's "90 days clean" then
        becomes measurable at the next re-score instead of asserted.
-    3. **`atomic_io` violations get a guard.** CLAUDE.md's KNOWN-GAP admits 17 hand-rolled
+    3. **DONE 2026-08-29 (1.1.1 Cluster B: `scripts/lint_atomic_io_ratchet.py` — AST count printed in CI, per-file no-growth ratchet; CLAUDE.md cites the CI output) — `atomic_io` violations get a guard.** CLAUDE.md's KNOWN-GAP admits 17 hand-rolled
        `os.replace` sites, "detection-only, needs its own task" — still 17. A stale
        quantified confession was the Claude card's specific Documentation-honesty
        deduction. Either a grandfathered per-file count lint (the swallow-lint shape) or
        a burn-down; the lint is the cheaper first step and makes the count self-updating.
-    4. **Function-length baseline** for the three god functions (item 7's no-growth
+    4. **DONE 2026-08-29 (1.1.1 Cluster B: `src/maxim/utils/function_length_baseline.json` + `tests/unit/test_function_length_baseline.py`, fast suite; growth fails, shrinkage must tighten) — Function-length baseline** for the three god functions (item 7's no-growth
        guard): `src/maxim/utils/architecture_baseline.json`'s pattern — a reviewed
        ceiling per function, additions fail the fast suite, shrinkage must tighten the
        ceiling in the same commit.
