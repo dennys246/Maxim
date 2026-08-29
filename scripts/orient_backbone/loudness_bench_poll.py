@@ -40,13 +40,13 @@ def _get(base: str, path: str, timeout: float) -> tuple[dict, float]:
     return data, time.monotonic() - t
 
 
-def poll(base: str, duration: float, period: float, out: Path) -> tuple[int, int]:
+def poll(base: str, duration: float, period: float, out: Path, stamp: dict | None = None) -> tuple[int, int]:
     n = err = 0
     t0 = time.time()
     with out.open("w", encoding="utf-8") as fh:
         print("RUNNING", flush=True)
         while time.time() - t0 < duration:
-            rec: dict = {"t": round(time.time() - t0, 2)}
+            rec: dict = {**(stamp or {}), "t": round(time.time() - t0, 2)}
             try:
                 sp, l1 = _get(base, _PARAM + "AEC_SPENERGY_VALUES", 5.0)
                 ag, l2 = _get(base, _PARAM + "PP_AGCGAIN", 5.0)
@@ -75,8 +75,23 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--duration", type=float, default=75.0, help="seconds")
     ap.add_argument("--period", type=float, default=0.25, help="seconds per sample")
     ap.add_argument("--out", type=Path, default=Path("h2_loudness_bench.jsonl"))
+    ap.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="write a GATED record (docs/experiments/data/) from a dirty src/scripts tree; stamps allow_dirty: true "
+        "into every record (default: refuse, exit 3 — docs/lessons/experiment-prereg-precedes-data.md)",
+    )
     args = ap.parse_args(argv)
-    n, err = poll(f"http://{args.host}:{args.port}", args.duration, args.period, args.out)
+    # scripts/_provenance.py by path (stdlib-only): a bench record written under
+    # docs/experiments/data/ from a dirty src/scripts tree is refused (exit 3) unless
+    # --allow-dirty, which stamps allow_dirty: true into every record (item 16.7).
+    repo_root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(repo_root / "scripts"))
+    import _provenance
+
+    gate = _provenance.preflight_gated_record_or_exit(repo_root, args.out, allow_dirty=args.allow_dirty)
+    stamp = {"allow_dirty": True} if gate["allow_dirty"] else {}
+    n, err = poll(f"http://{args.host}:{args.port}", args.duration, args.period, args.out, stamp)
     print(f"DONE samples={n} errors={err} -> {args.out}", flush=True)
     return 0 if err == 0 else 1
 

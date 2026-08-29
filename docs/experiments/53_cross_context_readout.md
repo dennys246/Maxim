@@ -200,7 +200,12 @@ last complete run or refuse on multiple `start` records — pooling partial star
 be harmless here and would not be in general; (2) the H1 F1 early warning should be a
 record, not a print; (3) a partial Phase 2 start leaves no `agent_done` for its last agent,
 so the file cannot say whether a run was interrupted or crashed. Filed against the harness
-rather than the experiment.
+rather than the experiment — bugs ledger [D34–D36](../bugs/README.md), fixed 2026-08-29
+(run-aware `verdict` with `--run-id` and `runs_used`/`runs_excluded`; `controller_warning`
+records; `run_end` status records). Re-running the new `verdict` on this file selects
+`20260829T011136Z` alone (the three partial starts listed as excluded) and reproduces
+1.00 / 0.00 / 0.50 exactly; the only field that moves is the exploratory-placement count
+(n = 9 per target from the complete run, vs 15 pooled).
 
 **What R1 changes.** The ledger row's EARNED status now rests on a record whose code is the
 released 1.1.0 tag and whose tree was clean. The original 53/53b records are retained as the

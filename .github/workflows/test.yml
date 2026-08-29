@@ -840,6 +840,11 @@ jobs:
           #
           # See CLAUDE.md "Working principles for new mechanisms" Principle 5
           # for the format convention.
+          #
+          # Check 5 (2026-08-29, roadmap 1.1.x item 16.9): every EARNED row in
+          # docs/plans/behavioral_graduation_candidates.md cites a resolving
+          # docs/experiments/data/ link or carries a dated data-lost
+          # annotation. Verified to fail 3/3 rows on the pre-fix ledger.
           python3 scripts/lint_claude_md_invariants.py
 
       - name: Multi-agent marker lint (Stage 3 of structural invariant tests)
@@ -881,7 +886,32 @@ jobs:
           # spawn — a harness that skips it can measure the WRONG CHECKOUT
           # with authoritative-looking JSONL (the Exp 42b retraction).
           # False positives opt out with '# provenance-exempt: <reason>'.
+          # Widened 2026-08-29 (roadmap 1.1.x item 16.7) to the IN-PROCESS family:
+          # every scripts/orient_*/ record writer must run the gated-record
+          # preflight (scripts/_provenance.py::preflight_gated_record — exit 3
+          # on a dirty src/scripts tree unless --allow-dirty) or write through
+          # the guarded live_common.JsonlLog; the lint also asserts JsonlLog
+          # still references the preflight. Verified to fail 4/4 in-process
+          # writers on the pre-fix tree.
           python3 scripts/lint_harness_provenance.py
+
+      - name: Pre-registration precedes data lint (roadmap 1.1.x item 16.8)
+        run: |
+          # For every docs/experiments/data/ entry whose experiment has a
+          # pre-registration, the prereg's (and each PRE-DATA amendment's)
+          # FIRST commit on origin/main must precede the data's first `ts`
+          # (fallback: the data's own first commit). Exp 53/53b landed the
+          # 53b prereg in the same squash as its data and got an EARNED row
+          # the same afternoon the 1.1.0 tag was placed; this step is what
+          # would have failed that PR. The original 53/53b files, the 53
+          # inputs and the 44b pilot are grandfathered BY EXPLICIT LIST with
+          # reasons (reported as still-failing, never silently passed).
+          # Needs full history of main: a --depth=1 checkout makes every
+          # file look freshly added, so a shallow repo is exit 2, not a pass.
+          # Positive control: tests/unit/test_lint_prereg_precedes_data.py
+          # builds a fixture repo with the order wrong and asserts the fail.
+          git fetch --unshallow origin main 2>/dev/null || git fetch origin main
+          python3 scripts/lint_prereg_precedes_data.py --ref origin/main
 
   # ── PKG seam — the lean aarch64 (Raspberry Pi) install ────────────────────
   # Two jobs because there are two DISTINCT risks and neither covers the other:

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Lint the canonical agent-guidance corpus and its provider-neutral adapter.
 
-Four checks (the first is the original Principle 5 lint; the next two were added by
-docs/plans/archive/claude_md_diet.md, 2026-08-13; the fourth closes the AGENTS.md drift seam):
+Five checks (the first is the original Principle 5 lint; the next two were added by
+docs/plans/archive/claude_md_diet.md, 2026-08-13; the fourth closes the AGENTS.md drift seam;
+the fifth is roadmap 1.1.x item 16.9 from the Exp 53/53b release-day incident):
 
 1. **Guard citations.** For each `[engineering]` invariant, the body must contain a
    `Regression guard:` reference; for each `[behavioral]` invariant, a `Roy experiment:`
@@ -26,6 +27,16 @@ docs/plans/archive/claude_md_diet.md, 2026-08-13; the fourth closes the AGENTS.m
 4. **Pointer-only AGENTS.md.** AGENTS.md must match the frozen provider-neutral adapter
    exactly. It points auto-loading tools at CLAUDE.md but duplicates no checks, routing
    entries, or project rules that could drift independently.
+
+5. **EARNED ledger rows cite their data.** In `docs/plans/behavioral_graduation_candidates.md`
+   every table row whose status cell starts with `**EARNED` must carry a `Regression guard:`
+   field AND either a markdown link into `docs/experiments/data/` that resolves, or a dated
+   data-lost annotation (`data lost … YYYY-MM-DD` / `Data lost (YYYY-MM-DD)`). A row went
+   EARNED on 2026-08-26 from records whose code-under-test could not be established; the
+   lesson (docs/lessons/experiment-prereg-precedes-data.md) is that the ledger must point at
+   committed data, not at a claim. Verified to fail 3/3 on the pre-fix ledger (rows L185
+   EC pattern completion, L186 SEM pain → NAc, L188 substrate-primary — the third had a
+   guard citing pre-registrations but no data link although Exp 42's data is committed).
 
 Exits:
   0 — all checks pass.
@@ -65,6 +76,13 @@ CI enforces this pointer-only adapter byte-for-byte to prevent instruction drift
 """
 
 MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+
+# Check 5 — the behavioral-graduation ledger. A row is EARNED when any cell starts with
+# **EARNED (covers "EARNED (de facto)", "EARNED post-1.0", "EARNED 2026-08-25 via …").
+LEDGER_PATH = Path("docs/plans/behavioral_graduation_candidates.md")
+EARNED_CELL = re.compile(r"^\*\*EARNED")
+DATA_DIR_MARK = "docs/experiments/data/"
+DATA_LOST = re.compile(r"data[- ]lost\b[^|]{0,120}?\d{4}-\d{2}-\d{2}", re.IGNORECASE)
 
 # Invariant opener: line starts with optional bullet prefix, then **[engineering] or **[behavioral].
 # Lessons learned uses no bullet; Architectural invariants uses "- ".
@@ -178,6 +196,40 @@ def _broken_repo_links(doc_path: Path, repo_root: Path) -> list[tuple[int, str]]
     return broken
 
 
+def _ledger_earned_violations(ledger_path: Path, repo_root: Path) -> list[tuple[int, str, str]]:
+    """(line_num, row_title, problem) for EARNED ledger rows without a data citation."""
+    violations: list[tuple[int, str, str]] = []
+    for i, line in enumerate(ledger_path.read_text().split("\n"), start=1):
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 3 or not any(EARNED_CELL.match(c) for c in cells):
+            continue
+        title = (cells[0] if not cells[0].isdigit() else cells[1])[:70]
+        if not ENG_FIELD_PATTERN.search(line):
+            violations.append((i, title, "EARNED row has no 'Regression guard:' field"))
+            continue
+        data_links = [t for t in MARKDOWN_LINK.findall(line) if DATA_DIR_MARK in t or "experiments/data/" in t]
+        if data_links:
+            for target in data_links:
+                target = target.split("#")[0]
+                candidates = [(ledger_path.parent / target).resolve(), (repo_root / target).resolve()]
+                if not any(c.exists() for c in candidates):
+                    violations.append((i, title, f"data link does not resolve: {target}"))
+            continue
+        if DATA_LOST.search(line):
+            continue
+        violations.append(
+            (
+                i,
+                title,
+                "EARNED row cites no docs/experiments/data/ path and carries no dated data-lost annotation "
+                "(item 16.9: an EARNED status points at committed data or says, with a date, that it is lost)",
+            )
+        )
+    return violations
+
+
 def lint(claude_md_path: Path) -> int:
     if not claude_md_path.exists():
         print(f"ERROR: {claude_md_path} does not exist", file=sys.stderr)
@@ -248,6 +300,23 @@ def lint(claude_md_path: Path) -> int:
             for line_num, target in broken:
                 print(f"  {rel}:{line_num}: {target}", file=sys.stderr)
 
+    # Check 5 — EARNED rows in the behavioral-graduation ledger cite committed data.
+    ledger_path = repo_root / LEDGER_PATH
+    if not ledger_path.exists():
+        print(f"ERROR: {LEDGER_PATH} missing — the EARNED-row check cannot run", file=sys.stderr)
+        return 2
+    ledger_violations = _ledger_earned_violations(ledger_path, repo_root)
+    if ledger_violations:
+        failed = True
+        print(
+            f"FAIL: {len(ledger_violations)} EARNED row(s) in {LEDGER_PATH} without a resolving "
+            "docs/experiments/data/ link or a dated data-lost annotation (roadmap 1.1.x item 16.9):",
+            file=sys.stderr,
+        )
+        for line_num, title, problem in ledger_violations:
+            print(f"  {LEDGER_PATH}:{line_num}: {problem}", file=sys.stderr)
+            print(f"    row: {title}", file=sys.stderr)
+
     if failed:
         print(
             "\nSee CLAUDE.md 'Working principles for new mechanisms' Principle 5 for the format "
@@ -260,7 +329,7 @@ def lint(claude_md_path: Path) -> int:
     print(
         f"PASS: {n_docs} doc(s) audited — all tagged invariants carry the required field, "
         f"CLAUDE.md ~{est_tokens} est. tokens (ceiling {TOKEN_CEILING}), AGENTS.md adapter "
-        "matches, all repo links resolve."
+        "matches, all repo links resolve, every EARNED ledger row cites its data."
     )
     return 0
 

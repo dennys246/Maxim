@@ -164,6 +164,14 @@ fragility; both belong in the paper's limitations section.
 
 ## What the pilot establishes
 
+**Provenance disclosure (2026-08-29, surfaced by `scripts/lint_prereg_precedes_data.py`).** The
+pilot's `campaign_start` record (`data/44b_pilot/manifest.jsonl`, 2026-08-10 11:53:49 local)
+precedes the pre-registration's commit `1667ad19` (12:10:05 −0600) by 16 minutes — the prereg
+was on a branch, not on `main`, when the pilot began, and the first `learn` sub-run started at
+12:16. The pilot is an instrument shakedown, not the confirmatory run, and nothing in the 44b
+gates rests on it; it is grandfathered in the lint by explicit entry with this reason. The
+confirmatory run must start after the prereg (and any amendment) is on `main`.
+
 - The apparatus runs end-to-end and every gate fires correctly.
 - Both learn arms reach bias 0.9967; the counterbalance learns the opposite color.
 - The transplant surfaces (validity gate passes) — the VOID branch was not needed.
