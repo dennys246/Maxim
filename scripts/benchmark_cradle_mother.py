@@ -33,6 +33,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -410,6 +411,12 @@ def main() -> int:
     p.add_argument("--model", default="mistral-7b", help="narrator profile (prose-less arc → light use)")
     p.add_argument("--timeout-s", type=int, default=1800)
     p.add_argument("--out", required=True)
+    p.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="write a GATED record (docs/experiments/data/) from a dirty src/scripts tree; stamps allow_dirty: true "
+        "into every record (default: refuse, exit 3 — docs/lessons/experiment-prereg-precedes-data.md)",
+    )
     # Durable default per apparatus standard S4: Exp 48's graduation
     # originals lived in /tmp and are permanently gone (macOS cleared it
     # again mid-investigation). Never default an experiment workdir there.
@@ -497,7 +504,12 @@ def main() -> int:
     # This harness spawns `[sys.executable, "-m", "maxim"]`, so the probe
     # interpreter is sys.executable itself.
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _provenance import ProvenanceError, assert_repo_interpreter, executed_code_provenance
+    from _provenance import (
+        ProvenanceError,
+        assert_repo_interpreter,
+        executed_code_provenance,
+        preflight_gated_record_or_exit,
+    )
 
     repo_root = Path(__file__).resolve().parent.parent
     provenance: dict[str, str] = {}
@@ -506,8 +518,14 @@ def main() -> int:
     except ProvenanceError as exc:
         print(f"PREFLIGHT FAIL: {exc}", file=sys.stderr)
         return 3
+    # Gated-record refusal (roadmap 1.1.x item 16.7, both harness families): a record
+    # under docs/experiments/data/ from a dirty src/scripts tree exits 3 unless
+    # --allow-dirty, which stamps allow_dirty: true into every record.
+    preflight_gated_record_or_exit(repo_root, args.out, allow_dirty=args.allow_dirty)
     if not args.mock:
-        provenance = executed_code_provenance(repo_root, sys.executable)
+        provenance = executed_code_provenance(
+            repo_root, sys.executable, out_path=args.out, allow_dirty=args.allow_dirty
+        )
         err = _narrator_preflight(args.model)
         if err is not None:
             print(f"PREFLIGHT FAIL: {err}", file=sys.stderr)
@@ -622,6 +640,7 @@ def main() -> int:
                         "credit": args.credit,
                         "embodiment": arm_bodies[arm],
                         "mock": args.mock,
+                        "ts": round(time.time(), 3),  # first-write time, for lint_prereg_precedes_data
                         "git_hash": _git_hash(),
                         # Exp 42b self-auditing-artifact rule: harness hash
                         # describes where the harness LIVES; these describe

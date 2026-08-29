@@ -151,3 +151,29 @@ def test_jsonl_log_non_gated_path_never_refuses_or_stamps(repo: Path, tmp_path_f
     log.close()
     rec = json.loads(out.read_text().splitlines()[0])
     assert "allow_dirty" not in rec and log.gated is False
+
+
+def test_jsonl_log_truncate_mode(repo: Path, tmp_path_factory, monkeypatch) -> None:
+    lc = _load_live_common()
+    monkeypatch.setattr(lc, "_REPO_ROOT", str(repo))
+    out = tmp_path_factory.mktemp("tmp") / "w.jsonl"
+    out.write_text("stale\n")
+    log = lc.JsonlLog(str(out), mode="w")
+    log.write("header")
+    log.close()
+    assert [json.loads(line)["event"] for line in out.read_text().splitlines()] == ["header"]
+    with pytest.raises(ValueError):
+        lc.JsonlLog(str(out), mode="r+")
+
+
+def test_executed_code_provenance_stamps_dirty_flag_and_refuses_gated_dirty_write(repo: Path, monkeypatch) -> None:
+    monkeypatch.setattr(P, "resolved_maxim_file", lambda binary, timeout=60.0: str(repo / "src/maxim/__init__.py"))
+    prov = P.executed_code_provenance(repo, sys.executable)
+    assert prov["working_tree_dirty_src_scripts"] is False and "allow_dirty" not in prov
+    _dirty(repo)
+    with pytest.raises(P.DirtyTreeError):
+        P.executed_code_provenance(repo, sys.executable, out_path=repo / "docs/experiments/data/x.jsonl")
+    prov = P.executed_code_provenance(
+        repo, sys.executable, out_path=repo / "docs/experiments/data/x.jsonl", allow_dirty=True
+    )
+    assert prov["allow_dirty"] is True and prov["working_tree_dirty_src_scripts"] is True

@@ -237,7 +237,7 @@ def run(arm: str, *, seed: int, ticks: int, bin_size: int, epsilon: float, credi
     return [sum(b) / len(b) for b in bins], raw, telemetry
 
 
-def _provenance(out_path: str, allow_dirty: bool) -> dict:
+def _provenance_block(out_path: str, allow_dirty: bool) -> dict:
     """Which code ran (scripts/_provenance.py::in_process_code_provenance, by path).
 
     Refuses (exit 3) when the imported ``maxim`` is not this repo's ``src``, and when
@@ -276,7 +276,7 @@ def main() -> int:
     )
     args = p.parse_args()
 
-    prov = _provenance(args.json, args.allow_dirty)
+    prov = _provenance_block(args.json, args.allow_dirty)
     seeds = list(range(args.seeds))
     print(
         f"Exp 52 Phase A — credit={args.credit} ticks={args.ticks} bin={args.bin} "

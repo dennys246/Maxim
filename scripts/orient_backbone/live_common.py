@@ -59,12 +59,14 @@ class JsonlLog:
     stamping is detection, refusing is enforcement.
     """
 
-    def __init__(self, path: str, *, allow_dirty: bool = False) -> None:
+    def __init__(self, path: str, *, allow_dirty: bool = False, mode: str = "a") -> None:
+        if mode not in ("a", "w"):
+            raise ValueError(f"mode must be 'a' (append, default) or 'w' (truncate), got {mode!r}")
         self.path = path
         gate = _provenance.preflight_gated_record_or_exit(_REPO_ROOT, path, allow_dirty=allow_dirty)
         self.gated = gate["gated"]
         self._stamp = {"allow_dirty": True} if gate["allow_dirty"] else {}
-        self._f = open(path, "a", encoding="utf-8")  # noqa: SIM115 - long-lived handle
+        self._f = open(path, mode, encoding="utf-8")  # noqa: SIM115 - long-lived handle
 
     def write(self, event: str, **fields: object) -> None:
         rec = {"ts": round(time.time(), 3), "event": event, **self._stamp, **fields}

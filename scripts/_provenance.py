@@ -289,7 +289,7 @@ def in_process_code_provenance(
     gate = preflight_gated_record(root, out_path, allow_dirty=allow_dirty)
     prov: dict[str, object] = {
         "executed_maxim_file": str(executed),
-        "executed_git_hash": _git_hash_long(root),
+        "executed_git_hash": _git_hash_short12(root),
         "working_tree_dirty_src_scripts": gate["working_tree_dirty_src_scripts"],
         "python": sys.executable,
         "pythonpath": os.environ.get("PYTHONPATH", ""),
@@ -299,7 +299,7 @@ def in_process_code_provenance(
     return prov
 
 
-def _git_hash_long(cwd: Path) -> str:
+def _git_hash_short12(cwd: Path) -> str:
     try:
         r = subprocess.run(
             ["git", "rev-parse", "--short=12", "HEAD"],
@@ -313,21 +313,36 @@ def _git_hash_long(cwd: Path) -> str:
         return "unknown"
 
 
-def executed_code_provenance(repo_root: Path | str, binary: str) -> dict[str, str]:
+def executed_code_provenance(
+    repo_root: Path | str,
+    binary: str,
+    *,
+    out_path: Path | str | None = None,
+    allow_dirty: bool = False,
+) -> dict[str, object]:
     """Provenance describing the CODE THAT RAN, for embedding in run records.
 
     ``harness_git_hash`` is where the harness file lives; ``executed_git_hash``
     is the tree the sub-sims actually import. When they disagree, the run is
     suspect — record both so the artifact can be audited long after the shell
-    history is gone.
+    history is gone. Since 2026-08-29 the block also carries
+    ``working_tree_dirty_src_scripts`` (both harness families stamp it), and
+    when ``out_path`` is given the gated-record refusal applies exactly as for
+    the in-process family (:func:`preflight_gated_record`; ``allow_dirty`` is
+    stamped only when it was needed and granted).
     """
     root = Path(repo_root).resolve()
+    gate = preflight_gated_record(root, out_path, allow_dirty=allow_dirty)
     resolved = resolved_maxim_file(binary)
     executed_root = Path(resolved).resolve().parent.parent.parent if resolved else None
-    return {
+    prov: dict[str, object] = {
         "harness_repo": str(root),
         "harness_git_hash": _git_hash(root),
         "executed_maxim_file": resolved or "unresolved",
         "executed_git_hash": _git_hash(executed_root) if executed_root else "unknown",
+        "working_tree_dirty_src_scripts": gate["working_tree_dirty_src_scripts"],
         "pythonpath": os.environ.get("PYTHONPATH", ""),
     }
+    if gate["allow_dirty"]:
+        prov["allow_dirty"] = True
+    return prov

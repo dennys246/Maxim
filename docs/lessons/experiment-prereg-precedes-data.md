@@ -138,4 +138,10 @@ scope is a smaller change than building anything new.
   before its prereg commit, are grandfathered by explicit list with reasons), and the EARNED-row
   rule in `lint_claude_md_invariants.py` (L185 / L186 got dated data-lost annotations + test
   guards; L188 got its Exp 42 data links). D34–D36 fixed in the same PR. The brief stub's
-  `Regression guard:` line now names these artifacts.
+  `Regression guard:` line now names these artifacts. The review round (both lenses) caught
+  that `git log --diff-filter=A` without `--first-parent` reports a merge-committed prereg at
+  its BRANCH time — the lint would have passed the incident under the merge style rule (3)
+  mandates; fixed + fixture-tested. The clean-tree rule then surfaced two more dirty-stamped
+  gated records nobody had disclosed: `h1_partc_big_block.jsonl` (Exp 45 row) and
+  `54_targets.json` (Exp 54 Phase B inputs) — grandfathered with reasons, disclosed on their
+  rows/docs, re-runs owed. The refusal now covers the sub-sim spawner family too.

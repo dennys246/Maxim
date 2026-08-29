@@ -95,3 +95,15 @@ def test_missing_ledger_is_exit_2(tmp_path: Path) -> None:
     claude_path = _write_minimal_guidance_tree(tmp_path, agents_text=EXPECTED_AGENTS_ADAPTER)
     (tmp_path / "docs/plans/behavioral_graduation_candidates.md").unlink()
     assert lint(claude_path) == 2
+
+
+def test_tier3_earned_form_is_judged_case_insensitively(tmp_path: Path, capsys) -> None:
+    row = "| 9 | Reflex system | **Earned 2026-05-01** — via Exp 09. **Regression guard:** [t](../../tests/unit/t.py) |"
+    assert _ledger_lint(tmp_path, row) == 1
+    assert "cites no docs/experiments/data/ path" in capsys.readouterr().err
+
+
+def test_non_gated_shakedown_data_link_is_not_evidence(tmp_path: Path, capsys) -> None:
+    row = "| X | mech | **EARNED** via Exp 9. **Regression guard:** [data](../experiments/data/9_dry_run_nonfrozen.jsonl) |"
+    assert _ledger_lint(tmp_path, row, data_file="docs/experiments/data/9_dry_run_nonfrozen.jsonl") == 1
+    assert "non-gated shakedown" in capsys.readouterr().err

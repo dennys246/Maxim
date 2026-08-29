@@ -1598,6 +1598,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", default="claude-sonnet")
     parser.add_argument("--out", type=Path, required=True, help="Append-only JSONL output path for per-trial records")
     parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="write a GATED record (docs/experiments/data/) from a dirty src/scripts tree; stamps allow_dirty: true "
+        "into every record (default: refuse, exit 3 — docs/lessons/experiment-prereg-precedes-data.md)",
+    )
+    parser.add_argument(
         "--cost-cap", type=float, default=20.0, help="Hard ceiling on cumulative cost (USD); default $20"
     )
     parser.add_argument("--sim-max-turns", type=int, default=12)
@@ -1659,13 +1665,14 @@ def main(argv: list[str] | None = None) -> int:
     # Provenance guard — refuse to run if the sub-sims would import a `maxim`
     # from outside this repo (scripts/_provenance.py; Exp 42b post-mortem).
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _provenance import ProvenanceError, assert_repo_interpreter
+    from _provenance import ProvenanceError, assert_repo_interpreter, preflight_gated_record_or_exit
 
     try:
         assert_repo_interpreter(Path(__file__).resolve().parent.parent, _resolve_maxim_binary(), exempt=False)
     except ProvenanceError as exc:
         print(f"PREFLIGHT FAIL: {exc}", file=sys.stderr)
         return 3
+    preflight_gated_record_or_exit(Path(__file__).resolve().parent.parent, args.out, allow_dirty=args.allow_dirty)
 
     global _PACE_S
     _PACE_S = max(0.0, float(args.pace_s))

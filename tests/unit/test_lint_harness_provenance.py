@@ -1,7 +1,8 @@
 """scripts/lint_harness_provenance.py — both families, on a synthetic scripts tree.
 
 Verified to fail 4/4 in-process writers on the pre-fix origin/main tree (live_common.py,
-ear_map.py, loudness_bench_poll.py, 9_hunger_relief_orient.py).
+ear_map.py, loudness_bench_poll.py, 9_hunger_relief_orient.py) and 6/6 spawners on the
+spawner-gate rule.
 """
 
 from __future__ import annotations
@@ -46,19 +47,6 @@ def test_guarded_writer_must_itself_run_the_preflight(tmp_path: Path) -> None:
     root = _tree(tmp_path, writer="class JsonlLog:\n    def __init__(self, path):\n        self._f = open(path, 'a')\n")
     fails = L.lint(root)
     assert len(fails) == 1 and "JsonlLog no longer references preflight_gated_record" in fails[0]
-
-
-def test_spawner_family_unchanged(tmp_path: Path) -> None:
-    root = _tree(tmp_path)
-    (root / "scripts/bench.py").write_text(
-        'import subprocess\nsubprocess.run([sys.executable, "-m", "maxim", "--sim"])\n'
-    )
-    fails = L.lint(root)
-    assert len(fails) == 1 and "assert_repo_interpreter" in fails[0]
-    (root / "scripts/bench.py").write_text(
-        'import subprocess\n_provenance.assert_repo_interpreter(R, b)\nsubprocess.run([sys.executable, "-m", "maxim", "--sim"])\n'
-    )
-    assert L.lint(root) == []
 
 
 def test_real_tree_is_clean() -> None:

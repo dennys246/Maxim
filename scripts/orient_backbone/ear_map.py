@@ -55,11 +55,10 @@ from datetime import datetime, timezone
 # Library reader (CI-enforced single HTTP surface); needs PYTHONPATH=<repo>/src.
 from maxim.embodiment.audio_localization import doa_to_azimuth, make_reachy_rest_doa_reader
 
-# scripts/_provenance.py by path (same tree as this file; stdlib-only): the gated-record
-# refusal for the in-process family (roadmap 1.1.x item 16.7).
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(_REPO_ROOT / "scripts"))
-import _provenance  # noqa: E402
+# The in-process family's ONE record writer (gated-record refusal lives in its
+# constructor — roadmap 1.1.x item 16.7).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from live_common import JsonlLog  # noqa: E402
 
 AZIMUTH_GRID_DEG = list(range(-90, 91, 15))
 HEIGHTS = ("below", "level", "above")
@@ -132,11 +131,9 @@ def run_sweep(args) -> int:
         args.out
         or f"docs/experiments/data/ear_map_{args.shell}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.jsonl"
     )
-    gate = _provenance.preflight_gated_record_or_exit(_REPO_ROOT, out_path, allow_dirty=args.allow_dirty)
-    stamp = {"allow_dirty": True} if gate["allow_dirty"] else {}
+    log = JsonlLog(out_path, allow_dirty=args.allow_dirty, mode="w")
     header = {
         "record": "header",
-        **stamp,
         "experiment": "ear_map",
         "shell": args.shell,
         "host": args.host,
@@ -157,8 +154,8 @@ def run_sweep(args) -> int:
     print(f"ear_map: shell={args.shell} — {len(cells)} cells × {args.cell_seconds}s → {out_path}")
     print("Recenter the robot now. Do not touch it again until the sweep ends.\n")
 
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(json.dumps(header) + "\n")
+    log.write("header", **header)
+    try:
         for i, (gt_deg, height) in enumerate(cells, 1):
             side = "LEFT" if gt_deg < 0 else ("RIGHT" if gt_deg > 0 else "FRONT")
             input(
@@ -174,8 +171,7 @@ def run_sweep(args) -> int:
                 **stats,
                 "samples": samples,
             }
-            f.write(json.dumps({**stamp, **record}) + "\n")
-            f.flush()
+            log.write("cell", **record)
             print(
                 f"    detection={stats['detection_rate']:.0%}"
                 + (
@@ -184,6 +180,8 @@ def run_sweep(args) -> int:
                     else "  (no speech detected)"
                 )
             )
+    finally:
+        log.close()
     print(f"\nSweep complete → {out_path}")
     return 0
 

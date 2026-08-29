@@ -29,7 +29,7 @@ the fifth is roadmap 1.1.x item 16.9 from the Exp 53/53b release-day incident):
    entries, or project rules that could drift independently.
 
 5. **EARNED ledger rows cite their data.** In `docs/plans/behavioral_graduation_candidates.md`
-   every table row whose status cell starts with `**EARNED` must carry a `Regression guard:`
+   every table row with a cell starting `**EARNED` (case-insensitive — Tier 3 writes `**Earned <date>**`) must carry a `Regression guard:`
    field AND either a markdown link into `docs/experiments/data/` that resolves, or a dated
    data-lost annotation (`data lost … YYYY-MM-DD` / `Data lost (YYYY-MM-DD)`). A row went
    EARNED on 2026-08-26 from records whose code-under-test could not be established; the
@@ -80,7 +80,8 @@ MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 # Check 5 — the behavioral-graduation ledger. A row is EARNED when any cell starts with
 # **EARNED (covers "EARNED (de facto)", "EARNED post-1.0", "EARNED 2026-08-25 via …").
 LEDGER_PATH = Path("docs/plans/behavioral_graduation_candidates.md")
-EARNED_CELL = re.compile(r"^\*\*EARNED")
+EARNED_CELL = re.compile(r"^\*\*EARNED", re.IGNORECASE)  # the Tier-3 form is `**Earned <date>**`
+NON_GATED_MARKERS = ("dry_run", "dryrun", "nonfrozen")  # kept in step with lint_prereg_precedes_data.py
 DATA_DIR_MARK = "docs/experiments/data/"
 DATA_LOST = re.compile(r"data[- ]lost\b[^|]{0,120}?\d{4}-\d{2}-\d{2}", re.IGNORECASE)
 
@@ -213,6 +214,9 @@ def _ledger_earned_violations(ledger_path: Path, repo_root: Path) -> list[tuple[
         if data_links:
             for target in data_links:
                 target = target.split("#")[0]
+                if any(mk in target for mk in NON_GATED_MARKERS):
+                    violations.append((i, title, f"data link is a non-gated shakedown capture, not evidence: {target}"))
+                    continue
                 candidates = [(ledger_path.parent / target).resolve(), (repo_root / target).resolve()]
                 if not any(c.exists() for c in candidates):
                     violations.append((i, title, f"data link does not resolve: {target}"))

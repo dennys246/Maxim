@@ -2,8 +2,8 @@
 
 The positive control for the CI step: a real git repo built in tmp_path with the
 order WRONG (data before its pre-registration reached the ref) must fail, and the
-same repo with the order right must pass. Verified to fail 5/5 order-sensitive cases
-when the assertion is inverted (i.e. the lint's `<` is what carries the rule).
+same repo with the order right must pass. The merge-commit case fails
+without `--first-parent` (the review-round BLOCKER); the others fail with the `<` inverted.
 """
 
 from __future__ import annotations
@@ -99,7 +99,7 @@ def test_same_commit_fails_even_with_later_ts(repo: Repo) -> None:
     prereg's first-commit time equals the data's fallback — strict `<` fails."""
     repo.result_doc("61", "exp61_preregistration.md")
     repo.prereg("exp61_preregistration.md")
-    repo.write("docs/experiments/data/61_rows.jsonl", json.dumps({"event": "row"}) + "\n")  # no ts → fallback
+    repo.write("docs/experiments/data/61_inputs.json", json.dumps({"kind": "input"}) + "\n")  # no ts → fallback
     repo.commit("squash", T0)
     assert run(repo) == 1
 
@@ -125,7 +125,7 @@ def test_post_data_amendment_is_noted_not_judged(repo: Repo, capsys) -> None:
     repo.prereg("exp61_preregistration.md", "**Amendment 1 — 2026-01-01, POST-DATA relabel.** text\n")
     repo.commit("post-data amendment", T0 + 300)
     assert run(repo) == 0
-    assert "not marked PRE-DATA" in capsys.readouterr().out
+    assert "POST-DATA — reported, not judged" in capsys.readouterr().out
 
 
 def test_lettered_token_is_governed_by_parent_prereg(repo: Repo, capsys) -> None:
@@ -145,12 +145,15 @@ def test_lettered_token_is_governed_by_parent_prereg(repo: Repo, capsys) -> None
     assert "exp61_preregistration.md" in capsys.readouterr().err
 
 
-def test_dry_run_entries_are_skipped(repo: Repo) -> None:
+def test_dry_run_entries_are_skipped(repo: Repo, capsys) -> None:
     repo.result_doc("61", "exp61_preregistration.md")
-    repo.data("61_dry_run_nonfrozen.jsonl", [T0 - 9999])
+    repo.data("61_dry_run_nonfrozen.jsonl", [T0 - 9999])  # a shakedown that predates the prereg — exempt by name
     repo.prereg("exp61_preregistration.md")
     repo.commit("prereg + shakedown", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
     assert run(repo) == 0
+    assert "1 governed data entry checked" in capsys.readouterr().out
 
 
 def test_allow_dirty_must_be_echoed_in_result_doc(repo: Repo, capsys) -> None:
@@ -180,6 +183,91 @@ def test_grandfathered_entry_is_reported_and_must_still_fail(repo: Repo, capsys)
     repo.commit("rewritten", T0 + 7200)
     assert run(repo, grandfathered=gf) == 1
     assert "now PASSES" in capsys.readouterr().err
+
+
+def test_merge_committed_prereg_is_judged_at_merge_time_not_branch_time(repo: Repo, capsys) -> None:
+    """The incident under the brief's mandated merge style: prereg committed on a branch at T0,
+    data at T0+100 (still on the branch), --no-ff merge to main at T0+1000. Without --first-parent
+    the lint read the BRANCH time and passed (both review lenses caught it)."""
+    repo.result_doc("61", "exp61_preregistration.md")
+    repo.commit("doc", T0 - 10)
+    _git(repo.root, "checkout", "-q", "-b", "feat")
+    repo.prereg("exp61_preregistration.md")
+    repo.commit("prereg on branch", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("data on branch", T0 + 200)
+    _git(repo.root, "checkout", "-q", "main")
+    _git(repo.root, "merge", "-q", "--no-ff", "-m", "merge", "feat", when=T0 + 1000)
+    assert run(repo) == 1
+    assert "not before the data" in capsys.readouterr().err
+
+
+def test_dirty_stamp_without_allowance_fails(repo: Repo, capsys) -> None:
+    repo.result_doc("61", "exp61_preregistration.md")
+    repo.prereg("exp61_preregistration.md")
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100], {"provenance": {"working_tree_dirty_src_scripts": True}})
+    repo.commit("data", T0 + 200)
+    assert run(repo) == 1
+    assert "without allow_dirty: true" in capsys.readouterr().err
+
+
+def test_naive_iso_ts_fails_unless_grandfathered(repo: Repo, capsys) -> None:
+    repo.result_doc("61", "exp61_preregistration.md")
+    repo.prereg("exp61_preregistration.md")
+    repo.commit("prereg", T0)
+    repo.write("docs/experiments/data/61_results.jsonl", json.dumps({"ts": "2026-08-10T11:53:49", "event": "x"}) + "\n")
+    repo.commit("data", T0 + 200)
+    assert run(repo) == 1
+    assert "naive ISO-8601" in capsys.readouterr().err
+    assert run(repo, grandfathered={"docs/experiments/data/61_results.jsonl": "naive pilot"}) == 0
+
+
+def test_malformed_amendment_header_is_exit_2_not_skip(repo: Repo, capsys) -> None:
+    repo.result_doc("61", "exp61_preregistration.md")
+    repo.prereg("exp61_preregistration.md", "**Amendment 1 - 2026-01-01, structural.** no class, hyphen not em dash\n")
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    assert run(repo) == 2
+    assert "unclassified amendment" in capsys.readouterr().err
+
+
+def test_wrapped_amendment_header_is_parsed(repo: Repo) -> None:
+    repo.result_doc("61", "exp61_preregistration.md")
+    repo.prereg(
+        "exp61_preregistration.md",
+        "**Amendment 1 — 2026-01-01, PRE-DATA, structural (harness dry run at non-frozen\nconstants).** text\n",
+    )
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    assert run(repo) == 0
+
+
+def test_zero_governed_entries_is_exit_2(repo: Repo, capsys) -> None:
+    repo.result_doc("61", "exp61_preregistration.md")  # a prereg link, but no prereg file and no data
+    repo.commit("doc only", T0)
+    assert run(repo) == 2
+    assert "zero governed" in capsys.readouterr().err
+
+
+def test_unlinked_prereg_still_governs_its_data(repo: Repo, capsys) -> None:
+    repo.write("docs/experiments/61_thing.md", "# no prereg link here\n")
+    repo.data("61_results.jsonl", [T0 - 100])
+    repo.prereg("exp61_preregistration.md")
+    repo.commit("squash", T0)
+    assert run(repo) == 1
+
+
+def test_post_2026_08_29_jsonl_without_ts_fails(repo: Repo, capsys) -> None:
+    repo.result_doc("61", "exp61_preregistration.md")
+    repo.prereg("exp61_preregistration.md")
+    repo.commit("prereg", L.TS_REQUIRED_FROM + 10)
+    repo.write("docs/experiments/data/61_rows.jsonl", json.dumps({"event": "row"}) + "\n")
+    repo.commit("data without ts", L.TS_REQUIRED_FROM + 3600)
+    assert run(repo) == 1
+    assert "must carry epoch `ts`" in capsys.readouterr().err
 
 
 def test_missing_ref_is_exit_2_not_pass(repo: Repo) -> None:

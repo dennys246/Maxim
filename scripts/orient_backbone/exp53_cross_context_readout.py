@@ -774,9 +774,11 @@ def cmd_run(args: argparse.Namespace) -> int:
     if args.phase == 2 and not _phase1_passed(out_path):
         print(f"[STOP] no Phase 1 gate_I PASS record in {out_path} — stop rule I: Phase 2 does not run.")
         return 4
+    prov = provenance(
+        _HERE.parent.parent, out_path=out_path, allow_dirty=args.allow_dirty
+    )  # refuses before any file exists
     log = JsonlLog(str(out_path), allow_dirty=args.allow_dirty)
     run_id = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.getpid()}"
-    prov = provenance(_HERE.parent.parent, out_path=out_path, allow_dirty=args.allow_dirty)
 
     def emit(event: str, **fields: object) -> None:
         log.write(event, run_id=run_id, phase=args.phase, dry_run=args.dry_run, **fields)
@@ -877,10 +879,20 @@ def cmd_run(args: argparse.Namespace) -> int:
         err = f"{type(exc).__name__}: {exc}"
         raise
     finally:
-        emit("run_end", status=status, rc=rc, error=err)
-        reachy_logger.removeHandler(warn_handler)
-        rig.close()
-        sim_logger.unregister_sim_sink(sink)
+        try:
+            emit(
+                "run_end",
+                status=status,
+                rc=rc,
+                error=err,
+                # The dirty check ran at open; a 5 h robot session on a live branch is
+                # the incident's shape, so the tree is re-read at close and stamped here.
+                working_tree_dirty_src_scripts=live_common._provenance.working_tree_dirty(_HERE.parent.parent),
+            )
+        finally:
+            reachy_logger.removeHandler(warn_handler)
+            rig.close()
+            sim_logger.unregister_sim_sink(sink)
     return rc
 
 
@@ -1259,6 +1271,9 @@ class Run:
         `run_end` (D36) is authoritative. A `--only` subset run is `debug` — never a
         result. Files that predate `run_end` are `complete` iff every agent that
         loaded also finished, else `partial` (interrupted-vs-crashed unknowable).
+        Caveat for files that also predate the `only` key on `start` (before
+        2026-08-29): a legacy `--only` debugging run whose few agents all finished
+        reads as `complete` — pin the intended run with `--run-id` for those.
         """
         if self.start is not None and self.start.get("only"):
             return "debug"
@@ -1346,9 +1361,16 @@ def select_run(
 
 
 def cmd_verdict(args: argparse.Namespace) -> int:
+    # The gate record is appended to the records file — refuse a dirty-tree write
+    # BEFORE computing, so the refusal is the first thing printed, not the last.
+    out_log = JsonlLog(args.records, allow_dirty=args.allow_dirty)
     recs = _read_records(args.records)
     runs = runs_of(recs)
     pinned = tuple(args.run_id or ())
+    unknown = sorted(set(pinned) - {r.run_id for r in runs})
+    if unknown:
+        print(f"[verdict] REFUSED: --run-id names run(s) not in the file: {', '.join(unknown)}")
+        return 2
     try:
         run_p1 = select_run(runs, phase=1, pinned=pinned)
         run_primary = select_run(runs, phase=2, condition="primary", pinned=pinned)
@@ -1391,7 +1413,7 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         verdict = _gate_C(list(specs.values()), by_agent)
         verdict = {**verdict, "runs_used": runs_used, "runs_excluded": runs_excluded}
         print(json.dumps(verdict, indent=2))
-        JsonlLog(args.records, allow_dirty=args.allow_dirty).write("gate_C", **verdict)
+        out_log.write("gate_C", **verdict)
         return 0 if verdict["verdict"] == "PASS" else 1
     gate_i = [r for r in recs if r.get("event") == "gate_I" and _in(run_p1)(r)]
     print(f"[gate I] {gate_i[-1]['verdict'] if gate_i else 'NOT RUN'}")
@@ -1487,7 +1509,7 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         "runs_excluded": runs_excluded,
     }
     print(json.dumps(summary, indent=2))
-    JsonlLog(args.records, allow_dirty=args.allow_dirty).write("gate_T", **summary)
+    out_log.write("gate_T", **summary)
     return 0 if verdict == "PASS" else 1
 
 

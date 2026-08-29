@@ -8,7 +8,12 @@ established is not a validation):
    ``scripts/**/*.py`` that spawns the maxim runtime (subprocess + a maxim
    invocation pattern) must reference ``assert_repo_interpreter`` — the
    sub-sims imported a DIFFERENT checkout than the one under test, silently,
-   with authoritative-looking JSONL.
+   with authoritative-looking JSONL. Since 2026-08-29 it must ALSO run the
+   gated-record preflight (``preflight_gated_record[_or_exit]`` or
+   ``executed_code_provenance(..., out_path=...)``): item 16.7 covers every
+   harness writing under ``docs/experiments/data/``, not only the in-process
+   family — the first draft of this widening left the Exp 52/54 flagship
+   harness (``benchmark_cradle_mother.py``) unrefused.
 
 2. **In-process harnesses** (the Exp 53/53b release-day incident, roadmap
    1.1.x item 16.7, docs/lessons/experiment-prereg-precedes-data.md): a
@@ -28,9 +33,10 @@ opt out with a line containing ``# provenance-exempt:`` followed by the reason.
 
 This lint catches FORGETTING, not evasion (house convention for heuristic
 lints): a docstring mention of the guard name counts as compliance, one
-exempt marker exempts the whole file, and ``shell=True`` string spawns /
-``os.system`` writes escape the regexes. It is a forcing function for the
-honest author, not a security boundary.
+exempt marker exempts the whole file, and ``shell=True`` string spawns,
+``os.system`` writes, ``shutil.copy``/``move``, ``atomic_write_json``,
+``.save(`` and hand-rolled ``os.replace`` escape the regexes. It is a forcing
+function for the honest author, not a security boundary.
 
 Exits: 0 clean; 1 violations (stderr).
 """
@@ -61,11 +67,13 @@ _RECORD_WRITE = re.compile(
     r"""(
         json\.dump\(                        # json.dump(obj, fh)
       | \.write_text\(                      # Path.write_text(...)
-      | \bopen\([^)\n]*['"][wa]['"]         # open(path, "w") / "a"
-      | \.open\(['"][wa]['"]                # Path.open("w")
+      | \bopen\([^)\n]*['"][wa]b?['"]       # open(path, "w") / "a" / "wb" / "ab"
+      | \bopen\([^)\n]*mode=['"][wa]b?['"]  # open(path, mode="w")
+      | \.open\(['"][wa]b?['"]              # Path.open("w")
     )""",
     re.VERBOSE,
 )
+_SPAWNER_GATE = re.compile(r"preflight_gated_record|executed_code_provenance\([^)]*out_path=", re.S)
 IN_PROCESS_FAMILY_GLOB = "orient_*/**/*.py"
 GUARDED_WRITER = Path("scripts/orient_backbone/live_common.py")
 _IN_PROCESS_GUARDS = ("preflight_gated_record", "in_process_code_provenance", "JsonlLog(")
@@ -80,18 +88,28 @@ def lint(repo_root: Path = REPO_ROOT) -> list[str]:
     # Family 1 — sub-sim spawners.
     for path in sorted(scripts.rglob("*.py")):
         rel = path.relative_to(repo_root)
+        if rel.as_posix() == "scripts/_provenance.py":
+            continue  # the guard itself: its docstring quotes the spawn shape it exists to guard
         text = path.read_text(errors="replace")
         if "subprocess" not in text or not _MAXIM_SPAWN.search(text):
             continue
-        if "assert_repo_interpreter" in text or EXEMPT_MARKER in text:
+        if EXEMPT_MARKER in text:
             continue
-        failures.append(
-            f"{rel}: spawns maxim sub-sims without the provenance preflight — "
-            "call scripts/_provenance.py::assert_repo_interpreter before the "
-            "first spawn (exit 3 on mismatch) and stamp executed_code_provenance "
-            "into every run record, or mark a false positive with "
-            f"'{EXEMPT_MARKER} <reason>' (Exp 42b lesson)"
-        )
+        if "assert_repo_interpreter" not in text:
+            failures.append(
+                f"{rel}: spawns maxim sub-sims without the provenance preflight — "
+                "call scripts/_provenance.py::assert_repo_interpreter before the "
+                "first spawn (exit 3 on mismatch) and stamp executed_code_provenance "
+                "into every run record, or mark a false positive with "
+                f"'{EXEMPT_MARKER} <reason>' (Exp 42b lesson)"
+            )
+            continue
+        if not _SPAWNER_GATE.search(text):
+            failures.append(
+                f"{rel}: spawns maxim sub-sims but never runs the gated-record preflight — call "
+                "preflight_gated_record_or_exit(repo_root, <out path>, allow_dirty=args.allow_dirty) or pass "
+                "out_path= to executed_code_provenance (exit 3 on a dirty tree unless --allow-dirty; item 16.7)"
+            )
 
     # Family 2 — in-process record writers. The guarded writer is the delegate,
     # so it must itself reference the preflight (positive control on the delegation).

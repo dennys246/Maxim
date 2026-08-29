@@ -125,6 +125,12 @@ def test_verdict_refuses_two_complete_primary_runs_without_run_id(h, tmp_path: P
     assert [r["run_id"] for r in gate["runs_excluded"]] == ["R"]
 
 
+def test_unknown_run_id_is_refused_not_ignored(h, tmp_path: Path, capsys) -> None:
+    p = _write(tmp_path, _run("A", 1, AGENTS) + _run("Q", 2, AGENTS))
+    assert h.main(["verdict", "--records", str(p), "--run-id", "TYPO"]) == 2
+    assert "not in the file: TYPO" in capsys.readouterr().out
+
+
 def test_verdict_excludes_partial_runs(h, tmp_path: Path) -> None:
     p = _write(tmp_path, _run("A", 1, AGENTS) + _run("P", 2, AGENTS, done=()) + _run("Q", 2, AGENTS))
     h.main(["verdict", "--records", str(p)])
