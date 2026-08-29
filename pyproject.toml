@@ -234,6 +234,11 @@ maxim = ["_data/**/*", "py.typed", "console/openapi.json", "console/contract_sur
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Repo root on sys.path: tests/unit/test_lint_*.py import the CI lints via
+# `from scripts import ...`. Without this they pass only under `python -m pytest`
+# (which injects cwd) and fail under a bare `pytest`, and with sibling worktrees
+# present an unqualified `scripts` package can bind to ANOTHER checkout's copy.
+pythonpath = ["."]
 # Nested worktrees (CLAUDE.md "Parallel sessions use worktrees"): an explicit `pytest .`
 # must not collect .worktrees/*/tests twice with conflicting conftests.
 norecursedirs = [".worktrees", ".git", "build", "dist", "*.egg-info"]

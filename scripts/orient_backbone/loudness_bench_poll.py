@@ -40,10 +40,17 @@ def _get(base: str, path: str, timeout: float) -> tuple[dict, float]:
     return data, time.monotonic() - t
 
 
-def poll(base: str, duration: float, period: float, out: Path) -> tuple[int, int]:
+def poll(base: str, duration: float, period: float, out: Path, *, allow_dirty: bool = False) -> tuple[int, int]:
     n = err = 0
     t0 = time.time()
-    with out.open("w", encoding="utf-8") as fh:
+    # The in-process family's one record writer: refuses a gated path from a dirty
+    # src/scripts tree (exit 3) unless --allow-dirty, and stamps allow_dirty: true
+    # into every record when that allowance was used (roadmap 1.1.x item 16.7).
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from live_common import JsonlLog
+
+    log = JsonlLog(str(out), allow_dirty=allow_dirty, mode="w")
+    try:
         print("RUNNING", flush=True)
         while time.time() - t0 < duration:
             rec: dict = {"t": round(time.time() - t0, 2)}
@@ -61,10 +68,11 @@ def poll(base: str, duration: float, period: float, out: Path) -> tuple[int, int
             except Exception as exc:  # noqa: BLE001 — recorded, not swallowed
                 err += 1
                 rec["error"] = repr(exc)
-            fh.write(json.dumps(rec) + "\n")
-            fh.flush()
+            log.write("sample", **rec)
             n += 1
             time.sleep(max(0.0, period - (time.time() - t0 - rec["t"])))
+    finally:
+        log.close()
     return n, err
 
 
@@ -75,8 +83,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--duration", type=float, default=75.0, help="seconds")
     ap.add_argument("--period", type=float, default=0.25, help="seconds per sample")
     ap.add_argument("--out", type=Path, default=Path("h2_loudness_bench.jsonl"))
+    ap.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="write a GATED record (docs/experiments/data/) from a dirty src/scripts tree; stamps allow_dirty: true "
+        "into every record (default: refuse, exit 3 — docs/lessons/experiment-prereg-precedes-data.md)",
+    )
     args = ap.parse_args(argv)
-    n, err = poll(f"http://{args.host}:{args.port}", args.duration, args.period, args.out)
+    n, err = poll(f"http://{args.host}:{args.port}", args.duration, args.period, args.out, allow_dirty=args.allow_dirty)
     print(f"DONE samples={n} errors={err} -> {args.out}", flush=True)
     return 0 if err == 0 else 1
 

@@ -52,6 +52,9 @@ sys.path.insert(0, str(SCRIPT_DIR))
 sys.path.insert(0, str(SCRIPT_DIR.parent))
 
 import _provenance  # noqa: E402  (scripts/_provenance.py — by path, same tree as this harness)
+
+_GATED_OUT: Path | None = None  # set in main(): the trials JSONL (gated when under docs/experiments/data/)
+_ALLOW_DIRTY = False
 import exp49_common as common  # noqa: E402
 
 
@@ -287,7 +290,9 @@ def run_spawned_trial(
         "jsonl": str(jsonl),
         "min_confidence_env": min_confidence,
         "imported_substrate": substrate_prov,
-        "provenance": _provenance.executed_code_provenance(REPO_ROOT, maxim_bin),
+        "provenance": _provenance.executed_code_provenance(
+            REPO_ROOT, maxim_bin, out_path=_GATED_OUT, allow_dirty=_ALLOW_DIRTY
+        ),
     }
     stdout_log = open(sandbox / "stdout.log", "w")
     proc = subprocess.Popen(cmd, env=env, stdout=stdout_log, stderr=subprocess.STDOUT, cwd=str(sandbox))
@@ -333,6 +338,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--arm", required=True, choices=["scripted", "A", "B", "C"])
     ap.add_argument("--out", required=True, help="Output directory (sandboxes + trials JSONL)")
+    ap.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="write a GATED record (docs/experiments/data/) from a dirty src/scripts tree; stamps allow_dirty: true "
+        "into every record (default: refuse, exit 3 — docs/lessons/experiment-prereg-precedes-data.md)",
+    )
     ap.add_argument(
         "--bearings",
         default=None,
@@ -388,6 +399,11 @@ def main() -> int:
         print(f"provenance OK (spawn): {resolved}")
 
     trials_path = out_dir / f"trials_{args.arm}.jsonl"
+    # item 16.7: a gated trials file (docs/experiments/data/) from a dirty tree is refused (exit 3)
+    # unless --allow-dirty; the per-trial provenance block then stamps allow_dirty: true.
+    global _GATED_OUT, _ALLOW_DIRTY
+    _GATED_OUT, _ALLOW_DIRTY = trials_path, bool(args.allow_dirty)
+    _provenance.preflight_gated_record_or_exit(REPO_ROOT, trials_path, allow_dirty=args.allow_dirty)
     records: list[dict] = []
     for i, bearing in enumerate(bearings):
         if args.limit_trials and i >= args.limit_trials:

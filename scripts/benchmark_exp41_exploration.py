@@ -337,6 +337,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--trials", type=int, default=10, help="seeds per arm")
     p.add_argument("--seed-base", type=int, default=42)
     p.add_argument("--out", type=Path, required=True, help="append-only per-run JSONL")
+    p.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="write a GATED record (docs/experiments/data/) from a dirty src/scripts tree; stamps allow_dirty: true "
+        "into every record (default: refuse, exit 3 — docs/lessons/experiment-prereg-precedes-data.md)",
+    )
     p.add_argument("--mock", action="store_true", help="synthesize runs (CI-safe; no subprocess/LLM)")
     p.add_argument("--model", default=DEFAULT_MODEL, help="generative-narrator LLM profile (AUT is LLM-free)")
     p.add_argument("--embodiment", default=DEFAULT_EMBODIMENT)
@@ -349,13 +355,14 @@ def main(argv: list[str] | None = None) -> int:
     # Provenance guard — refuse to run if the sub-sims would import a `maxim`
     # from outside this repo (scripts/_provenance.py; Exp 42b post-mortem).
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _provenance import ProvenanceError, assert_repo_interpreter
+    from _provenance import ProvenanceError, assert_repo_interpreter, preflight_gated_record_or_exit
 
     try:
         assert_repo_interpreter(Path(__file__).resolve().parent.parent, _resolve_maxim_binary(), exempt=args.mock)
     except ProvenanceError as exc:
         print(f"PREFLIGHT FAIL: {exc}", file=sys.stderr)
         return 3
+    preflight_gated_record_or_exit(Path(__file__).resolve().parent.parent, args.out, allow_dirty=args.allow_dirty)
 
     arms = tuple(a.strip() for a in args.arms.split(",") if a.strip())
     bad = [a for a in arms if a not in ARMS]

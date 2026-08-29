@@ -149,6 +149,12 @@ def main() -> int:
     ap.add_argument("--log", default="/tmp/doa_sweep.jsonl")
     ap.add_argument("--yes", action="store_true", help="skip the source-placement confirm prompt")
     ap.add_argument("--dry-run", action="store_true", help="offline logic check (no robot)")
+    ap.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="write a GATED record (docs/experiments/data/) from a dirty src/scripts tree; stamps allow_dirty: true "
+        "into every record (default: refuse, exit 3 — docs/lessons/experiment-prereg-precedes-data.md)",
+    )
     args = ap.parse_args()
 
     # Records are keyed by run_id, NOT by --label. The log is append-only and
@@ -158,7 +164,7 @@ def main() -> int:
     # silently merged garbage into the analysed set. run_id is unique per
     # invocation; only a run that reaches sweep_done is complete.
     run_id = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.getpid()}"
-    log = JsonlLog(args.log)
+    log = JsonlLog(args.log, allow_dirty=args.allow_dirty)
 
     written = {"sweep_point": 0}
 

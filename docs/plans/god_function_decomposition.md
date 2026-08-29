@@ -18,6 +18,12 @@ provenance chain runs through `run_agentic_loop`. Elegance is not a goal; audita
 `# 1. PERCEPTION`, `# 8.5 NAc decay`, …) and `LoopController` (Phase 1+2 of a prior
 refactor) already holds transient loop state. This plan finishes that started migration.
 
+**No-growth ratchet in place since 2026-08-29 (#570).** `src/maxim/utils/function_length_baseline.json`
+pins `run_agentic_loop` / `start_simulation_mode` / `_main_impl` at their v1.1.0 AST spans (3,546 /
+3,342 / 1,752) and `tests/unit/test_function_length_baseline.py` fails the fast suite on growth —
+and also on SHRINKAGE, so the first extraction MUST tighten the ceiling in the same commit.
+Read the ceiling from that file, not from this plan's prose.
+
 ## Order of attack
 
 1. **`run_agentic_loop`** — it IS the measurement path. Highest value.
