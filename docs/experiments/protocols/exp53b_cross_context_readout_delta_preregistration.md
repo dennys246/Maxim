@@ -67,3 +67,14 @@ python scripts/orient_backbone/exp53_cross_context_readout.py verdict \
 
 1. Read and accepted with the one change — ☑ 2026-08-26 (operator: "let's do it")
 2. Exp 53's APPARATUS record committed unmodified beside this — ☑
+
+## Replication R1 (2026-08-28) — declared post-hoc
+
+The 1.1.0 re-score found the run this document governed executed from a dirty tree at a
+commit unreachable from `main`, with this pre-registration reaching `main` in the same
+squash as its data. R1 re-ran the protocol above unchanged — same agents (SHA-verified),
+δ 0.30, targets, trial counts, gate, speech floor — at tag `v1.1.0` from a clean worktree.
+"53b runs once" was not amended before R1 (the prereg-precedes-data rule landed the same
+day, #566); that is recorded here rather than back-dated. Result and the full session
+record: [53_cross_context_readout.md §Replication R1](../53_cross_context_readout.md).
+Future replications merge an amendment paragraph here BEFORE the run.
