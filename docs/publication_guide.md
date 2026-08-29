@@ -360,7 +360,15 @@ gh release view "v$V" --json assets --jq '.assets[] | "\(.name) \(.size)"'
 
 The notes file (`docs/announcements/release_<version>.md`) is written from the
 CHANGELOG section before the publish and is part of the release PR — facts only;
-the social announcement is a separate document. Every tag on PyPI must have a
+the social announcement is a separate document. **Use ABSOLUTE `https://github.com/...`
+links in it**: the notes render on the Releases page, where every `../` link 404s
+(v1.1.0 shipped with seven; the source was rewritten 2026-08-29).
+`scripts/audit_release_tags.py --check-releases` — the `release-audit` CI job, on
+push to main and nightly — asserts for every version PyPI serves that a tag exists,
+a Release exists on it, the exact wheel + sdist are attached with sha256 matching
+PyPI, and neither the published notes nor the notes source carry relative links.
+Historical failures are grandfathered by explicit list with reasons inside the
+script and printed as still-failing on every run. Every tag on PyPI must have a
 Release object; the 2026-08-26 backfill added `v1.1.0rc1` (pre-release) and
 `v1.0.9`; the reconstructed `v1.0.1`–`v1.0.8` tags deliberately have none.
 
@@ -416,12 +424,14 @@ pip install twine
 | `src/maxim/__init__.py` | `__version__ = "X.Y.Z"` | |
 | `CHANGELOG.md` | `## [X.Y.Z]` header | |
 | git tag | `vX.Y.Z` on the published commit | created at publish time, never deferred |
-| `CLAUDE.md` | "Current version:" line under *Active initiatives* | version + true PyPI state |
-| `docs/plans/README.md` | "Current version:" line at the top | version + true PyPI state |
-| `docs/index.md` | "Release candidate / Published on PyPI" banner | version + true PyPI state |
+| `CLAUDE.md` | "Current version:" line under *Active initiatives* | the pyproject version + a link to PyPI; NO PyPI-state prose |
+| `docs/plans/README.md` | "Current version:" line at the top | same |
+| `docs/index.md` | "**Version:**" line | same |
 
-The last two are prose, so nothing fails loudly when they drift — and they drift
-in the *confessional* direction ("PyPI still serves X"), which readers trust more
-than ordinary docs. Both were corrected in the 1.1 release-truth pass and were
-stale again five commits later. Update them with the version bump, in the same
-commit, not as a follow-up.
+Those three lines used to describe PyPI in prose ("PyPI serves X", "pending") and
+drifted on every release — corrected in the 1.1 release-truth pass and stale again
+five commits later. Since 2026-08-29 they name the pyproject version and link
+https://pypi.org/project/pymaxim/ for what is served, and
+`scripts/lint_version_sync.py` (CI) fails the build if they name a different version,
+carry "pending"/"rc"/"serves" prose, or if `CHANGELOG.md` lacks the `## [version]`
+section. Policy: `main` is ahead of PyPI; the bump is the release transaction.

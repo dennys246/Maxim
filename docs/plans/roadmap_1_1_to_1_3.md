@@ -348,7 +348,7 @@ Each POINTS at its owning plan — stages live there, not here:
     gaps the cards named that no item owned. Front-gate: `lint_no_silent_swallows.py`'s
     diff-scoped / grandfathered-count shape and the D19 baseline pattern already exist —
     reuse them.
-    1. **Version-bump policy: decide, write it down, enforce it.** CLAUDE.md §Versioning
+    1. **DONE 2026-08-29 (1.1.1 Cluster C: policy written in CLAUDE.md §Versioning — `main` is ahead of PyPI, the bump is the release transaction; `scripts/lint_version_sync.py` in CI; the three version lines link PyPI instead of describing it) — Version-bump policy: decide, write it down, enforce it.** CLAUDE.md §Versioning
        says "bump on any change affecting runtime behavior"; practice is "bump at the
        release cut" (≈60 unbumped post-tag commits at scoring time; #561/#562 touched
        `src/` post-1.1.0 unbumped). Written intent vs routine practice diverging is the
@@ -372,9 +372,9 @@ Each POINTS at its owning plan — stages live there, not here:
        guard): `src/maxim/utils/architecture_baseline.json`'s pattern — a reviewed
        ceiling per function, additions fail the fast suite, shrinkage must tighten the
        ceiling in the same commit.
-    5. **Delete `docs/CHANGELOG.md`** — the dead duplicate frozen at 0.3.0 that both
+    5. **DONE 2026-08-29 (1.1.1 Cluster C) — Delete `docs/CHANGELOG.md`** — the dead duplicate frozen at 0.3.0 that both
        cards named and that survived the 1.1.0 cut.
-    6. **Truth pass on [external_critique_response.md](external_critique_response.md)**
+    6. **DONE 2026-08-29 (1.1.1 Cluster C: rows 1/2/6/7 re-measured — row 7's CI claim had been false since #527, row 6's diet had shipped, row 2's Stage-4 lock had shipped; every row now carries the date its numbers were measured) — Truth pass on [external_critique_response.md](external_critique_response.md)**
        — row 7 still says "CI still runs `pytest tests/unit/` only" (false since D20);
        rows 2 and 6 are stale (the plans README already flags them). The living-scorecard
        label is only true if the rows are.
