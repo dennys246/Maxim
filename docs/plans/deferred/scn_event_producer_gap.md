@@ -8,6 +8,20 @@ prompted it turned out void, and this is what was underneath.
 **Not caused by that fold.** Every gap below predates it. Nothing here blocks
 PR #435.
 
+> **Update 2026-08-29 (1.1.1 Cluster D, #572).** Two of the things this plan describes as
+> current are no longer true: the drive emitter's `TemporalEvent` construction in
+> `embodiment/body.py` is now WELL-FORMED (it had passed `temporal_signature=`/`metadata=`
+> and omitted `event_id`/`event_signature`), and its `TypeError` no longer disappears into
+> `except Exception: log.debug` — construction and delivery errors report at WARNING.
+> Guard: `tests/unit/test_drive_temporal_event.py`. **The gap itself is unchanged and this
+> plan still owns it:** 5 of 6 declared categories still have no producer, the emitter is
+> still dormant (nothing in production passes a distributor), and item (b) — a typed
+> `TemporalCreditDistributor.record(*, event_type, …)` so a producer CANNOT misname or omit
+> fields — is still the structural fix. The local repair does not substitute for it; it
+> stops a dormant path from also being silently broken. The emitter currently sends
+> `event_type="drive"`, a seventh, provisional category recorded in `TemporalEvent`'s
+> docstring; whether it stays is this plan's call, not the emitter's.
+
 ## The finding
 
 `TemporalEvent.event_type` declares six signal-source categories

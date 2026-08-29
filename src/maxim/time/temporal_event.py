@@ -29,7 +29,14 @@ class TemporalEvent:
 
     event_type: str
     """Signal source category: "tool", "pain", "reaction", "percept",
-    "affordance", "deliberation"."""
+    "affordance", "deliberation".
+
+    ``"drive"`` is emitted by ``embodiment/body.py::_emit_drive_temporal_event``
+    and is PROVISIONAL: that producer is dormant (bugs ledger D9 — nothing in
+    production passes it a distributor), so the category is recorded here for
+    honesty rather than blessed. Whether drive transitions get their own category
+    is decided by the 1.3 revival (`docs/plans/deferred/scn_event_producer_gap.md`),
+    not by the emitter."""
 
     event_signature: str
     """Hashable identifier for NAc lookup (tool name,

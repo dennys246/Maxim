@@ -247,6 +247,14 @@ _pain_intensity_lock = _threading.Lock()
 def record_substrate_nodes(node_ids: tuple[str, ...], *, agent_id: str) -> None:
     """Stash substrate node IDs from the latest percept encoding.
 
+    **Dormant as a BINDING source since 2026-08-29 (bugs ledger D6).** The
+    llm-primary percept path stashes a 1-tuple, and ``apply_hebbian_on_close``
+    returns early below two nodes, so episode binding never grows from percepts in
+    production. The stash itself is live (episodes carry the node ids); it is the
+    multi-node case that is dormant. Resurrection trigger: the 1.3 fabric's
+    orient-windowed binding. Do not build new behaviour on percept-driven binding
+    until then (roadmap item 13).
+
     Called by MemoryHub.on_percept_received after LinguisticEncoder
     produces substrate_node_id(s). Consumed by the next observe_episode
     call, which passes them as activated_nodes to the CaptureEvent.

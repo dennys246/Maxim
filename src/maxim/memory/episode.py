@@ -789,6 +789,18 @@ def apply_hebbian_on_close(
     graph persistence would silently lose node identity. ``add_node``
     is idempotent via its internal presence check, so repeat calls
     are safe.
+
+    Dormant since 2026-08-29: inert on the main percept path (bugs ledger D6). The
+    llm-primary path stashes exactly ONE substrate node per percept
+    (``MemoryHub.on_percept_received`` -> ``bio_integration.record_substrate_nodes``),
+    so the ``len(nodes) < 2`` early return below is taken every time and the binding
+    graph never grows from percepts -- a property of the INPUT, not a bug here. The
+    1.1.x decision is dormancy, not wiring (roadmap item 13): multi-node activation is
+    a hard dependency of the 1.3 fabric's orient-windowed Hebbian binding, and wiring
+    it now would be 1.3 scope creep without 1.3's experiment. Resurrection trigger:
+    that fabric stage. The mechanism itself stays exercised by
+    ``tests/substrate/test_p3a_episode_binding.py``, which supplies multi-node
+    episodes directly.
     """
     from maxim.agents.bus import EdgeType  # local import avoids startup cost
 

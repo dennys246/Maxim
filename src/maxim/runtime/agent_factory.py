@@ -269,6 +269,33 @@ class AgentInstance:
 
         return result
 
+    def start_session(self) -> dict[str, int]:
+        """Open the memory session this instance's ``shutdown()`` will close.
+
+        The opener and the closer must be the SAME object, on the SAME hub
+        (bugs ledger D41 / score card N2): ``shutdown()`` calls
+        ``on_session_end()``, an atomic test-and-CLEAR that returns ``{}`` when
+        no session was started, so an instance whose session was never opened
+        persists only ``hippocampus.json`` + ``nac.json`` and silently drops EC,
+        SCN, ATL and the Angular Gyrus — after which every ``load.agent()``
+        warns "Half-present NAc/EC pair" on the runtime's own output.
+
+        It lives on the INSTANCE rather than in the factory because
+        ``create_full_agent`` REPLACES ``self.memory_hub`` with the bio-stack's
+        hub after construction; opening in the factory's `create_agent` opened
+        the throwaway skeleton and left the real hub closed (caught by both
+        lenses of the 1.1.1 Cluster D review round, reproduced black-box).
+        Idempotent via ``MemoryHub.on_session_start``, so the runtime's own
+        ``start_bio_session`` is a no-op on an adopted persistent agent.
+        """
+        if self.memory_hub is None:
+            return {}
+        try:
+            return self.memory_hub.on_session_start()
+        except Exception as e:
+            log.warning("Agent %s: memory_hub session start failed: %s", self.agent_id, e)
+            return {}
+
     def shutdown(self, *, consolidation: Literal["full", "lightweight"] = "full") -> None:
         """Flush memories and clean up resources.
 
@@ -387,7 +414,9 @@ class AgentFactory:
             self._base_data_dir = data_home() / "agents"
         self._base_data_dir.mkdir(parents=True, exist_ok=True)
 
-    def create_agent(self, config: AgentConfig, *, auto_load: bool = False) -> AgentInstance:
+    def create_agent(
+        self, config: AgentConfig, *, auto_load: bool = False, _defer_session: bool = False
+    ) -> AgentInstance:
         """Create a fully independent agent with its own memory systems.
 
         Each agent gets:
@@ -402,6 +431,11 @@ class AgentFactory:
             auto_load: If True, restore persisted state from the agent's
                 persistence directory.  Used by ``maxim.load.agent()``.
                 Default False = always start fresh (``maxim.create.agent()``).
+            _defer_session: Internal. ``create_full_agent`` REPLACES the hub
+                built here with the bio-stack's, so it defers the session open
+                to itself — opening here would open the throwaway skeleton
+                (and pay for its full restore twice) while the hub the caller
+                keeps stayed closed. See ``AgentInstance.start_session``.
 
         Raises:
             MemoryCorruptionError: If ``config.on_corrupt == "raise"`` and any
@@ -489,6 +523,12 @@ class AgentFactory:
             register_agent_nickname(config.agent_id, nickname)
         except Exception:
             pass
+
+        # D41 / N2: the instance opens the session it later closes — unless the
+        # caller is create_full_agent, which swaps this hub out and opens the real
+        # one itself (see AgentInstance.start_session).
+        if not _defer_session:
+            instance.start_session()
 
         log.info(
             "Created agent '%s' (nickname='%s', role=%s, remembers=%s, learns=%s)",
@@ -581,7 +621,12 @@ class AgentFactory:
             raise ValueError("create_full_agent requires tool_registry when config.with_executor=True")
 
         # Step 1: Memory subsystems (hippocampus, NAc, ATL, MemoryHub)
-        instance = self.create_agent(config, auto_load=auto_load)
+        # The session is DEFERRED here: `with_bio_stack=True` replaces
+        # instance.memory_hub below, so opening now would open the throwaway
+        # skeleton (paying for its full ATL/AG/cross-layer/embedding restore
+        # twice) and leave the hub the caller keeps closed — which is D41/N2
+        # again, one layer down. Opened once, on the final hub, before returning.
+        instance = self.create_agent(config, auto_load=auto_load, _defer_session=True)
         instance.tool_registry = tool_registry or instance.tool_registry
 
         # Step 2: Bio-stack (PainBus, ReactionBus, cerebellum, etc.)
@@ -635,6 +680,12 @@ class AgentFactory:
             instance.nac = bio.nac
             instance.atl = bio.atl
             instance.memory_hub = bio.memory_hub
+            # D41/N2: open on the hub the caller keeps, HERE rather than before the
+            # return — steps 3-4 below can roll back via instance.shutdown(), and a
+            # rollback that closes an unopened session consolidates nothing while
+            # still writing nac.json without ec.json (tripping check_nac_ec_pairing
+            # on the next load). Idempotent, so the later start_bio_session no-ops.
+            instance.start_session()
             if skeleton_memory_hub is not None and skeleton_memory_hub is not bio.memory_hub:
                 try:
                     skeleton_memory_hub.shutdown()
@@ -707,6 +758,11 @@ class AgentFactory:
                 instance.executor = FearGatedExecutor(instance.executor, fear_agent)
             except Exception as e:
                 log.warning("Agent %s: FearGatedExecutor failed: %s", config.agent_id, e)
+
+        # Non-bio-stack construction keeps create_agent's hub, which deferred its
+        # open; the bio-stack path already opened above, and start_session is
+        # idempotent, so this is the single "every path ends with a session" line.
+        instance.start_session()
 
         log.info(
             "Created full agent '%s' (bio_stack=%s, executor=%s, fear_gate=%s)",

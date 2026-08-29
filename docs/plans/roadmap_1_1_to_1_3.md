@@ -324,7 +324,14 @@ Each POINTS at its owning plan — stages live there, not here:
     planning-failure/lifecycle seams from `start_simulation_mode` and
     `run_agentic_loop`; move durable writes off the 30 Hz thread with a bounded queue,
     and protect final persistence/session shutdown with structural cleanup.
-13. **Dormant-path decisions for D6/D9** — either wire and behaviorally graduate
+13. **DONE 2026-08-29 (#572) — Dormant-path decisions for D6/D9.** `Dormant since` docstring
+    markers on both ends of the D6 percept-binding path (`episode.py::apply_hebbian_on_close`,
+    `bio_integration.py::record_substrate_nodes`) and on the D9 drive emitter, each naming the
+    1.3 fabric as the resurrection trigger; ledger rows re-dispositioned `DORMANT`. The D9
+    emitter's malformed `TemporalEvent` construction — hidden for months behind
+    `except Exception: log.debug` — is repaired and now reports at WARNING, but the structural
+    fix (a typed distributor entry point) stays with `deferred/scn_event_producer_gap.md`.
+    Original text:** — either wire and behaviorally graduate
     Hebbian multi-node binding / temporal-event producers, or mark the unused contract
     dormant and stop implying it learns in production. **Sharpened 2026-08-27: the 1.1.x
     decision is DORMANCY, not building.** D6 (Hebbian binding inert on the percept path)

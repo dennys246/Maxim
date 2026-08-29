@@ -418,26 +418,56 @@ class Embodiment:
         except Exception as exc:
             log.debug("Drive pain publish failed for %s: %s", drive_name, exc)
 
-        # Emit TemporalEvent for SCN oscillator learning (best-effort)
-        self._emit_drive_temporal_event(f"drive:{drive_name}:{event_suffix}", entity.name)
+        # Emit TemporalEvent for SCN oscillator learning. DORMANT (D9): no production
+        # path passes a distributor, so this is a no-op outside tests.
+        self._emit_drive_temporal_event(
+            f"drive:{drive_name}:{event_suffix}", f"drive:{drive_name}", agent_id=self.agent_id or entity.name
+        )
 
-    def _emit_drive_temporal_event(self, event_type: str, agent_id: str) -> None:
-        """Emit a TemporalEvent for a drive state transition (best-effort)."""
+    def _emit_drive_temporal_event(self, event_type: str, event_signature: str, *, agent_id: str = "") -> None:
+        """Emit a ``TemporalEvent`` for a drive state transition.
+
+        **Dormant since 2026-08-29 (bugs ledger D9).** No production path wires a
+        ``distributor`` into ``Body``, so this never fires outside tests: 5 of the 6
+        ``TemporalEvent`` categories have no producer, and the decision for 1.1.x is
+        DORMANCY, not wiring (roadmap item 13 — the temporal-event producers are
+        deferred in ``docs/plans/deferred/scn_event_producer_gap.md``). Resurrection
+        trigger: the 1.3 fabric's orient-windowed binding, which needs real event
+        streams. Code stays wired and correct; nothing new builds on it.
+
+        It was also MALFORMED for its whole life — it passed ``temporal_signature=``
+        and ``metadata=``, neither of which ``TemporalEvent`` declares, and omitted the
+        required ``event_id``/``event_signature``. The resulting ``TypeError`` went into
+        ``except Exception: log.debug``, so the dead path looked alive at every log
+        level anyone runs. The construction is now correct, and a construction error is
+        reported at WARNING via ``log_swallowed_exception`` — this path may be dormant,
+        but it may not be silently broken.
+        """
         if self._distributor is None:
             return
         try:
+            import uuid
+
             from maxim.time.temporal_event import TemporalEvent
             from maxim.time.temporal_signature import TemporalSignature
 
             event = TemporalEvent(
-                event_type=event_type,
-                agent_id=agent_id,
-                temporal_signature=TemporalSignature.now(),
-                metadata={"source": "drive_protocol"},
+                event_id=uuid.uuid4().hex,
+                event_type="drive",
+                event_signature=event_signature,
+                agent_id=agent_id or self.agent_id,
+                temporal_sig=TemporalSignature.now(),
+                context={"source": "drive_protocol", "transition": event_type},
             )
             self._distributor.record_event(event)
-        except Exception as exc:
-            log.debug("Drive temporal event failed for %s: %s", event_type, exc)
+        except (TypeError, ValueError, AttributeError) as exc:
+            # NOT a debug swallow: a malformed event is a defect in this file, and the
+            # last one hid here for months (D9).
+            log.warning("Drive temporal event is malformed for %s: %s", event_type, exc)
+            log_swallowed_exception()
+        except Exception as exc:  # noqa: BLE001 - a distributor fault must not break the body
+            log.warning("Drive temporal event delivery failed for %s: %s", event_type, exc)
+            log_swallowed_exception()
 
     def _publish_pain(
         self,

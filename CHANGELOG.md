@@ -72,6 +72,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer lists the CHANGELOG entry and the tag as post-release housekeeping.
 - Four rows of the living critique scorecard were stale, two describing this repo's own CI and
   docs (item 16.6); every row now carries the date its numbers were measured.
+### Fixed — runtime correctness (the 1.1.1 line)
+
+- **`shutdown()` now runs session-end consolidation where it previously no-oped.** That is the
+  point of the D41 fix, but it IS a behaviour change: a bare `create.agent(...).shutdown()`
+  now runs sleep/replay consolidation and writes EC/SCN/ATL/AngularGyrus. Pass
+  `shutdown(consolidation="lightweight")` to persist without the replay.
+- **`create.agent()` / `load.agent()` → mutate → `shutdown()` now produces loadable state**
+  (bugs ledger D41, score card N2). The instance never opened the session it later closed, so
+  `on_session_end()` returned `{}` and the cycle wrote only `hippocampus.json` + `nac.json`,
+  dropping EC/SCN/ATL and making every later `load.agent()` warn "Half-present NAc/EC pair" on
+  the API's own output. The session lifecycle now belongs to the instance, and
+  `MemoryHub.on_session_start()` is idempotent so an adopted persistent agent is not re-restored.
+- **`build_bio_stack` built a pathless SCN, so the RUNTIME path never persisted temporal
+  state** (D42, found while verifying D41): every `api.run()` / CLI / orchestrator agent
+  silently lost its SCN signatures between sessions. `scn.json` is now bound at construction
+  and restored only when `load_persisted`; an unreadable `scn.json` leaves the SCN pathless
+  for that session rather than being overwritten with empty state, since binding the path
+  made that file writable for the first time.
+- **The drive `TemporalEvent` emitter was malformed and swallowed its own `TypeError` at
+  `log.debug`** (D9) — a dead path that looked alive at every log level anyone runs. The
+  construction is correct and errors report at WARNING. The path stays **dormant**: nothing in
+  production passes a distributor.
+
+### Changed
+
+- **BREAKING (deliberate, in a patch): `api.campaign()` rejects two documented parameters it
+  had been silently ignoring** (D40, score card N1). `npc_model=` and `prompt_handler=` raise
+  `NotImplementedError`; code that passed either worked on 1.1.0 and raises on 1.1.1, because
+  a documented argument with no observable effect is a worse contract than a loud refusal.
+  `interactive=` is now honoured and is tri-state: `None` (default) leaves the process-wide
+  mode alone — `maxim.configure(interactive=...)` and `InteractiveMode.AUTO` stay reachable —
+  while `True`/`False` force it for the run and restore it afterwards. Recorded in
+  `docs/user/stable_api.md`.
+- D6 (percept-driven Hebbian binding) and D9 (temporal-event producers) are marked
+  `Dormant since 2026-08-29` at their code sites and re-dispositioned in the bugs ledger —
+  wired, not deleted, resurrection trigger = the 1.3 fabric (roadmap item 13).
 
 ## [1.1.0] - 2026-08-26 — "Sensorimotor"
 

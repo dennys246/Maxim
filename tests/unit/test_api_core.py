@@ -11,6 +11,8 @@ import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import logging
+
 import pytest
 
 
@@ -725,3 +727,253 @@ def test_event_subscription_thread_safe():
     # Unsubscribe all
     for h in handles:
         h.unsubscribe()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# N2 (score card 2026-08-27, Runtime "Upgrade to C+"): the API's own shutdown
+# must produce loadable state. Black-box, through the PUBLIC verbs only.
+#
+# Verified to fail on the pre-fix runtime: `AgentInstance.shutdown()` calls
+# `memory_hub.on_session_end()`, an atomic test-and-CLEAR that returns {} when no
+# session was started — and neither create.agent() nor load.agent() opened one. The
+# cycle wrote ONLY hippocampus.json + nac.json (saved directly by shutdown) and
+# dropped ec.json / scn.json / atl.json, so every later load.agent() logged
+# "Half-present NAc/EC pair" — the orphaned-bias state D2/D17 were fixed to DETECT,
+# produced by the API itself. Root cause fixed at the lifecycle (the instance opens
+# the session it later closes), not by making shutdown save more things.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def api_home(tmp_path, monkeypatch):
+    """An isolated MAXIM_DATA_HOME with the path caches reset around it."""
+    from maxim.utils.paths import _reset_caches
+
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path))
+    monkeypatch.setenv("MAXIM_LLM_ENABLED", "0")
+    _reset_caches()
+    yield tmp_path
+    _reset_caches()
+
+
+def _mutate_substrate(hub) -> str:
+    """Write one SCN signature, one EC signature and one ATL concept. Returns the concept id."""
+    from maxim.similarity.ec import SituationSignature
+    from maxim.time.temporal_signature import TemporalSignature
+
+    hub.scn.register("probe_memory_1", TemporalSignature.now(), significance=0.9)
+    hub.ec.register(
+        "probe_memory_1",
+        signature=SituationSignature(
+            semantic_hash=(1, 2, 3),
+            structural_hash=42,
+            temporal_hash=(9, 3, 1, 8),
+            context_hash=7,
+            tool_name="probe_tool",
+            outcome_type="success",
+            mode="test",
+            goal_keywords=("probe",),
+        ),
+    )
+    concept_id, _ = hub.atl.find_or_create("probe_concept", category="test", definition="a probe")
+    return concept_id
+
+
+def test_create_mutate_shutdown_load_round_trips_ec_scn_atl(api_home, caplog):
+    """create.agent → mutate SCN/EC/ATL → shutdown() → load.agent() (N2)."""
+    from maxim import create, load
+
+    caplog.set_level(logging.WARNING)
+    agent = create.agent("api_round_trip")
+    concept_id = _mutate_substrate(agent.memory_hub)
+    assert len(agent.memory_hub.scn) == 1
+    assert len(agent.memory_hub.ec) == 1
+    agent.shutdown()
+
+    agent_dir = api_home / "agents" / "api_round_trip"
+    for name in ("ec.json", "scn.json", "atl.json", "nac.json", "hippocampus.json"):
+        assert (agent_dir / name).exists(), f"{name} was not written by the API's own shutdown()"
+
+    caplog.clear()
+    reloaded = load.agent("api_round_trip")
+    try:
+        hub = reloaded.memory_hub
+        assert hub.scn.get_signature("probe_memory_1") is not None, "SCN signature did not round-trip"
+        assert hub.ec.get_signature("probe_memory_1") is not None, "EC signature did not round-trip"
+        assert hub.atl.get(concept_id) is not None, "ATL concept did not round-trip"
+        assert len(hub.scn) == 1 and len(hub.ec) == 1
+        half_present = [r.getMessage() for r in caplog.records if "Half-present" in r.getMessage()]
+        assert not half_present, f"load.agent() warned on the API's own output: {half_present}"
+    finally:
+        reloaded.shutdown()
+
+
+def test_load_mutate_shutdown_load_round_trips(api_home):
+    """The same contract on the LOAD path — a second session must persist too."""
+    from maxim import create, load
+
+    create.agent("api_second_session").shutdown()
+    first = load.agent("api_second_session")
+    concept_id = _mutate_substrate(first.memory_hub)
+    first.shutdown()
+
+    second = load.agent("api_second_session")
+    try:
+        assert second.memory_hub.scn.get_signature("probe_memory_1") is not None
+        assert second.memory_hub.ec.get_signature("probe_memory_1") is not None
+        assert second.memory_hub.atl.get(concept_id) is not None
+    finally:
+        second.shutdown()
+
+
+def test_session_start_is_idempotent(api_home):
+    """The runtime also opens a session (start_bio_session) on an adopted instance;
+    a second open must be a no-op, not a re-restore that clears ATL."""
+    from maxim import create
+
+    agent = create.agent("api_idempotent")
+    try:
+        concept_id, _ = agent.memory_hub.atl.find_or_create("kept", category="test", definition="in memory only")
+        assert agent.memory_hub.on_session_start() == {"already_active": 1}
+        assert agent.memory_hub.atl.get(concept_id) is not None, "a second session start discarded in-memory ATL state"
+    finally:
+        agent.shutdown()
+
+
+def test_shutdown_is_idempotent_and_does_not_reopen(api_home, caplog):
+    """A second shutdown() must not raise, resurrect the session, or re-save."""
+    from maxim import create
+
+    agent = create.agent("api_double_shutdown")
+    _mutate_substrate(agent.memory_hub)
+    agent.shutdown()
+    assert agent.memory_hub._session_active is False
+    ec = api_home / "agents" / "api_double_shutdown" / "ec.json"
+    assert ec.exists()
+    stamp = (ec.stat().st_mtime_ns, ec.read_bytes())
+
+    caplog.set_level(logging.WARNING)
+    agent.shutdown()
+    assert agent.memory_hub._session_active is False
+    assert (ec.stat().st_mtime_ns, ec.read_bytes()) == stamp, "the second shutdown re-wrote persisted state"
+    # Quiet: this hub DID have a session, the first shutdown closed it. The D41 guard
+    # fires only for a hub where none was ever opened (its own test below).
+    assert not [r for r in caplog.records if "no session ever started" in r.getMessage()]
+
+
+def test_full_agent_construction_opens_the_session_on_the_hub_it_keeps(api_home):
+    """create_full_agent REPLACES instance.memory_hub with the bio-stack's hub, so a
+    session opened during create_agent lands on a throwaway skeleton and the real hub
+    stays closed — D41 one layer down, on the path every runtime caller uses
+    (api.run, cli, orchestrator AUT/NPC, console handle). Both lenses of the review
+    round found it; reproduced black-box before the fix:
+        with_bio_stack=True → shutdown wrote ONLY hippocampus.json + nac.json.
+    """
+    from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+    from maxim.time.temporal_signature import TemporalSignature
+
+    factory = AgentFactory()
+    agent = factory.create_full_agent(AgentConfig(agent_id="full_round_trip", with_bio_stack=True))
+    assert agent.memory_hub._session_active is True, "the session was opened on a hub that was then discarded"
+    agent.memory_hub.scn.register("probe_memory_1", TemporalSignature.now(), significance=0.9)
+    concept_id, _ = agent.memory_hub.atl.find_or_create("probe_concept", category="test", definition="a probe")
+    agent.shutdown()
+
+    agent_dir = api_home / "agents" / "full_round_trip"
+    for name in ("ec.json", "scn.json", "atl.json"):
+        assert (agent_dir / name).exists(), f"{name} was dropped by the bio-stack construction path"
+
+    reloaded = factory.create_full_agent(AgentConfig(agent_id="full_round_trip", with_bio_stack=True), auto_load=True)
+    try:
+        # D42: build_bio_stack used to construct a PATHLESS SCN, so on_session_end had
+        # nothing to save to and temporal state vanished between runtime sessions.
+        assert reloaded.memory_hub.scn.persistence_path is not None
+        assert reloaded.memory_hub.scn.get_signature("probe_memory_1") is not None
+        assert reloaded.memory_hub.atl.get(concept_id) is not None
+    finally:
+        reloaded.shutdown()
+
+
+def test_the_loop_closing_its_own_session_does_not_make_shutdown_cry_wolf(api_home, caplog):
+    """The agent loop opens and closes a session AROUND a run, nested inside the
+    instance's lifetime. That is normal, so the D41 detector must stay quiet — a guard
+    that fires on every clean runtime shutdown is a guard nobody reads (second review
+    round found it firing on api.run(), the CLI, the orchestrator and MaximHandle.stop()).
+    It must still fire for a hub where NO session was ever opened, which is the defect.
+    """
+    from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+    from maxim.runtime.bio_integration import end_bio_session, start_bio_session
+
+    agent = AgentFactory().create_full_agent(AgentConfig(agent_id="loop_nesting", with_bio_stack=True))
+    enabled = start_bio_session(memory_hub=agent.memory_hub, hippocampus=agent.hippocampus)
+    end_bio_session(memory_hub=agent.memory_hub, hippocampus=agent.hippocampus, memory_hub_enabled=enabled)
+    assert agent.memory_hub._session_active is False, "the loop should have closed the session"
+
+    caplog.set_level(logging.WARNING)
+    agent.shutdown()
+    cried = [r.getMessage() for r in caplog.records if "no session ever started" in r.getMessage()]
+    assert not cried, f"the D41 guard fired on a normal loop-then-shutdown sequence: {cried}"
+
+
+def test_a_hub_that_never_opened_a_session_still_warns_on_both_closers(caplog):
+    """The defect itself: closing a session nobody opened persists nothing."""
+    import threading
+
+    from maxim.integration.memory_hub import MemoryHub
+
+    for closer in ("on_session_end", "on_session_end_lightweight"):
+        hub = MemoryHub.__new__(MemoryHub)
+        hub._session_active = False
+        hub._session_ever_started = False
+        hub._session_flag_lock = threading.Lock()
+        caplog.clear()
+        with caplog.at_level(logging.WARNING):
+            assert getattr(MemoryHub, closer)(hub) == {}
+        assert any("no session ever started" in r.getMessage() for r in caplog.records), closer
+
+
+def test_write_but_dont_read_agents_do_not_restore_scn(api_home):
+    """`load_persisted=False` (the orchestrator NPC) must not read a previous
+    session's temporal state — the D42 fix must not change that contract."""
+    from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+    from maxim.time.temporal_signature import TemporalSignature
+
+    factory = AgentFactory()
+    first = factory.create_full_agent(AgentConfig(agent_id="npc_style", with_bio_stack=True))
+    first.memory_hub.scn.register("probe_memory_1", TemporalSignature.now(), significance=0.9)
+    first.shutdown()
+
+    assert (api_home / "agents" / "npc_style" / "scn.json").exists(), (
+        "nothing was persisted, so the assertion below would pass vacuously"
+    )
+    npc = factory.create_full_agent(
+        AgentConfig(agent_id="npc_style", with_bio_stack=True, load_persisted=False), auto_load=False
+    )
+    try:
+        assert npc.memory_hub.scn.get_signature("probe_memory_1") is None
+    finally:
+        npc.shutdown()
+
+
+def test_a_corrupt_scn_file_is_preserved_not_overwritten(api_home, caplog):
+    """D42 bound scn.json to the runtime path, which means session end can now REWRITE
+    it — so an unreadable file must be moved aside first, never silently destroyed."""
+    from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+
+    factory = AgentFactory()
+    first = factory.create_full_agent(AgentConfig(agent_id="corrupt_scn", with_bio_stack=True))
+    first.shutdown()
+    scn_json = api_home / "agents" / "corrupt_scn" / "scn.json"
+    assert scn_json.exists()
+    scn_json.write_text("{not json at all")
+
+    caplog.set_level(logging.WARNING)
+    second = factory.create_full_agent(AgentConfig(agent_id="corrupt_scn", with_bio_stack=True))
+    try:
+        assert second.memory_hub.scn.persistence_path is None, (
+            "a corrupt scn.json stayed bound, so session end would overwrite it"
+        )
+        assert any("unreadable" in r.getMessage() for r in caplog.records)
+    finally:
+        second.shutdown()
+    assert scn_json.read_text() == "{not json at all", "the unreadable SCN file was destroyed"
