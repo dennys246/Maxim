@@ -128,3 +128,20 @@ scope is a smaller change than building anything new.
   `Regression guard:` line says so explicitly until they are.
 - The Exp 53b row stays EARNED in the ledger pending the operator's call; the card's
   upgrade condition for Research integrity is items 1–4 above plus Tier 3.
+- 2026-08-28: **R1 replication** at tag `v1.1.0` from a clean tree (#567 data, #568
+  write-up) — PASS 1.00 / 0.00 / 0.50; the ledger row now rests on R1. R1 also found three
+  harness gaps (bugs ledger D34–D36).
+- 2026-08-29: **items 1, 2, 4 built** (1.1.1 Cluster A): `_provenance.py::preflight_gated_record`
+  behind `live_common.JsonlLog` (exit 3 / `--allow-dirty` stamps every record), the harness
+  lint widened to `scripts/orient_*/`, `lint_prereg_precedes_data.py` in CI (the original 53 /
+  53b files, the 53 inputs and — a new finding — the Exp 44b pilot's `campaign_start`, 16 min
+  before its prereg commit, are grandfathered by explicit list with reasons), and the EARNED-row
+  rule in `lint_claude_md_invariants.py` (L185 / L186 got dated data-lost annotations + test
+  guards; L188 got its Exp 42 data links). D34–D36 fixed in the same PR. The brief stub's
+  `Regression guard:` line now names these artifacts. The review round (both lenses) caught
+  that `git log --diff-filter=A` without `--first-parent` reports a merge-committed prereg at
+  its BRANCH time — the lint would have passed the incident under the merge style rule (3)
+  mandates; fixed + fixture-tested. The clean-tree rule then surfaced two more dirty-stamped
+  gated records nobody had disclosed: `h1_partc_big_block.jsonl` (Exp 45 row) and
+  `54_targets.json` (Exp 54 Phase B inputs) — grandfathered with reasons, disclosed on their
+  rows/docs, re-runs owed. The refusal now covers the sub-sim spawner family too.

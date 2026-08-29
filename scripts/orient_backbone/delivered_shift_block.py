@@ -52,7 +52,6 @@ import json
 import math
 import os
 import statistics
-import subprocess
 import sys
 import threading
 import time
@@ -61,6 +60,7 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
+import live_common  # noqa: E402
 from live_common import JsonlLog, gated_azimuth, resolve_host  # noqa: E402
 
 BODY_REF = "bodies/reachy_mini"
@@ -106,30 +106,27 @@ def installed_sdk_version() -> str | None:
         return None
 
 
-def provenance(repo_root: Path) -> dict:
-    """Which code actually ran — the harness-provenance discipline, in-process form."""
+def provenance(repo_root: Path, *, out_path: str | Path | None = None, allow_dirty: bool = False) -> dict:
+    """Which code actually ran — the harness-provenance discipline, in-process form.
+
+    Delegates to ``scripts/_provenance.py::in_process_code_provenance`` (the shared
+    implementation for the ``scripts/orient_*/`` family, roadmap item 16.7): refuses
+    (exit 3) when the imported ``maxim`` is not this repo's ``src``, and — when
+    ``out_path`` is a GATED record under ``docs/experiments/data/`` — when the
+    ``src``/``scripts`` tree is dirty, unless ``allow_dirty`` (the harness's
+    ``--allow-dirty``) was given; then the returned block carries ``allow_dirty: true``.
+    """
     import maxim
 
     try:
-        git_hash = subprocess.check_output(["git", "rev-parse", "--short=12", "HEAD"], cwd=repo_root, text=True).strip()
-        dirty = bool(
-            subprocess.check_output(["git", "status", "--short", "src", "scripts"], cwd=repo_root, text=True).strip()
+        return live_common._provenance.in_process_code_provenance(
+            repo_root, getattr(maxim, "__file__", None), out_path=out_path, allow_dirty=allow_dirty
         )
-    except Exception:  # noqa: BLE001
-        git_hash, dirty = "unknown", True
-    executed = Path(getattr(maxim, "__file__", "") or "").resolve()
-    if not executed.is_relative_to((repo_root / "src").resolve()):
+    except live_common._provenance.ProvenanceError as exc:
         # The harness-provenance lesson, in-process form: a result whose
         # code-under-test cannot be established is not a measurement.
-        print(f"[FAIL] the imported maxim is {executed}, not this repo's src/ — fix PYTHONPATH (absolute) and re-run.")
-        raise SystemExit(3)
-    return {
-        "executed_maxim_file": str(executed),
-        "executed_git_hash": git_hash,
-        "working_tree_dirty_src_scripts": dirty,
-        "python": sys.executable,
-        "pythonpath": os.environ.get("PYTHONPATH", ""),
-    }
+        print(f"[FAIL] {exc}", file=sys.stderr)
+        raise SystemExit(3) from exc
 
 
 # ── the rig: production controller + production backend + production feed ──
@@ -337,17 +334,23 @@ def main() -> int:
     )
     ap.add_argument("--yes", action="store_true", help="skip the source-placement confirm prompt")
     ap.add_argument("--dry-run", action="store_true", help="offline logic check (no robot)")
+    ap.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="write a GATED record (docs/experiments/data/) from a dirty src/scripts tree; stamps allow_dirty: true "
+        "into every record (default: refuse, exit 3 — docs/lessons/experiment-prereg-precedes-data.md)",
+    )
     args = ap.parse_args()
 
     affordances = [a.strip() for a in args.affordances.split(",") if a.strip()]
     run_id = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.getpid()}"
-    log = JsonlLog(args.log)
+    log = JsonlLog(args.log, allow_dirty=args.allow_dirty)
 
     def emit(event: str, **fields: object) -> None:
         log.write(event, run_id=run_id, label=args.label, dry_run=args.dry_run, **fields)
 
     repo_root = _HERE.parent.parent
-    prov = provenance(repo_root)
+    prov = provenance(repo_root, out_path=args.log, allow_dirty=args.allow_dirty)
 
     if args.dry_run:
         rig = DryBlockRig()

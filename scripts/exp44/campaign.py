@@ -61,7 +61,7 @@ sys.path.insert(0, str(_REPO / "scripts"))  # _provenance
 if str(_REPO / "src") not in sys.path:
     sys.path.insert(0, str(_REPO / "src"))
 
-from _provenance import assert_repo_interpreter, executed_code_provenance  # noqa: E402
+from _provenance import ProvenanceError, assert_repo_interpreter, executed_code_provenance  # noqa: E402
 
 MIN_BIAS_DEFAULT = 0.9
 MIN_CAPTURE_PAIRS = 5
@@ -80,8 +80,13 @@ def _sha16(path: Path) -> str:
     return h.hexdigest()[:16]
 
 
+_MANIFEST_STAMP: dict[str, Any] = {}  # {"allow_dirty": True} once executed_code_provenance grants it
+
+
 def _append_manifest(campaign_dir: Path, record: dict[str, Any]) -> None:
-    record = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), **record}
+    # `ts` is epoch seconds (zone-unambiguous, for lint_prereg_precedes_data); the old
+    # naive local-time string stays under `ts_local` for readers of older manifests.
+    record = {"ts": round(time.time(), 3), "ts_local": time.strftime("%Y-%m-%dT%H:%M:%S"), **_MANIFEST_STAMP, **record}
     with open(campaign_dir / "manifest.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(record) + "\n")
 
@@ -644,6 +649,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", required=True, help="campaign JSON (see campaign_44b.json)")
     ap.add_argument("--workdir", required=True, help="campaign output directory")
+    ap.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="write a GATED record (docs/experiments/data/) from a dirty src/scripts tree; stamps allow_dirty: true "
+        "into every record (default: refuse, exit 3 — docs/lessons/experiment-prereg-precedes-data.md)",
+    )
     ap.add_argument("--arms", default="", help="comma-separated arm-name filter")
     ap.add_argument("--seeds", default="", help="comma-separated seed filter")
     ap.add_argument("--requery-models", default="", help="override config requery_models")
@@ -663,14 +674,22 @@ def main() -> int:
     # the CLAUDE.md lesson + the sibling Exp 42 harness pin verbatim).
     binary = _resolve_maxim_binary()
     if not args.dry_run:
-        from _provenance import ProvenanceError
-
         try:
             assert_repo_interpreter(_REPO, binary)
         except ProvenanceError as e:
             print(f"PROVENANCE MISMATCH: {e}", file=sys.stderr)
             return 3
-    prov = executed_code_provenance(_REPO, binary)
+    try:
+        # item 16.7: a gated manifest (docs/experiments/data/) from a dirty tree is refused
+        # (exit 3) unless --allow-dirty, which stamps allow_dirty: true into every record.
+        prov = executed_code_provenance(
+            _REPO, binary, out_path=campaign_dir / "manifest.jsonl", allow_dirty=args.allow_dirty
+        )
+    except ProvenanceError as e:
+        print(f"[FAIL] {e}", file=sys.stderr)
+        return 3
+    if prov.get("allow_dirty"):
+        _MANIFEST_STAMP["allow_dirty"] = True
     _append_manifest(campaign_dir, {"stage": "campaign_start", "config": cfg, **prov})
 
     arm_filter = {a for a in args.arms.split(",") if a}

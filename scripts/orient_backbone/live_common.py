@@ -31,6 +31,12 @@ from collections.abc import Callable
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import live_1_smoke as smoke  # noqa: E402  (Step-1 verified primitives)
 
+# scripts/_provenance.py, imported by path so it comes from the same tree as
+# this file (the harness-provenance discipline; stdlib-only, never imports maxim).
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+sys.path.insert(0, os.path.join(_REPO_ROOT, "scripts"))
+import _provenance  # noqa: E402
+
 doa_to_azimuth = smoke.doa_to_azimuth
 resolve_host = smoke.resolve_host
 preflight = smoke.preflight
@@ -40,14 +46,30 @@ Reader = Callable[[], "tuple[float, bool] | None"]
 
 
 class JsonlLog:
-    """Append-only JSONL event log (one dict per line, ts stamped)."""
+    """Append-only JSONL event log (one dict per line, ts stamped).
 
-    def __init__(self, path: str) -> None:
+    This is the in-process family's ONE record writer, so the gated-record
+    refusal lives here rather than in every harness (roadmap 1.1.x item 16.7;
+    docs/lessons/experiment-prereg-precedes-data.md): opening a path under
+    ``docs/experiments/data/`` from a dirty ``src``/``scripts`` tree exits 3
+    unless the harness passed ``allow_dirty=True`` (its ``--allow-dirty``),
+    and an allowed dirty write stamps ``allow_dirty: true`` into EVERY record
+    so the write-up cannot silently omit it. Non-gated paths (``/tmp`` logs)
+    are never refused. Exp 53/53b stamped the dirty flag and kept going —
+    stamping is detection, refusing is enforcement.
+    """
+
+    def __init__(self, path: str, *, allow_dirty: bool = False, mode: str = "a") -> None:
+        if mode not in ("a", "w"):
+            raise ValueError(f"mode must be 'a' (append, default) or 'w' (truncate), got {mode!r}")
         self.path = path
-        self._f = open(path, "a", encoding="utf-8")  # noqa: SIM115 - long-lived handle
+        gate = _provenance.preflight_gated_record_or_exit(_REPO_ROOT, path, allow_dirty=allow_dirty)
+        self.gated = gate["gated"]
+        self._stamp = {"allow_dirty": True} if gate["allow_dirty"] else {}
+        self._f = open(path, mode, encoding="utf-8")  # noqa: SIM115 - long-lived handle
 
     def write(self, event: str, **fields: object) -> None:
-        rec = {"ts": round(time.time(), 3), "event": event, **fields}
+        rec = {"ts": round(time.time(), 3), "event": event, **self._stamp, **fields}
         self._f.write(json.dumps(rec) + "\n")
         self._f.flush()
 

@@ -50,7 +50,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -238,19 +237,27 @@ def run(arm: str, *, seed: int, ticks: int, bin_size: int, epsilon: float, credi
     return [sum(b) / len(b) for b in bins], raw, telemetry
 
 
-def _provenance() -> dict:
+def _provenance_block(out_path: str, allow_dirty: bool) -> dict:
+    """Which code ran (scripts/_provenance.py::in_process_code_provenance, by path).
+
+    Refuses (exit 3) when the imported ``maxim`` is not this repo's ``src``, and when
+    ``--json`` points under ``docs/experiments/data/`` from a dirty ``src``/``scripts``
+    tree unless ``--allow-dirty`` — which stamps ``allow_dirty: true`` here (the report's
+    provenance block) so the write-up cannot omit it (roadmap 1.1.x item 16.7).
+    """
     import maxim
 
     repo = Path(__file__).resolve().parents[2]
-    executed = Path(maxim.__file__).resolve()
-    if not executed.is_relative_to(repo / "src"):
-        print(f"[FAIL] imported maxim is {executed}, not this repo's src/ — fix PYTHONPATH (absolute).")
-        raise SystemExit(3)
+    sys.path.insert(0, str(repo / "scripts"))
+    import _provenance
+
     try:
-        h = subprocess.check_output(["git", "rev-parse", "--short=12", "HEAD"], cwd=repo, text=True).strip()
-    except Exception:  # noqa: BLE001
-        h = "unknown"
-    return {"executed_maxim_file": str(executed), "executed_git_hash": h, "python": sys.executable}
+        return _provenance.in_process_code_provenance(
+            repo, getattr(maxim, "__file__", None), out_path=out_path or None, allow_dirty=allow_dirty
+        )
+    except _provenance.ProvenanceError as exc:
+        print(f"[FAIL] {exc}", file=sys.stderr)
+        raise SystemExit(3) from exc
 
 
 def main() -> int:
@@ -261,9 +268,15 @@ def main() -> int:
     p.add_argument("--epsilon", type=float, default=0.2)
     p.add_argument("--credit", default="relief", choices=["relief", "constant"])
     p.add_argument("--json", default="", help="write the full report (curves, telemetry, gates, provenance)")
+    p.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="write a GATED record (docs/experiments/data/) from a dirty src/scripts tree; stamps allow_dirty: true "
+        "into every record (default: refuse, exit 3 — docs/lessons/experiment-prereg-precedes-data.md)",
+    )
     args = p.parse_args()
 
-    prov = _provenance()
+    prov = _provenance_block(args.json, args.allow_dirty)
     seeds = list(range(args.seeds))
     print(
         f"Exp 52 Phase A — credit={args.credit} ticks={args.ticks} bin={args.bin} "
