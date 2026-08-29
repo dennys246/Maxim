@@ -2,7 +2,7 @@
 
 The substrate leaves the simulator, and learns to want.
 
-`pip install pymaxim` · [pymaxim.bio](https://pymaxim.bio) · [CHANGELOG](../../CHANGELOG.md#110---2026-08-26--sensorimotor)
+`pip install pymaxim` · [pymaxim.bio](https://pymaxim.bio) · [CHANGELOG](https://github.com/dennys246/Maxim/blob/main/CHANGELOG.md#110---2026-08-26--sensorimotor)
 
 ## Upgrade first — one promised removal and two behaviour changes for code that already compiles
 
@@ -23,7 +23,7 @@ orient drive learns to turn toward its mother's voice because being fed relieves
 hunger; the operant credit is the sign of the relief the feed actually produced, nothing
 hand-coded. Embodied sim, 12 seeds per arm: taught **0.878** vs a never-hungry infant fed
 identically **0.441** vs no mother **0.413**. Same feed, no need → no learning; same
-schedule, no contingency → no learning. → [docs/experiments/52_nurture.md](../experiments/52_nurture.md)
+schedule, no contingency → no learning. → [docs/experiments/52_nurture.md](https://github.com/dennys246/Maxim/blob/main/docs/experiments/52_nurture.md)
 
 **The want reads out on a physical body — Exp 53 / 53b.** Those infants' persisted
 substrate — two JSON files each, loaded unchanged, never credited on the robot, SHA-verified
@@ -32,7 +32,7 @@ before and after — drove a Reachy Mini toward a speech source: taught **1.00 /
 **0.50** (turn one way regardless of side). The first attempt (Exp 53) chose the right
 direction 36/36 but overshot the smallest target with the step size we declared — recorded
 as the pre-registered APPARATUS verdict; 53b changed only the step (the robot's own) and
-passed. → [docs/experiments/53_cross_context_readout.md](../experiments/53_cross_context_readout.md)
+passed. → [docs/experiments/53_cross_context_readout.md](https://github.com/dennys246/Maxim/blob/main/docs/experiments/53_cross_context_readout.md)
 — the agent files ship in-repo (`docs/experiments/data/53_agents/`), so the readout is
 reproducible on any Reachy Mini with the harness. [Video](https://youtu.be/lLoPM2EkbPU)
 (demo, not evidence): the taught infant glances toward a voice; the never-hungry one,
@@ -63,14 +63,14 @@ One hardware session per result, n = 3 seeds per arm on the robot; the nursery's
 representation is three azimuth bins (a source just right of centre turns the wrong way —
 predicted before the run, recorded in the write-up); readout, not learning, on the robot;
 nothing about loudness or magnitude selection; the LLM-driven action path is not what
-these experiments measure. Full ledgers: [limits](../limits/README.md) ·
-[defects](../bugs/README.md) · [graduation candidates](../plans/behavioral_graduation_candidates.md).
+these experiments measure. Full ledgers: [limits](https://github.com/dennys246/Maxim/blob/main/docs/limits/README.md) ·
+[defects](https://github.com/dennys246/Maxim/blob/main/docs/bugs/README.md) · [graduation candidates](https://github.com/dennys246/Maxim/blob/main/docs/plans/behavioral_graduation_candidates.md).
 
 ## Next
 
 1.1.1: the Reachy-native nursery body and the loudness/onset salience design. 1.2: Oasis +
 Hivemind — peer substrate sharing, with this release's taught want as the case study
-([plan](../plans/oasis_case_study_taught_orient.md)).
+([plan](https://github.com/dennys246/Maxim/blob/main/docs/plans/oasis_case_study_taught_orient.md)).
 
 Artifacts attached to this release are the exact wheel and sdist uploaded to PyPI; the
 tag points at the commit that built them.
