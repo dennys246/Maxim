@@ -95,7 +95,7 @@ All produce: sensor change → `evaluate_failures()` → PainBus → NAc learnin
 - **Run DM campaigns** — multi-encounter branching stories with SEM-embodied entities
 - **Benchmark models** — compare local and cloud LLMs across cognitive task suites
 - **Connect robots** — hardware-agnostic runtime; Reachy Mini ships in-tree, third-party robots plug in via `maxim.robots` entry-point group
-- **Use the Python API** — 17 verb-based functions for programmatic access
+- **Use the Python API** — 21 verb-based functions for programmatic access
 
 ## Installation
 

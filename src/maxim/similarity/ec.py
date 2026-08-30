@@ -2,11 +2,24 @@
 
 Provides efficient similarity queries across multiple dimensions.
 
-Bio-mapping: FUNCTIONAL. Shares the entorhinal role — deciding whether an
-input matches an existing representation (pattern completion) or warrants a
-new one (pattern separation). The algorithm is cosine-threshold clustering
-over embedding centroids; it does NOT implement DG/CA3 attractor dynamics,
-grid cells, or theta-phase coding.
+Bio-mapping: FUNCTIONAL. This class decides whether an input matches an
+existing representation or warrants a new one, and the method that does it is
+named ``pattern_complete_or_separate`` after that decision.
+
+**The attribution in those names is not entorhinal** (bio-lens correction,
+2026-08-10 external critique, row 3; landed 2026-08-30). In the hippocampal
+formation, **pattern separation is a dentate gyrus function** and **pattern
+completion a CA3 attractor function**; entorhinal cortex is the input/output
+interface to the hippocampus, not the structure that separates or completes.
+The names are kept because they describe what the code decides and are
+load-bearing for the mental model — but they assert a FUNCTIONAL parallel
+only, never an isomorphism.
+
+The algorithm is cosine-threshold clustering over embedding centroids: an
+exact same-modality scan, O(Nd). It does NOT implement DG/CA3 attractor
+dynamics, grid cells, or theta-phase coding. Note the two surfaces do not
+share a mechanism — ``find_similar`` (situation signatures) is LSH-backed and
+approximate; ``pattern_complete_or_separate`` is the exact scan.
 """
 
 from __future__ import annotations

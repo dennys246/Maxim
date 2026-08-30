@@ -962,6 +962,22 @@ jobs:
           git fetch --unshallow origin main 2>/dev/null || git fetch origin main
           python3 scripts/lint_prereg_precedes_data.py --ref origin/main
 
+      - name: A post-tag src/ commit declares itself (roadmap 1.1.x item 16.10)
+        run: |
+          # The versioning policy has two halves. "main is ahead of PyPI; the
+          # bump happens in the release transaction" is enforced by the
+          # "Version sync" step above. "CHANGELOG.md accumulates under
+          # [Unreleased]" was convention only — and one day after the v1.1.0
+          # tag, #561/#562 changed runtime/agent_loop.py and motor_backend.py
+          # with no bump and an empty [Unreleased]. This step is the other
+          # half: a branch touching src/ must either bump the version or add
+          # an [Unreleased] content line.
+          # Diff-scoped, so it inherits the D37 rule — on a pull request,
+          # "no base ref" is a hard error (exit 2), never a silent skip.
+          # Positive control: tests/unit/test_lint_unreleased_declared.py
+          # builds fixture repos in the #561/#562 shape and asserts the fail.
+          python3 scripts/lint_unreleased_declared.py
+
   # ── PKG seam — the lean aarch64 (Raspberry Pi) install ────────────────────
   # Two jobs because there are two DISTINCT risks and neither covers the other:
   #   1. a dependency quietly drags in torch/CUDA  → resolution-level, cheap,

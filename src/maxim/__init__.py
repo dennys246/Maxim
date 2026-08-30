@@ -34,7 +34,6 @@ _API_VERBS = frozenset(
         "register_tool",
         "unregister_tool",
         "list_registered_tools",
-        "list_registered_tools",
         "clear_registered_tools",
         "register_persona",
         "tool",
