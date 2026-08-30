@@ -65,8 +65,10 @@ the `warn_optional_fallback` pattern). No control-flow change. Full suite + ruff
 **Stage 2 — measure. ✅ SHIPPED 2026-08-30 (1.1.2 Cluster A) — result: ZERO firings.**
 Artifact: [../experiments/data/fail_loud_stage2/](../experiments/data/fail_loud_stage2/)
 (`baseline.json` + both raw captures, gzipped); tool:
-[`scripts/fail_loud_stage2.py`](../../scripts/fail_loud_stage2.py). Measured at `6f3f3b7d`
-from a clean tree: **0 firings across 75,654 records**, over the substrate mode
+[`scripts/fail_loud_stage2.py`](../../scripts/fail_loud_stage2.py). Captures measured at `6f3f3b7d` from a clean tree, artifact regenerated at `258389f8` also
+clean (the first cut was regenerated from a DIRTY tree and said otherwise — see the artifact's
+Provenance section; the review round caught it and the tool now REFUSES rather than stamps):
+**0 firings across 75,654 records**, over the substrate mode
 (`orient_substrate/2_full_path_probe.py`, no LLM, 72,239 records) and the generative mode
 (`--sim "test basic recall" --interactive false --sim-max-turns 3 --llm qwen2.5-14b`, 3,415
 records). Per this plan's own reading that is the informative-either-way outcome's good

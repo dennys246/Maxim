@@ -2,9 +2,10 @@
   "_format_version": "1.0",
   "artifact": "fail_loud_stage2_baseline",
   "plan": "docs/plans/measurement_path_fail_loud.md",
-  "generated_utc": "2026-08-30T20:00:39Z",
-  "git_hash": "6f3f3b7d65a8a3731480bc8b3f32cc93e673d06d",
-  "working_tree_dirty_src_scripts": true,
+  "generated_utc": "2026-08-30T21:08:43Z",
+  "git_hash": "258389f8686dea0db1ceeb33f74088ba3b66a0f3",
+  "working_tree_dirty_src_scripts": false,
+  "allow_dirty": false,
   "comparison_key": "(basename, exc_type)",
   "instrumented_site_count": 50,
   "instrumented_sites": [
@@ -47,10 +48,10 @@
     "pain_bus.py:_on_pain:383",
     "pain_bus.py:_on_pain:456",
     "pain_bus.py:_on_pain:542",
-    "agent_loop.py:run_agentic_loop:2020",
-    "agent_loop.py:run_agentic_loop:2147",
-    "agent_loop.py:run_agentic_loop:2250",
-    "agent_loop.py:run_agentic_loop:2279",
+    "agent_loop.py:run_agentic_loop:2102",
+    "agent_loop.py:run_agentic_loop:2229",
+    "agent_loop.py:run_agentic_loop:2332",
+    "agent_loop.py:run_agentic_loop:2361",
     "tool_dispatch.py:record_outcome:384",
     "tool_dispatch.py:record_outcome:405",
     "encoder.py:encode:288",
@@ -82,12 +83,13 @@
   "total_firings": 0,
   "fired_pairs": [],
   "fired_sites_raw": [],
-  "unfired_site_count": 50,
+  "distinct_fired_site_count": 0,
   "notes": [
     "substrate mode: scripts/orient_substrate/2_full_path_probe.py, no LLM, exit 0.",
     "generative mode: maxim --sim 'test basic recall' --interactive false --sim-max-turns 3 --llm qwen2.5-14b --sandbox tmpdir; 3 turns, 2 actions; terminated by the D12 stall hard-abort (exit 4) AFTER the full report was written - the local 14B exceeds the orchestrator lane's stall threshold on this box. Not a truncated capture: 3415 records vs 3154 in a prior exit-0 run of the same command.",
     "Instrument verified live in BOTH captures: the MAXIM_LOG_FILE handler is at DEBUG (utils/logging.py::_ensure_jsonl_file_handler) and both captures contain DEBUG records (72239 / 275), so a firing at WARNING-first or DEBUG-after would have been recorded. A separate self-test forcing a site to fire was observed in the JSONL.",
-    "COVERAGE IS NOT PROVEN PER-SITE. A zero over these two modes does not establish that all 50 instrumented sites are dead; it establishes the comparison baseline the extraction gate needs. Per-site reachability would need a coverage run and is not claimed here.",
-    "Captures are committed gzipped alongside this file; sha256 is over the decompressed bytes."
+    "COVERAGE IS NOT PROVEN PER-SITE. A zero over these two modes does not establish that all 50 instrumented sites are dead; it establishes the comparison baseline the extraction gate needs.",
+    "PROVENANCE CORRECTION (2026-08-30 review fold): the first cut of this artifact was REGENERATED from a dirty tree (an uncommitted gzip patch to the tool) and stamped working_tree_dirty_src_scripts: true while the prose claimed a clean tree. The captures themselves were always taken from a clean tree at 6f3f3b7d. This regeneration runs through _provenance.py::preflight_gated_record_or_exit, which would have REFUSED a dirty tree - stamping was detection, refusing is enforcement.",
+    "substrate_post_extraction.jsonl.gz is the SAME probe re-run after the Cluster B extraction; its decompressed sha256 and line count are recorded here so the byte-identical claim is verifiable rather than asserted."
   ]
 }
