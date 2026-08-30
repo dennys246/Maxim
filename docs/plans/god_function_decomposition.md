@@ -1,6 +1,6 @@
 # God-Function Decomposition — Measurement Integrity, Not Elegance
 
-**Status:** DRAFT (2026-08-10) — sequenced AFTER measurement_path_fail_loud.md Stages 1-2
+**Status:** IN PROGRESS — first extraction merged 2026-08-30 (1.1.2 Cluster B: `run_agentic_loop` sections 7 and 8.5 -> module-level `_loop_step_callback` / `_loop_bio_tick_maintenance`; 3,546 -> 3,512 lines). Its prerequisite, fail_loud Stage 2, ran the same day (zero firings). DRAFT (2026-08-10) — sequenced AFTER measurement_path_fail_loud.md Stages 1-2
 **Motivation:** External critique (2026-08-10), point 1, verified:
 
 | Function | Lines | try blocks |
@@ -51,11 +51,37 @@ feedback memories:
 swallow instrumentation makes silent divergence visible):
 
 1. Full fast suite + memory-hub suite green.
-2. One logged interactive sim (`MAXIM_LOG_FILE` JSONL): percept → tool-call → followup
-   sequence compared against a pre-refactor capture of the same seed/fixture; event
-   sequence must match (excluding timestamps/latency).
+2. A pre/post capture comparison — **but NOT on the generative sim, and not as an
+   exact sequence match. Corrected 2026-08-30 by measurement; see below.**
 3. `MAXIM_PROVENANCE_VERBOSITY=2` trace eyeballed once per PR batch.
-4. Zero new `swallowed_exception` firings vs the Stage-2 baseline.
+4. Zero new `swallowed_exception` firings vs the Stage-2 baseline
+   (`scripts/fail_loud_stage2.py check`; baseline at
+   [../experiments/data/fail_loud_stage2/](../experiments/data/fail_loud_stage2/)).
+
+**Gate 2 as originally written is unsatisfiable, and running it taught us why.** It asked
+for a generative-sim event sequence that "must match (excluding timestamps/latency)" a
+pre-refactor capture on the same seed. The generative mode is not reproducible on IDENTICAL
+code: three runs of the same command — two of them *both* pre-extraction — produced `percept`
+counts of **51, 8 and 0** and `sim_hippocampus` counts of **56, 13 and 5**. The two
+pre-extraction runs differ from each other far more than the post-extraction run differs from
+either. A live LLM at temperature, wall-clock-driven drive/sensor ticks, and accumulated
+`~/.maxim` state between runs each break reproducibility on their own. Held to the letter,
+this gate fails every mechanical extraction; held loosely, it means nothing.
+
+**What replaces it, in two parts:**
+
+- **The substrate probe is the sequence-diff vehicle** — it has no LLM and IS bit-reproducible.
+  `orient_substrate/2_full_path_probe.py` produced a byte-identical 72,239-record capture
+  before and after the first extraction (same sha256 with the `t` field stripped). That is a
+  real equality check, and it is the one to run.
+- **The generative sim supports a STRUCTURAL comparison only**: turns, actions, and the
+  counts that do not scale with wall-clock. Across all three runs above, `sim_exec` was **14**
+  every time and each run took 3 turns and 2 actions, while the per-tick sensor/drive events
+  scaled with duration. Compare those; do not compare totals.
+
+The substrate probe does not exercise `run_agentic_loop`, so it cannot be the whole gate for
+an agent-loop extraction — which is precisely why gates 1 and 4 carry the weight there, and
+why each extracted section ships a test that calls it directly.
 
 **PR sizing:** 3-6 sections per PR, mechanical extraction only. Any bug discovered during
 extraction is NOT fixed in the extraction PR (no-band-aid rule: surface it, file it,

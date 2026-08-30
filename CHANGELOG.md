@@ -23,6 +23,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Fail-loud **Stage 2** measured (`scripts/fail_loud_stage2.py` + baseline under
+  `docs/experiments/data/fail_loud_stage2/`): **zero swallowed-exception firings** across
+  75,654 records over both modes. The extraction gate in
+  `docs/plans/god_function_decomposition.md` had been citing a baseline that did not exist.
+- First `run_agentic_loop` extraction: sections **7** (step callback) and **8.5** (NAc
+  per-tick maintenance) are now module-level `_loop_step_callback` /
+  `_loop_bio_tick_maintenance`, exercised directly by
+  `tests/unit/test_loop_section_extraction.py`. Mechanical move; section order preserved.
+- `scripts/lint_unreleased_declared.py` (roadmap 16.10) — a `src/`-touching branch must
+  bump the version or add an `[Unreleased]` line. This entry exists because of it.
+- `tests/unit/test_api_surface.py` — README's advertised verb count and `_API_VERBS` are
+  now one checked claim.
+
+### Fixed
+- README advertised **17** Python-API verbs; the real surface is **21**. The count had been
+  wrong through at least two releases with nothing able to notice.
+- `_API_VERBS` listed `list_registered_tools` twice — invisible at runtime because the
+  literal builds a `frozenset`.
+- `ARCHITECTURE.md` EC rows and the `similarity/ec.py` docstring: pattern separation is a
+  **dentate gyrus** function and completion a **CA3** function, not entorhinal; and EC's two
+  query surfaces are now distinguished (substrate pattern routing is an **exact O(Nd)
+  centroid scan**, not the LSH path the rows advertised).
+
+### Changed
+- All 16 undispositioned **Tier-3** graduation rows now carry dispositions (2 Dormant,
+  12 Dropped, 2 → Tier 2; **0 EARNED**).
+- The release **tag-wait rule** is revised to *structure OR time*: data PR, then a separate
+  later interpretation PR reviewed by a different reader — with the ≥1-day wait kept as the
+  fallback, not as an additional hurdle.
+
 ## [1.1.1] - 2026-08-30 — "Enforcement"
 
 **Every item in this release is a lint, a CI step or a test that makes a claim mechanically
