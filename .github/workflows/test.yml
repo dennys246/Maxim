@@ -85,16 +85,19 @@ jobs:
           import maxim
 
           assert maxim.__version__ == version("pymaxim"), maxim.__version__
-          # Must stay in sync with maxim._API_VERBS — the lane advertises that it
-          # checks the public surface, so an omitted verb is an undetectable break.
-          for name in (
-              "run", "imagine", "connect", "diagnose", "observe",
-              "configure", "introspect", "campaign", "benchmark",
-              "research", "on", "register_tool", "register_persona",
-              "tool", "list_models", "download_model", "delete_model", "recall",
-          ):
+          # DERIVED from maxim._API_VERBS, not hand-kept. The previous form was
+          # a hardcoded 18-name tuple carrying the comment "must stay in sync
+          # with maxim._API_VERBS — an omitted verb is an undetectable break",
+          # and it had drifted to exactly that: unregister_tool,
+          # list_registered_tools and clear_registered_tools were missing, so
+          # this lane never checked them on 3.10/3.11/3.13/3.14 (the fast suite
+          # only runs on 3.12). A list that must be kept in sync by hand is a
+          # list that will not be; iterate the real surface instead.
+          verbs = sorted(maxim._API_VERBS)
+          assert len(verbs) >= 18, f"_API_VERBS collapsed to {len(verbs)} — surface broken?"
+          for name in verbs:
               assert callable(getattr(maxim, name)), name
-          print(f"Python compatibility smoke OK: {maxim.__version__}")
+          print(f"Python compatibility smoke OK: {maxim.__version__}, {len(verbs)} verbs")
           EOF
           python -m maxim --help >/dev/null
 
@@ -207,6 +210,43 @@ jobs:
           # were vacuous.
           python3 scripts/check_model_cache_lane.py model-cache-results.xml
 
+  # ── The slow lane ─────────────────────────────────────────────────────────
+  # `@pytest.mark.slow` has been a registered marker applied across ~10 files
+  # for months, and until 2026-08-30 the ONLY occurrence of the word in this
+  # workflow was the fast suite's `-m "not slow"` — a deselection. Nothing ever
+  # ran them. Nightly, because they are slow; with an executed>0 assert,
+  # because `pytest -m slow` exits 0 both when it collects nothing and when
+  # everything skips, and a lane that cannot go red for the reason it exists is
+  # decoration (same reasoning as model-cache-tests' allow-list check).
+  slow-tests:
+    name: Slow tests (nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgstreamer1.0-dev gstreamer1.0-plugins-base
+      - name: Install package and test dependencies
+        run: |
+          pip install pytest pytest-cov pytest-xdist pytest-timeout
+          pip install --no-deps -e .
+          pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml || echo "Some optional deps unavailable on CI"
+      - name: Run the slow lane
+        run: |
+          python -m pytest tests/ -q -m "slow" --tb=short --junitxml=slow-results.xml
+      - name: Assert the lane executed something
+        # Runs even when the lane itself failed: "0 executed" and "3 failed"
+        # are different diagnoses and the second must not hide the first.
+        if: always()
+        run: python3 scripts/check_slow_lane.py slow-results.xml
+
   # ── Release truth ─────────────────────────────────────────────────────────
   # Not a PR gate: it needs PyPI + the GitHub API, and a network flake must not
   # block unrelated PRs. It runs where a release actually lands (push to main),
@@ -236,6 +276,56 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 scripts/audit_release_tags.py --check-releases
 
+  # ── The artifact seam — bugs ledger D47 + D48 ─────────────────────────────
+  # Nothing in CI built a wheel before 2026-08-30, and on that day two bad
+  # wheels got as far as `twine check` and PASSED it: one with ZERO files under
+  # console/ui_dist/ (built from a worktree — the bundle is gitignored and
+  # vendored at release time), and one carrying a 1.1.0 version from a stale
+  # branch. `twine check` validates that metadata RENDERS; it never asks
+  # whether the artifact contains what it should or is the version you meant.
+  # This job asks. It runs on PRs too — a packaging regression should redden
+  # the PR that causes it, not the release three weeks later.
+  release-build:
+    name: Release build (wheel contents + version)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build tooling
+        run: python -m pip install --upgrade pip build twine
+      - name: Stub the vendored Console bundle
+        run: |
+          # A CI checkout legitimately has no Console bundle: it is built in
+          # maxim-pulse and copied in by scripts/vendor_console_ui.py at
+          # release time. Stubbing it here is NOT pretending the real bundle
+          # shipped — it proves the thing CI can actually prove: that
+          # pyproject's `console/ui_dist/**/*` package-data glob really does
+          # carry that tree into the wheel. If the glob breaks, this job goes
+          # red even though every source file is present, which is the D47
+          # failure mode one layer up.
+          mkdir -p src/maxim/console/ui_dist/assets
+          echo '<html><!-- CI stub --></html>' > src/maxim/console/ui_dist/index.html
+          echo '//' > src/maxim/console/ui_dist/assets/index-ci.js
+          echo '{"target":"console","contract_version":"ci-stub"}' > src/maxim/console/ui_dist/maxim-ui.json
+      - name: Build wheel + sdist
+        run: |
+          rm -rf build/ dist/ *.egg-info
+          python -m build
+      - name: twine check (metadata only — deliberately not the gate)
+        run: twine check dist/*
+      - name: Audit the built wheel (D47 contents + D48 version)
+        run: |
+          # --allow-missing-ui-dist is NOT passed: the stub above means the
+          # real assertion runs here. The D47 branch's negative control lives
+          # in tests/unit/test_audit_release_build.py, which builds synthetic
+          # wheels carrying each defect — so this guard has been shown to fail,
+          # not merely to pass.
+          python3 scripts/audit_release_build.py
+
   unit-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -255,7 +345,13 @@ jobs:
 
       - name: Install package and test dependencies
         run: |
-          pip install pytest pytest-cov pytest-xdist
+          # pytest-timeout is load-bearing, not convenience: the D12 guard
+          # (tests/unit/test_inference_lock_timeout.py) fails by HANGING
+          # against the pre-fix router, which the runner reports as an
+          # infrastructure stall rather than as that defect. Without the
+          # plugin the @pytest.mark.timeout marker is silently ignored and the
+          # guard goes back to being unfalsifiable.
+          pip install pytest pytest-cov pytest-xdist pytest-timeout
           # Install without deps first (reachy-mini requires robot hardware SDK),
           # then install available deps separately
           pip install --no-deps -e .

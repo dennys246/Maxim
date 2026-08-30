@@ -12,6 +12,7 @@ from __future__ import annotations
 import dataclasses
 import time
 
+import pytest
 
 from maxim.models.language.config import LLMConfig
 from maxim.models.language.router import LLMRouter, _inference_lock_timeout_s
@@ -48,6 +49,15 @@ class TestLockTimeoutHelper:
 
 
 class TestHeldLockFailsLoudNotForever:
+    # A guard that fails by HANGING is not a guard (score card 2026-08-27,
+    # Runtime-correctness "to B−"). Against the pre-fix code — an untimed
+    # `with self._inference_lock:` — `_complete_text` NEVER returns, so the
+    # `elapsed < 5.0` assertion below is never evaluated and the whole job dies
+    # on the runner's timeout-minutes, reported as infrastructure rather than
+    # as this defect. The marker makes the revert produce a bounded FAIL that
+    # names the test. 30s is ~60x the 0.5s bound the test patches in, so it
+    # cannot flake on a loaded runner while still being far below any job cap.
+    @pytest.mark.timeout(30)
     def test_held_lock_returns_failure_within_bound(self, monkeypatch):
         """A wedged holder must produce a bounded, loud failure — never an
         unbounded park. Patch the helper's floor via monkeypatching the

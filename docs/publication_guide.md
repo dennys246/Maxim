@@ -195,24 +195,23 @@ python -I -m build --outdir "$MAXIM_RELEASE_DIR"
 twine check "$MAXIM_RELEASE_DIR"/pymaxim-*
 # Expected: PASSED for both .whl and .tar.gz
 
-# 4. Confirm the Console bundle actually shipped in the wheel
-python -c "import glob,os,zipfile; n=zipfile.ZipFile(sorted(glob.glob(os.environ['MAXIM_RELEASE_DIR'] + '/pymaxim-*.whl'))[-1]).namelist(); \
-assert any(x.endswith('console/ui_dist/index.html') for x in n), 'Console UI MISSING from wheel'; print('Console UI: OK')"
-
-# 4. Verify bundled data is in the wheel
-python -c "
-import glob, os, zipfile
-whl = sorted(glob.glob(os.environ['MAXIM_RELEASE_DIR'] + '/pymaxim-*-py3-none-any.whl'))[-1]
-with zipfile.ZipFile(whl) as z:
-    data = [f for f in z.namelist() if '_data/' in f]
-    print(f'{len(data)} bundled data files')
-    assert len(data) >= 25, 'Expected 25+ bundled files'
-    # Check key files
-    names = z.namelist()
-    assert 'maxim/py.typed' in names, 'Missing py.typed'
-    assert 'maxim/__main__.py' in names, 'Missing __main__.py'
-    print('All checks passed')
-"
+# 4. Audit the BUILT wheel — contents AND version (bugs ledger D47 + D48)
+#
+# This replaces the three hand-rolled `python -c` checks that used to live here.
+# They were correct and nobody ran them: on 2026-08-30 a worktree build shipped
+# ZERO Console UI files and a stale-branch build produced a 1.1.0 wheel, and
+# `twine check` PASSED both. Step 3 above validates that metadata RENDERS; it
+# never asks whether the artifact contains what it should or is the version you
+# meant. This step asks, and it is the same script the `release-build` CI job
+# runs on every PR.
+#
+# Do NOT pass --allow-missing-ui-dist here. That flag exists for CI, which has
+# no vendored bundle; on the release path a missing bundle is the defect.
+python3 scripts/audit_release_build.py --dist-dir "$MAXIM_RELEASE_DIR"
+# Expected: "release-build audit: clean"
+# Asserts: filename version == METADATA version == pyproject version (D48);
+#          console/ui_dist/index.html present (D47); py.typed, __main__.py and
+#          25+ files under _data/ present.
 ```
 
 ---
@@ -308,9 +307,25 @@ behind the 1.1 release-truth pass. Tag before you close the terminal.
 gating hardware result (Exp 53b) ran — from a dirty tree at a commit the squash-merge
 made unreachable, with the pre-registration landing on `main` in the same commit as
 the data ([lesson](lessons/experiment-prereg-precedes-data.md)). The release gate is
-"the result is on `main` with its data and its pre-registration precedes it"; the tag
-waits at least one day after that, so provenance questions get asked without release
-pressure.
+"the result is on `main` with its data and its pre-registration precedes it".
+
+**Then: structure OR time — not both (revised 2026-08-30).** The ≥1-day wait was a proxy
+for the thing actually missing on release day: *a second reading of the interpretation by
+someone not carrying the release*. All three 1.1.0 provenance failures were human-judgment
+failures over honestly-stamped artifacts, so attaching artifacts more firmly to commits
+would not have caught any of them. A release may cite a gating result when:
+
+- **(a)** its **DATA** landed in its own merged PR;
+- **(b)** its **INTERPRETATION** (write-up + ledger row) landed in a **separate, later** PR;
+- **(c)** that interpretation PR got a review pass from **a different reader**.
+
+(a) and (b) are mechanically checkable — two distinct merge commits, data strictly earlier.
+(c) is the same different-reader discipline the review rounds rest on and is not mechanized.
+
+**Where that split cannot be met, the ≥1-day wait applies unchanged.** It is the fallback,
+never an additional hurdle on top of the split — stacking both would make the honest path
+cost more than the sloppy one. Full reasoning and the limits of the claim:
+[the lesson](lessons/experiment-prereg-precedes-data.md) §"The ≥1-day wait, reconsidered".
 
 ```bash
 git tag -a "v$(python -c 'import maxim; print(maxim.__version__)')" \

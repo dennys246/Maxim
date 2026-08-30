@@ -207,6 +207,13 @@ test = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
     "pytest-xdist>=3.5.0",  # Parallel test execution
+    # A guard that fails by HANGING is not a guard — the runner kills the whole
+    # job and the failure is indistinguishable from an infrastructure stall.
+    # The D12 guard was exactly that shape: it asserts `elapsed < 5.0` AFTER the
+    # call returns, and against the pre-fix code the call never returns, so the
+    # assertion is never reached. `@pytest.mark.timeout(N)` turns that into a
+    # bounded FAIL. See tests/unit/test_inference_lock_timeout.py.
+    "pytest-timeout>=2.3.0",
 ]
 
 [project.scripts]
