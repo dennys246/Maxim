@@ -60,6 +60,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import gzip
 import hashlib
 import json
 import os
@@ -148,6 +149,10 @@ def inventory_sites(src_root: Path = SRC_ROOT) -> list[dict[str, object]]:
 def _parse_capture(path: Path) -> tuple[list[dict[str, str]], dict[str, object]]:
     """Extract swallowed_exception firings from a MAXIM_LOG_FILE JSONL.
 
+    Accepts a plain `.jsonl` or a gzipped `.jsonl.gz`; the sha256 is always
+    taken over the DECOMPRESSED bytes, so committing a capture gzipped does
+    not change its recorded digest.
+
     Returns (firings, capture_meta). Malformed lines are counted, not skipped
     silently — a capture we cannot fully parse is a capture we cannot trust.
     """
@@ -155,7 +160,8 @@ def _parse_capture(path: Path) -> tuple[list[dict[str, str]], dict[str, object]]
     total = 0
     unparsable = 0
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "rb") as handle:
         for raw in handle:
             digest.update(raw)
             total += 1

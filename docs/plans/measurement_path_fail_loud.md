@@ -1,6 +1,6 @@
 # Measurement-Path Fail-Loud Purge
 
-**Status:** Stages 1 + 4 SHIPPED (#487; the CI lock `scripts/lint_no_silent_swallows.py` 2026-08-13); Stages 2–3 = roadmap 1.1.x item 6. (DRAFT 2026-08-10)
+**Status:** Stages 1 + 2 + 4 SHIPPED (1: #487; 4: the CI lock `scripts/lint_no_silent_swallows.py` 2026-08-13; 2: 2026-08-30, 1.1.2 Cluster A — **zero firings**, [artifact](../experiments/data/fail_loud_stage2/)). **Stage 3 remains open and is now green-lit** — roadmap 1.1.x item 6. (DRAFT 2026-08-10)
 **Motivation:** External deep-dive critique (2026-08-10), point 2 — cross-confirmed by our own
 history: the SCN drive path was dead for months behind exactly one bare-except-swallowed
 `TypeError` (see `scn_event_producer_gap.md`). The research claim rests on detecting ~1 SD
@@ -62,12 +62,28 @@ Within the measurement path:
 table with `logger.warning("swallowed_exception", exc_info=True, ...)` (deduped per site via
 the `warn_optional_fallback` pattern). No control-flow change. Full suite + ruff.
 
-**Stage 2 — measure.** Run one real sim per mode (`--sim "test basic recall" --interactive
-false --sim-max-turns 3`, plus one substrate-primary orient fixture) with
-`MAXIM_LOG_FILE` set. Grep the JSONL for `swallowed_exception`. Every site that FIRES is a
-live contamination source and gets root-caused (per the no-band-aid rule) before any flip.
-Expected outcome either way is informative: zero firings = the swallows are dead defensive
-weight, safe to narrow; nonzero = we just found unattributed measurement noise.
+**Stage 2 — measure. ✅ SHIPPED 2026-08-30 (1.1.2 Cluster A) — result: ZERO firings.**
+Artifact: [../experiments/data/fail_loud_stage2/](../experiments/data/fail_loud_stage2/)
+(`baseline.json` + both raw captures, gzipped); tool:
+[`scripts/fail_loud_stage2.py`](../../scripts/fail_loud_stage2.py). Measured at `6f3f3b7d`
+from a clean tree: **0 firings across 75,654 records**, over the substrate mode
+(`orient_substrate/2_full_path_probe.py`, no LLM, 72,239 records) and the generative mode
+(`--sim "test basic recall" --interactive false --sim-max-turns 3 --llm qwen2.5-14b`, 3,415
+records). Per this plan's own reading that is the informative-either-way outcome's good
+branch: **the swallows are dead defensive weight, safe to narrow — Stage 3 is green-lit.**
+
+Two things the artifact records rather than smooths over: (a) the instrumented-site count is
+**50**, not the 48 of the Stage-1 note — recompute with `fail_loud_stage2.py inventory`, never
+from prose; (b) per-site coverage is NOT proven — a zero over two modes is a comparison
+baseline, not proof that all 50 sites are unreachable.
+
+**The grep in the original instruction does not work as written.** "Grep the JSONL for
+`swallowed_exception`" matches, but a *parser* written against the call site's
+`extra={"event":…, "data":{…}}` shape reads nothing: the `MAXIM_LOG_FILE` handler formats via
+`StructuredFormatter` → `LogRecord.to_compact()`, which keys the event `"e"` and flattens
+`data` to the top level. That silently reports zero firings and prints a pass. Guarded by
+`tests/unit/test_fail_loud_stage2.py::test_reads_compact_shape`. This is the same failure
+class PR #487's review caught at the other end of the pipe, one layer further on.
 
 **Stage 3 — fix.** Firing sites: root-cause fix. Silent sites: narrow the exception type or
 convert to propagate per the policy above. One PR per 3-5 files, each with the standard
