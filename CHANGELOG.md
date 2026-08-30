@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `scripts/vendor_console_ui.py` reads the bundle provenance maxim-pulse v0.1.0 now
+  emits: it REFUSES a bundle built from a dirty tree (`dirty: true` — the commit it names does not
+  describe its contents) and always REPORTS the bundle's age, refusing on staleness only under the
+  new `--max-age-days`. Closes the consumer half of **D47**; the producer half shipped in
+  maxim-pulse v0.1.0.
+
 ## [1.1.2] - 2026-08-31 — "Decomposition"
 
 ### Added
