@@ -23,6 +23,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-08-30 — "Enforcement"
+
+**Every item in this release is a lint, a CI step or a test that makes a claim mechanically
+checkable.** The 1.1.0 repository re-score ([score card](https://github.com/dennys246/Maxim/blob/main/docs/limits/score_cards/2026-08-27-claude.md))
+graded on one rule — a grade moves only when the normal workflow *enforces* the improvement —
+and found several honesty layers that had rotted: a stale quantified confession in CLAUDE.md,
+a living scorecard whose rows described a CI scope that had been false for months, a
+pre-registration that reached `main` in the same squash as its data, and two public-API
+arguments with no observable effect. No new mechanisms; every piece rides an existing lint,
+CI step or ledger (roadmap item 16.1–16.9).
+
+Four findings this cycle surfaced that nobody had recorded, each now guarded:
+
+- **Every diff-scoped lint was a no-op on pull requests** (D37) — the `lint` job checked out
+  at depth 1, so no merge-base existed and the multi-agent marker lint and the swallow
+  ratchet had been skipping on every PR since they shipped.
+- **The public API's own shutdown produced unloadable state** (D41) — `create.agent → mutate →
+  shutdown → load.agent` dropped EC/SCN/ATL and made the next load warn "Half-present NAc/EC
+  pair" on its own output.
+- **The runtime never persisted SCN at all** (D42) — `build_bio_stack` built a pathless `SCN()`.
+- **Two undisclosed dirty-tree experiment records** were surfaced by the new clean-tree rule
+  and disclosed on the rows that cite them.
+
 ### Added — enforcement (the 1.1.1 line, roadmap item 16)
 
 - **A `fix` that touches `src/` ships with a test** — `scripts/lint_fix_touches_tests.py` (CI):
