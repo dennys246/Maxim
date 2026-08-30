@@ -14,7 +14,20 @@ import time
 
 import pytest
 
-from maxim.models.language.config import LLMConfig
+# The @pytest.mark.timeout below is the ONLY thing standing between the D12
+# guard and its old failure mode (hang, not FAIL). Without the plugin the
+# marker degrades to a PytestUnknownMarkWarning — a warning, not an error —
+# and the guard silently reverts to unfalsifiable. This repo's own principle
+# is to push silent-no-op invariants into a loud failure, so the absence is
+# an error here rather than a quiet downgrade. Installed via the `test` extra
+# and by CI's explicit `pip install ... pytest-timeout`.
+pytest.importorskip(
+    "pytest_timeout",
+    reason="pytest-timeout is REQUIRED for the D12 guard to fail by assertion rather than by hanging; "
+    "install it (`pip install -e '.[test]'`) — skipping is the honest outcome, silently ignoring the marker is not",
+)
+
+from maxim.models.language.config import LLMConfig  # noqa: E402
 from maxim.models.language.router import LLMRouter, _inference_lock_timeout_s
 
 

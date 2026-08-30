@@ -22,6 +22,7 @@ vacuous.
 
 from __future__ import annotations
 
+import gzip as _gzip
 import importlib.util
 import json
 from pathlib import Path
@@ -119,7 +120,7 @@ def test_check_fails_on_a_new_pair(stage2, tmp_path):
             {"e": "swallowed_exception", "site": "agent_loop.py:g:2", "exc_type": "ValueError"},
         ],
     )
-    rc = stage2.main(["check", "--capture", f"m={candidate}", "--baseline", str(baseline)])
+    rc = stage2.main(["check", "--capture", f"m={candidate}", "--baseline", str(baseline), "--min-lines", "1"])
     assert rc == 1, "a new (file, exc) pair must fail the gate"
 
 
@@ -146,14 +147,16 @@ def test_check_tolerates_renamed_functions_and_moved_lines(stage2, tmp_path):
             }
         ],
     )
-    rc = stage2.main(["check", "--capture", f"m={moved}", "--baseline", str(baseline)])
+    rc = stage2.main(["check", "--capture", f"m={moved}", "--baseline", str(baseline), "--min-lines", "1"])
     assert rc == 0, "a moved/renamed site with the same (file, exc) must pass"
 
 
 def test_check_refuses_when_baseline_is_missing(stage2, tmp_path):
     """A gate must never pass by citing an artifact that does not exist."""
     capture = _write(tmp_path, "c.jsonl", [{"e": "log"}])
-    rc = stage2.main(["check", "--capture", f"m={capture}", "--baseline", str(tmp_path / "nope.json")])
+    rc = stage2.main(
+        ["check", "--capture", f"m={capture}", "--baseline", str(tmp_path / "nope.json"), "--min-lines", "1"]
+    )
     assert rc == 2
 
 
@@ -180,3 +183,85 @@ def test_inventory_finds_only_zero_arg_sites(stage2, tmp_path):
 def test_repo_inventory_is_nonempty(stage2):
     """If this hits zero, the helper was renamed and Stage 2 is measuring nothing."""
     assert len(stage2.inventory_sites()) > 0
+
+
+# ── review fold, 2026-08-30 — the ways this gate could pass vacuously ────────
+#
+# The executor lens proved that before this fold, `check` exited 0 on an EMPTY
+# capture and on a wholly-unparsable one. A merge gate that measures nothing
+# and reports "no new firings" is the vacuous-guard shape check_slow_lane.py
+# was written for in the very same PR.
+
+BASELINE_50 = {"instrumented_site_count": 50, "fired_pairs": []}
+
+
+def _baseline(tmp_path: Path, payload: dict | None = None) -> Path:
+    path = tmp_path / "baseline.json"
+    path.write_text(json.dumps(payload if payload is not None else BASELINE_50), encoding="utf-8")
+    return path
+
+
+def _bulk_capture(tmp_path: Path, name: str, lines: int = 200) -> Path:
+    path = tmp_path / name
+    path.write_text("".join(json.dumps({"e": "log", "i": i}) + "\n" for i in range(lines)), encoding="utf-8")
+    return path
+
+
+def test_check_refuses_an_empty_capture(stage2, tmp_path):
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("", encoding="utf-8")
+    rc = stage2.main(["check", "--capture", f"m={empty}", "--baseline", str(_baseline(tmp_path))])
+    assert rc == 2, "an empty capture must not report a pass"
+
+
+def test_check_refuses_a_garbage_capture(stage2, tmp_path):
+    junk = tmp_path / "junk.jsonl"
+    junk.write_text("not json\n" * 200, encoding="utf-8")
+    rc = stage2.main(["check", "--capture", f"m={junk}", "--baseline", str(_baseline(tmp_path))])
+    assert rc == 2
+
+
+def test_check_accepts_a_real_sized_capture(stage2, tmp_path):
+    rc = stage2.main(
+        ["check", "--capture", f"m={_bulk_capture(tmp_path, 'ok.jsonl')}", "--baseline", str(_baseline(tmp_path))]
+    )
+    assert rc == 0
+
+
+def test_check_fails_when_instrumentation_was_deleted(stage2, tmp_path):
+    """Rewriting log_swallowed_exception() into logger.debug() passes the
+    swallow lint and would silently de-instrument the measurement path."""
+    baseline = _baseline(tmp_path, {"instrumented_site_count": 9999, "fired_pairs": []})
+    rc = stage2.main(["check", "--capture", f"m={_bulk_capture(tmp_path, 'ok.jsonl')}", "--baseline", str(baseline)])
+    assert rc == 1
+
+
+def test_gzip_is_detected_by_magic_not_suffix(stage2, tmp_path):
+    """A gzipped capture named `.jsonl` must not read as zero firings."""
+    body = "".join(
+        json.dumps({"e": "swallowed_exception", "site": "nac.py:f:1", "exc_type": "TypeError"}) + "\n"
+        for _ in range(200)
+    ).encode()
+    mislabelled = tmp_path / "capture.jsonl"  # gzip content, plain-text name
+    mislabelled.write_bytes(_gzip.compress(body))
+    firings, meta = stage2._parse_capture(mislabelled)
+    assert meta["lines"] == 200
+    assert meta["unparsable_lines"] == 0
+    assert len(firings) == 200
+
+
+def test_duplicate_capture_mode_is_refused(stage2, tmp_path):
+    """Keeping only the last one always loses firings — always toward a pass."""
+    a = _bulk_capture(tmp_path, "a.jsonl")
+    b = _bulk_capture(tmp_path, "b.jsonl")
+    with pytest.raises(SystemExit):
+        stage2._load_captures([f"m={a}", f"m={b}"])
+
+
+def test_baseline_refuses_to_freeze_an_unusable_capture(stage2, tmp_path):
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("", encoding="utf-8")
+    out = tmp_path / "out.json"
+    rc = stage2.main(["baseline", "--capture", f"m={empty}", "--out", str(out)])
+    assert rc == 2
+    assert not out.exists(), "no baseline may be written from a capture that measured nothing"

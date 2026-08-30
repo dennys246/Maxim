@@ -1,6 +1,6 @@
 # God-Function Decomposition — Measurement Integrity, Not Elegance
 
-**Status:** IN PROGRESS — first extraction merged 2026-08-30 (1.1.2 Cluster B: `run_agentic_loop` sections 7 and 8.5 -> module-level `_loop_step_callback` / `_loop_bio_tick_maintenance`; 3,546 -> 3,512 lines). Its prerequisite, fail_loud Stage 2, ran the same day (zero firings). DRAFT (2026-08-10) — sequenced AFTER measurement_path_fail_loud.md Stages 1-2
+**Status:** IN PROGRESS (was DRAFT 2026-08-10). First extraction landed 2026-08-30 on the 1.1.2 branch — Cluster B: `run_agentic_loop` sections 7 and 8.5 to module-level `_loop_step_callback` / `_loop_bio_tick_maintenance`, 3,546 -> 3,512 lines. Its prerequisite, fail_loud Stage 2, ran the same day (zero firings). Originally sequenced AFTER measurement_path_fail_loud.md Stages 1-2, which held
 **Motivation:** External critique (2026-08-10), point 1, verified:
 
 | Function | Lines | try blocks |

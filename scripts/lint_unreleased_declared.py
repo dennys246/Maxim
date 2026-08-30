@@ -139,6 +139,14 @@ def main() -> int:
     try:
         fails = violations(REPO_ROOT, base)
     except GitUnavailable as exc:
+        # The mid-run path gets the SAME must_not_skip treatment as base_ref.
+        # Unlike the other diff-scoped lints — which still print their
+        # non-diff findings when git dies here — this lint IS entirely the
+        # diff check, so a silent `return 0` on a pull request would discard
+        # the whole gate. That is the D37 shape this file exists to end, and
+        # the docstring promises otherwise.
+        if must_not_skip(str(exc)):
+            return 2
         print(f"INFO: [Unreleased]-declared lint skipped mid-run ({exc})")
         return 0
     except OSError as exc:

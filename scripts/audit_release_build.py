@@ -47,6 +47,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import tarfile
 import zipfile
 from pathlib import Path
 
@@ -73,6 +74,50 @@ def newest_wheel(dist_dir: Path) -> Path:
     if not wheels:
         raise SystemExit(f"ERROR: no pymaxim-*.whl under {dist_dir} — build first (`python -m build`)")
     return wheels[-1]
+
+
+def newest_sdist(dist_dir: Path) -> Path | None:
+    sdists = sorted(dist_dir.glob("pymaxim-*.tar.gz"), key=lambda p: p.stat().st_mtime)
+    return sdists[-1] if sdists else None
+
+
+def audit_sdist(sdist: Path, expect_version: str, *, require_ui_dist: bool = True) -> list[str]:
+    """The sdist ships too, and D47/D48 apply to it verbatim.
+
+    `twine upload dist/pymaxim-*` uploads BOTH artifacts, and
+    `pip install --no-binary :all: pymaxim` consumes the sdist — so auditing
+    only the wheel leaves half the release unchecked. v1.1.0's sdist carried
+    the same 6 `console/ui_dist/` files as its wheel; a worktree build's would
+    carry none.
+    """
+    problems: list[str] = []
+
+    name_match = re.match(r"^(?P<dist>[A-Za-z0-9_.]+)-(?P<version>.+)\.tar\.gz$", sdist.name)
+    filename_version = name_match.group("version") if name_match else None
+    if filename_version is None:
+        problems.append(f"cannot parse a version out of the sdist filename {sdist.name!r}")
+    elif filename_version != expect_version:
+        problems.append(
+            f"D48: sdist filename says version {filename_version!r} but pyproject.toml says {expect_version!r}"
+        )
+
+    with tarfile.open(sdist, "r:gz") as tf:
+        names = tf.getnames()
+    # sdist members are prefixed with `pymaxim-<version>/`.
+    suffixes = {n.split("/", 1)[1] for n in names if "/" in n}
+
+    if "src/maxim/console/ui_dist/index.html" not in suffixes:
+        ui_files = [s for s in suffixes if s.startswith("src/maxim/console/ui_dist/")]
+        message = (
+            f"D47: src/maxim/console/ui_dist/index.html is MISSING from the sdist "
+            f"({len(ui_files)} file(s) under it). The sdist ships and installs too."
+        )
+        if require_ui_dist:
+            problems.append(message)
+        else:
+            print(f"WAIVED (--allow-missing-ui-dist): {message}")
+
+    return problems
 
 
 def audit_wheel(wheel: Path, expect_version: str, *, require_ui_dist: bool = True) -> list[str]:
@@ -151,6 +196,16 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"auditing {wheel.name} against pyproject version {expect}")
     problems = audit_wheel(wheel, expect, require_ui_dist=not args.allow_missing_ui_dist)
+
+    # The sdist is uploaded alongside the wheel and installs via
+    # `pip install --no-binary :all:`, so leaving it unaudited leaves half the
+    # release unchecked. Absent only when --wheel names a file directly.
+    sdist = None if args.wheel else newest_sdist(args.dist_dir)
+    if sdist is not None:
+        print(f"auditing {sdist.name}")
+        problems += audit_sdist(sdist, expect, require_ui_dist=not args.allow_missing_ui_dist)
+    elif not args.wheel:
+        problems.append(f"no pymaxim-*.tar.gz under {args.dist_dir} — `python -m build` produces both")
 
     if problems:
         print("release-build audit FAILED:", file=sys.stderr)

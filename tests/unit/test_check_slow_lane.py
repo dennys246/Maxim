@@ -58,14 +58,18 @@ def test_failures_do_not_mask_the_executed_check(tmp_path: Path) -> None:
 
 
 def test_missing_report_fails(tmp_path: Path) -> None:
-    """No XML means the lane died before writing one — never a pass."""
-    assert C.check(tmp_path / "absent.xml") == 1
+    """No XML means the lane died before writing one — never a pass.
+
+    Exit 2 ("could not evaluate"), matching check_model_cache_lane.py, rather
+    than 1 ("evaluated, lane is vacuous"). The two checkers must agree on what
+    an outcome means even though they stay separate mechanisms."""
+    assert C.check(tmp_path / "absent.xml") == 2
 
 
 def test_unparsable_report_fails(tmp_path: Path) -> None:
     path = tmp_path / "results.xml"
     path.write_text("<not-xml", encoding="utf-8")
-    assert C.check(path) == 1
+    assert C.check(path) == 2
 
 
 def test_minimum_is_configurable(tmp_path: Path) -> None:

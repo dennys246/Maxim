@@ -79,6 +79,20 @@ GUARDED_WRITER = Path("scripts/orient_backbone/live_common.py")
 _IN_PROCESS_GUARDS = ("preflight_gated_record", "in_process_code_provenance", "JsonlLog(")
 EXEMPT_MARKER = "# provenance-exempt:"
 
+# Family 3 — ANY script that names the gated data directory and writes records.
+#
+# Added 2026-08-30 after `scripts/fail_loud_stage2.py` (1.1.2 Cluster A) wrote a
+# new artifact into docs/experiments/data/ while escaping both existing
+# families: it spawns no `maxim` (so not Family 1) and lives at the top level of
+# scripts/ rather than under orient_*/ (so not Family 2). It hand-rolled its own
+# dirty-tree check and only STAMPED the flag — detection, not enforcement, the
+# exact Exp 53/53b shape — and its own review round caught the resulting artifact
+# claiming a clean tree over a `dirty: true` stamp.
+#
+# The families above are keyed on HOW a harness runs; this one is keyed on WHERE
+# it writes, which is what the rule is actually about.
+GATED_DIR_REFERENCE = re.compile(r"docs/experiments/data")
+
 
 def lint(repo_root: Path = REPO_ROOT) -> list[str]:
     """Return the violation messages for the scripts tree under ``repo_root``."""
@@ -138,6 +152,35 @@ def lint(repo_root: Path = REPO_ROOT) -> list[str]:
             "preflight_gated_record[_or_exit] / in_process_code_provenance with the output path "
             "(exit 3 on a dirty tree unless --allow-dirty, which stamps allow_dirty: true), or mark a "
             f"false positive with '{EXEMPT_MARKER} <reason>' (Exp 53/53b lesson, item 16.7)"
+        )
+
+    # Family 3 — gated-path writers anywhere under scripts/, keyed on WHERE the
+    # records land rather than on how the harness runs.
+    for path in sorted(scripts.rglob("*.py")):
+        rel = path.relative_to(repo_root)
+        if path == writer or path.name == "_provenance.py":
+            continue
+        text = path.read_text(errors="replace")
+        if not GATED_DIR_REFERENCE.search(text):
+            continue
+        if not _RECORD_WRITE.search(text):
+            continue
+        if EXEMPT_MARKER in text:
+            continue
+        # Any of the three sanctioned guard forms counts: the in-process
+        # preflight, the delegating JsonlLog writer, or the spawner's
+        # `executed_code_provenance(..., out_path=)` — which is how
+        # scripts/exp44/campaign.py is (correctly) guarded. Family 3 keys on
+        # WHERE records land, not on which family a harness belongs to, so it
+        # must accept every form the other two families accept.
+        if any(g in text for g in _IN_PROCESS_GUARDS) or _SPAWNER_GATE.search(text):
+            continue
+        failures.append(
+            f"{rel}: writes records and names docs/experiments/data/ but runs no gated-record "
+            "preflight — call scripts/_provenance.py::preflight_gated_record[_or_exit] with the "
+            "output path (exit 3 on a dirty tree unless --allow-dirty, which stamps "
+            f"allow_dirty: true), or mark a false positive with '{EXEMPT_MARKER} <reason>'. "
+            "Stamping a dirty flag is detection; refusing to write is enforcement (item 16.7)"
         )
     return failures
 

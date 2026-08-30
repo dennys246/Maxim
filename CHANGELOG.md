@@ -36,12 +36,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bump the version or add an `[Unreleased]` line. This entry exists because of it.
 - `tests/unit/test_api_surface.py` — README's advertised verb count and `_API_VERBS` are
   now one checked claim.
+- **A `release-build` CI job that actually builds a wheel** — nothing in CI built one before.
+  `scripts/audit_release_build.py` asserts the built wheel AND sdist carry
+  `console/ui_dist/index.html` and a version matching `pyproject` (bugs ledger **D47**,
+  **D48**); `twine check` passed both defective artifacts on 2026-08-30.
+- A nightly **`slow-tests`** lane. `@pytest.mark.slow` had been applied across ~10 files for
+  months while the only mention of it in CI was the fast suite's `-m "not slow"` — 41 tests ran
+  nowhere. `scripts/check_slow_lane.py` fails the lane if it executed nothing.
+- `pytest-timeout` (test extra + CI), so the **D12** guard fails by assertion in 30s instead of
+  hanging until the job's own timeout kills it.
+- `scripts/lint_harness_provenance.py` **Family 3** — any script under `scripts/` that writes
+  into `docs/experiments/data/` must run the gated-record preflight, keyed on *where* records
+  land rather than on how the harness runs. Caught by this cycle's own review round.
 
 ### Fixed
 - README advertised **17** Python-API verbs; the real surface is **21**. The count had been
   wrong through at least two releases with nothing able to notice.
 - `_API_VERBS` listed `list_registered_tools` twice — invisible at runtime because the
   literal builds a `frozenset`.
+- The `python-compatibility` CI lane checked a hand-kept list of 18 API verbs that had drifted
+  from the real 21 — `unregister_tool`, `list_registered_tools` and `clear_registered_tools`
+  went unchecked on Python 3.10/3.11/3.13/3.14. Now derived from `_API_VERBS`.
 - `ARCHITECTURE.md` EC rows and the `similarity/ec.py` docstring: pattern separation is a
   **dentate gyrus** function and completion a **CA3** function, not entorhinal; and EC's two
   query surfaces are now distinguished (substrate pattern routing is an **exact O(Nd)

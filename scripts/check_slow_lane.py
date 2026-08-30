@@ -33,14 +33,20 @@ from xml.etree import ElementTree
 
 def check(xml_path: Path, *, minimum: int = 1) -> int:
     if not xml_path.is_file():
-        print(f"FAIL: no JUnit XML at {xml_path} — the lane did not produce a report", file=sys.stderr)
-        return 1
+        print(f"ERROR: no JUnit XML at {xml_path} — the lane did not produce a report", file=sys.stderr)
+        return 2
 
     try:
         root = ElementTree.parse(xml_path).getroot()
     except ElementTree.ParseError as exc:
-        print(f"FAIL: could not parse {xml_path}: {exc}", file=sys.stderr)
-        return 1
+        # Exit 2 == "could not evaluate"; exit 1 == "evaluated, and the lane
+        # is vacuous". This matches check_model_cache_lane.py::check, which
+        # also returns 2 for an unreadable report. The two checkers stay
+        # separate mechanisms on purpose — that one carries a skip allow-list,
+        # this one does not — but they must not disagree on what an outcome
+        # MEANS (pre-merge review, architecture lens).
+        print(f"ERROR: could not parse {xml_path}: {exc}", file=sys.stderr)
+        return 2
 
     suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
     total = sum(int(s.get("tests", 0)) for s in suites)

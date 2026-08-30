@@ -129,3 +129,55 @@ def test_several_defects_are_all_reported(tmp_path: Path) -> None:
 def test_pyproject_version_is_readable() -> None:
     version = A.pyproject_version()
     assert version and version[0].isdigit()
+
+
+# ── the sdist (review fold, 2026-08-30) ──────────────────────────────────────
+#
+# `twine upload dist/pymaxim-*` uploads BOTH artifacts and
+# `pip install --no-binary :all:` consumes the sdist, so a wheel-only audit
+# leaves half the release unchecked. D47 and D48 apply to it verbatim.
+
+
+def _sdist(tmp_path: Path, *, version: str = VERSION, ui_dist: bool = True) -> Path:
+    import io
+    import tarfile
+
+    path = tmp_path / f"pymaxim-{version}.tar.gz"
+    root = f"pymaxim-{version}"
+
+    def add(tf, name: str, body: bytes = b"x") -> None:
+        info = tarfile.TarInfo(f"{root}/{name}")
+        info.size = len(body)
+        tf.addfile(info, io.BytesIO(body))
+
+    with tarfile.open(path, "w:gz") as tf:
+        add(tf, "PKG-INFO", f"Name: pymaxim\nVersion: {version}\n".encode())
+        add(tf, "src/maxim/__init__.py")
+        if ui_dist:
+            add(tf, "src/maxim/console/ui_dist/index.html", b"<html></html>")
+    return path
+
+
+def test_good_sdist_passes(tmp_path: Path) -> None:
+    assert A.audit_sdist(_sdist(tmp_path), VERSION) == []
+
+
+def test_sdist_missing_ui_dist_fails(tmp_path: Path) -> None:
+    problems = A.audit_sdist(_sdist(tmp_path, ui_dist=False), VERSION)
+    assert len(problems) == 1
+    assert "D47" in problems[0] and "sdist" in problems[0]
+
+
+def test_sdist_wrong_version_fails(tmp_path: Path) -> None:
+    problems = A.audit_sdist(_sdist(tmp_path, version="1.1.0"), VERSION)
+    assert len(problems) == 1
+    assert "D48" in problems[0]
+
+
+def test_sdist_ui_waiver_does_not_waive_version(tmp_path: Path) -> None:
+    problems = A.audit_sdist(_sdist(tmp_path, version="1.1.0", ui_dist=False), VERSION, require_ui_dist=False)
+    assert problems and all("D48" in p for p in problems)
+
+
+def test_newest_sdist_returns_none_when_absent(tmp_path: Path) -> None:
+    assert A.newest_sdist(tmp_path) is None
