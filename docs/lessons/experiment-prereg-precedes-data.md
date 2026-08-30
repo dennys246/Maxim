@@ -164,6 +164,39 @@ rules. The drop happened because they were scoped to sims while the hardware pat
 parallel harness family that inherited the vocabulary but not the enforcement. Widening
 scope is a smaller change than building anything new.
 
+## The door that was still open after 16.7 (2026-08-30, 1.1.2)
+
+**The widened lint was keyed on HOW a harness runs, not WHERE its records land —
+and a new writer walked straight through.** `scripts/fail_loud_stage2.py` (the
+fail-loud Stage-2 tool) writes its baseline into `docs/experiments/data/`, a
+gated path. It matched **neither** existing family: it spawns no `maxim`
+(Family 1's regex) and does not live under `scripts/orient_*/` (Family 2's glob).
+So it hand-rolled its own dirty-tree check, **stamped** the flag, and wrote the
+artifact anyway — detection, not enforcement, the exact shape this lesson
+exists about. The committed `baseline.json` then read
+`working_tree_dirty_src_scripts: true` while the commit message, the artifact
+README and the plan all said "clean tree". An honest machine stamp under a human
+misreading, on the same branch that rewrote the rule above.
+
+The captures had genuinely been taken from a clean tree at `6f3f3b7d`; it was the
+ARTIFACT that got regenerated minutes later with an uncommitted patch in the
+tree. That distinction is exactly the kind a reader will not make on release day,
+which is the whole argument of this lesson.
+
+**Fixed two ways.** The tool routes through
+`_provenance.py::preflight_gated_record_or_exit` and now REFUSES (exit 3) unless
+`--allow-dirty` is passed, which stamps `allow_dirty: true` into the artifact.
+And `lint_harness_provenance.py` gained a **Family 3** keyed on WHERE records
+land: any `scripts/**/*.py` that names `docs/experiments/data` and writes records
+must run one of the sanctioned guards. It accepts all three guard forms — the
+first cut did not, and false-positived on `exp44/campaign.py`, which is correctly
+guarded via `executed_code_provenance(..., out_path=)`.
+
+**Generalisation worth keeping:** when a rule is about an OUTCOME (records
+landing in a gated tree), a lint keyed on MECHANISM (how the harness runs) will
+keep growing new doors as new mechanisms appear. Family 3 is the outcome-keyed
+one, and it is the family that would have caught this without being widened.
+
 ## Status
 
 - 2026-08-27: lesson written; brief stub + roadmap items 16.7–16.9 + guide line landed
