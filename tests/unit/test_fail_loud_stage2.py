@@ -265,3 +265,107 @@ def test_baseline_refuses_to_freeze_an_unusable_capture(stage2, tmp_path):
     rc = stage2.main(["baseline", "--capture", f"m={empty}", "--out", str(out)])
     assert rc == 2
     assert not out.exists(), "no baseline may be written from a capture that measured nothing"
+
+
+# ── the fold's headline fix: the gated-record preflight ──────────────────────
+#
+# The first cut of this tool hand-rolled its dirty-tree check and only STAMPED
+# the flag, so it wrote an artifact claiming a clean tree over a `dirty: true`
+# stamp — the Exp 53/53b shape. It now routes through
+# `_provenance.py::preflight_gated_record_or_exit`, which REFUSES. Every other
+# test here writes to tmp_path (never a gated path), so without these the
+# headline fix would ship unguarded.
+
+
+def test_baseline_refuses_when_the_preflight_refuses(stage2, tmp_path, monkeypatch):
+    """A dirty tree writing to a GATED path must exit 3, before any work."""
+
+    def _refuse(_root, _out, *, allow_dirty=False):
+        raise SystemExit(3)
+
+    monkeypatch.setattr(stage2, "preflight_gated_record_or_exit", _refuse)
+    out = tmp_path / "baseline.json"
+    with pytest.raises(SystemExit) as exc:
+        stage2.main(["baseline", "--capture", f"m={_bulk_capture(tmp_path, 'c.jsonl')}", "--out", str(out)])
+    assert exc.value.code == 3
+    assert not out.exists()
+
+
+def test_preflight_runs_before_any_capture_work(stage2, tmp_path, monkeypatch):
+    """It must be the FIRST thing: a refusal beats even 'capture not found'."""
+
+    def _refuse(_root, _out, *, allow_dirty=False):
+        raise SystemExit(3)
+
+    monkeypatch.setattr(stage2, "preflight_gated_record_or_exit", _refuse)
+    with pytest.raises(SystemExit) as exc:
+        stage2.main(["baseline", "--capture", "m=/nonexistent/never.jsonl", "--out", str(tmp_path / "b.json")])
+    assert exc.value.code == 3, "the preflight must precede capture resolution"
+
+
+def test_allow_dirty_is_threaded_and_stamped(stage2, tmp_path, monkeypatch):
+    """--allow-dirty must reach the preflight AND land in the artifact, so a
+    write-up cannot quietly omit that the tree was dirty."""
+    seen: list[bool] = []
+
+    def _granting(_root, _out, *, allow_dirty=False):
+        seen.append(allow_dirty)
+        return {"gated": True, "working_tree_dirty_src_scripts": True, "allow_dirty": True}
+
+    monkeypatch.setattr(stage2, "preflight_gated_record_or_exit", _granting)
+    out = tmp_path / "baseline.json"
+    rc = stage2.main(
+        [
+            "baseline",
+            "--capture",
+            f"m={_bulk_capture(tmp_path, 'c.jsonl')}",
+            "--out",
+            str(out),
+            "--allow-dirty",
+        ]
+    )
+    assert rc == 0
+    assert seen == [True], "--allow-dirty must be threaded to the preflight"
+    payload = json.loads(out.read_text())
+    assert payload["allow_dirty"] is True
+    assert payload["working_tree_dirty_src_scripts"] is True
+
+
+def test_clean_tree_artifact_claims_no_allowance(stage2, tmp_path, monkeypatch):
+    """A clean tree needs no allowance and must not claim one."""
+    monkeypatch.setattr(
+        stage2,
+        "preflight_gated_record_or_exit",
+        lambda _r, _o, *, allow_dirty=False: {
+            "gated": True,
+            "working_tree_dirty_src_scripts": False,
+            "allow_dirty": False,
+        },
+    )
+    out = tmp_path / "baseline.json"
+    assert stage2.main(["baseline", "--capture", f"m={_bulk_capture(tmp_path, 'c.jsonl')}", "--out", str(out)]) == 0
+    payload = json.loads(out.read_text())
+    assert payload["working_tree_dirty_src_scripts"] is False
+    assert payload["allow_dirty"] is False
+
+
+def test_capture_that_is_not_a_maxim_log_is_refused(stage2, tmp_path):
+    """Shape is not provenance: a well-formed JSONL with no structured-event
+    key (e.g. ~/.maxim/util/lane_decisions.jsonl) would otherwise read as a
+    clean pass, because 'no swallow events' is the gate's only pass condition."""
+    wrong = tmp_path / "wrong.jsonl"
+    wrong.write_text(
+        "".join(json.dumps({"ts": i, "lane": "large", "decision": "x"}) + "\n" for i in range(500)),
+        encoding="utf-8",
+    )
+    rc = stage2.main(["check", "--capture", f"m={wrong}", "--baseline", str(_baseline(tmp_path))])
+    assert rc == 2
+
+
+def test_min_lines_zero_does_not_divide_by_zero(stage2, tmp_path):
+    """`--min-lines 0` is the natural way to disable the floor; it must not
+    raise ZeroDivisionError on an empty capture."""
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("", encoding="utf-8")
+    rc = stage2.main(["check", "--capture", f"m={empty}", "--baseline", str(_baseline(tmp_path)), "--min-lines", "0"])
+    assert rc == 2

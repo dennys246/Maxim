@@ -159,6 +159,7 @@ def _parse_capture(path: Path) -> tuple[list[dict[str, str]], dict[str, object]]
     firings: list[dict[str, str]] = []
     total = 0
     unparsable = 0
+    structured = 0
     digest = hashlib.sha256()
     with path.open("rb") as probe:
         gzipped = probe.read(2) == b"\x1f\x8b"
@@ -181,6 +182,8 @@ def _parse_capture(path: Path) -> tuple[list[dict[str, str]], dict[str, object]]
             # "data". A parser written against only the `extra={"event":...,
             # "data":...}` call-site shape reads neither and reports a silent
             # zero — which is indistinguishable from "nothing fired".
+            if "e" in record or "event" in record:
+                structured += 1
             if record.get("e") == "swallowed_exception":
                 data = record
             elif record.get("event") == "swallowed_exception":
@@ -204,6 +207,7 @@ def _parse_capture(path: Path) -> tuple[list[dict[str, str]], dict[str, object]]
         "sha256": digest.hexdigest(),
         "lines": total,
         "unparsable_lines": unparsable,
+        "structured_records": structured,
         "firings": len(firings),
     }
     return firings, meta
@@ -248,7 +252,8 @@ def usable_capture_problems(metas: dict[str, dict], *, min_lines: int, max_unpar
     for mode, meta in sorted(metas.items()):
         lines = int(meta["lines"])
         unparsable = int(meta["unparsable_lines"])
-        if lines < min_lines:
+        structured = int(meta["structured_records"])
+        if lines <= 0 or lines < min_lines:
             problems.append(
                 f"capture {mode!r} has {lines} line(s) (minimum {min_lines}) — "
                 f"an empty capture cannot support a verdict. Was MAXIM_LOG_FILE set?"
@@ -259,6 +264,21 @@ def usable_capture_problems(metas: dict[str, dict], *, min_lines: int, max_unpar
             problems.append(
                 f"capture {mode!r}: {unparsable}/{lines} lines unparsable "
                 f"({fraction:.0%} > {max_unparsable_fraction:.0%}) — not a JSONL capture we can trust"
+            )
+            continue
+        # Line count and JSON-parseability are SHAPE, not provenance. Any
+        # well-formed JSONL passes both — including
+        # ~/.maxim/util/lane_decisions.jsonl, which has thousands of parseable
+        # lines and no swallow events, and would therefore read as a clean
+        # pass. Since the committed baseline is all-zeros, "your capture had no
+        # swallow events" is the gate's ONLY pass condition, which is exactly
+        # what pointing it at the wrong file produces. Require the capture to
+        # carry the structured-event field every maxim log record has.
+        if structured == 0:
+            problems.append(
+                f"capture {mode!r}: {lines} parseable line(s) but NONE carry a structured event "
+                f'key ("e" or "event") — this does not look like a MAXIM_LOG_FILE capture. '
+                f"Pointing --capture at the wrong JSONL reads as a clean pass, so it is refused."
             )
     return problems
 
@@ -383,6 +403,11 @@ def cmd_check(args: argparse.Namespace) -> int:
     baseline_sites = int(baseline.get("instrumented_site_count", 0))
     current_sites = len(inventory_sites())
     print(f"instrumented sites: baseline {baseline_sites}, now {current_sites}")
+    if not baseline_sites:
+        print(
+            "WARNING: baseline carries no instrumented_site_count — the de-instrumentation "
+            "check cannot run against it. Re-generate the baseline with the current tool."
+        )
     if baseline_sites and current_sites < baseline_sites:
         print(
             f"FAIL: instrumented swallow sites fell {baseline_sites} -> {current_sites}. "

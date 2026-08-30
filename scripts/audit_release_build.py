@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Audit a BUILT wheel before it is published. Bugs ledger D47 + D48.
+"""Audit the BUILT artifacts (wheel + sdist) before they are published. Bugs ledger D47 + D48.
 
 WHY THIS EXISTS — two near-misses on 2026-08-30, both of which `twine check` PASSED
 -----------------------------------------------------------------------------------
@@ -28,13 +28,17 @@ wrong), and `audit_release_tags.py` runs POST-publication against PyPI.
 
 WHAT IT ASSERTS
 ---------------
-Given a built wheel (default: the newest under `dist/`):
+Given the newest wheel AND sdist under `dist/`:
 
 1. the version in the wheel filename == the version in its `.dist-info` METADATA
-   == `pyproject.toml`'s version   (D48)
-2. `maxim/console/ui_dist/index.html` is present  (D47)
-3. the package data the guide's manual checks cover is present: `maxim/py.typed`,
-   `maxim/__main__.py`, and a non-trivial `maxim/_data/` tree
+   == `pyproject.toml`'s version, and the same for the sdist filename   (D48)
+2. `console/ui_dist/index.html` is present in BOTH artifacts  (D47)
+3. the package data the guide's manual checks cover is present in the wheel:
+   `maxim/py.typed`, `maxim/__main__.py`, and a non-trivial `maxim/_data/` tree
+
+The sdist is audited because `twine upload dist/pymaxim-*` ships it too and
+`pip install --no-binary :all: pymaxim` installs from it — auditing only the
+wheel leaves half the release unchecked.
 
 `--allow-missing-ui-dist` exists for exactly one caller — a CI build on a checkout
 that legitimately has no vendored bundle — and it is NOT the release path. When it
@@ -101,8 +105,14 @@ def audit_sdist(sdist: Path, expect_version: str, *, require_ui_dist: bool = Tru
             f"D48: sdist filename says version {filename_version!r} but pyproject.toml says {expect_version!r}"
         )
 
-    with tarfile.open(sdist, "r:gz") as tf:
-        names = tf.getnames()
+    try:
+        with tarfile.open(sdist, "r:gz") as tf:
+            names = tf.getnames()
+    except (tarfile.TarError, OSError) as exc:
+        # Keep the file's collect-all-problems-then-report contract: an
+        # unreadable artifact is a finding, not a traceback.
+        problems.append(f"sdist {sdist.name} could not be read as a gzip tar: {exc}")
+        return problems
     # sdist members are prefixed with `pymaxim-<version>/`.
     suffixes = {n.split("/", 1)[1] for n in names if "/" in n}
 
@@ -183,6 +193,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--wheel", type=Path, default=None, help="wheel to audit (default: newest in --dist-dir)")
     parser.add_argument("--dist-dir", type=Path, default=REPO_ROOT / "dist")
+    parser.add_argument("--sdist", type=Path, default=None, help="sdist to audit (default: newest in --dist-dir)")
     parser.add_argument("--expect-version", default=None, help="default: pyproject.toml's version")
     parser.add_argument(
         "--allow-missing-ui-dist",
@@ -200,11 +211,16 @@ def main(argv: list[str] | None = None) -> int:
     # The sdist is uploaded alongside the wheel and installs via
     # `pip install --no-binary :all:`, so leaving it unaudited leaves half the
     # release unchecked. Absent only when --wheel names a file directly.
-    sdist = None if args.wheel else newest_sdist(args.dist_dir)
+    sdist = args.sdist or (None if args.wheel else newest_sdist(args.dist_dir))
     if sdist is not None:
         print(f"auditing {sdist.name}")
         problems += audit_sdist(sdist, expect, require_ui_dist=not args.allow_missing_ui_dist)
-    elif not args.wheel:
+    elif args.wheel:
+        # Say so. "A check that can be silently waived is not a check" applies
+        # to this script's own output too: --wheel names one file, so the sdist
+        # half of the release is simply not covered by this invocation.
+        print("NOTE: sdist NOT audited — --wheel names a single file. Pass --sdist to audit it too.")
+    else:
         problems.append(f"no pymaxim-*.tar.gz under {args.dist_dir} — `python -m build` produces both")
 
     if problems:

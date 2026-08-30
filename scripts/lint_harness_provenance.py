@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Every harness that produces experiment records must run the provenance guard.
 
-Two families, two doors, one rule (a result whose code-under-test cannot be
+Three families, three doors, one rule (a result whose code-under-test cannot be
 established is not a validation):
 
 1. **Sub-sim spawners** (the Exp 42b retraction, CLAUDE.md first lesson): a
@@ -27,6 +27,19 @@ established is not a validation):
    Exp 53 harness *stamped* ``working_tree_dirty_src_scripts: true`` into
    every start record and kept going — stamping is detection, refusing is
    enforcement, and this family was outside family 1's regex.
+
+3. **Gated-path writers anywhere under ``scripts/``** (added 2026-08-30, the
+   1.1.2 review round): any ``scripts/**/*.py`` that names
+   ``docs/experiments/data`` and writes records must run one of the sanctioned
+   guards. Families 1 and 2 both key on HOW a harness runs — it spawns
+   ``maxim``, or it lives under ``scripts/orient_*/`` — so
+   ``scripts/fail_loud_stage2.py`` matched neither while writing a new
+   artifact into the gated tree, and it hand-rolled a dirty check that only
+   STAMPED the flag. This family keys on WHERE records land, which is what the
+   rule is actually about, and accepts every guard form the other two accept.
+   A file already flagged by family 1 or 2 is not reported twice.
+   Note it keys on the LITERAL string ``docs/experiments/data``: a harness
+   assembling the path from segments escapes it, per the convention below.
 
 False positives (a script whose match is not a record write / sub-sim spawn)
 opt out with a line containing ``# provenance-exempt:`` followed by the reason.
@@ -97,6 +110,11 @@ GATED_DIR_REFERENCE = re.compile(r"docs/experiments/data")
 def lint(repo_root: Path = REPO_ROOT) -> list[str]:
     """Return the violation messages for the scripts tree under ``repo_root``."""
     failures: list[str] = []
+    # One defect, one message. Family 3 overlaps both earlier families by
+    # design (it keys on WHERE records land, they key on HOW the harness
+    # runs), so without this an orient_*/ violator reported twice and an
+    # author reading the failure list would over-count.
+    flagged: set[Path] = set()
     scripts = repo_root / "scripts"
 
     # Family 1 — sub-sim spawners.
@@ -124,6 +142,7 @@ def lint(repo_root: Path = REPO_ROOT) -> list[str]:
                 "preflight_gated_record_or_exit(repo_root, <out path>, allow_dirty=args.allow_dirty) or pass "
                 "out_path= to executed_code_provenance (exit 3 on a dirty tree unless --allow-dirty; item 16.7)"
             )
+            flagged.add(path)
 
     # Family 2 — in-process record writers. The guarded writer is the delegate,
     # so it must itself reference the preflight (positive control on the delegation).
@@ -153,12 +172,13 @@ def lint(repo_root: Path = REPO_ROOT) -> list[str]:
             "(exit 3 on a dirty tree unless --allow-dirty, which stamps allow_dirty: true), or mark a "
             f"false positive with '{EXEMPT_MARKER} <reason>' (Exp 53/53b lesson, item 16.7)"
         )
+        flagged.add(path)
 
     # Family 3 — gated-path writers anywhere under scripts/, keyed on WHERE the
     # records land rather than on how the harness runs.
     for path in sorted(scripts.rglob("*.py")):
         rel = path.relative_to(repo_root)
-        if path == writer or path.name == "_provenance.py":
+        if path == writer or path.name == "_provenance.py" or path in flagged:
             continue
         text = path.read_text(errors="replace")
         if not GATED_DIR_REFERENCE.search(text):
@@ -192,7 +212,7 @@ def main() -> int:
         for f in failures:
             print(f"  {f}", file=sys.stderr)
         return 1
-    print("harness-provenance lint: clean (sub-sim spawners + in-process record writers)")
+    print("harness-provenance lint: clean (sub-sim spawners + in-process record writers + gated-path writers)")
     return 0
 
 

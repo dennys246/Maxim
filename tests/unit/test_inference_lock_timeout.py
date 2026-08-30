@@ -16,11 +16,16 @@ import pytest
 
 # The @pytest.mark.timeout below is the ONLY thing standing between the D12
 # guard and its old failure mode (hang, not FAIL). Without the plugin the
-# marker degrades to a PytestUnknownMarkWarning — a warning, not an error —
-# and the guard silently reverts to unfalsifiable. This repo's own principle
-# is to push silent-no-op invariants into a loud failure, so the absence is
-# an error here rather than a quiet downgrade. Installed via the `test` extra
-# and by CI's explicit `pip install ... pytest-timeout`.
+# marker degrades to a PytestUnknownMarkWarning — a warning, not an error, and
+# `markers` is declared without `--strict-markers` — so the guard silently
+# reverts to unfalsifiable.
+#
+# importorskip makes that loss VISIBLE (a named skip line) instead of silent.
+# Be precise about what that buys and what it does not: a runner without the
+# plugin still goes GREEN, with the D12 guard unenforced. It is not an error.
+# The plugin is in the `test` extra and CI installs it explicitly, so the gap
+# is latent rather than live; closing it properly would mean --strict-markers
+# repo-wide, which is a larger change than this fold.
 pytest.importorskip(
     "pytest_timeout",
     reason="pytest-timeout is REQUIRED for the D12 guard to fail by assertion rather than by hanging; "
