@@ -106,43 +106,54 @@ Comprehensive documentation for Maxim's systems and subsystems.
 
 ---
 
-## Website Guides
+## Design essays
 
-Long-form topic guides are published at **[dennyschaedig.com/maxim](https://dennyschaedig.com/maxim)**.
-These HTML pages provide deep narrative coverage of each subsystem — architecture rationale, design decisions, and worked examples.
+[dennyschaedig.com/maxim](https://www.dennyschaedig.com/maxim) hosts Denny's **design essays** — the *why*
+behind Maxim's architecture. They are opinion and rationale, not reference: the canonical
+reference and evidence site is [pymaxim.bio](https://pymaxim.bio/getting-started/), which wins
+wherever the two disagree, and the repository's experiment, defect, limits, and graduation
+ledgers win over both.
 
-| Guide | Topic |
-|-------|-------|
-| [**Maxim 1.0 — The Honest Benchmark**](https://dennyschaedig.com/maxim/maxim-1-0-release.html) | The 1.0 release writeup: pre-registered cross-session experiments + where biology matters vs the LLM prior |
-| [Overview](https://dennyschaedig.com/maxim/maxim-overview.html) | Project overview and philosophy |
-| [Agent Architecture](https://dennyschaedig.com/maxim/maxim-agent-architecture.html) | The agent brain: ExecAgent, FearAgent, PerceptionAgent, agent loop |
-| [Memory Systems](https://dennyschaedig.com/maxim/maxim-memory-systems.html) | Hippocampus, ATL, EC, AngularGyrus, tier progression, consolidation |
-| [Semantic Memory](https://dennyschaedig.com/maxim/maxim-semantic-memory.html) | ATL concepts, embeddings, concept decomposition |
-| [Concept Decomposition](https://dennyschaedig.com/maxim/maxim-concept-decomposition.html) | Noun-phrase extraction, EC pattern completion, substrate encoding |
-| [Embodiment](https://dennyschaedig.com/maxim/maxim-embodiment.html) | SEM protocol, drives, sensors, modulators, pain cascade |
-| [Proprioception](https://dennyschaedig.com/maxim/maxim-proprioception.html) | Body awareness, pain detection, interoception |
-| [Prompt System](https://dennyschaedig.com/maxim/maxim-prompt-system.html) | Prompt composition, Acting Coach, tool injection, bio-modulation |
-| [Deliberation](https://dennyschaedig.com/maxim/maxim-deliberation.html) | ThinkTool, ThoughtGate, working memory, System 2 deliberation |
-| [Simulation](https://dennyschaedig.com/maxim/maxim-simulation.html) | Percept simulation, narrative arcs, campaign modes |
-| [DM Campaigns](https://dennyschaedig.com/maxim/maxim-dm-campaigns.html) | Dungeon-master campaign format, encounter choices, cascade DAG |
-| [Imagination](https://dennyschaedig.com/maxim/maxim-imagination.html) | Real-time entity design from novel percept mentions |
-| [Component Library](https://dennyschaedig.com/maxim/maxim-component-library.html) | SEM component specs, foundry, auto-curation |
-| [Operating Modes](https://dennyschaedig.com/maxim/maxim-operating-modes.html) | ProcessingState × OperationalMode, sleep/wake, supervised/autonomous |
-| [Tools & Introspection](https://dennyschaedig.com/maxim/maxim-tools.html) | Tool registry, executor, side effects, introspection |
-| [Attention & Salience](https://dennyschaedig.com/maxim/maxim-attention-salience.html) | Spatial attention, salience network, thalamic gating |
-| [Math & Statistical Cognition](https://dennyschaedig.com/maxim/maxim-math-cognition.html) | Angular Gyrus, IPS fast stats |
-| [Networking](https://dennyschaedig.com/maxim/maxim-networking.html) | Multi-LLM networking, peer mesh, leader/peer topology, Cloudflare Tunnel |
-| [Communication](https://dennyschaedig.com/maxim/maxim-communication.html) | SMS/Voice safety, Twilio integration |
-| [Agent Mesh](https://dennyschaedig.com/maxim/maxim-agent-mesh.html) | Identity, protocol, knowledge sharing, cooperative intelligence |
-| [Hivemind + Oasis](https://dennyschaedig.com/maxim/maxim-hivemind.html) | Federated bio-substrate sharing, bundle format, Oasis instances |
-| [Substrate-Primary Mode](https://dennyschaedig.com/maxim/maxim-substrate-primary.html) | Parallel architecture: bio-substrate drives action selection |
-| [Benchmarks](https://dennyschaedig.com/maxim/maxim-benchmarks.html) | Benchmark harnesses, recovery time, performance measurement |
-| [Experiments & Results](https://dennyschaedig.com/maxim/maxim-experiments.html) | Roy iterations, substrate convergence, experimental results |
-| [Roadmap](https://dennyschaedig.com/maxim/maxim-roadmap.html) | 1.0 release plan, feature tracks, behavioral graduation candidates |
-| [Technical Deep Dive](https://dennyschaedig.com/maxim/maxim-technical-deepdive.html) | Implementation details, architecture decisions, engineering notes |
-| [Usage Guide](https://dennyschaedig.com/maxim/maxim-usage-guide.html) | Installation, CLI reference, configuration, day-to-day usage |
+| Essay | Topic |
+|---|---|
+| [Maxim 1.0 — The Honest Benchmark](https://www.dennyschaedig.com/maxim/release-1-0) | The 1.0 release: what shipped, and the pre-registered experiments that mapped where the bio-substrate helps and where the LLM prior dominates |
+| [Sound orientation](https://www.dennyschaedig.com/maxim/sound-orientation) | The Reachy Mini sound-orient case study — real-hardware sensorimotor learning, including the actuation bug |
+| [Substrate-primary mode](https://www.dennyschaedig.com/maxim/substrate-primary) | Why the bio-substrate should drive action selection, and the phased plan for it |
+| [Hivemind + Oasis](https://www.dennyschaedig.com/maxim/hivemind) | Federated bio-substrate sharing — the design, not a shipped service |
+| [Agent architecture](https://www.dennyschaedig.com/maxim/agent-architecture) | Layered architecture, the bio-system pipeline, fear circuit, cerebellum |
+| [Math & statistical cognition](https://www.dennyschaedig.com/maxim/math-cognition) | Statistician agent, variance, NAc reward, Angular Gyrus |
+| [Memory systems](https://www.dennyschaedig.com/maxim/memory-systems) | Hippocampus, NAc, SCN, ATL, EC, Angular Gyrus in depth; semantic memory at `#semantic` |
+| [Embodiment](https://www.dennyschaedig.com/maxim/embodiment) | Sensor-Entity-Modulator protocol, drives, pain cascade |
+| [Imagination](https://www.dennyschaedig.com/maxim/imagination) | Real-time entity design from novel percepts |
+| [Proprioception & body awareness](https://www.dennyschaedig.com/maxim/proprioception) | Body state, drive evaluation, interoception |
+| [Attention & salience](https://www.dennyschaedig.com/maxim/attention-salience) | Salience modulation and attention weighting |
+| [Deliberation](https://www.dennyschaedig.com/maxim/deliberation) | PFC inner monologue and the thought stream |
 
----
+The reference pages that used to live beside the essays have moved to pymaxim.bio (the old
+URLs redirect):
+
+| Was | Now |
+|---|---|
+| Usage guide | [pymaxim.bio/installation/](https://pymaxim.bio/installation/) |
+| Tools & introspection | [pymaxim.bio/reference/tools/](https://pymaxim.bio/reference/tools/) |
+| Simulation | [pymaxim.bio/guides/simulation/](https://pymaxim.bio/guides/simulation/) |
+| Networking / Agent mesh | [pymaxim.bio/guides/networking/](https://pymaxim.bio/guides/networking/) |
+| Operating modes | [pymaxim.bio/concepts/operating-modes/](https://pymaxim.bio/concepts/operating-modes/) |
+| Communication & safety | [pymaxim.bio/concepts/communication/](https://pymaxim.bio/concepts/communication/) |
+| Technical deep dive | [pymaxim.bio/concepts/architecture/](https://pymaxim.bio/concepts/architecture/) |
+| Experiments & results | [pymaxim.bio/research/experiments/](https://pymaxim.bio/research/experiments/) |
+| Overview | [pymaxim.bio/getting-started/](https://pymaxim.bio/getting-started/) |
+
+Five reference-flavoured pages are still served on dennyschaedig.com only until their
+pymaxim.bio equivalents deploy; delete a row here when the page is retired:
+
+| Held page | Retires to |
+|---|---|
+| [DM campaigns](https://www.dennyschaedig.com/maxim/dm-campaigns) | [pymaxim.bio/guides/dm-campaigns/](https://pymaxim.bio/guides/dm-campaigns/) |
+| [Benchmarks](https://www.dennyschaedig.com/maxim/benchmarks) | [pymaxim.bio/guides/benchmarks/](https://pymaxim.bio/guides/benchmarks/) |
+| [Prompt system & tool injection](https://www.dennyschaedig.com/maxim/prompt-system) | [pymaxim.bio/concepts/prompt-system/](https://pymaxim.bio/concepts/prompt-system/) |
+| [Concept decomposition](https://www.dennyschaedig.com/maxim/concept-decomposition) | [pymaxim.bio/systems/concept-decomposition/](https://pymaxim.bio/systems/concept-decomposition/) |
+| [Component library (interactive catalog)](https://www.dennyschaedig.com/maxim/component-library) | [pymaxim.bio/reference/components/](https://pymaxim.bio/reference/components/) |
 
 ## Architecture Overview
 

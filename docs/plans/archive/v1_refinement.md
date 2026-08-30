@@ -748,7 +748,7 @@ Items deliberately scoped OUT of 1.0 to keep the stabilization release tight. Sh
 
 ### 1.1-T1. Minecraft live demo + harness benchmark
 
-**Plan stub:** [minecraft_benchmark.md](../deferred/minecraft_benchmark.md) (design exploration, post-1.0)
+**Plan stub:** [minecraft_benchmark.md](../minecraft_benchmark.md) (design exploration, post-1.0)
 
 Compare Maxim against Voyager / GITM / SPRING on a Minecraft live demo. Builds on Cradle's embodied learning foundation. Why 1.1 not 1.0:
 
