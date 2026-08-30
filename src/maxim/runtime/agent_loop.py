@@ -1464,6 +1464,88 @@ def _maybe_auto_revert_display() -> None:
         logger.debug("display auto-revert tick raised", exc_info=True)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Extracted numbered sections of ``run_agentic_loop``
+# (docs/plans/god_function_decomposition.md — mechanical moves only)
+#
+# Each ``_loop_<slug>`` below is one numbered section banner lifted verbatim out
+# of the loop body and given a name. The context object is the ``LoopController``
+# the loop already builds (``ctrl``); genuinely loop-local values are passed
+# keyword-only.
+#
+# The alias question the plan flags ("no local aliases for mutable state") was
+# checked by AST before the move, not assumed: within ``run_agentic_loop``,
+# ``state``, ``memory``, ``on_step`` and ``persist_every_n_steps`` are NEVER
+# rebound, and ``autonomy_controller`` is bound once BEFORE ``ctrl`` is
+# constructed — so ``ctrl.<field> is <local>`` holds for the whole run and
+# reading through ``ctrl`` is the same object, not a snapshot.
+#
+# Section ORDER is load-bearing and unchanged: 7 still runs before 8, and 8.5
+# still runs after 8's persist-and-break.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _loop_step_callback(ctrl: Any, *, step_num: int) -> None:
+    """Section 7 — CALL STEP CALLBACK.
+
+    Hands the host one per-step snapshot. Deliberately total: a caller's
+    callback raising must not take down the loop, so the handler stays broad
+    and logs at DEBUG (unchanged from the inline form).
+    """
+    try:
+        if callable(ctrl.on_step):
+            ctrl.on_step(
+                {
+                    "step": step_num,
+                    "state": ctrl.state,
+                    "memory": ctrl.memory,
+                    "autonomy_level": ctrl.autonomy_controller.current_level.value,
+                    "ctrl.pending_proposal": ctrl.pending_proposal is not None,
+                }
+            )
+    except Exception:
+        logger.debug("on_step callback failed", exc_info=True)
+
+
+def _loop_bio_tick_maintenance(nac: Any) -> None:
+    """Section 8.5 — BIO-SYSTEM PER-TICK MAINTENANCE.
+
+    NAc eligibility traces and reward biases decay each tick. Without this,
+    traces persist indefinitely and ``distribute_reward`` credits ALL nodes
+    ever activated in the session at original strength — incorrect for causal
+    credit assignment.
+
+    The six decay calls are one unit under a single handler, exactly as
+    inline: if an early one raises, the rest are skipped for that tick. That
+    is pre-existing behaviour and is NOT changed here (see the module banner —
+    mechanical moves only; a bug found during extraction is filed, not fixed).
+
+    Takes the NAc directly rather than re-deriving it from
+    ``ctrl.memory_hub``: the loop binds ``_loop_nac`` once, before the loop,
+    and re-deriving per tick would be a semantic change, not a move.
+    """
+    if nac is None:
+        return
+    try:
+        nac.decay_eligibility()
+        nac.decay_reward_biases()
+        nac.decay_goal_reward_biases()
+        nac.decay_cluster_reward_biases()
+        # Wire 2 (release_0_9_1.md Stage 3): Pavlovian percept aversion.
+        # Without per-tick decay, ``_percept_valences`` ages into permanent
+        # fossils — ``TextSalienceScorer`` would silently treat
+        # "burned-by-dragon six sessions ago" as equally salient to
+        # "burned-by-dragon last tick."
+        nac.decay_percept_valences()
+        # Substrate exploration policy (substrate_exploration_policy.md
+        # Phase 2): decay per-(agent, tool) visit counts so a tool the agent
+        # stopped selecting regains novelty over time. No-op when exploration
+        # is off (empty map → early return).
+        nac.decay_exploration_visits()
+    except Exception as e:
+        log_swallowed_exception(e, operation="nac_per_tick_decay")
+
+
 def run_agentic_loop(
     agent: Any,
     environment: Any,
@@ -4905,19 +4987,7 @@ def run_agentic_loop(
         # ─────────────────────────────────────────────────────────────────
         # 7. CALL STEP CALLBACK
         # ─────────────────────────────────────────────────────────────────
-        try:
-            if callable(on_step):
-                on_step(
-                    {
-                        "step": step_num,
-                        "state": state,
-                        "memory": memory,
-                        "autonomy_level": autonomy_controller.current_level.value,
-                        "ctrl.pending_proposal": ctrl.pending_proposal is not None,
-                    }
-                )
-        except Exception:
-            logger.debug("on_step callback failed", exc_info=True)
+        _loop_step_callback(ctrl, step_num=step_num)
 
         # ─────────────────────────────────────────────────────────────────
         # 8. INCREMENT STEP COUNTER AND PERSIST
@@ -4936,29 +5006,7 @@ def run_agentic_loop(
         # ─────────────────────────────────────────────────────────────────
         # 8.5 BIO-SYSTEM PER-TICK MAINTENANCE
         # ─────────────────────────────────────────────────────────────────
-        # NAc eligibility traces and reward biases decay each tick.
-        # Without this, traces persist indefinitely and distribute_reward
-        # credits ALL nodes ever activated in the session at original
-        # strength — incorrect for causal credit assignment.
-        if _loop_nac is not None:
-            try:
-                _loop_nac.decay_eligibility()
-                _loop_nac.decay_reward_biases()
-                _loop_nac.decay_goal_reward_biases()
-                _loop_nac.decay_cluster_reward_biases()
-                # Wire 2 (release_0_9_1.md Stage 3): Pavlovian percept
-                # aversion. Without per-tick decay, ``_percept_valences``
-                # ages into permanent fossils — ``TextSalienceScorer``
-                # would silently treat "burned-by-dragon six sessions
-                # ago" as equally salient to "burned-by-dragon last tick."
-                _loop_nac.decay_percept_valences()
-                # Substrate exploration policy (substrate_exploration_policy.md
-                # Phase 2): decay per-(agent, tool) visit counts so a tool the
-                # agent stopped selecting regains novelty over time. No-op when
-                # exploration is off (empty map → early return).
-                _loop_nac.decay_exploration_visits()
-            except Exception as e:
-                log_swallowed_exception(e, operation="nac_per_tick_decay")
+        _loop_bio_tick_maintenance(_loop_nac)
 
         # ─────────────────────────────────────────────────────────────────
         # 9. MAINTAIN LOOP FREQUENCY
