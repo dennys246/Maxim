@@ -1375,8 +1375,13 @@ def campaign(
 ) -> CampaignResult:
     """Run a DM campaign programmatically.
 
-    Loads a campaign YAML, optionally with party mode (NPC agents with
-    real memory), and returns structured results.
+    Loads a campaign YAML and returns structured results.
+
+    NOTE: ``party_mode`` is parsed and stored on the ``CampaignDef`` but the
+    DM runtime does not act on it — there is no ``PartyDMRuntime``, and NPCs
+    get neither a Hippocampus nor an NAc. It does not give NPCs memory.
+    See docs/user/dm-campaigns.md and the party-mode rows in
+    docs/bugs/README.md.
 
     Args:
         path: Path to campaign YAML file. Relative paths resolve against
@@ -1385,7 +1390,9 @@ def campaign(
             ``docs/user/stable_api.md``).
         model: LLM profile for the PC agent / orchestrator.
         party_mode: Override campaign's party_mode setting.  If ``None``,
-            uses the value from the campaign YAML.
+            uses the value from the campaign YAML.  **Parsed only** — it is
+            stored on the ``CampaignDef`` and read by nothing, so setting it
+            changes no behaviour (see the note above; bugs ledger D44).
         npc_model: **Not supported — passing a non-None value raises.**
             Party-mode NPC agents do not exist in the runtime (``party_mode`` is
             parsed into the campaign definition and read by nothing), so there is
@@ -1541,8 +1548,11 @@ def benchmark(
 
     Args:
         models: List of LLM profile names to compare.
-        suite: Benchmark suite name (``"cognitive"``, ``"biosystem"``)
-            or path to a custom suite YAML.
+        suite: Benchmark suite name or path to a suite YAML.  Only
+            ``scenarios/benchmarks/cognitive_suite.yaml`` ships in the repo;
+            a bare name resolves to ``scenarios/benchmarks/{suite}.yaml``
+            relative to the CWD, so ``"biosystem"`` raises FileNotFoundError
+            unless you wrote that file yourself.
         runs: Number of runs per model (for statistical robustness).
         verbosity: Logging verbosity (0-3).
 

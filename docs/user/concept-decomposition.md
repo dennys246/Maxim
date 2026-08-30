@@ -70,6 +70,10 @@ Decomposition applies to **text-modality percepts only.** Visual percepts (CLIP 
 
 The decomposer uses a Protocol-based design so different NLP backends can be swapped without touching the pipeline:
 
+`ConceptChunk` is a frozen dataclass with `text`, an optional character `span`, a
+`confidence` (default 1.0) and the optional `relation` label; downstream code reads
+`chunk.text`.
+
 ```python
 from maxim.similarity.decomposer import (
     ConceptDecomposer,
@@ -87,8 +91,14 @@ decomposer = ConceptDecomposer(strategy=MyCustomStrategy())
 ```
 
 Built-in strategies:
-- **SpaCyNounChunkStrategy** -- default, uses `en_core_web_sm` noun chunker
-- **IdentityStrategy** -- fallback, returns input unchanged (used when spaCy not installed)
+- **SpaCyNounChunkStrategy** -- default, uses the `en_core_web_sm` noun chunker; lazy-loads
+  the model on first call and is thread-safe
+- **IdentityStrategy** -- fallback, returns input unchanged (used when spaCy is not installed
+  or `enabled=False`)
+- **AffordanceDecompositionStrategy** -- for SEM affordance identifiers, not prose. Splits on
+  underscores and returns the compound plus each part (`fire_breath` -> `["fire breath",
+  "fire", "breath"]`), so affordance names get concept nodes too. Exposed as the module-level
+  singleton `AFFORDANCE_STRATEGY` and used by bio-enrichment and the discovery tools
 
 ## Configuration
 
@@ -132,7 +142,13 @@ node_ids = encoder.encode_decomposed(
 
 - **English only** (Stage 1). spaCy `en_core_web_sm` is English-only. Multi-language support requires a multilingual model (`xx_ent_wiki_sm`) or per-language model selection.
 - **Short fragments** may over-decompose. The `min_chunk_len` filter helps, but domain-specific inputs may need a custom strategy.
-- **No relation tagging yet** (Stage 2). Chunks are bound with untagged Hebbian edges. Role-tagged edges (`relation="spatial"`) are planned for a future stage.
+- **Relation tagging is coarse and unvalidated.** Stage 2 shipped: `_classify_relation` reads
+  the dependency parse and labels each chunk `spatial`, `temporal`, `possessive`, `action`, or
+  `descriptive` (prepositional objects are refined by the preposition itself; an unrecognised
+  preposition leaves the edge untagged). `LinguisticEncoder.encode_decomposed` collects these
+  into `last_node_relations`, a `frozenset({node_a, node_b}) -> relation` map that callers pass
+  to `CaptureEvent.node_relations`. No experiment has shown a behavioural effect from the
+  labels — treat them as metadata, not a validated mechanism.
 
 ## Connection to Valence Annotation
 

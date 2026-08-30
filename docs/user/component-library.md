@@ -1,8 +1,15 @@
 # Component Library
 
-72 reusable SEM entity templates across 7 categories. Every component has sensors, affordances, and failure modes that drive Maxim's bio-cognitive systems during simulation.
+**92** reusable SEM entity templates across 7 categories. Every component has sensors,
+affordances, and failure modes that drive Maxim's bio-cognitive systems during simulation.
 
-**Interactive version with search and filtering:** [dennyschaedig.com/maxim/component-library](https://www.dennyschaedig.com/maxim/component-library)
+The count is every YAML file under `src/maxim/_data/components/` carrying a `component:`
+header — the same rule `ComponentRegistry._scan_all` applies, and equal to
+`len(ComponentRegistry().list_refs())`. The seven `archetypes/*.yaml` body-plan scaffolds have
+no header and are not components. Older numbers in circulation (72, 73) were hand-maintained
+curated subsets that omitted experiment fixtures; do not re-copy them.
+
+**Interactive version with search and filtering:** [pymaxim.bio/reference/components](https://pymaxim.bio/reference/components/) — generated from this registry, so its count is derived rather than the hand-maintained totals in this file.
 
 ## Using Components
 
@@ -48,6 +55,12 @@ encounters:
 ---
 
 ## Categories
+
+Registry file counts per category: **items 34, bodies 13, npcs 13, environments 12, weapons 9,
+creatures 8, vehicles 3**. The tables below list the *curated* set — they omit experiment
+fixtures (the `exp42` `warmth_*` items, the `cradle_*` scene objects, the `infant_*` body
+variants), so Items and Bodies are shorter here than the registry is. The complete generated
+listing is on [pymaxim.bio/reference/components](https://pymaxim.bio/reference/components/).
 
 ### Weapons (9)
 
@@ -111,7 +124,7 @@ encounters:
 | `environments/megacorp_lobby` | cyberpunk | security_level, crowd_density, camera_coverage | — |
 | `environments/ripperdoc_clinic` | cyberpunk | lighting, noise_level, sterility, security_level | — |
 
-### Items (21)
+### Items (21 of 34 listed)
 
 | Component | Genre | Key Sensors | Failure Modes |
 |-----------|-------|-------------|---------------|
@@ -140,7 +153,7 @@ encounters:
 | `vehicles/horse` | fantasy, historical | stamina, hp, loyalty, speed, hunger | exhausted, spooked, collapsed |
 | `vehicles/sailing_ship` | historical | hull_integrity, sail_condition, crew_morale, supplies, wind_strength | hull_breach, becalmed, mutiny, starvation |
 
-### Bodies (6)
+### Bodies (6 of 13 listed)
 
 | Component | Genre | Key Sensors | Failure Modes |
 |-----------|-------|-------------|---------------|
