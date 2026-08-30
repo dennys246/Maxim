@@ -108,12 +108,55 @@ process rules live in the brief stub and the publication guide.
    `Regression guard:` link that resolves and includes a path under
    `docs/experiments/data/` or a dated data-lost annotation. L185 (EC pattern completion)
    and L186 (SEM pain → NAc) fail today; that is the point. (Item 16.9)
-5. **The tag waits.** A gating experiment on hardware on the day of the cut means every
-   judgment call is made under release pressure. The release gate is "the result is on
-   `main` with its data and its pre-registration precedes it"; the tag waits at least a
-   day. Exp 54 Phase B/C is the next chance to practice: prereg PR → data PR → ledger PR,
-   tag nowhere near it. (Publication guide §"Tag the released commit")
+5. **The tag waits — REVISED 2026-08-30 to "structure OR time", see below.** A gating
+   experiment on hardware on the day of the cut means every judgment call is made under
+   release pressure. The release gate is "the result is on `main` with its data and its
+   pre-registration precedes it". Exp 54 Phase B/C is the next chance to practice:
+   prereg PR → data PR → ledger PR, tag nowhere near it.
+   (Publication guide §"Tag the released commit")
 6. **Tier-3 dispositions** are a one-hour doc sweep already owned by 1.2 gate 8(d).
+
+### The ≥1-day wait, reconsidered (decided 2026-08-30)
+
+**The wait is a proxy, and naming what it is a proxy FOR gives a better rule.** The
+original prevention item said "the tag waits at least a day". A day is not the thing that
+was missing on 2026-08-26. What was missing was **a second reading of the interpretation by
+someone not carrying the release**. Time was standing in for fresh eyes, and it is a crude
+stand-in: a day of waiting in which nobody re-reads changes nothing, and a same-day review by
+a different reader would have caught what a day of silence did not.
+
+That matters because of what actually failed. **All three 1.1.0 provenance failures were
+human-judgment failures over HONESTLY-STAMPED artifacts.** Exp 53/53b stamped
+`working_tree_dirty_src_scripts: true` into every start record and the run continued; the
+tag went on a `PUBLISH-PENDING` commit. Nothing lied. Somebody read a true stamp and did not
+act on it, under release pressure. So a fix that only attaches artifacts more firmly to
+commits — the obvious mechanical move — would miss this entire class: the artifacts were
+already correctly attached.
+
+**Replacement rule.** A gating result may be cited by a release only when:
+
+- **(a)** its **DATA** landed in its own merged PR;
+- **(b)** its **INTERPRETATION** — the write-up plus the ledger row — landed in a
+  **separate, later** PR; and
+- **(c)** that interpretation PR got a review pass from **a different reader**.
+
+(a) and (b) are mechanically checkable in the shape the prereg lint already walks: two
+distinct merge commits, data strictly before interpretation, for every gated result a
+release cites. (c) is not mechanizable and is not pretended to be — it is the same
+different-reader discipline the review-round rule already rests on, and for the same stated
+reason: *the value of the round is a DIFFERENT reader, not a more careful one.*
+
+**Time stays as the FALLBACK, not as a second requirement: structure OR time, never both.**
+Where the split cannot be met — a genuinely single-PR result, a solo run with no second
+reader available — the ≥1-day wait applies unchanged. Keeping both would make the honest
+path (split the PRs, get a reader) *more* expensive than the sloppy one, which is how process
+rules get routed around.
+
+**What this deliberately does not claim:** the split is not a guarantee. A different reader
+who rubber-stamps buys nothing, and (c) has no enforcement beyond the same attention the
+review rounds rely on. The claim is narrower — it removes the release-day compression that
+made the 1.1.0 misreads *likely*, and it replaces an unfalsifiable "we waited" with two
+checkable facts.
 
 What to avoid: a repo-wide "provenance framework", an experiment registry, or a new bus.
 The pieces exist — `_provenance.py`, the lint, the invariants audit, the ledger's own

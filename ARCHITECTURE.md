@@ -59,7 +59,7 @@ Paths refer to the `src/maxim/` package layout.
   - `nac.py`: Nucleus Accumbens - learns event→outcome relationships via temporal difference learning.
   - `significance.py`: SignificanceWeightLearner - learnable heuristics for memory staging (RPE, novelty, user interaction, etc.).
 - `src/maxim/similarity/`: owns multi-modal similarity queries.
-  - `ec.py`: Entorhinal Cortex - LSH-based approximate nearest neighbor for situation matching.
+  - `ec.py`: Entorhinal Cortex - two distinct query surfaces, easily conflated. **Situation matching** (`find_similar` over `SituationSignature`) is LSH-based approximate nearest neighbour. **Substrate pattern routing** (`pattern_complete_or_separate`, the path the substrate results rest on) is an **exact same-modality centroid scan, O(Nd)** — no LSH, no approximation. Bio-mapping is FUNCTIONAL only: in the brain, pattern separation is a **dentate gyrus** function and pattern completion a **CA3** attractor function; entorhinal cortex is the interface, not the separator. The names here describe what the code decides, not a claimed isomorphism.
   - `semantic.py`: Phase 4 neural semantic embeddings (SentenceTransformer) for deep similarity ("cup" ≈ "mug").
 - `src/maxim/proprioception/`: owns body awareness and pain detection.
   - `focus_learner.py`: Rescorla-Wagner learning for movement gain adaptation. Learns optimal gain from overshoot feedback.
@@ -342,7 +342,7 @@ Six biologically-inspired systems collaborate to give Maxim memory, temporal awa
 | **AngularGyrus** | Parietal-temporal junction | Algebraic memory | Mathematical reasoning, quantity tracking |
 | **SCN** (Suprachiasmatic Nucleus) | Hypothalamus | Temporal rhythm indexing | 24h/7d/monthly bins, coupled oscillator, pattern detection |
 | **NAc** (Nucleus Accumbens) | Ventral striatum | Causal inference | Event→outcome learning, reward prediction |
-| **EC** (Entorhinal Cortex) | Medial temporal lobe (adjacent to hippocampus) | Similarity queries | LSH + neural semantic embeddings |
+| **EC** (Entorhinal Cortex) | Medial temporal lobe (adjacent to hippocampus) | Similarity queries | LSH + neural semantic embeddings for situation matching; **exact O(Nd) centroid scan** for substrate pattern routing. Separation/completion are DG/CA3 functions biologically — FUNCTIONAL naming, not isomorphism |
 
 ### Bridges
 
