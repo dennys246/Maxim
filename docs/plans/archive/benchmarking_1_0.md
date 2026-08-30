@@ -19,7 +19,7 @@
 |---|---|
 | [behavioral_convergence_practice.md](../deferred/behavioral_convergence_practice.md) | **Living doc, not a gate.** Tracks ongoing behavioral hypotheses + experiments. Per its own framing: "Not a 1.0 gate. Behavioral change is a demonstration, not a pass/fail test." The 1.0 benchmarking gate needs a pass/fail commitment that this doc explicitly avoids. |
 | [behavioral_graduation_candidates.md](../behavioral_graduation_candidates.md) | **The sibling gate** — mechanism validation. Both must pass for 1.0. Passing one without the other leaves a half-claim ("the mechanisms validate but the agent doesn't solve anything" or vice versa). |
-| [minecraft_benchmark.md](../deferred/minecraft_benchmark.md) | **Explicitly 1.1 splash, not 1.0.** Per its own framing: "Cradle (B4) already provides the cross-session evidence 1.0 needs. Minecraft strengthens the story without gating it." The 1.0 gate has to land before Minecraft work matures. |
+| [minecraft_benchmark.md](../minecraft_benchmark.md) | **Explicitly 1.1 splash, not 1.0.** Per its own framing: "Cradle (B4) already provides the cross-session evidence 1.0 needs. Minecraft strengthens the story without gating it." The 1.0 gate has to land before Minecraft work matures. |
 | [Experiment 10 — cross-session enrichment](../../experiments/10_cross_session_enrichment.md) | **Partial evidence.** Validates that enrichment surfaces prior-session memories in the prompt (3 memories/turn on resume). Does NOT measure whether that surfaces produces measurably different downstream behavior. The 1.0 gate needs the behavioral half. |
 | [Experiment 11 — Cradle sensorimotor PoC](../../experiments/11_cradle_sensorimotor_poc.md) | **Infrastructure shipped; behavioral measurement pending.** Cradle is the substrate for the 1.0 cross-session claim, but the demonstration-grade benchmark run on top of it has not been formalized as a 1.0 gate. |
 | Roy harness (Exp 16–36) | **Mechanism-level evidence, not agent-performance evidence.** Roy validates specific bio-mechanisms (EC pattern completion, NAc reward bias propagation, cluster annotation effects). It feeds behavioral graduation, not this gate. |
@@ -122,7 +122,7 @@ If the secondary criterion fails (delta survives ablation of all bio-mechanisms)
 - **[behavioral_graduation_candidates.md](../behavioral_graduation_candidates.md)** — the sibling 1.0 gate. The secondary criterion of this gate (mechanism-attributable delta) is what couples the two — passing this gate without the graduation gate means the bio-attribution is unsupported.
 - **[behavioral_convergence_practice.md](../deferred/behavioral_convergence_practice.md)** — the living doc for ongoing behavioral hypotheses. Once the 1.0 benchmark passes, the doc keeps tracking newer hypotheses post-1.0 — same shape as the post-1.0 lifecycle in graduation candidates.
 - **[memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md)** — the long-horizon retention practice doc. Out of scope for 1.0 benchmarking but relevant for 1.1+ long-horizon questions.
-- **[minecraft_benchmark.md](../deferred/minecraft_benchmark.md)** — the 1.1 showpiece. Builds on whatever protocol this gate establishes; Minecraft adapts it to a third-party-recognizable environment.
+- **[minecraft_benchmark.md](../minecraft_benchmark.md)** — the 1.1 showpiece. Builds on whatever protocol this gate establishes; Minecraft adapts it to a third-party-recognizable environment.
 
 ## Implementation plan (out of scope here)
 
@@ -175,7 +175,7 @@ Shipping 1.0 without this gate means shipping a thesis we haven't measured. The 
 - [v1_refinement.md](v1_refinement.md) §6.1 — 1.0 plan rollup.
 - [behavioral_graduation_candidates.md](../behavioral_graduation_candidates.md) — sibling 1.0 gate.
 - [behavioral_convergence_practice.md](../deferred/behavioral_convergence_practice.md) — living behavioral practice doc.
-- [minecraft_benchmark.md](../deferred/minecraft_benchmark.md) — 1.1 splash plan.
+- [minecraft_benchmark.md](../minecraft_benchmark.md) — 1.1 splash plan.
 - [docs/experiments/10_cross_session_enrichment.md](../../experiments/10_cross_session_enrichment.md) — partial evidence.
 - [docs/experiments/11_cradle_sensorimotor_poc.md](../../experiments/11_cradle_sensorimotor_poc.md) — substrate evidence.
 - [CLAUDE.md framing strategy](../../../CLAUDE.md) — "bio-inspired LLM harness for AI engineers."
