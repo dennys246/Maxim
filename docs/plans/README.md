@@ -152,6 +152,12 @@ Deep-audited 2026-08-27; release authority reconciled 2026-08-19.
 
 Design work preserved in [deferred/](deferred/). Each has an explicit "revive when" condition (full rationale in the banner at the top of each doc).
 
+**Revived 2026-08-30** by the 1.2 scoping dive:
+- [minecraft_benchmark.md](minecraft_benchmark.md) — no longer a splash demo. It is the
+  **instrument** for the 1.2 sharing claim and the only place the "find what was seen before"
+  coordination task is achievable (the Reachy Mini cannot translate). Seam lands 1.1.4;
+  the four-arm benchmark is the 1.2 headline.
+
 Deferred in the 2026-08-27 post-1.1.0 triage (banner + revive trigger at the top of each doc):
 - [deferred/acting_coach_body_state_ablation.md](deferred/acting_coach_body_state_ablation.md) + [deferred/exp44_overnight_runcard.md](deferred/exp44_overnight_runcard.md) — prerequisites shipped (#391), the body-state arms never validly ran, nothing owns them. Revive when graduation row #11 (B3 Acting Coach) is scheduled for a decision.
 - [deferred/maxim_console.md](deferred/maxim_console.md) + [deferred/maxim_ui.md](deferred/maxim_ui.md) + [deferred/reachy_app_maxim_seams.md](deferred/reachy_app_maxim_seams.md) + [deferred/reachy_dm_app.md](deferred/reachy_dm_app.md) — the UI line: Phase 0 / MVP seams SHIPPED (`maxim serve` #416, seams #419–#428, `src/maxim/console/`), everything after unscheduled by the 1.1→1.3 roadmap. Revive as a set when a user-facing local front door is scheduled into a release (FIT Phase-0 on the Pi first).
@@ -176,7 +182,6 @@ Deferred in the 2026-07-15 audit — **never started / blocked:**
 - [deferred/mcp_compatibility.md](deferred/mcp_compatibility.md) — Zero MCP code; CC9 prerequisite shipped. Revive when the MCP spec stabilizes AND a concrete user need appears.
 - [deferred/key_drift_detection.md](deferred/key_drift_detection.md) — Never implemented; the reactive 401-hint fold reduced urgency. Revive if stale-key confusion recurs outside the 401 path.
 - [deferred/transition_based_drive_pain.md](deferred/transition_based_drive_pain.md) — Root-cause fix for per-tick drive-pain re-firing (B8 covers channel 1 today). Revive on a second attribution consumer, a channel-2 mis-attribution incident, or any `evaluate_failures` cadence change.
-- [deferred/minecraft_benchmark.md](deferred/minecraft_benchmark.md) — Stub; prerequisites (CC1/CC8/CC9) all shipped so nothing decays. Revive when the 1.1 splash launch is greenlit + someone commits to the M0 protocol research.
 - [deferred/colibri_worldgen_smoke.md](deferred/colibri_worldgen_smoke.md) — Hard-blocked on an upstream colibrì server bug (degenerate output; engine itself works). Revive when upstream fixes `openai_server.py`; escalate to archive if dead for a quarter.
 - [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) — 1.2+ research direction; motivating 384-vs-768-dim split still true, but Exp 35/36 resolved via threshold tuning. Revive on a structurally cross-modal problem unsolvable by threshold tuning + a passing Stage 0 paired-data audit.
 - [deferred/scn_decay_anchoring.md](deferred/scn_decay_anchoring.md) — Hardware portability of decay timescales; unstarted. Revive when a second hardware baseline joins benchmarking or decay calibration is greenlit (hard prereq of the next entry).

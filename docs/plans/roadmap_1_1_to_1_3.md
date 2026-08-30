@@ -17,7 +17,7 @@ down somewhere in this repo by someone being careful.
 |---|---|---|---|
 | **1.1** | **"Sensorimotor"** — *the substrate leaves the simulator, and learns to want* | Already-merged embodiment work + release correctness, contract truth, and the verification debt it incurred (all landed by 2026-08-24, published as `1.1.0rc1`) — **plus, reopened 2026-08-25: a recorded, gated result for caregiver-taught orienting (item 17) — DONE 2026-08-25, PASS — before `1.1.0` final.** The loudness bench tests (item 18) were run the same day and the item itself moved to 1.1.1 (bench done; the design is not part of the sensorimotor-learning claim). **Re-gated 2026-08-26 (item 19): the Exp 52 infants must be READ OUT on the physical robot — cross-context transfer of the learned want — with a recorded outcome before the cut. RECORDED the same day: Exp 53 APPARATUS → Exp 53b PASS (taught 1.00, controls 0.00 / 0.50). Cut unblocked.** | Medium-high: item 17 is the thesis experiment and may fail; a recorded fail still ships (as a fail). |
 | **1.2** | **Oasis + Hivemind** | ~1,400 LOC of de-risked engineering with a cleared gate — **motivating case study adopted 2026-08-26: sharing the nursery-taught want ([oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md)); the claim ladder ends at cross-unit readout on a second Reachy** | Low-medium. Known shape. |
-| **1.3** | **Perception fabric + reflex tier** | Cochlear front-end, vision encoder, binding, three-factor calibration, DN-canonical orienting reflex | **High — contains a pivotal may-fail experiment.** |
+| **1.3** | **Perception fabric + reflex tier** | Cochlear front-end, vision encoder, binding, three-factor calibration, DN-canonical orienting reflex — **plus the microduck (added 2026-08-30), semi-open; possibly JEPA's paired-data source** | **High — contains a pivotal may-fail experiment.** |
 
 ### Why this ordering (two corrections to an earlier draft)
 
@@ -427,6 +427,111 @@ Each POINTS at its owning plan — stages live there, not here:
        a dated data-lost annotation. L185 (EC pattern completion) and L186 (SEM pain →
        NAc) fail today. Pairs with gate 8(d).
 
+## The 1.1.x → 1.2 ladder (scoped 2026-08-30 by a four-lens readiness dive)
+
+Written after 1.1.1 merged, from four parallel read-only dives (sharing infrastructure,
+spatial representation, second-robot embodiment, world-sim integration). It answers a
+concrete proposal — Minecraft simulations for perception/memory sharing, a second robot (a
+Hugging Face microduck, arriving ~December), a cross-robot "find what was seen before"
+coordination task, and a spatial upgrade — by keeping what the code supports and moving the
+rest.
+
+**What the dives established, all verified against `main`:**
+
+1. **The 1.2 blocker is real and worse than gate 6 records it.** A merged foreign want reads
+   out as exactly `0.0`, silently, on **two** independent key misses — cluster id *and*
+   agent id — with a third barrier behind them (body-prefixed tool signatures, gate 7). The
+   agent-id half is in no plan doc. Filed as bugs ledger **D43**; the missing behavioural
+   test is **D44**.
+2. **The sharing evidence that exists dodges the failure mode.** The two federation
+   experiments pass only because every infant shares one `agent_id` and one encoder — the
+   script says so in its own comment — and no test asserts a behavioural consequence of a
+   merge. So the green evidence comes from the one configuration in which D43 cannot fire.
+3. **The Reachy Mini cannot translate.** Rotation only; no odometry, depth, or SLAM. The
+   proposed coordination task is not a software gap on this robot — it is physically
+   unavailable. Two of the three spatial mechanisms that exist are dead code
+   (**D45**): `SpatialMemoryBridge` restores zero because nothing writes the key it reads,
+   and `SpatialContext` has zero callers.
+4. **Minecraft is the designed-for instrument.** `PerceptSource`/`ActionSink` were frozen as
+   CC8 contracts naming Mineflayer; a player body is a drop-in YAML; the engine supplies the
+   world coordinates the robot cannot. 800–1500 LOC over existing seams.
+5. **The multi-robot hardware layer is ready; the runtime above it is not.** `RobotController`
+   (12-method ABC), `RobotRegistry` with entry-point plugin discovery, and a working
+   `SimulatedController` proof. But `embodied_runtime/selfy.py::Maxim.mini` exposes the raw
+   SDK to ~20 call sites in `movement.py`/`media_loop.py` — the single biggest generalization
+   cost, and it touches motion-safety code.
+
+**The ordering principle is unchanged** (§"Why this ordering"): predictable deliverable near,
+may-fail research far. The proposal inverted it — vision/binding are 1.3 by their own plans'
+headers, spatial mapping is on no roadmap, and a release cannot be gated on hardware that
+might arrive in December. The ladder below restores the ordering without dropping the idea.
+
+| Release | Theme | Contents | Ship gate |
+|---|---|---|---|
+| **1.1.2** | **Decomposition** | fail-loud **Stage 2** (never run — it is the extraction's own stated prerequisite, and the per-PR behaviour gate cites a baseline that does not exist); the first `run_agentic_loop` extraction; the four cheap scorecard conditions (Tier-3 dispositions, `test_api_surface.py`, ARCHITECTURE.md EC rows, item 16.10); the D12 `pytest-timeout` guard; a scheduled `-m slow` lane | The extraction passes the JSONL sequence-diff gate against a pre-refactor capture on the same seed; the length baseline tightens in the same commit |
+| **1.1.3** | **Merge correctness** | **D43** both halves (id map out of `ec_merge`; re-key `cluster_reward_bias` + `cluster_reward_source`; N→1 fold semantics; a bias-key identity namespace — the undocumented design gap); gate 1 encoder-provenance validator; gate 2 geometry tag + threshold pin; gate 7 typed bundles (`body_ref` + `affordance_namespace`) | **D44**: a test asserting a *behavioural* delta across a merge — `recommend_action` changes — between two genuinely independent agents. Dict equality does not count |
+| **1.1.4** | **The world seam** | The Minecraft bridge, `bodies/minecraft_player.yaml`, the world modality channel **plus its selection-dynamics re-baseline**, the two-AUT-one-world harness ([minecraft_benchmark.md](minecraft_benchmark.md)) | Infrastructure only, **no claim**. Smoke benchmark green; `is_sim_mode=False` verified to consolidate |
+| **1.2** | **Oasis** | The four-arm sharing benchmark, pre-registered, run in Minecraft at n ≥ 50, replicated on two Reachy Minis at n = 12; gates 3, 4 and 8 | The gate ladder below |
+| **1.3** | Perception fabric + reflex tier (**unchanged, semi-open**) | Cochlear front-end, vision encoder, binding, three-factor calibration — **plus the microduck**, see below | Its own pivotal experiment |
+
+### The 1.2 benchmark (the headline claim)
+
+Full design in [minecraft_benchmark.md](minecraft_benchmark.md). Claim: *A's learned
+representation changes B's behaviour, where A and B are genuinely independent agents*
+(different `agent_id`, independently encoded EC). Four arms — isolated, merged-taught,
+merged-satiated, dangling-half — with the dependent measure being B's **first-contact**
+action choice on a contingency only A ever experienced.
+
+Gates: merged-taught ≥ 0.70; merged-taught − isolated ≥ 0.20; merged-taught − merged-satiated
+≥ 0.20; and **dangling-half ≈ isolated**, which is the falsifier that proves the effect needs
+both halves of the bundle rather than the arrival of a file.
+
+**Second claim, same apparatus — the dose–response ladder** (added 2026-08-30). The four arms
+ask *does it transfer*; the ladder asks *does it scale*, which is what Oasis rests on. N ∈
+{1, 2, 4, 8} agents at a fixed per-agent budget K, measuring **trials-to-criterion**, with a
+matched single-agent control at N×K trials on every rung. Primary gate: median
+trials-to-criterion strictly decreases with N (negative rank correlation, p < 0.05); a flat
+curve is a result and ships as one. The precedent — `5_operant_creche_federation.py`, which
+already carries the make-or-break `single_full` control and passed — establishes that pooling
+recovers the full-experience policy, but its measure is **saturated at 1.00** and its infants
+**share an encoder by construction**, so it cannot speak to rate or to independent agents.
+Full design in [minecraft_benchmark.md](minecraft_benchmark.md) §"The dose–response ladder".
+
+**Running this before D43 lands would produce a confident null with a known cause** — arm 2
+is currently guaranteed to read out as arm 1. That sequencing is the point of 1.1.3.
+
+### Spatial — descoped, deliberately
+
+Not a capability. The smallest scientifically meaningful version is **landmark-anchored
+symbolic location**: `SpatialContext(room/zone)` already exists and is unused, and Minecraft
+supplies coordinates directly. Allocentric mapping needs sensing the Reachy does not have
+(depth, fiducials, or a mobile base) and is a research program, not a lead-up item. D45 must
+be dispositioned either way — wire the dead bridge or mark it `Dormant since`.
+
+### The microduck — 1.3, and possibly JEPA's paired-data source
+
+Pushed to 1.3 (operator's call, 2026-08-30) rather than gating 1.2 on hardware with an
+uncertain arrival date and unknown sensing. The repo has **zero** references to
+microduck/LeRobot; its SDK, kinematics, and sensors are unknown here. The decisive unknown is
+**directional audio**: every EARNED behavioural result this project has is sound-orienting
+(Exp 45, 52, 53b, 54). A robot without a mic array inherits no analogue of the only validated
+behaviour, which makes it a new percept modality — experiment work, not a port.
+
+That is precisely why 1.3 is the right slot, and why the operator's instinct to pair it with
+[deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) is worth
+recording: JEPA's motivating problem is bridging a 384-dim sensor space and a 768-dim text
+space, and its stated blocker is the absence of **paired cross-modal training data**. A
+second body with different sensors observing the same world is a natural source of exactly
+those pairs — a duck and a Reachy perceiving one scene through different modalities is the
+alignment problem stated physically. This is a **hypothesis to test, not a commitment**: it
+raises JEPA's bar (paired data must be *collected*, not assumed) and it inherits the 1.3
+perception-fabric risk. Revisit when the duck's sensing is known.
+
+Prerequisite either way, independent of the duck: break `selfy.py::Maxim.mini` so the runtime
+talks to `RobotController` rather than a raw SDK handle (~20 call sites, motion-safety code,
+two-lens round required). That work is worth doing on its own merits and is the gate on any
+second robot.
+
 ## Gates before 1.2 Oasis + Hivemind
 
 Distribution amplifies silent state errors. Before shared substrate becomes an
@@ -438,7 +543,12 @@ execution priority:
 3. EC read-side mutation (D8) must be measured and accepted or separated from recall.
 4. Bundle/version compatibility and the sharing threat model must be frozen.
 5. The 1.1 architecture-audit and hermetic-suite gates must remain green.
-6. **Cluster identity across substrates** (added 2026-08-26): `ec_merge` aligns nodes by
+6. **Cluster identity across substrates** (added 2026-08-26; **CONFIRMED and widened
+   2026-08-30 — see bugs ledger D43**). The recorded half is the cluster id. The dive found a
+   SECOND, undocumented half: bias keys are the triple `(agent_id, cluster_id, tool_signature)`,
+   so a foreign want misses on the agent id too, which additionally kills the prompt-annotation
+   path `NAc.get_agent_tool_biases`. A bias-key identity namespace is a genuine design gap in
+   no plan doc. Original text: `ec_merge` aligns nodes by
    cosine but nothing re-keys `cluster_reward_bias` through the resulting id map, so a
    merged foreign want reads out as nothing. The re-keyed merge path must exist and the
    Exp 52 seeds 42 + 43 must pass Gauntlet #2 merged — see the case study.
@@ -474,6 +584,10 @@ execution priority:
      row becomes scheduled (named experiment), Dropped, or Dormant. Not a code change; a
      release with Stale rows is already forbidden by the ledger's own rule, and Pending
      rows fifteen months old are Stale in everything but name.
+   - **(e) A merge test that asserts BEHAVIOUR** (added 2026-08-30, bugs ledger D44). The
+     only end-to-end sharing test asserts dict equality on hand-set matching keys, and the two
+     passing federation experiments share one `agent_id` and one encoder by construction — so
+     every green signal for sharing comes from the configuration in which D43 cannot fire.
    - **Also under this gate, scoped to what 1.2 touches:** `hivemind/` gets added to the
      existing CI mypy step (5 of 508 files today; repo-wide is not worth it, but the
      bundle format is a wire boundary and 1.2 rewrites its merge path — that is where

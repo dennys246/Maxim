@@ -9,6 +9,19 @@
 **Owns (proposed):** `src/maxim/similarity/projection.py` (new), `src/maxim/similarity/encoder.py` (additive — projection-aware `embed`), `src/maxim/training/jepa/` (new — training pipeline + persistence), `scripts/train_jepa_projection.py`, `scripts/eval_jepa_alignment.py`, `_data/projections/` (persisted weights).
 **Companion plans:** [roy_5_encoder_alignment_disambiguator.md](../archive/roy_5_encoder_alignment_disambiguator.md) (Stage 3 is the prereq that produces JEPA's training data) · [cross_modal_substrate_binding.md](../archive/cross_modal_substrate_binding.md) (cancelled by Roy-4; **this plan is what Stage 4a's resurrection conditions actually require**) · [grounded_language_acquisition.md](../grounded_language_acquisition.md) (Phase 2's "symbol-binding layer" sketch is structurally a JEPA — this plan provides the architecture Phase 2 currently leaves open) · [maxim_hivemind.md](../maxim_hivemind.md) (if JEPA ships, projection weights become a sharable substrate artifact alongside NAc/EC/ATL)
 
+
+> **Microduck hypothesis (added 2026-08-30, 1.2 scoping).** This plan's stated blocker is the
+> absence of **paired cross-modal training data**. A second robot body with different sensors
+> observing the same scene is a natural source of exactly those pairs — the alignment problem
+> stated physically rather than synthesized. The microduck was pushed to 1.3 for independent
+> reasons (unknown sensing; every EARNED result here is sound-orienting, so a robot without a
+> mic array inherits no analogue), which puts it in the same slot as this plan.
+> **This is a hypothesis to test, not a commitment.** It raises the bar rather than lowering
+> it: the paired data must be *collected* under this repo's evidence standard, and it inherits
+> the 1.3 perception-fabric risk. Revisit when the duck's sensor suite is known. See
+> [roadmap_1_1_to_1_3.md](../roadmap_1_1_to_1_3.md) §"The microduck — 1.3, and possibly JEPA's
+> paired-data source".
+
 ---
 
 ## Front-gate scope pressure (retroactive)
