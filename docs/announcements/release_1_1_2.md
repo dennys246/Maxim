@@ -65,8 +65,17 @@ them against each other.
 
 The `ARCHITECTURE.md` EC rows and the `similarity/ec.py` docstring are corrected at both ends:
 pattern separation is a **dentate gyrus** function and completion a **CA3** function —
-entorhinal cortex is the interface, not the separator — and substrate pattern routing is an
-**exact O(Nd) centroid scan**, not the LSH path the docs advertised.
+entorhinal cortex is the interface, not the separator.
+
+That correction then needed correcting, which is worth stating plainly. Its first pass called
+the other EC surface, `find_similar`, "LSH-based approximate nearest neighbour" — the
+mechanism's *intent*, asserted without measuring it, in a change specifically about claim
+honesty. Measured: **neither** EC surface is sublinear in production.
+`pattern_complete_or_separate` is an exact O(Nd) centroid scan by design, and `find_similar`
+is LSH-structured but degenerate — every item lands in one bucket, and its four hash tables are
+byte-identical. Both defects are filed
+([D51, D52](https://github.com/dennys246/Maxim/blob/main/docs/bugs/README.md)); D51 is filed and
+NOT fixed, because it needs a design decision rather than a patch.
 
 ## The release rule changed
 
