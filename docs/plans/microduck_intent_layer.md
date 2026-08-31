@@ -1,17 +1,61 @@
 # The microduck — intent vocabulary, pluggable valence, and the throughput problem (1.3)
 
-**Status:** DESIGN DRAFT, rev 1 (2026-08-31). Zero code. Written from **design constraints
-supplied by the operator on 2026-08-31**, which close the "unknown SDK" and "unknown kinematics"
-hedges that [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) §"The microduck" was forced to carry
-when the duck was slotted to 1.3 on 2026-08-30 — but **not** the sensing one, which is still the
-decisive unknown (§1.1).
+**Status:** DESIGN DRAFT, **rev 2** (2026-08-31), after a two-lens pre-merge review round
+([reviews/microduck_intent_layer_two_lens_review.md](reviews/microduck_intent_layer_two_lens_review.md)).
+Zero code. Written from **design constraints supplied by the operator on 2026-08-31**, which close
+the "unknown SDK" and "unknown kinematics" hedges that
+[roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) §"The microduck" was forced to carry when the duck
+was slotted to 1.3 on 2026-08-30 — but **not** the sensing one, which is still the decisive
+unknown (§1.1).
+
+> **What changed in rev 2.** The Architecture lens returned two BLOCKING findings and both were
+> confirmed against `main`; rev 1's two headline recommendations are **withdrawn as
+> recommendations and demoted to options**.
+> **(1)** Rev 1 said gate 7 "should" be a capability namespace. But
+> [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md) §1 had already
+> front-gated exactly that choice and picked the other option for a stated reason, 1.1.3's ship
+> gate (D44) does not need it, and `hivemind/bundle.py::register_bundle_migration` makes the
+> choice reversible — so the urgency was false and the roadmap fold was creating a live
+> contradiction between two active plans. Now §2.4 asks the design pass to *cost* it. **(2)** Rev
+> 1 said "promote `MotorStep.sem_key`" and called it work gate 7 already owed. `sem_key` has
+> exactly **two** references in the tree, so that meant *building* an identity, not promoting one
+> — and §2.3 now carries the blast radius (20 persisted `53_agents` agent files, hivemind's
+> signature scrub, substring-matching harnesses behind EARNED rows).
+> Also revised: §5.2 no longer routes the divergence signal into the *harm* channel (a clamp is a
+> refusal, not harm, and the rev 1 fix would have inverted the bug it fixed); the header's "Owns"
+> line no longer claims three mechanisms the body concludes are ridden; a front-gate table and a
+> schedule trigger were added; and the defect in §8 is now filed rather than deferred.
 
 **Target version:** 1.3 (design may start now; nothing here is on the 1.1.x or 1.2 critical
 path). **The slot does not change** — see §7, where the constraints turn out to *harden* the
 1.3 decision rather than argue against it.
 
-**Owns (proposed):** the backend-independent intent vocabulary, the valence-source plug
-contract, and the headless episode-loop harness shape for a many-trial robot experiment.
+**Schedule trigger:** §8 item 1 answered (does the duck have a mic array?) → write the
+pre-registration. The MuJoCo sim backend is unblocked independently of hardware but is **not
+scheduled**; it competes for priority against the 1.3 fabric. No trigger fires from this document
+alone.
+
+**Owns (genuinely new, after the front-gate below):** the duck's **reduced proprioceptive
+summary** and the state-bin design that goes with it (§5.4, §8 item 5). That is all. Rev 1's
+header claimed ownership of the intent vocabulary, the valence-source plug contract and the
+harness shape; the body of this document concludes all three **ride existing seams**, so claiming
+them was a contradiction the review round caught.
+
+## Front-gate scope pressure
+
+CLAUDE.md requires every proposed mechanism to answer *"does this need to be its own mechanism,
+or can it ride existing infrastructure?"* before a plan is drafted. Per constraint:
+
+| Proposed | Verdict | Rides |
+|---|---|---|
+| Intent vocabulary as its own layer (c1) | **Rides** | Body-YAML `modulators:`/`affordances:` declaration + `embodiment/spec.py::attach_backends`'s `modulator_factory` socket (§2.2, §2.5). The open question is the *namespace*, which is gate 7's, not this doc's (§2.4). |
+| Two backends, sim + `robotd` (c1) | **Rides** | `hardware/controller.py::RobotController` + `RobotRegistry`'s `maxim.robots` entry-point group — a duck backend ships as its own package with no core edit (§2.2). |
+| Policy-granularity arbitration (c2) | **Rides** | `decisions/nac.py::NAc.recommend_action` already selects among named discrete signatures (§3). |
+| Timing split (c3) | **Rides** — it is a constraint, not a mechanism | Enforced as an invariant when duck code lands, not built (§4). |
+| Pluggable valence sources (c4) | **Rides, with one revival** | `NAc.credit_operant_reward` for graded reward; the divergence channel revives `proprioception/pain.py::PainDetector` on the `agent_loop` path rather than adding a comparator (§5.2). |
+| Positive valence (c5) | **Rides** | Episode-scoped `credit_operant_reward` with the tool-success floor suppressed — the nursery pattern (§5.3). |
+| Headless episode loop (c6) | **Rides** | Copy `scripts/orient_substrate/9_hunger_relief_orient.py`; mirror `live_common.py`'s `LiveRig`/`DryRig` (§6.1). |
+| A proprioceptive modality channel | **NEW** | A `ModalityChannel` entry **plus a reader pair** (and a `_EXTEROCEPTIVE_ROOT_SENSORS` edit if it rides the existing extero readers), and it is a selection-dynamics recalibration — the reduced summary behind it has no existing design (§5.4). |
 
 **Companion plans:** [sem_motor_binding.md](sem_motor_binding.md) (the motor path any robot
 readout goes through) · [hybrid_substrate_reflex_runtime.md](hybrid_substrate_reflex_runtime.md)
@@ -35,7 +79,9 @@ is the input and is not.
    **`robotd`** (NDJSON JSON-RPC over wifi) when hardware arrives. The substrate binds only to
    the vocabulary. Signatures follow the existing structural-key convention —
    `skill:locomotion:velocity`, `skill:recovery:standup`, `skill:manipulation:groundpick`,
-   `action:kick:ball`.
+   `action:kick:ball`. *[operator premise; the "existing structural-key convention" clause is
+   **corrected in §2.1** — no such convention exists in the tree. The verbatim record is kept
+   here; do not cite this line as evidence that one does.]*
 2. **Arbitration granularity is the policy, not the joint.** All Microduck ONNX policies share
    a **61-dim observation contract** (48 proprioception + twist / head-pose / body-pose
    commands), so the runtime hot-swaps any of them at any moment. No handoff logic between
@@ -101,7 +147,12 @@ Constraint 1 says the proposed signatures — `skill:locomotion:velocity`, `skil
 not exist.** Verified against `main`:
 
 - **Colon-delimited, body-prefixed action keys have zero occurrences** in `src/`, `docs/`,
-  `scenarios/` or `tests/`. Nothing is keyed `body:<name>:<verb>`.
+  `scenarios/` or `tests/`. Nothing is keyed `body:<name>:<verb>`. *(Precision, added in rev 2:
+  the claim is about the **action namespace**. A colon-delimited `skill:`-prefixed key does exist
+  elsewhere — `memory/concept_extractor.py` builds `f"skill:{skill_name}"`, consumed by
+  `memory/concept_context.py` — so the `skill:` prefix is not unprecedented in the tree, it is
+  simply not an action-signature convention. That is two-thirds of the proposed shape living in
+  the concept graph, which is worth knowing before reusing the prefix for a different purpose.)*
 - The **real** tool signature is built in
   `embodiment/tool_bridge.py::generate_tools_for_entity` as `f"{ent.name}_{aff_name}"` — flat,
   underscore-joined, entity-prefixed, and **the modulator name is dropped**. Real strings in the
@@ -134,8 +185,9 @@ Three consequences follow, and they are the substance of this section:
 
 - **A real, complete backend-independent motion/lifecycle abstraction.**
   `hardware/controller.py::RobotController` is an ABC with **exactly 12 abstract methods**, and
-  it is **contract-frozen at 12** by its own docstring ("a 13th breaks every third-party
-  `maxim.robots` plugin"). Robot-specific joints ride `MotionTarget.extras: dict[str, float]` —
+  it is **contract-frozen at 12** — the statement lives in
+  `hardware/controller.py::RobotController.get_doa_reader`'s docstring, not the class docstring:
+  "a 13th breaks every third-party `maxim.robots` plugin". Robot-specific joints ride `MotionTarget.extras: dict[str, float]` —
   no subclassing. Optional capabilities are probed with `getattr` (e.g. `get_doa_reader`).
 - **Plugin discovery already exists.** `hardware/registry.py::RobotRegistry` discovers the
   `maxim.robots` entry-point group, so a duck backend can ship as its own package without a core
@@ -148,44 +200,103 @@ Three consequences follow, and they are the substance of this section:
   supports, cognition code unchanged.
 - **A clean binding socket.** `embodiment/spec.py::attach_backends(entity, modulator_factory=…)`
   takes a factory of shape `(entity, mod_name, spec_modulator) -> backend | None`. The only
-  production implementation is `hardware/reachy/motor_backend.py::make_reachy_orient_factory`,
+  production implementation is `hardware/reachy/motor_backend.py::make_reachy_orient_factory`
+  (a second factory of the same shape,
+  `embodiment/backends/cerebellum_modulator.py::cerebellum_modulator_factory`, exists but is
+  dormant with no callers outside its own docstring),
   hard-gated by `if mod_name != "orient": return None`. **This socket is where a duck's skill
   backend plugs in, and it is already generic.**
 - **A three-part action identity, already in the tree.** `embodiment/motor.py::MotorStep.sem_key`
   is the triple `(entity_path, modulator, affordance)` — the one place the modulator namespace
   survives past declaration.
 
-### 2.3 The recommendation: ride `sem_key`, do not invent a parallel string format
+### 2.3 A capability-scoped action identity — the option, and its real blast radius
+
+> **Revised after the two-lens review round (2026-08-31).** Rev 1 recommended "promote
+> `MotorStep.sem_key` from a motor-program-internal identity to the general action identity" and
+> called it "work gate 7 already owes." The Architecture lens refuted both halves and it was
+> right. `sem_key` has **exactly two references in the entire tree**, both inside
+> `embodiment/motor.py` (the property and `MotorProgram.structure_key`) — it is not a load-bearing
+> identity today, so "promoting" it means **building a new one**. And gate 7 owes *one of two*
+> options, of which this is the other; justifying it by asserting the thing under debate was
+> circular. What follows is the corrected version: this is an **option to cost**, not a
+> recommendation.
 
 `skill:locomotion:velocity` is a three-part key: namespace, group, verb. `MotorStep.sem_key` is
-already a three-part key: entity, modulator, affordance. **These are the same structure**, and
-the repo's own precedent (`similarity/signature.py` composing a structural string from parts)
-shows the intended direction of travel.
+a three-part key of the same shape: `(entity_path, modulator, affordance)`. If a capability-scoped
+identity is adopted, that triple is the right starting shape — but the work is building it, and
+the correct chokepoint is not `similarity/signature.py` (rev 1's citation) but
+**`runtime/tool_dispatch.py::build_tool_signature`**, whose own docstring declares it "the single
+source of truth for tool→NAc event signature format. All code that records or queries tool
+signatures MUST use this function." Any identity change lands there first.
 
-So the proposal should be framed not as a new string format but as **promoting `sem_key` from a
-motor-program-internal identity to the general action identity**, with two changes:
+**The blast radius, which rev 1 did not cost.** The flat string is not merely generated — it is
+*persisted, parsed, and matched on*:
 
-1. The first element becomes a **capability namespace** (`skill`, `action`) rather than an
-   entity path, with the body carried as an attribute instead of a prefix.
-2. Tool-name generation and NAc keying derive from the triple, instead of the triple being
-   discarded at `tool_bridge.py` and reconstructed by concatenation downstream.
+- **Persisted agent state embeds it.** `docs/experiments/data/53_agents/…/aut_nac.json` carries
+  `links` keyed `tool:infant_operant_turn_left`, an `outcome_index` built from those keys, and
+  `cluster_reward_bias` / `cluster_reward_source` keyed on unit-separator triples
+  `sim_aut\x1f<uuid>\x1ftool:infant_operant_turn_left`. There are **20 such files**, and
+  [porting_orient_loop.md](../embodiment/porting_orient_loop.md) calls that directory the shipped
+  example bundle-in-waiting. Changing the action identity migrates or invalidates the repo's only
+  shipped evidence bundle.
+- **Hivemind parses the string.** `hivemind/bundle.py::_scrub_event_signature` special-cases the
+  `tool:use:<free text>` prefix and re-keys `event_outcome_welford`; its composition scrub is
+  documented as keeping identifier-shaped signatures so the learned `tool:infant_operant_turn_left`
+  keys ship intact.
+- **Harnesses behind EARNED rows match it by substring.** `MAXIM_SUBSTRATE_TOOL_WHITELIST` is an
+  `any(term in t …)` filter, used as `turn_left,turn_right` by `scripts/exp49/run_trials.py` and
+  `scripts/benchmark_cradle_mother.py`. A triple-derived name silently changes which tools those
+  harnesses see.
+- **The cross-robot porting contract pins it.** `porting_orient_loop.md` states the policy is
+  keyed on azimuth bins and **YAML action names**, which is what lets a different robot consume
+  the same substrate.
 
-That is a real piece of work and it is **not** free — but it is work gate 7 already owes.
+So the honest statement is: a capability-scoped identity is a **migration of persisted learned
+state**, not a rename. That does not make it wrong — it makes it something that must be costed
+before it is chosen, which is §2.4's whole point.
 
-### 2.4 The duck and gate 7 are the same question from two sides
+### 2.4 The duck is gate 7's portability-side second consumer — an input, not a decision
 
 - Gate 7 asks *"can agent A's learned want be read by agent B on a different body?"* — a
   **sharing** question, blocking 1.2, landing in **1.1.3**.
 - The duck asks *"can one vocabulary bind to two backends?"* — a **portability** question.
 
-One capability-scoped namespace answers both; a body-scoped one answers neither.
+These are the same question, and that is worth recording. What rev 1 got wrong was concluding
+which way to answer it.
 
-> **Recommendation, and the most actionable thing in this document.** When gate 7 is designed in
-> 1.1.3, design it as a **capability namespace with the body as an attribute**, not as a body
-> namespace with a compatibility shim, and take `MotorStep.sem_key`'s triple as the starting
-> shape. Cite this section as the second consumer that justifies the abstraction. If gate 7 ships
-> body-scoped, the duck's vocabulary becomes a genuine new mechanism plus a translation table —
-> the outcome to avoid. **None of this requires the duck to exist.**
+> **Revised after the review round.** Rev 1 said gate 7 "should" ship as a capability namespace
+> and called the body-scoped option "the outcome to avoid." That overreached in three ways the
+> Architecture lens caught, all confirmed:
+>
+> 1. **The question was already decided, the other way, with a stated reason.**
+>    [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md) §1 front-gated exactly
+>    this, offered both options — (a) typed bundles `manifest.body_ref` +
+>    `manifest.affordance_namespace`, (b) body-agnostic keys on the SEM modulator/affordance — and
+>    chose (a), because "**(b) is the better long-term key but changes what every existing NAc file
+>    means; (a) is the honest first step and is what Exp 53b actually did.**" §2.3's blast radius
+>    is that sentence, restated from the portability side. Gate 7 records the decision as made in
+>    the case study's design pass.
+> 2. **It is not on 1.1.3's critical path.** 1.1.3 ships on **D44** — a behavioural delta across a
+>    merge between two genuinely independent agents. D43 names the two axes that actually miss,
+>    `agent_id` and `cluster_id`, and calls `tool_signature` the *third* barrier. Two independent
+>    agents **on the same body** produce identical tool signatures, so D44 is clearable by option
+>    (a) plus D43's two halves. Adding a cross-body identity redesign expands a release whose gate
+>    does not need it.
+> 3. **The choice is reversible, so the urgency was false.** `hivemind/bundle.py` already ships
+>    `register_bundle_migration` / `migrate_bundle_envelope` as reserved hooks, documented as
+>    "bumping `BUNDLE_SCHEMA_VERSION` to 2 + registering a v1 migration is the only change 1.1
+>    needs to make for older bundles to load." Shipping (a) now and migrating to (b) later is a
+>    **supported path**, not a shim to fear.
+
+**What this document actually asks of gate 7's design pass**, which is all it is entitled to ask:
+
+> Cost the capability-scoped option (b) against typed bundles (a) explicitly, and state the
+> migration cost of the 20 persisted `53_agents` files when you do. The microduck is the
+> portability-side second consumer, and it is the reason (b) has a constituency beyond sharing —
+> but the case study's (a)-first reasoning stands unless that costing overturns it, and nothing
+> here overturns it. **None of this requires the duck to exist, and none of it changes 1.1.3's
+> ship gate.**
 
 ### 2.5 The shape mismatch: the frozen ABC is pose-shaped, the duck is policy-shaped
 
@@ -251,9 +362,14 @@ Two cautions:
    resolves collisions by progressively prepending parent entity names, raising `ValueError` if
    it runs out. Two bodies in one scene — precisely the duck-and-a-Reachy configuration the JEPA
    paired-data hypothesis wants (§8, and
-   [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md)) — can
-   silently rename the first-registered body's tools, and NAc keys on those names. **Check this
-   before ever running two bodies against one substrate.**
+   [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md)) — silently
+   renames one body's tools, and NAc keys on those names. **Direction matters and rev 1 had it
+   backwards** (caught by the Executor lens): the function starts at `candidate = base_name` and
+   only prepends `while candidate in existing_names`, so the **first** registrant keeps the plain
+   name and the **later** one is renamed. The hazard is therefore that a body which learned its
+   keys in a solo run finds them changed when it registers *second* in a two-body scene — and
+   registration order is not something an experiment currently pins. **Pin it before ever running
+   two bodies against one substrate.**
 
 ---
 
@@ -276,8 +392,9 @@ boundary instead of a thread boundary:
 
 Three consequences worth writing down before anyone implements:
 
-1. **The duck does not need BL-1..BL-5 for balance or gait.** Those five DN additions exist
-   because DN's action loop is built around visual detections and cannot be evaluated on an
+1. **The duck does not need BL-1..BL-5 for balance or gait.** Most of those DN additions exist
+   because DN's action loop is built around visual detections (BL-1 is a body-rotation/head-matrix
+   defect rather than a detection one) and cannot be evaluated on an
    audio-only tick. The duck's balance/gait reflex never enters DN at all — it is below the
    integration seam entirely. This is a genuine simplification, and it is the strongest
    architectural argument in the duck's favour.
@@ -302,12 +419,10 @@ document.
 
 ### 5.1 The action-selection surface is sign-only, so "rich aversive channels" mostly collapse
 
-`runtime/tool_dispatch.py::record_outcome` is the per-action credit router. Its cluster-reward
-assignment is, verbatim:
-
-```python
-cluster_reward: float | None = 1.0 if drive_potential_diff > 0.0 else -1.0
-```
+`runtime/tool_dispatch.py::record_outcome` is the per-action credit router, and it assigns the
+cluster reward as **the sign of `drive_potential_diff` only** — `+1.0` when the diff is positive,
+`-1.0` otherwise. (Cited as a symbol rather than quoted: verbatim code in a design doc rots. Read
+the function; if the sign collapse is gone, this whole subsection is stale.)
 
 `drive_potential_diff` is a **graded** float at the producer
 (`embodiment/sem.py::drive_comfort_progress`) and only its **sign** survives to the surface that
@@ -322,13 +437,23 @@ The graded paths that do exist, and where they go:
 
 | Path | Accepts | Reaches |
 |---|---|---|
-| `NAc.credit_operant_reward(reward: float)` | arbitrary float | **the motor-selection surface** — the rich channel |
-| `NAc.update_cluster_reward(reward=…)` | arbitrary float | cluster bias (clamped ±1.0) |
-| `NAc.record_percept_valence` | signed `[-1, 1]` | salience gating only, **and has no positive producer in-tree** |
+| `NAc.credit_operant_reward(reward: float)` **→ a thin wrapper over `update_cluster_reward`** | arbitrary float | **the motor-selection surface** — the least lossy channel available, but see the attenuation note below |
+| `NAc.update_cluster_reward(reward=…)` | arbitrary float | cluster bias, `+= reward_bias_alpha (0.15) × reward`, clamped ±1.0 |
+| `NAc.record_percept_valence` | an unvalidated float (`[-1, 1]` is the *stored* range — the accumulator clamps) | salience gating only, **and has no positive producer in-tree** |
 | `CausalLink.update_prediction_rw` | the 4-member `Valence` enum, via `_VALENCE_TO_REWARD` = `{POSITIVE: 1.0, NEGATIVE: 0.0, NEUTRAL/UNKNOWN: 0.5}` | link value `[0,1]`, 0.5 = neutral prior |
 
 Note the last row: the RW target lives on `[0,1]` with **0.5 as neutral**, not on `[-1,+1]`. A
 "0.3 good" outcome has no lossless intake through the enum path at all.
+
+**And note rows 1 and 2 are the same surface.** Rev 1 called `credit_operant_reward` "the rich
+channel" beside a `update_cluster_reward` row marked "clamped ±1.0", implying two different
+mechanisms; the Executor lens found it is a wrapper that looks up the pending action and calls
+`update_cluster_reward(..., source="operant")`. It therefore inherits the identical
+`reward_bias_alpha = 0.15` attenuation and the identical ±1.0 cap. **This is load-bearing for the
+duck**: it is exactly why a graded servo-temperature or battery reading is less influential than
+"accepts an arbitrary float" suggests — a reward of 0.02 moves the bias by 0.003 per trial against
+a `causal_pos` term topping out near 1.0. Graded intake is necessary but not sufficient; magnitude
+still has to clear the competition.
 
 **Design consequence.** The duck's valence mapper should target
 `NAc.credit_operant_reward` with an episode-scoped float, not the per-action enum path. Route
@@ -341,7 +466,9 @@ This is the finding that most changes the work estimate, and it is good news dis
 
 **The Reachy already computes this signal and then throws it away.**
 `hardware/reachy/controller.py` records `last_clamped_axes` after clamping, and its **only**
-consumer in `src/` is `tools/reachy.py`, which renders it as English prose for the LLM. There is
+consumer in `src/` is `tools/reachy.py::MoveTool`, which renders it as English prose for the LLM
+(note that is `MoveTool` — not the `FocusOnSoundTool` discussed next; different tools, same file).
+There is
 no path from `last_clamped_axes` to the `PainBus`, to the NAc, or to any modality channel. A
 refused or clamped command is **invisible to the substrate**.
 
@@ -351,32 +478,71 @@ and its payload is scrupulously honest (`faced_sound`, `clamped_to_head_limit`, 
 `note`). But `tool_dispatch.py` computes `learn_success = success and not embodiment_failed`, so
 the substrate books a **POSITIVE** outcome for a motion the payload says did not happen.
 
-**Bound this honestly:** in the graduated orient experiments the credit comes through
-`drive_relief` / `orient_relief`, and the tool-success floor is explicitly suppressed there
-(`drive_relief_only`, `drive_credit_withheld`, `MAXIM_OPERANT_ONLY_CREDIT`). So this does not
-retroactively touch Exp 45/52/53b/54. It bites where the tool-success floor is live — the
-LLM-primary runtime driving a real robot. **It is still a defect and deserves a bugs-ledger row**
-(see §8; the ledger is mid-renumber in PR #577, so file after that lands).
+**Bound this honestly — and rev 1's stated reason was wrong even though its conclusion was
+right.** Rev 1 said the graduated experiments suppress the tool-success floor via
+`drive_relief_only` / `drive_credit_withheld` / `MAXIM_OPERANT_ONLY_CREDIT`. The Executor lens
+found that **none of those flags appear in the Exp 45/53/53b/54 harnesses at all.** The real
+reason is stronger:
 
-**The socket already exists.** `tool_dispatch.py` has a precedent for exactly this shape: an
-action that mechanically succeeded but harmed the body is flipped to negative via
-`ToolOutput.side_effects["embodiment_failures"]`, with the comment that without it "a
-harmful-but-mechanically-successful affordance books a POSITIVE causal link." A clamped or
-diverged motion is the same class of event and nothing puts it there.
+| Experiment | Harness | Why the defect cannot fire |
+|---|---|---|
+| 45 | `scripts/orient_backbone/live_3_learn.py` and siblings | Call `NAc.update_cluster_reward` **directly**; `record_outcome` is never invoked and `focus_on_sound` never runs |
+| 52 Phase A | `scripts/orient_substrate/9_hunger_relief_orient.py` | In-process, calls `NAc.credit_operant_reward` directly; no `record_outcome` |
+| 52 Phase B | `scripts/benchmark_cradle_mother.py` | Genuinely sets `MAXIM_OPERANT_ONLY_CREDIT=1` — the only row rev 1's reason actually covered |
+| 53 / 53b / 54 | `scripts/orient_backbone/exp53_cross_context_readout.py` | **Readout-only by its own module docstring**: "nothing calls `record_outcome` / `credit_operant_reward`" |
 
-> **Recommendation.** Wire `last_clamped_axes` (and any commanded-vs-achieved divergence) into
-> `side_effects["embodiment_failures"]` with a named reason. This is **the microduck's
-> divergence channel, prototyped on the Reachy, buildable today, with no duck.** It is the second
-> most actionable item in this document after §2.4, and it turns constraint 4's
-> hardware-only signal into something we can design against a year early.
+**And the flag is narrower than rev 1 implied.** `MAXIM_OPERANT_ONLY_CREDIT` reaches only the
+`cluster_reward = None` branch in `record_outcome`. Upstream and unaffected by all three flags:
+`learn_success`, the resulting `Valence.POSITIVE` causal link via `nac.observe`, and
+`credit_goal(+1.0)`. So a clamped `focus_on_sound` still books a POSITIVE **causal link** under
+every flag — the bound is over the **cluster-bias surface** the graduated readouts measure, not
+over the substrate as a whole. State it that way or the bound is quietly overclaimed.
 
-Nearest existing analogues, both real and both stranded on the legacy path:
-`proprioception/pain.py::PainDetector.set_movement_target` / `_check_movement_failure` is a
-genuine commanded-vs-achieved comparator emitting graded `PainType.MOVEMENT_FAILURE`, and
-`harm/joint_limit.py::JointLimitHarmPredictor` predicts unreachability before the move. Both are
-reachable only through `bridges/pain_bridge.py::PainCircuitBridge` from the legacy Selfy runtime
-— **not wired in the substrate-primary / `agent_loop` path**. Prefer reviving these over writing
-new comparators.
+It bites where the full dispatch path is live — the LLM-primary runtime driving a real robot.
+**Filed as D51** in [../bugs/README.md](../bugs/README.md) (see §8 item 9).
+
+**Partial credit where it is due:** the divergence is not entirely unrecorded. **D35** (FIXED
+2026-08-29, PR #569) routes the controller's achieved-vs-commanded divergence *warnings* into the
+experiment JSONL as `controller_warning` records. Note the scope precisely: the handler is
+`scripts/orient_backbone/exp53_cross_context_readout.py::_WarningsToJsonl`, attached by that
+**harness** for the duration of a run — it is instrumentation, not a production path. So "dies at
+the controller" is exact about the **substrate**, and must not be read as "nothing was done": an
+experimenter running Exp 53's harness can see the divergence; the learner never can, and neither
+can the runtime.
+
+> **Recommendation, revised after the two-lens review round (2026-08-31).** Rev 1 recommended
+> wiring `last_clamped_axes` into `ToolOutput.side_effects["embodiment_failures"]`. **Do not do
+> that**, for two reasons the Architecture lens raised and I accept:
+>
+> 1. **Wrong semantics.** `embodiment_failures` means *the entity's own components failed or were
+>    harmed* — it is populated from `active_failures` and read as harm by
+>    `bridges/tool_pain_bridge.py`. A clamp is not harm; it is the controller **correctly
+>    refusing** an out-of-workspace command. Constraint 4 names the signal exactly — a *labeled
+>    unexecutable-intent* signal — and routing it to the harm channel would teach the substrate
+>    "this action damages my body" for an event that means "this command was not executable from
+>    here."
+> 2. **It inverts the bug rather than fixing it.** `learn_success = success and not
+>    embodiment_failed` is unconditional, so *every* clamped motion would book NEGATIVE —
+>    including a turn that clamped at 40° of a requested 60° and **nonetheless centred the
+>    sound**. In precisely the configuration where the defect bites, that is the mirror image of
+>    the defect.
+>
+> **The right home is the comparator that already exists.**
+> `proprioception/pain.py::PainDetector.set_movement_target` / `::_check_movement_failure` is a
+> genuine commanded-vs-achieved comparator emitting a **graded** `PainType.MOVEMENT_FAILURE`, and
+> `harm/joint_limit.py::JointLimitHarmPredictor` is its predictive half. Both are real, both are
+> reachable only through `bridges/pain_bridge.py::PainCircuitBridge` on the legacy Selfy runtime,
+> and **neither is wired into the substrate-primary / `agent_loop` path**. Reviving them there is
+> the work — graded, correctly named, and no new comparator.
+>
+> **And the credit rule must key on the outcome, not on clamp-occurrence.** Whether a clamped
+> action was good or bad is answered by "did azimuth improve?", which the orient path already
+> computes as `potential_diff`. Clamping is information about *executability*, and belongs in the
+> percept/pain stream; it is not by itself a valence.
+>
+> With that correction this remains **the duck's commanded-vs-applied divergence channel,
+> prototyped on the Reachy, buildable today, with no duck** — which is the point worth keeping
+> from rev 1.
 
 ### 5.3 Positive valence: constraint 5 is correct, and the repo's existing answer is the weak one
 
@@ -403,20 +569,27 @@ not an implementation detail.
 
 Three facts, each with a consequence:
 
-1. **`proprioception/` is an aversion source only.** `MovementSample` is a fixed 6-field head
-   pose (`yaw, pitch, x, y, z, roll`) hardcoded to Reachy geometry; its only downstream is
+1. **`proprioception/` is an aversion source only.** `MovementSample` is a fixed 7-field record — a
+   `timestamp` plus a 6-DOF head pose (`yaw, pitch, x, y, z, roll`) — hardcoded to Reachy geometry; its only downstream is
    `PainDetector` → `PainSignal` → `PainBus`. It never becomes a `Percept`, never reaches
    `SensorEncoder.encode_sensors`, never gets an EC cluster. **A 48-dim joint vector has nowhere
    to land today.**
 2. **Exactly two modality channels ship.** `runtime/agent_loop.py`'s `_SUBSTRATE_CHANNELS` is
-   `(interoception, audio)`. Adding a third is genuinely one tuple entry — the seam is
-   declarative by design — **but it is a selection-dynamics recalibration, not a free
-   extension.** The registry's own comment warns that `max_cluster_reward_bias` caps *per
+   `(interoception, audio)`. Adding a third is **one `ModalityChannel` tuple entry plus a
+   `read_values`/`read_ranges` reader pair — and, if it rides the existing exteroceptive readers,
+   an edit to the hardcoded `_EXTEROCEPTIVE_ROOT_SENSORS = ("azimuth",)` tuple** (rev 1 said "one
+   tuple entry", which was the one place this section understated the work; the Minecraft plan
+   names both obstacles and rev 1 carried only the second). The seam is genuinely declarative,
+   **but it is also a selection-dynamics recalibration, not a free extension.** The registry's own comment warns that `max_cluster_reward_bias` caps *per
    cluster*, so the summed term in `recommend_action` scales with channel count: 2 → 3 channels
    moves the range from ±2 to ±3 against a `causal_pos` term topping out near 1.0, and gate
    calibration (`min_confidence`) must be re-checked. **This is the same warning the Minecraft
    world-modality channel carries** ([minecraft_benchmark.md](minecraft_benchmark.md)); if both
-   land, they compound, and the recalibration is one job, not two.
+   land, they compound, and the recalibration is one job, not two. **Owner:** the roadmap's
+   **1.1.4** row, which already carries "the world modality channel plus its selection-dynamics
+   re-baseline" — that re-baseline is hereby scoped as *one job for any additional channel*, so
+   this document observes the shared cost rather than owning it. (Rev 1 spotted the sharing and
+   named no owner, which would have left the job described in two plans and owned by neither.)
 3. **48 raw dims is the dilution failure at 48×.** The seam exists because *one* azimuth scalar
    merged among a handful of drives collapsed left/right onto one EC node and put the orient sim
    at chance ([archive/exteroception_interoception_seam.md](archive/exteroception_interoception_seam.md)).
@@ -486,13 +659,36 @@ from trial 1.
 
 ### 6.3 The trial budget, and why real time is disqualifying
 
-Concrete arithmetic, so the throughput requirement is a number rather than an intuition. The RW
-update is `ΔV = α(R − V)` with `base_learning_rate = 0.2` and default novelty 0.5, giving an
-effective **α ≈ 0.14**. Reaching 90% of asymptote needs `0.86ⁿ ≤ 0.1`, i.e. **n ≈ 16 credited
-trials per (state-bin, action) cell**. Multiply by cells, arms, and seeds and a modest duck
-design — say 4 skills × 4 state bins × 4 arms × 6 seeds — lands in the **thousands of episodes**.
-(Exp 45's direction learning moved 0.00 → 1.00 in ~10 trials, which is the right order and
-confirms the arithmetic is not pessimistic.)
+Concrete arithmetic, so the throughput requirement is a number rather than an intuition.
+
+> **Corrected in rev 2.** Rev 1 derived the budget from Rescorla-Wagner. The Executor lens
+> pointed out that this is the wrong rule for the duck: §5.1 and §5.3 both commit the duck's
+> valence to `NAc.credit_operant_reward`, which is a **wrapper over
+> `NAc.update_cluster_reward`** — and that rule is *not* RW. Both are given below, because the
+> duck touches both surfaces.
+
+**The surface the duck actually learns on** (`decisions/nac.py::NAc.update_cluster_reward`) is a
+**linear accumulate-and-clamp**, not an exponential approach: the bias moves by
+`NACConfig.reward_bias_alpha` (0.15) × reward per credited trial and clamps at
+`max_cluster_reward_bias` (±1.0). At `reward = 1.0` that saturates in ~7 trials. But saturation is
+not the behavioural quantity — **what matters is when the correct action's bias separates from a
+competitor's**, and any pre-registration must state that separation criterion rather than a
+convergence threshold. Note the direct consequence for graded reward: a signal of magnitude 0.02
+moves the bias by 0.003 per trial against a `causal_pos` term topping out near 1.0 — the same
+drowning failure mode §5.1 diagnoses for the sign collapse, one layer down. **This is why "graded"
+is not the same as "influential" here.**
+
+**The causal-link surface** (`decisions/nac.py::CausalLink.update_prediction_rw`) *is* RW:
+`ΔV = α(R − V)`, with α derived from `NACConfig.base_learning_rate` (0.2) and a default novelty of
+0.5 that no call site overrides, giving **α ≈ 0.14**; 90% of asymptote needs `0.86ⁿ ≤ 0.1`, i.e.
+**n ≈ 16**. **Re-derive both figures if `reward_bias_alpha`, `base_learning_rate` or the novelty
+default changes.**
+
+Either way the order is the same: multiply ~10–16 credited trials per cell by cells, arms and
+seeds, and a modest duck design — say 4 skills × 4 state bins × 4 arms × 6 seeds — lands in the
+**thousands of episodes**. (Exp 45's direction learning moved 0.00 → 1.00 in ~10 trials — the
+right order, but note it is *argmax-correctness across bins*, not 90% of an asymptotic link value,
+so treat it as an order-of-magnitude sanity check and not as confirmation of either derivation.)
 
 At real time, with resets, that is not a run — it is a season. Hence constraint 6. **Build the
 headless MuJoCo episode loop before collecting anything**, and treat wall-clock per episode as a
@@ -539,7 +735,7 @@ against the 1.3 fabric."
    second body" and "the duck is a new proprioceptive/locomotor behaviour class needing its own
    pre-registration." §1.1. Everything downstream of the experiment design waits on this.
 2. **What is the first duck claim?** No experiment number is allocated here deliberately (the
-   highest in `docs/experiments/` is 54 as of 2026-08-31). Until §8.1 is answered there is no
+   highest in `docs/experiments/` is 54 as of 2026-08-31). Until the mic-array question (§8, item 1) is answered there is no
    honest way to write the pre-registration, and the house rule is that gates are frozen before
    data.
 
@@ -563,24 +759,32 @@ against the 1.3 fabric."
    the caregiver — but *what counts as task completion* for a locomotion skill is unwritten.
 7. **Which layers does the duck actually consume?** §2.6. Record the per-layer answer before any
    extraction, and specifically do **not** fire `porting_orient_loop.md`'s `OrientRig` extraction
-   unless §8.1 comes back with a mic array.
+   unless the mic-array question (§8, item 1) comes back yes.
 8. **Does the sim backend get built ahead of hardware, and at what priority against the 1.3
    fabric?** The MuJoCo half has no hardware dependency (§7). It is startable; it is not
    scheduled.
 
-### A defect this investigation surfaced, owed to the bugs ledger
+### A defect this investigation surfaced — FILED
 
-9. **A clamped or unreached motion is credited as a success.** `tools/reachy.py::focus_on_sound`
-   returns `ToolResult(success=True, …)` when `clamped` or `reached is False`, and
-   `tool_dispatch.py` computes `learn_success = success and not embodiment_failed` — so the
-   substrate books POSITIVE for a motion the tool's own payload says did not happen. Bounded: the
-   graduated orient experiments suppress the tool-success floor, so no EARNED row is touched.
-   Not filed as a row here because the ledger is mid-renumber in PR #577 (duplicate D43/D44
-   ids); **file it after that lands**, with §5.2's `embodiment_failures` wiring as the fix.
+9. **A clamped or unreached motion is credited as a success.** Filed as **D51** in
+   [../bugs/README.md](../bugs/README.md). `tools/reachy.py::focus_on_sound` returns
+   `ToolResult(success=True, …)` when `clamped` or `reached is False`, and `tool_dispatch.py`
+   computes `learn_success = success and not embodiment_failed` — so the substrate books POSITIVE
+   for a motion the tool's own payload says did not happen. Bounded: the graduated orient
+   experiments suppress the tool-success floor, so no EARNED row is touched.
+
+   > **Revised after the review round.** Rev 1 deferred filing until PR #577's ledger renumber
+   > landed. The Architecture lens was right that this was wrong: the defect is *verified* against
+   > two named symbols, and ledger rule 1 puts verified defects in the ledger while reserving the
+   > plan's open-questions section for suspicions — so the plan doc was the wrong home by the
+   > ledger's own rule, and "file it later" named no trigger and no owner. It is numbered **D51**,
+   > deliberately skipping D49/D50 so #577's renumber has room. Rev 1 also proposed the
+   > `embodiment_failures` wiring as the fix; §5.2 explains why that was rejected in review, and
+   > the filed row records the correct fix instead.
 
 ### What this document deliberately does not commit to
 
-- **Not** an experiment, a number, or a gate — §8.1 blocks all three.
+- **Not** an experiment, a number, or a gate — the mic-array question (§8, item 1) blocks all three.
 - **Not** the JEPA paired-data pairing. That remains what the 2026-08-30 scoping called it: a
   hypothesis that *raises* JEPA's bar rather than lowering it, revisited when the duck's sensing
   is known. §3's tool-name-collision caution is a prerequisite for even trying it.

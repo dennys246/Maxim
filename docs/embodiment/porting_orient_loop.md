@@ -188,6 +188,15 @@ answer:
 
 The second consumer triggers the mechanical refactor — not before:
 
+> **The trigger is evaluated PER LAYER, not per robot** (added 2026-08-31,
+> [../plans/microduck_intent_layer.md](../plans/microduck_intent_layer.md) §2.6). Items 1 and 2
+> below fire only for a robot that is genuinely a *consumer of the orient rig* — i.e. one with a
+> bearing source. A second robot with **no mic array** is not a second consumer of `OrientRig`,
+> and extracting the protocol against it would be abstracting from one example while claiming
+> two, which is the exact failure the second-consumer test exists to prevent. Item 3 (affordance
+> dispatch through the executor/tool_bridge) is body-agnostic and proceeds on its own merits
+> regardless. Do not read "robot #2 exists" as firing all three.
+
 1. Extract an `OrientRig` protocol (`read_azimuth() -> (float, bool) | None`,
    `turn(delta)`, `recenter()`, `sensor_frame() -> float` — **the frame read-back is part
    of the protocol now**, it is not optional) plus the calibration params as a frozen

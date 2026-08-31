@@ -469,7 +469,7 @@ might arrive in December. The ladder below restores the ordering without droppin
 | Release | Theme | Contents | Ship gate |
 |---|---|---|---|
 | **1.1.2** | **Decomposition** | fail-loud **Stage 2** (never run — it is the extraction's own stated prerequisite, and the per-PR behaviour gate cites a baseline that does not exist); the first `run_agentic_loop` extraction; the four cheap scorecard conditions (Tier-3 dispositions, `test_api_surface.py`, ARCHITECTURE.md EC rows, item 16.10); the D12 `pytest-timeout` guard; a scheduled `-m slow` lane | The extraction passes the JSONL sequence-diff gate against a pre-refactor capture on the same seed; the length baseline tightens in the same commit |
-| **1.1.3** | **Merge correctness** | **D43** both halves (id map out of `ec_merge`; re-key `cluster_reward_bias` + `cluster_reward_source`; N→1 fold semantics; a bias-key identity namespace — the undocumented design gap); gate 1 encoder-provenance validator; gate 2 geometry tag + threshold pin; gate 7 typed bundles (`body_ref` + `affordance_namespace` — design it as a **capability** namespace with the body as an attribute, not a body namespace with a shim: [microduck_intent_layer.md](microduck_intent_layer.md) §2.4 is the portability-side second consumer) | **D44**: a test asserting a *behavioural* delta across a merge — `recommend_action` changes — between two genuinely independent agents. Dict equality does not count |
+| **1.1.3** | **Merge correctness** | **D43** both halves (id map out of `ec_merge`; re-key `cluster_reward_bias` + `cluster_reward_source`; N→1 fold semantics; a bias-key identity namespace — the undocumented design gap); gate 1 encoder-provenance validator; gate 2 geometry tag + threshold pin; gate 7 typed bundles (`body_ref` + `affordance_namespace`, per the case study's option (a); its design pass must additionally **cost** the body-agnostic option (b) and state the migration cost of the persisted `53_agents` files, because [microduck_intent_layer.md](microduck_intent_layer.md) §2.4 gives (b) a second, portability-side constituency — **but (a) remains the scheduled choice and D44 does not require (b)**) | **D44**: a test asserting a *behavioural* delta across a merge — `recommend_action` changes — between two genuinely independent agents. Dict equality does not count |
 | **1.1.4** | **The world seam** | The Minecraft bridge, `bodies/minecraft_player.yaml`, the world modality channel **plus its selection-dynamics re-baseline**, the two-AUT-one-world harness ([minecraft_benchmark.md](minecraft_benchmark.md)) | Infrastructure only, **no claim**. Smoke benchmark green; `is_sim_mode=False` verified to consolidate |
 | **1.2** | **Oasis** | The four-arm sharing benchmark, pre-registered, run in Minecraft at n ≥ 50, replicated on two Reachy Minis at n = 12; gates 3, 4 and 8 | The gate ladder below |
 | **1.3** | Perception fabric + reflex tier (**unchanged, semi-open**) | Cochlear front-end, vision encoder, binding, three-factor calibration — **plus the microduck** ([microduck_intent_layer.md](microduck_intent_layer.md)), see below | Its own pivotal experiment |
@@ -515,13 +515,18 @@ be dispositioned either way — wire the dead bridge or mark it `Dormant since`.
 > 50 Hz onboard / 1–5 Hz off-board; pluggable sim and `robotd` reward sources; a headless
 > episode loop). They close the "unknown SDK / unknown kinematics" hedge below and are worked
 > through against the code in **[microduck_intent_layer.md](microduck_intent_layer.md)**. The
-> slot does **not** change — see that doc §7. Two findings from it are load-bearing *here*,
-> both landing in 1.1.3 and neither needing the duck to exist: **gate 7 should be designed as a
-> capability namespace, not a body namespace** (the duck is its portability-side second
-> consumer, the same abstraction D43's third barrier names from the sharing side), and
-> **`last_clamped_axes` dies at the controller** — wiring it into
-> `side_effects["embodiment_failures"]` prototypes the duck's commanded-vs-applied divergence
-> channel on hardware we already own.
+> slot does **not** change — see that doc §7. **Rev 2 (post two-lens review round)** withdrew
+> that doc's two headline *recommendations* and demoted them to inputs; what survives, and is
+> load-bearing *here*, is narrower: (a) the microduck gives gate 7's body-agnostic option a
+> **second, portability-side constituency**, so gate 7's design pass must cost it explicitly —
+> **but the case study's typed-bundle option remains the scheduled choice and 1.1.3's D44 gate
+> does not need the alternative**; and (b) **`last_clamped_axes` reaches no learner** — its only
+> `src/` consumer renders prose for the LLM — so the duck's commanded-vs-applied divergence
+> channel can be prototyped on the Reachy, by reviving
+> `proprioception/pain.py::PainDetector`'s existing graded comparator on the `agent_loop` path.
+> (Rev 1 proposed routing it through `side_effects["embodiment_failures"]`; that was **rejected
+> in review** — a clamp is a refusal, not harm, and the unconditional valence flip would book
+> NEGATIVE for a clamped turn that nonetheless achieved its goal.)
 
 Pushed to 1.3 (operator's call, 2026-08-30) rather than gating 1.2 on hardware with an
 uncertain arrival date and unknown sensing. The decisive unknown is
@@ -545,17 +550,25 @@ Prerequisite either way, independent of the duck: break `selfy.py::Maxim.mini` s
 talks to `RobotController` rather than a raw SDK handle. That work is worth doing on its own
 merits and is the gate on any second robot.
 
-**Corrected 2026-08-31 (measured, not estimated).** The "~20 call sites, motion-safety code"
-figure above was wrong in both magnitude and *location*. `.mini` has 29 references in
-`src/maxim/`, of which ~16–17 are substantive raw-SDK uses, and they are concentrated in the
-**media/audio** path — `embodied_runtime/media_loop.py` (10, all genuinely raw: `get_frame`,
-`get_audio_sample`, `push_audio_sample`, the samplerate reads, bypassing
-`get_video_stream()`/`get_audio_stream()` entirely), plus `workers.py`, `selfy.py`'s three
-documented backward-compatibility fallbacks, and `inference/segment_vision.py`. **No raw motion
-dispatch survives** in `embodied_runtime/movement.py`: what remains there is two pose *reads*,
-one `look_at_image` wrap, and calls into the sanctioned `motion/movement.py::move_head`. So this
-is a **media-abstraction** job, not a motion-safety job — which makes it materially safer and
-cheaper than the entry implied, though the two-lens round still applies.
+**Corrected 2026-08-31 (measured, then corrected again by the review round).** The "~20 call
+sites" figure above was wrong about *location*, which is the part that matters. `.mini` has **29**
+references in `src/maxim/`, distributed `media_loop.py` 10 · `movement.py` 7 · `workers.py` 6 ·
+`selfy.py` 4 · `capabilities.py` 1 · `segment_vision.py` 1 (counts dated 2026-08-31; the durable
+finding is the distribution, not the number). The **bulk is the media/audio path** —
+`media_loop.py`'s `get_frame` / `get_audio_sample` / `push_audio_sample` / samplerate reads bypass
+`get_video_stream()` / `get_audio_stream()` entirely, and `selfy.py`'s three are documented
+backward-compatibility media fallbacks.
+
+**But one raw SDK motion dispatch does survive**, and a first draft of this entry wrongly said
+none did: `embodied_runtime/movement.py::Movement._enqueue_sdk_look_at` binds
+`self.mini.look_at_image`, which the file's own comment describes as bypassing
+`ReachyMiniController.look_at_pixel` so the controller's last-commanded head stash never sees the
+motion — and CI's `RAW_SDK_MOTION` guard in [.github/workflows/test.yml](../../.github/workflows/test.yml)
+carries **two explicit allow-list lines** for that file to let it through. `movement.py` also hands
+the raw handle to `move_head` / `move_antenna`, which is exactly the coupling the break-out must
+sever. So: the work is **mostly** media abstraction, but it must relocate that allow-listed motion
+site and its CI allow-list with it, and the two-lens round on it is a **motion-safety** round, not
+only a media one.
 
 ## Gates before 1.2 Oasis + Hivemind
 
