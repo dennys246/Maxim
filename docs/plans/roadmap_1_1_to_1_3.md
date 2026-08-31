@@ -17,7 +17,7 @@ down somewhere in this repo by someone being careful.
 |---|---|---|---|
 | **1.1** | **"Sensorimotor"** — *the substrate leaves the simulator, and learns to want* | Already-merged embodiment work + release correctness, contract truth, and the verification debt it incurred (all landed by 2026-08-24, published as `1.1.0rc1`) — **plus, reopened 2026-08-25: a recorded, gated result for caregiver-taught orienting (item 17) — DONE 2026-08-25, PASS — before `1.1.0` final.** The loudness bench tests (item 18) were run the same day and the item itself moved to 1.1.1 (bench done; the design is not part of the sensorimotor-learning claim). **Re-gated 2026-08-26 (item 19): the Exp 52 infants must be READ OUT on the physical robot — cross-context transfer of the learned want — with a recorded outcome before the cut. RECORDED the same day: Exp 53 APPARATUS → Exp 53b PASS (taught 1.00, controls 0.00 / 0.50). Cut unblocked.** | Medium-high: item 17 is the thesis experiment and may fail; a recorded fail still ships (as a fail). |
 | **1.2** | **Oasis + Hivemind** | ~1,400 LOC of de-risked engineering with a cleared gate — **motivating case study adopted 2026-08-26: sharing the nursery-taught want ([oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md)); the claim ladder ends at cross-unit readout on a second Reachy** | Low-medium. Known shape. |
-| **1.3** | **Perception fabric + reflex tier** | Cochlear front-end, vision encoder, binding, three-factor calibration, DN-canonical orienting reflex — **plus the microduck (added 2026-08-30), semi-open; possibly JEPA's paired-data source** | **High — contains a pivotal may-fail experiment.** |
+| **1.3** | **Perception fabric + reflex tier** | Cochlear front-end, vision encoder, binding, three-factor calibration, DN-canonical orienting reflex — **plus the microduck (added 2026-08-30; constraints folded 2026-08-31, [microduck_intent_layer.md](microduck_intent_layer.md)), semi-open; possibly JEPA's paired-data source** | **High — contains a pivotal may-fail experiment.** |
 
 ### Why this ordering (two corrections to an earlier draft)
 
@@ -469,10 +469,10 @@ might arrive in December. The ladder below restores the ordering without droppin
 | Release | Theme | Contents | Ship gate |
 |---|---|---|---|
 | **1.1.2** | **Decomposition** | fail-loud **Stage 2** (never run — it is the extraction's own stated prerequisite, and the per-PR behaviour gate cites a baseline that does not exist); the first `run_agentic_loop` extraction; the four cheap scorecard conditions (Tier-3 dispositions, `test_api_surface.py`, ARCHITECTURE.md EC rows, item 16.10); the D12 `pytest-timeout` guard; a scheduled `-m slow` lane | The extraction passes the JSONL sequence-diff gate against a pre-refactor capture on the same seed; the length baseline tightens in the same commit |
-| **1.1.3** | **Merge correctness** | **D43** both halves (id map out of `ec_merge`; re-key `cluster_reward_bias` + `cluster_reward_source`; N→1 fold semantics; a bias-key identity namespace — the undocumented design gap); gate 1 encoder-provenance validator; gate 2 geometry tag + threshold pin; gate 7 typed bundles (`body_ref` + `affordance_namespace`) | **D44**: a test asserting a *behavioural* delta across a merge — `recommend_action` changes — between two genuinely independent agents. Dict equality does not count |
+| **1.1.3** | **Merge correctness** | **D43** both halves (id map out of `ec_merge`; re-key `cluster_reward_bias` + `cluster_reward_source`; N→1 fold semantics; a bias-key identity namespace — the undocumented design gap); gate 1 encoder-provenance validator; gate 2 geometry tag + threshold pin; gate 7 typed bundles (`body_ref` + `affordance_namespace` — design it as a **capability** namespace with the body as an attribute, not a body namespace with a shim: [microduck_intent_layer.md](microduck_intent_layer.md) §2.4 is the portability-side second consumer) | **D44**: a test asserting a *behavioural* delta across a merge — `recommend_action` changes — between two genuinely independent agents. Dict equality does not count |
 | **1.1.4** | **The world seam** | The Minecraft bridge, `bodies/minecraft_player.yaml`, the world modality channel **plus its selection-dynamics re-baseline**, the two-AUT-one-world harness ([minecraft_benchmark.md](minecraft_benchmark.md)) | Infrastructure only, **no claim**. Smoke benchmark green; `is_sim_mode=False` verified to consolidate |
 | **1.2** | **Oasis** | The four-arm sharing benchmark, pre-registered, run in Minecraft at n ≥ 50, replicated on two Reachy Minis at n = 12; gates 3, 4 and 8 | The gate ladder below |
-| **1.3** | Perception fabric + reflex tier (**unchanged, semi-open**) | Cochlear front-end, vision encoder, binding, three-factor calibration — **plus the microduck**, see below | Its own pivotal experiment |
+| **1.3** | Perception fabric + reflex tier (**unchanged, semi-open**) | Cochlear front-end, vision encoder, binding, three-factor calibration — **plus the microduck** ([microduck_intent_layer.md](microduck_intent_layer.md)), see below | Its own pivotal experiment |
 
 ### The 1.2 benchmark (the headline claim)
 
@@ -510,10 +510,24 @@ be dispositioned either way — wire the dead bridge or mark it `Dormant since`.
 
 ### The microduck — 1.3, and possibly JEPA's paired-data source
 
+> **UPDATED 2026-08-31.** The operator supplied concrete design constraints (intent vocabulary
+> as its own layer; policy-granularity arbitration over a shared 61-dim observation contract;
+> 50 Hz onboard / 1–5 Hz off-board; pluggable sim and `robotd` reward sources; a headless
+> episode loop). They close the "unknown SDK / unknown kinematics" hedge below and are worked
+> through against the code in **[microduck_intent_layer.md](microduck_intent_layer.md)**. The
+> slot does **not** change — see that doc §7. Two findings from it are load-bearing *here*,
+> both landing in 1.1.3 and neither needing the duck to exist: **gate 7 should be designed as a
+> capability namespace, not a body namespace** (the duck is its portability-side second
+> consumer, the same abstraction D43's third barrier names from the sharing side), and
+> **`last_clamped_axes` dies at the controller** — wiring it into
+> `side_effects["embodiment_failures"]` prototypes the duck's commanded-vs-applied divergence
+> channel on hardware we already own.
+
 Pushed to 1.3 (operator's call, 2026-08-30) rather than gating 1.2 on hardware with an
-uncertain arrival date and unknown sensing. The repo has **zero** references to
-microduck/LeRobot; its SDK, kinematics, and sensors are unknown here. The decisive unknown is
-**directional audio**: every EARNED behavioural result this project has is sound-orienting
+uncertain arrival date and unknown sensing. The decisive unknown is
+**directional audio**, and the 2026-08-31 constraints did **not** close it — they enumerate the
+duck's sensing twice (the observation contract; the reward sources) and **no microphone appears
+in either list**. Every EARNED behavioural result this project has is sound-orienting
 (Exp 45, 52, 53b, 54). A robot without a mic array inherits no analogue of the only validated
 behaviour, which makes it a new percept modality — experiment work, not a port.
 
@@ -528,9 +542,20 @@ raises JEPA's bar (paired data must be *collected*, not assumed) and it inherits
 perception-fabric risk. Revisit when the duck's sensing is known.
 
 Prerequisite either way, independent of the duck: break `selfy.py::Maxim.mini` so the runtime
-talks to `RobotController` rather than a raw SDK handle (~20 call sites, motion-safety code,
-two-lens round required). That work is worth doing on its own merits and is the gate on any
-second robot.
+talks to `RobotController` rather than a raw SDK handle. That work is worth doing on its own
+merits and is the gate on any second robot.
+
+**Corrected 2026-08-31 (measured, not estimated).** The "~20 call sites, motion-safety code"
+figure above was wrong in both magnitude and *location*. `.mini` has 29 references in
+`src/maxim/`, of which ~16–17 are substantive raw-SDK uses, and they are concentrated in the
+**media/audio** path — `embodied_runtime/media_loop.py` (10, all genuinely raw: `get_frame`,
+`get_audio_sample`, `push_audio_sample`, the samplerate reads, bypassing
+`get_video_stream()`/`get_audio_stream()` entirely), plus `workers.py`, `selfy.py`'s three
+documented backward-compatibility fallbacks, and `inference/segment_vision.py`. **No raw motion
+dispatch survives** in `embodied_runtime/movement.py`: what remains there is two pose *reads*,
+one `look_at_image` wrap, and calls into the sanctioned `motion/movement.py::move_head`. So this
+is a **media-abstraction** job, not a motion-safety job — which makes it materially safer and
+cheaper than the entry implied, though the two-lens round still applies.
 
 ## Gates before 1.2 Oasis + Hivemind
 
@@ -552,10 +577,19 @@ execution priority:
    cosine but nothing re-keys `cluster_reward_bias` through the resulting id map, so a
    merged foreign want reads out as nothing. The re-keyed merge path must exist and the
    Exp 52 seeds 42 + 43 must pass Gauntlet #2 merged — see the case study.
-7. **Bundle action namespace** (added 2026-08-26): bias keys are body-prefixed tool
-   names; a bundle must declare its body/affordance namespace (typed bundles) or the
-   keys move to the SEM affordance. Decided in the case study's design pass, before the
-   first shared bundle.
+7. **Bundle action namespace** (added 2026-08-26; **sharpened 2026-08-31**): bias keys are
+   body-prefixed tool names; a bundle must declare its body/affordance namespace (typed
+   bundles) or the keys move to the SEM affordance. Decided in the case study's design pass,
+   before the first shared bundle. **Sharpening:** the code map in
+   [microduck_intent_layer.md](microduck_intent_layer.md) §2.1 pins what the key actually is
+   — `embodiment/tool_bridge.py::generate_tools_for_entity` builds `f"{ent.name}_{aff_name}"`
+   (flat, underscore-joined, **modulator dropped**), and `similarity/signature.py`'s
+   `f"{tool_name}:{outcome_type}"` is the only real structural key; a colon-delimited
+   `body:<name>:<verb>` convention **does not exist anywhere in the tree**, and
+   `affordance_namespace`/`body_ref` are docs-only (`hivemind/bundle.py`'s manifest has
+   neither). Design the namespace as a **capability** namespace with the body as an attribute,
+   taking `embodiment/motor.py::MotorStep.sem_key`'s `(entity, modulator, affordance)` triple
+   as the starting shape — it is the one place a three-part action identity already survives.
 8. **Evidence and ledger coherence** (added 2026-08-27 from the scorecard
    reconciliation). Gates 1–7 exist because distribution amplifies silent *state*
    errors; this gate applies the same argument to the *evidence* behind the state that

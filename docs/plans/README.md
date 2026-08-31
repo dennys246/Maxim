@@ -130,6 +130,12 @@ Deep-audited 2026-08-27; release authority reconciled 2026-08-19.
   calibration learner, companion to the fabric (design note, zero code).
 - [hybrid_substrate_reflex_runtime.md](hybrid_substrate_reflex_runtime.md) — the 1.3
   reflex tier (DN-canonical orienting reflex; sole owner of BL-1..BL-5).
+- [microduck_intent_layer.md](microduck_intent_layer.md) — the microduck (rev 1,
+  2026-08-31): the operator's design constraints worked through against the code. Zero
+  code, and the slot is unchanged — but two of its findings are **1.1.3 work that does not
+  need the duck**: gate 7 should be a *capability* namespace (§2.4), and `last_clamped_axes`
+  dies at the controller, so the duck's commanded-vs-applied divergence channel can be
+  prototyped on the Reachy today (§5.2).
 
 ### Living discipline docs
 
