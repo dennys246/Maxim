@@ -808,6 +808,16 @@ class ModulatorAffordanceTool(Tool):
                 side_effects = {}
             side_effects["drive_credit_withheld"] = True
 
+        # D53: promote the backend's learning tier onto the side_effects
+        # channel. ``Executor.execute`` reads ``side_effects`` and never
+        # ``metadata``, so a backend's honest "the motion could not be
+        # verified / nothing moved" was structurally invisible to the
+        # learning chain no matter how carefully it was measured.
+        if _measured.get("outcome_ineffective"):
+            if side_effects is None:
+                side_effects = {}
+            side_effects["outcome_ineffective"] = True
+
         # Entity acquisition: if this is a pick_up affordance and the target
         # is acquirable, signal the executor to reparent + register tools.
         target_name = kwargs.get("object") or kwargs.get("target")

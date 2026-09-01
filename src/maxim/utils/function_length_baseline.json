@@ -7,7 +7,7 @@
     {
       "file": "maxim/runtime/agent_loop.py",
       "function": "run_agentic_loop",
-      "lines": 3512
+      "lines": 3495
     },
     {
       "file": "maxim/simulation/orchestrator.py",

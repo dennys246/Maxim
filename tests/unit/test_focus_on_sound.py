@@ -350,3 +350,70 @@ class TestBodyFrameCorrection:
         assert result.output["reached_target"] is False
         assert "focus_on_sound" in note
         assert "reachy_mini_turn_" in note
+
+
+class TestLearningTier:
+    """D53: the LEARNING tier is separate from mechanical success.
+
+    The tool's payload was always scrupulously honest — `faced_sound`,
+    `clamped_to_head_limit`, an explanatory `note`. But it returned
+    `success=True` with NO `side_effects`, and
+    `tool_dispatch.record_outcome` computed
+    `learn_success = success and not embodiment_failed`, so a clamp
+    populated no channel at all and the substrate booked
+    `Valence.POSITIVE` + `+1.0` cluster credit for a motion the tool
+    itself reports did not happen. The honesty fix stopped at the prose
+    layer; this carries it to the learner.
+
+    The rule keys on the OUTCOME, never on clamp-occurrence — booking a
+    non-positive for every clamp would invert the bug.
+    """
+
+    def _run(self, latest, robot, yaw=0.0):
+        maxim = _FakeMaxim(latest=latest, yaw=yaw, robot=robot)
+        return FocusOnSoundTool(maxim).execute()
+
+    def _ineffective(self, result):
+        return bool((result.side_effects or {}).get("outcome_ineffective"))
+
+    def test_head_already_at_limit_is_ineffective(self):
+        """THE D53 case: the head is already at the envelope, the command
+        is refused, nothing moves — and the old code booked a full +1."""
+        robot = _FakeRobot(track_target=True)
+        result = self._run(latest=(-1.0, _now(), math.radians(45.0)), robot=robot, yaw=45.0)
+        assert result.success is True  # dispatch still succeeded
+        assert result.output["clamped_to_head_limit"] is True
+        assert self._ineffective(result) is True
+
+    def test_clamped_but_moved_stays_effective(self):
+        """A clamped turn that STILL moved toward the sound is a real turn.
+        Keying on clamp-occurrence rather than outcome would wrongly
+        neutralise this one."""
+        robot = _FakeRobot(track_target=True)
+        result = self._run(latest=(-1.0, _now(), 0.0), robot=robot)
+        assert result.output["clamped_to_head_limit"] is True
+        assert result.output["reached_target"] is True
+        assert self._ineffective(result) is False
+
+    def test_unverifiable_readback_is_ineffective(self):
+        """Unknown != achieved. With no pose readback the tool cannot
+        establish that the motion happened, so it asserts nothing."""
+        robot = _FakeRobot(pose=None)
+        result = self._run(latest=(0.5, _now(), 0.0), robot=robot)
+        assert result.output["reached_target"] is None
+        assert self._ineffective(result) is True
+
+    def test_confirmed_good_turn_is_effective(self):
+        robot = _FakeRobot(track_target=True)
+        result = self._run(latest=(0.5, _now(), 0.0), robot=robot)
+        assert result.output["faced_sound"] is True
+        assert self._ineffective(result) is False
+
+    def test_confirmed_shortfall_is_not_marked_ineffective(self):
+        """A CONFIRMED shortfall is a measured negative the learning chain
+        already sees through `reached is False`; it is not the neutral
+        'nothing happened' case."""
+        robot = _FakeRobot(pose={"yaw": math.radians(-12.0), "body_yaw": 0.0})
+        result = self._run(latest=(0.5, _now(), 0.0), robot=robot)
+        assert result.output["reached_target"] is False
+        assert self._ineffective(result) is False

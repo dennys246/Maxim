@@ -14,10 +14,22 @@ import re
 import time
 from typing import Any
 
+from maxim.decisions.causal_link import Valence as _V
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
 
 logger = logging.getLogger(__name__)
+
+# Outcome-signature token per learning tier. A NEUTRAL outcome must not
+# share causal-link identity with a success or a failure: link ids hash
+# ``outcome_signature``, so reusing "success" for an ineffective action
+# would merge it into the successful link and re-book the very positive
+# this fix removes.
+_OUTCOME_TOKEN: dict[_V, str] = {
+    _V.POSITIVE: "success",
+    _V.NEUTRAL: "ineffective",
+    _V.NEGATIVE: "failure",
+}
 
 
 def _operant_only_credit_enabled() -> bool:
@@ -92,6 +104,7 @@ def record_outcome(
     drive_relief_only: bool = False,
     drive_credit_withheld: bool = False,
     drive_relief_channel: str | None = None,
+    outcome_ineffective: bool = False,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
@@ -176,7 +189,42 @@ def record_outcome(
     # harmfully — and flipping the valence here also closes the gap when no
     # ToolPainBridge is wired. The LLM-facing sinks above keep mechanical
     # ``success`` (the result_summary carries the failure detail).
-    learn_success = success and not embodiment_failed
+    #
+    # **This is a THREE-tier outcome, not a boolean** (D53, 2026-08-31).
+    # ``Valence`` is a live ternary and ``causal_link.py::_VALENCE_TO_REWARD``
+    # maps it canonically — POSITIVE 1.0 / NEGATIVE 0.0 / NEUTRAL 0.5, the
+    # neutral value being the Rescorla-Wagner prior midpoint consumed by
+    # ``CausalLink.update_prediction_rw`` and by Welford online variance.
+    # An action that RAN but accomplished nothing — a motion clamped at a
+    # joint limit, a turn that could not be verified to have reached its
+    # target — is exactly "expected outcome, no strong signal": it should
+    # move the predictor toward the prior rather than assert either success
+    # or harm. Until this was fixed, ``record_outcome`` collapsed the
+    # ternary into a boolean in three places, so a refused motion booked a
+    # full POSITIVE causal link plus +1.0 goal and cluster credit.
+    #
+    # Why NEUTRAL and not "route it through embodiment_failures": a clamp is
+    # a REFUSAL, not harm. Booking NEGATIVE for a clamped turn that
+    # nonetheless centred the sound would invert the bug rather than fix it.
+    # The tier keys on the OUTCOME (did anything change) — never on
+    # clamp-occurrence.
+    #
+    # The load-bearing consequence is on the causal surface:
+    # ``get_positive_outcomes`` / ``get_negative_outcomes`` both filter on
+    # exact valence, so a NEUTRAL link falls into NEITHER and contributes
+    # zero to ``recommend_action``'s causal component. Previously every tool
+    # that had ever mechanically succeeded carried a flat causal term into
+    # action selection — a link's confidence, 0.50 on creation and 0.64+
+    # once re-observed, so above the 0.3 ``min_confidence`` gate from the
+    # very first observation — and no credit-withholding flag could
+    # suppress it, because they all gate the CLUSTER term only.
+    if embodiment_failed or not success:
+        learn_valence = _V.NEGATIVE
+    elif outcome_ineffective:
+        learn_valence = _V.NEUTRAL
+    else:
+        learn_valence = _V.POSITIVE
+    learn_success = learn_valence is _V.POSITIVE
 
     # Validate + fold the legacy scalar AFTER the always-on sinks (a
     # malformed set must not lose the outcome record) but BEFORE the
@@ -206,10 +254,8 @@ def record_outcome(
     # NAc causal learning: record tool → outcome so predictions improve
     if nac is not None:
         try:
-            from maxim.decisions.causal_link import Valence
-
             outcome_summary = (result_summary or error or "")[:50]
-            valence = Valence.POSITIVE if learn_success else Valence.NEGATIVE
+            valence = learn_valence
             sig = build_tool_signature(tool_name, tool_params)
             # Tag every NAc observation with agent_id so cross-agent
             # attribution gaps surface as filterable context, not
@@ -221,7 +267,7 @@ def record_outcome(
                 event_type="tool",
                 event_signature=sig,
                 outcome_type="tool_result",
-                outcome_signature=f"{'success' if learn_success else 'failure'}:{outcome_summary}",
+                outcome_signature=f"{_OUTCOME_TOKEN[learn_valence]}:{outcome_summary}",
                 outcome_valence=valence,
                 delta_seconds=elapsed_s,
                 context=ctx,
@@ -229,7 +275,12 @@ def record_outcome(
             # Goal-level credit: if deliberation was active under a goal,
             # credit/penalize that goal so ThoughtGate learns whether
             # deliberation under this goal type produces good outcomes.
-            if active_goal is not None:
+            # A NEUTRAL outcome books NOTHING here rather than 0.0. The two
+            # are behaviourally identical — ``credit_goal`` accumulates
+            # ``current + alpha * reward``, so 0.0 is an exact no-op — but
+            # skipping avoids materialising a phantom 0.0 entry for a goal
+            # that has no evidence either way.
+            if active_goal is not None and learn_valence is not _V.NEUTRAL:
                 reward = 1.0 if learn_success else -1.0
                 nac.credit_goal(active_goal, reward)
 
@@ -253,7 +304,9 @@ def record_outcome(
             # ~0.15-0.3, or an azimuth step 0.09) would lose the argmax to the flat
             # +1 non-drive actions get — the #405 Exp-42 floor. Signing to ±1 puts
             # drive-relief actions on the same scale as tool-success while keeping
-            # the direction. Exactly-0 net progress -> tool-success fallback. The
+            # the direction. Exactly-0 net progress books NOTHING (D53): the
+            # signing argument requires zero not be rounded UP, and the measured
+            # path in tool_bridge already treats measured-zero that way. The
             # producer (tool_bridge) sets it to None when the action touched no
             # drive sensor OR caused COLLATERAL harm (a failure on a sensor its
             # progress didn't account for), so harm-dominates lives there and we
@@ -289,8 +342,9 @@ def record_outcome(
                 # difference of floats, so a genuine zero-progress move (e.g. a
                 # mirror move across a nonzero set_point) can leave a ~1e-17
                 # residue that exact-equality would mis-credit as ±1. The
-                # exactly-0 -> tool-success boundary is load-bearing, so guard it
-                # with an epsilon rather than float identity.
+                # exactly-0 boundary is load-bearing, so guard it with an
+                # epsilon rather than float identity — the residue must land
+                # in the NEUTRAL branch below, not be signed into ±1.
                 # Credit target: interoception by default. MEASURED
                 # exteroceptive relief (Phase 2, sem_motor_binding.md —
                 # producer marks drive_relief_channel="exteroceptive")
@@ -314,6 +368,32 @@ def record_outcome(
                         credit_cluster = operant_cluster
                         credit_source = "orient_relief"
 
+                elif drive_potential_diff is not None and learn_valence is not _V.NEGATIVE:
+                    # MEASURED exactly-zero net progress, on an action that
+                    # did not otherwise fail. (The NEGATIVE guard matters: a
+                    # tool that FAILED still books -1 even when its drive
+                    # measured nothing — the drive said nothing, but the tool
+                    # itself failed, and that is a real negative outcome.)
+                    # The drive spec ran
+                    # and reported that nothing changed — a turn into the
+                    # azimuth wall, a warm on an already-warm body. That is
+                    # information, and it is precisely neutral.
+                    #
+                    # This branch used to fall through to the tool-success
+                    # floor below and book +1. Two things in-tree already
+                    # contradicted that: ``tool_bridge``'s own MEASURED path
+                    # sets ``drive_credit_withheld`` for this same event
+                    # ("an honest 'no change'"), and
+                    # ``cradle_mother::reactive_mother_tick`` — which an
+                    # EARNED result (Exp 52's satiated control arm) depends
+                    # on — mints nothing when ``abs(relief) <= 1e-9``. The
+                    # modeled path was the odd one out.
+                    #
+                    # NOTE the epsilon guard lives in the branch ABOVE: a
+                    # float difference across a nonzero set_point can leave a
+                    # ~1e-17 residue, which lands here rather than being
+                    # mis-credited as ±1.
+                    cluster_reward = None
                 elif operant_only or drive_relief_only or drive_credit_withheld:
                     # drive_credit_withheld (sem_motor_binding.md Phase 1):
                     # a motor-bound LIVE affordance touched a drive sensor a
@@ -332,6 +412,16 @@ def record_outcome(
                     #   (the credit_on_progress hazard, amplified). The substrate
                     #   learns from the body's real drive signal ONLY, never from
                     #   tool execution. A driveless action accrues no cluster bias.
+                    cluster_reward = None
+                elif learn_valence is _V.NEUTRAL:
+                    # The tool ran and accomplished nothing attributable
+                    # (a clamped motion, an unverifiable one). No floor:
+                    # asserting +1 for an action the tool itself reports
+                    # did not happen is the D53 defect. Booking 0.0 would
+                    # be an exact no-op anyway
+                    # (``current + alpha * 0.0``), so skipping is
+                    # equivalent for the bias and additionally avoids
+                    # promoting the triple's credit-source to "mixed".
                     cluster_reward = None
                 else:
                     cluster_reward = 1.0 if learn_success else -1.0
@@ -388,8 +478,6 @@ def record_outcome(
     # Energy → NAc: learn which tools are expensive (metabolic budget)
     if nac is not None and elapsed_s > 0:
         try:
-            from maxim.decisions.causal_link import Valence as _V
-
             # Expensive actions (>2s) get NEGATIVE energy valence; cheap ones NEUTRAL
             energy_valence = _V.NEGATIVE if elapsed_s > 2.0 else _V.NEUTRAL
             nac.observe(

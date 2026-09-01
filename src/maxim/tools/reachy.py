@@ -1148,8 +1148,21 @@ class FocusOnSoundTool(Tool):
                     "focus_on_sound: turn-tool name resolution failed", exc_info=True
                 )
 
+        # D53: mechanical success stays True (the call was dispatched and
+        # the payload below is scrupulously honest), but the LEARNING tier
+        # is separate. Assert POSITIVE only on positive confirmation: an
+        # unverifiable readback is not a success (unknown != achieved), and
+        # a clamp that left the target where the head already was moved
+        # nothing at all. Keys on the OUTCOME, never on clamp-occurrence —
+        # a clamped turn that still moved toward the sound is a real turn
+        # and stays POSITIVE. Until this shipped, a refused motion booked a
+        # full POSITIVE causal link plus +1.0 cluster and goal credit for a
+        # motion the tool itself reports did not happen.
+        _no_motion = abs(target_yaw - cur_yaw) <= self._REACH_TOLERANCE_DEG
+        _ineffective = reached is None or (clamped and _no_motion)
         return ToolResult(
             success=True,
+            side_effects={"outcome_ineffective": True} if _ineffective else None,
             output={
                 # Honest by measurement, not by dispatch: True only when the
                 # post-motion readback confirms the head is at an UNCLAMPED

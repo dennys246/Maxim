@@ -23,6 +23,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The credit path collapsed a live ternary into a boolean (D53).** `Valence` is a
+  three-tier enum whose `NEUTRAL` is the Rescorla-Wagner prior midpoint, but
+  `runtime/tool_dispatch.py::record_outcome` reduced it to good/bad in three places, so a
+  motion clamped at a joint limit — or one whose readback could not confirm it happened —
+  booked a full `Valence.POSITIVE` causal link plus `+1.0` goal and cluster credit for an
+  action the tool itself reported did not occur. The causal collapse was the load-bearing
+  one: `get_positive_outcomes` filters on exact valence, so every tool that had ever
+  mechanically succeeded carried a flat causal term into `recommend_action` — a link's
+  confidence, `0.50` on creation and `0.64+` once re-observed, clearing the `0.3` gate from
+  the first observation — and no credit-withholding flag suppressed it (they all gate the
+  cluster term only).
+  A new `side_effects["outcome_ineffective"]` key — modelled on `drive_credit_withheld`, so
+  it suppresses the floor **without** asserting harm — now carries the third tier from the
+  two producers that already computed `reached: bool | None` and discarded it
+  (`FocusOnSoundTool`, `ReachyOrientMotorBackend`) through to `record_outcome` and
+  `ToolPainBridge.record_tool_complete`, whose `success: bool` was a second door into the
+  same bucket. Keys on the OUTCOME, never on clamp-occurrence: a clamped turn that still
+  moved toward its target stays POSITIVE. Measured exactly-zero drive progress no longer
+  falls to the `+1` floor either, so the modeled path now agrees with `tool_bridge`'s
+  measured path and with `cradle_mother::reactive_mother_tick`.
+- **Every `PainDetector`-origin pain distributed exactly zero reward (D54).** `_emit_pain`
+  hand-built its `Reaction` and bypassed `reactions/compat.py::pain_signal_to_reaction`,
+  the only place `agent_id` reaches `ReactionContext` — so
+  `bio_stack::_distribute_reward_from_reaction` early-returned on every velocity,
+  thrashing, movement-failure, tool-failure and tool-timeout signal. Silently: nothing
+  raised. `PainDetector` also had no `agent_id` at all; it now takes one and stamps it at
+  the single dispatch point, and publishes via `PainBus.publish` (which also gives direct
+  subscribers the full context instead of a lossy reconstruction).
+- `FocusLearner.save` hand-rolled `open()+json.dump`, violating the `atomic_write_json`
+  and `_format_version` invariants (D55). Now atomic and versioned; old files still load.
+
+### Changed
+- `tests/unit/test_tool_dispatch.py::test_zero_progress_falls_back_to_tool_success` is
+  **inverted**, not deleted — it was a regression guard holding D53's defect in place.
+
+
 ## [1.1.2] - 2026-09-01 — "Decomposition"
 
 ### Added

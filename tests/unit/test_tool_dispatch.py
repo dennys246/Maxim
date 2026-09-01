@@ -276,19 +276,32 @@ class TestClusterRewardMotorCredit:
     def test_absent_failure_falls_back_to_minus_one(self):
         assert self._cluster_reward(success=False, drive_potential_diff=None) == -1.0
 
-    def test_zero_progress_falls_back_to_tool_success(self):
-        # Exactly-0 net progress (touched a drive but no net movement) -> the
-        # tool-success fallback, not a 0 bias update.
-        assert self._cluster_reward(drive_potential_diff=0.0) == 1.0
+    def test_zero_progress_books_nothing(self):
+        # INVERTED 2026-08-31 (D53). This test previously pinned the
+        # opposite: exactly-0 net progress fell through to the tool-success
+        # floor and booked +1. A drive spec that RAN and measured no change
+        # is information, and it is precisely neutral — minting +1 for it is
+        # the direction-blind floor the #405 signing rule exists to avoid.
+        #
+        # Two things in-tree already contradicted the old behaviour: the
+        # MEASURED path in tool_bridge sets drive_credit_withheld for this
+        # same event ("an honest 'no change'"), and cradle_mother's
+        # reactive_mother_tick — which Exp 52's satiated control arm depends
+        # on — mints nothing when abs(relief) <= 1e-9. The modeled path was
+        # the odd one out.
+        assert self._cluster_reward(drive_potential_diff=0.0) is None
+        # A mechanical FAILURE still books -1: the drive said nothing, but
+        # the tool itself failed, and that is a real negative outcome.
         assert self._cluster_reward(success=False, drive_potential_diff=0.0) == -1.0
 
-    def test_float_residue_progress_falls_back_not_mis_credited(self):
-        # drive_comfort_progress is a difference of floats: a genuine zero-progress
-        # move (e.g. a mirror move across a nonzero set_point) can leave a ~1e-17
-        # residue. The epsilon guard must treat that as no-progress -> tool-success
-        # fallback, NOT a spurious +1. A real (small but meaningful) progress still
-        # books its sign.
-        assert self._cluster_reward(drive_potential_diff=1.4e-17) == 1.0  # residue -> fallback
+    def test_float_residue_progress_books_nothing_not_mis_credited(self):
+        # drive_comfort_progress is a difference of floats: a genuine
+        # zero-progress move (e.g. a mirror move across a nonzero set_point)
+        # can leave a ~1e-17 residue. The epsilon guard must treat that as
+        # no-progress, NOT as a spurious +1. Post-D53 "no progress" means no
+        # cluster write at all rather than the tool-success floor — the
+        # epsilon guard itself is unchanged and still load-bearing.
+        assert self._cluster_reward(drive_potential_diff=1.4e-17) is None
         assert self._cluster_reward(success=False, drive_potential_diff=-1.4e-17) == -1.0
 
     # ── Phase 1 (substrate_learns_from_experience.md): drive_relief_only guardrail ──
@@ -685,3 +698,134 @@ class TestImportPaths:
         from maxim.runtime.loop_controller import LoopController
 
         assert LoopController is not None
+
+
+class TestNeutralOutcomeTier:
+    """D53: ``record_outcome`` must express the THIRD tier, not a boolean.
+
+    ``Valence`` is a live ternary and ``_VALENCE_TO_REWARD`` maps it
+    canonically (POSITIVE 1.0 / NEGATIVE 0.0 / NEUTRAL 0.5, the neutral
+    value being the Rescorla-Wagner prior midpoint). An action that RAN
+    but accomplished nothing attributable — a motion clamped at a joint
+    limit, a turn whose readback cannot confirm it reached its target —
+    is neither a success nor a harm.
+
+    Until 2026-08-31 ``record_outcome`` collapsed the ternary into a
+    boolean in three places, so a refused motion booked a full POSITIVE
+    causal link plus +1.0 goal credit and +1.0 cluster credit. The
+    causal one is the load-bearing collapse: ``get_positive_outcomes``
+    and ``get_negative_outcomes`` both filter on EXACT valence, so a
+    POSITIVE link contributes its confidence — 0.50 on creation, 0.64+
+    once re-observed — to ``recommend_action``'s causal component, above
+    the 0.3 ``min_confidence`` gate from the very first observation. NO
+    credit-withholding flag suppresses it, because they all gate the
+    cluster term only.
+
+    Every test here fails against the pre-fix collapse.
+    """
+
+    def _run(self, **overrides):
+        pool = MagicMock()
+        pool.add_outcome = MagicMock()
+        nac = MagicMock()
+        kwargs = dict(
+            agent_id="a",
+            tool_name="focus_on_sound",
+            success=True,
+            result_summary="ok",
+            error=None,
+            reasoning="",
+            recent_outcomes=[],
+            max_recent=10,
+            llm_worker=None,
+            context_pool=pool,
+            nac=nac,
+            cluster_id="cluster-xyz",
+            active_goal="find_the_sound",
+        )
+        kwargs.update(overrides)
+        record_outcome(**kwargs)
+        return nac
+
+    # ── the causal surface: the collapse no flag could suppress ──
+
+    def test_ineffective_books_neutral_valence(self):
+        from maxim.decisions.causal_link import Valence
+
+        nac = self._run(outcome_ineffective=True)
+        assert nac.observe.call_args.kwargs["outcome_valence"] is Valence.NEUTRAL
+
+    def test_effective_still_books_positive(self):
+        from maxim.decisions.causal_link import Valence
+
+        nac = self._run(outcome_ineffective=False)
+        assert nac.observe.call_args.kwargs["outcome_valence"] is Valence.POSITIVE
+
+    def test_harm_still_books_negative_even_when_ineffective(self):
+        """embodiment_failed dominates: harm is not neutralised by ineffectiveness."""
+        from maxim.decisions.causal_link import Valence
+
+        nac = self._run(outcome_ineffective=True, embodiment_failed=True)
+        assert nac.observe.call_args.kwargs["outcome_valence"] is Valence.NEGATIVE
+
+    def test_mechanical_failure_still_books_negative(self):
+        from maxim.decisions.causal_link import Valence
+
+        nac = self._run(outcome_ineffective=True, success=False)
+        assert nac.observe.call_args.kwargs["outcome_valence"] is Valence.NEGATIVE
+
+    def test_neutral_link_identity_differs_from_success(self):
+        """Link ids hash outcome_signature — a neutral outcome must not merge
+        into the successful link and re-book the positive this fix removes."""
+        sig_pos = self._run(outcome_ineffective=False).observe.call_args.kwargs["outcome_signature"]
+        sig_neu = self._run(outcome_ineffective=True).observe.call_args.kwargs["outcome_signature"]
+        sig_neg = self._run(success=False).observe.call_args.kwargs["outcome_signature"]
+        assert sig_pos.startswith("success:")
+        assert sig_neu.startswith("ineffective:")
+        assert sig_neg.startswith("failure:")
+        assert len({sig_pos, sig_neu, sig_neg}) == 3
+
+    # ── the two float sinks ──
+
+    def test_ineffective_mints_no_goal_credit(self):
+        assert self._run(outcome_ineffective=True).credit_goal.called is False
+        assert self._run(outcome_ineffective=False).credit_goal.called is True
+
+    def test_ineffective_mints_no_cluster_credit(self):
+        assert self._run(outcome_ineffective=True).update_cluster_reward.called is False
+        assert self._run(outcome_ineffective=False).update_cluster_reward.called is True
+
+    # ── the tier reaches action selection, which is the point ──
+
+    def test_neutral_link_is_invisible_to_recommend_action(self):
+        """End-to-end against a REAL NAc: an ineffective tool must contribute
+        nothing to the causal component, while an effective one contributes
+        its confidence. This is the behaviour the collapse defeated."""
+        from maxim.decisions.nac import NAc, NACConfig
+        from maxim.runtime.tool_dispatch import build_tool_signature
+
+        pool = MagicMock()
+        pool.add_outcome = MagicMock()
+        common = dict(
+            agent_id="a",
+            result_summary="ok",
+            error=None,
+            reasoning="",
+            recent_outcomes=[],
+            max_recent=10,
+            llm_worker=None,
+            context_pool=pool,
+        )
+
+        nac = NAc(NACConfig())
+        record_outcome(nac=nac, tool_name="clamped_turn", success=True, outcome_ineffective=True, **common)
+        record_outcome(nac=nac, tool_name="real_turn", success=True, outcome_ineffective=False, **common)
+
+        clamped_sig = build_tool_signature("clamped_turn", None)
+        real_sig = build_tool_signature("real_turn", None)
+
+        # The ineffective tool is in NEITHER bucket — it asserts nothing.
+        assert nac.get_positive_outcomes(clamped_sig) == []
+        assert nac.get_negative_outcomes(clamped_sig) == []
+        # The effective one still earns its positive link.
+        assert len(nac.get_positive_outcomes(real_sig)) == 1

@@ -352,6 +352,17 @@ class ReachyOrientMotorBackend:
                 "achieved_body_yaw_deg": (round(math.degrees(achieved_body), 1) if achieved_body is not None else None),
                 "reached": reached,
                 "clamped_to_body_limit": clamped,
+                # D53: the learning tier, as distinct from mechanical success.
+                # Assert POSITIVE only on positive confirmation — an
+                # unverified readback is NOT a success (unknown != achieved),
+                # and a clamp that left the commanded target where the body
+                # already was accomplished nothing. Keys on the OUTCOME, never
+                # on clamp-occurrence: a clamped turn that still moved and
+                # reached its (clamped) target is a real turn and stays
+                # POSITIVE. Promoted into ToolOutput.side_effects by
+                # ModulatorAffordanceTool.execute — metadata alone is
+                # structurally invisible to the learning chain.
+                "outcome_ineffective": (reached is None or abs(target_body - current_body) <= _REACH_TOLERANCE_RAD),
             }
             if transition is not None:
                 # Consumed by ModulatorAffordanceTool.execute: the bio

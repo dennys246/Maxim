@@ -283,7 +283,27 @@ class Executor:
                             embodiment_failures,
                         )
                     else:
-                        self._tool_pain_bridge.record_tool_complete(tool_name, invocation_id, success=True)
+                        # D53: a tool that RAN but accomplished nothing
+                        # attributable (a motion clamped at a joint limit, a
+                        # turn that could not be verified to reach its target)
+                        # books NEUTRAL, not POSITIVE. It is neither a success
+                        # nor harm, so it must land in neither
+                        # get_positive_outcomes nor get_negative_outcomes.
+                        # This call site hardcoded success=True, which meant
+                        # every completion booked a full POSITIVE causal link.
+                        # Read from the same side_effects channel the drive
+                        # keys use — see docs/user/tool_side_effects.md.
+                        _ineffective = (
+                            bool(result.side_effects.get("outcome_ineffective")) if result.side_effects else False
+                        )
+                        from maxim.decisions.causal_link import Valence as _Val
+
+                        self._tool_pain_bridge.record_tool_complete(
+                            tool_name,
+                            invocation_id,
+                            success=True,
+                            outcome_valence=_Val.NEUTRAL if _ineffective else _Val.POSITIVE,
+                        )
 
                     # -- Entity acquisition/release (Mechanism B) --
                     if result.side_effects:
