@@ -157,30 +157,23 @@ Cleanest available test of "the unmasked substrate drives adaptive behavior": (a
 
 <!-- Analyzer appends "## Results" sections below this line -->
 
-## Results
+## Results — post-D53 re-validation, gating-OFF ablation (2026-09-01)
 
-Frozen run: 10 seeds/arm × 2 counterbalanced arms, substrate-primary, smollm narrator, 40 turns, `cost=$0`, git `0d6ca70f`. Treatment = exploration + drive-gating ON; ablation = drive-gating OFF (`MAXIM_SIM_DRIVE_GATE_ENABLED=0`), all else equal.
+**Verdict: GRADUATE #6 — substrate drives adaptive, feedback-tracked behavior**  (exit 0)
 
-**Headline: GRADUATE #6, and the gating-OFF ablation graduates *identically* → drive-gating (B7) is NOT load-bearing.** The pre-registered "discrimination within motivated attention" caveat is refuted: the substrate discriminates safe from harmful from its own clean credit assignment (B8 delta-attribution) + the pre-existing drive-affinity heuristic. Gating changed only warming *volume* (treatment Arm B spikes to 106 contacts on some seeds; the ablation sits tight at ~56–64 — the toggle demonstrably fired), not the discrimination. → B7 marked `Dormant` (did not earn behavioral weight); **B8 is the mechanism that carries #6**.
+- `substrate_signal` (H1, both arms ≥ 0.66): **True**
+- H1[cradle_pref_a] safe_pref = 0.996 → PASS
+- H1[cradle_pref_b] safe_pref = 1.000 → PASS
+- C1 (identity flip id_pref_a(b)−id_pref_a(a) ≥ 0.33): +0.996 → PASS
+- C2 (per-source learning, harm net < safe net): —
 
-### Treatment (gating ON) — GRADUATE (exit 0)
+### Per-arm (pooled across valid seeds)
 
-- H1 (both arms ≥ 0.66): **True** — A `safe_pref` 0.984, B 0.975
-- C1 identity-flip +0.959 PASS · C2 (harm net < safe net) PASS · 10/10 valid both arms, 0 floored
+| arm | safe id | valid/total | floored | safe_pref | SD | id_pref_a | harm net | safe net |
+|---|---|---|---|---|---|---|---|---|
+| cradle_pref_a | β | 10/10 | 0 | 0.996 | 0.000 | 0.004 | — | — |
+| cradle_pref_b | α | 10/10 | 0 | 1.000 | 0.000 | 1.000 | — | — |
 
-| arm | safe id | safe_pref | SD | id_pref_a | harm net | safe net |
-|---|---|---|---|---|---|---|
-| cradle_pref_a | β | 0.984 | 0.002 | 0.016 | −0.250 | 0.990 |
-| cradle_pref_b | α | 0.975 | 0.015 | 0.975 | −0.307 | 0.990 |
+### Notes
+- C2: per-source nets absent (no telemetry) — learning-sign check skipped.
 
-### Gating-OFF ablation — GRADUATE (exit 0)
-
-- H1 (both arms ≥ 0.66): **True** — A `safe_pref` 0.984, B 0.965
-- C1 identity-flip +0.949 PASS · C2 PASS · 10/10 valid both arms, 0 floored
-
-| arm | safe id | safe_pref | SD | id_pref_a | harm net | safe net |
-|---|---|---|---|---|---|---|
-| cradle_pref_a | β | 0.984 | 0.002 | 0.016 | −0.250 | 0.990 |
-| cradle_pref_b | α | 0.965 | 0.001 | 0.965 | −0.321 | 0.990 |
-
-The counterbalance flips cleanly in both runs: `id_pref_a` ≈ 0.016 when α is harmful (avoided) → ≈ 0.97 when α is safe (preferred), so the preference tracks the *swapped safety contingency*, not source identity. **Scope:** substrate-primary is near-deterministic (LLM removed), so this is a mechanism-level result — the substrate, given correct credit assignment, learns and acts on a counterbalanced safety contingency. Override / LLM-prior dominance remains the separate Exp 38/40 line.
