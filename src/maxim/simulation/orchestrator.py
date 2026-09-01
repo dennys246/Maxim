@@ -1408,7 +1408,7 @@ def start_simulation_mode(
     try:
         from maxim.proprioception.pain import PainDetector
 
-        aut_pain_detector = PainDetector()
+        aut_pain_detector = PainDetector(agent_id=_aut_agent_id)
         # Wire to introspector for benchmark_snapshot() pain_stats
         aut_introspector._pain_detector = aut_pain_detector
         logger.info("AUT PainDetector active in sim mode")

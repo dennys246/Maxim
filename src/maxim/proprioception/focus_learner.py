@@ -39,6 +39,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from maxim.decisions.nac import NAc
 
+from maxim.utils.atomic_io import atomic_write_json
+from maxim.utils.format_version import check_format_version, with_format_version
+
 logger = logging.getLogger(__name__)
 
 
@@ -631,8 +634,11 @@ class FocusLearner:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(path, "w") as f:
-            json.dump(state, f, indent=2)
+        # Canonical persistence surface (CLAUDE.md): atomic_write_json
+        # (fsync + tmp cleanup) wrapped by with_format_version, never a
+        # hand-rolled open().write(). The payload-layer ``"version": 1``
+        # above and the root ``_format_version`` string coexist by design.
+        atomic_write_json(str(path), with_format_version(state))
 
         logger.info(
             "FocusLearner saved to %s (gains: h+%.3f/h-%.3f, v+%.3f/v-%.3f)",
@@ -660,6 +666,8 @@ class FocusLearner:
         try:
             with open(path) as f:
                 state = json.load(f)
+
+            check_format_version(state, "focus_learner", log=logger)
 
             # Load gains
             gains = state.get("gains", {})
