@@ -157,23 +157,93 @@ Cleanest available test of "the unmasked substrate drives adaptive behavior": (a
 
 <!-- Analyzer appends "## Results" sections below this line -->
 
-## Results — post-D53 re-validation, gating-OFF ablation (2026-09-01)
+## Results
 
-**Verdict: GRADUATE #6 — substrate drives adaptive, feedback-tracked behavior**  (exit 0)
+Frozen run: 10 seeds/arm × 2 counterbalanced arms, substrate-primary, smollm narrator, 40 turns, `cost=$0`, git `0d6ca70f`. Treatment = exploration + drive-gating ON; ablation = drive-gating OFF (`MAXIM_SIM_DRIVE_GATE_ENABLED=0`), all else equal.
 
-- `substrate_signal` (H1, both arms ≥ 0.66): **True**
-- H1[cradle_pref_a] safe_pref = 0.996 → PASS
-- H1[cradle_pref_b] safe_pref = 1.000 → PASS
-- C1 (identity flip id_pref_a(b)−id_pref_a(a) ≥ 0.33): +0.996 → PASS
-- C2 (per-source learning, harm net < safe net): —
+**Headline: GRADUATE #6, and the gating-OFF ablation graduates *identically* → drive-gating (B7) is NOT load-bearing.** The pre-registered "discrimination within motivated attention" caveat is refuted: the substrate discriminates safe from harmful from its own clean credit assignment (B8 delta-attribution) + the pre-existing drive-affinity heuristic. Gating changed only warming *volume* (treatment Arm B spikes to 106 contacts on some seeds; the ablation sits tight at ~56–64 — the toggle demonstrably fired), not the discrimination. → B7 marked `Dormant` (did not earn behavioral weight); **B8 is the mechanism that carries #6**.
 
-### Per-arm (pooled across valid seeds)
+### Treatment (gating ON) — GRADUATE (exit 0)
 
-| arm | safe id | valid/total | floored | safe_pref | SD | id_pref_a | harm net | safe net |
-|---|---|---|---|---|---|---|---|---|
-| cradle_pref_a | β | 10/10 | 0 | 0.996 | 0.000 | 0.004 | — | — |
-| cradle_pref_b | α | 10/10 | 0 | 1.000 | 0.000 | 1.000 | — | — |
+- H1 (both arms ≥ 0.66): **True** — A `safe_pref` 0.984, B 0.975
+- C1 identity-flip +0.959 PASS · C2 (harm net < safe net) PASS · 10/10 valid both arms, 0 floored
 
-### Notes
-- C2: per-source nets absent (no telemetry) — learning-sign check skipped.
+| arm | safe id | safe_pref | SD | id_pref_a | harm net | safe net |
+|---|---|---|---|---|---|---|
+| cradle_pref_a | β | 0.984 | 0.002 | 0.016 | −0.250 | 0.990 |
+| cradle_pref_b | α | 0.975 | 0.015 | 0.975 | −0.307 | 0.990 |
 
+### Gating-OFF ablation — GRADUATE (exit 0)
+
+- H1 (both arms ≥ 0.66): **True** — A `safe_pref` 0.984, B 0.965
+- C1 identity-flip +0.949 PASS · C2 PASS · 10/10 valid both arms, 0 floored
+
+| arm | safe id | safe_pref | SD | id_pref_a | harm net | safe net |
+|---|---|---|---|---|---|---|
+| cradle_pref_a | β | 0.984 | 0.002 | 0.016 | −0.250 | 0.990 |
+| cradle_pref_b | α | 0.965 | 0.001 | 0.965 | −0.321 | 0.990 |
+
+The counterbalance flips cleanly in both runs: `id_pref_a` ≈ 0.016 when α is harmful (avoided) → ≈ 0.97 when α is safe (preferred), so the preference tracks the *swapped safety contingency*, not source identity. **Scope:** substrate-primary is near-deterministic (LLM removed), so this is a mechanism-level result — the substrate, given correct credit assignment, learns and acts on a counterbalanced safety contingency. Override / LLM-prior dominance remains the separate Exp 38/40 line.
+
+## Results — post-D53 re-validation (2026-09-01)
+
+Re-run triggered by the D53 credit-path fix (`record_outcome` no longer collapses the
+three-tier `Valence` into a boolean). 10 seeds/arm × 2 counterbalanced arms, substrate-primary,
+smollm narrator, 40 turns, `cost=$0`, git `ebc37743`, clean tree on `main`.
+
+**Headline: GRADUATE reproduced in both configurations — the credit fix did not break
+discrimination, and every figure is slightly above its 2026-06-23 counterpart.** The gating-OFF
+ablation again graduates identically, consistent with B8 delta-attribution + drive-affinity
+carrying the result rather than B7.
+
+### Treatment (gating ON) — GRADUATE (exit 0)
+
+- H1 (both arms ≥ 0.66): **True** — A `safe_pref` 0.996, B 1.000
+- C1 identity-flip +0.996 PASS · **C2 — (unestablished, see caveats)** · 10/10 valid both arms, 0 floored
+
+| arm | safe id | safe_pref | SD | id_pref_a | harm net | safe net |
+|---|---|---|---|---|---|---|
+| cradle_pref_a | β | 0.996 | 0.000 | 0.004 | — | — |
+| cradle_pref_b | α | 1.000 | 0.000 | 1.000 | — | — |
+
+### Gating-OFF ablation — GRADUATE (exit 0)
+
+- H1 (both arms ≥ 0.66): **True** — A `safe_pref` 0.996, B 1.000
+- C1 identity-flip +0.996 PASS · **C2 — (unestablished)** · 10/10 valid both arms, 0 floored
+
+| arm | safe id | safe_pref | SD | id_pref_a | harm net | safe net |
+|---|---|---|---|---|---|---|
+| cradle_pref_a | β | 0.996 | 0.000 | 0.004 | — | — |
+| cradle_pref_b | α | 1.000 | 0.000 | 1.000 | — | — |
+
+### Caveats — three, and they matter
+
+**C2 is UNESTABLISHED, not passed.** The live per-run records were lost to an operator error:
+`--out` is append-only, so the first analysis silently pooled the new cohort with the 2026-06-23
+one and reported their average; the restore that followed discarded the new rows. The records here
+were rebuilt from the surviving per-run sandboxes, which reproduce every tool-sequence-derived
+metric exactly (`safe_pref`, `id_pref_a`, `n_contact`, `discovery_pos` are pure functions of the
+executed-action sequence) — but `harm_net`/`safe_net` came from a live set-diff over
+`substrate_telemetry_*.jsonl`, which cannot be attributed to a run post hoc. C2 is corroborating,
+not a primary gate, so the verdict stands; the check simply did not run.
+
+**Arm assignment was verified, not assumed.** Both configurations shared one workdir, so the
+recovery had to choose `sessions[-2]` (treatment) vs `sessions[-1]` (gating-OFF). That ordering
+was checked against independently-captured `n_contact` means — treatment 277/106, gating-OFF
+279/108, all four matching the live cohort report — rather than trusted, per 42b's "did the
+actuation actually happen?" rule. `env_drive_gate_enabled` reads `1` and `0` respectively.
+
+**The saturation caveat is STRONGER than in 2026-08.** `safe_pref` SD is now **0.000** on both
+arms in both configurations (2026-06-23: 0.001–0.015). This re-run supports "the credit change did
+not break discrimination"; it **cannot** detect a moderate regression. A degradation arm with a
+more sensitive statistic remains owed.
+
+### Unexplained: `n_contact` rose sharply, and asymmetrically
+
+Mean contacts per run went 66 → **277** (arm a) and 75 → **106** (arm b) — 4.2× versus 1.4×.
+A plausible story is that ineffective contacts no longer mint a positive causal term, so the agent
+stops locking onto a snowballed link and keeps sampling; but that story does not explain the
+asymmetry between arms, and the primary statistic is saturated and blind to it. Worth understanding
+before 1.2 leans on this apparatus. (Compare the 2026-06-23 note that gating changed warming
+*volume* — treatment Arm B spiking to ~106 contacts against an ablation sitting at ~56–64 — which
+is the same channel moving again, now in both configurations.)
