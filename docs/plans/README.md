@@ -2,6 +2,7 @@
 
 Current version: **1.1.2** (`pyproject.toml` + `src/maxim/__init__.py`; PyPI: https://pypi.org/project/pymaxim/ — `main` is ahead of PyPI by policy, CLAUDE.md §Versioning; checked by `scripts/lint_version_sync.py`). 1.1.1 = the **"Enforcement"** release (roadmap item 16.1–16.9). The 1.1 "Sensorimotor" line: step 5b DONE; items 17 (Exp 52) + 19 (Exp 53b) DONE; item 18 → 1.1.2.
 Now: **1.1.x follow-through** (items 1–16 in [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) —
+- [roadmap_1_3_path.md](roadmap_1_3_path.md) — **the 1.3 sequencing plan** (2026-09-01): Stage A duck baseline → Stage B engine seam / robot factory → Stage C perception fabric. Orders the three workstreams that independently point at 1.3; does not restate the designs it orders.
 first up: Exp 54 Phase B/C on the robot — Phase A GRADUATED 2026-08-27 on the Reachy-native nursery body — then the loudness/onset-salience design and Exp 44b's
 confirmatory campaign) **and the gates before 1.2 Oasis + Hivemind** (gates 1–8 there),
 whose motivating case study is [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md).
@@ -130,6 +131,12 @@ Deep-audited 2026-08-27; release authority reconciled 2026-08-19.
   calibration learner, companion to the fabric (design note, zero code).
 - [hybrid_substrate_reflex_runtime.md](hybrid_substrate_reflex_runtime.md) — the 1.3
   reflex tier (DN-canonical orienting reflex; sole owner of BL-1..BL-5).
+- [microduck_intent_layer.md](microduck_intent_layer.md) — the microduck (rev 2,
+  2026-08-31, two-lens reviewed): the operator's design constraints worked through against
+  the code. Zero code, no schedule change, no experiment number. Records what the
+  constraints ride versus what is new, two inputs to 1.1.3's gate-7 design pass, and the
+  finding that `last_clamped_axes` reaches no learner. Its rev 1 recommendations were
+  withdrawn in review — read §2.4 and §5.2 for the arguments, not the index.
 
 ### Living discipline docs
 
