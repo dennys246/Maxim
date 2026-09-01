@@ -50,6 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/lint_harness_provenance.py` **Family 3** — any script under `scripts/` that writes
   into `docs/experiments/data/` must run the gated-record preflight, keyed on *where* records
   land rather than on how the harness runs. Caught by this cycle's own review round.
+- `scripts/vendor_console_ui.py` reads the bundle provenance maxim-pulse **v0.1.0** now emits:
+  it REFUSES a bundle built from a dirty tree (`dirty: true` — the commit it names does not
+  describe its contents) and always REPORTS the bundle's age, refusing on staleness only under
+  the new `--max-age-days`. Closes the **consumer** half of D47; the producer half shipped in
+  maxim-pulse v0.1.0, which now publishes a checksummed bundle carrying `app_version`,
+  `commit_date`, `describe` and `dirty`. Verified end to end against the real v0.1.0 asset.
 
 ### Fixed
 - README advertised **17** Python-API verbs; the real surface is **21**. The count had been
@@ -61,8 +67,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   went unchecked on Python 3.10/3.11/3.13/3.14. Now derived from `_API_VERBS`.
 - `ARCHITECTURE.md` EC rows and the `similarity/ec.py` docstring: pattern separation is a
   **dentate gyrus** function and completion a **CA3** function, not entorhinal; and EC's two
-  query surfaces are now distinguished (substrate pattern routing is an **exact O(Nd)
-  centroid scan**, not the LSH path the rows advertised).
+  query surfaces are now distinguished. **Corrected twice** — the first pass called
+  `find_similar` "LSH-based approximate nearest neighbour", which is its *intent*, not its
+  behaviour (bugs ledger **D52**). Measured: **neither** EC surface is sublinear in production.
+  `pattern_complete_or_separate` is an exact O(Nd) centroid scan by design;
+  `find_similar` is LSH-structured but degenerate — one bucket holding 100% of the corpus, and
+  four byte-identical tables (**D51**, filed not fixed: it needs a design decision, not a patch).
 
 ### Changed
 - All 16 undispositioned **Tier-3** graduation rows now carry dispositions (2 Dormant,

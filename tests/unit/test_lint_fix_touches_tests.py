@@ -131,3 +131,58 @@ def test_step_summary_receives_declared_exemptions(repo, tmp_path, monkeypatch) 
     _commit(root, "fix(loop): log line", {"src/a.py": "x = 5\n"}, body="No-Tests-Reason: wording only")
     assert L.violations(root, base) == []
     assert "wording only" in summary.read_text()
+
+
+# ── the documented PR-body escape must cover BRANCH COMMITS too ──────────────
+#
+# The module docstring has always promised "a `No-Tests-Reason: <why>` trailer
+# in the commit body, or `[no-tests: <why>]` in the PR title/body". Until
+# 2026-08-31 the marker was only read for the PR-TITLE population, so the
+# documented escape did nothing for the per-commit population — which is the one
+# that actually fails while a branch is being written (found on PR #579: a
+# docstring-only correction to `similarity/ec.py` in a `fix(...)` commit).
+#
+# A promised escape that silently does not apply is worse than no escape: the
+# author reads the advice, follows it, and the gate stays red with the same
+# message.
+
+
+def test_pr_body_marker_exempts_a_branch_commit(repo, capsys) -> None:
+    root, base = repo
+    _commit(root, "fix(ec): correct a docstring claim", {"src/a.py": "x = 2\n"})
+    out = L.violations(root, base, pr_body="[no-tests: docstring-only correction]")
+    assert out == []
+    assert "docstring-only correction" in capsys.readouterr().out
+
+
+def test_pr_title_marker_exempts_a_branch_commit(repo, capsys) -> None:
+    root, base = repo
+    _commit(root, "fix(ec): correct a docstring claim", {"src/a.py": "x = 2\n"})
+    assert L.violations(root, base, pr_title="chore: docs [no-tests: prose only]") == []
+
+
+def test_the_rule_still_bites_without_any_marker(repo) -> None:
+    """The escape must not become the default. Same commit, no marker, fails."""
+    root, base = repo
+    _commit(root, "fix(ec): correct a docstring claim", {"src/a.py": "x = 2\n"})
+    out = L.violations(root, base)
+    assert len(out) == 1
+    assert "without tests/" in out[0]
+
+
+def test_an_unrelated_pr_body_does_not_exempt(repo) -> None:
+    """Only the marker exempts — arbitrary prose must not."""
+    root, base = repo
+    _commit(root, "fix(ec): correct a docstring claim", {"src/a.py": "x = 2\n"})
+    out = L.violations(root, base, pr_body="This PR has no tests because it is docs.")
+    assert len(out) == 1
+
+
+def test_marker_exempts_every_offending_commit_on_the_branch(repo, capsys) -> None:
+    """One PR-body marker covers the branch — that is the intent, and it is
+    stated so a reviewer can see the scope rather than infer it."""
+    root, base = repo
+    _commit(root, "fix(a): one", {"src/a.py": "x = 2\n"})
+    _commit(root, "fix(b): two", {"src/b.py": "y = 1\n"})
+    assert L.violations(root, base, pr_body="[no-tests: prose]") == []
+    assert capsys.readouterr().out.count("declared: prose") == 2
