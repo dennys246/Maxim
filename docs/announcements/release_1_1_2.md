@@ -1,6 +1,6 @@
 # pymaxim 1.1.2 — "Decomposition"
 
-**Released 2026-08-31.** `pip install --upgrade pymaxim`
+**Released 2026-09-01.** `pip install --upgrade pymaxim`
 
 1.1.1 turned the repository's claims about itself into lints. 1.1.2 does the thing 1.1.1
 deliberately did not — it splits a god function — and it closes four gates that **could not
@@ -97,4 +97,4 @@ A second round on the fold found the first fix was **narrowed, not closed** — 
 JSONL still passed — and that the headline fix had shipped without a guard test.
 
 Full changelog:
-[CHANGELOG.md](https://github.com/dennys246/Maxim/blob/main/CHANGELOG.md#112---2026-08-31--decomposition)
+[CHANGELOG.md](https://github.com/dennys246/Maxim/blob/main/CHANGELOG.md#112---2026-09-01--decomposition)
