@@ -15,3 +15,44 @@ the full original narrative: incident history, dates, PR numbers, dead-end hypot
 
 **A review round is not complete until its fold commits are ON THE MERGE TARGET (2026-07-29, cost a broken `main`).** PR #435's two-lens round worked exactly as designed — it caught a blocking sign inversion the same day, and the fold was pushed to the branch. The PR was then **squash-merged with only its FIRST commit**, so `main` shipped the design the round had already refuted: a boolean band latch that silenced every *repeat* harmful affordance → `_embodiment_failed` False → `learn_success` True → the harmful source booked **POSITIVE** cluster reward from its second contact on, inverting the mechanism Exp 42's `GRADUATE #6` rests on. **`main`'s CI stayed green** because the guard test that detects it was in the same unmerged fold. Recovery took a second PR (#443) three days later. **Rules:** (1) after a review fold, verify the fix is on the TARGET, not just the branch — `git show origin/main:<file> | grep <the-fix>`, or check the squash-merge's diff, not the PR's file list; (2) never squash-merge a PR that is still receiving fold commits — the reviewed diff and the merged diff must be the same diff, which is the same principle as the SCOPE TRIGGER above, applied to the merge rather than the branch; (3) when a fold fixes a silent failure, land the *guard test* in the same commit as the fix so a partial merge cannot produce green CI on broken code. Corollary for the author: `gh pr list --state open` returning EMPTY means your PR is already merged — read that as an answer, not as a missing list (misreading it is how three hours of work went to a closed branch). Regression guard: process invariant — no automated test; the mechanically checkable form is comparing the merge commit's diff against the last-reviewed diff, tracked as follow-up work alongside the SCOPE TRIGGER's reviewed-vs-merged comparison.
 
+
+## **Verify a review finding with the artifact's real consumer, not a proxy heuristic
+
+**A finding is a claim, and it needs the same verification standard as the code it
+is about (2026-08-30, the 1.1.2 two-lens round).** Both the architecture lens and
+the author flagged markdown table rows as malformed by **counting raw `|`
+characters**. In the same review that method produced one true positive and one
+false positive, and the difference was invisible without running the artifact
+through the thing that actually reads it:
+
+- **TRUE** — Tier-3 rows 11 and 18 in `behavioral_graduation_candidates.md` really
+  were broken. Rendered, they emit 6 cells (matching the header) with the stale
+  `Pending — …` text still visible and the newly appended disposition **silently
+  discarded**, because GFM drops cells past the header count. The cluster's
+  headline claim ("all 16 rows now carry a disposition") was false *as rendered*
+  while being true in the source. Fixing it was necessary.
+- **FALSE** — a `docs/bugs/README.md` row whose Evidence cell holds
+  `` `grep -rn "party_mode\|choice_resolution"` ``. `\|` is a valid GFM pipe
+  escape **even inside a code span**, so the row is 4 cells and displays
+  correctly. The "escape it harder" fix was written, rendered, found to produce a
+  visible `\\`, and reverted.
+
+The settling move costs two lines:
+
+```python
+import markdown, re
+html = markdown.markdown(header + separator + row, extensions=["tables"])
+print(len(re.findall(r"<td>", html)))
+```
+
+**Why this belongs with the review-round rules rather than in a style guide:** a
+proxy that agrees with the truth *sometimes* is worse than one that never does,
+because the agreements manufacture confidence in the disagreements. A reviewer
+reporting "this renders wrong" without rendering it is doing the thing review
+rounds exist to catch — asserting a property of an artifact they did not
+exercise. Same family as `verify-the-instrument` and the actuation rule in
+[reachy-head-world-frame.md](reachy-head-world-frame.md): do not theorize about
+something you can simply run.
+
+Regression guard: process invariant — no automated test; the mechanical form is
+rendering any table a finding claims is malformed before acting on the finding.
