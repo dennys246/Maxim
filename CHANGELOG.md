@@ -24,6 +24,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Three experiment-operator traps that fired during one re-validation, none of them
+  catchable by a test before now** (2026-09-01, post-D53 Exp 42 re-run):
+  - `analyze_exp42_preference.py` gains **`--append`**, and its refusal now recommends it
+    ahead of `--force`. The refusal already existed to protect a recorded verdict — its own
+    docstring named "Exp 42's GRADUATE record" as the thing at risk — but the only exit it
+    offered was the destructive one, and the error text said to use it. A re-validation did,
+    twice, replacing main's frozen 2026-06-23 Results section (both tables plus the
+    B7-is-not-load-bearing analysis) with a single generated block. Caught in PR review and
+    restored byte-for-byte. A guard whose only documented exit is destructive is not a guard.
+  - `benchmark_exp42_preference.py` now **wipes a stale per-run sandbox**, ported from
+    `benchmark_cradle_mother.py`, which has carried it since the 2026-08-13 contamination
+    post-mortem. Without it a re-run RESUMES the prior attempt's NAc and the agent starts
+    pre-trained. Lifted into `_prepare_data_home` so the invariant is testable — it sat inside
+    a function that spawns a sub-sim, so nothing could exercise it.
+  - `benchmark_exp42_preference.py` gains **`--workdir`**. Both configurations previously
+    shared one hardcoded directory, leaving two sessions per `data_home`; recovering the
+    records afterwards required reasoning about session order rather than reading them.
+
+
+### Fixed
 - **The credit path collapsed a live ternary into a boolean (D53).** `Valence` is a
   three-tier enum whose `NEUTRAL` is the Rescorla-Wagner prior midpoint, but
   `runtime/tool_dispatch.py::record_outcome` reduced it to good/bad in three places, so a

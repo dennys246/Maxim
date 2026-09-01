@@ -250,6 +250,30 @@ def _read_learning_nets(new_files: set[Path]) -> dict[str, Any]:
         return {"harm_net": None, "safe_net": None}
 
 
+def _prepare_data_home(workdir: Path, arm: str, seed: int) -> Path:
+    """Return a FRESH per-run MAXIM_DATA_HOME, wiping any stale one.
+
+    Ported from benchmark_cradle_mother.py, which has carried this since the
+    2026-08-13 contamination post-mortem. Reusing a prior attempt's dir
+    poisons the run: MAXIM_DATA_HOME persists the substrate (#446
+    cross-session persistence), so a re-run RESUMES the previous attempt's
+    NAc and the agent starts pre-trained.
+
+    This harness lacked the wipe until 2026-09-01, which meant the post-D53
+    re-validation needed a manual ``rm -rf`` the operator had to remember.
+    Reaching here with an existing dir means a prior attempt never recorded
+    its row (crash/timeout/kill) — a clean retry is the only valid semantics.
+
+    Lifted out of ``_run_real`` so the invariant is directly testable: that
+    function spawns a sub-sim, so nothing could exercise the wipe on its own.
+    """
+    data_home = workdir / f"{arm}_seed{seed}"
+    if data_home.exists():
+        shutil.rmtree(data_home)
+    data_home.mkdir(parents=True, exist_ok=True)
+    return data_home
+
+
 def _run_real(
     arm: str,
     seed: int,
@@ -263,8 +287,7 @@ def _run_real(
     aut_mode: str = "substrate-primary",
     aut_model: str | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
-    data_home = workdir / f"{arm}_seed{seed}"
-    data_home.mkdir(parents=True, exist_ok=True)
+    data_home = _prepare_data_home(workdir, arm, seed)
     # Share the model cache so we don't re-download the small narrator GGUF.
     src_models = Path(os.path.expanduser("~/.maxim/models"))
     link = data_home / "models"
@@ -460,6 +483,7 @@ def run_benchmark(
     explore_weight: float,
     timeout_s: int,
     resume: bool,
+    workdir: str = "data/sim_sandbox/exp42_runs",
     aut_mode: str = "substrate-primary",
     aut_model: str | None = None,
 ) -> int:
@@ -474,8 +498,8 @@ def run_benchmark(
             file=sys.stderr,
         )
     done = _existing_keys(out_path) if resume else set()
-    workdir = Path("data/sim_sandbox/exp42_runs")
-    workdir.mkdir(parents=True, exist_ok=True)
+    workdir_path = Path(workdir)
+    workdir_path.mkdir(parents=True, exist_ok=True)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     n_done = 0
@@ -501,7 +525,7 @@ def run_benchmark(
                             max_turns=max_turns,
                             explore_weight=explore_weight,
                             timeout_s=timeout_s,
-                            workdir=workdir,
+                            workdir=workdir_path,
                             aut_mode=aut_mode,
                             aut_model=aut_model,
                         )
@@ -542,6 +566,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--explore-weight", type=float, default=DEFAULT_EXPLORE_WEIGHT)
     p.add_argument("--timeout-s", type=int, default=2400)
     p.add_argument("--resume", action="store_true", help="skip (arm, seed) pairs already in --out")
+    p.add_argument(
+        "--workdir",
+        default="data/sim_sandbox/exp42_runs",
+        help="per-run MAXIM_DATA_HOME root. Give the treatment and gating-OFF configurations "
+        "SEPARATE workdirs: sharing one leaves two sessions per data_home, which is recoverable "
+        "only by reasoning about session order (2026-09-01 post-D53 re-validation).",
+    )
     p.add_argument(
         "--aut-mode",
         default="substrate-primary",
@@ -604,6 +635,7 @@ def main(argv: list[str] | None = None) -> int:
         explore_weight=args.explore_weight,
         timeout_s=args.timeout_s,
         resume=args.resume,
+        workdir=args.workdir,
         aut_mode=args.aut_mode,
         aut_model=args.aut_model,
     )

@@ -309,30 +309,54 @@ def render_markdown(result: AnalysisResult, *, heading_suffix: str = "") -> str:
     return "\n".join(lines)
 
 
-def _emit_to_doc(doc_path: Path, body: str, *, force: bool = False) -> None:
-    """Replace everything below the analyzer marker with ``body`` (overwrite,
-    not append — matches the Exp 41/37 semantics; commit the doc first).
+def _emit_to_doc(doc_path: Path, body: str, *, force: bool = False, append: bool = False) -> None:
+    """Write ``body`` below the analyzer marker.
 
-    Refuses without ``force`` when non-trivial content already sits below the
-    marker: pointing this at a doc whose Results section holds a recorded
-    verdict (e.g. Exp 42's GRADUATE record) would silently destroy it — the
-    analyzer-hazard class flagged in the Exp 48 apparatus investigation.
+    Three modes, because the two-mode version destroyed a frozen record:
+
+    * default — refuse when non-trivial content already sits below the marker.
+    * ``append`` — keep what is there and add ``body`` BELOW it. This is the
+      right mode for a re-validation: the doc accumulates one section per run.
+    * ``force`` — REPLACE everything below the marker. Destructive by design;
+      only for correcting a section this analyzer itself just wrote.
+
+    History (2026-09-01): the refusal above existed precisely to protect a
+    recorded verdict — its own docstring named "Exp 42's GRADUATE record" as
+    the thing at risk — but the only escape hatch offered was ``--force``, and
+    the error message told the operator to use it. A post-D53 re-validation
+    did, twice, and replaced main's frozen 2026-06-23 Results section (both
+    tables plus the B7-is-not-load-bearing analysis) with a single generated
+    block. Caught in PR review, restored byte-for-byte. A guard whose only
+    documented exit is the destructive one is not a guard, so ``--append``
+    now exists and the refusal recommends it first.
     """
     text = doc_path.read_text() if doc_path.exists() else ""
     idx = text.find(_MARKER)
     if idx == -1:
         head = text.rstrip() + "\n\n" + _MARKER + " '## Results' sections below this line -->\n\n"
-    else:
-        line_end = text.find("\n", idx)
-        head = text[: (line_end + 1 if line_end != -1 else len(text))] + "\n"
-        existing_below = text[(line_end + 1 if line_end != -1 else len(text)) :].strip()
-        if existing_below and not force:
-            raise SystemExit(
-                f"ERROR: {doc_path} already has content below the analyzer marker "
-                f"({len(existing_below)} chars — possibly a recorded verdict). "
-                "Commit the doc and re-run with --force to replace it."
-            )
-    doc_path.write_text(head + body + "\n")
+        doc_path.write_text(head + body + "\n")
+        return
+
+    line_end = text.find("\n", idx)
+    cut = line_end + 1 if line_end != -1 else len(text)
+    head = text[:cut] + "\n"
+    existing_below = text[cut:].strip()
+
+    if not existing_below:
+        doc_path.write_text(head + body + "\n")
+        return
+    if append:
+        doc_path.write_text(head + existing_below + "\n\n" + body + "\n")
+        return
+    if force:
+        doc_path.write_text(head + body + "\n")
+        return
+    raise SystemExit(
+        f"ERROR: {doc_path} already has content below the analyzer marker "
+        f"({len(existing_below)} chars — possibly a recorded verdict).\n"
+        "  --append  keep it and add this run below (what a re-validation wants)\n"
+        "  --force   REPLACE it (destructive; only to fix a section just written)"
+    )
 
 
 # ── io ─────────────────────────────────────────────────────────────────────
@@ -361,6 +385,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--min-exploit", type=int, default=MIN_EXPLOIT_K, help="validity gate K (frozen at 10)")
     parser.add_argument("--heading-suffix", default="", help="suffix for the '## Results' heading")
     parser.add_argument(
+        "--append",
+        action="store_true",
+        help="keep existing content below the marker and add this run BELOW it (re-validation)",
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Replace existing content below the doc's analyzer marker "
@@ -387,7 +416,7 @@ def main(argv: list[str] | None = None) -> int:
     body = render_markdown(result, heading_suffix=args.heading_suffix)
     print(body)
     if args.out_path is not None:
-        _emit_to_doc(args.out_path, body, force=args.force)
+        _emit_to_doc(args.out_path, body, force=args.force, append=args.append)
     return result.exit_code
 
 
