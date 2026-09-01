@@ -319,3 +319,87 @@ class TestExp44ArmDerivation:
         monkeypatch.delenv("MAXIM_ENABLE_BODY_STATE_PROMPT", raising=False)
         monkeypatch.setenv("MAXIM_DISABLE_COACH_BODY_LAYERS", "1")
         assert harness._ablation_arm() == "inconsistent"
+
+
+class TestOperatorGuards:
+    """Guards for the three operator-surface traps of 2026-09-01.
+
+    None was catchable by a test before, because each lived in the seam
+    between a tool and the person driving it. All three fired during one
+    post-D53 re-validation, and each was recoverable only because data
+    happened to survive.
+    """
+
+    _MARKER_LINE = "<!-- Analyzer appends '## Results' sections below this line -->\n"
+
+    def _doc(self, tmp_path, below: str):
+        p = tmp_path / "exp.md"
+        p.write_text("# Exp 42\n\nintro\n\n" + self._MARKER_LINE + "\n" + below)
+        return p
+
+    def test_append_preserves_a_recorded_verdict(self, analyzer, tmp_path):
+        """THE 2026-09-01 near-miss: --force replaced main's frozen
+        2026-06-23 Results section — both tables plus the
+        B7-is-not-load-bearing analysis — with one generated block."""
+        frozen = "## Results\n\nFrozen run: git `0d6ca70f`. GRADUATE.\n"
+        doc = self._doc(tmp_path, frozen)
+        analyzer._emit_to_doc(doc, "## Results — re-validation\n\nGRADUATE.\n", append=True)
+        out = doc.read_text()
+        assert "0d6ca70f" in out, "the frozen record must survive an append"
+        assert out.index("## Results\n") < out.index("## Results — re-validation")
+        assert out.count("\n## Results") == 2  # marker line also contains the phrase
+
+    def test_default_refuses_and_recommends_append_before_force(self, analyzer, tmp_path):
+        """The old refusal existed to protect exactly this content, but its
+        message offered only --force. Steering to the destructive option is
+        how the record got destroyed."""
+        doc = self._doc(tmp_path, "## Results\n\nGRADUATE.\n")
+        with pytest.raises(SystemExit) as e:
+            analyzer._emit_to_doc(doc, "new\n")
+        msg = str(e.value)
+        assert "--append" in msg and "--force" in msg
+        assert msg.index("--append") < msg.index("--force"), "recommend the safe mode first"
+        assert "GRADUATE" in doc.read_text(), "a refusal must not write"
+
+    def test_force_still_replaces(self, analyzer, tmp_path):
+        """Kept deliberately: correcting a section this analyzer just wrote."""
+        doc = self._doc(tmp_path, "## Results\n\nold\n")
+        analyzer._emit_to_doc(doc, "## Results\n\nnew\n", force=True)
+        assert "old" not in doc.read_text()
+
+    def test_empty_below_marker_needs_no_flag(self, analyzer, tmp_path):
+        doc = self._doc(tmp_path, "")
+        analyzer._emit_to_doc(doc, "## Results\n\nfirst\n")
+        assert "first" in doc.read_text()
+
+    def test_harness_wipes_a_stale_sandbox(self, harness, tmp_path):
+        """Ported from benchmark_cradle_mother.py: a reused data_home RESUMES
+        the prior attempt's NAc, so the agent starts pre-trained. exp42 lacked
+        this, which is why the re-validation needed a manual `rm -rf` the
+        operator had to remember."""
+        home = tmp_path / "cradle_pref_a_seed42"
+        (home / "sim_reports" / "old_session").mkdir(parents=True)
+        stale = home / "sim_reports" / "old_session" / "actions.jsonl"
+        stale.write_text('{"tool": "poison"}\n')
+
+        got = harness._prepare_data_home(tmp_path, "cradle_pref_a", 42)
+
+        assert got == home
+        assert got.is_dir()
+        assert not stale.exists(), "a stale sandbox must be wiped, not reused"
+        assert list(got.iterdir()) == [], "the fresh data_home must be empty"
+
+    def test_prepare_data_home_is_idempotent_when_absent(self, harness, tmp_path):
+        got = harness._prepare_data_home(tmp_path, "cradle_pref_b", 7)
+        assert got.is_dir() and got.name == "cradle_pref_b_seed7"
+
+    def test_workdir_is_configurable(self, harness):
+        """Both configurations sharing one workdir left two sessions per
+        data_home, recoverable only by reasoning about session order."""
+        import contextlib
+        import io
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), pytest.raises(SystemExit):
+            harness.main(["--help"])
+        assert "--workdir" in buf.getvalue()
