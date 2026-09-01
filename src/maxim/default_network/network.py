@@ -399,7 +399,13 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             angular_velocity_pain=self._config.pain_angular_velocity_threshold,
             translation_velocity_pain=self._config.pain_translation_velocity_threshold,
         )
-        pain_detector = PainDetector(config=pain_config, pain_bus=self._pain_bus)
+        pain_detector = PainDetector(
+            config=pain_config,
+            pain_bus=self._pain_bus,
+            # Matches the agent_id DefaultNetwork already uses for fear
+            # review; without it every DN pain distributes zero reward.
+            agent_id="default_network",
+        )
         self._pain_bridge = PainCircuitBridge(
             nac=nac,
             pain_detector=pain_detector,

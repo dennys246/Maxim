@@ -18,6 +18,7 @@ from maxim.runtime.tool_dispatch import (
     safe_agent_name as _safe_agent_name,
     record_outcome as _record_outcome,
     execute_parallel_actions as _execute_parallel,
+    read_learning_side_effects,
 )
 
 # Extracted to bio_integration.py
@@ -3423,30 +3424,12 @@ def run_agentic_loop(
                     result = executor.execute(action)
                     exec_elapsed = time.time() - exec_start
                     success = getattr(result, "success", True)
-                    # An action that mechanically succeeded but harmed the body
-                    # (self_effect breached a sensor's comfort band → SEM
-                    # embodiment_failures) is a NEGATIVE learning outcome. Pass
-                    # this through so record_outcome doesn't book a spurious
-                    # positive that masks the aversion (substrate_primary_cradle_
-                    # readiness.md B5). The ToolPainBridge owns the primary
-                    # negative attribution; this prevents the competing positive.
-                    _side = getattr(result, "side_effects", None)
-                    _embodiment_failed = bool(_side and _side.get("embodiment_failures"))
-                    # Motor-credit (GAP 1): the drive relief this action produced,
-                    # if it touched a drive sensor (orient→azimuth, eat→hunger).
-                    # record_outcome prefers this as the cluster-reward magnitude
-                    # over the ±1 tool-success — the state-conditioned signal that
-                    # lets substrate-primary selection learn "turn toward the
-                    # sound." None/absent → ±1 fallback. See tool_side_effects.md.
-                    _drive_potential_diff = _side.get("drive_potential_diff") if _side else None
-                    # sem_motor_binding.md Phase 1: drive-touched-but-
-                    # unmeasured (motor-bound live turn, credit deferred to
-                    # the Phase 2 measured slice) — suppress the flat +1
-                    # tool-success cluster floor for THIS action.
-                    _drive_credit_withheld = bool(_side.get("drive_credit_withheld")) if _side else False
-                    # Phase 2 (sem_motor_binding.md): measured exteroceptive
-                    # relief routes to the direction-bearing cluster.
-                    _drive_relief_channel = _side.get("drive_relief_channel") if _side else None
+                    _learning_side = read_learning_side_effects(result)
+                    _embodiment_failed = _learning_side.embodiment_failed
+                    _drive_potential_diff = _learning_side.drive_potential_diff
+                    _drive_credit_withheld = _learning_side.drive_credit_withheld
+                    _drive_relief_channel = _learning_side.drive_relief_channel
+                    _reported_valence = _learning_side.outcome_valence
                     logger.info(
                         "Tool execution completed in %.2fs: %s, success=%s",
                         exec_elapsed,
@@ -3618,6 +3601,7 @@ def run_agentic_loop(
                         drive_potential_diff=_drive_potential_diff,
                         drive_credit_withheld=_drive_credit_withheld,
                         drive_relief_channel=_drive_relief_channel,
+                        outcome_valence=_reported_valence,
                     )
 
                     # Record plan outcome in MemoryHub for learning. A plan that

@@ -118,6 +118,36 @@ class TestBioSystemPreV1Compat:
     field) without raising, and emits a single warning. Round-tripping
     a fresh save adds the field at root."""
 
+    def test_focus_learner_roundtrip_and_pre_v1_file(self, tmp_path, caplog) -> None:
+        """D55: ``FocusLearner.save`` hand-rolled ``open()+json.dump``.
+
+        It now writes through ``atomic_write_json(with_format_version(...))``
+        and reads through ``check_format_version``. The payload-layer
+        ``"version": 1`` and the root ``_format_version`` string coexist by
+        design, so both must survive. Added because D55 originally cited
+        this file as its guard while nothing here mentioned FocusLearner.
+        """
+        import json
+
+        from maxim.proprioception.focus_learner import FocusLearner
+
+        path = tmp_path / "nested" / "focus.json"
+        FocusLearner().save(path)
+
+        raw = json.loads(path.read_text())
+        assert raw["_format_version"] == "1.0"
+        assert raw["version"] == 1
+        # atomic write leaves no partial/tmp files behind
+        assert [p.name for p in path.parent.iterdir()] == ["focus.json"]
+        assert FocusLearner().load(path) is True
+
+        # A pre-1.0 file (no envelope) still loads, behind one warning.
+        del raw["_format_version"]
+        path.write_text(json.dumps(raw))
+        caplog.clear()
+        with caplog.at_level("WARNING"):
+            assert FocusLearner().load(path) is True
+
     def test_atl_loads_pre_v1_file(self, tmp_path, caplog) -> None:
         from maxim.memory.atl import ATL
 

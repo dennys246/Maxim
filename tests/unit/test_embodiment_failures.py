@@ -771,3 +771,102 @@ def _stub_sensor(name: str, value: float):
         _schema={"type": "float", "range": [0, 1]},
         _initial=value,
     )
+
+
+class TestNeutralToolCompletion:
+    """D53: a tool that RAN but accomplished nothing books NEUTRAL.
+
+    ``Executor`` hardcoded ``record_tool_complete(success=True)``, and the
+    bridge hardcoded ``Valence.POSITIVE`` — a second door into the same
+    causal bucket as ``tool_dispatch.record_outcome``'s collapse, so
+    fixing only one leaves the flat positive intact.
+
+    A clamped or unverifiable motion is a REFUSAL, not harm: it must not
+    route through ``embodiment_failures`` (which asserts harm and would
+    invert the bug), and it must not book POSITIVE (which asserts an
+    achievement the tool itself reports did not happen).
+    """
+
+    def _tool(self, side_effects):
+        from maxim.tools.base import Tool, ToolOutput
+
+        class MotionTool(Tool):
+            name = "reachy_turn_left"
+            description = "fake motion"
+            input_schema = {}
+
+            def execute(self, **kwargs):
+                return ToolOutput(success=True, output={"ok": True}, side_effects=side_effects)
+
+        return MotionTool()
+
+    def _run(self, side_effects):
+        from maxim.runtime.executor import Executor
+        from maxim.tools.registry import ToolRegistry
+
+        registry = ToolRegistry()
+        registry.register(self._tool(side_effects))
+        bridge = MagicMock()
+        bridge.record_tool_complete = MagicMock(return_value=0.0)
+        exe = Executor(tool_registry=registry, tool_pain_bridge=bridge)
+        exe.execute({"tool_name": "reachy_turn_left", "params": {}})
+        return bridge
+
+    def test_executor_passes_neutral_for_ineffective_outcome(self):
+        from maxim.decisions.causal_link import Valence
+
+        bridge = self._run({"outcome_valence": "neutral"})
+        bridge.record_tool_complete.assert_called_once()
+        assert bridge.record_tool_complete.call_args.kwargs["outcome_valence"] is Valence.NEUTRAL
+
+    def test_executor_passes_positive_for_effective_outcome(self):
+        from maxim.decisions.causal_link import Valence
+
+        for side in (None, {}, {"outcome_valence": "bogus"}):
+            bridge = self._run(side)
+            assert bridge.record_tool_complete.call_args.kwargs["outcome_valence"] is Valence.POSITIVE
+
+    def test_bridge_books_neutral_link_not_positive(self):
+        """Against a real NAc: the neutral completion lands in NEITHER
+        outcome bucket, so it contributes nothing to recommend_action."""
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+        from maxim.decisions.causal_link import Valence
+        from maxim.decisions.nac import NAc, NACConfig
+
+        nac = NAc(NACConfig())
+        bridge = ToolPainBridge(nac=nac)
+
+        bridge.record_tool_start("clamped_turn", "inv-1", {})
+        bridge.record_tool_complete("clamped_turn", "inv-1", success=True, outcome_valence=Valence.NEUTRAL)
+        bridge.record_tool_start("real_turn", "inv-2", {})
+        bridge.record_tool_complete("real_turn", "inv-2", success=True, outcome_valence=Valence.POSITIVE)
+
+        clamped = [lk for links in nac._links.values() for lk in links if "clamped_turn" in lk.event_signature]
+        real = [lk for links in nac._links.values() for lk in links if "real_turn" in lk.event_signature]
+        assert clamped and all(lk.outcome_valence is Valence.NEUTRAL for lk in clamped)
+        assert real and all(lk.outcome_valence is Valence.POSITIVE for lk in real)
+
+    def test_bridge_defaults_to_positive_for_existing_callers(self):
+        """The historical contract is preserved when no tier is passed."""
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+        from maxim.decisions.causal_link import Valence
+
+        nac = MagicMock()
+        nac.record_outcome = MagicMock(return_value=[])
+        bridge = ToolPainBridge(nac=nac)
+        bridge.record_tool_start("t", "inv", {})
+        bridge.record_tool_complete("t", "inv", success=True)
+        assert nac.record_outcome.call_args.kwargs["outcome_valence"] is Valence.POSITIVE
+
+    def test_neutral_does_not_strengthen_learned_tool_index(self):
+        """An ineffective run is no evidence this tool serves this goal."""
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+        from maxim.decisions.causal_link import Valence
+
+        nac = MagicMock()
+        nac.record_outcome = MagicMock(return_value=[])
+        index = MagicMock()
+        bridge = ToolPainBridge(nac=nac, tool_index=index)
+        bridge.record_tool_start("t", "inv", {"goal": "find the sound"})
+        bridge.record_tool_complete("t", "inv", success=True, outcome_valence=Valence.NEUTRAL)
+        assert index.record_outcome.call_args.kwargs["success"] is False

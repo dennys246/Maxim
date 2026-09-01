@@ -1073,6 +1073,26 @@ class FocusOnSoundTool(Tool):
 
             from maxim.hardware import MotionTarget
 
+            # PRE-motion readback (review fold E3). ``cur_yaw`` comes from
+            # the ``maxim.yaw`` mirror, which is written only by
+            # movement.py::move / sync_head_position — and THIS path
+            # dispatches via goto_target and never syncs, so on a second
+            # focus_on_sound inside the DN's 3 s sync window the mirror is
+            # stale. Deciding "did the head actually move?" from a stale
+            # angle re-opens the exact bug this tool exists to close, so
+            # take the reading from the controller, in the same
+            # world-minus-body frame the post-motion readback uses.
+            pre_yaw: float | None = None
+            try:
+                _gp = getattr(robot, "get_current_pose", None)
+                _pre = _gp() if callable(_gp) else None
+                if _pre and "yaw" in _pre and "body_yaw" in _pre:
+                    pre_yaw = _math.degrees(float(_pre["yaw"])) - _math.degrees(float(_pre["body_yaw"]))
+            except Exception:
+                __import__("logging").getLogger(__name__).debug(
+                    "focus_on_sound: pre-motion readback failed", exc_info=True
+                )
+
             ok = robot.goto_target(MotionTarget(head_yaw=_math.radians(target_yaw), duration=duration_s))
             if not ok:
                 return ToolResult(success=False, error="Motion command rejected by controller")
@@ -1148,8 +1168,37 @@ class FocusOnSoundTool(Tool):
                     "focus_on_sound: turn-tool name resolution failed", exc_info=True
                 )
 
+        # D53: mechanical success stays True (the call was dispatched and
+        # the payload below is scrupulously honest), but the LEARNING tier
+        # is separate and THREE-valued. Assert POSITIVE only on positive
+        # confirmation, and key on the OUTCOME — never on clamp-occurrence:
+        #
+        #   reached is False  -> NEGATIVE. A CONFIRMED shortfall is a real
+        #       negative outcome, but it is NOT harm, so it must not be
+        #       laundered through ``embodiment_failures``. The boolean key
+        #       this replaced had nowhere to put this case, so it booked a
+        #       full POSITIVE — D53's own headline case, still live until
+        #       the pre-merge round reproduced it.
+        #   reached is None   -> NEUTRAL. Unknown is not achieved.
+        #   nothing moved     -> NEUTRAL. The head was already at the target
+        #       (typically the envelope), so the command changed nothing.
+        #   otherwise         -> POSITIVE (key omitted).
+        #
+        # A clamped turn that still MOVED toward the sound stays POSITIVE:
+        # the clamp says the sound is beyond the neck, not that the turn
+        # was worthless.
+        _moved: bool | None = None
+        if pre_yaw is not None:
+            _ref = achieved_yaw if achieved_yaw is not None else target_yaw
+            _moved = abs(_ref - pre_yaw) > self._REACH_TOLERANCE_DEG
+        _tier: str | None = None
+        if reached is False:
+            _tier = "negative"
+        elif reached is None or _moved is False:
+            _tier = "neutral"
         return ToolResult(
             success=True,
+            side_effects={"outcome_valence": _tier} if _tier else None,
             output={
                 # Honest by measurement, not by dispatch: True only when the
                 # post-motion readback confirms the head is at an UNCLAMPED

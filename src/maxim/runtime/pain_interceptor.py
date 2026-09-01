@@ -72,9 +72,14 @@ class PainInterceptorExecutor:
         *,
         pain_bus: Any = None,
         priors: tuple[SensitivePathPrior, ...] = DEFAULT_SENSITIVE_PRIORS,
+        agent_id: str | None = None,
     ) -> None:
         self._inner = inner
         self._pain_bus = pain_bus
+        # Without this the emitted Reaction reaches
+        # bio_stack::_distribute_reward_from_reaction with agent_id=None,
+        # which early-returns — the pain fires and credits nothing, silently.
+        self._agent_id = agent_id
         self._priors = priors
         self._events: list[dict[str, Any]] = []
 
@@ -135,6 +140,7 @@ class PainInterceptorExecutor:
             timestamp=now,
             source=f"pain_interceptor:{PainType.EXTERNAL_SIGNAL.value}",
             context=ReactionContext(
+                agent_id=self._agent_id,
                 bindings={
                     "paths": TraceSnapshot(percept_id=",".join(path_list[:5])),
                 }

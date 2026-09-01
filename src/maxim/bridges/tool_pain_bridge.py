@@ -154,6 +154,8 @@ class ToolPainBridge:
         tool_name: str,
         invocation_id: str,
         success: bool,
+        *,
+        outcome_valence: Valence | None = None,
     ) -> float:
         """Record that a tool invocation completed.
 
@@ -161,6 +163,17 @@ class ToolPainBridge:
             tool_name: Name of the tool.
             invocation_id: Unique ID for this invocation.
             success: Whether the tool succeeded.
+            outcome_valence: The learning tier for this completion, when the
+                caller knows it. **This is the third state ``success`` cannot
+                express** (D53): a tool that ran and accomplished nothing
+                attributable — a motion clamped at a joint limit, a turn that
+                could not be verified to have reached its target — is neither
+                a success nor a harm, and must book ``Valence.NEUTRAL`` so it
+                lands in NEITHER ``get_positive_outcomes`` nor
+                ``get_negative_outcomes`` and contributes zero to
+                ``recommend_action``'s causal component. Defaults to
+                ``POSITIVE`` when ``success`` and the caller says nothing,
+                preserving the historical contract for existing callers.
 
         Returns:
             RPE magnitude from NAc Rescorla-Wagner update (0.0 if no links).
@@ -169,21 +182,35 @@ class ToolPainBridge:
         with self._lock:
             event_signature = self._pending_tools.pop((tool_name, invocation_id), None)
             tool_context = self._pending_contexts.pop((tool_name, invocation_id), None)
-        if event_signature and success:
+        valence = outcome_valence if outcome_valence is not None else Valence.POSITIVE
+        # NEUTRAL is recorded, not dropped: "this ran and taught nothing" is a
+        # real observation that should move the Rescorla-Wagner predictor
+        # toward the 0.5 prior. Only a mechanical failure still short-circuits
+        # here (the direct-attribution paths own that).
+        if event_signature and success and valence is not Valence.NEGATIVE:
             links = self._nac.record_outcome(
                 event_type="tool",
                 event_id=event_signature,
-                outcome_valence=Valence.POSITIVE,
+                outcome_valence=valence,
             )
             rpe = max((lnk.last_rpe or 0.0 for lnk in links), default=0.0) if links else 0.0
             self._last_rpe = rpe
             self._create_causal_edges(links)
 
-            # Update learned tool index keyword weights
+            # Update learned tool index keyword weights. A NEUTRAL outcome
+            # must NOT strengthen the goal→tool keyword association or
+            # discover new keywords from it — the tool ran, but nothing
+            # attributable happened, so there is no evidence this tool serves
+            # this goal. ``record_outcome(success=False)`` is
+            # counts-but-does-not-weaken, which is the correct neutral
+            # behaviour under the index's existing two-valued API. (The index
+            # therefore cannot yet tell "ineffective" from "failed"; both
+            # merely fail to reinforce, so nothing is mis-learned.)
+            _index_success = valence is Valence.POSITIVE
             if self._tool_index is not None and tool_context:
                 goal_text = tool_context.get("goal", "")
                 if goal_text:
-                    self._tool_index.record_outcome(goal_text, tool_name, success=True)
+                    self._tool_index.record_outcome(goal_text, tool_name, success=_index_success)
 
             # Register positive temporal signal with SCN
             if self._scn is not None:
@@ -203,7 +230,10 @@ class ToolPainBridge:
                 "tool",
                 event_signature,
                 activation=0.3,
-                context={"outcome": "success", "tool_name": tool_name},
+                context={
+                    "outcome": "success" if valence is Valence.POSITIVE else "ineffective",
+                    "tool_name": tool_name,
+                },
             )
 
             return rpe

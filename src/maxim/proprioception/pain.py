@@ -14,8 +14,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable
 
-from maxim.decisions.causal_link import Valence
-from maxim.reactions.types import Reaction, ReactionContext, TraceSnapshot
 
 if TYPE_CHECKING:
     from maxim.agents.bus import ToolErrorKind
@@ -139,6 +137,7 @@ class PainDetector:
         config: PainConfig | None = None,
         movement_tracker: "MovementTracker | None" = None,
         pain_bus: Any | None = None,
+        agent_id: str | None = None,
     ) -> None:
         """Initialize the pain detector.
 
@@ -149,10 +148,21 @@ class PainDetector:
                 provided, _emit_pain() publishes to the bus instead of
                 invoking internal callbacks. Consumers should subscribe to
                 the bus directly rather than using add_pain_callback().
+            agent_id: Agent this detector's pain belongs to. Stamped into
+                every emitted ``PainSignal.context`` by :meth:`_emit_pain`
+                and propagated to ``ReactionContext.agent_id``. **Reward
+                distribution requires it**:
+                ``bio_stack::_distribute_reward_from_reaction`` early-returns
+                when ``agent_id is None``, so a detector left unset emits
+                pain that no eligibility trace ever receives. Left optional
+                because pain DETECTION (thresholds, cooldowns, stats) is
+                independent of attribution and several callers only want
+                the signals.
         """
         self.config = config or PainConfig()
         self._lock = threading.Lock()
         self._pain_bus = pain_bus
+        self._agent_id = agent_id
 
         # Create tracker if not provided
         if movement_tracker is None:
@@ -434,7 +444,15 @@ class PainDetector:
 
         If a PainBus is configured, publishes to the bus (which notifies
         all bus subscribers). Otherwise falls back to internal callbacks.
+
+        This is the single dispatch point for every PainSignal this
+        detector produces, so ``agent_id`` is stamped here rather than at
+        the three ``PainSignal(...)`` construction sites — a new pain
+        source cannot forget it.
         """
+        if self._agent_id and "agent_id" not in signal.context:
+            signal.context["agent_id"] = self._agent_id
+
         with self._lock:
             self._last_pain_time[signal.pain_type] = signal.timestamp
             self._total_pain_signals += 1
@@ -455,20 +473,23 @@ class PainDetector:
         else:
             logger.info(log_msg, *log_args)
 
-        # Dispatch: prefer ReactionBus (via PainBus wrapper), fall back to internal callbacks
+        # Dispatch: prefer PainBus.publish, fall back to internal callbacks.
+        #
+        # PainBus.publish is the canonical path: it applies the
+        # ``(entity, failure_mode)`` refractory gate, dispatches direct
+        # subscribers with the FULL ``signal.context``, and converts to a
+        # Reaction via ``reactions/compat.py::pain_signal_to_reaction`` —
+        # which is what propagates ``context["agent_id"]`` into
+        # ``ReactionContext.agent_id``. Constructing the Reaction here by
+        # hand (as this method did until 2026-08-31) dropped ``agent_id``,
+        # so ``bio_stack::_distribute_reward_from_reaction`` early-returned
+        # and EVERY PainDetector-origin pain — velocity, thrashing,
+        # movement-failure, tool-failure, tool-timeout — distributed
+        # exactly zero reward. ``compat.py``'s docstring names this exact
+        # failure mode; this was the one site in ``src/maxim/`` that
+        # bypassed it.
         if self._pain_bus is not None:
-            entity_path = signal.context.get("entity_path", "")
-            reaction = Reaction(
-                kind="pain",
-                intensity=signal.intensity,
-                valence=Valence.NEGATIVE,
-                timestamp=signal.timestamp,
-                source=f"pain_detector:{signal.pain_type.value}",
-                context=ReactionContext(
-                    bindings={"entity_path": TraceSnapshot(percept_id=entity_path)} if entity_path else {},
-                ),
-            )
-            self._pain_bus.reaction_bus.publish(reaction)
+            self._pain_bus.publish(signal)
         else:
             for callback in self._callbacks:
                 try:
