@@ -291,18 +291,18 @@ class Executor:
                         # get_positive_outcomes nor get_negative_outcomes.
                         # This call site hardcoded success=True, which meant
                         # every completion booked a full POSITIVE causal link.
-                        # Read from the same side_effects channel the drive
-                        # keys use — see docs/user/tool_side_effects.md.
-                        _ineffective = (
-                            bool(result.side_effects.get("outcome_ineffective")) if result.side_effects else False
-                        )
+                        # Read through the SHARED registry parser rather than
+                        # hand-rolling a second read of the same key — see
+                        # docs/user/tool_side_effects.md.
                         from maxim.decisions.causal_link import Valence as _Val
+                        from maxim.runtime.tool_dispatch import read_learning_side_effects
 
+                        _reported = read_learning_side_effects(result).outcome_valence
                         self._tool_pain_bridge.record_tool_complete(
                             tool_name,
                             invocation_id,
                             success=True,
-                            outcome_valence=_Val.NEUTRAL if _ineffective else _Val.POSITIVE,
+                            outcome_valence=_reported if _reported is not None else _Val.POSITIVE,
                         )
 
                     # -- Entity acquisition/release (Mechanism B) --

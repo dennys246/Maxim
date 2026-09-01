@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from unittest.mock import MagicMock
+from maxim.decisions.causal_link import Valence
 from maxim.runtime.tool_dispatch import safe_agent_name, record_outcome
 
 
@@ -750,35 +751,27 @@ class TestNeutralOutcomeTier:
     # ── the causal surface: the collapse no flag could suppress ──
 
     def test_ineffective_books_neutral_valence(self):
-        from maxim.decisions.causal_link import Valence
-
-        nac = self._run(outcome_ineffective=True)
+        nac = self._run(outcome_valence=Valence.NEUTRAL)
         assert nac.observe.call_args.kwargs["outcome_valence"] is Valence.NEUTRAL
 
     def test_effective_still_books_positive(self):
-        from maxim.decisions.causal_link import Valence
-
-        nac = self._run(outcome_ineffective=False)
+        nac = self._run(outcome_valence=None)
         assert nac.observe.call_args.kwargs["outcome_valence"] is Valence.POSITIVE
 
     def test_harm_still_books_negative_even_when_ineffective(self):
         """embodiment_failed dominates: harm is not neutralised by ineffectiveness."""
-        from maxim.decisions.causal_link import Valence
-
-        nac = self._run(outcome_ineffective=True, embodiment_failed=True)
+        nac = self._run(outcome_valence=Valence.NEUTRAL, embodiment_failed=True)
         assert nac.observe.call_args.kwargs["outcome_valence"] is Valence.NEGATIVE
 
     def test_mechanical_failure_still_books_negative(self):
-        from maxim.decisions.causal_link import Valence
-
-        nac = self._run(outcome_ineffective=True, success=False)
+        nac = self._run(outcome_valence=Valence.NEUTRAL, success=False)
         assert nac.observe.call_args.kwargs["outcome_valence"] is Valence.NEGATIVE
 
     def test_neutral_link_identity_differs_from_success(self):
         """Link ids hash outcome_signature — a neutral outcome must not merge
         into the successful link and re-book the positive this fix removes."""
-        sig_pos = self._run(outcome_ineffective=False).observe.call_args.kwargs["outcome_signature"]
-        sig_neu = self._run(outcome_ineffective=True).observe.call_args.kwargs["outcome_signature"]
+        sig_pos = self._run(outcome_valence=None).observe.call_args.kwargs["outcome_signature"]
+        sig_neu = self._run(outcome_valence=Valence.NEUTRAL).observe.call_args.kwargs["outcome_signature"]
         sig_neg = self._run(success=False).observe.call_args.kwargs["outcome_signature"]
         assert sig_pos.startswith("success:")
         assert sig_neu.startswith("ineffective:")
@@ -788,12 +781,12 @@ class TestNeutralOutcomeTier:
     # ── the two float sinks ──
 
     def test_ineffective_mints_no_goal_credit(self):
-        assert self._run(outcome_ineffective=True).credit_goal.called is False
-        assert self._run(outcome_ineffective=False).credit_goal.called is True
+        assert self._run(outcome_valence=Valence.NEUTRAL).credit_goal.called is False
+        assert self._run(outcome_valence=None).credit_goal.called is True
 
     def test_ineffective_mints_no_cluster_credit(self):
-        assert self._run(outcome_ineffective=True).update_cluster_reward.called is False
-        assert self._run(outcome_ineffective=False).update_cluster_reward.called is True
+        assert self._run(outcome_valence=Valence.NEUTRAL).update_cluster_reward.called is False
+        assert self._run(outcome_valence=None).update_cluster_reward.called is True
 
     # ── the tier reaches action selection, which is the point ──
 
@@ -818,8 +811,8 @@ class TestNeutralOutcomeTier:
         )
 
         nac = NAc(NACConfig())
-        record_outcome(nac=nac, tool_name="clamped_turn", success=True, outcome_ineffective=True, **common)
-        record_outcome(nac=nac, tool_name="real_turn", success=True, outcome_ineffective=False, **common)
+        record_outcome(nac=nac, tool_name="clamped_turn", success=True, outcome_valence=Valence.NEUTRAL, **common)
+        record_outcome(nac=nac, tool_name="real_turn", success=True, outcome_valence=None, **common)
 
         clamped_sig = build_tool_signature("clamped_turn", None)
         real_sig = build_tool_signature("real_turn", None)
@@ -829,3 +822,147 @@ class TestNeutralOutcomeTier:
         assert nac.get_negative_outcomes(clamped_sig) == []
         # The effective one still earns its positive link.
         assert len(nac.get_positive_outcomes(real_sig)) == 1
+
+
+class TestReadLearningSideEffects:
+    """The shared registry parser for ``ToolOutput.side_effects``.
+
+    Homed in ``tool_dispatch`` (not ``agent_loop``, which imports FROM it)
+    so all three dispatch paths — the serial loop, ``execute_parallel_actions``
+    and ``runtime/executor.py`` — read the registry through ONE parser. The
+    pre-merge round found the earlier placement forced two of those three to
+    hand-roll their own read, and the parallel path had simply been missed.
+
+    The important property is the DEFAULT: a tool that reports nothing must
+    yield "mechanical success means POSITIVE", because that is what every
+    existing tool relies on — D53 narrows the positive, it does not withdraw
+    it.
+    """
+
+    def _out(self, side_effects):
+        from maxim.tools.base import ToolOutput
+
+        return ToolOutput(success=True, output={}, side_effects=side_effects)
+
+    def test_absent_side_effects_are_all_default(self):
+        from maxim.runtime.tool_dispatch import LearningSideEffects, read_learning_side_effects
+
+        assert read_learning_side_effects(self._out(None)) == LearningSideEffects()
+        assert read_learning_side_effects(self._out({})) == LearningSideEffects()
+        assert read_learning_side_effects(object()) == LearningSideEffects()
+        assert LearningSideEffects().outcome_valence is None
+
+    def test_reads_every_documented_key(self):
+        from maxim.runtime.tool_dispatch import read_learning_side_effects
+
+        got = read_learning_side_effects(
+            self._out(
+                {
+                    "embodiment_failures": [{"name": "shatter"}],
+                    "drive_potential_diff": -0.3,
+                    "drive_credit_withheld": True,
+                    "drive_relief_channel": "exteroceptive",
+                    "outcome_valence": "neutral",
+                }
+            )
+        )
+        assert got.embodiment_failed is True
+        assert got.drive_potential_diff == -0.3
+        assert got.drive_credit_withheld is True
+        assert got.drive_relief_channel == "exteroceptive"
+        assert got.outcome_valence is Valence.NEUTRAL
+
+    def test_all_three_tiers_round_trip(self):
+        """The key is THREE-valued. A boolean could not express a confirmed
+        shortfall — negative but not harm — which is why the pre-merge round
+        found D53's headline case still live under the first shape."""
+        from maxim.runtime.tool_dispatch import read_learning_side_effects
+
+        for name, tier in (
+            ("positive", Valence.POSITIVE),
+            ("neutral", Valence.NEUTRAL),
+            ("negative", Valence.NEGATIVE),
+        ):
+            assert read_learning_side_effects(self._out({"outcome_valence": name})).outcome_valence is tier
+
+    def test_unrecognised_value_is_ignored_not_guessed(self):
+        from maxim.runtime.tool_dispatch import read_learning_side_effects
+
+        for bad in ("bogus", "", True, 1, None):
+            assert read_learning_side_effects(self._out({"outcome_valence": bad})).outcome_valence is None
+
+    def test_empty_failure_list_is_not_a_failure(self):
+        """`bool([])` is False — an empty list must not book NEGATIVE."""
+        from maxim.runtime.tool_dispatch import read_learning_side_effects
+
+        assert read_learning_side_effects(self._out({"embodiment_failures": []})).embodiment_failed is False
+
+    def test_zero_drive_diff_survives_as_zero_not_none(self):
+        """Measured-zero is distinct from no-drive-sensor: the former books
+        nothing, the latter takes the tool-success floor."""
+        from maxim.runtime.tool_dispatch import read_learning_side_effects
+
+        assert read_learning_side_effects(self._out({"drive_potential_diff": 0.0})).drive_potential_diff == 0.0
+        assert read_learning_side_effects(self._out({})).drive_potential_diff is None
+
+
+class TestParallelPathCarriesTheTier:
+    """``execute_parallel_actions`` is a SECOND live record_outcome dispatcher.
+
+    Found by the architecture lens in the pre-merge round: the batch path
+    collected only success/output/error from ``executor.execute`` and
+    discarded ``side_effects`` entirely, so the tier could not reach
+    ``record_outcome`` and a clamped motion dispatched in an LLM-primary
+    parallel batch still booked POSITIVE — the exact case D53 says the bug
+    bites. The pre-existing coverage note argued that ``drive_relief_only``
+    covers this path; it does not, because ``learn_valence`` is computed
+    independently of the cluster block that flag gates.
+    """
+
+    def _run(self, side_effects):
+        from maxim.tools.base import ToolOutput
+        from maxim.runtime.tool_dispatch import execute_parallel_actions
+
+        executor = MagicMock()
+        executor.execute = MagicMock(return_value=ToolOutput(success=True, output={"ok": 1}, side_effects=side_effects))
+        autonomy = MagicMock()
+        autonomy.can_execute_action = MagicMock(return_value=(True, ""))
+        pool = MagicMock()
+        pool.add_outcome = MagicMock()
+        nac = MagicMock()
+
+        results, _text = execute_parallel_actions(
+            actions=[{"tool_name": "reachy_turn_left", "params": {}}],
+            agent_id="a",
+            executor=executor,
+            autonomy_controller=autonomy,
+            confidence=1.0,
+            reasoning="",
+            recent_outcomes=[],
+            max_recent=10,
+            llm_worker=None,
+            context_pool=pool,
+            nac=nac,
+            active_goal="find_sound",
+        )
+        return nac, results
+
+    def test_neutral_tier_reaches_the_batch_credit_path(self):
+        from maxim.decisions.causal_link import Valence
+
+        nac, _ = self._run({"outcome_valence": "neutral"})
+        assert nac.observe.call_args.kwargs["outcome_valence"] is Valence.NEUTRAL
+        assert nac.credit_goal.called is False
+
+    def test_effective_batch_action_still_books_positive(self):
+        from maxim.decisions.causal_link import Valence
+
+        nac, _ = self._run(None)
+        assert nac.observe.call_args.kwargs["outcome_valence"] is Valence.POSITIVE
+        nac.credit_goal.assert_called_with("find_sound", 1.0)
+
+    def test_returned_dicts_keep_their_documented_shape(self):
+        """The tier fields are internal to the credit loop; callers and the
+        LLM-facing history rely on the documented key set."""
+        _, results = self._run({"outcome_valence": "neutral"})
+        assert set(results[0]) == {"tool", "params", "success", "result", "error"}

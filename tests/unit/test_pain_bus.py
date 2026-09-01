@@ -715,3 +715,61 @@ class TestPainDetectorAgentAttribution:
         assert len(received) == 1
         assert received[0].context["error_kind"] == ToolErrorKind.EXTERNAL_FAILURE.value
         assert received[0].context["agent_id"] == "sim_aut"
+
+
+def test_no_pain_reaction_is_built_without_agent_id() -> None:
+    """Repo-wide guard: every hand-built pain ``Reaction`` carries an agent_id.
+
+    ``bio_stack::_distribute_reward_from_reaction`` early-returns when
+    ``ReactionContext.agent_id`` is None, so a pain Reaction built without
+    one fires and credits nothing — silently, with nothing raised and
+    nothing logged. Four sites had this bug (``PainDetector._emit_pain``,
+    ``PainInterceptorExecutor``, and both ``PerceivedPainAssessor`` emit
+    paths); the pre-merge round found the last three after the first was
+    fixed and the commit claimed it was the only one.
+
+    The canonical route is ``reactions/compat.py::pain_signal_to_reaction``,
+    which propagates ``context["agent_id"]``. A site that must build the
+    Reaction by hand (to carry bindings compat does not map) has to set
+    ``ReactionContext(agent_id=...)`` explicitly.
+    """
+    import ast
+    import pathlib
+
+    src = pathlib.Path(__file__).resolve().parents[2] / "src" / "maxim"
+    offenders: list[str] = []
+
+    for path in src.rglob("*.py"):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "Reaction"):
+                continue
+            kinds = [kw for kw in node.keywords if kw.arg == "kind"]
+            if not (kinds and isinstance(kinds[0].value, ast.Constant) and kinds[0].value.value == "pain"):
+                continue
+            ctx = [kw for kw in node.keywords if kw.arg == "context"]
+            if not ctx or not isinstance(ctx[0].value, ast.Call):
+                offenders.append(f"{path.relative_to(src)}:{node.lineno} (no ReactionContext)")
+                continue
+            if not any(kw.arg == "agent_id" for kw in ctx[0].value.keywords):
+                offenders.append(f"{path.relative_to(src)}:{node.lineno} (ReactionContext without agent_id)")
+
+    # Ratchet, not a clean sweep. These four are WORLD-origin pain — the
+    # sandbox, a conversation, a sim adapter, a cerebellum prediction —
+    # where no agent_id exists on the class at all, so wiring one is a
+    # design question (whose pain is an external signal?) rather than the
+    # one-line fix the four fixed sites took. Filed as D57. This list may
+    # SHRINK and must never grow: a NEW pain Reaction without an agent_id
+    # is the silent-no-op bug, not grandfathered debt.
+    grandfathered = {
+        "runtime/sim_adapter.py",
+        "simulation/sandbox.py",
+        "simulation/conversational_source.py",
+        "embodiment/backends/cerebellum_modulator.py",
+    }
+    new_offenders = [o for o in offenders if o.split(":")[0] not in grandfathered]
+    assert new_offenders == [], (
+        "pain Reaction(s) built without agent_id — reward distribution silently no-ops:\n" + "\n".join(new_offenders)
+    )
+    still_open = {o.split(":")[0] for o in offenders}
+    assert still_open <= grandfathered, f"allowlist is stale, drop the fixed entries: {grandfathered - still_open}"

@@ -373,17 +373,30 @@ class TestLearningTier:
         maxim = _FakeMaxim(latest=latest, yaw=yaw, robot=robot)
         return FocusOnSoundTool(maxim).execute()
 
-    def _ineffective(self, result):
-        return bool((result.side_effects or {}).get("outcome_ineffective"))
+    def _tier(self, result):
+        return (result.side_effects or {}).get("outcome_valence")
 
-    def test_head_already_at_limit_is_ineffective(self):
-        """THE D53 case: the head is already at the envelope, the command
-        is refused, nothing moves — and the old code booked a full +1."""
-        robot = _FakeRobot(track_target=True)
+    def test_head_already_at_limit_is_neutral(self):
+        """THE D53 case: the head is already at the envelope, the command is
+        refused, nothing moves — and the old code booked a full +1.
+
+        The robot starts AT +45 so the pre-motion readback (not the
+        ``maxim.yaw`` mirror) reports no movement."""
+        robot = _FakeRobot(pose={"yaw": math.radians(45.0), "body_yaw": 0.0}, track_target=True)
         result = self._run(latest=(-1.0, _now(), math.radians(45.0)), robot=robot, yaw=45.0)
         assert result.success is True  # dispatch still succeeded
         assert result.output["clamped_to_head_limit"] is True
-        assert self._ineffective(result) is True
+        assert self._tier(result) == "neutral"
+
+    def test_no_motion_is_judged_from_the_controller_not_the_stale_mirror(self):
+        """``maxim.yaw`` is written only by movement.py::move /
+        sync_head_position; this path dispatches via goto_target and never
+        syncs, so a second call inside the DN's 3 s window sees a stale
+        mirror. Here the mirror says 0 while the head is really at +45 — the
+        old target-vs-mirror test would have called that a real motion."""
+        robot = _FakeRobot(pose={"yaw": math.radians(45.0), "body_yaw": 0.0}, track_target=True)
+        result = self._run(latest=(-1.0, _now(), math.radians(45.0)), robot=robot, yaw=0.0)
+        assert self._tier(result) == "neutral"
 
     def test_clamped_but_moved_stays_effective(self):
         """A clamped turn that STILL moved toward the sound is a real turn.
@@ -393,7 +406,7 @@ class TestLearningTier:
         result = self._run(latest=(-1.0, _now(), 0.0), robot=robot)
         assert result.output["clamped_to_head_limit"] is True
         assert result.output["reached_target"] is True
-        assert self._ineffective(result) is False
+        assert self._tier(result) is None
 
     def test_unverifiable_readback_is_ineffective(self):
         """Unknown != achieved. With no pose readback the tool cannot
@@ -401,19 +414,28 @@ class TestLearningTier:
         robot = _FakeRobot(pose=None)
         result = self._run(latest=(0.5, _now(), 0.0), robot=robot)
         assert result.output["reached_target"] is None
-        assert self._ineffective(result) is True
+        assert self._tier(result) == "neutral"
 
     def test_confirmed_good_turn_is_effective(self):
         robot = _FakeRobot(track_target=True)
         result = self._run(latest=(0.5, _now(), 0.0), robot=robot)
         assert result.output["faced_sound"] is True
-        assert self._ineffective(result) is False
+        assert self._tier(result) is None
 
-    def test_confirmed_shortfall_is_not_marked_ineffective(self):
-        """A CONFIRMED shortfall is a measured negative the learning chain
-        already sees through `reached is False`; it is not the neutral
-        'nothing happened' case."""
+    def test_confirmed_shortfall_books_negative(self):
+        """A CONFIRMED shortfall is a real NEGATIVE outcome — and the reason
+        the key had to be three-valued.
+
+        The pre-merge round reproduced this booking a full POSITIVE under
+        the first (boolean) shape: ``reached is False`` fitted neither
+        "ineffective" nor "harm", and the tool returns ``success=True``, so
+        nothing carried it. It is NOT harm — it must not be laundered
+        through ``embodiment_failures`` — so it needs its own tier.
+        ``reached_target`` reaches no learner on its own: it has exactly one
+        consumer in ``src/``, the producer itself."""
         robot = _FakeRobot(pose={"yaw": math.radians(-12.0), "body_yaw": 0.0})
         result = self._run(latest=(0.5, _now(), 0.0), robot=robot)
+        assert result.success is True
         assert result.output["reached_target"] is False
-        assert self._ineffective(result) is False
+        assert self._tier(result) == "negative"
+        assert (result.side_effects or {}).get("embodiment_failures") is None

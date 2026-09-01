@@ -239,9 +239,14 @@ class PerceivedPainAssessor:
         priors: tuple[SensitivePathPrior, ...] = DEFAULT_SENSITIVE_PRIORS,
         threshold: float = DEFAULT_ANTICIPATION_THRESHOLD,
         learned_scale: float = DEFAULT_LEARNED_SCALE,
+        agent_id: str | None = None,
     ) -> None:
         self._nac = nac
         self._pain_bus = pain_bus
+        # Without this the emitted Reaction reaches
+        # bio_stack::_distribute_reward_from_reaction with agent_id=None,
+        # which early-returns — the pain fires and credits nothing, silently.
+        self._agent_id = agent_id
         self._priors = priors
         self._threshold = threshold
         self._learned_scale = learned_scale
@@ -347,6 +352,7 @@ class PerceivedPainAssessor:
                     timestamp=signal.timestamp,
                     source=f"perceived_pain:{PainType.ANTICIPATED.value}",
                     context=ReactionContext(
+                        agent_id=self._agent_id,
                         bindings={
                             "paths": TraceSnapshot(percept_id=",".join(paths[:5])),
                         }
@@ -481,6 +487,7 @@ class PerceivedPainAssessor:
                     timestamp=signal.timestamp,
                     source=f"perceived_pain:{PainType.ANTICIPATED.value}",
                     context=ReactionContext(
+                        agent_id=self._agent_id,
                         bindings={
                             "paths": TraceSnapshot(percept_id=",".join(path_list[:5])),
                         }

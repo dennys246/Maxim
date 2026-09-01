@@ -18,6 +18,7 @@ from maxim.runtime.tool_dispatch import (
     safe_agent_name as _safe_agent_name,
     record_outcome as _record_outcome,
     execute_parallel_actions as _execute_parallel,
+    read_learning_side_effects,
 )
 
 # Extracted to bio_integration.py
@@ -50,68 +51,6 @@ except ImportError:
     MemoryHub = None  # type: ignore
 
 logger = logging.getLogger(__name__)
-
-
-@dataclasses.dataclass(frozen=True)
-class LearningSideEffects:
-    """The learning-relevant signals a tool reports about its own outcome.
-
-    Read from ``ToolOutput.side_effects`` — the typed channel the bio
-    pipeline branches on. ``Executor`` and the agent loop read
-    ``side_effects`` and never ``metadata``, so a signal filed under
-    ``metadata`` is structurally invisible to learning no matter how
-    carefully the tool measured it. The append-only key registry lives in
-    ``docs/user/tool_side_effects.md``.
-
-    Extracted from ``run_agentic_loop`` (roadmap 1.1.x item 16.4: the god
-    functions do not grow) so the read has its own test.
-    """
-
-    embodiment_failed: bool = False
-    drive_potential_diff: float | None = None
-    drive_credit_withheld: bool = False
-    drive_relief_channel: str | None = None
-    outcome_ineffective: bool = False
-
-
-def read_learning_side_effects(result: Any) -> LearningSideEffects:
-    """Extract the learning tier + credit routing from a tool result.
-
-    * ``embodiment_failures`` — an action that mechanically succeeded but
-      HARMED the body (a ``self_effect`` breached a sensor's comfort band)
-      is a NEGATIVE learning outcome, so ``record_outcome`` does not book a
-      spurious positive that masks the aversion
-      (substrate_primary_cradle_readiness.md B5). The ToolPainBridge owns
-      the primary negative attribution; this prevents the competing positive.
-    * ``drive_potential_diff`` — motor credit (GAP 1): the drive relief this
-      action produced, if it touched a drive sensor (orient→azimuth,
-      eat→hunger). ``record_outcome`` prefers its SIGN as the cluster-reward
-      over the ±1 tool-success — the state-conditioned signal that lets
-      substrate-primary selection learn "turn toward the sound."
-    * ``drive_credit_withheld`` — sem_motor_binding.md Phase 1:
-      drive-touched-but-unmeasured (a motor-bound live turn whose credit is
-      deferred to the measured slice). Suppresses the flat +1 floor for THIS
-      action WITHOUT asserting harm.
-    * ``drive_relief_channel`` — Phase 2: measured exteroceptive relief
-      routes to the direction-bearing cluster instead of interoception.
-    * ``outcome_ineffective`` — D53: the tool RAN but accomplished nothing
-      attributable (a motion clamped at a joint limit, a turn that could not
-      be verified to have reached its target). Books ``Valence.NEUTRAL``
-      rather than the POSITIVE a bare ``success=True`` used to imply.
-
-    A tool that reports nothing yields the all-default value, which is the
-    historical behaviour: mechanical success means POSITIVE.
-    """
-    side = getattr(result, "side_effects", None)
-    if not side:
-        return LearningSideEffects()
-    return LearningSideEffects(
-        embodiment_failed=bool(side.get("embodiment_failures")),
-        drive_potential_diff=side.get("drive_potential_diff"),
-        drive_credit_withheld=bool(side.get("drive_credit_withheld")),
-        drive_relief_channel=side.get("drive_relief_channel"),
-        outcome_ineffective=bool(side.get("outcome_ineffective")),
-    )
 
 
 # Wire 3 (release_0_9_1.md Stage 1): regex matching the felt-sensation
@@ -3490,7 +3429,7 @@ def run_agentic_loop(
                     _drive_potential_diff = _learning_side.drive_potential_diff
                     _drive_credit_withheld = _learning_side.drive_credit_withheld
                     _drive_relief_channel = _learning_side.drive_relief_channel
-                    _outcome_ineffective = _learning_side.outcome_ineffective
+                    _reported_valence = _learning_side.outcome_valence
                     logger.info(
                         "Tool execution completed in %.2fs: %s, success=%s",
                         exec_elapsed,
@@ -3662,7 +3601,7 @@ def run_agentic_loop(
                         drive_potential_diff=_drive_potential_diff,
                         drive_credit_withheld=_drive_credit_withheld,
                         drive_relief_channel=_drive_relief_channel,
-                        outcome_ineffective=_outcome_ineffective,
+                        outcome_valence=_reported_valence,
                     )
 
                     # Record plan outcome in MemoryHub for learning. A plan that

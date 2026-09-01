@@ -813,10 +813,10 @@ class ModulatorAffordanceTool(Tool):
         # ``metadata``, so a backend's honest "the motion could not be
         # verified / nothing moved" was structurally invisible to the
         # learning chain no matter how carefully it was measured.
-        if _measured.get("outcome_ineffective"):
+        if _measured.get("outcome_valence"):
             if side_effects is None:
                 side_effects = {}
-            side_effects["outcome_ineffective"] = True
+            side_effects["outcome_valence"] = _measured["outcome_valence"]
 
         # Entity acquisition: if this is a pick_up affordance and the target
         # is acquirable, signal the executor to reparent + register tools.

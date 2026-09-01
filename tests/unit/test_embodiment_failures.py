@@ -815,14 +815,14 @@ class TestNeutralToolCompletion:
     def test_executor_passes_neutral_for_ineffective_outcome(self):
         from maxim.decisions.causal_link import Valence
 
-        bridge = self._run({"outcome_ineffective": True})
+        bridge = self._run({"outcome_valence": "neutral"})
         bridge.record_tool_complete.assert_called_once()
         assert bridge.record_tool_complete.call_args.kwargs["outcome_valence"] is Valence.NEUTRAL
 
     def test_executor_passes_positive_for_effective_outcome(self):
         from maxim.decisions.causal_link import Valence
 
-        for side in (None, {"outcome_ineffective": False}):
+        for side in (None, {}, {"outcome_valence": "bogus"}):
             bridge = self._run(side)
             assert bridge.record_tool_complete.call_args.kwargs["outcome_valence"] is Valence.POSITIVE
 

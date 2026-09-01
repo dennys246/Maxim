@@ -116,8 +116,51 @@ zero.
 - `FocusLearner.save` hand-rolled `open()+json.dump`, violating both the
   `atomic_write_json` and `_format_version` invariants (D55).
 
+## What the pre-merge review round changed
+
+The sweep set the scope; a two-lens round then found the first implementation
+shipped the defect it was fixing. Worth recording, because the failure was
+not carelessness — it was a shape choice made one level too early.
+
+**The key was a boolean, and a boolean has nowhere to put a confirmed
+shortfall.** `reached is False` — the *strongest* evidence a motion did not
+happen — fitted neither "ineffective" nor "harm", and `FocusOnSoundTool`
+returns `success=True`, so nothing carried it. The Executor lens reproduced
+it booking a full POSITIVE: D53's own headline case, live in the commit
+that declared D53 fixed. The Architecture lens reached the same place from
+the other side — shipping a boolean producer in the commit that files D56
+*against* boolean producers. One finding, two lenses, opposite directions.
+The key is now `outcome_valence`, three-valued.
+
+Three more things the round caught, each the same species — a fix that
+looked complete from inside:
+
+- **`execute_parallel_actions` is a second live `record_outcome`
+  dispatcher** and discarded `side_effects` entirely, so the tier could not
+  reach it. Its pre-existing coverage note argued `drive_relief_only`
+  covers this path; it does not, because `learn_valence` is computed
+  independently of the cluster block that flag gates.
+- **`_no_motion` judged movement from the `maxim.yaw` mirror**, which only
+  `movement.py::move` / `sync_head_position` write — and this path
+  dispatches via `goto_target` and never syncs. On the exact repeat-command
+  pattern the tool exists to fix, the mirror is stale. Now read from the
+  controller, pre- and post-motion.
+- **"the ONE site that bypassed the canonical converter" was false.**
+  `pain_interceptor` and both `perceived_pain` emit paths had the identical
+  `agent_id` defect. Fixed; a repo-wide AST guard then found four more
+  (world-origin pain, no `agent_id` on the class at all) — filed as D57 and
+  held by a shrink-only allowlist rather than half-wired.
+
+The generalisable one: **an exhaustiveness claim in a commit message is a
+claim, and deserves the same scrutiny as a claim in a paper.** Two of the
+round's findings were false-completeness, not broken code.
+
 ## Process notes
 
+- **The round is not ceremony.** It ran after a green 9,766-test suite, a
+  clean architecture audit and every lint passing, and still returned "do not
+  merge as-is" from both lenses. Tests cannot catch a shape that cannot
+  represent the case.
 - **A regression guard was holding the defect in place.**
   `test_zero_progress_falls_back_to_tool_success` pinned the `+1` floor. It
   was inverted, not deleted — and the inverted version immediately caught a

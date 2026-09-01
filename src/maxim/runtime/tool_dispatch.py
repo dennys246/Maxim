@@ -8,6 +8,7 @@ agent name extraction.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 import re
@@ -30,6 +31,88 @@ _OUTCOME_TOKEN: dict[_V, str] = {
     _V.NEUTRAL: "ineffective",
     _V.NEGATIVE: "failure",
 }
+
+
+# Registry string -> tier. The side_effects channel is JSON-shaped (it
+# crosses no wire today, but the registry is a third-party contract), so the
+# key carries the enum's VALUE rather than the enum.
+_VALENCE_BY_NAME: dict[str, _V] = {
+    "positive": _V.POSITIVE,
+    "neutral": _V.NEUTRAL,
+    "negative": _V.NEGATIVE,
+}
+
+
+@dataclasses.dataclass(frozen=True)
+class LearningSideEffects:
+    """The learning-relevant signals a tool reports about its own outcome.
+
+    Read from ``ToolOutput.side_effects`` — the typed channel the bio
+    pipeline branches on. Consumers read ``side_effects`` and never
+    ``metadata``, so a signal filed under ``metadata`` is structurally
+    invisible to learning no matter how carefully the tool measured it.
+    The append-only key registry lives in ``docs/user/tool_side_effects.md``.
+
+    Homed here rather than in ``agent_loop`` so all three dispatch paths —
+    the serial loop, ``execute_parallel_actions`` below, and
+    ``runtime/executor.py`` — read the registry through ONE parser. An
+    earlier revision put it in ``agent_loop``, which imports FROM this
+    module, so the two other consumers had to hand-roll their own read.
+
+    Runtime-ephemeral: constructed and consumed within a single dispatch,
+    never persisted and never crossing a wire, so CC3 forward-compat is
+    out of scope.
+    """
+
+    embodiment_failed: bool = False
+    drive_potential_diff: float | None = None
+    drive_credit_withheld: bool = False
+    drive_relief_channel: str | None = None
+    outcome_valence: _V | None = None
+
+
+def read_learning_side_effects(result: Any) -> LearningSideEffects:
+    """Extract the learning tier + credit routing from a tool result.
+
+    * ``embodiment_failures`` — an action that mechanically succeeded but
+      HARMED the body (a ``self_effect`` breached a sensor's comfort band)
+      is a NEGATIVE learning outcome, so ``record_outcome`` does not book a
+      spurious positive that masks the aversion
+      (substrate_primary_cradle_readiness.md B5).
+    * ``drive_potential_diff`` — motor credit (GAP 1): the drive relief this
+      action produced, if it touched a drive sensor. ``record_outcome``
+      prefers its SIGN as the cluster reward over the ±1 tool-success.
+    * ``drive_credit_withheld`` — sem_motor_binding.md Phase 1:
+      drive-touched-but-unmeasured. Suppresses the flat +1 floor for THIS
+      action WITHOUT asserting harm.
+    * ``drive_relief_channel`` — Phase 2: measured exteroceptive relief
+      routes to the direction-bearing cluster instead of interoception.
+    * ``outcome_valence`` — D53: the tool's OWN report of what it achieved,
+      as distinct from mechanical success. A motion that could not be
+      verified, or that moved nothing, is ``"neutral"``; a CONFIRMED
+      shortfall is ``"negative"`` — which is a real negative outcome but
+      NOT harm, so it must not be laundered through ``embodiment_failures``.
+
+    A tool that reports nothing yields the all-default value, which is the
+    historical behaviour: mechanical success means POSITIVE. An
+    unrecognised string is ignored rather than guessed at.
+    """
+    side = getattr(result, "side_effects", None)
+    # The registry types this channel ``dict[str, Any] | None``. Anything
+    # else is not a valid payload, and reading keys off it would invent
+    # signals out of whatever the object returns — so refuse rather than
+    # guess. (Found by the pre-merge round: a Mock result made every key
+    # read truthy and booked a spurious NEGATIVE.)
+    if not isinstance(side, dict) or not side:
+        return LearningSideEffects()
+    raw = side.get("outcome_valence")
+    return LearningSideEffects(
+        embodiment_failed=bool(side.get("embodiment_failures")),
+        drive_potential_diff=side.get("drive_potential_diff"),
+        drive_credit_withheld=bool(side.get("drive_credit_withheld")),
+        drive_relief_channel=side.get("drive_relief_channel"),
+        outcome_valence=_VALENCE_BY_NAME.get(raw) if isinstance(raw, str) else None,
+    )
 
 
 def _operant_only_credit_enabled() -> bool:
@@ -104,7 +187,7 @@ def record_outcome(
     drive_relief_only: bool = False,
     drive_credit_withheld: bool = False,
     drive_relief_channel: str | None = None,
-    outcome_ineffective: bool = False,
+    outcome_valence: "_V | None" = None,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
@@ -218,10 +301,15 @@ def record_outcome(
     # once re-observed, so above the 0.3 ``min_confidence`` gate from the
     # very first observation — and no credit-withholding flag could
     # suppress it, because they all gate the CLUSTER term only.
+    # Harm and mechanical failure DOMINATE a tool's self-report: a tool
+    # cannot talk its way out of having broken the body. Otherwise the
+    # tool's own report wins, because it is the only party that measured
+    # what happened; absent a report, mechanical success means POSITIVE
+    # (the historical contract every existing tool relies on).
     if embodiment_failed or not success:
         learn_valence = _V.NEGATIVE
-    elif outcome_ineffective:
-        learn_valence = _V.NEUTRAL
+    elif outcome_valence is not None:
+        learn_valence = outcome_valence
     else:
         learn_valence = _V.POSITIVE
     learn_success = learn_valence is _V.POSITIVE
@@ -570,6 +658,15 @@ def execute_parallel_actions(
             success = getattr(result, "success", True)
             output = getattr(result, "output", None)
             error = getattr(result, "error", None)
+            # D53 review fold: this path discarded side_effects entirely, so
+            # the learning tier could not reach record_outcome below and a
+            # clamped motion dispatched in a parallel batch still booked
+            # POSITIVE. The pre-existing NOTE about drive_credit_withheld
+            # being "covered today because llm-primary sets
+            # drive_relief_only" does NOT extend to the tier: learn_valence
+            # is computed above and independently of the cluster block that
+            # drive_relief_only gates.
+            _side = read_learning_side_effects(result)
 
             parallel_results.append(
                 {
@@ -578,6 +675,8 @@ def execute_parallel_actions(
                     "success": success,
                     "result": str(output)[:2000] if output else None,
                     "error": error,
+                    "_embodiment_failed": _side.embodiment_failed,
+                    "_outcome_valence": _side.outcome_valence,
                 }
             )
 
@@ -618,6 +717,8 @@ def execute_parallel_actions(
             nac=nac,
             active_goal=active_goal,
             tool_params=pr.get("params"),
+            embodiment_failed=bool(pr.get("_embodiment_failed")),
+            outcome_valence=pr.get("_outcome_valence"),
             cluster_id=cluster_id,
             clusters=clusters,
             # Phase 1 guardrail must reach the BATCH path too: without this, an
@@ -651,5 +752,12 @@ def execute_parallel_actions(
             combined_parts.append(f"\n[{tool}] FAILED: {pr.get('error', 'unknown error')}")
     combined_parts.append("\n=== END BATCHED RESULTS ===")
     combined_results = "\n".join(combined_parts)
+
+    # The learning-tier fields are internal to the credit loop above; the
+    # returned dicts have a documented shape (tool, success, result, error,
+    # params) that callers and the LLM-facing history rely on.
+    for pr in parallel_results:
+        pr.pop("_embodiment_failed", None)
+        pr.pop("_outcome_valence", None)
 
     return parallel_results, combined_results

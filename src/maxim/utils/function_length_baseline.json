@@ -12,7 +12,7 @@
     {
       "file": "maxim/simulation/orchestrator.py",
       "function": "start_simulation_mode",
-      "lines": 3342
+      "lines": 3336
     },
     {
       "file": "maxim/cli.py",

@@ -35,13 +35,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   confidence, `0.50` on creation and `0.64+` once re-observed, clearing the `0.3` gate from
   the first observation — and no credit-withholding flag suppressed it (they all gate the
   cluster term only).
-  A new `side_effects["outcome_ineffective"]` key — modelled on `drive_credit_withheld`, so
-  it suppresses the floor **without** asserting harm — now carries the third tier from the
-  two producers that already computed `reached: bool | None` and discarded it
-  (`FocusOnSoundTool`, `ReachyOrientMotorBackend`) through to `record_outcome` and
-  `ToolPainBridge.record_tool_complete`, whose `success: bool` was a second door into the
-  same bucket. Keys on the OUTCOME, never on clamp-occurrence: a clamped turn that still
-  moved toward its target stays POSITIVE. Measured exactly-zero drive progress no longer
+  A new three-valued `side_effects["outcome_valence"]` key (`"positive"`/`"neutral"`/
+  `"negative"`) now carries the tier from the two producers that already computed
+  `reached: bool | None` and discarded it (`FocusOnSoundTool`, `ReachyOrientMotorBackend`)
+  through to `record_outcome`, to `ToolPainBridge.record_tool_complete` (whose
+  `success: bool` was a second door into the same bucket), and to
+  `execute_parallel_actions` (a third dispatcher that discarded `side_effects` entirely).
+  It is three-valued rather than boolean because a *confirmed shortfall* is a real negative
+  outcome that is **not** harm — it must not be routed through `embodiment_failures`, and a
+  boolean had nowhere to put it. Keys on the OUTCOME, never on clamp-occurrence: a clamped
+  turn that still moved toward its target stays POSITIVE, judged from a controller readback
+  rather than the `maxim.yaw` mirror (which this dispatch path never refreshes). Measured exactly-zero drive progress no longer
   falls to the `+1` floor either, so the modeled path now agrees with `tool_bridge`'s
   measured path and with `cradle_mother::reactive_mother_tick`.
 - **Every `PainDetector`-origin pain distributed exactly zero reward (D54).** `_emit_pain`
@@ -51,7 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   thrashing, movement-failure, tool-failure and tool-timeout signal. Silently: nothing
   raised. `PainDetector` also had no `agent_id` at all; it now takes one and stamps it at
   the single dispatch point, and publishes via `PainBus.publish` (which also gives direct
-  subscribers the full context instead of a lossy reconstruction).
+  subscribers the full context instead of a lossy reconstruction). `PainInterceptorExecutor`
+  and both `PerceivedPainAssessor` emit paths had the identical defect and are fixed too; a
+  repo-wide AST guard now fails on any new pain `Reaction` built without an `agent_id`, and
+  grandfathers exactly the four remaining world-origin sites (D57).
 - `FocusLearner.save` hand-rolled `open()+json.dump`, violating the `atomic_write_json`
   and `_format_version` invariants (D55). Now atomic and versioned; old files still load.
 
