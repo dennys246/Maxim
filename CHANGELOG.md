@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-08-31 — "Decomposition"
+
 ### Added
 - Fail-loud **Stage 2** measured (`scripts/fail_loud_stage2.py` + baseline under
   `docs/experiments/data/fail_loud_stage2/`): **zero swallowed-exception firings** across
