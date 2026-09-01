@@ -499,7 +499,7 @@ every flag — the bound is over the **cluster-bias surface** the graduated read
 over the substrate as a whole. State it that way or the bound is quietly overclaimed.
 
 It bites where the full dispatch path is live — the LLM-primary runtime driving a real robot.
-**Filed as D51** in [../bugs/README.md](../bugs/README.md) (see §8 item 9).
+**Filed as D53** in [../bugs/README.md](../bugs/README.md) (see §8 item 9).
 
 **Partial credit where it is due:** the divergence is not entirely unrecorded. **D35** (FIXED
 2026-08-29, PR #569) routes the controller's achieved-vs-commanded divergence *warnings* into the
@@ -766,7 +766,7 @@ against the 1.3 fabric."
 
 ### A defect this investigation surfaced — FILED
 
-9. **A clamped or unreached motion is credited as a success.** Filed as **D51** in
+9. **A clamped or unreached motion is credited as a success.** Filed as **D53** in
    [../bugs/README.md](../bugs/README.md). `tools/reachy.py::focus_on_sound` returns
    `ToolResult(success=True, …)` when `clamped` or `reached is False`, and `tool_dispatch.py`
    computes `learn_success = success and not embodiment_failed` — so the substrate books POSITIVE
@@ -777,7 +777,7 @@ against the 1.3 fabric."
    > landed. The Architecture lens was right that this was wrong: the defect is *verified* against
    > two named symbols, and ledger rule 1 puts verified defects in the ledger while reserving the
    > plan's open-questions section for suspicions — so the plan doc was the wrong home by the
-   > ledger's own rule, and "file it later" named no trigger and no owner. It is numbered **D51**,
+   > ledger's own rule, and "file it later" named no trigger and no owner. It is numbered **D53**,
    > deliberately skipping D49/D50 so #577's renumber has room. Rev 1 also proposed the
    > `embodiment_failures` wiring as the fix; §5.2 explains why that was rejected in review, and
    > the filed row records the correct fix instead.

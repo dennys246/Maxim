@@ -76,18 +76,6 @@ GRANDFATHERED_RELEASES: dict[str, str] = {
         "published artifact). Named by the 2026-08-27 score card; fixing it means re-uploading provably-identical "
         "files, which is a deliberate operator act, not a lint fix."
     ),
-    "1.1.0rc1": (
-        "pre-release backfilled 2026-08-26; its published notes and its backfill source both carry a "
-        "repo-relative link (same defect as v1.1.0). Remove this entry in the same act that fixes them."
-    ),
-    "1.1.0": (
-        "published 2026-08-26 with the correct wheel + sdist attached (sha256 verified), but its PUBLISHED notes "
-        "carry 7 repo-relative links, which 404 on the Releases page. The source "
-        "(docs/announcements/release_1_1_0.md) was rewritten to absolute URLs on 2026-08-29, so the next release "
-        "is clean and only the already-published body is wrong; editing it is an outward-facing act left to the "
-        "operator (`gh release edit v1.1.0 --notes-file docs/announcements/release_1_1_0.md`) — and this "
-        "entry must be removed in the same act, or the audit fails on 'now PASSES'."
-    ),
 }
 
 

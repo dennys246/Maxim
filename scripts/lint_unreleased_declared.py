@@ -91,6 +91,48 @@ def _version_of(text: str) -> str | None:
     return m.group(1) if m else None
 
 
+_RELEASED_HEADING = re.compile(r"^##\s*\[(?P<version>\d+\.\d+\.\d+[^\]]*)\]", re.MULTILINE)
+
+
+def newest_released_section(changelog_text: str) -> tuple[str | None, list[str]]:
+    """(version, content lines) of the newest `## [X.Y.Z]` section.
+
+    Skips `## [Unreleased]`, which `_RELEASED_HEADING` cannot match (it requires
+    a numeric version).
+    """
+    m = _RELEASED_HEADING.search(changelog_text)
+    if not m:
+        return None, []
+    # Start after the END OF THE HEADING LINE, not the end of the match: the
+    # regex stops at `]`, so `## [1.1.2] - 2026-08-31` would otherwise donate
+    # " - 2026-08-31" to the content list, and a DATE edit would then read as an
+    # added entry (a false pass). Caught by
+    # test_newest_released_section_skips_unreleased.
+    line_end = changelog_text.find("\n", m.end())
+    lines = changelog_text[line_end + 1 :].splitlines() if line_end != -1 else []
+    out: list[str] = []
+    for line in lines:
+        if _ANY_H2_RE.match(line):
+            break
+        if line.strip():
+            out.append(line.rstrip())
+    return m.group("version"), out
+
+
+def version_is_published(repo_root: Path, version: str) -> bool:
+    """Has this version been tagged? The tag is placed AT publish time.
+
+    `docs/publication_guide.md` puts the tag on the published commit, so an
+    untagged version whose section already exists is a release IN FLIGHT: the
+    transaction has landed on main but nothing has been uploaded yet.
+    """
+    try:
+        out = git(repo_root, "tag", "--list", f"v{version}")
+    except GitUnavailable:
+        return True  # cannot tell -> assume published, i.e. take the STRICTER path
+    return bool(out.strip())
+
+
 def violations(repo_root: Path, base: str) -> list[str]:
     changed = git(repo_root, "diff", "--name-only", f"{base}...HEAD").split("\n")
     changed = [c.strip() for c in changed if c.strip()]
@@ -118,12 +160,33 @@ def violations(repo_root: Path, base: str) -> list[str]:
     if len(after_lines) > len(before_lines):
         return []
 
+    # (c) the release is IN FLIGHT: the transaction has landed on main (pyproject
+    #     already carries the new version and its CHANGELOG section exists) but
+    #     nothing has been published yet, so no tag exists. A src/ change merged
+    #     in that window SHIPS IN THAT RELEASE, and its entry belongs under that
+    #     version — not under [Unreleased], which would understate the release.
+    #
+    #     This state was missing from the first cut of this lint, and the lint
+    #     caught it by failing a branch that was doing the right thing (PR #579,
+    #     2026-08-31): 1.1.2's cut was on main, 1.1.2 was not yet on PyPI, and a
+    #     docstring fix that ships in the 1.1.2 wheel had its entry correctly
+    #     filed under [1.1.2]. The tag is the discriminator because the guide
+    #     places it at publish time — once `v<version>` exists, later src/
+    #     changes belong to the NEXT release and (b) applies again.
+    released_version, released_after = newest_released_section(head_text)
+    if released_version and _version_of((repo_root / PYPROJECT).read_text(encoding="utf-8")) == released_version:
+        if not version_is_published(repo_root, released_version):
+            _, released_before = newest_released_section(base_text)
+            if len(released_after) > len(released_before):
+                return []
+
     shown = ", ".join(src_changed[:5]) + (f" (+{len(src_changed) - 5} more)" if len(src_changed) > 5 else "")
     return [
         f"{len(src_changed)} file(s) under src/ changed ({shown}) but this branch neither "
         f"bumps the version in {PYPROJECT} nor adds a line under '## [Unreleased]' in "
         f"{CHANGELOG}. Per the versioning policy main accumulates under [Unreleased] between "
-        f"releases — add the entry, or make this a release transaction. "
+        f"releases — add the entry, or make this a release transaction. If a release is IN "
+        f"FLIGHT (its section exists, its tag does not), add the line under that version instead. "
         f"([Unreleased] content lines: base {len(before_lines)} -> head {len(after_lines)})"
     ]
 

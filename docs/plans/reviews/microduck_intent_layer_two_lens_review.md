@@ -79,7 +79,7 @@ dispatch (and does set the flag). Further, `MAXIM_OPERANT_ONLY_CREDIT` nulls **o
 cluster-reward term; `learn_success`, the `Valence.POSITIVE` causal link and `credit_goal(+1.0)`
 fire regardless — so the bound is over the cluster-bias surface, not the substrate as a whole.
 **Rev 2:** §5.2 carries the per-experiment table and the narrower bound; the same correction was
-applied to the D51 ledger row, which rev 1 had filed with the wrong reasoning.
+applied to the D53 ledger row, which rev 1 had filed with the wrong reasoning.
 
 **S2 — [Architecture] §5.2 routed an unexecutable-intent signal into a *harm* channel and would
 have inverted the bug it fixed.** `side_effects["embodiment_failures"]` means the entity's own
@@ -141,7 +141,7 @@ proprioceptive summary.
 **S10 — [Architecture] The defect should be filed now, not deferred.** Ledger rule 1 reserves the
 plan's open-questions section for *suspicions*; this one is verified against two named symbols, so
 the plan doc was the wrong home by the ledger's own rule — and "file after #577" named no trigger
-and no owner. **Rev 2:** filed as **D51**, deliberately skipping D49/D50, which the Executor lens
+and no owner. **Rev 2:** filed as **D53**, deliberately skipping D49/D50, which the Executor lens
 confirmed is exactly where #577 moves the duplicated documentation-truth rows.
 
 **S11 — [Architecture] No revive/schedule trigger**, though the doc describes itself as unscheduled

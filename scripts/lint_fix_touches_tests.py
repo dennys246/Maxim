@@ -95,7 +95,26 @@ def violations(
         if not touches_src or touches_tests:
             continue
         body = git(cwd, "log", "-1", "--format=%b", sha)
-        m = OPT_OUT_TRAILER.search(body) or OPT_OUT_INLINE.search(body)
+        # The PR title/body counts here too. The docstring above has always
+        # promised "a `No-Tests-Reason:` trailer in the commit body, OR
+        # `[no-tests: <why>]` in the PR title/body" — but the marker was only
+        # ever read for the PR-title population, so the documented escape did
+        # not work for the population that actually fails (found 2026-08-31,
+        # PR #579). A promised escape that silently does not apply is worse
+        # than no escape: the author reads the advice, follows it, and the gate
+        # stays red with the same message.
+        #
+        # This does NOT weaken the rule. The marker still demands a written
+        # reason and is still echoed to stdout and $GITHUB_STEP_SUMMARY, and the
+        # PR body is a REVIEWED artifact — more visible to a reviewer than a
+        # trailer buried in one commit of a stack. House convention stands: this
+        # lint catches forgetting, not evasion.
+        m = (
+            OPT_OUT_TRAILER.search(body)
+            or OPT_OUT_INLINE.search(body)
+            or OPT_OUT_INLINE.search(pr_title or "")
+            or OPT_OUT_INLINE.search(pr_body)
+        )
         if m:
             _note(f"{sha[:8]} `{subject[:60]}` touches src/ without tests/ — declared: {m.group(1).strip()}")
             continue

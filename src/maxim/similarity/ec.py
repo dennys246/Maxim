@@ -17,9 +17,17 @@ only, never an isomorphism.
 
 The algorithm is cosine-threshold clustering over embedding centroids: an
 exact same-modality scan, O(Nd). It does NOT implement DG/CA3 attractor
-dynamics, grid cells, or theta-phase coding. Note the two surfaces do not
-share a mechanism — ``find_similar`` (situation signatures) is LSH-backed and
-approximate; ``pattern_complete_or_separate`` is the exact scan.
+dynamics, grid cells, or theta-phase coding. Note the two surfaces do not share a mechanism, but
+NEITHER is sublinear in production. ``pattern_complete_or_separate`` is the exact
+scan above, by design. ``find_similar`` (situation signatures) is LSH-STRUCTURED
+but DEGENERATE: ``LSHIndex`` buckets solely on ``signature.semantic_hash``,
+which stays ``(0,)*8`` unless a ``SemanticLSH`` hasher is installed, and no
+production path installs one — so every item lands in a single bucket and the
+query is a linear scan. Its four tables are byte-identical for the same
+reason. Measured 2026-08-30: 0.3ms / 3.0ms / 12.6ms at N=100 / 1,000 / 4,000,
+one bucket holding 100% at every size. See bugs ledger D51 — this is a
+real defect, not a design choice, and it is called live from
+``nac.py::distribute_reward``.
 """
 
 from __future__ import annotations

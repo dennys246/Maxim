@@ -1,7 +1,8 @@
 # Maxim Plans
 
-Current version: **1.1.1** (`pyproject.toml` + `src/maxim/__init__.py`; PyPI: https://pypi.org/project/pymaxim/ — `main` is ahead of PyPI by policy, CLAUDE.md §Versioning; checked by `scripts/lint_version_sync.py`). 1.1.1 = the **"Enforcement"** release (roadmap item 16.1–16.9). The 1.1 "Sensorimotor" line: step 5b DONE; items 17 (Exp 52) + 19 (Exp 53b) DONE; item 18 → 1.1.2.
+Current version: **1.1.2** (`pyproject.toml` + `src/maxim/__init__.py`; PyPI: https://pypi.org/project/pymaxim/ — `main` is ahead of PyPI by policy, CLAUDE.md §Versioning; checked by `scripts/lint_version_sync.py`). 1.1.1 = the **"Enforcement"** release (roadmap item 16.1–16.9). The 1.1 "Sensorimotor" line: step 5b DONE; items 17 (Exp 52) + 19 (Exp 53b) DONE; item 18 → 1.1.2.
 Now: **1.1.x follow-through** (items 1–16 in [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) —
+- [roadmap_1_3_path.md](roadmap_1_3_path.md) — **the 1.3 sequencing plan** (2026-09-01): Stage A duck baseline → Stage B engine seam / robot factory → Stage C perception fabric. Orders the three workstreams that independently point at 1.3; does not restate the designs it orders.
 first up: Exp 54 Phase B/C on the robot — Phase A GRADUATED 2026-08-27 on the Reachy-native nursery body — then the loudness/onset-salience design and Exp 44b's
 confirmatory campaign) **and the gates before 1.2 Oasis + Hivemind** (gates 1–8 there),
 whose motivating case study is [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md).
