@@ -59,6 +59,27 @@ For this repo the expected set on a PR is: `unit-tests`, `lint`,
 install smoke` correctly show `skipping` on PRs — that is their `if:` condition,
 not an absence.
 
+## Three variants, all of which look like a healthy PR (2026-08-31)
+
+The 1.1.2 stack hit all three in one day. They are distinguishable, and the
+distinguishing question is always *did the mechanism run?* — never *is anything
+red?*
+
+| symptom | cause | fix |
+|---|---|---|
+| 3 green checks, no `unit-tests` in the list | PR is `CONFLICTING`; no merge commit can be computed, so `pull_request` workflows cannot run. CodeQL uses a different trigger and runs anyway | resolve the conflict and push. **Reopening does not help** |
+| **no checks at all** | the PR was opened against a sibling branch, so `branches: [main]` filtered it out; retargeting to main fires `edited`, not in the default `[opened, synchronize, reopened]` | close + reopen (fires `reopened`), or push. **Fixed at source 2026-08-31** by adding `edited` to `types:` |
+| all required checks green, merge still **BLOCKED** | a repository RULESET — separate from classic branch protection — requires a CodeQL analysis (`alerts_threshold: all`), and CodeQL's default setup wants a **push**; a reopen does not give it one | push a commit (an empty one is enough) |
+
+The third deserves dwelling on. `gh api .../branches/main/protection` reported
+required contexts `["unit-tests", "lint"]` and both were green, yet
+`mergeStateStatus` was `BLOCKED`. **Classic branch protection and rulesets are two
+different surfaces**, and `gh pr checks` shows neither the ruleset nor the absent
+CodeQL analysis — `gh api repos/<o>/<r>/rulesets` is where the answer lives. The
+temptation at that moment is to merge from the CLI to route around a UI that
+"won't let you"; that would have merged code with no code-scanning analysis, on
+the reasoning that the guard's silence meant approval.
+
 ## Generalisation
 
 This is the same family as the vacuous-guard findings the 1.1.2 review round

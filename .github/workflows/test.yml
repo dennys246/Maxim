@@ -5,6 +5,26 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # `edited` is here for ONE reason: retargeting a PR's base branch.
+    #
+    # The default activity set is [opened, synchronize, reopened]. Changing a
+    # PR's base fires `edited`, which is in none of them — so on 2026-08-31 the
+    # 1.1.2 stack sat with THREE open PRs and zero CI runs, and the PR pages
+    # showed no failing checks because there were no checks at all. An absent
+    # check reads exactly like a passing one (docs/lessons/green-pr-with-no-tests-run.md).
+    # A PR created against a sibling branch is filtered out by `branches: [main]`
+    # at open time, and retargeting it to main never re-triggers; the only
+    # workarounds were close+reopen or an empty commit.
+    #
+    # KNOWN COST, accepted deliberately: `edited` also fires on title and body
+    # edits, so those now cost a CI run. The `concurrency` block below cancels
+    # in-progress PR runs, so a burst of edits collapses to one. GitHub offers
+    # no narrower type — there is no `base_changed`. The alternative is a
+    # per-job `if: github.event.action != 'edited' || github.event.changes.base`
+    # guard, which is exact but must be repeated on every job and silently
+    # missed by the next one added; that is the failure mode the workflow-level
+    # `permissions` block below was written to avoid, so it is not repeated here.
+    types: [opened, synchronize, reopened, edited]
   # Lets the slow aarch64 real-install job be run on demand (it is skipped on
   # PRs). Without this its `github.event_name == 'workflow_dispatch'` condition
   # could never fire, so the job would only ever execute post-merge on main.
