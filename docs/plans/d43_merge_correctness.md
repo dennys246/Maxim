@@ -189,6 +189,48 @@ because the blast radius is small, not because the migration hook covers it.
 
 ---
 
+## 5a. Gate 7 — recommendation
+
+**Ship (a) the body namespace now, and emit the capability key alongside it in the same commit.**
+
+**Gate 7 is not on the critical path**, which is the finding that frees this decision. D43's
+live axes are `cluster_id` and `agent_id`; the tool-signature barrier does **not** fire for two
+agents on one body — exactly D44's configuration. So choose on long-run merit, not urgency.
+
+**(a) costs about a day and migrates nothing.** Two manifest fields (`body_ref`,
+`affordance_namespace`), a refusal branch in the ingestion adapter, one `BUNDLE_SCHEMA_VERSION`
+bump with a migration that stamps legacy manifests. It converts a *silent* cross-body miss into
+a *loud* refusal — this codebase's stated rule for exactly this shape. It does not make
+cross-body sharing work; it makes its absence honest.
+
+**(b) is right long-run but its cost lands in the wrong place.** Seventeen `f"tool:{...}"` sites
+bypass `build_tool_signature` despite its docstring claiming the monopoly — two of them on the
+hot readout path (`nac.py:2013`, `nac.py:2227`). **Miss one and the write key and the read key
+diverge into a silent zero indistinguishable from D43 itself.** Plus: the `listen` affordance
+sits under different modulators on different bodies (`head` vs `capture`), so `(modulator,
+affordance)` is not yet a shared vocabulary; `_IDENTIFIER_TOKEN` in `bundle.py` excludes `:` and
+`/`, so a `skill:orient:turn_left` shape would be silently dropped by the scrub; and migration
+touches the **20 `53_agents` files** — the repo's only shipped evidence bundle, SHA-manifested,
+behind EARNED rows. That drags a namespace refactor into the provenance discipline that Exp
+53/53b already cost a grade over.
+
+**The addition neither option includes, and the reason to prefer this over plain (a):** have
+`compose_bundle` write `(modulator, affordance)` as a **second field** beside the body-prefixed
+signature. Bundles then carry both keys from day one, so (b) later becomes a **reader-side
+change with no migration** — new bundles already hold the data, and old ones get (a)'s honest
+refusal. That is cheap insurance against precisely the cost that makes (b) unattractive today,
+and it is the half of the decision `register_bundle_migration` cannot cover (§5: it migrates the
+manifest only, never the keyed payload).
+
+**Schedule (b) explicitly rather than deferring it again.** It now has **three** constituencies:
+sharing (this gate), the microduck's portability, and the `bodies/reachy_mini_infant.yaml`
+name-lie — a workaround already being paid as interest, with a documented collision hazard. Three
+consumers is past this project's own "one silent-failure miss in a critical path → consider
+structural enforcement" line.
+
+**One correction that applies whichever way this goes:** the capability key is `(modulator,
+affordance)`, **not** `MotorStep.sem_key`'s full triple. See §5.
+
 ## 6. D44 — what actually satisfies it
 
 **Independence, mechanically:** distinct `agent_id`; **a separate `EntorhinalCortex` +
@@ -248,7 +290,8 @@ superadditive. Better than the script's saturated `12×25` defaults.
 ## 8. Sequence
 
 1. Correct the two roadmap sentences (§5) — before anyone implements.
-2. Decide gate 7: (a) body namespace, or (b) capability namespace. **(b) now has three
+2. Decide gate 7 — **recommendation in §5a: (a) now, emitting the capability key alongside,
+   with (b) scheduled.** **(b) has three
    constituencies** — sharing, the microduck's portability, and the `reachy_mini_infant`
    name-lie already paid as interest — which is past this project's own "consider structural
    enforcement" line. But it is **not** what blocks D44.

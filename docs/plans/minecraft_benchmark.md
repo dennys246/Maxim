@@ -289,6 +289,55 @@ Note the crossover: the plain sum has the **better** SNR at small N (93 vs 18) a
 around N≈30–50. So sharpening is the right choice for a many-sensor body and the wrong one for
 a six-drive infant — it is a trade, not a free win.
 
+**Distributional moments help DETECTION and hurt DISCRIMINATION.** Adding permutation-invariant
+shape statistics of the sensor vector (mean, sd, skew, excess kurtosis, max-deviation) to the
+embedding gives an N-*independent* "something changed" signal — at equal weight, cos after a
+single-sensor spike is **0.63 at N=6 and 0.27 at N=100**, against identity-only's 0.93 → 0.995.
+That is the one thing measured here that does not dilute.
+
+But it is blind to *which* sensor moved, by construction:
+
+| | detection (rest vs one spike) | discrimination (sensor A spike vs sensor B spike) |
+|---|---|---|
+| identity only, N=100 | 0.995 | 0.990 |
+| + moments (w=1.0), N=100 | **0.270** | **0.995** |
+| moments only, N=100 | −0.503 | **0.999** |
+
+**Discrimination is the real ceiling, and moments make it worse at every weight.** No choice of
+moments fixes this — permutation invariance is what a moment *is*. And note identity-only is
+already at 0.990 discrimination at N=100: two entirely different sensors spiking are 99% alike
+*before* any moment block. For learning "turn_left helps when the sound is left," discrimination
+is the whole game, so a moment-heavy encoding would be actively harmful.
+
+**The structural fix is to stop compressing N sensors into ONE cluster id.** Splitting 50 sensors
+across G per-type channels puts each channel back in the small-N regime:
+
+| channels G | sensors/channel | detection | discrimination |
+|---|---|---|---|
+| 1 | 50 | 0.991 | 0.980 |
+| 2 | 25 | 0.979 | 0.955 |
+| 5 | 10 | 0.949 | 0.897 |
+| 10 | 5 | 0.909 | **0.831** |
+
+Grouping alone does **not** clear the fixed 0.85 bar — it is grouping **and** the scaled
+threshold, not either alone.
+
+**This rides existing machinery and is the natural completion of a half-written intent.**
+`_SUBSTRATE_CHANNELS` is already a tuple of `ModalityChannel(tag, reader, ranger)`, and
+`_EXTEROCEPTIVE_ROOT_SENSORS = ("azimuth",)` carries the comment *"Kept a named set so a future
+exteroceptive sensor is one entry, not a code change at the read site."* The missing piece is
+that **a sensor cannot declare its own modality**: the YAML schema accepts `unit`, `range`,
+`initial`, `drive` and nothing else, so channel membership lives in hardcoded name tuples rather
+than in the body. Adding a `modality:` field to the sensor schema and deriving channels from it
+would: recover discrimination by grouping; remove the hardcoded `("azimuth",)` that 1.1.4 has to
+generalise anyway; and make "does this body have audio?" a property of the body — which is where
+[roadmap_1_3_path.md](roadmap_1_3_path.md) §Stage B already says it belongs.
+
+**Cost, and it is the known one:** `recommend_action` sums `cluster_reward_bias` additively
+across the active channel set, so the term's range grows with channel count (±2 today, ±5 at
+G=5) while `min_confidence` stays 0.3. Every added channel is a selection-dynamics
+recalibration, and nothing in CI catches it.
+
 **A measurement caution, recorded because it nearly produced a false result here.** A first
 pass appeared to show deviation- and sharpened-encoding achieving perfect separation at every
 N. It was an artifact: with every sensor resting at exactly 0.5, both encodings produce the
