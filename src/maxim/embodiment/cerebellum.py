@@ -28,6 +28,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, NamedTuple
 
+from maxim.utils.logging import log_swallowed_exception
 from maxim.embodiment.sem import Entity
 
 log = logging.getLogger(__name__)
@@ -393,16 +394,25 @@ class Cerebellum:
         try:
             from maxim.simulation.sim_logger import sim_cerebellum_train
 
-            # key is a NamedTuple with entity, modulator, affordance, params_hash, range_hash
+            # ModelKey fields are (entity_path, modulator, affordance,
+            # param_bucket). This block read `key.entity` against a comment
+            # describing a five-field key that never existed; the resulting
+            # AttributeError was eaten by the bare `except Exception: pass`
+            # below, so sim_cerebellum_train had NEVER fired. Found 2026-09-01
+            # alongside the caller-side signature break in tool_bridge — the
+            # type drifted and two swallows hid both halves.
             max_error = max(abs(v) for v in errors.values()) if errors else 0.0
             sim_cerebellum_train(
-                entity=str(key.entity),
+                entity=str(key.entity_path),
                 affordance=str(key.affordance),
                 pred_error=max_error,
                 confidence=model.confidence,
             )
         except Exception:
-            pass
+            # Telemetry must never break training, but it must not vanish
+            # either — a bare `pass` here is what let the AttributeError above
+            # live for months (CLAUDE.md: no NEW silent swallows).
+            log_swallowed_exception()
 
         return errors
 

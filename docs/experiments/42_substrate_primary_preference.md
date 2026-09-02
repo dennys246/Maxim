@@ -161,6 +161,20 @@ Cleanest available test of "the unmasked substrate drives adaptive behavior": (a
 
 Frozen run: 10 seeds/arm × 2 counterbalanced arms, substrate-primary, smollm narrator, 40 turns, `cost=$0`, git `0d6ca70f`. Treatment = exploration + drive-gating ON; ablation = drive-gating OFF (`MAXIM_SIM_DRIVE_GATE_ENABLED=0`), all else equal.
 
+**Attribution measured 2026-09-01 (was loose).** This section credits the result to "B8
+delta-attribution + the pre-existing drive-affinity heuristic". The heuristic is
+`decisions/nac.py::_DRIVE_TOOL_AFFINITIES`, a hand-written English word list inside
+`recommend_action` (`cold`/`thermal` → `warm`, `fire`, `blanket`, `huddle`). Measured directly
+across this experiment's actual tool set at drive 0.9: **every warmth tool receives +0.630 —
+safe and harm alike — so Δ = 0.000 across all four matched safe/harm pairs.** The table decides
+warming-vs-not-warming (+0.63 against +0.00 for `sense_presence`/`examine`/`move`); it is
+symmetric between twins that share a keyword and therefore **cannot express the safe-vs-harm
+preference `safe_pref` measures**. The discrimination is carried by B8 plus learned cluster
+bias; the affinity table only puts warming into contention at cold-start. Measured because the
+attribution was ambiguous and 1.2 builds on this row. (For a body whose tools are NOT twins —
+e.g. Minecraft, where `eat`/`drink`/`sleep`/`flee`/`hide`/`look`/`heal`/`fire` are all in the
+table — the same mechanism WOULD shape choice between dissimilar actions, pre-installed.)
+
 **Headline: GRADUATE #6, and the gating-OFF ablation graduates *identically* → drive-gating (B7) is NOT load-bearing.** The pre-registered "discrimination within motivated attention" caveat is refuted: the substrate discriminates safe from harmful from its own clean credit assignment (B8 delta-attribution) + the pre-existing drive-affinity heuristic. Gating changed only warming *volume* (treatment Arm B spikes to 106 contacts on some seeds; the ablation sits tight at ~56–64 — the toggle demonstrably fired), not the discrimination. → B7 marked `Dormant` (did not earn behavioral weight); **B8 is the mechanism that carries #6**.
 
 ### Treatment (gating ON) — GRADUATE (exit 0)

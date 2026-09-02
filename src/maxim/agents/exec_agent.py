@@ -46,6 +46,8 @@ from maxim.prompts.prompt_profiles import ExecutivePrompt, load_prompt_profile
 from maxim.agents.memory_agent import MemoryAgent
 from maxim.decisions.significance import CycleContext, SignificanceConfig, SignificanceWeightLearner
 from maxim.utils.logging import warn
+
+logger = logging.getLogger(__name__)
 from maxim.utils.prompts import get_agent_prompt
 from maxim.utils.structured_logging import log_structured
 
@@ -695,9 +697,18 @@ class ExecAgent(Agent):
         nac = self._nac
         if nac is not None:
             try:
-                predicted = getattr(nac, "last_predicted_valence", 0.5)
-                actual = 1.0 if completed.success else 0.0
-                rpe_raw = abs(predicted - actual)
+                # Real Rescorla-Wagner prediction error, taken from the causal
+                # link that just updated (`CausalLink.update_prediction_rw`
+                # computes `last_rpe = abs(R - V)`; `NAc.last_rpe` exposes it).
+                #
+                # Until 2026-09-01 this read
+                # `getattr(nac, "last_predicted_valence", 0.5)` — an attribute
+                # that has never existed anywhere in the repo — so `rpe_raw`
+                # was a constant for every outcome and "surprise makes a memory
+                # worth keeping" had never actually run (D60). Nothing looked
+                # broken because the significance weight-learner correctly
+                # learns to zero a constant heuristic out.
+                rpe_raw = float(nac.last_rpe)
             except Exception:
                 pass
 

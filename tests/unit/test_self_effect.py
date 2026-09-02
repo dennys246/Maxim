@@ -422,3 +422,84 @@ class TestSelfEffectFailureCascade:
         assert not thermal_failures, (
             f"warm_pad touch (arms.thermal=0.3, within band 0.5) should not fire drive pain; got {thermal_failures!r}"
         )
+
+
+class TestRequiresSilentNoOp:
+    """A `requires` key that can never gate must say so at parse time.
+
+    `SpecModulator.check_affordance_requires` resolves only the literal
+    "integrity" and the modulator's OWN sub-sensors (`self.vital_metrics`).
+    Any other key — an entity-level sensor being the common case — matches
+    neither branch and falls through to `return True, ""`, so the
+    precondition silently never gates. `SpecModulator` holds only
+    `_entity_name` (a string), so it cannot reach entity sensors at all.
+
+    Found 2026-09-01 during the Minecraft embodiment dive, where
+    "mine requires a pickaxe" / "eat requires food in inventory" are exactly
+    the shape that does not work. `items/cradle_food.yaml`'s
+    `requires: {portions: 1}` is the only such key in the bundled library and
+    is a live no-op — eating is unlimited.
+
+    Deliberately surfaced, NOT fixed: making entity-level requires actually
+    gate would make feeding finite in the cradle apparatus, and Exp 52 was
+    mid-run. The warning removes the silence; the semantics decision is filed.
+    """
+
+    def test_unresolvable_requires_key_warns(self, caplog):
+        from maxim.embodiment.spec import _parse_entity
+
+        with caplog.at_level("WARNING"):
+            _parse_entity(
+                {
+                    "name": "food",
+                    "entity_type": "item",
+                    "sensors": {"portions": {"unit": "count", "range": [0, 5], "initial": 5.0}},
+                    "modulators": {
+                        "nutrition": {
+                            "abstract": True,
+                            "affordances": {"eat": {"params": {}, "requires": {"portions": 1}}},
+                        }
+                    },
+                }
+            )
+        msgs = " ".join(r.getMessage() for r in caplog.records)
+        assert "NEVER gate" in msgs
+        assert "portions" in msgs
+
+    def test_integrity_requires_is_silent(self, caplog):
+        """The one key that DOES resolve must not warn."""
+        from maxim.embodiment.spec import _parse_entity
+
+        with caplog.at_level("WARNING"):
+            _parse_entity(
+                {
+                    "name": "wing",
+                    "entity_type": "item",
+                    "modulators": {
+                        "flight": {
+                            "abstract": True,
+                            "affordances": {"fly": {"params": {}, "requires": {"integrity": 0.3}}},
+                        }
+                    },
+                }
+            )
+        assert "NEVER gate" not in " ".join(r.getMessage() for r in caplog.records)
+
+    def test_own_sub_sensor_requires_is_silent(self, caplog):
+        """A modulator's own sub-sensor resolves, so it must not warn."""
+        from maxim.embodiment.spec import _parse_entity
+
+        with caplog.at_level("WARNING"):
+            _parse_entity(
+                {
+                    "name": "torch",
+                    "entity_type": "item",
+                    "modulators": {
+                        "burn": {
+                            "sensors": {"fuel": {"unit": "ratio", "range": [0, 1], "initial": 1.0}},
+                            "affordances": {"light": {"params": {}, "requires": {"fuel": 0.2}}},
+                        }
+                    },
+                }
+            )
+        assert "NEVER gate" not in " ".join(r.getMessage() for r in caplog.records)

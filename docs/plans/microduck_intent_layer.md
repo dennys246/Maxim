@@ -30,10 +30,15 @@ unknown (§1.1).
 path). **The slot does not change** — see §7, where the constraints turn out to *harden* the
 1.3 decision rather than argue against it.
 
-**Schedule trigger:** §8 item 1 answered (does the duck have a mic array?) → write the
-pre-registration. The MuJoCo sim backend is unblocked independently of hardware but is **not
-scheduled**; it competes for priority against the 1.3 fabric. No trigger fires from this document
-alone.
+**Schedule trigger (revised 2026-09-01):** the mic-array question no longer gates this
+document. The operator has decided the duck's value is **locomotion**, with the second-body
+pressure on the robot abstraction as a secondary benefit — so the duck is a new behaviour class
+either way and the answer to §8 item 1 no longer selects between two experiments (§1.1). What
+now gates the pre-registration is the **valence design**: §8 items 5 and 6, neither of which has
+an answer, and §5's finding that the action-selection surface is sign-only. The MuJoCo sim
+backend rises accordingly — it is the apparatus those two items need — but still competes for
+priority against the 1.3 fabric, and still ranks behind D43 (which blocks 1.2's entire claim)
+and the `Maxim.mini` break-out (§7 item 4). No trigger fires from this document alone.
 
 **Owns (genuinely new, after the front-gate below):** the duck's **reduced proprioceptive
 summary** and the state-bin design that goes with it (§5.4, §8 item 5). That is all. Rev 1's
@@ -106,11 +111,11 @@ The 2026-08-30 scoping recorded three unknowns. Two are now closed:
 
 | 2026-08-30 hedge | Status after the constraints |
 |---|---|
-| "its SDK … unknown here" | **Closed.** Two backends, both specified: `infer_policy.py` over CPU MuJoCo, and `robotd` speaking NDJSON JSON-RPC over wifi. |
+| "its SDK … unknown here" | **Closed, with a transport correction (2026-09-01).** Two backends: `infer_policy.py` over CPU MuJoCo, and `robotd` speaking JSON-RPC 2.0 with NDJSON framing — over **unix sockets, not wifi** (on-robot only; the remote front door is `mediad`'s WebRTC gateway). The off-board tier of constraint 3 needs a declared remote path and it is not `robotd`. §1.1. |
 | "its kinematics … unknown here" | **Closed enough to design against.** We never need joint-level kinematics: arbitration is at policy granularity, and all policies share one 61-dim observation contract. This is a *smaller* integration surface than the Reachy's, not a larger one. |
-| "The decisive unknown is **directional audio**" | **NOT closed — and the silence is informative.** §1.1. |
+| "The decisive unknown is **directional audio**" | **Closed 2026-09-01, and superseded.** Vendor docs: mics are present but sit in `mediad`'s telepresence pipeline with no array/beamforming/DoA documented, so **presence-only**. Directional audio is no longer the decisive unknown — the **valence design** is (§1.1, §5, §8 items 5–6). |
 
-### 1.1 Audio is still the decisive unknown, and the constraint list argues against it
+### 1.1 Audio: the mics exist, the direction does not — and it is no longer the decisive unknown
 
 The constraints enumerate the duck's sensing twice — once as the observation contract (48
 proprioception + command channels) and once as the reward sources (pose, contacts, fall state,
@@ -127,9 +132,57 @@ a port of the orient result onto a second body; it is a **new behaviour class on
 modality** — proprioceptive/locomotor rather than auditory — and it needs its own
 pre-registered experiment to earn anything.
 
-**Decision owed (operator):** does the duck have a microphone array, and if so does it give
-*direction* or only presence? The answer selects between two very different first experiments,
-and it is the single highest-value fact to establish before any code is written. See §8.
+**Decision taken (operator, 2026-09-01) — this is no longer a fork.** The duck's value is
+**locomotion**; the second-body pressure on the robot abstraction is a stated secondary benefit.
+The duck is therefore a new behaviour class *regardless* of the audio answer, so the mic-array
+question is demoted from "the single highest-value fact" to a corroborating nice-to-have: if an
+array turns out to be present AND directional, the duck may additionally carry a cheap
+replication of the orient line; if not, nothing about the locomotion experiment changes.
+
+**Answered 2026-09-01 from the vendor's own documentation — and the inference above was
+WRONG in its premise, right in its conclusion.** The duck is Pollen Robotics' Microduck
+(`github.com/pollen-robotics/microduck`) — the same vendor as the Reachy, which is why `robotd`
+appears in the constraint list. Findings:
+
+- **Microphones are PRESENT.** The published spec is "15 motors, a camera, an 8×8 ToF LiDAR,
+  two IMUs, microphones, a speaker, NFC, Wi-Fi, Bluetooth, and a beak-like gripper." So the
+  two-omissions inference was reading scope as absence — exactly the hedge §1.1 itself flagged
+  ("the lists are scoped to control and reward"). Recorded because a wrong premise that reaches
+  a right conclusion is the kind of thing that gets cited later as if the reasoning held.
+- **There is no evidence of an ARRAY, and good evidence against directional audio.** The
+  architecture doc places audio in the **media pipeline**, owned by `mediad` alongside the
+  camera: "audio track(s) ── mic + speaker (two-way for **telepresence**)". It "does not specify
+  microphone count, array configuration, beamforming, or directional audio capabilities." Every
+  audio feature in the robot cheatsheet is OUTPUT (`quack`, `chorale`, `theremin`, per-robot
+  voice bank) except one input: `audio.pet_detect` — head-scratch detection. That is an **event,
+  not a bearing**.
+- **Audio leaves the robot as a WebRTC track**, not as a JSON-RPC sensor stream — a telepresence
+  path, not a percept path.
+
+**Verdict: presence-only, on documentation.** The duck does not inherit the orient line, which
+confirms the locomotion decision on evidence rather than on silence.
+
+**Standard-of-evidence caveat, stated because this project has a rule about it:** the above is
+*documented*, not *measured*. Vendor docs are a claim. It is good enough to design against and
+NOT good enough to cite as a characterisation — Stage A still measures it, and that is one line
+of an instrument pass, not a blocking prerequisite.
+
+**Two corrections owed to this document's own constraint list** (§Front-gate table): the SDK row
+says "`robotd` speaking NDJSON JSON-RPC over **wifi**." The framing is right and the transport is
+not — the control plane is JSON-RPC 2.0 over **unix sockets** (NDJSON framing), i.e. on-robot
+only; remote access goes through `mediad`'s WebRTC gateway (`:8080` console, `:8443` signalling).
+That matters directly for constraint 3's off-board tier: a 1–5 Hz off-board substrate needs a
+declared remote path, and it is not `robotd`. Separately, `robotctl monitor --json --hz 50`
+already streams joint angles, IMU, loop rate and health as line-delimited JSON — a ready-made
+Stage A instrument that costs nothing to build.
+
+**What replaces it as the decisive unknown:** the valence design. Every earned result in this
+project is *relief*-shaped (a drive moved toward comfort, via `drive_comfort_progress`).
+Locomotion has no drive to relieve, so §5's "positive valence must be synthesized" and §8 item 6's
+unwritten task-completion teacher are now the pivotal questions, and §5.1's sign-only collapse is
+the blocking engineering constraint — graded quality (how far, how stable, stumble vs hard fall)
+is exactly what a locomotion signal is made of, and exactly what the current surface discards.
+See §8.
 
 ---
 
@@ -728,16 +781,38 @@ against the 1.3 fabric."
 
 ## 8. Open questions and decisions owed
 
-### Owed by the operator (blocking design, not implementation)
+### Owed by the operator (design, not implementation)
 
 1. **Does the duck have a microphone array, and does it give direction or only presence?**
-   The single highest-value fact. It selects between "the duck replicates the orient line on a
-   second body" and "the duck is a new proprioceptive/locomotor behaviour class needing its own
-   pre-registration." §1.1. Everything downstream of the experiment design waits on this.
+   **DEMOTED 2026-09-01 — no longer blocking.** Until then this read "the single
+   highest-value fact," on the grounds that it selected between "the duck replicates the orient
+   line on a second body" and "a new proprioceptive/locomotor behaviour class needing its own
+   pre-registration" (§1.1). It no longer selects anything: The operator has
+   decided the duck's value is locomotion, so the duck is a new behaviour class either way and
+   nothing downstream waits on this. Folded into Stage A's instrument-characterisation pass
+   ([roadmap_1_3_path.md](roadmap_1_3_path.md) §Stage A) rather than gating it.
+
+   **Answered from vendor documentation the same day (§1.1): mics present, direction absent.**
+   Audio lives in `mediad`'s telepresence pipeline (WebRTC track, "mic + speaker"), with no
+   array, beamforming or DoA documented; the only audio INPUT feature is `audio.pet_detect`
+   (head-scratch), an event rather than a bearing. So: **presence-only**, the duck does not
+   inherit the orient line, and the locomotion decision is confirmed on evidence rather than on
+   silence. This is *documented, not measured* — Stage A still confirms it, as one line of an
+   instrument pass.
+
+   Method note worth keeping: the decisive check was NOT the BOM but the **daemon architecture**
+   — which pipeline owns the mic. A mic on a telepresence path answers "can you hear it" and
+   never "where is it," regardless of how many capsules the BOM lists. Direction-vs-presence
+   remains hardware-only if ever revisited, and reuses the Reachy procedure
+   (`scripts/orient_backbone/doa_sweep.py`, `doa_settle.py`, `ear_map.py`); version-match the
+   daemon first, since that skew fails silently.
 2. **What is the first duck claim?** No experiment number is allocated here deliberately (the
-   highest in `docs/experiments/` is 54 as of 2026-08-31). Until the mic-array question (§8, item 1) is answered there is no
-   honest way to write the pre-registration, and the house rule is that gates are frozen before
-   data.
+   highest in `docs/experiments/` is 54 as of 2026-08-31). **Revised 2026-09-01:** this used to
+   wait on item 1; it now waits on items **5 and 6** — the reduced proprioceptive summary and the
+   task-completion teacher — plus a decision on §5.1's sign-only collapse. A locomotion claim
+   needs a reward before it needs a sensor list, and the house rule is that gates are frozen
+   before data. Neither 5 nor 6 has an answer, which is what makes 1.3 a genuinely may-fail
+   release with no earned result to lean on.
 
 ### Owed by 1.1.3, where the duck is the second consumer but does not need to exist
 
@@ -763,6 +838,19 @@ against the 1.3 fabric."
 8. **Does the sim backend get built ahead of hardware, and at what priority against the 1.3
    fabric?** The MuJoCo half has no hardware dependency (§7). It is startable; it is not
    scheduled.
+
+10. **`StreamCapability` can say "has a microphone" and cannot say "gives direction" — and
+    that is exactly the distinction the duck needs.** `StreamCapability.AUDIO_INPUT` and
+    `RobotCapabilities.has_audio()` exist, so the roadmap's rule ("does this body have audio?"
+    belongs in `StreamCapability` as a query, not in a roadmap as an assumption —
+    [roadmap_1_3_path.md](roadmap_1_3_path.md) §Stage B) has a socket. But for a presence-only
+    mic, `has_audio()` returns True while the orient line remains impossible, so the capability
+    would be actively misleading rather than merely incomplete. Answering §8 item 1 today would
+    leave nowhere truthful to record the answer.
+
+    **Independent of the duck, and testable now:** the Reachy is directional and would populate
+    a direction-bearing capability correctly, so this can be added and verified against hardware
+    the project already owns, before any duck exists. Belongs with Stage B's encoding work.
 
 ### A defect this investigation surfaced — FILED
 

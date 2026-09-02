@@ -424,6 +424,36 @@ def _parse_entity(
             params = _parse_params(aff_spec.get("params", {}))
             requires_raw = aff_spec.get("requires", {})
             requires = {k: float(v) for k, v in requires_raw.items()} if requires_raw else {}
+            # A `requires` key that names neither "integrity" nor one of THIS
+            # modulator's own sub-sensors resolves to nothing at check time:
+            # `SpecModulator.check_affordance_requires` tests
+            # `req_name in self.vital_metrics` (the modulator's sub-sensors)
+            # and otherwise falls through to `return True, ""` — the
+            # precondition silently never gates. Entity-level sensors are the
+            # common case that trips this, and `SpecModulator` holds only
+            # `_entity_name` (a string), so it cannot resolve them.
+            #
+            # Surfaced rather than fixed (2026-09-01): making entity-level
+            # requires actually gate is a BEHAVIOUR change to shipped
+            # components — `items/cradle_food.yaml`'s `requires: {portions: 1}`
+            # is the only such key in the bundled library, and enforcing it
+            # would make feeding finite in the cradle apparatus while Exp 52 is
+            # mid-run. Filed for a deliberate decision; the warning means it
+            # can no longer be mistaken for a working precondition.
+            if requires:
+                _mod_sensor_names = set((mod_spec.get("sensors") or {}).keys())
+                _unresolvable = sorted(set(requires) - {"integrity"} - _mod_sensor_names)
+                if _unresolvable:
+                    log.warning(
+                        "affordance %s.%s declares requires %s that will NEVER gate: "
+                        "check_affordance_requires resolves only 'integrity' and this "
+                        "modulator's own sub-sensors %s. Entity-level sensors are not "
+                        "reachable from a modulator. The precondition is a silent no-op.",
+                        mod_name,
+                        aff_name,
+                        _unresolvable,
+                        sorted(_mod_sensor_names) or "(none)",
+                    )
             self_effect_raw = aff_spec.get("self_effect", {})
             self_effect = {k: float(v) for k, v in self_effect_raw.items()} if self_effect_raw else {}
             target_effect_raw = aff_spec.get("target_effect", {})
