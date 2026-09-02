@@ -529,8 +529,13 @@ be dispositioned either way — wire the dead bridge or mark it `Dormant since`.
 > NEGATIVE for a clamped turn that nonetheless achieved its goal.)
 
 Pushed to 1.3 (operator's call, 2026-08-30) rather than gating 1.2 on hardware with an
-uncertain arrival date and unknown sensing. The decisive unknown is
-**directional audio**, and the 2026-08-31 constraints did **not** close it — they enumerate the
+uncertain arrival date and unknown sensing. **Superseded 2026-09-01:** the operator has
+decided the duck's value is **locomotion** (second-body pressure on the robot abstraction being
+a stated secondary benefit), so directional audio is no longer the decisive unknown — the duck
+is a new behaviour class either way, and what gates the pre-registration is now the **valence
+design** ([microduck_intent_layer.md](microduck_intent_layer.md) §1.1, §5, §8 items 5–6). The
+audio reasoning below is retained because it still holds and still argues for the 1.3 slot; it
+simply no longer forks the plan. The 2026-08-31 constraints did **not** close it — they enumerate the
 duck's sensing twice (the observation contract; the reward sources) and **no microphone appears
 in either list**. Every EARNED behavioural result this project has is sound-orienting
 (Exp 45, 52, 53b, 54). A robot without a mic array inherits no analogue of the only validated

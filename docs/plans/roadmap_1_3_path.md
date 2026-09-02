@@ -52,8 +52,17 @@ can be made to do. Stage A is not an attempt to earn a behavioural claim.
 
 **It resolves, empirically:**
 
-- the mic-array question — absent, presence-only, or directional. This is the single
-  highest-value fact and it selects between two very different first experiments (§8 item 1).
+- the mic-array question — absent, presence-only, or directional. **Demoted 2026-09-01 from
+  "the single highest-value fact" to one line of this pass**: the operator has decided the duck's
+  value is locomotion, so the duck is a new behaviour class either way and this no longer selects
+  between two experiments ([microduck_intent_layer.md](microduck_intent_layer.md) §1.1).
+  **Answered from vendor documentation 2026-09-01: mics present, direction absent** — audio sits
+  in `mediad`'s telepresence pipeline with no array/DoA documented, so presence-only
+  ([microduck_intent_layer.md](microduck_intent_layer.md) §1.1). Documented, not measured; Stage A
+  confirms. Note the answer has nowhere truthful to land until `StreamCapability` can distinguish
+  presence from direction (§8 item 10) — and this robot is the case that proves it, since
+  `has_audio()` would return True while the orient line stays impossible. Stage B work, testable
+  against the Reachy today.
 - what the 48 proprioception + command channels actually contain, at what rate, with what
   noise — the input to any later dimensionality decision (§5.4 warns 48 dims would dilute).
 - whether commanded-vs-measured per joint is a usable discrepancy signal, which is the
