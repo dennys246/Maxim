@@ -962,6 +962,121 @@ def ec_merge(
     ).nodes
 
 
+@dataclass(frozen=True)
+class SubstrateMergeResult:
+    """What a full substrate merge produced, plus enough to audit it.
+
+    Runtime-ephemeral (a function return, never persisted and never on a
+    wire), so CC3's forward-compat clause does not apply — same as
+    :class:`ECMergeResult`.
+
+    ``biases_rekeyed`` / ``biases_dropped`` exist because D43's defining
+    property was that the merge reported success while contributing nothing.
+    A caller that prints ``len(cluster_reward_bias)`` is printing
+    ``|left union right|``, which is **maximal exactly when nothing aligns**.
+    These two counts are the honest indicator: a merge that dropped every
+    donor bias says so.
+    """
+
+    nac: dict[str, Any]
+    ec_nodes: dict[str, dict[str, Any]]
+    id_map: dict[str, str]
+    biases_rekeyed: int
+    biases_dropped: int
+
+
+def substrate_merge(
+    *,
+    receiver_nac: dict[str, Any],
+    receiver_ec: dict[str, dict[str, Any]],
+    donor_nac: dict[str, Any],
+    donor_ec: dict[str, dict[str, Any]],
+    receiver_source: str,
+    donor_source: str,
+    receiver_agent_id: str | None = None,
+    **kwargs: Any,
+) -> SubstrateMergeResult:
+    """Merge a donor substrate INTO a receiver — the whole aligned sequence.
+
+    **This is the function a consumer should call.** D43 shipped the three
+    pieces — :func:`ec_merge_aligned`, :func:`rekey_nac_state`,
+    :func:`nac_merge` — and left the composition to call sites, of which
+    there were then zero: every shipped consumer still called bare
+    ``nac_merge``, so the fix was a capability nobody used and a merged want
+    still read out as 0.0 through every real path.
+
+    Order is load-bearing and is the reason this exists as one function
+    rather than a documented recipe:
+
+    1. **Align first.** ``ec_merge_aligned`` folds the donor's nodes into the
+       receiver's and reports which donor id became which surviving id.
+    2. **Re-key second, on the donor only.** The receiver's own bias keys
+       already name its own clusters; rewriting them would be the bug in
+       mirror image.
+    3. **Fold last.** ``nac_merge`` now sees keys that can match.
+
+    Doing (3) before (1) is exactly D43. Doing (2) to the receiver corrupts
+    state that was correct.
+
+    ``receiver_agent_id`` normalises the donor's ``agent_id`` at this
+    ingestion boundary — see :func:`rekey_nac_state` for why that closes the
+    second key axis without migrating a single persisted file. Leave it
+    ``None`` only when donor and receiver genuinely share an agent id.
+
+    Extra keyword arguments are forwarded to BOTH underlying merges; each
+    ignores the ones it does not take, so ``trusted_sources`` reaches both
+    while ``max_cluster_reward_bias`` reaches only the NAc fold.
+    """
+    ec_keys = {
+        "cosine_threshold",
+        "modality_thresholds",
+        "frozen_centroid_modalities",
+        "trusted_sources",
+        "validate_node",
+    }
+    nac_keys = {
+        "max_reward_bias",
+        "max_cluster_reward_bias",
+        "trusted_sources",
+        "validate_link",
+    }
+    unknown = set(kwargs) - ec_keys - nac_keys
+    if unknown:
+        raise TypeError(f"substrate_merge got unexpected keyword arguments: {sorted(unknown)}")
+
+    aligned = ec_merge_aligned(
+        receiver_ec,
+        donor_ec,
+        left_source=receiver_source,
+        right_source=donor_source,
+        **{k: v for k, v in kwargs.items() if k in ec_keys},
+    )
+
+    def _bias_count(state: dict[str, Any]) -> int:
+        biases = state.get("cluster_reward_bias")
+        return len(biases) if isinstance(biases, dict) else 0
+
+    before = _bias_count(donor_nac)
+    rekeyed_donor = rekey_nac_state(donor_nac, aligned.id_map, to_agent_id=receiver_agent_id)
+    after = _bias_count(rekeyed_donor)
+
+    merged_nac = nac_merge(
+        receiver_nac,
+        rekeyed_donor,
+        left_source=receiver_source,
+        right_source=donor_source,
+        **{k: v for k, v in kwargs.items() if k in nac_keys},
+    )
+
+    return SubstrateMergeResult(
+        nac=merged_nac,
+        ec_nodes=aligned.nodes,
+        id_map=aligned.id_map,
+        biases_rekeyed=after,
+        biases_dropped=before - after,
+    )
+
+
 def _normalize_node(node: dict[str, Any], *, fallback_source: str) -> dict[str, Any]:
     """Return a deep-copied node dict with canonical keys.
 
@@ -1006,6 +1121,8 @@ def _node_contributors(node: dict[str, Any], fallback_source: str) -> tuple[str,
 __all__ = [
     "CONSENSUS_SOURCE",
     "ECMergeResult",
+    "SubstrateMergeResult",
+    "substrate_merge",
     "ec_merge_aligned",
     "rekey_nac_state",
     "nac_merge_many",

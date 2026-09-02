@@ -552,6 +552,36 @@ class EntorhinalCortex:
         self._substrate_node_sources[node_id] = source
         self._substrate_node_domains[node_id] = domain
 
+    def ingest_substrate_nodes(self, nodes: dict[str, dict[str, Any]]) -> int:
+        """Load merged substrate nodes into a LIVE EC, preserving member counts.
+
+        The in-memory counterpart of :meth:`load`'s substrate-node block, and
+        the missing half of a Hivemind ingestion. :meth:`register_substrate_node`
+        cannot be used for this: it hardcodes ``count = 1``, which silently
+        discards the ``member_count``-weighted centroid mean that
+        ``hivemind.merge.ec_merge`` just computed (merge design decision 3 —
+        "a node with 10 members weighs 10x a 1-member node"). Reloading a
+        merged node through it makes the NEXT merge weight that node 1x, so
+        repeated federation rounds progressively erase the evidence weighting.
+
+        Nodes are merged INTO the existing store — an id already present is
+        overwritten with the incoming node, which is correct after a merge
+        because the merged node already aggregates both sides. Unlike
+        :meth:`load` this touches nothing else: signatures, LSH tables and
+        encoder provenance are left alone.
+
+        Returns the number of nodes ingested.
+        """
+        for nid, ndata in (nodes or {}).items():
+            embedding = ndata.get("embedding")
+            if not embedding:
+                continue  # a node without a centroid cannot be matched against
+            self._substrate_nodes[nid] = (list(embedding), str(ndata.get("modality", "")))
+            self._substrate_node_counts[nid] = int(ndata.get("count", ndata.get("member_count", 1)))
+            self._substrate_node_sources[nid] = str(ndata.get("source", "local"))
+            self._substrate_node_domains[nid] = ndata.get("domain")
+        return len(nodes or {})
+
     def remove_substrate_node(self, node_id: str) -> None:
         """Remove a substrate node."""
         self._substrate_nodes.pop(node_id, None)

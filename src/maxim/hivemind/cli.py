@@ -241,7 +241,7 @@ def _run_merge_nac(args: argparse.Namespace) -> int:
     source_state.pop("_format_version", None)
     target_state.pop("_format_version", None)
 
-    from maxim.hivemind.merge import nac_merge
+    from maxim.hivemind.merge import NAC_KEY_SEP, nac_merge
 
     try:
         merged = nac_merge(
@@ -253,6 +253,46 @@ def _run_merge_nac(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+
+    # D43 guard: `merge-nac` is scoped to SAME-substrate policy import — a
+    # trained policy folded into the runtime NAc of the same body, where the
+    # encoder is shared and `cluster_reward_bias`'s (agent, cluster, tool)
+    # keys therefore match by construction. That use is correct and stays
+    # correct.
+    #
+    # Across DIFFERENT substrates it is not, and it fails silently: cluster
+    # ids are `uuid4()` per substrate, so nothing aligns, the donor's biases
+    # land under ids the target has no node for, and the summary below prints
+    # a LARGER "cluster biases" count than before — `len()` is the union,
+    # maximal exactly when nothing matched. The success line moves the wrong
+    # way. Detect the condition (donor has biases, zero cluster overlap) and
+    # say so rather than reporting a clean merge.
+    def _cluster_ids(state: dict) -> set:
+        out = set()
+        for key in state.get("cluster_reward_bias") or {}:
+            parts = str(key).split(NAC_KEY_SEP)
+            if len(parts) == 3:
+                out.add(parts[1])
+        return out
+
+    src_clusters = _cluster_ids(source_state)
+    tgt_clusters = _cluster_ids(target_state)
+    if src_clusters and tgt_clusters and not (src_clusters & tgt_clusters):
+        print(
+            "warning: the two NAc files share NO cluster ids "
+            f"({len(src_clusters)} in source, {len(tgt_clusters)} in target, 0 in common).\n"
+            "  This is the signature of a CROSS-SUBSTRATE merge, which merge-nac "
+            "cannot do correctly: cluster ids are per-substrate uuid4, so every\n"
+            "  merged cluster bias below will name a cluster this target has no "
+            "node for and will read out as exactly 0.0 (D43). The bias count\n"
+            "  in the summary will still GROW — it is the union size, not a "
+            "measure of transfer.\n"
+            "  For a cross-substrate merge use maxim.hivemind.substrate_merge, "
+            "which aligns the two ECs first and re-keys the biases through the\n"
+            "  resulting id map; it needs both sides' EC substrate_nodes, which "
+            "a substrate bundle carries and a bare nac.json does not.",
+            file=sys.stderr,
+        )
 
     # Preserve the decay clock (pre-merge review fold): ``nac_merge``
     # rebuilds from a fixed field list and drops ``saved_at``; without it

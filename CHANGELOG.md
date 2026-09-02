@@ -32,14 +32,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ec_merge_aligned` now returns an `ECMergeResult` carrying that map; `rekey_nac_state` rewrites
   the donor's cluster ids through it and normalises `agent_id` at the **ingestion boundary**
   rather than changing the key shape — closing both live axes without touching a single
-  persisted file. Measured end to end: a receiver that never saw the contingency goes **0.0 →
-  1.0**, with **4 of 4** merged keys naming a reachable cluster (was 0 of 4).
+  persisted file. Measured: a receiver that never saw the contingency goes **0.0 → 1.0**, with
+  **4 of 4** merged keys naming a reachable cluster (was 0 of 4) — via `substrate_merge`, below.
+  (That measurement was originally taken on a hand-composed sequence; it is now the shipped
+  path's, which is the only version worth quoting.)
 - **The merge threshold is now per modality, and this half was in no plan document.**
   `ec_merge`'s 0.44 default is `ECConfig.pattern_complete_threshold`, tuned for paraphrase-mpnet
   **text**; interoception clusters — the ones that key `cluster_reward_bias` — are formed at
   **0.85**. Returning the id map without retuning would have collapsed every donor interoception
   cluster onto whichever receiver node scored highest: a *confidently wrong* alignment where
   there had been an honestly missing one, which is strictly worse.
+- **D43 follow-up: the pieces are now composed, and something calls them.** D43 shipped
+  `ec_merge_aligned` / `rekey_nac_state` / `nac_merge_many` and left their composition to call
+  sites — of which there were **zero**: every shipped consumer still called bare `nac_merge`, so
+  through every real path a merged want still read out as `0.0`. The fix was a capability nobody
+  used, which looks exactly like a fix that ran and worked. `hivemind.substrate_merge` is that
+  composition — align, then re-key the donor only, then fold — and it reports `biases_rekeyed` /
+  `biases_dropped`, because D43's defining property was a success line (`len(cluster_reward_bias)`)
+  that moved the wrong way. Order is load-bearing: folding before aligning *is* D43, and re-keying
+  the receiver is the same bug mirrored.
+- **`EntorhinalCortex.ingest_substrate_nodes` — the missing half of an ingestion.** Merged EC
+  nodes had no way into a live EC. `register_substrate_node` hardcodes `count = 1`, silently
+  discarding the `member_count`-weighted centroid mean the merge had just computed, so each
+  federation round would erase the previous round's evidence weighting; `load()` restores counts
+  but is file-based and clobbers signatures and LSH tables. The new method is `load()`'s
+  substrate-node block, in memory, touching nothing else.
+- **`maxim substrate merge-nac` no longer looks successful on a merge it cannot do.** The verb is
+  correct for its documented Stage-4b use (a trained policy into the same body, where the encoder
+  is shared and keys match by construction) and silently wrong across substrates, which it cannot
+  fix — alignment needs both sides' EC and a bare `nac.json` carries none. It now detects the
+  signature (both sides hold cluster biases, zero ids in common) and says so, naming
+  `substrate_merge` as the path that works.
 - **The merge no longer deletes the receiver's own state.** `cluster_reward_source` was absent
   from `nac_merge`'s return entirely, so `load_state` reset it to `{}` and every merge wiped the
   receiver's credit provenance — local data loss, a different failure class from failed transfer.

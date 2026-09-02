@@ -248,3 +248,57 @@ class TestFoldRobustness:
         _meta_path(src).write_text(json.dumps(_POLICY_META), encoding="utf-8")
         _meta_path(tgt).write_text(json.dumps({**_POLICY_META, "_format_version": "1.0"}), encoding="utf-8")
         assert run_substrate_subcommand(["merge-nac", str(src), "--into", str(tgt), "--source-id", "p"]) == 0
+
+
+class TestCrossSubstrateWarning:
+    """D43: `merge-nac` is correct for SAME-substrate policy import and silently
+    wrong across substrates. It cannot fix the second case — cluster alignment
+    needs both sides' EC, which a bare `nac.json` does not carry — so it must at
+    least refuse to look successful.
+
+    The property being guarded is specific: on a cross-substrate merge the
+    summary's `cluster biases:` count GROWS (it is `|left union right|`,
+    maximal exactly when nothing aligns) while transfer is exactly zero. The
+    success line moves the wrong way, which is what made D43 survive review.
+    """
+
+    @staticmethod
+    def _write(path, biases):
+        import json as _json
+
+        path.write_text(_json.dumps({"cluster_reward_bias": biases}), encoding="utf-8")
+
+    def test_disjoint_cluster_ids_warn(self, tmp_path, capsys):
+        from maxim.hivemind.merge import NAC_KEY_SEP
+
+        src, tgt = tmp_path / "s.json", tmp_path / "t.json"
+        self._write(src, {NAC_KEY_SEP.join(("A", "c-aaa", "tool:x")): 0.9})
+        self._write(tgt, {NAC_KEY_SEP.join(("B", "c-bbb", "tool:x")): 0.1})
+
+        assert run_substrate_subcommand(["merge-nac", str(src), "--into", str(tgt), "--source-id", "d"]) == 0
+        err = capsys.readouterr().err
+        assert "share NO cluster ids" in err
+        assert "substrate_merge" in err, "the warning must name the path that does work"
+
+    def test_shared_cluster_ids_do_not_warn(self, tmp_path, capsys):
+        """The documented Stage-4b use — a trained policy into the same body."""
+        from maxim.hivemind.merge import NAC_KEY_SEP
+
+        key = NAC_KEY_SEP.join(("A", "c-shared", "tool:x"))
+        src, tgt = tmp_path / "s.json", tmp_path / "t.json"
+        self._write(src, {key: 0.9})
+        self._write(tgt, {key: 0.1})
+
+        assert run_substrate_subcommand(["merge-nac", str(src), "--into", str(tgt), "--source-id", "d"]) == 0
+        assert "share NO cluster ids" not in capsys.readouterr().err
+
+    def test_an_empty_side_does_not_warn(self, tmp_path, capsys):
+        """A first import into a fresh target is not a cross-substrate merge."""
+        from maxim.hivemind.merge import NAC_KEY_SEP
+
+        src, tgt = tmp_path / "s.json", tmp_path / "t.json"
+        self._write(src, {NAC_KEY_SEP.join(("A", "c-aaa", "tool:x")): 0.9})
+        self._write(tgt, {})
+
+        assert run_substrate_subcommand(["merge-nac", str(src), "--into", str(tgt), "--source-id", "d"]) == 0
+        assert "share NO cluster ids" not in capsys.readouterr().err
