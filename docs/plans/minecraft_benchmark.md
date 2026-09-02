@@ -244,6 +244,8 @@ Estimate: **800–1500 LOC plus the bridge.** An adapter over designed seams, no
 
 ### The sensor ceiling is a THRESHOLD artifact, not an information limit (measured 2026-09-01)
 
+> **Tracked as [L11](../limits/README.md#l11--sensor-count-dilution-and-the-discrimination-ceiling-behind-it--mitigated)** in the instrument ledger, with its `Re-measure on:` trigger. The measurements below are the source; L11 is the durable entry a future pre-registration author reads at design time.
+
 The extero/intero dilution finding caps a modality channel at roughly **14 informative
 scalars**: `_sensor_embed` sums `(1-v)·basis_low + v·basis_high` over sorted sensor names, so
 each contributes 1/N, and at N ≥ 15 a full single-sensor swing no longer clears

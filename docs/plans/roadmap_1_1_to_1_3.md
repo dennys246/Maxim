@@ -474,6 +474,8 @@ might arrive in December. The ladder below restores the ordering without droppin
 | **1.2** | **Oasis** | The four-arm sharing benchmark, pre-registered, run in Minecraft at n ≥ 50, replicated on two Reachy Minis at n = 12; gates 3, 4 and 8 | The gate ladder below |
 | **1.3** | Perception fabric + reflex tier (**unchanged, semi-open**) | Cochlear front-end, vision encoder, binding, three-factor calibration — **plus the microduck** ([microduck_intent_layer.md](microduck_intent_layer.md)), see below | Its own pivotal experiment. **SEQUENCING: [roadmap_1_3_path.md](roadmap_1_3_path.md)** — Stage A duck baseline (unblocks the mic question) → Stage B engine seam / robot factory (N=2 makes the abstraction honest) → Stage C fabric (Stage 0 gates Stage 1) |
 
+> Instrument limit: **[L11](../limits/README.md#l11--sensor-count-dilution-and-the-discrimination-ceiling-behind-it--mitigated)** (dilution + discrimination ceiling). The 1.1.4 work IS L11's stated mitigation; L11 moves to `RETIRED` only when it is shipped AND re-measured.
+>
 > **Why the encoding change lands in 1.1.4 and not 1.2** (decided 2026-09-01, after measurement).
 >
 > The measurements are in [minecraft_benchmark.md](minecraft_benchmark.md): the ~14-sensor
