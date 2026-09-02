@@ -23,6 +23,7 @@ from maxim.decisions.nac import NAc, NACConfig
 from maxim.embodiment.component_registry import ComponentRegistry
 from maxim.proprioception.pain_bus import PainBus
 from maxim.runtime.agent_loop import (
+    _read_drive_ranges,
     _read_drive_states,
     propose_via_substrate,
 )
@@ -431,10 +432,18 @@ class TestClusterKeyedActionSelection:
 
         # First tick: encode the current drive snapshot to learn the
         # cluster id the substrate sees in this state.
-        from maxim.runtime.agent_loop import _read_drive_states
+        from maxim.runtime.agent_loop import _read_drive_ranges, _read_drive_states
 
         drives = _read_drive_states(world["executor"])
-        cluster_id = encoder.encode_sensors(agent_id="cradle_infant", sensors=drives)
+        # Range-AWARE, matching what propose_via_substrate encodes below.
+        # Seeded range-blind, the bias landed on a cluster the production
+        # encode could never reach, so this arm passed without exercising
+        # the negative bias at all (gate 1 surfaced it).
+        cluster_id = encoder.encode_sensors(
+            agent_id="cradle_infant",
+            sensors=drives,
+            ranges=_read_drive_ranges(world["executor"]) or None,
+        )
         assert cluster_id is not None
 
         # Punish pick_up_food in this cluster — strong negative signal.
@@ -504,7 +513,19 @@ class TestG4ClusterRewardWire:
         ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.40))
         encoder = SensorEncoder(ec=ec, atl=None, nac=None)
         drives = _read_drive_states(world["executor"])
-        cluster_id = encoder.encode_sensors(agent_id="cradle_infant", sensors=drives)
+        # Seed through the SAME call shape production uses.
+        # `propose_via_substrate` encodes via `ModalityChannel(INTEROCEPTION_TAG,
+        # _read_drive_states, _read_drive_ranges)` — range-AWARE. Seeding
+        # range-BLIND here made the two encodes different embedding functions
+        # over the same sensors, and they landed on one cluster anyway. That is
+        # exactly the defect the encoder's own stamp comment names — "a
+        # range-blind-folded azimuth cluster circulating as if comparable to a
+        # range-aware one" — and gate 1's runtime geometry check now refuses it.
+        cluster_id = encoder.encode_sensors(
+            agent_id="cradle_infant",
+            sensors=drives,
+            ranges=_read_drive_ranges(world["executor"]) or None,
+        )
         assert cluster_id is not None
 
         # Pick a real tool the cradle body exposes so the proposal lands.

@@ -368,6 +368,8 @@ class EntorhinalCortex:
         # Centroid is the running mean of all embeddings that completed to this node.
         self._substrate_nodes: dict[str, tuple[list[float], str]] = {}
         self._substrate_node_geometries: dict[str, str | None] = {}
+        # Gate 1 / D1: (modality, stored_geometry, live_geometry) already reported.
+        self._geometry_mismatch_seen: set[tuple[str, str, str]] = set()
         # Member count per node — used for running mean update.
         self._substrate_node_counts: dict[str, int] = {}
         # Hivemind shareability (v1_refinement.md §B5): parallel dicts holding
@@ -443,6 +445,7 @@ class EntorhinalCortex:
         threshold: float | None = None,
         threshold_override: dict[str, float] | None = None,
         encoding_context: "EncodingContext | None" = None,
+        geometry: str | None = None,
     ) -> PatternResult:
         """Route an embedding to an existing ATL node or create a new one.
 
@@ -464,6 +467,10 @@ class EntorhinalCortex:
             threshold_override: Per-node threshold overrides keyed by
                 node_id. Used by P2 reward modulation to widen the
                 recognition radius for rewarded nodes.
+            geometry: The encoding space this embedding was produced in
+                (gate 1 / D1). Nodes that declare a DIFFERENT space are
+                skipped: they are not less similar, they are incomparable.
+                ``None`` disables the check for this call.
 
         Returns:
             PatternResult with the node_id, similarity score, and
@@ -477,6 +484,23 @@ class EntorhinalCortex:
 
         for node_id, (stored_emb, stored_mod) in self._substrate_nodes.items():
             if stored_mod != modality:
+                continue
+            # Gate 1 / D1: DETECT THE GEOMETRY CHANGE AT RUNTIME.
+            # `encoder_provenance` was recorded, persisted and reloaded and
+            # compared against nothing — its only readers were the bundle
+            # export, and `record_encoder_provenance` MERGES divergence
+            # ("mixed is a finding, not an error"). So a geometry change
+            # loaded old-geometry centroids and cosine-scanned them against
+            # new embeddings, silently completing onto them.
+            #
+            # `_cosine_similarity` already refuses a DIMENSION mismatch,
+            # which covers the 768-vs-384 fallback. It cannot see a
+            # same-dimension change (a place code adds sensor names; the
+            # basis set changes, the length does not) — the identical hole
+            # gate 2 closed on the merge side, here on the live recall path.
+            stored_geom = self._substrate_node_geometries.get(node_id)
+            if geometry is not None and stored_geom is not None and stored_geom != geometry:
+                self._note_geometry_mismatch(modality, stored_geom, geometry)
                 continue
             sim = _cosine_similarity(embedding, stored_emb)
             # Use per-node override if available, else base threshold
@@ -527,6 +551,29 @@ class EntorhinalCortex:
             modality=modality,
         )
         return PatternResult(node_id=new_id, similarity=0.0, is_new=True)
+
+    def _note_geometry_mismatch(self, modality: str, stored: str, live: str) -> None:
+        """Report a live-vs-stored encoding-space divergence ONCE per triple.
+
+        Gate 1 / D1's actual complaint was that nothing reported this at all.
+        Deduped because the scan runs per node per encode — an undeduped
+        warning here would emit thousands of lines a second and be promptly
+        filtered out by whoever had to read the logs, which is the same as
+        not warning.
+        """
+        key = (modality, stored, live)
+        if key in self._geometry_mismatch_seen:
+            return
+        self._geometry_mismatch_seen.add(key)
+        logger.warning(
+            "EC geometry mismatch on %s: stored nodes were encoded in space %s, "
+            "this encoder produces %s. Those nodes are being SKIPPED for pattern "
+            "completion — they are incomparable, not merely dissimilar. Recall "
+            "against them is lost until they are re-encoded or migrated (D1).",
+            modality,
+            stored,
+            live,
+        )
 
     def register_substrate_node(
         self,

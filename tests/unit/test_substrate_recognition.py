@@ -528,9 +528,13 @@ class TestEncoderNAcEligibility:
         captured: list[dict[str, float] | None] = []
         orig = ec.pattern_complete_or_separate
 
-        def spy(embedding, modality, threshold=None, threshold_override=None):
+        def spy(embedding, modality, threshold=None, threshold_override=None, **kwargs):
+            # **kwargs so the spy tracks the real signature rather than pinning
+            # a snapshot of it: gate 1 added `geometry=` and this spy raised
+            # TypeError from inside production code, which reads as a source
+            # bug rather than a stale double.
             captured.append(threshold_override)
-            return orig(embedding, modality, threshold, threshold_override)
+            return orig(embedding, modality, threshold, threshold_override, **kwargs)
 
         ec.pattern_complete_or_separate = spy  # type: ignore[method-assign]
 

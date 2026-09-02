@@ -272,16 +272,16 @@ class LinguisticEncoder:
         # though it's wired. P2 reward overrides must fire regardless of
         # whether any causal links have been recorded yet.
         threshold_override = self._get_reward_overrides(percept) if self._nac is not None else None
+        geometry = self._linguistic_geometry(embedding, modality)
         result = self.ec.pattern_complete_or_separate(
             embedding=embedding,
             modality=modality,
             threshold_override=threshold_override,
+            geometry=geometry,
         )
 
         if result.is_new:
-            self.ec.register_substrate_node(
-                result.node_id, embedding, modality, geometry=self._linguistic_geometry(embedding, modality)
-            )
+            self.ec.register_substrate_node(result.node_id, embedding, modality, geometry=geometry)
 
         self.atl.activate_substrate_node(
             node_id=result.node_id,
@@ -365,16 +365,16 @@ class LinguisticEncoder:
         for chunk in chunks:
             embedding = self.embed(chunk.text)
 
+            geometry = self._linguistic_geometry(embedding, modality)
             result = self.ec.pattern_complete_or_separate(
                 embedding=embedding,
                 modality=modality,
                 threshold_override=threshold_override,
+                geometry=geometry,
             )
 
             if result.is_new:
-                self.ec.register_substrate_node(
-                    result.node_id, embedding, modality, geometry=self._linguistic_geometry(embedding, modality)
-                )
+                self.ec.register_substrate_node(result.node_id, embedding, modality, geometry=geometry)
 
             self.atl.activate_substrate_node(
                 node_id=result.node_id,
@@ -796,6 +796,7 @@ class SensorEncoder:
             embedding=embedding,
             modality=modality,
             threshold=self.config.pattern_threshold,
+            geometry=geometry,
         )
         if result.is_new:
             self.ec.register_substrate_node(result.node_id, embedding, modality, geometry=geometry)
