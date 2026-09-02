@@ -236,3 +236,61 @@ pre-registered blocks, not from this footage.
   about magnitude selection or loudness; generalisation beyond the taught geometry —
   the centre bin's right half (+0.2) turns the *wrong* way, the representation's stated
   limit. One session, one room, one source, 3 seeds per arm.
+
+
+## Re-validation 2026-09-02 (post-D53) — PASS, original result reproduced
+
+D53 changed `ReachyOrientMotorBackend.execute` (it now reports a learning tier alongside
+mechanical success), which this row's trigger names verbatim. 53b was re-run on the robot.
+
+| | original (2026-08-26 / R1) | post-D53 (2026-09-02) |
+|---|---|---|
+| taught | 1.00 / 1.00 / 1.00 | **1.00** (all three seeds 1.00) |
+| satiated | 0.00 | **0.00** |
+| no_feed | 0.50 | **0.50** |
+| taught sign-rule agreement | 1.0 | **1.0** |
+| Gate I | PASS | **PASS** |
+
+The exploratory placements reproduce too: **+0.2 turns the wrong way 9/9** and **−0.6 turns
+toward 9/9** — the pre-data prediction from the nursery's three-bin representation, where the
+centre bin spans 0…+0.3.
+
+**Agents: the ORIGINAL August set, deliberately.** SHA-verified 10/10 against
+`53_agents_manifest.json`, so only the CODE differs from the EARNED run and a pass is
+attributable to D53 alone. Today's Exp 52 re-run also produced a new nursery; reading *that*
+out is a different question and needs its own registration rather than a silent substitution
+into a frozen protocol.
+
+**Provenance — the defect that retracted the originals is closed.** Both phases ran at `main`
+@ `49bc9e24` with `working_tree_dirty_src_scripts: false`, from a commit reachable from
+`main`; sdk 1.8.3 == daemon 1.8.3 recorded in the run header; speech-gate 0.75 (phase 1) and
+0.774 (phase 2) against a 0.50 floor.
+
+### Caveat that travels with this result
+
+The controller emitted **85 progressive-degradation warnings across 180 trials** — `goto_target:
+achieved pose diverges from last commanded ... (progressive-degradation early warning, H1 F1)`.
+Broken down by axis:
+
+| axis | warnings | range |
+|---|---|---|
+| roll | 85 | −5.1° … −9.5° |
+| pitch | 83 | −6.3° … −7.7° |
+| **yaw** | **0** | — |
+
+**Azimuth readout rides on yaw, which never diverged** — that is why this is reported as sound
+rather than retracted, and `yaw_verify.py` independently confirmed `d(head)/d(body)` = +1.012
+before the session and +1.003 after a mid-session reset. But the platform was warning about
+actuator degradation throughout, and a **roll/pitch recalibration is owed before the next
+hardware block**. Recording it here rather than in a session transcript, because the honest
+form of this result is "PASS on a platform that was complaining", not "PASS".
+
+### Aborted first attempt, preserved unpooled
+
+A first Phase 2 attempt aborted after 7 trials on `goto_target rejected twice — daemon/motors
+need attention`. It was **not** retried into the same file: the append-only pooling hazard would
+have silently averaged a 7-trial partial into the full cohort. The partial is preserved at
+[data/53d53_phase2_aborted_run.jsonl](data/53d53_phase2_aborted_run.jsonl) and the working file
+was rebuilt from phase-1 records only. The divergence-warning rate in that attempt was
+0.86/trial against 0.47/trial in the completed run, so the robot reset between them materially
+helped — consistent with a degrading session rather than a permanently damaged joint.
