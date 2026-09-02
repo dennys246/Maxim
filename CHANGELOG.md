@@ -42,6 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **0.85**. Returning the id map without retuning would have collapsed every donor interoception
   cluster onto whichever receiver node scored highest: a *confidently wrong* alignment where
   there had been an honestly missing one, which is strictly worse.
+- **The `import` verb no longer documents the defect.** Both the module docstring and the
+  verb's own closing line told the user to "pass them through `nac_merge` / `ec_merge` and
+  re-load into a live system" — the dangling-half sequence, which merges the two slices
+  independently, discards the EC alignment, and produces exactly the D43 null. A bundle carries
+  both slices precisely so the aligned merge is possible; both now name `substrate_merge` and
+  `EC.ingest_substrate_nodes`.
 - **D43 follow-up: the pieces are now composed, and something calls them.** D43 shipped
   `ec_merge_aligned` / `rekey_nac_state` / `nac_merge_many` and left their composition to call
   sites — of which there were **zero**: every shipped consumer still called bare `nac_merge`, so
