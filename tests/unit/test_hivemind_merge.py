@@ -18,6 +18,8 @@ Plus the contracts the module docstring promises:
 
 from __future__ import annotations
 
+import pytest
+
 import copy
 from typing import Any
 
@@ -25,7 +27,11 @@ from maxim.decisions.causal_link import CausalLink, TemporalDelta, Valence
 from maxim.decisions.nac import NAc, NACConfig
 from maxim.hivemind.merge import (
     CONSENSUS_SOURCE,
+    NAC_KEY_SEP,
     ec_merge,
+    ec_merge_aligned,
+    nac_merge_many,
+    rekey_nac_state,
     nac_merge,
 )
 from maxim.similarity.ec import EntorhinalCortex
@@ -719,3 +725,175 @@ def test_ec_merge_freezes_audio_centroid_by_default() -> None:
 
     assert merged["n1"]["embedding"] == [1.0, 0.0], "audio centroid must stay frozen"
     assert merged["n1"]["count"] == 2, "counts still aggregate"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# D43 — alignment-preserving merge
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class TestD43AlignmentPreservingMerge:
+    """`ec_merge_aligned` returns the map `ec_merge` used to discard."""
+
+    def _nodes(self, spec):
+        return {nid: {"embedding": emb, "modality": mod, "count": 1} for nid, (emb, mod) in spec.items()}
+
+    def test_a_folded_node_maps_to_its_survivor(self):
+        left = self._nodes({"L1": ([1.0, 0.0, 0.0], "text")})
+        right = self._nodes({"R1": ([1.0, 0.0, 0.0], "text")})
+        res = ec_merge_aligned(left, right, left_source="A", right_source="B")
+        assert res.id_map["R1"] == "L1"
+        assert set(res.nodes) == {"L1"}
+
+    def test_an_inserted_node_maps_to_itself(self):
+        """Every right-side id gets an entry, so a re-key never silently drops."""
+        left = self._nodes({"L1": ([1.0, 0.0, 0.0], "text")})
+        right = self._nodes({"R1": ([0.0, 1.0, 0.0], "text")})
+        res = ec_merge_aligned(left, right, left_source="A", right_source="B")
+        assert res.id_map["R1"] == "R1"
+
+    def test_every_right_id_is_in_the_map(self):
+        left = self._nodes({"L1": ([1.0, 0.0, 0.0], "text")})
+        right = self._nodes(
+            {"R1": ([1.0, 0.0, 0.0], "text"), "R2": ([0.0, 1.0, 0.0], "text"), "R3": ([0.0, 0.0, 1.0], "text")}
+        )
+        res = ec_merge_aligned(left, right, left_source="A", right_source="B")
+        assert set(res.id_map) == {"R1", "R2", "R3"}
+
+    def test_sensor_modalities_align_at_their_own_threshold(self):
+        """THE half no plan document named.
+
+        `ec_merge`'s 0.44 default is tuned for paraphrase-mpnet TEXT.
+        Interoception clusters — the ones that key `cluster_reward_bias` — are
+        formed at 0.85. Two sensor states that are merely *similar* (cos ~0.6)
+        must NOT fold, or returning the id map produces a confidently wrong
+        alignment, which is strictly worse than today's honestly missing one.
+        """
+        import math
+
+        theta = math.acos(0.6)
+        left = self._nodes({"L1": ([1.0, 0.0], "interoception")})
+        right = self._nodes({"R1": ([math.cos(theta), math.sin(theta)], "interoception")})
+
+        res = ec_merge_aligned(left, right, left_source="A", right_source="B")
+        assert res.id_map["R1"] == "R1", "cos 0.6 must NOT fold at the sensor threshold 0.85"
+
+        # ...while the same pair folds under the text default, which is exactly
+        # the collapse this guards against.
+        loose = ec_merge_aligned(
+            left, right, left_source="A", right_source="B", modality_thresholds={"interoception": 0.44}
+        )
+        assert loose.id_map["R1"] == "L1"
+
+    def test_ec_merge_wrapper_keeps_the_old_contract(self):
+        left = self._nodes({"L1": ([1.0, 0.0, 0.0], "text")})
+        right = self._nodes({"R1": ([1.0, 0.0, 0.0], "text")})
+        assert (
+            ec_merge(left, right, left_source="A", right_source="B")
+            == ec_merge_aligned(left, right, left_source="A", right_source="B").nodes
+        )
+
+
+class TestD43Rekey:
+    """`rekey_nac_state` — the fold that makes a foreign want readable."""
+
+    def _state(self, aid="A", cid="C1"):
+        sep = NAC_KEY_SEP
+        return {
+            "cluster_reward_bias": {sep.join((aid, cid, "tool:x")): 0.8},
+            "cluster_reward_source": {sep.join((aid, cid, "tool:x")): "operant"},
+        }
+
+    def test_cluster_id_is_rewritten_through_the_map(self):
+        out = rekey_nac_state(self._state(), {"C1": "SURVIVOR"})
+        assert list(out["cluster_reward_bias"]) == [NAC_KEY_SEP.join(("A", "SURVIVOR", "tool:x"))]
+
+    def test_agent_id_normalises_at_the_boundary(self):
+        """Closes the second axis without touching a single persisted file."""
+        out = rekey_nac_state(self._state(aid="DONOR"), {"C1": "S"}, to_agent_id="RECEIVER")
+        assert list(out["cluster_reward_bias"])[0].split(NAC_KEY_SEP)[0] == "RECEIVER"
+
+    def test_an_unmapped_cluster_is_DROPPED_not_passed_through(self):
+        """A donor bias whose cluster did not survive names a node the receiver
+        cannot reach. Keeping it is what made the union grow while contributing
+        exactly 0.0 — dropping is the honest fold."""
+        out = rekey_nac_state(self._state(), {})
+        assert out["cluster_reward_bias"] == {}
+
+    def test_credit_source_is_rekeyed_alongside_the_bias(self):
+        out = rekey_nac_state(self._state(), {"C1": "S"})
+        assert list(out["cluster_reward_source"]) == list(out["cluster_reward_bias"])
+
+    def test_input_is_not_mutated(self):
+        st = self._state()
+        rekey_nac_state(st, {"C1": "S"})
+        assert list(st["cluster_reward_bias"])[0].split(NAC_KEY_SEP)[1] == "C1"
+
+
+class TestD43RestoredState:
+    """The merge no longer DELETES the receiver's own state."""
+
+    def test_cluster_reward_source_survives_a_merge(self):
+        sep = NAC_KEY_SEP
+        k = sep.join(("A", "C", "tool:x"))
+        left = {"cluster_reward_source": {k: "operant"}}
+        merged = nac_merge(left, {}, left_source="A", right_source="B")
+        assert merged["cluster_reward_source"][k] == "operant", "the merge wiped the receiver's own provenance"
+
+    def test_disagreeing_sources_promote_to_mixed_one_way(self):
+        sep = NAC_KEY_SEP
+        k = sep.join(("A", "C", "tool:x"))
+        merged = nac_merge(
+            {"cluster_reward_source": {k: "operant"}},
+            {"cluster_reward_source": {k: "drive_relief"}},
+            left_source="A",
+            right_source="B",
+        )
+        assert merged["cluster_reward_source"][k] == "mixed"
+
+    def test_saved_at_survives_and_keeps_the_younger(self):
+        merged = nac_merge(
+            {"saved_at": "2026-01-01T00:00:00Z"},
+            {"saved_at": "2026-06-01T00:00:00Z"},
+            left_source="A",
+            right_source="B",
+        )
+        assert merged["saved_at"] == "2026-06-01T00:00:00Z"
+
+
+class TestD43NWayFold:
+    """N→1 semantics were not undecided — they were decided wrong."""
+
+    def _s(self, v):
+        return {"cluster_reward_bias": {NAC_KEY_SEP.join(("A", "C", "tool:x")): v}}
+
+    def test_equal_weight_across_contributors(self):
+        """Pairwise left-fold gives the LAST contributor 1/2 the pooled bias at
+        N=4 (weights 1/8, 1/8, 1/4, 1/2). Equal weight is the whole point."""
+        states = [self._s(0.0), self._s(0.0), self._s(0.0), self._s(1.0)]
+        merged = nac_merge_many(states, sources=["a", "b", "c", "d"])
+        got = merged["cluster_reward_bias"][NAC_KEY_SEP.join(("A", "C", "tool:x"))]
+        assert abs(got - 0.25) < 1e-9, f"expected the equal-weight mean 0.25, got {got}"
+
+    def test_pairwise_fold_would_have_given_the_last_contributor_half(self):
+        """Pins the defect this replaces, so the difference is legible."""
+        states = [self._s(0.0), self._s(0.0), self._s(0.0), self._s(1.0)]
+        merged = states[0]
+        for i, st in enumerate(states[1:], start=1):
+            merged = nac_merge(merged, st, left_source="a", right_source=f"c{i}")
+        got = merged["cluster_reward_bias"][NAC_KEY_SEP.join(("A", "C", "tool:x"))]
+        assert abs(got - 0.5) < 1e-9, f"pairwise should over-weight the last contributor, got {got}"
+
+    def test_absence_is_no_evidence_not_a_zero_vote(self):
+        """Zero-prior rule preserved: divide by the contributors that HELD the
+        key, not by N."""
+        merged = nac_merge_many([self._s(1.0), {}], sources=["a", "b"])
+        got = merged["cluster_reward_bias"][NAC_KEY_SEP.join(("A", "C", "tool:x"))]
+        assert abs(got - 1.0) < 1e-9
+
+    def test_single_state_is_returned_unchanged(self):
+        assert nac_merge_many([self._s(0.7)], sources=["a"])["cluster_reward_bias"]
+
+    def test_length_mismatch_is_loud(self):
+        with pytest.raises(ValueError, match="length mismatch"):
+            nac_merge_many([self._s(0.1), self._s(0.2)], sources=["only-one"])
