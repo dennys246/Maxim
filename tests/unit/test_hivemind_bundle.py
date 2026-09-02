@@ -21,6 +21,8 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+import pathlib
+
 import pytest
 
 from maxim.decisions.nac import NAc, NACConfig
@@ -616,15 +618,21 @@ def test_migration_seam_exists_and_is_isolated(tmp_path: Path) -> None:
         def _v0_to_v1(env: dict) -> dict:
             return {**env, "schema_version": 1, "migrated": True}
 
+        # target_version is pinned rather than defaulted: this test is about
+        # the SEAM and its isolation, not about the current schema version.
+        # It previously relied on BUNDLE_SCHEMA_VERSION being 1, so the gate-7
+        # bump to 2 broke it — the chain ran on to 1→2, which the isolated
+        # registry deliberately does not contain.
         upgraded = migrate_bundle_envelope(
             {"schema_version": 0, "kind": BUNDLE_KIND},
+            target_version=1,
         )
         assert upgraded["schema_version"] == 1
         assert upgraded["migrated"] is True
 
     # Outside the context: registry is restored (v0 migration is gone).
     with pytest.raises(ValueError, match="no migration"):
-        migrate_bundle_envelope({"schema_version": 0, "kind": BUNDLE_KIND})
+        migrate_bundle_envelope({"schema_version": 0, "kind": BUNDLE_KIND}, target_version=1)
 
 
 def test_ec_merge_respects_frozen_centroid_modalities() -> None:
@@ -1204,3 +1212,107 @@ class TestEcSliceBoundary:
         assert "SENTINEL_REASONING_WORD" not in all_content
         assert "SENTINEL_LSH" not in all_content
         assert "SENTINEL_INVERTED" not in all_content
+
+
+class TestGate7TypedBundles:
+    """Gate 7 — a bundle declares the body it was learned on, and a receiver refuses a mismatch.
+
+    Why this exists: tool signatures are entity-prefixed
+    (`tool_bridge.py::generate_tools_for_entity` builds `f"{ent.name}_{aff}"`),
+    so a bundle learned on one body merges into another "successfully",
+    contributes exactly 0.0, and reads out as "this agent has learned nothing
+    yet" — D43 barrier 3. Gate 7 does not make cross-body sharing WORK; it
+    makes its absence LOUD, which is this codebase's rule for a silent no-op.
+
+    The design note is `docs/plans/d43_merge_correctness.md` §5a, including why
+    the capability key is emitted alongside from day one.
+    """
+
+    def test_matching_body_is_accepted(self):
+        from maxim.hivemind.bundle import assert_bundle_body_compatible
+
+        assert_bundle_body_compatible({"body_ref": "reachy_mini"}, receiver_body="reachy_mini")
+
+    def test_mismatched_body_is_refused(self):
+        from maxim.hivemind.bundle import BundleBodyMismatch, assert_bundle_body_compatible
+
+        with pytest.raises(BundleBodyMismatch) as e:
+            assert_bundle_body_compatible({"body_ref": "infant_operant"}, receiver_body="reachy_mini")
+        assert e.value.bundle_body == "infant_operant"
+        assert e.value.receiver_body == "reachy_mini"
+        # the message must say WHY, not just that
+        assert "0.0" in str(e.value)
+
+    def test_absence_is_unverifiable_not_compatible(self):
+        """The load-bearing case: a pre-gate-7 bundle must not PASS a check it
+        was never subject to. Same reasoning as the format-version "0.x" sentinel."""
+        from maxim.hivemind.bundle import BundleBodyUnverifiable, assert_bundle_body_compatible
+
+        with pytest.raises(BundleBodyUnverifiable):
+            assert_bundle_body_compatible({"body_ref": None}, receiver_body="reachy_mini")
+        with pytest.raises(BundleBodyUnverifiable):
+            assert_bundle_body_compatible({}, receiver_body="reachy_mini")
+
+    def test_unverified_can_be_accepted_explicitly(self):
+        from maxim.hivemind.bundle import assert_bundle_body_compatible
+
+        assert_bundle_body_compatible({"body_ref": None}, receiver_body="reachy_mini", allow_unverified=True)
+
+    def test_v1_bundles_migrate_and_then_refuse(self):
+        """End to end: a v1 manifest upgrades to v2, is stamped with an UNKNOWN
+        body, and is then refused by default rather than silently accepted."""
+        from maxim.hivemind.bundle import (
+            BUNDLE_SCHEMA_VERSION,
+            BundleBodyUnverifiable,
+            assert_bundle_body_compatible,
+            migrate_bundle_envelope,
+        )
+
+        migrated = migrate_bundle_envelope({"schema_version": 1, "kind": "maxim.substrate.bundle"})
+        assert migrated["schema_version"] == BUNDLE_SCHEMA_VERSION == 2
+        assert migrated["body_ref"] is None
+        assert migrated["affordance_namespace"] is None
+        assert migrated["capability_map"] == {}
+        with pytest.raises(BundleBodyUnverifiable):
+            assert_bundle_body_compatible(migrated, receiver_body="reachy_mini")
+
+    def test_compose_writes_the_gate7_fields_and_the_capability_map(self, tmp_path):
+        """The capability map is forward insurance: bundles carry BOTH the
+        body-prefixed signature and the body-agnostic `(modulator, affordance)`
+        key, so adopting a capability namespace later is a reader-side change
+        with no migration — the half `register_bundle_migration` cannot cover."""
+        from maxim.hivemind.bundle import compose_bundle, read_bundle_manifest
+
+        out = tmp_path / "b.zip"
+        compose_bundle(
+            nac_state={"links": {}, "version": "1.0"},
+            ec_substrate_nodes={},
+            output_path=out,
+            contributor_id="c1",
+            body_ref="reachy_mini",
+            affordance_namespace="reachy_mini.v1",
+            capability_map={"tool:reachy_mini_turn_left": "orient/turn_left"},
+        )
+        m = read_bundle_manifest(out)
+        assert m["schema_version"] == 2
+        assert m["body_ref"] == "reachy_mini"
+        assert m["affordance_namespace"] == "reachy_mini.v1"
+        assert m["capability_map"]["tool:reachy_mini_turn_left"] == "orient/turn_left"
+
+    def test_compose_defaults_are_none_not_a_guess(self):
+        """A caller that does not declare a body must not have one inferred."""
+        import tempfile
+
+        from maxim.hivemind.bundle import compose_bundle, read_bundle_manifest
+
+        with tempfile.TemporaryDirectory() as d:
+            out = pathlib.Path(d) / "b.zip"
+            compose_bundle(
+                nac_state={"links": {}, "version": "1.0"},
+                ec_substrate_nodes={},
+                output_path=out,
+                contributor_id="c1",
+            )
+            m = read_bundle_manifest(out)
+            assert m["body_ref"] is None
+            assert m["capability_map"] == {}

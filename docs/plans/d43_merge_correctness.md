@@ -189,7 +189,16 @@ because the blast radius is small, not because the migration hook covers it.
 
 ---
 
-## 5a. Gate 7 — recommendation
+## 5a. Gate 7 — recommendation, **SHIPPED 2026-09-01**
+
+> **Implemented as recommended.** `BUNDLE_SCHEMA_VERSION` 1 → 2 with a registered v1→v2
+> migration; `compose_bundle` gains `body_ref`, `affordance_namespace` and `capability_map`;
+> `assert_bundle_body_compatible` refuses a mismatch (`BundleBodyMismatch`) and refuses an
+> **undeclared** body (`BundleBodyUnverifiable`) unless `allow_unverified=True` — absence is
+> unverifiable, not compatible, the same reasoning as the format-version `"0.x"` sentinel.
+> Guard: `tests/unit/test_hivemind_bundle.py::TestGate7TypedBundles`.
+> **(b) remains scheduled, not done** — see below for why it is not what blocks D44.
+
 
 **Ship (a) the body namespace now, and emit the capability key alongside it in the same commit.**
 
@@ -290,8 +299,8 @@ superadditive. Better than the script's saturated `12×25` defaults.
 ## 8. Sequence
 
 1. Correct the two roadmap sentences (§5) — before anyone implements.
-2. Decide gate 7 — **recommendation in §5a: (a) now, emitting the capability key alongside,
-   with (b) scheduled.** **(b) has three
+2. ~~Decide gate 7~~ **DONE 2026-09-01** — (a) shipped with the capability key emitted
+   alongside; (b) scheduled. §5a. **(b) has three
    constituencies** — sharing, the microduck's portability, and the `reachy_mini_infant`
    name-lie already paid as interest — which is past this project's own "consider structural
    enforcement" line. But it is **not** what blocks D44.

@@ -28,6 +28,9 @@ from __future__ import annotations
 from maxim.hivemind.bundle import (
     BUNDLE_KIND,
     BUNDLE_SCHEMA_VERSION,
+    BundleBodyMismatch,
+    BundleBodyUnverifiable,
+    assert_bundle_body_compatible,
     compose_bundle,
     extract_bundle,
     read_bundle_manifest,
@@ -47,6 +50,9 @@ from maxim.hivemind.merge import (
 __all__ = [
     "BUNDLE_KIND",
     "BUNDLE_SCHEMA_VERSION",
+    "BundleBodyMismatch",
+    "BundleBodyUnverifiable",
+    "assert_bundle_body_compatible",
     "CONSENSUS_SOURCE",
     "IDENTITY_DOMAIN_MARKER",
     "compose_bundle",
