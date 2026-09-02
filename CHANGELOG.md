@@ -23,6 +23,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Gate 7 — typed bundles.** A substrate bundle now declares the body it was learned on
+  (`body_ref`, `affordance_namespace`), and `assert_bundle_body_compatible` **refuses** a
+  cross-body merge instead of letting it report success and contribute exactly `0.0`. Tool
+  signatures are entity-prefixed (`tool_bridge` builds `f"{ent.name}_{aff}"`), so before this
+  a bundle from another body merged "successfully" and read out as "this agent has learned
+  nothing yet" — D43 barrier 3. Gate 7 does not make cross-body sharing *work*; it makes its
+  absence loud. **Absence is not compatibility:** a pre-gate-7 bundle migrates with
+  `body_ref: None` and is refused by default (`BundleBodyUnverifiable`) rather than passing a
+  check it was never subject to — the same reasoning as the format-version `"0.x"` sentinel.
+  `allow_unverified=True` accepts the risk explicitly.
+- Bundles also carry a **`capability_map`** — the body-agnostic `(modulator, affordance)` key
+  beside each body-prefixed signature — so adopting a capability namespace later is a
+  reader-side change with **no migration**. That is the half `register_bundle_migration`
+  cannot cover, since it migrates the manifest and never the keyed payload.
+  `BUNDLE_SCHEMA_VERSION` 1 → 2, with the v1→v2 migration the seam was reserved for.
+
+
 ### Fixed
 - **The cerebellum forward model had not trained in production since 2026-04-07.**
   `ModulatorAffordanceTool.execute` called
