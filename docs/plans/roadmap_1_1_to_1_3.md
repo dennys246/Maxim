@@ -607,7 +607,23 @@ execution priority:
    `affordance_namespace`/`body_ref` are docs-only (`hivemind/bundle.py`'s manifest has
    neither). Design the namespace as a **capability** namespace with the body as an attribute,
    taking `embodiment/motor.py::MotorStep.sem_key`'s `(entity, modulator, affordance)` triple
-   as the starting shape — it is the one place a three-part action identity already survives.
+   **minus its first element** as the starting shape.
+
+   > **CORRECTED 2026-09-01 (D43 pre-implementation sweep).** The sentence above previously
+   > took the triple whole. `sem_key`'s first element is `entity_path` — **it IS the body
+   > dependence this gate exists to remove**, so following the instruction literally
+   > reproduces the bug. The capability key is `(modulator, affordance)`. Two further
+   > corrections: `sem_key` has exactly **two** references in the tree, so adopting it means
+   > *building* an identity, not promoting one; and **this gate contradicts
+   > [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md) §1**, which
+   > front-gated the same choice and picked the **body** namespace for a stated reason, with
+   > the microduck two-lens round (rev 2) withdrawing its capability recommendation and
+   > restoring the case study's. Whoever implements will read only one of these documents —
+   > reconcile them in the same commit as the decision. Both options costed against the code
+   > in [d43_merge_correctness.md](d43_merge_correctness.md) §5. Note also that gate 7 is
+   > **not** what blocks D44: D43's live axes are `cluster_id` and `agent_id`, and the
+   > tool-signature barrier does not fire for two agents on one body — which is exactly the
+   > configuration D44 requires.
 8. **Evidence and ledger coherence** (added 2026-08-27 from the scorecard
    reconciliation). Gates 1–7 exist because distribution amplifies silent *state*
    errors; this gate applies the same argument to the *evidence* behind the state that

@@ -242,6 +242,77 @@ Three findings decided this, each verified against the code:
 
 Estimate: **800–1500 LOC plus the bridge.** An adapter over designed seams, not a subsystem.
 
+### The sensor ceiling is a THRESHOLD artifact, not an information limit (measured 2026-09-01)
+
+The extero/intero dilution finding caps a modality channel at roughly **14 informative
+scalars**: `_sensor_embed` sums `(1-v)·basis_low + v·basis_high` over sorted sensor names, so
+each contributes 1/N, and at N ≥ 15 a full single-sensor swing no longer clears
+`SensorEncoderConfig.pattern_threshold = 0.85`. Read literally that caps a Minecraft body at
+~8 hand-projected scalars, which would be a hard constraint on "maximally embody."
+
+**Measured, it is not a hard constraint.** Three results:
+
+1. **The law is `cos ≈ 1 − 0.57/N`** — clean 1/N, confirmed from N=1 to N=200.
+2. **Signal degrades but noise does not.** A meaningful single-sensor swing falls as 1/N
+   (0.119 → 0.006 across N=4→100) while an all-sensor jitter stays flat at ~0.0008. SNR falls
+   185:1 → 7:1 — real degradation, but **~15:1 headroom still remains at N=50**.
+3. **An N-scaled threshold fully recovers separability.** With
+   `threshold = 1 − 0.30/N`: **100% signal separation AND 100% noise rejection at every N from
+   6 to 80.** The fixed 0.85 separates 0% of half-swings even at N=6 — it is calibrated for
+   ~6 drives and nothing else.
+
+**Dimension is not a lever.** 8× more embedding dimensions (384 → 3072) changes the cosine by
+< 0.001 at every N, and marginally for the worse. Dilution is an *averaging* problem, not a
+*capacity* problem: the sensors are not running out of room, they are being summed. More room
+does not un-average them. `dim` matters only as a floor (it must stay ≫ N for the bases to be
+near-orthogonal); 384 is ample at N=50.
+
+**Can a different equation help? Yes — but not via randomness.** Four encodings measured,
+40 random resting states each, signal = one sensor to an extreme, noise = all-sensor 2% jitter:
+
+| encoding | signal N=6 → N=100 | noise | SNR N=6 → N=100 |
+|---|---|---|---|
+| current: `(1-v)·lo + v·hi`, summed | 0.074 → **0.006** | 0.0008 | 93 → **7.5** |
+| sparse (each sensor writes k=16 dims) | **identical to current** | — | — |
+| deviation: `(v - set_point)·(hi - lo)` | 0.591 → 0.107 | 0.015 | 29 → 7.0 |
+| **sharpened: gain ∝ `(|v-0.5|·2)^3`** | **0.794 → 0.727** | 0.057 | **18 → 12.7** |
+
+**Sparse hashing is exactly as diluted as the plain sum** — the 1/N law is inherent to
+summing N contributions and comparing the sum by cosine, and no basis trick escapes it.
+**Sharpening does escape it**: weighting each sensor by how far it sits from its set point
+keeps the signal essentially FLAT across a 16× sensor increase (0.79 → 0.73), at the cost of a
+higher noise floor, and holds SNR roughly constant where the plain sum's collapses. The
+mechanism is "a sensor resting at its set point should not be shouting," which is the same
+principle the comfort-band drive design already encodes.
+
+Note the crossover: the plain sum has the **better** SNR at small N (93 vs 18) and they cross
+around N≈30–50. So sharpening is the right choice for a many-sensor body and the wrong one for
+a six-drive infant — it is a trade, not a free win.
+
+**A measurement caution, recorded because it nearly produced a false result here.** A first
+pass appeared to show deviation- and sharpened-encoding achieving perfect separation at every
+N. It was an artifact: with every sensor resting at exactly 0.5, both encodings produce the
+**zero vector**, and the cosine helper returned 0.0 for it. The numbers above use a scattered
+resting state and return `nan` on a degenerate vector instead of a flattering zero.
+
+**So maximal embodiment is achievable**, by either of two routes. The cheap one is a threshold
+scaled with sensor count — one line, fixes the symptom, does not improve SNR (it moves the bar
+to where the signal actually is). The durable one is the nonlinear gain above — it fixes the
+cause by keeping signal magnitude constant, but changes the representation every EARNED row was
+measured on. Three caveats before anyone does it:
+
+- **It is a selection-dynamics change touching every existing result.** Every EARNED row ran
+  at 0.85. This needs a re-baseline and would re-stale graduation rows — treat it like adding
+  a modality channel, not like a config tweak.
+- **These are synthetic measurements** with uncorrelated SHA bases and iid noise. Real sensors
+  correlate (hunger and fatigue drift together), which changes the geometry. Confirm on a real
+  body before relying on the numbers.
+- **It makes D51 load-bearing.** At 100% separation with 50 sensors you can allocate a great
+  many clusters, and `ec.py`'s scan is an exact O(N_nodes · d) Python loop with no cap and no
+  pruning (2.7 ms @ 100 nodes, 136 ms @ 5,000 — *per encode, per channel, per tick*). The
+  degenerate LSH that was supposed to make this sublinear is D51. Raising the sensor count
+  without addressing cluster-count growth trades a representation ceiling for a latency one.
+
 ### Two traps to design against, both verified
 
 - **`is_sim_mode` takes the lightweight session close.** A long Minecraft run would silently
