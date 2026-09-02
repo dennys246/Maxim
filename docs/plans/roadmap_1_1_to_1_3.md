@@ -470,9 +470,45 @@ might arrive in December. The ladder below restores the ordering without droppin
 |---|---|---|---|
 | **1.1.2** | **Decomposition** | fail-loud **Stage 2** (never run — it is the extraction's own stated prerequisite, and the per-PR behaviour gate cites a baseline that does not exist); the first `run_agentic_loop` extraction; the four cheap scorecard conditions (Tier-3 dispositions, `test_api_surface.py`, ARCHITECTURE.md EC rows, item 16.10); the D12 `pytest-timeout` guard; a scheduled `-m slow` lane | The length baseline tightens in the same commit, AND the extraction passes the corrected behaviour gate in [god_function_decomposition.md](god_function_decomposition.md) §"Behavior-preservation gate per PR". **Revised 2026-08-30 by measurement:** the original wording — a JSONL sequence-diff against a pre-refactor capture on the same seed — is UNSATISFIABLE. The generative sim is not reproducible on identical code; three runs of one command, *two of them both pre-extraction*, gave `percept` counts of 51, 8 and 0, so the two pre-extraction runs differ from each other more than the post-extraction run differs from either. Held to the letter it fails every mechanical extraction; held loosely it means nothing. What replaces it: the **substrate probe** is the sequence-diff vehicle (no LLM, bit-reproducible — byte-identical 72,239-record captures before and after the first extraction, digests committed), the generative sim supports a **structural** comparison only, and the swallow gate (`fail_loud_stage2.py check`) plus per-section direct unit tests carry the weight for an agent-loop extraction, since the substrate probe never enters `run_agentic_loop`. |
 | **1.1.3** | **Merge correctness** | **D43** both halves (id map out of `ec_merge`; re-key `cluster_reward_bias` + `cluster_reward_source`; N→1 fold semantics; a bias-key identity namespace — the undocumented design gap); gate 1 encoder-provenance validator; gate 2 geometry tag + threshold pin; gate 7 typed bundles (`body_ref` + `affordance_namespace`) | **D44**: a test asserting a *behavioural* delta across a merge — `recommend_action` changes — between two genuinely independent agents. Dict equality does not count |
-| **1.1.4** | **The world seam** | The Minecraft bridge, `bodies/minecraft_player.yaml`, the world modality channel **plus its selection-dynamics re-baseline**, the two-AUT-one-world harness ([minecraft_benchmark.md](minecraft_benchmark.md)) | Infrastructure only, **no claim**. Smoke benchmark green; `is_sim_mode=False` verified to consolidate |
+| **1.1.4** | **The world seam** | The Minecraft bridge, `bodies/minecraft_player.yaml`, the world modality channel **plus its selection-dynamics re-baseline**, the two-AUT-one-world harness ([minecraft_benchmark.md](minecraft_benchmark.md)). **Added 2026-09-01: the sensor-encoding change — a `modality:` declaration on the sensor schema, per-type channels derived from it, and a sensor-count-scaled `pattern_threshold`** ([minecraft_benchmark.md](minecraft_benchmark.md) §"The sensor ceiling is a THRESHOLD artifact"). | Infrastructure only, **no claim**. Smoke benchmark green; `is_sim_mode=False` verified to consolidate. **The encoding change ships HERE and not in 1.2, deliberately** — see the note below |
 | **1.2** | **Oasis** | The four-arm sharing benchmark, pre-registered, run in Minecraft at n ≥ 50, replicated on two Reachy Minis at n = 12; gates 3, 4 and 8 | The gate ladder below |
 | **1.3** | Perception fabric + reflex tier (**unchanged, semi-open**) | Cochlear front-end, vision encoder, binding, three-factor calibration — **plus the microduck** ([microduck_intent_layer.md](microduck_intent_layer.md)), see below | Its own pivotal experiment. **SEQUENCING: [roadmap_1_3_path.md](roadmap_1_3_path.md)** — Stage A duck baseline (unblocks the mic question) → Stage B engine seam / robot factory (N=2 makes the abstraction honest) → Stage C fabric (Stage 0 gates Stage 1) |
+
+> **Why the encoding change lands in 1.1.4 and not 1.2** (decided 2026-09-01, after measurement).
+>
+> The measurements are in [minecraft_benchmark.md](minecraft_benchmark.md): the ~14-sensor
+> ceiling is a **threshold artifact**, not an information limit; dimension is not a lever;
+> distributional moments help detection and *hurt* discrimination; and **discrimination — not
+> detection — is the real ceiling** (two different sensors spiking are already 99% alike at
+> N=100 before any moment block). The structural fix is per-type modality channels plus a
+> scaled threshold, neither sufficient alone.
+>
+> **The economics argued for folding it into 1.2, and that part is right.** A minor-version cut
+> already fires the heartbeat triggers; grouping + threshold additionally fires the EC-threshold
+> row, Exp 42 (SensorEncoder / EC-interoception), Exp 45 (`recommend_action`), Exp 48 (extero/intero
+> seam) and Exp 53b (`_sensor_embed` / `pattern_complete_or_separate`). Most of that is being
+> re-run regardless, so the marginal trigger cost is low.
+>
+> **The sequencing is what changed.** Two reasons:
+>
+> 1. **An unresolved representation confounds the headline claim.** If the encoding is still an
+>    open question while the four arms run, a null is uninterpretable (sharing failure or encoding
+>    failure?) and a positive is unattributable. This is the "choose the statistic before the arms"
+>    rule one level up: **choose the representation before the arms.** Gates frozen before data.
+> 2. **The Minecraft run cannot discharge Exp 53b.** That row's trigger names `_sensor_embed` /
+>    `pattern_complete_or_separate` and states *"the representation is what transfers"* — it is the
+>    whole cross-context claim, and its re-run is **hardware-gated on the Reachy**. Sim does not
+>    reach it.
+>
+> **1.1.4 is the right home and costs nothing extra:** it is already scoped "infrastructure only,
+> **no claim**" — where an open design question belongs — and it **already budgets the
+> selection-dynamics re-baseline** the encoding change needs. The change rides that re-baseline
+> instead of requiring its own. Minecraft stays the test venue; the representation is simply
+> frozen *before* 1.2's arms rather than during them.
+>
+> **Hardware batching:** grouping + threshold re-stales Exp 53b on the Reachy, and 1.2 separately
+> needs the n=12 two-robot replication. Those are the same scarce resource — plan them as ONE
+> hardware block, not two.
 
 ### The 1.2 benchmark (the headline claim)
 
@@ -607,7 +643,23 @@ execution priority:
    `affordance_namespace`/`body_ref` are docs-only (`hivemind/bundle.py`'s manifest has
    neither). Design the namespace as a **capability** namespace with the body as an attribute,
    taking `embodiment/motor.py::MotorStep.sem_key`'s `(entity, modulator, affordance)` triple
-   as the starting shape — it is the one place a three-part action identity already survives.
+   **minus its first element** as the starting shape.
+
+   > **CORRECTED 2026-09-01 (D43 pre-implementation sweep).** The sentence above previously
+   > took the triple whole. `sem_key`'s first element is `entity_path` — **it IS the body
+   > dependence this gate exists to remove**, so following the instruction literally
+   > reproduces the bug. The capability key is `(modulator, affordance)`. Two further
+   > corrections: `sem_key` has exactly **two** references in the tree, so adopting it means
+   > *building* an identity, not promoting one; and **this gate contradicts
+   > [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md) §1**, which
+   > front-gated the same choice and picked the **body** namespace for a stated reason, with
+   > the microduck two-lens round (rev 2) withdrawing its capability recommendation and
+   > restoring the case study's. Whoever implements will read only one of these documents —
+   > reconcile them in the same commit as the decision. Both options costed against the code
+   > in [d43_merge_correctness.md](d43_merge_correctness.md) §5. Note also that gate 7 is
+   > **not** what blocks D44: D43's live axes are `cluster_id` and `agent_id`, and the
+   > tool-signature barrier does not fire for two agents on one body — which is exactly the
+   > configuration D44 requires.
 8. **Evidence and ledger coherence** (added 2026-08-27 from the scorecard
    reconciliation). Gates 1–7 exist because distribution amplifies silent *state*
    errors; this gate applies the same argument to the *evidence* behind the state that

@@ -242,6 +242,126 @@ Three findings decided this, each verified against the code:
 
 Estimate: **800–1500 LOC plus the bridge.** An adapter over designed seams, not a subsystem.
 
+### The sensor ceiling is a THRESHOLD artifact, not an information limit (measured 2026-09-01)
+
+The extero/intero dilution finding caps a modality channel at roughly **14 informative
+scalars**: `_sensor_embed` sums `(1-v)·basis_low + v·basis_high` over sorted sensor names, so
+each contributes 1/N, and at N ≥ 15 a full single-sensor swing no longer clears
+`SensorEncoderConfig.pattern_threshold = 0.85`. Read literally that caps a Minecraft body at
+~8 hand-projected scalars, which would be a hard constraint on "maximally embody."
+
+**Measured, it is not a hard constraint.** Three results:
+
+1. **The law is `cos ≈ 1 − 0.57/N`** — clean 1/N, confirmed from N=1 to N=200.
+2. **Signal degrades but noise does not.** A meaningful single-sensor swing falls as 1/N
+   (0.119 → 0.006 across N=4→100) while an all-sensor jitter stays flat at ~0.0008. SNR falls
+   185:1 → 7:1 — real degradation, but **~15:1 headroom still remains at N=50**.
+3. **An N-scaled threshold fully recovers separability.** With
+   `threshold = 1 − 0.30/N`: **100% signal separation AND 100% noise rejection at every N from
+   6 to 80.** The fixed 0.85 separates 0% of half-swings even at N=6 — it is calibrated for
+   ~6 drives and nothing else.
+
+**Dimension is not a lever.** 8× more embedding dimensions (384 → 3072) changes the cosine by
+< 0.001 at every N, and marginally for the worse. Dilution is an *averaging* problem, not a
+*capacity* problem: the sensors are not running out of room, they are being summed. More room
+does not un-average them. `dim` matters only as a floor (it must stay ≫ N for the bases to be
+near-orthogonal); 384 is ample at N=50.
+
+**Can a different equation help? Yes — but not via randomness.** Four encodings measured,
+40 random resting states each, signal = one sensor to an extreme, noise = all-sensor 2% jitter:
+
+| encoding | signal N=6 → N=100 | noise | SNR N=6 → N=100 |
+|---|---|---|---|
+| current: `(1-v)·lo + v·hi`, summed | 0.074 → **0.006** | 0.0008 | 93 → **7.5** |
+| sparse (each sensor writes k=16 dims) | **identical to current** | — | — |
+| deviation: `(v - set_point)·(hi - lo)` | 0.591 → 0.107 | 0.015 | 29 → 7.0 |
+| **sharpened: gain ∝ `(|v-0.5|·2)^3`** | **0.794 → 0.727** | 0.057 | **18 → 12.7** |
+
+**Sparse hashing is exactly as diluted as the plain sum** — the 1/N law is inherent to
+summing N contributions and comparing the sum by cosine, and no basis trick escapes it.
+**Sharpening does escape it**: weighting each sensor by how far it sits from its set point
+keeps the signal essentially FLAT across a 16× sensor increase (0.79 → 0.73), at the cost of a
+higher noise floor, and holds SNR roughly constant where the plain sum's collapses. The
+mechanism is "a sensor resting at its set point should not be shouting," which is the same
+principle the comfort-band drive design already encodes.
+
+Note the crossover: the plain sum has the **better** SNR at small N (93 vs 18) and they cross
+around N≈30–50. So sharpening is the right choice for a many-sensor body and the wrong one for
+a six-drive infant — it is a trade, not a free win.
+
+**Distributional moments help DETECTION and hurt DISCRIMINATION.** Adding permutation-invariant
+shape statistics of the sensor vector (mean, sd, skew, excess kurtosis, max-deviation) to the
+embedding gives an N-*independent* "something changed" signal — at equal weight, cos after a
+single-sensor spike is **0.63 at N=6 and 0.27 at N=100**, against identity-only's 0.93 → 0.995.
+That is the one thing measured here that does not dilute.
+
+But it is blind to *which* sensor moved, by construction:
+
+| | detection (rest vs one spike) | discrimination (sensor A spike vs sensor B spike) |
+|---|---|---|
+| identity only, N=100 | 0.995 | 0.990 |
+| + moments (w=1.0), N=100 | **0.270** | **0.995** |
+| moments only, N=100 | −0.503 | **0.999** |
+
+**Discrimination is the real ceiling, and moments make it worse at every weight.** No choice of
+moments fixes this — permutation invariance is what a moment *is*. And note identity-only is
+already at 0.990 discrimination at N=100: two entirely different sensors spiking are 99% alike
+*before* any moment block. For learning "turn_left helps when the sound is left," discrimination
+is the whole game, so a moment-heavy encoding would be actively harmful.
+
+**The structural fix is to stop compressing N sensors into ONE cluster id.** Splitting 50 sensors
+across G per-type channels puts each channel back in the small-N regime:
+
+| channels G | sensors/channel | detection | discrimination |
+|---|---|---|---|
+| 1 | 50 | 0.991 | 0.980 |
+| 2 | 25 | 0.979 | 0.955 |
+| 5 | 10 | 0.949 | 0.897 |
+| 10 | 5 | 0.909 | **0.831** |
+
+Grouping alone does **not** clear the fixed 0.85 bar — it is grouping **and** the scaled
+threshold, not either alone.
+
+**This rides existing machinery and is the natural completion of a half-written intent.**
+`_SUBSTRATE_CHANNELS` is already a tuple of `ModalityChannel(tag, reader, ranger)`, and
+`_EXTEROCEPTIVE_ROOT_SENSORS = ("azimuth",)` carries the comment *"Kept a named set so a future
+exteroceptive sensor is one entry, not a code change at the read site."* The missing piece is
+that **a sensor cannot declare its own modality**: the YAML schema accepts `unit`, `range`,
+`initial`, `drive` and nothing else, so channel membership lives in hardcoded name tuples rather
+than in the body. Adding a `modality:` field to the sensor schema and deriving channels from it
+would: recover discrimination by grouping; remove the hardcoded `("azimuth",)` that 1.1.4 has to
+generalise anyway; and make "does this body have audio?" a property of the body — which is where
+[roadmap_1_3_path.md](roadmap_1_3_path.md) §Stage B already says it belongs.
+
+**Cost, and it is the known one:** `recommend_action` sums `cluster_reward_bias` additively
+across the active channel set, so the term's range grows with channel count (±2 today, ±5 at
+G=5) while `min_confidence` stays 0.3. Every added channel is a selection-dynamics
+recalibration, and nothing in CI catches it.
+
+**A measurement caution, recorded because it nearly produced a false result here.** A first
+pass appeared to show deviation- and sharpened-encoding achieving perfect separation at every
+N. It was an artifact: with every sensor resting at exactly 0.5, both encodings produce the
+**zero vector**, and the cosine helper returned 0.0 for it. The numbers above use a scattered
+resting state and return `nan` on a degenerate vector instead of a flattering zero.
+
+**So maximal embodiment is achievable**, by either of two routes. The cheap one is a threshold
+scaled with sensor count — one line, fixes the symptom, does not improve SNR (it moves the bar
+to where the signal actually is). The durable one is the nonlinear gain above — it fixes the
+cause by keeping signal magnitude constant, but changes the representation every EARNED row was
+measured on. Three caveats before anyone does it:
+
+- **It is a selection-dynamics change touching every existing result.** Every EARNED row ran
+  at 0.85. This needs a re-baseline and would re-stale graduation rows — treat it like adding
+  a modality channel, not like a config tweak.
+- **These are synthetic measurements** with uncorrelated SHA bases and iid noise. Real sensors
+  correlate (hunger and fatigue drift together), which changes the geometry. Confirm on a real
+  body before relying on the numbers.
+- **It makes D51 load-bearing.** At 100% separation with 50 sensors you can allocate a great
+  many clusters, and `ec.py`'s scan is an exact O(N_nodes · d) Python loop with no cap and no
+  pruning (2.7 ms @ 100 nodes, 136 ms @ 5,000 — *per encode, per channel, per tick*). The
+  degenerate LSH that was supposed to make this sublinear is D51. Raising the sensor count
+  without addressing cluster-count growth trades a representation ceiling for a latency one.
+
 ### Two traps to design against, both verified
 
 - **`is_sim_mode` takes the lightweight session close.** A long Minecraft run would silently
