@@ -47,9 +47,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     OWN sub-sensors; anything else — an entity-level sensor being the common case — falls
     through to `return True, ""`. `items/cradle_food.yaml`'s `requires: {portions: 1}` is the
     only such key in the bundled library and is a live no-op (eating is unlimited).
-  - `agents/exec_agent.py` warns once that the significance RPE heuristic is inert:
-    `nac.last_predicted_valence` does not exist (this was the only reference to the name in the
-    repo), so `rpe_raw` is a constant. Real RPE is available via `Executor.get_last_rpe()`.
+- **The significance RPE heuristic now reads a real prediction error (D60).**
+  `agents/exec_agent.py::_evaluate_staging` read `getattr(nac, "last_predicted_valence", 0.5)` —
+  an attribute that has never existed anywhere in the repo — so `rpe_raw` was a constant for
+  every outcome and "surprise makes a memory worth keeping" had never run. Nothing looked broken
+  because `SignificanceWeightLearner` correctly learns to zero a constant heuristic out.
+  `CausalLink.update_prediction_rw` already computed `last_rpe = abs(R - V)`; nothing on NAc
+  exposed it. `NAc.last_rpe` now does. **This changes what gets staged to long-term memory.**
 
 ### Measured, not changed
 - **`_DRIVE_TOOL_AFFINITIES` contributes exactly zero to Exp 42's discrimination.** Exp 42's

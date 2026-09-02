@@ -720,6 +720,9 @@ class NAc:
         # promotion is one-way — see _note_cluster_reward_source).
         self._cluster_reward_source: dict[tuple[str, str, str], str] = {}
 
+        # |RPE| of the most recent outcome; see _note_rpe / last_rpe (D60).
+        self._last_rpe: float = 0.0
+
         # Operant delayed-reward memory (cradle_mother, 2026-07-21): the
         # last ``(cluster_id, tool_signature)`` the agent executed, per
         # agent. Set by the substrate-primary action path when an action
@@ -1148,6 +1151,7 @@ class NAc:
                     context=context,
                 )
                 existing_link.update_prediction_rw(outcome_valence, learning_rate=self.config.base_learning_rate)
+                self._note_rpe(existing_link.last_rpe)
                 # Register established causal patterns in EC similarity space
                 if self._ec is not None and existing_link.observation_count >= 3:
                     self._register_causal_in_ec(existing_link)
@@ -1168,6 +1172,7 @@ class NAc:
                 )
                 # Bootstrap RPE on first observation so callers
                 # can gauge surprise even for novel events.
+                self._note_rpe(getattr(new_link, "last_rpe", 0.0))
                 new_link.update_prediction_rw(
                     outcome_valence,
                     learning_rate=self.config.base_learning_rate,
@@ -1302,6 +1307,7 @@ class NAc:
                     context=context,
                 )
                 existing_link.update_prediction_rw(outcome_valence, learning_rate=self.config.base_learning_rate)
+                self._note_rpe(existing_link.last_rpe)
                 self._total_observations += 1
                 try:
                     from maxim.simulation.sim_logger import sim_nac_learn
@@ -2953,6 +2959,33 @@ class NAc:
         if not agent_id or not entity_class or not failure_mode:
             return 0.0
         return self._percept_valences.get((agent_id, entity_class, failure_mode), 0.0)
+
+    def _note_rpe(self, rpe: float | None) -> None:
+        """Stash the most recent Rescorla-Wagner prediction error magnitude.
+
+        ``CausalLink.update_prediction_rw`` already computes
+        ``last_rpe = abs(R - V)``; nothing on NAc exposed it, so
+        ``agents/exec_agent.py::_evaluate_staging`` read a
+        ``last_predicted_valence`` attribute that has never existed and its
+        significance heuristic was a constant (D60). Mirrors what
+        ``bridges/tool_pain_bridge.py`` already does internally.
+        """
+        if rpe is None:
+            return
+        try:
+            self._last_rpe = float(rpe)
+        except (TypeError, ValueError):
+            return
+
+    @property
+    def last_rpe(self) -> float:
+        """|RPE| of the most recent outcome, 0.0 before any is recorded.
+
+        Surprise, in the Rescorla-Wagner sense: how far the outcome fell from
+        what the causal link predicted. Consumed by the significance
+        weight-learner to decide what is worth staging to long-term memory.
+        """
+        return self._last_rpe
 
     def get_percept_aversions(
         self,

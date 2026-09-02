@@ -150,3 +150,78 @@ def test_the_pre_fix_kwargs_are_rejected_loudly(bad_kw):
     kwargs[bad_kw] = kwargs.pop("entity" if bad_kw == "entity_path" else "actual")
     with pytest.raises(TypeError):
         cereb.observe_from_action(**kwargs)
+
+
+class TestNAcExposesRealRPE:
+    """D60: the significance RPE heuristic reads a real prediction error.
+
+    It read ``getattr(nac, "last_predicted_valence", 0.5)`` — the only
+    reference to that name in the repo — so ``rpe_raw`` was a constant for
+    every outcome and "surprise makes a memory worth keeping" had never run.
+    Nothing looked broken because ``SignificanceWeightLearner`` correctly
+    learns to zero a constant heuristic out.
+
+    ``CausalLink.update_prediction_rw`` already computed ``last_rpe``;
+    nothing on NAc exposed it. ``NAc.last_rpe`` does.
+    """
+
+    def _nac(self):
+        from maxim.decisions.nac import NAc, NACConfig
+
+        return NAc(NACConfig())
+
+    def _observe(self, nac, valence):
+        return nac.observe(
+            event_type="tool",
+            event_signature="tool:x",
+            outcome_type="result",
+            outcome_signature="o:x",
+            outcome_valence=valence,
+            delta_seconds=0.1,
+            context={"agent_id": "a"},
+        )
+
+    def test_starts_at_zero(self):
+        assert self._nac().last_rpe == 0.0
+
+    def test_a_surprising_outcome_produces_nonzero_rpe(self):
+        from maxim.decisions.causal_link import Valence
+
+        nac = self._nac()
+        self._observe(nac, Valence.POSITIVE)
+        self._observe(nac, Valence.NEGATIVE)  # the reversal is the surprise
+        assert nac.last_rpe > 0.1, f"expected real surprise, got {nac.last_rpe}"
+
+    def test_it_is_not_a_constant(self):
+        """The whole defect was a constant. Different histories must differ."""
+        from maxim.decisions.causal_link import Valence
+
+        a = self._nac()
+        self._observe(a, Valence.POSITIVE)
+        self._observe(a, Valence.NEGATIVE)
+        surprising = a.last_rpe
+
+        b = self._nac()
+        for _ in range(4):
+            self._observe(b, Valence.POSITIVE)
+        unsurprising = b.last_rpe
+
+        assert surprising != unsurprising
+        assert surprising > unsurprising, (
+            f"a reversal ({surprising}) must be more surprising than a confirmed expectation ({unsurprising})"
+        )
+
+    def test_the_dead_attribute_is_gone_from_the_read_path(self):
+        """Structural: nothing may read `last_predicted_valence` as a value."""
+        import inspect
+
+        from maxim.agents.exec_agent import ExecAgent
+
+        src = inspect.getsource(ExecAgent._evaluate_staging)
+        assert "nac.last_rpe" in src
+        # The dead name may still appear in the explanatory comment — that is
+        # the point of the comment. Check only EXECUTABLE lines. (My first
+        # draft asserted the string was absent from the whole source and
+        # failed on its own comment.)
+        code = "\n".join(ln.split("#", 1)[0] for ln in src.splitlines())
+        assert "last_predicted_valence" not in code
