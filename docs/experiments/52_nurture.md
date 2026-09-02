@@ -5,6 +5,12 @@
 [protocols/exp52_nurture_preregistration.md](protocols/exp52_nurture_preregistration.md).
 **Harness:** #543 (`e367f526`). **Runs:** Phase A `main` @ `e367f526` (operator Mac);
 Phase B `main` @ `60195a29` (big-mac-mini, `~/exp52/phaseB`).
+**RE-VALIDATED 2026-09-02 after the D53 credit-path fix — GRADUATE reproduced, all three
+gates PASS.** Phase B re-run `main` @ `2c9f1579` (big-mac-mini, `~/RMSrv/scripts/Maxim`),
+36 runs / 3 arms x 12 seeds, clean tree, `mock: False` — see
+[§Re-validation](#re-validation-2026-09-02-post-d53) and
+[data/52d53_phaseB_embodied.jsonl](data/52d53_phaseB_embodied.jsonl).
+
 **Raw data (S4):** [data/52_phaseA_scripted.json](data/52_phaseA_scripted.json) ·
 [data/52_phaseB_embodied.jsonl](data/52_phaseB_embodied.jsonl) ·
 [data/52_phaseB_runs/](data/52_phaseB_runs/README.md) (per-run provenance; mother logs
@@ -107,3 +113,46 @@ decides 50% — a pure random walk, as designed.
   seed exactly as designed.
 - Roadmap item 17 → DONE; item 18's bench ran the same day and its design moved to 1.1.1.
 - **2026-08-26 — these infants were read out on the physical Reachy Mini** ([Exp 53/53b](53_cross_context_readout.md)): files unchanged, taught 1.00 / satiated 0.00 / no_feed 0.50 — the cross-context half of the claim.
+
+
+## Re-validation 2026-09-02 (post-D53)
+
+The row's `Re-run on:` trigger fired: the **D53** credit-path fix changed how
+`drive_potential_diff` is consumed — a measured **exactly-zero** drive progress no longer
+falls through to the tool-success `+1` floor — and changed the `record_outcome` credit rule.
+Phase B was re-run whole on the fixed code. **Phase A was not re-run** (scripted, and its
+credit path does not route through `record_outcome`).
+
+Same frozen v3 gate (`analyze_cradle_mother.py --gate v3`), both cohorts, same 12 seeds:
+
+| | pre-D53 (2026-08-25) | post-D53 (2026-09-02) | delta |
+|---|---|---|---|
+| taught early | 0.614 | 0.614 | 0.000 |
+| **taught late** | **0.878** | **0.837** | −0.042 |
+| satiated late | 0.441 | 0.413 | −0.028 |
+| no_feed late | 0.413 | 0.413 | 0.000 |
+| per-seed SD (taught) | 0.130 | 0.086 | |
+
+**LEARNED / MOTHER-TAUGHT / HUNGER-NECESSARY: PASS.** S3 in-sim assertions clean (satiated
+never credited; no negative reward; no credit without relief). Every delta sits well inside
+the per-seed SD, so this is a replication, not a shift — the fix did not move the result.
+
+**Provenance.** All 36 rows carry `git_hash` == `executed_git_hash` == `harness_git_hash` ==
+`2c9f1579` (reachable from `main`, contains the D53 fix) with
+`working_tree_dirty_src_scripts: false`; the pre-registration was on `main` 2026-08-25, eight
+days before the first data timestamp. A fresh `--out` path was used, so the append-only
+pooling hazard did not fire — confirmed from row count and seed set, not from the filename.
+
+### The methodological finding: per-seed values are not reproducible, arm means are
+
+`taught early` matching to three digits across both runs is a coincidence of averaging —
+**only 4 of 36 (arm, seed) cells are identical**, and per-seed late correlates across the
+two runs at only **r = +0.66 (taught), +0.29 (no_feed), −0.24 (satiated)**. The seed fixes
+the stimulus order, not the trajectory.
+
+**Consequence, and it retracts a sentence rather than a result:** the original Phase B write-up
+singled out *"one weak seed (taught 48, late 0.54)"* and explained it via the L1 margin
+instrumentation. In the re-run that same seed reads **0.667**. The explanation may still be
+true of *some* seed in *some* run; it is not a durable property of seed 48. **Per-seed
+narratives from this apparatus should not be carried forward as facts** — only the arm-level
+means replicate, and those are what the gates read.
