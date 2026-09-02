@@ -32,6 +32,7 @@ from maxim.hivemind.merge import (
     ec_merge_aligned,
     nac_merge_many,
     rekey_nac_state,
+    substrate_merge,
     nac_merge,
 )
 from maxim.similarity.ec import EntorhinalCortex
@@ -897,3 +898,127 @@ class TestD43NWayFold:
     def test_length_mismatch_is_loud(self):
         with pytest.raises(ValueError, match="length mismatch"):
             nac_merge_many([self._s(0.1), self._s(0.2)], sources=["only-one"])
+
+
+class TestSubstrateMerge:
+    """D43 follow-up: the COMPOSITION, which is what consumers call.
+
+    D43 shipped `ec_merge_aligned`, `rekey_nac_state` and `nac_merge_many` and
+    left their composition to call sites — of which there were zero. Every
+    shipped consumer still called bare `nac_merge`, so through every real path
+    a merged want still read out as 0.0. These pin the composed contract and,
+    more importantly, its ORDER, which is the part that is easy to get wrong
+    and silent when wrong.
+    """
+
+    @staticmethod
+    def _nodes(prefix: str, vecs: dict[str, list[float]], modality: str = "interoception") -> dict:
+        return {
+            f"{prefix}-{k}": {"embedding": v, "modality": modality, "count": 1, "source": prefix, "domain": None}
+            for k, v in vecs.items()
+        }
+
+    def test_donor_bias_survives_onto_a_receiver_cluster_id(self):
+        """The whole point: a re-keyed bias names a node the receiver has."""
+        left_nodes = self._nodes("L", {"a": [1.0, 0.0], "b": [0.0, 1.0]})
+        right_nodes = self._nodes("R", {"a": [1.0, 0.0], "b": [0.0, 1.0]})
+        donor_key = NAC_KEY_SEP.join(("agentR", "R-a", "tool:x"))
+
+        result = substrate_merge(
+            receiver_nac={},
+            receiver_ec=left_nodes,
+            donor_nac={"cluster_reward_bias": {donor_key: 0.9}},
+            donor_ec=right_nodes,
+            receiver_source="recv",
+            donor_source="donor",
+            receiver_agent_id="agentL",
+        )
+
+        assert result.biases_dropped == 0
+        assert result.biases_rekeyed == 1
+        merged_keys = list(result.nac["cluster_reward_bias"])
+        assert len(merged_keys) == 1
+        agent, cluster, tool = merged_keys[0].split(NAC_KEY_SEP)
+        assert agent == "agentL", "agent_id must normalise at the ingestion boundary"
+        assert cluster in result.ec_nodes, "the re-keyed cluster must be a node in the merged EC"
+        assert tool == "tool:x"
+
+    def test_an_unalignable_donor_bias_is_dropped_and_counted(self):
+        """Dropping is the honest fold — and it must be VISIBLE.
+
+        D43's defining property was reporting success while contributing
+        nothing. A donor cluster that does not survive is dropped rather than
+        passed through, and `biases_dropped` says so.
+        """
+        result = substrate_merge(
+            receiver_nac={},
+            receiver_ec=self._nodes("L", {"a": [1.0, 0.0]}),
+            donor_nac={"cluster_reward_bias": {NAC_KEY_SEP.join(("agentR", "ghost", "tool:x")): 0.9}},
+            donor_ec=self._nodes("R", {"a": [1.0, 0.0]}),
+            receiver_source="recv",
+            donor_source="donor",
+        )
+        assert result.biases_dropped == 1
+        assert result.biases_rekeyed == 0
+        assert not result.nac.get("cluster_reward_bias")
+
+    def test_the_receivers_own_biases_are_not_rekeyed(self):
+        """Re-keying the receiver would be the same bug in mirror image."""
+        recv_key = NAC_KEY_SEP.join(("agentL", "L-a", "tool:x"))
+        result = substrate_merge(
+            receiver_nac={"cluster_reward_bias": {recv_key: 0.5}},
+            receiver_ec=self._nodes("L", {"a": [1.0, 0.0]}),
+            donor_nac={},
+            donor_ec=self._nodes("R", {"a": [1.0, 0.0]}),
+            receiver_source="recv",
+            donor_source="donor",
+            receiver_agent_id="agentL",
+        )
+        assert recv_key in result.nac["cluster_reward_bias"]
+
+    def test_unknown_keyword_is_loud(self):
+        """kwargs fan out to two different merges — a typo must not vanish."""
+        with pytest.raises(TypeError, match="unexpected keyword"):
+            substrate_merge(
+                receiver_nac={},
+                receiver_ec={},
+                donor_nac={},
+                donor_ec={},
+                receiver_source="a",
+                donor_source="b",
+                cosine_threshhold=0.5,
+            )
+
+    def test_interoception_uses_the_sensor_threshold_not_the_text_default(self):
+        """The half no plan document named.
+
+        `ec_merge`'s 0.44 default is tuned for paraphrase-mpnet TEXT;
+        interoception clusters — the ones that key `cluster_reward_bias` —
+        form at 0.85. Two clearly-distinct sensor states must not fold.
+        """
+        import math
+
+        theta = math.acos(0.6)
+        left = self._nodes("L", {"a": [1.0, 0.0]})
+        right = self._nodes("R", {"a": [math.cos(theta), math.sin(theta)]})
+        result = substrate_merge(
+            receiver_nac={},
+            receiver_ec=left,
+            donor_nac={},
+            donor_ec=right,
+            receiver_source="recv",
+            donor_source="donor",
+        )
+        assert len(result.ec_nodes) == 2, "cos 0.60 must NOT fold at the interoception threshold 0.85"
+
+        text_left = self._nodes("L", {"a": [1.0, 0.0]}, modality="text")
+        text_right = self._nodes("R", {"a": [math.cos(theta), math.sin(theta)]}, modality="text")
+        text_result = substrate_merge(
+            receiver_nac={},
+            receiver_ec=text_left,
+            donor_nac={},
+            donor_ec=text_right,
+            receiver_source="recv",
+            donor_source="donor",
+        )
+        assert len(text_result.ec_nodes) == 1, "cos 0.60 SHOULD fold at the text threshold 0.44"
