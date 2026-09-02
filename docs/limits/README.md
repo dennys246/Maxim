@@ -357,7 +357,7 @@ triggers, and it was less discoverable nested inside a MITIGATED entry.
   `docs/experiments/data/h1_partc_big_block.jsonl`, run `20260824T213320Z-76884`,
   record `i=1` (0-based turn index).
 
-### L11 — Sensor-count dilution, and the discrimination ceiling behind it · MITIGATED
+### L11 — Sensor-count dilution, and the discrimination ceiling behind it · MITIGATED · [tracking doc](l11_sensor_dilution.md)
 
 - **Instrument:** `similarity/encoder.py::_sensor_embed` → EC
   `pattern_complete_or_separate` at `SensorEncoderConfig.pattern_threshold = 0.85`.
