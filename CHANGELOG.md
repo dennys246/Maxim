@@ -23,6 +23,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **D43 — a merged foreign want no longer reads out as exactly `0.0`.** `ec_merge` computed a
+  right→left node alignment and **discarded it**, while `nac_merge` folded `cluster_reward_bias`
+  on exact string keys — so a donor's biases landed under cluster ids that are not nodes in the
+  receiver's EC, structurally unreachable at readout, while the merge reported success and the
+  bias dict *grew* (`len()` is `|left ∪ right|`, maximal exactly when nothing aligns).
+  `ec_merge_aligned` now returns an `ECMergeResult` carrying that map; `rekey_nac_state` rewrites
+  the donor's cluster ids through it and normalises `agent_id` at the **ingestion boundary**
+  rather than changing the key shape — closing both live axes without touching a single
+  persisted file. Measured end to end: a receiver that never saw the contingency goes **0.0 →
+  1.0**, with **4 of 4** merged keys naming a reachable cluster (was 0 of 4).
+- **The merge threshold is now per modality, and this half was in no plan document.**
+  `ec_merge`'s 0.44 default is `ECConfig.pattern_complete_threshold`, tuned for paraphrase-mpnet
+  **text**; interoception clusters — the ones that key `cluster_reward_bias` — are formed at
+  **0.85**. Returning the id map without retuning would have collapsed every donor interoception
+  cluster onto whichever receiver node scored highest: a *confidently wrong* alignment where
+  there had been an honestly missing one, which is strictly worse.
+- **The merge no longer deletes the receiver's own state.** `cluster_reward_source` was absent
+  from `nac_merge`'s return entirely, so `load_state` reset it to `{}` and every merge wiped the
+  receiver's credit provenance — local data loss, a different failure class from failed transfer.
+  It now merges with a one-way `"mixed"` promotion on disagreement. `saved_at` survives too
+  (keeping the younger, since decay is elapsed-time-based); previously only the CLI patched it
+  back, so every other caller silently lost the decay clock.
+
+### Added
+- **`nac_merge_many` — N→1 fold semantics, decided.** They were not undecided; they were decided
+  wrong. `_merge_mean_clamped` is an unweighted mean and is **not associative**, so the shipped
+  pairwise left-fold gives four contributors weights **1/8, 1/8, 1/4, 1/2** — the last takes half
+  the pooled bias. The new fold gives every contributor `1/N` in one pass, preserving the
+  zero-prior rule (absence is no evidence, not a zero vote).
+
+
 ### Added
 - **Gate 7 — typed bundles.** A substrate bundle now declares the body it was learned on
   (`body_ref`, `affordance_namespace`), and `assert_bundle_body_compatible` **refuses** a

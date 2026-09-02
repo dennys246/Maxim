@@ -83,7 +83,7 @@ from maxim.hivemind.identity import (
     filter_identity_bearing_links,
     is_identity_bearing,
 )
-from maxim.hivemind.merge import _merge_link_pair, _merge_welford, _validate_source
+from maxim.hivemind.merge import NAC_KEY_SEP, _merge_link_pair, _merge_welford, _validate_source
 from maxim.utils.atomic_io import atomic_write_text
 from maxim.utils.format_version import FORMAT_VERSION, check_format_version
 
@@ -277,7 +277,9 @@ _USE_SIG_PREFIX = "tool:use:"
 
 # Composite-key separator used by NAc.dump() for welford / cluster /
 # percept-valence keys.
-_NAC_KEY_SEP = "\x1f"
+# Re-exported from merge.py, which owns it (bundle imports merge, not the
+# reverse). Kept as a module-local alias so existing references are unchanged.
+_NAC_KEY_SEP = NAC_KEY_SEP
 
 
 def _scrub_event_signature(sig: str) -> str:

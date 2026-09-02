@@ -54,6 +54,7 @@ this module's.
 from __future__ import annotations
 
 import copy
+from dataclasses import dataclass
 from collections.abc import Callable
 from typing import Any
 
@@ -515,6 +516,22 @@ def nac_merge(
             lo=-1.0,
             hi=1.0,
         ),
+        # D43 step 6 — state the merge used to DELETE.
+        #
+        # `cluster_reward_source` was absent from this dict entirely, so
+        # `NAc.load_state` reset it to {} and every merge wiped the RECEIVER's
+        # own credit provenance — local data loss, a different failure class
+        # from "the foreign value didn't land". Union with a one-way "mixed"
+        # promotion on disagreement, matching what the bundle scrub already
+        # does when two contributors disagree about why a bias exists.
+        "cluster_reward_source": _merge_credit_sources(
+            left.get("cluster_reward_source"), right.get("cluster_reward_source")
+        ),
+        # `saved_at` was dropped too, and only the CLI patched it back — so
+        # every other caller silently lost the decay clock. Keep the LATER of
+        # the two: decay is elapsed-time-based, and the younger state is the
+        # one whose biases have decayed least.
+        "saved_at": _later_saved_at(left.get("saved_at"), right.get("saved_at")),
         "event_outcome_welford": _merge_welford(
             left.get("event_outcome_welford", {}) or {},
             right.get("event_outcome_welford", {}) or {},
@@ -545,20 +562,71 @@ def nac_merge(
 # duplicated rather than imported to keep this layer free of
 # internal-module imports (see ``_cosine``), so a test pins the equality
 # instead of the type system.
+#: Separator inside NAc's composite dict keys — the ``(agent_id, cluster_id,
+#: tool_signature)`` triple and the ``(agent_id, entity_class, failure_mode)``
+#: pair are stored as ``\x1f``-joined strings. Defined HERE, in the lowest
+#: module of the hivemind package, because ``bundle.py`` already imports from
+#: ``merge.py`` — the reverse would cycle.
+NAC_KEY_SEP = "\x1f"
+
 DEFAULT_FROZEN_CENTROID_MODALITIES: frozenset[str] = frozenset({"interoception", "audio"})
 
 
-def ec_merge(
+# ─────────────────────────────────────────────────────────────────────────
+# D43 — alignment-preserving EC merge
+#
+# `ec_merge` historically computed a right→left node alignment internally and
+# returned only the merged node set, discarding the map. `nac_merge` then
+# folded `cluster_reward_bias` on exact string keys — so a foreign want landed
+# under a cluster id that is not a node in the receiver's EC, read out as
+# exactly 0.0, and the merge reported success. See
+# docs/plans/d43_merge_correctness.md.
+#
+# THE THRESHOLD IS PER MODALITY, and this is the half no plan document named.
+# The 0.44 default is `ECConfig.pattern_complete_threshold`, tuned for
+# paraphrase-mpnet TEXT. Sensor modalities cluster at
+# `SensorEncoderConfig.pattern_threshold = 0.85`. Applied to `_sensor_embed`
+# output, virtually EVERY interoception node pair clears 0.44 — so returning
+# the id map without retuning would collapse all of the donor's interoception
+# clusters onto whichever receiver node scores highest. That is a CONFIDENTLY
+# WRONG map where today there is an honestly missing one: strictly worse.
+# ─────────────────────────────────────────────────────────────────────────
+
+#: Modalities whose nodes are produced by ``SensorEncoder`` rather than by a
+#: text encoder, and therefore align at the sensor threshold. Anything absent
+#: falls back to the ``cosine_threshold`` argument.
+SENSOR_MODALITY_THRESHOLDS: dict[str, float] = {
+    "interoception": 0.85,
+    "audio": 0.85,
+}
+
+
+@dataclass(frozen=True)
+class ECMergeResult:
+    """Merged nodes PLUS the right→left alignment that produced them.
+
+    ``id_map`` maps a donor (right) node id to the surviving id it folded
+    into. A donor node inserted rather than folded maps to the id it was
+    inserted under — which may be suffixed on collision — so every right-side
+    id has an entry and a re-key never silently drops a bias.
+    """
+
+    nodes: dict[str, dict[str, Any]]
+    id_map: dict[str, str]
+
+
+def ec_merge_aligned(
     left: dict[str, dict[str, Any]],
     right: dict[str, dict[str, Any]],
     *,
     left_source: str,
     right_source: str,
     cosine_threshold: float = 0.44,
+    modality_thresholds: dict[str, float] | None = None,
     frozen_centroid_modalities: frozenset[str] = DEFAULT_FROZEN_CENTROID_MODALITIES,
     trusted_sources: frozenset[str] | None = None,
     validate_node: Callable[[dict[str, Any]], bool] | None = None,
-) -> dict[str, dict[str, Any]]:
+) -> ECMergeResult:
     """Aggregate two ``substrate_nodes``-shape dicts.
 
     Inputs match the ``substrate_nodes`` slice of ``EC.save()`` payload::
@@ -618,6 +686,10 @@ def ec_merge(
     _validate_source(right_source, label="right_source")
 
     merged: dict[str, dict[str, Any]] = {}
+    id_map: dict[str, str] = {}
+    _thresholds = dict(SENSOR_MODALITY_THRESHOLDS)
+    if modality_thresholds:
+        _thresholds.update(modality_thresholds)
     # Seed merged with deep copies of left so iteration mutations don't
     # touch the caller's dict. Sorted iteration keeps the seed phase
     # deterministic for PR D bundle hashing.
@@ -639,11 +711,14 @@ def ec_merge(
         # Find best left-side node of the same modality.
         best_id: str | None = None
         best_sim = -1.0
+        # Per-modality threshold (D43). A sensor modality must align at the
+        # threshold its clusters were FORMED at, not at the text default.
+        thresh_r = _thresholds.get(modality_r, cosine_threshold)
         for nid_l, nd_l in merged.items():
             if nd_l["modality"] != modality_r:
                 continue
             sim = _cosine(nd_l["embedding"], emb_r)
-            if sim >= cosine_threshold and sim > best_sim:
+            if sim >= thresh_r and sim > best_sim:
                 best_sim = sim
                 best_id = nid_l
 
@@ -659,11 +734,14 @@ def ec_merge(
                     suffix += 1
                     candidate = f"{nid_r}#{right_source}#{suffix}"
                 merged[candidate] = norm_r
+                id_map[nid_r] = candidate
             else:
                 merged[nid_r] = norm_r
+                id_map[nid_r] = nid_r
             continue
 
         # Match — accumulate counts + contributors.
+        id_map[nid_r] = best_id
         target = merged[best_id]
         n_l = int(target.get("count", target.get("member_count", 1)))
         n_r = int(norm_r.get("count", norm_r.get("member_count", 1)))
@@ -696,7 +774,192 @@ def ec_merge(
         target["source"] = _resolved_source(contribs)
         target["domain"] = target.get("domain") or norm_r.get("domain")
 
+    return ECMergeResult(nodes=merged, id_map=id_map)
+
+
+def nac_merge_many(
+    states: "list[dict[str, Any]]",
+    *,
+    sources: "list[str]",
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Fold N NAc states with EQUAL weight — the N→1 semantics, decided.
+
+    D43 step 5. The semantics were not undecided; they were decided wrong. The
+    only shipped N>2 fold is a pairwise left-fold
+    (``scripts/orient_substrate/5_operant_creche_federation.py::merge_creche``
+    and its twin), and ``_merge_mean_clamped`` is an **unweighted** mean of
+    shared keys, which is **not associative**. Folding four contributors
+    pairwise gives them weights **1/8, 1/8, 1/4, 1/2** — the last contributor
+    takes half the pooled bias. "Most-recent contributor dominates,
+    exponentially" is not a federation.
+
+    This folds the bias dicts in ONE pass so every contributor gets 1/N, and
+    delegates everything else — links, welford, outcome_index — to the pairwise
+    :func:`nac_merge`, which is already order-independent for those fields
+    (observation-weighted means and a true parallel Welford).
+
+    Note the internal inconsistency this resolves: within a single
+    ``nac_merge`` call, ``total_observations`` sums exactly and
+    ``event_outcome_welford`` uses Chan's parallel algorithm, while only the
+    four bias dicts used the order-dependent unweighted mean.
+    """
+    if not states:
+        raise ValueError("nac_merge_many requires at least one state")
+    if len(states) != len(sources):
+        raise ValueError(f"states/sources length mismatch: {len(states)} vs {len(sources)}")
+    if len(states) == 1:
+        return dict(states[0])
+
+    # Pairwise for the order-independent fields.
+    merged = states[0]
+    for state, source in zip(states[1:], sources[1:], strict=True):
+        merged = nac_merge(merged, state, left_source=sources[0], right_source=source, **kwargs)
+
+    # Then overwrite the bias dicts with a true equal-weight N-way mean.
+    for field, lo, hi in (
+        ("reward_bias", 0.0, None),
+        ("goal_reward_bias", None, None),
+        ("cluster_reward_bias", -1.0, 1.0),
+        ("percept_valences", -1.0, 1.0),
+    ):
+        totals: dict[str, float] = {}
+        counts: dict[str, int] = {}
+        for state in states:
+            src = state.get(field)
+            if not isinstance(src, dict):
+                continue
+            for key, value in src.items():
+                try:
+                    v = float(value)
+                except (TypeError, ValueError):
+                    continue
+                totals[str(key)] = totals.get(str(key), 0.0) + v
+                counts[str(key)] = counts.get(str(key), 0) + 1
+        folded: dict[str, float] = {}
+        for key, total in totals.items():
+            # Zero-prior rule, unchanged from _merge_mean_clamped: a key absent
+            # from a contributor is NO EVIDENCE, not a zero vote. Divide by the
+            # number of contributors that HELD the key, not by N.
+            v = total / counts[key]
+            if lo is not None:
+                v = max(lo, v)
+            if hi is not None:
+                v = min(hi, v)
+            folded[key] = v
+        if folded or field in merged:
+            merged[field] = folded
     return merged
+
+
+def _merge_credit_sources(left: Any, right: Any) -> dict[str, str]:
+    """Union two ``cluster_reward_source`` maps; disagreement promotes to "mixed".
+
+    One-way, matching ``NAc._note_cluster_reward_source``: once a triple has
+    accumulated credit from two different sources, "mixed" is the honest label
+    and it never demotes back.
+    """
+    out: dict[str, str] = {}
+    for src in (left, right):
+        if not isinstance(src, dict):
+            continue
+        for key, value in src.items():
+            k, v = str(key), str(value)
+            if k in out and out[k] != v:
+                out[k] = "mixed"
+            else:
+                out.setdefault(k, v)
+    return out
+
+
+def _later_saved_at(left: Any, right: Any) -> Any:
+    """The younger of two ISO timestamps — the state whose biases decayed least."""
+    candidates = [t for t in (left, right) if isinstance(t, str) and t]
+    if not candidates:
+        return left if left is not None else right
+    return max(candidates)
+
+
+def rekey_nac_state(
+    nac_state: dict[str, Any],
+    id_map: dict[str, str],
+    *,
+    to_agent_id: str | None = None,
+) -> dict[str, Any]:
+    """Rewrite a donor NAc state's cluster ids (and optionally its agent id).
+
+    D43 step 3 + 4. `cluster_reward_bias` and `cluster_reward_source` are keyed
+    on the triple ``(agent_id, cluster_id, tool_signature)``. Both elements that
+    can miss are rewritten here, BEFORE :func:`nac_merge` runs, so the fold sees
+    keys that can actually match:
+
+    * **cluster_id** through ``id_map`` — the alignment
+      :func:`ec_merge_aligned` computes and used to discard.
+    * **agent_id** to ``to_agent_id`` when given. This is deliberately a
+      normalisation at the INGESTION BOUNDARY rather than a change to the key
+      shape. The agent field exists for per-agent stash discipline *within* one
+      substrate; across a merge the contributor identity already lives in the
+      bundle manifest's ``contributor_id`` and in each node's ``contributors``
+      list, so rewriting it here closes the second axis **without touching a
+      single persisted file** — and it fixes ``get_agent_tool_biases``'s
+      ``if aid != agent_id: continue`` filter for free.
+
+    A cluster id absent from ``id_map`` is **dropped, not passed through**. A
+    donor bias whose cluster did not survive the merge names a node the
+    receiver cannot reach; keeping it is what made the union grow while
+    contributing exactly 0.0. Dropping is the honest fold.
+
+    Returns a new dict; the input is not mutated.
+    """
+    out = dict(nac_state)
+    for field in ("cluster_reward_bias", "cluster_reward_source"):
+        src = nac_state.get(field)
+        if not isinstance(src, dict):
+            continue
+        rekeyed: dict[str, Any] = {}
+        for key, value in src.items():
+            parts = str(key).split(NAC_KEY_SEP)
+            if len(parts) != 3:
+                continue
+            aid, cid, tsig = parts
+            mapped = id_map.get(cid)
+            if mapped is None:
+                continue  # the donor cluster did not survive — drop, don't fake
+            rekeyed[NAC_KEY_SEP.join((to_agent_id or aid, mapped, tsig))] = value
+        out[field] = rekeyed
+    return out
+
+
+def ec_merge(
+    left: dict[str, dict[str, Any]],
+    right: dict[str, dict[str, Any]],
+    *,
+    left_source: str,
+    right_source: str,
+    cosine_threshold: float = 0.44,
+    modality_thresholds: dict[str, float] | None = None,
+    frozen_centroid_modalities: frozenset[str] = DEFAULT_FROZEN_CENTROID_MODALITIES,
+    trusted_sources: frozenset[str] | None = None,
+    validate_node: Callable[[dict[str, Any]], bool] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Merged nodes only — the pre-D43 contract, unchanged.
+
+    Kept because a dozen call sites want the nodes and nothing else. **Anything
+    that will re-key NAc state must call :func:`ec_merge_aligned` instead** and
+    use its ``id_map``; folding bias keys after a node-only merge is exactly
+    the D43 defect.
+    """
+    return ec_merge_aligned(
+        left,
+        right,
+        left_source=left_source,
+        right_source=right_source,
+        cosine_threshold=cosine_threshold,
+        modality_thresholds=modality_thresholds,
+        frozen_centroid_modalities=frozen_centroid_modalities,
+        trusted_sources=trusted_sources,
+        validate_node=validate_node,
+    ).nodes
 
 
 def _normalize_node(node: dict[str, Any], *, fallback_source: str) -> dict[str, Any]:
@@ -742,6 +1005,12 @@ def _node_contributors(node: dict[str, Any], fallback_source: str) -> tuple[str,
 
 __all__ = [
     "CONSENSUS_SOURCE",
+    "ECMergeResult",
+    "ec_merge_aligned",
+    "rekey_nac_state",
+    "nac_merge_many",
+    "NAC_KEY_SEP",
+    "SENSOR_MODALITY_THRESHOLDS",
     "ec_merge",
     "nac_merge",
 ]

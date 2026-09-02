@@ -43,7 +43,11 @@ from maxim.hivemind.identity import (
 )
 from maxim.hivemind.merge import (
     CONSENSUS_SOURCE,
+    ECMergeResult,
     ec_merge,
+    ec_merge_aligned,
+    nac_merge_many,
+    rekey_nac_state,
     nac_merge,
 )
 
@@ -56,7 +60,11 @@ __all__ = [
     "CONSENSUS_SOURCE",
     "IDENTITY_DOMAIN_MARKER",
     "compose_bundle",
+    "ECMergeResult",
     "ec_merge",
+    "ec_merge_aligned",
+    "nac_merge_many",
+    "rekey_nac_state",
     "extract_bundle",
     "filter_identity_bearing_links",
     "is_identity_bearing",
