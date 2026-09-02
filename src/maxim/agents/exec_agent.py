@@ -46,6 +46,8 @@ from maxim.prompts.prompt_profiles import ExecutivePrompt, load_prompt_profile
 from maxim.agents.memory_agent import MemoryAgent
 from maxim.decisions.significance import CycleContext, SignificanceConfig, SignificanceWeightLearner
 from maxim.utils.logging import warn
+
+logger = logging.getLogger(__name__)
 from maxim.utils.prompts import get_agent_prompt
 from maxim.utils.structured_logging import log_structured
 
@@ -83,6 +85,8 @@ class ExecAgent(Agent):
         shared_llm_worker: LLMWorker | None = None,
         agent_id: str | None = None,
     ) -> None:
+        # One-shot guard for the inert-RPE warning below (see _evaluate_staging).
+        self._rpe_gap_warned = False
         super().__init__(name=name, enabled=enabled)
         self._bus = bus
         self._memory = memory_agent
@@ -695,6 +699,28 @@ class ExecAgent(Agent):
         nac = self._nac
         if nac is not None:
             try:
+                # `last_predicted_valence` does NOT exist on NAc — this is the
+                # only reference to that name in the repo, so `predicted` is
+                # always the 0.5 default and `rpe_raw` is a constant 0.5 for
+                # every outcome. The significance weight-learner will correctly
+                # learn to zero the heuristic out, so nothing is mis-scored;
+                # what is wrong is that "surprise makes a memory worth keeping"
+                # has never actually run.
+                #
+                # Surfaced rather than rewired (2026-09-01): real RPE exists
+                # (`CausalLink.last_rpe`, reachable via `Executor.get_last_rpe`,
+                # which `runtime/bio_integration.py` already uses for hippocampus
+                # salience), but wiring it changes what gets staged to long-term
+                # memory — a behaviour change not worth making silently while an
+                # experiment is mid-flight. Filed; the warning means it can no
+                # longer be mistaken for a live signal.
+                if not hasattr(nac, "last_predicted_valence") and not self._rpe_gap_warned:
+                    self._rpe_gap_warned = True
+                    logger.warning(
+                        "significance RPE heuristic is inert: NAc has no "
+                        "`last_predicted_valence`, so rpe_raw is a constant. "
+                        "Real RPE is available via Executor.get_last_rpe()."
+                    )
                 predicted = getattr(nac, "last_predicted_valence", 0.5)
                 actual = 1.0 if completed.success else 0.0
                 rpe_raw = abs(predicted - actual)

@@ -740,12 +740,23 @@ class ModulatorAffordanceTool(Tool):
                         r = schema.get("range")
                         if r and len(r) == 2:
                             sensor_ranges[sname] = r
+                # Keyword names must match Cerebellum.observe_from_action's
+                # signature exactly (`entity=`, `actual=`). They did not from
+                # 2026-04-07 to 2026-09-01: this call passed `entity_path=` /
+                # `actual_sensors=`, raised TypeError, and the enclosing
+                # `except Exception: log_swallowed_exception()` ate it — so the
+                # forward model never trained in production for ~5 months while
+                # `prompts/acting_coach.py::_compose_cerebellum_predictions`
+                # rendered an empty section. The unit test passed throughout
+                # because it calls the API correctly; only this caller was wrong.
+                # Guard: tests/unit/test_cerebellum_wiring.py exercises THIS
+                # call path, not the API in isolation.
                 self._cerebellum.observe_from_action(
-                    entity_path=self._entity.full_path,
+                    entity=self._entity.full_path,
                     modulator=self._modulator.name,
                     affordance=self._affordance_name,
                     params=kwargs,
-                    actual_sensors=entity_state,
+                    actual=entity_state,
                     sensor_ranges=sensor_ranges,
                 )
                 try:

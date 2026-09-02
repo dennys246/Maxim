@@ -24,6 +24,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **The cerebellum forward model had not trained in production since 2026-04-07.**
+  `ModulatorAffordanceTool.execute` called
+  `Cerebellum.observe_from_action(entity_path=…, actual_sensors=…)` while the signature is
+  `entity=` / `actual=`; every call raised `TypeError` into an enclosing
+  `except Exception: log_swallowed_exception()`. For ~5 months
+  `prompts/acting_coach.py::_compose_cerebellum_predictions` rendered an empty section into
+  every prompt, and `Cerebellum.observe`'s own telemetry read `key.entity` / `key.params_hash`
+  against a comment describing a five-field `ModelKey` that never existed (real fields:
+  `entity_path` / `param_bucket`) — a second swallow, so `sim_cerebellum_train` had never fired
+  either. `tests/integration/test_affordance_transfer.py` passed throughout because it calls the
+  API correctly and directly: **a unit test of an API proves the API works and says nothing
+  about whether the one production caller agrees with it.** The new guard drives the production
+  path and AST-checks the call site's keywords against the signature.
+
+### Changed
+- **Two silent no-ops are now loud, deliberately without changing their semantics.** Both were
+  found by the Minecraft-embodiment design dive, and both would have changed apparatus behaviour
+  mid-experiment if "fixed" outright — Exp 52 Phase B was running:
+  - `embodiment/spec.py` warns at parse time when an affordance's `requires` names a key that
+    can never gate. `check_affordance_requires` resolves only `"integrity"` and the modulator's
+    OWN sub-sensors; anything else — an entity-level sensor being the common case — falls
+    through to `return True, ""`. `items/cradle_food.yaml`'s `requires: {portions: 1}` is the
+    only such key in the bundled library and is a live no-op (eating is unlimited).
+  - `agents/exec_agent.py` warns once that the significance RPE heuristic is inert:
+    `nac.last_predicted_valence` does not exist (this was the only reference to the name in the
+    repo), so `rpe_raw` is a constant. Real RPE is available via `Executor.get_last_rpe()`.
+
+### Measured, not changed
+- **`_DRIVE_TOOL_AFFINITIES` contributes exactly zero to Exp 42's discrimination.** Exp 42's
+  results attribute the GRADUATE to "B8 delta-attribution + the pre-existing drive-affinity
+  heuristic," and that heuristic is a hand-written English word list inside `recommend_action`
+  (`cold`/`thermal` → `warm`, `fire`, `blanket`, `huddle`). Measured across the experiment's
+  actual tool set with a thermal drive at 0.9: every warmth tool receives **+0.630**, safe and
+  harm alike, so **Δ = 0.000 across all four matched safe/harm pairs**. The table decides
+  warming-vs-not-warming (+0.63 vs +0.00 for `sense_presence`/`examine`/`move`); it cannot
+  express a preference between twins that share a keyword. Exp 42's `safe_pref` result therefore
+  does not rest on the word list. Recorded because the attribution was loose and 1.2 builds on
+  that row. **The Minecraft warning is unaffected and sharper:** Minecraft's action set is not
+  twins — `eat`, `pick_up`, `drink`, `sleep`, `flee`, `hide`, `look`, `heal`, `fire` are all in
+  the table, so a body with a `hunger` drive and an `eat` tool ships the answer pre-installed.
+
+
+### Fixed
 - **Three experiment-operator traps that fired during one re-validation, none of them
   catchable by a test before now** (2026-09-01, post-D53 Exp 42 re-run):
   - `analyze_exp42_preference.py` gains **`--append`**, and its refusal now recommends it
