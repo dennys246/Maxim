@@ -626,6 +626,7 @@ def ec_merge_aligned(
     frozen_centroid_modalities: frozenset[str] = DEFAULT_FROZEN_CENTROID_MODALITIES,
     trusted_sources: frozenset[str] | None = None,
     validate_node: Callable[[dict[str, Any]], bool] | None = None,
+    strict_geometry: bool = False,
 ) -> ECMergeResult:
     """Aggregate two ``substrate_nodes``-shape dicts.
 
@@ -714,8 +715,28 @@ def ec_merge_aligned(
         # Per-modality threshold (D43). A sensor modality must align at the
         # threshold its clusters were FORMED at, not at the text default.
         thresh_r = _thresholds.get(modality_r, cosine_threshold)
+        geom_r = norm_r.get("geometry")
         for nid_l, nd_l in merged.items():
             if nd_l["modality"] != modality_r:
+                continue
+            # Gate 2 / D4: DIFFERENT ENCODING SPACE IS NOT LOW SIMILARITY.
+            # `_cosine` already refuses a dimension mismatch, but a place code
+            # adds sensor names while keeping dim=384 and the same "audio"
+            # tag, so the length guard never fires and old- and new-geometry
+            # nodes fold whenever the partial cosine clears the threshold.
+            # Because `audio` is a frozen-centroid modality the centroid never
+            # moves, so the corruption is invisible: only counts and
+            # contributors inflate. Two nodes that BOTH declare a geometry and
+            # declare DIFFERENT ones are incomparable and never fold.
+            #
+            # An absent tag is unverifiable, not a match — legacy nodes
+            # predate the stamp, so they are allowed through (the file still
+            # loads) exactly as gate 7 admits an undeclared `body_ref`.
+            # `strict_geometry=True` refuses those too.
+            geom_l = nd_l.get("geometry")
+            if geom_l is not None and geom_r is not None and geom_l != geom_r:
+                continue
+            if strict_geometry and (geom_l is None or geom_r is None):
                 continue
             sim = _cosine(nd_l["embedding"], emb_r)
             if sim >= thresh_r and sim > best_sim:
@@ -941,6 +962,7 @@ def ec_merge(
     frozen_centroid_modalities: frozenset[str] = DEFAULT_FROZEN_CENTROID_MODALITIES,
     trusted_sources: frozenset[str] | None = None,
     validate_node: Callable[[dict[str, Any]], bool] | None = None,
+    strict_geometry: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Merged nodes only — the pre-D43 contract, unchanged.
 
@@ -959,6 +981,7 @@ def ec_merge(
         frozen_centroid_modalities=frozen_centroid_modalities,
         trusted_sources=trusted_sources,
         validate_node=validate_node,
+        strict_geometry=strict_geometry,
     ).nodes
 
 
@@ -1033,6 +1056,7 @@ def substrate_merge(
         "frozen_centroid_modalities",
         "trusted_sources",
         "validate_node",
+        "strict_geometry",
     }
     nac_keys = {
         "max_reward_bias",
@@ -1105,6 +1129,10 @@ def _normalize_node(node: dict[str, Any], *, fallback_source: str) -> dict[str, 
         "member_count": count_val,
         "source": str(node.get("source", fallback_source)),
         "domain": node.get("domain"),
+        # Gate 2 / D4. Carried through the merge because it is what makes two
+        # embeddings comparable at all; dropping it here would make every
+        # merged node look unstamped and silently disable the geometry gate.
+        "geometry": node.get("geometry"),
         "contributors": list(node.get("contributors", ())),
     }
     return out

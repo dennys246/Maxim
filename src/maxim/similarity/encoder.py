@@ -17,6 +17,8 @@ collapse criterion.
 
 from __future__ import annotations
 
+import json
+
 import hashlib
 import logging
 from dataclasses import dataclass
@@ -203,6 +205,22 @@ class LinguisticEncoder:
         )
         return embedding
 
+    def _linguistic_geometry(self, embedding: list[float], modality: str) -> str:
+        """Gate 2 / D4 geometry tag for text embeddings.
+
+        For text the basis set is the MODEL — swapping models (or silently
+        falling back to the hash encoder) produces vectors that are not
+        comparable to the old ones even at identical dimension, which is the
+        same-dim corruption `_cosine`'s length guard cannot catch.
+        """
+        return encoding_geometry_tag(
+            encoder="linguistic",
+            modality=modality,
+            model_name=self.config.model_name,
+            using_fallback=self._using_fallback,
+            embedding_dim=len(embedding),
+        )
+
     def encode(self, percept: Any) -> str | None:
         """Run the full substrate encoding pipeline on a percept.
 
@@ -261,7 +279,9 @@ class LinguisticEncoder:
         )
 
         if result.is_new:
-            self.ec.register_substrate_node(result.node_id, embedding, modality)
+            self.ec.register_substrate_node(
+                result.node_id, embedding, modality, geometry=self._linguistic_geometry(embedding, modality)
+            )
 
         self.atl.activate_substrate_node(
             node_id=result.node_id,
@@ -352,7 +372,9 @@ class LinguisticEncoder:
             )
 
             if result.is_new:
-                self.ec.register_substrate_node(result.node_id, embedding, modality)
+                self.ec.register_substrate_node(
+                    result.node_id, embedding, modality, geometry=self._linguistic_geometry(embedding, modality)
+                )
 
             self.atl.activate_substrate_node(
                 node_id=result.node_id,
@@ -556,6 +578,40 @@ def _sensor_embed(
     return vec
 
 
+def encoding_geometry_tag(**fields: Any) -> str:
+    """A short stable id for the ENCODING SPACE a vector was produced in.
+
+    Gate 2 / D4. ``_cosine`` already refuses a dimension mismatch — vectors of
+    different length come from different spaces. The hole that guard cannot
+    see is a **same-dimension** geometry change: a place code adds sensor
+    names, so ``_sensor_embed`` sums a different set of bases while keeping
+    ``dim=384`` and the same ``"audio"`` modality tag. Old- and new-geometry
+    nodes then merge whenever the partial cosine clears the threshold, counts
+    and contributors inflate, and because ``audio`` is a frozen-centroid
+    modality the centroid never moves — so nothing is observably wrong.
+
+    What makes two vectors comparable is the basis set and how values were
+    mapped onto it, NOT the vector length. For ``_sensor_embed`` that is the
+    sensor-name set (each name contributes ``stable_basis(f"{name}:low")`` and
+    ``:high``) plus the normalization mode; for text it is the model. Those
+    fields are exactly what the encoders already stamp into
+    ``encoder_provenance``, so this derives the tag rather than inventing a
+    parallel record.
+
+    Hashed with :func:`stable_hash_32` because the tag is persisted and
+    compared across processes — builtin ``hash()`` would make it
+    permanently unmatchable (see the stable-hash invariant).
+    """
+    from maxim.utils.seeding import stable_hash_32
+
+    canonical = json.dumps(
+        {k: (sorted(v) if isinstance(v, (list, tuple, set)) else v) for k, v in sorted(fields.items())},
+        sort_keys=True,
+        default=str,
+    )
+    return f"g{stable_hash_32(canonical):08x}"
+
+
 @dataclass
 class SensorEncoderConfig:
     """Configuration for SensorEncoder."""
@@ -724,13 +780,25 @@ class SensorEncoder:
             },
         )
 
+        # Gate 2 / D4: the sensor-name set IS the basis set (`_sensor_embed`
+        # sums `stable_basis(f"{name}:low")` / `:high` per sensor), and the
+        # normalization mode decides how values map onto it. A place code that
+        # adds sensor names changes the space while keeping dim and modality,
+        # which is precisely the merge corruption the dimension guard cannot see.
+        geometry = encoding_geometry_tag(
+            encoder="sensor",
+            modality=modality,
+            sensor_names=sorted(sensors.keys()),
+            normalization=mode,
+            embedding_dim=len(embedding),
+        )
         result = self.ec.pattern_complete_or_separate(
             embedding=embedding,
             modality=modality,
             threshold=self.config.pattern_threshold,
         )
         if result.is_new:
-            self.ec.register_substrate_node(result.node_id, embedding, modality)
+            self.ec.register_substrate_node(result.node_id, embedding, modality, geometry=geometry)
 
         # ATL activation gives the node a human-readable label so
         # operator tooling that pages through EC nodes sees the
