@@ -30,8 +30,17 @@ Subcommands:
 The 1.0 ``import`` verb does NOT auto-merge into a live system. It
 extracts the bundle so the user (or 1.1+ Oasis software) can decide
 what to do with the extracted dicts — typically pass them through
-``nac_merge`` / ``ec_merge`` (PR B) and re-load into a live system.
+``substrate_merge`` and re-load into a live system via
+``EC.ingest_substrate_nodes`` + ``NAc.load_state``.
 This keeps the CLI side-effect-free at the bio-stack layer.
+
+**Do not hand-compose ``nac_merge`` + ``ec_merge`` here**, which is what
+this paragraph said until 2026-09-02: that sequence merges the two
+slices INDEPENDENTLY and discards the EC alignment, so the donor's
+``cluster_reward_bias`` keys name clusters the receiver has no node for
+and the merged want reads out as exactly 0.0 while the bias dict grows
+(D43). A bundle carries both slices precisely so the aligned merge is
+possible; ``substrate_merge`` is that composition.
 ``merge-nac`` is the deliberate exception: a file-level merge verb that
 still never touches a LIVE bio-stack (it rewrites the persisted JSON;
 the runtime picks it up at next boot via the Stage-4a load path).
@@ -149,7 +158,10 @@ def _run_import(args: argparse.Namespace) -> int:
         f"  schema_version: {manifest.get('schema_version')}\n"
         f"  slices:      {sorted(manifest.get('contents', {}).keys())}"
     )
-    print("(use maxim.hivemind.nac_merge / ec_merge to merge into a live system)")
+    print(
+        "(use maxim.hivemind.substrate_merge to merge into a live system, then\n"
+        " EC.ingest_substrate_nodes + NAc.load_state to apply the result)"
+    )
     return 0
 
 
