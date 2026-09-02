@@ -357,6 +357,81 @@ triggers, and it was less discoverable nested inside a MITIGATED entry.
   `docs/experiments/data/h1_partc_big_block.jsonl`, run `20260824T213320Z-76884`,
   record `i=1` (0-based turn index).
 
+### L11 — Sensor-count dilution, and the discrimination ceiling behind it · MITIGATED · [tracking doc](l11_sensor_dilution.md)
+
+- **Instrument:** `similarity/encoder.py::_sensor_embed` → EC
+  `pattern_complete_or_separate` at `SensorEncoderConfig.pattern_threshold = 0.85`.
+  Applies to every substrate modality channel.
+- **Limit, in two parts.** *Detection* (can the substrate see that a state changed?)
+  follows **`cos ≈ 1 − 0.57/N`** in the sensor count — clean 1/N from N=1 to N=200,
+  so at N ≥ 15 a full single-sensor swing no longer clears 0.85. That is the known
+  extero/intero dilution finding, quantified. **The deeper limit is
+  *discrimination*** (can it tell *which* sensor changed?): at N=100 two entirely
+  different sensors going to extremes read **cos 0.990** — 99% alike. Detection is
+  recoverable; discrimination is the real ceiling.
+- **Measured:** 2026-09-01, synthetic sweep over the shipped encoder
+  ([minecraft_benchmark.md](../plans/minecraft_benchmark.md) §"The sensor ceiling is
+  a THRESHOLD artifact"). Signal falls 0.119 → 0.006 across N=4→100 while an
+  all-sensor 2% jitter stays flat at ~0.0008, so SNR degrades 185:1 → 7.5:1.
+- **Three non-levers, measured so they are not re-proposed.** *Dimension:* 8× more
+  embedding dimensions (384 → 3072) moves cosine by **< 0.001** — dilution is an
+  averaging problem, not a capacity problem. *Sparse/hashed bases:* **identical** to
+  the plain sum; no basis trick escapes summing N terms and comparing by cosine.
+  *Distributional moments* (mean/sd/skew/kurtosis/max-dev): give an N-*independent*
+  detection signal (cos 0.27 at N=100) but are **permutation-invariant by
+  construction**, so they read **cos 0.999** between two different sensors spiking
+  and make discrimination *worse at every weight*.
+- **Design consequence:** a modality channel carrying more than ~12 scalars at the
+  fixed threshold is measuring almost nothing per sensor, and one carrying enough
+  sensors for two different excursions to be confusable is measuring *the wrong
+  thing*. **Budget sensors per channel, not per body**, and state the per-channel
+  count in the pre-registration.
+- **Mitigation SELECTED by bake-off 2026-09-01 — the NONLINEAR GAIN (arm A4), at the unchanged 0.85 threshold**, which scores a perfect 1.00 on all three criteria from N=30 to N=100 (tracking doc §Bake-off). **This overturned the pre-bake-off recommendation:** threshold + grouping (A3) measured *worse* than the threshold alone, because grouping shrinks per-channel N, which loosens `1 − k/N` and lets noise separate. Gain + threshold (A5) is actively harmful — stability 0.00. **Cost:** ~120× the control's cluster allocation, which makes **D51** a prerequisite rather than a dormancy candidate. The superseded design was: a sensor-count-scaled threshold
+  — `1 − 0.30/N` gives **100% signal separation and 100% noise rejection from N=6 to
+  N=80** — *plus* per-type modality channels declared on the sensor schema, since
+  grouping alone (discrimination 0.980 at G=1 → 0.831 at G=10) does **not** clear the
+  fixed 0.85 bar. Neither is sufficient alone.
+- **Claim linkage:** bounds the representation behind Exp 42 (interoception
+  clusters), Exp 48 (extero/intero seam) and Exp 53b (whose trigger states *"the
+  representation is what transfers"*). All three ran at N ≈ 6 drives, inside the safe
+  band — **the limit does not retract them**; it bounds any future body that grows
+  past it.
+- **Re-measure on:** `_sensor_embed` change, `pattern_threshold` change,
+  `_SUBSTRATE_CHANNELS` count change, any body whose per-channel sensor count exceeds
+  ~12.
+
+### L12 — A hand-written English prior sits inside action selection · MITIGATED (twins) / BINDING (otherwise)
+
+- **Instrument:** `decisions/nac.py::_DRIVE_TOOL_AFFINITIES`, consumed by
+  `NAc.recommend_action` Component 3. A drive whose value exceeds 0.5 pays
+  `drive_value` to any tool whose name *contains the drive name*, or
+  `0.7 × drive_value` to any tool matching a hand-authored keyword list
+  (`cold`/`thermal` → `warm`, `fire`, `blanket`, `huddle`; `hunger` → `eat`,
+  `pick_up`, `food`, `consume`, `feed`; and five more).
+- **Limit:** tool *names* carry semantics into the substrate. This is a
+  cold-start heuristic standing in for EC integration, and it means a
+  substrate-primary agent is not prior-free — the priors are in a Python dict
+  rather than in an LLM.
+- **Measured 2026-09-01, on Exp 42's real tool set at drive 0.9:** every warmth tool
+  receives **+0.630 — safe and harm alike — so Δ = 0.000 across all four matched
+  safe/harm pairs**, against +0.000 for `sense_presence`/`examine`/`move`.
+- **Claim linkage — and it clears the row.** Exp 42's §Results attributes its
+  GRADUATE to "B8 delta-attribution + the pre-existing drive-affinity heuristic",
+  which read as though the word list carried the discrimination. It does not: the
+  term is **symmetric between twins sharing a keyword** and cannot express a
+  safe-vs-harm preference. It decides warming-vs-not-warming only. **Exp 42's
+  `safe_pref` result does not rest on it.**
+- **Design consequence:** the mitigation is *twin naming*, and it is fragile. A body
+  whose tools are **not** twins — Minecraft, where `eat`, `pick_up`, `drink`,
+  `sleep`, `flee`, `hide`, `look`, `heal` and `fire` are all in the table — has the
+  answer pre-installed, **in substrate-primary mode**, before any learning. For any
+  such body: use opaque tool and drive names (`aff_07`, `d1`), and **assert
+  `score_components["drive"] == 0.0`** from the decision-provenance event rather than
+  assuming it. Do not simply delete the table — that changes the mechanism Exp 42
+  graduated on.
+- **Re-measure on:** `_DRIVE_TOOL_AFFINITIES` edit, `recommend_action` Component-3
+  change, any new body whose tool names are not twins.
+
 ## Repository capability assessment
 
 [score_cards/](score_cards/) records the repository grades (one card per assessor, `YYYY-MM-DD-<assessor>.md`; 2026-08-19 has independent Codex and Claude cards; 2026-08-27 is the Claude 1.1.0 re-score) for

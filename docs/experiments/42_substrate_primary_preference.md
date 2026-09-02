@@ -161,7 +161,7 @@ Cleanest available test of "the unmasked substrate drives adaptive behavior": (a
 
 Frozen run: 10 seeds/arm × 2 counterbalanced arms, substrate-primary, smollm narrator, 40 turns, `cost=$0`, git `0d6ca70f`. Treatment = exploration + drive-gating ON; ablation = drive-gating OFF (`MAXIM_SIM_DRIVE_GATE_ENABLED=0`), all else equal.
 
-**Attribution measured 2026-09-01 (was loose).** This section credits the result to "B8
+**Attribution measured 2026-09-01 (was loose).** *(Tracked as [L12](../limits/README.md#l12--a-hand-written-english-prior-sits-inside-action-selection--mitigated-twins--binding-otherwise) in the instrument ledger — the mitigation is twin naming, and it is fragile for any body whose tools are not twins.)* This section credits the result to "B8
 delta-attribution + the pre-existing drive-affinity heuristic". The heuristic is
 `decisions/nac.py::_DRIVE_TOOL_AFFINITIES`, a hand-written English word list inside
 `recommend_action` (`cold`/`thermal` → `warm`, `fire`, `blanket`, `huddle`). Measured directly

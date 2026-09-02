@@ -92,7 +92,7 @@ logger = logging.getLogger(__name__)
 # Schema version for the bundle envelope itself. Separate from the
 # bio-system payload ``_format_version`` — bumping this would require
 # a migration registered alongside the bump.
-BUNDLE_SCHEMA_VERSION: int = 1
+BUNDLE_SCHEMA_VERSION: int = 2
 
 # Bundle-level kind marker for the manifest.
 BUNDLE_KIND: str = "substrate_bundle"
@@ -136,6 +136,24 @@ def register_bundle_migration(from_version: int) -> Callable[[MigrationFn], Migr
         return fn
 
     return _decorator
+
+
+@register_bundle_migration(1)
+def _v1_to_v2_typed_bundle(manifest: dict[str, Any]) -> dict[str, Any]:
+    """v1 → v2: gate 7 typed bundles — stamp the body/namespace fields.
+
+    A v1 bundle predates the typed contract, so its body of origin is
+    genuinely unknown. The fields are stamped as ``None``, which
+    :func:`assert_bundle_body_compatible` treats as "unverifiable" rather
+    than "compatible" — an old bundle cannot silently pass a body check it
+    was never subject to.
+    """
+    out = dict(manifest)
+    out.setdefault("body_ref", None)
+    out.setdefault("affordance_namespace", None)
+    out.setdefault("capability_map", {})
+    out["schema_version"] = 2
+    return out
 
 
 def migrate_bundle_envelope(manifest: dict[str, Any], *, target_version: int | None = None) -> dict[str, Any]:
@@ -467,6 +485,71 @@ def _filter_ec_nodes_by_domain(
     return out
 
 
+class BundleBodyMismatch(ValueError):
+    """A bundle was learned on a different body than the receiver's.
+
+    Gate 7. Raised by :func:`assert_bundle_body_compatible`. The point is
+    LOUDNESS: without the check, a cross-body bundle merges "successfully",
+    contributes exactly 0.0 (its tool signatures carry the sender's entity
+    name — D43 barrier 3), and reads out as "this agent has learned nothing
+    yet". See docs/plans/d43_merge_correctness.md §5a.
+    """
+
+    def __init__(self, *, bundle_body: str | None, receiver_body: str) -> None:
+        self.bundle_body = bundle_body
+        self.receiver_body = receiver_body
+        super().__init__(
+            f"bundle was learned on body {bundle_body!r} but the receiver is {receiver_body!r}. "
+            "Tool signatures are entity-prefixed, so merging this bundle would report success and "
+            "contribute exactly 0.0. Re-export from the receiver's body, or adopt a capability "
+            "namespace (docs/plans/d43_merge_correctness.md §5a)."
+        )
+
+
+class BundleBodyUnverifiable(ValueError):
+    """The bundle predates gate 7 and does not declare the body it came from."""
+
+    def __init__(self, *, receiver_body: str) -> None:
+        self.receiver_body = receiver_body
+        super().__init__(
+            "bundle does not declare `body_ref` (pre-gate-7 bundle, schema v1). Its body of origin "
+            f"cannot be established, so compatibility with {receiver_body!r} is UNVERIFIABLE — not "
+            "confirmed. Pass allow_unverified=True to accept the risk explicitly."
+        )
+
+
+def assert_bundle_body_compatible(
+    manifest: dict[str, Any],
+    *,
+    receiver_body: str,
+    allow_unverified: bool = False,
+) -> None:
+    """Refuse a bundle whose body of origin differs from the receiver's.
+
+    Gate 7's whole content: make the cross-body case LOUD. Three outcomes —
+    match returns silently; mismatch raises :class:`BundleBodyMismatch`;
+    a bundle that declares no body raises :class:`BundleBodyUnverifiable`
+    unless ``allow_unverified``.
+
+    **Absence is not compatibility.** A v1 bundle migrated to v2 carries
+    ``body_ref: None`` because its origin is genuinely unknown, and this
+    refuses it by default rather than letting it pass a check it was never
+    subject to — the same reasoning as the format-version contract's
+    ``"0.x"`` sentinel.
+    """
+    if not isinstance(manifest, dict):
+        raise ValueError(f"manifest must be dict, got {type(manifest).__name__}")
+    if not receiver_body:
+        raise ValueError("receiver_body must be a non-empty string")
+    bundle_body = manifest.get("body_ref")
+    if bundle_body is None:
+        if allow_unverified:
+            return
+        raise BundleBodyUnverifiable(receiver_body=receiver_body)
+    if str(bundle_body) != str(receiver_body):
+        raise BundleBodyMismatch(bundle_body=str(bundle_body), receiver_body=str(receiver_body))
+
+
 def compose_bundle(
     *,
     nac_state: dict[str, Any] | None,
@@ -480,6 +563,9 @@ def compose_bundle(
     signature_algorithm: str | None = None,
     signer_identity: str | None = None,
     encoder_provenance: dict[str, Any] | None = None,
+    body_ref: str | None = None,
+    affordance_namespace: str | None = None,
+    capability_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Compose a substrate snapshot bundle.
 
@@ -629,6 +715,21 @@ def compose_bundle(
         "signature": signature,
         "signature_algorithm": signature_algorithm,
         "signer_identity": signer_identity,
+        # Gate 7 (typed bundles). `body_ref` is the body this substrate was
+        # learned on; `affordance_namespace` names the vocabulary its tool
+        # signatures live in. A receiver checks them via
+        # `assert_bundle_body_compatible` and REFUSES a mismatch, converting a
+        # silent cross-body miss (D43 barrier 3) into a loud one.
+        "body_ref": body_ref,
+        "affordance_namespace": affordance_namespace,
+        # Forward insurance, and the reason to prefer this over plain gate 7(a):
+        # the body-agnostic capability key `(modulator, affordance)` for each
+        # body-prefixed tool signature. Bundles carry BOTH keys from day one, so
+        # adopting a capability namespace later is a READER-side change with no
+        # migration — which is the half `register_bundle_migration` cannot cover,
+        # since it migrates the manifest and never the keyed payload.
+        # See docs/plans/d43_merge_correctness.md §5a.
+        "capability_map": dict(capability_map or {}),
     }
     manifest_json = json.dumps(manifest, indent=2, sort_keys=True, default=str)
 
@@ -791,6 +892,9 @@ def read_bundle_manifest(bundle_path: str | Path) -> dict[str, Any]:
 __all__ = [
     "BUNDLE_KIND",
     "BUNDLE_SCHEMA_VERSION",
+    "BundleBodyMismatch",
+    "BundleBodyUnverifiable",
+    "assert_bundle_body_compatible",
     "compose_bundle",
     "extract_bundle",
     "isolated_bundle_migrations",
