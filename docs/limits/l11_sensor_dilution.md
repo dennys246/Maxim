@@ -1,7 +1,7 @@
 # L11 — Sensor-count dilution and the discrimination ceiling (tracking doc)
 
-**Ledger entry:** [README.md](README.md) §L11 · **Disposition:** MITIGATED (mitigation
-designed and scheduled for 1.1.4; **not yet shipped, not yet re-measured**)
+**Ledger entry:** [README.md](README.md) §L11 · **Disposition:** MITIGATED (mitigation SELECTED by bake-off
+2026-09-01 — the nonlinear gain, arm A4; **not yet shipped, not yet re-measured on a real body**)
 **Instrument:** `similarity/encoder.py::_sensor_embed` → EC
 `pattern_complete_or_separate` at `SensorEncoderConfig.pattern_threshold = 0.85`.
 Applies to every substrate modality channel.
@@ -60,28 +60,83 @@ THRESHOLD artifact".
 | sparse / hashed / randomised bases | **no** | identical to the plain sum. No basis trick escapes summing N terms and comparing the sum by cosine |
 | distributional moments (mean/sd/skew/kurtosis/max-dev) | **detection only** | N-independent for detection, but **permutation-invariant by construction** — a moment cannot say *which* sensor moved, and adding it makes discrimination worse at every weight. No choice of moments fixes this; it is what a moment *is* |
 
-**Scheduled (1.1.4), and it takes both halves:**
+**SELECTED (1.1.4), by bake-off — see §Bake-off below:** the **nonlinear gain** (arm A4),
+weighting each sensor's contribution by its distance from set point, at the **unchanged**
+0.85 threshold. Perfect on all three criteria from N=30 to N=100. The principle is that a
+sensor resting at its set point should not be shouting — which is what the comfort-band
+drive design already encodes.
 
-1. **Sensor-count-scaled threshold** — `pattern_threshold = 1 − k/N` rather than a
-   constant. Measured at `k = 0.30`: 100% signal separation and 100% noise rejection
-   from N=6 to N=80.
-2. **Per-type modality channels**, declared on the sensor schema. A sensor currently
-   cannot declare its own modality — the YAML accepts `unit`, `range`, `initial`,
-   `drive` and nothing else — so channel membership lives in hardcoded name tuples
-   (`_EXTEROCEPTIVE_ROOT_SENSORS = ("azimuth",)`, whose own comment says it is "kept a
-   named set so a future exteroceptive sensor is one entry, not a code change at the
-   read site"). Declaring it groups sensors, which recovers discrimination.
+**Superseded, and recorded because it was the standing recommendation until measured:**
 
-**Neither is sufficient alone.** The threshold fixes detection but not the fact that two
-sensors in one 50-sensor channel are confusable; grouping improves discrimination but
-does not clear the fixed 0.85 bar.
+1. ~~Sensor-count-scaled threshold `1 − k/N`~~ — scores 0.70–0.84, degrading with N.
+2. ~~Per-type modality channels~~ — near-useless alone (0.00 at N=100).
+3. ~~Both together~~ — **measured WORSE than the threshold alone** (0.62 vs 0.76 at N=50),
+   because grouping shrinks per-channel N, which loosens `1 − k/N` and lets noise
+   separate. This was the pre-bake-off recommendation and it was wrong.
 
-**Known cost of the mitigation:** `recommend_action` sums `cluster_reward_bias`
-additively across the active channel set, so the term's range grows with channel count
-(±2 today, ±5 at G=5) while `min_confidence` stays 0.3. **Every added channel is a
-selection-dynamics recalibration**, and nothing in CI catches it. And higher separation
-allocates more clusters against an EC scan that is exact `O(N_nodes · d)` with no cap or
-pruning — which makes **D51** (the degenerate LSH) load-bearing rather than dormant.
+Per-type channels remain worth doing for a **separate** reason — a sensor should be able to
+declare its own modality rather than channel membership living in hardcoded name tuples
+(`_EXTEROCEPTIVE_ROOT_SENSORS = ("azimuth",)`, whose own comment calls itself "kept a named
+set so a future exteroceptive sensor is one entry, not a code change at the read site"), and
+1.1.4 has to generalise that tuple anyway. Just not as this limit's mitigation.
+
+**Known cost of the mitigation:** A4 allocates ~120× the control's clusters against an EC
+scan that is exact `O(N_nodes · d)` with no cap or pruning — **D51 becomes a prerequisite,
+not a dormancy candidate**. Separately, if per-type channels ship for their own reasons,
+`recommend_action` sums `cluster_reward_bias` additively across the active channel set, so
+the term's range grows with channel count (±2 today, ±5 at G=5) while `min_confidence`
+stays 0.3 — every added channel is a selection-dynamics recalibration and nothing in CI
+catches it.
+
+## Bake-off (2026-09-01) — the mitigation choice, measured
+
+Six arms against the **real** `EntorhinalCortex`, metric frozen before the runs
+(`scripts/encoding_bakeoff.py`; data `docs/experiments/data/encoding_bakeoff_2026-09-01.json`).
+PRIMARY = `min(separation, stability, discrimination)` — the weakest link, so no arm can
+buy one criterion by sacrificing another. Economy (clusters per 100 states) is reported
+alongside as a **cost**, never folded in.
+
+| arm | N=12 | N=30 | N=50 | N=100 | economy @N=50 |
+|---|---|---|---|---|---|
+| A0 current (control) | 0.20 | **0.00** | **0.00** | **0.00** | 0.5 |
+| A1 scaled threshold | 0.82 | 0.84 | 0.76 | 0.70 | 63 |
+| A2 grouping only | 0.63 | 0.30 | 0.04 | **0.00** | 3 |
+| A3 threshold + grouping | 0.63 | 0.56 | 0.62 | 0.70 | 82 (160 @N=100) |
+| **A4 nonlinear gain** | **0.94** | **1.00** | **1.00** | **1.00** | 58 |
+| A5 gain + threshold | 0.28 | **0.00** | **0.00** | **0.00** | 100 |
+
+**A4 — the nonlinear gain alone, at the UNCHANGED 0.85 threshold — wins at every N**, and
+is perfect (1.00/1.00/1.00) from N=30 up.
+
+**Three results that overturn the pre-bake-off recommendation, which was A3.**
+
+1. **A3 is worse than A1 alone** (0.62 vs 0.76 at N=50) and has the worst economy of any
+   arm at N=100 (160 clusters per 100 states). Combining the two mitigations *hurts*:
+   grouping shrinks per-channel N, which loosens `1 − k/N`, which lets noise separate —
+   stability drops to 0.56–0.62. The pre-registered recommendation to ship both was
+   **wrong**, and pairwise synthetic measurement did not reveal it. Only the full metric
+   on the real EC did.
+2. **A5 (gain + threshold) is actively harmful** — stability collapses to 0.00. The gain
+   already separates on its own; tightening the threshold on top makes noise separate too.
+3. **A2 (grouping alone) is close to useless at scale** — 0.00 at N=100, confirming the
+   earlier finding that grouping does not clear the fixed bar by itself.
+
+**The cost is real and it promotes a dormant defect.** A4 allocates ~58 clusters per 100
+states against the control's 0.5 — roughly **120×**. The EC scan is exact
+`O(N_nodes · d)` with no cap and no pruning, so **D51 (the degenerate LSH) stops being a
+dormancy candidate and becomes a prerequisite** for a large-sensor body. That trade is the
+single most important open item below.
+
+**Scope, unchanged and binding:** synthetic bodies with uncorrelated SHA bases and iid
+noise, because no shipped body exceeds ~12 sensors — the regime does not exist yet. Real
+drives correlate. This says *which candidate is worth building*, not *which is validated*.
+
+**A harness note worth keeping.** The first run reported every arm at stability 0.00 with
+an empty node store. The cause was that `pattern_complete_or_separate` deliberately
+allocates an id **without registering it** — its own comment says the caller registers via
+`register_substrate_node` "after ATL activation succeeds", keeping EC stateless on the
+separation path. Using the real component is not the same as using the real *protocol*; a
+harness that skips the second half measures an EC that never remembers anything.
 
 ## Claim linkage
 
@@ -99,8 +154,11 @@ replication are the same scarce resource and should be planned as one hardware b
 
 ## Open questions
 
-1. **Is `k = 0.30` right, and is a linear `1 − k/N` the right family?** One synthetic
-   sweep, one value. Needs a sensitivity check before it becomes a constant.
+1. **~~Is `k = 0.30` right?~~ Superseded by the bake-off** — the scaled threshold is no
+   longer the selected mitigation. The tuning question survives only if A1/A3 are
+   revisited; note the bake-off showed `k = 0.30` is clearly mis-tuned once grouping
+   shrinks per-channel N (A3 stability 0.56–0.62).
+1a. **What is the right gain exponent?** A4 used `p = 3.0`, one value, unswept.
 2. **Do real sensors behave like the synthetic ones?** These measurements use
    uncorrelated SHA bases and iid noise. Real drives correlate — hunger and fatigue
    drift together — which changes the geometry. Confirm on a real body before relying
@@ -111,8 +169,11 @@ replication are the same scarce resource and should be planned as one hardware b
    set point held signal essentially flat across a 16× sensor increase (0.79 → 0.73) but
    with a higher noise floor, and it is *worse* than the plain sum below N≈30. Not
    scheduled; recorded as a live alternative.
-5. **Where does cluster-count growth bite?** Higher separation means more clusters
-   against an unbounded linear scan. Unmeasured, and it couples this limit to D51.
+5. **Where does cluster-count growth bite? — now the top open item.** A4 costs ~120× the
+   control's cluster allocation. The EC scan is exact `O(N_nodes · d)`, uncapped and
+   unpruned (measured elsewhere: 2.7 ms @ 100 nodes, 136 ms @ 5,000 — per encode, per
+   channel, per tick). **D51 is therefore a prerequisite for A4, not a dormancy
+   candidate.** Unmeasured at A4's allocation rate.
 
 ## Re-measure on
 

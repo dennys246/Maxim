@@ -386,7 +386,7 @@ triggers, and it was less discoverable nested inside a MITIGATED entry.
   sensors for two different excursions to be confusable is measuring *the wrong
   thing*. **Budget sensors per channel, not per body**, and state the per-channel
   count in the pre-registration.
-- **Mitigation (scheduled 1.1.4, not yet shipped):** a sensor-count-scaled threshold
+- **Mitigation SELECTED by bake-off 2026-09-01 — the NONLINEAR GAIN (arm A4), at the unchanged 0.85 threshold**, which scores a perfect 1.00 on all three criteria from N=30 to N=100 (tracking doc §Bake-off). **This overturned the pre-bake-off recommendation:** threshold + grouping (A3) measured *worse* than the threshold alone, because grouping shrinks per-channel N, which loosens `1 − k/N` and lets noise separate. Gain + threshold (A5) is actively harmful — stability 0.00. **Cost:** ~120× the control's cluster allocation, which makes **D51** a prerequisite rather than a dormancy candidate. The superseded design was: a sensor-count-scaled threshold
   — `1 − 0.30/N` gives **100% signal separation and 100% noise rejection from N=6 to
   N=80** — *plus* per-type modality channels declared on the sensor schema, since
   grouping alone (discrimination 0.980 at G=1 → 0.831 at G=10) does **not** clear the
