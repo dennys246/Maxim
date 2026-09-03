@@ -367,6 +367,7 @@ class EntorhinalCortex:
         # Keyed by node_id, stores (centroid_embedding, modality) pairs.
         # Centroid is the running mean of all embeddings that completed to this node.
         self._substrate_nodes: dict[str, tuple[list[float], str]] = {}
+        self._substrate_node_geometries: dict[str, str | None] = {}
         # Member count per node — used for running mean update.
         self._substrate_node_counts: dict[str, int] = {}
         # Hivemind shareability (v1_refinement.md §B5): parallel dicts holding
@@ -535,6 +536,7 @@ class EntorhinalCortex:
         *,
         source: str = "local",
         domain: str | None = None,
+        geometry: str | None = None,
     ) -> None:
         """Register or update a substrate node's embedding.
 
@@ -551,6 +553,10 @@ class EntorhinalCortex:
         self._substrate_node_counts[node_id] = 1
         self._substrate_node_sources[node_id] = source
         self._substrate_node_domains[node_id] = domain
+        # Gate 2 / D4: the ENCODING SPACE this vector was produced in. `None`
+        # means unstamped (legacy nodes, and callers that do not know) — the
+        # merge treats that as unverifiable rather than as a match.
+        self._substrate_node_geometries[node_id] = geometry
 
     def ingest_substrate_nodes(self, nodes: dict[str, dict[str, Any]]) -> int:
         """Load merged substrate nodes into a LIVE EC, preserving member counts.
@@ -580,11 +586,13 @@ class EntorhinalCortex:
             self._substrate_node_counts[nid] = int(ndata.get("count", ndata.get("member_count", 1)))
             self._substrate_node_sources[nid] = str(ndata.get("source", "local"))
             self._substrate_node_domains[nid] = ndata.get("domain")
+            self._substrate_node_geometries[nid] = ndata.get("geometry")
         return len(nodes or {})
 
     def remove_substrate_node(self, node_id: str) -> None:
         """Remove a substrate node."""
         self._substrate_nodes.pop(node_id, None)
+        self._substrate_node_geometries.pop(node_id, None)
         self._substrate_node_counts.pop(node_id, None)
         self._substrate_node_sources.pop(node_id, None)
         self._substrate_node_domains.pop(node_id, None)
@@ -929,6 +937,7 @@ class EntorhinalCortex:
                     "count": self._substrate_node_counts.get(nid, 1),
                     "source": self._substrate_node_sources.get(nid, "local"),
                     "domain": self._substrate_node_domains.get(nid),
+                    "geometry": self._substrate_node_geometries.get(nid),
                 }
                 for nid, (emb, mod) in self._substrate_nodes.items()
             },
@@ -1014,6 +1023,7 @@ class EntorhinalCortex:
         # Load substrate nodes (P1). Pre-B5 dumps lack the ``source`` and
         # ``domain`` fields — both default to ``"local"`` and ``None``.
         self._substrate_nodes = {}
+        self._substrate_node_geometries = {}
         self._substrate_node_counts = {}
         self._substrate_node_sources = {}
         self._substrate_node_domains = {}
@@ -1022,6 +1032,7 @@ class EntorhinalCortex:
             self._substrate_node_counts[nid] = ndata.get("count", 1)
             self._substrate_node_sources[nid] = ndata.get("source", "local")
             self._substrate_node_domains[nid] = ndata.get("domain")
+            self._substrate_node_geometries[nid] = ndata.get("geometry")
 
         # Encoder stamps (artifact stamping, 1.1 item 7). Pre-stamping
         # files lack the key — empty dict, and the bundle will honestly

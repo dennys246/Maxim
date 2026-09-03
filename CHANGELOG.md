@@ -24,6 +24,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Gate 2 (D3 + D4) — two compatibility checks that could not fire.** `merge.py` refuses internal
+  imports, so its thresholds are hardcoded duplicates; the frozen-modality set had already diverged
+  this way once and was pinned, the thresholds were not. **D3's trigger is literally "per-modality
+  thresholds", which D43 shipped** — `SENSOR_MODALITY_THRESHOLDS` arrived as a new unpinned duplicate
+  of `0.85`, so the pins are owed by that change. They now track
+  `SensorEncoderConfig.pattern_threshold` and `ECConfig.pattern_complete_threshold`, and every
+  frozen-centroid modality must carry a threshold — that pairing (folds eagerly at the text default
+  AND cannot self-correct, because the centroid is pinned) is what produced D43.
+- **D4: same-dimension geometry is now explicit rather than inferred from vector length.** `_cosine`
+  refuses a dimension mismatch, which catches a 384-vs-768 encoder swap and cannot catch a place code
+  that adds sensor names while keeping `dim=384` and the same `"audio"` tag. `_sensor_embed` then sums
+  a different basis set, old- and new-geometry nodes fold whenever the partial cosine clears the
+  threshold, and because `audio` is a frozen-centroid modality the centroid never moves — the only
+  symptom is inflated counts and contributors. EC nodes now carry a `geometry` tag derived from what
+  actually makes two vectors comparable (the sensor-name set plus normalization mode; the model for
+  text), stamped at registration, carried through the merge, and persisted. Two nodes that both
+  declare a geometry and declare different ones never fold, **at cosine 1.0 included** — similarity is
+  meaningless across spaces, which is why this cannot be a threshold. An absent tag is unverifiable
+  rather than a match, so legacy files still load; `strict_geometry=True` refuses those too, mirroring
+  gate 7's declared/undeclared `body_ref` precedent.
 - **D43 — a merged foreign want no longer reads out as exactly `0.0`.** `ec_merge` computed a
   right→left node alignment and **discarded it**, while `nac_merge` folded `cluster_reward_bias`
   on exact string keys — so a donor's biases landed under cluster ids that are not nodes in the
