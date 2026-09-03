@@ -776,12 +776,21 @@ class SensorEncoder:
             mode = "range-aware"
         else:
             mode = "range-partial"
+        declared = sorted(ranges) if ranges else None
         self.ec.record_encoder_provenance(
             f"sensor:{modality}",
             {
                 "embedding_dim": len(embedding),
                 "sensor_names": sorted(sensors.keys()),
                 "normalization": mode,
+                # D66. `sensor_names` is the READING (state-dependent, and
+                # accumulated here as a union), which is NOT what the geometry
+                # tag hashes — so a file stamped only with it cannot have its
+                # tag reconstructed at load. Recording the DECLARED set makes
+                # the migration possible for files written from here on;
+                # files written before this cannot be migrated and must be
+                # re-encoded, which the load-time warning says explicitly.
+                "declared_sensors": declared,
             },
         )
 
@@ -819,7 +828,6 @@ class SensorEncoder:
         # same reason the key set was, and both axes moved on one thermal
         # event. The SPACE's normalization is a property of the declared set,
         # which is range-covered by construction.
-        declared = sorted(ranges) if ranges else None
         geometry = encoding_geometry_tag(
             encoder="sensor",
             modality=modality,

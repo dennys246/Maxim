@@ -112,7 +112,7 @@ class SimulationAdapter:
                         _pb = getattr(default_network, "pain_bus", None) if default_network else None
                     if _pb is not None:
                         from maxim.decisions.causal_link import Valence
-                        from maxim.reactions.types import Reaction, ReactionContext
+                        from maxim.reactions.types import WORLD_AGENT_ID, Reaction, ReactionContext
 
                         meta = sim_percept.metadata or {}
                         reaction = Reaction(
@@ -121,7 +121,7 @@ class SimulationAdapter:
                             valence=Valence.NEGATIVE,
                             timestamp=sim_percept.timestamp,
                             source=f"sim_adapter:{meta.get('pain_type', 'external_signal')}",
-                            context=ReactionContext(),
+                            context=ReactionContext(agent_id=WORLD_AGENT_ID),
                         )
                         bus = getattr(_pb, "reaction_bus", _pb)
                         bus.publish(reaction)

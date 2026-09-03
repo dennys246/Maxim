@@ -23,6 +23,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **D66 — gate 1's "migrate" half, and the honest limit on it.** `EC.load()` now derives geometry tags
+  for unstamped nodes from `encoder_provenance`. **Text nodes migrate exactly.** **Sensor nodes written
+  before this release cannot** — the tag hashes the *declared* set while provenance recorded
+  `sensor_names`, the *reading*, accumulated as a union; a file that saw `cold` appear once has it in
+  that union forever. Those are left unstamped and reported, because **a wrong tag is worse than a
+  missing one**: missing is permissive and visible, wrong silently refuses matches that should succeed.
+  `declared_sensors` is now recorded so future files migrate; a mixed-normalization session is refused
+  rather than guessed.
+- **D57 — world-origin pain now names its subject.** Four emitters (sandbox, conversation, sim adapter,
+  cerebellum) published pain with no `agent_id`, so it distributed exactly zero reward, silently. Fixed
+  by naming the world (`WORLD_AGENT_ID`), **not** by attributing it to whichever agent was nearby —
+  that manufactures attribution, and a reward landing somewhere plausible and arbitrary is worse than
+  one landing nowhere. World pain still distributes nothing; the skip is now explicit and traced
+  instead of indistinguishable from a *missing* `agent_id`, which is a real bug. The shrink-only
+  allowlist is now **empty**.
+- **D59 — an affordance `requires` naming an entity sensor now actually gates.** `SpecModulator` gained
+  `_entity_ref`, mirroring `SpecSensor`. Verified: `eat` allowed at `portions=5`, refused at `0`.
+  **It did not re-stale Exp 52** — nothing decrements `portions` (`eat` has no `target_effect`), so the
+  requirement holds at every tick and the cradle apparatus is behaviourally identical. The parse
+  warning narrows to genuinely unresolvable names, and the guard was **inverted, not deleted**.
+
+
 ## [1.1.3] - 2026-09-03 — "Reachability"
 
 ### Fixed

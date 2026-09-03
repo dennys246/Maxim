@@ -506,6 +506,30 @@ def build_bio_stack(
                 agent_id=agent_id,
                 will_distribute=agent_id is not None,
             )
+            # D57. Two outcomes used to be one value. `agent_id is None` meant
+            # BOTH "this pain originated in the world, so no agent's traces
+            # should move" AND "an emitter forgot to say who caused this",
+            # which is a real bug — and because they were indistinguishable,
+            # the bug was invisible for as long as it existed.
+            #
+            # World-origin pain still distributes NOTHING: the standing rule
+            # against polluting a phantom bucket is unchanged, and there is no
+            # agent whose eligibility traces should move because the sandbox
+            # fired. What is new is that the skip is NAMED and traced, so the
+            # remaining `None` case is once again a defect rather than a
+            # category.
+            from maxim.reactions.types import WORLD_AGENT_ID
+
+            if agent_id == WORLD_AGENT_ID:
+                pain_chain_trace(
+                    "pain_chain.reward_subscriber.world_origin",
+                    kind=kind,
+                    valence=v,
+                    reward=reward,
+                    agent_id=agent_id,
+                    will_distribute=False,
+                )
+                return
             if agent_id is None:
                 return
             try:

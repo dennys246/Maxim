@@ -425,27 +425,32 @@ class TestSelfEffectFailureCascade:
 
 
 class TestRequiresSilentNoOp:
-    """A `requires` key that can never gate must say so at parse time.
+    """A `requires` key that can never gate must say so at parse time — and a
+    key that CAN gate must not be slandered as one that cannot.
 
-    `SpecModulator.check_affordance_requires` resolves only the literal
-    "integrity" and the modulator's OWN sub-sensors (`self.vital_metrics`).
-    Any other key — an entity-level sensor being the common case — matches
-    neither branch and falls through to `return True, ""`, so the
-    precondition silently never gates. `SpecModulator` holds only
-    `_entity_name` (a string), so it cannot reach entity sensors at all.
+    History, because the inversion is the point. Until D59 was fixed,
+    `SpecModulator.check_affordance_requires` resolved only the literal
+    "integrity" and the modulator's OWN sub-sensors, so an entity-level sensor
+    — the common case — fell through to `return True, ""` and the precondition
+    silently never gated. `items/cradle_food.yaml`'s `requires: {portions: 1}`
+    was the only such key in the 92-file bundled library and was a live no-op:
+    eating was unlimited.
 
-    Found 2026-09-01 during the Minecraft embodiment dive, where
-    "mine requires a pickaxe" / "eat requires food in inventory" are exactly
-    the shape that does not work. `items/cradle_food.yaml`'s
-    `requires: {portions: 1}` is the only such key in the bundled library and
-    is a live no-op — eating is unlimited.
+    D59 gave `SpecModulator` an `_entity_ref` (mirroring `SpecSensor`, which
+    already had one), so entity sensors now resolve. This test was INVERTED
+    rather than deleted, per the D53 precedent: the old assertion pinned the
+    defect in place, and the inverted one is what catches a regression.
 
-    Deliberately surfaced, NOT fixed: making entity-level requires actually
-    gate would make feeding finite in the cradle apparatus, and Exp 52 was
-    mid-run. The warning removes the silence; the semantics decision is filed.
+    Fixing it did NOT re-stale Exp 52. `portions` starts at 5 and nothing
+    decrements it — the `eat` affordance has no `target_effect`, despite the
+    YAML's description claiming "Portions decrease on consumption" — so
+    `requires: {portions: 1}` is satisfied at every tick and the cradle
+    apparatus is behaviourally identical. Implementing the decrement WOULD
+    change it, which is why that is filed rather than done here.
     """
 
-    def test_unresolvable_requires_key_warns(self, caplog):
+    def test_an_entity_level_requires_key_no_longer_warns(self, caplog):
+        """THE D59 INVERSION. `portions` is an ENTITY sensor; it resolves now."""
         from maxim.embodiment.spec import _parse_entity
 
         with caplog.at_level("WARNING"):
@@ -463,8 +468,58 @@ class TestRequiresSilentNoOp:
                 }
             )
         msgs = " ".join(r.getMessage() for r in caplog.records)
+        assert "NEVER gate" not in msgs, (
+            "an entity-level requires key resolves since D59 — warning that it never gates "
+            "teaches operators to ignore the one message that matters"
+        )
+
+    def test_an_entity_level_requires_key_actually_GATES(self, caplog):
+        """The half the warning could never give us: does it bite?"""
+        from maxim.embodiment.spec import _parse_entity
+
+        ent = _parse_entity(
+            {
+                "name": "food",
+                "entity_type": "item",
+                "sensors": {"portions": {"unit": "count", "range": [0, 5], "initial": 5.0}},
+                "modulators": {
+                    "nutrition": {
+                        "abstract": True,
+                        "affordances": {"eat": {"params": {}, "requires": {"portions": 1}}},
+                    }
+                },
+            }
+        )
+        mod = ent.modulators["nutrition"]
+        assert mod.check_affordance_requires("eat")[0] is True, "must stay permissive at the initial value"
+
+        ent.vital_metrics["portions"] = 0.0
+        allowed, reason = mod.check_affordance_requires("eat")
+        assert allowed is False, "the precondition still does not gate"
+        assert "portions" in reason
+
+    def test_a_genuinely_unresolvable_key_still_warns(self, caplog):
+        """The original guard, narrowed: a name matching neither integrity, nor
+        a sub-sensor, nor an entity sensor is still a silent no-op."""
+        from maxim.embodiment.spec import _parse_entity
+
+        with caplog.at_level("WARNING"):
+            _parse_entity(
+                {
+                    "name": "food",
+                    "entity_type": "item",
+                    "sensors": {"portions": {"unit": "count", "range": [0, 5], "initial": 5.0}},
+                    "modulators": {
+                        "nutrition": {
+                            "abstract": True,
+                            "affordances": {"eat": {"params": {}, "requires": {"nonexistent_key": 1}}},
+                        }
+                    },
+                }
+            )
+        msgs = " ".join(r.getMessage() for r in caplog.records)
         assert "NEVER gate" in msgs
-        assert "portions" in msgs
+        assert "nonexistent_key" in msgs
 
     def test_integrity_requires_is_silent(self, caplog):
         """The one key that DOES resolve must not warn."""

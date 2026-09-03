@@ -754,19 +754,18 @@ def test_no_pain_reaction_is_built_without_agent_id() -> None:
             if not any(kw.arg == "agent_id" for kw in ctx[0].value.keywords):
                 offenders.append(f"{path.relative_to(src)}:{node.lineno} (ReactionContext without agent_id)")
 
-    # Ratchet, not a clean sweep. These four are WORLD-origin pain — the
-    # sandbox, a conversation, a sim adapter, a cerebellum prediction —
-    # where no agent_id exists on the class at all, so wiring one is a
-    # design question (whose pain is an external signal?) rather than the
-    # one-line fix the four fixed sites took. Filed as D57. This list may
-    # SHRINK and must never grow: a NEW pain Reaction without an agent_id
-    # is the silent-no-op bug, not grandfathered debt.
-    grandfathered = {
-        "runtime/sim_adapter.py",
-        "simulation/sandbox.py",
-        "simulation/conversational_source.py",
-        "embodiment/backends/cerebellum_modulator.py",
-    }
+    # EMPTIED 2026-09-03 (D57 fixed). The four world-origin emitters — the
+    # sandbox, a conversation, a sim adapter, a cerebellum prediction — now
+    # stamp `WORLD_AGENT_ID`. The design question ("whose pain is an external
+    # signal?") was answered by NAMING the world rather than by attributing it
+    # to whichever agent was nearby: world pain still distributes no reward,
+    # but the skip is explicit and traced in
+    # `bio_stack._distribute_reward_from_reaction`, so a MISSING agent_id is
+    # once again a defect rather than a category.
+    #
+    # The list may SHRINK and must never grow. It is empty now, which means
+    # every pain Reaction in the tree names its subject.
+    grandfathered: set[str] = set()
     new_offenders = [o for o in offenders if o.split(":")[0] not in grandfathered]
     assert new_offenders == [], (
         "pain Reaction(s) built without agent_id — reward distribution silently no-ops:\n" + "\n".join(new_offenders)

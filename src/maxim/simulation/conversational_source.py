@@ -86,7 +86,7 @@ class ConversationalSource:
         """
         if pain_bus is not None:
             from maxim.decisions.causal_link import Valence
-            from maxim.reactions.types import Reaction, ReactionContext
+            from maxim.reactions.types import WORLD_AGENT_ID, Reaction, ReactionContext
 
             reaction = Reaction(
                 kind="pain",
@@ -94,7 +94,7 @@ class ConversationalSource:
                 valence=Valence.NEGATIVE,
                 timestamp=time.time(),
                 source=f"conversational_source:{pain_type}",
-                context=ReactionContext(),
+                context=ReactionContext(agent_id=WORLD_AGENT_ID),
             )
             bus = getattr(pain_bus, "reaction_bus", pain_bus)
             bus.publish(reaction)
