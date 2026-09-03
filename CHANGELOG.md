@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-09-03 — "Reachability"
+
 ### Fixed
 - **D56 (c), (d), (g) — three more neutral-aware consumers unstarved.** `SalienceMemoryBridge
   .record_interaction` took a plain `bool`, so a NEUTRAL interaction fell into the `else` and booked as a
