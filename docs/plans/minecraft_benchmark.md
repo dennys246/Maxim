@@ -258,7 +258,14 @@ each contributes 1/N, and at N ≥ 15 a full single-sensor swing no longer clear
 2. **Signal degrades but noise does not.** A meaningful single-sensor swing falls as 1/N
    (0.119 → 0.006 across N=4→100) while an all-sensor jitter stays flat at ~0.0008. SNR falls
    185:1 → 7:1 — real degradation, but **~15:1 headroom still remains at N=50**.
-3. **An N-scaled threshold fully recovers separability.** With
+3. **An N-scaled threshold fully recovers separability** — *superseded 2026-09-01 by the
+   bake-off; see the correction under §Bake-off in
+   [l11_sensor_dilution.md](../limits/l11_sensor_dilution.md).* The result below is a PAIRWISE
+   synthetic measurement and it is reproducible, but on the full frozen metric
+   (`min(separation, stability, discrimination)`) against the REAL `EntorhinalCortex` the scaled
+   threshold scores **0.70–0.84 and degrades with N**, while the nonlinear gain scores
+   **1.00/1.00/1.00 from N=30 up**. Pairwise measurement did not reveal that; only the full
+   metric did. Kept as written because it is what was measured then. With
    `threshold = 1 − 0.30/N`: **100% signal separation AND 100% noise rejection at every N from
    6 to 80.** The fixed 0.85 separates 0% of half-swings even at N=6 — it is calibrated for
    ~6 drives and nothing else.
@@ -346,7 +353,17 @@ N. It was an artifact: with every sensor resting at exactly 0.5, both encodings 
 **zero vector**, and the cosine helper returned 0.0 for it. The numbers above use a scattered
 resting state and return `nan` on a degenerate vector instead of a flattering zero.
 
-**So maximal embodiment is achievable**, by either of two routes. The cheap one is a threshold
+**So maximal embodiment is achievable**, by either of two routes.
+
+> **DECIDED 2026-09-01 by bake-off, and it went the other way from the hedge below.** The
+> nonlinear gain (arm A4) wins at every N and is perfect from N=30 up; the scaled threshold is
+> second; and the two **combined** are WORSE than the threshold alone, because grouping shrinks
+> per-channel N, which loosens `1 − k/N` and lets noise separate. "Cheap vs durable" was the
+> right axis and the wrong conclusion: the cheap one is also the weaker one. See
+> [l11_sensor_dilution.md](../limits/l11_sensor_dilution.md) §Bake-off. The caveats below still
+> stand in full — they are about A4, and A4 is what ships.
+
+The cheap one is a threshold
 scaled with sensor count — one line, fixes the symptom, does not improve SNR (it moves the bar
 to where the signal actually is). The durable one is the nonlinear gain above — it fixes the
 cause by keeping signal magnitude constant, but changes the representation every EARNED row was
