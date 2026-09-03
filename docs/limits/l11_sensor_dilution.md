@@ -45,6 +45,7 @@ the agent cannot hold different policies for them, no matter how much it learns.
 | 2026-09-01 | embedding dimension | 384 → 3072 moves cosine by **< 0.001**, marginally worse | ” |
 | 2026-09-01 | sparse/hashed bases (k=16 dims/sensor) | **identical to the plain sum** | ” |
 | 2026-09-01 | distributional moments | detection 0.63 (N=6) → **0.27 (N=100)** — N-independent — but discrimination **0.999**, and worse at every mixing weight | ” |
+| 2026-09-03 | scan cost at A4 allocation (mixed-modality store, real EC) | p95 ≈291 ms at the projected 4h-session store (8,375 nodes); 5 ms crossing ≈238 nodes → **index-prerequisite**; vectorized exact scan 0.89 ms @ 20k-node store | `scripts/ec_scan_cost.py`; data `docs/experiments/data/ec_scan_cost_2026-09-03.json` |
 
 All 2026-09-01 rows are synthetic sweeps over the **shipped** encoder, recorded in
 [minecraft_benchmark.md](../plans/minecraft_benchmark.md) §"The sensor ceiling is a
@@ -81,8 +82,12 @@ set so a future exteroceptive sensor is one entry, not a code change at the read
 1.1.4 has to generalise that tuple anyway. Just not as this limit's mitigation.
 
 **Known cost of the mitigation:** A4 allocates ~120× the control's clusters against an EC
-scan that is exact `O(N_nodes · d)` with no cap or pruning — **D51 becomes a prerequisite,
-not a dormancy candidate**. Separately, if per-type channels ship for their own reasons,
+scan that is exact `O(N_nodes · d)` with no cap or pruning — **a scan-cost prerequisite,
+initially mis-filed as D51** (corrected 2026-09-03: `pattern_complete_or_separate` never
+consults `LSHIndex`; the cost lands on the exact `_substrate_nodes` scan, which has no index
+of any kind, and production shares ONE EC across channels so per-encode cost scales with the
+TOTAL store. Measurement + frozen decision rule: `scripts/ec_scan_cost.py`,
+[docs/plans/world_seam_1_1_4.md](../plans/world_seam_1_1_4.md) decision D4). Separately, if per-type channels ship for their own reasons,
 `recommend_action` sums `cluster_reward_bias` additively across the active channel set, so
 the term's range grows with channel count (±2 today, ±5 at G=5) while `min_confidence`
 stays 0.3 — every added channel is a selection-dynamics recalibration and nothing in CI
@@ -123,9 +128,10 @@ is perfect (1.00/1.00/1.00) from N=30 up.
 
 **The cost is real and it promotes a dormant defect.** A4 allocates ~58 clusters per 100
 states against the control's 0.5 — roughly **120×**. The EC scan is exact
-`O(N_nodes · d)` with no cap and no pruning, so **D51 (the degenerate LSH) stops being a
-dormancy candidate and becomes a prerequisite** for a large-sensor body. That trade is the
-single most important open item below.
+`O(N_nodes · d)` with no cap and no pruning, so **the scan itself becomes the prerequisite
+for a large-sensor body** (initially mis-filed as D51 — see the correction under §"What
+raises the ceiling"; `LSHIndex` is not on this path). That trade was the single most
+important open item below, now MEASURED — see open question 5.
 
 **Scope, unchanged and binding:** synthetic bodies with uncorrelated SHA bases and iid
 noise, because no shipped body exceeds ~12 sensors — the regime does not exist yet. Real
@@ -148,8 +154,8 @@ Bounds the representation behind **Exp 42** (interoception clusters), **Exp 48**
 The limit bounds any *future* body that grows past it — which is exactly what a
 Minecraft or microduck body would do.
 
-**Consequence for the mitigation's own schedule:** shipping the threshold or the
-grouping change re-stales Exp 53b **on hardware**. That re-run and 1.2's n=12 two-robot
+**Consequence for the mitigation's own schedule:** shipping the encoding change (A4—
+any `_sensor_embed` change) re-stales Exp 53b **on hardware**. That re-run and 1.2's n=12 two-robot
 replication are the same scarce resource and should be planned as one hardware block.
 
 ## Open questions
@@ -172,8 +178,15 @@ replication are the same scarce resource and should be planned as one hardware b
 5. **Where does cluster-count growth bite? — now the top open item.** A4 costs ~120× the
    control's cluster allocation. The EC scan is exact `O(N_nodes · d)`, uncapped and
    unpruned (measured elsewhere: 2.7 ms @ 100 nodes, 136 ms @ 5,000 — per encode, per
-   channel, per tick). **D51 is therefore a prerequisite for A4, not a dormancy
-   candidate.** Unmeasured at A4's allocation rate.
+   channel, per tick). ~~D51 is therefore a prerequisite for A4~~ **Corrected 2026-09-03:
+   the prerequisite is the `_substrate_nodes` scan itself — `LSHIndex` (D51) is not on
+   this path and fixing it would not help. Measured at A4's allocation rate by
+   `scripts/ec_scan_cost.py` (frozen decision rule in its docstring; verdict recorded in
+   [docs/plans/world_seam_1_1_4.md](../plans/world_seam_1_1_4.md)).** MEASURED 2026-09-03,
+   verdict **index-prerequisite**: the Python scan crosses 5 ms at ≈238 nodes vs a projected
+   8,375-node 4-hour-session store (p95 there ≈291 ms); the chosen remedy is a vectorized
+   EXACT scan (p95 0.89 ms @ a 20k-node store), shipping with A4. Data:
+   `docs/experiments/data/ec_scan_cost_2026-09-03.json`.
 
 ## Re-measure on
 

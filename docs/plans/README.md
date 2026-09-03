@@ -160,6 +160,9 @@ Deep-audited 2026-08-27; release authority reconciled 2026-08-19.
 Design work preserved in [deferred/](deferred/). Each has an explicit "revive when" condition (full rationale in the banner at the top of each doc).
 
 **Revived 2026-08-30** by the 1.2 scoping dive:
+- [world_seam_1_1_4.md](world_seam_1_1_4.md) — **the 1.1.4 implementation plan** (2026-09-03):
+  PR ladder, kickoff decisions D1–D5, the PR 0 scan-cost verdict, the non-vacuous ship gate,
+  the one-block hardware schedule.
 - [minecraft_benchmark.md](minecraft_benchmark.md) — no longer a splash demo. It is the
   **instrument** for the 1.2 sharing claim and the only place the "find what was seen before"
   coordination task is achievable (the Reachy Mini cannot translate). Seam lands 1.1.4;
