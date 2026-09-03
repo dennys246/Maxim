@@ -23,9 +23,10 @@ encoding change with its prerequisite.
 The roadmap row says "D51 (the degenerate LSH) is a PREREQUISITE." Mechanically that names the
 wrong structure. `pattern_complete_or_separate` never touches `LSHIndex` — it is a raw Python
 loop over `EC._substrate_nodes` (all nodes of ALL modalities, modality filtered in Python),
-with no index of any kind. The degenerate `LSHIndex` (D51 proper) is reached only from
-`NAc._predict_impl` via `find_similar`, gated on `config.use_ec_similarity` — the *prediction*
-path, not the encode path. Fixing `LSHIndex` would not accelerate the scan A4 inflates ~120×.
+with no index of any kind. The degenerate `LSHIndex` (D51 proper) is reached from
+`NAc._predict_impl` via `find_similar` (gated on `config.use_ec_similarity`) and from the
+live-registered `SimilaritySearchTool` introspection tool via `find_similar_by_memory`
+(ungated) — prediction and introspection paths, never the encode path. Fixing `LSHIndex` would not accelerate the scan A4 inflates ~120×.
 
 **What the prerequisite actually is:** a cost measurement of the scan at A4's allocation rate,
 and — if the numbers demand it — a cap/prune policy or an index on `_substrate_nodes`, which
@@ -119,30 +120,46 @@ The bake-off's gain (`scripts/encoding_bakeoff.py::_embed`, `GAIN_EXPONENT = 3.0
 
 ## PR 0 result (2026-09-03) — the D4 verdict
 
-Data: `docs/experiments/data/ec_scan_cost_2026-09-03.json` (clean-tree, provenance-stamped;
-the verdict was stable across three runs — two shakedowns plus the committed run). **Verdict:
-index-prerequisite.** The pure-Python exact scan crosses the 5 ms bar at ≈ **177 nodes**
-(177–253 across runs) — far below the 1,000-node capacity floor (a single ~30-min A4
+Data: `docs/experiments/data/ec_scan_cost_2026-09-03.json` (clean-tree, provenance-stamped,
+`ts`-stamped). **Verdict: index-prerequisite.** The pure-Python exact scan crosses the 5 ms
+bar at ≈ **238 nodes** — far below the 1,000-node capacity floor (a single ~30-min A4
 session's allocation), so a cap cannot carry A4 at any store size a real session reaches.
 Projected horizon store 8,375 nodes (organic allocation 0.145 nodes/state, two channels,
-4 h @ 2 Hz) → **p95 ≈ 117 ms per encode** (82–117 across runs).
+4 h @ 2 Hz) → **p95 ≈ 291 ms per encode**, read off the measured piecewise curve (p50s are
+cleanly linear, 1.9 ms @ 100 → 405 ms @ 20k; the large-store p95 rows are noisier, and the
+verdict is insensitive — every reading sits two orders of magnitude over the bar). Two
+earlier runs, both superseded and not citable as evidence (one pre-preflight from a dirty
+scripts/ tree, one with the modality-mix defect below), reached the same verdict under the
+corrected decision implementation.
 
 **Remedy chosen (design decision, informed by the exploratory phase — the verdict itself is
-the frozen rule's):** a **vectorized exact scan** — the same cosine over the same store as one
-numpy matrix–vector product — measured at **p95 0.95 ms at 20k nodes**, ~2.4× the horizon
-store, with ~100× headroom under the bar at horizon scale. Semantics-preserving, so no ANN
-approximation risk enters the substrate. "1.1.4 re-sequences" therefore resolves mildly: the
-scan replacement ships in **PR 1, before the A4 equation change in the same PR**, guarded by
-an old-vs-new equivalence test (identical match/threshold decisions on random stores,
+the frozen rule's):** a **vectorized exact scan** — the same cosine as one numpy
+matrix–vector product over a per-modality matrix (filtered once at registration, the way the
+remedy would actually be built, vs the Python loop's filter-per-call over the whole store) —
+measured at **p95 0.89 ms at a 20k-node store** (12k world nodes scanned), ~2.4× the horizon
+store, comfortably under the 5 ms bar at every measured size. Semantics-preserving, so no
+ANN approximation risk enters the substrate. "1.1.4 re-sequences" therefore resolves mildly:
+the scan replacement ships in **PR 1, before the A4 equation change in the same PR**, guarded
+by an old-vs-new equivalence test (identical match/threshold decisions on random stores,
 including tie and just-at-threshold cases — float-summation order differs between the loop
 and the BLAS path, so the test must assert decision equivalence, not bit equality).
 
-**Harness note, recorded like the bake-off's:** the first full run's `decide()` computed
+**Harness notes, recorded like the bake-off's.** (1) The first full run's `decide()` computed
 N_cap as `max(measured rows, a two-point-fit extrapolation)`; the fit's −40.5 ms intercept
-manufactured N_cap = 3,094 and flipped the verdict to cap-prerequisite. The frozen rule's own
-words ("read off the controlled curve") were the tiebreaker: the implementation was corrected
-to piecewise-linear interpolation between measured rows (no extrapolation) and the run
-repeated. The rule never changed; the implementation was brought back to it.
+manufactured N_cap = 3,094 and flipped the verdict to cap-prerequisite. (2) The correction
+left verdict branch 1 on a least-squares fit that published a horizon p95 BELOW a directly
+measured smaller store; both branches now read the piecewise curve. (3) The controlled
+store's modality mix decayed from 60% to 24% world across rows (the fill fraction tracked the
+moving target size), understating large-store cost ~2×; now an exact interleave with per-row
+composition recorded in the evidence. (1) was caught in-session against the rule's own words;
+(2) and (3) were caught by the two-lens review round. The rule never changed; the
+implementation was brought back to it three times, and each time the verdict survived.
+
+**Process deviation, acknowledged:** the frozen rule and the data share one PR (the bake-off
+precedent), rather than the prereg merging as its own PR first per the gated-record rule (2).
+Mitigations: merge-commit (no squash) preserves the intra-PR time axis; the record carries
+`ts` + provenance (`working_tree_dirty_src_scripts: false`); the prereg lint passes. Future
+measurement harnesses of this kind should split prereg PR from data PR.
 
 ## The PR ladder
 

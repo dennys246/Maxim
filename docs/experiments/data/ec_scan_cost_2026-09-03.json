@@ -1,8 +1,9 @@
 {
   "harness": "scripts/ec_scan_cost.py",
+  "ts": "2026-09-03T19:40:52.688122+00:00",
   "provenance": {
     "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py",
-    "executed_git_hash": "864194bec6dc",
+    "executed_git_hash": "f119d863cede",
     "working_tree_dirty_src_scripts": false,
     "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python",
     "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages"
@@ -23,106 +24,136 @@
       {
         "presented_world_states": 500,
         "total_nodes": 284,
-        "world_p50_ms": 4.654,
-        "world_p95_ms": 7.025
+        "world_p50_ms": 4.32,
+        "world_p95_ms": 6.947
       },
       {
         "presented_world_states": 1000,
         "total_nodes": 425,
-        "world_p50_ms": 9.938,
-        "world_p95_ms": 15.112
+        "world_p50_ms": 9.905,
+        "world_p95_ms": 12.16
       },
       {
         "presented_world_states": 1500,
         "total_nodes": 560,
-        "world_p50_ms": 15.562,
-        "world_p95_ms": 19.907
+        "world_p50_ms": 14.89,
+        "world_p95_ms": 17.033
       },
       {
         "presented_world_states": 2000,
         "total_nodes": 691,
-        "world_p50_ms": 20.367,
-        "world_p95_ms": 25.519
+        "world_p50_ms": 19.654,
+        "world_p95_ms": 21.983
       },
       {
         "presented_world_states": 2500,
         "total_nodes": 818,
-        "world_p50_ms": 26.201,
-        "world_p95_ms": 39.841
+        "world_p50_ms": 24.478,
+        "world_p95_ms": 27.487
       },
       {
         "presented_world_states": 3000,
         "total_nodes": 945,
-        "world_p50_ms": 31.401,
-        "world_p95_ms": 41.98
+        "world_p50_ms": 29.036,
+        "world_p95_ms": 32.38
       },
       {
         "presented_world_states": 3500,
         "total_nodes": 1072,
-        "world_p50_ms": 44.274,
-        "world_p95_ms": 55.845
+        "world_p50_ms": 33.748,
+        "world_p95_ms": 37.515
       },
       {
         "presented_world_states": 4000,
         "total_nodes": 1199,
-        "world_p50_ms": 51.337,
-        "world_p95_ms": 88.051
+        "world_p50_ms": 38.642,
+        "world_p95_ms": 41.593
       },
       {
         "presented_world_states": 4500,
         "total_nodes": 1326,
-        "world_p50_ms": 57.767,
-        "world_p95_ms": 83.398
+        "world_p50_ms": 43.439,
+        "world_p95_ms": 49.216
       },
       {
         "presented_world_states": 5000,
         "total_nodes": 1454,
-        "world_p50_ms": 68.92,
-        "world_p95_ms": 104.909
+        "world_p50_ms": 50.619,
+        "world_p95_ms": 75.092
       }
     ]
   },
   "controlled": [
     {
       "store_nodes": 100,
-      "p50_ms": 2.575,
-      "p95_ms": 2.838
+      "composition": {
+        "world": 60,
+        "interoception": 30,
+        "audio": 10
+      },
+      "p50_ms": 1.859,
+      "p95_ms": 2.083
     },
     {
       "store_nodes": 1000,
-      "p50_ms": 24.725,
-      "p95_ms": 28.052
+      "composition": {
+        "world": 600,
+        "interoception": 300,
+        "audio": 100
+      },
+      "p50_ms": 18.557,
+      "p95_ms": 20.991
     },
     {
       "store_nodes": 2000,
-      "p50_ms": 35.093,
-      "p95_ms": 41.507
+      "composition": {
+        "world": 1200,
+        "interoception": 600,
+        "audio": 200
+      },
+      "p50_ms": 37.139,
+      "p95_ms": 38.76
     },
     {
       "store_nodes": 5000,
-      "p50_ms": 83.913,
-      "p95_ms": 128.306
+      "composition": {
+        "world": 3000,
+        "interoception": 1500,
+        "audio": 500
+      },
+      "p50_ms": 97.357,
+      "p95_ms": 324.531
     },
     {
       "store_nodes": 10000,
-      "p50_ms": 114.816,
-      "p95_ms": 191.467
+      "composition": {
+        "world": 6000,
+        "interoception": 3000,
+        "audio": 1000
+      },
+      "p50_ms": 198.786,
+      "p95_ms": 274.946
     },
     {
       "store_nodes": 20000,
-      "p50_ms": 176.82,
-      "p95_ms": 190.175
+      "composition": {
+        "world": 12000,
+        "interoception": 6000,
+        "audio": 2000
+      },
+      "p50_ms": 404.732,
+      "p95_ms": 658.908
     }
   ],
   "decision": {
-    "per_node_coeff_ms": 0.009627,
-    "intercept_ms": 35.9291,
+    "per_node_coeff_ms_fit_summary_only": 0.032164,
     "organic_alloc_nodes_per_state": 0.1454,
     "horizon_ticks": 28800,
     "projected_horizon_store_nodes": 8375,
-    "projected_p95_at_horizon_ms": 116.55,
+    "horizon_beyond_measured_curve": false,
+    "projected_p95_at_horizon_ms": 291.06,
     "p95_bar_ms": 5.0,
-    "n_cap_nodes_at_bar": 177,
+    "n_cap_nodes_at_bar": 238,
     "capacity_floor_nodes": 1000,
     "verdict": "index-prerequisite"
   },
@@ -132,38 +163,38 @@
       {
         "store_nodes_total": 100,
         "world_nodes_scanned": 60,
-        "p50_ms": 0.054,
-        "p95_ms": 0.156
+        "p50_ms": 0.017,
+        "p95_ms": 0.053
       },
       {
         "store_nodes_total": 1000,
         "world_nodes_scanned": 600,
-        "p50_ms": 0.084,
-        "p95_ms": 0.194
+        "p50_ms": 0.05,
+        "p95_ms": 0.102
       },
       {
         "store_nodes_total": 2000,
         "world_nodes_scanned": 1200,
-        "p50_ms": 0.099,
-        "p95_ms": 0.131
+        "p50_ms": 0.071,
+        "p95_ms": 0.118
       },
       {
         "store_nodes_total": 5000,
         "world_nodes_scanned": 3000,
-        "p50_ms": 0.207,
-        "p95_ms": 0.333
+        "p50_ms": 0.169,
+        "p95_ms": 0.226
       },
       {
         "store_nodes_total": 10000,
         "world_nodes_scanned": 6000,
-        "p50_ms": 0.489,
-        "p95_ms": 1.886
+        "p50_ms": 0.39,
+        "p95_ms": 0.556
       },
       {
         "store_nodes_total": 20000,
         "world_nodes_scanned": 12000,
-        "p50_ms": 0.772,
-        "p95_ms": 0.95
+        "p50_ms": 0.768,
+        "p95_ms": 0.892
       }
     ]
   }

@@ -36,8 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/` harnesses, so the instrument that selected 1.1.4's mitigation could not execute. Fixed
   with the explicit `geometry=None` opt-out (instrument decision-identical to the committed 2026-09-01 run — `geometry=None` short-circuits the gate-1 filter exactly as the pre-#596 code did).
 - **D51 scope correction (docs)**: `LSHIndex` is not on the `pattern_complete_or_separate` path — the
-  A4-inflated cost lands on the unindexed `_substrate_nodes` scan, and D51 proper's live caller is
-  `NAc._predict_impl` (prediction path), not `distribute_reward`. Ledger, L11 and the roadmap row
+  A4-inflated cost lands on the unindexed `_substrate_nodes` scan, and D51 proper's live callers are
+  `NAc._predict_impl` (gated prediction path) and the ungated `SimilaritySearchTool` introspection
+  tool — not `distribute_reward`. Ledger, L11, minecraft_benchmark.md and the roadmap row
   corrected so the prerequisite names the right structure.
 - **D66 — gate 1's "migrate" half, and the honest limit on it.** `EC.load()` now derives geometry tags
   for unstamped nodes from `encoder_provenance`. **Text nodes migrate exactly.** **Sensor nodes written
