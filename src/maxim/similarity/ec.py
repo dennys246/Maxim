@@ -26,8 +26,14 @@ production path installs one — so every item lands in a single bucket and the
 query is a linear scan. Its four tables are byte-identical for the same
 reason. Measured 2026-08-30: 0.3ms / 3.0ms / 12.6ms at N=100 / 1,000 / 4,000,
 one bucket holding 100% at every size. See bugs ledger D51 — this is a
-real defect, not a design choice, and it is called live from
-``nac.py::distribute_reward``.
+real defect, not a design choice. Its live callers are ``nac.py::_predict_impl``
+(gated on ``use_ec_similarity``) and the ungated ``SimilaritySearchTool``
+introspection tool (corrected 2026-09-03 — an earlier version of this
+docstring named ``distribute_reward``, which never calls it).
+
+``pattern_complete_or_separate`` does NOT use the LSH — since 1.1.4 PR 1 it
+scans through :class:`_ModalityMatrix`, a numpy-vectorized EXACT scan (the
+measured index-prerequisite remedy; see that class's docstring).
 """
 
 from __future__ import annotations
@@ -36,6 +42,9 @@ import json
 import logging
 import math
 import os
+
+import numpy as np
+
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -90,6 +99,145 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     if norm_a == 0.0 or norm_b == 0.0:
         return 0.0
     return dot / (norm_a * norm_b)
+
+
+class _ModalityMatrix:
+    """Vectorized acceleration cache for the substrate-node scan (1.1.4 PR 1).
+
+    The per-node Python loop in ``pattern_complete_or_separate`` is exact
+    ``O(N_nodes · d)`` and was MEASURED unable to carry the A4 allocation
+    rate: p95 crosses the 5 ms budget at ≈238 nodes against a ≈8,375-node
+    session horizon (verdict *index-prerequisite*; frozen rule + data in
+    ``scripts/ec_scan_cost.py`` / ``docs/experiments/data/
+    ec_scan_cost_2026-09-03.json``, plan ``docs/plans/world_seam_1_1_4.md``
+    §PR 0 result). This is the chosen remedy: the SAME cosine as one numpy
+    matrix–vector product (0.89 ms p95 at a 20k-node store) — exact, not
+    approximate. No ANN structure enters the substrate.
+
+    Contract with :class:`EntorhinalCortex`:
+
+    * The parallel dicts (``_substrate_nodes`` et al.) remain the SOURCE OF
+      TRUTH; one matrix caches the nodes of one ``(modality, dim)`` pair.
+      Heterogeneous dims within a modality (the 768-vs-384 fallback case)
+      live in separate matrices; a query only ever scans its own dim, which
+      reproduces the reference loop's dimension guard (cross-dim cosine is
+      defined as 0.0 → below every threshold).
+    * Rows append in registration order — the same order the reference
+      loop's dict iteration visits — and removals TOMBSTONE (norm 0, can
+      never match) rather than swap, so ``argmax``'s first-max tie-break
+      matches the reference loop's ``sim > best_sim`` first-wins. Exact
+      float ties may still break differently than the loop's summation
+      order in the last ulp; the guard test asserts DECISION equivalence
+      on real-shaped stores, not bit equality.
+    * Mutations flow through :class:`EntorhinalCortex` hooks (register /
+      remove / centroid update / geometry stamp); bulk loads clear the
+      cache and it rebuilds lazily on the next scan.
+    """
+
+    __slots__ = ("ids", "geoms", "row_of", "mat", "norms", "n", "tombstones", "geom_counts")
+
+    def __init__(self, dim: int) -> None:
+        self.ids: list[str | None] = []
+        self.geoms: list[str | None] = []
+        self.row_of: dict[str, int] = {}
+        self.mat = np.zeros((16, max(1, dim)), dtype=np.float64)
+        self.norms = np.zeros(16, dtype=np.float64)
+        self.n = 0
+        self.tombstones = 0
+        # geometry -> live row count (None key = unstamped rows); lets the
+        # common single-geometry store skip the per-row mask entirely.
+        self.geom_counts: dict[str | None, int] = {}
+
+    def append(self, node_id: str, embedding: list[float], geom: str | None) -> None:
+        if self.n == self.mat.shape[0]:
+            grown = np.zeros((self.n * 2, self.mat.shape[1]), dtype=np.float64)
+            grown[: self.n] = self.mat[: self.n]
+            self.mat = grown
+            grown_n = np.zeros(self.n * 2, dtype=np.float64)
+            grown_n[: self.n] = self.norms[: self.n]
+            self.norms = grown_n
+        row = self.n
+        self.mat[row] = embedding
+        self.norms[row] = float(np.linalg.norm(self.mat[row]))
+        self.ids.append(node_id)
+        self.geoms.append(geom)
+        self.row_of[node_id] = row
+        self.geom_counts[geom] = self.geom_counts.get(geom, 0) + 1
+        self.n += 1
+
+    def update_row(self, node_id: str, embedding: list[float]) -> None:
+        row = self.row_of.get(node_id)
+        if row is None:
+            return
+        self.mat[row] = embedding
+        self.norms[row] = float(np.linalg.norm(self.mat[row]))
+
+    def stamp(self, node_id: str, geom: str) -> None:
+        row = self.row_of.get(node_id)
+        if row is None:
+            return
+        old = self.geoms[row]
+        self.geoms[row] = geom
+        self.geom_counts[old] = self.geom_counts.get(old, 1) - 1
+        self.geom_counts[geom] = self.geom_counts.get(geom, 0) + 1
+
+    def remove(self, node_id: str) -> None:
+        row = self.row_of.pop(node_id, None)
+        if row is None:
+            return
+        self.geom_counts[self.geoms[row]] = self.geom_counts.get(self.geoms[row], 1) - 1
+        self.norms[row] = 0.0  # a zero-norm row scores 0.0 and can never match
+        self.ids[row] = None
+        self.geoms[row] = None
+        self.tombstones += 1
+
+    def scan(
+        self,
+        embedding: list[float],
+        base_threshold: float,
+        overrides: dict[str, float],
+        live_geometry: str | None,
+    ) -> tuple[str | None, float]:
+        """Best eligible (geometry-compatible, over-threshold) node, or (None, -1)."""
+        if self.n == 0 or len(embedding) != self.mat.shape[1]:
+            return None, -1.0
+        vec = np.asarray(embedding, dtype=np.float64)
+        query_norm = float(np.linalg.norm(vec))
+        if query_norm == 0.0:
+            return None, -1.0
+        mat = self.mat[: self.n]
+        norms = self.norms[: self.n]
+        sims = mat @ vec
+        live_rows = norms > 0.0
+        np.divide(sims, norms * query_norm, out=sims, where=live_rows)
+        sims[~live_rows] = 0.0  # tombstones + zero-norm rows: reference cosine is 0.0
+
+        if overrides:
+            thresholds = np.full(self.n, base_threshold, dtype=np.float64)
+            for nid, t in overrides.items():
+                row = self.row_of.get(nid)
+                if row is not None:
+                    thresholds[row] = t
+            eligible = sims >= thresholds
+        else:
+            eligible = sims >= base_threshold
+        eligible &= live_rows
+
+        if live_geometry is not None and any(
+            g is not None and g != live_geometry and count > 0 for g, count in self.geom_counts.items()
+        ):
+            geoms = self.geoms
+            mask = np.fromiter(
+                (g is None or g == live_geometry for g in geoms),
+                dtype=bool,
+                count=self.n,
+            )
+            eligible &= mask
+
+        if not eligible.any():
+            return None, -1.0
+        best_row = int(np.argmax(np.where(eligible, sims, -np.inf)))
+        return self.ids[best_row], float(sims[best_row])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -394,6 +542,19 @@ class EntorhinalCortex:
         # Keyed by recorder ("linguistic", "sensor:<modality>").
         self._encoder_provenance: dict[str, dict[str, Any]] = {}
 
+        # 1.1.4 PR 1: vectorized-scan acceleration cache. The parallel dicts
+        # above remain the source of truth; each _ModalityMatrix caches one
+        # (modality, dim) slice and is kept in sync by the mutation hooks
+        # (register / remove / centroid update / stamp). Bulk ops (load,
+        # ingest, migrate) clear it; it rebuilds lazily on the next scan.
+        self._matrix_cache: dict[tuple[str, int], _ModalityMatrix] = {}
+        # (modality -> stored geometry -> live node count), non-None geometries
+        # only. Feeds the deduped geometry-mismatch warning WITHOUT a per-node
+        # walk (the reference loop noted mismatches while iterating; the
+        # vectorized scan derives the same distinct set from these counts,
+        # across ALL dims of the modality, exactly as the loop did).
+        self._geom_counts_by_modality: dict[str, dict[str, int]] = {}
+
     def record_encoder_provenance(self, key: str, info: dict[str, Any]) -> None:
         """Merge an encoder's realized-state stamp under ``key``.
 
@@ -490,35 +651,23 @@ class EntorhinalCortex:
         base_threshold = threshold if threshold is not None else self.config.pattern_complete_threshold
         overrides = threshold_override or {}
 
-        best_node: str | None = None
-        best_sim = -1.0
+        # Gate 1 / D1: DETECT THE GEOMETRY CHANGE AT RUNTIME. Stored nodes
+        # declaring a DIFFERENT space are skipped (excluded by the matrix
+        # scan's geometry mask) — they are incomparable, not less similar —
+        # and the divergence is reported once per (modality, stored, live)
+        # triple. The distinct stored geometries come from the maintained
+        # counts rather than a per-node walk; like the pre-vectorization
+        # reference loop, this covers every same-modality node regardless
+        # of dim (the dimension guard itself is separate: a query only
+        # scans the matrix of its own dim, and cross-dim cosine is 0.0 —
+        # the 768-vs-384 fallback case).
+        if geometry is not None:
+            for stored_geom, count in self._geom_counts_by_modality.get(modality, {}).items():
+                if count > 0 and stored_geom != geometry:
+                    self._note_geometry_mismatch(modality, stored_geom, geometry)
 
-        for node_id, (stored_emb, stored_mod) in self._substrate_nodes.items():
-            if stored_mod != modality:
-                continue
-            # Gate 1 / D1: DETECT THE GEOMETRY CHANGE AT RUNTIME.
-            # `encoder_provenance` was recorded, persisted and reloaded and
-            # compared against nothing — its only readers were the bundle
-            # export, and `record_encoder_provenance` MERGES divergence
-            # ("mixed is a finding, not an error"). So a geometry change
-            # loaded old-geometry centroids and cosine-scanned them against
-            # new embeddings, silently completing onto them.
-            #
-            # `_cosine_similarity` already refuses a DIMENSION mismatch,
-            # which covers the 768-vs-384 fallback. It cannot see a
-            # same-dimension change (a place code adds sensor names; the
-            # basis set changes, the length does not) — the identical hole
-            # gate 2 closed on the merge side, here on the live recall path.
-            stored_geom = self._substrate_node_geometries.get(node_id)
-            if geometry is not None and stored_geom is not None and stored_geom != geometry:
-                self._note_geometry_mismatch(modality, stored_geom, geometry)
-                continue
-            sim = _cosine_similarity(embedding, stored_emb)
-            # Use per-node override if available, else base threshold
-            node_thresh = overrides.get(node_id, base_threshold)
-            if sim >= node_thresh and sim > best_sim:
-                best_sim = sim
-                best_node = node_id
+        matrix = self._matrix_for(modality, len(embedding))
+        best_node, best_sim = matrix.scan(embedding, base_threshold, overrides, geometry)
 
         if best_node is not None:
             # Gate 1: STAMP ON FIRST TOUCH. Every `ec.json` written before the
@@ -532,6 +681,9 @@ class EntorhinalCortex:
             # uses for the centroid itself.
             if geometry is not None and self._substrate_node_geometries.get(best_node) is None:
                 self._substrate_node_geometries[best_node] = geometry
+                matrix.stamp(best_node, geometry)
+                by_geom = self._geom_counts_by_modality.setdefault(modality, {})
+                by_geom[geometry] = by_geom.get(geometry, 0) + 1
 
             # Frozen-prototype modalities skip the centroid update —
             # the first embedding to reach a node fixes the prototype.
@@ -552,6 +704,7 @@ class EntorhinalCortex:
             n = self._substrate_node_counts.get(best_node, 1)
             updated = [(s * n + e) / (n + 1) for s, e in zip(stored_emb, embedding)]
             self._substrate_nodes[best_node] = (updated, stored_mod)
+            matrix.update_row(best_node, updated)
             self._substrate_node_counts[best_node] = n + 1
             _emit_ec_activation(
                 node_id=best_node,
@@ -598,6 +751,72 @@ class EntorhinalCortex:
             live,
         )
 
+    def _matrix_for(self, modality: str, dim: int) -> _ModalityMatrix:
+        """The (modality, dim) acceleration matrix, built lazily from the dicts."""
+        key = (modality, dim)
+        matrix = self._matrix_cache.get(key)
+        if matrix is None:
+            matrix = _ModalityMatrix(dim)
+            for node_id, (stored_emb, stored_mod) in self._substrate_nodes.items():
+                if stored_mod == modality and len(stored_emb) == dim:
+                    matrix.append(node_id, stored_emb, self._substrate_node_geometries.get(node_id))
+            self._matrix_cache[key] = matrix
+        return matrix
+
+    def _invalidate_matrix_cache(self) -> None:
+        """Bulk-op reset (load / ingest / migrate): drop matrices, recount geometries."""
+        self._matrix_cache.clear()
+        counts: dict[str, dict[str, int]] = {}
+        for node_id, (_emb, stored_mod) in self._substrate_nodes.items():
+            geom = self._substrate_node_geometries.get(node_id)
+            if geom is not None:
+                by_geom = counts.setdefault(stored_mod, {})
+                by_geom[geom] = by_geom.get(geom, 0) + 1
+        self._geom_counts_by_modality = counts
+
+    def _cache_forget_node(self, node_id: str) -> None:
+        """Remove a node from whichever cached matrix holds it, and the counts."""
+        entry = self._substrate_nodes.get(node_id)
+        if entry is None:
+            return
+        stored_emb, stored_mod = entry
+        matrix = self._matrix_cache.get((stored_mod, len(stored_emb)))
+        if matrix is not None:
+            matrix.remove(node_id)
+        geom = self._substrate_node_geometries.get(node_id)
+        if geom is not None:
+            by_geom = self._geom_counts_by_modality.get(stored_mod)
+            if by_geom and geom in by_geom:
+                by_geom[geom] -= 1
+
+    def _scan_substrate_reference(
+        self,
+        embedding: list[float],
+        modality: str,
+        base_threshold: float,
+        overrides: dict[str, float],
+        geometry: str | None,
+    ) -> tuple[str | None, float]:
+        """The pre-vectorization per-node loop, kept VERBATIM as the behavioral
+        reference for the scan-equivalence guard test (and nothing else — no
+        production caller; the vectorized path must make the same decisions).
+        Deliberately side-effect-free: it does not emit mismatch warnings.
+        """
+        best_node: str | None = None
+        best_sim = -1.0
+        for node_id, (stored_emb, stored_mod) in self._substrate_nodes.items():
+            if stored_mod != modality:
+                continue
+            stored_geom = self._substrate_node_geometries.get(node_id)
+            if geometry is not None and stored_geom is not None and stored_geom != geometry:
+                continue
+            sim = _cosine_similarity(embedding, stored_emb)
+            node_thresh = overrides.get(node_id, base_threshold)
+            if sim >= node_thresh and sim > best_sim:
+                best_sim = sim
+                best_node = node_id
+        return best_node, best_sim
+
     def register_substrate_node(
         self,
         node_id: str,
@@ -619,6 +838,14 @@ class EntorhinalCortex:
         callers in ``maxim.similarity.encoder`` continue to work unchanged
         and inherit ``source="local"`` / ``domain=None``.
         """
+        # Cache maintenance first: a RE-register (same id — "register or
+        # update") may live in a different (modality, dim) matrix than the
+        # incoming values, so evict it wherever it is before the dict write.
+        # (A re-registered node moves to the end of its matrix while keeping
+        # its dict position — a divergence visible only on an exact float
+        # tie, which the guard test's random stores cannot produce.)
+        if node_id in self._substrate_nodes:
+            self._cache_forget_node(node_id)
         self._substrate_nodes[node_id] = (embedding, modality)
         self._substrate_node_counts[node_id] = 1
         self._substrate_node_sources[node_id] = source
@@ -627,6 +854,12 @@ class EntorhinalCortex:
         # means unstamped (legacy nodes, and callers that do not know) — the
         # merge treats that as unverifiable rather than as a match.
         self._substrate_node_geometries[node_id] = geometry
+        matrix = self._matrix_cache.get((modality, len(embedding)))
+        if matrix is not None:
+            matrix.append(node_id, embedding, geometry)
+        if geometry is not None:
+            by_geom = self._geom_counts_by_modality.setdefault(modality, {})
+            by_geom[geometry] = by_geom.get(geometry, 0) + 1
 
     def ingest_substrate_nodes(self, nodes: dict[str, dict[str, Any]]) -> int:
         """Load merged substrate nodes into a LIVE EC, preserving member counts.
@@ -657,6 +890,7 @@ class EntorhinalCortex:
             self._substrate_node_sources[nid] = str(ndata.get("source", "local"))
             self._substrate_node_domains[nid] = ndata.get("domain")
             self._substrate_node_geometries[nid] = ndata.get("geometry")
+        self._invalidate_matrix_cache()
         return len(nodes or {})
 
     def _migrate_legacy_geometries(self) -> int:
@@ -731,6 +965,10 @@ class EntorhinalCortex:
 
         if stamped:
             logger.info("EC: migrated %d legacy node(s) to a derived geometry tag (D66)", stamped)
+            # Stamps changed geometry state — resync the acceleration cache
+            # here rather than trusting every caller to remember (load() also
+            # invalidates; doing it twice is cheap, forgetting once is not).
+            self._invalidate_matrix_cache()
         if skipped:
             logger.warning(
                 "EC: %d node(s) could not be migrated to a geometry tag and stay unstamped "
@@ -747,6 +985,7 @@ class EntorhinalCortex:
 
     def remove_substrate_node(self, node_id: str) -> None:
         """Remove a substrate node."""
+        self._cache_forget_node(node_id)
         self._substrate_nodes.pop(node_id, None)
         self._substrate_node_geometries.pop(node_id, None)
         self._substrate_node_counts.pop(node_id, None)
@@ -1206,6 +1445,10 @@ class EntorhinalCortex:
         # so running it earlier reads an empty dict and silently migrates
         # nothing while reporting that nothing could be migrated.
         self._migrate_legacy_geometries()
+
+        # The store was replaced wholesale (and migrate may have stamped
+        # geometries): drop the acceleration matrices and recount.
+        self._invalidate_matrix_cache()
 
         logger.info(
             "Loaded EC from %s (%d signatures, %d substrate nodes)",

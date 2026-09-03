@@ -541,6 +541,7 @@ def _sensor_embed(
     sensors: dict[str, float],
     ranges: "dict[str, tuple[float, float]] | None" = None,
     dim: int = 384,
+    gain_exponent: float | None = None,
 ) -> list[float]:
     """Hash a ``{sensor_name: value}`` dict into a fixed-dim embedding.
 
@@ -566,9 +567,24 @@ def _sensor_embed(
     Cross-sensor (hunger up vs thirst up) gives the orthogonal pattern
     that Phase 0 wants to distinguish.
 
-    Empty dict short-circuits to the zero vector (caller should
-    avoid encoding empty inputs; ``SensorEncoder.encode_sensors``
-    skips this case).
+    ``gain_exponent`` (A4, 1.1.4 — L11's selected mitigation): when set, each
+    sensor's contribution is weighted by ``(|v − 0.5| · 2) ** gain_exponent`` —
+    a sensor resting at its neutral point contributes NOTHING, one at an
+    extreme contributes fully. This is what keeps a single meaningful swing
+    visible in a many-sensor sum (the 1/N dilution law dilutes the UNIFORM
+    sum; the gain concentrates mass on the sensors that moved). Measured:
+    bake-off arm A4 scores 1.00/1.00/1.00 from N=30 up at the UNCHANGED 0.85
+    threshold — and stability 0.62 at N=6, so it is a many-sensor tool, WRONG
+    for a six-drive body (see `docs/limits/l11_sensor_dilution.md` §Bake-off
+    + the N=6/8 rows). The neutral point is the literal normalized 0.5 (range
+    midpoint), exactly as measured — there is no set-point plumbing here, and
+    an unmeasured set-point-aware variant must not be improvised (plan
+    decision D1). ``None`` (default) is byte-identical to the pre-A4 sum.
+
+    Empty dict short-circuits to the zero vector — and so does a gained call
+    whose sensors ALL rest at neutral (every weight 0). Callers must treat a
+    zero vector as "nothing to encode" (``SensorEncoder.encode_sensors``
+    returns ``None`` for it, plan decision D2).
     """
     vec = [0.0] * dim
     if not sensors:
@@ -576,10 +592,13 @@ def _sensor_embed(
     for name in sorted(sensors):  # deterministic ordering
         vr = ranges.get(name) if ranges else None
         v = _normalize_value(sensors[name], vr)
+        w = 1.0 if gain_exponent is None else (abs(v - 0.5) * 2.0) ** gain_exponent
+        if w == 0.0:
+            continue
         basis_low = _stable_basis(name, dim, salt="low")
         basis_high = _stable_basis(name, dim, salt="high")
         for i in range(dim):
-            vec[i] += (1.0 - v) * basis_low[i] + v * basis_high[i]
+            vec[i] += w * ((1.0 - v) * basis_low[i] + v * basis_high[i])
     return vec
 
 
@@ -637,6 +656,27 @@ class SensorEncoderConfig:
     # completes onto an existing node. Phase 0+ work will retune
     # this once we have cluster-purity data from a Roy run.
     pattern_threshold: float = 0.85
+    # A4 nonlinear gain (1.1.4, L11's selected mitigation): weight each
+    # sensor's contribution by (|v-0.5|*2)**gain_exponent so a sensor at
+    # rest is silent and a moved one dominates the sum. Applied ONLY to
+    # modalities in `gain_modalities`, at the UNCHANGED pattern_threshold
+    # (arm A5 — gain + moved threshold — collapsed to 0.00 stability;
+    # never combine). Membership is measured, not assumed:
+    #   world          GAINED — the large-N channel (a Minecraft body is
+    #                  ~50 sensors; A4 is 1.00/1.00/1.00 from N=30 up)
+    #   interoception  UNGAINED — measured WORSE at its actual scale
+    #                  (N=6: A4 stability 0.62 — noise separates; the
+    #                  bake-off's own N=6/8 rows), and every EARNED row
+    #                  rides on the ungained space
+    #   audio          UNGAINED — gain over the place code degrades
+    #                  jitter-stability (140/140 -> 132/140) and buys
+    #                  nothing; a gained raw azimuth would zero-vector
+    #                  the CENTERED reading, deleting the "sound dead
+    #                  ahead" cluster the operant results key on
+    # Flipping a modality in is a GEOMETRY change (the tag moves) and a
+    # graduation-trigger event — measure first, like these were.
+    gain_exponent: float = 3.0
+    gain_modalities: frozenset[str] = frozenset({"world"})
 
 
 class SensorEncoder:
@@ -754,7 +794,31 @@ class SensorEncoder:
         ):
             return self._last_node_id.get(stash_key)
 
-        embedding = _sensor_embed(sensors, ranges=ranges, dim=self.config.embedding_dim)
+        # A4 (1.1.4): per-modality nonlinear gain — see SensorEncoderConfig
+        # for the measured membership rationale. `None` keeps ungained
+        # modalities byte-identical to pre-A4 (their geometry tags must not
+        # move — pinned by tests).
+        applied_gain: float | None = self.config.gain_exponent if modality in self.config.gain_modalities else None
+        embedding = _sensor_embed(
+            sensors,
+            ranges=ranges,
+            dim=self.config.embedding_dim,
+            gain_exponent=applied_gain,
+        )
+        if applied_gain is not None and all(x == 0.0 for x in embedding):
+            # D2: a gained body resting AT neutral embeds to the zero vector —
+            # cosine against it is degenerate, and "a body at rest encodes
+            # nothing" is the same principle as the gain itself. Stash the
+            # reading so the delta gate engages (returning the cached None
+            # via _last_node_id.get), but drop any stale node id.
+            self._last_sensors[stash_key] = dict(sensors)
+            self._last_node_id.pop(stash_key, None)
+            self._last_ranges[stash_key] = dict(ranges) if ranges else None
+            logger.debug(
+                "SensorEncoder: %s reading rests at neutral under gain — nothing to encode",
+                modality,
+            )
+            return None
 
         # Artifact stamping (1.1 item 7): the sensor-NAME SET and the
         # normalization mode are part of the embedding's identity —
@@ -791,6 +855,9 @@ class SensorEncoder:
                 # files written before this cannot be migrated and must be
                 # re-encoded, which the load-time warning says explicitly.
                 "declared_sensors": declared,
+                # A4: the applied gain is part of the embedding's identity —
+                # None for ungained modalities (pre-A4-identical space).
+                "gain_exponent": applied_gain,
             },
         )
 
@@ -828,13 +895,22 @@ class SensorEncoder:
         # same reason the key set was, and both axes moved on one thermal
         # event. The SPACE's normalization is a property of the declared set,
         # which is range-covered by construction.
-        geometry = encoding_geometry_tag(
-            encoder="sensor",
-            modality=modality,
-            declared_sensors=declared,
-            normalization="range-aware" if ranges else "range-blind",
-            embedding_dim=len(embedding),
-        )
+        # A4: a gained modality is a DIFFERENT SPACE at the same dimension —
+        # exactly the same-dim hole the tag exists to close — so the applied
+        # exponent enters the tag. The field is added ONLY when gain applies:
+        # an ungained modality's tag stays byte-identical to pre-A4 (adding
+        # `gain="linear"` would gratuitously re-stale every existing node's
+        # tag for a space that did not change). Pinned by tests.
+        tag_fields: dict[str, Any] = {
+            "encoder": "sensor",
+            "modality": modality,
+            "declared_sensors": declared,
+            "normalization": "range-aware" if ranges else "range-blind",
+            "embedding_dim": len(embedding),
+        }
+        if applied_gain is not None:
+            tag_fields["gain"] = f"p{applied_gain}"
+        geometry = encoding_geometry_tag(**tag_fields)
         result = self.ec.pattern_complete_or_separate(
             embedding=embedding,
             modality=modality,

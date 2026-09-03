@@ -97,12 +97,28 @@ The bake-off's gain (`scripts/encoding_bakeoff.py::_embed`, `GAIN_EXPONENT = 3.0
 - **D2 (zero vector): `encode_sensors` returns `None` on a degenerate (zero) embedding** — no
   cluster write. "A body at rest encodes nothing" is the same principle as the gain itself.
   Guarded by a unit test pinning the fresh-body-at-`initial:` case.
-- **D3 (audio place-code channel): measure before enabling.** The gain lives in
-  `_sensor_embed`, so by default it would also reshape the place-coded audio channel
-  (`azdir*` population code) — unanalyzed. PR 1 runs a cheap synthetic check of gain-over-
-  place-code with the bake-off metric; if it degrades, the gain becomes per-modality
-  configuration (interoception + world ON, audio unchanged) and the geometry tag carries the
-  per-modality gain state. Either way the decision is measured, then recorded here.
+- **D3 (audio place-code channel): measure before enabling. RESOLVED 2026-09-03 by two
+  measurements, and the answer went FURTHER than this bullet anticipated — the gain is
+  per-modality with `gain_modalities = {"world"}`, world ONLY:**
+  - *Audio ungained* (as this bullet contemplated): gain over the place code degrades
+    jitter-stability 140/140 → 132/140 while separation stays 7/7 — the gain crushes the
+    intermediate activations that carry the interpolation (`p=3`: activation 0.7 → weight
+    0.064). And a gained RAW-scalar azimuth zero-vectors the CENTERED reading, deleting the
+    "sound dead ahead" cluster the operant results key on. Data:
+    `docs/experiments/data/place_code_gain_check_2026-09-03.json`.
+  - *Interoception ungained* (this bullet assumed ON; the bake-off at the infant's actual
+    scale says otherwise): at N=6, A4's stability collapses to **0.62** — noise separates,
+    the noise-floor cost the pairwise data predicted — and A4 is not even the best arm
+    (A1 scores 0.88). A4's dominance begins at N=12 (0.94) and is perfect from N=30. Gaining
+    interoception would ship a measured-WORSE representation for every existing body. Data:
+    `docs/experiments/data/encoding_bakeoff_n6_n8_2026-09-03.json` (the committed bake-off
+    instrument, arms frozen 2026-09-01, run at N∈{6,8}).
+  - Consequence, load-bearing: **every existing modality's encoding space is byte-identical
+    after PR 1** (gain `None` reproduces the pre-A4 sum exactly; ungained geometry tags do
+    not move — both test-pinned). **Exp 42 / 52 / 53b do NOT re-stale**, and the hardware
+    block shrinks to the already-owed items (L11 re-measure + roll/pitch recalibration).
+    Flipping a modality into `gain_modalities` later is a geometry change and a
+    graduation-trigger event — measure first, as these were.
 - **D4 (scan-cost decision rule): frozen in `scripts/ec_scan_cost.py`'s docstring before the
   run** (PR 0; the script is authoritative). Summary: projected p95 per-encode scan cost at
   the 4-hour/2 Hz horizon store — ≤ 5 ms ships A4 bare with the number recorded; otherwise a
@@ -197,9 +213,17 @@ transaction.
   (PR 0 verdict: index-prerequisite; see §PR 0 result). Equivalence-guarded: identical
   match/threshold decisions old-vs-new on random stores, ties and at-threshold cases
   included.
-- PR body carries the graduation-trigger sweep: A4 fires L11's re-measure trigger and
-  re-stales Exp 53b (hardware block below); affected rows marked Stale with the block as
-  their discharge plan.
+- Graduation-trigger sweep, **revised by D3's resolution**: with `gain_modalities =
+  {"world"}` no existing modality's space changes (gain `None` is byte-identical, ungained
+  tags pinned), so **no EARNED row re-stales** — Exp 53b's trigger names `_sensor_embed` /
+  `pattern_complete_or_separate`, and both changes are decision-equivalent for its
+  channels (the equivalence guard is the evidence). L11's re-measure trigger DOES fire (the
+  equation gained a parameter) and is discharged by the hardware block's re-measure.
+- **Honest reachability note (the #590 lesson, stated rather than discovered):** the gained
+  path has ZERO production callers until PR 2 wires the world channel — nothing passes
+  `modality="world"` today. PR 1 ships the capability + its guards; the CALLER is PR 2's
+  channel, and the caller-proof is PR 4's non-vacuous smoke gate asserting world-channel
+  encode activity > 0. Until PR 2 merges, "A4 shipped" may not be claimed.
 
 ### PR 2 — `modality:` on the sensor schema, the world channel, the re-baseline
 
@@ -238,9 +262,12 @@ transaction.
 
 ### The hardware block (operator; scheduled after PR 1 merges — not gating the sim-side PRs)
 
-One session, in order: L11 post-mitigation re-measure on a real body above the safe band →
-Exp 53b re-run (its trigger: "the representation is what transfers") → the owed roll/pitch
-recalibration. L11 moves to RETIRED only after this block; nothing in 1.1.4 claims it early.
+**Shrunk by D3's resolution (world-only gain):** Exp 53b's re-run is NO LONGER triggered —
+its channels (interoception + audio) are byte-identical after PR 1, decision-equivalence-
+guarded. What remains, one session: L11 post-mitigation re-measure on a real body above the
+safe band (still owed — the N=6/8 and bake-off numbers are synthetic, and RETIRED requires a
+real body) → the owed roll/pitch recalibration. If a future decision flips interoception or
+audio into `gain_modalities`, the 53b re-run comes back and joins that block.
 
 ## Out of scope, recorded
 

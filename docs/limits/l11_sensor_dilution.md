@@ -45,6 +45,8 @@ the agent cannot hold different policies for them, no matter how much it learns.
 | 2026-09-01 | embedding dimension | 384 → 3072 moves cosine by **< 0.001**, marginally worse | ” |
 | 2026-09-01 | sparse/hashed bases (k=16 dims/sensor) | **identical to the plain sum** | ” |
 | 2026-09-01 | distributional moments | detection 0.63 (N=6) → **0.27 (N=100)** — N-independent — but discrimination **0.999**, and worse at every mixing weight | ” |
+| 2026-09-03 | bake-off at N=6/8 (infant-scale channels; same frozen arms) | A4 stability COLLAPSES at N=6 (0.62; primary 0.62 vs A1's 0.88) and is not the best arm below N=12 — the noise-floor cost the pairwise data predicted. A4 is a many-sensor tool | `scripts/encoding_bakeoff.py --sensors 6,8`; data `docs/experiments/data/encoding_bakeoff_n6_n8_2026-09-03.json` |
+| 2026-09-03 | gain over the audio place code (7 directions, real EC) | separation stays 7/7 but jitter-stability degrades 140/140 → 132/140 (gain crushes the interpolating intermediate activations); a gained RAW azimuth zero-vectors the CENTERED reading | `scripts/place_code_gain_check.py`; data `docs/experiments/data/place_code_gain_check_2026-09-03.json` |
 | 2026-09-03 | scan cost at A4 allocation (mixed-modality store, real EC) | p95 ≈291 ms at the projected 4h-session store (8,375 nodes); 5 ms crossing ≈238 nodes → **index-prerequisite**; vectorized exact scan 0.89 ms @ 20k-node store | `scripts/ec_scan_cost.py`; data `docs/experiments/data/ec_scan_cost_2026-09-03.json` |
 
 All 2026-09-01 rows are synthetic sweeps over the **shipped** encoder, recorded in
@@ -66,6 +68,13 @@ weighting each sensor's contribution by its distance from set point, at the **un
 0.85 threshold. Perfect on all three criteria from N=30 to N=100. The principle is that a
 sensor resting at its set point should not be shouting — which is what the comfort-band
 drive design already encodes.
+
+**Membership is per-modality and measured, not global (PR 1, 2026-09-03):**
+`SensorEncoderConfig.gain_modalities = {"world"}`. The N=6/8 rows above show A4 is
+measured-WORSE at the infant's actual channel scale (stability 0.62 at N=6), and the
+place-code row shows it degrades audio — so interoception and audio stay in the pre-A4
+space, byte-identical (their geometry tags do not move; test-pinned), and no EARNED row
+re-stales. Flipping a modality in later is a geometry change + graduation-trigger event.
 
 **Superseded, and recorded because it was the standing recommendation until measured:**
 
