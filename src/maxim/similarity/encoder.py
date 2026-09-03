@@ -669,7 +669,7 @@ class SensorEncoderConfig:
     #                  bake-off's own N=6/8 rows), and every EARNED row
     #                  rides on the ungained space
     #   audio          UNGAINED — gain over the place code degrades
-    #                  jitter-stability (140/140 -> 132/140) and buys
+    #                  jitter-stability (1.000 -> 0.957) and buys
     #                  nothing; a gained raw azimuth would zero-vector
     #                  the CENTERED reading, deleting the "sound dead
     #                  ahead" cluster the operant results key on

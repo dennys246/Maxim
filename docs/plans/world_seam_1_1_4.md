@@ -101,7 +101,7 @@ The bake-off's gain (`scripts/encoding_bakeoff.py::_embed`, `GAIN_EXPONENT = 3.0
   measurements, and the answer went FURTHER than this bullet anticipated — the gain is
   per-modality with `gain_modalities = {"world"}`, world ONLY:**
   - *Audio ungained* (as this bullet contemplated): gain over the place code degrades
-    jitter-stability 140/140 → 132/140 while separation stays 7/7 — the gain crushes the
+    jitter-stability 1.000 → 0.957 while separation stays 7/7 — the gain crushes the
     intermediate activations that carry the interpolation (`p=3`: activation 0.7 → weight
     0.064). And a gained RAW-scalar azimuth zero-vectors the CENTERED reading, deleting the
     "sound dead ahead" cluster the operant results key on. Data:
