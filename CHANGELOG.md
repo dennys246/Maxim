@@ -24,6 +24,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Gate 1 (D1) — `encoder_provenance` now detects a geometry change at RUNTIME.** D1's complaint was
+  never that the stamp was wrong; it was that **nothing read it**. The stamp was recorded, persisted and
+  reloaded, its only readers were the hivemind bundle/CLI export, and `record_encoder_provenance`
+  *merges* divergence ("'mixed' is a finding, not an error") — so a geometry change loaded old-geometry
+  centroids and cosine-scanned them against new embeddings. `pattern_complete_or_separate` filtered on
+  modality alone; it now takes the query's `geometry` and skips nodes that declare a different one, with
+  a warning deduped per `(modality, stored, live)` triple (the scan runs per node per encode, and an
+  undeclared warning here is filtered out by whoever reads the logs — which is the same as not warning).
+  Skip-and-warn rather than raise: an incomparable node pattern-SEPARATES instead of completing, which
+  is the remedy `_cosine_similarity` already chose for a dimension mismatch, and old files still load.
+- **Gate 1 surfaced two test fixtures that encoded the defect.** Both seeded a cluster **range-blind**
+  and then asserted against a `propose_via_substrate` encode, which is **range-aware** —
+  different embedding functions over the same sensors, landing on one cluster by accident. That is
+  precisely what `SensorEncoder`'s own stamp comment names: *"a range-blind-folded azimuth cluster
+  circulating as if comparable to a range-aware one."* One was asserting cluster identity and now fails
+  honestly; the other seeded a negative bias onto a cluster the production path could never reach, so it
+  passed **without exercising the bias at all** — vacuous in the same shape as D62. Both now seed through
+  `_read_drive_ranges`, the way production does. Production itself was already self-consistent (both
+  call sites pass `ranges=ch.read_ranges(executor) or None`), so no live behaviour changes.
 - **Gate 2 (D3 + D4) — two compatibility checks that could not fire.** `merge.py` refuses internal
   imports, so its thresholds are hardcoded duplicates; the frozen-modality set had already diverged
   this way once and was pinned, the thresholds were not. **D3's trigger is literally "per-modality
