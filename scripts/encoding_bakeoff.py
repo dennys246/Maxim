@@ -118,7 +118,10 @@ def _cluster_ids(
         sub = {n: state[n] for n in members}
         vec = _embed(sub, gain=gain)
         ec = ec_by_channel[idx]
-        res = ec.pattern_complete_or_separate(vec, modality=f"ch{idx}", threshold=threshold)
+        # geometry=None is the explicit opt-out (gate 2, #596, made the kwarg
+        # required AFTER this harness produced its committed data; None keeps
+        # the instrument byte-identical to the run that selected A4).
+        res = ec.pattern_complete_or_separate(vec, modality=f"ch{idx}", threshold=threshold, geometry=None)
         if res.is_new:
             # EC's separation path deliberately allocates an id WITHOUT
             # registering it — its own comment: "the caller (LinguisticEncoder)
