@@ -128,9 +128,10 @@ is perfect (1.00/1.00/1.00) from N=30 up.
 
 **The cost is real and it promotes a dormant defect.** A4 allocates ~58 clusters per 100
 states against the control's 0.5 — roughly **120×**. The EC scan is exact
-`O(N_nodes · d)` with no cap and no pruning, so **D51 (the degenerate LSH) stops being a
-dormancy candidate and becomes a prerequisite** for a large-sensor body. That trade is the
-single most important open item below.
+`O(N_nodes · d)` with no cap and no pruning, so **the scan itself becomes the prerequisite
+for a large-sensor body** (initially mis-filed as D51 — see the correction under §"What
+raises the ceiling"; `LSHIndex` is not on this path). That trade was the single most
+important open item below, now MEASURED — see open question 5.
 
 **Scope, unchanged and binding:** synthetic bodies with uncorrelated SHA bases and iid
 noise, because no shipped body exceeds ~12 sensors — the regime does not exist yet. Real
@@ -153,8 +154,8 @@ Bounds the representation behind **Exp 42** (interoception clusters), **Exp 48**
 The limit bounds any *future* body that grows past it — which is exactly what a
 Minecraft or microduck body would do.
 
-**Consequence for the mitigation's own schedule:** shipping the threshold or the
-grouping change re-stales Exp 53b **on hardware**. That re-run and 1.2's n=12 two-robot
+**Consequence for the mitigation's own schedule:** shipping the encoding change (A4—
+any `_sensor_embed` change) re-stales Exp 53b **on hardware**. That re-run and 1.2's n=12 two-robot
 replication are the same scarce resource and should be planned as one hardware block.
 
 ## Open questions
@@ -181,11 +182,11 @@ replication are the same scarce resource and should be planned as one hardware b
    the prerequisite is the `_substrate_nodes` scan itself — `LSHIndex` (D51) is not on
    this path and fixing it would not help. Measured at A4's allocation rate by
    `scripts/ec_scan_cost.py` (frozen decision rule in its docstring; verdict recorded in
-   [docs/plans/world_seam_1_1_4.md](../plans/world_seam_1_1_4.md)). **MEASURED 2026-09-03,
-   verdict index-prerequisite:** the Python scan crosses 5 ms at ≈177 nodes vs a projected
-   8,375-node 4-hour-session store (p95 ≈117 ms); the chosen remedy is a vectorized EXACT
-   scan (p95 0.95 ms @ 20k nodes), shipping with A4. Data:
-   `docs/experiments/data/ec_scan_cost_2026-09-03.json`.**
+   [docs/plans/world_seam_1_1_4.md](../plans/world_seam_1_1_4.md)).** MEASURED 2026-09-03,
+   verdict **index-prerequisite**: the Python scan crosses 5 ms at ≈177 nodes vs a projected
+   8,375-node 4-hour-session store; the chosen remedy is a vectorized EXACT scan
+   (p95 0.95 ms @ 20k nodes), shipping with A4. Data:
+   `docs/experiments/data/ec_scan_cost_2026-09-03.json`.
 
 ## Re-measure on
 

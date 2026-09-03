@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D68 — gate 2 (#596) silently broke the committed bake-off harness**: `scripts/encoding_bakeoff.py`
   raised `TypeError` on every arm after `geometry` became required keyword-only; nothing in CI runs
   `scripts/` harnesses, so the instrument that selected 1.1.4's mitigation could not execute. Fixed
-  with the explicit `geometry=None` opt-out (instrument byte-identical to the committed 2026-09-01 run).
+  with the explicit `geometry=None` opt-out (instrument decision-identical to the committed 2026-09-01 run — `geometry=None` short-circuits the gate-1 filter exactly as the pre-#596 code did).
 - **D51 scope correction (docs)**: `LSHIndex` is not on the `pattern_complete_or_separate` path — the
   A4-inflated cost lands on the unindexed `_substrate_nodes` scan, and D51 proper's live caller is
   `NAc._predict_impl` (prediction path), not `distribute_reward`. Ledger, L11 and the roadmap row

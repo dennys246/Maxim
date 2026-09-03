@@ -28,9 +28,14 @@ Measurements
     contribution is small at control allocation rates and its omission makes
     this an UNDER-estimate of store size, noted in the output.
 (b) CONTROLLED scan timing: fresh EC pre-loaded to fixed store sizes
-    {100, 1k, 2k, 5k, 10k, 20k} (60% world / 30% interoception / 10% audio),
-    50 timed world-channel probes each; linear fit gives the per-node
-    coefficient used for the horizon projection.
+    {100, 1k, 2k, 5k, 10k, 20k} (60% world / 30% interoception / 10% audio,
+    exact by interleave; per-row composition recorded); 50 timed
+    world-channel probes each. The HORIZON PROJECTION reads the
+    piecewise-linear p95 curve between measured rows (the rule's own words:
+    "the controlled-curve p95"); a least-squares per-node coefficient is
+    reported as a summary only. Probes pass geometry=None, omitting the
+    per-node geometry lookup production pays — a small UNDER-estimate of
+    production cost (conservative direction).
 
 Horizon (frozen): a 4-hour session at 2 ticks/s = 28,800 ticks; projected
 store = organic allocation rate (measured in (a), per channel, per presented
@@ -61,11 +66,14 @@ Scope, stated so the output is not over-read: synthetic uncorrelated sensors
 discrimination were the bake-off's job, not this harness's.
 
 (c) EXPLORATORY remedy sizing — outside the frozen verdict, labeled as such in
-    the output: a numpy-vectorized EXACT scan (same cosine, same store, one
-    matrix-vector product) timed at the same store sizes, to size the cheapest
-    semantics-preserving remedy against the ANN-index alternative if the
-    verdict is not ship-bare. It informs the REMEDY choice; it cannot change
-    the verdict, whose rule is frozen above.
+    the output: a numpy-vectorized EXACT scan (same cosine, one matrix-vector
+    product) timed at the same TOTAL store sizes. NOT symmetrical with (b) by
+    design: the vectorized arm scans only the world PARTITION (the remedy as
+    it would be built — per-modality matrices, filtered once at registration)
+    while the Python scan iterates all nodes and filters per call; the
+    per-row world_nodes_scanned field records exactly what was scanned. It
+    informs the REMEDY choice; it cannot change the verdict, whose rule is
+    frozen above.
 
 Usage
 -----
@@ -77,6 +85,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+from datetime import datetime, timezone
 import statistics
 import sys
 import time
@@ -177,7 +186,7 @@ def run_organic(n_world: int, world_states: int, seed: int, checkpoint_every: in
                 checkpoints.append(
                     {
                         "presented_world_states": presented["world"],
-                        "total_nodes": len(getattr(ec, "_substrate_nodes", {}) or {}),
+                        "total_nodes": len(ec._substrate_nodes),  # direct: a rename must fail LOUD, not read 0
                         "world_p50_ms": round(statistics.median(window), 3),
                         "world_p95_ms": round(_p95(window), 3),
                     }
@@ -189,7 +198,7 @@ def run_organic(n_world: int, world_states: int, seed: int, checkpoint_every: in
                     f"p95 {checkpoints[-1]['world_p95_ms']:>8.3f} ms"
                 )
 
-    total_nodes = len(getattr(ec, "_substrate_nodes", {}) or {})
+    total_nodes = len(ec._substrate_nodes)  # direct: a rename must fail LOUD, not read 0
     return {
         "n_world_sensors": n_world,
         "world_states_presented": presented["world"],
@@ -214,13 +223,17 @@ def run_controlled(n_world: int, seed: int) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     ec = EntorhinalCortex(ECConfig())
     registered = 0
+    composition: dict[str, int] = {m: 0 for m, _ in CONTROLLED_MIX}
     for size in CONTROLLED_SIZES:
         while registered < size:
             # Random unit-scale vectors are fine here: cost depends on store
-            # size and dim, not on content; the modality mix mirrors a shared
-            # production EC so the Python-side modality filter is exercised.
-            r = registered / max(1, size)
-            modality = next(m for m, cut in _mix_cuts() if r < cut)
+            # size and dim, not on content. Modality assigned by interleave so
+            # the 60/30/10 mix holds EXACTLY at every row — the first
+            # committed run computed the fraction against the MOVING target
+            # size, decaying the world share from 60% to 24% across rows
+            # (caught by the executor review lens; regenerated).
+            modality = _MODALITY_PATTERN[registered % len(_MODALITY_PATTERN)]
+            composition[modality] += 1
             vec = [rng.uniform(-1.0, 1.0) for _ in range(DIM)]
             ec.register_substrate_node(str(uuid.uuid4()), vec, modality)
             registered += 1
@@ -235,6 +248,7 @@ def run_controlled(n_world: int, seed: int) -> list[dict[str, Any]]:
         rows.append(
             {
                 "store_nodes": size,
+                "composition": dict(composition),
                 "p50_ms": round(statistics.median(probe_ms), 3),
                 "p95_ms": round(_p95(probe_ms), 3),
             }
@@ -243,14 +257,8 @@ def run_controlled(n_world: int, seed: int) -> list[dict[str, Any]]:
     return rows
 
 
-def _mix_cuts() -> list[tuple[str, float]]:
-    cuts: list[tuple[str, float]] = []
-    acc = 0.0
-    for modality, frac in CONTROLLED_MIX:
-        acc += frac
-        cuts.append((modality, acc))
-    cuts[-1] = (cuts[-1][0], 1.01)
-    return cuts
+# 6 world : 3 interoception : 1 audio, repeating — the exact 60/30/10 interleave.
+_MODALITY_PATTERN: tuple[str, ...] = ("world",) * 6 + ("interoception",) * 3 + ("audio",)
 
 
 def run_exploratory_vectorized(n_world: int, seed: int) -> list[dict[str, Any]]:
@@ -298,21 +306,49 @@ def decide(organic: dict[str, Any], controlled: list[dict[str, Any]]) -> dict[st
     # controlled curve"), flipping the verdict to cap-prerequisite. The rule is
     # unchanged; this implementation now reads the curve: piecewise-linear
     # interpolation between adjacent MEASURED rows, no extrapolation.
+    # SECOND CORRECTION (2026-09-03, executor review lens): the fix above left
+    # verdict branch 1 on a least-squares FIT (intercept +35.9 ms), publishing
+    # a horizon p95 LOWER than the directly measured p95 at a smaller store.
+    # The rule's words are "the controlled-curve p95" — BOTH branches now read
+    # the piecewise-linear curve; the fit survives only as a reported
+    # per-node-coefficient summary, used for nothing.
     xs = [row["store_nodes"] for row in controlled]
     ys = [row["p95_ms"] for row in controlled]
 
-    # Least-squares fit over all controlled rows — used for the horizon
-    # projection only, never for n_cap.
+    def curve_p95(store: float) -> float:
+        if store <= xs[0]:
+            return ys[0]
+        for (x0, y0), (x1, y1) in zip(zip(xs, ys), zip(xs[1:], ys[1:])):
+            if store <= x1:
+                return y0 + (store - x0) / (x1 - x0) * (y1 - y0)
+        # Beyond the last measured row: last-segment slope, flagged in output.
+        (x0, y0), (x1, y1) = (xs[-2], ys[-2]), (xs[-1], ys[-1])
+        return y1 + (store - x1) / (x1 - x0) * (y1 - y0)
+
     n = len(xs)
     mean_x, mean_y = sum(xs) / n, sum(ys) / n
     coeff = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / sum((x - mean_x) ** 2 for x in xs)
-    intercept = mean_y - coeff * mean_x
 
     per_state_alloc = organic["total_nodes"] / (
         organic["world_states_presented"] + organic["interoception_states_presented"]
     )
     horizon_store = int(per_state_alloc * HORIZON_TICKS * 2)  # 2 encodes per tick (world + intero)
-    p95_at_horizon = coeff * horizon_store + intercept
+    p95_at_horizon = curve_p95(horizon_store)
+
+    # Robustness note for reuse: p95 rows are 50-probe estimates and can be
+    # non-monotone; a noise dip back under the bar at a large store would
+    # inflate n_cap. Warn loudly so a human eyeballs the curve.
+    over = False
+    for y in ys:
+        if y > P95_BAR_MS:
+            over = True
+        elif over:
+            print(
+                f"  WARNING: controlled p95 curve dips back under the {P95_BAR_MS} ms bar "
+                "after exceeding it — n_cap may be noise-inflated; eyeball the rows.",
+                file=sys.stderr,
+            )
+            break
 
     n_cap = 0
     for (x0, y0), (x1, y1) in zip(zip(xs, ys), zip(xs[1:], ys[1:])):
@@ -331,11 +367,11 @@ def decide(organic: dict[str, Any], controlled: list[dict[str, Any]]) -> dict[st
     else:
         verdict = "index-prerequisite"
     return {
-        "per_node_coeff_ms": round(coeff, 6),
-        "intercept_ms": round(intercept, 4),
+        "per_node_coeff_ms_fit_summary_only": round(coeff, 6),
         "organic_alloc_nodes_per_state": round(per_state_alloc, 4),
         "horizon_ticks": HORIZON_TICKS,
         "projected_horizon_store_nodes": horizon_store,
+        "horizon_beyond_measured_curve": horizon_store > xs[-1],
         "projected_p95_at_horizon_ms": round(p95_at_horizon, 2),
         "p95_bar_ms": P95_BAR_MS,
         "n_cap_nodes_at_bar": n_cap,
@@ -390,6 +426,7 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(
                 {
                     "harness": "scripts/ec_scan_cost.py",
+                    "ts": datetime.now(timezone.utc).isoformat(),
                     "provenance": provenance,
                     "metric": "per-encode wall ms of pattern_complete_or_separate (p50/p95)",
                     "decision_rule": (

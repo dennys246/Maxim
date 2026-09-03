@@ -375,10 +375,13 @@ measured on. Three caveats before anyone does it:
 - **These are synthetic measurements** with uncorrelated SHA bases and iid noise. Real sensors
   correlate (hunger and fatigue drift together), which changes the geometry. Confirm on a real
   body before relying on the numbers.
-- **It makes D51 load-bearing.** At 100% separation with 50 sensors you can allocate a great
-  many clusters, and `ec.py`'s scan is an exact O(N_nodes · d) Python loop with no cap and no
-  pruning (2.7 ms @ 100 nodes, 136 ms @ 5,000 — *per encode, per channel, per tick*). The
-  degenerate LSH that was supposed to make this sublinear is D51. Raising the sensor count
+- **It makes the EC scan load-bearing** *(corrected 2026-09-03: initially filed as "makes
+  D51 load-bearing", but `LSHIndex` — D51 proper — is not on the `pattern_complete_or_separate`
+  path; the cost lands on the unindexed `_substrate_nodes` scan, an exact O(N_nodes · d)
+  Python loop with no cap and no pruning (2.7 ms @ 100 nodes, 136 ms @ 5,000 — per encode,
+  per channel, per tick). Measured at A4's allocation rate 2026-09-03: verdict
+  index-prerequisite; see `scripts/ec_scan_cost.py` +
+  [world_seam_1_1_4.md](world_seam_1_1_4.md) §PR 0 result)*. Raising the sensor count
   without addressing cluster-count growth trades a representation ceiling for a latency one.
 
 ### Two traps to design against, both verified
