@@ -59,7 +59,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tests the fold and the alignment arm is D44's. `--assert-noop-fails` is the guard on the guard —
   it re-runs the gauntlet with `nac_merge` replaced by `return left` / `return right` / `return {}`
   and exits 3 if any still passes. On the recorded parents it correctly reports VACUOUS; with the
-  split it reports discriminating power.
+  split it reports discriminating power. **Corrected in review:** the first version of the split made
+  the halves DISJOINT, so their union was the whole policy and a plain `{**left, **right}` reproduced
+  `nac_merge` bit-identically — the mean-fold on colliding keys, which is the semantics the trigger
+  exists to watch, was never exercised. The halves now OVERLAP (each keeps its own bins learned and
+  zeroes the rest), a `naive dict update` stub joins the set, and `--complementary-split` no longer
+  reads `--right`'s sidecar for parents that both derive from `--left`.
 - **D43 follow-up: the pieces are now composed, and something calls them.** D43 shipped
   `ec_merge_aligned` / `rekey_nac_state` / `nac_merge_many` and left their composition to call
   sites — of which there were **zero**: every shipped consumer still called bare `nac_merge`, so

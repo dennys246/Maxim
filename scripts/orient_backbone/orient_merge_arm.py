@@ -105,6 +105,17 @@ NOOP_MERGES: dict[str, object] = {
     "return left": lambda left, right, **kw: dict(left),
     "return right": lambda left, right, **kw: dict(right),
     "return empty": lambda left, right, **kw: {},
+    # The stub that matters most, and the one the first D62 pass omitted: a
+    # plain dict update reproduces a DISJOINT fold exactly, so a gauntlet that
+    # cannot tell it from `nac_merge` is watching the key union, not the fold.
+    "naive dict update": lambda left, right, **kw: {
+        **left,
+        **right,
+        "cluster_reward_bias": {
+            **(left.get("cluster_reward_bias") or {}),
+            **(right.get("cluster_reward_bias") or {}),
+        },
+    },
 }
 
 
@@ -133,13 +144,33 @@ def split_complementary(state: dict, bins: list[str]) -> tuple[dict, dict]:
     left_bins, right_bins = set(bins[:half]), set(bins[half:])
 
     def keep(which: set[str]) -> dict:
+        """This half's bins keep their learned value; the others go to 0.0.
+
+        The halves OVERLAP on every key, and that is the point. A disjoint
+        split — each half holding only its own bins — makes the union the whole
+        policy, so a plain ``{**left, **right}`` reproduces ``nac_merge``'s
+        output BIT-IDENTICALLY (measured), and the mean-fold on colliding keys
+        — the semantics the module docstring advertises and the
+        ``Re-run on: nac_merge semantics change`` trigger is supposed to watch
+        — is never exercised at all. That was this guard's REMAINING vacuity
+        after the first D62 pass: it caught a merge that returns a parent, and
+        not one that ignores the fold.
+
+        With overlap, a colliding key must be MEAN-folded to recover the
+        argmax: 0.0 against a learned +1.0 averages to +0.5 and still wins,
+        while a dict update lets the other half's 0.0 clobber it outright.
+        """
         out = dict(state)
         for field in ("cluster_reward_bias", "cluster_reward_source"):
             src = state.get(field)
             if not isinstance(src, dict):
                 continue
+            if field == "cluster_reward_source":
+                out[field] = dict(src)
+                continue
             out[field] = {
-                k: v for k, v in src.items() if k.split(NAC_KEY_SEP)[1:2] and k.split(NAC_KEY_SEP)[1] in which
+                k: (v if (k.split(NAC_KEY_SEP)[1:2] and k.split(NAC_KEY_SEP)[1] in which) else 0.0)
+                for k, v in src.items()
             }
         return out
 
@@ -194,7 +225,13 @@ def main() -> int:
     # A bin NAME is identical across state spaces, so parents that learned at
     # different boundaries CANNOT be merged — their `near_left` are different
     # regions and the mismatch is SILENT. Refuse rather than produce nonsense.
-    ml, mr = load_policy_meta(args.left), load_policy_meta(args.right)
+    # Under --complementary-split both parents derive from --left, so --right's
+    # sidecar describes a file that is no longer an input: it could abort on a
+    # bin_boundary "disagreement" that no longer exists, or — worse now that
+    # D62 promoted `magnitude_appropriateness` to a GATE — fall back to
+    # LEGACY_PLACEMENT_RANGES and produce a wrong PASS/FAIL.
+    _meta_right = args.left if args.complementary_split else args.right
+    ml, mr = load_policy_meta(args.left), load_policy_meta(_meta_right)
     merged_meta: dict | None = None
     probe_kw: dict = {}
     if ml is not None and mr is not None:

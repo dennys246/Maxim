@@ -38,6 +38,8 @@ if str(_ARM_DIR) not in sys.path:
 
 orient_merge_arm = pytest.importorskip("orient_merge_arm")
 
+from maxim.hivemind.merge import nac_merge  # noqa: E402
+
 NAC_KEY_SEP = orient_merge_arm.NAC_KEY_SEP
 verdict = orient_merge_arm.verdict
 split_complementary = orient_merge_arm.split_complementary
@@ -95,41 +97,73 @@ class TestComplementarySplit:
             }
         }
 
-    def test_each_half_is_disjoint_and_together_they_are_the_whole(self):
+    def test_the_halves_OVERLAP_so_the_fold_is_load_bearing(self):
+        """The correction the first D62 pass needed.
+
+        A DISJOINT split makes the union the whole policy, so a plain
+        `{**left, **right}` reproduces `nac_merge` bit-identically and the
+        mean-fold on colliding keys — the semantics the `Re-run on: nac_merge
+        semantics change` trigger is meant to watch — is never exercised.
+        Overlapping halves make the fold decide the answer.
+        """
         whole = self._policy()
-        a, b = split_complementary(whole, list(self.BINS))
+        a, b = split_complementary(whole, sorted(self.BINS))
         ka, kb = set(a["cluster_reward_bias"]), set(b["cluster_reward_bias"])
 
-        assert ka and kb, "a split that empties a side cannot test a fold"
-        assert not (ka & kb), "the halves must be disjoint or the merge has nothing to contribute"
-        assert ka | kb == set(whole["cluster_reward_bias"]), "the union must be the original policy"
+        assert ka == kb == set(whole["cluster_reward_bias"]), "both halves must hold every key"
+        differing = [k for k in ka if a["cluster_reward_bias"][k] != b["cluster_reward_bias"][k]]
+        assert differing, "the halves must DISAGREE somewhere or the fold has nothing to resolve"
 
-    def test_each_half_covers_only_its_own_bins(self):
-        a, b = split_complementary(self._policy(), list(self.BINS))
+    def test_each_half_keeps_only_its_own_bins_learned(self):
+        """Uses `sorted(bins)`, which is what `main()` actually passes — the
+        previous version pinned an ordering production never produces."""
+        a, b = split_complementary(self._policy(), sorted(self.BINS))
 
-        def bins_of(state):
-            return {k.split(NAC_KEY_SEP)[1] for k in state["cluster_reward_bias"]}
+        def learned(state):
+            return {k.split(NAC_KEY_SEP)[1] for k, v in state["cluster_reward_bias"].items() if v != 0.0}
 
-        assert bins_of(a) == {"far_left", "near_left"}
-        assert bins_of(b) == {"near_right", "far_right"}
+        assert learned(a) == {"far_left", "far_right"}
+        assert learned(b) == {"near_left", "near_right"}
 
-    def test_no_op_merges_lose_half_the_policy(self):
-        """The property that makes the split non-vacuous: every stub returns at
-        most one half, so none of them can reconstruct the whole."""
+    def test_the_naive_dict_update_does_NOT_reconstruct_the_policy(self):
+        """The stub that matters, and the one omitted first time round.
+
+        With overlap, a dict update lets the second half's 0.0 clobber the
+        first half's learned value, so it cannot recover the argmax — whereas
+        the real mean-fold averages 0.0 against +1.0 to +0.5, which still wins.
+        """
         whole = self._policy()
-        a, b = split_complementary(whole, list(self.BINS))
-        full = set(whole["cluster_reward_bias"])
+        a, b = split_complementary(whole, sorted(self.BINS))
+        naive = NOOP_MERGES["naive dict update"](a, b, left_source="l", right_source="r")
+        real = nac_merge(a, b, left_source="l", right_source="r")
+
+        assert naive["cluster_reward_bias"] != real["cluster_reward_bias"], (
+            "a plain dict update reproduced the fold — the split is vacuous again"
+        )
+
+    def test_no_op_merges_cannot_recover_the_learned_values(self):
+        """Every stub must lose information the real fold keeps."""
+        whole = self._policy()
+        a, b = split_complementary(whole, sorted(self.BINS))
+        real = nac_merge(a, b, left_source="l", right_source="r")["cluster_reward_bias"]
 
         for name, stub in NOOP_MERGES.items():
-            got = set(stub(a, b, left_source="l", right_source="r").get("cluster_reward_bias", {}))
-            assert got != full, f"no-op {name!r} reconstructed the whole policy — the split is vacuous"
+            got = stub(a, b, left_source="l", right_source="r").get("cluster_reward_bias", {})
+            assert got != real, f"no-op {name!r} reproduced the real fold — the split is vacuous"
 
-    def test_the_real_merge_does_reconstruct_the_whole(self):
-        """The other half of the same claim: if the real fold ALSO failed to
-        recover the policy, the arm would fail for the wrong reason."""
-        from maxim.hivemind.merge import nac_merge
-
+    def test_the_real_merge_recovers_every_learned_argmax(self):
+        """If the real fold ALSO failed, the arm would fail for the wrong reason."""
         whole = self._policy()
-        a, b = split_complementary(whole, list(self.BINS))
-        merged = nac_merge(a, b, left_source="half1", right_source="half2")
-        assert set(merged["cluster_reward_bias"]) == set(whole["cluster_reward_bias"])
+        a, b = split_complementary(whole, sorted(self.BINS))
+        merged = nac_merge(a, b, left_source="half1", right_source="half2")["cluster_reward_bias"]
+
+        for b_name in self.BINS:
+            per_tool = {k.split(NAC_KEY_SEP)[2]: v for k, v in merged.items() if k.split(NAC_KEY_SEP)[1] == b_name}
+            best = max(per_tool, key=lambda t: per_tool[t])
+            expected = {
+                "far_left": "tool:turn_left_big",
+                "near_left": "tool:turn_left",
+                "near_right": "tool:turn_right",
+                "far_right": "tool:turn_right_big",
+            }[b_name]
+            assert best == expected, f"{b_name}: fold picked {best}, expected {expected}"
