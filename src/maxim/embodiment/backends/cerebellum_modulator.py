@@ -200,7 +200,7 @@ class CerebellumModulator:
             import time
 
             from maxim.decisions.causal_link import Valence
-            from maxim.reactions.types import Reaction, ReactionContext, TraceSnapshot
+            from maxim.reactions.types import WORLD_AGENT_ID, Reaction, ReactionContext, TraceSnapshot
 
             reaction = Reaction(
                 kind="pain",
@@ -210,6 +210,7 @@ class CerebellumModulator:
                 source=f"cerebellum:{self._entity.name}.{self._name}.{affordance}",
                 context=ReactionContext(
                     bindings={"entity_path": TraceSnapshot(percept_id=self._entity.name)},
+                    agent_id=WORLD_AGENT_ID,
                 ),
             )
             self._reaction_bus.publish(reaction)
@@ -229,7 +230,7 @@ class CerebellumModulator:
             import time
 
             from maxim.decisions.causal_link import Valence
-            from maxim.reactions.types import Reaction, ReactionContext, TraceSnapshot
+            from maxim.reactions.types import WORLD_AGENT_ID, Reaction, ReactionContext, TraceSnapshot
 
             reaction = Reaction(
                 kind="reward",
@@ -239,6 +240,7 @@ class CerebellumModulator:
                 source=f"cerebellum:{self._entity.name}.{self._name}.{affordance}",
                 context=ReactionContext(
                     bindings={"entity_path": TraceSnapshot(percept_id=self._entity.name)},
+                    agent_id=WORLD_AGENT_ID,
                 ),
             )
             self._reaction_bus.publish(reaction)

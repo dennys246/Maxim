@@ -659,6 +659,92 @@ class EntorhinalCortex:
             self._substrate_node_geometries[nid] = ndata.get("geometry")
         return len(nodes or {})
 
+    def _migrate_legacy_geometries(self) -> int:
+        """Stamp unstamped nodes at load where the tag is DERIVABLE (D66).
+
+        Gate 1's specification is *"reject **or migrate** incompatible state"*;
+        1.1.3 shipped only reject, and the mismatch warning promised a remedy
+        ("until they are re-encoded or migrated") that did not exist. This is
+        the migrate half, and it is deliberately partial — the honest scope is
+        narrower than the wish:
+
+        * **Text nodes migrate exactly.** `encoder_provenance["linguistic"]`
+          records `model_name` / `using_fallback` / `embedding_dim`, which is
+          precisely what `LinguisticEncoder.geometry_for` hashes.
+        * **Sensor nodes written before this release cannot.** The tag hashes
+          the DECLARED sensor set; provenance recorded `sensor_names`, the
+          READING, accumulated as a union across a session. Those are different
+          quantities, and no amount of care recovers one from the other — a
+          file that saw `cold` appear once has it in the union forever. Such
+          nodes are left unstamped and reported, and the honest remedy is a
+          re-encode. Files written from this release on record
+          `declared_sensors` and DO migrate.
+
+        Stamping only where the value is recoverable matters more than
+        stamping widely: a wrong geometry tag is worse than a missing one,
+        because a missing one is permissive-and-visible while a wrong one
+        silently refuses matches that should succeed.
+
+        Returns the number of nodes stamped.
+        """
+        unstamped = [nid for nid, g in self._substrate_node_geometries.items() if g is None]
+        if not unstamped:
+            return 0
+
+        from maxim.similarity.encoder import encoding_geometry_tag
+
+        stamped = 0
+        skipped: dict[str, int] = {}
+        for nid in unstamped:
+            emb, modality = self._substrate_nodes[nid]
+            tag: str | None = None
+            if modality == "text":
+                prov = self._encoder_provenance.get("linguistic") or {}
+                if prov.get("model_name") is not None:
+                    tag = encoding_geometry_tag(
+                        encoder="linguistic",
+                        modality=modality,
+                        model_name=prov.get("model_name"),
+                        using_fallback=bool(prov.get("using_fallback", False)),
+                        embedding_dim=len(emb),
+                    )
+            else:
+                prov = self._encoder_provenance.get(f"sensor:{modality}") or {}
+                declared = prov.get("declared_sensors")
+                modes = prov.get("normalization_modes") or []
+                # A file whose session MIXED normalization modes is itself the
+                # finding: its nodes are not all in one space, so there is no
+                # single correct tag and guessing would manufacture one.
+                if declared is not None and len(set(modes)) <= 1:
+                    tag = encoding_geometry_tag(
+                        encoder="sensor",
+                        modality=modality,
+                        declared_sensors=sorted(declared),
+                        normalization="range-aware" if declared else "range-blind",
+                        embedding_dim=len(emb),
+                    )
+            if tag is None:
+                skipped[modality] = skipped.get(modality, 0) + 1
+                continue
+            self._substrate_node_geometries[nid] = tag
+            stamped += 1
+
+        if stamped:
+            logger.info("EC: migrated %d legacy node(s) to a derived geometry tag (D66)", stamped)
+        if skipped:
+            logger.warning(
+                "EC: %d node(s) could not be migrated to a geometry tag and stay unstamped "
+                "(by modality: %s). They remain permissive — they will match any geometry and "
+                "adopt the first live tag that touches them — which is safe but means the "
+                "gate-1 guard does not protect them until then. This happens for sensor nodes "
+                "written before `declared_sensors` was recorded, and for any file whose session "
+                "mixed normalization modes. The remedy is a re-encode; a wrong tag would be "
+                "worse than none, so they are left alone.",
+                sum(skipped.values()),
+                ", ".join(f"{k}={v}" for k, v in sorted(skipped.items())),
+            )
+        return stamped
+
     def remove_substrate_node(self, node_id: str) -> None:
         """Remove a substrate node."""
         self._substrate_nodes.pop(node_id, None)
@@ -1115,6 +1201,11 @@ class EntorhinalCortex:
         self._encoder_provenance = {
             k: dict(v) for k, v in (data.get("encoder_provenance") or {}).items() if isinstance(v, dict)
         }
+
+        # D66: AFTER the provenance loads — the migration derives tags from it,
+        # so running it earlier reads an empty dict and silently migrates
+        # nothing while reporting that nothing could be migrated.
+        self._migrate_legacy_geometries()
 
         logger.info(
             "Loaded EC from %s (%d signatures, %d substrate nodes)",

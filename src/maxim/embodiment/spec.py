@@ -441,18 +441,26 @@ def _parse_entity(
             # mid-run. Filed for a deliberate decision; the warning means it
             # can no longer be mistaken for a working precondition.
             if requires:
+                # D59 FIXED: entity-level sensors now resolve, so the warning
+                # narrows to names that genuinely resolve to NOTHING — neither
+                # "integrity", nor this modulator's sub-sensors, nor a sensor on
+                # the owning entity. Leaving the old wording in place would have
+                # been worse than the original bug: a warning that says a working
+                # precondition will never gate teaches operators to ignore it.
                 _mod_sensor_names = set((mod_spec.get("sensors") or {}).keys())
-                _unresolvable = sorted(set(requires) - {"integrity"} - _mod_sensor_names)
+                _entity_sensor_names = set((data.get("sensors") or {}).keys())
+                _unresolvable = sorted(set(requires) - {"integrity"} - _mod_sensor_names - _entity_sensor_names)
                 if _unresolvable:
                     log.warning(
                         "affordance %s.%s declares requires %s that will NEVER gate: "
-                        "check_affordance_requires resolves only 'integrity' and this "
-                        "modulator's own sub-sensors %s. Entity-level sensors are not "
-                        "reachable from a modulator. The precondition is a silent no-op.",
+                        "check_affordance_requires resolves 'integrity', this modulator's "
+                        "own sub-sensors %s, and the owning entity's sensors %s — these "
+                        "names match none of them, so the precondition is a silent no-op.",
                         mod_name,
                         aff_name,
                         _unresolvable,
                         sorted(_mod_sensor_names) or "(none)",
+                        sorted(_entity_sensor_names) or "(none)",
                     )
             self_effect_raw = aff_spec.get("self_effect", {})
             self_effect = {k: float(v) for k, v in self_effect_raw.items()} if self_effect_raw else {}
@@ -505,6 +513,7 @@ def _parse_entity(
             _damage_affinities=mod_damage_affinities,
             _latent_affordances=tuple(latent_affs),
             _abstract=mod_abstract,
+            _entity_ref=entity,
         )
 
         # Initialize modulator vital_metrics from sensor specs
@@ -751,6 +760,7 @@ class SpecModulator:
         "_integrity_fn",
         "_damage_affinities",
         "_abstract",
+        "_entity_ref",
         "vital_metrics",
     )
 
@@ -765,6 +775,7 @@ class SpecModulator:
         _damage_affinities: dict[str, dict[str, float]] | None = None,
         _latent_affordances: tuple[LatentAffordance, ...] = (),
         _abstract: bool = False,
+        _entity_ref: Any | None = None,
     ) -> None:
         self._name = _name
         self._entity_name = _entity_name
@@ -775,6 +786,10 @@ class SpecModulator:
         self._integrity_fn = _integrity_fn
         self._damage_affinities = _damage_affinities or {}
         self._abstract = _abstract
+        # D59: back-reference to the owning entity so `requires` can resolve
+        # ENTITY-level sensors, not only this modulator's own sub-sensors.
+        # Mirrors `SpecSensor._entity_ref`, which established the pattern.
+        self._entity_ref = _entity_ref
         # Mutable state for per-modulator sensor values (like entity.vital_metrics)
         self.vital_metrics: dict[str, float] = {}
 
@@ -965,8 +980,32 @@ class SpecModulator:
                         f"{affordance_name.replace('_', ' ')} "
                         f"(integrity: {integrity:.2f}, requires: {req_threshold:.2f})"
                     )
-            elif req_name in self.vital_metrics:
-                val = self.vital_metrics[req_name]
+            else:
+                # D59. This used to test `req_name in self.vital_metrics` — the
+                # modulator's OWN sub-sensors — and fall through to
+                # `return True, ""` for anything else. ENTITY-level sensors are
+                # the common case, so the precondition silently never gated:
+                # `items/cradle_food.yaml`'s `requires: {portions: 1}` was the
+                # only non-integrity key in the 92-file bundled library and was
+                # a live no-op. "mine requires a pickaxe" / "eat requires food
+                # in inventory" is exactly this shape and is 1.1.4's world seam.
+                #
+                # Resolution order is modulator-first so a sub-sensor keeps
+                # shadowing an entity sensor of the same name (the pre-existing
+                # behaviour for names that DID resolve), then the entity.
+                val: float | None = None
+                if req_name in self.vital_metrics:
+                    val = self.vital_metrics[req_name]
+                elif self._entity_ref is not None:
+                    ent_val = getattr(self._entity_ref, "vital_metrics", {}).get(req_name)
+                    if ent_val is not None:
+                        val = float(ent_val)
+                if val is None:
+                    # Still unresolvable. Parse time already warned by name;
+                    # refusing here would turn a warned config into a hard
+                    # failure at execution, so keep the permissive branch and
+                    # let the parse warning carry it.
+                    continue
                 if val < req_threshold:
                     return False, (
                         f"{self._name.replace('_', ' ').title()} {req_name.replace('_', ' ')} "

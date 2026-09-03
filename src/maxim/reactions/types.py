@@ -116,6 +116,30 @@ class TraceSnapshot:
 # ---------------------------------------------------------------------------
 
 
+WORLD_AGENT_ID = "world"
+"""The subject of pain that ORIGINATED IN THE WORLD, not in an agent's action.
+
+D57. Four emitters — a sandbox event, a conversational turn, a sim-adapter
+signal, a cerebellum prediction — had no `agent_id` at all, so every pain they
+published reached `bio_stack._distribute_reward_from_reaction` with
+`agent_id=None` and hit its early return. The pain distributed exactly zero
+reward, silently.
+
+The fix is NOT to attribute it to whichever agent happens to be nearby: that
+manufactures attribution, and a reward that lands somewhere plausible and
+arbitrary is worse than one that lands nowhere, because it is no longer
+visible as missing. What was wrong was that "nobody caused this" and "we forgot
+to say who caused this" were the same value.
+
+So this names the first case. World-origin pain still distributes NO reward —
+`_distribute_reward_from_reaction`'s standing rule against polluting a phantom
+bucket is unchanged, and there is no agent whose eligibility traces should move
+because the weather changed. What changes is that the skip is now EXPLICIT and
+traced under a named subject, instead of being indistinguishable from a missing
+`agent_id`, which is a real bug this constant must not hide.
+"""
+
+
 @dataclass(frozen=True)
 class ReactionContext:
     """Typed context carried on every Reaction.

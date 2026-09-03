@@ -273,3 +273,88 @@ class TestStampOnFirstTouch:
         res = ec_merge_aligned(left, right, left_source="L", right_source="R")
         assert res.id_map["A"] != res.id_map["B"], "two refused geometries united through an unstamped node"
         assert res.nodes[res.id_map["A"]].get("geometry") == "gAAAA", "the survivor stayed a universal donor"
+
+
+class TestD66LoadTimeMigration:
+    """Gate 1's "reject **or migrate**" — the migrate half.
+
+    1.1.3 shipped only reject, and the mismatch warning promised a remedy
+    ("until they are re-encoded or migrated") that did not exist. This is that
+    remedy, and it is deliberately PARTIAL — stamping only where the tag is
+    genuinely recoverable, because **a wrong geometry tag is worse than a
+    missing one**: a missing one is permissive and visible, a wrong one
+    silently refuses matches that should succeed.
+    """
+
+    @staticmethod
+    def _write_legacy(tmp_path, strip_declared: bool):
+        """A saved EC with every geometry stamp stripped, as an old file has."""
+        import json
+
+        ec = EntorhinalCortex(ECConfig(frozen_centroid_modalities=frozenset({"interoception"})))
+        enc = SensorEncoder(ec=ec, atl=None, nac=None)
+        enc.encode_sensors(
+            agent_id="a", sensors={"hunger": 0.8}, modality="interoception", ranges={"hunger": (0.0, 1.0)}
+        )
+        original = next(iter(ec._substrate_node_geometries.values()))
+        path = tmp_path / "ec.json"
+        ec.save(str(path))
+        raw = json.loads(path.read_text())
+        for n in raw["substrate_nodes"].values():
+            n["geometry"] = None
+        if strip_declared:
+            for v in raw.get("encoder_provenance", {}).values():
+                v.pop("declared_sensors", None)
+        path.write_text(json.dumps(raw))
+        return path, original
+
+    def test_a_file_written_by_this_release_migrates_exactly(self, tmp_path):
+        path, original = self._write_legacy(tmp_path, strip_declared=False)
+
+        ec = EntorhinalCortex(ECConfig())
+        ec.load(str(path))
+        got = next(iter(ec._substrate_node_geometries.values()))
+        assert got == original, "migrated tag must reconstruct EXACTLY, or it silently refuses real matches"
+
+    def test_a_file_without_declared_sensors_is_left_alone(self, tmp_path):
+        """The honest limit. The tag hashes the DECLARED set; older files
+        recorded `sensor_names` — the READING, accumulated as a union across a
+        session — which is a different quantity that no care recovers. A file
+        that saw `cold` appear once has it in the union forever.
+        """
+        path, _ = self._write_legacy(tmp_path, strip_declared=True)
+
+        ec = EntorhinalCortex(ECConfig())
+        ec.load(str(path))
+        assert all(g is None for g in ec._substrate_node_geometries.values()), (
+            "guessed a geometry tag it could not derive — a wrong tag is worse than none"
+        )
+
+    def test_a_mixed_normalization_session_is_not_guessed(self, tmp_path):
+        """A file whose session mixed range-aware and range-blind calls is
+        itself the finding: its nodes are not all in one space, so there is no
+        single correct tag."""
+        import json
+
+        path, _ = self._write_legacy(tmp_path, strip_declared=False)
+        raw = json.loads(path.read_text())
+        for v in raw["encoder_provenance"].values():
+            v["normalization_modes"] = ["range-aware", "range-blind"]
+        path.write_text(json.dumps(raw))
+
+        ec = EntorhinalCortex(ECConfig())
+        ec.load(str(path))
+        assert all(g is None for g in ec._substrate_node_geometries.values())
+
+    def test_migration_runs_after_provenance_loads(self, tmp_path):
+        """Ordering guard. The migration DERIVES tags from
+        `encoder_provenance`; running it before that dict is populated
+        migrates nothing while reporting that nothing could be migrated — a
+        failure that looks exactly like the honest refusal above. This was a
+        real bug during implementation.
+        """
+        path, original = self._write_legacy(tmp_path, strip_declared=False)
+        ec = EntorhinalCortex(ECConfig())
+        ec.load(str(path))
+        assert ec._encoder_provenance, "provenance must be loaded before the migration reads it"
+        assert next(iter(ec._substrate_node_geometries.values())) == original
