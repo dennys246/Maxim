@@ -133,7 +133,7 @@ class TestECPatternCompletion:
     def test_first_embedding_creates_new_node(self):
         ec = EntorhinalCortex()
         emb = [1.0, 0.0, 0.0]
-        result = ec.pattern_complete_or_separate(emb, "text")
+        result = ec.pattern_complete_or_separate(emb, "text", geometry=None)
         assert result.is_new
         assert result.similarity == 0.0
         assert result.node_id
@@ -141,9 +141,9 @@ class TestECPatternCompletion:
     def test_identical_embedding_completes(self):
         ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.90))
         emb = [1.0, 0.0, 0.0]
-        r1 = ec.pattern_complete_or_separate(emb, "text")
+        r1 = ec.pattern_complete_or_separate(emb, "text", geometry=None)
         ec.register_substrate_node(r1.node_id, emb, "text")
-        r2 = ec.pattern_complete_or_separate(emb, "text")
+        r2 = ec.pattern_complete_or_separate(emb, "text", geometry=None)
         assert not r2.is_new
         assert r2.node_id == r1.node_id
         assert r2.similarity == pytest.approx(1.0)
@@ -152,9 +152,9 @@ class TestECPatternCompletion:
         ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.50))
         emb1 = [1.0, 0.0, 0.0]
         emb2 = [0.0, 1.0, 0.0]
-        r1 = ec.pattern_complete_or_separate(emb1, "text")
+        r1 = ec.pattern_complete_or_separate(emb1, "text", geometry=None)
         ec.register_substrate_node(r1.node_id, emb1, "text")
-        r2 = ec.pattern_complete_or_separate(emb2, "text")
+        r2 = ec.pattern_complete_or_separate(emb2, "text", geometry=None)
         assert r2.is_new
         assert r2.node_id != r1.node_id
 
@@ -162,10 +162,10 @@ class TestECPatternCompletion:
         """Text and vision nodes don't compete."""
         ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.50))
         emb = [1.0, 0.0, 0.0]
-        r1 = ec.pattern_complete_or_separate(emb, "text")
+        r1 = ec.pattern_complete_or_separate(emb, "text", geometry=None)
         ec.register_substrate_node(r1.node_id, emb, "text")
         # Same embedding but different modality — should NOT match
-        r2 = ec.pattern_complete_or_separate(emb, "vision")
+        r2 = ec.pattern_complete_or_separate(emb, "vision", geometry=None)
         assert r2.is_new
         assert r2.node_id != r1.node_id
 
@@ -174,28 +174,28 @@ class TestECPatternCompletion:
         ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.99))
         emb1 = [1.0, 0.0, 0.0]
         emb2 = [0.6, 0.8, 0.0]  # ~0.6 cosine sim — below 0.99 but above 0.50
-        r1 = ec.pattern_complete_or_separate(emb1, "text")
+        r1 = ec.pattern_complete_or_separate(emb1, "text", geometry=None)
         ec.register_substrate_node(r1.node_id, emb1, "text")
 
         # Without override, high threshold means separation
-        r2 = ec.pattern_complete_or_separate(emb2, "text")
+        r2 = ec.pattern_complete_or_separate(emb2, "text", geometry=None)
         assert r2.is_new
 
         # With override, lower threshold allows completion
-        r3 = ec.pattern_complete_or_separate(emb2, "text", threshold_override={r1.node_id: 0.50})
+        r3 = ec.pattern_complete_or_separate(emb2, "text", threshold_override={r1.node_id: 0.50}, geometry=None)
         assert not r3.is_new
         assert r3.node_id == r1.node_id
 
     def test_substrate_node_count(self):
         ec = EntorhinalCortex()
         assert ec.substrate_node_count == 0
-        r = ec.pattern_complete_or_separate([1.0, 0.0], "text")
+        r = ec.pattern_complete_or_separate([1.0, 0.0], "text", geometry=None)
         ec.register_substrate_node(r.node_id, [1.0, 0.0], "text")
         assert ec.substrate_node_count == 1
 
     def test_remove_substrate_node(self):
         ec = EntorhinalCortex()
-        r = ec.pattern_complete_or_separate([1.0, 0.0], "text")
+        r = ec.pattern_complete_or_separate([1.0, 0.0], "text", geometry=None)
         ec.register_substrate_node(r.node_id, [1.0, 0.0], "text")
         ec.remove_substrate_node(r.node_id)
         assert ec.substrate_node_count == 0
@@ -204,7 +204,7 @@ class TestECPatternCompletion:
         """Substrate nodes survive save/load."""
         ec = EntorhinalCortex()
         emb = [0.5, 0.5, 0.5]
-        r = ec.pattern_complete_or_separate(emb, "text")
+        r = ec.pattern_complete_or_separate(emb, "text", geometry=None)
         ec.register_substrate_node(r.node_id, emb, "text")
 
         path = str(tmp_path / "ec.json")
@@ -214,7 +214,7 @@ class TestECPatternCompletion:
         ec2.load(path)
         assert ec2.substrate_node_count == 1
         # Should pattern-complete to the loaded node
-        r2 = ec2.pattern_complete_or_separate(emb, "text")
+        r2 = ec2.pattern_complete_or_separate(emb, "text", geometry=None)
         assert not r2.is_new
         assert r2.node_id == r.node_id
 

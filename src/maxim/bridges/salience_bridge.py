@@ -98,6 +98,10 @@ class SalienceMemoryBridge:
             # Query successful and failed memories
             successful = self.hippocampus.recall(limit=500, success=True)
             failed = self.hippocampus.recall(limit=200, success=False)
+            # D56 (g): associated memories that carry no success attribute at
+            # all are UNKNOWN, not failures. They are recorded so they dilute
+            # confidence without asserting a direction.
+            neutral: list[Any] = []
 
             # Expand with associative recall for richer context
             if successful:
@@ -109,14 +113,24 @@ class SalienceMemoryBridge:
                         if mem.id not in seen_ids:
                             seen_ids.add(mem.id)
                             # Classify associated memory by its success status
-                            success_val = (
-                                mem.success
-                                if hasattr(mem, "success")
-                                else mem.outcome.success
-                                if hasattr(mem, "outcome")
-                                else False
-                            )
-                            if success_val:
+                            # D56 (g), REACHABLE half. The trailing `else
+                            # False` booked "this memory carries no success
+                            # attribute at all" as a FAILURE — an absence of
+                            # evidence recorded as evidence of harm, and the
+                            # one branch here that a real recall can hit. It is
+                            # UNKNOWN, so it belongs in neither decisive
+                            # bucket. `record_interaction`'s `None` tier and
+                            # the decisive-denominator rate exist for exactly
+                            # this case.
+                            if hasattr(mem, "success"):
+                                success_val = mem.success
+                            elif hasattr(mem, "outcome"):
+                                success_val = mem.outcome.success
+                            else:
+                                success_val = None
+                            if success_val is None:
+                                neutral.append(mem)
+                            elif success_val:
                                 successful.append(mem)
                             else:
                                 failed.append(mem)
@@ -145,6 +159,17 @@ class SalienceMemoryBridge:
                     for obj in memory.perception.detected_objects:
                         record = self._get_or_create_record(obj)
                         record.failure_count += 1
+                        record.total_interactions += 1
+                        record.last_interaction = max(record.last_interaction, memory.timestamp)
+
+            for memory in neutral:
+                if hasattr(memory, "perception"):
+                    for obj in memory.perception.detected_objects:
+                        record = self._get_or_create_record(obj)
+                        # total only — neither decisive bucket. This is what
+                        # makes `decisive < total_interactions` reachable in
+                        # production, and therefore what makes the
+                        # decisive-denominator rate mean anything at all.
                         record.total_interactions += 1
                         record.last_interaction = max(record.last_interaction, memory.timestamp)
 
@@ -235,10 +260,19 @@ class SalienceMemoryBridge:
             Success rate (0-1), or 0.5 if no history
         """
         record = self._interaction_history.get(object_class.lower())
-        if not record or record.total_interactions == 0:
+        if not record:
             return 0.5
 
-        return record.success_count / record.total_interactions
+        # D56 (c)/(g): DECISIVE interactions only. Dividing by
+        # ``total_interactions`` counts neutrals in the denominator and nowhere
+        # in the numerator, so a class you interacted with fifty times and
+        # learned nothing from reads 0.0 — identical to fifty failures, and
+        # further from the truth than the 0.5 returned for no history at all.
+        decisive = record.success_count + record.failure_count
+        if decisive == 0:
+            return 0.5
+
+        return record.success_count / decisive
 
     # ─────────────────────────────────────────────────────────────────────────
     # Recording
@@ -247,14 +281,23 @@ class SalienceMemoryBridge:
     def record_interaction(
         self,
         object_class: str,
-        success: bool,
+        success: bool | None,
         goal: str | None = None,
     ) -> None:
         """Record an interaction with an object.
 
+        D56 (g). ``success`` was a plain ``bool``, so a NEUTRAL outcome — the
+        interaction happened and taught nothing directional — was unrepresentable
+        and fell into the ``else`` branch as a FAILURE. That is not a rounding
+        error: it is the difference between "this object hurt me" and "nothing
+        came of it", and the consumer scales sensitization on exactly that
+        distinction.
+
         Args:
             object_class: Class of object interacted with
-            success: Whether the interaction was successful
+            success: ``True`` success, ``False`` failure, ``None`` NEUTRAL —
+                counted in ``total_interactions`` but in neither decisive
+                bucket, so it dilutes confidence without asserting a direction.
             goal: Goal being pursued (optional)
         """
         if not self._healthy:
@@ -265,7 +308,9 @@ class SalienceMemoryBridge:
             record.total_interactions += 1
             record.last_interaction = time.time()
 
-            if success:
+            if success is None:
+                pass  # neutral: observed, but neither bucket — see the docstring
+            elif success:
                 record.success_count += 1
                 if goal and goal not in record.positive_goals:
                     record.positive_goals.append(goal)
@@ -290,11 +335,19 @@ class SalienceMemoryBridge:
     def _calculate_history_boost(self, object_class: str, now: float) -> float:
         """Calculate salience boost from interaction history."""
         record = self._interaction_history.get(object_class.lower())
-        if not record or record.total_interactions == 0:
+        if not record:
             return 0.0
 
-        # Base boost from success rate
-        success_rate = record.success_count / record.total_interactions
+        # Base boost from success rate over DECISIVE interactions — the same
+        # denominator `get_success_rate` uses. This is the LIVE consumer
+        # (`enrich_salience` <- `MemoryHub.enrich_salience`), so leaving it on
+        # the total would have made 5 successes among 50 neutrals boost
+        # salience by 0.03 instead of 0.30: the neutrals dilute a rate they
+        # carry no evidence about.
+        decisive = record.success_count + record.failure_count
+        if decisive == 0:
+            return 0.0
+        success_rate = record.success_count / decisive
         base_boost = success_rate * self.history_boost_factor
 
         # Decay based on time since last interaction
@@ -342,12 +395,15 @@ class SalienceMemoryBridge:
         """Return bridge statistics."""
         total_interactions = sum(r.total_interactions for r in self._interaction_history.values())
         total_successes = sum(r.success_count for r in self._interaction_history.values())
+        total_decisive = total_successes + sum(r.failure_count for r in self._interaction_history.values())
         return {
             "healthy": self._healthy,
             "error_count": self._error_count,
             "object_classes_tracked": len(self._interaction_history),
             "total_interactions": total_interactions,
-            "overall_success_rate": (total_successes / total_interactions if total_interactions > 0 else 0.5),
+            # Reporting only, but the same denominator rule — a fleet summary
+            # that counts neutrals as failures reads as a much worse agent.
+            "overall_success_rate": (total_successes / total_decisive if total_decisive > 0 else 0.5),
         }
 
 

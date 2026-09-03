@@ -176,6 +176,20 @@ class TestGeometryTagIsMeaningful:
                 text=True,
                 env={"PYTHONHASHSEED": seed, "PATH": "/usr/bin:/bin"},
             )
+            # Without these two the test passes on a BROKEN subprocess: an
+            # import failure under the wiped env yields two empty strings,
+            # `len({""}) == 1`, and a green result. A two-process determinism
+            # check that cannot tell determinism from "neither process ran" is
+            # the vacuous shape this file exists to refuse. (Review round.)
+            assert r.returncode == 0, f"subprocess failed (seed {seed}): {r.stderr[-400:]}"
+            assert r.stdout.strip(), f"subprocess produced no output (seed {seed}): {r.stderr[-400:]}"
+            # Without these two the test passes on a BROKEN subprocess: an
+            # import failure under the wiped env yields two empty strings,
+            # `len({""}) == 1`, and green. A determinism check that cannot tell
+            # determinism from "neither process ran" is the vacuous shape this
+            # file exists to refuse. (Review round.)
+            assert r.returncode == 0, f"subprocess failed (seed {seed}): {r.stderr[-400:]}"
+            assert r.stdout.strip(), f"subprocess produced no output (seed {seed}): {r.stderr[-400:]}"
             outs.add(r.stdout.strip())
         assert len(outs) == 1, f"geometry tag differs across PYTHONHASHSEED: {outs}"
 

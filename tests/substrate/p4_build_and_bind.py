@@ -375,7 +375,9 @@ def build_and_bind(
     for cls in fixture_descriptor.classes:
         text_prompt = cls.name  # bare class name; see plan's text-side calibration notes
         text_emb = config.text_encoder.encode(text_prompt)
-        text_result = ec.pattern_complete_or_separate(text_emb, modality="text", threshold=config.text_ec_threshold)
+        text_result = ec.pattern_complete_or_separate(
+            text_emb, modality="text", threshold=config.text_ec_threshold, geometry=None
+        )
         text_node_id = text_result.node_id
         ec.register_substrate_node(text_node_id, text_emb, "text")
         text_node_by_class[cls.name] = text_node_id
@@ -386,7 +388,7 @@ def build_and_bind(
             image = fixture_images[(cls.name, sample_idx)]
             img_emb = config.vision_encoder.encode(image)
             vis_result = ec.pattern_complete_or_separate(
-                img_emb, modality="vision", threshold=config.vision_ec_threshold
+                img_emb, modality="vision", threshold=config.vision_ec_threshold, geometry=None
             )
             ec.register_substrate_node(vis_result.node_id, img_emb, "vision")
             vision_node_ids.append(vis_result.node_id)
@@ -434,7 +436,7 @@ def build_and_bind(
         bridge_text = config.bridges.shared_superclass_name
         bridge_text_emb = config.text_encoder.encode(bridge_text)
         bridge_result = ec.pattern_complete_or_separate(
-            bridge_text_emb, modality="text", threshold=config.text_ec_threshold
+            bridge_text_emb, modality="text", threshold=config.text_ec_threshold, geometry=None
         )
         bridge_node_id = bridge_result.node_id
         ec.register_substrate_node(bridge_node_id, bridge_text_emb, "text")

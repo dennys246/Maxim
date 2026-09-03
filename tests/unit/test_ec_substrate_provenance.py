@@ -229,7 +229,7 @@ def test_pattern_completion_preserves_source_and_domain() -> None:
     )
     # An embedding identical in direction guarantees cosine=1.0, which
     # is well above the 0.44 default threshold.
-    result = ec.pattern_complete_or_separate(_embedding(0.9), "text")
+    result = ec.pattern_complete_or_separate(_embedding(0.9), "text", geometry=None)
     assert not result.is_new
     assert result.node_id == "node-1"
 

@@ -24,6 +24,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **D56 (c), (d), (g) — three more neutral-aware consumers unstarved.** `SalienceMemoryBridge
+  .record_interaction` took a plain `bool`, so a NEUTRAL interaction fell into the `else` and booked as a
+  FAILURE; it now takes `bool | None`. `modulation_lookup` and `get_success_rate` divide by DECISIVE
+  interactions rather than the total — the total put neutrals in the denominator and nowhere in the
+  numerator, so a class you interacted with fifty times and learned nothing from read `success_rate` 0.0
+  → extremity 1.0 → **maximum** sensitization, the documented inverse, and a rate *further from the truth*
+  than the 0.5 returned for no history at all. `_query_nac` now emits `"unknown"` instead of folding
+  UNKNOWN into `"neutral"`: one means "observed, taught nothing directional", the other "not observed".
+- **D56 (b) re-diagnosed, and the ledger corrected rather than the code.** The row called it
+  "producer-side only". It is not: `GoalCompleted` carries `success: bool` and nothing else, and its sole
+  publisher takes only a bool, so there is no tier upstream to route — widening the message would trade a
+  constant 1.0 for a constant 0.5. The defect is consumer-side, and whether "a goal completed neutrally"
+  is meaningful is a design call.
+- **D61 — a `slow`-lane test that was structurally impossible, beside two that passed vacuously.**
+  `conftest.py` forces HF offline (correct isolation), so `LinguisticEncoder` can never load its model
+  under pytest and always uses the bag-of-words fallback — *"paraphrase collapse will NOT work with
+  this"*. The fire/flame sharing test therefore could not pass; its two negative controls assert water
+  does **not** share a node with fire, which a hash encoder satisfies trivially, so they were passing for
+  the wrong reason — and both wrapped their assertion in `if water_concepts:`, making a missing concept a
+  silent pass. The four semantic-dependent tests now skip with a reason that names the cause, and the two
+  `if` guards became assertions. A skipped test is not a passing test: pre-seeding the model into the
+  isolated `HF_HOME` is the real remedy and is owed.
+- **Pre-merge review round (three lenses) — two BLOCKERs, both cross-confirmed, both folded in before merge.**
+  **(1) The geometry tag named the READING, not the SPACE.** It hashed `sorted(sensors.keys())`, but
+  `_read_drive_states` emits `cold` only while a thermal drive is outside its comfort band, and
+  `place_code` drops cells below an activation floor — so the key set is state-dependent. Measured: a warm
+  infant and a cold one hashed to *different* geometries, their interoception clusters became mutually
+  unreachable, and the "encoder space changed" warning fired in **both directions on routine
+  thermoregulation**. A contingency learned while warm was invisible the moment the body got cold —
+  exactly when the corrective affordance should be salient. The tag now names the **declared** set (the
+  `ranges` key set, which comes from the body walk), so a body change moves it and a state change does
+  not; the normalization axis was state-dependent for the same reason and was split off the tag too.
+  **(2) `geometry` was an optional kwarg whose omission silently disabled the guard** — and a live caller
+  had already omitted it: `bio_enrichment`'s text-recall path, where `"text"` is not frozen-centroid, so
+  the running-mean update fired and *actively corrupted* old centroids with incomparable vectors. It is
+  now required keyword-only (the `build_executor(pain_bus=...)` precedent), `LinguisticEncoder.geometry_for`
+  is public so siblings can obtain it, and forgetting is a `TypeError`.
+- **Gate 1 was inert for every existing installation, and unstamped nodes were permanent bridges.** No
+  `ec.json` written before this field has any geometry, and completion never stamped — only
+  `register_substrate_node`, only when `is_new` — so legacy nodes matched everything forever while the
+  operator believed a guard was running. In the merge the same hole let one unstamped node unite two
+  geometries the direct gate refuses, and stay unstamped to do it again. Both now **stamp on first
+  touch**: a successful match or fold against an unstamped node adopts the live tag, mirroring the
+  first-observation-wins rule `frozen_centroid_modalities` already uses. `substrate_node_metadata` — which
+  `merge.py` documents as its input shape — now emits `geometry` too.
 - **Gate 1 (D1) — `encoder_provenance` now detects a geometry change at RUNTIME.** D1's complaint was
   never that the stamp was wrong; it was that **nothing read it**. The stamp was recorded, persisted and
   reloaded, its only readers were the hivemind bundle/CLI export, and `record_encoder_provenance`

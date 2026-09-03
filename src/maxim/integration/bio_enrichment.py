@@ -664,7 +664,18 @@ class BioEnrichmentPipeline:
                     if embedding is not None:
                         from maxim.similarity.ec import PatternResult
 
-                        pr: PatternResult = self._ec.pattern_complete_or_separate(embedding, "text")
+                        # Gate 1 / D1: this is the SECOND live recall path
+                        # against the shared EC, and it bypassed the geometry
+                        # guard entirely — `"text"` is not a frozen-centroid
+                        # modality, so the running-mean update fired and
+                        # actively corrupted old-geometry centroids with
+                        # incomparable vectors. Ask the encoder what space it
+                        # produces rather than passing None.
+                        pr: PatternResult = self._ec.pattern_complete_or_separate(
+                            embedding,
+                            "text",
+                            geometry=self._encoder.geometry_for(embedding, "text"),
+                        )
                         if not pr.is_new and pr.similarity > 0.3:
                             # Found a known substrate node — spread activation
                             activated = self._hippocampus.retrieve_on_cue(pr.node_id, limit=5, multi_hop=True)
@@ -732,12 +743,21 @@ class BioEnrichmentPipeline:
                 if link.event_signature in seen_events:
                     continue
                 seen_events.add(link.event_signature)
+                # D56 (d). The `else` folded NEUTRAL and UNKNOWN into one
+                # string — the single point where the typed layer's four-value
+                # enum loses a distinction on the way out, irreversibly.
+                # They are not the same claim: NEUTRAL is "observed, and it
+                # taught nothing directional"; UNKNOWN is "not observed". A
+                # reader that cannot tell them apart cannot tell a settled
+                # question from an open one.
                 if link.outcome_valence == Valence.POSITIVE:
                     valence_str = "positive"
                 elif link.outcome_valence == Valence.NEGATIVE:
                     valence_str = "negative"
-                else:
+                elif link.outcome_valence == Valence.NEUTRAL:
                     valence_str = "neutral"
+                else:
+                    valence_str = "unknown"
                 predictions.append(
                     CausalPrediction(
                         event=link.event_signature,

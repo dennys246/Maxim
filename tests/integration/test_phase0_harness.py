@@ -414,11 +414,11 @@ class TestSensorEncodingIntoEC:
         emb_a = [1.0, 0.0, 0.0, 0.0]
         emb_b = [0.9, 0.1, 0.0, 0.0]
 
-        result_a = ec.pattern_complete_or_separate(embedding=emb_a, modality="text")
+        result_a = ec.pattern_complete_or_separate(embedding=emb_a, modality="text", geometry=None)
         ec.register_substrate_node(result_a.node_id, emb_a, "text")
         stored_before = list(ec._substrate_nodes[result_a.node_id][0])
 
-        result_b = ec.pattern_complete_or_separate(embedding=emb_b, modality="text")
+        result_b = ec.pattern_complete_or_separate(embedding=emb_b, modality="text", geometry=None)
         # Pattern-completed onto the same node
         assert result_b.is_new is False
         assert result_b.node_id == result_a.node_id

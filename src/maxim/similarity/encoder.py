@@ -205,8 +205,13 @@ class LinguisticEncoder:
         )
         return embedding
 
-    def _linguistic_geometry(self, embedding: list[float], modality: str) -> str:
-        """Gate 2 / D4 geometry tag for text embeddings.
+    def geometry_for(self, embedding: list[float], modality: str) -> str:
+        """Gate 2 / D4 geometry tag for text embeddings — PUBLIC.
+
+        Public because a sibling consumer needs it: `bio_enrichment` runs its
+        own text recall against the shared EC and had no supported way to ask
+        this encoder what space it produces, so it passed no geometry at all
+        and silently bypassed the gate-1 guard.
 
         For text the basis set is the MODEL — swapping models (or silently
         falling back to the hash encoder) produces vectors that are not
@@ -272,7 +277,7 @@ class LinguisticEncoder:
         # though it's wired. P2 reward overrides must fire regardless of
         # whether any causal links have been recorded yet.
         threshold_override = self._get_reward_overrides(percept) if self._nac is not None else None
-        geometry = self._linguistic_geometry(embedding, modality)
+        geometry = self.geometry_for(embedding, modality)
         result = self.ec.pattern_complete_or_separate(
             embedding=embedding,
             modality=modality,
@@ -365,7 +370,7 @@ class LinguisticEncoder:
         for chunk in chunks:
             embedding = self.embed(chunk.text)
 
-            geometry = self._linguistic_geometry(embedding, modality)
+            geometry = self.geometry_for(embedding, modality)
             result = self.ec.pattern_complete_or_separate(
                 embedding=embedding,
                 modality=modality,
@@ -785,11 +790,41 @@ class SensorEncoder:
         # normalization mode decides how values map onto it. A place code that
         # adds sensor names changes the space while keeping dim and modality,
         # which is precisely the merge corruption the dimension guard cannot see.
+        # The tag must name the SPACE, not the SAMPLE. Keying it on
+        # `sensors.keys()` was wrong and the bio-fidelity lens measured the
+        # consequence: `agent_loop._read_drive_states` emits `cold` only while
+        # a thermal drive is outside its comfort band
+        # (`drives.setdefault("cold", cold_need)`), so a warm infant and a cold
+        # one hashed to DIFFERENT geometries and their interoception clusters
+        # became mutually unreachable — a contingency learned while warm is
+        # invisible the moment the body gets cold, which is exactly when the
+        # corrective affordance should be salient. The warning fired in both
+        # directions on routine thermoregulation.
+        #
+        # `ranges` comes from the body walk (`_read_drive_ranges` /
+        # `_read_exteroceptive_ranges`), so its KEY SET is what the body
+        # declares rather than what happened to be above threshold this tick.
+        # A place code adds declared sensors and moves the tag (D4's case); a
+        # drive crossing a comfort band does not. Derived needs like `cold`
+        # carry no range entry and so cannot perturb it.
+        #
+        # With no ranges there is no declared set to name, and the
+        # `range-blind` mode below already records that difference, so
+        # `sensor_names` is omitted rather than filled in from the sample.
+        # `mode` above is the PROVENANCE stamp and keeps its documented
+        # meaning (it reports "range-partial" when the ranges dict does not
+        # cover the reading — a genuine finding worth recording). It must NOT
+        # feed the geometry tag: an undeclared derived sensor appearing flips
+        # it range-aware -> range-partial, so it is state-dependent for the
+        # same reason the key set was, and both axes moved on one thermal
+        # event. The SPACE's normalization is a property of the declared set,
+        # which is range-covered by construction.
+        declared = sorted(ranges) if ranges else None
         geometry = encoding_geometry_tag(
             encoder="sensor",
             modality=modality,
-            sensor_names=sorted(sensors.keys()),
-            normalization=mode,
+            declared_sensors=declared,
+            normalization="range-aware" if ranges else "range-blind",
             embedding_dim=len(embedding),
         )
         result = self.ec.pattern_complete_or_separate(

@@ -724,6 +724,22 @@ class ExecAgent(Agent):
             novelty=novelty,
             is_plan_boundary=False,
             energy_crossed_threshold=False,
+            # D56 (b), INVESTIGATED 2026-09-02 and NOT changed here — the
+            # ledger's "producer-side only" reading does not survive contact.
+            # `GoalCompleted` carries `success: bool` and nothing else, and its
+            # SOLE publisher (`agentic_goal_agent._complete_goal`) also takes
+            # only a bool, so there is no tier anywhere upstream to route. The
+            # fix is not a producer edit; it is a design call about whether "a
+            # goal completed neutrally" is even meaningful — a goal was
+            # achieved or it was not, unlike a tool action, which can be
+            # ineffective without being harmful.
+            #
+            # The real defect is on the CONSUMER side: feeding a genuinely
+            # binary signal to `_eval_valence_extremity` (`abs(v - 0.5) * 2`),
+            # a heuristic that measures distance from a midpoint, makes it
+            # maximal by construction. The weight-learner then correctly zeroes
+            # it. Widening the message so this reads a constant 0.5 instead of
+            # a constant 1.0 would trade one vacuous input for another.
             outcome_valence=1.0 if completed.success else 0.0,
         )
 

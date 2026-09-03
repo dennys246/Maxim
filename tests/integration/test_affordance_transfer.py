@@ -119,12 +119,42 @@ def _credit_affordance_node(
 # ---------------------------------------------------------------------------
 
 
+def _require_semantic_encoder(encoder) -> None:
+    """Skip when the substrate has no semantics to test (D61).
+
+    `tests/conftest.py` deliberately sets `HF_HUB_OFFLINE=1`,
+    `TRANSFORMERS_OFFLINE=1` and an isolated `HF_HOME` — correct isolation, no
+    network in tests and no polluting the developer's model cache. The
+    consequence is that `LinguisticEncoder` can NEVER load
+    `paraphrase-mpnet-base-v2` under pytest and always uses the bag-of-words
+    hash fallback, whose own docstring says outright: *"Not semantically
+    meaningful — paraphrase collapse will NOT work with this."*
+
+    So every assertion in this file about "fire" and "flame" sharing a node, or
+    "water" not sharing one, is being made against an encoder that cannot
+    express the relationship. **The positive tests fail honestly; the negative
+    controls pass VACUOUSLY**, because a hash encoder separates everything —
+    which is exactly the shape of the outcome they are asserting.
+
+    Skipping is not a fix, it is honest reporting: a skipped test is not a
+    passing test. The real remedy is to pre-seed the model into the isolated
+    `HF_HOME` so the nightly `-m slow` lane can actually run these (D61).
+    """
+    if getattr(encoder, "_using_fallback", False) or encoder._model is None:
+        pytest.skip(
+            "semantic encoder unavailable (conftest forces HF offline) — the hash fallback "
+            "cannot express paraphrase similarity, so this assertion is untestable here, and "
+            "the negative controls would pass vacuously. See D61."
+        )
+
+
 class TestIT1FireTransfer:
     """Cross-entity affordance transfer via shared substrate concept."""
 
     def test_fire_concepts_share_ec_node(self, bio_stack):
         """Dragon 'fire_breath' and mage 'flame_jet' complete to same EC node."""
         ec, atl, nac, scn, encoder = bio_stack
+        _require_semantic_encoder(encoder)
         agent_id = "test_agent"
 
         dragon = _make_entity("dragon", "creature", {"combat": {"fire_breath": "breathe fire"}})
@@ -146,6 +176,7 @@ class TestIT1FireTransfer:
         Transfer is verified via positive credit (successful tool use).
         """
         ec, atl, nac, scn, encoder = bio_stack
+        _require_semantic_encoder(encoder)
         agent_id = "test_agent"
 
         dragon = _make_entity("dragon", "creature", {"combat": {"fire_breath": "breathe fire"}})
@@ -196,6 +227,7 @@ class TestIT2NoFalseTransfer:
     def test_water_does_not_share_fire_node(self, bio_stack):
         """'water_jet' does NOT pattern-complete to the 'fire' node."""
         ec, atl, nac, scn, encoder = bio_stack
+        _require_semantic_encoder(encoder)
         agent_id = "test_agent"
 
         dragon = _make_entity("dragon", "creature", {"combat": {"fire_breath": "breathe fire"}})
@@ -208,13 +240,18 @@ class TestIT2NoFalseTransfer:
 
         # Water concepts should NOT share nodes with fire concepts
         water_concepts = atl.recall(name="water", category="substrate", limit=1)
-        if water_concepts:
-            water_bias = nac.reward_bias(agent_id, water_concepts[0].id)
-            assert water_bias >= 0, f"Water node got negative bias {water_bias} — false transfer!"
+        # `if water_concepts:` here made the assertion optional: no water concept
+        # meant the test passed having checked nothing (D61). The absence is the
+        # more likely outcome under a degraded encoder, so the guard silently
+        # protected exactly the case it was written to catch.
+        assert water_concepts, "no water substrate concept was formed — nothing to test"
+        water_bias = nac.reward_bias(agent_id, water_concepts[0].id)
+        assert water_bias >= 0, f"Water node got negative bias {water_bias} — false transfer!"
 
     def test_water_has_no_dangerous_annotation(self, bio_stack):
         """Water affordance should have no [DANGEROUS] annotation."""
         ec, atl, nac, scn, encoder = bio_stack
+        _require_semantic_encoder(encoder)
         agent_id = "test_agent"
 
         dragon = _make_entity("dragon", "creature", {"combat": {"fire_breath": "breathe fire"}})
@@ -226,10 +263,10 @@ class TestIT2NoFalseTransfer:
 
         # Check annotation via the AFFORDANCE_STRATEGY + ATL + NAc path
         water_concepts = atl.recall(name="water", category="substrate", limit=1)
-        if water_concepts:
-            bias = nac.reward_bias(agent_id, water_concepts[0].id)
-            # No negative bias → no [DANGEROUS] annotation
-            assert bias >= -0.01, f"Water has bias {bias} — would show [DANGEROUS]"
+        assert water_concepts, "no water substrate concept was formed — nothing to test"
+        bias = nac.reward_bias(agent_id, water_concepts[0].id)
+        # No negative bias → no [DANGEROUS] annotation
+        assert bias >= -0.01, f"Water has bias {bias} — would show [DANGEROUS]"
 
 
 # ---------------------------------------------------------------------------

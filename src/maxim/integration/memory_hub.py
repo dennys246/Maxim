@@ -586,9 +586,19 @@ class MemoryHub:
             record = bridge.get_interaction_history(class_name)
             if record is None or record.total_interactions == 0:
                 return 1.0
-            success_rate = record.success_count / record.total_interactions
+            # D56 (c). This block documented "neutral outcomes get modulation
+            # = 1.0 (no effect)" and delivered the exact inverse. Neutrals land
+            # in ``total_interactions`` and in neither count, so an all-neutral
+            # class computed success_rate 0.0 -> extremity 1.0 -> MAXIMUM
+            # sensitization: the strongest possible signal derived from the
+            # complete absence of one. Rate over DECISIVE interactions instead,
+            # and an all-neutral class now takes the documented no-effect path.
+            decisive = record.success_count + record.failure_count
+            if decisive == 0:
+                return 1.0
+            success_rate = record.success_count / decisive
             extremity = abs(success_rate - 0.5) * 2  # 0..1
-            confidence = min(1.0, record.total_interactions / min_interactions)
+            confidence = min(1.0, decisive / min_interactions)
             return 1.0 + extremity * confidence * sensitization_scale
 
         if hasattr(novelty_tracker, "set_modulation_lookup"):
@@ -1432,10 +1442,16 @@ class MemoryHub:
     def record_interaction(
         self,
         object_class: str,
-        success: bool,
+        success: bool | None,
         goal: str | None = None,
     ) -> None:
-        """Record an interaction with an object."""
+        """Record an interaction with an object.
+
+        ``success=None`` is NEUTRAL — observed, taught nothing directional.
+        Widened with the bridge it delegates to (D56 g): leaving this at
+        ``bool`` would have narrowed the tier back at the hub boundary, which
+        is how a widened sink ends up unreachable.
+        """
         if "salience" in self._disabled_bridges:
             return
 

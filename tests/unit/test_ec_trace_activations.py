@@ -297,6 +297,7 @@ class TestPatternCompleteEmits:
             result = ec.pattern_complete_or_separate(
                 embedding=[1.0, 0.0, 0.0],
                 modality="text",
+                geometry=None,
             )
             assert result.is_new is True
             mock_sim_log.assert_called_once()
@@ -318,6 +319,7 @@ class TestPatternCompleteEmits:
             result = ec.pattern_complete_or_separate(
                 embedding=[1.0, 0.0, 0.0],
                 modality="text",
+                geometry=None,
             )
             assert result.is_new is False
             assert result.node_id == "preexisting"
@@ -341,6 +343,7 @@ class TestPatternCompleteEmits:
                 embedding=[1.0, 0.0, 0.0],
                 modality="interoception",
                 threshold=0.5,
+                geometry=None,
             )
             mock_sim_log.assert_called_once()
             data = mock_sim_log.call_args.args[2]
@@ -354,5 +357,6 @@ class TestPatternCompleteEmits:
             ec.pattern_complete_or_separate(
                 embedding=[1.0, 0.0, 0.0],
                 modality="text",
+                geometry=None,
             )
             mock_sim_log.assert_not_called()

@@ -794,6 +794,13 @@ def ec_merge_aligned(
         target["contributors"] = list(contribs)
         target["source"] = _resolved_source(contribs)
         target["domain"] = target.get("domain") or norm_r.get("domain")
+        # Same expiry rule as the live path: an unstamped survivor that
+        # absorbs a stamped donor adopts its geometry. Without this an
+        # unstamped node is a permanent BRIDGE — two donors the direct gate
+        # refuses each fold into it and are thereby united through it, and it
+        # stays unstamped to do the same on every later merge.
+        if target.get("geometry") is None and norm_r.get("geometry") is not None:
+            target["geometry"] = norm_r["geometry"]
 
     return ECMergeResult(nodes=merged, id_map=id_map)
 

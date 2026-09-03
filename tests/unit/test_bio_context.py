@@ -281,13 +281,13 @@ class TestECEncodingContext:
     def test_pattern_complete_or_separate_accepts_context(self):
         ec = self._make_ec()
         ctx = EncodingContext(resolution=0.8, encoding_mode="encode")
-        result = ec.pattern_complete_or_separate([0.1, 0.2, 0.3], "text", encoding_context=ctx)
+        result = ec.pattern_complete_or_separate([0.1, 0.2, 0.3], "text", encoding_context=ctx, geometry=None)
         assert result is not None
         assert result.is_new is True  # first embedding is always new (separation)
 
     def test_pattern_complete_or_separate_none_context_unchanged(self):
         ec = self._make_ec()
-        result = ec.pattern_complete_or_separate([0.1, 0.2, 0.3], "text")
+        result = ec.pattern_complete_or_separate([0.1, 0.2, 0.3], "text", geometry=None)
         assert result is not None
 
     def test_find_semantic_accepts_context(self):

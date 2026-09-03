@@ -445,7 +445,8 @@ class EntorhinalCortex:
         threshold: float | None = None,
         threshold_override: dict[str, float] | None = None,
         encoding_context: "EncodingContext | None" = None,
-        geometry: str | None = None,
+        *,
+        geometry: str | None,
     ) -> PatternResult:
         """Route an embedding to an existing ATL node or create a new one.
 
@@ -470,7 +471,17 @@ class EntorhinalCortex:
             geometry: The encoding space this embedding was produced in
                 (gate 1 / D1). Nodes that declare a DIFFERENT space are
                 skipped: they are not less similar, they are incomparable.
-                ``None`` disables the check for this call.
+
+                **REQUIRED keyword-only, deliberately.** Passing ``None``
+                still disables the check, but it must now be passed
+                EXPLICITLY: an optional kwarg whose omission silently turns
+                the guard off is the "silent no-op" shape CLAUDE.md says to
+                push into the type — and the first review round after gate 1
+                found a live caller that had already omitted it
+                (``bio_enrichment``'s text-recall path, which is not a
+                frozen-centroid modality, so the running-mean update was
+                actively CORRUPTING old centroids with incomparable vectors).
+                Forgetting is now a ``TypeError``.
 
         Returns:
             PatternResult with the node_id, similarity score, and
@@ -510,6 +521,18 @@ class EntorhinalCortex:
                 best_node = node_id
 
         if best_node is not None:
+            # Gate 1: STAMP ON FIRST TOUCH. Every `ec.json` written before the
+            # geometry field existed is entirely unstamped, and completion never
+            # stamped (only `register_substrate_node`, only when `is_new`) — so
+            # for any existing installation the guard was permanently inert:
+            # legacy nodes match everything forever and never acquire an
+            # identity. Adopting the live tag on the first successful match
+            # gives the permissive branch an expiry, and mirrors the
+            # first-observation-wins rule `frozen_centroid_modalities` already
+            # uses for the centroid itself.
+            if geometry is not None and self._substrate_node_geometries.get(best_node) is None:
+                self._substrate_node_geometries[best_node] = geometry
+
             # Frozen-prototype modalities skip the centroid update —
             # the first embedding to reach a node fixes the prototype.
             # See ECConfig.frozen_centroid_modalities for rationale.
@@ -664,6 +687,10 @@ class EntorhinalCortex:
             return None
         emb, mod = node
         return {
+            # Gate 2/D4: merge.py documents THIS accessor as the shape its
+            # inputs take, so omitting the tag here hands the merge unstamped
+            # nodes and silently disables the geometry gate.
+            "geometry": self._substrate_node_geometries.get(node_id),
             "node_id": node_id,
             "embedding": emb,
             "modality": mod,
