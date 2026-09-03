@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import logging
 
+import pytest
+
 from maxim.similarity.ec import ECConfig, EntorhinalCortex
 from maxim.similarity.encoder import SensorEncoder, encoding_geometry_tag
 
@@ -65,13 +67,29 @@ class TestRuntimeGeometryDetection:
         res = ec.pattern_complete_or_separate([1.0, 0.0], "audio", threshold=0.5, geometry="gNEW")
         assert not res.is_new
 
-    def test_no_geometry_on_the_query_disables_the_check(self):
-        """Callers that do not know their space are not punished for it."""
+    def test_explicit_none_geometry_disables_the_check(self):
+        """A caller that genuinely does not know its space can say so — but it
+        must say so EXPLICITLY."""
         ec = self._ec()
         ec.register_substrate_node("old", [1.0, 0.0], "audio", geometry="gOLD")
 
-        res = ec.pattern_complete_or_separate([1.0, 0.0], "audio", threshold=0.5)
+        res = ec.pattern_complete_or_separate([1.0, 0.0], "audio", threshold=0.5, geometry=None)
         assert not res.is_new
+
+    def test_omitting_geometry_is_a_TypeError_not_a_silent_bypass(self):
+        """The structural half, and the reason the kwarg is required.
+
+        `geometry: str | None = None` was optional, and its omission silently
+        turned the guard off — CLAUDE.md's "silent no-op" shape. The review
+        round found a live caller that had ALREADY omitted it
+        (`bio_enrichment`'s text recall); because `"text"` is not a
+        frozen-centroid modality the running-mean update fired and was actively
+        CORRUPTING old centroids with incomparable vectors. Forgetting must
+        fail loudly, per the `build_executor(pain_bus=...)` precedent.
+        """
+        ec = self._ec()
+        with pytest.raises(TypeError, match="geometry"):
+            ec.pattern_complete_or_separate([1.0, 0.0], "audio", threshold=0.5)  # type: ignore[call-arg]
 
     def test_the_mismatch_is_reported_and_deduped(self, caplog):
         """D1's actual complaint: nothing reported this at all.
@@ -148,3 +166,110 @@ class TestProductionPathDetectsIt:
             embedding_dim=384,
         )
         assert a != b
+
+
+class TestGeometryIsAPropertyOfTheSpaceNotTheReading:
+    """The review round's blocker — found independently by TWO lenses.
+
+    The tag was first keyed on `sorted(sensors.keys())`: the READING. But
+    `agent_loop._read_drive_states` emits `cold` only while a thermal drive is
+    outside its comfort band (`drives.setdefault("cold", cold_need)`), and
+    `place_code` drops cells below an activation floor. So the key set is
+    state-dependent, and a warm infant and a cold one hashed to DIFFERENT
+    geometries: their interoception clusters became mutually unreachable, a
+    contingency learned while warm was invisible the moment the body got cold —
+    exactly when the corrective affordance should be salient — and the
+    "encoder space changed" warning fired in BOTH directions on routine
+    thermoregulation, training operators to filter the one message gate 1
+    exists to deliver.
+
+    The tag now names the DECLARED set (`ranges`, from the body walk), so a
+    body change moves it and a state change does not.
+    """
+
+    def _enc(self):
+        ec = EntorhinalCortex(ECConfig(frozen_centroid_modalities=frozenset({"interoception"})))
+        return ec, SensorEncoder(ec=ec, atl=None, nac=None)
+
+    def test_a_derived_need_appearing_does_not_change_the_geometry(self):
+        ec, enc = self._enc()
+        ranges = {"hunger": (0.0, 1.0)}  # the body declares hunger; `cold` is derived
+
+        enc.encode_sensors(agent_id="a", sensors={"hunger": 0.8}, modality="interoception", ranges=ranges)
+        enc.encode_sensors(agent_id="a", sensors={"hunger": 0.8, "cold": 0.4}, modality="interoception", ranges=ranges)
+
+        tags = set(ec._substrate_node_geometries.values())
+        assert len(tags) == 1, f"a state change forked the encoding space: {tags}"
+        assert not ec._geometry_mismatch_seen, "routine thermoregulation reported as encoder-space corruption"
+
+    def test_separation_still_works_across_that_boundary(self):
+        """The guard must not have been bought by disabling pattern separation."""
+        ec, enc = self._enc()
+        ranges = {"hunger": (0.0, 1.0)}
+        warm = enc.encode_sensors(agent_id="a", sensors={"hunger": 0.8}, modality="interoception", ranges=ranges)
+        cold = enc.encode_sensors(
+            agent_id="a", sensors={"hunger": 0.8, "cold": 0.4}, modality="interoception", ranges=ranges
+        )
+        assert warm != cold, "warm and cold must still be different CLUSTERS — just not different SPACES"
+
+    def test_a_declared_sensor_appearing_DOES_change_the_geometry(self):
+        """D4's real case must survive the fix: a place code adds declared sensors."""
+        a = encoding_geometry_tag(
+            encoder="sensor",
+            modality="interoception",
+            declared_sensors=["hunger"],
+            normalization="range-aware",
+            embedding_dim=384,
+        )
+        b = encoding_geometry_tag(
+            encoder="sensor",
+            modality="interoception",
+            declared_sensors=["hunger", "place_0"],
+            normalization="range-aware",
+            embedding_dim=384,
+        )
+        assert a != b
+
+
+class TestStampOnFirstTouch:
+    """Without this, gate 1 is INERT for every installation that already exists.
+
+    Every `ec.json` written before the geometry field is entirely unstamped,
+    and completion never stamped — only `register_substrate_node`, only when
+    `is_new`. So legacy nodes matched everything forever and never acquired an
+    identity: the guard was permanently off while the operator believed it was
+    running. The same hole let an unstamped node act as a permanent BRIDGE,
+    uniting two geometries the direct gate refuses.
+    """
+
+    def test_a_legacy_node_adopts_the_live_tag_on_first_match(self):
+        ec = EntorhinalCortex(ECConfig(frozen_centroid_modalities=frozenset({"audio"})))
+        ec.register_substrate_node("legacy", [1.0, 0.0], "audio")  # unstamped
+
+        res = ec.pattern_complete_or_separate([1.0, 0.0], "audio", threshold=0.5, geometry="gNEW")
+        assert not res.is_new, "old files must keep working"
+        assert ec._substrate_node_geometries["legacy"] == "gNEW", "the permissive branch never expired"
+
+    def test_and_then_a_different_geometry_is_refused(self):
+        ec = EntorhinalCortex(ECConfig(frozen_centroid_modalities=frozenset({"audio"})))
+        ec.register_substrate_node("legacy", [1.0, 0.0], "audio")
+
+        ec.pattern_complete_or_separate([1.0, 0.0], "audio", threshold=0.5, geometry="gNEW")
+        res = ec.pattern_complete_or_separate([1.0, 0.0], "audio", threshold=0.5, geometry="gOTHER")
+        assert res.is_new, "the guard still has no teeth after the stamp"
+
+    def test_an_unstamped_node_cannot_bridge_two_geometries_in_a_merge(self):
+        from maxim.hivemind.merge import ec_merge_aligned
+
+        def node(vec, geom=None):
+            n = {"embedding": vec, "modality": "audio", "count": 1, "source": "s"}
+            if geom:
+                n["geometry"] = geom
+            return n
+
+        left = {"U": node([1.0, 0.0])}
+        right = {"A": node([1.0, 0.0], "gAAAA"), "B": node([1.0, 0.0], "gBBBB")}
+
+        res = ec_merge_aligned(left, right, left_source="L", right_source="R")
+        assert res.id_map["A"] != res.id_map["B"], "two refused geometries united through an unstamped node"
+        assert res.nodes[res.id_map["A"]].get("geometry") == "gAAAA", "the survivor stayed a universal donor"

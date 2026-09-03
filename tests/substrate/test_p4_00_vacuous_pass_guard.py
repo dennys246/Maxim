@@ -146,12 +146,12 @@ class TestECClusteringVacuousPassGuard:
         pairs = make_cluster_aware_pairs(5, dim=64, k_text=3, k_vision=3, noise_scale=0.4, seed=42)
 
         for pair in pairs:
-            first = ec.pattern_complete_or_separate(pair.text_samples[0].tolist(), modality="text")
+            first = ec.pattern_complete_or_separate(pair.text_samples[0].tolist(), modality="text", geometry=None)
             assert first.is_new is True
             ec.register_substrate_node(first.node_id, pair.text_samples[0].tolist(), "text")
 
             for sample in pair.text_samples[1:]:
-                result = ec.pattern_complete_or_separate(sample.tolist(), modality="text")
+                result = ec.pattern_complete_or_separate(sample.tolist(), modality="text", geometry=None)
                 assert result.is_new is False, (
                     f"pair {pair.pair_index}: text sample landed in a NEW node "
                     f"(similarity={result.similarity:.3f}) when it should have completed "
@@ -168,12 +168,12 @@ class TestECClusteringVacuousPassGuard:
         pairs = make_cluster_aware_pairs(5, dim=64, k_text=3, k_vision=3, noise_scale=0.4, seed=42)
 
         for pair in pairs:
-            first = ec.pattern_complete_or_separate(pair.vision_samples[0].tolist(), modality="vision")
+            first = ec.pattern_complete_or_separate(pair.vision_samples[0].tolist(), modality="vision", geometry=None)
             assert first.is_new is True
             ec.register_substrate_node(first.node_id, pair.vision_samples[0].tolist(), "vision")
 
             for sample in pair.vision_samples[1:]:
-                result = ec.pattern_complete_or_separate(sample.tolist(), modality="vision")
+                result = ec.pattern_complete_or_separate(sample.tolist(), modality="vision", geometry=None)
                 assert result.is_new is False, f"pair {pair.pair_index}: vision sample failed to complete to first node"
                 assert result.node_id == first.node_id
 
@@ -186,7 +186,7 @@ class TestECClusteringVacuousPassGuard:
 
         registered_ids: list[str] = []
         for pair in pairs:
-            result = ec.pattern_complete_or_separate(pair.text_samples[0].tolist(), modality="text")
+            result = ec.pattern_complete_or_separate(pair.text_samples[0].tolist(), modality="text", geometry=None)
             assert result.is_new is True
             ec.register_substrate_node(result.node_id, pair.text_samples[0].tolist(), "text")
             registered_ids.append(result.node_id)
@@ -196,7 +196,7 @@ class TestECClusteringVacuousPassGuard:
         )
 
         for idx, pair in enumerate(pairs):
-            result = ec.pattern_complete_or_separate(pair.text_samples[1].tolist(), modality="text")
+            result = ec.pattern_complete_or_separate(pair.text_samples[1].tolist(), modality="text", geometry=None)
             assert result.node_id == registered_ids[idx], (
                 f"pair {idx} second text sample mapped to {result.node_id}, expected {registered_ids[idx]}"
             )
@@ -212,10 +212,12 @@ class TestECClusteringVacuousPassGuard:
         pairs = make_cluster_aware_pairs(3, dim=64, k_text=2, k_vision=2, noise_scale=0.4, seed=42)
 
         for pair in pairs:
-            text_result = ec.pattern_complete_or_separate(pair.text_samples[0].tolist(), modality="text")
+            text_result = ec.pattern_complete_or_separate(pair.text_samples[0].tolist(), modality="text", geometry=None)
             ec.register_substrate_node(text_result.node_id, pair.text_samples[0].tolist(), "text")
 
-            vision_result = ec.pattern_complete_or_separate(pair.vision_samples[0].tolist(), modality="vision")
+            vision_result = ec.pattern_complete_or_separate(
+                pair.vision_samples[0].tolist(), modality="vision", geometry=None
+            )
             assert vision_result.is_new is True, (
                 f"pair {pair.pair_index}: vision sample completed to an existing node "
                 f"({vision_result.node_id}) instead of separating — EC's modality bucket "

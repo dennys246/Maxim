@@ -1442,10 +1442,16 @@ class MemoryHub:
     def record_interaction(
         self,
         object_class: str,
-        success: bool,
+        success: bool | None,
         goal: str | None = None,
     ) -> None:
-        """Record an interaction with an object."""
+        """Record an interaction with an object.
+
+        ``success=None`` is NEUTRAL — observed, taught nothing directional.
+        Widened with the bridge it delegates to (D56 g): leaving this at
+        ``bool`` would have narrowed the tier back at the hub boundary, which
+        is how a widened sink ends up unreachable.
+        """
         if "salience" in self._disabled_bridges:
             return
 

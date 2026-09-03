@@ -46,6 +46,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   silent pass. The four semantic-dependent tests now skip with a reason that names the cause, and the two
   `if` guards became assertions. A skipped test is not a passing test: pre-seeding the model into the
   isolated `HF_HOME` is the real remedy and is owed.
+- **Pre-merge review round (three lenses) — two BLOCKERs, both cross-confirmed, both folded in before merge.**
+  **(1) The geometry tag named the READING, not the SPACE.** It hashed `sorted(sensors.keys())`, but
+  `_read_drive_states` emits `cold` only while a thermal drive is outside its comfort band, and
+  `place_code` drops cells below an activation floor — so the key set is state-dependent. Measured: a warm
+  infant and a cold one hashed to *different* geometries, their interoception clusters became mutually
+  unreachable, and the "encoder space changed" warning fired in **both directions on routine
+  thermoregulation**. A contingency learned while warm was invisible the moment the body got cold —
+  exactly when the corrective affordance should be salient. The tag now names the **declared** set (the
+  `ranges` key set, which comes from the body walk), so a body change moves it and a state change does
+  not; the normalization axis was state-dependent for the same reason and was split off the tag too.
+  **(2) `geometry` was an optional kwarg whose omission silently disabled the guard** — and a live caller
+  had already omitted it: `bio_enrichment`'s text-recall path, where `"text"` is not frozen-centroid, so
+  the running-mean update fired and *actively corrupted* old centroids with incomparable vectors. It is
+  now required keyword-only (the `build_executor(pain_bus=...)` precedent), `LinguisticEncoder.geometry_for`
+  is public so siblings can obtain it, and forgetting is a `TypeError`.
+- **Gate 1 was inert for every existing installation, and unstamped nodes were permanent bridges.** No
+  `ec.json` written before this field has any geometry, and completion never stamped — only
+  `register_substrate_node`, only when `is_new` — so legacy nodes matched everything forever while the
+  operator believed a guard was running. In the merge the same hole let one unstamped node unite two
+  geometries the direct gate refuses, and stay unstamped to do it again. Both now **stamp on first
+  touch**: a successful match or fold against an unstamped node adopts the live tag, mirroring the
+  first-observation-wins rule `frozen_centroid_modalities` already uses. `substrate_node_metadata` — which
+  `merge.py` documents as its input shape — now emits `geometry` too.
 - **Gate 1 (D1) — `encoder_provenance` now detects a geometry change at RUNTIME.** D1's complaint was
   never that the stamp was wrong; it was that **nothing read it**. The stamp was recorded, persisted and
   reloaded, its only readers were the hivemind bundle/CLI export, and `record_encoder_provenance`

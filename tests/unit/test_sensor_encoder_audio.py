@@ -79,7 +79,7 @@ class TestAudioFrozenCentroid:
         e0 = [1.0, 0.0, 0.0]
         ec.register_substrate_node("n_audio", e0, "audio")
         e1 = [1.0, 0.5, 0.0]  # cos(e0, e1) ≈ 0.894 > 0.40 → completes
-        res = ec.pattern_complete_or_separate(e1, "audio", threshold=0.40)
+        res = ec.pattern_complete_or_separate(e1, "audio", threshold=0.40, geometry=None)
         assert not res.is_new
         assert res.node_id == "n_audio"
         assert ec._substrate_nodes["n_audio"][0] == e0  # unchanged (frozen)
@@ -91,7 +91,7 @@ class TestAudioFrozenCentroid:
         e0 = [1.0, 0.0, 0.0]
         ec.register_substrate_node("n_vis", e0, "vision")
         e1 = [1.0, 0.5, 0.0]
-        res = ec.pattern_complete_or_separate(e1, "vision", threshold=0.40)
+        res = ec.pattern_complete_or_separate(e1, "vision", threshold=0.40, geometry=None)
         assert not res.is_new
         stored = ec._substrate_nodes["n_vis"][0]
         assert stored != e0

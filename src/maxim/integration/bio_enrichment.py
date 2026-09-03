@@ -664,7 +664,18 @@ class BioEnrichmentPipeline:
                     if embedding is not None:
                         from maxim.similarity.ec import PatternResult
 
-                        pr: PatternResult = self._ec.pattern_complete_or_separate(embedding, "text")
+                        # Gate 1 / D1: this is the SECOND live recall path
+                        # against the shared EC, and it bypassed the geometry
+                        # guard entirely — `"text"` is not a frozen-centroid
+                        # modality, so the running-mean update fired and
+                        # actively corrupted old-geometry centroids with
+                        # incomparable vectors. Ask the encoder what space it
+                        # produces rather than passing None.
+                        pr: PatternResult = self._ec.pattern_complete_or_separate(
+                            embedding,
+                            "text",
+                            geometry=self._encoder.geometry_for(embedding, "text"),
+                        )
                         if not pr.is_new and pr.similarity > 0.3:
                             # Found a known substrate node — spread activation
                             activated = self._hippocampus.retrieve_on_cue(pr.node_id, limit=5, multi_hop=True)

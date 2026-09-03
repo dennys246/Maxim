@@ -316,10 +316,10 @@ class TestDecompositionMechanism:
         vision_table_emb = [0.1] * 384
         vision_table_emb[1] = 0.9
 
-        mug_vis = ec.pattern_complete_or_separate(vision_mug_emb, "vision")
+        mug_vis = ec.pattern_complete_or_separate(vision_mug_emb, "vision", geometry=None)
         ec.register_substrate_node(mug_vis.node_id, vision_mug_emb, "vision")
 
-        table_vis = ec.pattern_complete_or_separate(vision_table_emb, "vision")
+        table_vis = ec.pattern_complete_or_separate(vision_table_emb, "vision", geometry=None)
         ec.register_substrate_node(table_vis.node_id, vision_table_emb, "vision")
 
         # Bind decomposed text nodes to corresponding vision nodes
@@ -364,7 +364,7 @@ class TestDecompositionMechanism:
         # Create and bind vision node to sentence node
         vision_mug_emb = [0.1] * 384
         vision_mug_emb[0] = 0.9
-        mug_vis = ec.pattern_complete_or_separate(vision_mug_emb, "vision")
+        mug_vis = ec.pattern_complete_or_separate(vision_mug_emb, "vision", geometry=None)
         ec.register_substrate_node(mug_vis.node_id, vision_mug_emb, "vision")
 
         _make_pair_episode(hippocampus, sentence_node, mug_vis.node_id, tick=0)
@@ -403,7 +403,7 @@ class TestDecompositionMechanism:
             for i, label in enumerate(scene["vision_labels"]):
                 emb = [0.01] * 384
                 emb[(tick + i) % 384] = 0.99  # unique dimension
-                vis = ec.pattern_complete_or_separate(emb, "vision")
+                vis = ec.pattern_complete_or_separate(emb, "vision", geometry=None)
                 ec.register_substrate_node(vis.node_id, emb, "vision")
                 vision_nodes.append(vis.node_id)
 
@@ -505,7 +505,7 @@ class TestDecompositionValidation:
             vision_node_ids = []
             for label in scene["vision_labels"]:
                 vis_emb = encoder.embed(label)
-                vis_result = ec.pattern_complete_or_separate(vis_emb, "vision")
+                vis_result = ec.pattern_complete_or_separate(vis_emb, "vision", geometry=None)
                 if vis_result.is_new:
                     ec.register_substrate_node(vis_result.node_id, vis_emb, "vision")
                 vision_node_ids.append(vis_result.node_id)
