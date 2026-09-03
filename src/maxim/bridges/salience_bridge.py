@@ -235,10 +235,19 @@ class SalienceMemoryBridge:
             Success rate (0-1), or 0.5 if no history
         """
         record = self._interaction_history.get(object_class.lower())
-        if not record or record.total_interactions == 0:
+        if not record:
             return 0.5
 
-        return record.success_count / record.total_interactions
+        # D56 (c)/(g): DECISIVE interactions only. Dividing by
+        # ``total_interactions`` counts neutrals in the denominator and nowhere
+        # in the numerator, so a class you interacted with fifty times and
+        # learned nothing from reads 0.0 — identical to fifty failures, and
+        # further from the truth than the 0.5 returned for no history at all.
+        decisive = record.success_count + record.failure_count
+        if decisive == 0:
+            return 0.5
+
+        return record.success_count / decisive
 
     # ─────────────────────────────────────────────────────────────────────────
     # Recording
@@ -247,14 +256,23 @@ class SalienceMemoryBridge:
     def record_interaction(
         self,
         object_class: str,
-        success: bool,
+        success: bool | None,
         goal: str | None = None,
     ) -> None:
         """Record an interaction with an object.
 
+        D56 (g). ``success`` was a plain ``bool``, so a NEUTRAL outcome — the
+        interaction happened and taught nothing directional — was unrepresentable
+        and fell into the ``else`` branch as a FAILURE. That is not a rounding
+        error: it is the difference between "this object hurt me" and "nothing
+        came of it", and the consumer scales sensitization on exactly that
+        distinction.
+
         Args:
             object_class: Class of object interacted with
-            success: Whether the interaction was successful
+            success: ``True`` success, ``False`` failure, ``None`` NEUTRAL —
+                counted in ``total_interactions`` but in neither decisive
+                bucket, so it dilutes confidence without asserting a direction.
             goal: Goal being pursued (optional)
         """
         if not self._healthy:
@@ -265,7 +283,9 @@ class SalienceMemoryBridge:
             record.total_interactions += 1
             record.last_interaction = time.time()
 
-            if success:
+            if success is None:
+                pass  # neutral: observed, but neither bucket — see the docstring
+            elif success:
                 record.success_count += 1
                 if goal and goal not in record.positive_goals:
                     record.positive_goals.append(goal)

@@ -24,6 +24,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **D56 (c), (d), (g) — three more neutral-aware consumers unstarved.** `SalienceMemoryBridge
+  .record_interaction` took a plain `bool`, so a NEUTRAL interaction fell into the `else` and booked as a
+  FAILURE; it now takes `bool | None`. `modulation_lookup` and `get_success_rate` divide by DECISIVE
+  interactions rather than the total — the total put neutrals in the denominator and nowhere in the
+  numerator, so a class you interacted with fifty times and learned nothing from read `success_rate` 0.0
+  → extremity 1.0 → **maximum** sensitization, the documented inverse, and a rate *further from the truth*
+  than the 0.5 returned for no history at all. `_query_nac` now emits `"unknown"` instead of folding
+  UNKNOWN into `"neutral"`: one means "observed, taught nothing directional", the other "not observed".
+- **D56 (b) re-diagnosed, and the ledger corrected rather than the code.** The row called it
+  "producer-side only". It is not: `GoalCompleted` carries `success: bool` and nothing else, and its sole
+  publisher takes only a bool, so there is no tier upstream to route — widening the message would trade a
+  constant 1.0 for a constant 0.5. The defect is consumer-side, and whether "a goal completed neutrally"
+  is meaningful is a design call.
+- **D61 — a `slow`-lane test that was structurally impossible, beside two that passed vacuously.**
+  `conftest.py` forces HF offline (correct isolation), so `LinguisticEncoder` can never load its model
+  under pytest and always uses the bag-of-words fallback — *"paraphrase collapse will NOT work with
+  this"*. The fire/flame sharing test therefore could not pass; its two negative controls assert water
+  does **not** share a node with fire, which a hash encoder satisfies trivially, so they were passing for
+  the wrong reason — and both wrapped their assertion in `if water_concepts:`, making a missing concept a
+  silent pass. The four semantic-dependent tests now skip with a reason that names the cause, and the two
+  `if` guards became assertions. A skipped test is not a passing test: pre-seeding the model into the
+  isolated `HF_HOME` is the real remedy and is owed.
 - **Gate 1 (D1) — `encoder_provenance` now detects a geometry change at RUNTIME.** D1's complaint was
   never that the stamp was wrong; it was that **nothing read it**. The stamp was recorded, persisted and
   reloaded, its only readers were the hivemind bundle/CLI export, and `record_encoder_provenance`

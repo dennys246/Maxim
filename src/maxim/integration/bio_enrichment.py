@@ -732,12 +732,21 @@ class BioEnrichmentPipeline:
                 if link.event_signature in seen_events:
                     continue
                 seen_events.add(link.event_signature)
+                # D56 (d). The `else` folded NEUTRAL and UNKNOWN into one
+                # string — the single point where the typed layer's four-value
+                # enum loses a distinction on the way out, irreversibly.
+                # They are not the same claim: NEUTRAL is "observed, and it
+                # taught nothing directional"; UNKNOWN is "not observed". A
+                # reader that cannot tell them apart cannot tell a settled
+                # question from an open one.
                 if link.outcome_valence == Valence.POSITIVE:
                     valence_str = "positive"
                 elif link.outcome_valence == Valence.NEGATIVE:
                     valence_str = "negative"
-                else:
+                elif link.outcome_valence == Valence.NEUTRAL:
                     valence_str = "neutral"
+                else:
+                    valence_str = "unknown"
                 predictions.append(
                     CausalPrediction(
                         event=link.event_signature,
