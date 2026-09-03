@@ -117,6 +117,32 @@ The bake-off's gain (`scripts/encoding_bakeoff.py::_embed`, `GAIN_EXPONENT = 3.0
   unlimited by design — option (a) would re-stale Exp 52 (re-validated twice 2026-09-02) for
   zero 1.1.4 benefit.
 
+## PR 0 result (2026-09-03) — the D4 verdict
+
+Data: `docs/experiments/data/ec_scan_cost_2026-09-03.json`. **Verdict: index-prerequisite.**
+The pure-Python exact scan crosses the 5 ms bar at ≈ **253 nodes** — below the 1,000-node
+capacity floor (a single ~30-min A4 session's allocation), so a cap cannot carry A4 at any
+store size a real session reaches. Projected horizon store 8,375 nodes (organic allocation
+0.145 nodes/state, two channels, 4 h @ 2 Hz) → **p95 ≈ 82 ms per encode**; measured directly,
+103 ms @ 10k and 175 ms @ 20k nodes.
+
+**Remedy chosen (design decision, informed by the exploratory phase — the verdict itself is
+the frozen rule's):** a **vectorized exact scan** — the same cosine over the same store as one
+numpy matrix–vector product — measured at **p95 0.97 ms at 20k nodes**, ~2.4× the horizon
+store, with ~80× headroom under the bar at horizon scale. Semantics-preserving, so no ANN
+approximation risk enters the substrate. "1.1.4 re-sequences" therefore resolves mildly: the
+scan replacement ships in **PR 1, before the A4 equation change in the same PR**, guarded by
+an old-vs-new equivalence test (identical match/threshold decisions on random stores,
+including tie and just-at-threshold cases — float-summation order differs between the loop
+and the BLAS path, so the test must assert decision equivalence, not bit equality).
+
+**Harness note, recorded like the bake-off's:** the first full run's `decide()` computed
+N_cap as `max(measured rows, a two-point-fit extrapolation)`; the fit's −40.5 ms intercept
+manufactured N_cap = 3,094 and flipped the verdict to cap-prerequisite. The frozen rule's own
+words ("read off the controlled curve") were the tiebreaker: the implementation was corrected
+to piecewise-linear interpolation between measured rows (no extrapolation) and the run
+repeated. The rule never changed; the implementation was brought back to it.
+
 ## The PR ladder
 
 Every PR: two-lens pre-merge review round, fold commits verified on the target; new symbols
@@ -149,8 +175,10 @@ transaction.
   existing installs take gate 1's skip-and-warn; the owed `ec invalidate`/re-encode path from
   1.1.3 is this PR's migration story if it fits, else stays explicitly owed.
 - D3's synthetic place-code check, then the audio decision recorded here.
-- If PR 0's numbers landed in the 5–50 ms band: the cap/prune policy ships HERE, with A4, not
-  separately (a fix ships with its caller).
+- **The vectorized exact scan ships HERE, before the A4 equation change in the same PR**
+  (PR 0 verdict: index-prerequisite; see §PR 0 result). Equivalence-guarded: identical
+  match/threshold decisions old-vs-new on random stores, ties and at-threshold cases
+  included.
 - PR body carries the graduation-trigger sweep: A4 fires L11's re-measure trigger and
   re-stales Exp 53b (hardware block below); affected rows marked Stale with the block as
   their discharge plan.

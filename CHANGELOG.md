@@ -23,7 +23,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **1.1.4 PR 0 — the A4 scan-cost prerequisite, measured before shipping** (`scripts/ec_scan_cost.py`
+  + `docs/experiments/data/ec_scan_cost_2026-09-03.json`): per-encode cost of the exact
+  `pattern_complete_or_separate` scan at the A4 gain's ~120× cluster-allocation rate, mixed-modality
+  store (production shares one EC across channels), metric/horizon/decision-rule frozen in the
+  docstring before the run. Kickoff plan: `docs/plans/world_seam_1_1_4.md`.
+
 ### Fixed
+- **D68 — gate 2 (#596) silently broke the committed bake-off harness**: `scripts/encoding_bakeoff.py`
+  raised `TypeError` on every arm after `geometry` became required keyword-only; nothing in CI runs
+  `scripts/` harnesses, so the instrument that selected 1.1.4's mitigation could not execute. Fixed
+  with the explicit `geometry=None` opt-out (instrument byte-identical to the committed 2026-09-01 run).
+- **D51 scope correction (docs)**: `LSHIndex` is not on the `pattern_complete_or_separate` path — the
+  A4-inflated cost lands on the unindexed `_substrate_nodes` scan, and D51 proper's live caller is
+  `NAc._predict_impl` (prediction path), not `distribute_reward`. Ledger, L11 and the roadmap row
+  corrected so the prerequisite names the right structure.
 - **D66 — gate 1's "migrate" half, and the honest limit on it.** `EC.load()` now derives geometry tags
   for unstamped nodes from `encoder_provenance`. **Text nodes migrate exactly.** **Sensor nodes written
   before this release cannot** — the tag hashes the *declared* set while provenance recorded

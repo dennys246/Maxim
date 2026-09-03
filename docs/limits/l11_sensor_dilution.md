@@ -46,6 +46,8 @@ the agent cannot hold different policies for them, no matter how much it learns.
 | 2026-09-01 | sparse/hashed bases (k=16 dims/sensor) | **identical to the plain sum** | ” |
 | 2026-09-01 | distributional moments | detection 0.63 (N=6) → **0.27 (N=100)** — N-independent — but discrimination **0.999**, and worse at every mixing weight | ” |
 
+| 2026-09-03 | scan cost at A4 allocation (mixed-modality store, real EC) | p95 ≈82 ms at the projected 4h-session store (8,375 nodes); 5 ms crossing ≈253 nodes → **index-prerequisite**; vectorized exact scan 0.97 ms @ 20k | `scripts/ec_scan_cost.py`; data `docs/experiments/data/ec_scan_cost_2026-09-03.json` |
+
 All 2026-09-01 rows are synthetic sweeps over the **shipped** encoder, recorded in
 [minecraft_benchmark.md](../plans/minecraft_benchmark.md) §"The sensor ceiling is a
 THRESHOLD artifact".
@@ -180,7 +182,11 @@ replication are the same scarce resource and should be planned as one hardware b
    the prerequisite is the `_substrate_nodes` scan itself — `LSHIndex` (D51) is not on
    this path and fixing it would not help. Measured at A4's allocation rate by
    `scripts/ec_scan_cost.py` (frozen decision rule in its docstring; verdict recorded in
-   [docs/plans/world_seam_1_1_4.md](../plans/world_seam_1_1_4.md)).**
+   [docs/plans/world_seam_1_1_4.md](../plans/world_seam_1_1_4.md)). **MEASURED 2026-09-03,
+   verdict index-prerequisite:** the Python scan crosses 5 ms at ≈253 nodes vs a projected
+   8,375-node 4-hour-session store (p95 ≈82 ms); the chosen remedy is a vectorized EXACT
+   scan (p95 0.97 ms @ 20k nodes), shipping with A4. Data:
+   `docs/experiments/data/ec_scan_cost_2026-09-03.json`.**
 
 ## Re-measure on
 

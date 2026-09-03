@@ -289,11 +289,24 @@ def run_exploratory_vectorized(n_world: int, seed: int) -> list[dict[str, Any]]:
 
 
 def decide(organic: dict[str, Any], controlled: list[dict[str, Any]]) -> dict[str, Any]:
-    # Per-node coefficient from the two largest controlled rows (the fit that
-    # matters at horizon scale); linearity checked against the full curve.
-    big, prev = controlled[-1], controlled[-2]
-    coeff = (big["p95_ms"] - prev["p95_ms"]) / (big["store_nodes"] - prev["store_nodes"])
-    intercept = big["p95_ms"] - coeff * big["store_nodes"]
+    # HARNESS NOTE (2026-09-03): the first full run's decide() computed n_cap as
+    # max(largest under-bar measured row, a value extrapolated from a two-point
+    # fit of the LARGEST rows). That fit's intercept was -40.5 ms, so the
+    # extrapolation manufactured n_cap = 3,094 while the measured rows put the
+    # 5 ms crossing between 100 nodes (2.5 ms) and 1,000 nodes (23 ms) — an
+    # implementation contradicting the frozen rule's own words ("read off the
+    # controlled curve"), flipping the verdict to cap-prerequisite. The rule is
+    # unchanged; this implementation now reads the curve: piecewise-linear
+    # interpolation between adjacent MEASURED rows, no extrapolation.
+    xs = [row["store_nodes"] for row in controlled]
+    ys = [row["p95_ms"] for row in controlled]
+
+    # Least-squares fit over all controlled rows — used for the horizon
+    # projection only, never for n_cap.
+    n = len(xs)
+    mean_x, mean_y = sum(xs) / n, sum(ys) / n
+    coeff = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / sum((x - mean_x) ** 2 for x in xs)
+    intercept = mean_y - coeff * mean_x
 
     per_state_alloc = organic["total_nodes"] / (
         organic["world_states_presented"] + organic["interoception_states_presented"]
@@ -302,11 +315,14 @@ def decide(organic: dict[str, Any], controlled: list[dict[str, Any]]) -> dict[st
     p95_at_horizon = coeff * horizon_store + intercept
 
     n_cap = 0
-    for row in controlled:
-        if row["p95_ms"] <= P95_BAR_MS:
-            n_cap = row["store_nodes"]
-    if intercept < P95_BAR_MS and coeff > 0:
-        n_cap = max(n_cap, int((P95_BAR_MS - intercept) / coeff))
+    for (x0, y0), (x1, y1) in zip(zip(xs, ys), zip(xs[1:], ys[1:])):
+        if y0 <= P95_BAR_MS:
+            n_cap = x0
+            if y1 > y0:
+                crossing = x0 + (P95_BAR_MS - y0) / (y1 - y0) * (x1 - x0)
+                n_cap = int(min(crossing, x1))
+    if ys and ys[-1] <= P95_BAR_MS:
+        n_cap = xs[-1]
 
     if p95_at_horizon <= P95_BAR_MS:
         verdict = "ship-bare"
