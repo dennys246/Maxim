@@ -119,17 +119,18 @@ The bake-off's gain (`scripts/encoding_bakeoff.py::_embed`, `GAIN_EXPONENT = 3.0
 
 ## PR 0 result (2026-09-03) — the D4 verdict
 
-Data: `docs/experiments/data/ec_scan_cost_2026-09-03.json`. **Verdict: index-prerequisite.**
-The pure-Python exact scan crosses the 5 ms bar at ≈ **253 nodes** — below the 1,000-node
-capacity floor (a single ~30-min A4 session's allocation), so a cap cannot carry A4 at any
-store size a real session reaches. Projected horizon store 8,375 nodes (organic allocation
-0.145 nodes/state, two channels, 4 h @ 2 Hz) → **p95 ≈ 82 ms per encode**; measured directly,
-103 ms @ 10k and 175 ms @ 20k nodes.
+Data: `docs/experiments/data/ec_scan_cost_2026-09-03.json` (clean-tree, provenance-stamped;
+the verdict was stable across three runs — two shakedowns plus the committed run). **Verdict:
+index-prerequisite.** The pure-Python exact scan crosses the 5 ms bar at ≈ **177 nodes**
+(177–253 across runs) — far below the 1,000-node capacity floor (a single ~30-min A4
+session's allocation), so a cap cannot carry A4 at any store size a real session reaches.
+Projected horizon store 8,375 nodes (organic allocation 0.145 nodes/state, two channels,
+4 h @ 2 Hz) → **p95 ≈ 117 ms per encode** (82–117 across runs).
 
 **Remedy chosen (design decision, informed by the exploratory phase — the verdict itself is
 the frozen rule's):** a **vectorized exact scan** — the same cosine over the same store as one
-numpy matrix–vector product — measured at **p95 0.97 ms at 20k nodes**, ~2.4× the horizon
-store, with ~80× headroom under the bar at horizon scale. Semantics-preserving, so no ANN
+numpy matrix–vector product — measured at **p95 0.95 ms at 20k nodes**, ~2.4× the horizon
+store, with ~100× headroom under the bar at horizon scale. Semantics-preserving, so no ANN
 approximation risk enters the substrate. "1.1.4 re-sequences" therefore resolves mildly: the
 scan replacement ships in **PR 1, before the A4 equation change in the same PR**, guarded by
 an old-vs-new equivalence test (identical match/threshold decisions on random stores,

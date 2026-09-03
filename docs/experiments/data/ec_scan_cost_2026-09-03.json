@@ -1,5 +1,12 @@
 {
   "harness": "scripts/ec_scan_cost.py",
+  "provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "864194bec6dc",
+    "working_tree_dirty_src_scripts": false,
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages"
+  },
   "metric": "per-encode wall ms of pattern_complete_or_separate (p50/p95)",
   "decision_rule": "P95(horizon)<= 5.0ms -> ship-bare; else cap at largest store with P95<=5.0ms, shipped in A4's PR; cap < 1000 nodes -> index-prerequisite",
   "gain_exponent": 3.0,
@@ -16,106 +23,106 @@
       {
         "presented_world_states": 500,
         "total_nodes": 284,
-        "world_p50_ms": 6.132,
-        "world_p95_ms": 8.993
+        "world_p50_ms": 4.654,
+        "world_p95_ms": 7.025
       },
       {
         "presented_world_states": 1000,
         "total_nodes": 425,
-        "world_p50_ms": 12.959,
-        "world_p95_ms": 16.664
+        "world_p50_ms": 9.938,
+        "world_p95_ms": 15.112
       },
       {
         "presented_world_states": 1500,
         "total_nodes": 560,
-        "world_p50_ms": 19.186,
-        "world_p95_ms": 25.512
+        "world_p50_ms": 15.562,
+        "world_p95_ms": 19.907
       },
       {
         "presented_world_states": 2000,
         "total_nodes": 691,
-        "world_p50_ms": 24.586,
-        "world_p95_ms": 34.663
+        "world_p50_ms": 20.367,
+        "world_p95_ms": 25.519
       },
       {
         "presented_world_states": 2500,
         "total_nodes": 818,
-        "world_p50_ms": 30.427,
-        "world_p95_ms": 39.874
+        "world_p50_ms": 26.201,
+        "world_p95_ms": 39.841
       },
       {
         "presented_world_states": 3000,
         "total_nodes": 945,
-        "world_p50_ms": 35.878,
-        "world_p95_ms": 51.528
+        "world_p50_ms": 31.401,
+        "world_p95_ms": 41.98
       },
       {
         "presented_world_states": 3500,
         "total_nodes": 1072,
-        "world_p50_ms": 41.706,
-        "world_p95_ms": 65.415
+        "world_p50_ms": 44.274,
+        "world_p95_ms": 55.845
       },
       {
         "presented_world_states": 4000,
         "total_nodes": 1199,
-        "world_p50_ms": 44.686,
-        "world_p95_ms": 57.119
+        "world_p50_ms": 51.337,
+        "world_p95_ms": 88.051
       },
       {
         "presented_world_states": 4500,
         "total_nodes": 1326,
-        "world_p50_ms": 49.421,
-        "world_p95_ms": 57.628
+        "world_p50_ms": 57.767,
+        "world_p95_ms": 83.398
       },
       {
         "presented_world_states": 5000,
         "total_nodes": 1454,
-        "world_p50_ms": 53.181,
-        "world_p95_ms": 59.417
+        "world_p50_ms": 68.92,
+        "world_p95_ms": 104.909
       }
     ]
   },
   "controlled": [
     {
       "store_nodes": 100,
-      "p50_ms": 1.993,
-      "p95_ms": 2.072
+      "p50_ms": 2.575,
+      "p95_ms": 2.838
     },
     {
       "store_nodes": 1000,
-      "p50_ms": 18.607,
-      "p95_ms": 19.28
+      "p50_ms": 24.725,
+      "p95_ms": 28.052
     },
     {
       "store_nodes": 2000,
-      "p50_ms": 25.387,
-      "p95_ms": 27.086
+      "p50_ms": 35.093,
+      "p95_ms": 41.507
     },
     {
       "store_nodes": 5000,
-      "p50_ms": 57.388,
-      "p95_ms": 61.389
+      "p50_ms": 83.913,
+      "p95_ms": 128.306
     },
     {
       "store_nodes": 10000,
-      "p50_ms": 90.063,
-      "p95_ms": 102.851
+      "p50_ms": 114.816,
+      "p95_ms": 191.467
     },
     {
       "store_nodes": 20000,
-      "p50_ms": 154.34,
-      "p95_ms": 175.145
+      "p50_ms": 176.82,
+      "p95_ms": 190.175
     }
   ],
   "decision": {
-    "per_node_coeff_ms": 0.008502,
-    "intercept_ms": 10.6467,
+    "per_node_coeff_ms": 0.009627,
+    "intercept_ms": 35.9291,
     "organic_alloc_nodes_per_state": 0.1454,
     "horizon_ticks": 28800,
     "projected_horizon_store_nodes": 8375,
-    "projected_p95_at_horizon_ms": 81.85,
+    "projected_p95_at_horizon_ms": 116.55,
     "p95_bar_ms": 5.0,
-    "n_cap_nodes_at_bar": 253,
+    "n_cap_nodes_at_bar": 177,
     "capacity_floor_nodes": 1000,
     "verdict": "index-prerequisite"
   },
@@ -125,38 +132,38 @@
       {
         "store_nodes_total": 100,
         "world_nodes_scanned": 60,
-        "p50_ms": 0.022,
-        "p95_ms": 0.051
+        "p50_ms": 0.054,
+        "p95_ms": 0.156
       },
       {
         "store_nodes_total": 1000,
         "world_nodes_scanned": 600,
-        "p50_ms": 0.044,
-        "p95_ms": 0.071
+        "p50_ms": 0.084,
+        "p95_ms": 0.194
       },
       {
         "store_nodes_total": 2000,
         "world_nodes_scanned": 1200,
-        "p50_ms": 0.078,
-        "p95_ms": 0.099
+        "p50_ms": 0.099,
+        "p95_ms": 0.131
       },
       {
         "store_nodes_total": 5000,
         "world_nodes_scanned": 3000,
-        "p50_ms": 0.178,
-        "p95_ms": 0.228
+        "p50_ms": 0.207,
+        "p95_ms": 0.333
       },
       {
         "store_nodes_total": 10000,
         "world_nodes_scanned": 6000,
-        "p50_ms": 0.36,
-        "p95_ms": 0.414
+        "p50_ms": 0.489,
+        "p95_ms": 1.886
       },
       {
         "store_nodes_total": 20000,
         "world_nodes_scanned": 12000,
-        "p50_ms": 0.741,
-        "p95_ms": 0.973
+        "p50_ms": 0.772,
+        "p95_ms": 0.95
       }
     ]
   }
