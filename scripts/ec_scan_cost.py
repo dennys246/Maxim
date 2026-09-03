@@ -351,7 +351,25 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--checkpoint-every", type=int, default=500)
     p.add_argument("--json", default="", help="write full results here")
+    p.add_argument("--allow-dirty", action="store_true", help="stamp allow_dirty into the record")
     args = p.parse_args(argv)
+
+    provenance: dict[str, object] | None = None
+    if args.json:
+        # Gated-record preflight (item 16.7): refuse to write evidence from a
+        # dirty src/scripts tree, and assert the imported `maxim` is THIS
+        # repo's src (L01) — exit 3 on either, before any measurement runs.
+        sys.path.insert(0, str(_REPO_ROOT / "scripts"))
+        import maxim
+        from _provenance import DirtyTreeError, ProvenanceError, in_process_code_provenance
+
+        try:
+            provenance = in_process_code_provenance(
+                _REPO_ROOT, maxim.__file__, out_path=args.json, allow_dirty=args.allow_dirty
+            )
+        except (ProvenanceError, DirtyTreeError) as exc:
+            print(f"[FAIL] gated-record preflight: {exc}", file=sys.stderr)
+            return 3
 
     print(f"=== organic growth: {args.world_sensors} world sensors, {args.world_states} states ===")
     organic = run_organic(args.world_sensors, args.world_states, args.seed, args.checkpoint_every)
@@ -372,6 +390,7 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(
                 {
                     "harness": "scripts/ec_scan_cost.py",
+                    "provenance": provenance,
                     "metric": "per-encode wall ms of pattern_complete_or_separate (p50/p95)",
                     "decision_rule": (
                         f"P95(horizon)<= {P95_BAR_MS}ms -> ship-bare; else cap at largest store "
