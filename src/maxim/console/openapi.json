@@ -455,9 +455,10 @@
         "type": "object"
       },
       "PairClaimRequest": {
-        "description": "The spoken code, typed by the owner into the paste screen.",
+        "description": "The spoken code, typed by the owner into the paste screen.\n\n``max_length`` bounds the one pre-auth POST body on the server (review\nfold); real codes are exactly six digits, the slack forgives pasted\nwhitespace.",
         "properties": {
           "code": {
+            "maxLength": 16,
             "title": "Code",
             "type": "string"
           }
@@ -469,7 +470,7 @@
         "type": "object"
       },
       "PairClaimResult": {
-        "description": "A successful claim: the console bearer token, exactly what the\n``/#token=`` fragment would have carried (A9.1 \u2014 same trust statement,\nsame storage on the client).",
+        "description": "A successful claim: the console bearer token \u2014 handled and stored by\nthe client exactly as a ``/#token=`` fragment bootstrap would (the trust\nstatement itself is A9.1's, spoken-code pairing).",
         "properties": {
           "token": {
             "title": "Token",
@@ -1260,6 +1261,51 @@
             },
             "description": "Successful Response"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Wrong code (5 wrong attempts void the active code)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Pairing is not available on this deployment (no announcer)."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "No active code \u2014 expired, consumed, or never announced."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -1269,6 +1315,21 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Claims are paced (~1.5 s apart) \u2014 retry momentarily."
           }
         },
         "summary": "Exchange the spoken code for the console token (single use; no token needed)",
@@ -1290,6 +1351,36 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Pairing is not available on this deployment (no announcer)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A code was announced within the last 10 s \u2014 listen, or retry shortly."
           }
         },
         "summary": "Ask the robot to speak a pairing code (device deployments only; no token needed)",

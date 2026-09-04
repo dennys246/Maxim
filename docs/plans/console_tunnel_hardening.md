@@ -3,7 +3,7 @@
 **Status:** ACTIVE — PR 1 (trust guard) MERGED #609 (2026-09-03); PR 2 (bearer auth)
 IMPLEMENTED per decisions A1–A8 on `feat/console-auth` (2026-09-04; one A7 sharpening: disk
 tokens are re-read per request so rotation bites with NO restart); PRs 3–4 sequenced below.
-Pulse-side ledger (A6) CLOSED 2026-09-04 by the maxim-pulse `console-auth-040` PR (login/paste-token
+Pulse-side ledger (A6) CLOSED 2026-09-04 by maxim-pulse PR #35 (`console-auth-040`) (login/paste-token
 screen, fragment bootstrap, Bearer on FacadeClient, ws subprotocol on EventClient, contract
 stamp 0.4.0 — Playwright-verified against `maxim serve` @ 24e0c1ab). Owed from that close:
 re-vendor the packaged bundle (`scripts/vendor_console_ui.py`) once `console-auth-040` is
@@ -237,8 +237,23 @@ enters the contract there, batched with the token-flow contract addition (pulse 
   tokened link, with pairing kept as the fallback. SSH + `--show-token` stays the
   technical-owner path, named on the paste screen.
 
+  **A9.1 Trust statement** (pulse MUST carry this into `apps/reachy/PRIVACY.md`, gate P3 —
+  replacing A9's dashboard-link declaration): signing in requires hearing the robot speak
+  the code AND reaching the page on the LAN, within 120 s, single use. What that means
+  honestly: (a) **earshot ≠ owner** — anyone within earshot (shared wall, office, open
+  window) with network reach can claim first; the owner's symptom is a 410. (b) **The code
+  is a secret spoken aloud** — live streams, video calls, in-room smart speakers, and demo
+  recordings leak it in real time; single-use + TTL bound the exposure but "don't pair on
+  camera" belongs in the privacy text (this project films its robot). (c)
+  **Denial-of-pairing is accepted**: any LAN reacher of the tokenless endpoints can
+  perpetually replace codes (one announce per 10 s) or draw the claim pacing (429s); never
+  a compromise, always detectable, and SSH `--show-token` is the named fallback. (d)
+  **Future remote exposure** (PR 4 ladder): `_AUTH_EXEMPT_PATHS` rides any later tunnel
+  exposure — babble-DoS and pairing-DoS would become internet-wide while compromise still
+  needs earshot; PR 4 must gate or drop the exemption at the tunnel edge.
+
 **PR 3 — admission control (M1).**
-Body-size caps and per-client rate limit on `/api/run` + `/api/probe`; `limit_concurrency` +
+Body-size caps and per-client rate limit on `/api/run` + `/api/probe` + `/api/pair/claim` (the one PRE-AUTH POST with a body — A9.1); `limit_concurrency` +
 `ws_max_size` on `uvicorn.run`; generalize `leader_proxy`'s `_check_admission` machinery
 rather than re-implementing (front-gate: it exists, ride on it). The pure-ASGI middleware
 consolidation originally parked here moved to PR 2 (decision A3) — auth needs the

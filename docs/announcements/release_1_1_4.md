@@ -57,7 +57,10 @@ mitigation — the honest outcome, pre-committed before the data existed.
   `/ws` requires the console token; `GET /api/hello` is the one tokenless surface; browser `/ws`
   carries the token as a subprotocol. Contract 0.4.0.
 - **Reachy device handoff** (#616, decision A9): on a robot with no terminal, the sign-in URL
-  rides Pollen's own `custom_app_url` dashboard link as a `/#token=` fragment;
+  rides Pollen's own `custom_app_url` dashboard link as a `/#token=` fragment
+  (*errata, same day: the vendor daemon reads `custom_app_url` by regex over `main.py` at
+  list time, so the link cannot carry a boot-minted token on-device — superseded by
+  amendment A9.1, spoken-code pairing, in the next release*);
   `build_app(extra_trusted_origins=…)` admits the LAN bind to the trust guard. The two-lens
   review earned its keep: both lenses independently found that sandbox mode composed with the
   new parameter into a tokenless LAN console — refused at build time before merge.

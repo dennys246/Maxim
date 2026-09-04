@@ -41,8 +41,9 @@ def _isolated(monkeypatch, tmp_path):
     monkeypatch.delenv("MAXIM_CONSOLE_ALLOWED_ORIGINS", raising=False)
     monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-    # Rate limit off by default in tests; the rate-limit test sets it back.
+    # Rate limits off by default in tests; the pacing tests set them back.
     monkeypatch.setattr(srv, "_PAIR_MIN_REQUEST_INTERVAL_S", 0.0)
+    monkeypatch.setattr(srv, "_PAIR_MIN_CLAIM_INTERVAL_S", 0.0)
 
 
 def _spoken(announcer: _Announcer) -> str:
@@ -169,6 +170,38 @@ class TestCodeLifecycle:
         assert c.post("/api/pair/request", json={}).status_code == 202
         assert c.post("/api/pair/request", json={}).status_code == 429
 
+    def test_first_request_seconds_after_boot_is_not_429(self, paired_app):
+        # time.monotonic() is seconds-since-boot on Linux/macOS — the robot
+        # shape is power-on -> daemon -> owner pairs within seconds. A 0.0
+        # timestamp init made that FIRST request 429 with a message pointing
+        # at a code that was never announced (review fold, probe-confirmed).
+        import types
+
+        app, announcer = paired_app
+        fake = types.SimpleNamespace(**{n: getattr(srv.time, n) for n in dir(srv.time) if not n.startswith("_")})
+        fake.monotonic = lambda: 5.0  # five seconds after boot
+        real_time, srv.time = srv.time, fake
+        try:
+            assert TestClient(app).post("/api/pair/request", json={}).status_code == 202
+        finally:
+            srv.time = real_time
+
+    def test_claim_pacing_slows_a_code_burner(self, paired_app, monkeypatch):
+        # 5 junk claims took milliseconds and burned the code before the owner
+        # could type it (review fold). Pacing makes a burn take ~10s; being
+        # 429'd must NOT extend the lockout, and the owner's own next claim
+        # succeeds after the interval.
+        app, announcer = paired_app
+        c = TestClient(app)
+        c.post("/api/pair/request", json={})
+        code = _spoken(announcer)
+        monkeypatch.setattr(srv, "_PAIR_MIN_CLAIM_INTERVAL_S", 60.0)
+        wrong = "000000" if code != "000000" else "000001"
+        assert c.post("/api/pair/claim", json={"code": wrong}).status_code == 403
+        assert c.post("/api/pair/claim", json={"code": wrong}).status_code == 429  # paced, not burned
+        monkeypatch.setattr(srv, "_PAIR_MIN_CLAIM_INTERVAL_S", 0.0)
+        assert c.post("/api/pair/claim", json={"code": code}).status_code == 200  # one attempt spent, code alive
+
 
 class TestHygiene:
     def test_code_and_token_never_reach_a_log_line(self, paired_app, caplog):
@@ -183,7 +216,10 @@ class TestHygiene:
         assert "mxc_" not in caplog.text
 
     def test_raising_announcer_does_not_500_and_leaks_nothing(self, _isolated, caplog):
+        seen: list[str] = []
+
         def bad(code: str) -> None:
+            seen.append(code)
             raise RuntimeError(code)  # adversarial: the code IS the message
 
         app = build_app(None, auth_token=_TOKEN, pairing_announcer=bad)
@@ -193,13 +229,26 @@ class TestHygiene:
             assert r.status_code == 202
             import time
 
-            time.sleep(0.1)  # let the announcer thread raise and be logged
-        # Type-only logging: the exception message (carrying the code) must not land.
-        for record in caplog.records:
-            assert not any(
-                ch.isdigit() and len(tok) == 6 and tok.isdigit() for tok in record.getMessage().split() for ch in tok
-            )
-        assert "RuntimeError" in caplog.text
+            for _ in range(100):
+                if seen and "RuntimeError" in caplog.text:
+                    break
+                time.sleep(0.01)
+        # The STRONG form (review fold): the code itself must be absent — a
+        # digit-shape scan missed the likeliest regression (%r-formatted
+        # exception, "RuntimeError('042135')", which whitespace-split +
+        # isdigit() never catches).
+        assert seen, "announcer never called"
+        assert seen[0] not in caplog.text
+        assert "RuntimeError" in caplog.text  # …while the failure itself IS visible
+
+    def test_client_visible_refusals_are_in_the_contract(self, _isolated):
+        # The paste screen branches on 403/409/410/429 — states a LEGITIMATE
+        # client sees, so per A6's rule they enter OpenAPI (review fold).
+        from maxim.console.server import openapi_schema
+
+        paths = openapi_schema()["paths"]
+        assert set(paths["/api/pair/request"]["post"]["responses"]) >= {"202", "409", "429"}
+        assert set(paths["/api/pair/claim"]["post"]["responses"]) >= {"200", "403", "409", "410", "429"}
 
     def test_guard_order_origin_belt_still_applies(self, paired_app):
         # Pairing is auth-EXEMPT, not guard-exempt: a cross-site page cannot

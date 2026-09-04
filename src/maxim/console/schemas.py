@@ -104,15 +104,20 @@ class PairRequestAccepted(BaseModel):
 
 
 class PairClaimRequest(BaseModel):
-    """The spoken code, typed by the owner into the paste screen."""
+    """The spoken code, typed by the owner into the paste screen.
 
-    code: str
+    ``max_length`` bounds the one pre-auth POST body on the server (review
+    fold); real codes are exactly six digits, the slack forgives pasted
+    whitespace.
+    """
+
+    code: str = Field(max_length=16)
 
 
 class PairClaimResult(BaseModel):
-    """A successful claim: the console bearer token, exactly what the
-    ``/#token=`` fragment would have carried (A9.1 — same trust statement,
-    same storage on the client)."""
+    """A successful claim: the console bearer token — handled and stored by
+    the client exactly as a ``/#token=`` fragment bootstrap would (the trust
+    statement itself is A9.1's, spoken-code pairing)."""
 
     token: str
 

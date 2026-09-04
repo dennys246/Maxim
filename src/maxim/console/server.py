@@ -559,17 +559,26 @@ def get_hello(request: Request) -> HelloResponse:
 _PAIR_TTL_S = 120.0
 _PAIR_MAX_ATTEMPTS = 5
 _PAIR_MIN_REQUEST_INTERVAL_S = 10.0
+_PAIR_MIN_CLAIM_INTERVAL_S = 1.5
 
 
 class _PairingState:
-    """Single active spoken code: replace-on-request, expire, count attempts."""
+    """Single active spoken code: replace-on-request, expire, count attempts.
+
+    Timestamps init to -interval, NOT 0.0: ``time.monotonic()`` is
+    seconds-since-boot on Linux/macOS, and the robot's first pairing request
+    lands seconds after power-on — a 0.0 init made that FIRST request 429
+    with a message telling the owner to listen for a code that was never
+    announced (review fold, probe-confirmed).
+    """
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
         self.code: str | None = None
         self.expires_at = 0.0
         self.attempts = 0
-        self.last_request_at = 0.0
+        self.last_request_at = -_PAIR_MIN_REQUEST_INTERVAL_S
+        self.last_claim_at = -_PAIR_MIN_CLAIM_INTERVAL_S
 
 
 def _pairing_of(app: Any) -> tuple[Any, _PairingState] | None:
@@ -579,11 +588,26 @@ def _pairing_of(app: Any) -> tuple[Any, _PairingState] | None:
     return announcer, app.state.pairing
 
 
+# Client-visible refusal shapes, declared per A6's rule: errors a LEGITIMATE
+# client must branch on enter the contract (the paste screen renders each of
+# these); the trust guard's 400/403/415 stay out as before. 409 (not 404)
+# for "not on this deployment": the route EXISTS and is understood — the
+# deployment lacks the capability, which is 409's conflict-with-state
+# reading, and a 404 would send a client into retry-the-URL heuristics.
+_PAIR_DETAIL = {
+    "content": {"application/json": {"schema": {"type": "object", "properties": {"detail": {"type": "string"}}}}}
+}
+
+
 @api.post(
     "/pair/request",
     response_model=PairRequestAccepted,
     status_code=202,
     summary="Ask the robot to speak a pairing code (device deployments only; no token needed)",
+    responses={
+        409: {"description": "Pairing is not available on this deployment (no announcer).", **_PAIR_DETAIL},
+        429: {"description": "A code was announced within the last 10 s — listen, or retry shortly.", **_PAIR_DETAIL},
+    },
 )
 def post_pair_request(request: Request) -> PairRequestAccepted:
     pairing = _pairing_of(request.app)
@@ -599,6 +623,9 @@ def post_pair_request(request: Request) -> PairRequestAccepted:
         # Replace-on-request: at most ONE claimable code exists at a time.
         state.code, state.expires_at, state.attempts, state.last_request_at = code, now + _PAIR_TTL_S, 0, now
 
+    # The 202 returns whether or not the speaker works: a response that
+    # varied with announcer health would leak device state to tokenless
+    # callers. A silent robot with a live code self-heals via TTL + retry.
     def _announce() -> None:
         try:
             announcer(code)
@@ -614,6 +641,12 @@ def post_pair_request(request: Request) -> PairRequestAccepted:
     "/pair/claim",
     response_model=PairClaimResult,
     summary="Exchange the spoken code for the console token (single use; no token needed)",
+    responses={
+        403: {"description": "Wrong code (5 wrong attempts void the active code).", **_PAIR_DETAIL},
+        409: {"description": "Pairing is not available on this deployment (no announcer).", **_PAIR_DETAIL},
+        410: {"description": "No active code — expired, consumed, or never announced.", **_PAIR_DETAIL},
+        429: {"description": "Claims are paced (~1.5 s apart) — retry momentarily.", **_PAIR_DETAIL},
+    },
 )
 def post_pair_claim(body: PairClaimRequest, request: Request) -> PairClaimResult:
     pairing = _pairing_of(request.app)
@@ -621,7 +654,18 @@ def post_pair_claim(body: PairClaimRequest, request: Request) -> PairClaimResult
         raise HTTPException(status_code=409, detail="Pairing is not available on this deployment.")
     _announcer, state = pairing
     with state.lock:
-        if state.code is None or time.monotonic() > state.expires_at:
+        now = time.monotonic()
+        # Pace claims (review fold): 5 junk claims took milliseconds and let a
+        # LAN attacker BURN each announced code before the owner finished
+        # typing. Pacing raises a burn to ~10 s per code; a sustained spammer
+        # now shows as repeated 429s. Residual denial-of-pairing is accepted
+        # and documented in A9.1's trust statement (SSH --show-token is the
+        # fallback); this check does NOT update the timestamp, so being
+        # rate-limited cannot extend the lockout.
+        if now - state.last_claim_at < _PAIR_MIN_CLAIM_INTERVAL_S:
+            raise HTTPException(status_code=429, detail="Claims are paced — retry momentarily.")
+        state.last_claim_at = now
+        if state.code is None or now > state.expires_at:
             state.code = None
             raise HTTPException(status_code=410, detail="No active pairing code — ask the robot to speak one.")
         if not secrets.compare_digest(body.code.strip().encode(), state.code.encode()):
