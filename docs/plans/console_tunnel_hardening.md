@@ -1,6 +1,7 @@
 # Console tunnel hardening — from localhost-only to deliberately exposable
 
-**Status:** ACTIVE — PR 1 (trust guard) on `feat/console-tunnel-hardening`; PRs 2–4 sequenced below.
+**Status:** ACTIVE — PR 1 (trust guard) MERGED #609 (2026-09-03); PR 2 design pass complete
+(decisions A1–A8, 2026-09-04), implementation queued behind the 1.1.4 finish; PRs 3–4 sequenced below.
 **Motivating goal:** a phone app (client + sensory surface) that reaches the operator's own leader
 over the Cloudflare tunnel and speaks the console facade + `/ws`. Target window: post-1.1.4;
 app ships against a stabilized contract (see "Contract freeze" below).
@@ -55,7 +56,7 @@ handled; probe `api_key` never persisted/logged; `yaml.safe_load` throughout.
 
 ## The ladder
 
-**PR 1 — trust guard (this branch): Host + Origin browser-relay protection, always on.**
+**PR 1 — trust guard (MERGED #609): Host + Origin browser-relay protection, always on.**
 Closes H1. `console/server.py` trust-guard block: every request's Host must be loopback or a
 host of `console.allowed_origins` (rebinding); state-changing requests and `/ws` upgrades that
 carry a browser Origin must carry a loopback or listed one (CSRF); Origin-less clients (CLI,
@@ -81,18 +82,77 @@ refused; a packaged app should use a custom-scheme origin (e.g. `capacitor://…
 or send no Origin.
 
 **PR 2 — bearer auth, fail-closed (C1→C5, H2→H4 for outsiders).**
-Router-wide FastAPI dependency + `/ws` upgrade check, reusing `tunnel/keys.py::ensure_key` and
-the `leader_proxy._check_auth` compare pattern. Fail CLOSED on empty/missing key when auth is
-on. Open design decisions (resolve in this PR, front-gate scope pressure applies):
-- Activation: `console.auth` config key (default off on loopback for the local UI's
-  zero-friction path?) vs always-on with the token handed to the served UI Jupyter-style
-  (printed URL `?token=`). Leaning: Jupyter-style always-on — "off by default" is how C2–C4
-  stay reachable; but the pulse Console shell must learn the token flow first
-  (cross-repo: contract addition, `gen:facade` regen).
-- Browser `/ws` cannot set upgrade headers → first-frame token or query param; native clients
-  use the Authorization header.
-- Sandbox interplay: sandbox mode keeps "proxy owns the edge" (no engine auth) — C3's
-  half-open `setup/cloud` gets re-audited here.
+Design pass completed 2026-09-04 (decisions A1–A8 below, grounded in the cited symbols). The
+open questions from the PR 1 fold are all resolved here; implementation follows this section.
+
+- **A1 — a SEPARATE console token, not the mesh key.** `~/.config/maxim/api_key` authenticates
+  peers to the leader's inference server; one credential must not grant both inference and
+  console admin (recall = the operator's memory; setup = config writes; run = spend). New
+  0600 file `console_token` beside it, via a named-key generalization of `tunnel/keys.py`
+  (`key_file_path(name=...)` etc. — front-gate: ride the existing module, don't fork it; the
+  NEW key's writer uses `utils/atomic_io.py::atomic_write_secret`; migrating the mesh key's
+  hand-rolled write is out of scope here). Rotation/inspection: `maxim serve --show-token` /
+  `--rotate-token` (serve owns its credential; no new subcommand tree — `maxim tunnel key`
+  stays mesh-only).
+- **A2 — always-on; NO off toggle; sandbox is the one principled exception.** A default-off
+  `console.auth` knob is exactly how C2–C4 stay reachable (a mechanism that does not run
+  looks like one that ran and found nothing); the local UX cost is one click on the printed
+  tokened URL. `run_serve` calls `ensure_key(name="console_token")` at startup; `build_app`
+  reads it and **fails closed** — no readable token means every authed surface refuses,
+  explicitly inverting `leader_proxy._check_auth`'s empty-key fail-open (`if not
+  self.api_key: return True` — the documented trap). Sandbox mode stays engine-authless
+  ("the proxy owns the edge" — one anonymous visitor per throwaway machine is
+  identity-free by design); C3's half-open `setup/cloud` therefore remains the BROKER's
+  responsibility under sandbox, now stated in the sandbox comment block instead of implied.
+- **A3 — one pure-ASGI middleware, pulled forward from PR 3.** The auth check must run on
+  `/ws` before accept anyway, so the PR 3 MINOR (replace `@app.middleware("http")` + the
+  hand-applied `/ws` checks with one ASGI middleware dispatching on `scope["type"] in
+  {"http", "websocket"}`) lands HERE rather than adding a third hand-applied site. Order:
+  Host (rebinding) → auth → Origin/Content-Type (CSRF belts, kept — see A8). Exempt from
+  auth: the static UI at `/` and its assets (the same public bundle maxim-pulse publishes;
+  no data) and the single hello endpoint in A6. `/docs`, `/openapi.json`, all `/api/*`, and
+  `/ws` require auth (the live schema is a map of the surface; the committed
+  `console/openapi.json` snapshot remains the public contract artifact).
+- **A4 — credential transport.** HTTP: `Authorization: Bearer <token>`, scheme parsed via
+  the `leader_proxy._check_auth` branch-table pattern (CC13 auth format-freeze: new schemes
+  extend the table), `secrets.compare_digest`, case-insensitive scheme per RFC 7235.
+  Browser `/ws` (no upgrade headers): the token rides `Sec-WebSocket-Protocol` — client
+  requests `["maxim-console-v1", "maxim.bearer.<token>"]` (token_urlsafe's alphabet is
+  valid in a subprotocol token), server validates BEFORE accept and echoes
+  `maxim-console-v1`. Native clients send the Authorization header on the upgrade; either
+  transport satisfies the check. REJECTED: `?token=` query params anywhere (server/proxy
+  log leak — the mesh key precedent: `_loggable_url` exists because URLs get logged);
+  first-frame auth (loses PR 1's refuse-before-accept property and complicates the
+  identity-first/seq contract on `/ws`).
+- **A5 — token handoff to the served UI.** `maxim serve` prints
+  `http://127.0.0.1:<port>/#token=<t>` — URL FRAGMENT, not query: never sent to the server,
+  so it cannot reach access logs (strictly better than Jupyter's `?token=`). The UI reads
+  the fragment on load, stores the token (localStorage), strips it via
+  `history.replaceState`, and sends Bearer + the ws subprotocol thereafter. With no token,
+  the UI renders a paste-token screen naming `maxim serve --show-token` (pulse work item).
+- **A6 — contract additions (CONSOLE_CONTRACT_VERSION 0.3.0 → 0.4.0, pulse `gen:facade`
+  regen).** (i) OpenAPI `securitySchemes: bearer` applied to every `/api/*` operation;
+  (ii) the 401 error shape (`{"detail": ...}`) documented — the PR 1 400/403/415 refusals
+  stay OUT (unchanged rationale: legitimate clients never see them); (iii) one new
+  UNAUTHENTICATED endpoint `GET /api/hello` returning ONLY `{contract_version, auth:
+  "bearer"}` so a client can detect skew and render the right login screen BEFORE it holds
+  a token — nothing else moves out from behind auth (H3/H4/M2: identity, diagnose, recall
+  are exactly what auth exists to cover). Pulse-side ledger: login/paste-token screen,
+  fragment bootstrap, Bearer on FacadeClient, ws subprotocol on EventClient, contract stamp
+  0.4.0.
+- **A7 — acceptance tests that pin the posture** (each with its accepting counterpart, per
+  the PR 1 suite's non-vacuity rule): fail-closed on missing/empty token — the
+  anti-`leader_proxy` trap test; every `/api/*` + `/docs` + `/openapi.json` + `/ws` is 401
+  without a token and serves with one (both transports for `/ws`, refused before accept);
+  `/api/hello` and the static root are reachable tokenless; sandbox negative control (no
+  auth demanded when `console.sandbox` is on); rotation invalidates the old token on the
+  next request; the token never appears in a log line (grep the captured log in-test).
+- **A8 — the trust guard STAYS, unchanged.** Bearer-in-header + localStorage is
+  CSRF-immune, but the Host check still kills rebinding against any future authed-surface
+  bug, the Content-Type belt still blocks form relays at zero cost, and sandbox mode has no
+  auth at all — defense in depth, not redundancy. The phone-app threat model rides A4/A5:
+  token in the app's keychain, tunnel TLS for transit; Cloudflare Access as an OPTIONAL
+  second factor in front is compatible and out of scope.
 
 PR 2 doc obligations (the posture flip must not leave contradicting prose — the 1.1.3
 lesson): the server module docstring ("carries no authentication of its own"), the sandbox
@@ -107,10 +167,9 @@ enters the contract there, batched with the token-flow contract addition (pulse 
 **PR 3 — admission control (M1).**
 Body-size caps and per-client rate limit on `/api/run` + `/api/probe`; `limit_concurrency` +
 `ws_max_size` on `uvicorn.run`; generalize `leader_proxy`'s `_check_admission` machinery
-rather than re-implementing (front-gate: it exists, ride on it). While touching the server
-plumbing: consider replacing the `@app.middleware("http")` + hand-applied `/ws` check pair
-with one pure-ASGI middleware dispatching on `scope["type"] in {"http", "websocket"}`, so a
-future second websocket endpoint cannot silently miss the Host rule (review-round MINOR).
+rather than re-implementing (front-gate: it exists, ride on it). The pure-ASGI middleware
+consolidation originally parked here moved to PR 2 (decision A3) — auth needs the
+websocket-scope coverage anyway, so PR 3 inherits a single guard middleware to extend.
 
 **PR 4 — pre-GA pass (before any store-shipped app).**
 Viewer-vs-operator authorization tiers (ws/recall/identity vs setup/diagnose/probe);
