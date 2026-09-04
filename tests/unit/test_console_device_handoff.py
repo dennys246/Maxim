@@ -87,6 +87,21 @@ class TestDeviceConsoleHandoff:
         with pytest.raises(ConfigurationError):
             device_console_handoff(host, 8765)
 
+    @pytest.mark.parametrize("port", [0, -1, 65536])
+    def test_unconnectable_port_raises_loudly(self, _isolated, port):
+        with pytest.raises(ConfigurationError):
+            device_console_handoff("10.6.0.63", port)
+
+    def test_trailing_dot_fqdn_is_stripped_to_match_the_host_guard(self, _isolated):
+        # mDNS/avahi hand back absolute FQDNs; kept, "reachy.local." matches
+        # neither the Host a browser sends nor _request_host's stripped form
+        # — a total lockout from the handoff URL itself (review fold,
+        # probe-confirmed). Stripping mirrors _request_host.
+        h = device_console_handoff("reachy.local.", 8765)
+        assert h.origin == "http://reachy.local:8765"
+        c = TestClient(build_app(None, auth_token=_TOKEN, extra_trusted_origins=[h.origin]))
+        assert c.get("/api/identity", headers={**_AUTH, "Host": "reachy.local:8765"}).status_code == 200
+
     def test_nothing_reaches_a_logger(self, _isolated, caplog):
         with caplog.at_level(logging.DEBUG):
             device_console_handoff("10.6.0.63", 8765)
@@ -136,11 +151,32 @@ class TestExtraTrustedOrigins:
         for host in ({"Host": "tunnel.example"}, _LAN_HOST):
             assert c.get("/api/identity", headers={**_AUTH, **host}).status_code == 200
 
-    def test_junk_entry_raises_at_build_time(self, _isolated):
+    def test_junk_entry_raises_at_build_time_naming_the_param(self, _isolated):
         # Same loudness as a junk config entry: a bare hostname can never
-        # match a browser Origin, and half-applying is the worst state.
-        with pytest.raises(ConfigurationError):
+        # match a browser Origin, and half-applying is the worst state. The
+        # message must name the KWARG — an embedder must not be told to fix
+        # a config key it never touched (review fold, both lenses).
+        with pytest.raises(ConfigurationError, match="extra_trusted_origins"):
             build_app(None, auth_token=_TOKEN, extra_trusted_origins=["10.6.0.63"])
+
+    def test_bare_string_refused_loudly(self, _isolated):
+        # A str is a Sequence[str]: without the guard it iterates characters
+        # and refuses "entry 'h'" — loud but baffling (review fold).
+        with pytest.raises(ConfigurationError, match="bare string"):
+            build_app(None, auth_token=_TOKEN, extra_trusted_origins=_LAN)
+
+    def test_sandbox_combination_refused_at_build_time(self, _isolated, monkeypatch):
+        # Cross-confirmed review BLOCKER: sandbox turns bearer auth OFF (the
+        # proxy owns that edge), so admitting a LAN origin there would serve
+        # a TOKENLESS console to the LAN. The combination must refuse at
+        # build time — a leftover console.sandbox=true on a device must not
+        # silently open the bind.
+        monkeypatch.setenv("MAXIM_CONSOLE_SANDBOX", "1")
+        monkeypatch.setenv("MAXIM_CONSOLE_ALLOWED_ORIGINS", "https://sandbox.example")
+        with pytest.raises(ConfigurationError, match="sandbox"):
+            build_app(None, auth_token=_TOKEN, extra_trusted_origins=[_LAN])
+        # Counterpart: sandbox WITHOUT the param still builds (proxy deployments unaffected).
+        assert build_app(None, auth_token=_TOKEN) is not None
 
 
 # ── run_serve banner flush ───────────────────────────────────────────────────
@@ -162,7 +198,14 @@ class TestBannerFlush:
             run_serve([])
             """
         )
-        env = {k: v for k, v in os.environ.items() if k not in ("MAXIM_CONSOLE_SANDBOX", "PYTEST_CURRENT_TEST")}
+        # PYTHONUNBUFFERED would make the child unbuffered and the test pass
+        # with every flush=True reverted — vacuous exactly on the CI boxes
+        # that export it (review fold).
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in ("MAXIM_CONSOLE_SANDBOX", "PYTEST_CURRENT_TEST", "PYTHONUNBUFFERED")
+        }
         env["XDG_CONFIG_HOME"] = str(tmp_path / "config")
         env["MAXIM_DATA_HOME"] = str(tmp_path / "data")
         proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, timeout=180)

@@ -108,6 +108,19 @@ class TestContractCheck:
         (bundle / UI_MANIFEST_NAME).write_text("{not json")
         assert check_ui_contract(bundle) is None  # warns internally, does not raise
 
+    def test_non_dict_manifest_warns_like_unreadable(self, tmp_path, caplog):
+        # Valid JSON, wrong shape — previously the ONE silent variant of a
+        # present-but-unusable manifest (review fold): the reader must warn
+        # so check_ui_contract's short-circuit never hides a build-path bug.
+        import logging
+
+        bundle = _bundle(tmp_path / "b")
+        (bundle / UI_MANIFEST_NAME).write_text('"0.4.0"')
+        with caplog.at_level(logging.WARNING):
+            assert read_ui_manifest(bundle) is None
+            assert check_ui_contract(bundle) is None
+        assert any("not a JSON object" in r.getMessage() for r in caplog.records)
+
     def test_absent_bundle_is_a_noop(self):
         assert check_ui_contract(None) is None
 

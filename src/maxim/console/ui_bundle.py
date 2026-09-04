@@ -114,7 +114,14 @@ def read_ui_manifest(ui_dist: Path | str) -> dict[str, Any] | None:
     except (OSError, json.JSONDecodeError):
         logger.warning("Console UI manifest at %s is unreadable — skipping the contract check", path, exc_info=True)
         return None
-    return data if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        # Valid JSON, wrong shape ([] / "0.4.0" / null) — same build-path-bug
+        # class as unparseable, and previously the ONE silent variant (review
+        # fold): warn here so check_ui_contract's "reader already warned"
+        # short-circuit holds for every present-but-unusable manifest.
+        logger.warning("Console UI manifest at %s is not a JSON object — skipping the contract check", path)
+        return None
+    return data
 
 
 def check_ui_contract(ui_dist: Path | str | None) -> str | None:

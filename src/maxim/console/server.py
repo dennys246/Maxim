@@ -197,14 +197,19 @@ def _canonical_origin(raw: str) -> str | None:
     return f"{parts.scheme}://{hostpart}" + (f":{port}" if port is not None else "")
 
 
-def _canonical_origin_list(raw_entries: Any) -> frozenset[str]:
-    """Canonicalize ``console.allowed_origins`` entries, LOUDLY refusing junk.
+def _canonical_origin_list(
+    raw_entries: Any, *, source: str = f"config: console.allowed_origins (env: {_SANDBOX_ORIGINS_ENV})"
+) -> frozenset[str]:
+    """Canonicalize a trusted-origins list, LOUDLY refusing junk.
 
     A malformed entry (bare hostname, path, bad port) can never match a
     browser Origin, and its host may or may not derive — the half-applied
     state is the hardest to debug (Host guard relaxed, Origin guard still
     refusing the operator's own UI). Same philosophy as the sandbox cap
     below: an info log is not a signal anyone reads — fail at build time.
+    ``source`` names the surface the operator must fix (review fold: an
+    embedder passing a junk kwarg must not be told to edit a config key it
+    never touched).
     """
     canonical: set[str] = set()
     for raw in raw_entries or ():
@@ -215,8 +220,7 @@ def _canonical_origin_list(raw_entries: Any) -> frozenset[str]:
             from maxim.runtime.config_loader import ConfigurationError
 
             raise ConfigurationError(
-                f"config: console.allowed_origins entry {raw!r} is not an origin — expected "
-                f"scheme://host[:port], no path (env: {_SANDBOX_ORIGINS_ENV})"
+                f"{source}: entry {raw!r} is not an origin — expected scheme://host[:port], no path"
             )
         canonical.add(c)
     return frozenset(canonical)
@@ -274,7 +278,9 @@ def _refuse_in_sandbox(request: Request) -> None:
 #     pass: this is browser-relay protection, not authentication.
 # `console.allowed_origins` thereby graduates from a sandbox-only knob to the
 # general "non-local origins I trust" list; deliberate remote exposure (the
-# tunnel) lists its public origin here. Bearer auth (the auth block below)
+# tunnel) lists its public origin here. The one code-level feeder is
+# `build_app(extra_trusted_origins=…)` — a device embedder admitting its own
+# LAN bind (decision A9; refused under sandbox mode, where auth is off). Bearer auth (the auth block below)
 # authenticates the CALLER; this guard still constrains what a page in an
 # authenticated operator's own browser can be made to relay — defense in
 # depth, not redundancy (docs/plans/console_tunnel_hardening.md, decision
@@ -1493,12 +1499,18 @@ def build_app(
     ``extra_trusted_origins`` (keyword-only) is for an EMBEDDER that
     deliberately serves this app on a non-loopback interface (the Reachy
     device app binding its LAN address): each entry is admitted to the trust
-    policy exactly as a ``console.allowed_origins`` entry would be — its host
-    passes the Host guard, the origin passes the CSRF/``/ws`` Origin guard.
-    Entries canonicalize LOUDLY (junk raises ``ConfigurationError`` at build
-    time, same as the config list). This widens the browser-relay trust
-    guard ONLY — bearer auth is unaffected and stays fail-closed. Default
-    ``()`` keeps every existing caller byte-identical.
+    policy as a ``console.allowed_origins`` entry would be — its host passes
+    the Host guard, the origin passes the CSRF/``/ws`` Origin guard. Entries
+    canonicalize LOUDLY (junk raises ``ConfigurationError`` at build time,
+    same as the config list). This widens the browser-relay trust guard
+    ONLY — bearer auth is unaffected and stays fail-closed, which is exactly
+    why the parameter REFUSES to combine with sandbox mode below: sandbox is
+    the one state with bearer auth OFF (a proxy owns that edge), so a
+    device-embedder edge and a proxy-owned edge are contradictory deployment
+    claims — composed, a leftover ``console.sandbox=true`` would turn the
+    LAN bind into a tokenless open console (two-lens review, both lenses
+    independently). Default ``()`` keeps every existing caller
+    byte-identical.
     """
     sandbox = _sandbox_policy()
     if sandbox is not None:
@@ -1563,7 +1575,26 @@ def build_app(
     app.state.sandbox = sandbox
     trust = _trust_policy()
     if extra_trusted_origins:
-        extra = _canonical_origin_list(extra_trusted_origins)  # loud on junk, like the config list
+        from maxim.runtime.config_loader import ConfigurationError
+
+        if isinstance(extra_trusted_origins, str):  # a bare string iterates as characters — baffle loudly
+            raise ConfigurationError(
+                "build_app: extra_trusted_origins must be a sequence of origins, not a bare string — "
+                f"pass [{extra_trusted_origins!r}]"
+            )
+        if sandbox is not None:
+            # Cross-confirmed review BLOCKER: sandbox mode is the ONE state
+            # with bearer auth OFF (the authenticating proxy owns the edge);
+            # admitting a LAN origin there serves a TOKENLESS console to that
+            # LAN. The two deployment claims cannot both be true — refuse.
+            raise ConfigurationError(
+                "build_app: extra_trusted_origins cannot be combined with console.sandbox — sandbox "
+                "turns engine auth OFF for an authenticating proxy's edge; a device embedder must "
+                "run with sandbox off so the bearer token guards its LAN bind"
+            )
+        extra = _canonical_origin_list(
+            extra_trusted_origins, source="build_app(extra_trusted_origins=…)"
+        )  # loud on junk, like the config list
         extra_hosts = {h for origin in extra if (h := urlsplit(origin).hostname)}
         trust = _TrustPolicy(
             allowed_origins=trust.allowed_origins | extra,
@@ -1822,7 +1853,11 @@ def device_console_handoff(host: str, port: int = 8765) -> ConsoleHandoff:
     ``~/.config/maxim/console_token`` file ``maxim serve`` uses
     (:func:`maxim.tunnel.keys.ensure_console_token`; 0600 from creation), so
     ``--show-token`` / ``--rotate-token`` and per-request disk re-read (A7
-    rotation) all keep working on-device.
+    rotation) all keep working on-device — with ONE rotation caveat (review
+    fold): the ⚙️ link was assigned at bootstrap, so after ``--rotate-token``
+    it carries the DEAD token and lands on the paste screen until the app
+    restarts and re-calls this seam. Rotation still locks every device out
+    immediately; re-minting the link just needs the restart.
 
     Trust statement (the embedder MUST declare this in its privacy notes):
     anyone who can open the robot's dashboard can click the app's ⚙️ link and
@@ -1835,7 +1870,15 @@ def device_console_handoff(host: str, port: int = 8765) -> ConsoleHandoff:
     """
     from maxim.tunnel.keys import ensure_console_token
 
-    host = (host or "").strip()
+    # Trailing-dot FQDNs (mDNS/avahi hand back the absolute form) are stripped
+    # to mirror _request_host — kept, "reachy.local." matches NEITHER the Host
+    # a browser sends nor its own stripped form: every request 400s, including
+    # from the handoff URL itself (review fold, probe-confirmed lockout).
+    host = (host or "").strip().rstrip(".")
+    if not 0 < int(port) < 65536:
+        from maxim.runtime.config_loader import ConfigurationError
+
+        raise ConfigurationError(f"device_console_handoff: port {port!r} is not a connectable TCP port")
     origin = _canonical_origin(f"http://{host}:{port}" if ":" not in host else f"http://[{host}]:{port}")
     if origin is None:
         from maxim.runtime.config_loader import ConfigurationError
