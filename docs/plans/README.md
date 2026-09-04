@@ -103,6 +103,12 @@ Deep-audited 2026-08-27; release authority reconciled 2026-08-19.
 
 ### Engineering hygiene (roadmap 1.1.x items 6, 7)
 
+- [console_tunnel_hardening.md](console_tunnel_hardening.md) — **ACTIVE 2026-09-03**: the
+  console-facade security ladder (PR 1 trust guard SHIPPED on its branch; PR 2 bearer auth
+  fail-closed; PR 3 admission control; PR 4 pre-GA authz tiers), motivated by the phone-app
+  peer goal; folds the 2026-09-03 console security audit; supersedes the auth half of
+  deferred/maxim_console.md's open q #1 (hosted-console non-goal unchanged).
+
 - [measurement_path_fail_loud.md](measurement_path_fail_loud.md) — Stages 1 + 4
   SHIPPED (#487; CI lock). **Stages 2–3 = item 6.**
 - [god_function_decomposition.md](god_function_decomposition.md) — sequenced after
