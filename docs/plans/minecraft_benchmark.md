@@ -73,7 +73,7 @@ Which Minecraft integration surface? Options:
 - **Custom Forge mod with HTTP/WebSocket bridge** — full control, more work to maintain.
 - **Minecraft Education Edition Code Connection** — official, simpler API surface.
 
-Lean: Mineflayer with a WebSocket/JSON-RPC bridge to Python. Voyager's integration is well-documented; we can mirror it for fairness in the comparison protocol.
+Lean: Mineflayer with a WebSocket/JSON-RPC bridge to Python. Voyager's integration is well-documented; we can mirror it for fairness in the comparison protocol. *(SHIPPED DIFFERENTLY 2026-09-04, PR 3: NDJSON over plain TCP — same JSON-RPC-shaped messages, zero new dependencies; protocol authority is `src/maxim/simulation/minecraft.py`. "WS" here named a transport family, and the family's browser-facing member is a bridge-process add if ever needed.)*
 
 ### Q2. Action space mapping
 
@@ -233,7 +233,7 @@ Three findings decided this, each verified against the code:
 
 | Piece | Shape | Notes |
 |---|---|---|
-| Bridge process | JS (Mineflayer) + WS/JSON-RPC | The only non-Python component. |
+| Bridge process | JS (Mineflayer) + ~~WS~~ **NDJSON/TCP** (corrected 2026-09-04, PR 3 — protocol authority `src/maxim/simulation/minecraft.py`) | The only non-Python component. |
 | `MinecraftPerceptSource` | implements the frozen `PerceptSource` | Percepts must be text-shaped or take the numeric route below — `MemoryHub.on_percept_received` **returns early unless `transcript_chunk` or `content` is non-empty text**. |
 | Affordance backend seam | injected reader callable + a writer into `Entity.vital_metrics` | Copy the Reachy pattern (`embodiment/audio_localization.py::AzimuthDoASource(doa_reader=...)`). Affordance effects today are *declarative deltas*; a Minecraft action must call the game and read back truth. `embodiment/backends/` currently holds exactly one file. |
 | `bodies/minecraft_player.yaml` | sensors (health, hunger, light_level, y, nearest_hostile_dist), modulators → `move`/`look`/`mine`/`place` | Drop-in file, zero code. Any sensor the world owns must have a null `drive`, or `body.py`'s drift loop fights the writer. |

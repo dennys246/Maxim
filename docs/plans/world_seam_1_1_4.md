@@ -294,6 +294,14 @@ entity_map (zero new mechanism; `requires: {portions: 1}` refuses an empty loaf)
 surfaced that declared param DEFAULTS never applied at execute time (silent no-op; zero
 pre-existing YAMLs declared one), fixed generally in `ModulatorAffordanceTool.execute`.
 `cradle_food`'s description corrected to unlimited-by-design (option b); D67 ledger RESOLVED.
+(2b) *Review-round fold (both lenses):* the first draft's timeout handling INVERTED the
+Reachy contract it claimed to copy — a timeout is UNKNOWN, not confirmed failure, and now
+books mechanically-optimistic success with `outcome_valence: "neutral"` (game refusals stay
+`success=False`); the BLOCKER was the client dropping `action_result`'s embedded snapshot,
+so the post-action sync wrote PRE-action state (the fake hid it — verify-the-instrument) —
+absorbed unconditionally now, with the late/unsolicited-result leak closed, the persistent
+`create_connection` timeout that killed the reader on quiet spells removed, close/reader-death
+waking blocked callers, and the default-injection hardened against `target: null`.
 (3) *Seam obligation discharged:* `SensorEncoder.last_encode_was_designed_rest` + the loop's
 duck-typed probe — designed rest logs at debug, the no-cluster WARNING survives for genuine
 failures. The backend copies the Reachy contract exactly (attach_backends factory, honesty:
@@ -309,6 +317,20 @@ re-fired re-measure attaches there.
 - Two `run_agentic_loop` threads, separate `percept_source`/`action_sink` pairs (the
   `console/handle.py` bridge pattern), isolated agent homes (shared `~/.maxim` collides),
   `consolidation="full"` passed explicitly.
+- **Obligations accumulated from PR 3's review round:**
+  - **D77 fix + guard**: thread the executor's embodiment into the `entity_acquired` tool
+    regeneration, with a pickup-then-eat guard (the first acquirable consumable whose
+    self_effect matters would otherwise silently no-op).
+  - **eat vs eat_bread coherence**: on live-bridge runs `minecraft_bread` is a phantom
+    (SEM portions fall; `food` is world-owned/filtered; no game action) — exclude it from
+    live runs or route its eat through the bridge before the harness ships.
+  - **Staleness gate**: the harness's per-tick `sync_world_sensors` hook must consult
+    `MinecraftClient.state_age_s()` — a dead bridge must not feed the substrate the last
+    snapshot indefinitely (the honesty contract covers actions; sensors need this gate).
+  - **The N=6 world-channel tension (L11 is the authority)**: the shipped body declares six
+    world sensors — inside the band where A4's stability measured 0.62. The smoke gate must
+    not quietly answer that representation question; the L11 re-measure at first feed decides
+    (grow the body toward Minecraft scale, or record the small-N verdict).
 - Gate, in executable form:
   - smoke benchmark green **with an in-harness apparatus assertion that the substrate path
     ran** (encode activity > 0, `ec.json` written) — D64 is the proof that "clean" can mean

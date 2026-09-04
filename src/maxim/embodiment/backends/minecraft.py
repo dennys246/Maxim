@@ -8,10 +8,15 @@ its contract exactly (`docs/plans/world_seam_1_1_4.md` §PR 3; the plan's
   threaded through ``build_executor(modulator_factory=)`` — never attached
   post-hoc (push-silent-no-ops-into-types: a forgotten attach is a virtual
   world that LIES success).
-* **Honesty contract:** an affordance succeeds only when the bridge confirms
-  it (``action_result.ok``); a timeout or refused action is a REAL failure
-  (``ModulatorResult(success=False)``) — unknown is not success, and an
-  unconfirmable effect must not book one.
+* **Honesty contract (the Reachy convention, faithfully — corrected in the
+  PR 3 review round, which caught the first draft INVERTING the contract it
+  claimed to copy):** a REFUSED action (game ``ok:false``, or unsendable) is
+  a confirmed failure (``success=False`` → negative learning). A TIMEOUT is
+  UNKNOWN — dispatch accepted, completion unverifiable, the action may still
+  finish in-game — and books mechanically-optimistic ``success=True`` with
+  ``metadata["outcome_valence"] = "neutral"`` (the ternary invariant:
+  unknown is neither achieved nor failed); the next snapshot then tells the
+  world's truth either way.
 * **World-owned sensors:** the backend declares :attr:`world_owned_sensors`
   (unioned into ``Embodiment.live_world_set_sensors`` by ``build_executor``),
   and writes the game's MEASURED post-action state back through the
@@ -57,6 +62,7 @@ class MinecraftWorldBackend:
         self._entity_name = entity_name
         self._embodiment: Any = None  # bound by build_executor post-construction
         self.world_owned_sensors: tuple[str, ...] = tuple(world_sensors)
+        self._sync_warned: set[str] = set()  # warn-once-per-sensor dedup
 
     def bind_embodiment(self, embodiment: Any) -> None:
         """Called by ``build_executor`` after the Embodiment wrapper exists."""
@@ -85,8 +91,24 @@ class MinecraftWorldBackend:
             try:
                 if world_set_axis(self._embodiment, name, float(state[name]), owner=_OWNER):
                     written += 1
+                    self._sync_warned.discard(name)
+                elif name not in self._sync_warned:
+                    # warn ONCE per sensor (the world_set_axis dedup pattern):
+                    # a persistently failing world-truth write at debug level
+                    # is a mechanism that does not run looking like one that
+                    # ran (architecture-lens review, PR 3 round).
+                    self._sync_warned.add(name)
+                    logger.warning(
+                        "minecraft backend: world-set of %r refused/failed — world truth not reaching the body", name
+                    )
             except Exception:
-                logger.debug("minecraft backend: world-set of %r failed", name, exc_info=True)
+                if name not in self._sync_warned:
+                    self._sync_warned.add(name)
+                    logger.warning(
+                        "minecraft backend: world-set of %r raised — world truth not reaching the body",
+                        name,
+                        exc_info=True,
+                    )
         return written
 
     # ── actions ──────────────────────────────────────────────────────────
@@ -111,14 +133,28 @@ class MinecraftWorldBackend:
         except Exception as exc:
             return _result(success=False, error=f"bridge action failed: {exc}")
         ok = bool(result.get("ok"))
-        # Post-action truth: the action_result carries a fresh snapshot; the
-        # client has already absorbed it, so one sync writes the measured
-        # world into the body regardless of ok/fail (a failed mine attempt
-        # still cost time; the world may have moved).
+        unknown = bool(result.get("unknown"))
+        # Post-action truth: MinecraftClient absorbs the action_result's
+        # embedded snapshot into latest_state BEFORE routing the result (its
+        # _handle_line action_result branch — pinned by the client tests),
+        # so this sync writes POST-action measured state into the body
+        # regardless of outcome (a failed mine attempt still cost time; the
+        # world may have moved).
         self.sync_world_sensors()
-        if not ok:
-            return _result(success=False, error=str(result.get("detail") or "action refused by the game"))
-        return _result(success=True)
+        if ok:
+            return _result(success=True)
+        if unknown:
+            # The Reachy honesty convention, faithfully: dispatch was
+            # accepted and completion is UNVERIFIABLE (timeout / close) —
+            # mechanically optimistic, learning tier NEUTRAL. Booking
+            # failure here would mint a confirmed-negative for an action
+            # that may have succeeded (the routine long-pathfind case);
+            # the next snapshot tells the world's truth either way.
+            return _result(
+                success=True,
+                metadata={"outcome_valence": "neutral", "unconfirmed": str(result.get("detail", ""))},
+            )
+        return _result(success=False, error=str(result.get("detail") or "action refused by the game"))
 
 
 def minecraft_modulator_factory(client: Any, *, world_sensors: tuple[str, ...]):

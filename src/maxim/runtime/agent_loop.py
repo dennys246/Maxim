@@ -1302,7 +1302,11 @@ def _encode_was_designed_rest(sensor_encoder: Any, agent_id: str, modality: str)
         return False
     try:
         return bool(probe(agent_id=agent_id, modality=modality))
-    except Exception:
+    except (TypeError, AttributeError, KeyError):
+        # Narrow + logged (this file is on the swallow lint's zero list; the
+        # safe direction is keeping the WARNING, so a broken probe must not
+        # hide silently either).
+        logger.debug("designed-rest probe raised; treating as not-designed-rest", exc_info=True)
         return False
 
 

@@ -34,7 +34,22 @@ Wire protocol (frozen here; the bridge process implements the other side):
 
 Unknown message types are ignored (forward-compat); a malformed line is
 logged and skipped, never fatal. The reader thread is a daemon; ``close()``
-is idempotent.
+is idempotent and wakes any blocked ``call_action``. Raw TCP, not HTTP —
+outside ``utils/http.py``'s surface by design (that invariant's text,
+origin incident and CI grep are all HTTP request/response; there is no
+persistent-bidirectional-stream primitive there to route through).
+
+**Unknown outcomes (the Reachy honesty convention, copied faithfully —
+review round fix, both lenses):** an action the GAME refuses (``ok:false``)
+or that cannot be SENT is a confirmed failure. A TIMEOUT is neither — the
+action was dispatched and may still complete in-game after we stop waiting
+(fire-and-forget divergence; ``pathfinder.goto`` on a long path is the
+routine case). ``call_action`` marks that result ``unknown: True`` and the
+backend books it mechanically-optimistic with ``outcome_valence:
+"neutral"`` — unknown is not success AND not failure (the ternary
+invariant); the next snapshot then tells the truth about the world either
+way. A late-arriving result's embedded state snapshot is still absorbed as
+a state observation; its routing entry is dropped (no leak).
 
 Sensor flow into the body: the client does NOT write ``vital_metrics``
 itself — :class:`~maxim.embodiment.backends.minecraft.MinecraftWorldBackend`
@@ -86,10 +101,14 @@ class MinecraftClient:
         self._lock = threading.Lock()
         self._closed = threading.Event()
         self._latest_state: dict[str, float] = {}
-        self._state_ts: float = 0.0
+        self._state_ts: "float | None" = None
         self._events: deque[dict[str, Any]] = deque(maxlen=_EVENT_QUEUE_MAX)
         self._next_id = 1
         self._pending: dict[int, dict[str, Any]] = {}
+        # ids with a live waiter: results for any OTHER id are dropped after
+        # their state snapshot is absorbed — a late/unsolicited result must
+        # not grow _pending forever (executor-lens review, PR 3 round).
+        self._waiting: set[int] = set()
         self._pending_cv = threading.Condition(self._lock)
 
     # ── lifecycle ────────────────────────────────────────────────────────
@@ -97,8 +116,19 @@ class MinecraftClient:
     def connect(self) -> None:
         """Dial the bridge and start the reader thread. Raises on failure —
         a seam that cannot reach its world must fail LOUD at startup, never
-        degrade into a silently world-less agent."""
-        self._sock = self._factory()
+        degrade into a silently world-less agent. Reconnect-safe: clears the
+        closed flag so a reused client's reader is not stillborn."""
+        self._closed.clear()
+        sock = self._factory()
+        # create_connection's timeout PERSISTS as the socket's operation
+        # timeout — recv would raise after 10 quiet seconds and kill the
+        # reader with the wrong diagnosis (architecture-lens review, PR 3
+        # round: a quiet bridge is normal; a dead reader is not).
+        try:
+            sock.settimeout(None)
+        except OSError:
+            pass
+        self._sock = sock
         self._reader = threading.Thread(target=self._read_loop, name="minecraft-bridge-reader", daemon=True)
         self._reader.start()
 
@@ -110,6 +140,8 @@ class MinecraftClient:
                 sock.close()
             except OSError:
                 pass
+        with self._pending_cv:
+            self._pending_cv.notify_all()  # wake any blocked call_action now
 
     # ── reads ────────────────────────────────────────────────────────────
 
@@ -122,7 +154,7 @@ class MinecraftClient:
     def state_age_s(self) -> float:
         """Seconds since the last snapshot; ``inf`` before the first one."""
         with self._lock:
-            return (time.monotonic() - self._state_ts) if self._state_ts else float("inf")
+            return (time.monotonic() - self._state_ts) if self._state_ts is not None else float("inf")
 
     def pop_event(self) -> "dict[str, Any] | None":
         with self._lock:
@@ -146,25 +178,56 @@ class MinecraftClient:
         """
         sock = self._sock
         if sock is None:
-            return {"ok": False, "detail": "bridge not connected"}
-        with self._lock:
+            return {"ok": False, "unknown": False, "detail": "bridge not connected"}
+        with self._pending_cv:
             action_id = self._next_id
             self._next_id += 1
+            self._waiting.add(action_id)
         line = json.dumps({"type": "action", "id": action_id, "name": name, "params": params or {}})
         try:
             sock.sendall(line.encode("utf-8") + b"\n")
         except OSError as exc:
-            return {"ok": False, "detail": f"bridge send failed: {exc}"}
+            with self._pending_cv:
+                self._waiting.discard(action_id)
+            return {"ok": False, "unknown": False, "detail": f"bridge send failed: {exc}"}
         deadline = time.monotonic() + self._action_timeout_s
         with self._pending_cv:
-            while action_id not in self._pending:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0 or self._closed.is_set():
-                    return {"ok": False, "detail": f"action {name!r} timed out after {self._action_timeout_s}s"}
-                self._pending_cv.wait(timeout=remaining)
-            return self._pending.pop(action_id)
+            try:
+                while action_id not in self._pending:
+                    remaining = deadline - time.monotonic()
+                    if self._closed.is_set():
+                        return {"ok": False, "unknown": True, "detail": "client closed while waiting"}
+                    if remaining <= 0:
+                        # UNKNOWN, not confirmed failure: the action was
+                        # dispatched and may still complete in-game (module
+                        # docstring, the fire-and-forget paragraph).
+                        return {
+                            "ok": False,
+                            "unknown": True,
+                            "detail": f"action {name!r} unconfirmed after {self._action_timeout_s}s",
+                        }
+                    self._pending_cv.wait(timeout=remaining)
+                result = self._pending.pop(action_id)
+                result.setdefault("unknown", False)
+                return result
+            finally:
+                self._waiting.discard(action_id)
+                self._pending.pop(action_id, None)
 
     # ── reader ───────────────────────────────────────────────────────────
+
+    def _absorb_state(self, data: dict[str, Any]) -> None:
+        cleaned: dict[str, float] = {}
+        for key, value in data.items():
+            try:
+                cleaned[str(key)] = float(value)
+            except (TypeError, ValueError):
+                # A non-numeric value is dropped, leaving that sensor at its
+                # previous truth — stale-but-real beats fabricated.
+                continue
+        with self._lock:
+            self._latest_state = cleaned
+            self._state_ts = time.monotonic()
 
     def _read_loop(self) -> None:
         sock = self._sock
@@ -185,6 +248,8 @@ class MinecraftClient:
                     self._handle_line(raw)
         if not self._closed.is_set():
             logger.warning("minecraft bridge connection closed by peer — no further world state")
+        with self._pending_cv:
+            self._pending_cv.notify_all()  # a dead reader must not strand a waiter
 
     def _handle_line(self, raw: bytes) -> None:
         try:
@@ -196,30 +261,38 @@ class MinecraftClient:
         if mtype == "state":
             data = msg.get("data")
             if isinstance(data, dict):
-                cleaned: dict[str, float] = {}
-                for key, value in data.items():
-                    try:
-                        cleaned[str(key)] = float(value)
-                    except (TypeError, ValueError):
-                        continue
-                with self._lock:
-                    self._latest_state = cleaned
-                    self._state_ts = time.monotonic()
+                self._absorb_state(data)
         elif mtype == "event":
             text = msg.get("text")
             if isinstance(text, str) and text.strip():
+                kind = str(msg.get("kind", "info"))
+                if kind == "error":
+                    # The bridge refusing/failing loudly (e.g. a second
+                    # client) must not be a quietly-queued percept only.
+                    logger.warning("minecraft bridge error event: %s", text)
                 with self._lock:
-                    self._events.append({"kind": str(msg.get("kind", "info")), "text": text})
+                    self._events.append({"kind": kind, "text": text})
         elif mtype == "action_result":
+            # The embedded snapshot is a STATE OBSERVATION and is absorbed
+            # unconditionally — the post-action sync must read POST-action
+            # truth, not the previous periodic snapshot (executor-lens
+            # review, PR 3 round: the fake hid exactly this divergence).
+            state = msg.get("state")
+            if isinstance(state, dict):
+                self._absorb_state(state)
             action_id = msg.get("id")
             if isinstance(action_id, int):
                 with self._pending_cv:
-                    self._pending[action_id] = {
-                        "ok": bool(msg.get("ok")),
-                        "detail": str(msg.get("detail", "")),
-                        "state": msg.get("state") if isinstance(msg.get("state"), dict) else {},
-                    }
-                    self._pending_cv.notify_all()
+                    if action_id in self._waiting:
+                        self._pending[action_id] = {
+                            "ok": bool(msg.get("ok")),
+                            "unknown": False,
+                            "detail": str(msg.get("detail", "")),
+                            "state": state if isinstance(state, dict) else {},
+                        }
+                        self._pending_cv.notify_all()
+                    else:
+                        logger.debug("late/unsolicited action_result id=%s dropped (state absorbed)", action_id)
         # unknown types: ignored (forward-compat)
 
 

@@ -133,7 +133,7 @@ async function runAction(name, params) {
 // ── bridge server ──────────────────────────────────────────────────────────
 const server = net.createServer((sock) => {
   if (client && !client.destroyed) {
-    sock.end(JSON.stringify({ type: "event", kind: "info", text: "bridge busy: one client at a time" }) + "\n");
+    sock.end(JSON.stringify({ type: "event", kind: "error", text: "bridge busy: one client at a time" }) + "\n");
     return;
   }
   client = sock;

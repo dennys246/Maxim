@@ -464,7 +464,12 @@ class ModulatorAffordanceTool(Tool):
         # than changing behavior.
         schema = getattr(self, "_affordance_schema", None)
         for pname, pspec in (getattr(schema, "params", None) or {}).items():
-            if isinstance(pspec, tuple) and len(pspec) == 2 and pname not in kwargs:
+            if isinstance(pspec, tuple) and len(pspec) == 2 and kwargs.get(pname) in (None, ""):
+                # Absent, None, or empty string all take the declared default
+                # — an LLM passing target: null must not bypass a
+                # target_effect the default exists to route (the unlimited-
+                # bread hole, executor-lens review). Legitimate falsy values
+                # (0, False) are preserved.
                 kwargs[pname] = pspec[1]
 
         # Check affordance preconditions (component integrity gating).

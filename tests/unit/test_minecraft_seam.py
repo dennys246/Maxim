@@ -95,9 +95,69 @@ class TestClientProtocol:
             t.start()
             result = client.call_action("move_to", {"x": 1, "z": 2})
             assert result["ok"] and result["detail"] == "arrived"
-            # no responder this time -> timeout is a REAL failure
+            # no responder this time -> UNKNOWN, not confirmed failure
             result = client.call_action("move_to", {"x": 3, "z": 4})
-            assert not result["ok"] and "timed out" in result["detail"]
+            assert not result["ok"] and result["unknown"] and "unconfirmed" in result["detail"]
+        finally:
+            client.close()
+
+    def test_action_result_state_is_absorbed_before_routing(self):
+        """THE BLOCKER regression (executor lens): the embedded snapshot must
+        reach latest_state so the post-action sync reads POST-action truth —
+        and a LATE result's snapshot is still absorbed while its routing
+        entry is dropped (no _pending leak)."""
+        client, far = _paired_client(action_timeout_s=0.3)
+        try:
+            _push(far, {"type": "state", "data": {"health": 20.0}})
+            assert _wait(lambda: client.latest_state().get("health") == 20.0)
+            # a late/unsolicited result: never requested id
+            _push(far, {"type": "action_result", "id": 999, "ok": True, "detail": "late", "state": {"health": 7.0}})
+            assert _wait(lambda: client.latest_state().get("health") == 7.0)
+            assert client._pending == {}, "late/unsolicited results must not grow _pending"
+        finally:
+            client.close()
+
+    def test_close_wakes_a_blocked_call_action_promptly(self):
+        import threading
+
+        client, _far = _paired_client(action_timeout_s=30.0)
+        out = {}
+
+        def caller():
+            out["r"] = client.call_action("move_to", {"x": 1, "z": 2})
+
+        t = threading.Thread(target=caller, daemon=True)
+        t.start()
+        time.sleep(0.1)
+        start = time.monotonic()
+        client.close()
+        t.join(timeout=2.0)
+        assert not t.is_alive(), "close() must wake a blocked call_action"
+        assert time.monotonic() - start < 2.0
+        assert out["r"]["unknown"] is True
+
+    def test_reconnect_after_close_is_not_stillborn(self):
+        client, far = _paired_client()
+        client.close()
+        ours2, theirs2 = socket.socketpair()
+        client._factory = lambda: theirs2
+        client.connect()
+        try:
+            _push(ours2, {"type": "state", "data": {"health": 3.0}})
+            assert _wait(lambda: client.latest_state().get("health") == 3.0), (
+                "a reconnected client's reader must not be stillborn"
+            )
+        finally:
+            client.close()
+
+    def test_lines_fragmented_across_recv_boundaries_parse(self):
+        client, far = _paired_client()
+        try:
+            payload = json.dumps({"type": "state", "data": {"health": 11.0}}).encode() + b"\n"
+            far.sendall(payload[:7])
+            time.sleep(0.05)
+            far.sendall(payload[7:])
+            assert _wait(lambda: client.latest_state().get("health") == 11.0)
         finally:
             client.close()
 
@@ -187,11 +247,22 @@ class TestWorldBackend:
         assert entity.vital_metrics["food"] == 9.0
         assert "unknown_key" not in entity.vital_metrics  # body YAML is the contract
 
-    def test_unconfirmed_action_is_a_real_failure(self):
+    def test_refused_action_is_a_real_failure(self):
         client = _FakeClient(ok=False, detail="no path")
         _ex, entity, backend = _player_executor(client)
         result = entity.modulators["avatar"].execute("move_to", {"x": 1.0, "z": 2.0})
         assert not result.success and "no path" in (result.error or "")
+
+    def test_timeout_books_neutral_not_failure(self):
+        """The Reachy convention, faithfully (review fold): dispatch accepted,
+        completion unverifiable -> mechanically optimistic + neutral tier."""
+        client = _FakeClient(ok=False, detail="unconfirmed after 15s")
+        client_result = {"ok": False, "unknown": True, "detail": "unconfirmed after 15s"}
+        client.call_action = lambda name, params=None: client_result
+        _ex, entity, backend = _player_executor(client)
+        result = entity.modulators["avatar"].execute("move_to", {"x": 1.0, "z": 2.0})
+        assert result.success, "unknown is not failure"
+        assert result.metadata.get("outcome_valence") == "neutral"
 
     def test_world_channel_reads_the_synced_state_and_encodes_gained(self):
         """The A4 caller chain end to end at unit level: bridge state →
@@ -241,6 +312,14 @@ class TestMinecraftBread:
         assert out.success
         assert bread.vital_metrics["portions"] == 4.0
 
+    def test_target_null_still_takes_the_default(self):
+        """Review fold: an LLM passing target: null must not mint unlimited
+        bread — None/empty take the declared default."""
+        bread, eat = self._bread_tools()
+        out = eat.execute(target=None)
+        assert out.success
+        assert bread.vital_metrics["portions"] == 4.0
+
     def test_empty_loaf_refuses(self):
         bread, eat = self._bread_tools()
         bread.vital_metrics["portions"] = 0.0
@@ -270,7 +349,6 @@ class TestDesignedRestVsWarning:
         assert not encoder.last_encode_was_designed_rest(agent_id="a", modality="world")
 
     def test_loop_logs_designed_rest_at_debug_not_warning(self, caplog):
-
         from maxim.runtime.agent_loop import _encode_was_designed_rest
         from maxim.similarity.ec import ECConfig, EntorhinalCortex
         from maxim.similarity.encoder import SensorEncoder

@@ -34,10 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   world-truth health/food drives with zero drift) + the dev-side Mineflayer process
   (`scripts/minecraft_bridge/`, not packaged, not CI-run). D67 RESOLVED: `minecraft_bread`
   implements finite portions via a defaulted `target` param + `target_effect` (zero new
-  mechanism); `cradle_food` corrected to unlimited-by-design. Fixed: declared affordance
-  param defaults now actually apply at execute time (previously schema decoration only);
-  a gained body resting at neutral now logs designed rest at debug instead of a per-tick
-  no-cluster WARNING.
+  mechanism); `cradle_food` corrected to unlimited-by-design.
 - **1.1.4 PR 2 — `modality:` sensor declarations + the world channel + its re-baseline**:
   a body sensor can declare its substrate channel (`modality: world|audio` in the YAML →
   `reading_schema`); the `world` ModalityChannel is purely declaration-driven (inert for every
@@ -104,6 +101,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   docstring before the run. Kickoff plan: `docs/plans/world_seam_1_1_4.md`.
 
 ### Fixed
+- **D76 — declared affordance param defaults now actually apply at execute time** (previously
+  schema decoration the LLM was shown and `execute` never honored; found via minecraft_bread's
+  defaulted `target`; absent/None/"" all take the default, 0/False preserved).
+- **Designed rest vs failure at the substrate channel WARNING**: a gained body resting at
+  neutral (D2) now logs at debug via `SensorEncoder.last_encode_was_designed_rest`; the
+  per-channel no-cluster WARNING survives for genuine encode failures.
 - **D69 — `MAXIM_DATA_HOME` was defeated by two import-time `Path.home()` paths and three CWD-relative
   sim writes.** `utils/last_run.py` and `cloud_dispatch.load_cost_config` (which shadowed the
   resolver `CostTrackerConfig.__post_init__` already had) now go through `utils/paths`; the
