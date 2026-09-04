@@ -252,6 +252,19 @@ transaction.
   mode the roadmap row names.
 - Fix the modulator-sub-sensor `drive: null` crash (F3).
 
+**PR 2 result (2026-09-03):** shipped as planned — `modality:` rides `reading_schema` (no new
+dataclass field); world membership is purely declared; audio = legacy tuple ∪ declared
+(declared sensors join RAW — the place code stays scoped to its validated azimuth domain,
+same measure-before-composing discipline as D3; value/range lockstep pinned under both
+place-code arms); every bundled body reads byte-identical (world channel empty — swept in
+`tests/unit/test_world_channel.py`). The `drive: null` sub-sensor guard verified red on the
+pre-fix code. **Re-baseline (characterization, not a gate):** at synthetic uniform ±1 biases
+over 4 tools, the third channel flips 44% of recommendations while the 0.3 gate-pass rate is
+unchanged (0.86 both arms) and the summed cluster term widens ±2 → ±3 (observed ±2.6).
+`min_confidence` stays 0.3 for 1.1.4 (the channel is inert for every existing body); the
+record is the reference for 1.2's calibration on real distributions. Data:
+`docs/experiments/data/selection_dynamics_rebaseline_2026-09-03.json`.
+
 ### PR 3 — the bridge, the body, scarcity
 
 - Mineflayer (JS) process + WS/JSON-RPC; `MinecraftPerceptSource` implementing the frozen

@@ -44,6 +44,16 @@ INTEROCEPTION_TAG = "interoception"
 # routing (pre-merge review finding, cross-confirmed by both lenses).
 AUDIO_TAG = "audio"
 
+# The world channel tag (1.1.4 — the Minecraft/world seam). External-world
+# state a body senses that is neither a drive (interoception) nor sound
+# localization: light level, altitude, hostile proximity, … Membership is
+# DECLARED per sensor (`modality: world` in the body YAML → the channel
+# readers in runtime/agent_loop.py), never a hardcoded name tuple. Consumers
+# special-case it by NAME in two places that must stay consistent: it is
+# GAINED (`SensorEncoderConfig.gain_modalities`, the A4 large-N encoding) and
+# FROZEN-CENTROID from birth (ECConfig + hivemind defaults, plan decision D6).
+WORLD_TAG = "world"
+
 
 @dataclass(frozen=True)
 class ModalityChannel:

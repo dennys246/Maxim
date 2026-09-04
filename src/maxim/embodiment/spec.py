@@ -525,8 +525,13 @@ def _parse_entity(
                 else:
                     lo, hi = ms_spec["range"]
                     modulator.vital_metrics[ms_name] = float((lo + hi) / 2)
-            # Parse drive spec from modulator sub-sensors
-            if isinstance(ms_spec, dict) and "drive" in ms_spec:
+            # Parse drive spec from modulator sub-sensors. `.get(...) is not
+            # None` (NOT `"drive" in`): a `drive: null` on a sub-sensor is the
+            # same "extends child removes an inherited drive" idiom the
+            # entity-level guard supports — the old membership test passed
+            # None into _parse_drive_spec and crashed (1.1.4 PR 2, latent bug
+            # found in the kickoff survey; test-pinned).
+            if isinstance(ms_spec, dict) and ms_spec.get("drive") is not None:
                 # Use qualified name so evaluate_failures can look it up
                 qualified = f"{mod_name}.{ms_name}"
                 entity.drive_specs[qualified] = _parse_drive_spec(ms_spec["drive"])
@@ -572,6 +577,18 @@ def _build_reading_schema(spec: dict[str, Any]) -> dict[str, Any]:
 
     if "initial" in spec:
         schema["initial"] = spec["initial"]
+
+    # ``modality:`` (1.1.4 PR 2) — a sensor DECLARES which substrate modality
+    # channel carries it, instead of channel membership living in hardcoded
+    # name tuples (`agent_loop._EXTEROCEPTIVE_ROOT_SENSORS`, whose own comment
+    # asked for exactly this). Consumed by the channel readers in
+    # `runtime/agent_loop.py`: `"world"` and `"audio"` are read today;
+    # interoception membership still comes from `drive:` declarations, NOT
+    # from this field (drives are what the affinity heuristic and drive-relief
+    # credit key on). Absent = the sensor belongs to no exteroceptive channel
+    # (byte-identical to pre-PR-2 behavior for every existing body).
+    if "modality" in spec and spec["modality"] is not None:
+        schema["modality"] = str(spec["modality"])
 
     return schema
 
