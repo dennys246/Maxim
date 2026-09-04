@@ -111,10 +111,13 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from maxim.console.server import build_app  # noqa: E402
 
+_TOKEN = "mxc_" + "t" * 43
+_AUTH = {"Authorization": f"Bearer {_TOKEN}"}
+
 
 @pytest.fixture(scope="module")
 def client():
-    return TestClient(build_app(None))
+    return TestClient(build_app(None, auth_token=_TOKEN), headers=_AUTH)
 
 
 class TestCampaignDiscovery:
@@ -257,7 +260,7 @@ class TestAdventurePremise:
                 raise AssertionError("premise run must not take the campaign path")
 
         monkeypatch.setattr(srv, "_get_handle", lambda: FakeHandle())
-        with TestClient(build_app(None)) as c:
+        with TestClient(build_app(None, auth_token=_TOKEN), headers=_AUTH) as c:
             r = c.post("/api/run", json={"mode": "adventure", "input": "a heist on a moon base"})
             assert r.status_code == 200
             assert r.json()["status"] == "started"

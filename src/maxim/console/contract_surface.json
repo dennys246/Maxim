@@ -1,11 +1,12 @@
 {
-  "contract_version": "0.3.0",
-  "fingerprint": "175358ee95cd2052",
+  "contract_version": "0.4.0",
+  "fingerprint": "bec166b19128060a",
   "paths": [
     "/api/campaigns",
     "/api/diagnose",
     "/api/events/envelope",
     "/api/events/subscribe-frame",
+    "/api/hello",
     "/api/identity",
     "/api/models",
     "/api/probe",
@@ -22,6 +23,7 @@
     "DiagnoseResponse",
     "DiagnoseSection",
     "HTTPValidationError",
+    "HelloResponse",
     "IdentityResponse",
     "MeshSetupRequest",
     "ModelInfoWire",

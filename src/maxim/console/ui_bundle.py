@@ -50,6 +50,13 @@ logger = logging.getLogger(__name__)
 #           now returns one row PER CHECK (~69) with extra.group/extra.fix
 #           instead of one blank row per group. A 0.2.0 client cannot know
 #           any of it exists.
+#   0.4.0 — bearer auth (hardening PR 2): every /api/* route, /docs,
+#           /openapi.json and /ws now require the console token
+#           (securitySchemes.consoleToken; 401 shape documented); NEW
+#           unauthenticated GET /api/hello + HelloResponse for skew detection
+#           and the login screen; browser /ws carries the token as the
+#           `maxim.bearer.<token>` subprotocol beside `maxim-console-v1`.
+#           A 0.3.0 client sees 401s with a self-explaining detail string.
 #
 # ADDITIVE CHANGES COUNT. This was learned twice: #438 shipped two endpoints
 # and a reshaped envelope at 0.1.0, and the identity surface itself first
@@ -57,7 +64,7 @@ logger = logging.getLogger(__name__)
 # `test_schema_surface_matches_the_recorded_contract` now fails when the
 # OpenAPI surface moves without this number moving, so the rule is enforced
 # rather than remembered.
-CONSOLE_CONTRACT_VERSION = "0.3.0"
+CONSOLE_CONTRACT_VERSION = "0.4.0"
 
 #: Manifest filename the pulse build writes into every bundle.
 UI_MANIFEST_NAME = "maxim-ui.json"

@@ -222,6 +222,9 @@ fastapi = pytest.importorskip("fastapi", reason="requires the `console` extra (f
 from maxim.console.schemas import ConsoleEvent, SubscribeFrame  # noqa: E402
 from maxim.console.server import _EventHub, _WsConn, build_app  # noqa: E402
 
+_TOKEN = "mxc_" + "t" * 43
+_AUTH = {"Authorization": f"Bearer {_TOKEN}"}
+
 
 def _first_stream_event(ws):
     """Drain the identity hello frame and return the first real event.
@@ -377,9 +380,9 @@ class TestWsEndToEnd:
 
         from fastapi.testclient import TestClient
 
-        app = build_app(None)
+        app = build_app(None, auth_token=_TOKEN)
         with TestClient(app) as client:  # context manager runs the lifespan (sink registration)
-            with client.websocket_connect("/ws") as ws:
+            with client.websocket_connect("/ws", headers=_AUTH) as ws:
                 # Emit from a different thread — the real topology (sim thread
                 # publishes, event loop fans out).
                 t = threading.Thread(
@@ -403,9 +406,9 @@ class TestWsEndToEnd:
 
         from fastapi.testclient import TestClient
 
-        app = build_app(None)
+        app = build_app(None, auth_token=_TOKEN)
         with TestClient(app) as client:
-            with client.websocket_connect("/ws") as ws:
+            with client.websocket_connect("/ws", headers=_AUTH) as ws:
                 assert ws.receive_json()["kind"] == "identity"  # hello frame
                 ws.send_json({"channels": ["memory"]})
                 motor_seen: set[int] = set()
@@ -437,9 +440,9 @@ class TestWsEndToEnd:
 
         from fastapi.testclient import TestClient
 
-        app = build_app(None)
+        app = build_app(None, auth_token=_TOKEN)
         with TestClient(app) as client:
-            with client.websocket_connect("/ws") as ws:
+            with client.websocket_connect("/ws", headers=_AUTH) as ws:
                 ws.send_text("not json {{{")
                 time.sleep(0.1)  # let the recv task process (and survive) it
                 t = threading.Thread(target=sim_log, args=("LEARN", "still alive"))
@@ -449,7 +452,7 @@ class TestWsEndToEnd:
                 assert evt["kind"] == "learn"
 
     def test_openapi_carries_subscribe_frame(self):
-        schema = build_app(None).openapi()
+        schema = build_app(None, auth_token=_TOKEN).openapi()
         assert "SubscribeFrame" in schema["components"]["schemas"]
         assert "/api/events/subscribe-frame" in schema["paths"]
         # Review fold: tier/seq/message are REQUIRED so the generated TS type

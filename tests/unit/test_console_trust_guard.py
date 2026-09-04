@@ -25,6 +25,9 @@ from maxim.console.server import build_app  # noqa: E402
 
 _LISTED = "https://app.example"
 
+_TOKEN = "mxc_" + "t" * 43
+_AUTH = {"Authorization": f"Bearer {_TOKEN}"}
+
 
 @pytest.fixture()
 def plain_app(monkeypatch, tmp_path):
@@ -32,7 +35,7 @@ def plain_app(monkeypatch, tmp_path):
     monkeypatch.delenv("MAXIM_CONSOLE_ALLOWED_ORIGINS", raising=False)
     monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-    return build_app(None)
+    return build_app(None, auth_token=_TOKEN)
 
 
 @pytest.fixture()
@@ -43,7 +46,7 @@ def listed_app(monkeypatch, tmp_path):
     monkeypatch.setenv("MAXIM_CONSOLE_ALLOWED_ORIGINS", f"{_LISTED}/, https://second.example")
     monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-    return build_app(None)
+    return build_app(None, auth_token=_TOKEN)
 
 
 # `mode=sim` answers 501 from dispatch without building a handle or touching
@@ -56,13 +59,15 @@ _PROBE_BODY = {"mode": "sim", "input": "x"}
 
 class TestHttpOrigin:
     def test_untrusted_origin_post_refused(self, plain_app):
-        r = TestClient(plain_app).post("/api/run", json=_PROBE_BODY, headers={"origin": "https://evil.example"})
+        r = TestClient(plain_app).post(
+            "/api/run", json=_PROBE_BODY, headers={**_AUTH, "origin": "https://evil.example"}
+        )
         assert r.status_code == 403
         assert r.json()["detail"] == srv._ORIGIN_REFUSAL
 
     def test_null_origin_post_refused(self, plain_app):
         # Sandboxed iframes / file:// pages send the literal "null".
-        r = TestClient(plain_app).post("/api/run", json=_PROBE_BODY, headers={"origin": "null"})
+        r = TestClient(plain_app).post("/api/run", json=_PROBE_BODY, headers={**_AUTH, "origin": "null"})
         assert r.status_code == 403
 
     @pytest.mark.parametrize(
@@ -70,20 +75,24 @@ class TestHttpOrigin:
         ["http://127.0.0.1:8765", "http://localhost:8765", "http://localhost:5173", "http://[::1]:8765"],
     )
     def test_loopback_origin_post_accepted_any_port(self, plain_app, origin):
-        r = TestClient(plain_app).post("/api/run", json=_PROBE_BODY, headers={"origin": origin})
+        r = TestClient(plain_app).post("/api/run", json=_PROBE_BODY, headers={**_AUTH, "origin": origin})
         assert r.status_code == 501  # reached mode dispatch
 
     def test_missing_origin_post_accepted(self, plain_app):
         # curl / native clients / the CLI send no Origin — browser-relay
         # protection, not authentication.
-        assert TestClient(plain_app).post("/api/run", json=_PROBE_BODY).status_code == 501
+        assert TestClient(plain_app).post("/api/run", json=_PROBE_BODY, headers=_AUTH).status_code == 501
 
     def test_listed_origin_post_accepted(self, listed_app):
-        r = TestClient(listed_app).post("/api/run", json=_PROBE_BODY, headers={"origin": _LISTED.upper() + "/"})
+        r = TestClient(listed_app).post(
+            "/api/run", json=_PROBE_BODY, headers={**_AUTH, "origin": _LISTED.upper() + "/"}
+        )
         assert r.status_code == 501
 
     def test_unlisted_origin_still_refused_when_list_set(self, listed_app):
-        r = TestClient(listed_app).post("/api/run", json=_PROBE_BODY, headers={"origin": "https://evil.example"})
+        r = TestClient(listed_app).post(
+            "/api/run", json=_PROBE_BODY, headers={**_AUTH, "origin": "https://evil.example"}
+        )
         assert r.status_code == 403
 
     def test_guard_fires_before_the_body_touches_config_writers(self, plain_app, monkeypatch):
@@ -94,20 +103,20 @@ class TestHttpOrigin:
         r = TestClient(plain_app).post(
             "/api/setup/mesh",
             json={"leader_url": "https://attacker.example", "api_key": "k"},
-            headers={"origin": "https://evil.example"},
+            headers={**_AUTH, "origin": "https://evil.example"},
         )
         assert r.status_code == 403 and wrote == []
 
     def test_reads_are_not_origin_gated(self, plain_app):
         # Without CORS headers a cross-origin page cannot READ a response, so
         # GETs pass the Origin rule (the Host rule still covers rebinding).
-        r = TestClient(plain_app).get("/api/identity", headers={"origin": "https://evil.example"})
+        r = TestClient(plain_app).get("/api/identity", headers={**_AUTH, "origin": "https://evil.example"})
         assert r.status_code == 200
 
     def test_default_port_origin_matches_listed_bare(self, listed_app):
         # Browsers omit default ports from Origin; a client that sends one
         # must still match the bare listed form (canonicalization, both ways).
-        r = TestClient(listed_app).post("/api/run", json=_PROBE_BODY, headers={"origin": f"{_LISTED}:443"})
+        r = TestClient(listed_app).post("/api/run", json=_PROBE_BODY, headers={**_AUTH, "origin": f"{_LISTED}:443"})
         assert r.status_code == 501
 
     def test_listed_default_port_matches_bare_origin(self, monkeypatch, tmp_path):
@@ -115,8 +124,8 @@ class TestHttpOrigin:
         monkeypatch.setenv("MAXIM_CONSOLE_ALLOWED_ORIGINS", "https://app.example:443")
         monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-        app = build_app(None)
-        r = TestClient(app).post("/api/run", json=_PROBE_BODY, headers={"origin": "https://app.example"})
+        app = build_app(None, auth_token=_TOKEN)
+        r = TestClient(app).post("/api/run", json=_PROBE_BODY, headers={**_AUTH, "origin": "https://app.example"})
         assert r.status_code == 501
 
 
@@ -128,7 +137,7 @@ class TestContentType:
         import json as _json
 
         r = TestClient(plain_app).post(
-            "/api/run", content=_json.dumps(_PROBE_BODY), headers={"content-type": "text/plain"}
+            "/api/run", content=_json.dumps(_PROBE_BODY), headers={**_AUTH, "content-type": "text/plain"}
         )
         assert r.status_code == 415
         assert r.json()["detail"] == srv._CONTENT_TYPE_REFUSAL
@@ -136,7 +145,7 @@ class TestContentType:
     def test_missing_content_type_refused_on_mutations(self, plain_app):
         import json as _json
 
-        r = TestClient(plain_app).post("/api/run", content=_json.dumps(_PROBE_BODY))
+        r = TestClient(plain_app).post("/api/run", content=_json.dumps(_PROBE_BODY), headers=_AUTH)
         assert r.status_code == 415
 
     def test_json_with_charset_suffix_accepted(self, plain_app):
@@ -145,12 +154,12 @@ class TestContentType:
         r = TestClient(plain_app).post(
             "/api/run",
             content=_json.dumps(_PROBE_BODY),
-            headers={"content-type": "application/json; charset=utf-8"},
+            headers={**_AUTH, "content-type": "application/json; charset=utf-8"},
         )
         assert r.status_code == 501
 
     def test_reads_are_not_content_type_gated(self, plain_app):
-        assert TestClient(plain_app).get("/api/identity").status_code == 200
+        assert TestClient(plain_app).get("/api/identity", headers=_AUTH).status_code == 200
 
 
 # ── Host rule on every request ───────────────────────────────────────────────
@@ -159,7 +168,7 @@ class TestContentType:
 class TestHttpHost:
     @pytest.mark.parametrize("host", ["evil.example", "evil.example:8765", "attacker.localhost.example"])
     def test_unrecognized_host_refused(self, plain_app, host):
-        r = TestClient(plain_app).get("/api/identity", headers={"host": host})
+        r = TestClient(plain_app).get("/api/identity", headers={**_AUTH, "host": host})
         assert r.status_code == 400
         assert r.json()["detail"] == srv._HOST_REFUSAL
 
@@ -169,7 +178,7 @@ class TestHttpHost:
     def test_local_hosts_accepted(self, plain_app, host):
         # "localhost." (trailing FQDN dot) resolves to loopback; "testserver"
         # is TestClient's default, allowed only under pytest — see below.
-        assert TestClient(plain_app).get("/api/identity", headers={"host": host}).status_code == 200
+        assert TestClient(plain_app).get("/api/identity", headers={**_AUTH, "host": host}).status_code == 200
 
     def test_testserver_allowance_is_pytest_scoped(self, monkeypatch):
         # In production (no PYTEST_CURRENT_TEST) a hostile LAN resolver could
@@ -182,17 +191,17 @@ class TestHttpHost:
         assert srv._host_allowed("localhost", srv._EMPTY_TRUST) is True  # loopback unaffected
 
     def test_trailing_dot_does_not_relax_refusals(self, plain_app):
-        assert TestClient(plain_app).get("/api/identity", headers={"host": "evil.example."}).status_code == 400
+        assert TestClient(plain_app).get("/api/identity", headers={**_AUTH, "host": "evil.example."}).status_code == 400
 
     def test_listed_origin_host_accepted(self, listed_app):
-        assert TestClient(listed_app).get("/api/identity", headers={"host": "app.example"}).status_code == 200
+        assert TestClient(listed_app).get("/api/identity", headers={**_AUTH, "host": "app.example"}).status_code == 200
 
     def test_host_rule_covers_mutating_routes_too(self, plain_app):
-        r = TestClient(plain_app).post("/api/run", json=_PROBE_BODY, headers={"host": "evil.example"})
+        r = TestClient(plain_app).post("/api/run", json=_PROBE_BODY, headers={**_AUTH, "host": "evil.example"})
         assert r.status_code == 400
 
     def test_host_rule_covers_the_static_root(self, plain_app):
-        assert TestClient(plain_app).get("/", headers={"host": "evil.example"}).status_code == 400
+        assert TestClient(plain_app).get("/", headers={**_AUTH, "host": "evil.example"}).status_code == 400
 
 
 # ── /ws (middleware does not cover websockets — the guard is hand-applied) ──
@@ -202,28 +211,28 @@ class TestWs:
     def test_untrusted_origin_refused_before_accept(self, plain_app):
         with TestClient(plain_app) as client:
             with pytest.raises(WebSocketDisconnect):
-                with client.websocket_connect("/ws", headers={"origin": "https://evil.example"}):
+                with client.websocket_connect("/ws", headers={**_AUTH, "origin": "https://evil.example"}):
                     pass
 
     def test_loopback_origin_accepted(self, plain_app):
         with TestClient(plain_app) as client:
-            with client.websocket_connect("/ws", headers={"origin": "http://localhost:5173"}) as ws:
+            with client.websocket_connect("/ws", headers={**_AUTH, "origin": "http://localhost:5173"}) as ws:
                 assert ws.receive_json()["kind"] == "identity"
 
     def test_missing_origin_accepted(self, plain_app):
         with TestClient(plain_app) as client:
-            with client.websocket_connect("/ws") as ws:
+            with client.websocket_connect("/ws", headers=_AUTH) as ws:
                 assert ws.receive_json()["kind"] == "identity"
 
     def test_listed_origin_accepted(self, listed_app):
         with TestClient(listed_app) as client:
-            with client.websocket_connect("/ws", headers={"origin": _LISTED}) as ws:
+            with client.websocket_connect("/ws", headers={**_AUTH, "origin": _LISTED}) as ws:
                 assert ws.receive_json()["kind"] == "identity"
 
     def test_unrecognized_host_refused(self, plain_app):
         with TestClient(plain_app) as client:
             with pytest.raises(WebSocketDisconnect):
-                with client.websocket_connect("/ws", headers={"host": "evil.example"}):
+                with client.websocket_connect("/ws", headers={**_AUTH, "host": "evil.example"}):
                     pass
 
 
@@ -242,7 +251,7 @@ class TestPolicy:
 
     def test_policy_is_per_app_not_global(self, listed_app, monkeypatch, tmp_path):
         monkeypatch.delenv("MAXIM_CONSOLE_ALLOWED_ORIGINS", raising=False)
-        other = build_app(None)
+        other = build_app(None, auth_token=_TOKEN)
         assert other.state.trust.allowed_origins == frozenset()
         assert listed_app.state.trust.allowed_origins  # unchanged
 
@@ -273,7 +282,7 @@ class TestPolicy:
         monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         with pytest.raises(ConfigurationError, match="allowed_origins"):
-            build_app(None)
+            build_app(None, auth_token=_TOKEN)
 
     def test_default_ports_canonicalize_in_policy(self, monkeypatch, tmp_path):
         monkeypatch.delenv("MAXIM_CONSOLE_SANDBOX", raising=False)
@@ -282,7 +291,7 @@ class TestPolicy:
         )
         monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-        trust = build_app(None).state.trust
+        trust = build_app(None, auth_token=_TOKEN).state.trust
         assert trust.allowed_origins == frozenset({"https://a.example", "http://b.example", "https://c.example:8443"})
         assert trust.allowed_hosts == frozenset({"a.example", "b.example", "c.example"})
 
@@ -293,5 +302,5 @@ class TestPolicy:
         monkeypatch.setenv("MAXIM_CONSOLE_ALLOWED_ORIGINS", "capacitor://app.example")
         monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-        app = build_app(None)
+        app = build_app(None, auth_token=_TOKEN)
         assert srv._origin_allowed("capacitor://app.example", app.state.trust) is True

@@ -297,16 +297,19 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from maxim.console.server import build_app  # noqa: E402
 
+_TOKEN = "mxc_" + "t" * 43
+_AUTH = {"Authorization": f"Bearer {_TOKEN}"}
+
 
 class TestTalkEndpoint:
     def test_requires_input(self):
-        with TestClient(build_app(None)) as c:
+        with TestClient(build_app(None, auth_token=_TOKEN), headers=_AUTH) as c:
             assert c.post("/api/run", json={"mode": "talk", "input": "  "}).status_code == 422
 
     def test_only_sim_remains_501(self):
         # rest is LIVE now; sim is deliberately a pointer at the CLI rather
         # than a console surface (see TestSimModeIsAPointerNotAStub).
-        with TestClient(build_app(None)) as c:
+        with TestClient(build_app(None, auth_token=_TOKEN), headers=_AUTH) as c:
             assert c.post("/api/run", json={"mode": "sim"}).status_code == 501
 
     def test_turn_is_run_id_scoped_and_reply_goes_to_the_stream(self, monkeypatch):
@@ -324,7 +327,7 @@ class TestTalkEndpoint:
                 return {"turn": 1, "response": "hi", "actions": [1], "timed_out": False}
 
         monkeypatch.setattr(srv, "_get_handle", lambda: FakeHandle())
-        with TestClient(build_app(None)) as c:
+        with TestClient(build_app(None, auth_token=_TOKEN), headers=_AUTH) as c:
             r = c.post("/api/run", json={"mode": "talk", "input": "hello"})
         assert r.status_code == 200
         body = r.json()
@@ -344,7 +347,7 @@ class TestTalkEndpoint:
         t.start()
         monkeypatch.setitem(srv._active_run, "thread", t)
         try:
-            with TestClient(build_app(None)) as c:
+            with TestClient(build_app(None, auth_token=_TOKEN), headers=_AUTH) as c:
                 r = c.post("/api/run", json={"mode": "talk", "input": "hello"})
             assert r.status_code == 409
             assert "adventure" in r.json()["detail"].lower()
@@ -362,7 +365,7 @@ class TestTalkEndpoint:
                 raise RuntimeError("no backend")
 
         monkeypatch.setattr(srv, "_get_handle", lambda: BoomHandle())
-        with TestClient(build_app(None)) as c:
+        with TestClient(build_app(None, auth_token=_TOKEN), headers=_AUTH) as c:
             r = c.post("/api/run", json={"mode": "talk", "input": "hello"})
         assert r.status_code == 500
         assert "no backend" in r.json()["detail"]
@@ -458,7 +461,7 @@ class TestRestMode:
 
 class TestSimModeIsAPointerNotAStub:
     def test_sim_501_names_the_cli_alternative(self):
-        with TestClient(build_app(None)) as c:
+        with TestClient(build_app(None, auth_token=_TOKEN), headers=_AUTH) as c:
             r = c.post("/api/run", json={"mode": "sim"})
         assert r.status_code == 501
         detail = r.json()["detail"]
@@ -477,7 +480,7 @@ class TestRestEndpoint:
                 return {"promoted": 3, "removed": 1}
 
         monkeypatch.setattr(srv, "_get_handle", lambda: FakeHandle())
-        with TestClient(build_app(None)) as c:
+        with TestClient(build_app(None, auth_token=_TOKEN), headers=_AUTH) as c:
             r = c.post("/api/run", json={"mode": "rest"})
         body = r.json()
         assert r.status_code == 200
@@ -493,7 +496,7 @@ class TestRestEndpoint:
         t.start()
         monkeypatch.setitem(srv._active_run, "thread", t)
         try:
-            with TestClient(build_app(None)) as c:
+            with TestClient(build_app(None, auth_token=_TOKEN), headers=_AUTH) as c:
                 assert c.post("/api/run", json={"mode": "rest"}).status_code == 409
         finally:
             alive.set()

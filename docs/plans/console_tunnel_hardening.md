@@ -1,7 +1,9 @@
 # Console tunnel hardening — from localhost-only to deliberately exposable
 
-**Status:** ACTIVE — PR 1 (trust guard) MERGED #609 (2026-09-03); PR 2 design pass complete
-(decisions A1–A8, 2026-09-04), implementation queued behind the 1.1.4 finish; PRs 3–4 sequenced below.
+**Status:** ACTIVE — PR 1 (trust guard) MERGED #609 (2026-09-03); PR 2 (bearer auth)
+IMPLEMENTED per decisions A1–A8 on `feat/console-auth` (2026-09-04; one A7 sharpening: disk
+tokens are re-read per request so rotation bites with NO restart); PRs 3–4 sequenced below.
+Pulse-side ledger (A6) remains open in the maxim-pulse repo.
 **Motivating goal:** a phone app (client + sensory surface) that reaches the operator's own leader
 over the Cloudflare tunnel and speaks the console facade + `/ws`. Target window: post-1.1.4;
 app ships against a stabilized contract (see "Contract freeze" below).
@@ -145,10 +147,13 @@ open questions from the PR 1 fold are all resolved here; implementation follows 
   regen).** (i) OpenAPI `securitySchemes: bearer` applied to every `/api/*` operation;
   (ii) the 401 error shape (`{"detail": ...}`) documented — the PR 1 400/403/415 refusals
   stay OUT (unchanged rationale: legitimate clients never see them); (iii) one new
-  UNAUTHENTICATED endpoint `GET /api/hello` returning ONLY `{contract_version, auth:
-  "bearer"}` so a client can detect skew and render the right login screen BEFORE it holds
-  a token — nothing else moves out from behind auth (H3/H4/M2: identity, diagnose, recall
-  are exactly what auth exists to cover). Pulse-side ledger: login/paste-token screen,
+  UNAUTHENTICATED endpoint `GET /api/hello` returning ONLY `{contract_version, auth}` so a
+  client can detect skew and render the right login screen BEFORE it holds a token —
+  `auth` is `"bearer"` normally, `"none"` under sandbox mode (implementation addition,
+  2026-09-04 fold: the sandbox client must know NOT to render a login screen; `/redoc`
+  also joined the authed set, same rationale as `/docs`) — nothing else moves out from
+  behind auth (H3/H4/M2: identity, diagnose, recall are exactly what auth exists to
+  cover). Pulse-side ledger: login/paste-token screen,
   fragment bootstrap, Bearer on FacadeClient, ws subprotocol on EventClient, contract stamp
   0.4.0.
 - **A7 — acceptance tests that pin the posture** (each with its accepting counterpart, per

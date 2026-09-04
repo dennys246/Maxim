@@ -28,6 +28,7 @@ def atomic_write_text(
     *,
     encoding: str = "utf-8",
     preserve_mode: bool = False,
+    initial_mode: int | None = None,
 ) -> None:
     """Atomically write text to ``path``.
 
@@ -46,9 +47,18 @@ def atomic_write_text(
         as a silent secret-leak vector.
 
         If ``path`` does not exist yet, ``preserve_mode`` is a no-op —
-        the new file inherits the umask as usual. Callers that want a
-        specific initial mode on a brand-new file should ``os.chmod``
-        after this function returns.
+        the new file inherits the umask as usual (or ``initial_mode``).
+    initial_mode
+        When set, the TEMP file is created with these permission bits
+        via ``os.open`` — so the content is never on disk wider than
+        this, not even during the write — and they are re-asserted on
+        the final file after the replace (``os.open``'s mode is masked
+        by the umask; the post-replace chmod makes the bits exact).
+        ``atomic_write_secret`` passes 0o600: a brand-new secret file
+        must not transit through a umask-wide (0644) window between
+        creation and a caller's after-the-fact chmod — the 2026-09-04
+        console-auth review round caught exactly that window, behind a
+        comment claiming it was already closed.
     """
     parent = os.path.dirname(path) or "."
     os.makedirs(parent, exist_ok=True)
@@ -70,13 +80,20 @@ def atomic_write_text(
             existing_mode = None
 
     try:
-        with open(tmp_path, "w", encoding=encoding) as f:
+        if initial_mode is not None:
+            # Restrictive bits ON THE FD, from creation — no umask games
+            # (os.umask is process-global and racy under threads).
+            fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, initial_mode)
+            f_ctx = os.fdopen(fd, "w", encoding=encoding)
+        else:
+            f_ctx = open(tmp_path, "w", encoding=encoding)
+        with f_ctx as f:
             # Writing content to disk is this function's purpose.
-            # ``atomic_write_secret`` (above) is the caller for credential
-            # files and tightens the umask to 0o077 around the call so the
-            # temp file is mode 0o600 from creation. CodeQL flags the
-            # write because the data-flow analysis can reach this point
-            # from secret-bearing callers — by design.
+            # ``atomic_write_secret`` is the caller for credential files and
+            # passes ``initial_mode=0o600`` so the temp file carries
+            # restrictive bits from creation (fd-mode, not umask). CodeQL
+            # flags the write because the data-flow analysis can reach this
+            # point from secret-bearing callers — by design.
             f.write(content)  # lgtm [py/clear-text-storage-sensitive-data]
             f.flush()
             try:
@@ -103,6 +120,13 @@ def atomic_write_text(
             os.chmod(path, existing_mode & 0o7777)
         except OSError as e:
             logger.warning("preserve_mode: could not chmod %s: %s", path, e)
+    elif initial_mode is not None:
+        try:
+            # First write of this path: os.open's mode was masked by the
+            # umask, so assert the exact requested bits on the final file.
+            os.chmod(path, initial_mode)
+        except OSError as e:
+            logger.warning("initial_mode: could not chmod %s: %s", path, e)
 
 
 def atomic_write_json(
@@ -135,14 +159,15 @@ def atomic_write_secret(path: str, content: str, *, encoding: str = "utf-8") -> 
     preserve_mode=True" because they pick a different function
     entirely.
 
-    When ``path`` doesn't exist yet, there's no mode to preserve;
-    callers that need a specific initial mode on a brand-new secret
-    file should ``os.chmod`` after this function returns (a future
-    C3 cluster-key rotation verb will want 0o600 on first write).
+    Brand-new files are 0600 FROM CREATION (``initial_mode`` — the fd
+    is opened with restrictive bits, so the secret never sits on disk
+    umask-wide, not even in the ``.tmp`` window; 2026-09-04 console-auth
+    review fold, cross-confirmed by both lenses). Pre-existing files
+    keep their exact mode via ``preserve_mode``.
 
     Plan 4 C2 drain state does NOT use this function because drain
     state is operator-visible topology, not a secret. Using the
     wrapper here would over-advertise it and muddy the "this is for
     secrets" signal.
     """
-    atomic_write_text(path, content, encoding=encoding, preserve_mode=True)
+    atomic_write_text(path, content, encoding=encoding, preserve_mode=True, initial_mode=0o600)

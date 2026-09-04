@@ -15,6 +15,9 @@ pytest.importorskip("fastapi", reason="requires the `console` extra (fastapi/uvi
 from maxim.console import server as srv  # noqa: E402
 from maxim.runtime.config_loader import ConfigurationError, coerce_agent_id  # noqa: E402
 
+_TOKEN = "mxc_" + "t" * 43
+_AUTH = {"Authorization": f"Bearer {_TOKEN}"}
+
 
 @pytest.fixture(autouse=True)
 def _fresh_handle_state(monkeypatch, tmp_path):
@@ -74,8 +77,8 @@ class TestResolution:
         monkeypatch.setattr("maxim.recall", _recall)
         from fastapi.testclient import TestClient
 
-        app = srv.build_app(None)
-        r = TestClient(app).get("/api/recall")
+        app = srv.build_app(None, auth_token=_TOKEN)
+        r = TestClient(app).get("/api/recall", headers=_AUTH)
         assert r.status_code in (200, 501)
         assert seen == ["knight_seed"]
 

@@ -15,6 +15,14 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from maxim.console.server import build_app  # noqa: E402
 
+_TOKEN = "mxc_" + "t" * 43
+_AUTH = {"Authorization": f"Bearer {_TOKEN}"}
+
+
+def _client(app):
+    return TestClient(app, headers=_AUTH)
+
+
 # Every path the frontend generates against — live verbs + typed seam stubs.
 _EXPECTED_PATHS = {
     "/api/models",
@@ -43,7 +51,7 @@ _EXPECTED_SCHEMAS = {
 
 @pytest.fixture(scope="module")
 def app():
-    return build_app(None)
+    return build_app(None, auth_token=_TOKEN)
 
 
 def test_openapi_paths_complete(app):
@@ -60,7 +68,7 @@ def test_openapi_seam_schemas_complete(app):
 
 
 def test_live_verb_models_ok(app):
-    r = TestClient(app).get("/api/models")
+    r = _client(app).get("/api/models")
     assert r.status_code == 200
     assert "groups" in r.json()
 
@@ -76,7 +84,7 @@ def test_live_verb_models_ok(app):
     ],
 )
 def test_seam_stubs_are_501(app, method, path, body):
-    c = TestClient(app)
+    c = _client(app)
     r = c.get(path) if method == "get" else c.post(path, json=body)
     assert r.status_code == 501
 
@@ -89,7 +97,7 @@ def test_setup_cloud_writes_placement_ref(app, tmp_path, monkeypatch):
 
     cfg = tmp_path / "config.json"
     monkeypatch.setattr("maxim.runtime.config_writer.config_path", lambda: cfg)
-    r = TestClient(app).post(
+    r = _client(app).post(
         "/api/setup/cloud",
         json={"provider": "anthropic", "profile": "claude-sonnet", "api_key": "sk-cl", "monthly_budget_usd": 20.0},
     )
@@ -118,7 +126,7 @@ def test_recall_maps_curated_blend_to_wire(app, monkeypatch):
         preferences=[RecalledItem(text="prefers stealth", kind="preference", salience=0.7, learned_from="play")],
     )
     monkeypatch.setattr("maxim.recall", lambda **kw: blend)
-    j = TestClient(app).get("/api/recall").json()
+    j = _client(app).get("/api/recall").json()
     assert j["name"] == "Ada"
     assert j["player_model"] == ["gravitates toward diplomacy"]
     assert j["story_memories"][0]["summary"] == "your rogue betrayed the party"
@@ -136,7 +144,7 @@ def test_setup_mesh_writes_ref_config(app, tmp_path, monkeypatch):
     # config_writer imports config_path by name, so patch ITS binding (the
     # by-name-import gotcha), which apply_mesh_setup + mutate_config both use.
     monkeypatch.setattr("maxim.runtime.config_writer.config_path", lambda: cfg)
-    r = TestClient(app).post("/api/setup/mesh", json={"leader_url": "https://leader.example", "api_key": "sk-xyz"})
+    r = _client(app).post("/api/setup/mesh", json={"leader_url": "https://leader.example", "api_key": "sk-xyz"})
     assert r.status_code == 200
     j = r.json()
     assert j["ok"] is True and j["placement"] == "mesh"
@@ -155,7 +163,7 @@ def test_setup_mesh_writes_ref_config(app, tmp_path, monkeypatch):
 def test_probe_cloud_shape_dispatches(app):
     """PROBE now accepts the cloud shape (provider, no url): a missing key fails,
     a present key warns (no false-green — a live round-trip isn't faked)."""
-    c = TestClient(app)
+    c = _client(app)
     r_missing = c.post("/api/probe", json={"provider": "anthropic"})
     assert r_missing.status_code == 200 and r_missing.json()["status"] == "fail"
     r_key = c.post("/api/probe", json={"provider": "anthropic", "api_key": "sk-x"})
@@ -167,14 +175,14 @@ def test_probe_cloud_shape_dispatches(app):
 def test_diagnose_platform_is_structured(app):
     """DiagnoseResponse.platform is now a structured object (os/arch/...), not a
     stringified PlatformInfo repr."""
-    j = TestClient(app).get("/api/diagnose").json()
+    j = _client(app).get("/api/diagnose").json()
     assert isinstance(j["platform"], dict)
     assert "os" in j["platform"] and "arch" in j["platform"]
 
 
 def test_models_carry_curated_marker(app):
     """ModelInfoWire exposes the curated marker so the wizard picks by intent."""
-    groups = TestClient(app).get("/api/models").json()["groups"]
+    groups = _client(app).get("/api/models").json()["groups"]
     everything = [m for members in groups.values() for m in members]
     assert everything and all("curated" in m for m in everything)
 
@@ -194,7 +202,7 @@ def test_probe_wires_classifier(app, monkeypatch):
         "maxim.models.language.maxim_peer_backend._MaximPeerBackend.for_url",
         classmethod(lambda cls, url, **kw: _FakeBackend()),
     )
-    r = TestClient(app).post("/api/probe", json={"url": "http://leader", "api_key": "k"})
+    r = _client(app).post("/api/probe", json={"url": "http://leader", "api_key": "k"})
     assert r.status_code == 200
     j = r.json()
     assert j["status"] == "fail"  # auth_rejected → fail
@@ -206,7 +214,7 @@ def test_probe_wires_classifier(app, monkeypatch):
 
 def test_seam_request_validation_is_typed(app):
     """A malformed seam body is a 422 (typed), proving the schema is enforced."""
-    r = TestClient(app).post("/api/run", json={"mode": "not-a-valid-mode"})
+    r = _client(app).post("/api/run", json={"mode": "not-a-valid-mode"})
     assert r.status_code == 422
 
 
