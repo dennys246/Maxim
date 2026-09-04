@@ -383,9 +383,14 @@ persisted, ~510 feed writes each. Data:
 FIRST live run was honestly RED (aut_a: 1 node / 324 writes — a static apparatus, not a
 seam defect: frozen daylight cycle + no hostiles near that bot; the gate discriminating
 exactly as built); hostiles were summoned and the run repeated. **Still outstanding:**
-L11's re-measure (the trigger is now LIVE-fired — the channel has fed from a real world —
-but the re-measure itself needs its own protocol: the bake-off metric on real correlated
-sensor traces), and the roadmap row's gate-clause annotation at the release transaction.
+L11's re-measure CAPTURE+ANALYZE (the protocol is now FROZEN and lint-governed:
+`docs/experiments/protocols/l11_remeasure_preregistration.md` + its implementation script —
+prereg merged before capture, the split discipline finally honored; the body grew 6 → 16
+world sensors with ranges RE-CENTERED so rest sits at the A4 neutral, which moved the world
+geometry tag — D4's designed case, harmless to any persisted state — and the CI smoke now
+runs 60 steps because the gained N=16 fake concentrates to ~4 clusters, so the harness test
+takes ~15 s in the fast lane), and the roadmap row's gate-clause annotation at the release
+transaction.
 
 ### The hardware block (operator; scheduled after PR 1 merges — not gating the sim-side PRs)
 

@@ -96,13 +96,25 @@ class FakeBridgeServer:
             pass
 
     def _snapshot(self) -> dict[str, float]:
+        # Covers EVERY declared modality:world sensor (lockstep test-pinned
+        # against the body YAML — the fake must not drift under it).
         r = self._rng
         return {
             "health": max(0.0, min(20.0, 14.0 + r.uniform(-4, 6))),
             "food": max(0.0, min(20.0, 12.0 + r.uniform(-6, 6))),
+            "saturation": r.uniform(0, 5),
+            "oxygen": max(0.0, min(20.0, 18.0 + r.uniform(-4, 2))),
             "light_level": float(r.randint(0, 15)),
             "y_altitude": 64.0 + r.uniform(-8, 8),
             "nearest_hostile_dist": max(0.0, min(64.0, r.uniform(2, 64))),
+            "hostile_count": float(r.randint(0, 6)),
+            "nearest_player_dist": max(0.0, min(64.0, r.uniform(1, 64))),
+            "distance_from_spawn": r.uniform(0, 64),
+            "speed": r.uniform(0, 0.4),
+            "on_ground": float(r.random() > 0.2),
+            "is_raining": float(r.random() > 0.9),
+            "xp_level": float(r.randint(0, 10)),
+            "look_pitch": r.uniform(-1.2, 1.2),
             "time_of_day": r.random(),
         }
 
