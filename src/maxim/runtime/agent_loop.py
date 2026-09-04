@@ -1294,6 +1294,18 @@ def _encode_current_clusters(sensor_encoder: Any, agent_id: str, executor: Any) 
     return clusters
 
 
+def _encode_was_designed_rest(sensor_encoder: Any, agent_id: str, modality: str) -> bool:
+    """Duck-typed probe of ``SensorEncoder.last_encode_was_designed_rest``
+    (fakes without it: never designed rest, the WARNING stays)."""
+    probe = getattr(sensor_encoder, "last_encode_was_designed_rest", None)
+    if not callable(probe):
+        return False
+    try:
+        return bool(probe(agent_id=agent_id, modality=modality))
+    except Exception:
+        return False
+
+
 _DEFAULT_SUBSTRATE_MIN_CONFIDENCE = 0.3
 
 
@@ -1463,6 +1475,11 @@ def propose_via_substrate(
                 continue
             if node_id:
                 clusters[ch.tag] = node_id
+            elif _encode_was_designed_rest(sensor_encoder, agent_id, ch.tag):
+                # A gained body resting at neutral encodes nothing BY DESIGN
+                # (D2) — per-tick WARNING here would make designed rest
+                # indistinguishable from failure (plan §PR 3 seam note).
+                logger.debug("substrate channel %r rests at neutral — no cluster by design", ch.tag)
             else:
                 # A channel with sensors that yields no cluster is the
                 # dilution failure mode's silent sibling — surface it.

@@ -97,6 +97,12 @@ class TestModalityDeclaration:
         registry = ComponentRegistry()
         checked = 0
         for ref in registry.list_refs("bodies"):
+            if ref == "bodies/minecraft_player":
+                # THE declaring body (1.1.4 PR 3) — the one legitimate
+                # world-channel feeder; its behavior is pinned by
+                # test_minecraft_seam.py, and any OTHER body joining this
+                # exemption list must argue its case in review.
+                continue
             spec = registry.get(ref)
             body = _parse_entity(dict(spec.get("entity", spec)))
             ex = _FakeExecutor(body)

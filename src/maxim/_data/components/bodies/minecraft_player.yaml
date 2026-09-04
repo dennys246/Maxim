@@ -1,0 +1,100 @@
+component:
+  name: minecraft_player
+  category: bodies
+  archetype: humanoid
+  tags: [body, minecraft, world, player, bridge]
+  synonyms: [minecraft body, player body, minecraft avatar]
+  description: |
+    The Minecraft player body (1.1.4 world seam, docs/plans/world_seam_1_1_4.md
+    PR 3). World-state sensors declare `modality: world` — the first body to
+    feed the A4-gained, frozen-centroid world channel (which RE-fires L11's
+    re-measure trigger when this body first runs; see the L11 note). Every
+    world sensor is written by the bridge's MEASURED game snapshots
+    (MinecraftWorldBackend world-owns them; the modeled self_effect on those
+    keys is filtered on live), so none carries drift (`drift_rate: 0` on the
+    drive-bearing ones, no drive on the rest) — the drift loop must never
+    fight the writer. `food` additionally carries an entropic hunger-style
+    drive and `health` a homeostatic one, so real game state feeds the drive
+    system: world-truth pain, the same dual world+interoception pattern as a
+    drive-bearing azimuth. Affordance self_effects are the STUB model for
+    bridge-less runs; on live the game's readback is the truth.
+
+entity:
+  name: minecraft_player
+  entity_type: body
+  sensors:
+    health:
+      unit: hp
+      range: [0, 20]
+      initial: 20
+      modality: world
+      drive:
+        drift_mode: homeostatic
+        set_point: 20
+        drift_rate: 0.0        # world-owned: the bridge writes truth
+        comfort_band: 6.0      # pain below 14 hp
+        pain_scale: 0.5
+    food:
+      unit: points
+      range: [0, 20]
+      initial: 20
+      modality: world
+      drive:
+        drift_mode: entropic
+        drift_direction: down
+        drift_rate: 0.0        # world-owned: the game drains it, not the model
+        deprivation_threshold: 6.0
+        satisfaction_threshold: 16.0
+    light_level:
+      unit: level
+      range: [0, 15]
+      initial: 7
+      modality: world
+    y_altitude:
+      unit: blocks
+      range: [-64, 320]
+      initial: 64
+      modality: world
+    nearest_hostile_dist:
+      unit: blocks
+      range: [0, 64]
+      initial: 64
+      modality: world
+    time_of_day:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+      modality: world
+  modulators:
+    avatar:
+      abstract: true  # capability-only — no sensors (C4)
+      affordances:
+        move_to:
+          params:
+            x: float
+            z: float
+          description: "Pathfind to the given x/z coordinates"
+        turn:
+          params:
+            degrees: float
+          description: "Turn the view by the given degrees (positive = left)"
+        mine_block:
+          params:
+            x: float
+            y: float
+            z: float
+          description: "Mine the block at the given coordinates"
+        place_block:
+          params:
+            x: float
+            y: float
+            z: float
+          description: "Place a held block at the given coordinates"
+        eat:
+          params: {}
+          description: "Eat held food"
+          self_effect:
+            food: 4.0          # stub model only; live readback owns `food`
+        attack_nearest:
+          params: {}
+          description: "Attack the nearest hostile mob"

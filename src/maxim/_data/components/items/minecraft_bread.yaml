@@ -1,0 +1,42 @@
+component:
+  name: minecraft_bread
+  category: items
+  tags: [minecraft, food, world, finite, scarcity]
+  synonyms: [bread, loaf, minecraft food]
+  description: |
+    Finite bread for the world seam (1.1.4 PR 3; plan decision D5 / bugs
+    ledger D67): a finite-resource world is where scarcity is the point, and
+    THIS item actually implements it — eating decrements its own `portions`
+    through target_effect, riding the existing target-resolution machinery
+    (the `target` param defaults to this entity's name, so the entity_map
+    resolves the item itself and the -1 applies; zero new mechanism). The
+    `requires: {portions: 1}` gate makes an empty loaf refuse. Contrast
+    cradle_food, which is unlimited BY DESIGN (its description was corrected
+    the same day this shipped — D67 option b — because implementing the
+    decrement there would re-stale Exp 52's twice-revalidated harness).
+
+entity:
+  name: minecraft_bread
+  entity_type: consumable
+  acquirable: true
+  sensors:
+    portions:
+      unit: count
+      range: [0, 5]
+      initial: 5
+  modulators:
+    nutrition:
+      abstract: true  # capability-only — no sensors (C4)
+      affordances:
+        eat_bread:
+          params:
+            target:
+              type: str
+              default: minecraft_bread
+          description: "Eat a portion of the bread (finite — portions run out)"
+          requires:
+            portions: 1
+          self_effect:
+            food: 4.0
+          target_effect:
+            portions: -1

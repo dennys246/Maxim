@@ -24,6 +24,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **1.1.4 PR 3 — the Minecraft bridge seam**: `simulation/minecraft.py` (NDJSON-over-TCP
+  `MinecraftClient` with an injectable transport, per-tick state buffering, bounded event
+  queue; `MinecraftPerceptSource` on the frozen CC8 protocol, text-shaped percepts) +
+  `embodiment/backends/minecraft.py` (`MinecraftWorldBackend` on the Reachy contract:
+  attach_backends factory through `build_executor(modulator_factory=)`, unconfirmed actions
+  are REAL failures, world-owned sensors written only from measured game snapshots via
+  `world_set_axis`) + `bodies/minecraft_player.yaml` (the first `modality: world` body —
+  world-truth health/food drives with zero drift) + the dev-side Mineflayer process
+  (`scripts/minecraft_bridge/`, not packaged, not CI-run). D67 RESOLVED: `minecraft_bread`
+  implements finite portions via a defaulted `target` param + `target_effect` (zero new
+  mechanism); `cradle_food` corrected to unlimited-by-design. Fixed: declared affordance
+  param defaults now actually apply at execute time (previously schema decoration only);
+  a gained body resting at neutral now logs designed rest at debug instead of a per-tick
+  no-cluster WARNING.
 - **1.1.4 PR 2 — `modality:` sensor declarations + the world channel + its re-baseline**:
   a body sensor can declare its substrate channel (`modality: world|audio` in the YAML →
   `reading_schema`); the `world` ModalityChannel is purely declaration-driven (inert for every

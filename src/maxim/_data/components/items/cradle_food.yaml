@@ -3,8 +3,13 @@ component:
   category: items
   tags: [cradle, food, satisfaction, drive]
   description: |
-    A food source with multiple portions. Eating reduces the agent's
-    hunger via self_effect. Portions decrease on consumption.
+    A food source. Eating reduces the agent's hunger via self_effect.
+    Feeding is UNLIMITED BY DESIGN (D67, resolved 2026-09-04 as option b):
+    the `portions` sensor exists but nothing decrements it — implementing
+    the decrement would change Exp 52's own twice-revalidated harness. The
+    finite-resource mechanic lives where scarcity is the point:
+    items/minecraft_bread.yaml (1.1.4 world seam), whose eat affordance
+    actually decrements portions via target_effect.
 
 entity:
   name: food_source

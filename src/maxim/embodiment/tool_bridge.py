@@ -454,6 +454,19 @@ class ModulatorAffordanceTool(Tool):
         return None
 
     def execute(self, **kwargs: Any) -> Any:
+        # Declared param DEFAULTS apply at execute time (1.1.4 PR 3): the
+        # YAML shape `{param: {type: T, default: V}}` parses into `(T, V)`
+        # tuples, but until now the default was only schema decoration — an
+        # omitted param stayed absent from kwargs, silently no-opping any
+        # machinery keyed on it (found via minecraft_bread's defaulted
+        # `target`, whose target_effect never fired). Zero existing YAMLs
+        # declared defaults before that file, so this fills a hole rather
+        # than changing behavior.
+        schema = getattr(self, "_affordance_schema", None)
+        for pname, pspec in (getattr(schema, "params", None) or {}).items():
+            if isinstance(pspec, tuple) and len(pspec) == 2 and pname not in kwargs:
+                kwargs[pname] = pspec[1]
+
         # Check affordance preconditions (component integrity gating).
         # When a body part is too damaged, its affordances fail with an
         # explanatory message — producing the natural tool-failure → pain

@@ -1,0 +1,15 @@
+{
+  "name": "maxim-minecraft-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mineflayer bridge for the Maxim 1.1.4 world seam (NDJSON-over-TCP; protocol authority: src/maxim/simulation/minecraft.py)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "mineflayer": "^4.20.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "vec3": "^0.1.8"
+  }
+}

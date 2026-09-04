@@ -283,6 +283,27 @@ mitigations as before (clean-tree provenance at the harness commit, `ts`, merge-
   distinguish the two at the seam (e.g. the encoder signalling rest explicitly, or the loop
   checking the all-neutral condition) before the first world body ships.
 
+**PR 3 result (2026-09-04):** shipped as planned, with three recorded deviations/decisions.
+(1) *Transport:* NDJSON over plain TCP instead of the sketched "WS/JSON-RPC" — same
+JSON-RPC-shaped messages, zero new dependencies (core has no websocket client; a localhost
+pipe needs none); protocol frozen in `simulation/minecraft.py`'s docstring, the JS bridge
+(`scripts/minecraft_bridge/`, dev-side, unpackaged) mirrors it. (2) *D67/D5:* the finite
+mechanic rides EXISTING machinery — `minecraft_bread`'s `eat_bread` declares a `target` param
+defaulting to the item's own name, so `target_effect: {portions: -1}` resolves through the
+entity_map (zero new mechanism; `requires: {portions: 1}` refuses an empty loaf) — which
+surfaced that declared param DEFAULTS never applied at execute time (silent no-op; zero
+pre-existing YAMLs declared one), fixed generally in `ModulatorAffordanceTool.execute`.
+`cradle_food`'s description corrected to unlimited-by-design (option b); D67 ledger RESOLVED.
+(3) *Seam obligation discharged:* `SensorEncoder.last_encode_was_designed_rest` + the loop's
+duck-typed probe — designed rest logs at debug, the no-cluster WARNING survives for genuine
+failures. The backend copies the Reachy contract exactly (attach_backends factory, honesty:
+unconfirmed = failure, world-owned sensors written via `world_set_axis(owner=
+"minecraft_bridge")` from measured snapshots only, I/O-free construction); the A4 caller
+chain is pinned end to end at unit level (bridge state → world sensors → gained encode →
+world-modality EC node, `tests/unit/test_minecraft_seam.py`). The JS bridge is NOT CI-run
+(no Minecraft server in CI) — PR 4's smoke benchmark is the end-to-end arm, and L11's
+re-fired re-measure attaches there.
+
 ### PR 4 — two-AUT-one-world harness + the ship gate, non-vacuous
 
 - Two `run_agentic_loop` threads, separate `percept_source`/`action_sink` pairs (the
