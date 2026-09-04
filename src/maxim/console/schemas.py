@@ -80,6 +80,19 @@ class SeamStatus(BaseModel):
     detail: str | None = None
 
 
+class HelloResponse(BaseModel):
+    """The ONE unauthenticated API surface (hardening design A6).
+
+    Just enough for a tokenless client to detect contract skew and render the
+    right login screen: the contract version and the auth scheme this server
+    demands ("bearer", or "none" under sandbox mode where the proxy owns the
+    edge). Everything richer — identity, seams, git — stays behind auth.
+    """
+
+    contract_version: str
+    auth: Literal["bearer", "none"]
+
+
 class IdentityResponse(BaseModel):
     """Self-describing backend identity.
 

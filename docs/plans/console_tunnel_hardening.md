@@ -1,7 +1,9 @@
 # Console tunnel hardening — from localhost-only to deliberately exposable
 
-**Status:** ACTIVE — PR 1 (trust guard) MERGED #609 (2026-09-03); PR 2 design pass complete
-(decisions A1–A8, 2026-09-04), implementation queued behind the 1.1.4 finish; PRs 3–4 sequenced below.
+**Status:** ACTIVE — PR 1 (trust guard) MERGED #609 (2026-09-03); PR 2 (bearer auth)
+IMPLEMENTED per decisions A1–A8 on `feat/console-auth` (2026-09-04; one A7 sharpening: disk
+tokens are re-read per request so rotation bites with NO restart); PRs 3–4 sequenced below.
+Pulse-side ledger (A6) remains open in the maxim-pulse repo.
 **Motivating goal:** a phone app (client + sensory surface) that reaches the operator's own leader
 over the Cloudflare tunnel and speaks the console facade + `/ws`. Target window: post-1.1.4;
 app ships against a stabilized contract (see "Contract freeze" below).

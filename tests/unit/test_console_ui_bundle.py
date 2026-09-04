@@ -19,6 +19,8 @@ from maxim.console.ui_bundle import (
     resolve_ui_dist,
 )
 
+_TOKEN = "mxc_" + "t" * 43
+
 
 def _bundle(root, *, contract=CONSOLE_CONTRACT_VERSION, target="console", manifest=True):
     root.mkdir(parents=True, exist_ok=True)
@@ -101,7 +103,7 @@ class TestContractCheck:
         pytest.importorskip("fastapi", reason="requires the `console` extra")
         from maxim.console.server import build_app
 
-        assert build_app(None).openapi()["info"]["version"] == CONSOLE_CONTRACT_VERSION
+        assert build_app(None, auth_token=_TOKEN).openapi()["info"]["version"] == CONSOLE_CONTRACT_VERSION
 
 
 class TestVendorScript:

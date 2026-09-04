@@ -17,6 +17,9 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from maxim.console.server import build_app, build_identity  # noqa: E402
 
+_TOKEN = "mxc_" + "t" * 43
+_AUTH = {"Authorization": f"Bearer {_TOKEN}"}
+
 
 class TestIdentityContent:
     def test_reports_version_and_contract(self):
@@ -71,7 +74,7 @@ class TestIdentityContent:
 
 class TestIdentityEndpoints:
     def test_http_endpoint(self):
-        with TestClient(build_app(None)) as c:
+        with TestClient(build_app(None, auth_token=_TOKEN), headers=_AUTH) as c:
             body = c.get("/api/identity").json()
         assert body["package_version"] and body["contract_version"]
         assert isinstance(body["seams"], list) and body["seams"]
@@ -79,8 +82,8 @@ class TestIdentityEndpoints:
     def test_identity_is_the_FIRST_ws_frame(self):
         # A client must know what it is attached to BEFORE it starts
         # interpreting what that thing says.
-        with TestClient(build_app(None)) as c:
-            with c.websocket_connect("/ws") as ws:
+        with TestClient(build_app(None, auth_token=_TOKEN), headers=_AUTH) as c:
+            with c.websocket_connect("/ws", headers=_AUTH) as ws:
                 first = ws.receive_json()
         assert first["kind"] == "identity"
         assert first["tier"] == "clean"
@@ -103,10 +106,10 @@ class TestIdentityEndpoints:
         bundle = tmp_path / "dist"
         bundle.mkdir()
         (bundle / "index.html").write_text("<html></html>")
-        build_app(bundle, "config")
+        build_app(bundle, "config", auth_token=_TOKEN)
         assert srv._SERVED_UI_DIST[0] == bundle
         assert srv._SERVED_UI_DIST[1] == "config"
-        build_app(None)  # reset for other tests
+        build_app(None, auth_token=_TOKEN)  # reset for other tests
         assert srv._SERVED_UI_DIST == (None, "none")
 
 
@@ -116,7 +119,7 @@ class TestDiagnoseSurfacesRealChecks:
     and dropped every actual check."""
 
     def test_checks_are_flattened_with_names_and_status(self):
-        with TestClient(build_app(None)) as c:
+        with TestClient(build_app(None, auth_token=_TOKEN), headers=_AUTH) as c:
             body = c.get("/api/diagnose").json()
         sections = body["sections"]
         assert len(sections) > 10, "should be one row per CHECK, not per group"

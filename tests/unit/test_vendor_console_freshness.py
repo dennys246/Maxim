@@ -30,6 +30,8 @@ from pathlib import Path
 
 import pytest
 
+from maxim.console.ui_bundle import CONSOLE_CONTRACT_VERSION
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "vendor_console_ui.py"
 
@@ -55,7 +57,7 @@ def _bundle(tmp_path: Path, **manifest_overrides) -> Path:
     manifest = {
         "target": "console",
         "app_version": "0.1.0",
-        "contract_version": "0.3.0",
+        "contract_version": CONSOLE_CONTRACT_VERSION,
         "commit": "3592561",
         "commit_date": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "describe": "v0.1.0",

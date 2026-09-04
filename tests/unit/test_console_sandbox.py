@@ -24,6 +24,11 @@ from maxim.runtime.config_loader import ConfigurationError  # noqa: E402
 
 _ORIGIN = "https://sandbox.example"
 
+# Bearer auth for the NON-sandbox app; sandbox requests deliberately send no
+# credentials — no-auth-under-sandbox is this suite's implicit control.
+_TOKEN = "mxc_" + "t" * 43
+_AUTH = {"Authorization": f"Bearer {_TOKEN}"}
+
 
 @pytest.fixture()
 def sandbox_app(monkeypatch, tmp_path):
@@ -41,7 +46,7 @@ def plain_app(monkeypatch, tmp_path):
     monkeypatch.delenv("MAXIM_CONSOLE_SANDBOX", raising=False)
     monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-    app = build_app(None)
+    app = build_app(None, auth_token=_TOKEN)
     assert app.state.sandbox is None
     return app
 
@@ -133,7 +138,7 @@ class TestClosedSurfaces:
     def test_negative_control_mesh_not_refused_when_off(self, plain_app):
         # Same body, mode off: validation runs (not the 403 gate). 422 comes
         # from the body shape — the point is only that the gate did not fire.
-        r = TestClient(plain_app).post("/api/setup/mesh", json={"leader_url": "not a url"})
+        r = TestClient(plain_app).post("/api/setup/mesh", json={"leader_url": "not a url"}, headers=_AUTH)
         assert r.status_code != 403
 
     def test_negative_control_probe_url_not_refused_when_off(self, plain_app, monkeypatch):
@@ -154,12 +159,14 @@ class TestClosedSurfaces:
                 return ProbeResult(url=self.url, outcome="ok", detail="", latency_ms=1.0)
 
         monkeypatch.setattr("maxim.models.language.maxim_peer_backend._MaximPeerBackend", _Backend)
-        r = TestClient(plain_app).post("/api/probe", json={"url": "https://leader.example"})
+        r = TestClient(plain_app).post("/api/probe", json={"url": "https://leader.example"}, headers=_AUTH)
         assert r.status_code == 200 and calls == ["https://leader.example"]
 
     def test_setup_detail_never_names_the_secret_path(self, plain_app):
         r = TestClient(plain_app).post(
-            "/api/setup/cloud", json={"provider": "anthropic", "profile": "claude-sonnet", "api_key": "sk-cl"}
+            "/api/setup/cloud",
+            json={"provider": "anthropic", "profile": "claude-sonnet", "api_key": "sk-cl"},
+            headers=_AUTH,
         )
         assert r.status_code == 200
         detail = r.json()["detail"]
@@ -177,7 +184,7 @@ class TestIdentity:
         assert seams["talk"]["live"] is True and seams["adventure"]["live"] is True
 
     def test_seams_live_when_off(self, plain_app):
-        seams = {s["name"]: s for s in TestClient(plain_app).get("/api/identity").json()["seams"]}
+        seams = {s["name"]: s for s in TestClient(plain_app).get("/api/identity", headers=_AUTH).json()["seams"]}
         assert seams["probe"]["live"] is True and seams["setup"]["live"] is True
         assert seams["sim"]["live"] is False  # unchanged: sim is a CLI surface
 
@@ -211,13 +218,13 @@ class TestWsOrigin:
         # "any origin when off" contract was the /ws half of the CSRF surface
         # (see test_console_trust_guard.py for the trust guard's own suite).
         with TestClient(plain_app) as client:
-            with client.websocket_connect("/ws") as ws:
+            with client.websocket_connect("/ws", headers=_AUTH) as ws:
                 assert ws.receive_json()["kind"] == "identity"
 
     def test_untrusted_origin_refused_even_when_off(self, plain_app):
         with TestClient(plain_app) as client:
             with pytest.raises(WebSocketDisconnect):
-                with client.websocket_connect("/ws", headers={"origin": "https://evil.example"}):
+                with client.websocket_connect("/ws", headers={**_AUTH, "origin": "https://evil.example"}):
                     pass
 
 
@@ -241,7 +248,7 @@ class TestInputCap:
         assert r.status_code == 501
 
     def test_no_cap_when_off(self, plain_app):
-        r = TestClient(plain_app).post("/api/run", json={"mode": "sim", "input": "x" * 100_000})
+        r = TestClient(plain_app).post("/api/run", json={"mode": "sim", "input": "x" * 100_000}, headers=_AUTH)
         assert r.status_code == 501
 
 

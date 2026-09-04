@@ -116,6 +116,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   docstring before the run. Kickoff plan: `docs/plans/world_seam_1_1_4.md`.
 
 ### Security
+- **Console bearer auth — always on, fail-closed** (tunnel-hardening PR 2, decisions A1–A8 of
+  `docs/plans/console_tunnel_hardening.md`): every `/api/*` route, `/docs`, `/openapi.json` and
+  `/ws` on `maxim serve` now require the console token — an `mxc_`-prefixed 256-bit secret in
+  its own 0600 file (`~/.config/maxim/console_token`, distinct from the mesh key), printed at
+  serve start as a `#token=` fragment URL and managed via `maxim serve --show-token` /
+  `--rotate-token` (disk tokens are re-read per request, so rotation logs every device out with
+  no restart). A missing token refuses everything — the console can fail closed but never open.
+  Browser `/ws` clients carry the token as the `maxim.bearer.<token>` subprotocol beside
+  `maxim-console-v1`, validated before accept; query-param tokens are refused by omission.
+  Enforcement is one pure-ASGI middleware covering http + websocket scopes (Host → auth →
+  Origin/Content-Type); the trust guard stays as defense in depth. Exempt: the static UI shell
+  and the new unauthenticated `GET /api/hello` (`{contract_version, auth}`) for skew detection
+  and login screens. Sandbox mode stays engine-authless — the proxy owns that edge.
+  `CONSOLE_CONTRACT_VERSION` 0.3.0 → 0.4.0 (bearer securityScheme + 401 shape in OpenAPI;
+  pulse regen via `gen:facade`); authenticate once per device — no expiry, rotation is the
+  revocation story.
 - **Console trust guard — Host (DNS-rebinding) + Origin (CSRF) browser-relay protection on
   `maxim serve`, always on** (`console/server.py`): every request's Host must be loopback or a
   host of `console.allowed_origins`; state-changing requests and `/ws` upgrades that carry a

@@ -245,6 +245,29 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HelloResponse": {
+        "description": "The ONE unauthenticated API surface (hardening design A6).\n\nJust enough for a tokenless client to detect contract skew and render the\nright login screen: the contract version and the auth scheme this server\ndemands (\"bearer\", or \"none\" under sandbox mode where the proxy owns the\nedge). Everything richer \u2014 identity, seams, git \u2014 stays behind auth.",
+        "properties": {
+          "auth": {
+            "enum": [
+              "bearer",
+              "none"
+            ],
+            "title": "Auth",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_version",
+          "auth"
+        ],
+        "title": "HelloResponse",
+        "type": "object"
+      },
       "IdentityResponse": {
         "description": "Self-describing backend identity.\n\nExists because a console could not previously answer \"which build is this?\"\n\u2014 and the answer changes silently. pymaxim is typically installed EDITABLE,\nso `maxim serve` follows whatever git branch is checked out: switch to a\nbranch predating a seam and that seam quietly vanishes from the UI. Add a\nstale `serve` process still holding the port and the console can be talking\nto code that no longer exists on disk.\n\nEvery field here is something a debugging session would otherwise have to\nguess. Also emitted as the FIRST /ws event on connect (kind=\"identity\"), so\na client knows what it is attached to before any other event arrives.",
         "properties": {
@@ -879,12 +902,19 @@
         "title": "ValidationError",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "consoleToken": {
+        "description": "The console token (maxim serve --show-token). Browser /ws clients offer the 'maxim.bearer.<token>' subprotocol instead \u2014 upgrade headers are unavailable there.",
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
     "summary": "Localhost Console backend + the OpenAPI facade contract for maxim-pulse.",
     "title": "Maxim Console",
-    "version": "0.3.0"
+    "version": "0.4.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -901,8 +931,28 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Missing or invalid console token."
           }
         },
+        "security": [
+          {
+            "consoleToken": []
+          }
+        ],
         "summary": "Discoverable campaign YAMLs",
         "tags": [
           "facade"
@@ -922,8 +972,28 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Missing or invalid console token."
           }
         },
+        "security": [
+          {
+            "consoleToken": []
+          }
+        ],
         "summary": "Environment diagnostics",
         "tags": [
           "facade"
@@ -943,8 +1013,28 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Missing or invalid console token."
           }
         },
+        "security": [
+          {
+            "consoleToken": []
+          }
+        ],
         "summary": "WS event envelope shape (type-gen only; live stream is /ws)",
         "tags": [
           "facade"
@@ -964,9 +1054,50 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Missing or invalid console token."
           }
         },
+        "security": [
+          {
+            "consoleToken": []
+          }
+        ],
         "summary": "WS filter frame shape (type-gen only; send frames on /ws)",
+        "tags": [
+          "facade"
+        ]
+      }
+    },
+    "/api/hello": {
+      "get": {
+        "operationId": "get_hello_api_hello_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelloResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Contract + auth scheme (no token needed)",
         "tags": [
           "facade"
         ]
@@ -985,8 +1116,28 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Missing or invalid console token."
           }
         },
+        "security": [
+          {
+            "consoleToken": []
+          }
+        ],
         "summary": "Which backend is this?",
         "tags": [
           "facade"
@@ -1006,8 +1157,28 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Missing or invalid console token."
           }
         },
+        "security": [
+          {
+            "consoleToken": []
+          }
+        ],
         "summary": "List LLM profiles",
         "tags": [
           "facade"
@@ -1038,6 +1209,21 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Missing or invalid console token."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -1049,6 +1235,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "consoleToken": []
+          }
+        ],
         "summary": "Test a mesh/cloud connection",
         "tags": [
           "facade"
@@ -1068,8 +1259,28 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Missing or invalid console token."
           }
         },
+        "security": [
+          {
+            "consoleToken": []
+          }
+        ],
         "summary": "What Maxim remembers about you",
         "tags": [
           "facade"
@@ -1100,6 +1311,21 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Missing or invalid console token."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -1111,6 +1337,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "consoleToken": []
+          }
+        ],
         "summary": "Run a mode (talk/adventure/sim/rest)",
         "tags": [
           "facade"
@@ -1141,6 +1372,21 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Missing or invalid console token."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -1152,6 +1398,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "consoleToken": []
+          }
+        ],
         "summary": "Write cloud provider config",
         "tags": [
           "facade"
@@ -1182,6 +1433,21 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Missing or invalid console token."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -1193,6 +1459,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "consoleToken": []
+          }
+        ],
         "summary": "Write mesh (peer\u2192leader) config",
         "tags": [
           "facade"

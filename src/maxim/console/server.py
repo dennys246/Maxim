@@ -1,11 +1,16 @@
 """FastAPI app for ``maxim serve`` — the Console backend + facade contract.
 
-Binds **127.0.0.1 only** (it holds keys and can run/configure Maxim), and
-carries no authentication of its own. It DOES carry a browser-relay guard
+Binds **127.0.0.1 only** (it holds keys and can run/configure Maxim), and is
+**bearer-authenticated, always on, fail-closed** (see the auth block): every
+``/api/*`` route, ``/docs``, ``/openapi.json`` and ``/ws`` requires the
+console token (``~/.config/maxim/console_token``, printed by ``maxim serve``
+as a ``#token=`` URL; ``--show-token`` / ``--rotate-token``). Exempt: the
+static UI shell and ``GET /api/hello``. It also carries a browser-relay guard
 (see the trust-guard block): every request's Host must be loopback or a
 ``console.allowed_origins`` host (DNS rebinding), and state-changing requests
 plus ``/ws`` upgrades that carry a browser Origin must carry a trusted one
-(CSRF). A hosted deployment — one anonymous
+(CSRF) — auth authenticates the CALLER; the guard still constrains what a
+page in an authenticated operator's browser can relay. A hosted deployment — one anonymous
 visitor per throwaway machine behind an authenticating proxy — keeps both
 properties and adds **sandbox mode** (``MAXIM_CONSOLE_SANDBOX=1``, see the
 ``_refuse_in_sandbox`` block), which closes the surfaces that act on the host
@@ -36,6 +41,7 @@ import contextlib
 import dataclasses
 import json
 import logging
+import secrets
 import threading
 import time
 from pathlib import Path
@@ -54,6 +60,7 @@ from maxim.console.schemas import (
     ConsoleEvent,
     DiagnoseResponse,
     DiagnoseSection,
+    HelloResponse,
     IdentityResponse,
     MeshSetupRequest,
     ModelInfoWire,
@@ -130,9 +137,13 @@ api = APIRouter(prefix="/api", tags=["facade"])
 # `console.sandbox` / `console.allowed_origins` / `console.max_input_chars`
 # config keys (env forms `MAXIM_CONSOLE_SANDBOX` etc., resolved by the loader
 # like every other console setting), read ONCE at `build_app` and carried on
-# `app.state.sandbox` — a request cannot flip it — and it deliberately adds
-# no auth of its own: authentication that lived in the engine would have to
-# be trusted by every localhost user too.
+# `app.state.sandbox` — a request cannot flip it. Sandbox mode is ALSO the one
+# state where the engine's bearer auth (auth block below) is OFF: a sandbox
+# visitor is anonymous BY DESIGN and the authenticating proxy in front owns
+# the edge, so demanding a token would only relocate the proxy's job into the
+# engine. Corollary (audit C3): under sandbox, closing or brokering
+# `setup/cloud` — deliberately half-open here so the BYO-key wizard works —
+# remains the BROKER's responsibility, not this module's.
 _SANDBOX_ENV = "MAXIM_CONSOLE_SANDBOX"
 _SANDBOX_ORIGINS_ENV = "MAXIM_CONSOLE_ALLOWED_ORIGINS"
 _SANDBOX_MAX_INPUT_ENV = "MAXIM_CONSOLE_MAX_INPUT_CHARS"
@@ -259,10 +270,12 @@ def _refuse_in_sandbox(request: Request) -> None:
 #     pass: this is browser-relay protection, not authentication.
 # `console.allowed_origins` thereby graduates from a sandbox-only knob to the
 # general "non-local origins I trust" list; deliberate remote exposure (the
-# tunnel) lists its public origin here AND adds real auth — tracked in
-# docs/plans/console_tunnel_hardening.md; this guard is that plan's
-# prerequisite, not its substitute. Resolved ONCE at build_app and carried on
-# ``app.state.trust`` — a request cannot flip it.
+# tunnel) lists its public origin here. Bearer auth (the auth block below)
+# authenticates the CALLER; this guard still constrains what a page in an
+# authenticated operator's own browser can be made to relay — defense in
+# depth, not redundancy (docs/plans/console_tunnel_hardening.md, decision
+# A8). Resolved ONCE at build_app and carried on ``app.state.trust`` — a
+# request cannot flip it.
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 # Starlette's TestClient default base_url is http://testserver — allowed ONLY
@@ -348,7 +361,168 @@ def _origin_allowed(origin_header: str, trust: _TrustPolicy) -> bool:
     return host in _LOOPBACK_HOSTS or origin in trust.allowed_origins
 
 
+# ── bearer auth (always on, fail-closed; sandbox is the one exception) ───────
+#
+# docs/plans/console_tunnel_hardening.md, decisions A1–A8. The console token
+# (`tunnel/keys.py::ensure_console_token`, an mxc_-prefixed 256-bit secret in
+# ~/.config/maxim/console_token) authenticates every /api/* route, /docs,
+# /openapi.json and /ws. There is deliberately NO off toggle — a default-off
+# knob is how the critical endpoints stay reachable — and a missing/unreadable
+# token FAILS CLOSED (every authed surface refuses), explicitly inverting
+# `leader_proxy._check_auth`'s empty-key fail-open. Exempt: the static UI
+# shell (the public pulse bundle, no data) and GET /api/hello (contract
+# version + auth scheme, so a client can detect skew and render a login screen
+# BEFORE it holds a token). Transports: `Authorization: Bearer <token>`
+# (scheme parsed before credential, per the CC13 branch-table pattern), or —
+# for browsers, which cannot set headers on a WebSocket upgrade — the token
+# rides `Sec-WebSocket-Protocol: maxim.bearer.<token>` beside the app
+# subprotocol `maxim-console-v1`, validated BEFORE accept (websocket scope
+# only; never consulted for plain HTTP). Query-param tokens are refused BY
+# OMISSION everywhere: URLs reach access logs. Under sandbox mode auth is
+# OFF — the authenticating proxy owns that edge (see the sandbox block).
+
+_AUTH_EXEMPT_PATHS = frozenset({"/api/hello"})
+_WS_APP_SUBPROTOCOL = "maxim-console-v1"
+_WS_BEARER_PREFIX = "maxim.bearer."
+_AUTH_REFUSAL = (
+    "Refused: this console surface requires the console token — send "
+    "'Authorization: Bearer <token>' (browser /ws: offer the "
+    f"'{_WS_BEARER_PREFIX}<token>' subprotocol). The operator prints it with "
+    "`maxim serve --show-token`."
+)
+# Sentinel default for build_app's keyword-only auth_token: read the on-disk
+# console_token. Distinct from None, which is an explicit fail-closed inject.
+_READ_TOKEN_FROM_DISK = object()
+
+
+def _read_console_token() -> str | None:
+    from maxim.tunnel.keys import read_console_token
+
+    return read_console_token()
+
+
+def _auth_required(path: str, scope_type: str) -> bool:
+    """Which surfaces demand the token: /ws and everything routed, minus hello.
+
+    The static bundle (everything that is not /api, /ws or the schema surface)
+    stays public — it is the same bundle maxim-pulse publishes, holds no data,
+    and must be able to render the login screen for a tokenless visitor.
+    """
+    if scope_type == "websocket":
+        return True
+    if path in _AUTH_EXEMPT_PATHS:
+        return False
+    return path.startswith("/api/") or path in ("/docs", "/openapi.json", "/redoc") or path.startswith("/docs/")
+
+
+def _bearer_authorized(headers: dict[str, str], token: str | None, scope_type: str) -> bool:
+    """Constant-time bearer check over either transport; fail closed on no token."""
+    if not token:
+        return False  # fail CLOSED — the anti-leader_proxy trap (design A2)
+    auth = headers.get("authorization", "")
+    if auth:
+        parts = auth.split(None, 1)
+        # Scheme parsed BEFORE the credential (CC13 pattern): an unknown
+        # scheme is a clean refusal, never mistaken for a malformed Bearer.
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            return secrets.compare_digest(parts[1].strip().encode(), token.encode())
+        return False
+    if scope_type == "websocket":
+        offered = headers.get("sec-websocket-protocol", "")
+        for proto in (p.strip() for p in offered.split(",")):
+            if proto.startswith(_WS_BEARER_PREFIX):
+                return secrets.compare_digest(proto[len(_WS_BEARER_PREFIX) :].encode(), token.encode())
+    return False
+
+
+class _GuardMiddleware:
+    """Pure-ASGI guard covering BOTH http and websocket scopes (design A3).
+
+    One middleware instead of an http-only decorator plus hand-applied /ws
+    checks, so a future second websocket endpoint cannot silently miss a rule.
+    Order per request: Host (rebinding) → bearer auth (fail-closed; skipped
+    under sandbox) → Origin / Content-Type (the CSRF belts — kept even though
+    bearer-in-header is CSRF-immune, per decision A8). Refusals never reach
+    the router: HTTP gets a JSON body, websockets a 1008 close before accept.
+    Policy comes from ``scope["app"].state`` (trust/sandbox/auth_token), all
+    resolved once at ``build_app`` — a request cannot flip any of it.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+        fastapi_app = scope["app"]
+        trust = _trust_of(fastapi_app)
+        sandbox = _sandbox_of(fastapi_app)
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers") or ()}
+        path = str(scope.get("path", ""))
+
+        if not _host_allowed(headers.get("host", ""), trust):
+            logger.warning("refusing %s with unrecognized Host %r", path, headers.get("host"))
+            await self._refuse(scope, receive, send, 400, _HOST_REFUSAL)
+            return
+
+        if sandbox is None and _auth_required(path, scope["type"]):
+            if getattr(fastapi_app.state, "auth_token_source", "static") == "disk":
+                token = _read_console_token()  # per-request: rotation bites immediately
+            else:
+                token = getattr(fastapi_app.state, "auth_token", None)
+            if not _bearer_authorized(headers, token, scope["type"]):
+                # The token itself is never logged — not even truncated.
+                logger.warning("refusing unauthenticated %s %s", scope.get("method", "WS"), path)
+                await self._refuse(scope, receive, send, 401, _AUTH_REFUSAL)
+                return
+
+        if scope["type"] == "websocket":
+            # Non-sandbox Origin rule for /ws; sandbox's stricter
+            # origin-REQUIRED check stays in ws_events beside its policy.
+            origin = headers.get("origin")
+            if sandbox is None and origin is not None and not _origin_allowed(origin, trust):
+                logger.warning("refusing /ws upgrade from origin %r", origin)
+                await self._refuse(scope, receive, send, 403, _ORIGIN_REFUSAL)
+                return
+        elif scope.get("method") in _UNSAFE_METHODS:
+            origin = headers.get("origin")
+            if origin is not None and not _origin_allowed(origin, trust):
+                logger.warning("refusing %s %s from origin %r", scope["method"], path, origin)
+                await self._refuse(scope, receive, send, 403, _ORIGIN_REFUSAL)
+                return
+            ctype = headers.get("content-type", "")
+            if not ctype.lower().strip().startswith("application/json"):
+                logger.warning("refusing %s %s with Content-Type %r", scope["method"], path, ctype)
+                await self._refuse(scope, receive, send, 415, _CONTENT_TYPE_REFUSAL)
+                return
+
+        await self.app(scope, receive, send)
+
+    async def _refuse(self, scope: dict[str, Any], receive: Any, send: Any, status: int, detail: str) -> None:
+        if scope["type"] == "websocket":
+            # Consume the connect event, then deny the handshake pre-accept.
+            message = await receive()
+            if message["type"] == "websocket.connect":
+                await send({"type": "websocket.close", "code": 1008})  # policy violation
+            return
+        headers = {"WWW-Authenticate": "Bearer"} if status == 401 else None
+        response = JSONResponse(status_code=status, content={"detail": detail}, headers=headers)
+        await response(scope, receive, send)
+
+
 # ── live verbs (wrap existing api.py facades) ───────────────────────────────
+
+
+@api.get("/hello", response_model=HelloResponse, summary="Contract + auth scheme (no token needed)")
+def get_hello(request: Request) -> HelloResponse:
+    # The ONE unauthenticated API surface (design A6): just enough for a
+    # client to detect contract skew and render the right login screen before
+    # it holds a token. Everything else identity reports stays behind auth.
+    return HelloResponse(
+        contract_version=CONSOLE_CONTRACT_VERSION,
+        auth="none" if _sandbox_of(request.app) is not None else "bearer",
+    )
 
 
 @api.get("/models", response_model=ModelsResponse, summary="List LLM profiles")
@@ -1293,13 +1467,20 @@ def _drain_and_stop_handle(
         handle.stop(campaign_wait_s=campaign_wait_s, talk_join_s=talk_join_s)
 
 
-def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
+def build_app(
+    ui_dist: Path | None = None, ui_source: str = "none", *, auth_token: Any = _READ_TOKEN_FROM_DISK
+) -> FastAPI:
     """Construct the Console FastAPI app. ``ui_dist`` = the built static bundle.
 
     ``ui_source`` records HOW that bundle was chosen (flag / config / packaged)
     so /api/identity can report it — "which UI am I serving, and why" is half
     of any contract-mismatch investigation. The sandbox policy is resolved
-    here, once, and carried on ``app.state.sandbox``.
+    here, once, and carried on ``app.state.sandbox``. ``auth_token``
+    (keyword-only) is the console bearer credential: leave it defaulted to
+    read ``~/.config/maxim/console_token`` from disk (``run_serve`` ensures
+    that file exists first), or inject a value directly (tests, embedders).
+    ``None`` — injected or read from an absent file — FAILS CLOSED: every
+    authed surface refuses.
     """
     sandbox = _sandbox_policy()
     if sandbox is not None:
@@ -1363,33 +1544,20 @@ def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
     )
     app.state.sandbox = sandbox
     app.state.trust = _trust_policy()
+    # Fail-closed by construction: build_app READS the token (run_serve is the
+    # one place that creates it); an embedder that never provisioned one gets
+    # an app whose authed surfaces all refuse, not an open console. Tests and
+    # embedders may inject via the keyword-only parameter. Disk-sourced
+    # tokens are re-read PER REQUEST (acceptance A7: `--rotate-token` from a
+    # second terminal logs every device out on its NEXT request, no restart —
+    # one file read per authed request is nothing at console rates); injected
+    # tokens are static for the app's lifetime.
+    if auth_token is _READ_TOKEN_FROM_DISK:
+        app.state.auth_token, app.state.auth_token_source = None, "disk"
+    else:
+        app.state.auth_token, app.state.auth_token_source = auth_token, "static"
+    app.add_middleware(_GuardMiddleware)
     app.include_router(api)
-
-    @app.middleware("http")
-    async def _trust_guard(request: Request, call_next: Any) -> Any:
-        # See the trust-guard block above: Host on every request (rebinding),
-        # Origin on state-changing requests that carry one (CSRF). Reads stay
-        # un-gated on Origin — without CORS headers a cross-origin page cannot
-        # READ a response, and rebinding reads are what the Host check stops.
-        trust = _trust_of(request.app)
-        if not _host_allowed(request.headers.get("host", ""), trust):
-            logger.warning("refusing request with unrecognized Host %r", request.headers.get("host"))
-            return JSONResponse(status_code=400, content={"detail": _HOST_REFUSAL})
-        if request.method in _UNSAFE_METHODS:
-            origin = request.headers.get("origin")
-            if origin is not None and not _origin_allowed(origin, trust):
-                logger.warning("refusing %s %s from origin %r", request.method, request.url.path, origin)
-                return JSONResponse(status_code=403, content={"detail": _ORIGIN_REFUSAL})
-            # Belt for the Origin-less residue (legacy browsers omitted Origin
-            # on cross-site form POSTs): every mutating route takes a JSON
-            # body, HTML forms cannot send application/json, and a fetch()
-            # that sets it triggers a preflight — which this server never
-            # answers (no CORS by design). Review fold — executor lens.
-            ctype = request.headers.get("content-type", "")
-            if not ctype.lower().strip().startswith("application/json"):
-                logger.warning("refusing %s %s with Content-Type %r", request.method, request.url.path, ctype)
-                return JSONResponse(status_code=415, content={"detail": _CONTENT_TYPE_REFUSAL})
-        return await call_next(request)
 
     @app.websocket("/ws")
     async def ws_events(websocket: WebSocket) -> None:
@@ -1398,16 +1566,12 @@ def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
         Server→client: ConsoleEvent envelopes (v2). Client→server: optional
         SubscribeFrame JSON messages; each frame REPLACES the connection's
         filter. Heartbeats fire when the stream is idle; a "dropped" meta-event
-        reports backpressure losses (seq gaps mark where).
+        reports backpressure losses (seq gaps mark where). Host, bearer-auth
+        and non-sandbox Origin rules already ran in _GuardMiddleware (before
+        accept); only sandbox's stricter origin-REQUIRED rule lives here,
+        beside the policy it belongs to.
         """
         sandbox = _sandbox_of(websocket.app)
-        trust = _trust_of(websocket.app)
-        # HTTP middleware does not cover websockets — the trust guard's Host
-        # check (rebinding) is applied here by hand, before any accept.
-        if not _host_allowed(websocket.headers.get("host", ""), trust):
-            logger.warning("refusing /ws upgrade with unrecognized Host %r", websocket.headers.get("host"))
-            await websocket.close(code=1008)  # policy violation
-            return
         if sandbox is not None:
             # Browsers cannot set headers on a WebSocket upgrade, but they DO
             # send Origin and a page cannot forge it — so under sandbox mode a
@@ -1421,17 +1585,13 @@ def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
                 logger.warning("refusing /ws upgrade from origin %r (sandbox mode)", origin or "<none>")
                 await websocket.close(code=1008)  # policy violation
                 return
-        else:
-            # Trust-guard Origin rule, /ws edition: the stream carries the
-            # agent's internals, so a browser page from an untrusted origin
-            # may not attach; clients that send no Origin (the CLI, native
-            # apps) pass — browser-relay protection, not authentication.
-            origin_raw = websocket.headers.get("origin")
-            if origin_raw is not None and not _origin_allowed(origin_raw, trust):
-                logger.warning("refusing /ws upgrade from origin %r", origin_raw)
-                await websocket.close(code=1008)  # policy violation
-                return
-        await websocket.accept()
+        # Echo the app subprotocol when the client offered it (the browser
+        # token transport offers ["maxim-console-v1", "maxim.bearer.<t>"] and
+        # the RFC obliges the server to select from the offered list); native
+        # clients that offered none get a plain accept.
+        offered = websocket.headers.get("sec-websocket-protocol", "")
+        subprotocol = _WS_APP_SUBPROTOCOL if _WS_APP_SUBPROTOCOL in {p.strip() for p in offered.split(",")} else None
+        await websocket.accept(subprotocol=subprotocol)
         conn = _WsConn()
 
         # Identity FIRST, before any stream event: a client should know what it
@@ -1548,6 +1708,40 @@ def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
                 "or vendor one in with <code>python scripts/vendor_console_ui.py &lt;path&gt;</code>.</p>"
             )
 
+    # OpenAPI: declare the bearer scheme + 401 shape (contract 0.4.0, design
+    # A6). Enforcement is _GuardMiddleware's — this block only makes the
+    # contract SAY so, per-operation, with /api/hello left security-free. The
+    # trust guard's 400/403/415 stay out (legitimate clients never see them).
+    _base_openapi = app.openapi
+
+    def _openapi_with_auth() -> dict[str, Any]:
+        schema = _base_openapi()  # FastAPI caches on app.openapi_schema
+        components = schema.setdefault("components", {})
+        components.setdefault("securitySchemes", {})["consoleToken"] = {
+            "type": "http",
+            "scheme": "bearer",
+            "description": (
+                "The console token (maxim serve --show-token). Browser /ws clients offer the "
+                f"'{_WS_BEARER_PREFIX}<token>' subprotocol instead — upgrade headers are unavailable there."
+            ),
+        }
+        unauthorized = {
+            "description": "Missing or invalid console token.",
+            "content": {
+                "application/json": {"schema": {"type": "object", "properties": {"detail": {"type": "string"}}}}
+            },
+        }
+        for path, ops in schema.get("paths", {}).items():
+            if path in _AUTH_EXEMPT_PATHS:
+                continue
+            for op in ops.values():
+                if isinstance(op, dict) and "responses" in op:
+                    op["security"] = [{"consoleToken": []}]
+                    op["responses"].setdefault("401", unauthorized)
+        return schema
+
+    app.openapi = _openapi_with_auth  # type: ignore[method-assign]
+
     return app
 
 
@@ -1572,13 +1766,25 @@ def run_serve(argv: list[str]) -> int:
             f"/api/diagnose, refuse /ws upgrades whose Origin is not in {_SANDBOX_ORIGINS_ENV} "
             f"(comma-separated), and cap run input at {_SANDBOX_MAX_INPUT_ENV} characters "
             f"(default {_SANDBOX_DEFAULT_MAX_INPUT_CHARS}). The bind stays 127.0.0.1; "
-            "authentication is the proxy's job. Sandbox or not, a browser-relay guard is "
-            f"always on: Hosts and browser Origins outside loopback + {_SANDBOX_ORIGINS_ENV} "
-            "are refused (DNS-rebinding / cross-site request protection)."
+            "under sandbox mode authentication is the proxy's job — in every other mode the "
+            "console requires its bearer token (printed at start; --show-token / "
+            "--rotate-token). A browser-relay guard is always on: Hosts and browser Origins "
+            f"outside loopback + {_SANDBOX_ORIGINS_ENV} are refused (DNS-rebinding / "
+            "cross-site request protection)."
         ),
     )
     ap.add_argument("--port", type=int, default=None, help="Port (default: config console.port / 8765).")
     ap.add_argument("--ui-dist", default=None, help="Path to the built Console static bundle.")
+    ap.add_argument(
+        "--show-token",
+        action="store_true",
+        help="Print the console token (creating it if absent) and exit — no server.",
+    )
+    ap.add_argument(
+        "--rotate-token",
+        action="store_true",
+        help="Generate a NEW console token (logging out every device) and exit — no server.",
+    )
     ap.add_argument(
         "--dump-openapi",
         nargs="?",
@@ -1593,6 +1799,17 @@ def run_serve(argv: list[str]) -> int:
         out = Path(args.dump_openapi)
         out.write_text(json.dumps(openapi_schema(), indent=2, sort_keys=True) + "\n")
         print(f"wrote OpenAPI schema → {out}")
+        return 0
+
+    if args.show_token or args.rotate_token:
+        from maxim.tunnel.keys import ensure_console_token, rotate_console_token
+
+        if args.rotate_token:
+            token = rotate_console_token()
+            print("maxim serve: console token ROTATED — every signed-in device is now logged out.")
+        else:
+            token = ensure_console_token()
+        print(token)
         return 0
 
     port = int(_resolve("console.port", args.port))
@@ -1613,6 +1830,15 @@ def run_serve(argv: list[str]) -> int:
     ui_source = "flag" if args.ui_dist else ("config" if config_ui_dist else ("packaged" if ui_dist else "none"))
     check_ui_contract(ui_dist)
 
+    # Ensure the credential BEFORE building the app (build_app only READS —
+    # fail-closed by construction); skipped under sandbox, where the proxy
+    # owns the edge and the engine deliberately demands no token.
+    token: str | None = None
+    if not sandbox_on:
+        from maxim.tunnel.keys import ensure_console_token
+
+        token = ensure_console_token()
+
     app = build_app(ui_dist, ui_source)
 
     import uvicorn
@@ -1620,10 +1846,18 @@ def run_serve(argv: list[str]) -> int:
     # 127.0.0.1 ONLY — the console holds keys + can run/configure Maxim.
     if ui_dist is not None:
         print(f"maxim serve → serving Console UI from {ui_dist}")
-    print(f"maxim serve → http://127.0.0.1:{port}  (API docs: /docs · schema: /openapi.json)")
+    if token is not None:
+        # FRAGMENT, not query: a #token never reaches the server, so it cannot
+        # land in access logs (design A5). The UI reads it, stores it, and
+        # strips it from the address bar; every later visit needs no token.
+        print(f"maxim serve → http://127.0.0.1:{port}/#token={token}")
+        print("maxim serve → open the URL above (the token signs this browser in once; --show-token reprints)")
+        print(f"maxim serve → API docs: http://127.0.0.1:{port}/docs · schema: /openapi.json (Bearer required)")
+    else:
+        print(f"maxim serve → http://127.0.0.1:{port}  (API docs: /docs · schema: /openapi.json)")
     if agent_id != _DEFAULT_HANDLE_AGENT_ID:
         print(f"maxim serve → fronting agent {agent_id!r} (console.agent_id)")
     if sandbox_on:
-        print("maxim serve → sandbox mode ON (console.sandbox)")
+        print("maxim serve → sandbox mode ON (console.sandbox) — engine auth OFF; the proxy owns the edge")
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
     return 0

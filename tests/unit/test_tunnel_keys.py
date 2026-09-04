@@ -12,9 +12,13 @@ from maxim.tunnel.cli import run_tunnel_subcommand
 
 @pytest.fixture
 def isolated_key_file(tmp_path, monkeypatch):
-    """Redirect the key file to a temp path for the duration of a test."""
+    """Redirect the key files to temp paths for the duration of a test.
+
+    Mirrors the real layout since keys became NAMED (hardening PR 2): the
+    mesh key stays the default, other names land beside it.
+    """
     target = tmp_path / "api_key"
-    monkeypatch.setattr(keys, "key_file_path", lambda: target)
+    monkeypatch.setattr(keys, "key_file_path", lambda name=keys.MESH_KEY_NAME: tmp_path / name)
     yield target
 
 
