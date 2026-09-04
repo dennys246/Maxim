@@ -1,7 +1,11 @@
 """FastAPI app for ``maxim serve`` — the Console backend + facade contract.
 
 Binds **127.0.0.1 only** (it holds keys and can run/configure Maxim), and
-carries no authentication of its own. A hosted deployment — one anonymous
+carries no authentication of its own. It DOES carry a browser-relay guard
+(see the trust-guard block): every request's Host must be loopback or a
+``console.allowed_origins`` host (DNS rebinding), and state-changing requests
+plus ``/ws`` upgrades that carry a browser Origin must carry a trusted one
+(CSRF). A hosted deployment — one anonymous
 visitor per throwaway machine behind an authenticating proxy — keeps both
 properties and adds **sandbox mode** (``MAXIM_CONSOLE_SANDBOX=1``, see the
 ``_refuse_in_sandbox`` block), which closes the surfaces that act on the host
@@ -37,8 +41,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+from urllib.parse import urlsplit
+
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from maxim.console.schemas import (
@@ -116,8 +122,9 @@ api = APIRouter(prefix="/api", tags=["facade"])
 # the agent: `/api/probe` with a `url` dials an arbitrary address with an
 # arbitrary bearer and echoes latency + detail (server-side request forgery),
 # `/api/setup/mesh` repoints the LLM lane at a caller-controlled URL and
-# PERSISTS it, and `/api/diagnose` renders the resolved configuration,
-# including env-sourced key material (see doctor `_format_doctor_value`).
+# PERSISTS it, and `/api/diagnose` renders the resolved configuration —
+# key BYTES are redacted (`doctor/checks.py::_is_secret_field`), but paths,
+# env names, IPs and fix hints are a recon surface.
 # Sandbox mode closes exactly those, refuses `/ws` upgrades from origins the
 # operator did not list, and caps the size of a run input. It is the
 # `console.sandbox` / `console.allowed_origins` / `console.max_input_chars`
@@ -178,6 +185,103 @@ def _refuse_in_sandbox(request: Request) -> None:
     """FastAPI dependency: 403 on the host-acting surfaces when sandboxed."""
     if _sandbox_of(request.app) is not None:
         raise HTTPException(status_code=403, detail=_SANDBOX_REFUSAL)
+
+
+# ── trust guard (Host / Origin) ──────────────────────────────────────────────
+#
+# 127.0.0.1-only is a statement about who can CONNECT, not about who can make
+# the operator's browser connect FOR them. Two browser-relayed attack classes
+# reach a loopback bind: a page in the operator's browser firing cross-origin
+# "simple" POSTs at localhost (CSRF — Starlette parses a JSON body regardless
+# of Content-Type, so no preflight protects the mutating routes), and a page
+# on an attacker DNS name that re-resolves to 127.0.0.1 (DNS rebinding), which
+# sidesteps same-origin entirely and arrives with Host: attacker.example.
+# This guard closes both while adding NO authentication:
+#   * every request's Host must be a loopback name or a host drawn from
+#     console.allowed_origins — a rebinding name fails this;
+#   * a state-changing request that CARRIES a browser Origin must carry a
+#     loopback origin or one listed in console.allowed_origins — a CSRF page
+#     fails this. Requests without an Origin (curl, the CLI, native clients)
+#     pass: this is browser-relay protection, not authentication.
+# `console.allowed_origins` thereby graduates from a sandbox-only knob to the
+# general "non-local origins I trust" list; deliberate remote exposure (the
+# tunnel) lists its public origin here AND adds real auth — tracked in
+# docs/plans/console_tunnel_hardening.md; this guard is that plan's
+# prerequisite, not its substitute. Resolved ONCE at build_app and carried on
+# ``app.state.trust`` — a request cannot flip it.
+
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+# Starlette's TestClient default base_url is http://testserver. A single-label
+# name cannot be registered on public DNS, so it is not a rebinding vector;
+# allowing it keeps every TestClient(app) in the suite meaningful (the same
+# allowance Django's test runner makes in ALLOWED_HOSTS).
+_TEST_HOSTS = frozenset({"testserver"})
+_UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+_HOST_REFUSAL = (
+    "Refused: unrecognized Host header (DNS-rebinding guard). The console answers loopback "
+    "hosts and the hosts of console.allowed_origins only."
+)
+_ORIGIN_REFUSAL = (
+    "Refused: this browser origin may not make state-changing console requests (cross-site "
+    "request guard). Loopback origins are trusted; list others in console.allowed_origins."
+)
+
+
+@dataclasses.dataclass(frozen=True)
+class _TrustPolicy:
+    allowed_origins: frozenset[str]  # normalized: scheme://host[:port], lowercase, no trailing /
+    allowed_hosts: frozenset[str]  # hostnames of those origins (no port, no brackets)
+
+
+_EMPTY_TRUST = _TrustPolicy(allowed_origins=frozenset(), allowed_hosts=frozenset())
+
+
+def _trust_policy() -> _TrustPolicy:
+    """Resolve console.allowed_origins into the trust policy (loopback-plus list)."""
+    origins = frozenset(_normalize_origin(o) for o in (_resolve("console.allowed_origins", None) or ()) if o)
+    hosts: set[str] = set()
+    for origin in origins:
+        try:
+            host = urlsplit(origin).hostname
+        except ValueError:
+            continue
+        if host:
+            hosts.add(host.lower())
+    return _TrustPolicy(allowed_origins=origins, allowed_hosts=frozenset(hosts))
+
+
+def _trust_of(app: Any) -> _TrustPolicy:
+    return getattr(app.state, "trust", None) or _EMPTY_TRUST
+
+
+def _request_host(host_header: str) -> str:
+    """The bare hostname of a Host header — port stripped, IPv6 unbracketed."""
+    h = (host_header or "").strip().lower()
+    if h.startswith("["):  # [::1]:8765 / [::1]
+        return h[1 : h.index("]")] if "]" in h else h.lstrip("[")
+    return h.rsplit(":", 1)[0] if ":" in h else h
+
+
+def _host_allowed(host_header: str, trust: _TrustPolicy) -> bool:
+    host = _request_host(host_header)
+    return bool(host) and (host in _LOOPBACK_HOSTS or host in _TEST_HOSTS or host in trust.allowed_hosts)
+
+
+def _origin_allowed(origin_header: str, trust: _TrustPolicy) -> bool:
+    """Is this browser Origin trusted for state-changing requests / /ws?
+
+    Loopback-host origins pass on ANY port (a local dev UI on :5173 talking to
+    :8765 is the operator's own machine — already inside the trust boundary);
+    everything else must be listed. An unparseable or "null" origin fails.
+    """
+    origin = _normalize_origin(origin_header)
+    if not origin:
+        return False
+    try:
+        host = (urlsplit(origin).hostname or "").lower()
+    except ValueError:
+        return False
+    return host in _LOOPBACK_HOSTS or origin in trust.allowed_origins
 
 
 # ── live verbs (wrap existing api.py facades) ───────────────────────────────
@@ -1194,7 +1298,25 @@ def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
         lifespan=_lifespan,
     )
     app.state.sandbox = sandbox
+    app.state.trust = _trust_policy()
     app.include_router(api)
+
+    @app.middleware("http")
+    async def _trust_guard(request: Request, call_next: Any) -> Any:
+        # See the trust-guard block above: Host on every request (rebinding),
+        # Origin on state-changing requests that carry one (CSRF). Reads stay
+        # un-gated on Origin — without CORS headers a cross-origin page cannot
+        # READ a response, and rebinding reads are what the Host check stops.
+        trust = _trust_of(request.app)
+        if not _host_allowed(request.headers.get("host", ""), trust):
+            logger.warning("refusing request with unrecognized Host %r", request.headers.get("host"))
+            return JSONResponse(status_code=400, content={"detail": _HOST_REFUSAL})
+        if request.method in _UNSAFE_METHODS:
+            origin = request.headers.get("origin")
+            if origin is not None and not _origin_allowed(origin, trust):
+                logger.warning("refusing %s %s from origin %r", request.method, request.url.path, origin)
+                return JSONResponse(status_code=403, content={"detail": _ORIGIN_REFUSAL})
+        return await call_next(request)
 
     @app.websocket("/ws")
     async def ws_events(websocket: WebSocket) -> None:
@@ -1206,14 +1328,34 @@ def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
         reports backpressure losses (seq gaps mark where).
         """
         sandbox = _sandbox_of(websocket.app)
+        trust = _trust_of(websocket.app)
+        # HTTP middleware does not cover websockets — the trust guard's Host
+        # check (rebinding) is applied here by hand, before any accept.
+        if not _host_allowed(websocket.headers.get("host", ""), trust):
+            logger.warning("refusing /ws upgrade with unrecognized Host %r", websocket.headers.get("host"))
+            await websocket.close(code=1008)  # policy violation
+            return
         if sandbox is not None:
             # Browsers cannot set headers on a WebSocket upgrade, but they DO
             # send Origin and a page cannot forge it — so under sandbox mode a
             # stray page on the visitor's browser cannot read the session
             # stream. Refused BEFORE accept: the handshake itself fails.
+            # Stricter than the trust guard: sandbox REQUIRES a listed origin
+            # (a missing Origin is refused too — every legitimate sandbox
+            # client is a browser page on a listed origin).
             origin = _normalize_origin(websocket.headers.get("origin") or "")
             if origin not in sandbox.allowed_origins:
                 logger.warning("refusing /ws upgrade from origin %r (sandbox mode)", origin or "<none>")
+                await websocket.close(code=1008)  # policy violation
+                return
+        else:
+            # Trust-guard Origin rule, /ws edition: the stream carries the
+            # agent's internals, so a browser page from an untrusted origin
+            # may not attach; clients that send no Origin (the CLI, native
+            # apps) pass — browser-relay protection, not authentication.
+            origin_raw = websocket.headers.get("origin")
+            if origin_raw is not None and not _origin_allowed(origin_raw, trust):
+                logger.warning("refusing /ws upgrade from origin %r", origin_raw)
                 await websocket.close(code=1008)  # policy violation
                 return
         await websocket.accept()
@@ -1357,7 +1499,9 @@ def run_serve(argv: list[str]) -> int:
             f"/api/diagnose, refuse /ws upgrades whose Origin is not in {_SANDBOX_ORIGINS_ENV} "
             f"(comma-separated), and cap run input at {_SANDBOX_MAX_INPUT_ENV} characters "
             f"(default {_SANDBOX_DEFAULT_MAX_INPUT_CHARS}). The bind stays 127.0.0.1; "
-            "authentication is the proxy's job."
+            "authentication is the proxy's job. Sandbox or not, a browser-relay guard is "
+            f"always on: Hosts and browser Origins outside loopback + {_SANDBOX_ORIGINS_ENV} "
+            "are refused (DNS-rebinding / cross-site request protection)."
         ),
     )
     ap.add_argument("--port", type=int, default=None, help="Port (default: config console.port / 8765).")

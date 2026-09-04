@@ -204,10 +204,21 @@ class TestWsOrigin:
                 first = ws.receive_json()
                 assert first["kind"] == "identity"
 
-    def test_negative_control_any_origin_when_off(self, plain_app):
+    def test_negative_control_missing_origin_accepted_when_off(self, plain_app):
+        # Sandbox-off keeps its per-mode contract (origin NOT required — the
+        # CLI and native clients send none), but an untrusted browser origin
+        # is now refused by the always-on trust guard, not accepted: the old
+        # "any origin when off" contract was the /ws half of the CSRF surface
+        # (see test_console_trust_guard.py for the trust guard's own suite).
         with TestClient(plain_app) as client:
-            with client.websocket_connect("/ws", headers={"origin": "https://evil.example"}) as ws:
+            with client.websocket_connect("/ws") as ws:
                 assert ws.receive_json()["kind"] == "identity"
+
+    def test_untrusted_origin_refused_even_when_off(self, plain_app):
+        with TestClient(plain_app) as client:
+            with pytest.raises(WebSocketDisconnect):
+                with client.websocket_connect("/ws", headers={"origin": "https://evil.example"}):
+                    pass
 
 
 # ── input cap ────────────────────────────────────────────────────────────────

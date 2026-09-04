@@ -100,6 +100,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   store (production shares one EC across channels), metric/horizon/decision-rule frozen in the
   docstring before the run. Kickoff plan: `docs/plans/world_seam_1_1_4.md`.
 
+### Security
+- **Console trust guard — Host (DNS-rebinding) + Origin (CSRF) browser-relay protection on
+  `maxim serve`, always on** (`console/server.py`): every request's Host must be loopback or a
+  host of `console.allowed_origins`; state-changing requests and `/ws` upgrades that carry a
+  browser Origin must carry a loopback or listed one. Before this, any page in the operator's
+  browser could fire cross-origin "simple" POSTs at `/api/run`, `/api/setup/*` and `/api/probe`
+  (Starlette parses JSON bodies regardless of Content-Type, so no preflight applied), and a DNS
+  name re-resolving to 127.0.0.1 could read `/api/recall`/`/api/diagnose` past same-origin.
+  Origin-less clients (CLI, native) are unaffected — this is browser-relay protection, not
+  authentication. `console.allowed_origins` graduates from a sandbox-only knob to the general
+  trusted-origins list. Behavior change: an untrusted-origin browser page can no longer attach
+  to `/ws` even outside sandbox mode. First rung of
+  `docs/plans/console_tunnel_hardening.md` (2026-09-03 console security audit; bearer auth,
+  admission control, and the pre-GA authorization pass are the ladder's next PRs).
+
 ### Fixed
 - **D76 — declared affordance param defaults now actually apply at execute time** (previously
   schema decoration the LLM was shown and `execute` never honored; found via minecraft_bread's
