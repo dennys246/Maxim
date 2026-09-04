@@ -157,23 +157,26 @@ class MinecraftWorldBackend:
         return _result(success=False, error=str(result.get("detail") or "action refused by the game"))
 
 
-def minecraft_modulator_factory(client: Any, *, world_sensors: tuple[str, ...]):
+def minecraft_modulator_factory(client: Any, *, world_sensors: "tuple[str, ...] | None" = None):
     """``attach_backends``-shaped factory for ``build_executor(modulator_factory=)``.
 
     Attaches a :class:`MinecraftWorldBackend` to every spec-declared
     modulator of the player entity. ``world_sensors`` names the body sensors
-    the bridge's snapshots own — pass the body's declared ``modality: world``
-    sensor names (the harness derives them from the parsed body so YAML and
-    backend cannot drift).
+    the bridge's snapshots own; ``None`` (the default) derives it from the
+    ATTACHED entity's own ``modality: world`` declarations at attach time —
+    the strongest single-source form (no probe parse, no way for YAML and
+    backend to drift; also keeps the harness off ``_parse_entity``, whose
+    C4 CI allow-list guards new src-side callers).
     """
 
     def factory(entity: Any, mod_name: str, _spec_modulator: Any) -> MinecraftWorldBackend:
+        derived = world_sensors if world_sensors is not None else declared_world_sensor_names(entity)
         return MinecraftWorldBackend(
             client=client,
             entity=entity,
             modulator_name=mod_name,
             entity_name=getattr(entity, "name", "?"),
-            world_sensors=world_sensors,
+            world_sensors=derived,
         )
 
     return factory

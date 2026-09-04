@@ -183,10 +183,7 @@ def build_minecraft_aut(
     Raises on any missing piece (a harness that degrades into an
     unembodied or world-less agent measures nothing — D64's shape).
     """
-    from maxim.embodiment.backends.minecraft import (
-        declared_world_sensor_names,
-        minecraft_modulator_factory,
-    )
+    from maxim.embodiment.backends.minecraft import minecraft_modulator_factory
     from maxim.embodiment.component_registry import ComponentRegistry
     from maxim.runtime.bio_stack import build_bio_stack
     from maxim.runtime.bootstrap import build_executor
@@ -197,16 +194,6 @@ def build_minecraft_aut(
     client.connect()
 
     component_registry = ComponentRegistry()
-    # Derive the world-owned set from the PARSED body so YAML and backend
-    # cannot drift (the declared_world_sensor_names contract).
-    from maxim.embodiment.spec import _parse_entity
-
-    body_spec = component_registry.get(MINECRAFT_BODY_REF)
-    probe_entity = _parse_entity(dict(body_spec.get("entity", body_spec)))
-    world_sensors = declared_world_sensor_names(probe_entity)
-    if not world_sensors:
-        raise RuntimeError(f"{MINECRAFT_BODY_REF} declares no modality: world sensors — nothing to measure")
-
     bio = build_bio_stack(agent_id=agent_id, persistence_dir=persistence_dir)
     registry = ToolRegistry()
     executor = build_executor(
@@ -231,7 +218,9 @@ def build_minecraft_aut(
         distributor=bio.distributor,
         entity_ref=MINECRAFT_BODY_REF,
         component_registry=component_registry,
-        modulator_factory=minecraft_modulator_factory(client, world_sensors=world_sensors),
+        # The factory derives world_owned_sensors from the ATTACHED entity's
+        # own modality: world declarations — no probe parse, no drift.
+        modulator_factory=minecraft_modulator_factory(client),
     )
     backend = None
     embodiment = getattr(executor, "embodiment", None)
@@ -243,6 +232,8 @@ def build_minecraft_aut(
             break
     if backend is None:
         raise RuntimeError("minecraft modulator backend did not attach — the world seam is not wired")
+    if not backend.world_owned_sensors:
+        raise RuntimeError(f"{MINECRAFT_BODY_REF} declares no modality: world sensors — nothing to measure")
 
     return MinecraftAut(
         agent_id=agent_id,
