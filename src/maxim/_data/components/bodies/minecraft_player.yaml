@@ -25,7 +25,7 @@ entity:
   sensors:
     health:
       unit: hp
-      range: [0, 20]
+      range: [0, 40]   # rest (20 hp, full) = midpoint = A4-neutral
       initial: 20
       modality: world
       drive:
@@ -36,7 +36,7 @@ entity:
         pain_scale: 0.5
     food:
       unit: points
-      range: [0, 20]
+      range: [0, 40]   # rest (20, full) = midpoint = A4-neutral
       initial: 20
       modality: world
       drive:
@@ -52,16 +52,12 @@ entity:
       modality: world
     y_altitude:
       unit: blocks
-      range: [-64, 320]
+      range: [0, 128]  # rest (surface y~64) = midpoint; y>128 clamps (the lever, applied)
       initial: 64
       modality: world
-      # A4's neutral is the range MIDPOINT (y=128) — a surface bot (y~64)
-      # rests permanently "loud" on this sensor. Deliberate for now (D1's
-      # recorded consequence; the range is the author's lever), revisit at
-      # L11's PR 4 re-measure.
     nearest_hostile_dist:
       unit: blocks
-      range: [0, 64]
+      range: [0, 128]  # bridge caps at 64 ("beyond horizon") = midpoint; approach descends loud
       initial: 64
       modality: world
     time_of_day:
@@ -73,6 +69,73 @@ entity:
       # embed at opposite basis ends (the azimuth-fold lesson family). A
       # sin/cos pair is the fix if adjacent-midnight confusion ever shows
       # in the PR 4 re-measure; kept scalar until measured.
+    # ── Minecraft-scale growth (L11 re-measure prereg): the channel must
+    # exceed the ~12-sensor safe band for the retirement-grade re-measure
+    # — and this is the "maximally embody" intent anyway. 16 world sensors
+    # total; the bridge snapshot and FakeBridgeServer emit every one
+    # (lockstep-pinned in tests). All bridge-written: no drives, no drift.
+    #
+    # RANGE PRINCIPLE (D1's lever, applied deliberately — the L11-prereg
+    # review round MEASURED the alternative failing): A4's neutral is the
+    # range MIDPOINT, so every range below is declared so the sensor's
+    # RESTING value sits at ~0.5 normalized — a resting sensor is silent,
+    # a departing one shouts. A range wider than the game's observable
+    # span (health [0,40] for 20 max hp) is the representational choice
+    # that puts "healthy" at neutral; the clamp window is the author's,
+    # units stay the sensor's own (the P1 rule). With rest-at-extreme
+    # ranges the gained background was maximally loud and a damage event
+    # measured cos 0.926 (cannot clear 0.85); re-centered it measured
+    # 0.405 — clean separation.
+    saturation:
+      unit: points
+      range: [0, 10]   # game scale caps ~5-20; JS clamps to 10; rest ~5 = midpoint
+      initial: 5
+      modality: world
+    oxygen:
+      unit: bubbles
+      range: [0, 40]   # rest (20, surfaced) = midpoint; drowning descends loud
+      initial: 20
+      modality: world
+    hostile_count:
+      unit: count
+      range: [-32, 32] # rest (0 hostiles) = midpoint; the negative half is unobservable by design
+      initial: 0
+      modality: world
+    distance_from_spawn:
+      unit: blocks
+      range: [-128, 128] # rest (at spawn) = midpoint; wandering shouts
+      initial: 0
+      modality: world
+    speed:
+      unit: blocks_per_tick
+      range: [-1, 1]   # rest (still) = midpoint
+      initial: 0
+      modality: world
+    on_ground:
+      unit: bool
+      range: [-1, 3]   # rest (grounded, 1) = midpoint; airborne (0) speaks at w=0.125
+      initial: 1
+      modality: world
+    is_raining:
+      unit: bool
+      range: [-1, 1]   # rest (clear, 0) = midpoint; rain (1) shouts
+      initial: 0
+      modality: world
+    xp_level:
+      unit: levels
+      range: [-50, 50] # rest (0) = midpoint; gaining levels shouts
+      initial: 0
+      modality: world
+    nearest_player_dist:
+      unit: blocks
+      range: [0, 128]  # bridge caps at 64 = midpoint; a nearing player descends loud
+      initial: 64
+      modality: world
+    look_pitch:
+      unit: radians
+      range: [-1.5708, 1.5708]
+      initial: 0
+      modality: world
   modulators:
     avatar:
       abstract: true  # capability-only — no sensors (C4)

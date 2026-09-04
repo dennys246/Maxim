@@ -244,9 +244,19 @@ class TestWorldBackend:
         assert set(backend.world_owned_sensors) == {
             "health",
             "food",
+            "saturation",
+            "oxygen",
             "light_level",
             "y_altitude",
             "nearest_hostile_dist",
+            "hostile_count",
+            "nearest_player_dist",
+            "distance_from_spawn",
+            "speed",
+            "on_ground",
+            "is_raining",
+            "xp_level",
+            "look_pitch",
             "time_of_day",
         }
 
@@ -256,9 +266,19 @@ class TestWorldBackend:
         assert set(backend.world_owned_sensors) == {
             "health",
             "food",
+            "saturation",
+            "oxygen",
             "light_level",
             "y_altitude",
             "nearest_hostile_dist",
+            "hostile_count",
+            "nearest_player_dist",
+            "distance_from_spawn",
+            "speed",
+            "on_ground",
+            "is_raining",
+            "xp_level",
+            "look_pitch",
             "time_of_day",
         }
 
