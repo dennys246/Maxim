@@ -1,0 +1,33 @@
+{
+  "harness": "scripts/place_code_gain_check.py",
+  "ts": "2026-09-03T20:22:46.614365+00:00",
+  "provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "86a56c353a20",
+    "working_tree_dirty_src_scripts": false,
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages"
+  },
+  "metric": "distinct clusters over 7 directions + jitter stability at 0.85, real EC",
+  "threshold": 0.85,
+  "place_code_arms": [
+    {
+      "gain_exponent": null,
+      "distinct_clusters": 7,
+      "directions": 7,
+      "jitter_stability": 1.0
+    },
+    {
+      "gain_exponent": 3.0,
+      "distinct_clusters": 7,
+      "directions": 7,
+      "jitter_stability": 0.9571
+    }
+  ],
+  "raw_scalar_under_gain": {
+    "gain_exponent": 3.0,
+    "nonzero_embeddings": 6,
+    "directions": 7,
+    "note": "the zeroed direction is azimuth 0.0 \u2014 the centered stimulus"
+  }
+}

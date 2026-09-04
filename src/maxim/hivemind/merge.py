@@ -569,7 +569,7 @@ def nac_merge(
 #: ``merge.py`` — the reverse would cycle.
 NAC_KEY_SEP = "\x1f"
 
-DEFAULT_FROZEN_CENTROID_MODALITIES: frozenset[str] = frozenset({"interoception", "audio"})
+DEFAULT_FROZEN_CENTROID_MODALITIES: frozenset[str] = frozenset({"interoception", "audio", "world"})
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -598,6 +598,10 @@ DEFAULT_FROZEN_CENTROID_MODALITIES: frozenset[str] = frozenset({"interoception",
 SENSOR_MODALITY_THRESHOLDS: dict[str, float] = {
     "interoception": 0.85,
     "audio": 0.85,
+    # "world" (1.1.4 plan decision D6): the A4-gained channel, same
+    # SensorEncoderConfig.pattern_threshold — A4 was selected AT the
+    # unchanged 0.85 (arm A5, gain + moved threshold, collapsed to 0.00).
+    "world": 0.85,
 }
 
 
