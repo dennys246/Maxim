@@ -114,6 +114,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to `/ws` even outside sandbox mode. First rung of
   `docs/plans/console_tunnel_hardening.md` (2026-09-03 console security audit; bearer auth,
   admission control, and the pre-GA authorization pass are the ladder's next PRs).
+  Two-lens review fold: origin entries canonicalize loudly at `build_app` (malformed entry =
+  `ConfigurationError`; default ports dropped so `https://x:443` matches the `https://x`
+  browsers send); the `testserver` Host allowance is pytest-scoped, never in production;
+  state-changing requests additionally require `Content-Type: application/json` (HTML forms
+  cannot send it, and a cross-origin fetch() that does triggers a preflight the console never
+  answers).
 
 ### Fixed
 - **D76 — declared affordance param defaults now actually apply at execute time** (previously

@@ -104,6 +104,54 @@ class TestHttpOrigin:
         r = TestClient(plain_app).get("/api/identity", headers={"origin": "https://evil.example"})
         assert r.status_code == 200
 
+    def test_default_port_origin_matches_listed_bare(self, listed_app):
+        # Browsers omit default ports from Origin; a client that sends one
+        # must still match the bare listed form (canonicalization, both ways).
+        r = TestClient(listed_app).post("/api/run", json=_PROBE_BODY, headers={"origin": f"{_LISTED}:443"})
+        assert r.status_code == 501
+
+    def test_listed_default_port_matches_bare_origin(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("MAXIM_CONSOLE_SANDBOX", raising=False)
+        monkeypatch.setenv("MAXIM_CONSOLE_ALLOWED_ORIGINS", "https://app.example:443")
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        app = build_app(None)
+        r = TestClient(app).post("/api/run", json=_PROBE_BODY, headers={"origin": "https://app.example"})
+        assert r.status_code == 501
+
+
+class TestContentType:
+    # The Origin-less belt: HTML forms cannot send application/json, and a
+    # fetch() that sets it triggers a preflight this server never answers.
+
+    def test_non_json_content_type_refused_on_mutations(self, plain_app):
+        import json as _json
+
+        r = TestClient(plain_app).post(
+            "/api/run", content=_json.dumps(_PROBE_BODY), headers={"content-type": "text/plain"}
+        )
+        assert r.status_code == 415
+        assert r.json()["detail"] == srv._CONTENT_TYPE_REFUSAL
+
+    def test_missing_content_type_refused_on_mutations(self, plain_app):
+        import json as _json
+
+        r = TestClient(plain_app).post("/api/run", content=_json.dumps(_PROBE_BODY))
+        assert r.status_code == 415
+
+    def test_json_with_charset_suffix_accepted(self, plain_app):
+        import json as _json
+
+        r = TestClient(plain_app).post(
+            "/api/run",
+            content=_json.dumps(_PROBE_BODY),
+            headers={"content-type": "application/json; charset=utf-8"},
+        )
+        assert r.status_code == 501
+
+    def test_reads_are_not_content_type_gated(self, plain_app):
+        assert TestClient(plain_app).get("/api/identity").status_code == 200
+
 
 # ── Host rule on every request ───────────────────────────────────────────────
 
@@ -115,11 +163,26 @@ class TestHttpHost:
         assert r.status_code == 400
         assert r.json()["detail"] == srv._HOST_REFUSAL
 
-    @pytest.mark.parametrize("host", ["127.0.0.1:8765", "localhost:8765", "localhost", "[::1]:8765", "testserver"])
+    @pytest.mark.parametrize(
+        "host", ["127.0.0.1:8765", "localhost:8765", "localhost", "localhost.", "[::1]:8765", "testserver"]
+    )
     def test_local_hosts_accepted(self, plain_app, host):
-        # "testserver" is TestClient's default and single-label (not publicly
-        # resolvable) — the documented allowance that keeps this suite honest.
+        # "localhost." (trailing FQDN dot) resolves to loopback; "testserver"
+        # is TestClient's default, allowed only under pytest — see below.
         assert TestClient(plain_app).get("/api/identity", headers={"host": host}).status_code == 200
+
+    def test_testserver_allowance_is_pytest_scoped(self, monkeypatch):
+        # In production (no PYTEST_CURRENT_TEST) a hostile LAN resolver could
+        # rebind a single-label name, so the allowance must not ship — the
+        # gate mirrors Django's setup_test_environment scoping (review fold,
+        # cross-confirmed by both lenses).
+        assert srv._host_allowed("testserver", srv._EMPTY_TRUST) is True  # under pytest
+        monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+        assert srv._host_allowed("testserver", srv._EMPTY_TRUST) is False
+        assert srv._host_allowed("localhost", srv._EMPTY_TRUST) is True  # loopback unaffected
+
+    def test_trailing_dot_does_not_relax_refusals(self, plain_app):
+        assert TestClient(plain_app).get("/api/identity", headers={"host": "evil.example."}).status_code == 400
 
     def test_listed_origin_host_accepted(self, listed_app):
         assert TestClient(listed_app).get("/api/identity", headers={"host": "app.example"}).status_code == 200
@@ -185,7 +248,50 @@ class TestPolicy:
 
     @pytest.mark.parametrize(
         ("header", "host"),
-        [("127.0.0.1:8765", "127.0.0.1"), ("[::1]:8765", "::1"), ("Localhost", "localhost"), ("", "")],
+        [
+            ("127.0.0.1:8765", "127.0.0.1"),
+            ("[::1]:8765", "::1"),
+            ("Localhost", "localhost"),
+            ("localhost.:8765", "localhost"),
+            ("", ""),
+        ],
     )
     def test_request_host_parsing(self, header, host):
         assert srv._request_host(header) == host
+
+    @pytest.mark.parametrize("bad", ["app.example", "https://b.example/path", "https://x:not-a-port", "https://"])
+    def test_malformed_origin_entries_fail_loud_at_build(self, monkeypatch, tmp_path, bad):
+        # A bare hostname / path-carrying / bad-port entry can never match a
+        # browser Origin — silently half-applying it (Host relaxed, Origin
+        # still refusing the operator's UI) is the hardest state to debug.
+        # Same loud-at-build philosophy as the sandbox knobs (review fold,
+        # cross-confirmed by both lenses).
+        from maxim.runtime.config_loader import ConfigurationError
+
+        monkeypatch.delenv("MAXIM_CONSOLE_SANDBOX", raising=False)
+        monkeypatch.setenv("MAXIM_CONSOLE_ALLOWED_ORIGINS", f"https://good.example, {bad}")
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        with pytest.raises(ConfigurationError, match="allowed_origins"):
+            build_app(None)
+
+    def test_default_ports_canonicalize_in_policy(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("MAXIM_CONSOLE_SANDBOX", raising=False)
+        monkeypatch.setenv(
+            "MAXIM_CONSOLE_ALLOWED_ORIGINS", "https://a.example:443, http://b.example:80, https://c.example:8443"
+        )
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        trust = build_app(None).state.trust
+        assert trust.allowed_origins == frozenset({"https://a.example", "http://b.example", "https://c.example:8443"})
+        assert trust.allowed_hosts == frozenset({"a.example", "b.example", "c.example"})
+
+    def test_non_http_scheme_origin_can_be_listed(self, monkeypatch, tmp_path):
+        # A packaged native shell (e.g. Capacitor) sends a custom-scheme
+        # Origin; the canonicalizer must not refuse it at build or at match.
+        monkeypatch.delenv("MAXIM_CONSOLE_SANDBOX", raising=False)
+        monkeypatch.setenv("MAXIM_CONSOLE_ALLOWED_ORIGINS", "capacitor://app.example")
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        app = build_app(None)
+        assert srv._origin_allowed("capacitor://app.example", app.state.trust) is True

@@ -149,8 +149,62 @@ class _SandboxPolicy:
     max_input_chars: int
 
 
-def _normalize_origin(raw: str) -> str:
-    return raw.strip().rstrip("/").lower()
+_DEFAULT_PORTS = {"http": 80, "https": 443, "ws": 80, "wss": 443}
+
+
+def _canonical_origin(raw: str) -> str | None:
+    """Canonical ``scheme://host[:port]`` for an Origin-shaped string, or None.
+
+    Lowercased, trailing ``/`` stripped, and a DEFAULT port (``:80`` http/ws,
+    ``:443`` https/wss) dropped — browsers omit default ports from the Origin
+    header, so a listed ``https://x:443`` would otherwise never match the
+    ``https://x`` a browser actually sends. Anything that is not a bare
+    origin — no scheme (a bare hostname), a path/query/fragment, credentials,
+    an unparsable port — returns None: it could never equal a browser Origin,
+    so treating it as valid would silently half-apply (review fold; the
+    scheme is NOT restricted to http(s) — a packaged native shell may send
+    e.g. ``capacitor://localhost``).
+    """
+    s = (raw or "").strip().rstrip("/").lower()
+    if not s:
+        return None
+    try:
+        parts = urlsplit(s)
+        port = parts.port  # raises ValueError on a malformed port
+    except ValueError:
+        return None
+    host = parts.hostname
+    if not parts.scheme or not host or parts.path or parts.query or parts.fragment or "@" in parts.netloc:
+        return None
+    if port is not None and port == _DEFAULT_PORTS.get(parts.scheme):
+        port = None
+    hostpart = f"[{host}]" if ":" in host else host  # re-bracket IPv6
+    return f"{parts.scheme}://{hostpart}" + (f":{port}" if port is not None else "")
+
+
+def _canonical_origin_list(raw_entries: Any) -> frozenset[str]:
+    """Canonicalize ``console.allowed_origins`` entries, LOUDLY refusing junk.
+
+    A malformed entry (bare hostname, path, bad port) can never match a
+    browser Origin, and its host may or may not derive — the half-applied
+    state is the hardest to debug (Host guard relaxed, Origin guard still
+    refusing the operator's own UI). Same philosophy as the sandbox cap
+    below: an info log is not a signal anyone reads — fail at build time.
+    """
+    canonical: set[str] = set()
+    for raw in raw_entries or ():
+        if not raw:
+            continue
+        c = _canonical_origin(raw)
+        if c is None:
+            from maxim.runtime.config_loader import ConfigurationError
+
+            raise ConfigurationError(
+                f"config: console.allowed_origins entry {raw!r} is not an origin — expected "
+                f"scheme://host[:port], no path (env: {_SANDBOX_ORIGINS_ENV})"
+            )
+        canonical.add(c)
+    return frozenset(canonical)
 
 
 def _sandbox_policy() -> _SandboxPolicy | None:
@@ -162,7 +216,7 @@ def _sandbox_policy() -> _SandboxPolicy | None:
     """
     if not _resolve("console.sandbox", None):
         return None
-    origins = frozenset(_normalize_origin(o) for o in (_resolve("console.allowed_origins", None) or ()) if o)
+    origins = _canonical_origin_list(_resolve("console.allowed_origins", None))
     if not origins:
         # Loud, like a bad cap: a sandbox whose UI can never open /ws is the
         # vacuous guard inverted (everything refused), and an info log is
@@ -211,10 +265,13 @@ def _refuse_in_sandbox(request: Request) -> None:
 # ``app.state.trust`` — a request cannot flip it.
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
-# Starlette's TestClient default base_url is http://testserver. A single-label
-# name cannot be registered on public DNS, so it is not a rebinding vector;
-# allowing it keeps every TestClient(app) in the suite meaningful (the same
-# allowance Django's test runner makes in ALLOWED_HOSTS).
+# Starlette's TestClient default base_url is http://testserver — allowed ONLY
+# while pytest is running (PYTEST_CURRENT_TEST is set by the runner for the
+# duration of each test), mirroring how Django injects "testserver" in
+# setup_test_environment() rather than production ALLOWED_HOSTS. Never in
+# production: "single-label names aren't on public DNS" does not hold against
+# a hostile LAN resolver (rogue Wi-Fi DHCP), which could rebind it (review
+# fold — both lenses).
 _TEST_HOSTS = frozenset({"testserver"})
 _UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _HOST_REFUSAL = (
@@ -225,6 +282,16 @@ _ORIGIN_REFUSAL = (
     "Refused: this browser origin may not make state-changing console requests (cross-site "
     "request guard). Loopback origins are trusted; list others in console.allowed_origins."
 )
+_CONTENT_TYPE_REFUSAL = (
+    "Refused: state-changing console requests must send Content-Type: application/json "
+    "(cross-site form guard — HTML forms cannot send JSON, so this forces a preflight)."
+)
+
+
+def _test_host_allowance() -> frozenset[str]:
+    import os
+
+    return _TEST_HOSTS if "PYTEST_CURRENT_TEST" in os.environ else frozenset()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -237,16 +304,15 @@ _EMPTY_TRUST = _TrustPolicy(allowed_origins=frozenset(), allowed_hosts=frozenset
 
 
 def _trust_policy() -> _TrustPolicy:
-    """Resolve console.allowed_origins into the trust policy (loopback-plus list)."""
-    origins = frozenset(_normalize_origin(o) for o in (_resolve("console.allowed_origins", None) or ()) if o)
-    hosts: set[str] = set()
-    for origin in origins:
-        try:
-            host = urlsplit(origin).hostname
-        except ValueError:
-            continue
-        if host:
-            hosts.add(host.lower())
+    """Resolve console.allowed_origins into the trust policy (loopback-plus list).
+
+    Entries canonicalize LOUDLY (`_canonical_origin_list` raises on junk), so
+    every origin here parses; its hostname is what the Host guard additionally
+    trusts — listing an origin whitelists its Host too (the tunnel's public
+    hostname must therefore appear as the host of some listed origin).
+    """
+    origins = _canonical_origin_list(_resolve("console.allowed_origins", None))
+    hosts = {h for origin in origins if (h := urlsplit(origin).hostname)}
     return _TrustPolicy(allowed_origins=origins, allowed_hosts=frozenset(hosts))
 
 
@@ -255,16 +321,17 @@ def _trust_of(app: Any) -> _TrustPolicy:
 
 
 def _request_host(host_header: str) -> str:
-    """The bare hostname of a Host header — port stripped, IPv6 unbracketed."""
+    """The bare hostname of a Host header — port stripped, IPv6 unbracketed,
+    trailing FQDN dot dropped (``http://localhost./`` resolves to loopback)."""
     h = (host_header or "").strip().lower()
     if h.startswith("["):  # [::1]:8765 / [::1]
         return h[1 : h.index("]")] if "]" in h else h.lstrip("[")
-    return h.rsplit(":", 1)[0] if ":" in h else h
+    return (h.rsplit(":", 1)[0] if ":" in h else h).rstrip(".")
 
 
 def _host_allowed(host_header: str, trust: _TrustPolicy) -> bool:
     host = _request_host(host_header)
-    return bool(host) and (host in _LOOPBACK_HOSTS or host in _TEST_HOSTS or host in trust.allowed_hosts)
+    return bool(host) and (host in _LOOPBACK_HOSTS or host in trust.allowed_hosts or host in _test_host_allowance())
 
 
 def _origin_allowed(origin_header: str, trust: _TrustPolicy) -> bool:
@@ -274,13 +341,10 @@ def _origin_allowed(origin_header: str, trust: _TrustPolicy) -> bool:
     :8765 is the operator's own machine — already inside the trust boundary);
     everything else must be listed. An unparseable or "null" origin fails.
     """
-    origin = _normalize_origin(origin_header)
-    if not origin:
+    origin = _canonical_origin(origin_header)
+    if origin is None:
         return False
-    try:
-        host = (urlsplit(origin).hostname or "").lower()
-    except ValueError:
-        return False
+    host = (urlsplit(origin).hostname or "").lower()
     return host in _LOOPBACK_HOSTS or origin in trust.allowed_origins
 
 
@@ -1316,6 +1380,15 @@ def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
             if origin is not None and not _origin_allowed(origin, trust):
                 logger.warning("refusing %s %s from origin %r", request.method, request.url.path, origin)
                 return JSONResponse(status_code=403, content={"detail": _ORIGIN_REFUSAL})
+            # Belt for the Origin-less residue (legacy browsers omitted Origin
+            # on cross-site form POSTs): every mutating route takes a JSON
+            # body, HTML forms cannot send application/json, and a fetch()
+            # that sets it triggers a preflight — which this server never
+            # answers (no CORS by design). Review fold — executor lens.
+            ctype = request.headers.get("content-type", "")
+            if not ctype.lower().strip().startswith("application/json"):
+                logger.warning("refusing %s %s with Content-Type %r", request.method, request.url.path, ctype)
+                return JSONResponse(status_code=415, content={"detail": _CONTENT_TYPE_REFUSAL})
         return await call_next(request)
 
     @app.websocket("/ws")
@@ -1343,8 +1416,8 @@ def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
             # Stricter than the trust guard: sandbox REQUIRES a listed origin
             # (a missing Origin is refused too — every legitimate sandbox
             # client is a browser page on a listed origin).
-            origin = _normalize_origin(websocket.headers.get("origin") or "")
-            if origin not in sandbox.allowed_origins:
+            origin = _canonical_origin(websocket.headers.get("origin") or "")
+            if origin is None or origin not in sandbox.allowed_origins:
                 logger.warning("refusing /ws upgrade from origin %r (sandbox mode)", origin or "<none>")
                 await websocket.close(code=1008)  # policy violation
                 return
@@ -1528,6 +1601,7 @@ def run_serve(argv: list[str]) -> int:
     try:
         agent_id = _console_agent_id()
         sandbox_on = _sandbox_policy() is not None
+        _trust_policy()  # malformed console.allowed_origins fails HERE, not on the first request
     except Exception as e:  # ConfigurationError from the loader
         print(f"maxim serve: {e}")
         return 2

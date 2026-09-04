@@ -339,7 +339,10 @@ class ConsoleConfigSection:
     # Sandbox mode: close the host-acting surfaces (probe-by-url, mesh setup,
     # diagnose), gate /ws on Origin, cap run input. Read once at build_app.
     sandbox: bool = False
-    # Origins allowed to open /ws under sandbox mode (normalized by the server).
+    # Trusted non-local origins, canonicalized loudly by the server: feeds the
+    # ALWAYS-ON trust guard (Origin allowed on state-changing requests + /ws;
+    # each origin's host is also an allowed request Host) and, under sandbox
+    # mode, the /ws origin-REQUIRED gate. Empty = loopback-only trust.
     allowed_origins: tuple[str, ...] = ()
     # Sandbox-mode cap on RunRequest.input length.
     max_input_chars: int = 16000
@@ -746,8 +749,9 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
     # without this branch a stray comma would arm a deny-everything gate the
     # agent could never reply through. config.json ``"allow": []`` stays the
     # one way to say "no tools". ``tools.deny`` / ``console.allowed_origins``
-    # keep the empty tuple (empty deny = nothing denied; empty origins is
-    # refused by the server under sandbox mode).
+    # keep the empty tuple (empty deny = nothing denied; empty origins =
+    # loopback-only trust guard, and is refused by the server under sandbox
+    # mode, which needs at least one listed origin).
     if field_path in _LIST_FIELDS:
         names = _coerce_name_list(raw, field_path)
         if field_path == "tools.allow" and not names:

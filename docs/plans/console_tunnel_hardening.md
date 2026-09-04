@@ -65,6 +65,21 @@ OpenAPI snapshot unchanged). Guard tests: `tests/unit/test_console_trust_guard.p
 Deliberate contract change: an untrusted-origin browser page can no longer attach to `/ws`
 even outside sandbox (old negative control updated in `test_console_sandbox.py`).
 
+Review-round folds (two-lens, 2026-09-03; both MAJORs cross-confirmed): origin entries
+canonicalize LOUDLY at `build_app` (malformed entry = `ConfigurationError`; default ports
+dropped so a listed `https://x:443` matches the `https://x` browsers actually send); the
+`testserver` allowance is pytest-scoped (`PYTEST_CURRENT_TEST`), never in production — a
+hostile LAN resolver can rebind a single-label name; mutating requests additionally require
+`Content-Type: application/json` (closes the legacy Origin-less form-POST residue — forms
+cannot send JSON, and a fetch() that does triggers a preflight this server never answers).
+
+Operator notes: **listing an origin also whitelists its Host** — a tunnel/proxy deployment
+must forward a Host equal to the host of some listed origin (split-host deployments, UI on
+one name and API on another, need the API's public name listed as an origin or they 400
+fail-closed). A native shell loading its UI from `file://` sends `Origin: null` → mutations
+refused; a packaged app should use a custom-scheme origin (e.g. `capacitor://…`, listable)
+or send no Origin.
+
 **PR 2 — bearer auth, fail-closed (C1→C5, H2→H4 for outsiders).**
 Router-wide FastAPI dependency + `/ws` upgrade check, reusing `tunnel/keys.py::ensure_key` and
 the `leader_proxy._check_auth` compare pattern. Fail CLOSED on empty/missing key when auth is
@@ -79,10 +94,23 @@ on. Open design decisions (resolve in this PR, front-gate scope pressure applies
 - Sandbox interplay: sandbox mode keeps "proxy owns the edge" (no engine auth) — C3's
   half-open `setup/cloud` gets re-audited here.
 
+PR 2 doc obligations (the posture flip must not leave contradicting prose — the 1.1.3
+lesson): the server module docstring ("carries no authentication of its own"), the sandbox
+comment block's rationale ("authentication that lived in the engine would have to be trusted
+by every localhost user too"), and the trust-guard invariant's "NOT authentication" framing
+in `docs/agents/runtime-tools.md` all need rewriting in the same PR. Error shapes: the trust
+guard's 400/403/415 refusals are deliberately absent from OpenAPI (legit same-origin/native
+clients never see them); PR 2's 401s WILL be client-visible, so error-shape documentation
+enters the contract there, batched with the token-flow contract addition (pulse regen via
+`gen:facade`).
+
 **PR 3 — admission control (M1).**
 Body-size caps and per-client rate limit on `/api/run` + `/api/probe`; `limit_concurrency` +
 `ws_max_size` on `uvicorn.run`; generalize `leader_proxy`'s `_check_admission` machinery
-rather than re-implementing (front-gate: it exists, ride on it).
+rather than re-implementing (front-gate: it exists, ride on it). While touching the server
+plumbing: consider replacing the `@app.middleware("http")` + hand-applied `/ws` check pair
+with one pure-ASGI middleware dispatching on `scope["type"] in {"http", "websocket"}`, so a
+future second websocket endpoint cannot silently miss the Host rule (review-round MINOR).
 
 **PR 4 — pre-GA pass (before any store-shipped app).**
 Viewer-vs-operator authorization tiers (ws/recall/identity vs setup/diagnose/probe);

@@ -140,6 +140,8 @@ The demo is a **near-free third output**: the Console shell built against the ki
 
 1. **Hosted console (the "through HF" fork) — non-goal for now, decide explicitly later.** A cloud-hosted console changes the privacy/key model fundamentally (keys leave the machine, auth required). Localhost-only until there's a concrete reason.
 2. **Auth model** if the console is ever exposed beyond localhost (ties to #1).
+   **→ RESOLVED 2026-09-03:** owned by [console_tunnel_hardening.md](../console_tunnel_hardening.md)
+   (trust guard shipped; bearer auth = its PR 2). The hosted-console non-goal in #1 stands.
 
 ## References
 
