@@ -163,7 +163,12 @@ def agent(
         entity_ref: SEM component template reference (e.g. ``"npcs/guard"``).
         remembers: Enable episodic memory (Hippocampus).
         learns: Enable causal learning (NAc).
-        tool_whitelist: Restrict available tools to this set.
+        tool_whitelist: Rejected. ``maxim.create.agent`` builds memory
+            subsystems only (no Executor), so there is nothing that could
+            enforce a tool list — passing one raises ``ValueError`` rather
+            than being written to a field nothing reads (D73). Build through
+            ``AgentFactory.create_full_agent`` with ``with_executor=True`` and
+            ``AgentConfig.permissions`` to get an enforced allow-list.
         persistence_dir: Custom persistence directory.
 
     Returns:
@@ -176,6 +181,12 @@ def agent(
         agent.hippocampus.capture(perception="dark cave ahead")
         agent.shutdown()
     """
+    if tool_whitelist is not None:
+        raise ValueError(
+            "maxim.create.agent builds no Executor, so tool_whitelist cannot be enforced; "
+            "use AgentFactory.create_full_agent(with_executor=True) with AgentConfig.permissions"
+        )
+
     from maxim.runtime.agent_factory import AgentConfig, AgentFactory
 
     factory = AgentFactory()
@@ -186,7 +197,7 @@ def agent(
         personality=personality,
         remembers=remembers,
         learns=learns,
-        tool_whitelist=tool_whitelist,
+        permissions=None,
         persistence_dir=persistence_dir,
     )
     return factory.create_agent(config)

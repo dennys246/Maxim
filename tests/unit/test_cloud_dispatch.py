@@ -99,6 +99,26 @@ class TestLoadCostConfig:
         assert result.persistence_interval_s == 10.0
         assert result.min_spend_samples == 5
 
+    def test_default_state_path_honours_maxim_data_home(self, tmp_path, monkeypatch):
+        """Regression: the default was built from ``Path.home()/.maxim`` here,
+        so ``CostTrackerConfig.__post_init__``'s resolver (the one that honours
+        MAXIM_DATA_HOME) never ran. One source of truth: both must agree."""
+        from maxim.models.language.cost_tracker import CostTrackerConfig
+        from maxim.utils.paths import _reset_caches
+
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path))
+        _reset_caches()
+        cfg = MagicMock()
+        cfg.routing = {}
+        result = load_cost_config(cfg)
+        assert result.state_path == str(tmp_path / "util" / "cost_state.json")
+        assert result.state_path == CostTrackerConfig().state_path
+
+    def test_explicit_cost_state_path_wins(self, tmp_path):
+        cfg = MagicMock()
+        cfg.routing = {"cost_state_path": str(tmp_path / "custom.json")}
+        assert load_cost_config(cfg).state_path == str(tmp_path / "custom.json")
+
 
 class TestImportPaths:
     def test_constants_from_cloud_dispatch(self):

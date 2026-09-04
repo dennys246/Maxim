@@ -179,7 +179,9 @@ class TestTalkPermissions:
             SupervisionPolicy,
         )
 
-        conversational = {"respond", "speak", "read_file", "list_directory", "glob", "recall", "sense_tools"}
+        from maxim.console.handle import TALK_CONVERSATIONAL_TOOLS
+
+        conversational = set(TALK_CONVERSATIONAL_TOOLS)
         mutating = {t for t in registry_tools if t not in conversational}
         return AutonomyController(
             initial_level=AutonomyLevel.AUTONOMOUS,
@@ -189,12 +191,41 @@ class TestTalkPermissions:
             ),
         )
 
-    @pytest.mark.parametrize("tool", ["bash", "write_file", "edit_file", "git_commit"])
+    @pytest.mark.parametrize(
+        "tool",
+        [
+            "bash",
+            "write_file",
+            "edit_file",
+            "git_commit",
+            # In AutonomyController.ALWAYS_ALLOWED_TOOLS: the shortcut used to
+            # run BEFORE SafetyConstraints, so these executed from Talk despite
+            # being derived-forbidden (P4d).
+            "search_code",
+            "git_diff",
+        ],
+    )
     def test_mutating_tools_are_refused_at_autonomous(self, tool):
-        ctrl = self._controller({"respond", "bash", "write_file", "edit_file", "git_commit"})
+        ctrl = self._controller({"respond", "bash", "write_file", "edit_file", "git_commit", "search_code", "git_diff"})
         allowed, reason = ctrl.can_execute_action({"tool_name": tool})
         assert allowed is False, f"{tool} must not be reachable from a talk turn"
         assert reason
+
+    @pytest.mark.parametrize("tool", ["glob", "read_file", "list_directory"])
+    def test_always_allowed_never_beats_an_explicit_forbid(self, tool):
+        # Talk keeps these conversational, so its derived set does not forbid
+        # them — but a controller that DOES forbid one must win over the
+        # always-allowed shortcut. Pins the general rule the P4d fix restored.
+        from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SafetyConstraints
+
+        ctrl = AutonomyController(
+            initial_level=AutonomyLevel.AUTONOMOUS,
+            safety_constraints=SafetyConstraints(forbidden_tools=frozenset({tool})),
+        )
+        assert tool in AutonomyController.ALWAYS_ALLOWED_TOOLS
+        allowed, reason = ctrl.can_execute_action({"tool_name": tool})
+        assert allowed is False
+        assert "forbidden" in (reason or "")
 
     @pytest.mark.parametrize("tool", ["respond", "speak", "read_file"])
     def test_conversational_tools_still_allowed(self, tool):

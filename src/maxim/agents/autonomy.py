@@ -534,8 +534,10 @@ class AutonomyController:
             else:
                 self._autonomous_until = None
 
-    # Tools that bypass all autonomy checks (including PLANNING mode)
-    # These are tools deemed safe for immediate execution without approval
+    # Tools that bypass the LEVEL checks (PLANNING approval, SUPERVISED
+    # policy) — deemed safe for immediate execution without approval.
+    # They do NOT bypass SafetyConstraints: a tool in `forbidden_tools`
+    # is refused even when it is listed here (see can_execute_action).
     ALWAYS_ALLOWED_TOOLS: frozenset[str] = frozenset(
         {
             # Visual control (responsive, no side effects)
@@ -561,11 +563,6 @@ class AutonomyController:
         if self.is_paused:
             return False, "Execution is paused"
 
-        # Check for always-allowed tools FIRST (bypass all autonomy checks)
-        # These tools are safe for immediate execution without approval
-        if tool_name in self.ALWAYS_ALLOWED_TOOLS:
-            return True, None
-
         # Build runtime context for safety check
         context = RuntimeContext(
             autonomy_level=level,
@@ -575,11 +572,24 @@ class AutonomyController:
             mode_switches_last_hour=self._get_mode_switches_last_hour(),
         )
 
-        # Check safety constraints first (applies to all levels)
+        # Safety constraints come FIRST — before the always-allowed
+        # shortcut. `SafetyConstraints.forbidden_tools` is a hard forbid
+        # ("applies even in AUTONOMOUS mode") and callers such as the
+        # console's Talk path derive it from the live registry to deny
+        # everything non-conversational. The always-allowed set only
+        # skips the approval / supervision machinery below; letting it
+        # out-rank a forbid meant a forbidden read-only tool (search_code,
+        # git_diff, glob) executed anyway.
         violations = self.safety_constraints.check_constraints(context)
         critical_violations = [v for v in violations if v.severity == "critical"]
         if critical_violations:
             return False, critical_violations[0].description
+
+        # Always-allowed tools bypass the level checks (PLANNING approval,
+        # SUPERVISED policy) — safe for immediate execution once the hard
+        # constraints above have passed.
+        if tool_name in self.ALWAYS_ALLOWED_TOOLS:
+            return True, None
 
         # Level-specific checks
         if level == AutonomyLevel.PLANNING:

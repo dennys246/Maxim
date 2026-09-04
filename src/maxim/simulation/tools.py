@@ -1275,7 +1275,7 @@ class SpawnSubSimulationTool(Tool):
         # Sub-AUT executor is sandboxed for tool-internal use; explicit
         # opt-out from bio-learning. See
         # docs/plans/archive/executor_bootstrap_unification.md audit row #6.
-        sub_executor = build_executor(sub_registry, pain_bus=None)
+        sub_executor = build_executor(sub_registry, pain_bus=None, permissions=None)
 
         # Wrap sub-AUT executor with FearGatedExecutor
         try:

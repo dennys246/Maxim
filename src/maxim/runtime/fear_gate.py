@@ -180,7 +180,16 @@ class FearGatedExecutor:
 
 def _classify_action(tool_name: str) -> str:
     """Map tool name to FearAgent action type."""
-    shell_tools = {"bash", "execute_file", "execute_sandbox_script"}
+    # run_tests / git_diff / git_commit each spawn a subprocess from
+    # model-supplied strings; they are shell execution for review purposes.
+    shell_tools = {
+        "bash",
+        "execute_file",
+        "execute_sandbox_script",
+        "run_tests",
+        "git_diff",
+        "git_commit",
+    }
     file_write_tools = {"write_file", "edit_file", "create_sandbox_script", "write_sandbox_file"}
     network_tools = {"internet_search", "http_fetch", "internet_access"}
 

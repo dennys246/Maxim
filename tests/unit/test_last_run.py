@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+
 import pytest
 
 from maxim.utils.last_run import (
@@ -18,10 +20,19 @@ from maxim.utils.last_run import (
 
 @pytest.fixture(autouse=True)
 def tmp_last_runs(tmp_path, monkeypatch):
-    """Redirect last_runs.json to a temp file for every test."""
-    path = tmp_path / ".maxim" / "last_runs.json"
-    monkeypatch.setattr("maxim.utils.last_run._LAST_RUNS_PATH", path)
-    return path
+    """Redirect last_runs.json to a temp data home for every test.
+
+    Goes through the real resolver (MAXIM_DATA_HOME) rather than patching a
+    module constant, so these tests also pin that the module has no
+    import-time ``Path.home()`` path left.
+    """
+    from maxim.utils.paths import _reset_caches
+
+    data_home = tmp_path / ".maxim"
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(data_home))
+    _reset_caches()
+    yield data_home / "last_runs.json"
+    _reset_caches()
 
 
 # ── should_save ─────────────────────────────────────────────────────
@@ -147,6 +158,31 @@ class TestFormat:
         out = format_all_runs()
         assert "[1]" in out
         assert "[2]" in out
+
+
+# ── data home ───────────────────────────────────────────────────────
+
+
+class TestDataHome:
+    def test_save_lands_under_maxim_data_home(self, tmp_last_runs):
+        """Regression: the file went to ``Path.home()/.maxim`` at import time,
+        ignoring MAXIM_DATA_HOME (read-only-root sandbox blocker)."""
+        save_last_run(["--sim", "agent", "--goal", "sandbox"])
+        assert tmp_last_runs.is_file()
+        assert not (Path.home() / ".maxim" / "last_runs.json").exists()
+        assert load_last_run(1)["args"] == ["--sim", "agent", "--goal", "sandbox"]
+
+    def test_data_home_change_is_honoured_after_import(self, tmp_path, monkeypatch):
+        """The path is resolved per call, not frozen when the module loads."""
+        from maxim.utils.paths import _reset_caches
+
+        save_last_run(["--sim", "agent", "--goal", "first-home"])
+        other = tmp_path / "other_home"
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(other))
+        _reset_caches()
+        assert load_last_run(1) is None  # fresh home, nothing saved there yet
+        save_last_run(["--sim", "agent", "--goal", "second-home"])
+        assert (other / "last_runs.json").is_file()
 
 
 # ── old format migration ───────────────────────────────────────────

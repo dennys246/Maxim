@@ -99,6 +99,7 @@ class TestFactoryBinding:
         executor = build_executor(
             registry,
             pain_bus=_bus(),
+            permissions=None,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),
@@ -121,6 +122,7 @@ class TestFactoryBinding:
         executor = build_executor(
             registry,
             pain_bus=_bus(),
+            permissions=None,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),
@@ -201,6 +203,7 @@ class TestCreditMillGuard:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=_bus(),
+            permissions=None,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),
@@ -296,6 +299,7 @@ class TestReviewFoldGuards:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=_bus(),
+            permissions=None,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),
@@ -317,6 +321,7 @@ class TestReviewFoldGuards:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=_bus(),
+            permissions=None,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),
@@ -352,6 +357,7 @@ class TestReviewFoldGuards:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=_bus(),
+            permissions=None,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),
@@ -417,6 +423,7 @@ class TestMeasuredReliefCredit:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=_bus(),
+            permissions=None,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),
@@ -583,6 +590,7 @@ class TestMeasurementHonestyGates:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=_bus(),
+            permissions=None,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),

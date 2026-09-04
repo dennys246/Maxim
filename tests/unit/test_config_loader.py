@@ -43,6 +43,7 @@ from maxim.runtime.config_loader import (
     LLMConfigSection,
     MaximConfig,
     ProxyConfigSection,
+    ToolsConfigSection,
     _ABSORBED_ENV_VARS,
     _env_is_set,
     _FIELD_TO_ENV,
@@ -124,6 +125,7 @@ class TestCC3PathDeclarations:
             ProxyConfigSection,
             AutoSpawnConfigSection,
             DataConfigSection,
+            ToolsConfigSection,
         ],
     )
     def test_shape_frozen_sections_declare_path_b(self, section_cls):
@@ -1114,3 +1116,130 @@ class TestFieldMappingCompleteness:
         for env_name in _FIELD_TO_ENV.values():
             assert env_name.startswith("MAXIM_")
             assert env_name == env_name.upper()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# tools.* — the console's hard tool allow/deny list (1.1.3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestToolsSection:
+    """``tools.allow`` / ``tools.deny`` are the first list-valued fields in
+    the schema: comma-separated in the env form, JSON lists in config.json,
+    ``tuple[str, ...]`` on the dataclass. Unconfigured (``allow=None``,
+    ``deny=()``) must stay the default so ``MaximHandle`` arms no gate."""
+
+    def test_defaults_are_unconfigured(self):
+        cfg = MaximConfig()
+        assert cfg.tools == ToolsConfigSection()
+        assert cfg.tools.allow is None
+        assert cfg.tools.deny == ()
+        assert resolve_setting("tools.allow") == (None, "default")
+        assert resolve_setting("tools.deny") == ((), "default")
+
+    def test_env_mapping(self):
+        assert _FIELD_TO_ENV["tools.allow"] == "MAXIM_TOOLS_ALLOW"
+        assert _FIELD_TO_ENV["tools.deny"] == "MAXIM_TOOLS_DENY"
+
+    def test_env_comma_list_is_ordered_deduped_and_trimmed(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_TOOLS_ALLOW", " respond, speak,,kind:sem-modulator-derived ,respond")
+        value, source = resolve_setting("tools.allow")
+        assert source == "env"
+        assert value == ("respond", "speak", "kind:sem-modulator-derived")
+
+    def test_env_deny_list(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_TOOLS_DENY", "bash,write_file")
+        value, source = resolve_setting("tools.deny")
+        assert source == "env"
+        assert value == ("bash", "write_file")
+
+    def test_env_blank_list_is_unset_not_deny_everything(self, monkeypatch):
+        # `" , "` survives `_env_is_set` (it only strips whitespace) but must
+        # collapse to UNSET — a `()` allow-list is a gate the agent can never
+        # reply through (review finding, sandbox-launch).
+        monkeypatch.setenv("MAXIM_TOOLS_ALLOW", " , ")
+        value, _source = resolve_setting("tools.allow")
+        assert value is None
+        # `tools.deny` keeps the empty tuple: an empty deny denies nothing.
+        monkeypatch.setenv("MAXIM_TOOLS_DENY", " , ")
+        value, _source = resolve_setting("tools.deny")
+        assert value == ()
+
+    def test_env_blank_list_falls_through_to_config_json(self, monkeypatch, tmp_path):
+        # UNSET means "defer to the next layer", not "shadow it with None":
+        # a stray comma in env must not disarm a configured allow-list.
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps({"tools": {"allow": ["respond", "speak"]}}))
+        cfg = load_config(path)
+        monkeypatch.setenv("MAXIM_TOOLS_ALLOW", " , ")
+        value, source = resolve_setting("tools.allow", config=cfg)
+        assert (value, source) == (("respond", "speak"), "config")
+
+    def test_env_empty_string_is_unset(self, monkeypatch):
+        # C-1: empty env == unset, so the allow-list stays None (no gate),
+        # never an accidental "allow nothing".
+        monkeypatch.setenv("MAXIM_TOOLS_ALLOW", "")
+        assert resolve_setting("tools.allow") == (None, "default")
+
+    def test_config_json_lists_become_tuples(self, tmp_path):
+        path = tmp_path / "config.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "_format_version": "1.0",
+                    "tools": {"allow": ["respond", "speak", " speak "], "deny": ["bash"]},
+                }
+            )
+        )
+        cfg = load_config(path)
+        assert cfg.tools.allow == ("respond", "speak")
+        assert cfg.tools.deny == ("bash",)
+        assert resolve_setting("tools.allow", config=cfg) == (("respond", "speak"), "config")
+        assert resolve_setting("tools.deny", config=cfg) == (("bash",), "config")
+
+    def test_config_json_explicit_empty_allow_is_kept(self, tmp_path):
+        # "allow": [] is a real "no tools" list; only null / absent means unconfigured.
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps({"_format_version": "1.0", "tools": {"allow": []}}))
+        cfg = load_config(path)
+        assert cfg.tools.allow == ()
+        assert resolve_setting("tools.allow", config=cfg) == ((), "config")
+
+    def test_config_json_null_allow_is_unconfigured(self, tmp_path):
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps({"_format_version": "1.0", "tools": {"allow": None}}))
+        assert load_config(path).tools.allow is None
+
+    @pytest.mark.parametrize("bad", ["respond", 3, ["respond", 3], {"respond": True}])
+    def test_config_json_non_string_list_rejected(self, tmp_path, bad):
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps({"_format_version": "1.0", "tools": {"allow": bad}}))
+        with pytest.raises(ConfigurationError, match="list of strings"):
+            load_config(path)
+
+    def test_config_json_unknown_tools_key_rejected_same_version(self, tmp_path):
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps({"_format_version": "1.0", "tools": {"whitelist": ["respond"]}}))
+        with pytest.raises(ConfigurationError, match="unknown key"):
+            load_config(path)
+
+    def test_env_shadows_config_json(self, tmp_path, monkeypatch):
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps({"_format_version": "1.0", "tools": {"allow": ["respond"]}}))
+        cfg = load_config(path)
+        monkeypatch.setenv("MAXIM_TOOLS_ALLOW", "speak")
+        assert resolve_setting("tools.allow", config=cfg) == (("speak",), "env")
+
+    def test_set_field_round_trips_through_the_writer(self, tmp_path):
+        """``maxim config set tools.allow respond,speak`` goes through the
+        same coercion as the env path and survives a write/read cycle."""
+        from maxim.runtime.config_writer import set_field
+
+        path = tmp_path / "config.json"
+        set_field("tools.allow", "respond,speak", path=path)
+        set_field("tools.deny", "bash", path=path)
+        on_disk = json.loads(path.read_text())
+        assert on_disk["tools"] == {"allow": ["respond", "speak"], "deny": ["bash"]}
+        cfg = load_config(path)
+        assert cfg.tools.allow == ("respond", "speak")
+        assert cfg.tools.deny == ("bash",)

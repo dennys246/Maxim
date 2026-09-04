@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from maxim.simulation.orchestrator import _setup_sim_sandbox
+from maxim.simulation.orchestrator import _prepare_sim_workspace, _setup_sim_sandbox
 from maxim.simulation.container_runner import check_docker_available
 from maxim.simulation.sandbox import (
     DockerSandbox,
@@ -223,3 +223,40 @@ class TestOrderingContract:
         finally:
             if sandbox is not None:
                 sandbox.cleanup()
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Sim workspace — under the data home, never CWD-relative
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class TestSimWorkspaceUnderDataHome:
+    """Regression: ``start_simulation_mode`` built ``Path("data")/"sim_sandbox"``
+    (and a ``data/agents/MaximAgent/runtime`` mkdir) relative to the CWD, so a
+    hosted sandbox with a read-only root and only ``MAXIM_DATA_HOME`` writable
+    could not start a sim. The helper is the smallest unit that does the
+    mkdir — no LLM, no agent loop."""
+
+    def test_workspace_lands_under_maxim_data_home(self, tmp_path, monkeypatch):
+        from maxim.utils.paths import _reset_caches
+
+        data_home = tmp_path / "data_home"
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(data_home))
+        monkeypatch.chdir(cwd)
+        _reset_caches()
+        try:
+            sim_workspace, sim_tmpdir, log_path = _prepare_sim_workspace(stamp="20260903_000000")
+        finally:
+            _reset_caches()
+
+        assert sim_workspace == data_home / "sim_sandbox"
+        assert sim_workspace.is_dir()
+        assert sim_tmpdir.parent == sim_workspace
+        assert sim_tmpdir.is_dir()
+        assert sim_tmpdir.name.startswith("sim_agent_20260903_000000_")
+        assert log_path == str(sim_workspace / "sim_agent_20260903_000000.jsonl")
+        # Nothing was written relative to the CWD.
+        assert not (cwd / "data").exists()
+        assert list(cwd.iterdir()) == []

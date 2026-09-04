@@ -54,20 +54,33 @@ class TestAgentConfig:
         assert cfg.role == "npc"
         assert cfg.remembers is True
         assert cfg.learns is True
-        assert cfg.tool_whitelist is None
+        assert cfg.permissions is None
         assert cfg.personality is None
 
     def test_custom_config(self):
+        from maxim.agents.permissions import AgentPermissions
+
         cfg = AgentConfig(
             agent_id="pc",
             role="pc",
             model_profile="large",
-            tool_whitelist={"speak", "fight"},
+            permissions=AgentPermissions(tool_allow=frozenset({"speak", "fight"})),
             personality="A brave warrior.",
         )
         assert cfg.role == "pc"
         assert cfg.model_profile == "large"
-        assert "speak" in cfg.tool_whitelist
+        assert cfg.permissions.can_invoke_tool("speak")[0] is True
+        assert cfg.permissions.can_invoke_tool("bash")[0] is False
+
+    def test_dead_tool_whitelist_field_is_gone(self):
+        """1.0-1.1.2 ``tool_whitelist`` was written to ``ToolRegistry.
+        _tool_whitelist`` and read by nothing. It must not come back as a
+        silent no-op: the restriction is ``permissions``."""
+        from dataclasses import fields
+
+        assert "tool_whitelist" not in {f.name for f in fields(AgentConfig)}
+        with pytest.raises(TypeError):
+            AgentConfig(agent_id="x", tool_whitelist={"speak"})  # type: ignore[call-arg]
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +152,72 @@ class TestAgentFactory:
         assert instance.personality == "A battle-hardened captain."
         assert instance.hippocampus is not None
         assert instance.nac is not None
+        # No Executor → no gate, and the config says so instead of carrying a
+        # permissions object nothing enforces (D73's shape).
+        assert instance.executor is None
+        assert instance.config.permissions is None
+        assert not hasattr(instance.tool_registry, "_tool_whitelist")
+
+    def test_create_agent_public_entry_refuses_tool_whitelist(self):
+        import maxim
+
+        with pytest.raises(ValueError, match="no Executor"):
+            maxim.create.agent("gated", tool_whitelist={"speak"})
+
+
+class TestPermissionsArming:
+    """A fix ships with a CALLER: ``create_full_agent`` must pass
+    ``config.permissions`` into ``build_executor`` so the gate is live on
+    the instance's Executor — not merely constructible."""
+
+    def _registry(self):
+        from maxim.tools.base import Tool, ToolOutput
+        from maxim.tools.registry import ToolRegistry
+
+        class _ReadStub(Tool):
+            name = "read_stub"
+            description = "stub"
+            input_schema: dict = {}
+
+            def execute(self, **kwargs):
+                return ToolOutput(success=True, output="read")
+
+        class _Speak(Tool):
+            name = "speak"
+            description = "stub"
+            input_schema: dict = {}
+
+            def execute(self, **kwargs):
+                return ToolOutput(success=True, output="spoke")
+
+        registry = ToolRegistry()
+        registry.register(_ReadStub())
+        registry.register(_Speak())
+        return registry
+
+    def test_create_full_agent_arms_permissions_on_executor(self, factory):
+        from maxim.agents.permissions import AgentPermissions
+
+        perms = AgentPermissions(tool_allow=frozenset({"speak"}))
+        cfg = AgentConfig(agent_id="gated", with_executor=True, permissions=perms)
+        instance = factory.create_full_agent(cfg, tool_registry=self._registry())
+        try:
+            assert instance.executor._permissions is perms
+            refused = instance.executor.execute({"tool_name": "read_stub", "params": {}})
+            assert refused.success is False
+            assert "allow-list" in (refused.error or "")
+            assert instance.executor.execute({"tool_name": "speak", "params": {}}).success is True
+        finally:
+            instance.shutdown()
+
+    def test_create_full_agent_without_permissions_has_no_gate(self, factory):
+        cfg = AgentConfig(agent_id="open", with_executor=True)
+        instance = factory.create_full_agent(cfg, tool_registry=self._registry())
+        try:
+            assert instance.executor._permissions is None
+            assert instance.executor.execute({"tool_name": "read_stub", "params": {}}).success is True
+        finally:
+            instance.shutdown()
 
 
 class TestAgentInstance:

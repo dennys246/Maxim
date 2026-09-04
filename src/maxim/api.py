@@ -698,7 +698,7 @@ def run(
                 os.path.join(effective_home, "sessions"),
             )
         else:
-            executor = build_executor(tool_registry, pain_bus=None)
+            executor = build_executor(tool_registry, pain_bus=None, permissions=None)
 
         evaluators = build_evaluators()
 

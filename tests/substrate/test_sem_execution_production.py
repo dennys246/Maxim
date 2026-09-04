@@ -55,6 +55,7 @@ def _build_production_world(*, sword_durability: float = 1.0):
     executor = build_executor(
         ToolRegistry(),
         pain_bus=pain_bus,
+        permissions=None,
         nac=nac,
         entity_ref="weapons/rusty_sword",
         component_registry=component_registry,
@@ -276,7 +277,7 @@ class TestSEMProductionCascade:
 
         # The field must be declared in __init__ so it survives even
         # when no entity_ref is passed.
-        executor = build_executor(ToolRegistry(), pain_bus=None)
+        executor = build_executor(ToolRegistry(), pain_bus=None, permissions=None)
         assert hasattr(executor, "embodiment"), (
             "Executor missing the declared `embodiment` field. The "
             "executor_bootstrap_unification I1 fold made this a real "

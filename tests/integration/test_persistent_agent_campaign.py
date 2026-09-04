@@ -299,8 +299,19 @@ class TestNonePathUnchanged:
         assert "if persistent_agent is None and resume_session" in src
         # Branch 3: session-dir AUT snapshot skipped
         assert "if persistent_agent is not None:" in src and "no session AUT snapshot" in src
-        # Bash env not armed for adopted agents
-        assert "if _adopted is None:\n        os.environ.setdefault" in src
+        # Subprocess-tool env gates (bash + git_diff/run_tests since
+        # sandbox-launch) not armed for adopted agents: the arming moved to a
+        # module-level helper, so pin BOTH the guarded call site and what the
+        # helper arms — reverting either half re-arms the persistent agent.
+        assert "if _adopted is None:\n        _arm_sandboxed_aut_subprocess_tools()" in src
+        from maxim.simulation.orchestrator import _arm_sandboxed_aut_subprocess_tools
+
+        helper_src = inspect.getsource(_arm_sandboxed_aut_subprocess_tools)
+        assert 'os.environ.setdefault("MAXIM_ALLOW_BASH", "1")' in helper_src
+        # The two newer gates are NOT armed for the sim (the AUT registry
+        # deregisters those tools; neither takes a cwd) — pin that too.
+        assert 'setdefault("MAXIM_ALLOW_GIT_DIFF"' not in helper_src
+        assert 'setdefault("MAXIM_ALLOW_RUN_TESTS"' not in helper_src
         # /new recursion keeps the injection
         assert "persistent_agent=persistent_agent" in src
 

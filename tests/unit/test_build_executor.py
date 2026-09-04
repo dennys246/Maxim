@@ -47,7 +47,7 @@ class TestBuildExecutorRequiredKeyword:
         from maxim.runtime.bootstrap import build_executor
         from maxim.tools.registry import ToolRegistry
 
-        executor = build_executor(ToolRegistry(), pain_bus=None)
+        executor = build_executor(ToolRegistry(), pain_bus=None, permissions=None)
 
         assert executor is not None
         assert executor._tool_pain_bridge is None
@@ -94,6 +94,7 @@ class TestBuildExecutorBridgeWiring:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=None,
+            permissions=None,
             pain_detector=None,
             nac=nac,
         )
@@ -113,6 +114,7 @@ class TestBuildExecutorBridgeWiring:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=None,
+            permissions=None,
             nac=None,
         )
 
@@ -130,6 +132,7 @@ class TestBuildExecutorBridgeWiring:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=pain_bus,
+            permissions=None,
             nac=nac,
         )
 
@@ -148,6 +151,7 @@ class TestBuildExecutorBridgeWiring:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=None,
+            permissions=None,
             pain_detector=pain_detector,
             nac=nac,
         )
@@ -165,6 +169,7 @@ class TestBuildExecutorBridgeWiring:
             build_executor(
                 ToolRegistry(),
                 pain_bus=PainBus(_allow_raw=True),
+                permissions=None,
                 nac=None,
             )
 
@@ -196,6 +201,7 @@ class TestBuildExecutorFailFastPreconditions:
             build_executor(
                 ToolRegistry(),
                 pain_bus=pain_bus,
+                permissions=None,
                 pain_detector=pain_detector,
                 nac=nac,
             )
@@ -213,6 +219,7 @@ class TestBuildExecutorFailFastPreconditions:
             build_executor(
                 ToolRegistry(),
                 pain_bus=None,
+                permissions=None,
                 nac=nac,
                 entity_ref="weapons/rusty_sword",
                 component_registry=ComponentRegistry(),
@@ -230,6 +237,7 @@ class TestBuildExecutorFailFastPreconditions:
             build_executor(
                 ToolRegistry(),
                 pain_bus=pain_bus,
+                permissions=None,
                 nac=nac,
                 entity_ref="weapons/rusty_sword",
                 component_registry=None,
@@ -261,6 +269,7 @@ class TestBuildExecutorEmbodiment:
         executor = build_executor(
             registry,
             pain_bus=pain_bus,
+            permissions=None,
             nac=nac,
             entity_ref="weapons/rusty_sword",
             component_registry=ComponentRegistry(),
@@ -295,6 +304,7 @@ class TestBuildExecutorEmbodiment:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=pain_bus,
+            permissions=None,
             nac=nac,
             entity_ref="weapons/rusty_sword",
             component_registry=ComponentRegistry(),
@@ -319,6 +329,7 @@ class TestBuildExecutorEmbodiment:
             build_executor(
                 ToolRegistry(),
                 pain_bus=pain_bus,
+                permissions=None,
                 nac=nac,
                 entity_ref="weapons/nonexistent_sword",
                 component_registry=ComponentRegistry(),
@@ -355,6 +366,7 @@ class TestBuildExecutorEndToEndCascade:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=pain_bus,
+            permissions=None,
             nac=nac,
             entity_ref="weapons/rusty_sword",
             component_registry=ComponentRegistry(),
@@ -394,3 +406,49 @@ class TestBuildExecutorEndToEndCascade:
             "not form a causal link."
         )
         assert prediction.predicted_valence == Valence.NEGATIVE
+
+
+# ---------------------------------------------------------------------------
+# permissions= — the gate the factory now arms (1.1.3)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildExecutorPermissions:
+    """``build_executor(permissions=)`` existed since C4 but no console
+    caller passed it, so ``Executor._permissions`` was ``None`` for every
+    ``MaximHandle`` agent. These pin that the parameter really arms the
+    gate; ``test_agent_factory.py`` pins that the factory passes it."""
+
+    def _registry(self):
+        from maxim.tools.base import Tool, ToolOutput
+        from maxim.tools.registry import ToolRegistry
+
+        class _Stub(Tool):
+            name = "stub_tool"
+            description = "stub"
+            input_schema: dict = {}
+
+            def execute(self, **kwargs):
+                return ToolOutput(success=True, output="ran")
+
+        registry = ToolRegistry()
+        registry.register(_Stub())
+        return registry
+
+    def test_permissions_none_leaves_gate_off(self):
+        from maxim.runtime.bootstrap import build_executor
+
+        executor = build_executor(self._registry(), pain_bus=None, permissions=None)
+        assert executor._permissions is None
+        assert executor.execute({"tool_name": "stub_tool", "params": {}}).success is True
+
+    def test_permissions_arm_the_executor_gate(self):
+        from maxim.agents.permissions import AgentPermissions
+        from maxim.runtime.bootstrap import build_executor
+
+        perms = AgentPermissions(tool_allow=frozenset({"respond"}))
+        executor = build_executor(self._registry(), pain_bus=None, permissions=perms)
+        assert executor._permissions is perms
+        result = executor.execute({"tool_name": "stub_tool", "params": {}})
+        assert result.success is False
+        assert "allow-list" in (result.error or "")

@@ -1,10 +1,34 @@
-"""Git version control tools."""
+"""Git version control tools.
+
+``git_diff`` is opt-in via ``MAXIM_ALLOW_GIT_DIFF=1`` — the same mechanism
+as ``MAXIM_ALLOW_BASH`` / ``MAXIM_ALLOW_EXECUTE_FILE`` in
+``tools/filesystem.py``. Its argv is built from model-supplied strings with
+no containment (``allowed_dirs``), and git options are file writes in
+disguise (``--output=/path``), so a "read-only" tool was a write primitive.
+Tests that set the flag rely on the autouse scrub
+``tests/conftest.py::_isolate_maxim_tool_gate_env``.
+"""
 
 from __future__ import annotations
 
 import subprocess
 
 from maxim.tools.base import Tool, ToolErrorKind, ToolOutput
+from maxim.utils.gpu_compat import env_flag as _env_flag
+
+
+def _first_option_shaped(*values: str | None) -> str | None:
+    """Return the first model-supplied argv element that starts with ``-``.
+
+    Refs and paths reach ``git`` verbatim. A value such as
+    ``--output=/etc/cron.d/x`` turns ``git diff`` into a file write outside
+    any containment. ``--end-of-options`` is passed as well, but this reject
+    is the guard that does not depend on the installed git's version.
+    """
+    for value in values:
+        if value and value.startswith("-"):
+            return value
+    return None
 
 
 class GitDiffTool(Tool):
@@ -19,11 +43,30 @@ class GitDiffTool(Tool):
     }
 
     def execute(self, **kwargs) -> ToolOutput:
+        if not _env_flag("MAXIM_ALLOW_GIT_DIFF", False):
+            return ToolOutput(
+                success=False,
+                error="GitDiffTool disabled. Set MAXIM_ALLOW_GIT_DIFF=1 to enable.",
+                error_kind=ToolErrorKind.PERMISSION_DENIED,
+            )
+
         ref1 = kwargs.get("ref1", "HEAD")
         ref2 = kwargs.get("ref2")
         path = kwargs.get("path")
 
-        cmd = ["git", "diff", ref1]
+        injected = _first_option_shaped(ref1, ref2, path)
+        if injected is not None:
+            return ToolOutput(
+                success=False,
+                error=f"git_diff refuses option-shaped argument {injected!r}: refs and paths must not start with '-'",
+                error_kind=ToolErrorKind.INVALID_INPUT,
+            )
+
+        # ``--end-of-options`` (git >= 2.24, 2019) tells git that everything
+        # after it is a revision/path, never an option — belt to the reject
+        # above. Older git fails loudly on the unknown option rather than
+        # silently running unguarded.
+        cmd = ["git", "diff", "--end-of-options", ref1]
         if ref2:
             cmd.append(ref2)
         if path:

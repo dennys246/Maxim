@@ -1609,3 +1609,74 @@ def _isolate_registered_tools():
             _registered_tools.clear()
     except ImportError:  # pragma: no cover - api unimportable is its own failure
         pass
+
+
+@pytest.fixture(autouse=True)
+def _isolate_maxim_tool_gate_env():
+    """Scrub the opt-in tool gates ``MAXIM_ALLOW_GIT_DIFF`` and
+    ``MAXIM_ALLOW_RUN_TESTS`` across every test.
+
+    ``GitDiffTool`` / ``RunTestsTool`` read these at ``execute()`` time
+    (same mechanism as ``MAXIM_ALLOW_BASH`` in ``tools/filesystem.py``).
+    A test that arms one would otherwise leak the arm into every later
+    test that dispatches the tool, running a real ``git`` / test-runner
+    subprocess. Same pattern as ``_isolate_maxim_auto_download_env``.
+    """
+    names = ("MAXIM_ALLOW_GIT_DIFF", "MAXIM_ALLOW_RUN_TESTS")
+    saved = {name: os.environ.pop(name, None) for name in names}
+    try:
+        yield
+    finally:
+        for name, value in saved.items():
+            os.environ.pop(name, None)
+            if value is not None:
+                os.environ[name] = value
+
+
+@pytest.fixture(autouse=True)
+def _isolate_maxim_tools_allow_deny_env():
+    """Scrub ``MAXIM_TOOLS_ALLOW`` / ``MAXIM_TOOLS_DENY`` across every test.
+
+    The console's hard tool allowlist (``config_loader.ToolsConfigSection``),
+    read at ``MaximHandle`` construction and armed on the Executor via
+    ``AgentConfig.permissions``. Both are also in ``_ABSORBED_ENV_VARS``
+    (so ``_isolate_config_json_env`` scrubs them too); this explicit scrub
+    is the CLAUDE.md "opt-in env vars need autouse scrubs" pairing for the
+    new branch — a leaked allow-list would silently refuse tools in every
+    later executor-building test.
+    """
+    saved = {name: os.environ.pop(name, None) for name in ("MAXIM_TOOLS_ALLOW", "MAXIM_TOOLS_DENY")}
+    try:
+        yield
+    finally:
+        for name, value in saved.items():
+            os.environ.pop(name, None)
+            if value is not None:
+                os.environ[name] = value
+
+
+@pytest.fixture(autouse=True)
+def _isolate_maxim_console_sandbox_env():
+    """Scrub the console sandbox-mode switch and its knobs across every test.
+
+    ``MAXIM_CONSOLE_SANDBOX`` / ``MAXIM_CONSOLE_ALLOWED_ORIGINS`` /
+    ``MAXIM_CONSOLE_MAX_INPUT_CHARS`` are read ONCE by
+    ``console/server.py::build_app``; ``MAXIM_CONSOLE_AGENT_ID`` is resolved
+    lazily by ``_get_handle``. A leaked switch would 403 the probe/setup/
+    diagnose tests and refuse every ``/ws`` upgrade in later console tests —
+    the CLAUDE.md "opt-in env vars need autouse scrubs" pairing.
+    """
+    names = (
+        "MAXIM_CONSOLE_SANDBOX",
+        "MAXIM_CONSOLE_ALLOWED_ORIGINS",
+        "MAXIM_CONSOLE_MAX_INPUT_CHARS",
+        "MAXIM_CONSOLE_AGENT_ID",
+    )
+    saved = {name: os.environ.pop(name, None) for name in names}
+    try:
+        yield
+    finally:
+        for name, value in saved.items():
+            os.environ.pop(name, None)
+            if value is not None:
+                os.environ[name] = value

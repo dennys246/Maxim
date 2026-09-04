@@ -118,6 +118,29 @@ class Executor:
             for name in names:
                 TOOL_ALIASES.pop(name.lower(), None)
 
+    def _permission_denial(self, tool_name: str, *, deny_only: bool = False) -> str | None:
+        """Return the denial reason for *tool_name*, or ``None`` when allowed.
+
+        ``deny_only=True`` applies just the deny half — the pre-alias check,
+        where an allow-list must NOT be judged yet (``recall`` → ``memory_recall``).
+
+        The ``kind:<kind>`` selectors in ``AgentPermissions`` need the
+        tool's declared ``Tool.kind``; the registry lookup lives here so
+        ``agents/permissions.py`` stays registry-free. An unregistered
+        name has no kind and is checked by name alone (it fails later at
+        ``registry.get`` anyway).
+        """
+        if self._permissions is None:
+            return None
+        tool = self.registry._tools.get(tool_name)
+        kind = getattr(tool, "kind", None) if tool is not None else None
+        if deny_only:
+            return self._permissions.denial_reason(tool_name, kind=kind)
+        allowed, reason = self._permissions.can_invoke_tool(tool_name, kind=kind)
+        if allowed:
+            return None
+        return reason or "Permission denied."
+
     def execute(self, action: dict[str, Any]) -> ToolOutput:
         """Execute a tool action, returning raw ToolOutput.
 
@@ -138,17 +161,17 @@ class Executor:
         self._tools_attempted.append(tool_name)
 
         # ── Enforced permissions check (O(1) frozenset lookup) ───────
-        # This runs BEFORE alias resolution so a deny rule on the
-        # canonical tool name still applies when the LLM uses a known
-        # alias (e.g., deny `bash`, agent calls `shell` → resolved to
-        # `bash` → blocked). We re-check after alias resolution as
-        # well, since denies may also target the alias source.
-        if self._permissions is not None:
-            allowed, reason = self._permissions.can_invoke_tool(tool_name)
-            if not allowed:
-                self._tools_hallucinated.append(tool_name)
-                self._consecutive_failures += 1
-                return ToolOutput(success=False, error=reason or "Permission denied.")
+        # Two passes. BEFORE alias resolution: the DENY half only, on the
+        # raw name, so a deny that targets the alias source (deny `shell`)
+        # still applies. AFTER alias resolution (below, for every call, not
+        # only aliased ones): the full check on the canonical name — an
+        # allow-list judged on the raw name refused `recall` even when
+        # `memory_recall` was allowed (review finding, sandbox-launch).
+        denial = self._permission_denial(tool_name, deny_only=True)
+        if denial is not None:
+            self._tools_hallucinated.append(tool_name)
+            self._consecutive_failures += 1
+            return ToolOutput(success=False, error=denial)
 
         # ── Alias resolution ─────────────────────────────────────────
         original_name = tool_name
@@ -170,14 +193,13 @@ class Executor:
                 # Update the action so downstream (bus, hippocampus) sees
                 # the real tool name
                 action = {**action, "tool_name": tool_name, "params": params}
-                # Re-check permissions on the resolved tool name so an
-                # alias cannot sneak past a deny rule on the canonical.
-                if self._permissions is not None:
-                    allowed, reason = self._permissions.can_invoke_tool(tool_name)
-                    if not allowed:
-                        self._tools_hallucinated.append(tool_name)
-                        self._consecutive_failures += 1
-                        return ToolOutput(success=False, error=reason or "Permission denied.")
+
+        # Full check on the CANONICAL name (deny + allow), aliased or not.
+        denial = self._permission_denial(tool_name)
+        if denial is not None:
+            self._tools_hallucinated.append(tool_name)
+            self._consecutive_failures += 1
+            return ToolOutput(success=False, error=denial)
 
         invocation_id = str(uuid.uuid4())
 

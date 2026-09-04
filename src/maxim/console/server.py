@@ -1,7 +1,11 @@
 """FastAPI app for ``maxim serve`` — the Console backend + facade contract.
 
-Binds **127.0.0.1 only** (it holds keys and can run/configure Maxim; a hosted
-console is an explicit non-goal). Three surfaces:
+Binds **127.0.0.1 only** (it holds keys and can run/configure Maxim), and
+carries no authentication of its own. A hosted deployment — one anonymous
+visitor per throwaway machine behind an authenticating proxy — keeps both
+properties and adds **sandbox mode** (``MAXIM_CONSOLE_SANDBOX=1``, see the
+``_refuse_in_sandbox`` block), which closes the surfaces that act on the host
+rather than on the agent. Three surfaces:
 
 * ``/api/*`` — JSON facade, 1:1 with ``api.py`` verbs. Existing structured verbs
   (``/api/models``, ``/api/diagnose``) are live; the seams (``/api/probe``,
@@ -33,7 +37,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -101,6 +105,81 @@ def openapi_schema() -> dict[str, Any]:
 api = APIRouter(prefix="/api", tags=["facade"])
 
 
+# ── sandbox mode ─────────────────────────────────────────────────────────────
+#
+# `maxim serve` is localhost-only and unauthenticated BY DESIGN: it holds keys
+# and can reconfigure Maxim, so the operator's own machine is its trust
+# boundary. A hosted sandbox (one anonymous visitor per throwaway machine,
+# an authenticating proxy in front) keeps that binding and that absence of
+# auth — the proxy owns the edge — but three surfaces are unsafe for a
+# stranger even behind a proxy, because they act on the HOST rather than on
+# the agent: `/api/probe` with a `url` dials an arbitrary address with an
+# arbitrary bearer and echoes latency + detail (server-side request forgery),
+# `/api/setup/mesh` repoints the LLM lane at a caller-controlled URL and
+# PERSISTS it, and `/api/diagnose` renders the resolved configuration,
+# including env-sourced key material (see doctor `_format_doctor_value`).
+# Sandbox mode closes exactly those, refuses `/ws` upgrades from origins the
+# operator did not list, and caps the size of a run input. It is the
+# `console.sandbox` / `console.allowed_origins` / `console.max_input_chars`
+# config keys (env forms `MAXIM_CONSOLE_SANDBOX` etc., resolved by the loader
+# like every other console setting), read ONCE at `build_app` and carried on
+# `app.state.sandbox` — a request cannot flip it — and it deliberately adds
+# no auth of its own: authentication that lived in the engine would have to
+# be trusted by every localhost user too.
+_SANDBOX_ENV = "MAXIM_CONSOLE_SANDBOX"
+_SANDBOX_ORIGINS_ENV = "MAXIM_CONSOLE_ALLOWED_ORIGINS"
+_SANDBOX_MAX_INPUT_ENV = "MAXIM_CONSOLE_MAX_INPUT_CHARS"
+_SANDBOX_DEFAULT_MAX_INPUT_CHARS = 16_000
+_SANDBOX_REFUSAL = (
+    "Closed in sandbox mode: this surface acts on the host (network or persisted "
+    "configuration) rather than on the agent, so it is not offered to sandbox visitors."
+)
+
+
+@dataclasses.dataclass(frozen=True)
+class _SandboxPolicy:
+    allowed_origins: frozenset[str]
+    max_input_chars: int
+
+
+def _normalize_origin(raw: str) -> str:
+    return raw.strip().rstrip("/").lower()
+
+
+def _sandbox_policy() -> _SandboxPolicy | None:
+    """Resolve the sandbox switch and its two knobs through the config loader.
+
+    Returns ``None`` (the default, byte-identical localhost behaviour) unless
+    ``console.sandbox`` resolves true. Malformed values are the loader's
+    ``ConfigurationError`` — raised at build time, never a silent fallback.
+    """
+    if not _resolve("console.sandbox", None):
+        return None
+    origins = frozenset(_normalize_origin(o) for o in (_resolve("console.allowed_origins", None) or ()) if o)
+    if not origins:
+        # Loud, like a bad cap: a sandbox whose UI can never open /ws is the
+        # vacuous guard inverted (everything refused), and an info log is
+        # not a signal anyone reads.
+        from maxim.runtime.config_loader import ConfigurationError
+
+        raise ConfigurationError(
+            "config: console.allowed_origins must list at least one origin when console.sandbox is on "
+            f"(env: {_SANDBOX_ORIGINS_ENV})"
+        )
+    cap = int(_resolve("console.max_input_chars", None) or _SANDBOX_DEFAULT_MAX_INPUT_CHARS)
+    return _SandboxPolicy(allowed_origins=origins, max_input_chars=cap)
+
+
+def _sandbox_of(app: Any) -> _SandboxPolicy | None:
+    return getattr(app.state, "sandbox", None)
+
+
+def _refuse_in_sandbox(request: Request) -> None:
+    """FastAPI dependency: 403 on the host-acting surfaces when sandboxed."""
+    if _sandbox_of(request.app) is not None:
+        raise HTTPException(status_code=403, detail=_SANDBOX_REFUSAL)
+
+
 # ── live verbs (wrap existing api.py facades) ───────────────────────────────
 
 
@@ -165,7 +244,9 @@ def _git_identity() -> tuple[str | None, str | None]:
     return _run(["git", "rev-parse", "--short", "HEAD"]), _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
 
 
-def build_identity(ui_dist: Path | str | None = None, ui_source: str = "none") -> IdentityResponse:
+def build_identity(
+    ui_dist: Path | str | None = None, ui_source: str = "none", *, sandbox: _SandboxPolicy | None = None
+) -> IdentityResponse:
     """Assemble the backend's self-description (shared by /api/identity + /ws)."""
     import sys as _sys
 
@@ -173,10 +254,22 @@ def build_identity(ui_dist: Path | str | None = None, ui_source: str = "none") -
     from maxim.console.ui_bundle import CONSOLE_CONTRACT_VERSION, read_ui_manifest
 
     sha, branch = _git_identity()
-    seams = [
-        SeamStatus(name=n, live=(n != "sim"), detail=(d if n != "sim" else f"{d} — use the CLI (`maxim --sim`)"))
-        for n, d in _SEAM_DECLARATIONS
-    ]
+    # Sandbox mode closes the host-acting seams (see `_refuse_in_sandbox`);
+    # identity says so rather than declaring them live and letting the client
+    # discover the 403. Both are HALF-closed — `probe`'s provider form and
+    # `setup`'s cloud half stay open so the cloud wizard still works — which
+    # the detail spells out; a consumer gating the cloud wizard on these two
+    # seams would be wrong, and `live` here is value-level (no contract change).
+    _sandbox_closed = {"probe": "url form closed in sandbox mode", "setup": "mesh closed in sandbox mode"}
+
+    def _seam(n: str, d: str) -> SeamStatus:
+        if n == "sim":
+            return SeamStatus(name=n, live=False, detail=f"{d} — use the CLI (`maxim --sim`)")
+        if sandbox is not None and n in _sandbox_closed:
+            return SeamStatus(name=n, live=False, detail=f"{d} — {_sandbox_closed[n]}")
+        return SeamStatus(name=n, live=True, detail=d)
+
+    seams = [_seam(n, d) for n, d in _SEAM_DECLARATIONS]
     return IdentityResponse(
         package_version=getattr(_maxim, "__version__", "unknown"),
         contract_version=CONSOLE_CONTRACT_VERSION,
@@ -191,14 +284,19 @@ def build_identity(ui_dist: Path | str | None = None, ui_source: str = "none") -
 
 
 @api.get("/identity", response_model=IdentityResponse, summary="Which backend is this?")
-def get_identity() -> IdentityResponse:
+def get_identity(request: Request) -> IdentityResponse:
     # Answers the question a debugging session would otherwise have to guess:
     # which pymaxim, which branch, which contract, which seams are live, and
     # which UI bundle is being served.
-    return build_identity(_SERVED_UI_DIST[0], _SERVED_UI_DIST[1])
+    return build_identity(_SERVED_UI_DIST[0], _SERVED_UI_DIST[1], sandbox=_sandbox_of(request.app))
 
 
-@api.get("/diagnose", response_model=DiagnoseResponse, summary="Environment diagnostics")
+@api.get(
+    "/diagnose",
+    response_model=DiagnoseResponse,
+    summary="Environment diagnostics",
+    dependencies=[Depends(_refuse_in_sandbox)],
+)
 def get_diagnose() -> DiagnoseResponse:
     import maxim
 
@@ -249,13 +347,17 @@ def get_diagnose() -> DiagnoseResponse:
 
 
 @api.post("/probe", response_model=ProbeResult, summary="Test a mesh/cloud connection")
-def post_probe(body: ProbeRequest) -> ProbeResult:
+def post_probe(body: ProbeRequest, request: Request) -> ProbeResult:
     # PROBE seam. Dispatches on the request shape (contract fix): a MESH probe
     # (``url`` present) goes through the canonical peer-probe entry point + the
     # shared classifier — the same path `maxim doctor` uses, so console and
     # doctor agree on verdicts. A CLOUD probe (``provider`` present, no ``url``)
     # is a cheap pre-save key check.
     if body.url:
+        # The URL form is the SSRF surface (arbitrary host + bearer, latency
+        # echoed back); the provider form below is a local key-shape check and
+        # stays open so the cloud wizard still works for a sandbox visitor.
+        _refuse_in_sandbox(request)
         from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
         from maxim.peer.probe_classify import classify_probe_outcome
 
@@ -295,7 +397,12 @@ def post_probe(body: ProbeRequest) -> ProbeResult:
     raise HTTPException(status_code=422, detail="Probe requires either 'url' (mesh) or 'provider' (cloud).")
 
 
-@api.post("/setup/mesh", response_model=SetupResult, summary="Write mesh (peer→leader) config")
+@api.post(
+    "/setup/mesh",
+    response_model=SetupResult,
+    summary="Write mesh (peer→leader) config",
+    dependencies=[Depends(_refuse_in_sandbox)],
+)
 def post_setup_mesh(body: MeshSetupRequest) -> SetupResult:
     # SETUP seam. Thin call into the sanctioned single-writer helper: writes a
     # resolvable large-tier PEER placement (role=peer + lanes.large.remote_*),
@@ -311,7 +418,9 @@ def post_setup_mesh(body: MeshSetupRequest) -> SetupResult:
     return SetupResult(
         ok=True,
         placement="mesh",
-        detail=f"Wrote peer→leader config to {written}; key stored as a ref at {secret_path}.",
+        # The ref PATH is deliberately not echoed: the client needs to know the
+        # key is a 0600 ref, not where on the host it lives.
+        detail=f"Wrote peer→leader config to {written}; key stored as a 0600 ref.",
     )
 
 
@@ -333,7 +442,7 @@ def post_setup_cloud(body: CloudSetupRequest) -> SetupResult:
     return SetupResult(
         ok=True,
         placement="cloud",
-        detail=f"Wrote {body.provider}/{body.profile} cloud config to {written}; key stored as a ref at {secret_path}.",
+        detail=f"Wrote {body.provider}/{body.profile} cloud config to {written}; key stored as a 0600 ref.",
     )
 
 
@@ -356,7 +465,7 @@ def get_recall() -> RecallResponse:
     from maxim.console.schemas import Preference, StoryMemory
 
     with _handle_lock:
-        agent_id = _handle.agent_id if _handle is not None else _HANDLE_AGENT_ID
+        agent_id = _handle.agent_id if _handle is not None else _console_agent_id()
     r = maxim.recall(agent_id=agent_id)
     return RecallResponse(
         name=r.name,
@@ -370,12 +479,29 @@ def get_recall() -> RecallResponse:
 # One MaximHandle per server process (the console fronts ONE persistent
 # agent), one campaign at a time. The handle is built lazily on the first
 # adventure run so `maxim serve` startup stays instant.
-# _HANDLE_AGENT_ID is the single source of the console agent's identity —
-# get_recall reads the same agent home the handle writes (Exec B1).
-_HANDLE_AGENT_ID = "console_agent"
+# `_console_agent_id()` is the single source of the console agent's identity —
+# get_recall reads the same agent home the handle writes (Exec B1). It is
+# resolved LAZILY (config key `console.agent_id` / `MAXIM_CONSOLE_AGENT_ID`,
+# default "console_agent") so `build_app()` embedders and tests get the
+# configured value too, not only `run_serve`. A sandbox points it at a
+# pre-seeded home without copying that home into the default slot.
+_DEFAULT_HANDLE_AGENT_ID = "console_agent"
 _handle_lock = threading.Lock()
 _handle: Any | None = None
 _active_run: dict[str, Any] = {"session_id": None, "thread": None}
+
+
+def _console_agent_id() -> str:
+    """The configured `console.agent_id`, or the default.
+
+    Validation (single path segment, not the reserved sim AUT id) is the
+    loader's — `config_loader.coerce_agent_id` — so `maxim config set`, the
+    env form and this resolution all refuse the same values; a bad value
+    surfaces as a `ConfigurationError` at `maxim serve` start (see
+    `run_serve`), never as a 500 on the first Talk request.
+    """
+    raw = _resolve("console.agent_id", None)
+    return str(raw).strip() if raw is not None and str(raw).strip() else _DEFAULT_HANDLE_AGENT_ID
 
 
 def _get_handle() -> Any:
@@ -384,7 +510,7 @@ def _get_handle() -> Any:
         if _handle is None:
             from maxim.console.handle import MaximHandle
 
-            _handle = MaximHandle(agent_id=_HANDLE_AGENT_ID)
+            _handle = MaximHandle(agent_id=_console_agent_id())
         return _handle
 
 
@@ -665,7 +791,13 @@ def _post_run_rest() -> RunAccepted:
 
 
 @api.post("/run", response_model=RunAccepted, summary="Run a mode (talk/adventure/sim/rest)")
-def post_run(body: RunRequest) -> RunAccepted:
+def post_run(body: RunRequest, request: Request) -> RunAccepted:
+    sandbox = _sandbox_of(request.app)
+    if sandbox is not None and body.input is not None and len(body.input) > sandbox.max_input_chars:
+        raise HTTPException(
+            status_code=413,
+            detail=f"'input' exceeds the sandbox cap of {sandbox.max_input_chars} characters.",
+        )
     # HANDLE seam (a): mode="adventure" runs an adventure AS the persistent
     # agent (campaign injection — the "Adventure teaches Talk" surface), in
     # two flavors: an authored campaign YAML (`campaign`) or a free-text
@@ -975,13 +1107,39 @@ _event_hub = _EventHub()
 # ── app factory ─────────────────────────────────────────────────────────────
 
 
+def _drain_and_stop_handle(
+    *, run_join_s: float = 30.0, campaign_wait_s: float = 60.0, talk_join_s: float = 20.0
+) -> None:
+    """Join a live run (bounded), then stop the handle. Blocking; call off-loop.
+
+    Module-level (not a closure in the lifespan) so the shutdown contract can
+    be tested without driving uvicorn, and so an operator wrapper — the
+    sandbox broker's "end session" — can call the same thing the lifespan does.
+    """
+    with _handle_lock:
+        handle = _handle
+        run_thread = _active_run["thread"]
+    if run_thread is not None and run_thread.is_alive():
+        run_thread.join(timeout=run_join_s)
+    if handle is not None:
+        handle.stop(campaign_wait_s=campaign_wait_s, talk_join_s=talk_join_s)
+
+
 def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
     """Construct the Console FastAPI app. ``ui_dist`` = the built static bundle.
 
     ``ui_source`` records HOW that bundle was chosen (flag / config / packaged)
     so /api/identity can report it — "which UI am I serving, and why" is half
-    of any contract-mismatch investigation.
+    of any contract-mismatch investigation. The sandbox policy is resolved
+    here, once, and carried on ``app.state.sandbox``.
     """
+    sandbox = _sandbox_policy()
+    if sandbox is not None:
+        logger.info(
+            "console sandbox mode ON: probe(url)/setup/mesh/diagnose closed; /ws origins=%s; input cap=%d chars",
+            sorted(sandbox.allowed_origins),
+            sandbox.max_input_chars,
+        )
     global _SERVED_UI_DIST
     # Recorded only if the bundle is ACTUALLY servable. Recording the requested
     # path unconditionally meant a typo'd --ui-dist reported ui_source="flag"
@@ -1007,26 +1165,25 @@ def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
         try:
             yield
         finally:
-            # finally: an exception through shutdown must not strand the sink
-            # registration (review fold).
-            unregister_sim_sink(_event_hub.sink)
-            _event_hub.detach()
-        # Shutdown: server exit mid-campaign would otherwise kill the daemon
-        # run thread with the hippocampus capture queue unflushed — silent
-        # learning loss. Join the live run (bounded) BEFORE stopping so the
-        # campaign's own session-end wins when it can (post-merge review
-        # Exec #4); then stop() — idempotent, safe when no adventure ever ran.
-        with _handle_lock:
-            handle = _handle
-            run_thread = _active_run["thread"]
-
-        def _drain_and_stop() -> None:
-            if run_thread is not None and run_thread.is_alive():
-                run_thread.join(timeout=30.0)
-            if handle is not None:
-                handle.stop()
-
-        await asyncio.to_thread(_drain_and_stop)
+            # Shutdown: server exit mid-campaign would otherwise kill the
+            # daemon run thread with the hippocampus capture queue unflushed —
+            # silent learning loss. Join the live run (bounded) BEFORE stopping
+            # so the campaign's own session-end wins when it can (post-merge
+            # review Exec #4); then stop() — idempotent, safe when no adventure
+            # ever ran. Both live INSIDE the finally (sandbox audit): the sink
+            # unregistration was already exception-safe, but the drain/stop sat
+            # after the block, so an exception through shutdown skipped the
+            # one step that persists a Talk-only session's substrate — a Talk
+            # loop writes nothing to disk until it is stopped. The stop runs
+            # before the sink is released (uvicorn has already closed every
+            # /ws connection by the time lifespan shutdown is delivered, so
+            # nothing is listening — the order is about the sink's own
+            # finally: a raising stop() cannot strand the registration).
+            try:
+                await asyncio.to_thread(_drain_and_stop_handle)
+            finally:
+                unregister_sim_sink(_event_hub.sink)
+                _event_hub.detach()
 
     app = FastAPI(
         title="Maxim Console",
@@ -1036,6 +1193,7 @@ def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
         summary="Localhost Console backend + the OpenAPI facade contract for maxim-pulse.",
         lifespan=_lifespan,
     )
+    app.state.sandbox = sandbox
     app.include_router(api)
 
     @app.websocket("/ws")
@@ -1047,6 +1205,17 @@ def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
         filter. Heartbeats fire when the stream is idle; a "dropped" meta-event
         reports backpressure losses (seq gaps mark where).
         """
+        sandbox = _sandbox_of(websocket.app)
+        if sandbox is not None:
+            # Browsers cannot set headers on a WebSocket upgrade, but they DO
+            # send Origin and a page cannot forge it — so under sandbox mode a
+            # stray page on the visitor's browser cannot read the session
+            # stream. Refused BEFORE accept: the handshake itself fails.
+            origin = _normalize_origin(websocket.headers.get("origin") or "")
+            if origin not in sandbox.allowed_origins:
+                logger.warning("refusing /ws upgrade from origin %r (sandbox mode)", origin or "<none>")
+                await websocket.close(code=1008)  # policy violation
+                return
         await websocket.accept()
         conn = _WsConn()
 
@@ -1058,7 +1227,7 @@ def build_app(ui_dist: Path | None = None, ui_source: str = "none") -> FastAPI:
         # every connection, violating the monotonic-seq contract this branch
         # itself bumped. Enqueued BEFORE add_conn so it cannot be overtaken.
         try:
-            ident = build_identity(_SERVED_UI_DIST[0], _SERVED_UI_DIST[1])
+            ident = build_identity(_SERVED_UI_DIST[0], _SERVED_UI_DIST[1], sandbox=_sandbox_of(websocket.app))
             conn.enqueue(
                 ConsoleEvent(
                     kind="identity",
@@ -1179,7 +1348,18 @@ def _resolve(field_path: str, cli_value: Any) -> Any:
 
 
 def run_serve(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(prog="maxim serve", description="Run the localhost Maxim Console.")
+    ap = argparse.ArgumentParser(
+        prog="maxim serve",
+        description="Run the localhost Maxim Console.",
+        epilog=(
+            "Sandbox mode (for a proxied, single-visitor deployment): set "
+            f"{_SANDBOX_ENV}=1 to close /api/probe (url form), /api/setup/mesh and "
+            f"/api/diagnose, refuse /ws upgrades whose Origin is not in {_SANDBOX_ORIGINS_ENV} "
+            f"(comma-separated), and cap run input at {_SANDBOX_MAX_INPUT_ENV} characters "
+            f"(default {_SANDBOX_DEFAULT_MAX_INPUT_CHARS}). The bind stays 127.0.0.1; "
+            "authentication is the proxy's job."
+        ),
+    )
     ap.add_argument("--port", type=int, default=None, help="Port (default: config console.port / 8765).")
     ap.add_argument("--ui-dist", default=None, help="Path to the built Console static bundle.")
     ap.add_argument(
@@ -1199,6 +1379,14 @@ def run_serve(argv: list[str]) -> int:
         return 0
 
     port = int(_resolve("console.port", args.port))
+    # Fail at start, not on the first Talk request, if the configured agent id
+    # is unusable (reserved name / not a single path segment).
+    try:
+        agent_id = _console_agent_id()
+        sandbox_on = _sandbox_policy() is not None
+    except Exception as e:  # ConfigurationError from the loader
+        print(f"maxim serve: {e}")
+        return 2
     # CLI > config > PACKAGED bundle. `_resolve` already applies CLI > env >
     # config; the packaged vendored bundle is the final fallback so a plain
     # `pip install pymaxim[console] && maxim serve` just works.
@@ -1215,5 +1403,9 @@ def run_serve(argv: list[str]) -> int:
     if ui_dist is not None:
         print(f"maxim serve → serving Console UI from {ui_dist}")
     print(f"maxim serve → http://127.0.0.1:{port}  (API docs: /docs · schema: /openapi.json)")
+    if agent_id != _DEFAULT_HANDLE_AGENT_ID:
+        print(f"maxim serve → fronting agent {agent_id!r} (console.agent_id)")
+    if sandbox_on:
+        print("maxim serve → sandbox mode ON (console.sandbox)")
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
     return 0
