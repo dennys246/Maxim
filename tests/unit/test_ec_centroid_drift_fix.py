@@ -138,7 +138,7 @@ def test_nac_threshold_override_clamps_to_floor_at_high_bias() -> None:
 
 
 def test_frozen_centroid_modalities_default() -> None:
-    """Frozen-centroid set = interoception + audio.
+    """Frozen-centroid set = interoception + audio + world.
 
     Phase 2 ruled out frozen-text-centroid as a fix variant
     (d0_f1_* cells hurt P1 paraphrase recall), so "text"/"vision" stay
@@ -146,9 +146,15 @@ def test_frozen_centroid_modalities_default() -> None:
     2026-06-27) because a densely-streamed continuous sound-localization
     signal would walk a running-mean centroid into the same collapse
     interoception suffers — exteroceptive localization nodes are
-    frozen-prototype for stable per-direction clusters.
+    frozen-prototype for stable per-direction clusters. "world" was added
+    (1.1.4 plan decision D6, 2026-09-03) BEFORE the channel's first caller:
+    the A4 membership evidence was measured under frozen-centroid semantics
+    (every bake-off arm froze its channels), and shipping the first
+    running-mean sensor modality at A4's ~120x allocation rate would be an
+    unmeasured drift configuration. Unfreezing world later requires the
+    sequential-vs-isolated drift measurement first.
     """
-    assert ECConfig().frozen_centroid_modalities == frozenset({"interoception", "audio"})
+    assert ECConfig().frozen_centroid_modalities == frozenset({"interoception", "audio", "world"})
 
 
 def test_cosine_similarity_returns_zero_on_dimension_mismatch() -> None:

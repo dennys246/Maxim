@@ -24,6 +24,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **1.1.4 PR 1 — the vectorized exact scan + A4 nonlinear gain (world-only)**:
+  `pattern_complete_or_separate` now scans through `ec.py::_ModalityMatrix` — the same cosine
+  as one numpy matrix–vector product per (modality, dim) slice, the measured remedy for PR 0's
+  index-prerequisite verdict; the pre-vectorization loop is kept as the equivalence-test
+  reference (`tests/unit/test_ec_vectorized_scan.py`, randomized-operation decision
+  equivalence). The A4 gain lands in `_sensor_embed` behind
+  `SensorEncoderConfig.gain_modalities = {"world"}` at the unchanged 0.85 threshold —
+  membership measured, not assumed: interoception stays ungained (bake-off at N=6: A4
+  stability collapses 0.97 → 0.62 and loses to A1 — the re-stale cost of a geometry change
+  buys an unvalidated small-N benefit), audio stays ungained (place-code jitter-stability
+  degrades 1.000 → 0.957; a gained raw azimuth deletes the centered cluster). Ungained modalities are
+  byte-identical to pre-A4, geometry tags pinned — no EARNED row re-stales. A gained body at
+  rest embeds to the zero vector and encodes nothing (plan decision D2). The gained path has
+  no production caller until the world channel lands (PR 2) — stated in the plan, not
+  discovered later.
 - **1.1.4 PR 0 — the A4 scan-cost prerequisite, measured before shipping** (`scripts/ec_scan_cost.py`
   + `docs/experiments/data/ec_scan_cost_2026-09-03.json`): per-encode cost of the exact
   `pattern_complete_or_separate` scan at the A4 gain's ~120× cluster-allocation rate, mixed-modality

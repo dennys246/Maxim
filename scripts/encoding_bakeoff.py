@@ -212,8 +212,27 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--sensors", default="12,30,50,100", help="comma-separated sensor counts")
     p.add_argument("--trials", type=int, default=120)
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--json", default="", help="write full results here (not a gated path)")
+    p.add_argument("--json", default="", help="write full results here")
+    p.add_argument("--allow-dirty", action="store_true", help="stamp allow_dirty into the record")
     args = p.parse_args(argv)
+
+    # Gated-record preflight (item 16.7; added 1.1.4 PR 1 with the N=6/8
+    # rows — the original 2026-09-01 run predates it): refuse to write
+    # evidence from a dirty src/scripts tree, assert the imported maxim is
+    # THIS repo's src, stamp provenance + ts into the record.
+    provenance = None
+    if args.json:
+        sys.path.insert(0, str(_REPO_ROOT / "scripts"))
+        import maxim
+        from _provenance import DirtyTreeError, ProvenanceError, in_process_code_provenance
+
+        try:
+            provenance = in_process_code_provenance(
+                _REPO_ROOT, maxim.__file__, out_path=args.json, allow_dirty=args.allow_dirty
+            )
+        except (ProvenanceError, DirtyTreeError) as exc:
+            print(f"[FAIL] gated-record preflight: {exc}", file=sys.stderr)
+            return 3
 
     counts = [int(x) for x in args.sensors.split(",") if x.strip()]
     rows: list[dict[str, Any]] = []
@@ -235,7 +254,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         out = Path(args.json)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps({"metric": "min(separation, stability, discrimination)", "rows": rows}, indent=2))
+        from datetime import datetime, timezone
+
+        out.write_text(
+            json.dumps(
+                {
+                    "metric": "min(separation, stability, discrimination)",
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "provenance": provenance,
+                    "rows": rows,
+                },
+                indent=2,
+            )
+        )
         print(f"\nwritten: {out}")
     return 0
 
