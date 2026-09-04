@@ -88,23 +88,17 @@ def write_key(key: str, name: str = MESH_KEY_NAME) -> Path:
 
 
 def _write_key_secret(key: str, name: str) -> Path:
-    """Persist a named key via the canonical credential writer (0600 + atomic).
+    """Persist a named key via the canonical credential writer.
 
-    ``atomic_write_secret`` PRESERVES a pre-existing mode but cannot invent one
-    for a brand-new file (its docstring assigns that to the caller), so the
-    0600 chmod after the write is load-bearing for first writes; rewrites then
-    preserve it.
+    ``atomic_write_secret`` owns the whole mode story since the 2026-09-04
+    review fold: 0600 from fd creation on first write (the secret never sits
+    umask-wide, .tmp included), exact-mode preservation on rewrites.
     """
     from maxim.utils.atomic_io import atomic_write_secret
 
     path = key_file_path(name)
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_secret(str(path), key + "\n")
-    if platform.system() != "Windows":
-        try:
-            os.chmod(path, 0o600)
-        except OSError:
-            logging.getLogger(__name__).warning("could not chmod 0600 on %s", path, exc_info=True)
     return path
 
 
@@ -129,8 +123,20 @@ def rotate_key() -> str:
 
 
 def read_console_token() -> str | None:
-    """Return the stored console token, or None if not set."""
-    return read_key(CONSOLE_KEY_NAME)
+    """Return the stored console token, or None if not set.
+
+    This sits in the per-request auth path (rotation-bites-immediately), so
+    an EXISTING-but-unreadable file — which 401s every device while looking
+    like a plain missing token — warns loudly instead of failing silently
+    (review fold: the mystery-401 debugging session).
+    """
+    token = read_key(CONSOLE_KEY_NAME)
+    if token is None and key_exists(CONSOLE_KEY_NAME):
+        logging.getLogger(__name__).warning(
+            "console token file exists but is empty or unreadable — every request will 401: %s",
+            key_file_path(CONSOLE_KEY_NAME),
+        )
+    return token
 
 
 def ensure_console_token() -> str:

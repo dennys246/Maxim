@@ -120,11 +120,12 @@ api = APIRouter(prefix="/api", tags=["facade"])
 
 # ── sandbox mode ─────────────────────────────────────────────────────────────
 #
-# `maxim serve` is localhost-only and unauthenticated BY DESIGN: it holds keys
-# and can reconfigure Maxim, so the operator's own machine is its trust
-# boundary. A hosted sandbox (one anonymous visitor per throwaway machine,
-# an authenticating proxy in front) keeps that binding and that absence of
-# auth — the proxy owns the edge — but three surfaces are unsafe for a
+# `maxim serve` is localhost-only and bearer-authenticated (the auth block
+# below): it holds keys and can reconfigure Maxim, so the console token is
+# what stands between any caller and that capability. A hosted sandbox (one
+# anonymous visitor per throwaway machine, an authenticating proxy in front)
+# keeps the binding but runs WITHOUT engine auth — the proxy owns the edge,
+# see the tail of this block — and three surfaces are unsafe for a
 # stranger even behind a proxy, because they act on the HOST rather than on
 # the agent: `/api/probe` with a `url` dials an arbitrary address with an
 # arbitrary bearer and echoes latency + detail (server-side request forgery),
@@ -1585,13 +1586,26 @@ def build_app(
                 logger.warning("refusing /ws upgrade from origin %r (sandbox mode)", origin or "<none>")
                 await websocket.close(code=1008)  # policy violation
                 return
-        # Echo the app subprotocol when the client offered it (the browser
-        # token transport offers ["maxim-console-v1", "maxim.bearer.<t>"] and
-        # the RFC obliges the server to select from the offered list); native
-        # clients that offered none get a plain accept.
+        # Subprotocol negotiation. The browser token transport offers
+        # ["maxim-console-v1", "maxim.bearer.<t>"]; the RFC obliges the server
+        # to select from the offered list, and browsers FAIL the connection
+        # when they offered protocols and the server selected none — so a
+        # client that offered subprotocols WITHOUT the app protocol would
+        # authenticate, be accepted, and then die client-side looking exactly
+        # like an auth failure (review fold, executor lens). Refuse it loudly
+        # at the handshake instead; the token subprotocol is never echoed
+        # back. Native clients that offered nothing get a plain accept.
         offered = websocket.headers.get("sec-websocket-protocol", "")
-        subprotocol = _WS_APP_SUBPROTOCOL if _WS_APP_SUBPROTOCOL in {p.strip() for p in offered.split(",")} else None
-        await websocket.accept(subprotocol=subprotocol)
+        offered_set = {p.strip() for p in offered.split(",") if p.strip()}
+        if offered_set and _WS_APP_SUBPROTOCOL not in offered_set:
+            logger.warning(
+                "refusing /ws upgrade: subprotocols offered without %r — a browser would drop the "
+                "accepted socket client-side; offer the app subprotocol beside the bearer entry",
+                _WS_APP_SUBPROTOCOL,
+            )
+            await websocket.close(code=1008)  # policy violation
+            return
+        await websocket.accept(subprotocol=_WS_APP_SUBPROTOCOL if offered_set else None)
         conn = _WsConn()
 
         # Identity FIRST, before any stream event: a client should know what it
@@ -1846,13 +1860,19 @@ def run_serve(argv: list[str]) -> int:
     # 127.0.0.1 ONLY — the console holds keys + can run/configure Maxim.
     if ui_dist is not None:
         print(f"maxim serve → serving Console UI from {ui_dist}")
-    if token is not None:
+    if token is not None and ui_dist is not None:
         # FRAGMENT, not query: a #token never reaches the server, so it cannot
         # land in access logs (design A5). The UI reads it, stores it, and
         # strips it from the address bar; every later visit needs no token.
         print(f"maxim serve → http://127.0.0.1:{port}/#token={token}")
         print("maxim serve → open the URL above (the token signs this browser in once; --show-token reprints)")
-        print(f"maxim serve → API docs: http://127.0.0.1:{port}/docs · schema: /openapi.json (Bearer required)")
+        print("maxim serve → /docs and /openapi.json require the Bearer token (API clients, not browsers)")
+    elif token is not None:
+        # No UI bundle: a #token= URL would land on the static fallback page,
+        # which cannot consume it, and /docs 401s in a browser (review fold) —
+        # hand the operator the working form instead.
+        print(f"maxim serve → http://127.0.0.1:{port}  (no UI bundle; API is Bearer-authenticated)")
+        print(f'maxim serve → e.g.  curl -H "Authorization: Bearer {token}" http://127.0.0.1:{port}/api/identity')
     else:
         print(f"maxim serve → http://127.0.0.1:{port}  (API docs: /docs · schema: /openapi.json)")
     if agent_id != _DEFAULT_HANDLE_AGENT_ID:

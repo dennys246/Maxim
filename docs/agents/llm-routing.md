@@ -32,7 +32,7 @@ Probe timers are separate and short: `MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S` 1.5s /
 | Call registry / stall | `runtime/llm_call_registry.py`, `runtime/stall_threshold.py` |
 | HTTP plumbing | `utils/http.py` (registered endpoints, typed `HTTPError`s, `raw_proxy_forward*`, `X-Maxim-*` header propagation) |
 | Mesh / peer | `peer/mesh_config.py` (frozen parser + `write_mesh_config`), `peer/mesh_setup.py` (sole mesh.yml writer), `peer/probe_classify.py`, `peer/mesh_cli.py`; `mesh/identity.py`, `mesh/knowledge.py`, `mesh/task_delegation.py`, `mesh/clock.py` |
-| Doctor / tunnel | `doctor/platform_detect.py`, `doctor/checks.py`, `doctor/cli.py`; `tunnel/` (cloudflared wrapping + API key management) |
+| Doctor / tunnel | `doctor/platform_detect.py`, `doctor/checks.py`, `doctor/cli.py`; `tunnel/` (cloudflared wrapping + API key management — `keys.py` holds NAMED keys since hardening PR 2: the mesh `api_key` (defaults, hand-rolled writer, byte-identical behaviour) AND the console's `mxc_`-prefixed `console_token` (written via `atomic_write_secret`, 0600 from creation); the console-auth invariant in docs/agents/runtime-tools.md owns that credential's rules) |
 
 ## 3. Invariants & lessons
 

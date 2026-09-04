@@ -173,16 +173,32 @@ class TestAtomicWriteSecret:
         assert target.read_text() == "sk-rotated456"
         assert (os.stat(target).st_mode & 0o777) == 0o600
 
-    def test_new_file_inherits_umask(self, tmp_path) -> None:
-        """Brand-new file has no mode to preserve — inherits umask.
-        Callers that want 0o600 on first write must chmod explicitly.
-        Documents the limitation so C3 cluster-key rotation wires
-        the chmod itself on first-write."""
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits")
+    def test_new_file_is_0600_even_during_the_write(self, tmp_path, monkeypatch) -> None:
+        """Brand-new secret files are 0600 FROM CREATION (2026-09-04
+        console-auth review fold, cross-confirmed by both lenses): the old
+        contract — inherit the umask, caller chmods afterwards — left the
+        credential world-readable in the .tmp window and again between
+        os.replace and the chmod, behind an in-file comment claiming the
+        window was already closed. The tmp mode is captured AT the replace
+        boundary so the whole write path is pinned, not just the end state."""
         target = tmp_path / "new_secret.txt"
-        atomic_write_secret(str(target), "sk-fresh")
+        old_umask = os.umask(0o022)  # the umask under which the leak reproduced
+        try:
+            seen: dict[str, int] = {}
+            real_replace = os.replace
+
+            def _spy(src: str, dst: str) -> None:
+                seen["tmp_mode"] = os.stat(src).st_mode & 0o777
+                real_replace(src, dst)
+
+            monkeypatch.setattr("maxim.utils.atomic_io.os.replace", _spy)
+            atomic_write_secret(str(target), "sk-fresh")
+        finally:
+            os.umask(old_umask)
         assert target.read_text() == "sk-fresh"
-        # No assertion on mode — umask-dependent, caller's job on new
-        # files. The wrapper's value is preserving ON REWRITE.
+        assert seen["tmp_mode"] == 0o600  # never umask-wide, not even mid-write
+        assert (os.stat(target).st_mode & 0o777) == 0o600
 
 
 class TestAtomicWriteJson:

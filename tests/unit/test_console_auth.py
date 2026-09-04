@@ -162,6 +162,56 @@ class TestWs:
                 ):
                     pass
 
+    def test_bearer_only_offer_refused_at_handshake(self, authed_app):
+        # A VALID token offered without the app subprotocol would authenticate
+        # and then die client-side (RFC 6455: a browser fails the connection
+        # when it offered protocols and the server selected none) — looking
+        # exactly like an auth failure. Refused loudly at the handshake
+        # instead (review fold, executor lens).
+        with TestClient(authed_app) as client:
+            with pytest.raises(WebSocketDisconnect):
+                with client.websocket_connect("/ws", subprotocols=[f"{srv._WS_BEARER_PREFIX}{_TOKEN}"]):
+                    pass
+
+
+# ── every ROUTED surface is covered (default-open guard) ─────────────────────
+
+
+class TestRouteEnumeration:
+    def test_every_routed_path_demands_auth_except_the_exempt_set(self, authed_app):
+        # `_auth_required` is prefix-based, so a future top-level route
+        # (`/metrics`, say) would ship unauthenticated SILENTLY — the exact
+        # miss the one-middleware design closes for websockets. This guard
+        # turns that silent miss into a red test (review fold, executor
+        # lens): every route FastAPI actually serves must satisfy the
+        # predicate, except the deliberate exemptions.
+        from starlette.routing import Mount, Route, WebSocketRoute
+
+        exempt = set(srv._AUTH_EXEMPT_PATHS) | {"/"}  # hello + the static/no-UI shell
+        uncovered = []
+        for route in authed_app.routes:
+            if isinstance(route, Mount):
+                continue  # the static bundle is deliberately public
+            if isinstance(route, WebSocketRoute):
+                if not srv._auth_required(route.path, "websocket"):
+                    uncovered.append(route.path)
+                continue
+            if isinstance(route, Route):
+                if route.path in exempt:
+                    continue
+                if not srv._auth_required(route.path, "http"):
+                    uncovered.append(route.path)
+        assert uncovered == [], f"routes served without auth coverage: {uncovered}"
+
+    def test_the_guard_itself_is_not_vacuous(self, authed_app):
+        # The enumeration must actually SEE routes (an empty walk passes
+        # anything) and must flag a hypothetical top-level route.
+        from starlette.routing import Route
+
+        paths = [r.path for r in authed_app.routes if isinstance(r, Route)]
+        assert "/api/identity" in paths and len(paths) > 5
+        assert srv._auth_required("/metrics", "http") is False  # the miss the test exists to catch
+
 
 # ── sandbox negative control ─────────────────────────────────────────────────
 
