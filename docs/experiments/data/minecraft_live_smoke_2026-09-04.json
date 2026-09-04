@@ -1,0 +1,32 @@
+{
+  "harness": "scripts/minecraft_two_aut.py",
+  "ts": "2026-09-04T15:57:19.433775+00:00",
+  "provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "bcdd5d261717",
+    "working_tree_dirty_src_scripts": false,
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages"
+  },
+  "mode": "live-bridge",
+  "ticks": 360,
+  "verdicts": [
+    {
+      "agent_id": "aut_a",
+      "world_nodes_live": 3,
+      "world_nodes_persisted": 3,
+      "ec_json_exists": true,
+      "state_age_s": 0.23531083413399756,
+      "world_feed_writes": 516
+    },
+    {
+      "agent_id": "aut_b",
+      "world_nodes_live": 3,
+      "world_nodes_persisted": 3,
+      "ec_json_exists": true,
+      "state_age_s": 0.28610583301633596,
+      "world_feed_writes": 510
+    }
+  ],
+  "green": true
+}
