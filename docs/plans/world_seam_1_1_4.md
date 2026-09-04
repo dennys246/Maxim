@@ -338,6 +338,24 @@ re-fired re-measure attaches there.
   - a `strict=True` red gate asserting a harness session takes the FULL close
     (consolidation verified) — written failing first, flipped by the wiring.
 
+**PR 4 result (2026-09-04): THE SHIP GATE IS GREEN, and it is non-vacuous in CI.**
+`simulation/minecraft_harness.py` (importable glue: per-AUT assembly on the canonical
+builders, the staleness-gated sync pump, the deterministic `FakeBridgeServer`, the verdict) +
+`scripts/minecraft_two_aut.py` (the CLI). The reduced end-to-end smoke —
+`tests/unit/test_minecraft_harness.py::TestReducedEndToEndSmoke`, deliberately in the FAST
+lane (~5 s; a nightly-only gate mostly does not run, D65) — runs TWO full `run_agentic_loop`
+AUTs (substrate-primary, no LLM) against one fake world and asserts world-modality EC nodes
+live AND persisted through the `consolidation="full"` close (the kwargs pinned on the pure
+`_loop_kwargs` the harness itself passes). CLI verdict on the fake world: GREEN, 14/10 world
+nodes per AUT. All four PR 3 obligations discharged: **D77 FIXED** (embodiment threaded into
+acquisition regeneration) — which surfaced **D78** (EntityMap self-collision eviction killed
+name-resolution after any re-registration; the two holes stacked on the same pickup path);
+eat/eat_bread live-run exclusion recorded in the harness docstring; the staleness gate is in
+the pump (test-pinned); the N=6 tension stays with L11, whose re-measure obligation attaches
+to the REAL-bridge run — the CI smoke's fake world is mechanically a first feed but
+synthetic, and L11's retirement requires a real body. **Outstanding after PR 4 (operator):**
+the live-bridge smoke against a real Minecraft server, and L11's re-measure there.
+
 ### The hardware block (operator; scheduled after PR 1 merges — not gating the sim-side PRs)
 
 **Shrunk by D3's resolution (world-only gain):** Exp 53b's re-run is NO LONGER triggered —

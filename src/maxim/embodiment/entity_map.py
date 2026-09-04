@@ -80,6 +80,14 @@ class EntityMap:
         and new entity are stored under their ``full_path``.
         """
         for ent in entity.walk():
+            if self._entities.get(ent.name) is ent:
+                # Re-registration of the SAME object is a no-op — the
+                # collision branch below would pop the name key and strand
+                # the entity under its full_path, silently killing every
+                # name-based resolve afterwards (found via D77: acquisition
+                # regenerates tools, which re-registers the item, which
+                # evicted "minecraft_bread" and no-opped its target_effect).
+                continue
             if ent.name in self._entities:
                 existing = self._entities.pop(ent.name)
                 # Only re-store under full_path if not already there
