@@ -22,6 +22,7 @@ from maxim.simulation.minecraft_harness import (
     build_minecraft_aut,
     run_minecraft_aut,
     smoke_verdict,
+    verdict_is_green,
 )
 
 
@@ -127,10 +128,12 @@ class TestReducedEndToEndSmoke:
     agent loops, substrate-primary, full close — then the non-vacuous
     verdict on live AND persisted world nodes."""
 
-    def test_two_aut_smoke_is_green_and_non_vacuous(self, tmp_path):
+    def test_two_aut_smoke_is_green_and_non_vacuous(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)  # the loop writes CWD-relative diagnostics
         server = FakeBridgeServer(seed=42, state_interval_s=0.05)
         auts = []
         pumps = []
+        close_calls: dict[str, dict[str, int]] = {}
         try:
             for name in ("aut_a", "aut_b"):
                 aut = build_minecraft_aut(
@@ -139,6 +142,28 @@ class TestReducedEndToEndSmoke:
                     persistence_dir=str(tmp_path / name),
                     action_timeout_s=2.0,
                 )
+                # RUNTIME close-flavor discriminator (architecture-lens
+                # review): on_session_end_lightweight ALSO writes ec.json,
+                # so the persisted-nodes assertion alone cannot tell the
+                # flavors apart — this observes which closer actually ran,
+                # pinning the loop->_end_bio_session seam no other test
+                # covers.
+                counts = {"full": 0, "lightweight": 0}
+                close_calls[name] = counts
+                hub = aut.bio.memory_hub
+                real_full = hub.on_session_end
+                real_light = hub.on_session_end_lightweight
+
+                def _full(*a, _c=counts, _f=real_full, **k):
+                    _c["full"] += 1
+                    return _f(*a, **k)
+
+                def _light(*a, _c=counts, _f=real_light, **k):
+                    _c["lightweight"] += 1
+                    return _f(*a, **k)
+
+                hub.on_session_end = _full
+                hub.on_session_end_lightweight = _light
                 auts.append(aut)
                 pump = MinecraftSyncPump(aut, interval_s=0.05, max_state_age_s=5.0)
                 pump.start()
@@ -160,12 +185,42 @@ class TestReducedEndToEndSmoke:
                 a.client.close()
             server.close()
 
-        for aut in auts:
-            verdict = smoke_verdict(aut)
-            assert verdict["world_nodes_live"] > 0, (
-                f"{verdict}: the world channel never encoded — the smoke is vacuous (D64 shape)"
+        for aut, pump in zip(auts, pumps):
+            verdict = smoke_verdict(aut, pump)
+            # THE gate, via the one shared function the CLI also uses. Its
+            # liveness half exists because the executor lens DEMONSTRATED
+            # the node counts alone go green with the pumps never started
+            # (the body's non-neutral initials mint one static encode).
+            assert verdict_is_green(verdict), f"{verdict}: the smoke gate is RED"
+            assert verdict["ec_json_exists"], f"{verdict}: the close never persisted the EC"
+        for name, counts in close_calls.items():
+            assert counts["full"] >= 1, f"{name}: the FULL close never ran ({counts})"
+            assert counts["lightweight"] == 0, (
+                f"{name}: the session took the LIGHTWEIGHT close ({counts}) — "
+                "the harness's consolidation='full' did not reach _end_bio_session"
             )
-            assert verdict["ec_json_exists"], f"{verdict}: the full close never persisted the EC"
-            assert verdict["world_nodes_persisted"] > 0, (
-                f"{verdict}: world nodes exist live but did not survive the close — consolidation did not do its job"
+
+    def test_dead_world_feed_is_red(self, tmp_path, monkeypatch):
+        """The executor lens's vacuity demonstration, pinned as a negative
+        control: pumps never started -> the gate must be RED even though a
+        static-initials encode mints a node or two."""
+        monkeypatch.chdir(tmp_path)
+        server = FakeBridgeServer(seed=7, state_interval_s=0.05)
+        aut = None
+        try:
+            aut = build_minecraft_aut(
+                agent_id="dead_feed",
+                bridge_port=server.port,
+                persistence_dir=str(tmp_path / "dead_feed"),
+                action_timeout_s=2.0,
             )
+            pump = MinecraftSyncPump(aut, interval_s=0.05)  # NEVER started
+            run_minecraft_aut(aut, max_steps=15, target_hz=8.0)
+            verdict = smoke_verdict(aut, pump)
+            assert not verdict_is_green(verdict), (
+                f"{verdict}: a dead world feed must not smoke GREEN (the vacuity the review demonstrated)"
+            )
+        finally:
+            if aut is not None:
+                aut.client.close()
+            server.close()

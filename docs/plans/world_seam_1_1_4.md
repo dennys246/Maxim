@@ -353,8 +353,31 @@ name-resolution after any re-registration; the two holes stacked on the same pic
 eat/eat_bread live-run exclusion recorded in the harness docstring; the staleness gate is in
 the pump (test-pinned); the N=6 tension stays with L11, whose re-measure obligation attaches
 to the REAL-bridge run — the CI smoke's fake world is mechanically a first feed but
-synthetic, and L11's retirement requires a real body. **Outstanding after PR 4 (operator):**
-the live-bridge smoke against a real Minecraft server, and L11's re-measure there.
+synthetic, and L11's retirement requires a real body. **Review-round hardening (both lenses, folded):** the executor lens DEMONSTRATED the
+original node-count gate going green with the pumps never started — the body's non-neutral
+initials mint one static encode — so the gate is now `verdict_is_green` (ONE shared function,
+test and CLI): world-feed writes > 0 AND change-driven world nodes ≥ 2 AND persisted ≥ 2,
+with a dead-feed NEGATIVE CONTROL pinned in the suite and duplicate live ports rejected by
+the CLI (the JS bridge refuses second clients; a duplicated port previously smoked green).
+The harness executor now mirrors the canonical factory's full kwarg set (hippocampus, scn,
+cerebellum, distributor, agent_id — an under-wired agent would have made the live L11
+re-measure a verify-the-instrument failure) and `bio.on_session_end()` runs in a finally
+(the save_cerebellum invariant). The fake's docstring de-overclaims ("seeded", two emulated
+worlds from one entropy stream — 1.2's sharing arms need a genuinely shared-state fake).
+D79 filed: D77's cerebellum sibling at the same site — second miss of the class, structural
+fix due per the counting rule.
+**Gate-letter discharge, recorded (architecture-lens review):** the roadmap clause
+"`is_sim_mode=False` verified to consolidate" predates HANDLE seam (b) and is unsatisfiable
+under the current adapter contract — `SimulationAdapter.is_sim_mode` is hardcoded True and
+the loop rejects a non-sim adapter beside a `percept_source`. The sanctioned successor is the
+explicit `consolidation="full"` override (the very seam `sim_adapter.py`'s docstring said to
+revisit "when the first non-sim adapter ships" — this is that adapter), and the smoke now
+verifies it at RUNTIME: a close-flavor discriminator observes that `on_session_end` (not
+`_lightweight`, which also writes ec.json) actually ran — the loop→`_end_bio_session` seam no
+other test covered. The plan's promised "strict=True red gate" shape was traded for this
+runtime observation plus the kwargs pin; recorded as the deviation it is. **Outstanding after
+PR 4 (operator):** the live-bridge smoke against a real Minecraft server, L11's re-measure
+there, and the roadmap row's gate-clause annotation at the release transaction.
 
 ### The hardware block (operator; scheduled after PR 1 merges — not gating the sim-side PRs)
 

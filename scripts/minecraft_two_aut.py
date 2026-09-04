@@ -49,6 +49,7 @@ from maxim.simulation.minecraft_harness import (  # noqa: E402
     build_minecraft_aut,
     run_minecraft_aut,
     smoke_verdict,
+    verdict_is_green,
 )
 
 
@@ -86,6 +87,12 @@ def main(argv: "list[str] | None" = None) -> int:
         if len(ports) != 2:
             print("[FAIL] --bridge-ports wants exactly two ports", file=sys.stderr)
             return 2
+        if ports[0] == ports[1]:
+            # The real JS bridge refuses a second client — a duplicated port
+            # yields one connected AUT and one silently world-less one, which
+            # previously smoked GREEN (executor-lens review).
+            print("[FAIL] --bridge-ports must name two DIFFERENT bridges (one bot each)", file=sys.stderr)
+            return 2
     else:
         print("[FAIL] pass --fake-bridge or --bridge-ports", file=sys.stderr)
         return 2
@@ -118,8 +125,8 @@ def main(argv: "list[str] | None" = None) -> int:
         if server is not None:
             server.close()
 
-    verdicts = [smoke_verdict(a) for a in auts]
-    green = all(v["world_nodes_live"] > 0 and v["world_nodes_persisted"] > 0 for v in verdicts)
+    verdicts = [smoke_verdict(a, p_) for a, p_ in zip(auts, pumps)]
+    green = all(verdict_is_green(v) for v in verdicts)
     for v in verdicts:
         print(f"  {v}")
     print(f"SMOKE: {'GREEN' if green else 'RED'} (home: {home})")

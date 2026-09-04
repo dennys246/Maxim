@@ -10,9 +10,13 @@ Minecraft server), and the NON-VACUOUS smoke verdict.
 Design notes, load-bearing:
 
 * **One AUT = one bridge = one client = one agent home.** Two full
-  ``run_agentic_loop`` threads share NOTHING — separate ``persistence_dir``
-  (never a shared ``~/.maxim``), separate percept source/sink, separate
-  bio-stack. `AgentPool.run_turn` is explicitly not the full loop; this is.
+  ``run_agentic_loop`` threads share no BIO state — separate
+  ``persistence_dir`` (never a shared ``~/.maxim``), separate percept
+  source/sink, separate bio-stack. (`AgentPool.run_turn` is explicitly not
+  the full loop; this is.) Known shared residue, diagnostics only: the
+  loop's CWD-relative ``data/agents/<name>/runtime/state_*.json`` — both
+  AUTs are MaximAgents with second-resolution run ids, so those overlap;
+  run the harness from a scratch CWD (the CLI and the test both do).
 * **Substrate-primary, no LLM in the action path**: the loop builds its own
   ``SensorEncoder`` from ``memory_hub.ec`` and proposes via
   ``propose_via_substrate`` — the world channel's A4-gained encode IS the
@@ -55,13 +59,18 @@ _DEFAULT_MAX_STATE_AGE_S = 5.0
 
 
 class FakeBridgeServer:
-    """A deterministic scripted world speaking the frozen NDJSON protocol.
+    """A seeded scripted world speaking the frozen NDJSON protocol.
 
     Dev/test support: lets the WHOLE two-AUT loop run without Minecraft.
-    The world is a seeded random walk over the player body's six sensors
-    plus periodic text events; every action is confirmed with a post-action
-    snapshot (protocol-faithful, including the action_result-carries-state
-    contract the PR 3 review round made load-bearing).
+    SEEDED, not deterministic across runs (executor-lens correction): one
+    shared rng drawn from per-connection threads makes each client's stream
+    interleaving-dependent, and two clients get two INDEPENDENT worlds from
+    one entropy stream — "one port = two emulated bridges". Fine for a
+    wiring smoke; 1.2's sharing arms need a fake with genuinely SHARED
+    per-tick state (recorded in the plan). Every action is confirmed with a
+    post-action snapshot (the action_result-carries-state contract). Note
+    the real JS bridge refuses a second client; this fake accepts them by
+    design.
     """
 
     def __init__(self, *, seed: int = 42, state_interval_s: float = 0.1) -> None:
@@ -205,8 +214,21 @@ def build_minecraft_aut(
         # Explicit opt-out (the required-keyword contract): the AUT runs
         # unrestricted inside its OWN isolated sandbox home.
         permissions=None,
+        # agent_id MUST reach the Embodiment (architecture-lens review):
+        # an agent_id-unaware body publishes PainSignals the reward
+        # distributor SILENTLY SKIPS — embodied credit as a wired-in no-op,
+        # in the very two-AUT instrument 1.2's attribution rides on.
+        agent_id=agent_id,
         pain_bus=bio.pain_bus,
         nac=bio.nac,
+        # Mirror the canonical factory's FULL kwarg set (executor-lens
+        # review: an under-wired harness agent would make the live-bridge
+        # L11 re-measure a verify-the-instrument failure — no cerebellum
+        # training, no SCN temporal credit).
+        hippocampus=bio.hippocampus,
+        scn=bio.scn,
+        cerebellum=bio.cerebellum,
+        distributor=bio.distributor,
         entity_ref=MINECRAFT_BODY_REF,
         component_registry=component_registry,
         modulator_factory=minecraft_modulator_factory(client, world_sensors=world_sensors),
@@ -259,23 +281,30 @@ class MinecraftSyncPump:
 
     def _run(self) -> None:
         while not self._stop.wait(self._interval):
-            age = self._aut.client.state_age_s()
-            if age > self._max_age:
-                self.stale_skips += 1
-                if not self._warned_stale:
-                    self._warned_stale = True
-                    logger.warning(
-                        "minecraft sync pump (%s): snapshot is %.1fs old (> %.1fs) — refusing to feed "
-                        "stale world state to the substrate; will resume when fresh data arrives",
-                        self._aut.agent_id,
-                        age,
-                        self._max_age,
-                    )
-                continue
-            if self._warned_stale:
-                self._warned_stale = False
-                logger.info("minecraft sync pump (%s): fresh snapshots resumed", self._aut.agent_id)
-            self.writes += self._aut.backend.sync_world_sensors()
+            try:
+                age = self._aut.client.state_age_s()
+                if age > self._max_age:
+                    self.stale_skips += 1
+                    if not self._warned_stale:
+                        self._warned_stale = True
+                        logger.warning(
+                            "minecraft sync pump (%s): snapshot is %.1fs old (> %.1fs) — refusing to feed "
+                            "stale world state to the substrate; will resume when fresh data arrives",
+                            self._aut.agent_id,
+                            age,
+                            self._max_age,
+                        )
+                    continue
+                if self._warned_stale:
+                    self._warned_stale = False
+                    logger.info("minecraft sync pump (%s): fresh snapshots resumed", self._aut.agent_id)
+                self.writes += self._aut.backend.sync_world_sensors()
+            except Exception:
+                # A pump that dies silently is indistinguishable from a
+                # healthy one (executor-lens review) — log LOUDLY and keep
+                # ticking; the verdict's writes-gate catches a pump that
+                # never writes.
+                logger.warning("minecraft sync pump (%s): tick raised", self._aut.agent_id, exc_info=True)
 
 
 def _loop_kwargs(aut: MinecraftAut, *, max_steps: int, stop_event: threading.Event, target_hz: float) -> dict[str, Any]:
@@ -319,24 +348,39 @@ def run_minecraft_aut(
     state = RuntimeState()
     state.data["mode"] = "active"
     state.data["active_goal"] = "survive in the world"
-    run_agentic_loop(
-        agent,
-        FileSystemEnv(str(workspace)),
-        state,
-        build_memory(),
-        build_decision_engine(),
-        aut.executor,
-        **_loop_kwargs(aut, max_steps=max_steps, stop_event=stop_event or threading.Event(), target_hz=target_hz),
-    )
+    try:
+        run_agentic_loop(
+            agent,
+            FileSystemEnv(str(workspace)),
+            state,
+            build_memory(),
+            build_decision_engine(),
+            aut.executor,
+            **_loop_kwargs(aut, max_steps=max_steps, stop_event=stop_event or threading.Event(), target_hz=target_hz),
+        )
+    finally:
+        # The bio-stack's OWN session end (cerebellum save + distributor
+        # cleanup) — the loop's close covers hub + hippocampus only, and
+        # the brief's invariant says save_cerebellum() must run at session
+        # end (executor-lens review).
+        try:
+            aut.bio.on_session_end()
+        except Exception:
+            logger.warning("bio-stack session end raised for %s", aut.agent_id, exc_info=True)
 
 
-def smoke_verdict(aut: MinecraftAut) -> dict[str, Any]:
+def smoke_verdict(aut: MinecraftAut, pump: "MinecraftSyncPump | None" = None) -> dict[str, Any]:
     """The NON-VACUOUS gate readout for one AUT.
 
     Asserts nothing itself — returns the facts; the caller (test / script)
-    gates. ``world_nodes_live`` proves the substrate path RAN (D64);
-    ``world_nodes_persisted`` proves the FULL close saved it (the ec.json
-    the bio-stack's session end writes).
+    gates on ALL of: ``world_feed_writes > 0`` (the world feed was ALIVE —
+    the executor-lens review DEMONSTRATED the node counts alone go green
+    with the pumps never started, because the body's non-neutral initials
+    mint one static encode), ``world_nodes_live >= 2`` (change-driven
+    encodes beyond that static first one), and ``world_nodes_persisted >=
+    2`` (the close saved them). The close FLAVOR is not decidable from
+    files (the lightweight closer also writes ec.json) — the test's
+    runtime close-flavor discriminator carries that half.
     """
     ec = aut.bio.ec
     live = sum(1 for _nid, (_e, mod) in getattr(ec, "_substrate_nodes", {}).items() if mod == "world")
@@ -356,4 +400,17 @@ def smoke_verdict(aut: MinecraftAut) -> dict[str, Any]:
         "world_nodes_persisted": persisted,
         "ec_json_exists": ec_path.exists(),
         "state_age_s": aut.client.state_age_s(),
+        "world_feed_writes": pump.writes if pump is not None else None,
     }
+
+
+def verdict_is_green(verdict: dict[str, Any]) -> bool:
+    """THE gate, one place (test and CLI both call this — no hand-composed
+    variant can drift): feed alive AND change-driven encodes AND persisted."""
+    writes = verdict.get("world_feed_writes")
+    return (
+        writes is not None
+        and writes > 0
+        and verdict.get("world_nodes_live", 0) >= 2
+        and verdict.get("world_nodes_persisted", 0) >= 2
+    )

@@ -77,7 +77,13 @@ class EntityMap:
         """Core registration logic.  Caller MUST hold ``self._lock``.
 
         Walks all descendants.  On name collision, both the existing
-        and new entity are stored under their ``full_path``.
+        and new entity are stored under their ``full_path``. Re-registering
+        the SAME object is a no-op (D78). Known residual, noted not fixed:
+        after a genuine collision demoted an entity to its full_path,
+        re-registering it re-promotes the bare name and re-registering the
+        OTHER collider evicts again — a ping-pong the identity check does
+        not cover; unreachable on the production pickup path (unique item
+        names).
         """
         for ent in entity.walk():
             if self._entities.get(ent.name) is ent:
