@@ -195,7 +195,15 @@ class TestAffordances:
                     assert desc.strip(), f"{info.ref}: {mod_name}.{aff_name} has no description"
 
     def test_affordance_params_are_typed(self, registry, all_components):
-        """Affordance params have string type annotations."""
+        """Affordance params have valid type annotations.
+
+        Two shapes, both documented by ``spec._parse_params``: the bare
+        string (``degrees: float``) and the dict form with a default
+        (``degrees: {type: float, default: 0}``). The dict form entered the
+        bundled set with ``items/minecraft_bread.yaml`` (1.1.4 PR 3, the
+        defaulted ``target`` that makes its finite-portions target_effect
+        fire); this test previously accepted only bare strings — narrower
+        than the parser's own contract."""
         valid_types = {"str", "float", "int", "bool"}
         for info in all_components:
             spec = registry.get(info.ref)
@@ -203,10 +211,21 @@ class TestAffordances:
             for mod_name, mod in entity_spec.get("modulators", {}).items():
                 for aff_name, aff in mod.get("affordances", {}).items():
                     for param_name, param_type in aff.get("params", {}).items():
-                        assert param_type in valid_types, (
-                            f"{info.ref}: {aff_name}.{param_name} has type "
-                            f"'{param_type}', expected one of {valid_types}"
-                        )
+                        if isinstance(param_type, dict):
+                            declared = param_type.get("type", "str")
+                            assert declared in valid_types, (
+                                f"{info.ref}: {aff_name}.{param_name} dict form has type "
+                                f"'{declared}', expected one of {valid_types}"
+                            )
+                            assert set(param_type) <= {"type", "default"}, (
+                                f"{info.ref}: {aff_name}.{param_name} dict form has unknown "
+                                f"keys {set(param_type) - {'type', 'default'}}"
+                            )
+                        else:
+                            assert param_type in valid_types, (
+                                f"{info.ref}: {aff_name}.{param_name} has type "
+                                f"'{param_type}', expected one of {valid_types}"
+                            )
 
 
 # ---------------------------------------------------------------------------

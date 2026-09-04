@@ -738,6 +738,10 @@ class SensorEncoder:
         # the STALE node id came back even though the embedding function
         # had changed, and the provenance stamp never saw the mode flip.
         self._last_ranges: dict[tuple[str, str], "dict[str, tuple[float, float]] | None"] = {}
+        # Stash keys whose LAST encode was the D2 designed-rest branch (a
+        # gained body at neutral): the loop's no-cluster WARNING consults
+        # this to log designed rest at debug instead (plan §PR 3 seam note).
+        self._designed_rest: set[tuple[str, str]] = set()
 
     def encode_sensors(
         self,
@@ -819,11 +823,16 @@ class SensorEncoder:
             self._last_sensors[stash_key] = dict(sensors)
             self._last_node_id.pop(stash_key, None)
             self._last_ranges[stash_key] = dict(ranges) if ranges else None
+            # PR 3 seam obligation (plan §PR 3): the agent loop's per-channel
+            # "yielded no cluster" WARNING must be able to tell DESIGNED rest
+            # from an encode failure — record which this was.
+            self._designed_rest.add(stash_key)
             logger.debug(
                 "SensorEncoder: %s reading rests at neutral under gain — nothing to encode",
                 modality,
             )
             return None
+        self._designed_rest.discard(stash_key)
 
         # Artifact stamping (1.1 item 7): the sensor-NAME SET and the
         # normalization mode are part of the embedding's identity —
@@ -980,6 +989,16 @@ class SensorEncoder:
         )
 
         return result.node_id
+
+    def last_encode_was_designed_rest(self, *, agent_id: str, modality: str) -> bool:
+        """True when the most recent ``encode_sensors`` for this (agent,
+        modality) returned ``None`` BY DESIGN — the D2 gained-body-at-rest
+        branch — rather than through a failure. The agent loop consults this
+        so designed rest logs at debug while a genuine no-cluster outcome
+        keeps its WARNING (plan §PR 3 seam note). Repeat rest ticks short-
+        circuit through the delta gate without re-entering the D2 branch;
+        the flag deliberately persists until the next real encode."""
+        return (agent_id, modality) in self._designed_rest
 
     @staticmethod
     def _max_delta(a: dict[str, float], b: dict[str, float]) -> float:

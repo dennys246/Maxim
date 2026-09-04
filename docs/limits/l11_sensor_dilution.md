@@ -215,9 +215,15 @@ resource, plan as one.
 > encode, so no geometry, per-channel N, or selection input changes for any existing body —
 > and the selection-dynamics side was separately re-baselined
 > (`docs/experiments/data/selection_dynamics_rebaseline_2026-09-03.json`). **This trigger
-> RE-FIRES at PR 3**, when `bodies/minecraft_player.yaml` first feeds the channel — at which
-> point "any body whose per-channel sensor count exceeds ~12" fires too, and the re-measure
-> is owed for real.
+> RE-FIRES when `bodies/minecraft_player.yaml` first FEEDS the channel** — which is NOT PR 3
+> (dated touch 2026-09-04: PR 3 ships the body but nothing runs it in CI; the first feed is
+> PR 4's smoke / the operator runs, where the re-measure is owed). And note what PR 3's body
+> actually declares: **six** world sensors — inside the small-N band where A4's stability
+> measured 0.62, and below the "~12 per channel" sub-clause. The tension is recorded, not
+> resolved: either the body grows toward its Minecraft-scale sensor set before 1.2's arms
+> (the plan's "maximally embody" intent), or the PR 4 re-measure decides whether gain-at-N=6
+> on this channel is acceptable for an infrastructure release. Do not let the smoke gate
+> quietly answer a representation question.
 
 - `similarity/encoder.py::_sensor_embed` change (the encoding equation)
 - `SensorEncoderConfig.pattern_threshold` change — **including shipping the scaled
