@@ -38,6 +38,8 @@ Pre-implementation two-lens review fold (2026-06-01) anchors:
 
 from __future__ import annotations
 
+import re
+
 import json
 import logging
 import os
@@ -327,6 +329,56 @@ class ConsoleConfigSection:
 
     port: int = 8765
     ui_dist: str | None = None
+    # Sandbox-launch (2026-09-03) additions — all additive-optional per the
+    # MaximConfig docstring, so no `_format_version` bump. Validated HERE
+    # (`coerce_agent_id`, the int/bool/list coercers), so `maxim config set`
+    # and env both refuse a bad value at write/read time rather than at the
+    # first Talk request.
+    # Which `agents/<id>/` home the console fronts; `None` → "console_agent".
+    agent_id: str | None = None
+    # Sandbox mode: close the host-acting surfaces (probe-by-url, mesh setup,
+    # diagnose), gate /ws on Origin, cap run input. Read once at build_app.
+    sandbox: bool = False
+    # Origins allowed to open /ws under sandbox mode (normalized by the server).
+    allowed_origins: tuple[str, ...] = ()
+    # Sandbox-mode cap on RunRequest.input length.
+    max_input_chars: int = 16000
+
+
+@dataclass(frozen=True)
+class ToolsConfigSection:
+    """Hard tool allow/deny lists for console agents (``MaximHandle``).
+
+    SHAPE-FROZEN at 1.0 (CC3) — path (b). Additive optional section
+    (1.1.3): both fields default to "unconfigured", which leaves
+    ``Executor._permissions`` ``None`` — byte-identical to the pre-1.1.3
+    console, where ``AgentPermissions`` existed but was never armed
+    outside campaign YAML.
+
+    ``allow`` — when set, the ONLY tools the console agent may invoke
+    (``None`` = every registered tool, the default). ``deny`` — tools
+    refused even when listed in ``allow`` (checked first). Entries are
+    exact tool names, or ``kind:<kind>`` selectors matching every tool
+    whose ``Tool.kind`` equals ``<kind>`` (e.g.
+    ``kind:sem-modulator-derived`` admits every generated SEM affordance
+    tool without naming each per-entity tool). Env form is
+    comma-separated (``MAXIM_TOOLS_ALLOW=respond,speak,kind:sem-modulator-derived``);
+    JSON form is a list of strings. Enforced at
+    ``runtime/executor.py::Executor.execute`` via
+    ``agents/permissions.py::AgentPermissions.can_invoke_tool``.
+
+    Scope: the console agent (``MaximHandle``). Because a campaign adopts the
+    handle's instance, an Adventure runs under the same list — a Talk-shaped
+    ``allow`` refuses every campaign tool. The minimal list that keeps both
+    modes working is ``respond,speak,say,think,examine,choose,memory_recall,
+    kind:sem-modulator-derived`` (verify against the campaign lease with a
+    smoke run). Judged on the CANONICAL tool name after alias resolution;
+    a deny still applies to the alias source. An all-blank env value is
+    UNSET, never "no tools" (config.json ``[]`` is the explicit form).
+    """
+
+    allow: tuple[str, ...] | None = None
+    deny: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -356,6 +408,7 @@ class MaximConfig:
     data: DataConfigSection = field(default_factory=DataConfigSection)
     sim: SimConfigSection = field(default_factory=SimConfigSection)
     console: ConsoleConfigSection = field(default_factory=ConsoleConfigSection)
+    tools: ToolsConfigSection = field(default_factory=ToolsConfigSection)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -367,6 +420,10 @@ _FIELD_TO_ENV: dict[str, str] = {
     "role": "MAXIM_ROLE",
     "console.port": "MAXIM_CONSOLE_PORT",
     "console.ui_dist": "MAXIM_CONSOLE_UI_DIST",
+    "console.agent_id": "MAXIM_CONSOLE_AGENT_ID",
+    "console.sandbox": "MAXIM_CONSOLE_SANDBOX",
+    "console.allowed_origins": "MAXIM_CONSOLE_ALLOWED_ORIGINS",
+    "console.max_input_chars": "MAXIM_CONSOLE_MAX_INPUT_CHARS",
     "llm.enabled": "MAXIM_LLM_ENABLED",
     "llm.profile": "MAXIM_LLM_PROFILE",
     "llm.n_ctx": "MAXIM_LLM_N_CTX",
@@ -400,6 +457,8 @@ _FIELD_TO_ENV: dict[str, str] = {
     "sim.aut_turn_timeout_s": "MAXIM_SIM_AUT_TURN_TIMEOUT_S",
     "sim.substrate_explore_bonus_weight": "MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT",
     "sim.drive_gate_enabled": "MAXIM_SIM_DRIVE_GATE_ENABLED",
+    "tools.allow": "MAXIM_TOOLS_ALLOW",
+    "tools.deny": "MAXIM_TOOLS_DENY",
 }
 
 
@@ -566,6 +625,48 @@ def _validate_api_key_ref(value: str, field_path: str) -> str:
     )
 
 
+# Field paths whose value is a ``tuple[str, ...]`` — comma-separated in the
+# env form, a JSON list in ``config.json``.
+_LIST_FIELDS: frozenset[str] = frozenset({"tools.allow", "tools.deny", "console.allowed_origins"})
+
+# The throwaway sim AUT's id — reserved everywhere a persistent agent id is
+# accepted (console handle, `console.agent_id`), because attribution keyed on
+# it would silently merge a persistent agent with the sim's throwaway state.
+SIM_AUT_AGENT_ID = "sim_aut"
+_AGENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def coerce_agent_id(raw: str, field_path: str) -> str:
+    """Validate an `agents/<id>/` home name: one path segment, not reserved."""
+    value = raw.strip()
+    if value == SIM_AUT_AGENT_ID:
+        raise ConfigurationError(f"config: {field_path}: {SIM_AUT_AGENT_ID!r} is reserved for the throwaway sim AUT")
+    if not _AGENT_ID_PATTERN.fullmatch(value):
+        raise ConfigurationError(
+            f"config: {field_path}: {value!r} must be a single path segment of [A-Za-z0-9_-] "
+            "(it names a directory under agents/)"
+        )
+    return value
+
+
+def _env_is_blank_list(env_name: str, field_path: str) -> bool:
+    """An all-blank list env value (``" , "``) is UNSET for precedence too.
+
+    ``_coerce_for_field`` already maps it to ``None`` for ``tools.allow``;
+    without this, ``resolve_setting`` would still take the env branch and
+    return ``(None, "env")``, SHADOWING a config.json allow-list with "no
+    gate" — fail-open from a stray comma (second-round review finding).
+    Only list fields can coerce to ``None``, so the guard is that narrow.
+    """
+    return field_path in _LIST_FIELDS and _coerce_for_field(os.environ[env_name], field_path) is None
+
+
+def _coerce_name_list(raw: str, field_path: str) -> tuple[str, ...]:
+    """Split a comma-separated env value into an ordered, de-duplicated tuple."""
+    names = [part.strip() for part in raw.split(",")]
+    return tuple(dict.fromkeys(name for name in names if name))
+
+
 def _coerce_for_field(raw: str, field_path: str) -> Any:
     """Dispatch coercion based on field path. Returns the typed value.
 
@@ -586,9 +687,14 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
         "auto_spawn.llm_server",
         "auto_spawn.tunnel",
         "sim.drive_gate_enabled",
+        "console.sandbox",
     }:
         return _coerce_bool(raw, field_path)
     # Integer fields with range constraints
+    if field_path == "console.max_input_chars":
+        return _coerce_int(raw, field_path, min_val=1)
+    if field_path == "console.agent_id":
+        return coerce_agent_id(raw, field_path)
     if field_path == "llm.n_ctx":
         return _coerce_int(raw, field_path, min_val=256)
     if field_path in {"cloud.max_lanes", "proxy.max_concurrent", "proxy.rate_limit_rpm"}:
@@ -634,6 +740,19 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
         return _coerce_enum(raw, field_path, _VALID_BACKENDS)
     if field_path == "cloud.redaction_policy":
         return _coerce_enum(raw, field_path, _VALID_REDACTION_POLICIES)
+    # Comma-separated name lists. Order kept, duplicates dropped, blanks
+    # skipped. An all-blank ``tools.allow`` (``"  ,  "``) collapses to UNSET
+    # (None) here, explicitly: ``_env_is_set`` only strips whitespace, so
+    # without this branch a stray comma would arm a deny-everything gate the
+    # agent could never reply through. config.json ``"allow": []`` stays the
+    # one way to say "no tools". ``tools.deny`` / ``console.allowed_origins``
+    # keep the empty tuple (empty deny = nothing denied; empty origins is
+    # refused by the server under sandbox mode).
+    if field_path in _LIST_FIELDS:
+        names = _coerce_name_list(raw, field_path)
+        if field_path == "tools.allow" and not names:
+            return None
+        return names
     # API key refs from env: pass through as-is (legacy semantics —
     # MAXIM_LANE_*_REMOTE_API_KEY holds the inline key directly).
     # config.json validation happens in _parse_lane_tier; CLI set_field
@@ -741,7 +860,7 @@ def resolve_setting(
     env_name = _FIELD_TO_ENV[field_path]
     config_value = _read_from_config(config, field_path)
 
-    if _env_is_set(env_name):
+    if _env_is_set(env_name) and not _env_is_blank_list(env_name, field_path):
         env_raw = os.environ[env_name]
         env_value = _coerce_for_field(env_raw, field_path)
 
@@ -1183,6 +1302,13 @@ def _coerce_json_field(raw: Any, field_path: str, expected_type: Any) -> Any:
             raise ConfigurationError(f"config.json: {field_path}: expected int, got {type(raw).__name__}")
         return _range_check_int(raw, field_path)
 
+    # tuple[str, ...] — checked BEFORE str because ``"str"`` is a substring
+    # of the annotation. JSON carries these as lists of strings.
+    if type_str.startswith("tuple[str"):
+        if not isinstance(raw, list) or not all(isinstance(item, str) for item in raw):
+            raise ConfigurationError(f"config.json: {field_path}: expected a list of strings, got {raw!r}")
+        return tuple(dict.fromkeys(item.strip() for item in raw if item.strip()))
+
     # str + str | None + Literal[...] (Literal annotations are all
     # string-valued enums in this schema)
     if expected_type is str or "str" in type_str or type_str.startswith("Literal["):
@@ -1195,6 +1321,8 @@ def _coerce_json_field(raw: Any, field_path: str, expected_type: Any) -> Any:
             return _coerce_enum(raw, field_path, _VALID_BACKENDS)
         if field_path == "cloud.redaction_policy":
             return _coerce_enum(raw, field_path, _VALID_REDACTION_POLICIES)
+        if field_path == "console.agent_id":
+            return coerce_agent_id(raw, field_path)
         return raw
 
     raise ConfigurationError(
@@ -1219,6 +1347,8 @@ def _range_check_int(value: int, field_path: str) -> int:
     if field_path == "auto_spawn.port" and not (1 <= value <= 65535):
         raise ConfigurationError(f"config.json: {field_path}={value} must be in 1..65535")
     if field_path == "auto_spawn.timeout_s" and value < 1:
+        raise ConfigurationError(f"config.json: {field_path}={value} below minimum 1")
+    if field_path == "console.max_input_chars" and value < 1:
         raise ConfigurationError(f"config.json: {field_path}={value} below minimum 1")
     return value
 
@@ -1321,6 +1451,7 @@ def _parse_config_dict(data: dict[str, Any]) -> MaximConfig:
     console = _parse_typed_section(
         data.get("console"), "console", ConsoleConfigSection, tolerate_unknown=is_future_minor
     )
+    tools = _parse_typed_section(data.get("tools"), "tools", ToolsConfigSection, tolerate_unknown=is_future_minor)
 
     return MaximConfig(
         _format_version=version,
@@ -1333,6 +1464,7 @@ def _parse_config_dict(data: dict[str, Any]) -> MaximConfig:
         data=data_section,
         sim=sim,
         console=console,
+        tools=tools,
     )
 
 
@@ -1645,6 +1777,7 @@ __all__ = [
     "LLMConfigSection",
     "MaximConfig",
     "ProxyConfigSection",
+    "ToolsConfigSection",
     "config_path",
     "get_config",
     "load_config",

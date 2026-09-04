@@ -24,6 +24,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Console sandbox mode + the three config keys a hosted, single-visitor Console needs**
+  (sandbox-launch blockers; the plan is maxim-web `docs/plans/sandbox.md`). `maxim serve` stays
+  127.0.0.1-only and unauthenticated — the proxy in front owns the edge — and gains the config keys
+  `console.sandbox` / `console.allowed_origins` / `console.max_input_chars` (env forms
+  `MAXIM_CONSOLE_SANDBOX`, `MAXIM_CONSOLE_ALLOWED_ORIGINS`, `MAXIM_CONSOLE_MAX_INPUT_CHARS`, resolved
+  by the loader like every console setting and read ONCE at `build_app` onto `app.state.sandbox`).
+  Under sandbox mode `POST /api/probe` with a `url` (server-side request forgery with a caller-chosen
+  bearer), `POST /api/setup/mesh` (persistently repoints the LLM lane) and `GET /api/diagnose`
+  (renders resolved config) answer 403; `/ws` upgrades are refused before `accept()` unless the
+  Origin is listed (an empty list is a loud `ConfigurationError`, not a silent lock-out);
+  `RunRequest.input` is capped (default 16000); `/api/identity` reports the closed seams `live=False`
+  (value-level; both are half-closed — the provider probe and cloud setup stay open for the wizard).
+  Not a wire change — the OpenAPI snapshot is byte-identical. `console.agent_id` /
+  `MAXIM_CONSOLE_AGENT_ID` picks which `agents/<id>/` home the console fronts (resolved lazily so
+  `get_recall` and the handle read the SAME home; validated by the loader's `coerce_agent_id`, so
+  `maxim config set`, env and serve start all refuse `sim_aut` and non-segment ids). `tools.allow` /
+  `tools.deny` (`MAXIM_TOOLS_ALLOW` / `MAXIM_TOOLS_DENY`) are a hard allow/deny list for the console
+  agent (`MaximHandle`; the CLI and `api.run` agents do not read it yet), armed on the Executor
+  through `AgentConfig.permissions`, judged on the CANONICAL tool name after alias resolution (deny
+  still applies to the alias source), with `kind:<Tool.kind>` selectors so generated SEM affordance
+  tools can be admitted as a class; because a campaign adopts the handle's instance, the list governs
+  that agent during an Adventure too — a Talk-shaped list refuses every campaign tool, so an
+  Adventure needs at least `respond,speak,say,think,examine,choose,memory_recall,kind:sem-modulator-derived`.
+  A blank env list (`" , "`) is UNSET, not deny-everything. `build_executor(permissions=)` is now a
+  REQUIRED keyword (the `pain_bus=` precedent), and `maxim.create.agent(tool_whitelist=…)` raises
+  instead of writing a field nothing enforces — `create_agent` builds no Executor. Filesystem tools
+  resolve RELATIVE paths against their containment root (`allowed_dirs[0]`) instead of the process
+  CWD, so the `.maxim_workspace/…` idiom the mode prompts teach keeps working when the tools are
+  scoped away from the CWD. `MaximHandle.stop()` takes both bounded waits (`campaign_wait_s`,
+  `talk_join_s`) and the lifespan's drain-and-stop is the module-level `_drain_and_stop_handle`, so a
+  caller with its own deadline can shorten them; when `home=` is given the talk workspace now lives
+  under that home. `git_diff` and `run_tests` gained the same opt-in gate as `bash`
+  (`MAXIM_ALLOW_GIT_DIFF`, `MAXIM_ALLOW_RUN_TESTS`) — this affects the CLI agent too; the sim
+  orchestrator arms only `bash` for the throwaway AUT, since its registry deregisters the other two.
 - **1.1.4 PR 0 — the A4 scan-cost prerequisite, measured before shipping** (`scripts/ec_scan_cost.py`
   + `docs/experiments/data/ec_scan_cost_2026-09-03.json`): per-encode cost of the exact
   `pattern_complete_or_separate` scan at the A4 gain's ~120× cluster-allocation rate, mixed-modality
@@ -31,6 +65,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   docstring before the run. Kickoff plan: `docs/plans/world_seam_1_1_4.md`.
 
 ### Fixed
+- **D69 — `MAXIM_DATA_HOME` was defeated by two import-time `Path.home()` paths and three CWD-relative
+  sim writes.** `utils/last_run.py` and `cloud_dispatch.load_cost_config` (which shadowed the
+  resolver `CostTrackerConfig.__post_init__` already had) now go through `utils/paths`; the
+  orchestrator's `data/sim_sandbox` tmpdir + trace + telemetry block is the module-level
+  `_prepare_sim_workspace` under `<data_home>/sim_sandbox/` (as `interactive.py` already did), and the
+  dead `data/agents/MaximAgent/runtime` mkdir is gone. Still CWD-relative, out of scope: the agent
+  loop's `state_<run_id>.json` (D15) and `cli.py`'s scenario `--home-dir` default.
+- **D70 — the console handle's filesystem tools covered the SERVER'S CWD, and the registry builder
+  scaffolded `.maxim_workspace/` into it on the first Talk request.** `MaximHandle` now passes
+  `allowed_dirs_override=[<agent home>/workspace]` (the talk loop's `FileSystemEnv` root), and
+  `build_tool_registry` scaffolds under the containment root instead of the CWD whenever an override
+  is given.
+- **D71 — `maxim doctor` / `GET /api/diagnose` echoed inline API keys.** `check_resolved_config`
+  rendered every resolved value verbatim, and `lanes.*.remote_api_key_ref` from env legitimately
+  holds inline material — so it printed the key in the row, in the env-shadows-config row and in the
+  copy-paste `fix`; `check_api_key` and `check_peer_key_set` printed truncated keys. Secret-suffixed
+  fields now render references or `<redacted>` (the marker `decision_log` uses); both key rows report
+  existence only; `SetupResult.detail` no longer names the secret path.
+- **D72 — `ALWAYS_ALLOWED_TOOLS` out-ranked a hard forbid; `git_diff` / `run_tests` were ungated
+  subprocess primitives.** `can_execute_action` checked the always-allowed shortcut before
+  `SafetyConstraints`, so Talk's derived forbid never stopped `search_code` / `git_diff`; `git_diff`
+  built argv from model strings with no containment (`--output=` is a write). Constraints now run
+  first; `git_diff` refuses `-`-prefixed args and passes `--end-of-options`; both tools are opt-in;
+  the fear gate classifies them as shell. Pending (ledger D75): the gates are process-env reads, so
+  each new gated tool is another `setdefault` site — a per-registry policy is the root fix.
+- **D73 — console agents ran with no tool gate and `AgentConfig.tool_whitelist` was a silent
+  no-op.** `AgentPermissions` + the Executor check existed but the factory never passed
+  `permissions=`; `tool_whitelist` was written to an attribute nothing read. The factory arms
+  `config.permissions` in `create_full_agent`; `tool_whitelist` is deleted; `maxim.create.agent`
+  refuses it (no Executor to enforce on) and `create_npc_agent` carries no permissions until Party
+  Mode builds NPCs with an Executor.
+- **D74 — the lifespan's drain-and-stop sat OUTSIDE the shutdown `finally`, and a Talk-only session
+  persists nothing until the handle stops.** An exception through shutdown skipped the one step that
+  writes a Talk session's substrate. The stop now runs inside the `finally`, ahead of the sink
+  release. The in-band `POST /api/session/end` is deferred to the 0.4.0 contract batch.
 - **D68 — gate 2 (#596) silently broke the committed bake-off harness**: `scripts/encoding_bakeoff.py`
   raised `TypeError` on every arm after `geometry` became required keyword-only; nothing in CI runs
   `scripts/` harnesses, so the instrument that selected 1.1.4's mitigation could not execute. Fixed

@@ -5,8 +5,8 @@ Each agent created by the factory gets its own:
 - NAc (separate causal learning)
 - ATL (separate semantic concepts)
 - MemoryHub (independent coordinator)
-- ToolRegistry (scoped to agent role)
-- Executor (isolated tool execution)
+- ToolRegistry (empty until the runtime registers tools)
+- Executor (isolated tool execution, gated by ``AgentConfig.permissions``)
 
 The factory does NOT create the full agent loop infrastructure
 (LoopController, ContextPool, etc.) — that's run_agentic_loop()'s job.
@@ -32,6 +32,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from maxim.agents.permissions import AgentPermissions
+
 log = logging.getLogger(__name__)
 
 
@@ -49,7 +51,11 @@ class AgentConfig:
     entity_spec: str | None = None  # Component ref for SEM body
     persistence_dir: str | None = None  # Auto-generated if None
     model_profile: str | None = None  # LLM profile override (NPCs use cheaper models)
-    tool_whitelist: set[str] | None = None  # Restrict available tools
+    # Enforced tool gate, passed to ``build_executor(permissions=)`` by
+    # ``create_full_agent``. ``None`` = no gate (every registered tool).
+    # Replaces the 1.0-1.1.2 ``tool_whitelist`` field, which was written to
+    # ``ToolRegistry._tool_whitelist`` and never read by anything.
+    permissions: AgentPermissions | None = None
     personality: str | None = None  # System prompt overlay
     remembers: bool = True  # Enable hippocampus
     learns: bool = True  # Enable NAc
@@ -424,7 +430,9 @@ class AgentFactory:
         - NAc (separate causal model)
         - ATL (separate concept layer)
         - MemoryHub (independent coordinator)
-        - ToolRegistry (scoped to role via tool_whitelist)
+        - ToolRegistry (empty — the runtime registers tools per encounter;
+          ``config.permissions`` is enforced by the Executor that
+          ``create_full_agent`` builds, not by the registry)
 
         Args:
             config: Agent configuration.
@@ -490,8 +498,7 @@ class AgentFactory:
                     log.warning("Failed to shut down MemoryHub while aborting load: %s", e)
             raise _corruption_error(config.agent_id, corrupt)
 
-        # Create tool registry (scoped by whitelist)
-        tool_registry = self._create_tool_registry(config.tool_whitelist)
+        tool_registry = self._create_tool_registry()
 
         # Create entity from component registry if spec provided
         entity = None
@@ -552,7 +559,11 @@ class AgentFactory:
         """Convenience: create a lightweight NPC agent.
 
         NPCs get:
-        - Restricted tool set (speak, choose, memory_recall, sense)
+        - NO tool gate yet: ``create_agent`` builds no Executor, so an
+          ``AgentPermissions`` here would be a field nothing enforces — the
+          exact D73 shape. The NPC repertoire (speak, choose, memory_recall,
+          think) becomes a real allow-list when Party Mode builds NPC agents
+          through ``create_full_agent(with_executor=True)``.
         - Cheaper LLM tier (small by default)
         - Full bio-stack if remembers=True and learns=True
         - Personality injected into system prompt
@@ -562,7 +573,7 @@ class AgentFactory:
             role="npc",
             entity_spec=entity_ref,
             model_profile=model_profile,
-            tool_whitelist={"speak", "choose", "memory_recall", "think"},
+            permissions=None,  # see docstring: no Executor → nothing to arm
             personality=personality,
             remembers=remembers,
             learns=learns,
@@ -731,6 +742,7 @@ class AgentFactory:
                     component_registry=self._component_registry,
                     cerebellum=active_bio.cerebellum if active_bio is not None else None,
                     distributor=active_bio.distributor if active_bio is not None else None,
+                    permissions=config.permissions,
                     agent_id=config.agent_id,
                 )
                 # Review fix (Exec #1): attribute is `embodiment`, not `_embodiment`.
@@ -961,19 +973,17 @@ class AgentFactory:
                 ec = EntorhinalCortex(config=ECConfig(persistence_path=str(ec_path)))
         return ec
 
-    def _create_tool_registry(self, whitelist: set[str] | None) -> Any:
-        """Create a ToolRegistry, optionally filtered by whitelist."""
+    def _create_tool_registry(self) -> Any:
+        """Create an empty ToolRegistry.
+
+        Tools are registered by the runtime (DM, generative runner, etc.)
+        based on the encounter; restriction is NOT the registry's job —
+        ``AgentConfig.permissions`` is enforced by the Executor.
+        """
         try:
             from maxim.tools.registry import ToolRegistry
 
-            registry = ToolRegistry()
-
-            # If whitelist is set, we'll filter tools at registration time.
-            # For now, return empty registry — tools are registered by the
-            # runtime (DM, generative runner, etc.) based on the encounter.
-            if whitelist:
-                registry._tool_whitelist = whitelist  # type: ignore[attr-defined]
-            return registry
+            return ToolRegistry()
         except Exception as e:
             log.warning("Failed to create ToolRegistry: %s", e)
             return None

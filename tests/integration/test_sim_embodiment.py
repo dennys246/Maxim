@@ -55,6 +55,7 @@ def _build_sim_aut_executor(
     executor = build_executor(
         ToolRegistry(),
         pain_bus=executor_pain_bus,
+        permissions=None,
         nac=nac,
         entity_ref=entity_ref,
         component_registry=component_registry,
@@ -92,6 +93,7 @@ class TestSimEmbodimentWiring:
         build_executor(
             registry,
             pain_bus=pain_bus,
+            permissions=None,
             nac=nac,
             entity_ref="weapons/rusty_sword",
             component_registry=ComponentRegistry(),
@@ -111,6 +113,7 @@ class TestSimEmbodimentWiring:
         build_executor(
             registry,
             pain_bus=pain_bus,
+            permissions=None,
             nac=nac,
             entity_ref="weapons/rusty_sword",
             component_registry=ComponentRegistry(),
@@ -148,6 +151,7 @@ class TestSimEmbodimentPreconditions:
             build_executor(
                 ToolRegistry(),
                 pain_bus=None,
+                permissions=None,
                 nac=NAc(NACConfig()),
                 entity_ref="weapons/rusty_sword",
                 component_registry=ComponentRegistry(),
@@ -161,6 +165,7 @@ class TestSimEmbodimentPreconditions:
             build_executor(
                 ToolRegistry(),
                 pain_bus=PainBus(_allow_raw=True),
+                permissions=None,
                 nac=NAc(NACConfig()),
                 entity_ref="weapons/legendary_excalibur_that_does_not_exist",
                 component_registry=ComponentRegistry(),

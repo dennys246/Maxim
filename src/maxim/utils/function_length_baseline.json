@@ -1,8 +1,8 @@
 {
-  "_comment": "Reviewed no-growth ceilings for the god functions (roadmap 1.1.x item 16.4; score card 2026-08-27 Maintainability 'Upgrade to C+', of which this file is HALF \u2014 the other half is one merged extraction, which is 1.1.2 item 7). `lines` is the AST span (end_lineno - lineno + 1, decorators excluded) measured at tag v1.1.0. tests/unit/test_function_length_baseline.py (fast suite) fails when a function GROWS past its ceiling AND when it SHRINKS below it \u2014 shrinkage must tighten the ceiling in the same commit so the baseline never overstates the debt. There is no writer: edit this file by hand with the measured value. It is NOT package data (unlike architecture_baseline.json, which maxim --audit-architecture reads at runtime): only the test reads it, so shipping it in the wheel would be a packaging requirement nothing consumes. Note the strict equality: a pure reformat that shortens a function reddens the fast suite with a 'it shrank' message \u2014 deliberate, so a ceiling can never quietly overstate the debt. HISTORY: run_agentic_loop tightened 3546 -> 3512 on 2026-08-30 (1.1.2 Cluster B, the first extraction) when sections 7 (CALL STEP CALLBACK) and 8.5 (BIO-SYSTEM PER-TICK MAINTENANCE) moved to the module-level _loop_step_callback / _loop_bio_tick_maintenance in agent_loop.py; mechanical move, section order preserved.",
+  "_comment": "Reviewed no-growth ceilings for the god functions (roadmap 1.1.x item 16.4; score card 2026-08-27 Maintainability 'Upgrade to C+', of which this file is HALF — the other half is one merged extraction, which is 1.1.2 item 7). `lines` is the AST span (end_lineno - lineno + 1, decorators excluded) measured at tag v1.1.0. tests/unit/test_function_length_baseline.py (fast suite) fails when a function GROWS past its ceiling AND when it SHRINKS below it — shrinkage must tighten the ceiling in the same commit so the baseline never overstates the debt. There is no writer: edit this file by hand with the measured value. It is NOT package data (unlike architecture_baseline.json, which maxim --audit-architecture reads at runtime): only the test reads it, so shipping it in the wheel would be a packaging requirement nothing consumes. Note the strict equality: a pure reformat that shortens a function reddens the fast suite with a 'it shrank' message — deliberate, so a ceiling can never quietly overstate the debt. HISTORY: run_agentic_loop tightened 3546 -> 3512 on 2026-08-30 (1.1.2 Cluster B, the first extraction) when sections 7 (CALL STEP CALLBACK) and 8.5 (BIO-SYSTEM PER-TICK MAINTENANCE) moved to the module-level _loop_step_callback / _loop_bio_tick_maintenance in agent_loop.py; mechanical move, section order preserved. start_simulation_mode tightened 3336 -> 3329 on 2026-09-03 (sandbox-launch blockers) when the CWD-relative sim workspace block moved to the module-level _prepare_sim_workspace in orchestrator.py (data-home resolution; the dead data/agents/MaximAgent/runtime mkdir was dropped). start_simulation_mode tightened 3329 -> 3324 the same day when the sim AUT's subprocess-tool opt-in (bash + the new git_diff/run_tests gates) moved to the module-level _arm_sandboxed_aut_subprocess_tools in orchestrator.py.",
   "baseline_format_version": 1,
   "measured_at": "v1.1.0",
-  "reviewed": "2026-08-30",
+  "reviewed": "2026-09-03",
   "entries": [
     {
       "file": "maxim/runtime/agent_loop.py",
@@ -12,7 +12,7 @@
     {
       "file": "maxim/simulation/orchestrator.py",
       "function": "start_simulation_mode",
-      "lines": 3336
+      "lines": 3324
     },
     {
       "file": "maxim/cli.py",

@@ -193,6 +193,35 @@ def _setup_sim_sandbox(
     return sim_sandbox, sandbox_root, aut_pain_bus
 
 
+def _prepare_sim_workspace(stamp: str | None = None) -> tuple[Path, Path, str]:
+    """Create the per-run sim workspace under the data home.
+
+    Returns ``(sim_workspace, sim_tmpdir, log_path)``:
+
+    - ``sim_workspace`` — ``<data_home>/sim_sandbox``, shared across runs
+      (the JSONL trace and substrate telemetry land here);
+    - ``sim_tmpdir`` — a fresh ``sim_agent_<stamp>_*`` directory inside it,
+      the AUT's ``FileSystemEnv`` root and per-run persistence dir;
+    - ``log_path`` — ``<sim_workspace>/sim_agent_<stamp>.jsonl`` for
+      ``enable_sim_logging``.
+
+    Resolved through :func:`maxim.utils.paths.resolve_user_state` — the same
+    precedent as ``interactive.py``'s sandbox dir — so ``MAXIM_DATA_HOME`` is
+    honoured. This used to be ``Path("data") / "sim_sandbox"`` relative to
+    the CWD, which a hosted sandbox with a read-only root and only the data
+    home writable cannot serve. Extracted from ``start_simulation_mode`` so
+    the mkdir is testable without booting a simulation.
+    """
+    from maxim.utils.paths import resolve_user_state
+
+    stamp = stamp or time.strftime("%Y%m%d_%H%M%S")
+    sim_workspace = resolve_user_state("sim_sandbox")
+    sim_workspace.mkdir(parents=True, exist_ok=True)
+    sim_tmpdir = Path(tempfile.mkdtemp(prefix=f"sim_agent_{stamp}_", dir=str(sim_workspace)))
+    log_path = str(sim_workspace / f"sim_agent_{stamp}.jsonl")
+    return sim_workspace, sim_tmpdir, log_path
+
+
 # ── HANDLE seam (a): persistent-agent campaign injection ────────────────────
 # docs/plans/archive/console_handle_campaign_injection.md. A campaign run may ADOPT a
 # live persistent AgentInstance instead of constructing a throwaway "sim_aut".
@@ -310,6 +339,25 @@ def _adopt_persistent_agent(persistent_agent: Any) -> _AdoptedAgent:
             f"memory_hub.agent_id={hub_agent_id!r} — attribution would silently split across two keys"
         )
     return _AdoptedAgent(persistent_agent)
+
+
+def _arm_sandboxed_aut_subprocess_tools() -> None:
+    """Opt the THROWAWAY sim AUT into ``bash``.
+
+    ``BashTool`` checks ``MAXIM_ALLOW_BASH``; without it every bash call fails
+    with "BashTool disabled" even though autonomy allows it. Simulation mode
+    is sandboxed (tmpdir + FearGatedExecutor), so bash is safe there. NEVER
+    called for an adopted persistent agent: bash is deregistered during the
+    campaign anyway, and the env var outlives the sim — it would arm the
+    persistent agent's (unsandboxed) bash for later Talk-mode turns.
+
+    Deliberately NOT the gates sandbox-launch added for git_diff / run_tests:
+    the AUT registry deregisters both tools alongside bash, so arming them
+    here would be dead code — and unlike ``BashTool`` neither takes a
+    ``cwd``, so the sandbox rationale would not even transfer. If a sim ever
+    needs them, give them a ``cwd``/``allowed_dirs`` first.
+    """
+    os.environ.setdefault("MAXIM_ALLOW_BASH", "1")
 
 
 def start_simulation_mode(
@@ -518,24 +566,17 @@ def start_simulation_mode(
     # ── Orchestrator percept source (receives goal + user commands) ──────
     orchestrator_source = ConversationalSource()
 
-    # ── Ensure agent runtime directories exist ─────────────────────────
-    os.makedirs(os.path.join("data", "agents", "MaximAgent", "runtime"), exist_ok=True)
-
     # ── Simulation sandbox ───────────────────────────────────────────────
-    sim_workspace = Path("data") / "sim_sandbox"
-    sim_workspace.mkdir(parents=True, exist_ok=True)
-    sim_tmpdir = Path(
-        tempfile.mkdtemp(
-            prefix=f"sim_agent_{time.strftime('%Y%m%d_%H%M%S')}_",
-            dir=str(sim_workspace),
-        )
-    )
+    # <data_home>/sim_sandbox via _prepare_sim_workspace — never CWD-relative.
+    # (The former CWD-relative data/agents/MaximAgent/runtime mkdir was dead
+    # code: the loop's state_<run_id>.json writer creates its own parents in
+    # atomic_io; that writer's CWD-relative path itself is ledger D15.)
+    sim_workspace, sim_tmpdir, log_path = _prepare_sim_workspace()
 
     # Enable sim logging (always persist to JSONL; terminal traces if --debug)
     try:
         from maxim.simulation.sim_logger import enable_sim_logging
 
-        log_path = str(sim_workspace / f"sim_agent_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
         enable_sim_logging(log_path=log_path, debug=debug)
     except Exception as e:
         logger.warning("Failed to enable sim logging — sim will run but no JSONL trace: %s", e)
@@ -565,15 +606,10 @@ def start_simulation_mode(
     aut_state.data["active_goal"] = goal
     aut_memory = build_memory()
 
-    # Enable bash for the AUT in simulation mode.
-    # The AUT's BashTool checks MAXIM_ALLOW_BASH env var; without it, every
-    # bash call fails with "BashTool disabled" even though autonomy allows it.
-    # Simulation mode is sandboxed (tmpdir + FearGatedExecutor), so bash is safe.
-    # NOT set for an adopted persistent agent: bash is deregistered during the
-    # campaign anyway, and the env var outlives the sim — arming the persistent
-    # agent's (CWD-scoped, unsandboxed) bash for later Talk-mode turns.
+    # Arm the gated subprocess tools for the throwaway AUT only (see
+    # `_arm_sandboxed_aut_subprocess_tools` for why, and why NOT when adopted).
     if _adopted is None:
-        os.environ.setdefault("MAXIM_ALLOW_BASH", "1")
+        _arm_sandboxed_aut_subprocess_tools()
 
     # Constrain AUT filesystem tools to sandbox tmpdir (if available)
     sandbox_dirs = [sandbox_root, str(sim_tmpdir)] if sandbox_root else None

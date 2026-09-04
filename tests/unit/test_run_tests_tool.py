@@ -13,7 +13,8 @@ from maxim.tools.code_tools import RunTestsTool
 class TestRunTestsToolSuccess:
     """Successful test run returns success=True with stdout."""
 
-    def test_success(self) -> None:
+    def test_success(self, monkeypatch) -> None:
+        monkeypatch.setenv("MAXIM_ALLOW_RUN_TESTS", "1")
         tool = RunTestsTool()
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -30,7 +31,8 @@ class TestRunTestsToolSuccess:
 class TestRunTestsToolFailure:
     """Failed test run returns success=False with EXTERNAL_FAILURE."""
 
-    def test_failure(self) -> None:
+    def test_failure(self, monkeypatch) -> None:
+        monkeypatch.setenv("MAXIM_ALLOW_RUN_TESTS", "1")
         tool = RunTestsTool()
         mock_result = MagicMock()
         mock_result.returncode = 1
@@ -47,7 +49,8 @@ class TestRunTestsToolFailure:
 class TestRunTestsToolTimeout:
     """TimeoutExpired should map to TIMEOUT error_kind."""
 
-    def test_timeout(self) -> None:
+    def test_timeout(self, monkeypatch) -> None:
+        monkeypatch.setenv("MAXIM_ALLOW_RUN_TESTS", "1")
         tool = RunTestsTool()
 
         with patch(
@@ -63,7 +66,8 @@ class TestRunTestsToolTimeout:
 class TestRunTestsToolCommandNotFound:
     """FileNotFoundError should map to FILE_NOT_FOUND."""
 
-    def test_command_not_found(self) -> None:
+    def test_command_not_found(self, monkeypatch) -> None:
+        monkeypatch.setenv("MAXIM_ALLOW_RUN_TESTS", "1")
         tool = RunTestsTool()
 
         with patch(

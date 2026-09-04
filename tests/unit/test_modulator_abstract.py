@@ -179,7 +179,7 @@ class TestC4ModulatorAbstract:
         """The structural enforcement lives at the constructor, not the
         parser — so raw `SpecModulator(...)` calls (tests, foundry-generated
         specs that bypass `_parse_entity`, future programmatic builders)
-        still surface the hard error. Mirrors the `build_executor(pain_bus=...)`
+        still surface the hard error. Mirrors the `build_executor(pain_bus=..., permissions=None)`
         precedent: forgetting the kwarg is loud, not silent.
         """
         from maxim.embodiment.spec import SpecModulator

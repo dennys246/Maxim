@@ -85,7 +85,7 @@ class TestRuntimeGeometryDetection:
         (`bio_enrichment`'s text recall); because `"text"` is not a
         frozen-centroid modality the running-mean update fired and was actively
         CORRUPTING old centroids with incomparable vectors. Forgetting must
-        fail loudly, per the `build_executor(pain_bus=...)` precedent.
+        fail loudly, per the `build_executor(pain_bus=..., permissions=None)` precedent.
         """
         ec = self._ec()
         with pytest.raises(TypeError, match="geometry"):

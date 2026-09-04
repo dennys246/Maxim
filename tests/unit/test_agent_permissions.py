@@ -9,6 +9,7 @@ from maxim.agents.permissions import (
     PerceivedAuthority,
     PerceivedAuthorityTracker,
     SEMAccessRule,
+    tool_permissions_from_settings,
 )
 from maxim.runtime.executor import Executor
 from maxim.tools.base import Tool, ToolOutput
@@ -36,6 +37,18 @@ class _BashTool(Tool):
 
     def execute(self, **kwargs: object) -> ToolOutput:  # pragma: no cover - shouldn't run
         return ToolOutput(success=True, output="bash ran")
+
+
+class _AffordanceTool(Tool):
+    """Stand-in for a generated SEM affordance tool: per-entity name, shared kind."""
+
+    name = "rusty_sword_slash"
+    description = "slash with the rusty sword"
+    input_schema: dict = {}
+    kind = "sem-modulator-derived"
+
+    def execute(self, **kwargs: object) -> ToolOutput:
+        return ToolOutput(success=True, output="slashed")
 
 
 def _registry_with(*tools: Tool) -> ToolRegistry:
@@ -239,3 +252,114 @@ permissions:
         perms = AgentPermissions.from_yaml(camp.permissions["spymaster"])
         assert perms.clearance == 2
         assert "bash" in perms.tool_deny
+
+
+# ---------------------------------------------------------------------------
+# ``kind:<kind>`` selectors (1.1.3 hard tool allowlist)
+# ---------------------------------------------------------------------------
+
+
+class TestKindSelector:
+    """Generated SEM affordance tools have per-entity names, so a list that
+    wants "every affordance" needs a selector on ``Tool.kind``."""
+
+    def test_allow_selector_matches_tool_of_that_kind(self):
+        perms = AgentPermissions(tool_allow=frozenset({"kind:sem-modulator-derived"}))
+        allowed, reason = perms.can_invoke_tool("rusty_sword_slash", kind="sem-modulator-derived")
+        assert allowed is True and reason is None
+
+    def test_allow_selector_does_not_match_other_kind(self):
+        perms = AgentPermissions(tool_allow=frozenset({"kind:sem-modulator-derived"}))
+        allowed, reason = perms.can_invoke_tool("ok_tool", kind="core-universal")
+        assert allowed is False
+        assert "allow-list" in (reason or "")
+
+    def test_selector_never_matches_unknown_kind(self):
+        # kind=None (unregistered name / caller without the tool object) is
+        # a name-only check — a selector can't admit what it can't see.
+        perms = AgentPermissions(tool_allow=frozenset({"kind:sem-modulator-derived"}))
+        assert perms.can_invoke_tool("rusty_sword_slash")[0] is False
+
+    def test_deny_selector_beats_exact_name_allow(self):
+        perms = AgentPermissions(
+            tool_allow=frozenset({"rusty_sword_slash"}),
+            tool_deny=frozenset({"kind:sem-modulator-derived"}),
+        )
+        allowed, reason = perms.can_invoke_tool("rusty_sword_slash", kind="sem-modulator-derived")
+        assert allowed is False
+        assert "denied" in (reason or "")
+
+    def test_exact_name_matching_unchanged_by_kind_hint(self):
+        perms = AgentPermissions(tool_allow=frozenset({"ok_tool"}))
+        assert perms.can_invoke_tool("ok_tool", kind="core-universal")[0] is True
+        assert perms.can_invoke_tool("bash", kind="core-universal")[0] is False
+
+    def test_executor_resolves_kind_from_registry(self):
+        """The registry lookup lives in the Executor, so the selector works
+        end-to-end on a real dispatch: the affordance runs, the core tool
+        is refused, and permissions.py never imported the registry."""
+        import maxim.agents.permissions as permissions_module
+
+        assert "registry" not in permissions_module.__dict__
+        perms = AgentPermissions(tool_allow=frozenset({"kind:sem-modulator-derived"}))
+        exec_ = Executor(_registry_with(_OkTool(), _AffordanceTool()), permissions=perms)
+        assert exec_.execute({"tool_name": "rusty_sword_slash", "params": {}}).success is True
+        refused = exec_.execute({"tool_name": "ok_tool", "params": {}})
+        assert refused.success is False
+        assert "allow-list" in (refused.error or "")
+
+    def test_allow_list_is_judged_on_the_canonical_name_after_alias(self):
+        """`recall` is an executor alias for `memory_recall`; an allow-list
+        naming the canonical tool must admit the alias (review finding:
+        the pre-alias check used to refuse it)."""
+
+        class _RecallTool(_OkTool):
+            name = "memory_recall"
+
+        perms = AgentPermissions(tool_allow=frozenset({"memory_recall"}))
+        exec_ = Executor(_registry_with(_RecallTool()), permissions=perms)
+        assert exec_.execute({"tool_name": "recall", "params": {}}).success is True
+        assert exec_.execute({"tool_name": "memory_recall", "params": {}}).success is True
+        assert exec_.execute({"tool_name": "ok_tool", "params": {}}).success is False
+
+    def test_deny_on_the_alias_source_still_applies(self):
+        class _RecallTool(_OkTool):
+            name = "memory_recall"
+
+        perms = AgentPermissions(tool_deny=frozenset({"recall"}))
+        exec_ = Executor(_registry_with(_RecallTool()), permissions=perms)
+        assert exec_.execute({"tool_name": "recall", "params": {}}).success is False
+        assert exec_.execute({"tool_name": "memory_recall", "params": {}}).success is True
+
+    def test_executor_deny_selector_blocks_dispatch(self):
+        perms = AgentPermissions(tool_deny=frozenset({"kind:sem-modulator-derived"}))
+        exec_ = Executor(_registry_with(_OkTool(), _AffordanceTool()), permissions=perms)
+        assert exec_.execute({"tool_name": "ok_tool", "params": {}}).success is True
+        assert exec_.execute({"tool_name": "rusty_sword_slash", "params": {}}).success is False
+
+
+# ---------------------------------------------------------------------------
+# Settings → permissions (the console's construction helper)
+# ---------------------------------------------------------------------------
+
+
+class TestToolPermissionsFromSettings:
+    def test_unconfigured_is_none_not_an_empty_gate(self):
+        # None keeps Executor._permissions None — the pre-1.1.3 console.
+        assert tool_permissions_from_settings(None, ()) is None
+        assert tool_permissions_from_settings(None, None) is None
+
+    def test_allow_only(self):
+        perms = tool_permissions_from_settings(("respond", "speak"), ())
+        assert perms == AgentPermissions(tool_allow=frozenset({"respond", "speak"}))
+
+    def test_deny_only_keeps_allow_open(self):
+        perms = tool_permissions_from_settings(None, ["bash"])
+        assert perms is not None
+        assert perms.tool_allow is None
+        assert perms.tool_deny == frozenset({"bash"})
+
+    def test_explicit_empty_allow_is_a_real_no_tools_gate(self):
+        perms = tool_permissions_from_settings((), ())
+        assert perms is not None
+        assert perms.can_invoke_tool("respond")[0] is False

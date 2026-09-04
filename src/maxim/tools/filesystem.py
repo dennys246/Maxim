@@ -103,6 +103,22 @@ from maxim.utils.gpu_compat import env_flag as _env_flag
 from .base import Tool, ToolErrorKind, ToolResult
 
 
+def _rebase_relative(path: str, allowed_dirs: list[str] | None) -> str:
+    """Resolve a RELATIVE path against the containment root, not the process CWD.
+
+    With ``allowed_dirs`` set, every filesystem tool checks containment
+    against those roots — but a relative path was still absolutized against
+    ``os.getcwd()``, so the ``.maxim_workspace/notes/x`` idiom the mode
+    prompts teach failed closed the moment the roots were not the CWD (the
+    console handle scopes its agent to ``<home>/workspace``; sandbox-launch
+    review finding). ``BashTool`` already defaults its ``cwd`` to
+    ``allowed_dirs[0]``; this is the same rule for paths.
+    """
+    if allowed_dirs and path and not os.path.isabs(os.path.expanduser(path)):
+        return os.path.join(allowed_dirs[0], path)
+    return path
+
+
 class ReadFileTool(Tool):
     name = "read_file"
     description = "Read a file from disk"
@@ -119,7 +135,7 @@ class ReadFileTool(Tool):
     def execute(self, path: str, tail_lines: int | None = None) -> ToolResult:
         try:
             # Sanitize and validate the path
-            path = sanitize_path(path)
+            path = sanitize_path(_rebase_relative(path, self._allowed_dirs))
 
             # Check against allowed directories if configured
             if self._allowed_dirs:
@@ -271,7 +287,7 @@ class WriteFileTool(Tool):
 
             # Sanitize the path first
             try:
-                validated_path = sanitize_path(raw_path)
+                validated_path = sanitize_path(_rebase_relative(raw_path, self._allowed_dirs))
             except PathValidationError as e:
                 return ToolResult(success=False, error=str(e))
 
@@ -368,7 +384,7 @@ class ExecuteFileTool(Tool):
 
             # Sanitize and validate the path
             try:
-                validated_path = sanitize_path(raw_path)
+                validated_path = sanitize_path(_rebase_relative(raw_path, self._allowed_dirs))
             except PathValidationError as e:
                 return ToolResult(success=False, error=str(e))
 
@@ -505,7 +521,7 @@ class EditFileTool(Tool):
             context_after = kwargs.get("context_after")
 
             try:
-                validated_path = sanitize_path(raw_path)
+                validated_path = sanitize_path(_rebase_relative(raw_path, self._allowed_dirs))
             except PathValidationError as e:
                 return ToolResult(success=False, error=str(e))
 
@@ -681,7 +697,7 @@ class GlobTool(Tool):
 
             # Sanitize and validate base path
             try:
-                validated_path = sanitize_path(base_path)
+                validated_path = sanitize_path(_rebase_relative(base_path, self._allowed_dirs))
             except PathValidationError as e:
                 return ToolResult(success=False, error=str(e))
 

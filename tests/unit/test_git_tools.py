@@ -17,24 +17,27 @@ from maxim.tools.git_tools import GitCommitTool, GitDiffTool
 class TestGitDiffToolSuccess:
     """Successful git diff returns output with diff content."""
 
-    def test_success(self) -> None:
+    def test_success(self, monkeypatch) -> None:
+        monkeypatch.setenv("MAXIM_ALLOW_GIT_DIFF", "1")
         tool = GitDiffTool()
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "diff --git a/foo.py b/foo.py\n+new line"
         mock_result.stderr = ""
 
-        with patch("maxim.tools.git_tools.subprocess.run", return_value=mock_result):
+        with patch("maxim.tools.git_tools.subprocess.run", return_value=mock_result) as mock_run:
             output = tool.run(ref1="HEAD")
 
         assert output.success is True
         assert "diff" in output.output
+        assert mock_run.call_args[0][0] == ["git", "diff", "--end-of-options", "HEAD"]
 
 
 class TestGitDiffToolFailure:
     """Non-zero exit returns error with EXTERNAL_FAILURE."""
 
-    def test_failure(self) -> None:
+    def test_failure(self, monkeypatch) -> None:
+        monkeypatch.setenv("MAXIM_ALLOW_GIT_DIFF", "1")
         tool = GitDiffTool()
         mock_result = MagicMock()
         mock_result.returncode = 1
