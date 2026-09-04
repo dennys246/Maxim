@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **1.1.4/L11 data — the pre-registered re-measure ran (live Paper 1.16.5, N=16 world
+  sensors): verdict `mitigation-confirmed`, NOT retired-eligible.** A0 (the shipped limit)
+  is fully blind on real event data (separation 0.0, one cluster); A4 separates (0.0566,
+  3 clusters, stability 0.9984) — real but far under the 0.70 retirement bar, so L11 stays
+  ACTIVE with A4 as partial mitigation. Every S3 apparatus floor cleared (1,070 deduped
+  snapshots, 159 resolved onsets of 3 kinds, 642 quiet pairs). Trace + verdict committed
+  under `docs/experiments/data/`; verdict computed by the frozen protocol's own decision
+  function, not post-hoc.
 - **1.1.4/L11 — Minecraft-scale body + the frozen L11 re-measure protocol**: the player body
   grows 6 → 16 `modality: world` sensors (past L11's ~12 safe band) with ranges RE-CENTERED
   so resting values sit at the A4 neutral — rest-at-extreme ranges were measured

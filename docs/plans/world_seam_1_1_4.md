@@ -382,23 +382,28 @@ persisted, ~510 feed writes each. Data:
 `docs/experiments/data/minecraft_live_smoke_2026-09-04.json`. Shakedown disclosed: the
 FIRST live run was honestly RED (aut_a: 1 node / 324 writes — a static apparatus, not a
 seam defect: frozen daylight cycle + no hostiles near that bot; the gate discriminating
-exactly as built); hostiles were summoned and the run repeated. **Still outstanding:**
-L11's re-measure CAPTURE+ANALYZE (the protocol is now FROZEN and lint-governed:
+exactly as built); hostiles were summoned and the run repeated. **Discharged 2026-09-04 (data PR):**
+L11's re-measure CAPTURE+ANALYZE ran on the live server — verdict **mitigation-confirmed,
+NOT retired-eligible** (A0 blind at 0.0, A4 separates at 0.0566 with stability 0.9984;
+0.0566 << the 0.70 retirement bar): trace
+`docs/experiments/data/l11_world_trace_2026-09-04.jsonl`, verdict
+`docs/experiments/data/l11_remeasure_verdict_2026-09-04.json`; L11 stays ACTIVE with A4 as
+partial mitigation. (The protocol was FROZEN and lint-governed before capture:
 `docs/experiments/protocols/l11_remeasure_preregistration.md` + its implementation script —
-prereg merged before capture, the split discipline finally honored; the body grew 6 → 16
+prereg merged before capture, the split discipline finally honored. The body grew 6 → 16
 world sensors with ranges RE-CENTERED so rest sits at the A4 neutral, which moved the world
 geometry tag — D4's designed case, harmless to any persisted state — and the CI smoke now
 runs 60 steps because the gained N=16 fake concentrates to ~4 clusters, so the harness test
-takes ~15 s in the fast lane), and the roadmap row's gate-clause annotation at the release
-transaction.
+takes ~15 s in the fast lane.) **Still outstanding:** the roadmap row's gate-clause
+annotation at the release transaction.
 
 ### The hardware block (operator; scheduled after PR 1 merges — not gating the sim-side PRs)
 
 **Shrunk by D3's resolution (world-only gain):** Exp 53b's re-run is NO LONGER triggered —
 its channels (interoception + audio) are byte-identical after PR 1, decision-equivalence-
-guarded. What remains, one session: L11 post-mitigation re-measure on a real body above the
-safe band (still owed — the N=6/8 and bake-off numbers are synthetic, and RETIRED requires a
-real body) → the owed roll/pitch recalibration. If a future decision flips interoception or
+guarded. What remains, one session: the owed roll/pitch recalibration (the L11 re-measure itself
+DISCHARGED 2026-09-04 via the live Minecraft body at N=16 — see above; a Reachy-side
+re-measure re-fires only if a future decision gains a Reachy-fed channel). If a future decision flips interoception or
 audio into `gain_modalities`, the 53b re-run comes back and joins that block.
 
 ## Out of scope, recorded

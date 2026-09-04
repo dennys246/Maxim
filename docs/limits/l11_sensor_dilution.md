@@ -49,6 +49,8 @@ the agent cannot hold different policies for them, no matter how much it learns.
 | 2026-09-03 | gain over the audio place code (7 directions, real EC) | separation stays 7/7 but jitter-stability degrades 1.000 → 0.957 (gain crushes the interpolating intermediate activations); a gained RAW azimuth zero-vectors the CENTERED reading | `scripts/place_code_gain_check.py`; data `docs/experiments/data/place_code_gain_check_2026-09-03.json` |
 | 2026-09-03 | scan cost at A4 allocation (mixed-modality store, real EC) | p95 ≈291 ms at the projected 4h-session store (8,375 nodes); 5 ms crossing ≈238 nodes → **index-prerequisite**; vectorized exact scan 0.89 ms @ 20k-node store | `scripts/ec_scan_cost.py`; data `docs/experiments/data/ec_scan_cost_2026-09-03.json` |
 
+| 2026-09-04 | **pre-registered re-measure at N=16 (live Paper world, frozen protocol)** | **mitigation-confirmed, NOT retired-eligible**: A0 fully blind (separation 0.0, 1 cluster — the limit as shipped), A4 separates (0.0566, 3 clusters, stability 0.9984, discrimination 0.631) — real but weak; 0.057 << the 0.70 retirement bar. Apparatus cleared every S3 floor: 1,070 deduped snapshots, 159 resolved onsets of 3 kinds, 642 quiet pairs, median 16 sensors | `scripts/l11_real_trace_remeasure.py`; trace `docs/experiments/data/l11_world_trace_2026-09-04.jsonl`; verdict `docs/experiments/data/l11_remeasure_verdict_2026-09-04.json` |
+
 All 2026-09-01 rows are synthetic sweeps over the **shipped** encoder, recorded in
 [minecraft_benchmark.md](../plans/minecraft_benchmark.md) §"The sensor ceiling is a
 THRESHOLD artifact".
@@ -230,8 +232,12 @@ resource, plan as one.
 > `docs/experiments/data/minecraft_live_smoke_2026-09-04.json`), so this trigger is now
 > FIRED FOR REAL. **Dated 2026-09-04, prereg PR: the protocol is FROZEN** —
 > [docs/experiments/protocols/l11_remeasure_preregistration.md](../experiments/protocols/l11_remeasure_preregistration.md)
-> (implementation `scripts/l11_real_trace_remeasure.py`; capture + analyze owed as its own
-> data PR). Two triggers fired and taken deliberately in the same PR: the body GREW past the
+> (implementation `scripts/l11_real_trace_remeasure.py`). **Dated 2026-09-04, data PR: the
+> re-measure RAN and the trigger is DISCHARGED — verdict `mitigation-confirmed`** (see the
+> measurement row): A4 at N=16 on real world data separates where A0 is fully blind, so the
+> encoding change survives its first live contact; it does NOT retire this limit (separation
+> 0.0566 vs the 0.70 bar), so L11 stays ACTIVE with A4 as partial mitigation and the scaled
+> threshold still the retirement path. Two triggers fired and taken deliberately in the same PR: the body GREW past the
 > band (6 → **16** world sensors — the trigger's own first branch, "grows toward its
 > Minecraft-scale sensor set", dissolving the N=6 tension), and the growth moved the world
 > channel's GEOMETRY TAG (declared_sensors is hashed — D4's designed case; no persisted
