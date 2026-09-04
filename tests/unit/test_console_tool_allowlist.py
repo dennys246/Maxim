@@ -83,10 +83,18 @@ class TestConsoleToolAllowlist:
     def test_config_json_allow_list_reaches_the_executor(self, monkeypatch, tmp_path):
         """The config.json path (``maxim config set tools.allow ...``), not
         just the env override."""
-        from maxim.runtime.config_loader import reset_config_cache
-        from maxim.runtime.config_writer import set_field
+        import json
 
-        set_field("tools.allow", "respond")
+        from maxim.runtime.config_loader import config_path, reset_config_cache
+
+        # Written as a file, not through `config_writer.set_field`: that
+        # writer has a CI-enforced caller allow-list (config_unification IM2),
+        # and the round-trip of `maxim config set` itself is pinned in
+        # tests/unit/test_config_writer.py. This test is about the LOADER
+        # → handle → Executor path.
+        cp = config_path()
+        cp.parent.mkdir(parents=True, exist_ok=True)
+        cp.write_text(json.dumps({"tools": {"allow": ["respond"]}}))
         reset_config_cache()
         handle, captured = _build_handle(monkeypatch, tmp_path)
         assert captured["config"].permissions.tool_allow == frozenset({"respond"})
