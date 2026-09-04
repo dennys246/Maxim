@@ -375,9 +375,17 @@ revisit "when the first non-sim adapter ships" — this is that adapter), and th
 verifies it at RUNTIME: a close-flavor discriminator observes that `on_session_end` (not
 `_lightweight`, which also writes ec.json) actually ran — the loop→`_end_bio_session` seam no
 other test covered. The plan's promised "strict=True red gate" shape was traded for this
-runtime observation plus the kwargs pin; recorded as the deviation it is. **Outstanding after
-PR 4 (operator):** the live-bridge smoke against a real Minecraft server, L11's re-measure
-there, and the roadmap row's gate-clause annotation at the release transaction.
+runtime observation plus the kwargs pin; recorded as the deviation it is. **LIVE-BRIDGE SMOKE: GREEN (2026-09-04, discharged in-session — Java 8 hosts a
+Paper 1.16.5 server, which mineflayer supports):** two real Mineflayer bots on a real
+server, night + summoned hostiles, 360 ticks @ 4 Hz — both AUTs 3 world nodes live AND
+persisted, ~510 feed writes each. Data:
+`docs/experiments/data/minecraft_live_smoke_2026-09-04.json`. Shakedown disclosed: the
+FIRST live run was honestly RED (aut_a: 1 node / 324 writes — a static apparatus, not a
+seam defect: frozen daylight cycle + no hostiles near that bot; the gate discriminating
+exactly as built); hostiles were summoned and the run repeated. **Still outstanding:**
+L11's re-measure (the trigger is now LIVE-fired — the channel has fed from a real world —
+but the re-measure itself needs its own protocol: the bake-off metric on real correlated
+sensor traces), and the roadmap row's gate-clause annotation at the release transaction.
 
 ### The hardware block (operator; scheduled after PR 1 merges — not gating the sim-side PRs)
 

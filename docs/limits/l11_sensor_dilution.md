@@ -224,10 +224,14 @@ resource, plan as one.
 > (the plan's "maximally embody" intent), or the PR 4 re-measure decides whether gain-at-N=6
 > on this channel is acceptable for an infrastructure release. Do not let the smoke gate
 > quietly answer a representation question. **Dated 2026-09-04 (PR 4):** the CI smoke now
-> feeds the channel MECHANICALLY every suite run — via the deterministic `FakeBridgeServer`,
-> which is synthetic; it discharges nothing here. The re-measure obligation attaches to the
-> first LIVE-bridge run (real world, real correlations), per this entry's retirement
-> condition.
+> feeds the channel MECHANICALLY every suite run — via the seeded `FakeBridgeServer`,
+> which is synthetic; it discharges nothing here. **Dated 2026-09-04, later: the first
+> LIVE feed has happened** (Paper 1.16.5, real hostiles —
+> `docs/experiments/data/minecraft_live_smoke_2026-09-04.json`), so this trigger is now
+> FIRED FOR REAL. What remains is the re-measure itself: the bake-off's frozen metric run
+> over real correlated sensor traces from the live channel (its own small protocol, not the
+> smoke's job), at the world channel's actual N — which is currently SIX, inside A4's
+> measured-poor band; that tension is what the re-measure decides.
 
 - `similarity/encoder.py::_sensor_embed` change (the encoding equation)
 - `SensorEncoderConfig.pattern_threshold` change — **including shipping the scaled
