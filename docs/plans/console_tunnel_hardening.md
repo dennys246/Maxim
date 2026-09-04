@@ -93,7 +93,11 @@ open questions from the PR 1 fold are all resolved here; implementation follows 
   NEW key's writer uses `utils/atomic_io.py::atomic_write_secret`; migrating the mesh key's
   hand-rolled write is out of scope here). Rotation/inspection: `maxim serve --show-token` /
   `--rotate-token` (serve owns its credential; no new subcommand tree — `maxim tunnel key`
-  stays mesh-only).
+  stays mesh-only). **Shape: opaque with a recognizable prefix** — `mxc_` +
+  `token_urlsafe(32)` (GitHub-style): secret scanners can be taught the pattern, a leaked
+  token identifies itself, and it is visually distinct from the mesh key. REJECTED:
+  JWT/structured tokens — signatures, expiry claims and a crypto dependency buy nothing
+  when one server validates its own symmetric secret.
 - **A2 — always-on; NO off toggle; sandbox is the one principled exception.** A default-off
   `console.auth` knob is exactly how C2–C4 stay reachable (a mechanism that does not run
   looks like one that ran and found nothing); the local UX cost is one click on the printed
@@ -130,6 +134,13 @@ open questions from the PR 1 fold are all resolved here; implementation follows 
   the fragment on load, stores the token (localStorage), strips it via
   `history.replaceState`, and sends Bearer + the ws subprotocol thereafter. With no token,
   the UI renders a paste-token screen naming `maxim serve --show-token` (pulse work item).
+  **Persistence contract: authenticate once per device, ever** — the token is a static
+  credential, not a session; no expiry, no periodic re-login (localStorage in the browser,
+  the keychain in a packaged app). Rotation is the revocation story and logs out every
+  device at once. Expiry is deliberately absent: for a single operator it counters no
+  threat (a stolen token's 29-day window is not meaningfully better than an infinite one —
+  rotate on suspicion either way) and would cost a monthly re-paste. Per-device
+  credentials with optional expiry are the multi-user growth path — PR 4, below.
 - **A6 — contract additions (CONSOLE_CONTRACT_VERSION 0.3.0 → 0.4.0, pulse `gen:facade`
   regen).** (i) OpenAPI `securitySchemes: bearer` applied to every `/api/*` operation;
   (ii) the 401 error shape (`{"detail": ...}`) documented — the PR 1 400/403/415 refusals
@@ -175,7 +186,12 @@ websocket-scope coverage anyway, so PR 3 inherits a single guard middleware to e
 Viewer-vs-operator authorization tiers (ws/recall/identity vs setup/diagnose/probe);
 `/ws` tier gating as permission, not filter (H2); talk registry composed WITHOUT dangerous
 tools (M3); audit log on config writes; redaction audit of debug-tier stream content;
-`maxim tunnel key rotate` UX surfaced in the console.
+`maxim tunnel key rotate` UX surfaced in the console. Token growth path (deferred from the
+PR 2 design, 2026-09-04): replace the single `console_token` file with a small named-token
+list — per-device tokens (`mxc_` shape unchanged), optional per-token expiry, revoke one
+device without logging out the rest — the moment a second person (RMD teammates, a shared
+leader) or a second device class needs its own credential. Until then one static token +
+global rotation is the deliberate design.
 
 ## Contract freeze (app prerequisite, not a PR)
 
