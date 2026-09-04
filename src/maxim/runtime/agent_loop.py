@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 # Import LLM types for runtime use (multi-step action creation + exact job state)
 from maxim.agents.llm_worker import LLMAttemptState, LLMProposal
 from maxim.agents.bus import StreamEvent
-from maxim.embodiment.sensory_streams import AUDIO_TAG, INTEROCEPTION_TAG, ModalityChannel
+from maxim.embodiment.sensory_streams import AUDIO_TAG, INTEROCEPTION_TAG, WORLD_TAG, ModalityChannel
 
 # Import Hippocampus and MemoryHub for episodic memory (optional)
 try:
@@ -1000,9 +1000,92 @@ def _read_drive_ranges(executor: Any) -> "dict[str, tuple[float, float]]":
 
 # Exteroceptive world-set sensors the substrate encodes for PERCEPTION (not as
 # drives/needs). ``azimuth`` = head-relative sound direction (base_humanoid's
-# capability-driven orient sensor). Kept a named set so a future exteroceptive
-# sensor (e.g. a light-direction) is one entry, not a code change at the read site.
+# capability-driven orient sensor). LEGACY membership set: since 1.1.4 PR 2 a
+# sensor can DECLARE its channel (`modality: audio` in the body YAML →
+# `_read_declared_modality_states`), which is what this tuple's original
+# comment asked for ("a future exteroceptive sensor is one entry, not a code
+# change at the read site" — it is now zero code changes). The tuple stays for
+# every existing body, which declares nothing; do not grow it — declare.
 _EXTEROCEPTIVE_ROOT_SENSORS: tuple[str, ...] = ("azimuth",)
+
+
+def _read_declared_modality_states(executor: Any, modality: str) -> dict[str, float]:
+    """Entity-level sensors DECLARING ``modality: <tag>`` in their body YAML.
+
+    The declaration-driven half of channel membership (1.1.4 PR 2): walks
+    every entity from the embodiment root (same walk as ``_read_drive_states``
+    — sensor names are flat-keyed across entities, last writer wins, matching
+    the drive-read convention) and returns ``{name: value}`` for sensors whose
+    ``reading_schema["modality"]`` equals ``modality``. Values come from
+    ``Entity.vital_metrics`` exactly like every other read. Empty dict = the
+    body declares nothing for this channel (every pre-PR-2 body).
+    """
+    embodiment = getattr(executor, "embodiment", None)
+    root = getattr(embodiment, "root", None)
+    if root is None:
+        return {}
+    walk = getattr(root, "walk", None)
+    entities = walk() if callable(walk) else (root,)
+    out: dict[str, float] = {}
+    for ent in entities:
+        sensors = getattr(ent, "sensors", {}) or {}
+        vm = getattr(ent, "vital_metrics", {}) or {}
+        for name, sensor in sensors.items():
+            schema = getattr(sensor, "reading_schema", {}) or {}
+            if schema.get("modality") != modality:
+                continue
+            value = vm.get(name)
+            if value is None:
+                continue
+            try:
+                out[name] = float(value)
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
+def _read_declared_modality_ranges(executor: Any, modality: str) -> "dict[str, tuple[float, float]]":
+    """Declared ``(lo, hi)`` for the sensors ``_read_declared_modality_states``
+    reads. LOCKSTEP INVARIANT (same class as ``_read_drive_ranges``): the two
+    walks must emit the same sensor set; a malformed or wrong-arity range is
+    skipped per-sensor (that sensor re-folds through the legacy map — never
+    raised: a raise here would silently disable ALL substrate encoding; only
+    the type-error shape logs, at debug, matching the legacy path)."""
+    embodiment = getattr(executor, "embodiment", None)
+    root = getattr(embodiment, "root", None)
+    if root is None:
+        return {}
+    # Duck-typed like every other reader: a fake/minimal root without walk()
+    # is treated as a single entity (the place-code wiring tests' fakes).
+    walk = getattr(root, "walk", None)
+    entities = walk() if callable(walk) else (root,)
+    ranges: dict[str, tuple[float, float]] = {}
+    for ent in entities:
+        sensors = getattr(ent, "sensors", {}) or {}
+        for name, sensor in sensors.items():
+            schema = getattr(sensor, "reading_schema", {}) or {}
+            if schema.get("modality") != modality:
+                continue
+            rng = schema.get("range")
+            try:
+                if rng is not None and len(rng) == 2:
+                    ranges[name] = (float(rng[0]), float(rng[1]))
+            except (TypeError, ValueError):
+                logger.debug("declared %s sensor %r has a malformed range %r; skipping", modality, name, rng)
+    return ranges
+
+
+def _read_world_states(executor: Any) -> dict[str, float]:
+    """Value source for the ``"world"`` ModalityChannel — purely
+    declaration-driven (``modality: world`` on the sensor), no hardcoded
+    membership, no drive coupling. A world sensor that ALSO carries a drive
+    appears in both encodes, the same documented pattern as a drive-bearing
+    azimuth. The channel is A4-GAINED and frozen-centroid (plan D3/D6)."""
+    return _read_declared_modality_states(executor, WORLD_TAG)
+
+
+def _read_world_ranges(executor: Any) -> "dict[str, tuple[float, float]]":
+    return _read_declared_modality_ranges(executor, WORLD_TAG)
 
 
 # Place-code opt-in (modality_resolution_and_alignment.md; Exp 46 validated).
@@ -1067,6 +1150,7 @@ def _read_exteroceptive_states(executor: Any) -> dict[str, float]:
                 out[name] = float(vm[name])
             except (TypeError, ValueError):
                 continue
+    legacy_emitted = set(out)  # names the legacy walk ACTUALLY read this call
     if out and place_code_exteroception_enabled():
         # Population code REPLACES the raw scalar — emitting both would hand the
         # encoder a redundant basis pair whose constant-ish contribution dilutes
@@ -1077,7 +1161,18 @@ def _read_exteroceptive_states(executor: Any) -> dict[str, float]:
         coded: dict[str, float] = {}
         for name, value in out.items():
             coded.update(place_code(value, prefix=f"{_PLACE_CODE_PREFIX}_{name}_"))
-        return coded
+        out = coded
+    # Declared `modality: audio` sensors join the channel RAW (1.1.4 PR 2) —
+    # the place code stays scoped to the legacy tuple, its validated domain
+    # (azimuth-shaped [-1,1] scalars; Exp 46's centers assume it). Dedupe is
+    # against what the legacy walk ACTUALLY EMITTED this call — not the tuple
+    # by name — so a CHILD entity's sensor that happens to share a tuple name
+    # still joins when the root has no such sensor (executor-lens review,
+    # PR 2 round: name-global exclusion silently dropped it).
+    declared = _read_declared_modality_states(executor, AUDIO_TAG)
+    for name, value in declared.items():
+        if name not in legacy_emitted:
+            out.setdefault(name, value)
     return out
 
 
@@ -1090,6 +1185,11 @@ def _read_exteroceptive_ranges(executor: Any) -> "dict[str, tuple[float, float]]
     if root is None:
         return {}
     sensors = getattr(root, "sensors", {}) or {}
+    vm = getattr(root, "vital_metrics", {}) or {}
+    # The same predicate the STATES walk's legacy loop emits under — the
+    # declared-audio dedupe below must mirror it exactly (dedupe by actual
+    # emission, never by tuple name; executor-lens review, PR 2 round).
+    legacy_names = {n for n in _EXTEROCEPTIVE_ROOT_SENSORS if n in sensors and n in vm}
     # LOCKSTEP INVARIANT (same class as _read_drive_ranges): this walk and
     # _read_exteroceptive_states must emit the same sensor SET. A value with no
     # declared range silently re-folds through the legacy range-blind map (P1),
@@ -1104,6 +1204,12 @@ def _read_exteroceptive_ranges(executor: Any) -> "dict[str, tuple[float, float]]
             if sensors.get(name) is None:
                 continue
             coded_ranges.update(place_code_ranges(prefix=f"{_PLACE_CODE_PREFIX}_{name}_"))
+        # LOCKSTEP with the declared-audio merge in _read_exteroceptive_states:
+        # declared sensors join RAW on both walks even when the legacy tuple is
+        # place-coded, or a declared value would silently re-fold rangeless.
+        for name, rng_pair in _read_declared_modality_ranges(executor, AUDIO_TAG).items():
+            if name not in legacy_names:
+                coded_ranges.setdefault(name, rng_pair)
         return coded_ranges
 
     ranges: dict[str, tuple[float, float]] = {}
@@ -1117,6 +1223,10 @@ def _read_exteroceptive_ranges(executor: Any) -> "dict[str, tuple[float, float]]
                 ranges[name] = (float(rng[0]), float(rng[1]))
         except (TypeError, ValueError):
             logger.debug("exteroceptive %r has a malformed range %r; skipping (legacy map)", name, rng)
+    # LOCKSTEP with the declared-audio merge in _read_exteroceptive_states.
+    for name, rng_pair in _read_declared_modality_ranges(executor, AUDIO_TAG).items():
+        if name not in legacy_names:
+            ranges.setdefault(name, rng_pair)
     return ranges
 
 
@@ -1135,10 +1245,14 @@ def _read_exteroceptive_ranges(executor: Any) -> "dict[str, tuple[float, float]]
 # the summed cluster term in ``recommend_action`` scales with the number of
 # active channels (±N for N modalities) — adding a channel here is a
 # selection-dynamics change; re-check gate calibration (min_confidence)
-# when you add one.
+# when you add one. The world channel's addition was RE-BASELINED, not
+# assumed: scripts/selection_dynamics_rebaseline.py + the committed record
+# (docs/plans/world_seam_1_1_4.md §PR 2). The channel is inert (empty read →
+# no encode) for every body that declares no `modality: world` sensor.
 _SUBSTRATE_CHANNELS: "tuple[ModalityChannel, ...]" = (
     ModalityChannel(INTEROCEPTION_TAG, _read_drive_states, _read_drive_ranges),
     ModalityChannel(AUDIO_TAG, _read_exteroceptive_states, _read_exteroceptive_ranges),
+    ModalityChannel(WORLD_TAG, _read_world_states, _read_world_ranges),
 )
 
 

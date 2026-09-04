@@ -15,8 +15,11 @@ one sensor stream = one ``encode_sensors(modality=tag)`` call = one entry in
 the ``{modality: cluster_id}`` set that flows through ``recommend_action``
 (additive bias sum) and ``record_outcome`` (credit routing). Adding a future
 modality (vision, touch) is one tuple entry at the registry site in
-``runtime/agent_loop.py`` — NOT a new class, ABC, or percept manifest; the
-modality string tag is the extensibility seam.
+``runtime/agent_loop.py`` (plus its tag in ``DECLARABLE_MODALITY_TAGS``) —
+NOT a new class, ABC, or percept manifest; the modality string tag is the
+extensibility seam. Channel MEMBERSHIP is the other half (1.1.4 PR 2): a
+sensor declares its channel in the body YAML (``modality: world|audio``),
+zero code changes — hardcoded name tuples are legacy.
 
 Bio framing: per-modality thalamic relays (LGN/MGN) → within-modality maps →
 late convergence at association cortex (NAc's additive sum). Interoception
@@ -43,6 +46,26 @@ INTEROCEPTION_TAG = "interoception"
 # constant — a bare string literal would silently de-preference operant
 # routing (pre-merge review finding, cross-confirmed by both lenses).
 AUDIO_TAG = "audio"
+
+# The world channel tag (1.1.4 — the Minecraft/world seam). External-world
+# state a body senses that is neither a drive (interoception) nor sound
+# localization: light level, altitude, hostile proximity, … Membership is
+# DECLARED per sensor (`modality: world` in the body YAML → the channel
+# readers in runtime/agent_loop.py), never a hardcoded name tuple. Consumers
+# special-case it by NAME in two places that must stay consistent: it is
+# GAINED (`SensorEncoderConfig.gain_modalities`, the A4 large-N encoding) and
+# FROZEN-CENTROID from birth (ECConfig + hivemind defaults, plan decision D6).
+WORLD_TAG = "world"
+
+# The modality tags a body sensor may DECLARE (`modality:` in the YAML).
+# Parse-time validation in `embodiment/spec.py` rejects anything else LOUDLY
+# — an unknown tag would otherwise be a sensor that silently belongs to no
+# channel, indistinguishable from working (executor-lens review, PR 2 round;
+# the silent-no-op class 1.1.3 existed to kill). INTEROCEPTION_TAG is
+# deliberately NOT declarable: interoception membership comes from `drive:`.
+# A future channel (vision, touch) extends this set in the same commit that
+# adds its ModalityChannel — one place.
+DECLARABLE_MODALITY_TAGS: frozenset[str] = frozenset({AUDIO_TAG, WORLD_TAG})
 
 
 @dataclass(frozen=True)

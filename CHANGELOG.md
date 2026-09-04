@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **1.1.4 PR 2 — `modality:` sensor declarations + the world channel + its re-baseline**:
+  a body sensor can declare its substrate channel (`modality: world|audio` in the YAML →
+  `reading_schema`); the `world` ModalityChannel is purely declaration-driven (inert for every
+  existing body — swept), and declared `audio` sensors join the legacy tuple without a code
+  change, closing `_EXTEROCEPTIVE_ROOT_SENSORS`'s own comment's wish. The selection-dynamics
+  re-baseline is measured, not assumed (`scripts/selection_dynamics_rebaseline.py`): the third
+  channel widens the summed cluster term ±2 → ±3 and flips 38% of synthetic recommendations
+  while the 0.3 gate-pass rate moves 0.83 → 0.86; `min_confidence` stays 0.3 for 1.1.4 with the
+  record as 1.2's calibration reference. Fixed: `drive: null` on a modulator sub-sensor
+  crashed the body parser (the extends-child drive-removal idiom, sub-sensor edition).
 - **Console sandbox mode + the three config keys a hosted, single-visitor Console needs**
   (sandbox-launch blockers; the plan is maxim-web `docs/plans/sandbox.md`). `maxim serve` stays
   127.0.0.1-only and unauthenticated — the proxy in front owns the edge — and gains the config keys

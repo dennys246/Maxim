@@ -252,6 +252,22 @@ transaction.
   mode the roadmap row names.
 - Fix the modulator-sub-sensor `drive: null` crash (F3).
 
+**PR 2 result (2026-09-03):** shipped as planned — `modality:` rides `reading_schema` (no new
+dataclass field); world membership is purely declared; audio = legacy tuple ∪ declared
+(declared sensors join RAW — the place code stays scoped to its validated azimuth domain,
+same measure-before-composing discipline as D3; value/range lockstep pinned under both
+place-code arms); every bundled body reads byte-identical (world channel empty — swept in
+`tests/unit/test_world_channel.py`). The `drive: null` sub-sensor guard verified red on the
+pre-fix code. **Re-baseline (characterization, not a gate):** at synthetic uniform ±1 biases
+over 4 tools (2,000 trials), the third channel flips 38% of recommendations, the 0.3
+gate-pass rate moves 0.83 → 0.86, and the summed cluster term widens ±2 → ±3 (observed
+±2.84).
+`min_confidence` stays 0.3 for 1.1.4 (the channel is inert for every existing body); the
+record is the reference for 1.2's calibration on real distributions. Data:
+`docs/experiments/data/selection_dynamics_rebaseline_2026-09-03.json`. Process deviation,
+acknowledged again (PR 0 recorded the intent to split): harness and data share one PR —
+mitigations as before (clean-tree provenance at the harness commit, `ts`, merge-commit only).
+
 ### PR 3 — the bridge, the body, scarcity
 
 - Mineflayer (JS) process + WS/JSON-RPC; `MinecraftPerceptSource` implementing the frozen
@@ -261,6 +277,11 @@ transaction.
 - `bodies/minecraft_player.yaml` — sensors declare `modality: world`; every world-owned
   sensor has `drive: null` or `drift_rate: 0.0` (the drift loop must not fight the writer).
 - D5: finite food items; `cradle_food.yaml` description corrected (option b).
+- **Seam note from PR 2's review round:** a gained world body resting at neutral encodes
+  `None` BY DESIGN (D2), but agent_loop's per-channel "sensors but yielded no cluster"
+  WARNING cannot tell designed rest from encode failure and would fire per tick. PR 3 must
+  distinguish the two at the seam (e.g. the encoder signalling rest explicitly, or the loop
+  checking the all-neutral condition) before the first world body ships.
 
 ### PR 4 — two-AUT-one-world harness + the ship gate, non-vacuous
 

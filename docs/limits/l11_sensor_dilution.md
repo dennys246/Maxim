@@ -208,6 +208,17 @@ resource, plan as one.
 
 ## Re-measure on
 
+> **Trigger fired 2026-09-03 (1.1.4 PR 2) and discharged: `_SUBSTRATE_CHANNELS` grew 2 → 3
+> (the `world` ModalityChannel).** Discharged as INERT-UNTIL-DECLARED: the channel's read is
+> empty for every body that declares no `modality: world` sensor (swept across all bundled
+> bodies, `tests/unit/test_world_channel.py`), an empty read short-circuits before any
+> encode, so no geometry, per-channel N, or selection input changes for any existing body —
+> and the selection-dynamics side was separately re-baselined
+> (`docs/experiments/data/selection_dynamics_rebaseline_2026-09-03.json`). **This trigger
+> RE-FIRES at PR 3**, when `bodies/minecraft_player.yaml` first feeds the channel — at which
+> point "any body whose per-channel sensor count exceeds ~12" fires too, and the re-measure
+> is owed for real.
+
 - `similarity/encoder.py::_sensor_embed` change (the encoding equation)
 - `SensorEncoderConfig.pattern_threshold` change — **including shipping the scaled
   threshold**, which is what moves this entry toward `RETIRED`
