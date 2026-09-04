@@ -23,6 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Spoken-code pairing (console hardening A9.1; contract 0.4.0 → 0.5.0, additive).** Pulse's
+  wiring surfaced the vendor fact that kills A9's dashboard-link premise on the real robot
+  (the Pollen daemon regexes `custom_app_url` out of `main.py` at LIST time — a boot-minted
+  token cannot ride the ⚙️ link). New consumer sign-in path: tokenless `POST
+  /api/pair/request` makes the robot ANNOUNCE a 6-digit code (secrets-random, single active,
+  120 s TTL, never returned or logged — A7 applies to the code); `POST /api/pair/claim`
+  exchanges it for the console token (constant-time, single use, 5 attempts burn it, 10 s
+  min announce interval). Embedder-gated via keyword-only `build_app(pairing_announcer=…)`:
+  every plain `maxim serve` refuses 409 on both endpoints — no new unauthenticated path in
+  the default posture; refused under sandbox. `HelloResponse.pairing` advertises it
+  (defaulted — 0.4.0 clients never notice). `device_console_handoff` +
+  `extra_trusted_origins` stay correct and wired; the seam docstring records the amendment.
+
 ## [1.1.4] - 2026-09-04 — "The world seam"
 
 ### Added

@@ -91,6 +91,35 @@ class HelloResponse(BaseModel):
 
     contract_version: str
     auth: Literal["bearer", "none"]
+    # 0.5.0 (A9.1): whether this deployment can pair by spoken code — the
+    # device path where a robot announces a short-lived code in the room.
+    # Additive with a default so a 0.4.0 client never notices.
+    pairing: Literal["available", "none"] = "none"
+
+
+class PairRequestAccepted(BaseModel):
+    """POST /api/pair/request accepted — the code is ANNOUNCED, never returned."""
+
+    detail: str
+
+
+class PairClaimRequest(BaseModel):
+    """The spoken code, typed by the owner into the paste screen.
+
+    ``max_length`` bounds the one pre-auth POST body on the server (review
+    fold); real codes are exactly six digits, the slack forgives pasted
+    whitespace.
+    """
+
+    code: str = Field(max_length=16)
+
+
+class PairClaimResult(BaseModel):
+    """A successful claim: the console bearer token — handled and stored by
+    the client exactly as a ``/#token=`` fragment bootstrap would (the trust
+    statement itself is A9.1's, spoken-code pairing)."""
+
+    token: str
 
 
 class IdentityResponse(BaseModel):

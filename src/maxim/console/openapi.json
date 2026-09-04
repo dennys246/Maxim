@@ -259,6 +259,15 @@
           "contract_version": {
             "title": "Contract Version",
             "type": "string"
+          },
+          "pairing": {
+            "default": "none",
+            "enum": [
+              "available",
+              "none"
+            ],
+            "title": "Pairing",
+            "type": "string"
           }
         },
         "required": [
@@ -443,6 +452,49 @@
           "groups"
         ],
         "title": "ModelsResponse",
+        "type": "object"
+      },
+      "PairClaimRequest": {
+        "description": "The spoken code, typed by the owner into the paste screen.\n\n``max_length`` bounds the one pre-auth POST body on the server (review\nfold); real codes are exactly six digits, the slack forgives pasted\nwhitespace.",
+        "properties": {
+          "code": {
+            "maxLength": 16,
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "PairClaimRequest",
+        "type": "object"
+      },
+      "PairClaimResult": {
+        "description": "A successful claim: the console bearer token \u2014 handled and stored by\nthe client exactly as a ``/#token=`` fragment bootstrap would (the trust\nstatement itself is A9.1's, spoken-code pairing).",
+        "properties": {
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "PairClaimResult",
+        "type": "object"
+      },
+      "PairRequestAccepted": {
+        "description": "POST /api/pair/request accepted \u2014 the code is ANNOUNCED, never returned.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "PairRequestAccepted",
         "type": "object"
       },
       "PlatformWire": {
@@ -914,7 +966,7 @@
   "info": {
     "summary": "Localhost Console backend + the OpenAPI facade contract for maxim-pulse.",
     "title": "Maxim Console",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1180,6 +1232,158 @@
           }
         ],
         "summary": "List LLM profiles",
+        "tags": [
+          "facade"
+        ]
+      }
+    },
+    "/api/pair/claim": {
+      "post": {
+        "operationId": "post_pair_claim_api_pair_claim_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairClaimResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Wrong code (5 wrong attempts void the active code)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Pairing is not available on this deployment (no announcer)."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "No active code \u2014 expired, consumed, or never announced."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Claims are paced (~1.5 s apart) \u2014 retry momentarily."
+          }
+        },
+        "summary": "Exchange the spoken code for the console token (single use; no token needed)",
+        "tags": [
+          "facade"
+        ]
+      }
+    },
+    "/api/pair/request": {
+      "post": {
+        "operationId": "post_pair_request_api_pair_request_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairRequestAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Pairing is not available on this deployment (no announcer)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A code was announced within the last 10 s \u2014 listen, or retry shortly."
+          }
+        },
+        "summary": "Ask the robot to speak a pairing code (device deployments only; no token needed)",
         "tags": [
           "facade"
         ]
