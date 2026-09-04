@@ -189,6 +189,11 @@ class _ModalityMatrix:
         self.norms[row] = 0.0  # a zero-norm row scores 0.0 and can never match
         self.ids[row] = None
         self.geoms[row] = None
+        # Tombstones are counted but never compacted: no production caller
+        # removes nodes today (the encoder registers fresh UUIDs; ingest
+        # rebuilds wholesale). A future remover should compact — rebuild
+        # preserving survivor order — past some tombstone fraction, or
+        # matrices grow monotonically.
         self.tombstones += 1
 
     def scan(
@@ -198,7 +203,15 @@ class _ModalityMatrix:
         overrides: dict[str, float],
         live_geometry: str | None,
     ) -> tuple[str | None, float]:
-        """Best eligible (geometry-compatible, over-threshold) node, or (None, -1)."""
+        """Best eligible (geometry-compatible, over-threshold) node, or (None, -1).
+
+        Known reference divergences, both unreachable at production
+        thresholds (base 0.44/0.85; `NAc.get_threshold_overrides` clamps to
+        [0.1, base]): at an effective threshold <= 0.0 the reference loop
+        would match a zero-norm stored node or a zero-norm QUERY at cosine
+        0.0, while this scan excludes zero-norm rows (`eligible &= live_rows`
+        — the tombstone mechanism) and early-returns on a zero-norm query.
+        """
         if self.n == 0 or len(embedding) != self.mat.shape[1]:
             return None, -1.0
         vec = np.asarray(embedding, dtype=np.float64)
@@ -402,7 +415,17 @@ class ECConfig:
     # running-mean centroid into the same collapse interoception suffers, so
     # exteroceptive localization nodes are frozen-prototype too — stable
     # per-direction clusters for NAc to attach reward-bias to.
-    frozen_centroid_modalities: frozenset[str] = frozenset({"interoception", "audio"})
+    # "world" (1.1.4 PR 1, plan decision D6 — architecture-lens review):
+    # frozen BEFORE the channel's first caller exists, because the A4
+    # membership evidence was measured under frozen-centroid semantics
+    # (every bake-off arm froze its channels) and shipping the first
+    # running-mean sensor modality at A4's ~120x allocation rate would be
+    # an unmeasured drift configuration — the exact isolated-vs-sequential
+    # hazard the centroid-drift lesson exists for. Unfreezing world later
+    # requires the sequential-vs-isolated drift measurement first. Must
+    # stay equal to hivemind DEFAULT_FROZEN_CENTROID_MODALITIES
+    # (test-pinned equality).
+    frozen_centroid_modalities: frozenset[str] = frozenset({"interoception", "audio", "world"})
 
     # Cross-session persistence (nac_cross_session_persistence.md): path
     # for save()/load(), set by build_bio_stack (agent-home ``ec.json``).
@@ -881,16 +904,23 @@ class EntorhinalCortex:
 
         Returns the number of nodes ingested.
         """
-        for nid, ndata in (nodes or {}).items():
-            embedding = ndata.get("embedding")
-            if not embedding:
-                continue  # a node without a centroid cannot be matched against
-            self._substrate_nodes[nid] = (list(embedding), str(ndata.get("modality", "")))
-            self._substrate_node_counts[nid] = int(ndata.get("count", ndata.get("member_count", 1)))
-            self._substrate_node_sources[nid] = str(ndata.get("source", "local"))
-            self._substrate_node_domains[nid] = ndata.get("domain")
-            self._substrate_node_geometries[nid] = ndata.get("geometry")
-        self._invalidate_matrix_cache()
+        # try/finally: bundle data is EXTERNAL input, and a malformed entry
+        # (e.g. count=None → TypeError) can raise AFTER earlier iterations
+        # already overwrote ids a cached matrix holds. Invalidate must run
+        # even then, or every later scan silently diverges from the dicts
+        # (executor-lens review, PR 1 round — reproduced concretely).
+        try:
+            for nid, ndata in (nodes or {}).items():
+                embedding = ndata.get("embedding")
+                if not embedding:
+                    continue  # a node without a centroid cannot be matched against
+                self._substrate_nodes[nid] = (list(embedding), str(ndata.get("modality", "")))
+                self._substrate_node_counts[nid] = int(ndata.get("count", ndata.get("member_count", 1)))
+                self._substrate_node_sources[nid] = str(ndata.get("source", "local"))
+                self._substrate_node_domains[nid] = ndata.get("domain")
+                self._substrate_node_geometries[nid] = ndata.get("geometry")
+        finally:
+            self._invalidate_matrix_cache()
         return len(nodes or {})
 
     def _migrate_legacy_geometries(self) -> int:
@@ -950,6 +980,15 @@ class EntorhinalCortex:
                 # finding: its nodes are not all in one space, so there is no
                 # single correct tag and guessing would manufacture one.
                 if declared is not None and len(set(modes)) <= 1:
+                    # NOTE (PR 1 review): this derivation and encode_sensors'
+                    # live tag construction are now two sites that must agree.
+                    # A GAINED modality's tag carries a `gain` field this
+                    # derivation does not emit — correct today only because
+                    # gained (world) nodes are always stamped at creation, so
+                    # no unstamped gained node can exist to migrate. If
+                    # `tag_fields` grows again, derive both from one helper —
+                    # a wrong migrated tag is worse than none (see the skip
+                    # warning below).
                     tag = encoding_geometry_tag(
                         encoder="sensor",
                         modality=modality,
@@ -1421,34 +1460,39 @@ class EntorhinalCortex:
 
         # Load substrate nodes (P1). Pre-B5 dumps lack the ``source`` and
         # ``domain`` fields — both default to ``"local"`` and ``None``.
-        self._substrate_nodes = {}
-        self._substrate_node_geometries = {}
-        self._substrate_node_counts = {}
-        self._substrate_node_sources = {}
-        self._substrate_node_domains = {}
-        for nid, ndata in data.get("substrate_nodes", {}).items():
-            self._substrate_nodes[nid] = (ndata["embedding"], ndata["modality"])
-            self._substrate_node_counts[nid] = ndata.get("count", 1)
-            self._substrate_node_sources[nid] = ndata.get("source", "local")
-            self._substrate_node_domains[nid] = ndata.get("domain")
-            self._substrate_node_geometries[nid] = ndata.get("geometry")
+        # try/finally: the store is replaced wholesale, so a malformed entry
+        # raising mid-loop must STILL invalidate the acceleration cache, or
+        # the old store's matrices stay live against the partial new dicts
+        # (executor-lens review, PR 1 round).
+        try:
+            self._substrate_nodes = {}
+            self._substrate_node_geometries = {}
+            self._substrate_node_counts = {}
+            self._substrate_node_sources = {}
+            self._substrate_node_domains = {}
+            for nid, ndata in data.get("substrate_nodes", {}).items():
+                self._substrate_nodes[nid] = (ndata["embedding"], ndata["modality"])
+                self._substrate_node_counts[nid] = ndata.get("count", 1)
+                self._substrate_node_sources[nid] = ndata.get("source", "local")
+                self._substrate_node_domains[nid] = ndata.get("domain")
+                self._substrate_node_geometries[nid] = ndata.get("geometry")
 
-        # Encoder stamps (artifact stamping, 1.1 item 7). Pre-stamping
-        # files lack the key — empty dict, and the bundle will honestly
-        # carry recorded=None for them. Inner dicts are copied so later
-        # record calls never mutate the caller-visible parsed JSON.
-        self._encoder_provenance = {
-            k: dict(v) for k, v in (data.get("encoder_provenance") or {}).items() if isinstance(v, dict)
-        }
+            # Encoder stamps (artifact stamping, 1.1 item 7). Pre-stamping
+            # files lack the key — empty dict, and the bundle will honestly
+            # carry recorded=None for them. Inner dicts are copied so later
+            # record calls never mutate the caller-visible parsed JSON.
+            self._encoder_provenance = {
+                k: dict(v) for k, v in (data.get("encoder_provenance") or {}).items() if isinstance(v, dict)
+            }
 
-        # D66: AFTER the provenance loads — the migration derives tags from it,
-        # so running it earlier reads an empty dict and silently migrates
-        # nothing while reporting that nothing could be migrated.
-        self._migrate_legacy_geometries()
-
-        # The store was replaced wholesale (and migrate may have stamped
-        # geometries): drop the acceleration matrices and recount.
-        self._invalidate_matrix_cache()
+            # D66: AFTER the provenance loads — the migration derives tags from
+            # it, so running it earlier reads an empty dict and silently
+            # migrates nothing while reporting that nothing could be migrated.
+            self._migrate_legacy_geometries()
+        finally:
+            # The store was replaced wholesale (and migrate may have stamped
+            # geometries): drop the acceleration matrices and recount.
+            self._invalidate_matrix_cache()
 
         logger.info(
             "Loaded EC from %s (%d signatures, %d substrate nodes)",

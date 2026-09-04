@@ -107,10 +107,13 @@ The bake-off's gain (`scripts/encoding_bakeoff.py::_embed`, `GAIN_EXPONENT = 3.0
     "sound dead ahead" cluster the operant results key on. Data:
     `docs/experiments/data/place_code_gain_check_2026-09-03.json`.
   - *Interoception ungained* (this bullet assumed ON; the bake-off at the infant's actual
-    scale says otherwise): at N=6, A4's stability collapses to **0.62** — noise separates,
-    the noise-floor cost the pairwise data predicted — and A4 is not even the best arm
-    (A1 scores 0.88). A4's dominance begins at N=12 (0.94) and is perfect from N=30. Gaining
-    interoception would ship a measured-WORSE representation for every existing body. Data:
+    scale says otherwise): at N=6, A4's stability collapses **0.97 → 0.62** — noise separates,
+    the noise-floor cost the pairwise data predicted — it loses to A1 (primary 0.62 vs 0.88),
+    and allocates 21× the clusters. Stated precisely (review-round correction, both lenses):
+    on the frozen primary A4 still BEATS the shipped control at N=6 (0.62 vs A0's 0.37) — the
+    grounds for staying ungained are the stability collapse (cluster-identity churn for
+    existing drive states), A1's dominance at small N, and that gaining is a geometry change
+    re-staling every EARNED row for an unvalidated small-N benefit. Data:
     `docs/experiments/data/encoding_bakeoff_n6_n8_2026-09-03.json` (the committed bake-off
     instrument, arms frozen 2026-09-01, run at N∈{6,8}).
   - Consequence, load-bearing: **every existing modality's encoding space is byte-identical
@@ -127,6 +130,13 @@ The bake-off's gain (`scripts/encoding_bakeoff.py::_embed`, `GAIN_EXPONENT = 3.0
   allocation) a structural replacement for the exact Python scan is the prerequisite instead,
   and 1.1.4 re-sequences. The harness also times a numpy-vectorized EXACT scan as
   explicitly-exploratory remedy sizing — it informs the remedy, never the verdict.
+- **D6 (world centroid policy — added in the PR 1 review fold, architecture lens): "world"
+  joins `frozen_centroid_modalities` (ECConfig + the hivemind default, equality-pinned)
+  BEFORE the channel's first caller exists.** The A4 membership evidence was measured under
+  frozen-centroid semantics — every bake-off arm froze its channels — so an unfrozen world
+  channel would be the first running-mean sensor modality, at ~120× allocation, an unmeasured
+  drift configuration (the isolated-vs-sequential hazard). Unfreezing later requires the
+  drift measurement first.
 - **D5 (D67, the finite-resource decision):** the *mechanic* lands in 1.1.4 where scarcity is
   the point — Minecraft food items ship `target_effect: {portions: -1}` (or the world-truth
   readback equivalent through the backend seam). `items/cradle_food.yaml` takes the ledger's
@@ -153,7 +163,11 @@ the frozen rule's):** a **vectorized exact scan** — the same cosine as one num
 matrix–vector product over a per-modality matrix (filtered once at registration, the way the
 remedy would actually be built, vs the Python loop's filter-per-call over the whole store) —
 measured at **p95 0.89 ms at a 20k-node store** (12k world nodes scanned), ~2.4× the horizon
-store, comfortably under the 5 ms bar at every measured size. Semantics-preserving, so no
+store, comfortably under the 5 ms bar at every measured size. Shipped-path spot-checks (PR 1,
+informal): 0.31 ms p95 @ 10k through the production entry point single-geometry; the
+executor review lens measured ~2.8 ms p95 @ 20k in the worst realistic case (mixed
+geometries force a per-row Python mask) — still under the bar; caching that mask per matrix
+generation is the noted future optimization if a profile ever demands it. Semantics-preserving, so no
 ANN approximation risk enters the substrate. "1.1.4 re-sequences" therefore resolves mildly:
 the scan replacement ships in **PR 1, before the A4 equation change in the same PR**, guarded
 by an old-vs-new equivalence test (identical match/threshold decisions on random stores,

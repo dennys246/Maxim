@@ -70,11 +70,15 @@ sensor resting at its set point should not be shouting — which is what the com
 drive design already encodes.
 
 **Membership is per-modality and measured, not global (PR 1, 2026-09-03):**
-`SensorEncoderConfig.gain_modalities = {"world"}`. The N=6/8 rows above show A4 is
-measured-WORSE at the infant's actual channel scale (stability 0.62 at N=6), and the
-place-code row shows it degrades audio — so interoception and audio stay in the pre-A4
-space, byte-identical (their geometry tags do not move; test-pinned), and no EARNED row
-re-stales. Flipping a modality in later is a geometry change + graduation-trigger event.
+`SensorEncoderConfig.gain_modalities = {"world"}`. The N=6/8 rows above show A4's
+stability collapsing 0.97 → 0.62 at N=6 and losing to A1 (primary 0.62 vs 0.88) — though
+still above the control A0's 0.37 on the frozen primary; the grounds are the stability
+collapse and the re-stale cost, not "worse than shipping" — and the place-code row shows it
+degrades audio. So interoception and audio stay in the pre-A4 space, byte-identical (their
+geometry tags do not move; test-pinned), and no EARNED row re-stales. "world" is additionally
+FROZEN-CENTROID from birth (plan decision D6): the membership evidence was measured under
+frozen semantics, and an unfrozen first-running-mean sensor modality at ~120× allocation is
+an unmeasured drift configuration. Flipping a modality in later is a geometry change + graduation-trigger event.
 
 **Superseded, and recorded because it was the standing recommendation until measured:**
 
@@ -163,9 +167,14 @@ Bounds the representation behind **Exp 42** (interoception clusters), **Exp 48**
 The limit bounds any *future* body that grows past it — which is exactly what a
 Minecraft or microduck body would do.
 
-**Consequence for the mitigation's own schedule:** shipping the encoding change (A4—
-any `_sensor_embed` change) re-stales Exp 53b **on hardware**. That re-run and 1.2's n=12 two-robot
-replication are the same scarce resource and should be planned as one hardware block.
+**Consequence for the mitigation's own schedule (NARROWED 2026-09-03 by the world-only
+membership):** the shipped A4 does NOT re-stale Exp 53b — its channels (interoception +
+audio) are byte-identical, decision-equivalence-guarded, and the fired triggers are
+discharged with a dated annotation on the ledger row. What re-stales 53b is FLIPPING an
+existing modality into `gain_modalities` later; that re-run would then join the hardware
+block. The block that remains: this limit's post-mitigation re-measure on a real body +
+the owed roll/pitch recalibration + 1.2's n=12 two-robot replication — same scarce
+resource, plan as one.
 
 ## Open questions
 

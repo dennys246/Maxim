@@ -664,10 +664,15 @@ class SensorEncoderConfig:
     # never combine). Membership is measured, not assumed:
     #   world          GAINED — the large-N channel (a Minecraft body is
     #                  ~50 sensors; A4 is 1.00/1.00/1.00 from N=30 up)
-    #   interoception  UNGAINED — measured WORSE at its actual scale
-    #                  (N=6: A4 stability 0.62 — noise separates; the
-    #                  bake-off's own N=6/8 rows), and every EARNED row
-    #                  rides on the ungained space
+    #   interoception  UNGAINED — at its actual scale (N=6) A4's
+    #                  stability COLLAPSES 0.97 -> 0.62 (noise separates,
+    #                  churning cluster identity for existing drive
+    #                  states), it loses to A1 (0.62 vs 0.88 primary) and
+    #                  allocates 21x the clusters; every EARNED row rides
+    #                  on the ungained space. (On the frozen primary A4
+    #                  still beats A0's 0.37 — the grounds are the
+    #                  stability collapse + re-stale cost, not "worse
+    #                  than shipping".) Bake-off N=6/8 rows
     #   audio          UNGAINED — gain over the place code degrades
     #                  jitter-stability (1.000 -> 0.957) and buys
     #                  nothing; a gained raw azimuth would zero-vector
@@ -909,7 +914,11 @@ class SensorEncoder:
             "embedding_dim": len(embedding),
         }
         if applied_gain is not None:
-            tag_fields["gain"] = f"p{applied_gain}"
+            # float() normalizes the format: a config carrying int 3 and one
+            # carrying 3.0 are the SAME space and must produce the SAME tag
+            # ("p3.0"), or same-space nodes mutually skip (architecture-lens
+            # review, PR 1 round).
+            tag_fields["gain"] = f"p{float(applied_gain)}"
         geometry = encoding_geometry_tag(**tag_fields)
         result = self.ec.pattern_complete_or_separate(
             embedding=embedding,

@@ -32,7 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   equivalence). The A4 gain lands in `_sensor_embed` behind
   `SensorEncoderConfig.gain_modalities = {"world"}` at the unchanged 0.85 threshold —
   membership measured, not assumed: interoception stays ungained (bake-off at N=6: A4
-  stability 0.62, worse than shipping), audio stays ungained (place-code jitter-stability
+  stability collapses 0.97 → 0.62 and loses to A1 — the re-stale cost of a geometry change
+  buys an unvalidated small-N benefit), audio stays ungained (place-code jitter-stability
   degrades 1.000 → 0.957; a gained raw azimuth deletes the centered cluster). Ungained modalities are
   byte-identical to pre-A4, geometry tags pinned — no EARNED row re-stales. A gained body at
   rest embeds to the zero vector and encodes nothing (plan decision D2). The gained path has

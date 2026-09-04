@@ -67,6 +67,7 @@ class TestVectorizedScanEquivalence:
         geometries = [None, "gA", "gB"]
         registered: list[str] = []
 
+        completions = stamps = 0
         for step in range(400):
             op = rng.random()
             modality = rng.choice(modalities)
@@ -90,17 +91,30 @@ class TestVectorizedScanEquivalence:
                 victim = rng.choice(registered)
                 ec.register_substrate_node(victim, _vec(rng, dim), modality, geometry=geometry)
 
+            stamped_before = ec._substrate_node_geometries.get
+            pre_stamp = {n: stamped_before(n) for n in registered[-5:]}
             result = self._assert_same_decision(ec, emb, modality, threshold, overrides, geometry)
             if result.is_new:
                 ec.register_substrate_node(result.node_id, emb, modality, geometry=geometry)
                 registered.append(result.node_id)
+            else:
+                completions += 1
+                if pre_stamp.get(result.node_id, object()) is None and geometry is not None:
+                    stamps += 1
 
+        # Anti-vacuity (the D61 family): the stream must actually exercise the
+        # paths it claims, or a threshold/dim tweak could quietly degenerate
+        # this into a register-only test.
         assert len(registered) > 50, "sweep degenerated — too few nodes to be a real test"
+        assert completions > 20, "sweep degenerated — no completions means no centroid updates"
+        assert stamps > 0, "sweep degenerated — stamp-on-first-touch never exercised"
 
     def test_centroid_update_reaches_the_matrix(self):
         """A non-frozen completion updates the running-mean centroid; the NEXT
-        scan must see the moved centroid, not a stale cached row."""
-        ec = EntorhinalCortex(ECConfig())
+        scan must see the moved centroid, not a stale cached row. (Explicit
+        empty frozen set: "world" joined the frozen defaults in plan decision
+        D6, so exercising the running-mean path needs an unfrozen config.)"""
+        ec = EntorhinalCortex(ECConfig(frozen_centroid_modalities=frozenset()))
         base = [1.0] + [0.0] * (DIM - 1)
         near = [0.9, 0.1] + [0.0] * (DIM - 2)
         first = ec.pattern_complete_or_separate(base, modality="world", threshold=0.85, geometry=None)
@@ -129,6 +143,73 @@ class TestVectorizedScanEquivalence:
         foreign = ec.pattern_complete_or_separate(emb, modality="world", threshold=0.85, geometry="gB")
         assert foreign.is_new, "stamped node must be invisible to a different geometry"
 
+    def test_ingest_into_a_live_cache_stays_coherent(self):
+        """The mutant this kills: deleting the invalidate on the ingest path.
+        Scan first (cache built), ingest an OVERWRITE of a cached id plus a
+        new node, then require decision equivalence again — a stale cached
+        row completes where the reference separates."""
+        ec = EntorhinalCortex(ECConfig())
+        old = [1.0] + [0.0] * (DIM - 1)
+        r = ec.pattern_complete_or_separate(old, modality="world", threshold=0.85, geometry=None)
+        ec.register_substrate_node(r.node_id, old, "world")
+        # build/warm the cache with a scan
+        ec.pattern_complete_or_separate(old, modality="world", threshold=0.85, geometry=None)
+        moved = [0.0, 1.0] + [0.0] * (DIM - 2)
+        fresh = [0.0, 0.0, 1.0] + [0.0] * (DIM - 3)
+        ec.ingest_substrate_nodes(
+            {
+                r.node_id: {"embedding": moved, "modality": "world", "count": 5},
+                "incoming": {"embedding": fresh, "modality": "world", "count": 2},
+            }
+        )
+        # a query at the OLD prototype must now separate (the node moved)…
+        self._assert_same_decision(ec, old, "world", 0.85, {}, None)
+        # …and queries at the ingested locations must complete.
+        for q, expected in ((moved, r.node_id), (fresh, "incoming")):
+            res = self._assert_same_decision(ec, q, "world", 0.85, {}, None)
+            assert not res.is_new and res.node_id == expected
+
+    def test_ingest_raising_midway_still_invalidates_the_cache(self):
+        """Executor-lens repro: malformed bundle data raising AFTER an id a
+        cached matrix holds was overwritten must not strand the stale row."""
+        ec = EntorhinalCortex(ECConfig())
+        old = [1.0] + [0.0] * (DIM - 1)
+        r = ec.pattern_complete_or_separate(old, modality="world", threshold=0.85, geometry=None)
+        ec.register_substrate_node(r.node_id, old, "world")
+        ec.pattern_complete_or_separate(old, modality="world", threshold=0.85, geometry=None)
+        moved = [0.0, 1.0] + [0.0] * (DIM - 2)
+        with pytest.raises(TypeError):
+            ec.ingest_substrate_nodes(
+                {
+                    r.node_id: {"embedding": moved, "modality": "world", "count": 5},
+                    "bad": {"embedding": [1.0] * DIM, "modality": "world", "count": None},
+                }
+            )
+        self._assert_same_decision(ec, old, "world", 0.85, {}, None)
+        self._assert_same_decision(ec, moved, "world", 0.85, {}, None)
+
+    def test_exact_tie_and_at_threshold_boundaries(self):
+        """Constructed boundary cases the randomized stream cannot produce:
+        two nodes with IDENTICAL prototypes (exact tie — first registered
+        wins in both scans) and a similarity landing exactly ON the
+        threshold (>= is inclusive in both)."""
+        ec = EntorhinalCortex(ECConfig(frozen_centroid_modalities=frozenset({"world"})))
+        proto = [1.0, 1.0] + [0.0] * (DIM - 2)
+        ec.register_substrate_node("first", proto, "world")
+        ec.register_substrate_node("second", list(proto), "world")
+        res = self._assert_same_decision(ec, list(proto), "world", 0.85, {}, None)
+        assert res.node_id == "first", "exact tie must keep first-registered-wins"
+
+        # exactly at threshold: query at 45° to a stored unit axis → cos = √2/2;
+        # use that value as the threshold so sim == threshold precisely.
+        ec2 = EntorhinalCortex(ECConfig(frozen_centroid_modalities=frozenset({"world"})))
+        axis = [1.0] + [0.0] * (DIM - 1)
+        ec2.register_substrate_node("axis", axis, "world")
+        diagonal = [1.0, 1.0] + [0.0] * (DIM - 2)
+        sim = _cosine_similarity(diagonal, axis)
+        res = self._assert_same_decision(ec2, diagonal, "world", sim, {}, None)
+        assert not res.is_new and res.node_id == "axis", ">= must be inclusive at the boundary"
+
     def test_save_load_round_trip_scans_identically(self, tmp_path):
         rng = random.Random(7)
         ec = EntorhinalCortex(ECConfig())
@@ -148,7 +229,10 @@ class TestVectorizedScanEquivalence:
             b = ec2._scan_substrate_reference(emb, "world", 0.85, {}, "gA")
             r2 = ec2.pattern_complete_or_separate(emb, modality="world", threshold=0.85, geometry="gA")
             assert a[0] == b[0]
-            assert (r2.node_id == b[0]) == (not r2.is_new) or b[0] is None
+            if b[0] is None:
+                assert r2.is_new, "reloaded EC completed where the reference separated"
+            else:
+                assert not r2.is_new and r2.node_id == b[0]
 
 
 class TestA4GainEncoding:
