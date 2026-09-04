@@ -276,11 +276,13 @@ def apply_mesh_setup(
 def _write_secret_ref(secret_path: Path, key: str) -> Path:
     """Write ``key`` to ``secret_path`` as a mode-0600 file and return the path.
 
-    ``atomic_write_secret`` PRESERVES an existing mode but does not set one on a
-    fresh file (it inherits umask → 0644). A key file must be 0600, so tighten
-    umask around the create AND chmod explicitly — the belt-and-suspenders the
-    peer.yml→config migration uses (config_unification C4). The stored ref is
-    always the file PATH; the inline key never touches config.json.
+    Since the 2026-09-04 console-auth review fold, ``atomic_write_secret``
+    itself guarantees 0600 from fd creation on fresh files (``initial_mode``) —
+    the umask-tighten + chmod here predate that fix and stay as harmless
+    belt-and-suspenders (the peer.yml→config migration's pattern,
+    config_unification C4); do NOT copy this shape into new callers, the
+    writer alone now suffices. The stored ref is always the file PATH; the
+    inline key never touches config.json.
     """
     _prev_umask = os.umask(0o077)
     try:

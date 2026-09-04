@@ -153,6 +153,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   answers).
 
 ### Fixed
+- `config_writer._write_secret_ref` docstring no longer claims `atomic_write_secret` inherits
+  the umask on fresh files — stale since the #613 review fold made fresh secrets 0600 from fd
+  creation (`initial_mode`); the local umask+chmod is marked as predating belt-and-suspenders
+  with a do-not-copy note. Comment-only, recovered from an orphaned post-merge commit (#614).
 - **D76 — declared affordance param defaults now actually apply at execute time** (previously
   schema decoration the LLM was shown and `execute` never honored; found via minecraft_bread's
   defaulted `target`; absent/None/"" all take the default, 0/False preserved).
