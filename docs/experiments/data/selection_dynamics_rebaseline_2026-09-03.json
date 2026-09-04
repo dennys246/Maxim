@@ -1,0 +1,36 @@
+{
+  "harness": "scripts/selection_dynamics_rebaseline.py",
+  "ts": "2026-09-04T02:16:47.736707+00:00",
+  "provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "0f699d4907b1",
+    "working_tree_dirty_src_scripts": false,
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages"
+  },
+  "metric": "flip/gate-pass/term-range characterization, 2 vs 3 channels, real NAc",
+  "decision": "min_confidence stays 0.3 for 1.1.4 (baseline, not a gate); 1.2 calibrates on real distributions",
+  "seed": 42,
+  "result": {
+    "trials": 2000,
+    "tools": 4,
+    "min_confidence": 0.3,
+    "flip_fraction": 0.3815,
+    "none_to_some_fraction": 0.087,
+    "some_to_none_fraction": 0.063,
+    "gate_pass_fraction": {
+      "two": 0.8335,
+      "three": 0.8575
+    },
+    "cluster_term_observed_range": {
+      "two": [
+        -1.987,
+        1.98
+      ],
+      "three": [
+        -2.844,
+        2.84
+      ]
+    }
+  }
+}

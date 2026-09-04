@@ -259,8 +259,9 @@ same measure-before-composing discipline as D3; value/range lockstep pinned unde
 place-code arms); every bundled body reads byte-identical (world channel empty — swept in
 `tests/unit/test_world_channel.py`). The `drive: null` sub-sensor guard verified red on the
 pre-fix code. **Re-baseline (characterization, not a gate):** at synthetic uniform ±1 biases
-over 4 tools, the third channel flips 44% of recommendations while the 0.3 gate-pass rate is
-unchanged (0.86 both arms) and the summed cluster term widens ±2 → ±3 (observed ±2.6).
+over 4 tools (2,000 trials), the third channel flips 38% of recommendations, the 0.3
+gate-pass rate moves 0.83 → 0.86, and the summed cluster term widens ±2 → ±3 (observed
+±2.84).
 `min_confidence` stays 0.3 for 1.1.4 (the channel is inert for every existing body); the
 record is the reference for 1.2's calibration on real distributions. Data:
 `docs/experiments/data/selection_dynamics_rebaseline_2026-09-03.json`.
