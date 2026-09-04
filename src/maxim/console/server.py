@@ -1,6 +1,9 @@
 """FastAPI app for ``maxim serve`` — the Console backend + facade contract.
 
-Binds **127.0.0.1 only** (it holds keys and can run/configure Maxim), and is
+Binds **127.0.0.1 only** under ``maxim serve`` (it holds keys and can
+run/configure Maxim; a device EMBEDDER that binds its own interface must admit
+its advertised origin via ``build_app(extra_trusted_origins=…)`` and hand the
+owner the ``device_console_handoff`` URL — see the device-handoff block), and is
 **bearer-authenticated, always on, fail-closed** (see the auth block): every
 ``/api/*`` route, ``/docs``, ``/openapi.json`` and ``/ws`` requires the
 console token (``~/.config/maxim/console_token``, printed by ``maxim serve``
@@ -45,7 +48,7 @@ import secrets
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from urllib.parse import urlsplit
 
@@ -1469,7 +1472,11 @@ def _drain_and_stop_handle(
 
 
 def build_app(
-    ui_dist: Path | None = None, ui_source: str = "none", *, auth_token: Any = _READ_TOKEN_FROM_DISK
+    ui_dist: Path | None = None,
+    ui_source: str = "none",
+    *,
+    auth_token: Any = _READ_TOKEN_FROM_DISK,
+    extra_trusted_origins: Sequence[str] = (),
 ) -> FastAPI:
     """Construct the Console FastAPI app. ``ui_dist`` = the built static bundle.
 
@@ -1482,6 +1489,16 @@ def build_app(
     that file exists first), or inject a value directly (tests, embedders).
     ``None`` — injected or read from an absent file — FAILS CLOSED: every
     authed surface refuses.
+
+    ``extra_trusted_origins`` (keyword-only) is for an EMBEDDER that
+    deliberately serves this app on a non-loopback interface (the Reachy
+    device app binding its LAN address): each entry is admitted to the trust
+    policy exactly as a ``console.allowed_origins`` entry would be — its host
+    passes the Host guard, the origin passes the CSRF/``/ws`` Origin guard.
+    Entries canonicalize LOUDLY (junk raises ``ConfigurationError`` at build
+    time, same as the config list). This widens the browser-relay trust
+    guard ONLY — bearer auth is unaffected and stays fail-closed. Default
+    ``()`` keeps every existing caller byte-identical.
     """
     sandbox = _sandbox_policy()
     if sandbox is not None:
@@ -1544,7 +1561,15 @@ def build_app(
         lifespan=_lifespan,
     )
     app.state.sandbox = sandbox
-    app.state.trust = _trust_policy()
+    trust = _trust_policy()
+    if extra_trusted_origins:
+        extra = _canonical_origin_list(extra_trusted_origins)  # loud on junk, like the config list
+        extra_hosts = {h for origin in extra if (h := urlsplit(origin).hostname)}
+        trust = _TrustPolicy(
+            allowed_origins=trust.allowed_origins | extra,
+            allowed_hosts=trust.allowed_hosts | frozenset(extra_hosts),
+        )
+    app.state.trust = trust
     # Fail-closed by construction: build_app READS the token (run_serve is the
     # one place that creates it); an embedder that never provisioned one gets
     # an app whose authed surfaces all refuse, not an open console. Tests and
@@ -1759,6 +1784,66 @@ def build_app(
     return app
 
 
+# ── device (embedder) handoff ───────────────────────────────────────────────
+
+
+@dataclasses.dataclass(frozen=True)
+class ConsoleHandoff:
+    """The sign-in handoff for a device-embedded console (Reachy app).
+
+    ``url`` carries the console token in the URL FRAGMENT (``/#token=…``) —
+    a fragment never leaves the browser, so it cannot reach access logs
+    (design A5); the UI's fragment bootstrap consumes it, stores it, and
+    strips the address bar. ``origin`` is the matching ``scheme://host:port``
+    to pass to :func:`build_app` as ``extra_trusted_origins``.
+
+    A7 contract: ``url`` CONTAINS the token. Hand it only to the deliberate
+    owner-facing surface (the Pollen dashboard's ``custom_app_url`` — the ⚙️
+    icon on the running app's tile); never a logger. ``repr()``/``str()``
+    redact it so an accidental log of the OBJECT leaks nothing.
+    """
+
+    url: str
+    origin: str
+
+    def __repr__(self) -> str:  # tokens must not leak through debug output
+        return f"ConsoleHandoff(url='{self.origin}/#token=<redacted>', origin={self.origin!r})"
+
+    __str__ = __repr__
+
+
+def device_console_handoff(host: str, port: int = 8765) -> ConsoleHandoff:
+    """Mint-or-reuse the console token and return the device sign-in handoff.
+
+    The seam a device bootstrap (maxim-pulse ``apps/reachy``) calls so the
+    bootstrap stays thin glue: ONE call here, assign ``handoff.url`` to the
+    app's ``custom_app_url``, pass ``[handoff.origin]`` to ``build_app`` —
+    all auth logic stays in pymaxim. Token storage is the same
+    ``~/.config/maxim/console_token`` file ``maxim serve`` uses
+    (:func:`maxim.tunnel.keys.ensure_console_token`; 0600 from creation), so
+    ``--show-token`` / ``--rotate-token`` and per-request disk re-read (A7
+    rotation) all keep working on-device.
+
+    Trust statement (the embedder MUST declare this in its privacy notes):
+    anyone who can open the robot's dashboard can click the app's ⚙️ link and
+    is signed in to the console. That is Pollen's existing dashboard trust
+    boundary — whoever reaches the dashboard already commands the robot —
+    and it is the vendor's ONLY owner-facing app surface (no per-app secret
+    store, no log panel), so the credential rides it rather than a wider one
+    (contrast: a first-comer LAN pairing window would ADD an unauthenticated
+    network path; this adds none).
+    """
+    from maxim.tunnel.keys import ensure_console_token
+
+    host = (host or "").strip()
+    origin = _canonical_origin(f"http://{host}:{port}" if ":" not in host else f"http://[{host}]:{port}")
+    if origin is None:
+        from maxim.runtime.config_loader import ConfigurationError
+
+        raise ConfigurationError(f"device_console_handoff: {host!r}:{port!r} does not form a valid origin")
+    return ConsoleHandoff(url=f"{origin}/#token={ensure_console_token()}", origin=origin)
+
+
 # ── CLI runner ──────────────────────────────────────────────────────────────
 
 
@@ -1858,26 +1943,44 @@ def run_serve(argv: list[str]) -> int:
     import uvicorn
 
     # 127.0.0.1 ONLY — the console holds keys + can run/configure Maxim.
+    # Every banner print flushes: under a redirected stdout (log file,
+    # launchd, the Reachy app runner) block buffering would otherwise hold
+    # the #token= URL until process EXIT while uvicorn's stderr appears
+    # immediately — the operator's one sign-in handoff, invisible exactly
+    # when the console runs unattended. The token stays on STDOUT on
+    # purpose (A7): the banner is the deliberate handoff; a logger is not.
     if ui_dist is not None:
-        print(f"maxim serve → serving Console UI from {ui_dist}")
+        print(f"maxim serve → serving Console UI from {ui_dist}", flush=True)
     if token is not None and ui_dist is not None:
         # FRAGMENT, not query: a #token never reaches the server, so it cannot
         # land in access logs (design A5). The UI reads it, stores it, and
         # strips it from the address bar; every later visit needs no token.
-        print(f"maxim serve → http://127.0.0.1:{port}/#token={token}")
-        print("maxim serve → open the URL above (the token signs this browser in once; --show-token reprints)")
-        print("maxim serve → /docs and /openapi.json require the Bearer token (API clients, not browsers)")
+        print(f"maxim serve → http://127.0.0.1:{port}/#token={token}", flush=True)
+        print(
+            "maxim serve → open the URL above (the token signs this browser in once; --show-token reprints)",
+            flush=True,
+        )
+        print(
+            "maxim serve → /docs and /openapi.json require the Bearer token (API clients, not browsers)",
+            flush=True,
+        )
     elif token is not None:
         # No UI bundle: a #token= URL would land on the static fallback page,
         # which cannot consume it, and /docs 401s in a browser (review fold) —
         # hand the operator the working form instead.
-        print(f"maxim serve → http://127.0.0.1:{port}  (no UI bundle; API is Bearer-authenticated)")
-        print(f'maxim serve → e.g.  curl -H "Authorization: Bearer {token}" http://127.0.0.1:{port}/api/identity')
+        print(f"maxim serve → http://127.0.0.1:{port}  (no UI bundle; API is Bearer-authenticated)", flush=True)
+        print(
+            f'maxim serve → e.g.  curl -H "Authorization: Bearer {token}" http://127.0.0.1:{port}/api/identity',
+            flush=True,
+        )
     else:
-        print(f"maxim serve → http://127.0.0.1:{port}  (API docs: /docs · schema: /openapi.json)")
+        print(f"maxim serve → http://127.0.0.1:{port}  (API docs: /docs · schema: /openapi.json)", flush=True)
     if agent_id != _DEFAULT_HANDLE_AGENT_ID:
-        print(f"maxim serve → fronting agent {agent_id!r} (console.agent_id)")
+        print(f"maxim serve → fronting agent {agent_id!r} (console.agent_id)", flush=True)
     if sandbox_on:
-        print("maxim serve → sandbox mode ON (console.sandbox) — engine auth OFF; the proxy owns the edge")
+        print(
+            "maxim serve → sandbox mode ON (console.sandbox) — engine auth OFF; the proxy owns the edge",
+            flush=True,
+        )
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
     return 0

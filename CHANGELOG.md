@@ -24,6 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Console device handoff (hardening decision A9)** — the seam that puts the Reachy
+  on-device console within reach of its owner: `console/server.py::device_console_handoff(host,
+  port)` mints-or-reuses the standard `console_token` (same file, same rotation story) and
+  returns a `ConsoleHandoff` whose `/#token=` fragment URL is made for Pollen's
+  `custom_app_url` dashboard link (redacting `repr`, A7 — the token never reaches a log
+  line), and `build_app` gained keyword-only `extra_trusted_origins=` so an embedder binding
+  a LAN interface admits its own advertised origin to the browser-relay trust guard (loud
+  canonicalization; bearer auth unaffected; wire contract unmoved — 0.4.0 stands).
+- `console/ui_bundle.py::check_ui_contract` now WARNs when a servable bundle carries no
+  `maxim-ui.json` — post pulse `console-auth-040` every build stamps one, so absence is a
+  build-path bug, not "normal" (docstrings rewritten to match).
 - **1.1.4 PR 4 — the two-AUT-one-world harness; THE 1.1.4 SHIP GATE, green and non-vacuous
   in CI**: `simulation/minecraft_harness.py` (per-AUT assembly on the canonical builders,
   staleness-gated sensor pump, deterministic `FakeBridgeServer`, non-vacuous smoke verdict) +
@@ -153,6 +164,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   answers).
 
 ### Fixed
+- `maxim serve` banner prints now flush: under a redirected stdout (log file, launchd, the
+  Reachy app runner) block buffering held the `#token=` sign-in URL until process exit while
+  uvicorn's stderr appeared immediately. The token stays on stdout by design (A7: the banner
+  is the deliberate handoff; a logger is not); the guard test hard-exits the child
+  (`os._exit`) so an unflushed banner cannot be rescued by exit-time flushing.
 - `config_writer._write_secret_ref` docstring no longer claims `atomic_write_secret` inherits
   the umask on fresh files — stale since the #613 review fold made fresh secrets 0600 from fd
   creation (`initial_mode`); the local umask+chmod is marked as predating belt-and-suspenders

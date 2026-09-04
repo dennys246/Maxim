@@ -3,7 +3,12 @@
 **Status:** ACTIVE — PR 1 (trust guard) MERGED #609 (2026-09-03); PR 2 (bearer auth)
 IMPLEMENTED per decisions A1–A8 on `feat/console-auth` (2026-09-04; one A7 sharpening: disk
 tokens are re-read per request so rotation bites with NO restart); PRs 3–4 sequenced below.
-Pulse-side ledger (A6) remains open in the maxim-pulse repo.
+Pulse-side ledger (A6) CLOSED 2026-09-04 by maxim-pulse `console-auth-040` (login/paste-token
+screen, fragment bootstrap, Bearer on FacadeClient, ws subprotocol on EventClient, contract
+stamp 0.4.0 — Playwright-verified against `maxim serve` @ 24e0c1ab). Owed from that close:
+re-vendor the packaged bundle (`scripts/vendor_console_ui.py`) once `console-auth-040` is
+tagged — `src/maxim/console/ui_dist` is still 0.3.0-era (app_version 0.0.1).
+A9 (device handoff, below) added 2026-09-04 for the Reachy on-device console.
 **Motivating goal:** a phone app (client + sensory surface) that reaches the operator's own leader
 over the Cloudflare tunnel and speaks the console facade + `/ws`. Target window: post-1.1.4;
 app ships against a stabilized contract (see "Contract freeze" below).
@@ -180,6 +185,28 @@ clients never see them); PR 2's 401s WILL be client-visible, so error-shape docu
 enters the contract there, batched with the token-flow contract addition (pulse regen via
 `gen:facade`).
 
+- **A9 — device handoff (Reachy on-device console; added 2026-09-04).** On the robot there
+  is no terminal to read the `#token=` banner from: the owner reaches the app's page from
+  Pollen's dashboard, and until this decision nothing on-device ever minted the token — the
+  fail-closed design showed a paste screen for a credential that existed nowhere readable.
+  Decided from the VENDOR's surface (not convenience — the head-frame lesson): Pollen's
+  `ReachyMiniApp` exposes exactly one owner-facing app surface, `custom_app_url` (the ⚙️
+  icon on a running app's dashboard tile opens it; `dont_start_webserver=True` stops the
+  SDK's own static server); there is no per-app secret store and no dashboard log panel.
+  So the credential rides that surface: `server.py::device_console_handoff(host, port)`
+  mints-or-reuses the standard `console_token` file and returns a `ConsoleHandoff`
+  (redacting repr, A7) whose `url` is the `/#token=` fragment form (A5) for
+  `custom_app_url`, and whose `origin` feeds the new keyword-only
+  `build_app(extra_trusted_origins=…)` — the embedder's explicit, code-level admission of
+  its own advertised LAN origin to the PR 1 trust guard (Host + Origin belts; bearer auth
+  unaffected). **Trust statement:** anyone who can open the robot's dashboard can click ⚙️
+  and is signed in — exactly Pollen's existing dashboard trust boundary (that person
+  already commands the robot; Pollen's own `/ws/sdk` is unauthenticated on the LAN). A
+  first-comer pairing window was REJECTED: it would add an unauthenticated network path of
+  our own; the ⚙️ link adds none. Pulse must declare this in `apps/reachy/PRIVACY.md`
+  (gate P3). No wire change — the fragment form and bearer scheme are 0.4.0 as shipped;
+  `CONSOLE_CONTRACT_VERSION` stays.
+
 **PR 3 — admission control (M1).**
 Body-size caps and per-client rate limit on `/api/run` + `/api/probe`; `limit_concurrency` +
 `ws_max_size` on `uvicorn.run`; generalize `leader_proxy`'s `_check_admission` machinery
@@ -209,6 +236,10 @@ rule, recorded here so the app plan can cite it.
 
 - Hosted console (centralizing keys/agents) — unchanged non-goal from
   [deferred/maxim_console.md](deferred/maxim_console.md).
-- Binding beyond 127.0.0.1. The tunnel carries the resource to loopback; the bind stays.
+- Binding beyond 127.0.0.1 **in `maxim serve`**. The tunnel carries the resource to
+  loopback; the CLI's bind stays. An EMBEDDER calling `build_app` directly (the Reachy
+  device app) owns its own bind decision and must pair a non-loopback bind with
+  `extra_trusted_origins` + the A9 handoff — the guard still refuses every origin the
+  embedder did not explicitly admit.
 - CORS allowances. No `Access-Control-Allow-Origin` is a feature: cross-origin pages must not
   read console responses. The trust guard refuses; it never invites.
