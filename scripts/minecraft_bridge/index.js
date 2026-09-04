@@ -48,20 +48,45 @@ function send(obj) {
 }
 
 function snapshot() {
+  // Emits EVERY modality:world sensor bodies/minecraft_player.yaml declares
+  // (16 — the L11 re-measure needs the channel above the ~12 safe band);
+  // the lockstep is test-pinned on the Python side via FakeBridgeServer.
+  const me = bot.entity;
   const hostiles = Object.values(bot.entities).filter(
-    (e) => e.kind === "Hostile mobs" && e.position && bot.entity && bot.entity.position
+    (e) => e.kind === "Hostile mobs" && e.position && me && me.position
   );
   let nearest = 64;
   for (const h of hostiles) {
-    const d = bot.entity.position.distanceTo(h.position);
+    const d = me.position.distanceTo(h.position);
     if (d < nearest) nearest = d;
   }
+  let nearestPlayer = 64;
+  for (const p of Object.values(bot.players)) {
+    if (p.username !== bot.username && p.entity && p.entity.position && me && me.position) {
+      const d = me.position.distanceTo(p.entity.position);
+      if (d < nearestPlayer) nearestPlayer = d;
+    }
+  }
+  const spawn = bot.spawnPoint || (me ? me.position : null);
+  const distSpawn = me && spawn ? Math.min(128, me.position.distanceTo(spawn)) : 0;
+  const vel = me ? me.velocity : null;
+  const speed = vel ? Math.min(1, Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z)) : 0;
   return {
     health: bot.health ?? 20,
     food: bot.food ?? 20,
-    light_level: bot.world && bot.entity ? (bot.world.getBlockLight?.(bot.entity.position) ?? 7) : 7,
-    y_altitude: bot.entity ? bot.entity.position.y : 64,
+    saturation: Math.min(10, bot.foodSaturation ?? 5),
+    oxygen: bot.oxygenLevel ?? 20,
+    light_level: bot.world && me ? (bot.world.getBlockLight?.(me.position) ?? 7) : 7,
+    y_altitude: me ? me.position.y : 64,
     nearest_hostile_dist: nearest,
+    hostile_count: Math.min(32, hostiles.length),
+    nearest_player_dist: nearestPlayer,
+    distance_from_spawn: distSpawn,
+    speed,
+    on_ground: me && me.onGround ? 1 : 0,
+    is_raining: bot.isRaining ? 1 : 0,
+    xp_level: Math.min(50, bot.experience ? bot.experience.level : 0),
+    look_pitch: me ? me.pitch : 0,
     time_of_day: bot.time ? (bot.time.timeOfDay % 24000) / 24000 : 0,
   };
 }

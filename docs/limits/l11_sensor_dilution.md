@@ -228,10 +228,19 @@ resource, plan as one.
 > which is synthetic; it discharges nothing here. **Dated 2026-09-04, later: the first
 > LIVE feed has happened** (Paper 1.16.5, real hostiles —
 > `docs/experiments/data/minecraft_live_smoke_2026-09-04.json`), so this trigger is now
-> FIRED FOR REAL. What remains is the re-measure itself: the bake-off's frozen metric run
-> over real correlated sensor traces from the live channel (its own small protocol, not the
-> smoke's job), at the world channel's actual N — which is currently SIX, inside A4's
-> measured-poor band; that tension is what the re-measure decides.
+> FIRED FOR REAL. **Dated 2026-09-04, prereg PR: the protocol is FROZEN** —
+> [docs/experiments/protocols/l11_remeasure_preregistration.md](../experiments/protocols/l11_remeasure_preregistration.md)
+> (implementation `scripts/l11_real_trace_remeasure.py`; capture + analyze owed as its own
+> data PR). Two triggers fired and taken deliberately in the same PR: the body GREW past the
+> band (6 → **16** world sensors — the trigger's own first branch, "grows toward its
+> Minecraft-scale sensor set", dissolving the N=6 tension), and the growth moved the world
+> channel's GEOMETRY TAG (declared_sensors is hashed — D4's designed case; no persisted
+> store carries old-tag world nodes, the live-smoke record is a counts summary, and any
+> stray reload takes gate-1's skip-and-warn). The prereg's pre-freeze review round also
+> measured a NEW instance of this limit's own principle: rest-at-extreme range declarations
+> make the gained background maximally loud (event cos 0.926 — blind); ranges re-centered so
+> REST sits at the A4 neutral measured 0.747 vs the ungained 0.960 — the range declaration
+> is part of the design under test, recorded in the prereg's known-limit acknowledgments.
 
 - `similarity/encoder.py::_sensor_embed` change (the encoding equation)
 - `SensorEncoderConfig.pattern_threshold` change — **including shipping the scaled

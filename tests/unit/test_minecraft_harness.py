@@ -170,7 +170,14 @@ class TestReducedEndToEndSmoke:
                 pumps.append(pump)
 
             threads = [
-                threading.Thread(target=run_minecraft_aut, kwargs={"aut": a, "max_steps": 30, "target_hz": 8.0})
+                threading.Thread(
+                    # 60 steps (not 30): the gained N=16 channel legitimately
+                    # CONCENTRATES (~4 clusters vs the 6-sensor body's ~12),
+                    # so a contended loop needs more proposal ticks to clear
+                    # the >=2 change-driven bar — widen the run, never the gate.
+                    target=run_minecraft_aut,
+                    kwargs={"aut": a, "max_steps": 60, "target_hz": 8.0},
+                )
                 for a in auts
             ]
             for t in threads:
@@ -224,3 +231,182 @@ class TestReducedEndToEndSmoke:
             if aut is not None:
                 aut.client.close()
             server.close()
+
+
+class TestBodyFakeLockstep:
+    def test_fake_snapshot_covers_every_declared_world_sensor(self):
+        """The L11 lockstep: the fake's snapshot keys must cover the body's
+        declared modality:world set exactly — a fake that drifts under the
+        body silently starves sensors in the CI smoke, and one that grows
+        past it emits keys the backend ignores."""
+        import yaml
+
+        from maxim.utils.paths import bundled_data
+
+        spec = yaml.safe_load((bundled_data() / "components" / "bodies" / "minecraft_player.yaml").read_text())
+        declared = {
+            name
+            for name, sd in spec["entity"]["sensors"].items()
+            if isinstance(sd, dict) and sd.get("modality") == "world"
+        }
+        assert len(declared) >= 13, "the L11 re-measure needs the channel above the ~12 safe band"
+        fake = FakeBridgeServer(seed=1)
+        try:
+            snap = fake._snapshot()
+        finally:
+            fake.close()
+        assert set(snap) == declared, (
+            f"fake/body drift: fake-only={set(snap) - declared} body-only={declared - set(snap)}"
+        )
+
+
+class TestL11AnalyzerOnSyntheticTrace:
+    def test_analyzer_produces_both_arms_and_a_verdict(self, tmp_path):
+        """The frozen analyzer end to end on a synthetic mini-trace with
+        REALISTIC capture timing (the review round caught the first draft
+        encoding ideal timing the real capture never produces): the event
+        line carries the ts of the PRE-event snapshot, and the changed
+        state lands in the NEXT snapshot — exactly how capture() writes.
+        Numbers here are not evidence; the shape and the timing are."""
+        import importlib.util
+        import json as _json
+        import random
+        from datetime import datetime, timedelta, timezone
+        from pathlib import Path as _P
+
+        spec = importlib.util.spec_from_file_location(
+            "l11r", str(_P(__file__).resolve().parents[2] / "scripts" / "l11_real_trace_remeasure.py")
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        rng = random.Random(3)
+        t0 = datetime.now(timezone.utc)
+        base = {
+            "health": 20.0,
+            "food": 20.0,
+            "saturation": 5.0,
+            "oxygen": 20.0,
+            "light_level": 7.0,
+            "y_altitude": 64.0,
+            "nearest_hostile_dist": 64.0,
+            "hostile_count": 0.0,
+            "nearest_player_dist": 64.0,
+            "distance_from_spawn": 2.0,
+            "speed": 0.0,
+            "on_ground": 1.0,
+            "is_raining": 0.0,
+            "xp_level": 0.0,
+            "look_pitch": 0.0,
+            "time_of_day": 0.6,
+        }
+        event_at = {
+            100: "damage",
+            200: "spawn",
+            300: "damage",
+            400: "spawn",
+            470: "damage",
+            500: "spawn",
+            530: "damage",
+            560: "spawn",
+            590: "damage",
+        }
+        trace = tmp_path / "trace.jsonl"
+        with trace.open("w") as f:
+            f.write(_json.dumps({"kind": "header", "ts": t0.isoformat()}) + "\n")
+            excited = 0
+            for i in range(650):
+                ts = (t0 + timedelta(seconds=0.5 * i)).isoformat()
+                state = {k: v + rng.gauss(0, 0.005 * (abs(v) + 1)) for k, v in base.items()}
+                if excited > 0:
+                    # post-event world: the changed values PERSIST a few frames
+                    state["health"] = 6.0 + rng.gauss(0, 0.1)
+                    state["nearest_hostile_dist"] = 2.0 + rng.gauss(0, 0.1)
+                    state["hostile_count"] = 4.0
+                    excited -= 1
+                f.write(_json.dumps({"kind": "snapshot", "ts": ts, "state": state}) + "\n")
+                if i in event_at:
+                    # capture() stamps the drain with the SAME clock as the
+                    # snapshot it just wrote — the pre-event push
+                    f.write(_json.dumps({"kind": "event", "ts": ts, "event_kind": event_at[i], "text": "x"}) + "\n")
+                    excited = 4
+        out = tmp_path / "verdict.json"
+
+        class _A:
+            pass
+
+        a = _A()
+        a.trace = str(trace)
+        a.json = str(out)
+        a.allow_dirty = True  # synthetic shape test, not evidence
+        rc = mod.analyze(a)
+        assert rc == 0
+        verdict = _json.loads(out.read_text())
+        for arm in ("A4", "A0"):
+            for key in ("stability", "separation", "discrimination", "primary_min", "clusters"):
+                assert key in verdict["result"][arm]
+        assert verdict["result"]["decision"]["verdict"] in (
+            "retired-eligible",
+            "mitigation-confirmed",
+            "not-confirmed",
+            "refuted-blind",
+        )
+        assert verdict["result"]["apparatus"]["resolved_onsets"] >= 8
+
+    def test_analyzer_refuses_a_trace_with_no_resolvable_onsets(self, tmp_path):
+        """The review round's demonstrated gap, pinned: events past the last
+        snapshot resolve to no onset and must REFUSE (exit 4), never
+        zero-fill into a verdict."""
+        import importlib.util
+        import json as _json
+        from datetime import datetime, timedelta, timezone
+        from pathlib import Path as _P
+
+        spec = importlib.util.spec_from_file_location(
+            "l11r2", str(_P(__file__).resolve().parents[2] / "scripts" / "l11_real_trace_remeasure.py")
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        t0 = datetime.now(timezone.utc)
+        base = {
+            "health": 20.0,
+            "food": 20.0,
+            "saturation": 5.0,
+            "oxygen": 20.0,
+            "light_level": 7.0,
+            "y_altitude": 64.0,
+            "nearest_hostile_dist": 64.0,
+            "hostile_count": 0.0,
+            "nearest_player_dist": 64.0,
+            "distance_from_spawn": 2.0,
+            "speed": 0.0,
+            "on_ground": 1.0,
+            "is_raining": 0.0,
+            "xp_level": 0.0,
+            "look_pitch": 0.0,
+            "time_of_day": 0.6,
+        }
+        trace = tmp_path / "trace.jsonl"
+        with trace.open("w") as f:
+            for i in range(620):
+                ts = (t0 + timedelta(seconds=0.5 * i)).isoformat()
+                f.write(_json.dumps({"kind": "snapshot", "ts": ts, "state": dict(base)}) + "\n")
+            for j in range(10):  # all AFTER the last snapshot: zero onsets
+                ts = (t0 + timedelta(seconds=400 + j)).isoformat()
+                f.write(
+                    _json.dumps({"kind": "event", "ts": ts, "event_kind": "damage" if j % 2 else "spawn", "text": "x"})
+                    + "\n"
+                )
+
+        class _A:
+            pass
+
+        a = _A()
+        a.trace = str(trace)
+        a.json = str(tmp_path / "v.json")
+        a.allow_dirty = True
+        import pytest as _pytest
+
+        with _pytest.raises(SystemExit) as exc:
+            mod.analyze(a)
+        assert exc.value.code == 4
