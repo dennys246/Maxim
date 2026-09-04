@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-09-04 — "The world seam"
+
 ### Added
 - **1.1.4/L11 data — the pre-registered re-measure ran (live Paper 1.16.5, N=16 world
   sensors): verdict `mitigation-confirmed`, NOT retired-eligible.** A0 (the shipped limit)
