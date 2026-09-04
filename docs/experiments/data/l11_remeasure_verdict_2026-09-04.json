@@ -1,0 +1,52 @@
+{
+  "harness": "scripts/l11_real_trace_remeasure.py",
+  "ts": "2026-09-04T22:03:14.416391+00:00",
+  "provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "b6549a7b0ff8",
+    "working_tree_dirty_src_scripts": false,
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages"
+  },
+  "trace": "docs/experiments/data/l11_world_trace_2026-09-04.jsonl",
+  "prereg": "docs/experiments/protocols/l11_remeasure_preregistration.md",
+  "result": {
+    "apparatus": {
+      "snapshots": 1070,
+      "duplicate_fraction": 0.1031,
+      "resolved_onsets": 159,
+      "onset_kinds": [
+        "damage",
+        "death",
+        "spawn"
+      ],
+      "quiet_pairs": 642,
+      "discrimination_pairs": 3755,
+      "n_sensors_median": 16
+    },
+    "A4": {
+      "stability": 0.9984,
+      "separation": 0.0566,
+      "discrimination": 0.6309,
+      "primary_min": 0.0566,
+      "clusters": 3,
+      "clusters_per_100_snapshots": 0.28,
+      "same_cluster_fraction": 0.9794,
+      "gate_eligible_fraction": 0.1598
+    },
+    "A0": {
+      "stability": 1.0,
+      "separation": 0.0,
+      "discrimination": 0.0,
+      "primary_min": 0.0,
+      "clusters": 1,
+      "clusters_per_100_snapshots": 0.09,
+      "same_cluster_fraction": 0.9991,
+      "gate_eligible_fraction": 0.1598
+    },
+    "decision": {
+      "rule": "confirmed iff A4>=A0 primary AND A4 primary>0 AND A4 separation>0 at N>=13; retired-eligible iff also A4>=0.7; both-zero => refuted-blind",
+      "verdict": "mitigation-confirmed"
+    }
+  }
+}
