@@ -34,6 +34,7 @@ from maxim.utils.filesystem_policy import (
 )
 
 if TYPE_CHECKING:
+    from maxim.agents.permissions import AgentPermissions
     from maxim.agents.autonomy import AutonomyController
     from maxim.agents.bus import AgentBus
     from maxim.agents.fear_agent import FearAgent
@@ -98,14 +99,21 @@ def build_tool_registry(
     cwd = get_effective_cwd()
     mode_config = get_mode_filesystem_config(operational_mode, cwd)
 
-    # Ensure workspace exists for passive mode
+    # The `.maxim_workspace/` scaffold lives under the containment root: an
+    # override root when one is given, the CWD otherwise. Before this the
+    # scaffold was ALWAYS created under the CWD, even when every filesystem
+    # tool was scoped elsewhere by `allowed_dirs_override` — so a caller that
+    # had deliberately kept the process CWD out of the agent's reach (the
+    # console handle; a read-only-root deployment) still wrote into it on the
+    # first registry build (sandbox-launch, 2026-09-03).
+    workspace_base = allowed_dirs_override[0] if allowed_dirs_override else cwd
     if operational_mode == "passive":
-        workspace_path = ensure_workspace_exists(cwd)
+        workspace_path = ensure_workspace_exists(workspace_base)
         logger.info("Passive mode: filesystem restricted to workspace: %s", workspace_path)
     elif operational_mode == "active":
         # Also ensure workspace exists (for any tools that need it)
-        ensure_workspace_exists(cwd)
-        logger.info("Active mode: filesystem restricted to CWD: %s", cwd)
+        ensure_workspace_exists(workspace_base)
+        logger.info("Active mode: filesystem restricted to %s", workspace_base)
     else:
         logger.info("Singularity mode: full filesystem access")
 
@@ -306,6 +314,7 @@ def build_executor(
     tool_registry: ToolRegistry,
     *,
     pain_bus: "PainBus | None",
+    permissions: "AgentPermissions | None",
     nac: "NAc | None" = None,
     hippocampus: Any = None,
     scn: Any = None,
@@ -314,7 +323,6 @@ def build_executor(
     entity_ref: str | None = None,
     component_registry: "ComponentRegistry | None" = None,
     cerebellum: Any = None,
-    permissions: Any = None,
     entity_map: Any = None,
     distributor: Any = None,
     agent_id: str = "",

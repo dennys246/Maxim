@@ -7,7 +7,6 @@ These are module-level constants and static config loaders used by LLMRouter.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from typing import Any
 
 from maxim.models.language.cost_tracker import CostTrackerConfig, ModelPricing
@@ -179,10 +178,17 @@ def load_pricing_table(cfg: Any) -> dict[str, ModelPricing]:
 
 
 def load_cost_config(cfg: Any) -> CostTrackerConfig:
-    """Build cost tracker config from LLMConfig."""
+    """Build cost tracker config from LLMConfig.
+
+    ``state_path`` is left empty unless the operator set ``cost_state_path``
+    so that ``CostTrackerConfig.__post_init__`` resolves the default
+    (``<data_home>/util/cost_state.json``) — the single source of truth
+    that honours ``MAXIM_DATA_HOME``. Building the default here from
+    ``Path.home()`` silently pinned ``~/.maxim`` and made that resolver dead.
+    """
     raw = cfg.routing if isinstance(cfg.routing, dict) else {}
     return CostTrackerConfig(
-        state_path=str(raw.get("cost_state_path", str(Path.home() / ".maxim" / "util" / "cost_state.json"))),
+        state_path=str(raw.get("cost_state_path") or ""),
         persistence_interval_s=float(raw.get("cost_persistence_interval_s", 10.0) or 10.0),
         persistence_interval_n=int(raw.get("cost_persistence_interval_n", 5) or 5),
         reserved_budget_ratio=float(raw.get("reserved_budget_ratio", 0.2) or 0.2),

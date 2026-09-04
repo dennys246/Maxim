@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 from maxim.tools.base import Tool, ToolErrorKind, ToolOutput
+from maxim.utils.gpu_compat import env_flag as _env_flag
 
 
 class CodeSearchTool(Tool):
@@ -121,6 +122,16 @@ class RunTestsTool(Tool):
     }
 
     def execute(self, **kwargs) -> ToolOutput:
+        # Opt-in like BashTool: ``command`` is an arbitrary model-supplied
+        # argv run with no allowed_dirs and no dangerous-pattern filter, so
+        # "run the tests" was an ungated shell primitive.
+        if not _env_flag("MAXIM_ALLOW_RUN_TESTS", False):
+            return ToolOutput(
+                success=False,
+                error="RunTestsTool disabled. Set MAXIM_ALLOW_RUN_TESTS=1 to enable.",
+                error_kind=ToolErrorKind.PERMISSION_DENIED,
+            )
+
         command = kwargs.get("command", "python -m pytest")
         test_path = kwargs.get("test_path")
         timeout = kwargs.get("timeout", 120)

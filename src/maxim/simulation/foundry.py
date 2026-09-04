@@ -588,6 +588,7 @@ def run_gauntlet(
         executor = build_executor(
             registry,
             pain_bus=pain_bus,
+            permissions=None,
             nac=nac,
             hippocampus=hippocampus,
         )

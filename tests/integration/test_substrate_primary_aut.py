@@ -47,6 +47,7 @@ def _build_cradle_aut(*, entity_ref: str = "bodies/infant_humanoid"):
     executor = build_executor(
         registry,
         pain_bus=pain_bus,
+        permissions=None,
         nac=nac,
         entity_ref=entity_ref,
         component_registry=ComponentRegistry(),
@@ -238,6 +239,7 @@ class TestCradleSubstratePrimary:
         executor = build_executor(
             registry,
             pain_bus=None,
+            permissions=None,
             nac=None,
             entity_ref=None,
             component_registry=None,

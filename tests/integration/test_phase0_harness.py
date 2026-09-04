@@ -46,6 +46,7 @@ def _build_infant_aut():
     executor = build_executor(
         registry,
         pain_bus=pain_bus,
+        permissions=None,
         nac=nac,
         entity_ref="bodies/infant_humanoid",
         component_registry=ComponentRegistry(),

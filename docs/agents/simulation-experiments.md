@@ -63,7 +63,7 @@ Core retains the three session-killing bullets (`--interactive false` from scrip
 - **Interactive changes get a logged session:** `MAXIM_LOG_FILE=/tmp/maxim.jsonl maxim --sim "test basic recall" --interactive --sim-max-turns 3`, then read the JSONL for percepts, tool calls, and `ACTION_FOLLOWUP` entries. `MAXIM_BACKEND_TRACE=1` for per-call token/latency.
 - **`~/.maxim/` is shared across worktrees** — don't run sims from concurrent sessions or they collide on persisted state.
 
-**Simulation reports** save to `~/.maxim/sessions/{session_id}/` — `report.json`, `actions.jsonl`, `aut_hippocampus.json`, `aut_nac.json`. Substrate-primary telemetry goes to `data/sim_sandbox/`. Research protocol details and campaign execution flow: `docs/simulation.md` + [docs/experiments/](../experiments/).
+**Simulation reports** save to `~/.maxim/sim_reports/{session_id}/` (`utils/paths.py::sim_reports`; `~/.maxim/sessions/` exists but has no non-test writer) — `report.json`, `actions.jsonl`, `aut_hippocampus.json`, `aut_nac.json`. The orchestrator's sim workspace (tmpdir, `sim_agent_*.jsonl` trace, substrate-primary telemetry) goes to `<data_home>/sim_sandbox/` via `orchestrator.py::_prepare_sim_workspace` — never CWD-relative (sandbox-launch, 2026-09-03); the CLI scenario path in `cli.py` still defaults its `--home-dir` to `data/`. Research protocol details and campaign execution flow: `docs/simulation.md` + [docs/experiments/](../experiments/).
 
 ## 5. Live gotchas / known gaps
 

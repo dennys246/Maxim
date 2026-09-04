@@ -32,6 +32,33 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 
+KIND_SELECTOR_PREFIX = "kind:"
+"""Prefix marking an allow/deny entry as a ``Tool.kind`` selector rather
+than an exact tool name (``kind:sem-modulator-derived``)."""
+
+
+def tool_permissions_from_settings(
+    allow: tuple[str, ...] | list[str] | None,
+    deny: tuple[str, ...] | list[str] | None,
+) -> AgentPermissions | None:
+    """Build the console's ``AgentPermissions`` from resolved ``tools.*`` settings.
+
+    ``allow=None`` and an empty ``deny`` is "unconfigured" and returns
+    ``None`` — the executor then has no permission gate at all, which is
+    the pre-1.1.3 console behaviour. Anything else returns a real
+    ``AgentPermissions`` (an explicit empty ``allow=()`` is a legitimate
+    "no tools" list, not unconfigured). The ``tools`` section itself is
+    declared in ``runtime/config_loader.py::ToolsConfigSection``.
+    """
+    deny_set = frozenset(deny or ())
+    if allow is None and not deny_set:
+        return None
+    return AgentPermissions(
+        tool_allow=frozenset(allow) if allow is not None else None,
+        tool_deny=deny_set,
+    )
+
+
 @dataclass(frozen=True)
 class SEMAccessRule:
     """A single SEM access rule.
@@ -60,18 +87,45 @@ class AgentPermissions:
     tool_allow: frozenset[str] | None = None  # When set, acts as an allow-list
     sem_access_rules: tuple[SEMAccessRule, ...] = ()
 
-    def can_invoke_tool(self, tool_name: str) -> tuple[bool, str | None]:
+    def can_invoke_tool(self, tool_name: str, *, kind: str | None = None) -> tuple[bool, str | None]:
         """Return ``(allowed, reason_if_denied)`` for *tool_name*.
+
+        Entries in ``tool_deny`` / ``tool_allow`` are exact tool names or
+        ``kind:<kind>`` selectors. A selector matches when *kind* (the
+        tool's ``Tool.kind``, looked up by the caller — this module never
+        touches the registry) equals ``<kind>``; generated SEM affordance
+        tools carry per-entity names, so ``kind:sem-modulator-derived``
+        is how a list admits or refuses all of them at once. ``kind=None``
+        (unregistered name, or a caller without the tool object) matches
+        no selector, so a name-only check is exactly the pre-selector
+        behaviour.
 
         The reason string is suitable for surfacing to the LLM as the
         ``ToolOutput.error`` body so the agent learns why a call was
         refused.
         """
-        if tool_name in self.tool_deny:
+        selector = f"{KIND_SELECTOR_PREFIX}{kind}" if kind else None
+        if tool_name in self.tool_deny or (selector is not None and selector in self.tool_deny):
             return False, f"Tool '{tool_name}' is denied by enforced permissions."
-        if self.tool_allow is not None and tool_name not in self.tool_allow:
+        if self.tool_allow is not None:
+            if tool_name in self.tool_allow or (selector is not None and selector in self.tool_allow):
+                return True, None
             return False, f"Tool '{tool_name}' is not in the enforced allow-list."
         return True, None
+
+    def denial_reason(self, tool_name: str, *, kind: str | None = None) -> str | None:
+        """The DENY half of :meth:`can_invoke_tool` only.
+
+        For the Executor's pre-alias check: a deny may target the alias
+        SOURCE name (deny ``shell``), so it must run on the raw name, but an
+        allow-list can only be judged on the canonical name after alias
+        resolution — otherwise ``recall`` is refused even though
+        ``memory_recall`` is allowed (review finding, sandbox-launch).
+        """
+        selector = f"{KIND_SELECTOR_PREFIX}{kind}" if kind else None
+        if tool_name in self.tool_deny or (selector is not None and selector in self.tool_deny):
+            return f"Tool '{tool_name}' is denied by enforced permissions."
+        return None
 
     def can_access_sem(self, entity: str, affordance: str) -> tuple[bool, str | None]:
         """Return ``(allowed, reason_if_denied)`` for an SEM affordance.

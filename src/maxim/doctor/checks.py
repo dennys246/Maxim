@@ -400,8 +400,8 @@ def check_resolved_config() -> list["CheckResult"]:
             )
             continue
 
-        # Render the value compactly
-        display_value = _format_doctor_value(value)
+        # Render the value compactly (secret fields redact inline keys)
+        display_value = _render_resolved_value(field_path, value)
 
         # Decide status + message based on source + env shadow
         if source == "env":
@@ -423,13 +423,11 @@ def check_resolved_config() -> list["CheckResult"]:
                         CheckResult(
                             name=field_path,
                             status="warn",
-                            message=f"{display_value}  [source=env, shadows config.json={_format_doctor_value(cfg_value)!s}]",
-                            fix=(
-                                f"To make config.json win, unset the env var:\n"
-                                f"  unset {env_name}\n"
-                                f"Or to make env explicit, update config.json:\n"
-                                f"  maxim config set {field_path} {env_raw}"
+                            message=(
+                                f"{display_value}  [source=env, shadows "
+                                f"config.json={_render_resolved_value(field_path, cfg_value)!s}]"
                             ),
+                            fix=_shadow_fix(field_path, env_name, env_raw),
                         )
                     )
             else:
@@ -755,6 +753,69 @@ def _format_doctor_value(value: object) -> str:
     if isinstance(value, str):
         return value if value else "<empty>"
     return repr(value)
+
+
+# Secret handling for the "Resolved Config" section. Doctor output is not
+# only the operator's terminal — the console hands it to every caller of
+# ``GET /api/diagnose`` — so a resolved value that IS a credential must
+# never be rendered verbatim. Same marker as
+# ``runtime/decision_log.py::_capture_env_snapshot``.
+_REDACTED = "<redacted>"
+_SECRET_FIELD_SUFFIXES: tuple[str, ...] = ("api_key", "api_key_ref", "token", "secret")
+
+
+def _is_secret_field(field_path: str) -> bool:
+    """True when the LAST segment of a dotted field path names a credential.
+
+    One predicate for the whole doctor module, so a future ``x.y.token``
+    or ``x.secret`` entry in ``_FIELD_TO_ENV`` inherits redaction without
+    anyone remembering to list it here.
+    """
+    leaf = field_path.rsplit(".", 1)[-1]
+    return any(leaf == suffix or leaf.endswith("_" + suffix) for suffix in _SECRET_FIELD_SUFFIXES)
+
+
+def _is_secret_reference(value: object) -> bool:
+    """True when a secret-field value is a REFERENCE — a file path or a
+    ``keyring:<service>:<account>`` URI — rather than the credential itself.
+
+    These are exactly the two shapes ``config_loader._validate_api_key_ref``
+    accepts for config.json. References are safe to print; anything else in
+    a secret field is inline key material (the loader deliberately lets
+    ``MAXIM_LANE_<TIER>_REMOTE_API_KEY`` hold one — see
+    ``config_loader._coerce_for_field``).
+    """
+    return isinstance(value, str) and (value.startswith(("/", "~")) or value.startswith("keyring:"))
+
+
+def _render_resolved_value(field_path: str, value: object) -> str:
+    """Render a resolved value for a doctor row.
+
+    Byte-identical to :func:`_format_doctor_value` for non-secret fields.
+    For secret fields the value prints only when it is a path / keyring
+    reference (or unset / empty); an inline key renders as ``<redacted>``.
+    """
+    if not _is_secret_field(field_path):
+        return _format_doctor_value(value)
+    if value is None or value == "" or _is_secret_reference(value):
+        return _format_doctor_value(value)
+    return _REDACTED
+
+
+def _shadow_fix(field_path: str, env_name: str, env_raw: str) -> str:
+    """Fix string for the env-shadows-config divergence row.
+
+    For a secret field holding inline key material the raw env value is
+    NEVER echoed into the copy/paste command — config.json refuses inline
+    keys anyway (I-3/IM3 fold), so the honest fix is the file-ref recipe.
+    """
+    unset = f"To make config.json win, unset the env var:\n  unset {env_name}\n"
+    if _is_secret_field(field_path) and not _is_secret_reference(env_raw):
+        return unset + (
+            "Or to make env explicit, write the key to a mode-0600 file and reference it by path:\n"
+            f"  maxim config set {field_path} ~/.config/maxim/api_key"
+        )
+    return unset + f"Or to make env explicit, update config.json:\n  maxim config set {field_path} {env_raw}"
 
 
 def _read_config_for_doctor(cfg, field_path: str):
@@ -1895,7 +1956,7 @@ def check_tunnel_config_sync() -> CheckResult:
 
 
 def check_api_key() -> CheckResult:
-    from maxim.tunnel.keys import key_exists, key_file_path, truncate_for_display, read_key
+    from maxim.tunnel.keys import key_exists, key_file_path
 
     if not key_exists():
         return CheckResult(
@@ -1908,11 +1969,12 @@ def check_api_key() -> CheckResult:
                 "  maxim tunnel key export   # shell snippets for peers"
             ),
         )
-    key = read_key() or ""
+    # Never render key material here, not even truncated: this row reaches
+    # every caller of ``GET /api/diagnose``, not only the operator's shell.
     return CheckResult(
         name="API key",
         status="ok",
-        message=f"{truncate_for_display(key)} at {key_file_path()}",
+        message=f"{_REDACTED} at {key_file_path()}",
     )
 
 
@@ -2335,12 +2397,12 @@ def check_peer_key_set() -> CheckResult:
             ),
             retry_id="peer-key",
         )
-    from maxim.tunnel.keys import truncate_for_display
 
     return CheckResult(
         name="Peer API key",
         status="ok",
-        message=f"key set: {truncate_for_display(key)}",
+        # Existence only — never key material, not even truncated (D71).
+        message=f"key set ({_REDACTED})",
     )
 
 

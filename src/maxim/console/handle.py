@@ -105,6 +105,15 @@ def _describe_silent_turn(turn: dict[str, Any]) -> str:
     return "(no reply — the turn took no action and said nothing)"
 
 
+# The tools a Talk turn may use: reply, read, and introspect — never mutate.
+# Module-level so the tests that pin the derived forbid set import the SAME
+# set the handle uses (a copied literal drifts silently). `list_directory`
+# and `recall` used to be listed here; neither is a registered tool name
+# (`recall` is only an executor alias for `memory_recall`), so they were dead
+# entries — dropped (review finding, sandbox-launch).
+TALK_CONVERSATIONAL_TOOLS: frozenset[str] = frozenset({"respond", "speak", "read_file", "glob", "sense_tools"})
+
+
 class MaximHandle:
     """A live handle on one persistent Maxim agent.
 
@@ -129,8 +138,10 @@ class MaximHandle:
         from maxim.runtime.agent_factory import AgentConfig, AgentFactory
         from maxim.runtime.bootstrap import build_tool_registry
 
-        if agent_id == "sim_aut":
-            raise ValueError("agent_id 'sim_aut' is reserved for the throwaway sim AUT")
+        from maxim.runtime.config_loader import SIM_AUT_AGENT_ID
+
+        if agent_id == SIM_AUT_AGENT_ID:
+            raise ValueError(f"agent_id {SIM_AUT_AGENT_ID!r} is reserved for the throwaway sim AUT")
 
         component_registry: Any | None = None
         if body is not None:
@@ -138,6 +149,14 @@ class MaximHandle:
 
             component_registry = ComponentRegistry()
 
+        # Hard tool allow/deny list from the operator config (``tools.allow``
+        # / ``tools.deny``, env ``MAXIM_TOOLS_ALLOW`` / ``MAXIM_TOOLS_DENY``).
+        # Unconfigured → None → no gate, exactly the pre-1.1.3 console.
+        from maxim.agents.permissions import tool_permissions_from_settings
+        from maxim.runtime.config_loader import resolve_setting
+
+        tool_allow, _ = resolve_setting("tools.allow")
+        tool_deny, _ = resolve_setting("tools.deny")
         config = AgentConfig(
             agent_id=agent_id,
             role="pc",
@@ -149,6 +168,7 @@ class MaximHandle:
             with_pain_bridge=body is not None,
             with_fear_gate=False,
             embodiment_ref=body,
+            permissions=tool_permissions_from_settings(tool_allow, tool_deny),
         )
         factory = AgentFactory(component_registry=component_registry)
         # A ResponseOutput is what makes RespondTool/SpeakTool exist — without
@@ -164,7 +184,18 @@ class MaximHandle:
             self._response_output = ResponseOutput(sandbox_path=str(sandbox))
         except Exception:
             logger.warning("Console handle: no ResponseOutput — talk() will not be able to reply", exc_info=True)
-        tool_registry = build_tool_registry(operational_mode="active", response_output=self._response_output)
+        # The agent's filesystem tools are scoped to ITS OWN workspace under
+        # the agent home, never the server's CWD: `maxim serve` runs wherever
+        # the operator launched it, and "active" mode would otherwise hand the
+        # agent `read_file`/`write_file`/`bash` over that directory. The same
+        # root is the talk loop's `FileSystemEnv` (see `_ensure_talk_loop`).
+        self._workspace = (Path(home) if home is not None else agent_data(agent_id)) / "workspace"
+        self._workspace.mkdir(parents=True, exist_ok=True)
+        tool_registry = build_tool_registry(
+            operational_mode="active",
+            response_output=self._response_output,
+            allowed_dirs_override=[str(self._workspace)],
+        )
         self.instance = factory.create_full_agent(
             config,
             tool_registry=tool_registry,
@@ -331,9 +362,8 @@ class MaximHandle:
 
             from maxim.agents.llm_worker import LLMWorker
             from maxim.runtime.lane_backends import build_primary_router
-            from maxim.utils.paths import agent_data
 
-            workspace = agent_data(self.agent_id) / "workspace"
+            workspace = self._workspace
             workspace.mkdir(parents=True, exist_ok=True)
 
             router, _lane_manager = build_primary_router()
@@ -387,11 +417,16 @@ class MaximHandle:
         # constraints ("AUTONOMOUS - only safety constraints apply"). An
         # allow-list here would be a silent no-op, and the handle's
         # registry (operational_mode="active") carries bash/write_file/
-        # edit_file scoped to the SERVER'S CWD. So the restriction is
-        # expressed as SafetyConstraints.forbidden_tools, which IS applied
-        # at every level. Keep the supervision policy too: it becomes live
-        # if talk is ever run SUPERVISED, and the two agree.
-        conversational = {"respond", "speak", "read_file", "list_directory", "glob", "recall", "sense_tools"}
+        # edit_file — scoped since sandbox-launch to the agent's OWN
+        # workspace via `allowed_dirs_override`, never the server's CWD.
+        # So the restriction is expressed as SafetyConstraints.forbidden_tools,
+        # which IS applied at every level (and, since sandbox-launch, is
+        # checked BEFORE autonomy's always-allowed shortcut — see
+        # tests/unit/test_autonomy_forbid_precedence.py). A hard operator
+        # allow-list is the separate `tools.allow` config, armed on the
+        # Executor (AgentConfig.permissions). Keep the supervision policy
+        # too: it becomes live if talk is ever run SUPERVISED, and the two agree.
+        conversational = set(TALK_CONVERSATIONAL_TOOLS)
         mutating = {
             t
             for t in (self.instance.tool_registry.list_all() if self.instance.tool_registry else ())
@@ -617,6 +652,7 @@ class MaximHandle:
         *,
         consolidation: Literal["full", "lightweight"] = "full",
         campaign_wait_s: float = 60.0,
+        talk_join_s: float = 20.0,
     ) -> None:
         """Shut the persistent agent down with an EXPLICIT consolidation flavor.
 
@@ -630,7 +666,11 @@ class MaximHandle:
         own session-end — the MemoryHub's atomic test-and-clear now guarantees
         single consolidation either way, but stopping mid-campaign would still
         steal the loop's consolidation slot, so we wait). On expiry, proceeds
-        LOUDLY — a hung campaign must not make stop() unbounded.
+        LOUDLY — a hung campaign must not make stop() unbounded. ``talk_join_s``
+        bounds the talk-loop join the same way (was a fixed 20 s inside
+        ``_stop_talk_loop``); together they let a caller with its own deadline
+        — a machine's stop grace, an operator's "end session" — choose short
+        waits without changing the lifespan's long defaults.
         """
         if self._stopped:
             return
@@ -650,7 +690,7 @@ class MaximHandle:
             # settles first (MemoryHub's atomic test-and-clear makes the second
             # consolidation a no-op either way, but a loop still touching the
             # bio-stack during shutdown is a race worth not having).
-            self._stop_talk_loop()
+            self._stop_talk_loop(join_s=talk_join_s)
             self.instance.shutdown(consolidation=consolidation)
         finally:
             if acquired:

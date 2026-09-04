@@ -580,6 +580,7 @@ class AgenticRuntimeMixin:
             executor = build_executor(
                 registry,
                 pain_bus=_pain_bus,
+                permissions=None,
                 nac=nac,
                 hippocampus=memory_hub.hippocampus if memory_hub else None,
                 scn=memory_hub.scn if memory_hub else None,
@@ -612,7 +613,7 @@ class AgenticRuntimeMixin:
                 _body_ref,
             )
         else:
-            executor = build_executor(registry, pain_bus=None)
+            executor = build_executor(registry, pain_bus=None, permissions=None)
             self._tool_pain_bridge = None
 
         # Layer 3a (Track 1 of embodiment_runtime_wiring.md): route the

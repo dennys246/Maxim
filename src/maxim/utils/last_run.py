@@ -1,8 +1,11 @@
 """Save and restore recent CLI invocations for `maxim --last`.
 
 Persists the last N unique invocations (simulation agent, agentic mode)
-to ~/.maxim/last_runs.json. Trivial commands (--help, --show-last, etc.)
-are not saved.
+to ``<data_home>/last_runs.json`` — ``~/.maxim`` by default, or
+``$MAXIM_DATA_HOME`` when set (resolved lazily through
+``maxim.utils.paths`` so a read-only-root sandbox with only the data home
+writable still works). Trivial commands (--help, --show-last, etc.) are
+not saved.
 
 Usage:
     maxim --last          # Re-run most recent
@@ -19,6 +22,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from maxim.utils.paths import resolve_user_state
+
 # Args that indicate a "real" run worth saving
 _SAVEABLE_INDICATORS = {"--sim", "--mode", "--generate-simulation"}
 
@@ -34,8 +39,17 @@ _SKIP_INDICATORS = {
     "--audit-architecture",
 }
 
-_LAST_RUNS_PATH = Path.home() / ".maxim" / "last_runs.json"
 _MAX_SAVED_RUNS = 5
+
+
+def _last_runs_path() -> Path:
+    """Resolve ``<data_home>/last_runs.json`` at call time, never at import.
+
+    A module-level ``Path.home() / ".maxim"`` constant bypassed
+    ``MAXIM_DATA_HOME`` (and every test override of it); routing through
+    :func:`maxim.utils.paths.resolve_user_state` keeps one source of truth.
+    """
+    return resolve_user_state("last_runs.json")
 
 
 def should_save(argv: list[str]) -> bool:
@@ -48,7 +62,6 @@ def should_save(argv: list[str]) -> bool:
 def save_last_run(argv: list[str]) -> None:
     """Save the current invocation. Deduplicates and keeps last N unique."""
     try:
-        _LAST_RUNS_PATH.parent.mkdir(parents=True, exist_ok=True)
         runs = _load_all()
 
         entry = {
@@ -70,7 +83,7 @@ def save_last_run(argv: list[str]) -> None:
         from maxim.utils.atomic_io import atomic_write_json
         from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(str(_LAST_RUNS_PATH), with_format_version({"runs": runs}))
+        atomic_write_json(str(_last_runs_path()), with_format_version({"runs": runs}))
     except Exception:
         pass  # Best-effort
 
@@ -92,8 +105,9 @@ def load_all_runs() -> list[dict[str, Any]]:
 def clear_last_run() -> bool:
     """Delete all saved runs. Returns True if deleted."""
     try:
-        if _LAST_RUNS_PATH.is_file():
-            _LAST_RUNS_PATH.unlink()
+        path = _last_runs_path()
+        if path.is_file():
+            path.unlink()
             return True
     except Exception:
         pass
@@ -122,8 +136,9 @@ def format_all_runs() -> str:
 def _load_all() -> list[dict[str, Any]]:
     """Load the runs file."""
     try:
-        if _LAST_RUNS_PATH.is_file():
-            data = json.loads(_LAST_RUNS_PATH.read_text())
+        path = _last_runs_path()
+        if path.is_file():
+            data = json.loads(path.read_text())
             if isinstance(data, list):
                 return data
             from maxim.utils.format_version import check_format_version

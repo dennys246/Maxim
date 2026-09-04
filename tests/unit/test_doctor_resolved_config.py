@@ -756,3 +756,115 @@ class TestPlacementView:
         results = check_resolved_config()
         warns = [r for r in results if r.name == "lanes.large.placement" and r.status == "warn"]
         assert warns and "ignored" in warns[0].message
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Secret redaction (P4b) — doctor output reaches GET /api/diagnose
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestSecretRedaction:
+    """``MAXIM_LANE_<TIER>_REMOTE_API_KEY`` legitimately holds an INLINE key
+    (loader legacy semantics). The resolved-config section used to render
+    it verbatim and echo it into the divergence fix string — and the
+    console serves this section to any caller of ``/api/diagnose``."""
+
+    KEY = "sk-live-INLINE-SECRET-0123456789"
+
+    def test_env_sourced_inline_key_is_redacted(self, fake_home, monkeypatch):
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", self.KEY)
+        results = check_resolved_config()
+        r = _by_name(results, "lanes.large.remote_api_key_ref")
+        assert r.status == "ok"
+        assert "[source=env]" in r.message
+        assert "<redacted>" in r.message
+        assert self.KEY not in r.message
+        assert self.KEY not in (r.fix or "")
+
+    def test_peer_key_row_reports_existence_only(self, fake_home, monkeypatch):
+        # `check_peer_key_set` (peer-mode section, also served by /api/diagnose)
+        # used to print a truncated key; existence is all the row may say.
+        from maxim.doctor.checks import check_peer_key_set
+
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", self.KEY)
+        r = check_peer_key_set()
+        assert "<redacted>" in r.message
+        assert self.KEY not in r.message and self.KEY[:6] not in r.message and self.KEY[-6:] not in r.message
+
+    def test_no_row_in_section_leaks_the_key(self, fake_home, monkeypatch):
+        monkeypatch.setenv("MAXIM_LANE_MEDIUM_REMOTE_API_KEY", self.KEY)
+        for r in check_resolved_config():
+            assert self.KEY not in r.message, r.name
+            assert self.KEY not in (r.fix or ""), r.name
+
+    def test_path_ref_still_renders_as_a_path(self, fake_home, tmp_path):
+        from maxim.runtime.config_writer import write_config
+
+        key_file = tmp_path / "api_key"
+        key_file.write_text("sk-in-file")
+        key_file.chmod(0o600)
+        write_config(MaximConfig(lanes=LanesConfigSection(large=LaneTierConfig(remote_api_key_ref=str(key_file)))))
+        reset_config_cache()
+        results = check_resolved_config()
+        r = _by_name(results, "lanes.large.remote_api_key_ref")
+        assert str(key_file) in r.message
+        assert "<redacted>" not in r.message
+        assert "sk-in-file" not in r.message
+
+    def test_keyring_ref_from_env_renders_as_reference(self, fake_home, monkeypatch):
+        monkeypatch.setenv("MAXIM_LANE_SMALL_REMOTE_API_KEY", "keyring:maxim:leader")
+        r = _by_name(check_resolved_config(), "lanes.small.remote_api_key_ref")
+        assert "keyring:maxim:leader" in r.message
+        assert "<redacted>" not in r.message
+
+    def test_divergence_fix_never_echoes_env_key(self, fake_home, tmp_path, monkeypatch):
+        from maxim.runtime.config_writer import write_config
+
+        key_file = tmp_path / "api_key"
+        key_file.write_text("sk-in-file")
+        key_file.chmod(0o600)
+        write_config(MaximConfig(lanes=LanesConfigSection(large=LaneTierConfig(remote_api_key_ref=str(key_file)))))
+        reset_config_cache()
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", self.KEY)
+        r = _by_name(check_resolved_config(), "lanes.large.remote_api_key_ref")
+        assert r.status == "warn"
+        assert "shadows" in r.message
+        assert self.KEY not in r.message
+        assert r.fix is not None
+        assert self.KEY not in r.fix
+        assert "unset MAXIM_LANE_LARGE_REMOTE_API_KEY" in r.fix
+        assert "maxim config set lanes.large.remote_api_key_ref" in r.fix
+        # The file-ref side of the divergence is a reference: safe to show.
+        assert str(key_file) in r.message
+
+    def test_non_secret_fields_render_exactly_as_before(self, fake_home, monkeypatch):
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "from-env")
+        r = _by_name(check_resolved_config(), "llm.profile")
+        assert r.message == "from-env  [source=env]"
+
+    def test_secret_field_predicate_covers_future_suffixes(self):
+        from maxim.doctor.checks import _is_secret_field
+
+        for path in (
+            "lanes.large.remote_api_key_ref",
+            "x.api_key",
+            "x.y.access_token",
+            "x.token",
+            "x.client_secret",
+            "x.secret",
+        ):
+            assert _is_secret_field(path), path
+        for path in ("llm.profile", "lanes.large.remote_url", "cloud.session_budget_usd", "x.tokens"):
+            assert not _is_secret_field(path), path
+
+    def test_check_api_key_never_renders_key_material(self, fake_home, monkeypatch):
+        from maxim.doctor.checks import check_api_key
+
+        monkeypatch.setattr("maxim.tunnel.keys.key_exists", lambda: True)
+        monkeypatch.setattr("maxim.tunnel.keys.read_key", lambda: self.KEY)
+        r = check_api_key()
+        assert r.status == "ok"
+        assert self.KEY not in r.message
+        assert self.KEY[:6] not in r.message
+        assert self.KEY[-6:] not in r.message
+        assert "<redacted>" in r.message
