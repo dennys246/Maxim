@@ -518,6 +518,16 @@ def _parse_entity(
 
         # Initialize modulator vital_metrics from sensor specs
         for ms_name, ms_spec in mod_sensors.items():
+            # `modality:` is an ENTITY-LEVEL sensor declaration; the channel
+            # walk reads only `ent.sensors`/`ent.vital_metrics`, so a
+            # sub-sensor declaration would be a silent no-op — reject it
+            # loudly instead (executor-lens review, PR 2 round).
+            if isinstance(ms_spec, dict) and ms_spec.get("modality") is not None:
+                raise ValueError(
+                    f"modality: on modulator sub-sensor {mod_name}.{ms_name} is not "
+                    "supported — declare it on an entity-level sensor (the channel "
+                    "readers do not walk modulator sub-sensors)"
+                )
             if isinstance(ms_spec, dict) and "range" in ms_spec:
                 initial = ms_spec.get("initial")
                 if initial is not None:
@@ -582,13 +592,30 @@ def _build_reading_schema(spec: dict[str, Any]) -> dict[str, Any]:
     # channel carries it, instead of channel membership living in hardcoded
     # name tuples (`agent_loop._EXTEROCEPTIVE_ROOT_SENSORS`, whose own comment
     # asked for exactly this). Consumed by the channel readers in
-    # `runtime/agent_loop.py`: `"world"` and `"audio"` are read today;
-    # interoception membership still comes from `drive:` declarations, NOT
-    # from this field (drives are what the affinity heuristic and drive-relief
-    # credit key on). Absent = the sensor belongs to no exteroceptive channel
-    # (byte-identical to pre-PR-2 behavior for every existing body).
+    # `runtime/agent_loop.py`. Interoception membership still comes from
+    # `drive:` declarations, NOT from this field (drives are what the affinity
+    # heuristic and drive-relief credit key on). Absent = the sensor belongs
+    # to no exteroceptive channel (byte-identical to pre-PR-2 behavior for
+    # every existing body). VALIDATED LOUDLY: an unknown tag would otherwise
+    # be a sensor silently belonging to no channel — indistinguishable from
+    # working — so a typo raises at parse time, same class as `drift_mode`'s
+    # ValueError (the one other real validation on the sensor path).
     if "modality" in spec and spec["modality"] is not None:
-        schema["modality"] = str(spec["modality"])
+        from maxim.embodiment.sensory_streams import DECLARABLE_MODALITY_TAGS, INTEROCEPTION_TAG
+
+        declared = str(spec["modality"])
+        if declared == INTEROCEPTION_TAG:
+            raise ValueError(
+                "modality: interoception is not declarable — interoception channel "
+                "membership comes from the sensor's drive: block, not from modality:"
+            )
+        if declared not in DECLARABLE_MODALITY_TAGS:
+            raise ValueError(
+                f"unknown sensor modality {declared!r}; declarable tags: "
+                f"{sorted(DECLARABLE_MODALITY_TAGS)} (a typo here would otherwise be a "
+                "sensor silently belonging to no channel)"
+            )
+        schema["modality"] = declared
 
     return schema
 

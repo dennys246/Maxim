@@ -1047,9 +1047,10 @@ def _read_declared_modality_states(executor: Any, modality: str) -> dict[str, fl
 def _read_declared_modality_ranges(executor: Any, modality: str) -> "dict[str, tuple[float, float]]":
     """Declared ``(lo, hi)`` for the sensors ``_read_declared_modality_states``
     reads. LOCKSTEP INVARIANT (same class as ``_read_drive_ranges``): the two
-    walks must emit the same sensor set; a malformed range is skipped
-    per-sensor (that sensor re-folds through the legacy map — logged, never
-    raised: a raise here would silently disable ALL substrate encoding)."""
+    walks must emit the same sensor set; a malformed or wrong-arity range is
+    skipped per-sensor (that sensor re-folds through the legacy map — never
+    raised: a raise here would silently disable ALL substrate encoding; only
+    the type-error shape logs, at debug, matching the legacy path)."""
     embodiment = getattr(executor, "embodiment", None)
     root = getattr(embodiment, "root", None)
     if root is None:
@@ -1149,6 +1150,7 @@ def _read_exteroceptive_states(executor: Any) -> dict[str, float]:
                 out[name] = float(vm[name])
             except (TypeError, ValueError):
                 continue
+    legacy_emitted = set(out)  # names the legacy walk ACTUALLY read this call
     if out and place_code_exteroception_enabled():
         # Population code REPLACES the raw scalar — emitting both would hand the
         # encoder a redundant basis pair whose constant-ish contribution dilutes
@@ -1162,13 +1164,15 @@ def _read_exteroceptive_states(executor: Any) -> dict[str, float]:
         out = coded
     # Declared `modality: audio` sensors join the channel RAW (1.1.4 PR 2) —
     # the place code stays scoped to the legacy tuple, its validated domain
-    # (azimuth-shaped [-1,1] scalars; Exp 46's centers assume it). Legacy
-    # names are excluded from the declared merge so a body that BOTH sits in
-    # the tuple AND declares audio is not represented twice.
+    # (azimuth-shaped [-1,1] scalars; Exp 46's centers assume it). Dedupe is
+    # against what the legacy walk ACTUALLY EMITTED this call — not the tuple
+    # by name — so a CHILD entity's sensor that happens to share a tuple name
+    # still joins when the root has no such sensor (executor-lens review,
+    # PR 2 round: name-global exclusion silently dropped it).
     declared = _read_declared_modality_states(executor, AUDIO_TAG)
     for name, value in declared.items():
-        if name not in _EXTEROCEPTIVE_ROOT_SENSORS:
-            out[name] = value
+        if name not in legacy_emitted:
+            out.setdefault(name, value)
     return out
 
 
@@ -1181,6 +1185,11 @@ def _read_exteroceptive_ranges(executor: Any) -> "dict[str, tuple[float, float]]
     if root is None:
         return {}
     sensors = getattr(root, "sensors", {}) or {}
+    vm = getattr(root, "vital_metrics", {}) or {}
+    # The same predicate the STATES walk's legacy loop emits under — the
+    # declared-audio dedupe below must mirror it exactly (dedupe by actual
+    # emission, never by tuple name; executor-lens review, PR 2 round).
+    legacy_names = {n for n in _EXTEROCEPTIVE_ROOT_SENSORS if n in sensors and n in vm}
     # LOCKSTEP INVARIANT (same class as _read_drive_ranges): this walk and
     # _read_exteroceptive_states must emit the same sensor SET. A value with no
     # declared range silently re-folds through the legacy range-blind map (P1),
@@ -1199,8 +1208,8 @@ def _read_exteroceptive_ranges(executor: Any) -> "dict[str, tuple[float, float]]
         # declared sensors join RAW on both walks even when the legacy tuple is
         # place-coded, or a declared value would silently re-fold rangeless.
         for name, rng_pair in _read_declared_modality_ranges(executor, AUDIO_TAG).items():
-            if name not in _EXTEROCEPTIVE_ROOT_SENSORS:
-                coded_ranges[name] = rng_pair
+            if name not in legacy_names:
+                coded_ranges.setdefault(name, rng_pair)
         return coded_ranges
 
     ranges: dict[str, tuple[float, float]] = {}
@@ -1216,8 +1225,8 @@ def _read_exteroceptive_ranges(executor: Any) -> "dict[str, tuple[float, float]]
             logger.debug("exteroceptive %r has a malformed range %r; skipping (legacy map)", name, rng)
     # LOCKSTEP with the declared-audio merge in _read_exteroceptive_states.
     for name, rng_pair in _read_declared_modality_ranges(executor, AUDIO_TAG).items():
-        if name not in _EXTEROCEPTIVE_ROOT_SENSORS:
-            ranges[name] = rng_pair
+        if name not in legacy_names:
+            ranges.setdefault(name, rng_pair)
     return ranges
 
 

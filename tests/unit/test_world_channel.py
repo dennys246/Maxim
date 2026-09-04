@@ -101,11 +101,74 @@ class TestModalityDeclaration:
             body = _parse_entity(dict(spec.get("entity", spec)))
             ex = _FakeExecutor(body)
             assert _read_world_states(ex) == {}, f"{ref} unexpectedly feeds the world channel"
+            from maxim.runtime.agent_loop import _read_declared_modality_states
+
+            assert _read_declared_modality_states(ex, AUDIO_TAG) == {}, (
+                f"{ref} unexpectedly declares audio sensors — audio channel content would change"
+            )
             checked += 1
         assert checked >= 10, "bundled-body sweep degenerated"
 
     def test_channel_registry_has_three_channels_world_last(self):
         assert [ch.tag for ch in _SUBSTRATE_CHANNELS] == ["interoception", AUDIO_TAG, WORLD_TAG]
+
+
+class TestModalityValidation:
+    """An unknown or misplaced `modality:` must fail LOUDLY at parse time —
+    a silent no-op here is a sensor belonging to no channel, indistinguishable
+    from working (both review lenses, PR 2 round)."""
+
+    def _body(self, sensor_spec):
+        return {"name": "b", "sensors": {"s": sensor_spec}}
+
+    def test_typo_raises(self):
+        with pytest.raises(ValueError, match="unknown sensor modality"):
+            _parse_entity(self._body({"range": [0, 1], "modality": "wolrd"}))
+
+    def test_sensorymodality_vocabulary_is_not_declarable(self):
+        with pytest.raises(ValueError, match="unknown sensor modality"):
+            _parse_entity(self._body({"range": [0, 1], "modality": "sound"}))
+
+    def test_interoception_is_rejected_with_the_drive_hint(self):
+        with pytest.raises(ValueError, match="drive"):
+            _parse_entity(self._body({"range": [0, 1], "modality": "interoception"}))
+
+    def test_modality_on_a_modulator_sub_sensor_is_rejected(self):
+        with pytest.raises(ValueError, match="entity-level"):
+            _parse_entity(
+                {
+                    "name": "b",
+                    "modulators": {
+                        "arms": {"sensors": {"t": {"range": [0, 1], "modality": "world"}}},
+                    },
+                }
+            )
+
+    def test_modality_null_means_undeclared(self):
+        body = _parse_entity(self._body({"range": [0, 1], "modality": None}))
+        assert "modality" not in body.sensors["s"].reading_schema
+
+
+class TestChildEntityDeclaredAudio:
+    def test_child_sensor_sharing_a_tuple_name_still_joins_when_root_lacks_it(self):
+        """Dedupe is by actual legacy emission, not tuple name: a CHILD
+        entity's `azimuth` declaring audio joins the channel when the root
+        has no azimuth sensor (executor-lens review, PR 2 round)."""
+        body = _parse_entity(
+            {
+                "name": "root",
+                "sensors": {},
+                "children": [
+                    {
+                        "name": "ear",
+                        "sensors": {"azimuth": {"range": [-1, 1], "initial": 0.3, "modality": "audio"}},
+                    }
+                ],
+            }
+        )
+        ex = _FakeExecutor(body)
+        assert _read_exteroceptive_states(ex) == {"azimuth": 0.3}
+        assert _read_exteroceptive_ranges(ex) == {"azimuth": (-1.0, 1.0)}
 
 
 class TestModulatorSubSensorDriveNull:
@@ -165,8 +228,3 @@ class TestThreeChannelSelection:
         # nothing is recommended or tool_x is not preferred BY the bias
         if without_world is not None and without_world["tool_name"] == "tool_x":
             assert with_world.get("confidence", 1.0) >= without_world.get("confidence", 0.0)
-
-
-@pytest.fixture(autouse=True)
-def _scrub_place_code_env(monkeypatch):
-    monkeypatch.delenv("MAXIM_PLACE_CODE_EXTEROCEPTION", raising=False)
