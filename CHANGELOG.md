@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **1.1.4/L11 — Minecraft-scale body + the frozen L11 re-measure protocol**: the player body
+  grows 6 → 16 `modality: world` sensors (past L11's ~12 safe band) with ranges RE-CENTERED
+  so resting values sit at the A4 neutral — rest-at-extreme ranges were measured
+  structurally blind pre-freeze (event cos 0.926 vs 0.747 re-centered); the JS bridge and
+  `FakeBridgeServer` emit every sensor, lockstep test-pinned. The re-measure protocol is
+  pre-registered and lint-governed (`docs/experiments/protocols/
+  l11_remeasure_preregistration.md` + `scripts/l11_real_trace_remeasure.py`): both-arms-at-
+  zero is "refuted-blind" never confirmed, onsets pair strictly-after event ts, S3 refusals
+  on resolved-onset/pair counts, quiet pairs delta-bounded. Capture + analyze follow as a
+  data PR. CI smoke widened to 60 steps (the gained N=16 fake concentrates to ~4 clusters).
 - **1.1.4 PR 4 — the two-AUT-one-world harness; THE 1.1.4 SHIP GATE, green and non-vacuous
   in CI**: `simulation/minecraft_harness.py` (per-AUT assembly on the canonical builders,
   staleness-gated sensor pump, deterministic `FakeBridgeServer`, non-vacuous smoke verdict) +
