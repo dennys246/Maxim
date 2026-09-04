@@ -393,6 +393,12 @@ class Executor:
                         entity,
                         self.registry,
                         entity_map=self._entity_map,
+                        # D77 (1.1.4 PR 4): regeneration WITHOUT embodiment=
+                        # replaced the item's sim-wired tools with ones whose
+                        # self_effect write-back was dead — pick up bread,
+                        # eat, portions fall, food never rises. The executor
+                        # holds the embodiment as a declared field; thread it.
+                        embodiment=self.embodiment,
                     )
                     _log.info("Entity acquired: %s (%d tools registered)", entity_acquired, len(tools))
                 except Exception as exc:

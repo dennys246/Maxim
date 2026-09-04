@@ -225,6 +225,31 @@ def _player_executor(client):
 
 
 class TestWorldBackend:
+    def test_factory_default_derives_world_sensors_from_the_attached_entity(self):
+        """The C4-lint fold: minecraft_modulator_factory(client) with NO
+        world_sensors derives the set from the ATTACHED entity's own
+        modality:world declarations at attach time — the no-probe-parse,
+        no-drift default the harness relies on."""
+        from maxim.embodiment.spec import attach_backends
+
+        client = _FakeClient()
+        import yaml
+
+        from maxim.utils.paths import bundled_data
+
+        spec = yaml.safe_load((bundled_data() / "components" / "bodies" / "minecraft_player.yaml").read_text())
+        entity = _parse_entity(dict(spec["entity"]))
+        attach_backends(entity, modulator_factory=minecraft_modulator_factory(client))
+        backend = entity.modulators["avatar"]._backend
+        assert set(backend.world_owned_sensors) == {
+            "health",
+            "food",
+            "light_level",
+            "y_altitude",
+            "nearest_hostile_dist",
+            "time_of_day",
+        }
+
     def test_declared_world_sensors_derive_from_the_yaml(self):
         client = _FakeClient()
         _ex, entity, backend = _player_executor(client)

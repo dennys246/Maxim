@@ -223,7 +223,11 @@ resource, plan as one.
 > resolved: either the body grows toward its Minecraft-scale sensor set before 1.2's arms
 > (the plan's "maximally embody" intent), or the PR 4 re-measure decides whether gain-at-N=6
 > on this channel is acceptable for an infrastructure release. Do not let the smoke gate
-> quietly answer a representation question.
+> quietly answer a representation question. **Dated 2026-09-04 (PR 4):** the CI smoke now
+> feeds the channel MECHANICALLY every suite run — via the deterministic `FakeBridgeServer`,
+> which is synthetic; it discharges nothing here. The re-measure obligation attaches to the
+> first LIVE-bridge run (real world, real correlations), per this entry's retirement
+> condition.
 
 - `similarity/encoder.py::_sensor_embed` change (the encoding equation)
 - `SensorEncoderConfig.pattern_threshold` change — **including shipping the scaled

@@ -24,6 +24,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **1.1.4 PR 4 — the two-AUT-one-world harness; THE 1.1.4 SHIP GATE, green and non-vacuous
+  in CI**: `simulation/minecraft_harness.py` (per-AUT assembly on the canonical builders,
+  staleness-gated sensor pump, deterministic `FakeBridgeServer`, non-vacuous smoke verdict) +
+  `scripts/minecraft_two_aut.py`. The reduced end-to-end smoke runs two full
+  `run_agentic_loop` AUTs (substrate-primary — the A4-gained world channel IS the
+  action-selection input) against one fake world in the FAST test lane. The gate
+  (`verdict_is_green`, one shared function) requires a LIVE world feed (writes > 0),
+  change-driven world EC nodes (≥ 2), persistence through the close, and a runtime
+  close-flavor discriminator observing that `on_session_end` — not the lightweight closer,
+  which also writes ec.json — actually ran; a dead-feed negative control pins the vacuity
+  mode the review round demonstrated.
+  Fixed: **D77** (acquisition regenerated item tools without `embodiment=`, killing
+  self_effect) and **D78** (EntityMap treated re-registration of the same entity as a name
+  collision, evicting the name key and silently no-opping later name-based resolution —
+  the two holes stacked on the same pickup path).
 - **1.1.4 PR 3 — the Minecraft bridge seam**: `simulation/minecraft.py` (NDJSON-over-TCP
   `MinecraftClient` with an injectable transport, per-tick state buffering, bounded event
   queue; `MinecraftPerceptSource` on the frozen CC8 protocol, text-shaped percepts) +
