@@ -56,7 +56,12 @@ logger = logging.getLogger(__name__)
 #           unauthenticated GET /api/hello + HelloResponse for skew detection
 #           and the login screen; browser /ws carries the token as the
 #           `maxim.bearer.<token>` subprotocol beside `maxim-console-v1`.
-#           A 0.3.0 client sees 401s with a self-explaining detail string.
+#           A 0.3.0 client sees 401s with a self-explaining detail string —
+#           and since pulse `console-auth-040`, its OWN skew screens: a stale
+#           0.3.0 bundle served by a 0.4.0 backend renders pulse's "This
+#           backend predates contract 0.4.0" / version-skew screen, not
+#           blank panels, so the startup WARN below is the operator's
+#           breadcrumb, not the only symptom.
 #
 # ADDITIVE CHANGES COUNT. This was learned twice: #438 shipped two endpoints
 # and a reshaped envelope at 0.1.0, and the identity surface itself first
@@ -95,8 +100,10 @@ def resolve_ui_dist(cli_value: str | None, config_value: str | None) -> Path | N
 def read_ui_manifest(ui_dist: Path | str) -> dict[str, Any] | None:
     """Read a bundle's ``maxim-ui.json``; ``None`` if absent or unreadable.
 
-    Absent is normal and not an error: a hand-built or pre-manifest bundle
-    simply cannot be contract-checked.
+    Absent stopped being normal with pulse ``console-auth-040``: every pulse
+    build path stamps a manifest, so a served bundle without one is a pulse
+    build-path bug (or a foreign bundle). :func:`check_ui_contract` WARNs on
+    that case; this reader stays judgment-free.
     """
     path = Path(ui_dist) / UI_MANIFEST_NAME
     try:
@@ -107,21 +114,41 @@ def read_ui_manifest(ui_dist: Path | str) -> dict[str, Any] | None:
     except (OSError, json.JSONDecodeError):
         logger.warning("Console UI manifest at %s is unreadable — skipping the contract check", path, exc_info=True)
         return None
-    return data if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        # Valid JSON, wrong shape ([] / "0.4.0" / null) — same build-path-bug
+        # class as unparseable, and previously the ONE silent variant (review
+        # fold): warn here so check_ui_contract's "reader already warned"
+        # short-circuit holds for every present-but-unusable manifest.
+        logger.warning("Console UI manifest at %s is not a JSON object — skipping the contract check", path)
+        return None
+    return data
 
 
 def check_ui_contract(ui_dist: Path | str | None) -> str | None:
-    """Warn if the bundle was built against a different facade contract.
+    """Warn if the bundle was built against a different facade contract —
+    or carries no manifest at all (post-``console-auth-040``, always a pulse
+    build-path bug: every pulse build stamps ``maxim-ui.json``).
 
-    Returns the mismatch message (for tests / callers that want to surface it),
-    or ``None`` when the bundle matches, carries no manifest, or is absent.
-    Never raises — a version string must not stop a local tool from booting.
+    Returns the warning message (for tests / callers that want to surface
+    it), or ``None`` when the bundle matches or there is no bundle. Never
+    raises — a version string must not stop a local tool from booting.
     """
     if ui_dist is None:
         return None
     manifest = read_ui_manifest(ui_dist)
     if manifest is None:
-        return None
+        if (Path(ui_dist) / UI_MANIFEST_NAME).is_file():
+            return None  # present but unreadable — the reader already warned
+        if not (Path(ui_dist) / "index.html").is_file():
+            return None  # no servable bundle here — nothing to check
+        message = (
+            f"Console UI bundle at {ui_dist} has no {UI_MANIFEST_NAME} — its facade contract "
+            f"cannot be checked (this server speaks {CONSOLE_CONTRACT_VERSION!r}). Every "
+            f"maxim-pulse build stamps one, so this is a build-path bug or a foreign bundle; "
+            f"rebuild with pnpm build, or expect silent skew."
+        )
+        logger.warning("%s", message)
+        return message
     bundle_contract = str(manifest.get("contract_version") or "")
     if not bundle_contract or bundle_contract == CONSOLE_CONTRACT_VERSION:
         return None

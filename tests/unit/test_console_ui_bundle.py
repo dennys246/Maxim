@@ -83,15 +83,43 @@ class TestContractCheck:
         assert msg and "9.9.9" in msg and CONSOLE_CONTRACT_VERSION in msg
         assert any("contract mismatch" in r.getMessage() for r in caplog.records)
 
-    def test_missing_manifest_is_not_an_error(self, tmp_path):
-        # Hand-built / pre-manifest bundles simply cannot be checked.
-        assert check_ui_contract(_bundle(tmp_path / "b", manifest=False)) is None
+    def test_missing_manifest_warns_but_serves(self, tmp_path, caplog):
+        # Post pulse `console-auth-040` every build stamps maxim-ui.json, so a
+        # servable bundle WITHOUT one is a build-path bug (or foreign bundle):
+        # WARN + return the message, never raise, never refuse to serve.
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            msg = check_ui_contract(_bundle(tmp_path / "b", manifest=False))
+        assert msg and "maxim-ui.json" in msg and CONSOLE_CONTRACT_VERSION in msg
+        assert any("no maxim-ui.json" in r.getMessage() for r in caplog.records)
         assert read_ui_manifest(tmp_path / "b") is None
+
+    def test_empty_dir_without_index_stays_silent(self, tmp_path):
+        # A nonexistent/typo'd ui_dist path is the "no UI installed" page's
+        # job to explain, not a manifest warning's.
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        assert check_ui_contract(empty) is None
+        assert check_ui_contract(tmp_path / "nowhere") is None
 
     def test_unreadable_manifest_never_raises(self, tmp_path):
         bundle = _bundle(tmp_path / "b")
         (bundle / UI_MANIFEST_NAME).write_text("{not json")
         assert check_ui_contract(bundle) is None  # warns internally, does not raise
+
+    def test_non_dict_manifest_warns_like_unreadable(self, tmp_path, caplog):
+        # Valid JSON, wrong shape — previously the ONE silent variant of a
+        # present-but-unusable manifest (review fold): the reader must warn
+        # so check_ui_contract's short-circuit never hides a build-path bug.
+        import logging
+
+        bundle = _bundle(tmp_path / "b")
+        (bundle / UI_MANIFEST_NAME).write_text('"0.4.0"')
+        with caplog.at_level(logging.WARNING):
+            assert read_ui_manifest(bundle) is None
+            assert check_ui_contract(bundle) is None
+        assert any("not a JSON object" in r.getMessage() for r in caplog.records)
 
     def test_absent_bundle_is_a_noop(self):
         assert check_ui_contract(None) is None
