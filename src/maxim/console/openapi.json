@@ -259,6 +259,15 @@
           "contract_version": {
             "title": "Contract Version",
             "type": "string"
+          },
+          "pairing": {
+            "default": "none",
+            "enum": [
+              "available",
+              "none"
+            ],
+            "title": "Pairing",
+            "type": "string"
           }
         },
         "required": [
@@ -443,6 +452,48 @@
           "groups"
         ],
         "title": "ModelsResponse",
+        "type": "object"
+      },
+      "PairClaimRequest": {
+        "description": "The spoken code, typed by the owner into the paste screen.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "PairClaimRequest",
+        "type": "object"
+      },
+      "PairClaimResult": {
+        "description": "A successful claim: the console bearer token, exactly what the\n``/#token=`` fragment would have carried (A9.1 \u2014 same trust statement,\nsame storage on the client).",
+        "properties": {
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "PairClaimResult",
+        "type": "object"
+      },
+      "PairRequestAccepted": {
+        "description": "POST /api/pair/request accepted \u2014 the code is ANNOUNCED, never returned.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "PairRequestAccepted",
         "type": "object"
       },
       "PlatformWire": {
@@ -914,7 +965,7 @@
   "info": {
     "summary": "Localhost Console backend + the OpenAPI facade contract for maxim-pulse.",
     "title": "Maxim Console",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1180,6 +1231,68 @@
           }
         ],
         "summary": "List LLM profiles",
+        "tags": [
+          "facade"
+        ]
+      }
+    },
+    "/api/pair/claim": {
+      "post": {
+        "operationId": "post_pair_claim_api_pair_claim_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairClaimResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Exchange the spoken code for the console token (single use; no token needed)",
+        "tags": [
+          "facade"
+        ]
+      }
+    },
+    "/api/pair/request": {
+      "post": {
+        "operationId": "post_pair_request_api_pair_request_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairRequestAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ask the robot to speak a pairing code (device deployments only; no token needed)",
         "tags": [
           "facade"
         ]

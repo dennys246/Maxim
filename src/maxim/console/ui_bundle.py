@@ -69,7 +69,15 @@ logger = logging.getLogger(__name__)
 # `test_schema_surface_matches_the_recorded_contract` now fails when the
 # OpenAPI surface moves without this number moving, so the rule is enforced
 # rather than remembered.
-CONSOLE_CONTRACT_VERSION = "0.4.0"
+#   0.5.0 — spoken-code pairing (A9.1, the device sign-in path after the
+#           dashboard-link premise died): NEW tokenless POST /api/pair/request
+#           (202; the robot announces a 6-digit code — never returned) and
+#           POST /api/pair/claim ({code} -> {token}, single use, 2-min TTL,
+#           5 attempts); HelloResponse gains `pairing: "available"|"none"`
+#           (defaulted — a 0.4.0 client never notices). Both endpoints refuse
+#           409 on deployments with no announcer, so only device embeds
+#           actually expose them.
+CONSOLE_CONTRACT_VERSION = "0.5.0"
 
 #: Manifest filename the pulse build writes into every bundle.
 UI_MANIFEST_NAME = "maxim-ui.json"

@@ -68,6 +68,9 @@ from maxim.console.schemas import (
     MeshSetupRequest,
     ModelInfoWire,
     ModelsResponse,
+    PairClaimRequest,
+    PairClaimResult,
+    PairRequestAccepted,
     PlatformWire,
     ProbeRequest,
     ProbeResult,
@@ -391,7 +394,11 @@ def _origin_allowed(origin_header: str, trust: _TrustPolicy) -> bool:
 # OMISSION everywhere: URLs reach access logs. Under sandbox mode auth is
 # OFF — the authenticating proxy owns that edge (see the sandbox block).
 
-_AUTH_EXEMPT_PATHS = frozenset({"/api/hello"})
+# /api/pair/* is tokenless BY DESIGN (A9.1): it exists to hand a tokenless
+# visitor the token, gated by a code the ROBOT SPEAKS in the room. Without a
+# registered announcer both endpoints refuse (409/410) and no code can ever
+# exist, so the exemption is inert on every plain `maxim serve`.
+_AUTH_EXEMPT_PATHS = frozenset({"/api/hello", "/api/pair/request", "/api/pair/claim"})
 _WS_APP_SUBPROTOCOL = "maxim-console-v1"
 _WS_BEARER_PREFIX = "maxim.bearer."
 _AUTH_REFUSAL = (
@@ -532,7 +539,107 @@ def get_hello(request: Request) -> HelloResponse:
     return HelloResponse(
         contract_version=CONSOLE_CONTRACT_VERSION,
         auth="none" if _sandbox_of(request.app) is not None else "bearer",
+        pairing="available" if _pairing_of(request.app) is not None else "none",
     )
+
+
+# ── spoken-code pairing (A9.1) ──────────────────────────────────────────────
+#
+# The device sign-in path after the ⚙️-link premise died (the Pollen daemon
+# reads custom_app_url by REGEX over main.py at LIST time — a boot-minted
+# token cannot ride it). The robot ANNOUNCES a short-lived one-use code when
+# the paste screen asks; the page exchanges code → token. The gate is being
+# IN THE ROOM (you must hear the robot), which is strictly stronger than the
+# dashboard gate the old link rode. The surface is embedder-gated: with no
+# announcer registered (every plain `maxim serve`) no code can ever exist and
+# both endpoints refuse — no new unauthenticated path in the default posture.
+# A7 applies to the CODE exactly as to the token: announced, never logged,
+# never returned by /request.
+
+_PAIR_TTL_S = 120.0
+_PAIR_MAX_ATTEMPTS = 5
+_PAIR_MIN_REQUEST_INTERVAL_S = 10.0
+
+
+class _PairingState:
+    """Single active spoken code: replace-on-request, expire, count attempts."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.code: str | None = None
+        self.expires_at = 0.0
+        self.attempts = 0
+        self.last_request_at = 0.0
+
+
+def _pairing_of(app: Any) -> tuple[Any, _PairingState] | None:
+    announcer = getattr(app.state, "pairing_announcer", None)
+    if announcer is None:
+        return None
+    return announcer, app.state.pairing
+
+
+@api.post(
+    "/pair/request",
+    response_model=PairRequestAccepted,
+    status_code=202,
+    summary="Ask the robot to speak a pairing code (device deployments only; no token needed)",
+)
+def post_pair_request(request: Request) -> PairRequestAccepted:
+    pairing = _pairing_of(request.app)
+    if pairing is None:
+        raise HTTPException(status_code=409, detail="Pairing is not available on this deployment.")
+    announcer, state = pairing
+    with state.lock:
+        now = time.monotonic()
+        if now - state.last_request_at < _PAIR_MIN_REQUEST_INTERVAL_S:
+            # Keeps a LAN prankster from making the robot babble codes.
+            raise HTTPException(status_code=429, detail="A code was just announced — listen, or retry shortly.")
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        # Replace-on-request: at most ONE claimable code exists at a time.
+        state.code, state.expires_at, state.attempts, state.last_request_at = code, now + _PAIR_TTL_S, 0, now
+
+    def _announce() -> None:
+        try:
+            announcer(code)
+        except Exception as e:  # the embedder's speaker — never let it 500 the request
+            # Type only: neither exc message nor traceback locals may carry the code (A7).
+            logger.warning("pairing announcer raised %s", type(e).__name__)
+
+    threading.Thread(target=_announce, name="pairing-announce", daemon=True).start()
+    return PairRequestAccepted(detail="Listen: the robot is speaking a 6-digit code. Enter it within 2 minutes.")
+
+
+@api.post(
+    "/pair/claim",
+    response_model=PairClaimResult,
+    summary="Exchange the spoken code for the console token (single use; no token needed)",
+)
+def post_pair_claim(body: PairClaimRequest, request: Request) -> PairClaimResult:
+    pairing = _pairing_of(request.app)
+    if pairing is None:
+        raise HTTPException(status_code=409, detail="Pairing is not available on this deployment.")
+    _announcer, state = pairing
+    with state.lock:
+        if state.code is None or time.monotonic() > state.expires_at:
+            state.code = None
+            raise HTTPException(status_code=410, detail="No active pairing code — ask the robot to speak one.")
+        if not secrets.compare_digest(body.code.strip().encode(), state.code.encode()):
+            state.attempts += 1
+            if state.attempts >= _PAIR_MAX_ATTEMPTS:
+                state.code = None  # burn the code: brute force gets 5 tries per announcement
+                raise HTTPException(status_code=403, detail="Too many wrong codes — that code is now void.")
+            raise HTTPException(status_code=403, detail="Wrong code.")
+        state.code = None  # single use, consumed BEFORE the token leaves
+    # Hand out the credential THIS app actually accepts: the disk token on a
+    # disk-sourced app (the device deployment), the injected one on a
+    # static-token app — a paired owner must never receive a token the very
+    # app refuses (caught by the happy-path test's sign-in assertion).
+    if getattr(request.app.state, "auth_token_source", "static") == "disk":
+        from maxim.tunnel.keys import ensure_console_token
+
+        return PairClaimResult(token=ensure_console_token())
+    return PairClaimResult(token=request.app.state.auth_token)
 
 
 @api.get("/models", response_model=ModelsResponse, summary="List LLM profiles")
@@ -1483,6 +1590,7 @@ def build_app(
     *,
     auth_token: Any = _READ_TOKEN_FROM_DISK,
     extra_trusted_origins: Sequence[str] = (),
+    pairing_announcer: Any = None,
 ) -> FastAPI:
     """Construct the Console FastAPI app. ``ui_dist`` = the built static bundle.
 
@@ -1511,6 +1619,15 @@ def build_app(
     LAN bind into a tokenless open console (two-lens review, both lenses
     independently). Default ``()`` keeps every existing caller
     byte-identical.
+
+    ``pairing_announcer`` (keyword-only) arms the spoken-code pairing surface
+    (A9.1): a callable ``(code: str) -> None`` that makes the DEVICE announce
+    the 6-digit code in the room (TTS on the robot). ``None`` (default) keeps
+    ``/api/pair/*`` refusing on every plain ``maxim serve`` — the surface only
+    exists where an embedder explicitly wires a speaker. The callable runs on
+    a daemon thread; it MUST NOT log the code (A7). Refused under sandbox
+    mode for the same reason as ``extra_trusted_origins``: sandbox has no
+    engine token to hand out.
     """
     sandbox = _sandbox_policy()
     if sandbox is not None:
@@ -1601,6 +1718,22 @@ def build_app(
             allowed_hosts=trust.allowed_hosts | frozenset(extra_hosts),
         )
     app.state.trust = trust
+    if pairing_announcer is not None and sandbox is not None:
+        from maxim.runtime.config_loader import ConfigurationError
+
+        raise ConfigurationError(
+            "build_app: pairing_announcer cannot be combined with console.sandbox — sandbox has "
+            "no engine token to hand out; the authenticating proxy owns that edge"
+        )
+    if pairing_announcer is not None and auth_token is None:
+        from maxim.runtime.config_loader import ConfigurationError
+
+        raise ConfigurationError(
+            "build_app: pairing_announcer with auth_token=None is contradictory — the explicit "
+            "fail-closed inject means there is no credential for a successful claim to hand out"
+        )
+    app.state.pairing_announcer = pairing_announcer
+    app.state.pairing = _PairingState()
     # Fail-closed by construction: build_app READS the token (run_serve is the
     # one place that creates it); an embedder that never provisioned one gets
     # an app whose authed surfaces all refuse, not an open console. Tests and
@@ -1847,9 +1980,21 @@ def device_console_handoff(host: str, port: int = 8765) -> ConsoleHandoff:
     """Mint-or-reuse the console token and return the device sign-in handoff.
 
     The seam a device bootstrap (maxim-pulse ``apps/reachy``) calls so the
-    bootstrap stays thin glue: ONE call here, assign ``handoff.url`` to the
-    app's ``custom_app_url``, pass ``[handoff.origin]`` to ``build_app`` —
-    all auth logic stays in pymaxim. Token storage is the same
+    bootstrap stays thin glue: ONE call here, pass ``[handoff.origin]`` to
+    ``build_app`` — all auth logic stays in pymaxim.
+
+    A9.1 AMENDMENT (2026-09-04, vendor fact from reachy_mini 1.8.3): on the
+    real robot the Pollen daemon obtains ``custom_app_url`` by REGEX over the
+    app's ``main.py`` at dashboard LIST time (``local_common_venv.py::
+    _get_custom_app_url_from_file``) — a runtime assignment is read by
+    NOTHING there, so ``handoff.url`` CANNOT ride the ⚙️ link on-device; only
+    a build-time string literal can. The consumer sign-in path is therefore
+    the spoken-code pairing surface (``/api/pair/*`` + ``pairing_announcer``,
+    decision A9.1); this seam remains correct and REQUIRED for the rest: the
+    token exists before the first request, and ``origin`` feeds
+    ``extra_trusted_origins``. ``url`` still works wherever the class
+    attribute is read by import (shared-venv desktop daemons) or a human is
+    handed the link directly. Token storage is the same
     ``~/.config/maxim/console_token`` file ``maxim serve`` uses
     (:func:`maxim.tunnel.keys.ensure_console_token`; 0600 from creation), so
     ``--show-token`` / ``--rotate-token`` and per-request disk re-read (A7

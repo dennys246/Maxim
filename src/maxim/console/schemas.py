@@ -91,6 +91,30 @@ class HelloResponse(BaseModel):
 
     contract_version: str
     auth: Literal["bearer", "none"]
+    # 0.5.0 (A9.1): whether this deployment can pair by spoken code — the
+    # device path where a robot announces a short-lived code in the room.
+    # Additive with a default so a 0.4.0 client never notices.
+    pairing: Literal["available", "none"] = "none"
+
+
+class PairRequestAccepted(BaseModel):
+    """POST /api/pair/request accepted — the code is ANNOUNCED, never returned."""
+
+    detail: str
+
+
+class PairClaimRequest(BaseModel):
+    """The spoken code, typed by the owner into the paste screen."""
+
+    code: str
+
+
+class PairClaimResult(BaseModel):
+    """A successful claim: the console bearer token, exactly what the
+    ``/#token=`` fragment would have carried (A9.1 — same trust statement,
+    same storage on the client)."""
+
+    token: str
 
 
 class IdentityResponse(BaseModel):

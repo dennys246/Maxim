@@ -3,7 +3,7 @@
 **Status:** ACTIVE — PR 1 (trust guard) MERGED #609 (2026-09-03); PR 2 (bearer auth)
 IMPLEMENTED per decisions A1–A8 on `feat/console-auth` (2026-09-04; one A7 sharpening: disk
 tokens are re-read per request so rotation bites with NO restart); PRs 3–4 sequenced below.
-Pulse-side ledger (A6) CLOSED 2026-09-04 by maxim-pulse `console-auth-040` (login/paste-token
+Pulse-side ledger (A6) CLOSED 2026-09-04 by the maxim-pulse `console-auth-040` PR (login/paste-token
 screen, fragment bootstrap, Bearer on FacadeClient, ws subprotocol on EventClient, contract
 stamp 0.4.0 — Playwright-verified against `maxim serve` @ 24e0c1ab). Owed from that close:
 re-vendor the packaged bundle (`scripts/vendor_console_ui.py`) once `console-auth-040` is
@@ -206,6 +206,36 @@ enters the contract there, batched with the token-flow contract addition (pulse 
   our own; the ⚙️ link adds none. Pulse must declare this in `apps/reachy/PRIVACY.md`
   (gate P3). No wire change — the fragment form and bearer scheme are 0.4.0 as shipped;
   `CONSOLE_CONTRACT_VERSION` stays.
+
+- **A9.1 — spoken-code pairing (AMENDS A9; 2026-09-04, same day).** Pulse's wiring of A9
+  surfaced a vendor fact that kills the ⚙️-link premise on the real robot (verified against
+  reachy_mini 1.8.3, file:line in the pulse PR): the daemon obtains `custom_app_url` by
+  **REGEX over the app's `main.py` at dashboard LIST time**
+  (`apps/sources/local_common_venv.py::_get_custom_app_url_from_file`), the dashboard JS
+  rewrites only the hostname (port/path/fragment survive), and a runtime
+  `self.custom_app_url = …` is read by nothing. A boot-minted token therefore CANNOT ride
+  the dashboard link on-device — only a build-time literal can. Re-decision: **the robot
+  ANNOUNCES a short-lived pairing code; the paste screen exchanges it for the token.**
+  `POST /api/pair/request` (tokenless, 202) generates a 6-digit code — `secrets`-random,
+  single active code (replace-on-request), 120 s TTL, announced by an embedder-registered
+  `pairing_announcer` callable on a daemon thread, NEVER returned or logged (A7 applies to
+  the code exactly as to the token); `POST /api/pair/claim` `{code}` → `{token}` —
+  constant-time compare, SINGLE USE (consumed before the token leaves), 5 wrong attempts
+  burn the code, 10 s min interval between announcements (a LAN prankster cannot make the
+  robot babble). **Embedder-gated: with no announcer registered — every plain
+  `maxim serve` — no code can ever exist and both endpoints refuse 409**, so the default
+  posture still adds no unauthenticated network path (the A9 pairing-window rejection
+  STANDS; this differs precisely in its gate: the code is heard IN THE ROOM, a strictly
+  stronger gate than the dashboard the dead link rode, and stronger than the LAN-presence
+  gate the rejected first-comer window had). Refused under sandbox mode (no engine token
+  to hand out). Contract 0.4.0 → **0.5.0**, additive: the two endpoints +
+  `HelloResponse.pairing: "available"|"none"` (defaulted, so 0.4.0 clients never notice);
+  snapshot regenerated. The A9 `device_console_handoff` + `extra_trusted_origins` remain
+  correct and wired (token before first request; origins admitted); `handoff.url` still
+  serves shared-venv desktop daemons, where the class attribute is read by import. Upstream
+  ask (tracked in pulse): a runtime `custom_app_url` read from Pollen would resurrect the
+  tokened link, with pairing kept as the fallback. SSH + `--show-token` stays the
+  technical-owner path, named on the paste screen.
 
 **PR 3 — admission control (M1).**
 Body-size caps and per-client rate limit on `/api/run` + `/api/probe`; `limit_concurrency` +
