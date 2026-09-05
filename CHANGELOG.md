@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`create.agent()` is now actually fresh (D28, 1.2 gate 8(c)).** `_create_memory_hub`
+  restored SCN from disk whenever `scn.json` existed — regardless of `auto_load` — so a
+  documented-fresh agent inherited the previous session's temporal state, and only SCN. The
+  restore is now gated on `auto_load` like every other subsystem; the persistence path stays
+  bound, so a fresh agent still saves its temporal state at session end (write-but-don't-read).
+  The old blast-radius guard, which pinned the defect, is reworked: the fresh path must read
+  NOTHING. Unblocks drafting the Oasis ingestion contract (what a bundle merges INTO is now
+  well-defined).
 - **Committed-evidence writes from `scripts/` are opt-in (D27, 1.2 gate 8(a)).** Seven
   measurement harnesses wrote `docs/experiments/results/*.json` (and paired committed `.md`
   reports) as a side effect of running — the D25 failure class on the scripts surface. All

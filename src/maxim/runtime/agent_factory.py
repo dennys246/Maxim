@@ -917,7 +917,16 @@ class AgentFactory:
             if agent_dir is not None:
                 scn_path_str = str(agent_dir / "scn.json")
             scn = SCN(persistence_path=scn_path_str)
-            if scn_path_str is not None:
+            # D28 (1.2 gate 8(c)): the restore is gated on ``auto_load`` like
+            # every other subsystem — ``create.agent()``'s documented contract
+            # is "always start fresh", and until 2026-09-05 SCN alone leaked
+            # the previous session's temporal state through it, making the
+            # fresh/loaded distinction incoherent (and the Oasis ingestion
+            # contract undefinable: what a bundle merges INTO must be known).
+            # The persistence path stays bound either way: a fresh agent still
+            # SAVES its temporal state at session end (write-but-don't-read,
+            # the same shape bio_stack.py gives the orchestrator NPC).
+            if scn_path_str is not None and auto_load:
                 scn_file = Path(scn_path_str)
                 if scn_file.exists():
                     try:
