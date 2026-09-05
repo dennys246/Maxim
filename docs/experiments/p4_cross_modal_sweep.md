@@ -81,7 +81,7 @@ All 20 seeds produce identical results (zero variance). The EC threshold jitter 
 ## Reproduction
 
 ```bash
-PYTHONPATH=src python scripts/p4_cross_modal_sweep.py
+PYTHONPATH=src python scripts/p4_cross_modal_sweep.py  # D27: add --write-experiment-results to update the committed record
 ```
 
 See `docs/experiments/protocols/p4_cross_modal_reproduction.md` for full protocol.

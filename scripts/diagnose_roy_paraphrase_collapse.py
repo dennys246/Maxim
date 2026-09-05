@@ -537,6 +537,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    # D26/D27: a degraded (hash-fallback) encoder must error on the APPARATUS —
+    # this diagnostic's cosine numbers are meaningless on hash embeddings.
+    from maxim.similarity.encoder import require_semantic_encoder
+
+    require_semantic_encoder(context="diagnose_roy_paraphrase_collapse (D27)")
+
     if os.environ.get("MAXIM_SUBSTRATE_PATH", "").strip().lower() not in ("1", "true", "yes", "on"):
         print(
             "WARNING: MAXIM_SUBSTRATE_PATH is not set. This script bypasses "

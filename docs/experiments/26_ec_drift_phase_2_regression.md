@@ -195,7 +195,7 @@ PYTHONPATH=src python scripts/measure_p1_at_threshold.py --threshold 0.44 \
     --output /tmp/p1_at_0_44.json
 
 # 0.01-granularity sweep on BOTH fixtures (the refinement step that named 0.44):
-PYTHONPATH=src MAXIM_SUBSTRATE_PATH=1 python scripts/fine_sweep_phase_2.py
+PYTHONPATH=src MAXIM_SUBSTRATE_PATH=1 python scripts/fine_sweep_phase_2.py  # D27: add --write-experiment-results to update the committed record
 # Writes docs/experiments/results/ec_drift_phase_2_fine_sweep.json
 
 # Other failed candidates (for full audit trail):

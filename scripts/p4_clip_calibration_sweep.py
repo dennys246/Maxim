@@ -39,6 +39,7 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import random
@@ -315,7 +316,35 @@ def _write_report(
     logger.info("wrote json %s", out_json)
 
 
+def _evidence_args() -> argparse.Namespace:
+    """D27: committed-evidence writes are opt-in (see scripts/_provenance.py)."""
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--write-experiment-results",
+        action="store_true",
+        help="update the COMMITTED report + results record (refuses a dirty tree)",
+    )
+    ap.add_argument("--allow-dirty", action="store_true")
+    return ap.parse_args()
+
+
 def main() -> int:
+    _EVIDENCE_ARGS = _evidence_args()
+    # Fail-fast (review fold): resolve evidence paths — incl. the dirty-tree
+    # refusal on the opt-in — BEFORE the measurement runs, not after.
+    repo_root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(repo_root / "scripts"))
+    from _provenance import evidence_out_paths_or_exit
+
+    out_md, out_json = evidence_out_paths_or_exit(
+        repo_root,
+        [
+            repo_root / "docs" / "experiments" / "p4_clip_calibration.md",
+            repo_root / "docs" / "experiments" / "results" / "p4_clip_calibration.json",
+        ],
+        write_experiment_results=_EVIDENCE_ARGS.write_experiment_results,
+        allow_dirty=_EVIDENCE_ARGS.allow_dirty,
+    )
     _set_seeds(SEED)
 
     logger.info("P4 Stage 2 — CLIP calibration sweep")
@@ -341,8 +370,6 @@ def main() -> int:
         logger.info("  %d %s %.3f", idx, name, acc)
 
     repo_root = Path(__file__).resolve().parent.parent
-    out_md = repo_root / "docs" / "experiments" / "p4_clip_calibration.md"
-    out_json = repo_root / "docs" / "experiments" / "results" / "p4_clip_calibration.json"
     _write_report(out_md, out_json, per_class_acc, list(class_names), chosen, elapsed)
 
     return 0
