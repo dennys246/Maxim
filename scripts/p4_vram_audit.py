@@ -42,6 +42,7 @@ Usage (on any other GPU or CPU)::
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import subprocess
@@ -364,7 +365,33 @@ def _safe_step(
         return None
 
 
+def _evidence_args() -> argparse.Namespace:
+    """D27: committed-evidence writes are opt-in (see scripts/_provenance.py)."""
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--write-experiment-results",
+        action="store_true",
+        help="update the COMMITTED report + results record (refuses a dirty tree)",
+    )
+    ap.add_argument("--allow-dirty", action="store_true")
+    return ap.parse_args()
+
+
 def main() -> int:
+    args = _evidence_args()
+    repo_root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(repo_root / "scripts"))
+    from _provenance import evidence_out_paths
+
+    out_md, out_json = evidence_out_paths(
+        repo_root,
+        [
+            repo_root / "docs" / "experiments" / "p4_vram_audit.md",
+            repo_root / "docs" / "experiments" / "results" / "p4_vram_audit.json",
+        ],
+        write_experiment_results=args.write_experiment_results,
+        allow_dirty=args.allow_dirty,
+    )
     logger.info("P4 Stage 2 VRAM audit")
 
     start = time.monotonic()
@@ -378,9 +405,6 @@ def main() -> int:
     if clip_enc is None:
         logger.error("aborting audit — CLIP load failed; writing partial report")
         total = time.monotonic() - start
-        repo_root = Path(__file__).resolve().parent.parent
-        out_md = repo_root / "docs" / "experiments" / "p4_vram_audit.md"
-        out_json = repo_root / "docs" / "experiments" / "results" / "p4_vram_audit.json"
         _write_report(out_md, out_json, samples, total)
         return 2
 
@@ -389,9 +413,6 @@ def main() -> int:
     if mpnet is None:
         logger.error("aborting audit — mpnet load failed; writing partial report")
         total = time.monotonic() - start
-        repo_root = Path(__file__).resolve().parent.parent
-        out_md = repo_root / "docs" / "experiments" / "p4_vram_audit.md"
-        out_json = repo_root / "docs" / "experiments" / "results" / "p4_vram_audit.json"
         _write_report(out_md, out_json, samples, total)
         return 2
 
@@ -413,9 +434,6 @@ def main() -> int:
     if encoded is None:
         logger.error("mug test encoding OOM'd; writing partial report")
         total = time.monotonic() - start
-        repo_root = Path(__file__).resolve().parent.parent
-        out_md = repo_root / "docs" / "experiments" / "p4_vram_audit.md"
-        out_json = repo_root / "docs" / "experiments" / "results" / "p4_vram_audit.json"
         _write_report(out_md, out_json, samples, total)
         return 2
 
@@ -424,9 +442,6 @@ def main() -> int:
         logger.info("after torch.cuda.empty_cache: %s", samples[-1])
 
     total = time.monotonic() - start
-    repo_root = Path(__file__).resolve().parent.parent
-    out_md = repo_root / "docs" / "experiments" / "p4_vram_audit.md"
-    out_json = repo_root / "docs" / "experiments" / "results" / "p4_vram_audit.json"
     _write_report(out_md, out_json, samples, total)
 
     return 0

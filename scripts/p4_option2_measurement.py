@@ -33,6 +33,7 @@ Outputs:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import random
@@ -671,7 +672,21 @@ def generate_markdown_report(report: MeasurementReport) -> str:
     return "\n".join(lines)
 
 
+def _evidence_args() -> argparse.Namespace:
+    """D27: committed-evidence writes are opt-in (see scripts/_provenance.py)."""
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--write-experiment-results",
+        action="store_true",
+        help="update the COMMITTED report + results record (refuses a dirty tree)",
+    )
+    ap.add_argument("--allow-dirty", action="store_true")
+    return ap.parse_args()
+
+
 def main() -> None:
+    global _EVIDENCE_ARGS
+    _EVIDENCE_ARGS = _evidence_args()
     logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s %(message)s")
 
     global _text_encoder_cache
@@ -733,9 +748,19 @@ def main() -> None:
     print("=" * 72)
 
     # Save results
-    results_dir = _REPO / "docs" / "experiments" / "results"
-    results_dir.mkdir(parents=True, exist_ok=True)
-    json_path = results_dir / "p4_option2_measurement.json"
+    sys.path.insert(0, str(_REPO / "scripts"))
+    from _provenance import evidence_out_paths
+
+    md_path, json_path = evidence_out_paths(
+        _REPO,
+        [
+            _REPO / "docs" / "experiments" / "p4_option2_measurement.md",
+            _REPO / "docs" / "experiments" / "results" / "p4_option2_measurement.json",
+        ],
+        write_experiment_results=_EVIDENCE_ARGS.write_experiment_results,
+        allow_dirty=_EVIDENCE_ARGS.allow_dirty,
+    )
+    json_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Serialize — convert dataclasses to dicts
     json_data = asdict(report)
@@ -744,7 +769,6 @@ def main() -> None:
     logger.info("JSON results saved to %s", json_path)
 
     # Save markdown report
-    md_path = _REPO / "docs" / "experiments" / "p4_option2_measurement.md"
     md_content = generate_markdown_report(report)
     with open(md_path, "w") as f:
         f.write(md_content)

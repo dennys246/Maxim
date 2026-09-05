@@ -145,3 +145,134 @@ class TestCommittedEvidenceIsWellFormed:
             pytest.skip(f"{filename} not committed")
         payload = json.loads(path.read_text())
         assert isinstance(payload, dict) and payload, f"{filename} is empty or malformed"
+
+
+class TestScriptsEvidenceWritePolicy:
+    """D27 (1.2 gate 8(a)): the same policy, extended to the `scripts/` surface.
+
+    D25/D26 closed the class for tests/substrate/; seven `scripts/` harnesses
+    kept overwriting committed S4 evidence unconditionally. They now route
+    every committed-tree write through `_provenance.evidence_out_paths`
+    (opt-in via --write-experiment-results; dirty-tree refusal on the opt-in),
+    and the LinguisticEncoder measurement scripts assert their apparatus via
+    `require_semantic_encoder` before measuring.
+    """
+
+    SCRIPTS = SUBSTRATE_TESTS.parent.parent / "scripts"
+    # Files that may reference the committed results tree WITHOUT the opt-in
+    # helper, each with a stated reason (strict-grep allowlist pattern —
+    # additions need a reason, not just a name).
+    ALLOWLIST: dict[str, str] = {
+        "_provenance.py": "defines the policy (evidence_out_paths lives here)",
+    }
+    # LinguisticEncoder measurement entry points — a degraded hash-fallback
+    # encoder must error on the APPARATUS, never publish over the science.
+    SEMANTIC_MEASUREMENT_SCRIPTS = (
+        "fine_sweep_phase_2.py",
+        "measure_p1_at_threshold.py",
+        "diagnose_roy_paraphrase_collapse.py",
+    )
+
+    @staticmethod
+    def _references_results_tree(src: str) -> bool:
+        flat = src.replace('"', "").replace("'", "").replace(" ", "")
+        return "experiments/results" in flat
+
+    def test_scripts_touching_the_results_tree_use_the_optin_helper(self) -> None:
+        offenders = []
+        for path in sorted(self.SCRIPTS.rglob("*.py")):
+            src = path.read_text()
+            if not self._references_results_tree(src):
+                continue
+            if path.name in self.ALLOWLIST:
+                continue
+            if "evidence_out_path" not in src:
+                offenders.append(str(path.relative_to(self.SCRIPTS)))
+        assert not offenders, (
+            f"{offenders} reference docs/experiments/results without routing through "
+            "_provenance.evidence_out_paths — a harness must not overwrite committed "
+            "evidence as a side effect (D25/D27). Route the write through the helper, "
+            "or add an ALLOWLIST entry WITH a reason."
+        )
+
+    def test_semantic_measurement_scripts_assert_their_apparatus(self) -> None:
+        missing = [
+            name
+            for name in self.SEMANTIC_MEASUREMENT_SCRIPTS
+            if "require_semantic_encoder" not in (self.SCRIPTS / name).read_text()
+        ]
+        assert not missing, (
+            f"{missing} build a LinguisticEncoder without require_semantic_encoder — "
+            "a hash-fallback run would measure noise and (pre-D27) publish it (D26)."
+        )
+
+    def test_linguistic_encoder_scripts_are_all_accounted_for(self) -> None:
+        """A NEW LinguisticEncoder measurement script must join the list above
+        (or explain itself) — the scan that keeps the D27 encoder half closed."""
+        known = set(self.SEMANTIC_MEASUREMENT_SCRIPTS) | {
+            "exp_d8_read_mutation.py",  # calls require_semantic_encoder itself (checked below)
+        }
+        builders = {
+            str(p.relative_to(self.SCRIPTS))
+            for p in self.SCRIPTS.rglob("*.py")
+            if "LinguisticEncoder(" in p.read_text()
+        }
+        unknown = builders - known
+        assert not unknown, (
+            f"{unknown} construct LinguisticEncoder but are not in the D27 accounting — "
+            "add require_semantic_encoder to the measurement entry point and list the file."
+        )
+        assert "require_semantic_encoder" in (self.SCRIPTS / "exp_d8_read_mutation.py").read_text()
+
+
+class TestEvidenceOutPathsHelper:
+    """The helper's own contract (D27)."""
+
+    @staticmethod
+    def _prov():
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "_provenance_under_test", SUBSTRATE_TESTS.parent.parent / "scripts" / "_provenance.py"
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_without_the_flag_governed_paths_redirect_names_preserved(self, tmp_path, capsys) -> None:
+        prov = self._prov()
+        repo = tmp_path
+        committed_json = repo / "docs" / "experiments" / "results" / "x.json"
+        committed_md = repo / "docs" / "experiments" / "x.md"
+        out = prov.evidence_out_paths(repo, [committed_md, committed_json], write_experiment_results=False)
+        assert [p.name for p in out] == ["x.md", "x.json"]
+        assert out[0].parent == out[1].parent  # paired artifacts share one temp dir
+        assert not str(out[0]).startswith(str(repo))
+        assert "NOT updating committed record" in capsys.readouterr().out
+
+    def test_ungoverned_paths_pass_through_untouched(self, tmp_path) -> None:
+        prov = self._prov()
+        elsewhere = tmp_path / "out" / "free.json"
+        out = prov.evidence_out_paths(tmp_path, [elsewhere], write_experiment_results=False)
+        assert out == [elsewhere.resolve()]
+
+    def test_with_the_flag_clean_tree_returns_committed(self, tmp_path, monkeypatch) -> None:
+        prov = self._prov()
+        monkeypatch.setattr(prov, "working_tree_dirty", lambda *a, **k: False)
+        committed = tmp_path / "docs" / "experiments" / "results" / "x.json"
+        out = prov.evidence_out_paths(tmp_path, [committed], write_experiment_results=True)
+        assert out == [committed.resolve()]
+
+    def test_with_the_flag_dirty_tree_refuses(self, tmp_path, monkeypatch) -> None:
+        prov = self._prov()
+        monkeypatch.setattr(prov, "working_tree_dirty", lambda *a, **k: True)
+        committed = tmp_path / "docs" / "experiments" / "results" / "x.json"
+        with pytest.raises(prov.DirtyTreeError):
+            prov.evidence_out_paths(tmp_path, [committed], write_experiment_results=True)
+
+    def test_dirty_tree_with_explicit_allowance_writes_committed(self, tmp_path, monkeypatch) -> None:
+        prov = self._prov()
+        monkeypatch.setattr(prov, "working_tree_dirty", lambda *a, **k: True)
+        committed = tmp_path / "docs" / "experiments" / "results" / "x.json"
+        out = prov.evidence_out_paths(tmp_path, [committed], write_experiment_results=True, allow_dirty=True)
+        assert out == [committed.resolve()]

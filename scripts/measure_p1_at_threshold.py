@@ -34,12 +34,24 @@ def main() -> int:
     parser.add_argument("--model", default="paraphrase-mpnet-base-v2")
     parser.add_argument("--output", default=None)
     parser.add_argument(
+        "--write-experiment-results",
+        action="store_true",
+        help="required when --output targets the committed docs/experiments tree (D27); refuses a dirty tree",
+    )
+    parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument(
         "--frozen-text",
         action="store_true",
         help="Add 'text' to ECConfig.frozen_centroid_modalities (Phase 1 candidate "
         "d0_f1_*). Default is current behavior — only 'interoception' frozen.",
     )
     args = parser.parse_args()
+
+    # D26/D27: a degraded (hash-fallback) encoder must error on the APPARATUS,
+    # never publish over the science.
+    from maxim.similarity.encoder import require_semantic_encoder
+
+    require_semantic_encoder(args.model, context="measure_p1_at_threshold (D27)")
 
     # Import after sys.path manipulation. The test file lives outside the
     # package but imports tests.substrate.p1_metrics — add the repo root too.
@@ -135,7 +147,16 @@ def main() -> int:
     print(f"  seeds passing individual P1 gate: {summary['seeds_passing_standard_gate']}/{len(results)}")
 
     if args.output:
-        out_path = Path(args.output).resolve()
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from _provenance import evidence_out_path
+
+        repo_root = Path(__file__).resolve().parent.parent
+        out_path = evidence_out_path(
+            repo_root,
+            Path(args.output).resolve(),
+            write_experiment_results=args.write_experiment_results,
+            allow_dirty=args.allow_dirty,
+        )
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(summary, indent=2))
         print(f"Wrote {out_path}", file=sys.stderr)

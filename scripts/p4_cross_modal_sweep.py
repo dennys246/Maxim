@@ -33,6 +33,7 @@ Outputs:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import sys
@@ -509,7 +510,21 @@ def generate_markdown(report: SweepReport) -> str:
 # ─────────────────────────────────────────────────────────────────────────
 
 
+def _evidence_args() -> argparse.Namespace:
+    """D27: committed-evidence writes are opt-in (see scripts/_provenance.py)."""
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--write-experiment-results",
+        action="store_true",
+        help="update the COMMITTED report + results record (refuses a dirty tree)",
+    )
+    ap.add_argument("--allow-dirty", action="store_true")
+    return ap.parse_args()
+
+
 def main() -> None:
+    global _EVIDENCE_ARGS
+    _EVIDENCE_ARGS = _evidence_args()
     logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s %(message)s")
     t0 = time.time()
 
@@ -579,15 +594,23 @@ def main() -> None:
     print("=" * 72)
 
     # Save outputs
-    results_dir = _REPO / "docs" / "experiments" / "results"
-    results_dir.mkdir(parents=True, exist_ok=True)
+    sys.path.insert(0, str(_REPO / "scripts"))
+    from _provenance import evidence_out_paths
 
-    json_path = results_dir / "p4_cross_modal_sweep.json"
+    md_path, json_path = evidence_out_paths(
+        _REPO,
+        [
+            _REPO / "docs" / "experiments" / "p4_cross_modal_sweep.md",
+            _REPO / "docs" / "experiments" / "results" / "p4_cross_modal_sweep.json",
+        ],
+        write_experiment_results=_EVIDENCE_ARGS.write_experiment_results,
+        allow_dirty=_EVIDENCE_ARGS.allow_dirty,
+    )
+    json_path.parent.mkdir(parents=True, exist_ok=True)
     with open(json_path, "w") as f:
         json.dump(asdict(report), f, indent=2)
     logger.info("JSON saved to %s", json_path)
 
-    md_path = _REPO / "docs" / "experiments" / "p4_cross_modal_sweep.md"
     with open(md_path, "w") as f:
         f.write(generate_markdown(report))
     logger.info("Markdown saved to %s", md_path)

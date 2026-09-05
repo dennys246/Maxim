@@ -346,3 +346,82 @@ def executed_code_provenance(
     if gate["allow_dirty"]:
         prov["allow_dirty"] = True
     return prov
+
+
+# ── D27: committed-evidence writes are opt-in ────────────────────────────────
+
+EVIDENCE_DIR = Path("docs/experiments")
+
+
+def evidence_out_paths(
+    repo_root: Path | str,
+    committed_paths: "list[Path | str]",
+    *,
+    write_experiment_results: bool,
+    allow_dirty: bool = False,
+) -> "list[Path]":
+    """D27: a harness updates COMMITTED evidence only with the explicit opt-in.
+
+    Any path resolving inside ``<repo>/docs/experiments/`` (the S4 results
+    JSONs and their committed ``.md`` reports alike) is GOVERNED:
+
+    * without ``--write-experiment-results`` every governed path is REDIRECTED
+      into one fresh temp directory (names preserved) and both locations are
+      printed — an ordinary or degraded run can never replace real evidence as
+      a side effect (the D25 failure class, scripts surface);
+    * with the flag, the write additionally refuses a dirty ``src/``+
+      ``scripts/`` tree (:class:`DirtyTreeError`, harness policy exit 3)
+      unless ``allow_dirty`` — replacing evidence is a deliberate, reviewable
+      act performed from established code, mirroring
+      ``tests/substrate/conftest.py::publish_sweep_results``.
+
+    Paths outside ``docs/experiments/`` pass through untouched. All governed
+    paths share one temp dir so paired artifacts (json + md) stay together.
+    """
+    import tempfile
+
+    root = Path(repo_root).resolve()
+    governed_root = (root / EVIDENCE_DIR).resolve()
+    resolved = [Path(p).resolve() for p in committed_paths]
+    governed = [p for p in resolved if p.is_relative_to(governed_root)]
+    if not governed:
+        return resolved
+    if not write_experiment_results:
+        tmp = Path(tempfile.mkdtemp(prefix="maxim-evidence-"))
+        out: "list[Path]" = []
+        for p in resolved:
+            if p in governed:
+                redirected = tmp / p.name
+                print(
+                    f"[evidence] NOT updating committed record {p.relative_to(root)} "
+                    f"(no --write-experiment-results); writing {redirected}"
+                )
+                out.append(redirected)
+            else:
+                out.append(p)
+        return out
+    if working_tree_dirty(root) and not allow_dirty:
+        raise DirtyTreeError(
+            "refusing to OVERWRITE committed evidence "
+            f"({', '.join(str(p.relative_to(root)) for p in governed)}) from a DIRTY tree "
+            f"(`git status --porcelain -- {' '.join(DIRTY_SCOPE)}` is not empty in {root}).\n"
+            "  A degraded or in-progress run must not replace real evidence (D25/D27).\n"
+            "  Fix: commit the harness/src changes and re-run from the clean tree, or pass --allow-dirty."
+        )
+    return resolved
+
+
+def evidence_out_path(
+    repo_root: Path | str,
+    committed_path: "Path | str",
+    *,
+    write_experiment_results: bool,
+    allow_dirty: bool = False,
+) -> Path:
+    """Single-path convenience over :func:`evidence_out_paths`."""
+    return evidence_out_paths(
+        repo_root,
+        [committed_path],
+        write_experiment_results=write_experiment_results,
+        allow_dirty=allow_dirty,
+    )[0]
