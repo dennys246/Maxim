@@ -619,6 +619,17 @@ Distribution amplifies silent state errors. Before shared substrate becomes an
 execution priority:
 
 1. D1 live encoder-provenance validation must reject or migrate incompatible state.
+   *Reject* shipped in 1.1.3 (geometry-masked scans + the deduped mismatch warning +
+   D66's legacy tag derivation). *Migrate* closed 2026-09-04: EC stores centroids, not
+   raw readings, so migration for sensor substrate is loud **invalidation** — `maxim
+   substrate invalidate` drops nodes by NAMED stale geometry (census printed when no
+   geometry is named; unstamped nodes untouchable), prunes the NAc biases keyed on the
+   removed cluster ids in the same operation (`prune_nac_cluster_biases` — else they
+   are minted permanently dangling, the D2 shape), and records everything removed
+   verbatim in a tombstone sidecar; dry-run by default. Live re-encoding happens
+   organically as new readings arrive in the live geometry. First real case: 1.1.4's
+   A4 moved the world geometry tag. Guard:
+   `tests/unit/test_substrate_invalidate.py`.
 2. D3/D4 threshold and same-dimension geometry compatibility must be explicit and
    tested, not inferred from vector length.
 3. EC read-side mutation (D8) must be measured and accepted or separated from recall.

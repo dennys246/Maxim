@@ -224,6 +224,112 @@ def _run_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_invalidate(args: argparse.Namespace) -> int:
+    """Gate 1's migrate half — invalidate stale-geometry EC nodes in a session.
+
+    EC stores centroids, not raw readings, so a stale-geometry node cannot be
+    re-encoded in place: migration is loud invalidation (nodes removed, the
+    NAc biases keyed on them pruned in the same operation, everything removed
+    recorded verbatim in a tombstone sidecar), and live re-encoding happens
+    organically as new readings arrive in the live geometry. Dry-run by
+    default; ``--apply`` writes.
+    """
+    from maxim.hivemind.merge import invalidate_stale_geometry_nodes, prune_nac_cluster_biases
+
+    session_dir = _expand_session_dir(args.session)
+    if not session_dir.is_dir():
+        print(f"error: session directory not found: {session_dir}", file=sys.stderr)
+        return 2
+
+    ec_path = session_dir / "aut_ec.json"
+    ec_payload = _read_optional_json(ec_path)
+    nodes = ec_payload.get("substrate_nodes") if isinstance(ec_payload, dict) else None
+    if not isinstance(nodes, dict):
+        print(f"error: no substrate_nodes in {ec_path}; nothing to invalidate", file=sys.stderr)
+        return 2
+
+    # No --drop-geometry: print the per-modality geometry census so the
+    # operator can see what is stale, and stop. Never guess which geometry
+    # is the live one — the operator names the one to drop.
+    if args.drop_geometry is None:
+        if args.apply:
+            print("error: --apply requires --modality and --drop-geometry", file=sys.stderr)
+            return 2
+        census: dict[str, dict[str, int]] = {}
+        for node in nodes.values():
+            mod = str(node.get("modality", "?"))
+            geom = node.get("geometry")
+            by_geom = census.setdefault(mod, {})
+            key = geom if geom is not None else "(unstamped)"
+            by_geom[key] = by_geom.get(key, 0) + 1
+        print(f"geometry census for {ec_path} ({len(nodes)} nodes):")
+        for mod in sorted(census):
+            for geom, count in sorted(census[mod].items()):
+                print(f"  {mod:12s} {geom}: {count}")
+        print("(re-run with --modality and --drop-geometry to invalidate a stale geometry)")
+        return 0
+
+    if args.modality is None:
+        print("error: --drop-geometry requires --modality", file=sys.stderr)
+        return 2
+
+    kept, removed_ids = invalidate_stale_geometry_nodes(nodes, modality=args.modality, drop_geometry=args.drop_geometry)
+    if not removed_ids:
+        print(f"nothing to invalidate: no {args.modality!r} node is stamped with geometry {args.drop_geometry!r}")
+        return 0
+
+    nac_path = session_dir / "aut_nac.json"
+    nac_state = _read_optional_json(nac_path)
+    pruned_entries: dict[str, dict] = {}
+    pruned_count = 0
+    new_nac = None
+    if isinstance(nac_state, dict):
+        new_nac, pruned_count = prune_nac_cluster_biases(nac_state, set(removed_ids))
+        for field in ("cluster_reward_bias", "cluster_reward_source", "reward_bias"):
+            old_field = nac_state.get(field)
+            new_field = new_nac.get(field)
+            if isinstance(old_field, dict) and isinstance(new_field, dict):
+                dropped = {k: v for k, v in old_field.items() if k not in new_field}
+                if dropped:
+                    pruned_entries[field] = dropped
+
+    print(
+        f"invalidate {args.modality!r} nodes with geometry {args.drop_geometry!r}:\n"
+        f"  EC nodes removed:    {len(removed_ids)} of {len(nodes)}\n"
+        f"  NAc biases pruned:   {pruned_count}" + ("" if nac_state is not None else "  (no aut_nac.json in session)")
+    )
+
+    if not args.apply:
+        print("DRY RUN — nothing written. Re-run with --apply to invalidate.")
+        return 0
+
+    from datetime import datetime, timezone
+
+    from maxim.utils.atomic_io import atomic_write_json
+
+    # Tombstone FIRST: everything removed, verbatim, so the deletion is
+    # auditable and hand-reversible. Only then rewrite the live files.
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    tombstone_path = session_dir / f"aut_ec.invalidated.{stamp}.json"
+    atomic_write_json(
+        str(tombstone_path),
+        {
+            "_format_version": "1.0",
+            "reason": "gate1-geometry-invalidation",
+            "modality": args.modality,
+            "drop_geometry": args.drop_geometry,
+            "removed_nodes": {nid: nodes[nid] for nid in removed_ids},
+            "pruned_nac_entries": pruned_entries,
+        },
+    )
+    ec_payload["substrate_nodes"] = kept
+    atomic_write_json(str(ec_path), ec_payload)
+    if new_nac is not None:
+        atomic_write_json(str(nac_path), new_nac)
+    print(f"applied. Tombstone: {tombstone_path}")
+    return 0
+
+
 def _meta_sidecar_path(nac_path: Path) -> Path:
     """``foo/nac.json`` → ``foo/nac.meta.json`` (the policy-meta sidecar).
 
@@ -507,6 +613,36 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Accept a bundle with no declared body_ref despite --receiver-body (explicit risk).",
     )
     p_import.set_defaults(func=_run_import)
+
+    p_invalidate = sub.add_parser(
+        "invalidate",
+        help="Gate 1 migrate half: drop stale-geometry EC nodes + the NAc biases keyed on them (dry-run by default)",
+    )
+    p_invalidate.add_argument(
+        "--session",
+        required=True,
+        help="Session ID (resolved under ~/.maxim/sessions/{id}/) or a path to a session directory",
+    )
+    p_invalidate.add_argument(
+        "--modality",
+        default=None,
+        help="Modality whose stale nodes to invalidate (e.g. 'world').",
+    )
+    p_invalidate.add_argument(
+        "--drop-geometry",
+        default=None,
+        help=(
+            "The stale geometry tag to drop, by name (copy it from the census this command "
+            "prints when run without this flag, or from the EC mismatch warning). Unstamped "
+            "nodes are never touched."
+        ),
+    )
+    p_invalidate.add_argument(
+        "--apply",
+        action="store_true",
+        help="Actually write (default is a dry-run report). Writes a tombstone sidecar first.",
+    )
+    p_invalidate.set_defaults(func=_run_invalidate)
 
     p_inspect = sub.add_parser("inspect", help="Print the bundle manifest without extracting")
     p_inspect.add_argument("input", help="Path to the .zip bundle")

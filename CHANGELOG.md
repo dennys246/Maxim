@@ -24,6 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Gate 1 migrate half — `maxim substrate invalidate`.** 1.1.3 shipped only the reject half of
+  "reject or migrate incompatible state" (geometry-masked scans + a deduped warning); stale
+  nodes just sat dead, and 1.1.4's A4 moved the world geometry tag, making the case live. EC
+  stores centroids, not raw readings, so migration for sensor substrate is loud
+  **invalidation**: the new verb drops nodes by NAMED stale geometry (a census prints when no
+  geometry is named; unstamped nodes are a separate permissive class and untouchable), prunes
+  the NAc biases keyed on the removed cluster ids in the same operation
+  (`hivemind/merge.py::prune_nac_cluster_biases` — all three surfaces: `cluster_reward_bias`,
+  `cluster_reward_source`, `reward_bias`; else the operation mints permanently dangling biases,
+  the D2 shape), and records everything removed verbatim in a tombstone sidecar
+  (`aut_ec.invalidated.<utc>.json`). Dry-run by default; `--apply` writes tombstone-first.
 - **Gate 7 callers — typed bundles now have a real composer and a real refusing receiver.**
   The 1.1.3 gate-7 ship was format capacity with zero production callers: no composer passed
   `body_ref`/`affordance_namespace`/`capability_map` (every real bundle shipped
