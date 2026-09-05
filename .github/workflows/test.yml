@@ -383,7 +383,7 @@ jobs:
         # files; the rest of the codebase is not mypy-clean yet.
         # hivemind/ added per 1.2 gate 8 (roadmap): the bundle format is a
         # wire boundary and 1.2 rewrites its merge path — that is where
-        # typing pays (5 files; repo-wide is not worth it).
+        # typing pays (the 5 hivemind files; repo-wide is not worth it).
         # Pinned so a mypy release can't break CI on its own. Runs before
         # the test suite for faster failure feedback.
         run: |
