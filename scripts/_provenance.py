@@ -76,6 +76,10 @@ __all__ = [
     "is_gated_path",
     "preflight_gated_record",
     "preflight_gated_record_or_exit",
+    "evidence_out_path",
+    "evidence_out_paths",
+    "evidence_out_paths_or_exit",
+    "EVIDENCE_DIR",
     "resolved_maxim_file",
     "working_tree_dirty",
 ]
@@ -349,6 +353,9 @@ def executed_code_provenance(
 
 
 # ── D27: committed-evidence writes are opt-in ────────────────────────────────
+# The module's THIRD door (after spawn-provenance and in-process gated
+# records): harnesses that UPDATE committed evidence under docs/experiments/
+# route their output paths through evidence_out_paths(_or_exit).
 
 EVIDENCE_DIR = Path("docs/experiments")
 
@@ -425,3 +432,28 @@ def evidence_out_path(
         write_experiment_results=write_experiment_results,
         allow_dirty=allow_dirty,
     )[0]
+
+
+def evidence_out_paths_or_exit(
+    repo_root: Path | str,
+    committed_paths: "list[Path | str]",
+    *,
+    write_experiment_results: bool,
+    allow_dirty: bool = False,
+) -> "list[Path]":
+    """:func:`evidence_out_paths` with the harness exit-3 policy applied.
+
+    Mirrors :func:`preflight_gated_record_or_exit`: a dirty-tree refusal
+    prints ``[FAIL]`` and exits 3 instead of raising a traceback — the
+    documented contract for every gated/evidence refusal in this repo.
+    """
+    try:
+        return evidence_out_paths(
+            repo_root,
+            committed_paths,
+            write_experiment_results=write_experiment_results,
+            allow_dirty=allow_dirty,
+        )
+    except DirtyTreeError as exc:
+        print(f"[FAIL] evidence-write preflight: {exc}", file=sys.stderr)
+        raise SystemExit(3) from exc

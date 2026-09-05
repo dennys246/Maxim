@@ -152,10 +152,18 @@ class TestScriptsEvidenceWritePolicy:
 
     D25/D26 closed the class for tests/substrate/; seven `scripts/` harnesses
     kept overwriting committed S4 evidence unconditionally. They now route
-    every committed-tree write through `_provenance.evidence_out_paths`
-    (opt-in via --write-experiment-results; dirty-tree refusal on the opt-in),
-    and the LinguisticEncoder measurement scripts assert their apparatus via
-    `require_semantic_encoder` before measuring.
+    every committed-tree write through `_provenance.evidence_out_paths_or_exit`
+    (opt-in via --write-experiment-results; dirty-tree refusal exits 3 on the
+    opt-in), and the LinguisticEncoder measurement scripts assert their
+    apparatus via `require_semantic_encoder` before measuring.
+
+    KNOWN SCAN LIMIT (stated, not hidden): the scan keys on the RESULTS tree
+    (`experiments/results`). A new script writing only a committed
+    `docs/experiments/<report>.md` — the paired-artifact shape the seven also
+    had — is caught only if it also touches results/; a reliable .md scan
+    would false-positive on the countless docstring references to experiment
+    reports. The seven's own .md writes ARE routed (their paths go through
+    the same helper call), and reviewer attention owns the residual class.
     """
 
     SCRIPTS = SUBSTRATE_TESTS.parent.parent / "scripts"

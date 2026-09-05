@@ -329,8 +329,22 @@ def _evidence_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    global _EVIDENCE_ARGS
     _EVIDENCE_ARGS = _evidence_args()
+    # Fail-fast (review fold): resolve evidence paths — incl. the dirty-tree
+    # refusal on the opt-in — BEFORE the measurement runs, not after.
+    repo_root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(repo_root / "scripts"))
+    from _provenance import evidence_out_paths_or_exit
+
+    out_md, out_json = evidence_out_paths_or_exit(
+        repo_root,
+        [
+            repo_root / "docs" / "experiments" / "p4_clip_calibration.md",
+            repo_root / "docs" / "experiments" / "results" / "p4_clip_calibration.json",
+        ],
+        write_experiment_results=_EVIDENCE_ARGS.write_experiment_results,
+        allow_dirty=_EVIDENCE_ARGS.allow_dirty,
+    )
     _set_seeds(SEED)
 
     logger.info("P4 Stage 2 — CLIP calibration sweep")
@@ -356,18 +370,6 @@ def main() -> int:
         logger.info("  %d %s %.3f", idx, name, acc)
 
     repo_root = Path(__file__).resolve().parent.parent
-    sys.path.insert(0, str(repo_root / "scripts"))
-    from _provenance import evidence_out_paths
-
-    out_md, out_json = evidence_out_paths(
-        repo_root,
-        [
-            repo_root / "docs" / "experiments" / "p4_clip_calibration.md",
-            repo_root / "docs" / "experiments" / "results" / "p4_clip_calibration.json",
-        ],
-        write_experiment_results=_EVIDENCE_ARGS.write_experiment_results,
-        allow_dirty=_EVIDENCE_ARGS.allow_dirty,
-    )
     _write_report(out_md, out_json, per_class_acc, list(class_names), chosen, elapsed)
 
     return 0

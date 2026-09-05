@@ -381,9 +381,9 @@ def main() -> int:
     args = _evidence_args()
     repo_root = Path(__file__).resolve().parent.parent
     sys.path.insert(0, str(repo_root / "scripts"))
-    from _provenance import evidence_out_paths
+    from _provenance import evidence_out_paths_or_exit
 
-    out_md, out_json = evidence_out_paths(
+    out_md, out_json = evidence_out_paths_or_exit(
         repo_root,
         [
             repo_root / "docs" / "experiments" / "p4_vram_audit.md",

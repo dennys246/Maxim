@@ -53,6 +53,21 @@ def main() -> int:
 
     require_semantic_encoder(args.model, context="measure_p1_at_threshold (D27)")
 
+    # Fail-fast (review fold): resolve the evidence path — including the
+    # dirty-tree refusal on the opt-in — BEFORE the sweep runs, not after.
+    out_path = None
+    if args.output:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from _provenance import evidence_out_paths_or_exit
+
+        repo_root = Path(__file__).resolve().parent.parent
+        [out_path] = evidence_out_paths_or_exit(
+            repo_root,
+            [Path(args.output).resolve()],
+            write_experiment_results=args.write_experiment_results,
+            allow_dirty=args.allow_dirty,
+        )
+
     # Import after sys.path manipulation. The test file lives outside the
     # package but imports tests.substrate.p1_metrics — add the repo root too.
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -146,17 +161,7 @@ def main() -> int:
     print(f"  node growth: {mean_g:.1%} ± {std_g:.1%}  (gate <10%: {'PASS' if mean_g < 0.10 else 'fail'})")
     print(f"  seeds passing individual P1 gate: {summary['seeds_passing_standard_gate']}/{len(results)}")
 
-    if args.output:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from _provenance import evidence_out_path
-
-        repo_root = Path(__file__).resolve().parent.parent
-        out_path = evidence_out_path(
-            repo_root,
-            Path(args.output).resolve(),
-            write_experiment_results=args.write_experiment_results,
-            allow_dirty=args.allow_dirty,
-        )
+    if out_path is not None:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(summary, indent=2))
         print(f"Wrote {out_path}", file=sys.stderr)

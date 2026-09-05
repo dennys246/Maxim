@@ -523,8 +523,21 @@ def _evidence_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    global _EVIDENCE_ARGS
     _EVIDENCE_ARGS = _evidence_args()
+    # Fail-fast (review fold): resolve evidence paths — incl. the dirty-tree
+    # refusal on the opt-in — BEFORE the measurement runs, not after.
+    sys.path.insert(0, str(_REPO / "scripts"))
+    from _provenance import evidence_out_paths_or_exit
+
+    md_path, json_path = evidence_out_paths_or_exit(
+        _REPO,
+        [
+            _REPO / "docs" / "experiments" / "p4_cross_modal_sweep.md",
+            _REPO / "docs" / "experiments" / "results" / "p4_cross_modal_sweep.json",
+        ],
+        write_experiment_results=_EVIDENCE_ARGS.write_experiment_results,
+        allow_dirty=_EVIDENCE_ARGS.allow_dirty,
+    )
     logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s %(message)s")
     t0 = time.time()
 
@@ -594,18 +607,6 @@ def main() -> None:
     print("=" * 72)
 
     # Save outputs
-    sys.path.insert(0, str(_REPO / "scripts"))
-    from _provenance import evidence_out_paths
-
-    md_path, json_path = evidence_out_paths(
-        _REPO,
-        [
-            _REPO / "docs" / "experiments" / "p4_cross_modal_sweep.md",
-            _REPO / "docs" / "experiments" / "results" / "p4_cross_modal_sweep.json",
-        ],
-        write_experiment_results=_EVIDENCE_ARGS.write_experiment_results,
-        allow_dirty=_EVIDENCE_ARGS.allow_dirty,
-    )
     json_path.parent.mkdir(parents=True, exist_ok=True)
     with open(json_path, "w") as f:
         json.dump(asdict(report), f, indent=2)
