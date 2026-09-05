@@ -128,6 +128,11 @@ Deep-audited 2026-08-27; release authority reconciled 2026-08-19.
 - [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md) — ADOPTED
   2026-08-26 as the 1.2 motivating case study: sharing the nursery-taught want; the
   claim that earns it is cross-unit readout on a second Reachy.
+- [coding_habits_oasis.md](coding_habits_oasis.md) — ADOPTED 2026-09-05: collective
+  coding-safety habits. The coding gauntlet (#3) is a Queen-tier promotion INSTRUMENT
+  inside the 1.2 poison-resistance work — no 1.2 claim; the habit-transfer claim
+  (Exp 55) is 1.3-line. Defines the inherent bias class (Queen-promoted, decay-exempt,
+  tighten-only) and the pain-credit extension decision.
 
 ### 1.3 design (not yet scheduled; kept in root because the roadmap names them)
 
