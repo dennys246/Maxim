@@ -1,4 +1,89 @@
-# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25)
+# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05)
+
+## 1.1.4 refresh — 2026-09-05 ("The world seam"; PyPI `upload_time` 2026-09-05T02:47Z, tag `v1.1.4` @ `db4410de`)
+
+**Framing rule, applied.** 1.1.4 is infrastructure only — no behavioural claim; Minecraft is
+the instrument, not a demo. Every page that names the seam calls it apparatus for 1.2. The
+L11 verdict is stated with both halves everywhere it appears: `mitigation-confirmed`, NOT
+`retired-eligible` — A0 fully blind at N=16 (separation 0.0), A4 0.0566 vs the 0.70 bar; L11
+stays ACTIVE with A4 as partial mitigation, world-only (interoception and audio byte-identical
+to 1.1.3, so Exp 53b was not re-staled — the site previously said shipping *would* re-stale it).
+Site fix: **maxim-web PR #20** (`docs/1-1-4-refresh`); this section is pymaxim PR #621.
+
+**Verified against the artifact, not a proxy.**
+
+- **Clean venv** (`python3 -m venv` on 3.14, `pip install pymaxim==1.1.4`; then the `console`
+  extra). Wheel contains `_data/components/bodies/minecraft_player.yaml` — **16** `modality: world`
+  sensors, counted by parsing the shipped YAML — `items/minecraft_bread.yaml`,
+  `simulation/minecraft.py`, `simulation/minecraft_harness.py`, `embodiment/backends/minecraft.py`;
+  **no** Mineflayer/bridge JS anywhere in the wheel (`find`), so the site says the live seam needs a
+  checkout. `ComponentRegistry().list_refs()` = **94** = the regenerated `components.json` count
+  (`pnpm build:components -- --source <wheel>/_data/components --label "pymaxim 1.1.4 (PyPI wheel)"`;
+  +2 vs the 1.1.2 catalog: `bodies/minecraft_player`, `items/minecraft_bread`).
+- **`maxim serve`**, run under an isolated `HOME`: banner prints `http://127.0.0.1:<port>/#token=…`;
+  `GET /api/hello` → 200 `{"contract_version":"0.4.0","auth":"bearer"}`; `/api/identity`, `/docs`,
+  `/openapi.json`, `/api/diagnose` → **401** without a token and 200 with `Authorization: Bearer`;
+  `?token=` in the query → 401; `/api/pair/status` → **404** (A9.1 is post-`db4410de`, correctly
+  undocumented); startup `WARNING Console UI contract mismatch … '0.3.0' … '0.4.0'` (the vendored
+  `maxim-ui.json` says 0.3.0). `--show-token` prints the bare token. Without the extra the command
+  exits with `OptionalDependencyError … pip install 'pymaxim[console]'`. Flags from `maxim serve --help`.
+- **CLI flags:** every `--flag` in a site bash block (129 uses) checked against the wheel's
+  `--help` for top-level, `doctor`, `peer`, `tunnel`, `config`, `model add`, `substrate`, `roy diff`,
+  `serve` — all present (the two `--host` hits belong to `maxim-diagnostics`, a separate entry point
+  in the wheel). **48** Python snippets compile.
+- **Paths:** `maxim.utils.paths.resolve_user_state("sim_sandbox")` → `<data_home>/sim_sandbox`
+  (D69); research reports are still `Path("data")/"sim_reports"/research_<id>` at `v1.1.4`
+  (`research_orchestrator.py:119`, unchanged from `v1.1.3`) — the site says both.
+- **Engine truth read from the tag**, not main: `release_1_1_4.md`, CHANGELOG `[1.1.4]`, limits
+  ledger §L11 (disposition MITIGATED) + the tracking doc's 2026-09-04 row, graduation ledger
+  (Exp 42 / 48 / 53b triggers fired and discharged without re-stale), bugs ledger D51 scope /
+  D67 / D68 / D76–D79. `docs/experiments/README.md` is unchanged `v1.1.3`→`v1.1.4`, so the
+  experiment index keeps its derived 85 rows. The 0.89 ms / ~240-node scan figures come from
+  `docs/experiments/data/ec_scan_cost_2026-09-03.json` (the 0.31 ms spot check in the plan is
+  marked informal there and is not on the site).
+- **Build:** `pnpm build` clean, 53 pages; **4,927** internal hrefs + fragments resolve in `dist/`
+  (checker URL-decodes; the crèche fragment resolves); canonical tags only `pymaxim.bio`; all 52
+  sitemap routes present in `dist/`. Live, pre-merge: `docs.pymaxim.bio/<path>` → **308**
+  path-preserving, `/` → `/getting-started/`; GitHub `releases/latest` → `v1.1.4`.
+
+### Findings (route → claim before → truth source → fix)
+
+| Route | Before | Truth source | Fix |
+|---|---|---|---|
+| `/getting-started/` | 1.1.3 "Reachability"; release-notes link to the announcements folder | PyPI `upload_time`; `release_1_1_4.md` | 1.1.4 "The world seam" (published 2026-09-05 UTC), links to `release_1_1_4.md`, CHANGELOG, GitHub release; four sentences on what 1.1.4 is — a seam, a world-only encoding change, console auth, **no behavioural claim** |
+| `/research/limits/` | "Mitigation — selected, not shipped … not yet re-measured on a real body"; "Shipping the mitigation re-stales Exp 53b" | limits ledger §L11, tracking doc 2026-09-04 row, graduation ledger | Mitigation shipped **world-only** (N=6 stability 0.97→0.62 is why), scan-cost measured first; pre-registered re-measure table (A0 0.0 / A4 0.0566, clusters 1 / 3, stability 1.0 vacuous / 0.9984); verdict both halves; range re-centring finding (0.926 → 0.747); 53b NOT re-staled |
+| `/research/evidence/` | no mention of the seam; loudness "1.1.1, 1.1.2 and 1.1.3" | release note; CHANGELOG (no loudness in 1.1.4) | "The Minecraft world seam (1.1.4) is apparatus, not a result" bullet — nothing on the page changed because of it, bridge JS is repo-only; loudness spans 1.1.1–1.1.4 |
+| `/memory/overview/`, `/systems/entorhinal-cortex/` | scan "in pure Python"; "no published latency figure at all" | CHANGELOG PR 0/PR 1; `ec_scan_cost_2026-09-03.json` | vectorized since 1.1.4, still exact, decision-equivalent by test, not an index — LSH correction stands; committed cost figures with conditions |
+| `/embodiment/sem-protocol/` | sensor table without `modality` | wheel `embodiment/spec.py` (declarable tags `world`/`audio`; interoception refused; sub-sensor refused) | `modality` row + paragraph; range re-centring note |
+| `/reference/cli/`, `/installation/` | no `maxim serve` anywhere on the site (so no curl to fix — checked) | `maxim serve --help`; live probe above | New "Console server" section: bearer auth always on, fail-closed, `#token=` URL, `--show-token` / `--rotate-token` / `--dump-openapi`, `/api/hello`, sandbox-mode exception, **UI bundle 0.3.0 vs server 0.4.0 warning** (the bundled UI is not promised as current); `console` extra row |
+| `/reference/components/`, `/embodiment/component-library/` | pinned to v1.1.2, 92 components | wheel registry | regenerated from the 1.1.4 wheel, 94 (derived), links pinned to `v1.1.4` |
+| `/guides/simulation/{outputs,sandboxing,index}/` | trace "under `data/sim_sandbox/` relative to the working directory" | D69 / `resolve_user_state` | trace under the data home since 1.1.4; research reports still CWD-relative; section stamp notes what 1.1.4 changed and that the seam is not covered |
+| `/research/behaviors/audio/` | "none of 1.1.1, 1.1.2 or 1.1.3 shipped it" | CHANGELOG | "none of 1.1.1 through 1.1.4" |
+| `docs/plans/sandbox.md` (repo doc, not rendered) | "the engine's own posture (`maxim serve` binds 127.0.0.1, no auth) is kept" | `maxim serve --help` sandbox paragraph | dated note: bearer auth in every mode except sandbox; decisions 2 and 3 stand |
+
+**Left as is, deliberately.** The nine simulation pages keep their "at 1.1.3" verification stamps
+(each claim carries the version it was checked at; re-stamping without re-reading would be a proxy).
+Landing hero, experiment index and evidence cards: unchanged — no result moved. The Exp 53b card's
+"re-validated 2026-09-02" wording stands (1.1.4 discharged its triggers without re-stale).
+
+**Not documented (post-`db4410de`, `[Unreleased]`):** A9.1 spoken-code pairing, `/api/pair/*`,
+console contract 0.5.0.
+
+### Acceptance checks — 1.1.4
+
+- [x] Version line 1.1.4 "The world seam", date 2026-09-05 (UTC upload time), release links resolve.
+- [x] No page presents the world seam as a capability or a demo; every mention names it apparatus for 1.2.
+- [x] L11 stated with both halves wherever dilution / the encoding appears (limits, evidence, SEM, getting-started); nowhere says the limit is fixed; A4 described as world-only.
+- [x] EC scan described as exact and vectorized; no approximation language re-introduced.
+- [x] `maxim serve` documented with the token (no pre-existing quickstart or curl lacked it — there were none); bundled-UI skew stated, no UI screenshot or promise.
+- [x] Nothing post-`db4410de` documented (`/api/pair/*` → 404 on the wheel).
+- [x] Counts derived: components 94 from the wheel registry, experiments 85 from `experiments.json`, world sensors parsed from the shipped body.
+- [x] Install commands + every CLI flag re-checked against the 1.1.4 wheel `--help`; 48/48 Python snippets compile.
+- [x] `pnpm build` clean (53 pages); 4,927 internal links + fragments resolve; sitemap routes present; canonical only `pymaxim.bio`; `docs.pymaxim.bio/<path>` → 308 path-preserving (live).
+- [ ] **After merge/deploy:** re-crawl the live sitemap (recipe in the 1.1 section) and confirm the version line via the `live-site-check` workflow, `/reference/cli/` serves the Console section, `/research/limits/` carries "mitigation-confirmed", and no `selected, not shipped` / `re-stales Exp 53b` / `blob/v1.1.2` strings remain live.
+- [ ] **Human-only (carried since 1.0.9):** visual / mobile / keyboard / accessibility pass in a real browser — the new limits table and the CLI Console section at narrow widths, focus order on the copy-install button, contrast of the status chips, alt text on the favicon/og image.
+
+---
 
 ## 1.1 audit — 2026-08-25 (gated the `1.1.0` final cut — published 2026-08-26; roadmap step 5b / item 16 / D24)
 
