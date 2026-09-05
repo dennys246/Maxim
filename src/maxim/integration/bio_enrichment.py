@@ -654,10 +654,9 @@ class BioEnrichmentPipeline:
 
         try:
             # Path 1: Graph-based retrieval via spreading activation.
-            # Encode percept → EC pattern complete (reconsolidation: centroid
-            # update on match is intentional, ~1/(n+1) shift per query) →
-            # spreading activation on binding graph → ATL concept names →
-            # hippocampus recall by concept.
+            # Encode percept → EC READ-ONLY pattern completion → spreading
+            # activation on binding graph → ATL concept names → hippocampus
+            # recall by concept.
             if self._encoder is not None and self._ec is not None:
                 try:
                     embedding = self._encoder.embed(text)
@@ -666,12 +665,19 @@ class BioEnrichmentPipeline:
 
                         # Gate 1 / D1: this is the SECOND live recall path
                         # against the shared EC, and it bypassed the geometry
-                        # guard entirely — `"text"` is not a frozen-centroid
-                        # modality, so the running-mean update fired and
-                        # actively corrupted old-geometry centroids with
-                        # incomparable vectors. Ask the encoder what space it
+                        # guard entirely — ask the encoder what space it
                         # produces rather than passing None.
-                        pr: PatternResult = self._ec.pattern_complete_or_separate(
+                        #
+                        # D8 (1.2 gate 3, measured 2026-09-05, verdict
+                        # separate-required): this is a RECALL, so it goes
+                        # through the read-only completion. The old call to
+                        # pattern_complete_or_separate moved the matched
+                        # centroid ~1/(n+1) and incremented its member count
+                        # per query — "intentional reconsolidation" whose
+                        # measured cost was min_cos 0.9521 over one
+                        # session-scale workload plus counts conflating query
+                        # traffic with observation evidence in merge weighting.
+                        pr: PatternResult = self._ec.pattern_complete_readonly(
                             embedding,
                             "text",
                             geometry=self._encoder.geometry_for(embedding, "text"),

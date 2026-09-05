@@ -632,13 +632,24 @@ execution priority:
    `tests/unit/test_substrate_invalidate.py`.
 2. D3/D4 threshold and same-dimension geometry compatibility must be explicit and
    tested, not inferred from vector length.
+   **CLOSED — attested 2026-09-05** (the guards shipped with 1.1.3 and the ledger
+   never caught up): `tests/unit/test_gate2_geometry_and_thresholds.py` pins the
+   merge thresholds against the EC/encoder defaults in lockstep (D3 — including the
+   `SENSOR_MODALITY_THRESHOLDS` map D43 added) and proves the same-dimension
+   geometry guard (D4 — identical vectors in different geometries never fold; an
+   added sensor changes the tag; tags survive merge/save/load/ingest and are
+   process-stable). Place-code default-ON residual: stale audio nodes become a
+   loud migration event via `maxim substrate invalidate`, not invisible corruption.
 3. EC read-side mutation (D8) must be measured and accepted or separated from recall.
    **Measured 2026-09-05** (pre-registered, frozen rule; gated record
    `docs/experiments/data/d8_read_mutation_20260905.json`): verdict
    **`separate-required`** — churn 0/48 but one session-scale recall workload moved
    centroids past the 0.98 bound (min_cos 0.9521) and bought +192 member counts.
-   The gate closes when the separation SHIPS WITH ITS CALLER: a read-only
-   completion path for recall, `bio_enrichment` switched to it.
+   **Separation shipped 2026-09-05 with its caller — gate 3 CLOSED:**
+   `EC.pattern_complete_readonly` (structurally incapable of writing) with
+   `bio_enrichment._query_hippocampus` switched to it, the sole production recall
+   caller; invariant recorded in the bio-memory brief. Guard:
+   `tests/unit/test_ec_readonly_recall.py`.
 4. Bundle/version compatibility and the sharing threat model must be frozen.
    **FROZEN 2026-09-04**: [sharing_threat_model.md](sharing_threat_model.md) — trust
    model, compat contract, attack matrix A–N, and the V1–V10 receiver validation

@@ -3,7 +3,10 @@
 Pre-registration: docs/experiments/protocols/d8_read_mutation_preregistration.md
 (THE authority on any divergence; this docstring mirrors it).
 
-D8 (bugs ledger): `bio_enrichment`'s recall path calls
+D8 (bugs ledger; RESOLVED 2026-09-05 — production recall now routes through
+`EC.pattern_complete_readonly`; this harness deliberately measures the MUTATING
+method, which remains the encode-path mechanism, so the instrument stays valid):
+`bio_enrichment`'s recall path CALLED
 `EC.pattern_complete_or_separate(embedding, "text", geometry=...)` per enrichment
 query; text is not a frozen-centroid modality, so every completing recall moves
 the matched centroid ~1/(n+1) and increments its member count. This harness

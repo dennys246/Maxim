@@ -303,7 +303,7 @@ def _emit_ec_activation(
 ) -> None:
     """Emit a ``sim_ec_activation`` event when EC instrumentation is on.
 
-    Bound exactly to the two return paths in
+    Bound to the return paths (completion + separation) in `pattern_complete_readonly` and
     ``EntorhinalCortex.pattern_complete_or_separate``. Caller passes:
 
     - ``node_id``: the active EC node ID for this call (existing on
@@ -639,6 +639,12 @@ class EntorhinalCortex:
         node (pattern completion). Otherwise creates a new node
         (pattern separation).
 
+        **This is the ENCODE path** — completion here reconsolidates (running-
+        mean centroid update + member-count increment): an observation IS
+        evidence. Recall/lookup callers use :meth:`pattern_complete_readonly`
+        instead (D8, 1.2 gate 3 — a recall-shaped caller reaching for this
+        method is a defect in review).
+
         For modalities listed in ``config.frozen_centroid_modalities``
         (e.g. ``"interoception"``) the matched node's stored embedding
         is left untouched on completion — the first embedding to reach
@@ -742,6 +748,67 @@ class EntorhinalCortex:
         # after ATL activation succeeds. This keeps EC stateless for the
         # separation path and allows the test harness to inspect without
         # side effects.
+        new_id = str(uuid4())
+        _emit_ec_activation(
+            node_id=new_id,
+            similarity=0.0,
+            is_new=True,
+            modality=modality,
+        )
+        return PatternResult(node_id=new_id, similarity=0.0, is_new=True)
+
+    def pattern_complete_readonly(
+        self,
+        embedding: list[float],
+        modality: str,
+        threshold: float | None = None,
+        threshold_override: dict[str, float] | None = None,
+        *,
+        geometry: str | None,
+    ) -> PatternResult:
+        """Recognition WITHOUT reconsolidation — THE recall/lookup path (D8).
+
+        Same scan, same threshold semantics, same geometry mask and same
+        return contract as :meth:`pattern_complete_or_separate`, but
+        structurally incapable of writing: no centroid update, no member-count
+        increment, no first-touch geometry stamp. The pre-registered D8
+        measurement (docs/experiments/protocols/
+        d8_read_mutation_preregistration.md, verdict ``separate-required``,
+        2026-09-05) showed one session-scale recall workload moving centroids
+        past the frozen 0.98 cosine bound and buying +192 member counts —
+        query traffic resculpting the cluster space later recalls and merges
+        read. Recall is a READ; reads go here.
+
+        :meth:`pattern_complete_or_separate` remains the ENCODE path, where
+        the running-mean update and count increment are the point — an
+        observation IS evidence. A new recall/lookup caller reaching for the
+        mutating method should be treated as a defect in review.
+
+        On no match, returns ``is_new=True`` with a fresh (never-registered)
+        node id, matching the mutating method's contract so callers can swap
+        without behavior change. The deduped geometry-mismatch warning still
+        fires (diagnostic state, not substrate state).
+        """
+        base_threshold = threshold if threshold is not None else self.config.pattern_complete_threshold
+        overrides = threshold_override or {}
+
+        if geometry is not None:
+            for stored_geom, count in self._geom_counts_by_modality.get(modality, {}).items():
+                if count > 0 and stored_geom != geometry:
+                    self._note_geometry_mismatch(modality, stored_geom, geometry)
+
+        matrix = self._matrix_for(modality, len(embedding))
+        best_node, best_sim = matrix.scan(embedding, base_threshold, overrides, geometry)
+
+        if best_node is not None:
+            _emit_ec_activation(
+                node_id=best_node,
+                similarity=best_sim,
+                is_new=False,
+                modality=modality,
+            )
+            return PatternResult(node_id=best_node, similarity=best_sim, is_new=False)
+
         new_id = str(uuid4())
         _emit_ec_activation(
             node_id=new_id,

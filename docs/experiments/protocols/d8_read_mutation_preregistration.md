@@ -128,3 +128,15 @@ computed on a clean tree, not suspense.
   arm bounds the direction).
 - Probe churn uses the encode texts themselves; a query distribution far from the encoded
   members could churn differently. Same acceptance as above.
+
+## Outcome (dated addendum, 2026-09-05 — the frozen sections above are unchanged)
+
+The official gated run executed on clean main (`ed6df4ce`), record
+`docs/experiments/data/d8_read_mutation_20260905.json`, verdict
+**`separate-required`** (churn 0/48; drift mean_cos 0.9757 / min_cos 0.9521 <
+0.98; +192 recall count increments reported to gate 4/V2). The separation
+shipped the same day with its caller: `EC.pattern_complete_readonly` +
+`bio_enrichment._query_hippocampus` switched to it
+(`tests/unit/test_ec_readonly_recall.py`). D8 ledger row RESOLVED; this harness
+keeps measuring the mutating method deliberately — it is the encode-path
+mechanism, and the instrument's meaning is unchanged.
