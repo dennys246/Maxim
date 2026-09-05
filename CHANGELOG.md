@@ -24,6 +24,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Gate 7 callers — typed bundles now have a real composer and a real refusing receiver.**
+  The 1.1.3 gate-7 ship was format capacity with zero production callers: no composer passed
+  `body_ref`/`affordance_namespace`/`capability_map` (every real bundle shipped
+  `BundleBodyUnverifiable`-shaped) and nothing outside tests called
+  `assert_bundle_body_compatible`. Now `maxim substrate export` takes `--body-ref` /
+  `--affordance-namespace` / `--body-yaml` — the latter derives `capability_map` via the new
+  `embodiment/tool_bridge.py::derive_capability_map`, which runs the REAL tool-naming path
+  (`generate_tools_for_entity`, collision resolution included) instead of re-implementing it —
+  and `maxim substrate import` takes `--receiver-body` (+ `--allow-unverified-body`), refusing a
+  cross-body or undeclared bundle before anything is written. Roadmap gate 7 and the Oasis case
+  study §1 are reconciled to the same decided record in the same PR
+  (d43_merge_correctness.md §5a stays the costing record).
 - **Spoken-code pairing (console hardening A9.1; contract 0.4.0 → 0.5.0, additive).** Pulse's
   wiring surfaced the vendor fact that kills A9's dashboard-link premise on the real robot
   (the Pollen daemon regexes `custom_app_url` out of `main.py` at LIST time — a boot-minted

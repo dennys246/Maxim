@@ -992,6 +992,25 @@ def generate_tools_for_entity(
     return tools
 
 
+def derive_capability_map(entity: Entity) -> dict[str, str]:
+    """Body-agnostic capability key for every affordance tool this body generates.
+
+    Gate 7 forward insurance (docs/plans/d43_merge_correctness.md §5a): maps each
+    body-prefixed tool signature (``tool:<name>`` — the exact prefix
+    ``runtime/tool_dispatch.py::build_tool_signature`` keys NAc biases on) to the
+    body-agnostic ``<modulator>/<affordance>`` capability key. Derivation runs the
+    SAME generation path that names real tools — ``generate_tools_for_entity``
+    against a throwaway registry, collision resolution included — never a
+    re-implementation of the naming rules, which would silently drift from them.
+    """
+    registry = ToolRegistry()
+    mapping: dict[str, str] = {}
+    for tool in generate_tools_for_entity(entity, registry):
+        if isinstance(tool, ModulatorAffordanceTool):
+            mapping[f"tool:{tool.name}"] = f"{tool._modulator.name}/{tool._affordance_name}"
+    return mapping
+
+
 def describe_entity_capabilities(entity: Entity) -> str:
     """Describe an entity's capabilities as text for observation.
 

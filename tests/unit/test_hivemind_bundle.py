@@ -1316,3 +1316,195 @@ class TestGate7TypedBundles:
             m = read_bundle_manifest(out)
             assert m["body_ref"] is None
             assert m["capability_map"] == {}
+
+
+_GATE7_BODY_YAML = """\
+body:
+  name: testbot
+  entity_type: robot
+  modulators:
+    head:
+      abstract: true
+      affordances:
+        turn_left:
+          params: {}
+          description: "turn left"
+        turn_right:
+          params: {}
+          description: "turn right"
+  children:
+    - name: arm
+      entity_type: limb
+      modulators:
+        motor:
+          abstract: true
+          affordances:
+            wave:
+              params: {}
+              description: "wave"
+"""
+
+
+class TestGate7Callers:
+    """Gate 7's caller half — the CLI as real composer/ingestion caller.
+
+    Why this exists: the 2026-09-01 gate-7 ship left the typed fields with
+    ZERO producing callers and `assert_bundle_body_compatible` with ZERO
+    non-test callers — format capacity, not a fix, by this project's own
+    "a fix ships with a caller" rule (d43_merge_correctness.md §5a, caller
+    sweep 2026-09-04). These tests pin the composer (export derives the
+    capability map from the body YAML via the REAL tool-naming path) and
+    the ingestion side (import refuses cross-body/undeclared bundles
+    BEFORE writing anything).
+    """
+
+    def _body_yaml(self, tmp_path: Path) -> Path:
+        p = tmp_path / "testbot.yaml"
+        p.write_text(_GATE7_BODY_YAML, encoding="utf-8")
+        return p
+
+    def _session(self, tmp_path: Path) -> Path:
+        session_dir = tmp_path / "session"
+        session_dir.mkdir(exist_ok=True)
+        nac = NAc(config=NACConfig())
+        nac._reward_bias[("agent1", "node-1")] = 0.10
+        nac.save(str(session_dir / "aut_nac.json"))
+        return session_dir
+
+    def test_derive_capability_map_rides_the_real_naming_path(self, tmp_path):
+        from maxim.embodiment.spec import load_spec
+        from maxim.embodiment.tool_bridge import derive_capability_map
+        from maxim.runtime.tool_dispatch import build_tool_signature
+
+        spec = load_spec(self._body_yaml(tmp_path))
+        mapping = derive_capability_map(spec.root_entity)
+        assert mapping["tool:testbot_turn_left"] == "head/turn_left"
+        assert mapping["tool:testbot_turn_right"] == "head/turn_right"
+        assert mapping["tool:arm_wave"] == "motor/wave"
+        # Keys carry exactly the prefix build_tool_signature keys NAc biases on.
+        assert build_tool_signature("testbot_turn_left") in mapping
+
+    def test_export_with_body_yaml_stamps_the_manifest(self, tmp_path):
+        from maxim.hivemind.cli import run_substrate_subcommand
+
+        bundle = tmp_path / "b.zip"
+        rc = run_substrate_subcommand(
+            [
+                "export",
+                str(bundle),
+                "--session",
+                str(self._session(tmp_path)),
+                "--contributor-id",
+                "c1",
+                "--body-yaml",
+                str(self._body_yaml(tmp_path)),
+            ]
+        )
+        assert rc == 0
+        m = read_bundle_manifest(bundle)
+        assert m["body_ref"] == "testbot"  # defaulted from the spec's name
+        assert m["capability_map"]["tool:testbot_turn_left"] == "head/turn_left"
+
+    def test_export_body_ref_flag_wins_over_yaml_name(self, tmp_path):
+        from maxim.hivemind.cli import run_substrate_subcommand
+
+        bundle = tmp_path / "b.zip"
+        rc = run_substrate_subcommand(
+            [
+                "export",
+                str(bundle),
+                "--session",
+                str(self._session(tmp_path)),
+                "--contributor-id",
+                "c1",
+                "--body-yaml",
+                str(self._body_yaml(tmp_path)),
+                "--body-ref",
+                "testbot_v2",
+            ]
+        )
+        assert rc == 0
+        assert read_bundle_manifest(bundle)["body_ref"] == "testbot_v2"
+
+    def test_export_bad_body_yaml_fails_loudly(self, tmp_path):
+        from maxim.hivemind.cli import run_substrate_subcommand
+
+        rc = run_substrate_subcommand(
+            [
+                "export",
+                str(tmp_path / "b.zip"),
+                "--session",
+                str(self._session(tmp_path)),
+                "--contributor-id",
+                "c1",
+                "--body-yaml",
+                str(tmp_path / "nope.yaml"),
+            ]
+        )
+        assert rc == 2
+        assert not (tmp_path / "b.zip").exists()
+
+    def _exported(self, tmp_path: Path, *extra: str) -> Path:
+        from maxim.hivemind.cli import run_substrate_subcommand
+
+        bundle = tmp_path / "b.zip"
+        rc = run_substrate_subcommand(
+            [
+                "export",
+                str(bundle),
+                "--session",
+                str(self._session(tmp_path)),
+                "--contributor-id",
+                "c1",
+                *extra,
+            ]
+        )
+        assert rc == 0
+        return bundle
+
+    def test_import_refuses_a_cross_body_bundle_before_extracting(self, tmp_path):
+        from maxim.hivemind.cli import run_substrate_subcommand
+
+        bundle = self._exported(tmp_path, "--body-ref", "infant_operant")
+        out_dir = tmp_path / "out"
+        rc = run_substrate_subcommand(
+            ["import", str(bundle), "--output-dir", str(out_dir), "--receiver-body", "reachy_mini"]
+        )
+        assert rc == 2
+        # refused BEFORE anything was written
+        assert not out_dir.exists()
+
+    def test_import_refuses_an_undeclared_body_unless_explicitly_allowed(self, tmp_path):
+        from maxim.hivemind.cli import run_substrate_subcommand
+
+        bundle = self._exported(tmp_path)  # no --body-ref: ships body_ref null
+        out_dir = tmp_path / "out"
+        rc = run_substrate_subcommand(
+            ["import", str(bundle), "--output-dir", str(out_dir), "--receiver-body", "reachy_mini"]
+        )
+        assert rc == 2
+        assert not out_dir.exists()
+        rc = run_substrate_subcommand(
+            [
+                "import",
+                str(bundle),
+                "--output-dir",
+                str(out_dir),
+                "--receiver-body",
+                "reachy_mini",
+                "--allow-unverified-body",
+            ]
+        )
+        assert rc == 0
+        assert (out_dir / "nac.json").is_file()
+
+    def test_import_matching_body_extracts(self, tmp_path):
+        from maxim.hivemind.cli import run_substrate_subcommand
+
+        bundle = self._exported(tmp_path, "--body-ref", "reachy_mini")
+        out_dir = tmp_path / "out"
+        rc = run_substrate_subcommand(
+            ["import", str(bundle), "--output-dir", str(out_dir), "--receiver-body", "reachy_mini"]
+        )
+        assert rc == 0
+        assert (out_dir / "nac.json").is_file()

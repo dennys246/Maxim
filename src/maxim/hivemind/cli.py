@@ -56,6 +56,9 @@ from pathlib import Path
 
 from maxim.hivemind.bundle import (
     BUNDLE_SCHEMA_VERSION,
+    BundleBodyMismatch,
+    BundleBodyUnverifiable,
+    assert_bundle_body_compatible,
     compose_bundle,
     extract_bundle,
     read_bundle_manifest,
@@ -111,6 +114,26 @@ def _run_export(args: argparse.Namespace) -> int:
         )
         return 2
 
+    # Gate 7 (typed bundles): the operator declares the body the biases were
+    # learned on; the capability map is DERIVED from the body YAML via the
+    # same tool-naming path that produced the keys, never hand-authored.
+    # Neither is inferred when undeclared — an unverifiable bundle stays
+    # honestly unverifiable and is refused downstream by default.
+    body_ref: str | None = args.body_ref
+    capability_map: dict[str, str] | None = None
+    if args.body_yaml is not None:
+        from maxim.embodiment.spec import load_spec
+        from maxim.embodiment.tool_bridge import derive_capability_map
+
+        try:
+            spec = load_spec(args.body_yaml)
+        except (OSError, ValueError) as exc:
+            print(f"error: --body-yaml failed to load: {exc}", file=sys.stderr)
+            return 2
+        capability_map = derive_capability_map(spec.root_entity)
+        if body_ref is None:
+            body_ref = spec.name
+
     output_path = Path(args.output).expanduser().resolve()
     try:
         manifest = compose_bundle(
@@ -122,6 +145,9 @@ def _run_export(args: argparse.Namespace) -> int:
             apply_identity_filter=not args.no_identity_filter,
             identity_threshold=args.identity_threshold,
             encoder_provenance=ec_encoder_provenance,
+            body_ref=body_ref,
+            affordance_namespace=args.affordance_namespace,
+            capability_map=capability_map,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -133,8 +159,16 @@ def _run_export(args: argparse.Namespace) -> int:
         f"  contributor: {manifest['contributor_id']}\n"
         f"  domain:      {manifest.get('domain')}\n"
         f"  slices:      {n_slices}\n"
-        f"  identity_filter: {manifest.get('identity_filter_applied')}"
+        f"  identity_filter: {manifest.get('identity_filter_applied')}\n"
+        f"  body_ref:    {manifest.get('body_ref')}"
+        + (f"  (capability_map: {len(manifest.get('capability_map') or {})} keys)" if capability_map else "")
     )
+    if body_ref is None:
+        print(
+            "note: no --body-ref/--body-yaml given — bundle ships body_ref: null and "
+            "will be REFUSED by body-checking receivers (BundleBodyUnverifiable).",
+            file=sys.stderr,
+        )
     return 0
 
 
@@ -143,6 +177,31 @@ def _run_import(args: argparse.Namespace) -> int:
     if not bundle_path.is_file():
         print(f"error: bundle file not found: {bundle_path}", file=sys.stderr)
         return 2
+
+    # Gate 7 (typed bundles): refuse a cross-body bundle BEFORE anything is
+    # written to disk. Undeclared bodies are unverifiable, not compatible —
+    # --allow-unverified-body accepts that risk explicitly.
+    if args.receiver_body is not None:
+        try:
+            manifest = read_bundle_manifest(bundle_path)
+        except (ValueError, OSError, KeyError) as exc:
+            print(f"error: cannot read bundle manifest: {exc}", file=sys.stderr)
+            return 2
+        try:
+            assert_bundle_body_compatible(
+                manifest,
+                receiver_body=args.receiver_body,
+                allow_unverified=args.allow_unverified_body,
+            )
+        except (BundleBodyMismatch, BundleBodyUnverifiable) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    else:
+        print(
+            "note: body compatibility NOT checked (pass --receiver-body to refuse "
+            "cross-body bundles; their biases merge silently as zero — D43 barrier 3).",
+            file=sys.stderr,
+        )
 
     output_dir = Path(args.output_dir).expanduser().resolve()
     try:
@@ -402,6 +461,28 @@ def _build_parser() -> argparse.ArgumentParser:
         default=2,
         help="Identity-bearing heuristic threshold (default 2 — bundle-stricter than the heuristic default).",
     )
+    p_export.add_argument(
+        "--body-ref",
+        default=None,
+        help=(
+            "Gate 7: the body the biases were learned on (e.g. 'reachy_mini'). "
+            "Undeclared bundles ship body_ref: null and are refused by body-checking receivers."
+        ),
+    )
+    p_export.add_argument(
+        "--body-yaml",
+        default=None,
+        help=(
+            "Gate 7: path to the body's embodiment YAML. Derives manifest.capability_map "
+            "(tool:<name> -> <modulator>/<affordance>) via the real tool-naming path, and "
+            "defaults --body-ref to the spec's name."
+        ),
+    )
+    p_export.add_argument(
+        "--affordance-namespace",
+        default=None,
+        help="Gate 7: name of the vocabulary the bundle's tool signatures live in.",
+    )
     p_export.set_defaults(func=_run_export)
 
     p_import = sub.add_parser("import", help="Extract a substrate bundle to a directory")
@@ -410,6 +491,20 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         required=True,
         help="Directory to extract the bundle to (created if absent).",
+    )
+    p_import.add_argument(
+        "--receiver-body",
+        default=None,
+        help=(
+            "Gate 7: this receiver's body name. Refuses a bundle learned on a different "
+            "body (BundleBodyMismatch) or an undeclared one (BundleBodyUnverifiable) "
+            "before anything is written."
+        ),
+    )
+    p_import.add_argument(
+        "--allow-unverified-body",
+        action="store_true",
+        help="Accept a bundle with no declared body_ref despite --receiver-body (explicit risk).",
     )
     p_import.set_defaults(func=_run_import)
 
