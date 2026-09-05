@@ -539,6 +539,14 @@ def nac_merge(
             left.get("event_outcome_welford", {}) or {},
             right.get("event_outcome_welford", {}) or {},
         ),
+        # 1.2 poison-resistance slice: the inherent-class marker travels
+        # through the fold as a sorted union. A rebuilt-dict merge that
+        # dropped it would silently strip decay exemption from every
+        # receiver-held inherent bias — the D43 delete-state shape one
+        # field over (`cluster_reward_source` above is the precedent).
+        "inherent_bias_keys": sorted(
+            set(left.get("inherent_bias_keys", []) or []) | set(right.get("inherent_bias_keys", []) or [])
+        ),
     }
 
 
@@ -962,6 +970,25 @@ def rekey_nac_state(
                 continue  # the donor cluster did not survive — drop, don't fake
             rekeyed[NAC_KEY_SEP.join((to_agent_id or aid, mapped, tsig))] = value
         out[field] = rekeyed
+
+    # The inherent-class marker (1.2 poison-resistance slice) names
+    # cluster_reward_bias keys, so it re-keys through the same map — a
+    # marker left on the donor's ORIGINAL key would exempt nothing after
+    # the re-key (a silently vacuous safety floor). Same drop rule:
+    # a marker whose cluster did not survive is dropped, not faked.
+    inherent = nac_state.get("inherent_bias_keys")
+    if isinstance(inherent, list):
+        rekeyed_inherent: list[str] = []
+        for key in inherent:
+            parts = str(key).split(NAC_KEY_SEP)
+            if len(parts) != 3:
+                continue
+            aid, cid, tsig = parts
+            mapped = id_map.get(cid)
+            if mapped is None:
+                continue
+            rekeyed_inherent.append(NAC_KEY_SEP.join((to_agent_id or aid, mapped, tsig)))
+        out["inherent_bias_keys"] = sorted(set(rekeyed_inherent))
     return out
 
 
@@ -1090,6 +1117,74 @@ def ec_merge(
     ).nodes
 
 
+#: The signed bias dicts the tighten-only clamp covers. ``reward_bias`` is
+#: excluded by its own semantics (clamped to [0, max] — it has no negative
+#: values to protect).
+_TIGHTEN_ONLY_FIELDS: tuple[str, ...] = ("cluster_reward_bias", "percept_valences", "goal_reward_bias")
+
+
+def tighten_negative_biases(
+    merged_nac: dict[str, Any],
+    receiver_nac: dict[str, Any],
+) -> tuple[dict[str, Any], int]:
+    """Tighten-only clamp for negative valence (1.2 poison-resistance slice).
+
+    coding_habits_oasis.md §4 / roadmap §"The 1.2 poison-resistance slice",
+    applied at the roadmap-decided seam (a post-fold clamp inside
+    :func:`substrate_merge` — never a new merge function): a bias the
+    RECEIVER held at a negative value may deepen (the fold made it more
+    negative) but is never raised toward zero by an import. This closes the
+    ``_merge_mean_clamped`` annihilation hole — a +0.9 donor no longer
+    erases a −0.9 learned aversion; "ship enthusiasm to erase fear" stops
+    working.
+
+    SIGN-SCOPED BY CONSTRUCTION, and the guard for this is non-negotiable:
+    a fold whose receiver-side value is >= 0, or whose key the receiver
+    never held, is byte-untouched — the taught-want benchmark arms merge
+    POSITIVE valence, and a clamp leaking into positive folds would
+    silently change arm 2. The guard test verifies the byte-untouched
+    property by execution on the real taught seed-43 state.
+
+    Inherent-class biases are covered like every negative bias —
+    unconditionally, because the clamp itself is unconditional here; the
+    class's distinct semantics (decay exemption, Queen-gated entry) live in
+    NAc and the ingestion adapter.
+
+    Pure function: returns ``(clamped_state, clamp_count)``; inputs are not
+    mutated. When no clamp fires the returned state is the input dict
+    unchanged (same object), making the no-op case trivially byte-identical.
+    """
+    out = merged_nac
+    clamped = 0
+    for field in _TIGHTEN_ONLY_FIELDS:
+        receiver_field = receiver_nac.get(field)
+        merged_field = merged_nac.get(field)
+        if not isinstance(receiver_field, dict) or not isinstance(merged_field, dict):
+            continue
+        new_field: dict[str, Any] | None = None
+        for key, receiver_value in receiver_field.items():
+            try:
+                rv = float(receiver_value)
+            except (TypeError, ValueError):
+                continue
+            if rv >= 0.0 or key not in merged_field:
+                continue
+            try:
+                mv = float(merged_field[key])
+            except (TypeError, ValueError):
+                continue
+            if mv > rv:
+                if new_field is None:
+                    new_field = dict(merged_field)
+                new_field[key] = rv
+                clamped += 1
+        if new_field is not None:
+            if out is merged_nac:
+                out = dict(merged_nac)
+            out[field] = new_field
+    return out, clamped
+
+
 @dataclass(frozen=True)
 class SubstrateMergeResult:
     """What a full substrate merge produced, plus enough to audit it.
@@ -1111,6 +1206,11 @@ class SubstrateMergeResult:
     id_map: dict[str, str]
     biases_rekeyed: int
     biases_dropped: int
+    #: How many receiver-held NEGATIVE bias entries the tighten-only clamp
+    #: restored after the fold tried to raise them toward zero (1.2
+    #: poison-resistance slice). 0 on every purely-positive merge — the
+    #: sign-scope guarantee the benchmark's taught arms rely on.
+    biases_tightened: int = 0
 
 
 def substrate_merge(
@@ -1197,12 +1297,20 @@ def substrate_merge(
         **{k: v for k, v in kwargs.items() if k in nac_keys},
     )
 
+    # Tighten-only clamp for negative valence (1.2 poison-resistance slice)
+    # — the roadmap-decided seam: post-fold, inside THIS function, so every
+    # consumer of the aligned merge gets it and no new merge function
+    # exists to bypass. See tighten_negative_biases for the semantics and
+    # the sign-scope guarantee.
+    merged_nac, tightened = tighten_negative_biases(merged_nac, receiver_nac)
+
     return SubstrateMergeResult(
         nac=merged_nac,
         ec_nodes=aligned.nodes,
         id_map=aligned.id_map,
         biases_rekeyed=after,
         biases_dropped=before - after,
+        biases_tightened=tightened,
     )
 
 
@@ -1256,6 +1364,7 @@ __all__ = [
     "ECMergeResult",
     "SubstrateMergeResult",
     "substrate_merge",
+    "tighten_negative_biases",
     "ec_merge_aligned",
     "rekey_nac_state",
     "nac_merge_many",

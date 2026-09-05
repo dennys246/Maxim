@@ -222,3 +222,10 @@ Regression guards: the existing hivemind suites pin §3's mechanisms
 (`tests/unit/test_hivemind_bundle.py`, `test_hivemind_merge.py`,
 `test_hivemind_identity.py`); §5's duties gain guards when the adapter ships — an
 adapter PR that implements a duty without its guard test has not shipped the duty.
+
+> **2026-09-05 (adapter shipped — citation only, no contract change):** the 1.2
+> ingestion adapter is `src/maxim/hivemind/ingest.py::ingest_bundle` (operator surface
+> `maxim substrate ingest`; step order + adapter decisions:
+> [oasis_ingestion_contract.md](oasis_ingestion_contract.md)). §5's duty guards live in
+> `tests/unit/test_hivemind_ingest.py` (one refusing/clamping test per §4 attack row) and
+> `tests/integration/test_oasis_ingest_e2e.py` (the real-archive end-to-end proof).

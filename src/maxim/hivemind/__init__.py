@@ -35,6 +35,12 @@ from maxim.hivemind.bundle import (
     extract_bundle,
     read_bundle_manifest,
 )
+from maxim.hivemind.ingest import (
+    IngestionJournal,
+    IngestRefused,
+    IngestReport,
+    ingest_bundle,
+)
 from maxim.hivemind.identity import (
     IDENTITY_DOMAIN_MARKER,
     filter_identity_bearing_links,
@@ -51,6 +57,7 @@ from maxim.hivemind.merge import (
     nac_merge_many,
     rekey_nac_state,
     nac_merge,
+    tighten_negative_biases,
 )
 
 __all__ = [
@@ -75,4 +82,9 @@ __all__ = [
     "is_identity_domain",
     "nac_merge",
     "read_bundle_manifest",
+    "IngestionJournal",
+    "IngestRefused",
+    "IngestReport",
+    "ingest_bundle",
+    "tighten_negative_biases",
 ]

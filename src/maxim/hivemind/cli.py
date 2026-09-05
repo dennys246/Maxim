@@ -21,6 +21,15 @@ Subcommands:
 
 - ``maxim substrate inspect <input.zip>`` — print manifest only.
 
+- ``maxim substrate ingest <input.zip> --session <receiver> --trust <id>
+   --receiver-body NAME [--inherent-trust <id>] [--allow-unstamped-geometry]
+   [--receiver-agent-id ID] [--force-digest] [--apply]`` — the 1.2 Oasis
+   ingestion path: the V1–V10 receiver validation contract
+   (docs/plans/sharing_threat_model.md §5) + the aligned ``substrate_merge``
+   (with the tighten-only negative-valence clamp at its seam) + the V8
+   ingestion journal. Dry-run by default. THE way foreign substrate enters
+   a receiver; ``merge-nac`` (below) is trusted-local only, by design.
+
 - ``maxim substrate invalidate --session <id> [--modality M
    --drop-geometry TAG] [--apply]`` — gate 1 migrate half: census with no
    geometry named; otherwise drop stale-geometry EC nodes, prune the NAc
@@ -606,6 +615,154 @@ def _run_merge_nac(args: argparse.Namespace) -> int:
     return 0
 
 
+def _resolve_receiver_pair(session_dir: Path) -> tuple[Path, Path] | None:
+    """Locate the receiver's NAc/EC pair in either persistence layout.
+
+    Sessions persist ``aut_nac.json``/``aut_ec.json``; agents persist
+    ``nac.json``/``ec.json`` (bio_stack). Detected as a PAIR — the NAc+EC
+    pair invariant means ingesting into half a receiver would mint the
+    D2 dangling shape.
+    """
+    for nac_name, ec_name in (("aut_nac.json", "aut_ec.json"), ("nac.json", "ec.json")):
+        nac_p, ec_p = session_dir / nac_name, session_dir / ec_name
+        if nac_p.is_file() or ec_p.is_file():
+            return nac_p, ec_p
+    return None
+
+
+def _run_ingest(args: argparse.Namespace) -> int:
+    """The 1.2 Oasis ingestion verb — V1–V10 validated merge into a receiver.
+
+    docs/plans/oasis_ingestion_contract.md is the design record; the
+    pipeline lives in :func:`maxim.hivemind.ingest.ingest_bundle`. Dry-run
+    by default (the ``invalidate`` precedent); ``--apply`` writes with a
+    pre-ingest backup (the ``merge-nac`` precedent). MUST NOT run against
+    a receiver a live session currently owns — the runtime persists at
+    session end and would clobber the ingest (contract §1).
+    """
+    import zipfile as _zipfile
+
+    from maxim.hivemind.ingest import IngestionJournal, IngestRefused, ingest_bundle
+
+    bundle_path = Path(args.input).expanduser().resolve()
+    if not bundle_path.is_file():
+        print(f"error: bundle file not found: {bundle_path}", file=sys.stderr)
+        return 2
+
+    session_dir = _expand_session_dir(args.session)
+    if not session_dir.is_dir():
+        print(f"error: receiver directory not found: {session_dir}", file=sys.stderr)
+        return 2
+    pair = _resolve_receiver_pair(session_dir)
+    if pair is None:
+        print(
+            f"error: no NAc/EC pair (aut_nac.json/aut_ec.json or nac.json/ec.json) in {session_dir}; "
+            "a receiver must exist — create one with maxim.create.agent() and shut it down first.",
+            file=sys.stderr,
+        )
+        return 2
+    nac_path, ec_path = pair
+
+    try:
+        receiver_nac = _read_optional_json(nac_path)
+        ec_payload = _read_optional_json(ec_path)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if receiver_nac is not None:
+        receiver_nac.pop("_format_version", None)
+    receiver_ec_nodes = ec_payload.get("substrate_nodes") if isinstance(ec_payload, dict) else None
+    if ec_payload is not None and not isinstance(receiver_ec_nodes, dict):
+        print(f"error: {ec_path} has no substrate_nodes object", file=sys.stderr)
+        return 2
+
+    journal_path = session_dir / "substrate_ingest_journal.json"
+    try:
+        journal = IngestionJournal(journal_path)
+    except (ValueError, OSError) as exc:
+        print(f"error: cannot read ingestion journal ({journal_path}): {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        report = ingest_bundle(
+            bundle_path,
+            receiver_nac=receiver_nac,
+            receiver_ec_nodes=receiver_ec_nodes,
+            receiver_body=args.receiver_body,
+            trusted_sources=frozenset(args.trust),
+            inherent_trusted_sources=frozenset(args.inherent_trust or []),
+            journal=journal,
+            receiver_agent_id=args.receiver_agent_id,
+            allow_unverified_body=args.allow_unverified_body,
+            allow_unstamped_geometry=args.allow_unstamped_geometry,
+            force_digest=args.force_digest,
+        )
+    except (IngestRefused, ValueError, OSError, _zipfile.BadZipFile) as exc:
+        # IngestRefused and the gate-7 refusals subclass ValueError; every
+        # refusal is the rc=2 contract, never a traceback.
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    print(
+        f"validated bundle {bundle_path.name} (digest {report.digest[:12]}…)\n"
+        f"  contributor:       {report.contributor_id}\n"
+        f"  body_ref:          {report.manifest.get('body_ref')}\n"
+        f"  biases rekeyed:    {report.biases_rekeyed} (dropped: {report.biases_dropped})\n"
+        f"  biases tightened:  {report.biases_tightened}\n"
+        f"  inherent admitted: {report.inherent_keys_admitted}\n"
+        f"  donor EC nodes:    {len(report.id_map)}"
+    )
+    for note in report.notes:
+        print(f"  note: {note}")
+    if report.valence_entries:
+        print("  percept valences by entity class (V4 report):")
+        for entity_class, valence in sorted(report.valence_entries.items()):
+            print(f"    {entity_class}: {valence:+.3f}")
+
+    if not args.apply:
+        print("DRY RUN — nothing written. Re-run with --apply to ingest.")
+        return 0
+
+    from maxim.decisions.nac import _NAC_FORMAT_VERSION
+    from maxim.utils.atomic_io import atomic_write_json, atomic_write_text
+    from maxim.utils.format_version import with_format_version
+
+    # Pre-ingest backups (merge-nac precedent), then journal → EC → NAc.
+    # Journal first: a crash after it leaves a bundle marked ingested with
+    # no state change, recoverable via --force-digest; state-before-journal
+    # would let a replay double-count (row J). EC before NAc: merged NAc
+    # biases naming EC nodes not yet on disk is the D2 dangling shape;
+    # nodes-without-biases is benign (contract §3.12).
+    for path in (nac_path, ec_path):
+        if path.is_file():
+            backup_path = path.with_name(path.name + ".pre-ingest.bak")
+            try:
+                atomic_write_text(str(backup_path), path.read_text(encoding="utf-8"))
+            except OSError as exc:
+                print(f"error: cannot write backup ({backup_path}): {exc}. Nothing was written.", file=sys.stderr)
+                return 2
+
+    journal.record(report.journal_entry)
+    try:
+        journal.save()
+    except OSError as exc:
+        print(f"error: cannot write ingestion journal: {exc}. Nothing was written.", file=sys.stderr)
+        return 2
+
+    if ec_payload is None:
+        ec_payload = {"substrate_nodes": {}}
+    ec_payload["substrate_nodes"] = report.ec_nodes
+    atomic_write_json(str(ec_path), ec_payload)
+    atomic_write_json(str(nac_path), with_format_version(dict(report.nac), version=_NAC_FORMAT_VERSION))
+
+    print(
+        f"applied. Receiver updated: {nac_path.name} + {ec_path.name}\n"
+        f"  journal: {journal_path.name} ({len(journal.entries)} entries)\n"
+        "NOTE: pick up on the receiver's next boot; never ingest into a receiver a live session owns."
+    )
+    return 0
+
+
 def _run_inspect(args: argparse.Namespace) -> int:
     bundle_path = Path(args.input).expanduser().resolve()
     if not bundle_path.is_file():
@@ -730,6 +887,75 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Actually write (default is a dry-run report). Writes a tombstone sidecar first.",
     )
     p_invalidate.set_defaults(func=_run_invalidate)
+
+    p_ingest = sub.add_parser(
+        "ingest",
+        help="Validate (V1-V10) + merge a foreign bundle into a receiver's NAc/EC pair (dry-run by default)",
+    )
+    p_ingest.add_argument("input", help="Path to the .zip bundle")
+    p_ingest.add_argument(
+        "--session",
+        required=True,
+        help="Receiver: session ID (under ~/.maxim/sessions/) or a path to a session/agent directory. Must be AT REST.",
+    )
+    p_ingest.add_argument(
+        "--trust",
+        action="append",
+        required=True,
+        metavar="CONTRIBUTOR_ID",
+        help=(
+            "Operator-attested contributor id (V1 front door; repeatable). A bundle whose "
+            "manifest.contributor_id is not listed is refused — never admitted-with-clamps."
+        ),
+    )
+    p_ingest.add_argument(
+        "--inherent-trust",
+        action="append",
+        default=None,
+        metavar="CONTRIBUTOR_ID",
+        help=(
+            "Queen-attested contributor id (repeatable). Only these may ship inherent-class bias "
+            "keys; anyone else's inherent claim refuses the bundle (privilege-escalation guard)."
+        ),
+    )
+    p_ingest.add_argument(
+        "--receiver-body",
+        required=True,
+        help="This receiver's body name (gate 7 refusal always runs on the ingest path).",
+    )
+    p_ingest.add_argument(
+        "--allow-unverified-body",
+        action="store_true",
+        help="Accept a bundle with no declared body_ref (explicit risk, gate 7).",
+    )
+    p_ingest.add_argument(
+        "--allow-unstamped-geometry",
+        action="store_true",
+        help=(
+            "V3 legacy override: admit foreign EC nodes without geometry stamps (e.g. the "
+            "SHA-manifested 53_agents archive, which predates stamping). Default is refusal."
+        ),
+    )
+    p_ingest.add_argument(
+        "--receiver-agent-id",
+        default=None,
+        help=(
+            "Normalize donor agent ids to this receiver's own at the ingestion boundary "
+            "(the agent name the receiver runs under). Omit only when donor and receiver "
+            "genuinely share an agent id."
+        ),
+    )
+    p_ingest.add_argument(
+        "--force-digest",
+        action="store_true",
+        help="Re-ingest a bundle the journal has already seen (eyes-open replay; V8).",
+    )
+    p_ingest.add_argument(
+        "--apply",
+        action="store_true",
+        help="Actually write (default is a dry-run report). Backs up the pair, journals first.",
+    )
+    p_ingest.set_defaults(func=_run_ingest)
 
     p_inspect = sub.add_parser("inspect", help="Print the bundle manifest without extracting")
     p_inspect.add_argument("input", help="Path to the .zip bundle")

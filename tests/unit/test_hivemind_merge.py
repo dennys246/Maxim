@@ -1022,3 +1022,131 @@ class TestSubstrateMerge:
             donor_source="donor",
         )
         assert len(text_result.ec_nodes) == 1, "cos 0.60 SHOULD fold at the text threshold 0.44"
+
+
+class TestTightenOnlyClampSeam:
+    """The 1.2 poison-resistance clamp at its decided seam (substrate_merge).
+
+    The adapter-level behavioral tests live in test_hivemind_ingest.py;
+    these pin the SEAM itself — the clamp fires inside substrate_merge for
+    every consumer, and the sign-scope guarantee holds by execution against
+    the real taught archive (the gate-6 gauntlet's seed-43 state), not by
+    inspection: the pre-clamp fold path is re-composed by hand and the
+    post-merge state must be identical.
+    """
+
+    ARCHIVE = "docs/experiments/data/53_agents/taught_seed43"
+
+    def _load_archive_pair(self) -> tuple[dict[str, Any], dict[str, Any]]:
+        import json
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2] / self.ARCHIVE
+        nac_state = json.loads((root / "aut_nac.json").read_text())
+        ec_payload = json.loads((root / "aut_ec.json").read_text())
+        nac_state.pop("_format_version", None)
+        return nac_state, ec_payload["substrate_nodes"]
+
+    def test_no_op_clamp_returns_same_object(self) -> None:
+        from maxim.hivemind.merge import tighten_negative_biases
+
+        merged = {"cluster_reward_bias": {"k": 0.5}}
+        receiver = {"cluster_reward_bias": {"k": 0.4}}
+        out, count = tighten_negative_biases(merged, receiver)
+        assert out is merged  # no-op case: trivially byte-identical
+        assert count == 0
+
+    def test_clamp_restores_receiver_negative(self) -> None:
+        from maxim.hivemind.merge import tighten_negative_biases
+
+        merged = {"cluster_reward_bias": {"k": 0.0, "other": 0.3}}
+        receiver = {"cluster_reward_bias": {"k": -0.9}}
+        out, count = tighten_negative_biases(merged, receiver)
+        assert out["cluster_reward_bias"]["k"] == -0.9
+        assert out["cluster_reward_bias"]["other"] == 0.3
+        assert count == 1
+        assert merged["cluster_reward_bias"]["k"] == 0.0  # input not mutated
+
+    def test_taught_seed43_merge_is_byte_untouched_by_the_clamp(self) -> None:
+        """The non-negotiable sign-scope guard, BY EXECUTION on real data.
+
+        The taught seed-43 archive carries only positive valence (the
+        taught want). Merging it through substrate_merge (clamp active)
+        must produce a NAc state identical to the pre-clamp composition
+        (ec_merge_aligned + rekey_nac_state + nac_merge, hand-composed
+        exactly as substrate_merge did before the clamp landed). A clamp
+        leaking into positive folds would silently change benchmark arm 2.
+        """
+        from maxim.hivemind.bundle import scrub_nac_state_for_bundle
+
+        donor_nac_raw, donor_ec = self._load_archive_pair()
+        donor_nac = scrub_nac_state_for_bundle(donor_nac_raw)
+        # Two receiver arms: a FRESH receiver and the taught seed-42 peer
+        # (the gauntlet's merge pair).
+        import json
+        from pathlib import Path
+
+        root42 = Path(__file__).resolve().parents[2] / "docs/experiments/data/53_agents/taught_seed42"
+        recv_nac = json.loads((root42 / "aut_nac.json").read_text())
+        recv_nac.pop("_format_version", None)
+        recv_nac = scrub_nac_state_for_bundle(recv_nac)
+        recv_ec = json.loads((root42 / "aut_ec.json").read_text())["substrate_nodes"]
+
+        for receiver_nac, receiver_ec in (({}, {}), (recv_nac, recv_ec)):
+            result = substrate_merge(
+                receiver_nac=receiver_nac,
+                receiver_ec=receiver_ec,
+                donor_nac=donor_nac,
+                donor_ec=donor_ec,
+                receiver_source="local",
+                donor_source="nursery-43",
+                receiver_agent_id="recv",
+            )
+            # The pre-clamp path, composed by hand (what substrate_merge
+            # did before the clamp landed).
+            baseline_aligned = ec_merge_aligned(
+                receiver_ec,
+                donor_ec,
+                left_source="local",
+                right_source="nursery-43",
+            )
+            baseline_rekeyed = rekey_nac_state(donor_nac, baseline_aligned.id_map, to_agent_id="recv")
+            baseline_nac = nac_merge(
+                receiver_nac,
+                baseline_rekeyed,
+                left_source="local",
+                right_source="nursery-43",
+            )
+            assert result.biases_tightened == 0
+            assert result.nac == baseline_nac
+            # And the taught want actually landed (not a vacuous equality
+            # between two empty folds).
+            assert result.nac["cluster_reward_bias"], "taught biases must survive the merge"
+
+
+class TestInherentKeysTransport:
+    """inherent_bias_keys must ride nac_merge and rekey_nac_state (a
+    rebuilt-dict merge that dropped the marker would be the D43
+    delete-state shape one field over)."""
+
+    def test_nac_merge_unions_inherent_keys(self) -> None:
+        key_l = NAC_KEY_SEP.join(("a", "c1", "t"))
+        key_r = NAC_KEY_SEP.join(("a", "c2", "t"))
+        left = {"inherent_bias_keys": [key_l], "cluster_reward_bias": {key_l: -0.5}}
+        right = {"inherent_bias_keys": [key_r], "cluster_reward_bias": {key_r: -0.5}}
+        merged = nac_merge(left, right, left_source="l", right_source="r")
+        assert merged["inherent_bias_keys"] == sorted([key_l, key_r])
+
+    def test_nac_merge_emits_empty_list_when_neither_side_has_markers(self) -> None:
+        merged = nac_merge({}, {}, left_source="l", right_source="r")
+        assert merged["inherent_bias_keys"] == []
+
+    def test_rekey_maps_inherent_keys_and_drops_unmapped(self) -> None:
+        key_mapped = NAC_KEY_SEP.join(("aut", "c1", "t"))
+        key_dropped = NAC_KEY_SEP.join(("aut", "gone", "t"))
+        state = {
+            "cluster_reward_bias": {key_mapped: -0.5, key_dropped: -0.5},
+            "inherent_bias_keys": [key_mapped, key_dropped],
+        }
+        out = rekey_nac_state(state, {"c1": "local9"}, to_agent_id="recv")
+        assert out["inherent_bias_keys"] == [NAC_KEY_SEP.join(("recv", "local9", "t"))]
