@@ -24,7 +24,8 @@ capped at 3-way discrimination regardless of learning quality.
 
 1. **#499 Gaussian place code** (flag, default OFF): 3 → 7 nodes on the
    production path. Default-ON is gated (the 1.1.x roadmap item): D2 `ec`
-   invalidate command, D4 hivemind merge dim-guard, `min_confidence`
+   invalidate command *(shipped 2026-09-04: `maxim substrate invalidate`)*,
+   D4 hivemind merge dim-guard, `min_confidence`
    recalibration — and the **L1 interaction**: splitting one cluster into N
    divides per-node learned bias; the split signal must stay above the ~0.11
    visibility floor or higher resolution *reduces* behavioral legibility.

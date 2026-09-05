@@ -12,7 +12,8 @@ A substrate snapshot bundle is a versioned ZIP archive:
 
 ```
 maxim-substrate.zip
-├── manifest.json   # _format_version, schema_version, contributor_id, domain, signature slots
+├── manifest.json   # _format_version, schema_version, contributor_id, domain, signature slots,
+│                   # body_ref + affordance_namespace + capability_map (gate 7 typed bundles)
 ├── nac.json        # NAc causal links + reward biases + provenance  (1.0)
 └── ec.json         # EC concept centroids + cluster metadata        (1.0)
 ```
@@ -27,7 +28,7 @@ That's it. Two payloads, plus a manifest.
 run a session  ──►  maxim substrate export  ──►  share the .zip
                                                        │
                                                        ▼
-live system  ◄──  nac_merge / ec_merge  ◄──  maxim substrate import
+live system  ◄──  substrate_merge  ◄──  maxim substrate import
 ```
 
 The CLI handles the round-trip of bytes; the Python merge utilities handle folding the extracted state into a live system. The two halves are deliberately separate -- see [Safety semantics](#safety-semantics) below.
@@ -51,6 +52,9 @@ maxim substrate export my-combat-substrate.zip \
 | `--domain` | no | Substrate-domain tag scoping the bundle (e.g. `combat`, `cooking`). Default: undomained. |
 | `--no-identity-filter` | no | Skip the identity-bearing-pattern quarantine. For trusted-internal backups only. |
 | `--identity-threshold` | no | Identity heuristic threshold (default `2` -- bundle-stricter than the per-call heuristic default of 1). |
+| `--body-ref` | no | Gate 7: the body the bias keys were learned on (e.g. `reachy_mini`). Omitted -> the bundle ships `body_ref: null` and body-checking receivers **refuse** it (a stderr note says so at export time). |
+| `--body-yaml` | no | Gate 7: path to the body's embodiment YAML. Derives `capability_map` (`tool:<name>` -> `<modulator>/<affordance>`) via the real tool-naming path, and defaults `--body-ref` to the spec's name. |
+| `--affordance-namespace` | no | Gate 7: name of the vocabulary the bundle's tool signatures live in. Declarative today (no reader yet). |
 
 On success it prints a short summary:
 
@@ -76,6 +80,8 @@ maxim substrate import my-combat-substrate.zip --output-dir ./imported/
 |---|---|---|
 | `input` (positional) | yes | Path to the `.zip` bundle. |
 | `--output-dir` | yes | Directory to extract the bundle into (created if absent). |
+| `--receiver-body` | no | Gate 7: this receiver's body name. Refuses a bundle learned on a different body (`BundleBodyMismatch`) or one with no declared body (`BundleBodyUnverifiable`) **before anything is written**. Without it, a note reminds you the body check did not run. |
+| `--allow-unverified-body` | no | Accept a bundle with no declared `body_ref` despite `--receiver-body` (explicit risk). An error without `--receiver-body`. |
 
 Output:
 
@@ -83,9 +89,10 @@ Output:
 extracted bundle to /path/to/imported
   contributor: alice-mac-mini
   domain:      combat
-  schema_version: 1
+  schema_version: 2
   slices:      ['ec', 'nac']
-(use maxim.hivemind.nac_merge / ec_merge to merge into a live system)
+(use maxim.hivemind.substrate_merge to merge into a live system, then
+ EC.ingest_substrate_nodes + NAc.load_state to apply the result)
 ```
 
 After extraction you have `manifest.json`, `nac.json`, and `ec.json` (whichever were present) on disk. The next step -- merging into a live system -- is a deliberate, explicit Python call.
@@ -102,11 +109,18 @@ This prints the manifest as JSON -- contributor, domain, schema version, which s
 
 ## Merging into a live system
 
-The CLI extracts; the Python utilities in `maxim.hivemind` merge. Both are pure functions -- they take state dicts and return fresh dicts, never mutating their inputs.
+The CLI extracts; the Python utilities in `maxim.hivemind` merge. All are pure functions -- they take state dicts and return fresh dicts, never mutating their inputs.
+
+**Call `substrate_merge` -- do not hand-compose `nac_merge` + `ec_merge`.** Merging the
+two slices independently discards the EC node alignment, so the donor's cluster-keyed
+biases name clusters the receiver has no node for and the merged want reads out as
+exactly 0.0 while the bias dict grows (bug D43 -- this page taught that recipe until
+2026-09-04). `substrate_merge` is the aligned composition: EC align first, donor bias
+re-key through the id map second, NAc fold last.
 
 ```python
 import json
-from maxim.hivemind import nac_merge, ec_merge
+from maxim.hivemind import substrate_merge
 
 # Your live system's current state.
 local_nac = my_nac.dump()
@@ -116,21 +130,26 @@ local_ec = json.loads(open("local_ec.json").read())["substrate_nodes"]
 imported_nac = json.loads(open("imported/nac.json").read())
 imported_ec = json.loads(open("imported/ec.json").read())["substrate_nodes"]
 
-# Merge — every call requires both contributor sources.
-merged_nac = nac_merge(
-    local_nac, imported_nac,
-    left_source="local", right_source="alice-mac-mini",
-)
-merged_ec = ec_merge(
-    local_ec, imported_ec,
-    left_source="local", right_source="alice-mac-mini",
+result = substrate_merge(
+    receiver_nac=local_nac,
+    receiver_ec=local_ec,
+    donor_nac=imported_nac,
+    donor_ec=imported_ec,
+    receiver_source="local",
+    donor_source="alice-mac-mini",
+    receiver_agent_id=my_agent_id,  # normalises the donor's agent axis
 )
 
 # Load the merged state back into the live system.
-my_nac.load_state(merged_nac)
+my_nac.load_state(result.nac)
+my_ec.ingest_substrate_nodes(result.ec_nodes)
 ```
 
-`nac_merge` consumes `NAc.dump()`-shape dicts and produces a dict that loads cleanly via `NAc.load_state()`. `ec_merge` consumes the `substrate_nodes` slice of `EC.save()`'s payload.
+The result also reports `biases_rekeyed` / `biases_dropped` so you can see whether the
+donor's learning actually survived the alignment. The lower-level `nac_merge` /
+`ec_merge` remain available for slices that genuinely stand alone (e.g. tabular orient
+policies with no EC state -- what `merge-nac` does), but anything carrying
+`cluster_reward_bias` plus an EC slice goes through `substrate_merge`.
 
 ### How merging works
 

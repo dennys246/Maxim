@@ -619,6 +619,17 @@ Distribution amplifies silent state errors. Before shared substrate becomes an
 execution priority:
 
 1. D1 live encoder-provenance validation must reject or migrate incompatible state.
+   *Reject* shipped in 1.1.3 (geometry-masked scans + the deduped mismatch warning +
+   D66's legacy tag derivation). *Migrate* closed 2026-09-04: EC stores centroids, not
+   raw readings, so migration for sensor substrate is loud **invalidation** — `maxim
+   substrate invalidate` drops nodes by NAMED stale geometry (census printed when no
+   geometry is named; unstamped nodes untouchable), prunes the NAc biases keyed on the
+   removed cluster ids in the same operation (`prune_nac_cluster_biases` — else they
+   are minted permanently dangling, the D2 shape), and records everything removed
+   verbatim in a tombstone sidecar; dry-run by default. Live re-encoding happens
+   organically as new readings arrive in the live geometry. First real case: 1.1.4's
+   A4 moved the world geometry tag. Guard:
+   `tests/unit/test_substrate_invalidate.py`.
 2. D3/D4 threshold and same-dimension geometry compatibility must be explicit and
    tested, not inferred from vector length.
 3. EC read-side mutation (D8) must be measured and accepted or separated from recall.
@@ -633,35 +644,48 @@ execution priority:
    cosine but nothing re-keys `cluster_reward_bias` through the resulting id map, so a
    merged foreign want reads out as nothing. The re-keyed merge path must exist and the
    Exp 52 seeds 42 + 43 must pass Gauntlet #2 merged — see the case study.
-7. **Bundle action namespace** (added 2026-08-26; **sharpened 2026-08-31**): bias keys are
-   body-prefixed tool names; a bundle must declare its body/affordance namespace (typed
-   bundles) or the keys move to the SEM affordance. Decided in the case study's design pass,
-   before the first shared bundle. **Sharpening:** the code map in
-   [microduck_intent_layer.md](microduck_intent_layer.md) §2.1 pins what the key actually is
-   — `embodiment/tool_bridge.py::generate_tools_for_entity` builds `f"{ent.name}_{aff_name}"`
-   (flat, underscore-joined, **modulator dropped**), and `similarity/signature.py`'s
-   `f"{tool_name}:{outcome_type}"` is the only real structural key; a colon-delimited
-   `body:<name>:<verb>` convention **does not exist anywhere in the tree**, and
-   `affordance_namespace`/`body_ref` are docs-only (`hivemind/bundle.py`'s manifest has
-   neither). Design the namespace as a **capability** namespace with the body as an attribute,
-   taking `embodiment/motor.py::MotorStep.sem_key`'s `(entity, modulator, affordance)` triple
-   **minus its first element** as the starting shape.
+7. **Bundle action namespace** (added 2026-08-26; **DECIDED 2026-09-01, reconciled
+   2026-09-04**): **the body namespace won — typed bundles, with the capability key
+   emitted alongside as forward insurance.** This text and
+   [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md) §1 are now the
+   SAME answer by construction; the full costing record is
+   [d43_merge_correctness.md](d43_merge_correctness.md) §5/§5a, which is where the
+   loser's rationale lives in full.
 
-   > **CORRECTED 2026-09-01 (D43 pre-implementation sweep).** The sentence above previously
-   > took the triple whole. `sem_key`'s first element is `entity_path` — **it IS the body
-   > dependence this gate exists to remove**, so following the instruction literally
-   > reproduces the bug. The capability key is `(modulator, affordance)`. Two further
-   > corrections: `sem_key` has exactly **two** references in the tree, so adopting it means
-   > *building* an identity, not promoting one; and **this gate contradicts
-   > [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md) §1**, which
-   > front-gated the same choice and picked the **body** namespace for a stated reason, with
-   > the microduck two-lens round (rev 2) withdrawing its capability recommendation and
-   > restoring the case study's. Whoever implements will read only one of these documents —
-   > reconcile them in the same commit as the decision. Both options costed against the code
-   > in [d43_merge_correctness.md](d43_merge_correctness.md) §5. Note also that gate 7 is
-   > **not** what blocks D44: D43's live axes are `cluster_id` and `agent_id`, and the
-   > tool-signature barrier does not fire for two agents on one body — which is exactly the
-   > configuration D44 requires.
+   *The decision.* A bundle declares the body its bias keys were learned on
+   (`manifest.body_ref` + `manifest.affordance_namespace`, `BUNDLE_SCHEMA_VERSION` 2 with
+   a v1→v2 migration), and a receiver refuses a mismatch via
+   `hivemind/bundle.py::assert_bundle_body_compatible` — `BundleBodyMismatch` on a
+   different body, `BundleBodyUnverifiable` on an undeclared one (absence is
+   unverifiable, not compatible; `allow_unverified=True` accepts the risk explicitly).
+   This converts D43 barrier 3's *silent* cross-body zero into a *loud* refusal; it does
+   not make cross-body sharing work. Alongside, `manifest.capability_map` carries the
+   body-agnostic capability key — `(modulator, affordance)`, i.e. `sem_key` MINUS its
+   `entity_path` head, since that head IS the body dependence this gate removes — for
+   each body-prefixed tool signature, so adopting a capability namespace later is a
+   reader-side change on new bundles with no payload migration.
+
+   *Why the capability namespace lost the "now" (it remains the long-run key, scheduled
+   with three constituencies — sharing, microduck portability, the `reachy_mini_infant`
+   name-lie):* seventeen `f"tool:{...}"` sites bypass `build_tool_signature`, two on the
+   hot readout path — one missed re-key diverges write/read keys into a silent zero
+   indistinguishable from D43; `(modulator, affordance)` is not yet a shared vocabulary
+   (`listen` sits under `head` on one body, `capture` on another); and migration would
+   touch the 20 SHA-manifested `53_agents` evidence files behind EARNED rows. (A fourth
+   leg in the original costing — "the bundle scrub drops `:`/`/`-shaped keys" — was
+   verified FALSE 2026-09-04: `_scrub_event_signature` passes them through, and
+   `_IDENTIFIER_TOKEN`'s drop gates `percept_valences` entity classes, not bias keys.
+   The decision stands on the three real legs.)
+
+   *Caller status (2026-09-04 sweep):* the 1.1.3 ship left the typed fields with ZERO
+   producing callers and the refusal with ZERO non-test callers — format capacity, not a
+   fix, by this project's own rule. The gate closes only with the composer/ingestion
+   callers wired (`hivemind/cli.py` export declares `body_ref` + derives
+   `capability_map` from the body YAML; import runs the refusal); the 1.2 Oasis
+   ingestion adapter MUST route through `assert_bundle_body_compatible`, not
+   re-implement it. Note gate 7 is **not** what blocks D44: D43's live axes are
+   `cluster_id` and `agent_id`, and the tool-signature barrier does not fire for two
+   agents on one body — exactly D44's configuration.
 8. **Evidence and ledger coherence** (added 2026-08-27 from the scorecard
    reconciliation). Gates 1–7 exist because distribution amplifies silent *state*
    errors; this gate applies the same argument to the *evidence* behind the state that

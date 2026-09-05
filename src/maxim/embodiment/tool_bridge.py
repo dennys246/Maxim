@@ -992,6 +992,34 @@ def generate_tools_for_entity(
     return tools
 
 
+def derive_capability_map(entity: Entity) -> dict[str, str]:
+    """Body-agnostic capability key for every affordance tool this body generates.
+
+    Gate 7 forward insurance (docs/plans/d43_merge_correctness.md §5a): maps each
+    body-prefixed tool signature (``tool:<name>`` — the exact prefix
+    ``runtime/tool_dispatch.py::build_tool_signature`` keys NAc biases on) to the
+    body-agnostic ``<modulator>/<affordance>`` capability key. Derivation runs the
+    SAME generation path that names real tools — ``generate_tools_for_entity``
+    against a throwaway registry — never a re-implementation of the naming rules,
+    which would silently drift from them.
+
+    KNOWN LIMIT — collision CONTEXT, not collision logic (executor-lens fold,
+    2026-09-04): the throwaway registry holds only THIS body's tools, so the map
+    is exact for the collision-free registry a body has to itself. A live session
+    that registered other entities first (core tools, world entities, mid-session
+    acquisitions) can parent-prefix a colliding tool (``_resolve_tool_name``),
+    and the live bias key ``tool:<parent>_<name>_<aff>`` then misses the derived
+    key ``tool:<name>_<aff>``. A 1.2 capability-map READER must treat a missed
+    key as unverifiable, not as "no capability".
+    """
+    registry = ToolRegistry()
+    mapping: dict[str, str] = {}
+    for tool in generate_tools_for_entity(entity, registry):
+        if isinstance(tool, ModulatorAffordanceTool):
+            mapping[f"tool:{tool.name}"] = f"{tool._modulator.name}/{tool._affordance_name}"
+    return mapping
+
+
 def describe_entity_capabilities(entity: Entity) -> str:
     """Describe an entity's capabilities as text for observation.
 

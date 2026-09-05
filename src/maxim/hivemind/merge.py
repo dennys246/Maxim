@@ -962,6 +962,97 @@ def rekey_nac_state(
     return out
 
 
+def invalidate_stale_geometry_nodes(
+    ec_substrate_nodes: dict[str, dict[str, Any]],
+    *,
+    modality: str,
+    drop_geometry: str,
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """Gate 1's migrate half — drop nodes stamped with a named stale geometry.
+
+    The reject half shipped in 1.1.3 (geometry-mismatched nodes are masked
+    out of scans and warned about once); this is the cleanup: an EC cannot
+    re-encode a stale node in place — it stores CENTROIDS, not the raw
+    readings that formed them — so migration for sensor substrate is
+    *invalidation*: the stale nodes are removed (live re-encoding then
+    happens organically as new readings arrive in the live geometry), and
+    the caller MUST prune the NAc biases keyed on the removed cluster ids
+    via :func:`prune_nac_cluster_biases`, or it has minted permanently
+    dangling biases (the D2 dangling-half shape).
+
+    Deliberately takes the geometry to DROP by name, never "everything
+    different from the live one": unstamped (``geometry: None``) nodes are
+    a separate, permissive class (D66 migrates what it can; the rest match
+    any geometry by design) and must not be deletable by accident.
+
+    Local-state maintenance, NOT a merge entry point — takes no foreign
+    source, so the ``trusted_sources``/``_validate_source`` reservations
+    for merge functions do not apply here.
+
+    Pure function: returns ``(kept_nodes, removed_ids)``; the input is not
+    mutated.
+    """
+    kept: dict[str, dict[str, Any]] = {}
+    removed: list[str] = []
+    for nid, node in (ec_substrate_nodes or {}).items():
+        if str(node.get("modality", "")) == modality and node.get("geometry") == drop_geometry:
+            removed.append(nid)
+        else:
+            kept[nid] = node
+    return kept, removed
+
+
+def prune_nac_cluster_biases(
+    nac_state: dict[str, Any],
+    cluster_ids: set[str],
+) -> tuple[dict[str, Any], int]:
+    """Drop NAc bias entries keyed on cluster/node ids that no longer exist.
+
+    The companion of :func:`invalidate_stale_geometry_nodes` — a bias whose
+    EC node was invalidated names a cluster the local EC will never emit
+    again, which is exactly D43's silent-zero shape. Prunes all three
+    cluster-keyed surfaces of a dumped NAc state:
+
+    * ``cluster_reward_bias`` / ``cluster_reward_source`` — keyed
+      ``agent\\x1fcluster\\x1ftool_signature`` (``NAC_KEY_SEP``).
+    * ``reward_bias`` — keyed ``agent:node_id``.
+
+    Local-state maintenance, NOT a merge entry point — takes no foreign
+    source, so the ``trusted_sources``/``_validate_source`` reservations
+    for merge functions do not apply here.
+
+    Pure function: returns ``(new_state, pruned_count)``; the input is not
+    mutated. Malformed keys are kept as-is — this function prunes, it does
+    not validate.
+    """
+    ids = set(cluster_ids)
+    out = dict(nac_state)
+    pruned = 0
+    for field in ("cluster_reward_bias", "cluster_reward_source"):
+        src = nac_state.get(field)
+        if not isinstance(src, dict):
+            continue
+        kept_entries: dict[str, Any] = {}
+        for key, value in src.items():
+            parts = str(key).split(NAC_KEY_SEP)
+            if len(parts) == 3 and parts[1] in ids:
+                pruned += 1
+                continue
+            kept_entries[key] = value
+        out[field] = kept_entries
+    reward_bias = nac_state.get("reward_bias")
+    if isinstance(reward_bias, dict):
+        kept_rb: dict[str, Any] = {}
+        for key, value in reward_bias.items():
+            _aid, sep, nid = str(key).partition(":")
+            if sep and nid in ids:
+                pruned += 1
+                continue
+            kept_rb[key] = value
+        out["reward_bias"] = kept_rb
+    return out, pruned
+
+
 def ec_merge(
     left: dict[str, dict[str, Any]],
     right: dict[str, dict[str, Any]],

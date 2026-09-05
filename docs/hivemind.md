@@ -102,7 +102,8 @@ The unit of exchange. A versioned, signed archive containing:
 
 ```
 maxim-substrate.zip
-├── manifest.json           # _format_version, schema_version, contributor_id, domain, signature slots
+├── manifest.json           # _format_version, schema_version, contributor_id, domain, signature slots,
+│                           # body_ref + affordance_namespace + capability_map (gate 7)
 ├── nac.json                # causal links + confidence + provenance tags  (1.0)
 └── ec.json                 # concept centroids + cluster metadata          (1.0)
 ```

@@ -9,11 +9,22 @@ and print a short summary.
 Subcommands:
 
 - ``maxim substrate export <output.zip> --session <session_id>
-   --contributor-id <id> [--domain X] [--no-identity-filter]``
+   --contributor-id <id> [--domain X] [--no-identity-filter]
+   [--body-ref NAME] [--body-yaml PATH] [--affordance-namespace NS]``
+   — gate 7: declare the body the biases were learned on; ``--body-yaml``
+   derives ``capability_map`` via the real tool-naming path.
 
-- ``maxim substrate import <input.zip> --output-dir <dir>``
+- ``maxim substrate import <input.zip> --output-dir <dir>
+   [--receiver-body NAME] [--allow-unverified-body]`` — gate 7:
+   ``--receiver-body`` refuses cross-body/undeclared bundles before
+   anything is written.
 
 - ``maxim substrate inspect <input.zip>`` — print manifest only.
+
+- ``maxim substrate invalidate --session <id> [--modality M
+   --drop-geometry TAG] [--apply]`` — gate 1 migrate half: census with no
+   geometry named; otherwise drop stale-geometry EC nodes, prune the NAc
+   biases keyed on them, tombstone everything removed. Dry-run by default.
 
 - ``maxim substrate merge-nac <source_nac.json> [--into <target_nac.json>]
    --source-id <id> [--target-id <id>]`` — one-shot MERGE of a trained
@@ -56,6 +67,7 @@ from pathlib import Path
 
 from maxim.hivemind.bundle import (
     BUNDLE_SCHEMA_VERSION,
+    assert_bundle_body_compatible,
     compose_bundle,
     extract_bundle,
     read_bundle_manifest,
@@ -81,10 +93,18 @@ def _expand_session_dir(session: str) -> Path:
 
 
 def _read_optional_json(path: Path) -> dict | None:
-    """Read ``path`` and return parsed JSON, or ``None`` if absent."""
+    """Read ``path`` and return parsed JSON, or ``None`` if absent.
+
+    Malformed JSON raises :class:`ValueError` naming the file — callers turn
+    that into the CLI's rc=2 contract (a traceback on a corrupt session file
+    is the shape the 2026-09-04 review round removed).
+    """
     if not path.is_file():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"malformed JSON in {path}: {exc}") from exc
 
 
 def _run_export(args: argparse.Namespace) -> int:
@@ -93,8 +113,12 @@ def _run_export(args: argparse.Namespace) -> int:
         print(f"error: session directory not found: {session_dir}", file=sys.stderr)
         return 2
 
-    nac_state = _read_optional_json(session_dir / "aut_nac.json")
-    ec_payload = _read_optional_json(session_dir / "aut_ec.json")
+    try:
+        nac_state = _read_optional_json(session_dir / "aut_nac.json")
+        ec_payload = _read_optional_json(session_dir / "aut_ec.json")
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     ec_substrate_nodes = ec_payload.get("substrate_nodes") if isinstance(ec_payload, dict) else None
     # Encode-time encoder stamps (artifact stamping, 1.1 item 7) — read
     # from the payload the writing system produced, NEVER fabricated here:
@@ -111,6 +135,42 @@ def _run_export(args: argparse.Namespace) -> int:
         )
         return 2
 
+    # Gate 7 (typed bundles): the operator declares the body the biases were
+    # learned on; the capability map is DERIVED from the body YAML via the
+    # same tool-naming path that produced the keys, never hand-authored.
+    # Neither is inferred when undeclared — an unverifiable bundle stays
+    # honestly unverifiable and is refused downstream by default.
+    body_ref: str | None = args.body_ref
+    if body_ref is not None and not body_ref.strip():
+        # An empty body_ref can never match any receiver (receiver_body must be
+        # non-empty) yet would suppress the ships-unverifiable warning below.
+        print("error: --body-ref must be a non-empty string (omit it to ship undeclared)", file=sys.stderr)
+        return 2
+    capability_map: dict[str, str] | None = None
+    if args.body_yaml is not None:
+        from maxim.embodiment.spec import load_spec
+        from maxim.embodiment.tool_bridge import derive_capability_map
+
+        # Broad catch, handled loudly: this is the CLI's rc=2 contract for
+        # operator input. The realistic failures span yaml.YAMLError,
+        # ConfigurationError, KeyError from malformed drive specs, and
+        # ValueError from an unresolvable tool-name collision (executor-lens
+        # fold) — none of which should escape as a traceback.
+        try:
+            spec = load_spec(args.body_yaml)
+            capability_map = derive_capability_map(spec.root_entity)
+        except Exception as exc:
+            print(f"error: --body-yaml failed to load: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return 2
+        if body_ref is None:
+            body_ref = spec.name
+        if not capability_map:
+            print(
+                "note: --body-yaml derived 0 capability keys (no modulator affordances in the "
+                "body spec) — the bundle ships an empty capability_map.",
+                file=sys.stderr,
+            )
+
     output_path = Path(args.output).expanduser().resolve()
     try:
         manifest = compose_bundle(
@@ -122,6 +182,9 @@ def _run_export(args: argparse.Namespace) -> int:
             apply_identity_filter=not args.no_identity_filter,
             identity_threshold=args.identity_threshold,
             encoder_provenance=ec_encoder_provenance,
+            body_ref=body_ref,
+            affordance_namespace=args.affordance_namespace,
+            capability_map=capability_map,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -133,8 +196,20 @@ def _run_export(args: argparse.Namespace) -> int:
         f"  contributor: {manifest['contributor_id']}\n"
         f"  domain:      {manifest.get('domain')}\n"
         f"  slices:      {n_slices}\n"
-        f"  identity_filter: {manifest.get('identity_filter_applied')}"
+        f"  identity_filter: {manifest.get('identity_filter_applied')}\n"
+        f"  body_ref:    {manifest.get('body_ref')}"
+        + (
+            f"\n  capability_map: {len(manifest.get('capability_map') or {})} keys"
+            if capability_map is not None
+            else ""
+        )
     )
+    if body_ref is None:
+        print(
+            "note: no --body-ref/--body-yaml given — bundle ships body_ref: null and "
+            "will be REFUSED by body-checking receivers (BundleBodyUnverifiable).",
+            file=sys.stderr,
+        )
     return 0
 
 
@@ -144,10 +219,47 @@ def _run_import(args: argparse.Namespace) -> int:
         print(f"error: bundle file not found: {bundle_path}", file=sys.stderr)
         return 2
 
+    # Gate 7 (typed bundles): refuse a cross-body bundle BEFORE anything is
+    # written to disk. Undeclared bodies are unverifiable, not compatible —
+    # --allow-unverified-body accepts that risk explicitly.
+    if args.receiver_body is not None:
+        import zipfile as _zipfile
+
+        try:
+            manifest = read_bundle_manifest(bundle_path)
+        except (ValueError, OSError, KeyError, _zipfile.BadZipFile) as exc:
+            print(f"error: cannot read bundle manifest: {exc}", file=sys.stderr)
+            return 2
+        try:
+            # ValueError covers both refusal classes (they subclass it) AND
+            # the non-empty-receiver_body validation — an unset shell var in
+            # --receiver-body "$BODY" must report, not traceback.
+            assert_bundle_body_compatible(
+                manifest,
+                receiver_body=args.receiver_body,
+                allow_unverified=args.allow_unverified_body,
+            )
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    elif args.allow_unverified_body:
+        # A silent no-op flag is the shape this codebase pushes into errors:
+        # the operator believes risk was "accepted" on a path that never checked.
+        print("error: --allow-unverified-body is meaningless without --receiver-body", file=sys.stderr)
+        return 2
+    else:
+        print(
+            "note: body compatibility NOT checked (pass --receiver-body to refuse "
+            "cross-body bundles; their biases merge silently as zero — D43 barrier 3).",
+            file=sys.stderr,
+        )
+
     output_dir = Path(args.output_dir).expanduser().resolve()
+    import zipfile as _zipfile
+
     try:
         manifest = extract_bundle(bundle_path, output_dir)
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, _zipfile.BadZipFile) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
@@ -162,6 +274,136 @@ def _run_import(args: argparse.Namespace) -> int:
         "(use maxim.hivemind.substrate_merge to merge into a live system, then\n"
         " EC.ingest_substrate_nodes + NAc.load_state to apply the result)"
     )
+    return 0
+
+
+def _run_invalidate(args: argparse.Namespace) -> int:
+    """Gate 1's migrate half — invalidate stale-geometry EC nodes in a session.
+
+    EC stores centroids, not raw readings, so a stale-geometry node cannot be
+    re-encoded in place: migration is loud invalidation (nodes removed, the
+    NAc biases keyed on them pruned in the same operation, everything removed
+    recorded verbatim in a tombstone sidecar), and live re-encoding happens
+    organically as new readings arrive in the live geometry. Dry-run by
+    default; ``--apply`` writes.
+    """
+    from maxim.hivemind.merge import invalidate_stale_geometry_nodes, prune_nac_cluster_biases
+
+    session_dir = _expand_session_dir(args.session)
+    if not session_dir.is_dir():
+        print(f"error: session directory not found: {session_dir}", file=sys.stderr)
+        return 2
+
+    ec_path = session_dir / "aut_ec.json"
+    nac_path = session_dir / "aut_nac.json"
+    try:
+        ec_payload = _read_optional_json(ec_path)
+        nac_state = _read_optional_json(nac_path)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    nodes = ec_payload.get("substrate_nodes") if isinstance(ec_payload, dict) else None
+    if not isinstance(nodes, dict):
+        print(f"error: no substrate_nodes in {ec_path}; nothing to invalidate", file=sys.stderr)
+        return 2
+
+    # No --drop-geometry: print the per-modality geometry census so the
+    # operator can see what is stale, and stop. Never guess which geometry
+    # is the live one — the operator names the one to drop. A given
+    # --modality FILTERS the census (a silently ignored flag is the shape
+    # this CLI turns into behavior or an error, never a no-op).
+    if args.drop_geometry is None:
+        if args.apply:
+            print("error: --apply requires --modality and --drop-geometry", file=sys.stderr)
+            return 2
+        census: dict[str, dict[str, int]] = {}
+        malformed = 0
+        for node in nodes.values():
+            if not isinstance(node, dict):
+                malformed += 1
+                continue
+            mod = str(node.get("modality", "?"))
+            if args.modality is not None and mod != args.modality:
+                continue
+            geom = node.get("geometry")
+            by_geom = census.setdefault(mod, {})
+            key = "(unstamped)" if geom is None else str(geom)
+            by_geom[key] = by_geom.get(key, 0) + 1
+        scope = f" (modality {args.modality!r})" if args.modality is not None else ""
+        print(f"geometry census for {ec_path}{scope} ({len(nodes)} nodes):")
+        for mod in sorted(census):
+            for geom, count in sorted(census[mod].items()):
+                print(f"  {mod:12s} {geom}: {count}")
+        if malformed:
+            print(f"  ({malformed} malformed non-dict node entr{'y' if malformed == 1 else 'ies'} skipped)")
+        print("(re-run with --modality and --drop-geometry to invalidate a stale geometry)")
+        return 0
+
+    if args.modality is None:
+        print("error: --drop-geometry requires --modality", file=sys.stderr)
+        return 2
+
+    kept, removed_ids = invalidate_stale_geometry_nodes(nodes, modality=args.modality, drop_geometry=args.drop_geometry)
+    if not removed_ids:
+        print(f"nothing to invalidate: no {args.modality!r} node is stamped with geometry {args.drop_geometry!r}")
+        return 0
+
+    pruned_entries: dict[str, dict] = {}
+    pruned_count = 0
+    new_nac = None
+    if isinstance(nac_state, dict):
+        new_nac, pruned_count = prune_nac_cluster_biases(nac_state, set(removed_ids))
+        for field in ("cluster_reward_bias", "cluster_reward_source", "reward_bias"):
+            old_field = nac_state.get(field)
+            new_field = new_nac.get(field)
+            if isinstance(old_field, dict) and isinstance(new_field, dict):
+                dropped = {k: v for k, v in old_field.items() if k not in new_field}
+                if dropped:
+                    pruned_entries[field] = dropped
+
+    print(
+        f"invalidate {args.modality!r} nodes with geometry {args.drop_geometry!r}:\n"
+        f"  EC nodes removed:    {len(removed_ids)} of {len(nodes)}\n"
+        f"  NAc biases pruned:   {pruned_count}" + ("" if nac_state is not None else "  (no aut_nac.json in session)")
+    )
+
+    if not args.apply:
+        print("DRY RUN — nothing written. Re-run with --apply to invalidate.")
+        return 0
+
+    from datetime import datetime, timezone
+
+    from maxim.utils.atomic_io import atomic_write_json
+    from maxim.utils.format_version import with_format_version
+
+    # Tombstone FIRST: everything removed, verbatim, so the deletion is
+    # auditable and hand-reversible. Then NAc BEFORE EC: if the NAc write
+    # fails mid-way, pruned biases whose nodes still exist is benign; the
+    # reverse (nodes gone, biases dangling) is the D2 shape this verb
+    # exists to eliminate. Microsecond stamp + refuse-if-exists: the audit
+    # record must never be silently clobbered by a same-second re-run.
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
+    tombstone_path = session_dir / f"aut_ec.invalidated.{stamp}.json"
+    if tombstone_path.exists():
+        print(f"error: tombstone already exists: {tombstone_path}", file=sys.stderr)
+        return 2
+    atomic_write_json(
+        str(tombstone_path),
+        with_format_version(
+            {
+                "reason": "gate1-geometry-invalidation",
+                "modality": args.modality,
+                "drop_geometry": args.drop_geometry,
+                "removed_nodes": {nid: nodes[nid] for nid in removed_ids},
+                "pruned_nac_entries": pruned_entries,
+            }
+        ),
+    )
+    if new_nac is not None:
+        atomic_write_json(str(nac_path), new_nac)
+    ec_payload["substrate_nodes"] = kept
+    atomic_write_json(str(ec_path), ec_payload)
+    print(f"applied. Tombstone: {tombstone_path}")
     return 0
 
 
@@ -199,7 +441,9 @@ def _run_merge_nac(args: argparse.Namespace) -> int:
     def _read_dict_or_none(path: Path, label: str) -> "dict | None | int":
         try:
             data = _read_optional_json(path)
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, ValueError) as exc:
+            # ValueError covers _read_optional_json's malformed-JSON wrap
+            # (and json.JSONDecodeError, which subclasses it).
             print(f"error: cannot read {label} ({path}): {exc}", file=sys.stderr)
             return 2
         if data is not None and not isinstance(data, dict):
@@ -402,6 +646,28 @@ def _build_parser() -> argparse.ArgumentParser:
         default=2,
         help="Identity-bearing heuristic threshold (default 2 — bundle-stricter than the heuristic default).",
     )
+    p_export.add_argument(
+        "--body-ref",
+        default=None,
+        help=(
+            "Gate 7: the body the biases were learned on (e.g. 'reachy_mini'). "
+            "Undeclared bundles ship body_ref: null and are refused by body-checking receivers."
+        ),
+    )
+    p_export.add_argument(
+        "--body-yaml",
+        default=None,
+        help=(
+            "Gate 7: path to the body's embodiment YAML. Derives manifest.capability_map "
+            "(tool:<name> -> <modulator>/<affordance>) via the real tool-naming path, and "
+            "defaults --body-ref to the spec's name."
+        ),
+    )
+    p_export.add_argument(
+        "--affordance-namespace",
+        default=None,
+        help="Gate 7: name of the vocabulary the bundle's tool signatures live in.",
+    )
     p_export.set_defaults(func=_run_export)
 
     p_import = sub.add_parser("import", help="Extract a substrate bundle to a directory")
@@ -411,7 +677,51 @@ def _build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Directory to extract the bundle to (created if absent).",
     )
+    p_import.add_argument(
+        "--receiver-body",
+        default=None,
+        help=(
+            "Gate 7: this receiver's body name. Refuses a bundle learned on a different "
+            "body (BundleBodyMismatch) or an undeclared one (BundleBodyUnverifiable) "
+            "before anything is written."
+        ),
+    )
+    p_import.add_argument(
+        "--allow-unverified-body",
+        action="store_true",
+        help="Accept a bundle with no declared body_ref despite --receiver-body (explicit risk).",
+    )
     p_import.set_defaults(func=_run_import)
+
+    p_invalidate = sub.add_parser(
+        "invalidate",
+        help="Gate 1 migrate half: drop stale-geometry EC nodes + the NAc biases keyed on them (dry-run by default)",
+    )
+    p_invalidate.add_argument(
+        "--session",
+        required=True,
+        help="Session ID (resolved under ~/.maxim/sessions/{id}/) or a path to a session directory",
+    )
+    p_invalidate.add_argument(
+        "--modality",
+        default=None,
+        help="Modality whose stale nodes to invalidate (e.g. 'world').",
+    )
+    p_invalidate.add_argument(
+        "--drop-geometry",
+        default=None,
+        help=(
+            "The stale geometry tag to drop, by name (copy it from the census this command "
+            "prints when run without this flag, or from the EC mismatch warning). Unstamped "
+            "nodes are never touched."
+        ),
+    )
+    p_invalidate.add_argument(
+        "--apply",
+        action="store_true",
+        help="Actually write (default is a dry-run report). Writes a tombstone sidecar first.",
+    )
+    p_invalidate.set_defaults(func=_run_invalidate)
 
     p_inspect = sub.add_parser("inspect", help="Print the bundle manifest without extracting")
     p_inspect.add_argument("input", help="Path to the .zip bundle")
@@ -447,7 +757,7 @@ def run_substrate_subcommand(argv: list[str]) -> int:
 
     Returns process exit code. Bundle schema version supported by this
     build is :data:`maxim.hivemind.bundle.BUNDLE_SCHEMA_VERSION`
-    (currently ``1``).
+    (currently ``2`` — gate 7 typed bundles).
     """
     parser = _build_parser()
     args = parser.parse_args(argv)

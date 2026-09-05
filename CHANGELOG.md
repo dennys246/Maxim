@@ -24,6 +24,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Gate 1 migrate half — `maxim substrate invalidate`.** 1.1.3 shipped only the reject half of
+  "reject or migrate incompatible state" (geometry-masked scans + a deduped warning); stale
+  nodes just sat dead, and 1.1.4's A4 moved the world geometry tag, making the case live. EC
+  stores centroids, not raw readings, so migration for sensor substrate is loud
+  **invalidation**: the new verb drops nodes by NAMED stale geometry (a census prints when no
+  geometry is named; unstamped nodes are a separate permissive class and untouchable), prunes
+  the NAc biases keyed on the removed cluster ids in the same operation
+  (`hivemind/merge.py::prune_nac_cluster_biases` — all three surfaces: `cluster_reward_bias`,
+  `cluster_reward_source`, `reward_bias`; else the operation mints permanently dangling biases,
+  the D2 shape), and records everything removed verbatim in a tombstone sidecar
+  (`aut_ec.invalidated.<utc>.json`). Dry-run by default; `--apply` writes tombstone-first.
+- **Gate 7 callers — typed bundles now have a real composer and a real refusing receiver.**
+  The 1.1.3 gate-7 ship was format capacity with zero production callers: no composer passed
+  `body_ref`/`affordance_namespace`/`capability_map` (every real bundle shipped
+  `BundleBodyUnverifiable`-shaped) and nothing outside tests called
+  `assert_bundle_body_compatible`. Now `maxim substrate export` takes `--body-ref` /
+  `--affordance-namespace` / `--body-yaml` — the latter derives `capability_map` via the new
+  `embodiment/tool_bridge.py::derive_capability_map`, which runs the REAL tool-naming path
+  (`generate_tools_for_entity`, collision resolution included) instead of re-implementing it —
+  and `maxim substrate import` takes `--receiver-body` (+ `--allow-unverified-body`), refusing a
+  cross-body or undeclared bundle before anything is written. Roadmap gate 7 and the Oasis case
+  study §1 are reconciled to the same decided record in the same PR
+  (d43_merge_correctness.md §5a stays the costing record).
 - **Prompt-budget knobs (sandbox plan P21):** `llm.max_response_tokens` (env
   `MAXIM_LLM_MAX_RESPONSE_TOKENS`) overrides the agent loop's per-call `max_tokens` AND the
   budgeter's response reserve in one place (unset = the mode's own value, 512 for the loop's
@@ -40,6 +63,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Executor.permits(tool_name)` — the public read of the dispatch permission gate, so a
   prompt roster can ask "would this run?" before advertising a tool.
 
+- **Spoken-code pairing (console hardening A9.1; contract 0.4.0 → 0.5.0, additive).** Pulse's
+  wiring surfaced the vendor fact that kills A9's dashboard-link premise on the real robot
+  (the Pollen daemon regexes `custom_app_url` out of `main.py` at LIST time — a boot-minted
+  token cannot ride the ⚙️ link). New consumer sign-in path: tokenless `POST
+  /api/pair/request` makes the robot ANNOUNCE a 6-digit code (secrets-random, single active,
+  120 s TTL, never returned or logged — A7 applies to the code); `POST /api/pair/claim`
+  exchanges it for the console token (constant-time, single use, 5 attempts burn it, 10 s
+  min announce interval). Embedder-gated via keyword-only `build_app(pairing_announcer=…)`:
+  every plain `maxim serve` refuses 409 on both endpoints — no new unauthenticated path in
+  the default posture; refused under sandbox. `HelloResponse.pairing` advertises it
+  (defaulted — 0.4.0 clients never notice). `device_console_handoff` +
+  `extra_trusted_origins` stay correct and wired; the seam docstring records the amendment.
 ### Fixed
 - **The cacheable prompt prefix died at every encounter boundary (bugs ledger D80).** The
   scene-roster `tools` section is stable only within a narrative PHASE (a DM campaign's
@@ -72,19 +107,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `run_agentic_loop` tightened 3495 → 3488 in `function_length_baseline.json`: the prompt
   tool-description collection moved to the module-level `_describe_tools_for_prompt`.
-- **Spoken-code pairing (console hardening A9.1; contract 0.4.0 → 0.5.0, additive).** Pulse's
-  wiring surfaced the vendor fact that kills A9's dashboard-link premise on the real robot
-  (the Pollen daemon regexes `custom_app_url` out of `main.py` at LIST time — a boot-minted
-  token cannot ride the ⚙️ link). New consumer sign-in path: tokenless `POST
-  /api/pair/request` makes the robot ANNOUNCE a 6-digit code (secrets-random, single active,
-  120 s TTL, never returned or logged — A7 applies to the code); `POST /api/pair/claim`
-  exchanges it for the console token (constant-time, single use, 5 attempts burn it, 10 s
-  min announce interval). Embedder-gated via keyword-only `build_app(pairing_announcer=…)`:
-  every plain `maxim serve` refuses 409 on both endpoints — no new unauthenticated path in
-  the default posture; refused under sandbox. `HelloResponse.pairing` advertises it
-  (defaulted — 0.4.0 clients never notice). `device_console_handoff` +
-  `extra_trusted_origins` stay correct and wired; the seam docstring records the amendment.
-
 ## [1.1.4] - 2026-09-05 — "The world seam"
 
 ### Added
