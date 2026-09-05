@@ -985,6 +985,10 @@ def invalidate_stale_geometry_nodes(
     a separate, permissive class (D66 migrates what it can; the rest match
     any geometry by design) and must not be deletable by accident.
 
+    Local-state maintenance, NOT a merge entry point — takes no foreign
+    source, so the ``trusted_sources``/``_validate_source`` reservations
+    for merge functions do not apply here.
+
     Pure function: returns ``(kept_nodes, removed_ids)``; the input is not
     mutated.
     """
@@ -1012,6 +1016,10 @@ def prune_nac_cluster_biases(
     * ``cluster_reward_bias`` / ``cluster_reward_source`` — keyed
       ``agent\\x1fcluster\\x1ftool_signature`` (``NAC_KEY_SEP``).
     * ``reward_bias`` — keyed ``agent:node_id``.
+
+    Local-state maintenance, NOT a merge entry point — takes no foreign
+    source, so the ``trusted_sources``/``_validate_source`` reservations
+    for merge functions do not apply here.
 
     Pure function: returns ``(new_state, pruned_count)``; the input is not
     mutated. Malformed keys are kept as-is — this function prunes, it does

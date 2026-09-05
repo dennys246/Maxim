@@ -263,6 +263,11 @@ identity claim in text space), and **Exp 43**; **Exp 47** flagged re-check-on-ad
 - **There is no working invalidate command:** `MEMORY_PATHS` has no `ec` key, so `maxim`
   cannot delete `ec.json` at all (not even under `all`). Shipping one is a prerequisite.
 
+  > **STALE 2026-09-04:** both halves have since shipped — the `ec` MEMORY_PATHS key
+  > (D2, 2026-08-23) and the lockstep invalidate this bullet's parent demands:
+  > `maxim substrate invalidate` drops nodes by named stale geometry AND prunes the NAc
+  > biases keyed on them in the same operation, tombstoned (gate 1 migrate half).
+
 ## 6. Acceptance criteria
 
 1. Audit table (R1–R5) filled for every modality, committed as an experiment artifact.
@@ -298,6 +303,7 @@ place code 7 nodes**. The items below are now gates to DEFAULT-ON, not to the wi
       never moves). Needs a geometry discriminator at merge, not only at export.
    c. **An EC-invalidate command** — `MEMORY_PATHS` has no `ec` key, so a stale-geometry
       substrate cannot be cleared today; invalidation must be NAc+EC in lockstep.
+      *(SHIPPED 2026-09-04 as `maxim substrate invalidate` — lockstep, tombstoned.)*
    d. **Exp 48 re-run** (its claim is which cluster operant credit lands in) and **Exp 49
       H3 + arm C**. Exp 42/44b untouched (no azimuth sensor on those bodies);
       text/interoception byte-identical.

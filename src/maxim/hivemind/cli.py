@@ -93,10 +93,18 @@ def _expand_session_dir(session: str) -> Path:
 
 
 def _read_optional_json(path: Path) -> dict | None:
-    """Read ``path`` and return parsed JSON, or ``None`` if absent."""
+    """Read ``path`` and return parsed JSON, or ``None`` if absent.
+
+    Malformed JSON raises :class:`ValueError` naming the file — callers turn
+    that into the CLI's rc=2 contract (a traceback on a corrupt session file
+    is the shape the 2026-09-04 review round removed).
+    """
     if not path.is_file():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"malformed JSON in {path}: {exc}") from exc
 
 
 def _run_export(args: argparse.Namespace) -> int:
@@ -105,8 +113,12 @@ def _run_export(args: argparse.Namespace) -> int:
         print(f"error: session directory not found: {session_dir}", file=sys.stderr)
         return 2
 
-    nac_state = _read_optional_json(session_dir / "aut_nac.json")
-    ec_payload = _read_optional_json(session_dir / "aut_ec.json")
+    try:
+        nac_state = _read_optional_json(session_dir / "aut_nac.json")
+        ec_payload = _read_optional_json(session_dir / "aut_ec.json")
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     ec_substrate_nodes = ec_payload.get("substrate_nodes") if isinstance(ec_payload, dict) else None
     # Encode-time encoder stamps (artifact stamping, 1.1 item 7) — read
     # from the payload the writing system produced, NEVER fabricated here:
@@ -283,7 +295,13 @@ def _run_invalidate(args: argparse.Namespace) -> int:
         return 2
 
     ec_path = session_dir / "aut_ec.json"
-    ec_payload = _read_optional_json(ec_path)
+    nac_path = session_dir / "aut_nac.json"
+    try:
+        ec_payload = _read_optional_json(ec_path)
+        nac_state = _read_optional_json(nac_path)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     nodes = ec_payload.get("substrate_nodes") if isinstance(ec_payload, dict) else None
     if not isinstance(nodes, dict):
         print(f"error: no substrate_nodes in {ec_path}; nothing to invalidate", file=sys.stderr)
@@ -291,22 +309,33 @@ def _run_invalidate(args: argparse.Namespace) -> int:
 
     # No --drop-geometry: print the per-modality geometry census so the
     # operator can see what is stale, and stop. Never guess which geometry
-    # is the live one — the operator names the one to drop.
+    # is the live one — the operator names the one to drop. A given
+    # --modality FILTERS the census (a silently ignored flag is the shape
+    # this CLI turns into behavior or an error, never a no-op).
     if args.drop_geometry is None:
         if args.apply:
             print("error: --apply requires --modality and --drop-geometry", file=sys.stderr)
             return 2
         census: dict[str, dict[str, int]] = {}
+        malformed = 0
         for node in nodes.values():
+            if not isinstance(node, dict):
+                malformed += 1
+                continue
             mod = str(node.get("modality", "?"))
+            if args.modality is not None and mod != args.modality:
+                continue
             geom = node.get("geometry")
             by_geom = census.setdefault(mod, {})
-            key = geom if geom is not None else "(unstamped)"
+            key = "(unstamped)" if geom is None else str(geom)
             by_geom[key] = by_geom.get(key, 0) + 1
-        print(f"geometry census for {ec_path} ({len(nodes)} nodes):")
+        scope = f" (modality {args.modality!r})" if args.modality is not None else ""
+        print(f"geometry census for {ec_path}{scope} ({len(nodes)} nodes):")
         for mod in sorted(census):
             for geom, count in sorted(census[mod].items()):
                 print(f"  {mod:12s} {geom}: {count}")
+        if malformed:
+            print(f"  ({malformed} malformed non-dict node entr{'y' if malformed == 1 else 'ies'} skipped)")
         print("(re-run with --modality and --drop-geometry to invalidate a stale geometry)")
         return 0
 
@@ -319,8 +348,6 @@ def _run_invalidate(args: argparse.Namespace) -> int:
         print(f"nothing to invalidate: no {args.modality!r} node is stamped with geometry {args.drop_geometry!r}")
         return 0
 
-    nac_path = session_dir / "aut_nac.json"
-    nac_state = _read_optional_json(nac_path)
     pruned_entries: dict[str, dict] = {}
     pruned_count = 0
     new_nac = None
@@ -347,26 +374,35 @@ def _run_invalidate(args: argparse.Namespace) -> int:
     from datetime import datetime, timezone
 
     from maxim.utils.atomic_io import atomic_write_json
+    from maxim.utils.format_version import with_format_version
 
     # Tombstone FIRST: everything removed, verbatim, so the deletion is
-    # auditable and hand-reversible. Only then rewrite the live files.
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    # auditable and hand-reversible. Then NAc BEFORE EC: if the NAc write
+    # fails mid-way, pruned biases whose nodes still exist is benign; the
+    # reverse (nodes gone, biases dangling) is the D2 shape this verb
+    # exists to eliminate. Microsecond stamp + refuse-if-exists: the audit
+    # record must never be silently clobbered by a same-second re-run.
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
     tombstone_path = session_dir / f"aut_ec.invalidated.{stamp}.json"
+    if tombstone_path.exists():
+        print(f"error: tombstone already exists: {tombstone_path}", file=sys.stderr)
+        return 2
     atomic_write_json(
         str(tombstone_path),
-        {
-            "_format_version": "1.0",
-            "reason": "gate1-geometry-invalidation",
-            "modality": args.modality,
-            "drop_geometry": args.drop_geometry,
-            "removed_nodes": {nid: nodes[nid] for nid in removed_ids},
-            "pruned_nac_entries": pruned_entries,
-        },
+        with_format_version(
+            {
+                "reason": "gate1-geometry-invalidation",
+                "modality": args.modality,
+                "drop_geometry": args.drop_geometry,
+                "removed_nodes": {nid: nodes[nid] for nid in removed_ids},
+                "pruned_nac_entries": pruned_entries,
+            }
+        ),
     )
-    ec_payload["substrate_nodes"] = kept
-    atomic_write_json(str(ec_path), ec_payload)
     if new_nac is not None:
         atomic_write_json(str(nac_path), new_nac)
+    ec_payload["substrate_nodes"] = kept
+    atomic_write_json(str(ec_path), ec_payload)
     print(f"applied. Tombstone: {tombstone_path}")
     return 0
 
@@ -405,7 +441,9 @@ def _run_merge_nac(args: argparse.Namespace) -> int:
     def _read_dict_or_none(path: Path, label: str) -> "dict | None | int":
         try:
             data = _read_optional_json(path)
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, ValueError) as exc:
+            # ValueError covers _read_optional_json's malformed-JSON wrap
+            # (and json.JSONDecodeError, which subclasses it).
             print(f"error: cannot read {label} ({path}): {exc}", file=sys.stderr)
             return 2
         if data is not None and not isinstance(data, dict):

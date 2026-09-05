@@ -213,19 +213,21 @@ class TestCliExportPassthrough:
     onto the writer's arrays, the precise leak the stamp exists to prevent."""
 
     def _run_export(self, session_dir, out_path):
-        import argparse
+        # Route through the real dispatcher so argparse supplies defaults for
+        # every flag — a hand-built Namespace here broke when gate 7 added
+        # flags (round-2 review, 2026-09-04).
+        from maxim.hivemind.cli import run_substrate_subcommand
 
-        from maxim.hivemind.cli import _run_export
-
-        args = argparse.Namespace(
-            session=str(session_dir),
-            output=str(out_path),
-            contributor_id="tester",
-            domain=None,
-            no_identity_filter=False,
-            identity_threshold=2,
+        return run_substrate_subcommand(
+            [
+                "export",
+                str(out_path),
+                "--session",
+                str(session_dir),
+                "--contributor-id",
+                "tester",
+            ]
         )
-        return _run_export(args)
 
     def test_export_carries_writer_stamps(self, tmp_path):
         session = tmp_path / "session"

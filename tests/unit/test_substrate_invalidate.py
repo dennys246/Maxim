@@ -184,3 +184,63 @@ class TestInvalidateCli:
         assert rc == 0
         assert "nothing to invalidate" in capsys.readouterr().out
         assert not list(session.glob("aut_ec.invalidated.*.json"))
+
+
+class TestInvalidateCliRound2Folds:
+    """Round-2 review folds: rc=2 on malformed persisted data, census
+    modality filter (no silently ignored flags), dry-run leaves NAc alone."""
+
+    def _session(self, tmp_path: Path) -> Path:
+        session = tmp_path / "session"
+        session.mkdir()
+        (session / "aut_ec.json").write_text(json.dumps({"_format_version": "1.0", "substrate_nodes": _nodes()}))
+        (session / "aut_nac.json").write_text(
+            json.dumps({"_format_version": "1.2", "reward_bias": {"a1:stale-2": 0.3}})
+        )
+        return session
+
+    def test_malformed_ec_json_reports_not_tracebacks(self, tmp_path):
+        session = self._session(tmp_path)
+        (session / "aut_ec.json").write_text("{not json")
+        rc = run_substrate_subcommand(["invalidate", "--session", str(session)])
+        assert rc == 2
+
+    def test_malformed_nac_json_reports_not_tracebacks(self, tmp_path):
+        session = self._session(tmp_path)
+        (session / "aut_nac.json").write_text("{not json")
+        rc = run_substrate_subcommand(
+            ["invalidate", "--session", str(session), "--modality", "world", "--drop-geometry", OLD_GEOM]
+        )
+        assert rc == 2
+
+    def test_census_is_filtered_by_modality_and_counts_are_exact(self, tmp_path, capsys):
+        session = self._session(tmp_path)
+        rc = run_substrate_subcommand(["invalidate", "--session", str(session), "--modality", "audio"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert f"audio        {OLD_GEOM}: 1" in out
+        # no world-MODALITY rows in an audio-scoped census (the geometry
+        # STRINGS legitimately contain "world", so mask those first)
+        assert "world" not in out.replace("world:v", "G:v")
+        assert NEW_GEOM not in out  # NEW_GEOM only exists on world-modality nodes
+
+    def test_census_survives_non_string_geometry(self, tmp_path, capsys):
+        session = self._session(tmp_path)
+        nodes = _nodes()
+        nodes["weird"] = {"embedding": [0.1, 0.9], "modality": "world", "geometry": 7}
+        nodes["broken"] = "not-a-dict"
+        (session / "aut_ec.json").write_text(json.dumps({"_format_version": "1.0", "substrate_nodes": nodes}))
+        rc = run_substrate_subcommand(["invalidate", "--session", str(session)])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "7: 1" in out
+        assert "malformed non-dict node entry skipped" in out
+
+    def test_dry_run_leaves_nac_untouched_too(self, tmp_path):
+        session = self._session(tmp_path)
+        before = (session / "aut_nac.json").read_text()
+        rc = run_substrate_subcommand(
+            ["invalidate", "--session", str(session), "--modality", "world", "--drop-geometry", OLD_GEOM]
+        )
+        assert rc == 0
+        assert (session / "aut_nac.json").read_text() == before

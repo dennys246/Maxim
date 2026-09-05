@@ -768,10 +768,15 @@ class EntorhinalCortex:
             "EC geometry mismatch on %s: stored nodes were encoded in space %s, "
             "this encoder produces %s. Those nodes are being SKIPPED for pattern "
             "completion — they are incomparable, not merely dissimilar. Recall "
-            "against them is lost until they are re-encoded or migrated (D1).",
+            "against them is lost until they are migrated: run "
+            "`maxim substrate invalidate --session <id> --modality %s "
+            "--drop-geometry %s` to remove them (with their NAc biases, "
+            "tombstoned) — gate 1's migrate half (D1).",
             modality,
             stored,
             live,
+            modality,
+            stored,
         )
 
     def _matrix_for(self, modality: str, dim: int) -> _ModalityMatrix:
