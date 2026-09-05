@@ -734,6 +734,13 @@ execution priority:
      row becomes scheduled (named experiment), Dropped, or Dormant. Not a code change; a
      release with Stale rows is already forbidden by the ledger's own rule, and Pending
      rows fifteen months old are Stale in everything but name.
+     **DONE 2026-09-05** — the 2026-08-30 pass had already dispositioned the bulk
+     (Dropped/Dormant/EARNED/Tier-2 with cited evidence); the close-out resolved the
+     three leftovers: #17 and #20 → Tier 2 (the #18/#19 precedent — performance and
+     correctness properties, no bio-claim), #16 → PARTIAL-scheduled (the touch-ablation
+     is the named 1.2-window experiment — post-D8 it is the stack's ONLY
+     recall-strengthens-memory mechanism, so the ablation is finally unconfounded; drops
+     at the 1.2 checkpoint if unrun). Zero Pending rows remain.
    - **(e) A merge test that asserts BEHAVIOUR** (added 2026-08-30, bugs ledger D44). The
      only end-to-end sharing test asserts dict equality on hand-set matching keys, and the two
      passing federation experiments share one `agent_id` and one encoder by construction — so
