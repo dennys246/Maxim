@@ -15,9 +15,9 @@ mechanical checks and the dangling defect-reproduction arm.
 
 Arms: records A = merged taught x2 (both directions) + merged satiated x2 +
 merged no_feed x2 (exp53 Gate I + Gate T, unchanged). Records B = receiver-alone
-taught 42/43 + the DANGLING-HALF (pre-D43 recipe: bare ``nac_merge`` without
-re-key over seed42's EC). Mechanical instrument arm: empty-want donor must read
-``biases_rekeyed == 0``.
+taught 42/43 + the DANGLING-HALF x2 (both directions; pre-D43 recipe: bare
+``nac_merge`` without re-key over the receiver's EC). Mechanical instrument arm:
+empty-want donor must read ``biases_rekeyed == 0``.
 
 Frozen decision rule: see :func:`decide_verdict` (mirrors the prereg §Frozen
 decision rule verbatim).
@@ -159,7 +159,7 @@ def _coverage(nac_state: dict, ec_payload: dict) -> tuple[int, int]:
     """(surviving cluster bias keys, keys naming a cluster ABSENT from the EC)."""
     nodes = set((ec_payload.get("substrate_nodes") or {}).keys())
     keys = list((nac_state.get("cluster_reward_bias") or {}).keys())
-    dangling = sum(1 for k in keys if len(k.split(NAC_KEY_SEP)) == 3 and k.split(NAC_KEY_SEP)[1] not in nodes)
+    dangling = sum(1 for k in keys if len(k.split(NAC_KEY_SEP, 2)) == 3 and k.split(NAC_KEY_SEP, 2)[1] not in nodes)
     return len(keys), dangling
 
 
@@ -202,15 +202,16 @@ def _write_manifest(path: Path, agents: list[dict]) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n")
 
 
-def _run_gauntlet(manifest_path: Path, records_path: Path, allow_dirty: bool, *, verdict_gates: bool) -> None:
-    """Phase 1 -> verdict (emits gate_I) -> phase 2 (both conditions) -> verdict.
+def _run_gauntlet(manifest_path: Path, records_path: Path, allow_dirty: bool) -> str:
+    """Phase 1 -> phase 2 (both conditions) -> verdict. Returns "ok" or "gate_I_fail".
 
-    ``verdict_gates=True`` (records A): the final exp53 verdict's own PASS/FAIL
-    is part of THIS protocol's rule 1, but rc semantics conflate REFUSED (2)
-    with a computed FAIL (1) — so any computed verdict (0/1) is accepted here
-    and the PASS/FAIL is read from the gate records by decide_verdict.
-    ``verdict_gates=False`` (records B): exp53's verdict is FAIL by design
-    (no control arms in B); only per-seed directedness is consumed.
+    exp53's phase-1 run emits the gate_I record itself and returns 6 on a
+    COMPUTED Gate-I FAIL — that is a recorded outcome for THIS protocol
+    (frozen rule: "any other combination -> FAIL, numbers recorded"), never a
+    refusal; phase 2 is skipped (exp53's own stop rule I). Anything else
+    non-zero IS a refusal. The final verdict's rc conflates REFUSED(2) with a
+    computed FAIL(1), so 0/1 are both accepted and PASS/FAIL is read from the
+    gate records by decide_verdict.
     """
     import time as _time
 
@@ -226,18 +227,17 @@ def _run_gauntlet(manifest_path: Path, records_path: Path, allow_dirty: bool, *,
 
     base = ["--manifest", str(manifest_path), "--out", str(records_path), "--dry-run", "--yes", "--settle", "0.1"]
     dirty = ["--allow-dirty"] if allow_dirty else []
-    if exp53.main(["run", "--phase", "1", *base, *dirty]) != 0:
-        _refuse(f"exp53 phase 1 refused for {manifest_path.name}")
-    # The mid-point verdict exists to EMIT the gate_I record the phase-2 stop
-    # rule reads; with no phase-2 trials yet, cmd_verdict returns 1 by design
-    # after emitting it — 0 and 1 are both fine HERE, nothing else is.
-    if exp53.main(["verdict", "--records", str(records_path), *dirty]) not in (0, 1):
-        _refuse(f"exp53 phase-1 verdict refused for {records_path.name}")
+    rc1 = exp53.main(["run", "--phase", "1", *base, *dirty])
+    if rc1 == 6:
+        return "gate_I_fail"
+    if rc1 != 0:
+        _refuse(f"exp53 phase 1 refused for {manifest_path.name} (rc {rc1})")
     _spacer()
     if exp53.main(["run", "--phase", "2", *base, *dirty]) != 0:
         _refuse(f"exp53 phase 2 refused for {manifest_path.name} (stop rule I?)")
     if exp53.main(["verdict", "--records", str(records_path), *dirty]) not in (0, 1):
-        _refuse(f"exp53 phase-2 verdict refused for {records_path.name}")
+        _refuse(f"exp53 verdict refused for {records_path.name}")
+    return "ok"
 
 
 def _gate_records(records_path: Path) -> dict[str, dict]:
@@ -266,7 +266,7 @@ def decide_verdict(m: dict[str, Any]) -> str:
     numbers recorded, no threshold motion.
     """
     r1 = m["gate_I_verdict"] == "PASS" and m["gate_T_verdict"] == "PASS"
-    r2 = all(
+    r2 = bool(m["merged_directedness"]) and all(
         m["merged_directedness"][d] >= m["receiver_alone_directedness"][d] - PRESERVATION_SLACK
         for d in m["merged_directedness"]
     )
@@ -274,8 +274,9 @@ def decide_verdict(m: dict[str, Any]) -> str:
         h["biases_dropped"] == 0 and h["biases_rekeyed"] >= MIN_REKEYED and h["dangling_keys"] == 0
         for h in m["merge_health"].values()
     )
-    r4 = m["dangling_arm"]["dangling_keys"] >= 1 and (
-        m["dangling_arm"]["directedness"] <= m["receiver_alone_directedness"]["r42d43"] + DANGLING_SLACK
+    r4 = bool(m["dangling_arms"]) and all(
+        a["dangling_keys"] >= 1 and a["directedness"] <= a["receiver_alone"] + DANGLING_SLACK
+        for a in m["dangling_arms"].values()
     )
     r5 = m["instrument_empty_want_rekeyed"] == 0
     return "gate6-pass" if (r1 and r2 and r3 and r4 and r5) else "gate6-fail"
@@ -317,10 +318,13 @@ def run(args) -> int:
     for s in ("42", "43"):
         spec = specs[f"taught_seed{s}"]
         agents_b.append(_agent_entry(f"alone_seed{s}", "taught", int(s), Path(spec["nac_path"]), Path(spec["ec_path"])))
-    dn, de = _dangling_pair(specs["taught_seed42"], specs["taught_seed43"])
-    _, dangling_keys = _coverage(dn, de)
-    dn_p, de_p = _write_pair(work / "dangling_r42d43", dn, de)
-    agents_b.append(_agent_entry("dangling_seed99", "taught", 99, dn_p, de_p))
+    dangling_keys_by_dir: dict[str, int] = {}
+    for key, (r, d) in directions.items():
+        dn, de = _dangling_pair(specs[f"taught_seed{r}"], specs[f"taught_seed{d}"])
+        _, dk = _coverage(dn, de)
+        dangling_keys_by_dir[key] = dk
+        dn_p, de_p = _write_pair(work / f"dangling_{key}", dn, de)
+        agents_b.append(_agent_entry(f"dangling_seed{9900 + int(r)}", "taught", 9900 + int(r), dn_p, de_p))
 
     # --- mechanical instrument arm (no readout) ---------------------------
     _, _, empty_result = _merge_pair(specs["taught_seed42"], specs["taught_seed43"], strip_donor_want=True)
@@ -330,33 +334,54 @@ def run(args) -> int:
     manifest_b, records_b = work / "manifest_B.json", Path(args.records_b)
     _write_manifest(manifest_a, agents_a)
     _write_manifest(manifest_b, agents_b)
-    _run_gauntlet(manifest_a, records_a, args.allow_dirty, verdict_gates=True)
-    _run_gauntlet(manifest_b, records_b, args.allow_dirty, verdict_gates=False)
+    _run_gauntlet(manifest_a, records_a, args.allow_dirty)  # gate-I FAIL is read from the records
+    status_b = _run_gauntlet(manifest_b, records_b, args.allow_dirty)
+    if status_b != "ok":
+        # Records B is the comparison baseline: receiver-alone agents failing
+        # Gate I contradicts Exp 53's earned result — apparatus, not outcome.
+        _refuse("records B phase 1 returned a computed Gate-I FAIL — the baseline apparatus is wrong")
 
     gates_a, gates_b = _gate_records(records_a), _gate_records(records_b)
-    if "gate_I" not in gates_a or "gate_T" not in gates_a:
-        _refuse("records A lack gate_I/gate_T summary records")
-    if gates_a["gate_T"].get("verdict") == "APPARATUS":
+    if "gate_I" not in gates_a:
+        _refuse("records A lack a gate_I summary record")
+    gate_i_verdict = gates_a["gate_I"].get("verdict")
+    if gate_i_verdict == "PASS" and "gate_T" not in gates_a:
+        _refuse("records A lack a gate_T summary record despite Gate I PASS")
+    if (gates_a.get("gate_T") or {}).get("verdict") == "APPARATUS":
         _refuse("exp53 Gate T returned APPARATUS on records A (sign-agreement/spread check)")
-    per_seed_a = gates_a["gate_T"].get("per_seed") or {}
+    if (gates_b.get("gate_T") or {}).get("verdict") == "APPARATUS":
+        _refuse("exp53 Gate T returned APPARATUS on records B (sign-agreement/spread check)")
+    per_seed_a = (gates_a.get("gate_T") or {}).get("per_seed") or {}
     per_seed_b = (gates_b.get("gate_T") or {}).get("per_seed") or {}
     try:
-        merged_directedness = {
-            k: float(per_seed_a[f"taught_seed{int(r) * 100 + int(d)}"]) for k, (r, d) in directions.items()
-        }
+        # A computed Gate-I FAIL on records A is a RECORDED outcome (frozen
+        # rule: gate6-fail with numbers); its phase 2 never ran, so the
+        # behavioral dicts stay empty and rule 1 carries the failure.
+        merged_directedness = (
+            {k: float(per_seed_a[f"taught_seed{int(r) * 100 + int(d)}"]) for k, (r, d) in directions.items()}
+            if gate_i_verdict == "PASS"
+            else {}
+        )
         receiver_alone = {k: float(per_seed_b[f"alone_seed{r}"]) for k, (r, d) in directions.items()}
-        dangling_directedness = float(per_seed_b["dangling_seed99"])
+        dangling_arms = {
+            k: {
+                "dangling_keys": dangling_keys_by_dir[k],
+                "directedness": float(per_seed_b[f"dangling_seed{9900 + int(r)}"]),
+                "receiver_alone": float(per_seed_b[f"alone_seed{r}"]),
+            }
+            for k, (r, d) in directions.items()
+        }
     except KeyError as exc:
         _refuse(f"per-seed directedness missing from gate_T records: {exc}")
 
     metrics: dict[str, Any] = {
-        "gate_I_verdict": gates_a["gate_I"].get("verdict"),
-        "gate_T_verdict": gates_a["gate_T"].get("verdict"),
-        "gate_T_means": gates_a["gate_T"].get("primary_directedness_by_arm"),
+        "gate_I_verdict": gate_i_verdict,
+        "gate_T_verdict": (gates_a.get("gate_T") or {}).get("verdict", "NOT-RUN"),
+        "gate_T_means": (gates_a.get("gate_T") or {}).get("primary_directedness_by_arm"),
         "merged_directedness": merged_directedness,
         "receiver_alone_directedness": receiver_alone,
         "merge_health": merge_health,
-        "dangling_arm": {"dangling_keys": dangling_keys, "directedness": dangling_directedness},
+        "dangling_arms": dangling_arms,
         "instrument_empty_want_rekeyed": empty_result.biases_rekeyed,
     }
     verdict = decide_verdict(metrics)
@@ -367,7 +392,7 @@ def run(args) -> int:
     )
     print(f"  merged vs alone: {merged_directedness} vs {receiver_alone} (floor: alone - {PRESERVATION_SLACK})")
     print(f"  merge health: {merge_health}")
-    print(f"  dangling arm: {metrics['dangling_arm']} (defect must reproduce: >=1 dangling key)")
+    print(f"  dangling arms: {metrics['dangling_arms']} (defect must reproduce: >=1 dangling key, both directions)")
     print(f"  instrument empty-want rekeyed: {empty_result.biases_rekeyed} (must be 0)")
 
     if out_json:
@@ -399,12 +424,25 @@ def main(argv: list[str] | None = None) -> int:
     data_dir = _REPO_ROOT / "docs" / "experiments" / "data" / "gate6_merged_gauntlet"
     stamp = f"{datetime.now(timezone.utc):%Y%m%d}"
     ap.add_argument("--workdir", default="/tmp/gate6_merged_gauntlet", help="derived merged substrates (not committed)")
-    ap.add_argument("--records-a", default=str(data_dir / "records_A.jsonl"))
-    ap.add_argument("--records-b", default=str(data_dir / "records_B.jsonl"))
+    ap.add_argument(
+        "--records-a",
+        default=None,
+        help="default: <workdir>/records_A.jsonl; the gated data dir with --write-experiment-results",
+    )
+    ap.add_argument(
+        "--records-b",
+        default=None,
+        help="default: <workdir>/records_B.jsonl; the gated data dir with --write-experiment-results",
+    )
     ap.add_argument("--json", default=str(data_dir / f"gate6_verdict_{stamp}.json"))
     ap.add_argument("--write-experiment-results", action="store_true", help="write the gated verdict record")
     ap.add_argument("--allow-dirty", action="store_true")
     args = ap.parse_args(argv)
+    base = data_dir if args.write_experiment_results else Path(args.workdir)
+    if args.records_a is None:
+        args.records_a = str(base / "records_A.jsonl")
+    if args.records_b is None:
+        args.records_b = str(base / "records_B.jsonl")
     return run(args)
 
 

@@ -7,9 +7,9 @@ authority; a change to either after first data requires an amendment header here
 
 ## Question
 
-1.2 gate 6 (roadmap; sharpened by the Oasis case study §3): *"the Exp 52 seeds 42 + 43
-must pass Gauntlet #2 merged … and must not pass with either half's clusters
-dangling."* D43's fix (`substrate_merge`: EC align → donor bias re-key through the id
+1.2 gate 6 (roadmap: "the Exp 52 seeds 42 + 43 must pass Gauntlet #2 merged"; the Oasis
+case study's "Pre-registered result" section adds: *"the merged bundle must pass Gauntlet
+#2 and must not pass with either half's clusters dangling"*). D43's fix (`substrate_merge`: EC align → donor bias re-key through the id
 map → NAc fold) shipped in 1.1.3 with unit guards (D44, strict, green). This is the
 EMPIRICAL half: does the re-keyed path **preserve a real taught want** across a real
 two-agent merge of the archived Exp 52 evidence files, on the real readout harness —
@@ -55,9 +55,10 @@ record exists only to satisfy exp53's phase-2 stop rule):
 
 - RECEIVER-ALONE ×2: `taught_seed42` and `taught_seed43` unmerged, same rig/session
   (the preservation baseline).
-- DANGLING-HALF ×1: the pre-D43 recipe — bare `nac_merge(seed42_nac, seed43_nac)`
-  with NO re-key, paired with seed42's EC unchanged. The donor's biases name
-  clusters this EC never emits.
+- DANGLING-HALF ×2 (both directions, mirroring the merged arms): the pre-D43
+  recipe — bare `nac_merge(receiver_nac, donor_nac)` with NO re-key, paired with
+  the RECEIVER's EC unchanged. The donor's biases name clusters that EC never
+  emits.
 
 **Mechanical instrument arm (no readout)**: `substrate_merge` with the donor's
 `cluster_reward_bias`/`reward_bias` stripped (an empty want) — `biases_rekeyed`
@@ -82,14 +83,21 @@ Gate 6 **PASSES** iff ALL of:
    empty map re-keys nothing and every coverage check passes trivially), and the
    d43 §4 guard: **every surviving `cluster_reward_bias` key names a cluster id
    present in the merged EC**.
-4. **Defect reproduction (dangling arm):** the d43 §4 guard **FAILS** (≥ 1 surviving
-   key names an absent cluster) AND the dangling arm's directedness ≤ receiver-alone
-   (seed42) + **0.10** — dangling keys buy nothing.
+4. **Defect reproduction (dangling arms, both directions):** the d43 §4 guard
+   **FAILS** (≥ 1 surviving key names an absent cluster) AND each dangling arm's
+   directedness ≤ its receiver-alone + **0.10** — dangling keys buy nothing.
 5. **Instrument arm:** empty-want merge reads `biases_rekeyed == 0`.
 
 Any other combination → **FAIL** (numbers recorded, next step named — no threshold
-motion). exp53-side refusals (its stop rules, its APPARATUS verdict on Gate T's
-sign-agreement/spread check) → **refused, no verdict** (exit 4).
+motion). **Outcome mapping, explicit** (review fold, 2026-09-05): a COMPUTED Gate-I
+FAIL on records A is a *recorded* `gate6-fail` (exp53's phase-1 run emits the gate_I
+record and returns 6; phase 2 is skipped per its own stop rule; rule 1 carries the
+failure with the behavioral dicts empty — and rules 2/4 are written so an empty dict
+can never satisfy them vacuously). Refusals (exit 4, no verdict) are reserved for
+APPARATUS conditions: exp53 stop-rule/verdict refusals, its Gate-T APPARATUS verdict
+on EITHER records file, and a computed Gate-I FAIL on records B — the receiver-alone
+baseline failing contradicts Exp 53's earned result, which is an instrument problem,
+not an outcome.
 
 The verdict is computed by
 `scripts/orient_backbone/gate6_merged_gauntlet.py::decide_verdict` — the protocol's
@@ -98,9 +106,15 @@ own function, no operator judgment.
 ## Dispositions on PASS
 
 - Roadmap gate 6 → CLOSED (the code half shipped 1.1.3; this is the empirical half).
-- D5 → RESOLVED on the cluster axis: a foreign want's cluster biases, re-keyed
-  through the alignment map, READ OUT on the receiver (the exact fold D5's ACCEPTED
-  disposition declined and gate 6 required).
+- D5 → RESOLVED on the cluster axis — scoped precisely: with this pair the EC map
+  is 3/3 at cosine 1.000, so the donor's re-keyed biases FOLD ONTO keys the receiver
+  already holds (`surviving_keys = 3`, not 6) and records A cannot behaviorally
+  distinguish donor-read-out from receiver-read-out. The cluster-axis evidence here
+  is MECHANICAL (rekeyed = 3, dropped = 0, dangling = 0 — the fold D5's ACCEPTED
+  disposition declined now happens) plus the unit-level behavioral delta on a naive
+  receiver in `tests/unit/test_d44_merge_behavioural_delta.py`. The
+  donor-want-on-a-blank-receiver BEHAVIORAL readout at scale is the 1.2 benchmark's
+  merged-taught arm.
 
 ## Known-limit acknowledgments
 
@@ -113,6 +127,19 @@ own function, no operator judgment.
   headroom to fail from bias dilution alone; the preservation floor (rule 2) and the
   mechanical checks (rule 3) carry the discriminating weight. Accepted — this gate
   asks "does merging preserve", not "does merging add".
+- **The case-study clause "must not pass with either half's clusters dangling" is
+  REFRAMED here, deliberately and visibly** (review fold, 2026-09-05): taken
+  literally it is unsatisfiable with at-ceiling parents — the smoke measured the
+  dangling merge at directedness 1.0 because the receiver's own intact half carries
+  the gauntlet, so a literal must-FAIL criterion would fail this protocol for a
+  reason that has nothing to do with the merge path. Rule 4 substitutes the honest
+  pair: the defect SHAPE must reproduce mechanically (≥ 1 dangling key — the d43 §4
+  guard firing) and the dangling keys must buy nothing behaviorally (≤ receiver-alone
+  + slack; at ceiling this conjunct cannot fail — the D62 shape — and is kept only as
+  a sanity bound, with the mechanical conjunct carrying the weight). The literal
+  clause's real falsifier — dangling-half ≈ isolated, MEASURABLY below merged — lives
+  at an unsaturated operating point, which is exactly the 1.2 four-arm benchmark's
+  dangling-half arm (d43 §7's N=10, K=4 point).
 - The dry rig's modeled source is not the robot; Exp 53b already validated the same
   readout on hardware. A dry pass here is a merge-path claim, not a new hardware
   claim.
@@ -127,9 +154,12 @@ write) while debugging the apparatus, and **previewed the complete verdict:
 `gate6-pass`** — Gate I PASS (2/2 merged taught, controls clean), Gate T PASS
 (merged means: taught 1.0 / satiated 0.0 / no_feed 0.5 — the parents' original
 Exp 53 profile to the digit), merged-vs-alone 1.0 vs 1.0 both directions, merge
-health `biases_rekeyed=3, dropped=0, dangling=0` both directions, dangling arm
-`dangling_keys=3, directedness=1.0` (defect reproduces mechanically; buys
-nothing behaviorally), empty-want instrument `rekeyed=0`. Two apparatus defects
+health `biases_rekeyed=3, dropped=0, dangling=0` both directions, dangling arms
+(both directions, post-fold) `dangling_keys=3, directedness=1.0` each (defect
+reproduces mechanically; buys nothing behaviorally), empty-want instrument
+`rekeyed=0`. The review round's independent run reproduced these numbers
+byte-for-byte, and the post-fold harness re-smoke reproduced them again with
+the second dangling direction added. Two apparatus defects
 were found and fixed by the smoke (the exp53 mid-point verdict's by-design rc 1;
 an in-process run_id collision when two phases start in the same wall-clock
 second — fixed with a 1.1 s spacer). **The decision thresholds above were
@@ -140,9 +170,11 @@ main, not suspense — the D8-protocol precedent.
 
 ## Data + provenance
 
-Work dir + records: `docs/experiments/data/gate6_merged_gauntlet/` —
-`records_A.jsonl`, `records_B.jsonl`, `gate6_verdict_<date>.json`, all gated
-(in-process provenance: clean tree, this repo's `maxim`; the run refuses gated
-writes otherwise). Data lands via a merge-commit data PR after this protocol is on
-main. The merged substrate files themselves are DERIVED artifacts (recomputable from
-the archive + this harness) and are not committed.
+The work dir (merged/dangling substrates) defaults to `/tmp` and is never
+committed — DERIVED artifacts, recomputable from the SHA-verified archive + this
+harness (byte-level reproduction confirmed by the review round's independent run).
+Records + verdict land in `docs/experiments/data/gate6_merged_gauntlet/`
+(`records_A.jsonl`, `records_B.jsonl`, `gate6_verdict_<date>.json`) ONLY with
+`--write-experiment-results` (without it, records default under the work dir),
+gated by the in-process provenance preflight (clean tree, this repo's `maxim`).
+Data lands via a merge-commit data PR after this protocol is on main.
