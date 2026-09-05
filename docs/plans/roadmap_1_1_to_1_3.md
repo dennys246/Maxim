@@ -632,6 +632,14 @@ execution priority:
    `tests/unit/test_substrate_invalidate.py`.
 2. D3/D4 threshold and same-dimension geometry compatibility must be explicit and
    tested, not inferred from vector length.
+   **CLOSED — attested 2026-09-05** (the guards shipped with 1.1.3 and the ledger
+   never caught up): `tests/unit/test_gate2_geometry_and_thresholds.py` pins the
+   merge thresholds against the EC/encoder defaults in lockstep (D3 — including the
+   `SENSOR_MODALITY_THRESHOLDS` map D43 added) and proves the same-dimension
+   geometry guard (D4 — identical vectors in different geometries never fold; an
+   added sensor changes the tag; tags survive merge/save/load/ingest and are
+   process-stable). Place-code default-ON residual: stale audio nodes become a
+   loud migration event via `maxim substrate invalidate`, not invisible corruption.
 3. EC read-side mutation (D8) must be measured and accepted or separated from recall.
    **Measured 2026-09-05** (pre-registered, frozen rule; gated record
    `docs/experiments/data/d8_read_mutation_20260905.json`): verdict
