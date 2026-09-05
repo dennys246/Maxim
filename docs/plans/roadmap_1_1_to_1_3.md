@@ -739,6 +739,9 @@ execution priority:
      defines what a bundle merges *into*; it cannot be written while the fresh/loaded
      distinction is incoherent. Lands before the contract is drafted, not merely in
      1.1.x.
+     **DONE 2026-09-05** — the restore is gated on `auto_load` (write-side binding
+     kept: fresh agents still persist at session end); the old blast-radius test that
+     PINNED the defect reworked; D28 RESOLVED. The ingestion contract is unblocked.
    - **(d) Tier-3 dispositions.** [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md)
      Tier 3 has had 14 of 20 rows Pending since 2026-05-27 — the item that held
      Research integrity from A on the Claude card and the "Tier-3 gets the dispositions

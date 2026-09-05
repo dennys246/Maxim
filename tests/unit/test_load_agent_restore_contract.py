@@ -125,8 +125,13 @@ def test_healthy_agent_still_loads_clean(agent_home, tmp_path):
 def test_create_path_is_unaffected_by_corrupt_files(agent_home, tmp_path, caplog):
     """Blast-radius guard: only the stable load path opts into raising.
 
-    ``_create_memory_hub`` restores SCN for EVERY caller, so a raising default
-    would reach far outside ``load.agent()``.
+    Post-D28 (1.2 gate 8(c)) the FRESH create path reads NOTHING — SCN's
+    restore is gated on ``auto_load`` like every other subsystem, so a fresh
+    agent cannot even notice a corrupt file. The reading create path
+    (``auto_load=True``) parses it, warns, and continues — raising remains
+    ``load.agent()``'s own opt-in. (The pre-D28 version of this test pinned
+    the OPPOSITE: that SCN was parsed regardless of ``auto_load`` — that pin
+    was the D28 defect made load-bearing.)
     """
     from maxim.runtime.agent_factory import AgentConfig, AgentFactory
 
@@ -134,17 +139,49 @@ def test_create_path_is_unaffected_by_corrupt_files(agent_home, tmp_path, caplog
     (agent_home / "hippocampus.json").write_text("{not json", encoding="utf-8")
 
     factory = AgentFactory(base_data_dir=str(tmp_path))
+    # Fresh path: succeeds AND reads no persisted file at all.
     with caplog.at_level("WARNING"):
         inst = factory.create_agent(AgentConfig(agent_id="scout", persistence_dir=str(agent_home)))
     assert inst is not None, "create.agent() must not inherit load.agent()'s strictness"
+    assert not any("Corrupt" in r.getMessage() for r in caplog.records), (
+        "the fresh create path read a persisted file — fresh is not fresh (D28)"
+    )
 
-    # The assertion above is only meaningful if a corrupt file is actually READ
-    # on this path (review fold: without auto_load the hippocampus is never
-    # opened, so that half was vacuous). _create_memory_hub restores SCN
-    # regardless of auto_load, so the corrupt scn.json is genuinely parsed here
-    # — pin that, otherwise this test passes for the wrong reason.
+    caplog.clear()
+    # Reading path: the corrupt files are genuinely parsed (anti-vacuity for
+    # the blast-radius claim), warned about, and construction still succeeds.
+    with caplog.at_level("WARNING"):
+        inst2 = factory.create_agent(AgentConfig(agent_id="scout", persistence_dir=str(agent_home)), auto_load=True)
+    assert inst2 is not None, "auto_load create must warn-and-continue, not raise"
     assert any("Corrupt scn" in r.getMessage() for r in caplog.records), (
         "no corrupt file was actually read — the blast-radius assertion is vacuous"
+    )
+
+
+def test_create_is_fresh_scn_does_not_leak_previous_temporal_state(agent_home, tmp_path):
+    """D28 (1.2 gate 8(c)): ``create``'s documented contract is "always start
+    fresh" — until 2026-09-05, SCN alone leaked the previous session's temporal
+    state through it. Fresh must not restore; ``auto_load=True`` must."""
+    from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+    from maxim.time.scn import SCN
+    from maxim.time.temporal_signature import TemporalSignature
+
+    prior = SCN(persistence_path=str(agent_home / "scn.json"))
+    prior.register("d28_probe", TemporalSignature.now(), significance=0.9)
+    prior.save(str(agent_home / "scn.json"))
+    assert (agent_home / "scn.json").exists()
+
+    factory = AgentFactory(base_data_dir=str(tmp_path))
+    fresh = factory.create_agent(AgentConfig(agent_id="scout", persistence_dir=str(agent_home)))
+    assert fresh.memory_hub.scn.get_signature("d28_probe") is None, (
+        "a FRESH agent inherited the previous session's temporal state (D28)"
+    )
+    # The write side stays bound: a fresh agent persists at session end.
+    assert fresh.memory_hub.scn.persistence_path == str(agent_home / "scn.json")
+
+    loaded = factory.create_agent(AgentConfig(agent_id="scout", persistence_dir=str(agent_home)), auto_load=True)
+    assert loaded.memory_hub.scn.get_signature("d28_probe") is not None, (
+        "auto_load=True stopped restoring SCN — the fix over-rotated"
     )
 
 

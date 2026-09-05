@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`create.agent()` is now actually fresh (D28, 1.2 gate 8(c)).** `_create_memory_hub`
+  restored SCN from disk whenever `scn.json` existed — regardless of `auto_load` — so a
+  documented-fresh agent inherited the previous session's temporal state, and only SCN. The
+  restore is now gated on `auto_load` like every other subsystem; the persistence path stays
+  bound, so a fresh agent still saves its temporal state at session end (write-but-don't-read).
+  The old blast-radius guard, which pinned the defect, is reworked: the fresh path must read
+  NOTHING. Unblocks drafting the Oasis ingestion contract (what a bundle merges INTO is now
+  well-defined).
 - **`hivemind/` is now mypy-clean and in the CI mypy step (1.2 gate 8).** The bundle format
   is a wire boundary and 1.2 rewrites its merge path — that is where typing pays. Ten errors
   fixed en route, the headline being `merge-nac`'s `_read_dict_or_none` returning an int `2`
