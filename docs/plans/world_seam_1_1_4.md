@@ -1,6 +1,10 @@
 # 1.1.4 "The world seam" — implementation plan
 
-**Status:** ACTIVE (kickoff 2026-09-03).
+**Status:** COMPLETE — released as **1.1.4, published to PyPI 2026-09-05 (UTC)**, tag `v1.1.4` @ `db4410de`.
+Full ladder #604/#605/#607/#608/#610/#611 + prereg #615 + data #617 + release #618 (+ date fix #620).
+L11 re-measure verdict: **mitigation-confirmed, NOT retired-eligible** — L11 stays ACTIVE, A4 partial
+mitigation. Remaining owed items moved to their owners: roll/pitch recalibration (hardware),
+D79 (bugs ledger). (kickoff was 2026-09-03.)
 **Roadmap row:** [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) §1.1.4 (as corrected 2026-09-03 — the
 encoding change is **A4, the nonlinear gain, at the unchanged 0.85 threshold**).
 **Design source:** [minecraft_benchmark.md](minecraft_benchmark.md) §"What to build (1.1.4)".

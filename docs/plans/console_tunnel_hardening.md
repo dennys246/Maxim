@@ -1,8 +1,10 @@
 # Console tunnel hardening — from localhost-only to deliberately exposable
 
-**Status:** ACTIVE — PR 1 (trust guard) MERGED #609 (2026-09-03); PR 2 (bearer auth)
-IMPLEMENTED per decisions A1–A8 on `feat/console-auth` (2026-09-04; one A7 sharpening: disk
-tokens are re-read per request so rotation bites with NO restart); PRs 3–4 sequenced below.
+**Status:** ACTIVE — PR 1 (trust guard) MERGED #609 (2026-09-03); PR 2 (bearer auth, A1–A8)
+MERGED #613 and RELEASED in 1.1.4 (contract 0.4.0; one A7 sharpening: disk tokens are re-read
+per request so rotation bites with NO restart); A9 device handoff MERGED #616 (released in
+1.1.4); **A9.1 spoken-code pairing MERGED #619 (contract 0.5.0, post-1.1.4, in [Unreleased])**.
+NEXT: PR 3 (admission control) — sequenced below, now including `/api/pair/claim`.
 Pulse-side ledger (A6) CLOSED 2026-09-04 by maxim-pulse PR #35 (`console-auth-040`) (login/paste-token
 screen, fragment bootstrap, Bearer on FacadeClient, ws subprotocol on EventClient, contract
 stamp 0.4.0 — Playwright-verified against `maxim serve` @ 24e0c1ab). Owed from that close:
