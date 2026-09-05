@@ -5,6 +5,8 @@ from __future__ import annotations
 import threading
 
 
+import pytest
+
 from maxim.agents.prompt_budgeter import (
     PromptBudgeter,
     SectionPriority,
@@ -263,6 +265,62 @@ class TestBuildSegmented:
         stable, dynamic, _ = b.build_segmented()
         assert stable == ""
         assert "hi" in dynamic
+
+    def test_phase_scoped_sections_are_emitted_after_session_stable_ones(self):
+        """P21: a prefix cache dies at the first differing byte, so the
+        scene-roster tool manifest (changes every encounter) must sit at the
+        END of the stable prefix, behind every never-changing section — no
+        matter where the builder inserted it."""
+        b = PromptBudgeter(total_budget=10_000, response_reserve=0, token_counter=_ExactCounter())
+        b.add("identity", "IDENTITY", SectionPriority.CRITICAL, cacheable=True)
+        b.add("tools", "TOOLS-ENCOUNTER-1", SectionPriority.CRITICAL, cacheable=True, phase_scoped=True)
+        b.add("guidance", "GUIDANCE", SectionPriority.IMPORTANT, cacheable=True)
+        b.add("foundational", "FOUNDATIONAL", SectionPriority.NICE_TO_HAVE, cacheable=True)
+        b.add("observation", "OBS", SectionPriority.IMPORTANT)
+        stable, dynamic, dropped = b.build_segmented()
+        assert stable == "IDENTITY\n\nGUIDANCE\n\nFOUNDATIONAL\n\nTOOLS-ENCOUNTER-1"
+        assert dynamic == "OBS"
+        assert dropped == []
+
+    def test_phase_change_keeps_the_session_stable_head_as_a_common_prefix(self):
+        def _build(tools_text: str) -> str:
+            b = PromptBudgeter(total_budget=10_000, response_reserve=0, token_counter=_ExactCounter())
+            b.add("identity", "IDENTITY", SectionPriority.CRITICAL, cacheable=True)
+            b.add("tools", tools_text, SectionPriority.CRITICAL, cacheable=True, phase_scoped=True)
+            b.add("guidance", "GUIDANCE", SectionPriority.IMPORTANT, cacheable=True)
+            return b.build_segmented()[0]
+
+        one, two = _build("choose: attack, defend"), _build("choose: flee, bargain")
+        assert one != two
+        head = "IDENTITY\n\nGUIDANCE\n\n"
+        assert one.startswith(head) and two.startswith(head)
+
+    def test_phase_scoped_requires_cacheable(self):
+        b = PromptBudgeter(total_budget=10_000, response_reserve=0, token_counter=_ExactCounter())
+        with pytest.raises(ValueError, match="phase_scoped=True requires cacheable=True"):
+            b.add("tools", "TOOLS", SectionPriority.CRITICAL, phase_scoped=True)
+
+    def test_truncation_keeps_the_phase_scoped_placement(self):
+        # A truncated copy of a section must not silently lose its placement
+        # and jump ahead of the session-stable sections. Budget: 200 - 0
+        # reserve - 100 template overhead = 100 tokens; stable cap 70.
+        b = PromptBudgeter(total_budget=200, response_reserve=0, token_counter=_ExactCounter())
+        identity, guidance, tools = "I " * 10, "G " * 10, "T " * 65
+        b.add("identity", identity.strip(), SectionPriority.MANDATORY, cacheable=True)
+        b.add(
+            "tools",
+            tools.strip(),
+            SectionPriority.CRITICAL,
+            cacheable=True,
+            phase_scoped=True,
+            truncatable=True,
+            min_tokens=5,
+            truncate_fn=lambda c, m: " ".join(c.split()[:m]),
+        )
+        b.add("guidance", guidance.strip(), SectionPriority.MANDATORY, cacheable=True)
+        stable, _dynamic, dropped = b.build_segmented()
+        assert dropped == []
+        assert stable == identity.strip() + "\n\n" + guidance.strip() + "\n\n" + ("T " * 50).strip()
 
     def test_build_still_works_unsegmented(self):
         """Legacy build() ignores the cacheable flag and emits one string."""

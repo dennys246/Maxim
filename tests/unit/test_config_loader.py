@@ -1243,3 +1243,105 @@ class TestToolsSection:
         cfg = load_config(path)
         assert cfg.tools.allow == ("respond", "speak")
         assert cfg.tools.deny == ("bash",)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# llm.max_response_tokens / llm.deliberation_max_cycles — prompt-budget knobs
+# (P21, sandbox plan, 2026-09-05)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestLLMPromptBudgetKnobs:
+    """Both default to ``None`` (= the built-in mode reserve / cycle cap), are
+    absorbed like every other ``llm.*`` field, and refuse a non-positive
+    value on both the env and the config.json path."""
+
+    def test_defaults_are_unset(self):
+        cfg = MaximConfig()
+        assert cfg.llm.max_response_tokens is None
+        assert cfg.llm.deliberation_max_cycles is None
+        assert resolve_setting("llm.max_response_tokens") == (None, "default")
+        assert resolve_setting("llm.deliberation_max_cycles") == (None, "default")
+
+    def test_env_mapping(self):
+        assert _FIELD_TO_ENV["llm.max_response_tokens"] == "MAXIM_LLM_MAX_RESPONSE_TOKENS"
+        assert _FIELD_TO_ENV["llm.deliberation_max_cycles"] == "MAXIM_LLM_DELIBERATION_MAX_CYCLES"
+
+    def test_env_values_resolve_as_ints(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_LLM_MAX_RESPONSE_TOKENS", "256")
+        monkeypatch.setenv("MAXIM_LLM_DELIBERATION_MAX_CYCLES", "1")
+        assert resolve_setting("llm.max_response_tokens") == (256, "env")
+        assert resolve_setting("llm.deliberation_max_cycles") == (1, "env")
+
+    @pytest.mark.parametrize("env_name", ["MAXIM_LLM_MAX_RESPONSE_TOKENS", "MAXIM_LLM_DELIBERATION_MAX_CYCLES"])
+    @pytest.mark.parametrize("raw", ["0", "-3", "many"])
+    def test_env_rejects_non_positive_and_malformed(self, monkeypatch, env_name, raw):
+        field_path = {v: k for k, v in _FIELD_TO_ENV.items()}[env_name]
+        monkeypatch.setenv(env_name, raw)
+        with pytest.raises(ConfigurationError):
+            resolve_setting(field_path)
+
+    def test_config_json_path(self, tmp_path):
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps({"llm": {"max_response_tokens": 200, "deliberation_max_cycles": 2}}))
+        cfg = load_config(path)
+        assert cfg.llm.max_response_tokens == 200
+        assert cfg.llm.deliberation_max_cycles == 2
+        assert resolve_setting("llm.max_response_tokens", config=cfg) == (200, "config")
+        assert resolve_setting("llm.deliberation_max_cycles", config=cfg) == (2, "config")
+
+    @pytest.mark.parametrize("key", ["max_response_tokens", "deliberation_max_cycles"])
+    def test_config_json_rejects_non_positive(self, tmp_path, key):
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps({"llm": {key: 0}}))
+        with pytest.raises(ConfigurationError):
+            load_config(path)
+
+    def test_config_json_null_means_unset(self, tmp_path):
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps({"llm": {"max_response_tokens": None}}))
+        assert load_config(path).llm.max_response_tokens is None
+
+
+class TestAgentLoopReadsThePromptBudgetKnobs:
+    """The agent loop resolves both knobs once per loop and applies them to
+    the ModeInfo reserve and the PFC cycle cap."""
+
+    def test_unset_yields_the_builtin_defaults(self):
+        from maxim.runtime.agent_loop import resolve_llm_loop_overrides
+
+        assert resolve_llm_loop_overrides() == (None, None)
+
+    def test_env_values_reach_the_loop(self, monkeypatch):
+        from maxim.runtime.agent_loop import resolve_llm_loop_overrides
+
+        monkeypatch.setenv("MAXIM_LLM_MAX_RESPONSE_TOKENS", "192")
+        monkeypatch.setenv("MAXIM_LLM_DELIBERATION_MAX_CYCLES", "1")
+        assert resolve_llm_loop_overrides() == (192, 1)
+
+    def test_reserve_at_or_above_n_ctx_warns(self, monkeypatch, caplog):
+        import logging
+
+        from maxim.runtime.agent_loop import resolve_llm_loop_overrides
+
+        monkeypatch.setenv("MAXIM_LLM_MAX_RESPONSE_TOKENS", "8192")  # == default n_ctx
+        with caplog.at_level(logging.WARNING, logger="maxim.runtime.agent_loop"):
+            assert resolve_llm_loop_overrides() == (8192, None)
+        assert "collapses to zero" in caplog.text
+
+    def test_misconfiguration_is_loud(self, monkeypatch):
+        from maxim.runtime.agent_loop import resolve_llm_loop_overrides
+
+        monkeypatch.setenv("MAXIM_LLM_DELIBERATION_MAX_CYCLES", "0")
+        with pytest.raises(ConfigurationError):
+            resolve_llm_loop_overrides()
+
+    def test_loop_wires_both_overrides(self):
+        import inspect
+
+        from maxim.runtime import agent_loop
+
+        src = inspect.getsource(agent_loop.run_agentic_loop)
+        assert "resolve_llm_loop_overrides()" in src
+        assert '{"max_response_tokens": _max_response_tokens_override}' in src
+        assert "_max_cycles_override" in src and "else (3 if percept_source is not None else 2)" in src

@@ -47,6 +47,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cross-body or undeclared bundle before anything is written. Roadmap gate 7 and the Oasis case
   study §1 are reconciled to the same decided record in the same PR
   (d43_merge_correctness.md §5a stays the costing record).
+- **Prompt-budget knobs (sandbox plan P21):** `llm.max_response_tokens` (env
+  `MAXIM_LLM_MAX_RESPONSE_TOKENS`) overrides the agent loop's per-call `max_tokens` AND the
+  budgeter's response reserve in one place (unset = the mode's own value, 512 for the loop's
+  ModeInfo; it governs the loop's `ModeInfo` path only — the router's direct `_complete_text`
+  callers keep reading the legacy `MAXIM_LLM_MAX_TOKENS` / `LLMConfig.max_tokens`);
+  `llm.deliberation_max_cycles` (env `MAXIM_LLM_DELIBERATION_MAX_CYCLES`) caps the PFC
+  multi-cycle deliberation, previously hard-coded 3-in-sim / 2-live — `1` makes every turn a
+  single LLM call. Both additive-optional on `LLMConfigSection` (no `_format_version` bump);
+  read once when a loop starts by `agent_loop.resolve_llm_loop_overrides` (the console runs
+  one loop per handle for the life of the process, so `maxim serve` needs a restart to pick up
+  a change — same as `tools.allow`/`tools.deny`); a non-positive value is the loader's
+  `ConfigurationError` (env at resolve time, config.json at load); a reserve at or above
+  `llm.n_ctx` logs a WARNING because it collapses the prompt budget to zero.
+- `Executor.permits(tool_name)` — the public read of the dispatch permission gate, so a
+  prompt roster can ask "would this run?" before advertising a tool.
+
 - **Spoken-code pairing (console hardening A9.1; contract 0.4.0 → 0.5.0, additive).** Pulse's
   wiring surfaced the vendor fact that kills A9's dashboard-link premise on the real robot
   (the Pollen daemon regexes `custom_app_url` out of `main.py` at LIST time — a boot-minted
@@ -59,7 +75,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the default posture; refused under sandbox. `HelloResponse.pairing` advertises it
   (defaulted — 0.4.0 clients never notice). `device_console_handoff` +
   `extra_trusted_origins` stay correct and wired; the seam docstring records the amendment.
+### Fixed
+- **The cacheable prompt prefix died at every encounter boundary (bugs ledger D80).** The
+  scene-roster `tools` section is stable only within a narrative PHASE (a DM campaign's
+  `choose` description carries the current options), yet it sat SECOND in the stable prefix,
+  ahead of ~2.5k tokens of never-changing guidance — a prefix cache is invalidated from the
+  first differing byte, so Phase 0 of the sandbox plan measured 559 of 3,450 cacheable tokens
+  surviving an encounter change. `PromptBudgeter.add(..., phase_scoped=True)` now marks such
+  sections and `build_segmented` emits every phase-scoped section AFTER every session-stable
+  one (`_emit_stable`); the builder tags the unfiltered `tools` manifest. The byte-stability
+  invariant is unchanged — this is the ORDER inside the stable segment, and it is an
+  improvement, not a guarantee: the head still changes with processing state (sleep/awake),
+  autonomy level and mode (all in `identity`), and the roster tail changes whenever a Wire 1 /
+  Wire 3 phrase is spliced into a tool description, not only at encounter boundaries.
+- **~600 tokens of file/glob guidance per call for agents with no file tools (D81).** The
+  workspace reminder was unconditional inside `build_coding_context` and the glob guide fired
+  on the word "pattern", so an arena narration ("study his patterns") bought an embodied AUT
+  the `FILE WORKSPACE REMINDER` + `GLOB PATTERN GUIDE` blocks every turn; the CWD manifest
+  (a per-turn tree re-scan, and a dynamic-section invalidator) shipped to the same agents.
+  Both now gate on `prompt_builder.has_file_tools(request)` — the roster carries a file tool
+  (`read_file`/`write_file`/`edit_file`/`list_directory`/`glob`/`search_code`/`execute_file`)
+  or the guidance is not composed.
+- **Denied tools were still advertised (D82).** `tools.allow`/`tools.deny` gated at dispatch
+  only, so a sandboxed console agent's prompt kept listing every registered tool and the
+  model spent turns choosing ones that could only answer with a denial. The agent loop now
+  filters the roster through `executor.permits` after the SEM union and the Wire 3 filter,
+  before the descriptions are collected, and the passive-mode relevance-filter path
+  intersects the learned index's answer with that roster — the model sees only what it may
+  call.
 
+### Changed
+- `run_agentic_loop` tightened 3495 → 3488 in `function_length_baseline.json`: the prompt
+  tool-description collection moved to the module-level `_describe_tools_for_prompt`.
 ## [1.1.4] - 2026-09-05 — "The world seam"
 
 ### Added

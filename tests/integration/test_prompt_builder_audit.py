@@ -231,3 +231,106 @@ def test_cacheable_prefix_is_non_trivial(monkeypatch):
     assert system_tokens / total > 0.05, (
         f"cacheable system fraction implausibly small; system={system_tokens} dynamic={dynamic_tokens}"
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# P21 (sandbox plan, 2026-09-05): phase-scoped roster last; file guidance gated
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _stable_for(monkeypatch, *, tool_descriptions: dict, available_tools: set[str], embodied: bool = True) -> str:
+    builder = _make_builder()
+    req = _make_turn_request(0)
+    req.available_tools = set(available_tools)
+    req.tool_descriptions = dict(tool_descriptions)
+    req.is_embodied = embodied
+    prompt = builder.build_prompt(req)
+    payload = prompt[len("TOOL_PROMPT|") :]
+    return payload.split(PROMPT_SEGMENT_DELIMITER, 1)
+
+
+def test_tools_section_is_the_last_stable_section(monkeypatch):
+    """The scene roster is stable only within a narrative phase; every other
+    cacheable section is stable for the whole session. Emitting the roster
+    LAST is what lets an encounter boundary keep the head of the prefix cached
+    (Phase 0 of the sandbox plan: 559 of 3,450 cacheable tokens survived when
+    the roster sat second)."""
+    stable, _dynamic = _stable_for(monkeypatch, tool_descriptions=_TOOL_DESCRIPTIONS, available_tools=_CRADLE_TOOLS)
+    tools_at = stable.index("=== Available Tools ===")
+    for marker in ("OPERATIONAL STATE", "CORE PRINCIPLES", "Body Tool Discipline", "=== Instructions ==="):
+        assert stable.index(marker) < tools_at, f"{marker!r} must precede the phase-scoped roster"
+    assert "=== Available Tools ===" not in stable[tools_at + 1 :]
+
+
+def test_encounter_change_keeps_the_session_stable_head(monkeypatch):
+    """A DM campaign's ``choose`` description carries the current options, so
+    it differs per encounter. Everything before the roster must still be a
+    byte-identical common prefix across the two encounters."""
+    base = dict(_TOOL_DESCRIPTIONS)
+    tools = set(_CRADLE_TOOLS) | {"choose"}
+    one, _ = _stable_for(
+        monkeypatch,
+        tool_descriptions={**base, "choose": "Pick one of the available choices: attack, defend"},
+        available_tools=tools,
+    )
+    two, _ = _stable_for(
+        monkeypatch,
+        tool_descriptions={**base, "choose": "Pick one of the available choices: flee, bargain, fight"},
+        available_tools=tools,
+    )
+    assert one != two
+    head = one[: one.index("=== Available Tools ===")]
+    assert two.startswith(head)
+    # The head is the bulk of the prefix — the whole point of the ordering.
+    assert len(head) > 0.5 * len(one)
+
+
+def test_file_guidance_is_absent_when_the_roster_has_no_file_tool(monkeypatch):
+    """An embodied AUT with body affordances only must not be told how to
+    glob or where to write files: the arena narration "study his patterns"
+    used to buy ~600 tokens of glob guidance per call (P21 measurement)."""
+    req_text = "study his patterns and find files if you can"
+    builder = _make_builder()
+    req = _make_turn_request(0)
+    req.triggering_input = req_text
+    prompt = builder.build_prompt(req)
+    assert "GLOB PATTERN GUIDE" not in prompt
+    assert "FILE WORKSPACE REMINDER" not in prompt
+    assert "CWD Context" not in prompt and "EXISTING WORKSPACE" not in prompt
+
+
+def test_relevance_filtered_roster_cannot_advertise_a_tool_the_loop_did_not_offer(monkeypatch):
+    """The learned tool index answers from everything it has ever seen; a
+    denied tool it learned must not reach the passive-mode prompt (D82)."""
+
+    class _Index:
+        def get_relevant_tools(self, _q):
+            return ["infant_humanoid_sense", "write_file"], ["infant_humanoid_touch", "bash"]
+
+    builder = PromptBuilder(
+        llm=_LLMStub(),
+        reasoning_carryover=_CarryoverStub(),
+        n_ctx=32000,
+        token_counter=_CharTokenCounter(),
+        tool_index=_Index(),
+    )
+    req = _make_turn_request(0)
+    req.mode.uses_tool_relevance_filter = True
+    prompt = builder.build_prompt(req)
+    assert "infant_humanoid_sense" in prompt and "infant_humanoid_touch" in prompt
+    assert "write_file" not in prompt and "- bash" not in prompt
+    assert req.surfaced_tools == ["infant_humanoid_sense"]
+
+
+def test_file_guidance_returns_with_a_file_tool_on_the_roster(monkeypatch, tmp_path):
+    from maxim.agents.prompt_builder import has_file_tools
+
+    builder = _make_builder()
+    req = _make_turn_request(0)
+    req.triggering_input = "study his patterns and find files if you can"
+    req.available_tools = set(_CRADLE_TOOLS) | {"write_file"}
+    req.tool_descriptions = {**_TOOL_DESCRIPTIONS, "write_file": "write a file"}
+    assert has_file_tools(req)
+    prompt = builder.build_prompt(req)
+    assert "GLOB PATTERN GUIDE" in prompt
+    assert "FILE WORKSPACE REMINDER" in prompt

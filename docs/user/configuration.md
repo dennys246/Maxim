@@ -27,7 +27,7 @@ This mirrors `kubeconfig`, `gh`, `npm`, and `pyproject.toml`. Mismatches between
 
 **Empty-string env vars are treated as unset.** `export MAXIM_LANE_LARGE_REMOTE_URL=` (a common bash-rc leak) falls through to `config.json` per the C-1 fold.
 
-### Absorbed fields (~23)
+### Absorbed fields (~25)
 
 | Field path | Type | Default | Replaces env var |
 |---|---|---|---|
@@ -37,6 +37,10 @@ This mirrors `kubeconfig`, `gh`, `npm`, and `pyproject.toml`. Mismatches between
 | `llm.n_ctx` | int ≥ 256 | 8192 | `MAXIM_LLM_N_CTX` |
 | `llm.backend` | llama_cpp / pytorch | llama_cpp | `MAXIM_LLM_BACKEND` |
 | `llm.auto_download` | bool | false | `MAXIM_AUTO_DOWNLOAD_MODELS` |
+| `llm.max_response_tokens` | int ≥ 1 \| null | null (the mode's own reserve; 512 in the agent loop) | `MAXIM_LLM_MAX_RESPONSE_TOKENS` |
+| `llm.deliberation_max_cycles` | int ≥ 1 \| null | null (3 in sim, 2 live) | `MAXIM_LLM_DELIBERATION_MAX_CYCLES` |
+
+`llm.max_response_tokens` is the agent loop's per-call `max_tokens` and the prompt budgeter's response reserve in one field (a value at or above `llm.n_ctx` collapses the prompt budget and logs a WARNING); it does not touch the router's direct completion calls, which read the legacy `MAXIM_LLM_MAX_TOKENS`. `llm.deliberation_max_cycles` caps the PFC deliberation cycles per turn (`1` = one LLM call per turn). Both are read when an agent loop starts, so `maxim serve` needs a restart to pick up a change — the same holds for `tools.allow` / `tools.deny`.
 | `lanes.<tier>.remote_url` | string \| null | null | `MAXIM_LANE_<TIER>_REMOTE_URL` |
 | `lanes.<tier>.remote_model` | string \| null | null | `MAXIM_LANE_<TIER>_REMOTE_MODEL` |
 | `lanes.<tier>.remote_api_key_ref` | path or `keyring:<service>:<account>` | null | `MAXIM_LANE_<TIER>_REMOTE_API_KEY` |
