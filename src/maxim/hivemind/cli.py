@@ -107,6 +107,14 @@ def _read_optional_json(path: Path) -> dict | None:
         raise ValueError(f"malformed JSON in {path}: {exc}") from exc
 
 
+class _MergeInputError(Exception):
+    """A merge-nac input failed to read/validate; the message is already
+    printed — the caller just returns the rc=2 contract. Replaces the old
+    int-2-in-a-union sentinel (gate 8 hivemind mypy: a sentinel that shares
+    a union with real data is exactly the shape a type checker exists to
+    forbid)."""
+
+
 def _run_export(args: argparse.Namespace) -> int:
     session_dir = _expand_session_dir(args.session)
     if not session_dir.is_dir():
@@ -303,7 +311,7 @@ def _run_invalidate(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     nodes = ec_payload.get("substrate_nodes") if isinstance(ec_payload, dict) else None
-    if not isinstance(nodes, dict):
+    if not isinstance(ec_payload, dict) or not isinstance(nodes, dict):
         print(f"error: no substrate_nodes in {ec_path}; nothing to invalidate", file=sys.stderr)
         return 2
 
@@ -438,24 +446,23 @@ def _run_merge_nac(args: argparse.Namespace) -> int:
     # boundary/gain would silently mis-bin every lookup post-merge.
     # Corrupt inputs (truncated JSON, list-rooted files) get the same
     # clean rc=2 contract as every other failure — never a traceback.
-    def _read_dict_or_none(path: Path, label: str) -> "dict | None | int":
+    def _read_dict_or_fail(path: Path, label: str) -> "dict | None":
         try:
             data = _read_optional_json(path)
         except (OSError, ValueError) as exc:
             # ValueError covers _read_optional_json's malformed-JSON wrap
             # (and json.JSONDecodeError, which subclasses it).
             print(f"error: cannot read {label} ({path}): {exc}", file=sys.stderr)
-            return 2
+            raise _MergeInputError from exc
         if data is not None and not isinstance(data, dict):
             print(f"error: {label} is not a JSON object ({path}). Nothing was written.", file=sys.stderr)
-            return 2
+            raise _MergeInputError
         return data
 
-    src_meta = _read_dict_or_none(_meta_sidecar_path(source_path), "source policy-meta sidecar")
-    if src_meta == 2:
-        return 2
-    tgt_meta = _read_dict_or_none(_meta_sidecar_path(target_path), "target policy-meta sidecar")
-    if tgt_meta == 2:
+    try:
+        src_meta = _read_dict_or_fail(_meta_sidecar_path(source_path), "source policy-meta sidecar")
+        tgt_meta = _read_dict_or_fail(_meta_sidecar_path(target_path), "target policy-meta sidecar")
+    except _MergeInputError:
         return 2
 
     def _meta_essence(meta: "dict | None") -> "dict | None":
@@ -485,10 +492,11 @@ def _run_merge_nac(args: argparse.Namespace) -> int:
     if not isinstance(source_state, dict):
         print(f"error: source NAc file is not a JSON object ({source_path}).", file=sys.stderr)
         return 2
-    target_state = _read_dict_or_none(target_path, "target NAc file")
-    if target_state == 2:
+    try:
+        target_state_opt = _read_dict_or_fail(target_path, "target NAc file")
+    except _MergeInputError:
         return 2
-    target_state = target_state or {}
+    target_state: dict = target_state_opt or {}
     target_existed = target_path.is_file()
 
     # The persisted files carry the CC1 ``_format_version`` stamp; the

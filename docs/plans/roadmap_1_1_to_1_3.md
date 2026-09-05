@@ -741,7 +741,8 @@ execution priority:
    - **Also under this gate, scoped to what 1.2 touches:** `hivemind/` gets added to the
      existing CI mypy step (5 of 508 files today; repo-wide is not worth it, but the
      bundle format is a wire boundary and 1.2 rewrites its merge path — that is where
-     typing pays).
+     typing pays). **DONE 2026-09-05** — hivemind/ is mypy-clean (10 errors fixed, incl.
+     merge-nac's int-sentinel-in-union reader) and in the CI step.
 
 ---
 

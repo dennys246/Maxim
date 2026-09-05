@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`hivemind/` is now mypy-clean and in the CI mypy step (1.2 gate 8).** The bundle format
+  is a wire boundary and 1.2 rewrites its merge path — that is where typing pays. Ten errors
+  fixed en route, the headline being `merge-nac`'s `_read_dict_or_none` returning an int `2`
+  sentinel INSIDE a `dict | None` union (replaced with a typed `_MergeInputError` — a sentinel
+  sharing a union with real data is exactly the shape a checker exists to forbid); plus a
+  variable-rebinding union in `_merge_link_lists` and an unnarrowed `ec_payload` write in
+  `substrate invalidate`. No behavior change; the rc=2 CLI contract is unchanged.
 - **D8 separated from recall (1.2 gate 3 closed).** The pre-registered measurement returned
   `separate-required` (churn 0/48 but min per-node cosine 0.9521 < the frozen 0.98 bound over
   one session-scale recall workload, plus +192 member counts — query traffic buying merge
