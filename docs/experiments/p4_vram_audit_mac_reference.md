@@ -45,7 +45,7 @@ encoders consume co-resident with inference.
 # Run ON the RTX 5080 leader (or any machine where you want
 # to measure co-residency). Requires the 'semantic' extra and
 # the Flowers102 torchvision cache populated by Phase 2B.
-PYTHONPATH=src python scripts/p4_vram_audit.py
+PYTHONPATH=src python scripts/p4_vram_audit.py  # D27: add --write-experiment-results to update the committed record
 ```
 
 The script is idempotent — re-running gives the same delta

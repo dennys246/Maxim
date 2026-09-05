@@ -730,6 +730,11 @@ execution priority:
      `test_evidence_write_policy.py`'s scan to `scripts/` and give the harnesses the
      `--write-experiment-results` opt-in. The Exp 52/54 files a bundle would carry are
      produced by exactly this class of harness.
+     **DONE 2026-09-05** — all seven route committed writes (JSON + the paired `.md`
+     reports) through `_provenance.evidence_out_paths` (opt-in; dirty-tree refusal);
+     `require_semantic_encoder` on the three LinguisticEncoder entry points; the ~18
+     triaged (12 were SensorEncoder sites — hash-basis by design, not degraded
+     fallback); scan + helper guards in `test_evidence_write_policy.py`. D27 RESOLVED.
    - **(b) D5 vs gate 6 — re-argue D5.** D5 (`nac_merge` never folds cluster biases
      across agents) is ACCEPTED in the ledger; gate 6 (a re-keyed merge so a foreign
      want reads out) *requires* the thing D5 accepts not doing. The case study made D5

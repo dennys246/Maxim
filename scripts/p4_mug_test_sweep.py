@@ -37,6 +37,7 @@ For the non-tautological Phase 2D v2 sweep, see
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import sys
@@ -221,7 +222,35 @@ def _write_report(
     logger.info("wrote json %s", out_json)
 
 
+def _evidence_args() -> argparse.Namespace:
+    """D27: committed-evidence writes are opt-in (see scripts/_provenance.py)."""
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--write-experiment-results",
+        action="store_true",
+        help="update the COMMITTED report + results record (refuses a dirty tree)",
+    )
+    ap.add_argument("--allow-dirty", action="store_true")
+    return ap.parse_args()
+
+
 def main() -> int:
+    _EVIDENCE_ARGS = _evidence_args()
+    # Fail-fast (review fold): resolve evidence paths — incl. the dirty-tree
+    # refusal on the opt-in — BEFORE the measurement runs, not after.
+    repo_root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(repo_root / "scripts"))
+    from _provenance import evidence_out_paths_or_exit
+
+    out_md, out_json = evidence_out_paths_or_exit(
+        repo_root,
+        [
+            repo_root / "docs" / "experiments" / "p4_mug_test_sweep_v1_smoke.md",
+            repo_root / "docs" / "experiments" / "results" / "p4_mug_test_sweep_v1_smoke.json",
+        ],
+        write_experiment_results=_EVIDENCE_ARGS.write_experiment_results,
+        allow_dirty=_EVIDENCE_ARGS.allow_dirty,
+    )
     # Configure logging inside main() so importing this module has no
     # side effects — Exec #4 / Arch #9 fold.
     logging.basicConfig(
@@ -284,8 +313,6 @@ def main() -> int:
     # can explicitly supersede it. This script now only proves the
     # migrated build_and_bind orchestrator still wires correctly; the
     # report it emits is a smoke-test artifact, not a published finding.
-    out_md = repo_root / "docs" / "experiments" / "p4_mug_test_sweep_v1_smoke.md"
-    out_json = repo_root / "docs" / "experiments" / "results" / "p4_mug_test_sweep_v1_smoke.json"
     _write_report(
         out_md,
         out_json,

@@ -23,6 +23,7 @@ warm. Zero $ (substrate-only).
 
 from __future__ import annotations
 
+import argparse
 import json
 import statistics
 import sys
@@ -42,7 +43,36 @@ if not ROY_FIXTURE.exists():
         ROY_FIXTURE = fallback
 
 
+def _evidence_args() -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description="EC drift Phase 2 fine sweep (D27 evidence policy)")
+    ap.add_argument(
+        "--write-experiment-results",
+        action="store_true",
+        help="update the COMMITTED results record (refuses a dirty tree)",
+    )
+    ap.add_argument("--allow-dirty", action="store_true")
+    return ap.parse_args()
+
+
 def main() -> int:
+    args = _evidence_args()
+    # D26/D27: a degraded (hash-fallback) encoder must error on the APPARATUS,
+    # never publish over the science.
+    from maxim.similarity.encoder import require_semantic_encoder
+
+    require_semantic_encoder(context="fine_sweep_phase_2 (D27)")
+
+    # Fail-fast (review fold): resolve the evidence path — including the
+    # dirty-tree refusal on the opt-in — BEFORE the sweep runs, not after.
+    sys.path.insert(0, str(REPO / "scripts"))
+    from _provenance import evidence_out_paths_or_exit
+
+    [out_path] = evidence_out_paths_or_exit(
+        REPO,
+        [REPO / "docs" / "experiments" / "results" / "ec_drift_phase_2_fine_sweep.json"],
+        write_experiment_results=args.write_experiment_results,
+        allow_dirty=args.allow_dirty,
+    )
     if not ROY_FIXTURE.exists():
         print(
             f"ERROR: Roy fixture not found. Looked at "
@@ -218,7 +248,6 @@ def main() -> int:
         "passing_strict_p1_and_roy": combined,
         "winner": combined[0] if combined else None,
     }
-    out_path = REPO / "docs" / "experiments" / "results" / "ec_drift_phase_2_fine_sweep.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, indent=2))
     print(f"\nWrote {out_path}")

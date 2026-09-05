@@ -32,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The old blast-radius guard, which pinned the defect, is reworked: the fresh path must read
   NOTHING. Unblocks drafting the Oasis ingestion contract (what a bundle merges INTO is now
   well-defined).
+- **Committed-evidence writes from `scripts/` are opt-in (D27, 1.2 gate 8(a)).** Seven
+  measurement harnesses wrote `docs/experiments/results/*.json` (and paired committed `.md`
+  reports) as a side effect of running — the D25 failure class on the scripts surface. All
+  seven now route through the new `scripts/_provenance.py::evidence_out_paths`: without
+  `--write-experiment-results` the write redirects to a temp dir with a loud notice; with it,
+  a dirty tree refuses unless `--allow-dirty`. `require_semantic_encoder` wired into the three
+  LinguisticEncoder measurement entry points (the "~18" figure triaged: 12 were SensorEncoder
+  sites whose hash-basis embedding is the design). Guarded by a `scripts/`-wide results-tree
+  scan + a LinguisticEncoder accounting scan in `test_evidence_write_policy.py`.
 - **`hivemind/` is now mypy-clean and in the CI mypy step (1.2 gate 8).** The bundle format
   is a wire boundary and 1.2 rewrites its merge path — that is where typing pays. Ten errors
   fixed en route, the headline being `merge-nac`'s `_read_dict_or_none` returning an int `2`

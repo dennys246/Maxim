@@ -74,7 +74,7 @@ The bridge concept 'garden' was pattern-completed to the 'plant' bridge node (co
 ## Reproduction
 
 ```bash
-PYTHONPATH=src python scripts/p4_option2_measurement.py
+PYTHONPATH=src python scripts/p4_option2_measurement.py  # D27: add --write-experiment-results to update the committed record
 ```
 
 Requires `sentence-transformers` (`pip install sentence-transformers`).

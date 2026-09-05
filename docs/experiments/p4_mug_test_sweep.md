@@ -138,7 +138,7 @@ one — Stage 2 just surfaces the concern.
 ```bash
 # Requires the 'semantic' extra (sentence-transformers + torch)
 # and the Flowers102 torchvision cache populated by Phase 2B.
-PYTHONPATH=src python scripts/p4_mug_test_sweep.py
+PYTHONPATH=src python scripts/p4_mug_test_sweep.py  # D27: add --write-experiment-results to update the committed record
 ```
 
 The script is deterministic given the fixture's pinned class names and
