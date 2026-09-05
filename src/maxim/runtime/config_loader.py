@@ -96,6 +96,22 @@ class LLMConfigSection:
     n_ctx: int = 8192
     backend: Literal["llama_cpp", "pytorch"] = "llama_cpp"
     auto_download: bool = False
+    # Prompt-budget knobs (P21, sandbox plan; 2026-09-04) — additive-optional
+    # per the MaximConfig docstring, no `_format_version` bump. Both `None`
+    # = built-in behaviour: the mode's own ``max_response_tokens`` (512 for
+    # the agent loop's ModeInfo) and the PFC deliberation cap of 3 cycles in
+    # sim / 2 live. ``max_response_tokens`` is at once the agent loop's
+    # per-call ``max_tokens`` and the budgeter's reserve, so lowering it also
+    # widens the prompt budget (it does NOT touch the router's direct
+    # ``_complete_text`` callers, which read the legacy ``MAXIM_LLM_MAX_TOKENS``
+    # / ``LLMConfig.max_tokens``); ``deliberation_max_cycles=1`` makes every
+    # turn a single LLM call (the sandbox's latency lever). The cycle cap is a
+    # loop knob, not a backend property; it lives under ``llm`` because
+    # ``MaximConfig`` is shape-frozen and no loop section exists. Both are
+    # read when a loop starts (``maxim serve`` needs a restart to pick up a
+    # change).
+    max_response_tokens: int | None = None
+    deliberation_max_cycles: int | None = None
 
 
 _LANE_TIER_DECLARED_FIELDS: frozenset[str] = frozenset(
@@ -432,6 +448,8 @@ _FIELD_TO_ENV: dict[str, str] = {
     "llm.n_ctx": "MAXIM_LLM_N_CTX",
     "llm.backend": "MAXIM_LLM_BACKEND",
     "llm.auto_download": "MAXIM_AUTO_DOWNLOAD_MODELS",
+    "llm.max_response_tokens": "MAXIM_LLM_MAX_RESPONSE_TOKENS",
+    "llm.deliberation_max_cycles": "MAXIM_LLM_DELIBERATION_MAX_CYCLES",
     "lanes.large.remote_url": "MAXIM_LANE_LARGE_REMOTE_URL",
     "lanes.large.remote_model": "MAXIM_LANE_LARGE_REMOTE_MODEL",
     "lanes.large.remote_api_key_ref": "MAXIM_LANE_LARGE_REMOTE_API_KEY",
@@ -700,6 +718,8 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
         return coerce_agent_id(raw, field_path)
     if field_path == "llm.n_ctx":
         return _coerce_int(raw, field_path, min_val=256)
+    if field_path in {"llm.max_response_tokens", "llm.deliberation_max_cycles"}:
+        return _coerce_int(raw, field_path, min_val=1)
     if field_path in {"cloud.max_lanes", "proxy.max_concurrent", "proxy.rate_limit_rpm"}:
         return _coerce_int(raw, field_path, min_val=0)
     if field_path == "auto_spawn.port":
@@ -1353,6 +1373,8 @@ def _range_check_int(value: int, field_path: str) -> int:
     if field_path == "auto_spawn.timeout_s" and value < 1:
         raise ConfigurationError(f"config.json: {field_path}={value} below minimum 1")
     if field_path == "console.max_input_chars" and value < 1:
+        raise ConfigurationError(f"config.json: {field_path}={value} below minimum 1")
+    if field_path in {"llm.max_response_tokens", "llm.deliberation_max_cycles"} and value < 1:
         raise ConfigurationError(f"config.json: {field_path}={value} below minimum 1")
     return value
 

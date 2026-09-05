@@ -15,6 +15,20 @@ from __future__ import annotations
 
 import pytest
 
+from maxim.tools.base import Tool
+
+
+class _Tool(Tool):
+    """Minimal registrable tool for the roster tests."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.description = f"{name} (test tool)"
+        super().__init__()
+
+    def execute(self, **kwargs):  # noqa: ANN003
+        return "ok"
+
 
 def _build_handle(monkeypatch, tmp_path):
     """A MaximHandle whose factory step is faked down to build_executor.
@@ -122,6 +136,50 @@ class TestConsoleToolAllowlist:
         executor = handle.instance.executor
         assert executor.execute({"tool_name": "reachy_mini_head_yaw_turn_left", "params": {}}).success is True
         assert executor.execute({"tool_name": "read_file", "params": {"path": "x"}}).success is False
+
+
+class TestRosterAdvertisesOnlyPermittedTools:
+    """Bugs ledger D82: the gate used to act at dispatch only, so the prompt
+    kept advertising tools the executor would refuse."""
+
+    def _executor(self, permissions):
+        from maxim.agents.permissions import AgentPermissions
+        from maxim.runtime.bootstrap import build_executor
+        from maxim.tools.registry import ToolRegistry
+
+        registry = ToolRegistry()
+        registry.register(_Tool("respond"))
+        registry.register(_Tool("read_file"))
+        return build_executor(
+            registry,
+            pain_bus=None,
+            permissions=AgentPermissions(**permissions) if permissions is not None else None,
+        )
+
+    def test_permits_mirrors_the_dispatch_gate(self):
+        from maxim.agents.permissions import AgentPermissions
+
+        ex = self._executor({"tool_allow": frozenset({"respond"})})
+        assert isinstance(ex._permissions, AgentPermissions)
+        assert ex.permits("respond") is True
+        assert ex.permits("read_file") is False
+        denied = ex.execute({"tool_name": "read_file", "params": {}})
+        assert not denied.success
+
+    def test_no_permissions_permits_everything(self):
+        ex = self._executor(None)
+        assert ex.permits("respond") and ex.permits("read_file") and ex.permits("never_registered")
+
+    def test_agent_loop_filters_the_advertised_roster_through_permits(self):
+        import inspect
+
+        from maxim.runtime import agent_loop
+
+        src = inspect.getsource(agent_loop.run_agentic_loop)
+        assert "available_tools = [t for t in available_tools if executor.permits(t)]" in src
+        # The filter runs AFTER the roster is final (SEM union + Wire 3) and
+        # BEFORE the descriptions are collected for the prompt.
+        assert src.index("executor.permits(t)") < src.index("last_surfaced_tools = list(available_tools)")
 
 
 class TestSimAgentsUntouched:

@@ -46,6 +46,13 @@ class PromptSection:
     # independently of dynamic content so the prefix is byte-identical across
     # turns within a session/phase. Default False (dynamic).
     cacheable: bool = False
+    # When True (requires ``cacheable``), the section changes far more often
+    # than the rest of the stable prefix — the scene roster's tool manifest
+    # changes at every encounter/act boundary, while guidance and the
+    # foundational text change at most with mode/autonomy. ``build_segmented``
+    # emits every phase-scoped section AFTER every session-stable one, so a
+    # roster change invalidates only the tail of the cached prefix (P21).
+    phase_scoped: bool = False
 
 
 class PromptBudgeter:
@@ -84,8 +91,17 @@ class PromptBudgeter:
         min_tokens: int = 0,
         truncate_fn: Callable[[str, int], str] | None = None,
         cacheable: bool = False,
+        phase_scoped: bool = False,
     ) -> None:
-        """Add a section to the budget. Empty content is silently ignored."""
+        """Add a section to the budget. Empty content is silently ignored.
+
+        ``phase_scoped=True`` is only meaningful on a cacheable section (it
+        places the section at the END of the stable prefix); asking for it
+        on a dynamic section is a caller bug, raised loudly rather than
+        silently ignored.
+        """
+        if phase_scoped and not cacheable:
+            raise ValueError(f"prompt section {name!r}: phase_scoped=True requires cacheable=True")
         if not content or not content.strip():
             return
         token_count = self._counter.count_tokens(content)
@@ -100,6 +116,7 @@ class PromptBudgeter:
                 min_tokens=min_tokens,
                 truncate_fn=truncate_fn,
                 cacheable=cacheable,
+                phase_scoped=phase_scoped,
             )
         )
         self._insertion_idx += 1
@@ -145,6 +162,7 @@ class PromptBudgeter:
                                 min_tokens=section.min_tokens,
                                 truncate_fn=section.truncate_fn,
                                 cacheable=section.cacheable,
+                                phase_scoped=section.phase_scoped,
                             )
                         )
                         used += new_count
@@ -173,13 +191,35 @@ class PromptBudgeter:
         """
         logger.debug(
             "prompt_sections %s",
-            ",".join(f"{s.name}:{len(s.content)}" for s in sorted(included, key=lambda x: x.insertion_order)),
+            ",".join(
+                f"{s.name}:{len(s.content)}"
+                for s in sorted(included, key=lambda x: (not x.cacheable, x.phase_scoped, x.insertion_order))
+            ),
         )
 
     @staticmethod
     def _emit(included: list[PromptSection]) -> str:
         """Join included sections in original insertion order."""
         ordered = sorted(included, key=lambda s: s.insertion_order)
+        return "\n\n".join(s.content for s in ordered)
+
+    @staticmethod
+    def _emit_stable(included: list[PromptSection]) -> str:
+        """Join the stable segment: session-stable sections first (insertion
+        order), then phase-scoped ones (insertion order).
+
+        A prefix cache is invalidated from the first differing byte onward,
+        so the content that changes most often must sit LAST. Insertion
+        order alone put the scene-roster tool manifest (changes at every
+        encounter, and whenever a Wire 1/Wire 3 phrase is spliced into a
+        description) ahead of ~2.5k tokens of guidance that changes far less
+        often (identity still carries the processing state and autonomy
+        level), which made every encounter boundary a full-prefix miss
+        (Phase 0 of the sandbox plan measured 559 of 3,450 cacheable tokens
+        surviving). Ordering does not make the tail cacheable — it keeps the
+        head cached when the tail changes.
+        """
+        ordered = sorted(included, key=lambda s: (s.phase_scoped, s.insertion_order))
         return "\n\n".join(s.content for s in ordered)
 
     def build(self) -> tuple[str, list[str]]:
@@ -210,6 +250,10 @@ class PromptBudgeter:
         user request). The cap is a fixed fraction — independent of per-turn
         state — so it does not itself perturb the stable text.
 
+        Within the stable text, session-stable sections come first and
+        ``phase_scoped`` ones last (see ``_emit_stable``), so a phase
+        boundary invalidates only the tail of the cached prefix.
+
         Returns:
             (stable_text, dynamic_text, dropped_section_names)
         """
@@ -233,7 +277,7 @@ class PromptBudgeter:
                 ", ".join(dropped),
             )
         self._log_included(stable_included + dyn_included)
-        return self._emit(stable_included), self._emit(dyn_included), dropped
+        return self._emit_stable(stable_included), self._emit(dyn_included), dropped
 
 
 # ── Truncation Helpers ──────────────────────────────────────────────────────

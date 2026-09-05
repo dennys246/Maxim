@@ -1682,6 +1682,84 @@ def _loop_bio_tick_maintenance(nac: Any) -> None:
         log_swallowed_exception(e, operation="nac_per_tick_decay")
 
 
+def _describe_tools_for_prompt(
+    available_tools: Any,
+    executor: Any,
+    builtin_descriptions: dict[str, Any],
+) -> dict[str, Any]:
+    """Full tool info for the prompt (description, params, example).
+
+    Builtin tools come from ``TOOL_DESCRIPTIONS``; dynamic tools (skills,
+    protocols, SEM affordances) are described from the ``Tool`` instance
+    via ``Tool.to_json_schema()`` so tools authored in either input_schema
+    format render correctly. Pre-CC9 this iterated ``input_schema.items()``
+    directly and silently produced empty params for JSONSchema-authored
+    tools (the ``@maxim.tool`` decorator path) via the swallow-everything
+    except below. Extracted from ``run_agentic_loop`` 2026-09-04 (P21).
+    """
+    tool_descriptions: dict[str, Any] = {}
+    for name in available_tools:
+        if name in builtin_descriptions:
+            tool_descriptions[name] = builtin_descriptions[name]
+            continue
+        try:
+            tool = executor.registry.get(name)
+            json_schema = (
+                tool.to_json_schema() if hasattr(tool, "to_json_schema") else {"properties": {}, "required": []}
+            )
+            properties = json_schema.get("properties", {}) or {}
+            required = set(json_schema.get("required", []) or [])
+            params: dict[str, str] = {}
+            for param_name, prop in properties.items():
+                prop_type = prop.get("type", "string") if isinstance(prop, dict) else "string"
+                if param_name in required:
+                    params[param_name] = str(prop_type)
+                else:
+                    default = prop.get("default") if isinstance(prop, dict) else None
+                    params[param_name] = f"({prop_type}, default={default!r})"
+            tool_descriptions[name] = {
+                "description": tool.description,
+                "params": params,
+                "example": None,
+                "followup_type": None,
+            }
+        except (KeyError, Exception):
+            pass
+    return tool_descriptions
+
+
+def resolve_llm_loop_overrides() -> tuple[int | None, int | None]:
+    """Read the two loop-level LLM knobs from the config chain, once.
+
+    Returns ``(max_response_tokens, deliberation_max_cycles)``; ``None`` for
+    an unset knob means "keep the built-in default" — the mode's
+    ``max_response_tokens`` and the 3-cycles-in-sim / 2-cycles-live cap.
+    A misconfigured env value is the loader's ``ConfigurationError`` and
+    propagates (config.json values are validated at load); ``resolve_setting``
+    raises nothing else. Read when the loop starts: the console runs one loop
+    per handle for the life of the process, so ``maxim serve`` needs a restart
+    to pick up a change.
+    """
+    from maxim.runtime.config_loader import resolve_setting
+
+    max_tokens, _src = resolve_setting("llm.max_response_tokens")
+    max_cycles, _src = resolve_setting("llm.deliberation_max_cycles")
+    if max_tokens is not None:
+        n_ctx, _src = resolve_setting("llm.n_ctx")
+        if n_ctx is not None and int(max_tokens) >= int(n_ctx):
+            # The reserve would clamp the prompt budget to zero (every
+            # section dropped) and the server would reject max_tokens.
+            logger.warning(
+                "llm.max_response_tokens=%s is not below llm.n_ctx=%s: the prompt budget collapses to zero",
+                max_tokens,
+                n_ctx,
+            )
+    return (
+        int(max_tokens) if max_tokens is not None else None,
+        int(max_cycles) if max_cycles is not None else None,
+    )
+
+
 def run_agentic_loop(
     agent: Any,
     environment: Any,
@@ -1906,6 +1984,13 @@ def run_agentic_loop(
 
     def _get_all_tools() -> set[str]:
         return ctrl.get_all_tools()
+
+    # Operator overrides for the per-call response reserve and the PFC
+    # deliberation cap (``llm.max_response_tokens`` / ``llm.deliberation_
+    # max_cycles``, P21 of the sandbox plan). Resolved ONCE per loop — the
+    # precedence chain logs on every call and the value cannot change
+    # mid-session anyway.
+    _max_response_tokens_override, _max_cycles_override = resolve_llm_loop_overrides()
 
     # Loop timing
     target_period = 1.0 / target_hz
@@ -2621,7 +2706,11 @@ def run_agentic_loop(
                         # Compute salience for cycle 1 THOUGHT
                         _n_memories_c1 = len(_enrich_result.memories) if _enrich_result.memories else 0
                         _salience_c1 = _compute_thought_salience(_n_sections, _n_memories_c1, 0.0)
-                        _max_cyc_for_display = 3 if getattr(state, "data", {}).get("percept_source") else 2
+                        _max_cyc_for_display = (
+                            _max_cycles_override
+                            if _max_cycles_override is not None
+                            else (3 if getattr(state, "data", {}).get("percept_source") else 2)
+                        )
                         # NOTE: don't push percept text to thinking panel here —
                         # the percept is an INPUT, not a thought. The AUT's actual
                         # reasoning will be pushed after the LLM responds (section 6).
@@ -4534,6 +4623,13 @@ def run_agentic_loop(
                             can_access_filesystem=mode_def.can_access_filesystem if mode_def else True,
                             can_access_network=mode_def.can_access_network if mode_def else True,
                             uses_tool_relevance_filter=(mode_def.uses_tool_relevance_filter if mode_def else False),
+                            # Both the budgeter's response reserve and the
+                            # request's max_tokens read this one field.
+                            **(
+                                {"max_response_tokens": _max_response_tokens_override}
+                                if _max_response_tokens_override is not None
+                                else {}
+                            ),
                         )
 
                         # Get internet access status
@@ -4656,45 +4752,16 @@ def run_agentic_loop(
                                     # Non-sim runtime — observability
                                     # is optional, never load-bearing.
                                     pass
+                        # Advertise only what the executor will let through:
+                        # a hard allow/deny list (``tools.allow``/``tools.deny``)
+                        # used to gate at dispatch only, so the model kept
+                        # seeing — and choosing — tools that could only ever
+                        # answer with a denial (bugs ledger D82).
+                        if executor is not None:
+                            available_tools = [t for t in available_tools if executor.permits(t)]
                         last_surfaced_tools = list(available_tools)
 
-                        # Get full tool info for prompt (description, params, example).
-                        # Route through Tool.to_json_schema() so dynamic tools authored
-                        # in either input_schema format render correctly. Pre-CC9 this
-                        # iterated input_schema.items() directly and silently produced
-                        # empty params for JSONSchema-authored tools (the @maxim.tool
-                        # decorator path) via the swallow-everything except below.
-                        tool_descriptions = {}
-                        for name in available_tools:
-                            if name in TOOL_DESCRIPTIONS:
-                                tool_descriptions[name] = TOOL_DESCRIPTIONS[name]
-                            else:
-                                # Dynamic tool (from skill/protocol) — build from Tool instance
-                                try:
-                                    tool = executor.registry.get(name)
-                                    json_schema = (
-                                        tool.to_json_schema()
-                                        if hasattr(tool, "to_json_schema")
-                                        else {"properties": {}, "required": []}
-                                    )
-                                    properties = json_schema.get("properties", {}) or {}
-                                    required = set(json_schema.get("required", []) or [])
-                                    params: dict[str, str] = {}
-                                    for param_name, prop in properties.items():
-                                        prop_type = prop.get("type", "string") if isinstance(prop, dict) else "string"
-                                        if param_name in required:
-                                            params[param_name] = str(prop_type)
-                                        else:
-                                            default = prop.get("default") if isinstance(prop, dict) else None
-                                            params[param_name] = f"({prop_type}, default={default!r})"
-                                    tool_descriptions[name] = {
-                                        "description": tool.description,
-                                        "params": params,
-                                        "example": None,
-                                        "followup_type": None,
-                                    }
-                                except (KeyError, Exception):
-                                    pass
+                        tool_descriptions = _describe_tools_for_prompt(available_tools, executor, TOOL_DESCRIPTIONS)
 
                         # Wire 3: annotate degraded tools' descriptions in
                         # place with a felt-sensation phrase (bio-fidelity
@@ -5018,7 +5085,11 @@ def run_agentic_loop(
                         if submitted and _pfc_gate_passed and bio_enrichment_pipeline is not None:
                             _first = _wait_for_proposal(llm_worker, stop_event, ctrl=ctrl)
                             if _first is not None:
-                                _max_cyc = 3 if percept_source is not None else 2
+                                _max_cyc = (
+                                    _max_cycles_override
+                                    if _max_cycles_override is not None
+                                    else (3 if percept_source is not None else 2)
+                                )
                                 if not _first.ready_to_act:
                                     # Build a submit closure that captures all params
                                     _submit_kwargs = dict(

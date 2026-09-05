@@ -24,6 +24,39 @@ from maxim.agents.prompt_builder import (
 )
 
 
+# ── has_file_tools / FILE_TOOL_NAMES ───────────────────────────────────────
+
+
+class TestFileToolNames:
+    def test_every_name_is_a_registered_file_tool(self):
+        """The builder cannot read the registry (agents/ must not import
+        tools/), so the hand list is pinned here: every entry must be the
+        declared ``name`` of a Tool class in the two file-tool modules."""
+        import inspect
+
+        from maxim.agents.prompt_builder import FILE_TOOL_NAMES
+        from maxim.tools import code_tools, filesystem
+        from maxim.tools.base import Tool
+
+        registered = {
+            cls.name
+            for mod in (filesystem, code_tools)
+            for _n, cls in inspect.getmembers(mod, inspect.isclass)
+            if issubclass(cls, Tool) and cls is not Tool and getattr(cls, "name", "")
+        }
+        assert FILE_TOOL_NAMES <= registered, FILE_TOOL_NAMES - registered
+        assert "bash" not in FILE_TOOL_NAMES  # a shell, not a file tool the guidance explains
+
+    def test_has_file_tools_reads_the_roster(self):
+        from maxim.agents.prompt_builder import has_file_tools
+
+        req = MagicMock()
+        req.available_tools = {"say", "choose"}
+        assert not has_file_tools(req)
+        req.available_tools = {"say", "write_file"}
+        assert has_file_tools(req)
+
+
 # ── build_planning_banner ──────────────────────────────────────────────────
 
 

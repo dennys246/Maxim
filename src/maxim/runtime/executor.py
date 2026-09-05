@@ -141,6 +141,16 @@ class Executor:
             return None
         return reason or "Permission denied."
 
+    def permits(self, tool_name: str) -> bool:
+        """True when the permission gate would let *tool_name* run.
+
+        The prompt roster asks this before ADVERTISING a tool: a tool the
+        executor refuses at dispatch must not be offered to the model, or the
+        model spends turns choosing tools that only ever return a denial
+        (bugs ledger D82). No permissions configured → everything permits.
+        """
+        return self._permission_denial(tool_name) is None
+
     def execute(self, action: dict[str, Any]) -> ToolOutput:
         """Execute a tool action, returning raw ToolOutput.
 
