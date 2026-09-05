@@ -245,6 +245,8 @@ identity claim in text space), and **Exp 43**; **Exp 47** flagged re-check-on-ad
   world anchor** — the mechanical answer to that plan's open question.
 - **`bio_enrichment` mutates text centroids on a READ path** (deliberate reconsolidation,
   ~1/(n+1) per query), so querying degrades text resolution over time.
+  *(RESOLVED 2026-09-05, D8/gate 3: recall now routes through
+  `EC.pattern_complete_readonly` — measured verdict `separate-required`.)*
 - **Hebbian binding is already inert**, independent of resolution: `memory_hub` stashes a
   **1-tuple** of substrate nodes and `apply_hebbian_on_close` returns early on `< 2`.
 

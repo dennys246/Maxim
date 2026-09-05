@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from maxim.integration.bio_enrichment import BioEnrichmentPipeline
 from maxim.similarity.ec import EntorhinalCortex
 
@@ -31,8 +33,12 @@ def _store() -> EntorhinalCortex:
     return ec
 
 
-def _snapshot(ec: EntorhinalCortex) -> dict[str, dict[str, Any]]:
-    return {
+def _snapshot(ec: EntorhinalCortex) -> dict[str, Any]:
+    """Every substrate surface the mutating path can touch — per-node state
+    AND the per-modality geometry counts (a partial copy of the first-touch
+    stamp block that updated only some of the three structures must still
+    fail the bit-identical assertions; review fold 2026-09-05)."""
+    nodes = {
         nid: {
             "embedding": list(ec.substrate_node_metadata(nid)["embedding"]),
             "member_count": ec.substrate_node_metadata(nid)["member_count"],
@@ -40,16 +46,31 @@ def _snapshot(ec: EntorhinalCortex) -> dict[str, dict[str, Any]]:
         }
         for nid in list(ec._substrate_nodes.keys())  # noqa: SLF001 — id listing; values via public accessor
     }
+    geom_counts = {m: dict(g) for m, g in ec._geom_counts_by_modality.items()}  # noqa: SLF001 — the stamp block's third write target
+    return {"nodes": nodes, "geom_counts": geom_counts}
 
 
 class TestPatternCompleteReadonly:
-    def test_matches_like_the_mutating_path(self):
-        ec = _store()
-        ro = ec.pattern_complete_readonly([0.9, 0.1, 0.0], "text", geometry=GEOM)
-        mut = _store().pattern_complete_or_separate([0.9, 0.1, 0.0], "text", geometry=GEOM)
-        assert not ro.is_new and not mut.is_new
-        assert ro.node_id == mut.node_id == "n-a"
+    @pytest.mark.parametrize(
+        "query,kwargs",
+        [
+            ([0.9, 0.1, 0.0], {}),  # default threshold, match
+            ([0.9, 0.1, 0.0], {"threshold": 0.95}),  # explicit threshold path
+            ([0.6, 0.6, 0.0], {"threshold_override": {"n-b": 0.2}}),  # override resolution
+            ([0.0, 0.0, 1.0], {}),  # no-match / separation contract
+        ],
+    )
+    def test_matches_like_the_mutating_path(self, query, kwargs):
+        """Equivalence probed across the divergence-prone edges (explicit
+        threshold, per-node override, no-match) — if someone edits the
+        mutating method's resolution logic and forgets the twin, this fails
+        (review fold 2026-09-05)."""
+        ro = _store().pattern_complete_readonly(query, "text", geometry=GEOM, **kwargs)
+        mut = _store().pattern_complete_or_separate(query, "text", geometry=GEOM, **kwargs)
+        assert ro.is_new == mut.is_new
         assert ro.similarity == mut.similarity
+        if not ro.is_new:
+            assert ro.node_id == mut.node_id
 
     def test_repeated_readonly_recall_leaves_the_store_bit_identical(self):
         ec = _store()
@@ -67,15 +88,15 @@ class TestPatternCompleteReadonly:
         for _ in range(50):
             ec.pattern_complete_or_separate([0.9, 0.1, 0.0], "text", geometry=GEOM)
         after = _snapshot(ec)
-        assert after["n-a"]["member_count"] > before["n-a"]["member_count"]
-        assert after["n-a"]["embedding"] != before["n-a"]["embedding"]
+        assert after["nodes"]["n-a"]["member_count"] > before["nodes"]["n-a"]["member_count"]
+        assert after["nodes"]["n-a"]["embedding"] != before["nodes"]["n-a"]["embedding"]
 
     def test_no_match_registers_nothing(self):
         ec = _store()
         before = _snapshot(ec)
         r = ec.pattern_complete_readonly([0.0, 0.0, 1.0], "text", geometry=GEOM)
         assert r.is_new is True
-        assert r.node_id not in before
+        assert r.node_id not in before["nodes"]
         assert _snapshot(ec) == before
 
     def test_geometry_mask_respected(self):

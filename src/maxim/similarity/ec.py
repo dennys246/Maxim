@@ -303,7 +303,7 @@ def _emit_ec_activation(
 ) -> None:
     """Emit a ``sim_ec_activation`` event when EC instrumentation is on.
 
-    Bound exactly to the two return paths in
+    Bound to the return paths (completion + separation) in `pattern_complete_readonly` and
     ``EntorhinalCortex.pattern_complete_or_separate``. Caller passes:
 
     - ``node_id``: the active EC node ID for this call (existing on
@@ -638,6 +638,12 @@ class EntorhinalCortex:
         modality. If the best match exceeds ``threshold``, returns that
         node (pattern completion). Otherwise creates a new node
         (pattern separation).
+
+        **This is the ENCODE path** — completion here reconsolidates (running-
+        mean centroid update + member-count increment): an observation IS
+        evidence. Recall/lookup callers use :meth:`pattern_complete_readonly`
+        instead (D8, 1.2 gate 3 — a recall-shaped caller reaching for this
+        method is a defect in review).
 
         For modalities listed in ``config.frozen_centroid_modalities``
         (e.g. ``"interoception"``) the matched node's stored embedding
