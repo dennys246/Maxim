@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (defaulted — 0.4.0 clients never notice). `device_console_handoff` +
   `extra_trusted_origins` stay correct and wired; the seam docstring records the amendment.
 
-## [1.1.4] - 2026-09-04 — "The world seam"
+## [1.1.4] - 2026-09-05 — "The world seam"
 
 ### Added
 - **1.1.4/L11 data — the pre-registered re-measure ran (live Paper 1.16.5, N=16 world

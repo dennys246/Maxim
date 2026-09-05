@@ -1,6 +1,6 @@
 # pymaxim 1.1.4 — "The world seam"
 
-**Released 2026-09-04.** `pip install --upgrade pymaxim`
+**Released 2026-09-05 (UTC — PyPI `upload_time`).** `pip install --upgrade pymaxim`
 
 1.1.3 was about mechanisms that existed and could not be reached. 1.1.4 builds the first seam
 where Maxim's substrate meets a world it does not control: a Minecraft server, real hostiles,
