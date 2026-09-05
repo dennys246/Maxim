@@ -292,13 +292,16 @@ def _merge_link_lists(
         by_outcome[outcome_sig] = (ld_existing, rd)
 
     merged: list[dict[str, Any]] = []
-    for ld, rd in by_outcome.values():
-        if ld is None and rd is not None:
-            merged.append(copy.deepcopy(rd))
-        elif rd is None and ld is not None:
-            merged.append(copy.deepcopy(ld))
-        elif ld is not None and rd is not None:
-            merged.append(_merge_link_pair(ld, rd, left_source=left_source, right_source=right_source))
+    # Distinct names from the earlier loops' `ld`/`rd` (those are plain
+    # dicts; these are Optional halves of the pair) — mypy-clean under the
+    # gate-8 hivemind strictness, no behavior change.
+    for left_half, right_half in by_outcome.values():
+        if left_half is None and right_half is not None:
+            merged.append(copy.deepcopy(right_half))
+        elif right_half is None and left_half is not None:
+            merged.append(copy.deepcopy(left_half))
+        elif left_half is not None and right_half is not None:
+            merged.append(_merge_link_pair(left_half, right_half, left_source=left_source, right_source=right_source))
     return merged
 
 
