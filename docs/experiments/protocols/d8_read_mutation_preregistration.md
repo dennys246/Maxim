@@ -84,8 +84,10 @@ the protocol's own function, no operator judgment in the loop.
 
 Real semantic encoder loaded (no fallback); every concept forms exactly one node at encode
 time with ≥ 3 members (the corpus is designed to cluster; a corpus that shatters is an
-apparatus failure, not a finding); ≥ 90% of workload queries complete (a workload that
-mostly separates measures node creation, not reconsolidation); FROZEN arm drift == 0.0;
+apparatus failure, not a finding); ≥ 90% of workload queries complete **in every arm** (a
+workload that mostly separates measures node creation, not reconsolidation — and on the
+instrument arms it makes the drift checks vacuous); FROZEN arm drift == 0.0 (implemented
+as bit-identical embeddings — a float cosine of a vector with itself rounds below 1.0);
 AMPLIFIED mean drift > BASELINE mean drift.
 
 ## Data + provenance
@@ -109,7 +111,11 @@ decision thresholds were authored BEFORE any run and were **not moved after the
 preview** — moving a frozen threshold after seeing the number it will judge is exactly
 the post-hoc motion this protocol forbids, in either direction. The official gated run
 (post-merge, clean tree) is the record; the smoke is disclosed so nobody mistakes this
-pre-registration for a blind one.
+pre-registration for a blind one. **The apparatus is deterministic** (no seed, no
+sampling; a review-round rerun reproduced the smoke to six decimal places) — absent a
+code change, the official run will reproduce these numbers, so the expected verdict is
+`separate-required`. What the official run adds is the gated, provenance-stamped record
+computed on a clean tree, not suspense.
 
 ## Known-limit acknowledgments
 

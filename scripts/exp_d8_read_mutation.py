@@ -344,6 +344,11 @@ def _clone_ec(ec):
 
 def _probe(ec, enc) -> dict[str, str]:
     """Complete every encode text against a CLONE; return text -> node id."""
+    # Probes run sequentially against ONE mutating clone (text is unfrozen on
+    # the clone too), so probe k's completion nudges what probe k+1 sees. The
+    # pre/post comparison uses identical probe order, so it stays symmetric
+    # and unbiased; a borderline probe's identity is order-dependent, which
+    # matters only near the churn threshold (review-round note, 2026-09-04).
     clone = _clone_ec(ec)
     out: dict[str, str] = {}
     for concept, texts in CORPUS.items():
@@ -370,6 +375,22 @@ def _workload(ec, enc, repeats: int) -> dict[str, int]:
                 else:
                     completions += 1
     return {"completions": completions, "separations": separations}
+
+
+def _check_completion_rate(traffic: dict[str, int], *, arm: str) -> None:
+    """The >=90%-completion validity gate, applied to EVERY arm.
+
+    A workload that mostly separates measures node creation, not
+    reconsolidation — and on the instrument arms it makes the drift checks
+    vacuous (a frozen store trivially shows zero drift on queries that never
+    completed into it).
+    """
+    total = traffic["completions"] + traffic["separations"]
+    if traffic["completions"] < COMPLETE_MIN_FRAC * total:
+        _refuse(
+            f"{arm} arm: only {traffic['completions']}/{total} workload queries completed "
+            f"(< {COMPLETE_MIN_FRAC:.0%} — this measures node creation, not reconsolidation)"
+        )
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -418,12 +439,7 @@ def run(args) -> int:
     post_snapshot = _snapshot(ec)
     post_probe = _probe(ec, enc)
 
-    total_queries = traffic["completions"] + traffic["separations"]
-    if total_queries and traffic["completions"] / total_queries < COMPLETE_MIN_FRAC:
-        _refuse(
-            f"only {traffic['completions']}/{total_queries} workload queries completed "
-            "(< 90% — this measures node creation, not reconsolidation)"
-        )
+    _check_completion_rate(traffic, arm="BASELINE")
 
     churned = [t for t in pre_probe if pre_probe[t] != post_probe[t]]
     drift = _drift(pre_snapshot, post_snapshot)
@@ -434,7 +450,10 @@ def run(args) -> int:
     ec_frozen = _fresh_ec(freeze_text=True)
     _encode_store(enc, ec_frozen)
     frozen_pre = _snapshot(ec_frozen)
-    _workload(ec_frozen, enc, REPEATS)
+    # The completion gate binds EVERY arm (review fold, 2026-09-04): a frozen
+    # arm whose queries mostly SEPARATE shows zero drift trivially — a vacuous
+    # instrument arm, the exact shape the arm exists to rule out.
+    _check_completion_rate(_workload(ec_frozen, enc, REPEATS), arm="FROZEN")
     frozen_post = _snapshot(ec_frozen)
     # "Exactly zero drift" = BIT-IDENTICAL embeddings (a cosine of a vector
     # with itself rounds to 0.999... in floats, so a cosine==1.0 test would
@@ -450,7 +469,7 @@ def run(args) -> int:
     ec_amp = _fresh_ec(freeze_text=False)
     _encode_store(enc, ec_amp)
     amp_pre = _snapshot(ec_amp)
-    _workload(ec_amp, enc, REPEATS * AMPLIFY_FACTOR)
+    _check_completion_rate(_workload(ec_amp, enc, REPEATS * AMPLIFY_FACTOR), arm="AMPLIFIED")
     amp_drift = _drift(amp_pre, _snapshot(ec_amp))
     if not (amp_drift["mean_cos"] < drift["mean_cos"]):
         _refuse(
@@ -486,7 +505,6 @@ def run(args) -> int:
 
     if out_path:
         record = {
-            "_format_version": "1.0",
             "experiment": "d8_read_mutation",
             "protocol": "docs/experiments/protocols/d8_read_mutation_preregistration.md",
             "ran_at": datetime.now(timezone.utc).isoformat(),
@@ -503,8 +521,9 @@ def run(args) -> int:
         }
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(out_path, record)
+        atomic_write_json(out_path, with_format_version(record))
         print(f"  wrote {out_path}")
 
     return 0
