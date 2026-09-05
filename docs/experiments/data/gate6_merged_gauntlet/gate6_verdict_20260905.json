@@ -1,0 +1,73 @@
+{
+  "experiment": "gate6_merged_gauntlet",
+  "protocol": "docs/experiments/protocols/gate6_merged_gauntlet_preregistration.md",
+  "ran_at": "2026-09-05T18:00:20.440160+00:00",
+  "provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "bc9668af93dd",
+    "working_tree_dirty_src_scripts": false,
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages"
+  },
+  "constants": {
+    "preservation_slack": 0.1,
+    "dangling_slack": 0.1,
+    "min_rekeyed": 1,
+    "merge_directions": [
+      [
+        "42",
+        "43"
+      ],
+      [
+        "43",
+        "42"
+      ]
+    ]
+  },
+  "metrics": {
+    "gate_I_verdict": "PASS",
+    "gate_T_verdict": "PASS",
+    "gate_T_means": {
+      "taught": 1.0,
+      "satiated": 0.0,
+      "no_feed": 0.5
+    },
+    "merged_directedness": {
+      "r42d43": 1.0,
+      "r43d42": 1.0
+    },
+    "receiver_alone_directedness": {
+      "r42d43": 1.0,
+      "r43d42": 1.0
+    },
+    "merge_health": {
+      "r42d43": {
+        "biases_rekeyed": 3,
+        "biases_dropped": 0,
+        "surviving_keys": 3,
+        "dangling_keys": 0
+      },
+      "r43d42": {
+        "biases_rekeyed": 3,
+        "biases_dropped": 0,
+        "surviving_keys": 3,
+        "dangling_keys": 0
+      }
+    },
+    "dangling_arms": {
+      "r42d43": {
+        "dangling_keys": 3,
+        "directedness": 1.0,
+        "receiver_alone": 1.0
+      },
+      "r43d42": {
+        "dangling_keys": 3,
+        "directedness": 1.0,
+        "receiver_alone": 1.0
+      }
+    },
+    "instrument_empty_want_rekeyed": 0
+  },
+  "verdict": "gate6-pass",
+  "_format_version": "1.0"
+}

@@ -664,6 +664,18 @@ execution priority:
    cosine but nothing re-keys `cluster_reward_bias` through the resulting id map, so a
    merged foreign want reads out as nothing. The re-keyed merge path must exist and the
    Exp 52 seeds 42 + 43 must pass Gauntlet #2 merged — see the case study.
+   **CLOSED 2026-09-05.** The code half shipped 1.1.3 (`substrate_merge`); the empirical
+   half ran pre-registered on the real archive
+   ([protocol](../experiments/protocols/gate6_merged_gauntlet_preregistration.md)): verdict
+   **`gate6-pass`** — merged taught reads out at the parents' exact Exp 53 profile
+   (taught 1.0 / satiated 0.0 / no_feed 0.5, both merge directions), merge health
+   `rekeyed=3 / dropped=0 / dangling=0` both directions, the pre-D43 dangling recipe
+   reproduces the defect shape (3 dangling keys each) while buying nothing, and the
+   empty-want instrument reads 0. Gated record:
+   `docs/experiments/data/gate6_merged_gauntlet/gate6_verdict_20260905.json`
+   (provenance `bc9668af`, clean). D5 → RESOLVED on the cluster axis (scoped in the
+   protocol's Dispositions section); the dangling clause's literal falsifier lives in
+   the 1.2 benchmark's dangling-half arm (reframe stated in the protocol).
 7. **Bundle action namespace** (added 2026-08-26; **DECIDED 2026-09-01, reconciled
    2026-09-04**): **the body namespace won — typed bundles, with the capability key
    emitted alongside as forward insurance.** This text and
