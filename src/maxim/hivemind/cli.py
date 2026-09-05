@@ -9,11 +9,22 @@ and print a short summary.
 Subcommands:
 
 - ``maxim substrate export <output.zip> --session <session_id>
-   --contributor-id <id> [--domain X] [--no-identity-filter]``
+   --contributor-id <id> [--domain X] [--no-identity-filter]
+   [--body-ref NAME] [--body-yaml PATH] [--affordance-namespace NS]``
+   — gate 7: declare the body the biases were learned on; ``--body-yaml``
+   derives ``capability_map`` via the real tool-naming path.
 
-- ``maxim substrate import <input.zip> --output-dir <dir>``
+- ``maxim substrate import <input.zip> --output-dir <dir>
+   [--receiver-body NAME] [--allow-unverified-body]`` — gate 7:
+   ``--receiver-body`` refuses cross-body/undeclared bundles before
+   anything is written.
 
 - ``maxim substrate inspect <input.zip>`` — print manifest only.
+
+- ``maxim substrate invalidate --session <id> [--modality M
+   --drop-geometry TAG] [--apply]`` — gate 1 migrate half: census with no
+   geometry named; otherwise drop stale-geometry EC nodes, prune the NAc
+   biases keyed on them, tombstone everything removed. Dry-run by default.
 
 - ``maxim substrate merge-nac <source_nac.json> [--into <target_nac.json>]
    --source-id <id> [--target-id <id>]`` — one-shot MERGE of a trained
@@ -56,8 +67,6 @@ from pathlib import Path
 
 from maxim.hivemind.bundle import (
     BUNDLE_SCHEMA_VERSION,
-    BundleBodyMismatch,
-    BundleBodyUnverifiable,
     assert_bundle_body_compatible,
     compose_bundle,
     extract_bundle,
@@ -120,19 +129,35 @@ def _run_export(args: argparse.Namespace) -> int:
     # Neither is inferred when undeclared — an unverifiable bundle stays
     # honestly unverifiable and is refused downstream by default.
     body_ref: str | None = args.body_ref
+    if body_ref is not None and not body_ref.strip():
+        # An empty body_ref can never match any receiver (receiver_body must be
+        # non-empty) yet would suppress the ships-unverifiable warning below.
+        print("error: --body-ref must be a non-empty string (omit it to ship undeclared)", file=sys.stderr)
+        return 2
     capability_map: dict[str, str] | None = None
     if args.body_yaml is not None:
         from maxim.embodiment.spec import load_spec
         from maxim.embodiment.tool_bridge import derive_capability_map
 
+        # Broad catch, handled loudly: this is the CLI's rc=2 contract for
+        # operator input. The realistic failures span yaml.YAMLError,
+        # ConfigurationError, KeyError from malformed drive specs, and
+        # ValueError from an unresolvable tool-name collision (executor-lens
+        # fold) — none of which should escape as a traceback.
         try:
             spec = load_spec(args.body_yaml)
-        except (OSError, ValueError) as exc:
-            print(f"error: --body-yaml failed to load: {exc}", file=sys.stderr)
+            capability_map = derive_capability_map(spec.root_entity)
+        except Exception as exc:
+            print(f"error: --body-yaml failed to load: {type(exc).__name__}: {exc}", file=sys.stderr)
             return 2
-        capability_map = derive_capability_map(spec.root_entity)
         if body_ref is None:
             body_ref = spec.name
+        if not capability_map:
+            print(
+                "note: --body-yaml derived 0 capability keys (no modulator affordances in the "
+                "body spec) — the bundle ships an empty capability_map.",
+                file=sys.stderr,
+            )
 
     output_path = Path(args.output).expanduser().resolve()
     try:
@@ -161,7 +186,11 @@ def _run_export(args: argparse.Namespace) -> int:
         f"  slices:      {n_slices}\n"
         f"  identity_filter: {manifest.get('identity_filter_applied')}\n"
         f"  body_ref:    {manifest.get('body_ref')}"
-        + (f"  (capability_map: {len(manifest.get('capability_map') or {})} keys)" if capability_map else "")
+        + (
+            f"\n  capability_map: {len(manifest.get('capability_map') or {})} keys"
+            if capability_map is not None
+            else ""
+        )
     )
     if body_ref is None:
         print(
@@ -182,20 +211,30 @@ def _run_import(args: argparse.Namespace) -> int:
     # written to disk. Undeclared bodies are unverifiable, not compatible —
     # --allow-unverified-body accepts that risk explicitly.
     if args.receiver_body is not None:
+        import zipfile as _zipfile
+
         try:
             manifest = read_bundle_manifest(bundle_path)
-        except (ValueError, OSError, KeyError) as exc:
+        except (ValueError, OSError, KeyError, _zipfile.BadZipFile) as exc:
             print(f"error: cannot read bundle manifest: {exc}", file=sys.stderr)
             return 2
         try:
+            # ValueError covers both refusal classes (they subclass it) AND
+            # the non-empty-receiver_body validation — an unset shell var in
+            # --receiver-body "$BODY" must report, not traceback.
             assert_bundle_body_compatible(
                 manifest,
                 receiver_body=args.receiver_body,
                 allow_unverified=args.allow_unverified_body,
             )
-        except (BundleBodyMismatch, BundleBodyUnverifiable) as exc:
+        except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
+    elif args.allow_unverified_body:
+        # A silent no-op flag is the shape this codebase pushes into errors:
+        # the operator believes risk was "accepted" on a path that never checked.
+        print("error: --allow-unverified-body is meaningless without --receiver-body", file=sys.stderr)
+        return 2
     else:
         print(
             "note: body compatibility NOT checked (pass --receiver-body to refuse "
@@ -204,9 +243,11 @@ def _run_import(args: argparse.Namespace) -> int:
         )
 
     output_dir = Path(args.output_dir).expanduser().resolve()
+    import zipfile as _zipfile
+
     try:
         manifest = extract_bundle(bundle_path, output_dir)
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, _zipfile.BadZipFile) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
@@ -678,7 +719,7 @@ def run_substrate_subcommand(argv: list[str]) -> int:
 
     Returns process exit code. Bundle schema version supported by this
     build is :data:`maxim.hivemind.bundle.BUNDLE_SCHEMA_VERSION`
-    (currently ``1``).
+    (currently ``2`` — gate 7 typed bundles).
     """
     parser = _build_parser()
     args = parser.parse_args(argv)

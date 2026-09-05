@@ -1508,3 +1508,151 @@ class TestGate7Callers:
         )
         assert rc == 0
         assert (out_dir / "nac.json").is_file()
+
+
+class TestGate7CallerFolds:
+    """Executor-lens fold round (2026-09-04): rc=2 contract on operator-plausible
+    bad inputs, no silent no-op flags, and the collision caveat pinned."""
+
+    def _session(self, tmp_path: Path) -> Path:
+        session_dir = tmp_path / "session"
+        session_dir.mkdir(exist_ok=True)
+        nac = NAc(config=NACConfig())
+        nac._reward_bias[("agent1", "node-1")] = 0.10
+        nac.save(str(session_dir / "aut_nac.json"))
+        return session_dir
+
+    def test_malformed_body_yaml_reports_not_tracebacks(self, tmp_path):
+        from maxim.hivemind.cli import run_substrate_subcommand
+
+        bad = tmp_path / "bad.yaml"
+        bad.write_text("body: [unclosed\n  name: {", encoding="utf-8")
+        rc = run_substrate_subcommand(
+            [
+                "export",
+                str(tmp_path / "b.zip"),
+                "--session",
+                str(self._session(tmp_path)),
+                "--contributor-id",
+                "c1",
+                "--body-yaml",
+                str(bad),
+            ]
+        )
+        assert rc == 2
+
+    def test_empty_body_ref_is_refused_at_export(self, tmp_path):
+        from maxim.hivemind.cli import run_substrate_subcommand
+
+        rc = run_substrate_subcommand(
+            [
+                "export",
+                str(tmp_path / "b.zip"),
+                "--session",
+                str(self._session(tmp_path)),
+                "--contributor-id",
+                "c1",
+                "--body-ref",
+                "",
+            ]
+        )
+        assert rc == 2
+        assert not (tmp_path / "b.zip").exists()
+
+    def test_corrupt_zip_with_receiver_body_reports_not_tracebacks(self, tmp_path):
+        from maxim.hivemind.cli import run_substrate_subcommand
+
+        fake = tmp_path / "not-a.zip"
+        fake.write_bytes(b"this is not a zip file")
+        rc = run_substrate_subcommand(
+            [
+                "import",
+                str(fake),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--receiver-body",
+                "reachy_mini",
+            ]
+        )
+        assert rc == 2
+
+    def test_empty_receiver_body_reports_not_tracebacks(self, tmp_path):
+        """--receiver-body "$BODY" with the shell var unset must report, not crash."""
+        from maxim.hivemind.cli import run_substrate_subcommand
+        from maxim.hivemind.bundle import compose_bundle
+
+        bundle = tmp_path / "b.zip"
+        compose_bundle(
+            nac_state={"links": {}, "version": "1.0"},
+            ec_substrate_nodes=None,
+            output_path=bundle,
+            contributor_id="c1",
+            body_ref="reachy_mini",
+        )
+        rc = run_substrate_subcommand(
+            ["import", str(bundle), "--output-dir", str(tmp_path / "out"), "--receiver-body", ""]
+        )
+        assert rc == 2
+
+    def test_allow_unverified_without_receiver_body_is_an_error_not_a_noop(self, tmp_path):
+        from maxim.hivemind.cli import run_substrate_subcommand
+        from maxim.hivemind.bundle import compose_bundle
+
+        bundle = tmp_path / "b.zip"
+        compose_bundle(
+            nac_state={"links": {}, "version": "1.0"},
+            ec_substrate_nodes=None,
+            output_path=bundle,
+            contributor_id="c1",
+        )
+        out_dir = tmp_path / "out"
+        rc = run_substrate_subcommand(["import", str(bundle), "--output-dir", str(out_dir), "--allow-unverified-body"])
+        assert rc == 2
+        assert not out_dir.exists()
+
+    def test_derive_capability_map_collision_context_is_the_body_alone(self, tmp_path):
+        """Pins the KNOWN LIMIT in derive_capability_map's docstring: collisions are
+        resolved within the body's OWN registry (parent-prefixing applies), which is
+        exact for the body alone but can diverge from a live session that registered
+        other entities first."""
+        from maxim.embodiment.spec import load_spec
+        from maxim.embodiment.tool_bridge import derive_capability_map
+
+        yaml_text = (
+            "body:\n"
+            "  name: bot\n"
+            "  entity_type: robot\n"
+            "  children:\n"
+            "    - name: left\n"
+            "      entity_type: limb\n"
+            "      children:\n"
+            "        - name: hand\n"
+            "          entity_type: part\n"
+            "          modulators:\n"
+            "            motor:\n"
+            "              abstract: true\n"
+            "              affordances:\n"
+            "                grip:\n"
+            "                  params: {}\n"
+            "                  description: grip\n"
+            "    - name: right\n"
+            "      entity_type: limb\n"
+            "      children:\n"
+            "        - name: hand\n"
+            "          entity_type: part\n"
+            "          modulators:\n"
+            "            motor:\n"
+            "              abstract: true\n"
+            "              affordances:\n"
+            "                grip:\n"
+            "                  params: {}\n"
+            "                  description: grip\n"
+        )
+        p = tmp_path / "bot.yaml"
+        p.write_text(yaml_text, encoding="utf-8")
+        mapping = derive_capability_map(load_spec(p).root_entity)
+        # first hand wins the bare name; second is parent-prefixed by _resolve_tool_name
+        assert "tool:hand_grip" in mapping
+        assert "tool:right_hand_grip" in mapping
+        assert mapping["tool:hand_grip"] == "motor/grip"
+        assert mapping["tool:right_hand_grip"] == "motor/grip"

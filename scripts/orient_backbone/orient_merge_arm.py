@@ -202,6 +202,14 @@ def main() -> int:
     ap.add_argument("--bundle", default=None, help="export the merged NAc as a substrate bundle zip")
     ap.add_argument("--contributor-id", default=None, help="bundle manifest contributor (required with --bundle)")
     ap.add_argument("--domain", default="robotics-orient", help="bundle substrate-domain tag")
+    ap.add_argument(
+        "--body-ref",
+        default=None,
+        help=(
+            "gate 7: the body the merged policy's keys were learned on (e.g. 'reachy_mini'). "
+            "Omitted -> the bundle ships body_ref null and is REFUSED by body-checking receivers."
+        ),
+    )
     args = ap.parse_args()
 
     action_deltas, _band = load_orient_actions()
@@ -336,7 +344,10 @@ def main() -> int:
             output_path=bundle_path,
             contributor_id=args.contributor_id,
             domain=args.domain,
+            body_ref=args.body_ref,  # gate 7 — None ships honestly unverifiable
         )
+        if args.body_ref is None:
+            print("[bundle] note: no --body-ref — body-checking receivers will REFUSE this bundle")
         print(f"[bundle] wrote {bundle_path}")
         print(f"[bundle] manifest: {json.dumps(dict(sorted(manifest.items())), default=str)}")
 

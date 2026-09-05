@@ -62,8 +62,9 @@ and roadmap gate 7 now say the SAME thing; full costing:
   **Scheduled, not chosen now**: seventeen `f"tool:{...}"` sites bypass
   `build_tool_signature` (one miss = a silent zero shaped exactly like D43), the
   modulator vocabulary is not yet shared across bodies (`listen` under `head` vs
-  `capture`), the bundle scrub drops `:`/`/`-shaped keys, and migration would touch
-  the 20 SHA-manifested `53_agents` evidence files.
+  `capture`), and migration would touch the 20 SHA-manifested `53_agents` evidence
+  files. (The original costing's fourth leg — "the bundle scrub drops `:`/`/`-shaped
+  keys" — was verified FALSE 2026-09-04; the scrub passes bias keys through.)
 
 (b) stays the better long-term key; (a) is the honest first step and is what Exp 53b
 actually did (explicit δ map, infant body). The 1.2 Oasis ingestion adapter routes

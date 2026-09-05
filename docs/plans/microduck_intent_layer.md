@@ -217,6 +217,12 @@ not exist.** Verified against `main`:
   the Oasis case study). `hivemind/bundle.py`'s manifest carries `_format_version`,
   `contributor_id`, `domain`, `signature`, `contents`, `schema_version` — no body, no namespace.
 
+  > **STALE as of 2026-09-01 (gate 7 shipped), corrected 2026-09-04.** The manifest now
+  > carries `body_ref`, `affordance_namespace` and `capability_map` (schema v2, refusal via
+  > `assert_bundle_body_compatible`), with real CLI callers since the gate-7 close PR. The
+  > bullet is kept as the code map this section's argument was built on; the consequences
+  > below still hold for the BIAS-KEY namespace, which remains entity-prefixed.
+
 Three consequences follow, and they are the substance of this section:
 
 1. Adopting `skill:locomotion:velocity` is **introducing** a convention, not following one. That

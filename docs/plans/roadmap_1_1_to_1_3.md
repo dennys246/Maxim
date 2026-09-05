@@ -670,9 +670,12 @@ execution priority:
    name-lie):* seventeen `f"tool:{...}"` sites bypass `build_tool_signature`, two on the
    hot readout path — one missed re-key diverges write/read keys into a silent zero
    indistinguishable from D43; `(modulator, affordance)` is not yet a shared vocabulary
-   (`listen` sits under `head` on one body, `capture` on another); `bundle.py`'s
-   `_IDENTIFIER_TOKEN` scrub silently drops `:`/`/`-shaped keys; and migration would
-   touch the 20 SHA-manifested `53_agents` evidence files behind EARNED rows.
+   (`listen` sits under `head` on one body, `capture` on another); and migration would
+   touch the 20 SHA-manifested `53_agents` evidence files behind EARNED rows. (A fourth
+   leg in the original costing — "the bundle scrub drops `:`/`/`-shaped keys" — was
+   verified FALSE 2026-09-04: `_scrub_event_signature` passes them through, and
+   `_IDENTIFIER_TOKEN`'s drop gates `percept_valences` entity classes, not bias keys.
+   The decision stands on the three real legs.)
 
    *Caller status (2026-09-04 sweep):* the 1.1.3 ship left the typed fields with ZERO
    producing callers and the refusal with ZERO non-test callers — format capacity, not a

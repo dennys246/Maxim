@@ -718,10 +718,11 @@ def compose_bundle(
         "signature_algorithm": signature_algorithm,
         "signer_identity": signer_identity,
         # Gate 7 (typed bundles). `body_ref` is the body this substrate was
-        # learned on; `affordance_namespace` names the vocabulary its tool
-        # signatures live in. A receiver checks them via
-        # `assert_bundle_body_compatible` and REFUSES a mismatch, converting a
-        # silent cross-body miss (D43 barrier 3) into a loud one.
+        # learned on; a receiver checks IT via `assert_bundle_body_compatible`
+        # and REFUSES a mismatch, converting a silent cross-body miss (D43
+        # barrier 3) into a loud one. `affordance_namespace` names the
+        # vocabulary the tool signatures live in — declarative today, no
+        # reader yet.
         "body_ref": body_ref,
         "affordance_namespace": affordance_namespace,
         # Forward insurance, and the reason to prefer this over plain gate 7(a):

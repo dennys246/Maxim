@@ -207,13 +207,28 @@ because the blast radius is small, not because the migration hook covers it.
 > **CALLER SWEEP 2026-09-04 — the 09-01 ship was format capacity, not a fix.** Grep of
 > non-test callers found ZERO producers passing `body_ref`/`affordance_namespace`/
 > `capability_map` (both real composers — `hivemind/cli.py` export and
-> `orient_merge_arm.py` — omit them, so every bundle actually composed was
-> `BundleBodyUnverifiable`-shaped) and ZERO callers of `assert_bundle_body_compatible`
+> `orient_backbone/orient_merge_arm.py` — omit them, so every bundle actually composed
+> was `BundleBodyUnverifiable`-shaped) and ZERO callers of `assert_bundle_body_compatible`
 > outside the guard tests. "Bundles carry both keys from day one" was therefore true of
-> the FORMAT and false of every bundle produced. Closed in the gate-7 close commit:
-> export declares `--body-ref` and derives `capability_map` from the body YAML via the
-> same naming logic `generate_tools_for_entity` uses; import runs the refusal. The 1.2
-> ingestion adapter must route through the same function.
+> the FORMAT and false of every bundle produced. Closed in the gate-7 close PR: export
+> declares `--body-ref` and derives `capability_map` from the body YAML by RUNNING
+> `generate_tools_for_entity` against a throwaway registry (never re-implementing the
+> naming rules); import runs the refusal; `orient_merge_arm --body-ref` passes through.
+> The 1.2 ingestion adapter must route through the same function.
+>
+> Two corrections from that sweep's review round:
+>
+> 1. **The `_IDENTIFIER_TOKEN` leg of §5a's (b) costing is FALSE.** Verified live:
+>    `_scrub_event_signature` passes `:`/`/`-shaped keys through unchanged (only
+>    `tool:use:` tails are truncated), and `_IDENTIFIER_TOKEN`'s drop gates
+>    `percept_valences` entity classes, not bias keys. (b)'s costing stands on the
+>    three real legs (17 bypass sites, unshared modulator vocabulary, `53_agents`
+>    evidence migration).
+> 2. **`derive_capability_map` is exact only for the collision-free registry a body
+>    has to itself.** A live session that registered other entities first can
+>    parent-prefix a colliding tool, so the live bias key misses the derived map key.
+>    A 1.2 capability-map reader must treat a missed key as unverifiable, not as
+>    "no capability". Pinned in the function docstring + guard test.
 
 
 **Ship (a) the body namespace now, and emit the capability key alongside it in the same commit.**
