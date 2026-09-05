@@ -329,6 +329,29 @@ def scan_workspace_entries(workspace_path: str) -> list[str]:
     return entries
 
 
+# Tools whose presence on the roster makes file/workspace guidance relevant:
+# the registered names of tools/filesystem.py + tools/code_tools.py whose
+# parameters the guidance explains (pinned to the registry by
+# tests/unit/test_prompt_builder.py so the list cannot rot). ``bash`` is
+# deliberately NOT here: it can touch files, but the reminder/glob guide
+# document read_file/write_file/glob parameters a shell never takes, and the
+# sandboxed sim AUT keeps bash while every file tool is deregistered (D75).
+# The builder cannot read the registry itself (agents/ must not import
+# tools/), hence a hand list.
+FILE_TOOL_NAMES: frozenset[str] = frozenset(
+    {"read_file", "write_file", "edit_file", "glob", "search_code", "execute_file"}
+)
+
+
+def has_file_tools(request: LLMRequest) -> bool:
+    """True when the request's roster carries at least one file tool.
+
+    Gates the workspace manifest and the coding/glob guidance: an agent
+    that cannot read or write files should not be told how to.
+    """
+    return any(name in FILE_TOOL_NAMES for name in request.available_tools)
+
+
 def build_workspace_manifest(mode_name: str = "passive", cwd: str | None = None) -> str:
     """Build a file manifest that adapts to the operational mode."""
     import os
@@ -1028,6 +1051,12 @@ class PromptBuilder:
         use_filter = self._tool_index is not None and getattr(request.mode, "uses_tool_relevance_filter", False)
         if use_filter:
             relevant, background = self._tool_index.get_relevant_tools(question_text)
+            # The learned index answers from everything it has ever seen;
+            # only what the loop actually advertises (mode roster, minus what
+            # the executor refuses — D82) may reach the prompt.
+            roster = set(request.available_tools)
+            relevant = [t for t in relevant if t in roster]
+            background = [t for t in background if t in roster]
             request.surfaced_tools = relevant
             relevant_section = build_tools_section_filtered(request, relevant, mode_name)
             budgeter.add(
@@ -1057,11 +1086,15 @@ class PromptBuilder:
             # Unfiltered manifest (autonomous modes incl. cradle). The scene
             # roster is stable WITHIN a narrative phase — it activates new
             # entities only at act boundaries — so it joins the cacheable
-            # prefix. NOTE: if imagination / sense_tools churn the roster
-            # per-tick, this collapses to dynamic and the cache will miss;
-            # the Phase 1d smoke validation must confirm cache_read>0 on a
-            # real cradle run. The relevance-FILTERED path above stays dynamic
-            # (its subset depends on per-turn question_text).
+            # prefix, but as a PHASE-SCOPED section: the budgeter emits it
+            # after every session-stable section, so an encounter boundary
+            # (a DM campaign's ``choose`` description carries the current
+            # options; entities come and go) invalidates only the tail of the
+            # cached prefix instead of everything behind it. NOTE: if
+            # imagination / sense_tools churn the roster per-tick, the tail
+            # misses every call; the Phase 1d smoke validation must confirm
+            # cache_read>0 on a real cradle run. The relevance-FILTERED path
+            # above stays dynamic (its subset depends on per-turn question_text).
             budgeter.add(
                 "tools",
                 build_tools_section(request, mode_name=mode_name),
@@ -1070,6 +1103,7 @@ class PromptBuilder:
                 min_tokens=50,
                 truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
                 cacheable=True,
+                phase_scoped=True,
             )
 
         # EXPERIMENTAL — hallucination-hint section (empty when feature off
@@ -1082,7 +1116,14 @@ class PromptBuilder:
                 SectionPriority.CRITICAL,
             )
 
-        workspace_manifest = build_workspace_manifest(mode_name=mode_name, cwd=effective_cwd)
+        # The workspace/CWD manifest and the file-operation guidance (below,
+        # ``coding_guidelines``) describe tools. An agent whose roster has no
+        # file tool — an embodied DM/cradle AUT, a sandboxed console agent —
+        # gets neither: the manifest is a per-turn cache invalidator (it
+        # re-scans the tree) and both are pure noise to a body in a world.
+        workspace_manifest = (
+            build_workspace_manifest(mode_name=mode_name, cwd=effective_cwd) if has_file_tools(request) else ""
+        )
         if workspace_manifest:
             is_singularity = mode_name == "singularity"
             budgeter.add(
@@ -1386,11 +1427,16 @@ class PromptBuilder:
                 truncate_fn=lambda c, m: _truncate_context_pool(c, m, counter),
             )
 
-        # Coding guidelines: prefer the user's question text, fall back to pending_modification
+        # Coding guidelines: prefer the user's question text, fall back to
+        # pending_modification. Only when the roster can act on them — the
+        # workspace reminder is unconditional inside build_coding_context and
+        # the glob guide fires on the word "pattern", so an arena narration
+        # ("study his patterns") used to buy ~600 tokens of file guidance for
+        # an agent with no file tools (P21 measurement, sandbox plan).
         guidelines_text = question_text
         if not guidelines_text and request.pending_modification:
             guidelines_text = request.pending_modification.get("user_modification", "")
-        if guidelines_text:
+        if guidelines_text and has_file_tools(request):
             coding_context = build_coding_context(guidelines_text, include_sandbox_reminder=True, max_guidelines=2)
             if coding_context:
                 budgeter.add("coding_guidelines", coding_context, SectionPriority.IMPORTANT)
