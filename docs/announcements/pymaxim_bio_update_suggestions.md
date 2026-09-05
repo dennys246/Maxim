@@ -8,7 +8,7 @@ L11 verdict is stated with both halves everywhere it appears: `mitigation-confir
 `retired-eligible` — A0 fully blind at N=16 (separation 0.0), A4 0.0566 vs the 0.70 bar; L11
 stays ACTIVE with A4 as partial mitigation, world-only (interoception and audio byte-identical
 to 1.1.3, so Exp 53b was not re-staled — the site previously said shipping *would* re-stale it).
-Site fix: **maxim-web PR `docs/1-1-4-refresh`** (this repo's checklist updated in the same pass).
+Site fix: **maxim-web PR #20** (`docs/1-1-4-refresh`); this section is pymaxim PR #621.
 
 **Verified against the artifact, not a proxy.**
 
