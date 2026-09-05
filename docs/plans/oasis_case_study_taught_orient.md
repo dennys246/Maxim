@@ -38,23 +38,36 @@ never learned.
 
 ## The three contracts the case study forces
 
-### 1. Bundle = the pair + its namespace
+### 1. Bundle = the pair + its namespace — **DECIDED 2026-09-01: (a), with (b)'s key emitted alongside** (reconciled 2026-09-04)
 
 A shareable want is `nac.json` **and** the `ec.json` it was formed in (D2: the bias keys
 are EC cluster ids; one without the other is dangling). The manifest must additionally
 declare the **action namespace** the biases key on: today `tool:<entity>_<affordance>`
 from `tools/discovery.py`, i.e. `infant_operant_turn_left`. A receiver running
 `bodies/reachy_mini` names the same affordance `reachy_mini_turn_left` and the bias is
-invisible. Two resolutions, decided at design time (front-gate: both ride existing
-structure):
+invisible. The two resolutions this section front-gated, and the outcome (this section
+and roadmap gate 7 now say the SAME thing; full costing:
+[d43_merge_correctness.md](d43_merge_correctness.md) §5/§5a):
 
-- (a) **typed bundles** — `manifest.body_ref` + `manifest.affordance_namespace`; the
-  ingestion adapter refuses a body mismatch; or
+- (a) **typed bundles** — **CHOSEN, shipped 1.1.3**: `manifest.body_ref` +
+  `manifest.affordance_namespace` (`BUNDLE_SCHEMA_VERSION` 2, v1→v2 migration); the
+  receiver refuses a mismatch (`assert_bundle_body_compatible` —
+  `BundleBodyMismatch`) and refuses an UNDECLARED body (`BundleBodyUnverifiable`)
+  unless `allow_unverified=True`. Plus the insurance neither option originally
+  included: `manifest.capability_map` carries (b)'s body-agnostic
+  `(modulator, affordance)` key beside each body-prefixed signature, so (b) later
+  becomes a reader-side change on new bundles, no payload migration.
 - (b) **body-agnostic keys** — bias keys on the SEM modulator/affordance
-  (`orient/turn_left`), with the entity prefix dropped at the credit choke point.
+  (`orient/turn_left`), the entity prefix dropped at the credit choke point.
+  **Scheduled, not chosen now**: seventeen `f"tool:{...}"` sites bypass
+  `build_tool_signature` (one miss = a silent zero shaped exactly like D43), the
+  modulator vocabulary is not yet shared across bodies (`listen` under `head` vs
+  `capture`), the bundle scrub drops `:`/`/`-shaped keys, and migration would touch
+  the 20 SHA-manifested `53_agents` evidence files.
 
-(b) is the better long-term key but changes what every existing NAc file means; (a) is
-the honest first step and is what Exp 53b actually did (explicit δ map, infant body).
+(b) stays the better long-term key; (a) is the honest first step and is what Exp 53b
+actually did (explicit δ map, infant body). The 1.2 Oasis ingestion adapter routes
+through `assert_bundle_body_compatible` — it does not re-implement the check.
 **Prerequisite either way — 1.1.x item 15: a Reachy-native nursery body** so the taught
 keys are the robot's own and the S6 δ map disappears.
 

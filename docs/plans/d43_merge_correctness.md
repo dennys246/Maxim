@@ -181,6 +181,11 @@ namespace**, reason stated; the microduck two-lens round (rev 2) **withdrew** it
 recommendation and restored the case study's. Whoever implements will read one of these.
 Reconcile them in the same commit as the decision.
 
+> **RECONCILED 2026-09-04** (one commit, both documents): roadmap gate 7 and case study §1
+> now both record the decision — (a) typed bundles shipped 1.1.3, capability key alongside,
+> (b) scheduled with the loser's rationale stated in both places. This section stays as the
+> costing record.
+
 **And `register_bundle_migration` is less reversible than claimed.** It takes and returns the
 **manifest dict only**; `extract_bundle` copies every other member through untouched. It can
 stamp `body_ref` onto an old manifest. It **cannot re-key `cluster_reward_bias` inside
@@ -198,6 +203,17 @@ because the blast radius is small, not because the migration hook covers it.
 > unverifiable, not compatible, the same reasoning as the format-version `"0.x"` sentinel.
 > Guard: `tests/unit/test_hivemind_bundle.py::TestGate7TypedBundles`.
 > **(b) remains scheduled, not done** — see below for why it is not what blocks D44.
+>
+> **CALLER SWEEP 2026-09-04 — the 09-01 ship was format capacity, not a fix.** Grep of
+> non-test callers found ZERO producers passing `body_ref`/`affordance_namespace`/
+> `capability_map` (both real composers — `hivemind/cli.py` export and
+> `orient_merge_arm.py` — omit them, so every bundle actually composed was
+> `BundleBodyUnverifiable`-shaped) and ZERO callers of `assert_bundle_body_compatible`
+> outside the guard tests. "Bundles carry both keys from day one" was therefore true of
+> the FORMAT and false of every bundle produced. Closed in the gate-7 close commit:
+> export declares `--body-ref` and derives `capability_map` from the body YAML via the
+> same naming logic `generate_tools_for_entity` uses; import runs the refusal. The 1.2
+> ingestion adapter must route through the same function.
 
 
 **Ship (a) the body namespace now, and emit the capability key alongside it in the same commit.**
