@@ -332,6 +332,11 @@ def run(args) -> int:
     # --- readouts ---------------------------------------------------------
     manifest_a, records_a = work / "manifest_A.json", Path(args.records_a)
     manifest_b, records_b = work / "manifest_B.json", Path(args.records_b)
+    # exp53's JsonlLog opens without creating parents; the gated data dir may
+    # not exist on a fresh checkout (bit the official run, 2026-09-05 — see
+    # the protocol's amendment header).
+    records_a.parent.mkdir(parents=True, exist_ok=True)
+    records_b.parent.mkdir(parents=True, exist_ok=True)
     _write_manifest(manifest_a, agents_a)
     _write_manifest(manifest_b, agents_b)
     _run_gauntlet(manifest_a, records_a, args.allow_dirty)  # gate-I FAIL is read from the records

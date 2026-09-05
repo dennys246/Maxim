@@ -5,6 +5,14 @@
 — its module docstring mirrors this document; on any divergence THIS file is the
 authority; a change to either after first data requires an amendment header here.
 
+## Amendments
+
+- **2026-09-05 (post-data, plumbing-only):** the official run tripped on the absent
+  gated records directory (exp53's `JsonlLog` opens without creating parents; the
+  operator `mkdir`'d and re-ran — nothing had been written). The harness now creates
+  the records parents itself. No frozen constant, arm, or decision-rule change; the
+  official record predates this edit and was produced by the frozen apparatus.
+
 ## Question
 
 1.2 gate 6 (roadmap: "the Exp 52 seeds 42 + 43 must pass Gauntlet #2 merged"; the Oasis
