@@ -1,0 +1,50 @@
+{
+  "experiment": "d8_read_mutation",
+  "protocol": "docs/experiments/protocols/d8_read_mutation_preregistration.md",
+  "ran_at": "2026-09-05T16:10:03.402317+00:00",
+  "provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "ed6df4ceb064",
+    "working_tree_dirty_src_scripts": false,
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages"
+  },
+  "constants": {
+    "repeats": 6,
+    "amplify_factor": 5,
+    "churn_max_probes": 2,
+    "drift_min_cos": 0.98,
+    "encoder_model": "paraphrase-mpnet-base-v2"
+  },
+  "metrics": {
+    "churned_probes": 0,
+    "churned_texts": [],
+    "n_probes": 48,
+    "drift": {
+      "mean_cos": 0.9756887117976333,
+      "min_cos": 0.9520944980648209
+    },
+    "workload": {
+      "completions": 192,
+      "separations": 0
+    },
+    "count_provenance": {
+      "encode_counts": 48,
+      "post_workload_counts": 240,
+      "recall_increments": 192,
+      "note": "structural fact for gate 4 (ec_merge weights by member_count); never folded into the verdict"
+    },
+    "instrument_arms": {
+      "frozen_drift": {
+        "mean_cos": 1.0,
+        "min_cos": 0.9999999999999998
+      },
+      "amplified_drift": {
+        "mean_cos": 0.9655731654888966,
+        "min_cos": 0.9326491327854625
+      }
+    }
+  },
+  "verdict": "separate-required",
+  "_format_version": "1.0"
+}
