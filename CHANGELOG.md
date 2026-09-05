@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **D8 separated from recall (1.2 gate 3 closed).** The pre-registered measurement returned
+  `separate-required` (churn 0/48 but min per-node cosine 0.9521 < the frozen 0.98 bound over
+  one session-scale recall workload, plus +192 member counts — query traffic buying merge
+  evidence weight). New `EC.pattern_complete_readonly`: same scan, threshold semantics,
+  geometry mask and return contract as `pattern_complete_or_separate`, structurally incapable
+  of writing (no centroid update, no count increment, no first-touch geometry stamp — stamping
+  is a write). `bio_enrichment`'s recall path — the single production recall caller — now
+  routes through it; the mutating method is the ENCODE path by declared invariant (bio-memory
+  brief). Guard: `tests/unit/test_ec_readonly_recall.py` (bit-identical store under repeated
+  recall, mutating-path anti-vacuity arm, spied caller test).
 - **Gate 1 migrate half — `maxim substrate invalidate`.** 1.1.3 shipped only the reject half of
   "reject or migrate incompatible state" (geometry-masked scans + a deduped warning); stale
   nodes just sat dead, and 1.1.4's A4 moved the world geometry tag, making the case live. EC

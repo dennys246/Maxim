@@ -637,8 +637,11 @@ execution priority:
    `docs/experiments/data/d8_read_mutation_20260905.json`): verdict
    **`separate-required`** — churn 0/48 but one session-scale recall workload moved
    centroids past the 0.98 bound (min_cos 0.9521) and bought +192 member counts.
-   The gate closes when the separation SHIPS WITH ITS CALLER: a read-only
-   completion path for recall, `bio_enrichment` switched to it.
+   **Separation shipped 2026-09-05 with its caller — gate 3 CLOSED:**
+   `EC.pattern_complete_readonly` (structurally incapable of writing) with
+   `bio_enrichment._query_hippocampus` switched to it, the sole production recall
+   caller; invariant recorded in the bio-memory brief. Guard:
+   `tests/unit/test_ec_readonly_recall.py`.
 4. Bundle/version compatibility and the sharing threat model must be frozen.
    **FROZEN 2026-09-04**: [sharing_threat_model.md](sharing_threat_model.md) — trust
    model, compat contract, attack matrix A–N, and the V1–V10 receiver validation
