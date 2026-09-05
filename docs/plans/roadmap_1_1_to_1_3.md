@@ -633,7 +633,16 @@ execution priority:
 2. D3/D4 threshold and same-dimension geometry compatibility must be explicit and
    tested, not inferred from vector length.
 3. EC read-side mutation (D8) must be measured and accepted or separated from recall.
+   **Measured 2026-09-05** (pre-registered, frozen rule; gated record
+   `docs/experiments/data/d8_read_mutation_20260905.json`): verdict
+   **`separate-required`** — churn 0/48 but one session-scale recall workload moved
+   centroids past the 0.98 bound (min_cos 0.9521) and bought +192 member counts.
+   The gate closes when the separation SHIPS WITH ITS CALLER: a read-only
+   completion path for recall, `bio_enrichment` switched to it.
 4. Bundle/version compatibility and the sharing threat model must be frozen.
+   **FROZEN 2026-09-04**: [sharing_threat_model.md](sharing_threat_model.md) — trust
+   model, compat contract, attack matrix A–N, and the V1–V10 receiver validation
+   contract the 1.2 ingestion adapter implements (two-lens review folded pre-freeze).
 5. The 1.1 architecture-audit and hermetic-suite gates must remain green.
 6. **Cluster identity across substrates** (added 2026-08-26; **CONFIRMED and widened
    2026-08-30 — see bugs ledger D43**). The recorded half is the cluster id. The dive found a
