@@ -24,6 +24,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The Oasis ingestion adapter (1.2 build, first piece): `maxim substrate ingest` +
+  `hivemind/ingest.py`.** Implements the frozen receiver validation contract
+  (`docs/plans/sharing_threat_model.md` §5, duties V1–V10) as one callable pipeline —
+  front-door contributor trust with a payload provenance sweep + receiver stamping (V1),
+  numeric bounds with NaN/Infinity refusal at parse time, count/confidence caps and list
+  truncation below the merge's eviction windows (V2), strict geometry with admission-level
+  refusal of unstamped foreign nodes + dims re-measure (V3, `--allow-unstamped-geometry` as
+  the explicit legacy override), receiver-side re-run of the identity quarantine and content
+  scrub (V4), receiver-stamped attribution (V5), uncompressed-size resource caps from the ZIP
+  central directory (V6), declared-slices-only reads (V7), an ingestion journal with digest
+  dedup and contributor tombstones (V8, `substrate_ingest_journal.json`; the tombstone
+  operator surface — the distrust/prune flow — is declared follow-up work), id/domain hygiene
+  incl. row N's stamping-half close-out (V9), and capability-map shape-only handling (V10).
+  Design record: `docs/plans/oasis_ingestion_contract.md`. Guard battery:
+  `tests/unit/test_hivemind_ingest.py` (one refusing/clamping test per attack-matrix row) +
+  `tests/integration/test_oasis_ingest_e2e.py` (the taught seed-43 archive composed via the
+  real CLI export and ingested into a fresh `create.agent()` receiver).
+- **Tighten-only merge for negative valence (1.2 poison-resistance slice, roadmap-decided
+  seam).** A post-fold clamp inside `substrate_merge` (`tighten_negative_biases`): a bias the
+  receiver held at a negative value may deepen but is never raised toward zero by an import —
+  closing the `_merge_mean_clamped` annihilation hole (a +0.9 donor no longer erases a −0.9
+  learned aversion). Sign-scoped: positive folds are byte-untouched, guarded BY EXECUTION
+  against the real taught seed-43 archive (`test_hivemind_merge.py::TestTightenOnlyClampSeam`).
+- **The inherent bias class (semantics only; Queen distribution and Gauntlet #3 ride
+  Slice 1).** `inherent_bias_keys` on the NAc state: decay-exempt in
+  `decay_cluster_reward_biases` (no decay, no pruning — with the anti-vacuity twin guard),
+  transported through `nac_merge`/`rekey_nac_state`/the bundle scrub, and admitted at
+  ingestion ONLY from Queen-attested contributors (`--inherent-trust`); a non-Queen bundle
+  shipping the class is refused whole (privilege-escalation guard). `NAc.mark_inherent_bias`
+  is a curation-only surface with a zero-production-caller grep guard
+  (`tests/unit/test_inherent_bias_class.py`).
 - **`create.agent()` is now actually fresh (D28, 1.2 gate 8(c)).** `_create_memory_hub`
   restored SCN from disk whenever `scn.json` existed — regardless of `auto_load` — so a
   documented-fresh agent inherited the previous session's temporal state, and only SCN. The

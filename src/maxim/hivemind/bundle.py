@@ -415,6 +415,20 @@ def scrub_nac_state_for_bundle(nac_state: dict[str, Any]) -> dict[str, Any]:
         merged_cluster.setdefault(new_key, []).append(float(bias))
     scrubbed["cluster_reward_bias"] = {k: sum(v) / len(v) for k, v in merged_cluster.items()}
 
+    # inherent_bias_keys (1.2 poison-resistance slice; older dumps lack it):
+    # markers name cluster_reward_bias keys, so the tsig third gets the same
+    # scrub — a marker left on the pre-scrub key would exempt nothing after
+    # the re-key. Markers whose entry did not survive the scrub are dropped
+    # (a marker naming an absent bias is the dangling-half shape).
+    if "inherent_bias_keys" in nac_state:
+        scrubbed_inherent: set[str] = set()
+        for key in nac_state.get("inherent_bias_keys", []) or []:
+            aid, cid, tsig = str(key).split(_NAC_KEY_SEP, 2)
+            new_key = _NAC_KEY_SEP.join((aid, cid, _scrub_event_signature(tsig)))
+            if new_key in scrubbed["cluster_reward_bias"]:
+                scrubbed_inherent.add(new_key)
+        scrubbed["inherent_bias_keys"] = sorted(scrubbed_inherent)
+
     # cluster_reward_source (present since the S1 provenance fold; older
     # dumps lack it): same key scrub; disagreeing sources promote to
     # "mixed", NAc's own semantics for multi-source accumulation.
