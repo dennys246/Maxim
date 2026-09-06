@@ -23,6 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Hivemind bundle signing + verification (1.2 P2P Slice A).** `ed25519` release
+  signatures via the new optional `[sign]` extra (`cryptography`): `maxim substrate export
+  --sign` signs a bundle with a persisted key, `maxim substrate ingest --require-signed
+  --trust-key <id>=<pubkey>` verifies it, and `maxim substrate keygen` prints the public
+  key to share. Verification covers the signature-excluded manifest plus the raw slice
+  bytes (length-prefixed), so a byte-tamper, wrong key, untrusted signer, or unknown
+  algorithm is REFUSED (`IngestRefused(duty="signature")`, never admit-with-clamps).
+  Unsigned bundles still ingest without `--require-signed` (the experimental tier); the
+  base compose/ingest path never requires `cryptography`. Private keys are written 0600
+  from fd creation via `atomic_write_secret`. Guard: `tests/unit/test_hivemind_signing.py`;
+  `sharing_threat_model.md` §5 amendment 4 registers the duty.
+
 ### Fixed
 - **Exp 56 harness — two live-only connection/timing races that crashed the first
   campaign ~88% in** (both surfaced by live validation against a real Paper server, neither

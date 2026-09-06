@@ -86,6 +86,8 @@ EXTRA_FOR_IMPORT: dict[str, str] = {
     # yolo
     "ultralytics": "yolo",
     "lap": "yolo",
+    # hivemind bundle signing (1.2 P2P Slice A)
+    "cryptography": "sign",
     # comms
     "twilio": "comms",
     "fastapi": "comms",

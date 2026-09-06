@@ -74,9 +74,9 @@ import logging
 import os
 import re
 import zipfile
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from maxim.hivemind.identity import (
     IDENTITY_DOMAIN_MARKER,
@@ -84,8 +84,12 @@ from maxim.hivemind.identity import (
     is_identity_bearing,
 )
 from maxim.hivemind.merge import NAC_KEY_SEP, _merge_link_pair, _merge_welford, _validate_source
+from maxim.hivemind.signing import SIGNATURE_ALGORITHM, bundle_signing_payload, verify_payload
 from maxim.utils.atomic_io import atomic_write_text
 from maxim.utils.format_version import FORMAT_VERSION, check_format_version
+
+if TYPE_CHECKING:
+    from maxim.hivemind.signing import BundleSigner
 
 logger = logging.getLogger(__name__)
 
@@ -578,6 +582,7 @@ def compose_bundle(
     signature: str | None = None,
     signature_algorithm: str | None = None,
     signer_identity: str | None = None,
+    signer: BundleSigner | None = None,
     encoder_provenance: dict[str, Any] | None = None,
     body_ref: str | None = None,
     affordance_namespace: str | None = None,
@@ -748,6 +753,19 @@ def compose_bundle(
         # See docs/plans/d43_merge_correctness.md §5a.
         "capability_map": dict(capability_map or {}),
     }
+
+    # Slice A (1.2 P2P): compute an ed25519 signature over the sig-excluded
+    # manifest + the raw slice bytes, then populate the reserved slots. Done
+    # AFTER the manifest is otherwise final so the signed payload is stable;
+    # `bundle_signing_payload` drops the three signature fields either way.
+    if signer is not None:
+        if signature is not None or signature_algorithm is not None:
+            raise ValueError("pass EITHER signer (to compute a signature) OR an explicit signature, not both")
+        payload = bundle_signing_payload(manifest, bundle_contents)
+        manifest["signature"] = signer.sign_payload(payload)
+        manifest["signature_algorithm"] = SIGNATURE_ALGORITHM
+        manifest["signer_identity"] = signer.signer_identity
+
     manifest_json = json.dumps(manifest, indent=2, sort_keys=True, default=str)
 
     # Atomic write via tmp + os.replace. Zip writing is single-shot;
@@ -772,6 +790,59 @@ def compose_bundle(
 
     logger.info("Composed substrate bundle at %s (%d slices)", output_path, len(bundle_contents))
     return manifest
+
+
+def verify_bundle_signature_parts(
+    manifest: Mapping[str, Any],
+    slices: Mapping[str, str],
+    *,
+    trusted_keys: Mapping[str, str],
+) -> tuple[bool, str]:
+    """Verify a bundle signature from already-read parts (the ingest seam).
+
+    ``slices`` maps on-disk filename (``"nac.json"``/``"ec.json"``) to the
+    RAW content string read from the archive — the same keys and bytes
+    :func:`compose_bundle` signed. ``trusted_keys`` maps ``signer_identity``
+    → base64 public key. Returns ``(verified, reason)``; never raises on a
+    bad/absent signature (an unverifiable bundle is a policy decision the
+    caller makes, not an exception).
+    """
+    sig = manifest.get("signature")
+    algo = manifest.get("signature_algorithm")
+    signer = manifest.get("signer_identity")
+    if not sig or not algo or not signer:
+        return False, "bundle carries no signature (signature/signature_algorithm/signer_identity absent)"
+    if algo != SIGNATURE_ALGORITHM:
+        return False, f"unsupported signature_algorithm {algo!r} (this build verifies only {SIGNATURE_ALGORITHM!r})"
+    if not isinstance(signer, str) or signer not in trusted_keys:
+        return False, f"signer_identity {signer!r} is not among the receiver's trusted keys {sorted(trusted_keys)}"
+    payload = bundle_signing_payload(manifest, slices)
+    if not verify_payload(payload, str(sig), trusted_keys[signer]):
+        return False, f"ed25519 signature does not verify for signer {signer!r} (tampered or wrong key)"
+    return True, f"verified ed25519 signature from {signer!r}"
+
+
+def verify_bundle_signature(
+    bundle_path: str | Path,
+    *,
+    trusted_keys: Mapping[str, str],
+) -> tuple[bool, str]:
+    """Open a bundle and verify its signature against ``trusted_keys``.
+
+    Standalone convenience over :func:`verify_bundle_signature_parts` —
+    reads the manifest and the RAW declared-slice bytes from the ZIP.
+    Returns ``(verified, reason)``.
+    """
+    manifest = read_bundle_manifest(bundle_path)
+    contents = manifest.get("contents", {}) or {}
+    slices: dict[str, str] = {}
+    with zipfile.ZipFile(bundle_path, "r") as zf:
+        namelist = set(zf.namelist())
+        for meta in contents.values():
+            file_name = meta.get("file") if isinstance(meta, dict) else None
+            if isinstance(file_name, str) and file_name in namelist:
+                slices[file_name] = zf.read(file_name).decode("utf-8")
+    return verify_bundle_signature_parts(manifest, slices, trusted_keys=trusted_keys)
 
 
 def _safe_join(output_dir: Path, name: str) -> Path:

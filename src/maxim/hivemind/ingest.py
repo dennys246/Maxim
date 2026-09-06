@@ -44,6 +44,7 @@ from maxim.hivemind.bundle import (
     assert_bundle_body_compatible,
     read_bundle_manifest,
     scrub_nac_state_for_bundle,
+    verify_bundle_signature_parts,
 )
 from maxim.hivemind.identity import filter_identity_bearing_links, is_identity_bearing
 from maxim.hivemind.merge import (
@@ -123,7 +124,7 @@ class IngestRefused(ValueError):
     """A bundle failed a receiver validation duty and was refused whole.
 
     ``duty`` names the threat-model duty (``"V1"``…``"V10"``, ``"gate7"``,
-    ``"inherent"``) so refusals are auditable against
+    ``"inherent"``, ``"signature"``) so refusals are auditable against
     ``sharing_threat_model.md`` §5.
     """
 
@@ -803,6 +804,8 @@ def ingest_bundle(
     allow_unverified_body: bool = False,
     allow_unstamped_geometry: bool = False,
     force_digest: bool = False,
+    require_signed: bool = False,
+    trusted_keys: dict[str, str] | None = None,
 ) -> IngestReport:
     """Validate + merge one foreign bundle into receiver state dicts.
 
@@ -899,16 +902,38 @@ def ingest_bundle(
 
         donor_nac: dict[str, Any] | None = None
         donor_ec: dict[str, dict[str, Any]] | None = None
+        raw_slices: dict[str, str] = {}  # filename -> raw content, for signature verification
         if "nac" in declared_files:
-            parsed = _loads_strict(_bounded_zip_read(zf, declared_files["nac"]), slice_name=declared_files["nac"])
+            raw = _bounded_zip_read(zf, declared_files["nac"])
+            raw_slices[declared_files["nac"]] = raw if isinstance(raw, str) else raw.decode("utf-8")
+            parsed = _loads_strict(raw, slice_name=declared_files["nac"])
             if not isinstance(parsed, dict):
                 raise IngestRefused(duty="V2", reason="nac.json is not a JSON object")
             donor_nac = parsed
         if "ec" in declared_files:
-            parsed = _loads_strict(_bounded_zip_read(zf, declared_files["ec"]), slice_name=declared_files["ec"])
+            raw = _bounded_zip_read(zf, declared_files["ec"])
+            raw_slices[declared_files["ec"]] = raw if isinstance(raw, str) else raw.decode("utf-8")
+            parsed = _loads_strict(raw, slice_name=declared_files["ec"])
             if not isinstance(parsed, dict) or not isinstance(parsed.get("substrate_nodes"), dict):
                 raise IngestRefused(duty="V2", reason="ec.json is not an object with substrate_nodes")
             donor_ec = parsed["substrate_nodes"]
+
+        # Signature duty (Slice A): when the receiver requires signed bundles,
+        # verify the ed25519 signature over (sig-excluded manifest + raw slice
+        # bytes) against the operator's trusted keys BEFORE any payload is
+        # merged. Refusal, never admit-with-clamps — the same rule the V1 front
+        # door uses. Unsigned/opt-in ingests (require_signed=False) skip this and
+        # rely on V1 trust alone (the experimental tier). Signatures verify
+        # against the manifest AS READ; a bundle needing envelope migration to
+        # load cannot carry a surviving signature (migration changes the signed
+        # bytes) — a non-issue at schema_version 2, the only shipped version.
+        if require_signed:
+            verified, reason = verify_bundle_signature_parts(
+                manifest, raw_slices, trusted_keys=dict(trusted_keys or {})
+            )
+            if not verified:
+                raise IngestRefused(duty="signature", reason=f"require_signed: {reason}")
+            notes.append(f"signature verified ({reason})")
 
     # 7. The payload admission pass (V2 / V9 / V3 / V1 sweep + stamping).
     if donor_nac is not None:
