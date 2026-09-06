@@ -23,6 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **D79 — the takes-but-does-not-stash class at the executor seam, fixed structurally**
+  (`Executor._entity_map` was never assigned anywhere; `build_executor` took `entity_map`
+  and `cerebellum` and threaded them to initial tool generation only, so Mechanism-B
+  acquisition was a silent no-op through the canonical builder). Fix per the counting
+  rule: the collaborators are declared `Executor` constructor fields and ONE seam —
+  `Executor.generate_entity_tools` — serves both bootstrap generation and acquisition
+  regeneration, so a forgotten collaborator is now a one-line seam change, not a per-site
+  silent no-op (the class that produced D77's dead `self_effect` and this). Scope: the
+  acquisition half stays dormant until a production caller supplies `entity_map=` — filed
+  as D86, deliberately held to the Slice-1 window (it changes sim-apparatus behavior).
+  Guards verified red pre-fix: `tests/unit/test_build_executor.py::TestD79GenerationCollaborators`.
+
 ### Added
 - **The Oasis ingestion adapter (1.2 build, first piece): `maxim substrate ingest` +
   `hivemind/ingest.py`.** Implements the frozen receiver validation contract
