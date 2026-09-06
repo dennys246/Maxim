@@ -543,5 +543,10 @@ python scripts/analyze_exp56.py --in docs/experiments/data/56_four_arm.jsonl --g
 - [x] Phase 0 run + committed (`56_phase0.json`): check 1 `PASS` check 2 `PASS`
       check 3 `PASS` check 4 `PASS` check 5 `PASS` (readings disclosed in amendment 3;
       gated on the big-mac-mini at main-reachable `4cf67cf9`, clean tree)
-- [ ] Campaign run ONCE from a clean tree at a main-reachable commit; data PR
-      merge-committed; interpretation in a separate later PR (structure-or-time rule)
+- [x] Campaign run ONCE from a clean tree at a main-reachable commit; data PR
+      merge-committed; interpretation in a separate later PR (structure-or-time rule) —
+      confirmatory campaign at `9905d4d8` (clean tree, `mock: false`), all four gates
+      PASS + `kit_pass: true` ([56_four_arm_verdict.json](../data/56_four_arm_verdict.json));
+      data PR #647 merge-committed (`8fb94cec`); interpretation +
+      [graduation row](../../plans/behavioral_graduation_candidates.md) in this separate PR
+      ([write-up](../56_four_arm_sharing.md)), independently reviewed before merge
