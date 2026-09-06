@@ -23,6 +23,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The Exp 56 four-arm benchmark harness** (the frozen prereg's sign-off item 2):
+  `bodies/minecraft_bench{,_satiated}` (opaque affordance/drive names per L12, a
+  six-sensor world channel per L11's budget, the satiated twin keeping the SAME entity
+  name), `scripts/exp56/` (the teacher via `credit_operant_reward` on the world channel —
+  Exp 52's mechanism; the balanced donor schedule that makes causal-link transfer
+  preference-neutral by construction; the per-pair opaque-name→bridge-action translating
+  client; the frozen ε-greedy probe selector with decision-provenance capture via a
+  `sim_logger` sink; RCON world control; the deterministic `ScriptedBridgeServer` for
+  `--mock` smokes — never confirmatory), `scripts/analyze_exp56.py` (frozen v1 gates,
+  Wilson intervals, mock/dirty-row verdict refusals, the L2 seed-invariance gate, the
+  per-variant `--assert-noop-fails` kit per prereg amendment 1), and
+  `simulation/minecraft_harness.py::build_minecraft_aut` gaining defaulted `entity_ref=`/
+  `client=` (every existing caller byte-identical) so the canonical assembly stays in one
+  place. Guards: `tests/unit/test_exp56_harness.py` (19 tests incl. the reduced
+  end-to-end chain: teacher-taught donor → real CLI export → real CLI ingest → probe →
+  bias-decisive first contact, with the satiated zero-credit mechanism check and its
+  taught anti-vacuity twin).
+
 ### Fixed
 - **D79 — the takes-but-does-not-stash class at the executor seam, fixed structurally**
   (`Executor._entity_map` was never assigned anywhere; `build_executor` took `entity_map`

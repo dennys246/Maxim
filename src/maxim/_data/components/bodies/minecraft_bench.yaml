@@ -1,0 +1,121 @@
+component:
+  name: minecraft_bench
+  category: bodies
+  archetype: humanoid
+  tags: [body, minecraft, world, benchmark, exp56]
+  synonyms: [minecraft benchmark body, exp56 body, four-arm body]
+  description: |
+    The Exp 56 four-arm benchmark body (frozen apparatus —
+    docs/experiments/protocols/exp56_four_arm_sharing_preregistration.md
+    §Apparatus). A deliberately BUDGETED variant of minecraft_player:
+
+    * World channel budgeted to SIX sensors (L11's per-channel rule: <= 12,
+      stated in the prereg) — the situation signature the experiment must
+      discriminate spans distance_from_spawn + light_level (+ y_altitude at
+      an elevated slot). Sensor NAMES stay the bridge snapshot keys (the
+      backend writes by declared-name match; names only reach the SHA-basis
+      encoder, carrying no semantics — L12 concerns TOOL and DRIVE names).
+      Ranges follow minecraft_player's re-centered PRINCIPLE (rest = the
+      A4 neutral; D1's lever); speed's window is narrower than the
+      player's — the principle, not the bytes, is what is copied.
+    * OPAQUE affordance and drive names (L12): the eight roster affordances
+      are aff_a..aff_h under the abstract `act` modulator — the per-pair
+      opaque-name -> bridge-action permutation lives in the harness's
+      translating client, NEVER in this file — and the single interoceptive
+      drive is d1 (no entry in _DRIVE_TOOL_AFFINITIES; no tool name
+      contains a drive name). Do not "clarify" these names: their opacity
+      is the mitigation.
+    * d1 is MODELED interoception (drifts by wall-clock, relieved by the
+      harness TEACHER's feed via credit_operant_reward) — deliberately NOT
+      modality: world, so the live-readback credit withhold cannot
+      short-circuit the operant path (prereg §Apparatus body bullet (d)).
+
+    The satiated twin (minecraft_bench_satiated) keeps THIS entity name —
+    the name prefixes every tool signature and is the body_ref; a renamed
+    twin would be refused by gate 7 and could never share keys.
+
+entity:
+  name: minecraft_bench
+  entity_type: body
+  sensors:
+    # ── the modeled interoceptive drive (opaque name; the teacher's lever)
+    d1:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+      drive:
+        drift_mode: entropic
+        drift_direction: up
+        drift_rate: 0.006
+        deprivation_threshold: 0.7
+        deprivation_pain: 0.3
+        satisfaction_threshold: 0.3
+    # ── the world channel: six bridge-owned sensors, ranges verbatim from
+    # minecraft_player (rest-at-neutral). No drives, no drift — the drift
+    # loop must never fight the bridge writer.
+    light_level:
+      unit: level
+      range: [0, 15]
+      initial: 7
+      modality: world
+    y_altitude:
+      unit: blocks
+      range: [0, 128]
+      initial: 64
+      modality: world
+    distance_from_spawn:
+      unit: blocks
+      range: [-128, 128]
+      initial: 0
+      modality: world
+    speed:
+      unit: blocks_per_tick
+      range: [-0.5, 0.5]
+      initial: 0
+      modality: world
+    on_ground:
+      unit: bool
+      range: [-1, 3]
+      initial: 1
+      modality: world
+    time_of_day:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+      modality: world
+  modulators:
+    act:
+      abstract: true   # capability-only — no sensors (C4)
+      affordances:
+        aff_a:
+          params: {}
+          always_active: true
+          description: "Perform action a."
+        aff_b:
+          params: {}
+          always_active: true
+          description: "Perform action b."
+        aff_c:
+          params: {}
+          always_active: true
+          description: "Perform action c."
+        aff_d:
+          params: {}
+          always_active: true
+          description: "Perform action d."
+        aff_e:
+          params: {}
+          always_active: true
+          description: "Perform action e."
+        aff_f:
+          params: {}
+          always_active: true
+          description: "Perform action f."
+        aff_g:
+          params: {}
+          always_active: true
+          description: "Perform action g."
+        aff_h:
+          params: {}
+          always_active: true
+          description: "Perform action h."
