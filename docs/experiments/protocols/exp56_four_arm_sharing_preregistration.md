@@ -203,7 +203,7 @@ at first contact (L1 context); the winning score component per first contact
 | **ABOVE-FLOOR** | merged-taught − isolated ≥ **0.20** |
 | **WANT-NOT-FILE** | merged-taught − merged-satiated ≥ **0.20** |
 | **BOTH-HALVES** (falsifier) | dangling-half − isolated < **0.10**, one-sided (the falsifier's danger is transfer WITHOUT the representation; a below-floor excursion is noise, not counter-evidence). At the design floor (~0.125), the SE of the difference of two n = 50 rates is ≈ 0.066, so a true-null false-failure runs ≈ 7% one-sided — accepted and stated, rather than hidden in a two-sided band justified at the wrong operating point (review finding I3) |
-| **ANTI-VACUITY** (apparatus; no verdict without it) | the analyzer's `--assert-noop-fails` re-runs one arm-2 pair per campaign against `substrate_merge` monkeypatched to return the receiver unchanged, the donor re-keyed alone, and an empty state — the measured delta must collapse toward the floor in all three (D62's kit: a gate that cannot fail is not a gate) |
+| **ANTI-VACUITY** (apparatus; no verdict without it) | the analyzer's `--assert-noop-fails` re-runs one arm-2 pair per campaign against `substrate_merge` monkeypatched no-op variants, with PER-VARIANT expectations (amendment 1): *receiver-unchanged* and *empty-state* MUST collapse toward the floor; *donor-re-keyed-alone* is RECORDED, expected to persist on a fresh receiver (D62's kit: a gate that cannot fail is not a gate) |
 
 The claim requires ALL of TRANSFERRED + ABOVE-FLOOR + WANT-NOT-FILE + BOTH-HALVES.
 A failed BOTH-HALVES with the other three passing is not a partial pass — it means the
@@ -394,6 +394,27 @@ failure mode, not a narrowing — ends Exp 56 for 1.2: the result ships as it st
   silently; TRANSFERRED's absolute bar sits ~0.13 below the bias-decisive design
   expectation (0.83), so the gate is not evaluated at its own ceiling.
 - **S8:** one harness at a time; not co-located with a leader.
+
+## Amendments
+
+**Amendment 1 — 2026-09-06, PRE-DATA, structural (harness implementation; no
+Phase-0 or campaign data exist).** The ANTI-VACUITY gate as first frozen asserted
+that all three no-op merge variants "must collapse toward the floor". That is
+FALSE for the *donor-re-keyed-alone* variant by the design's own geometry: a
+FRESH receiver holds nothing, so the real merge's output is equivalent to the
+re-keyed donor alone — the variant's readout is EXPECTED to persist, and
+asserting its collapse would have made the gate unpassable on every honest
+campaign. This is precisely the equivalence D44's kit already documented for its
+`return right` variant (d43_merge_correctness.md §7: `return right` PASSED the
+Exp 45 probes — the vacuity lesson the kit encodes), which the first freeze
+overlooked. Corrected to per-variant expectations: receiver-unchanged and
+empty-state MUST collapse (these are the variants a vacuous gate cannot fail);
+donor-alone is recorded with its persistence documented. Conservative direction:
+the two collapse assertions are unchanged; no gate constant moved.
+**Disclosure:** found while implementing `noop_variant_readout` in the harness,
+before any Phase-0 run; no readings of any gated data existed at amendment time
+(the only executions were `--mock` ScriptedBridge smokes, which the prereg
+already declares non-confirmatory).
 
 ## Amendment rule
 
