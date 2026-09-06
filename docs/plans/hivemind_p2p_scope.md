@@ -178,11 +178,11 @@ is its own PR with a two-lens round (the P2P surface is a wire boundary; typing 
 - **HTTP via `utils/http`; persistence via `atomic_io`; optional deps via `optional_deps.py`** —
   the cross-cutting core invariants apply to every new file.
 
-## Open questions for the owner
+## Owner decisions (2026-09-06) — DECIDED
 
-- **Signing algorithm / dep:** ed25519 via `cryptography` as a new `[sign]` extra — acceptable,
-  or prefer a dependency-free path (e.g. detached HMAC with pre-shared Queen keys, weaker trust
-  model)? The asymmetric-verify property argues for `cryptography`.
-- **Slice granularity:** four PRs (A→B→C→D) as sequenced, or fold C+D (CLI + policy) into one?
-- **Scope confirmation:** is pull-releases + push-contributions the right 1.2 surface, with
-  live Oasis↔Oasis sync explicitly held to 1.3 — or does 1.2 need bidirectional sync?
+- **Signing algorithm / dep:** **ed25519 via `cryptography`** as a new `[sign]` optional extra
+  (real asymmetric verify — a Queen signs with a private key, any consumer verifies with the
+  public key). The dependency-free HMAC path is rejected.
+- **Slice granularity:** **four PRs, A→B→C→D** as sequenced (no C+D fold).
+- **1.2 exchange surface:** **pull-releases + push-contributions.** Live Oasis↔Oasis
+  bidirectional sync is explicitly held to 1.3.
