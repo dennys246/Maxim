@@ -149,6 +149,10 @@ a bundle and not the causal-link half alone.
   1.3-line work.
 - **The LLM-AUT path**, live-server dynamics beyond the controlled world, or multi-agent
   coexistence.
+- **Limits declared inapplicable by name** (per the prereg): L4 (`safe_pref` saturation —
+  different metric, and the floor arm is measured not assumed); L6 (prior-agreement ceiling
+  — no LLM in the action path; the L12 prior channel is the applicable analog and is gated);
+  L9/L10 (DoA sweep instruments — no DoA here).
 
 **Honest scope in one line:** one campaign, one world layout, substrate-primary, in
 Minecraft, n = 50/arm — with the two-Reachy hardware replication and the dose–response
@@ -199,7 +203,7 @@ frozen verdict constants) + guard tests
 [tests/unit/test_exp56_harness.py](../../tests/unit/test_exp56_harness.py),
 [tests/unit/test_hivemind_ingest.py](../../tests/unit/test_hivemind_ingest.py),
 [tests/unit/test_inherent_bias_class.py](../../tests/unit/test_inherent_bias_class.py),
-[tests/unit/test_oasis_ingest_e2e.py](../../tests/unit/test_oasis_ingest_e2e.py),
+[tests/integration/test_oasis_ingest_e2e.py](../../tests/integration/test_oasis_ingest_e2e.py),
 [tests/unit/test_minecraft_seam.py](../../tests/unit/test_minecraft_seam.py) + committed
 data [data/56_four_arm.jsonl](data/56_four_arm.jsonl) /
 [data/56_four_arm_verdict.json](data/56_four_arm_verdict.json) /
