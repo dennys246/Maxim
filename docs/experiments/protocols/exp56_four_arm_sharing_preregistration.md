@@ -416,6 +416,44 @@ before any Phase-0 run; no readings of any gated data existed at amendment time
 (the only executions were `--mock` ScriptedBridge smokes, which the prereg
 already declares non-confirmatory).
 
+**Amendment 2 — 2026-09-06, PRE-DATA, structural (live-apparatus shakedown; no
+gated Phase-0 or campaign data exist).** An UNGATED live shakedown of the full
+apparatus (real Paper 1.16.5 + Mineflayer bridge + RCON, scratchpad output, no
+`--write-experiment-results`, run during harness-tooling development) measured two
+facts the mock world could not:
+
+1. **`light_level` is DEAD on the live bridge** — it reads 0.0 at every anchor,
+   including the open rest pad at noon. A declared-range [0,15] sensor pinned at 0
+   is a rest-at-extreme sensor shouting identically everywhere: exactly the
+   measured-bad regime the body design warns against, drowning the real signal.
+2. **The original slot placement was inside the A4 gain's silence band**: a
+   40-block excursion in a ±128 range is a mid-range deviation, which the cubic
+   gain suppresses BY DESIGN. Measured through the shipped encode path on the live
+   values: cos(rest, situation) = **0.9997** — one cluster; Phase-0 check 1 read
+   separation **0.0**, stability 1.0.
+
+**The changes** (the outcome tree's sanctioned Phase-0-failure path — body/world
+apparatus fix, re-checked, recorded): `light_level` is REMOVED from
+`bodies/minecraft_bench` (five world sensors; the signature now spans
+`distance_from_spawn` + `y_altitude`), and the frozen contingency slots move to
+far + high coordinates (|d| ≈ 88 of ±128, y = 112 of [0,128]:
+(88,112,0) / (−88,112,8) / (8,112,88) / (−8,112,−88)). No range declaration, gate
+constant, selector knob, or schedule constant changed. Measured after the fix, same
+live apparatus: cos(rest, situation) = **0.19**, within-slot stability cos 0.9999;
+the shakedown's Phase-0 re-run passed **all five checks** (separation 1.0,
+stability 1.0, taught pilot bias-decisive at margin 0.9, dangling inert, kit pass,
+floor concentration 0.3).
+
+**Disclosure** (the Exp 52 precedent): at amendment time the author had read the
+two ungated shakedown reports and the live sensor values above; no gated record
+existed or exists. One reading deserves emphasis because it VALIDATES the
+pre-registered design rather than tuning it: under the broken apparatus,
+**check 2's taught pilot PASSED (bias-decisive, margin 0.9) while check 1 failed**
+— the single fused cluster made the taught bias fire situation-FREE, invisible to
+the pilot's own gates. The transfer pilot alone cannot detect situation-blindness;
+check 1 is what catches it, and it did. The confirmatory Phase 0 will be re-run
+GATED (clean tree, merged constants) regardless of these shakedowns.
+
 ## Amendment rule
 
 Amendments after first data (Phase 0's included) are permitted only for *structural
