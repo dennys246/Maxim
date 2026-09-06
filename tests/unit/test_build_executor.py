@@ -452,3 +452,102 @@ class TestBuildExecutorPermissions:
         result = executor.execute({"tool_name": "stub_tool", "params": {}})
         assert result.success is False
         assert "allow-list" in (result.error or "")
+
+
+class TestD79GenerationCollaborators:
+    """D79 fix (b): the executor's generation-relevant collaborators are
+    declared constructor fields, and BOTH generation sites (bootstrap
+    initial + acquisition regeneration) run through the one seam,
+    ``Executor.generate_entity_tools``. Pre-fix, ``build_executor`` took
+    ``entity_map``/``cerebellum`` and threaded them to initial generation
+    only — the Executor stashed neither, so Mechanism-B acquisition was a
+    silent no-op through the canonical builder (the third
+    takes-but-does-not-stash miss at this seam)."""
+
+    def _build(self, **kw):
+        from maxim.embodiment.component_registry import ComponentRegistry
+        from maxim.proprioception.pain_bus import PainBus
+        from maxim.runtime.bootstrap import build_executor
+        from maxim.tools.registry import ToolRegistry
+
+        return build_executor(
+            ToolRegistry(),
+            pain_bus=PainBus(_allow_raw=True),
+            permissions=None,
+            nac=MagicMock(),
+            entity_ref="weapons/rusty_sword",
+            component_registry=ComponentRegistry(),
+            **kw,
+        )
+
+    def test_build_executor_stashes_generation_collaborators(self):
+        from maxim.embodiment.entity_map import EntityMap
+
+        entity_map = EntityMap()
+        cerebellum = MagicMock(name="cerebellum")
+        executor = self._build(entity_map=entity_map, cerebellum=cerebellum)
+        assert executor._entity_map is entity_map, "build_executor took entity_map but did not stash it (D79)"
+        assert executor._cerebellum is cerebellum, "build_executor took cerebellum but did not stash it (D79)"
+
+    def test_one_generation_seam_threads_every_collaborator(self, monkeypatch):
+        """Both call sites go through generate_entity_tools, which passes
+        ALL declared collaborators — a spy pins the kwargs so dropping one
+        (the D77 shape) fails here, not silently in a sim."""
+        import maxim.embodiment.tool_bridge as tool_bridge
+        from maxim.runtime.executor import Executor
+        from maxim.tools.registry import ToolRegistry
+
+        calls = []
+
+        def _spy(entity, registry, **kwargs):
+            calls.append(kwargs)
+            return {}
+
+        monkeypatch.setattr(tool_bridge, "generate_tools_for_entity", _spy)
+        embodiment = MagicMock(name="embodiment")
+        cerebellum = MagicMock(name="cerebellum")
+        entity_map = MagicMock(name="entity_map")
+        executor = Executor(ToolRegistry(), embodiment=embodiment, cerebellum=cerebellum, entity_map=entity_map)
+        executor.generate_entity_tools(MagicMock(name="entity"))
+        assert calls, "generate_entity_tools must route through generate_tools_for_entity"
+        kwargs = calls[0]
+        assert kwargs["embodiment"] is embodiment
+        assert kwargs["cerebellum"] is cerebellum
+        assert kwargs["entity_map"] is entity_map
+
+    def test_mechanism_b_acquisition_works_through_the_canonical_builder(self):
+        """The behavioral pin: an acquirable entity registered in the
+        entity_map handed to build_executor gets its tools registered on
+        acquisition. Pre-fix this was a silent no-op (the executor's
+        entity_map was permanently None), which made this exact assertion
+        fail."""
+        from maxim.embodiment.component_registry import ComponentRegistry
+        from maxim.embodiment.entity_map import EntityMap
+
+        entity_map = EntityMap()
+        bread = ComponentRegistry().instantiate("items/minecraft_bread")
+        entity_map.register(bread)
+        executor = self._build(entity_map=entity_map)
+
+        executor._handle_entity_acquisition({"entity_acquired": "minecraft_bread"})
+        assert executor.registry.get("minecraft_bread_eat_bread") is not None, (
+            "acquisition through the canonical builder must register the item's tools (D79)"
+        )
+
+    def test_bootstrap_initial_generation_routes_through_the_seam(self, monkeypatch):
+        """Review-round finding 2: without this, reverting bootstrap to a
+        hand-threaded generate_tools_for_entity call (the pre-fix shape)
+        leaves every other guard green."""
+        from maxim.runtime.executor import Executor
+
+        calls = []
+        real = Executor.generate_entity_tools
+
+        def _spy(self, entity):
+            calls.append(entity)
+            return real(self, entity)
+
+        monkeypatch.setattr(Executor, "generate_entity_tools", _spy)
+        executor = self._build()
+        assert calls, "build_executor's initial generation must route through Executor.generate_entity_tools"
+        assert "rusty_sword_slash" in set(executor.registry.list())

@@ -4,7 +4,10 @@ Tests cover:
 - EntityMap.transfer_to_self / transfer_to_scene
 - ModulatorAffordanceTool emitting entity_acquired for pick_up on acquirable entities
 - ModulatorAffordanceTool emitting entity_released for drop
-- Executor._handle_entity_acquisition reparenting + tool registration
+- (Executor._handle_entity_acquisition coverage lives in
+  test_build_executor.py::TestD79GenerationCollaborators and
+  test_minecraft_harness.py — not here; a docstring claiming it did was
+  the review-round's stale-claim finding)
 - Acquired entity sensors evaluated in damage model
 """
 

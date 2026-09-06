@@ -98,16 +98,15 @@ class TestD77AcquisitionRegeneration:
         entity_map = EntityMap()
         entity_map.register(bread)
 
-        class _Ex:
-            pass
-
-        ex = _Ex()
-        ex.registry = registry
-        ex._entity_map = entity_map
-        ex.embodiment = embodiment
+        # D79 fold: a real Executor with the collaborators as declared
+        # constructor fields — the old `_Ex` duck stashed `_entity_map` by
+        # hand, which is exactly the assignment NOTHING in production ever
+        # made (the takes-but-does-not-stash class this test now pins the
+        # fix for).
         from maxim.runtime.executor import Executor
 
-        Executor._handle_entity_acquisition(ex, {"entity_acquired": "minecraft_bread"})
+        ex = Executor(registry, embodiment=embodiment, entity_map=entity_map)
+        ex._handle_entity_acquisition({"entity_acquired": "minecraft_bread"})
         eat = registry.get("minecraft_bread_eat_bread")
         assert eat is not None, "acquisition must register the item's tools"
         before = body.vital_metrics["food"]

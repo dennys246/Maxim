@@ -81,6 +81,9 @@ class Executor:
         tool_pain_bridge: "ToolPainBridge | None" = None,
         permissions: "AgentPermissions | None" = None,
         embodiment: "Embodiment | None" = None,
+        *,
+        cerebellum: Any | None = None,
+        entity_map: Any | None = None,
     ) -> None:
         self.registry = tool_registry
         self._pain_detector = pain_detector
@@ -91,7 +94,18 @@ class Executor:
         # re-instantiating it. Read pre-wrap (FearGatedExecutor and
         # other wrappers do not proxy this attribute).
         self.embodiment: "Embodiment | None" = embodiment
-        self._entity_map: Any | None = None  # Set by build_executor for entity acquisition
+        # D79 (fix (b), the counting rule's answer): the executor's
+        # GENERATION-RELEVANT collaborators are declared constructor
+        # fields, and every tool (re)generation this object performs goes
+        # through generate_entity_tools() — one helper holding ALL of
+        # them, so a new collaborator cannot be forgotten per-site. The
+        # pre-fix comment here claimed `_entity_map` was "Set by
+        # build_executor"; NOTHING ever assigned it, so Mechanism-B
+        # acquisition was a silent no-op through the canonical builder
+        # (the third takes-but-does-not-stash miss at this seam, after
+        # D77 embodiment= and D79's cerebellum=).
+        self._cerebellum: Any | None = cerebellum
+        self._entity_map: Any | None = entity_map
         self._lock = threading.Lock()
         # (tool_name, start_time, invocation_id) or None
         self._running: tuple[str, float, str] | None = None
@@ -376,6 +390,27 @@ class Executor:
                 },
             )
 
+    def generate_entity_tools(self, entity: Any) -> dict[str, Any]:
+        """Generate + register an entity's affordance tools with EVERY collaborator.
+
+        THE single (re)generation seam for this executor (D79 fix (b)):
+        ``build_executor``'s initial generation and Mechanism-B acquisition
+        regeneration both call this, so the collaborator list lives in one
+        place — forgetting to thread a new one becomes a one-line change
+        here instead of a per-site silent no-op (the D77/D79 class:
+        ``embodiment=`` and ``cerebellum=`` were each dropped at exactly
+        one of the two sites).
+        """
+        from maxim.embodiment.tool_bridge import generate_tools_for_entity
+
+        return generate_tools_for_entity(
+            entity,
+            self.registry,
+            embodiment=self.embodiment,
+            cerebellum=self._cerebellum,
+            entity_map=self._entity_map,
+        )
+
     def _handle_entity_acquisition(self, side_effects: dict[str, Any]) -> None:
         """Handle entity_acquired / entity_released side_effects (Mechanism B).
 
@@ -395,21 +430,13 @@ class Executor:
                 # Reparent to agent body root
                 entity.reparent(self.embodiment.root)
                 self._entity_map.transfer_to_self(entity)
-                # Register the acquired entity's tools
+                # Register the acquired entity's tools through the ONE
+                # generation seam (D79 fix (b)) — regeneration as a
+                # separate weaker call is the defect class this closes
+                # (D77 dropped embodiment= here; D79 found cerebellum=
+                # undroppable because it was never stashed at all).
                 try:
-                    from maxim.embodiment.tool_bridge import generate_tools_for_entity
-
-                    tools = generate_tools_for_entity(
-                        entity,
-                        self.registry,
-                        entity_map=self._entity_map,
-                        # D77 (1.1.4 PR 4): regeneration WITHOUT embodiment=
-                        # replaced the item's sim-wired tools with ones whose
-                        # self_effect write-back was dead — pick up bread,
-                        # eat, portions fall, food never rises. The executor
-                        # holds the embodiment as a declared field; thread it.
-                        embodiment=self.embodiment,
-                    )
+                    tools = self.generate_entity_tools(entity)
                     _log.info("Entity acquired: %s (%d tools registered)", entity_acquired, len(tools))
                 except Exception as exc:
                     _log.warning("Failed to register tools for acquired entity %s: %s", entity_acquired, exc)

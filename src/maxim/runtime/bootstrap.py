@@ -483,10 +483,10 @@ def build_executor(
     # Loading the embodiment first lets us pass it to Executor.__init__
     # as a declared field, avoiding a post-construction attribute stash.
     embodiment: "Embodiment | None" = None
+    entity = None
     if entity_ref is not None:
         # Imports here so non-embodiment call sites don't pay the cost.
         from maxim.embodiment.body import Embodiment
-        from maxim.embodiment.tool_bridge import generate_tools_for_entity
 
         # Resolver errors propagate to the caller with their original
         # exception type + message — `ComponentNotFoundError` includes
@@ -527,26 +527,31 @@ def build_executor(
                     if callable(bind):
                         bind(embodiment)
 
-        generated = generate_tools_for_entity(
-            entity,
-            tool_registry,
-            embodiment=embodiment,
-            cerebellum=cerebellum,
-            entity_map=entity_map,
-        )
-        logger.info(
-            "build_executor: Embodiment loaded from %r — %d affordance tools registered",
-            entity_ref,
-            len(generated),
-        )
-
+    # D79 fix (b): the executor is constructed WITH its generation
+    # collaborators as declared fields, and the initial generation runs
+    # through the SAME seam acquisition regeneration uses
+    # (Executor.generate_entity_tools) — the pre-fix shape generated here
+    # with a hand-threaded collaborator list and never stashed
+    # `entity_map`/`cerebellum`, so Mechanism-B acquisition was a silent
+    # no-op through this canonical builder (the takes-but-does-not-stash
+    # class, third miss — the counting rule's structural answer).
     executor = Executor(
         tool_registry=tool_registry,
         pain_detector=pain_detector,
         tool_pain_bridge=bridge,
         permissions=permissions,
         embodiment=embodiment,
+        cerebellum=cerebellum,
+        entity_map=entity_map,
     )
+
+    if entity is not None:
+        generated = executor.generate_entity_tools(entity)
+        logger.info(
+            "build_executor: Embodiment loaded from %r — %d affordance tools registered",
+            entity_ref,
+            len(generated),
+        )
 
     if bridge is not None:
         logger.info(
