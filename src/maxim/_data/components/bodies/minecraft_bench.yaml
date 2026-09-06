@@ -9,10 +9,12 @@ component:
     docs/experiments/protocols/exp56_four_arm_sharing_preregistration.md
     §Apparatus). A deliberately BUDGETED variant of minecraft_player:
 
-    * World channel budgeted to SIX sensors (L11's per-channel rule: <= 12,
-      stated in the prereg) — the situation signature the experiment must
-      discriminate spans distance_from_spawn + light_level (+ y_altitude at
-      an elevated slot). Sensor NAMES stay the bridge snapshot keys (the
+    * World channel budgeted to FIVE sensors (L11's per-channel rule: <= 12,
+      stated in the prereg; prereg amendment 2 dropped light_level — the
+      live bridge reads it as 0.0 everywhere, a dead rest-at-extreme sensor
+      that drowned the signature, measured 2026-09-05) — the situation
+      signature spans distance_from_spawn + y_altitude (far + elevated
+      slots). Sensor NAMES stay the bridge snapshot keys (the
       backend writes by declared-name match; names only reach the SHA-basis
       encoder, carrying no semantics — L12 concerns TOOL and DRIVE names).
       Ranges follow minecraft_player's re-centered PRINCIPLE (rest = the
@@ -53,11 +55,6 @@ entity:
     # ── the world channel: six bridge-owned sensors, ranges verbatim from
     # minecraft_player (rest-at-neutral). No drives, no drift — the drift
     # loop must never fight the bridge writer.
-    light_level:
-      unit: level
-      range: [0, 15]
-      initial: 7
-      modality: world
     y_altitude:
       unit: blocks
       range: [0, 128]

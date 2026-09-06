@@ -23,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Exp 56 apparatus per prereg amendment 2** (live-shakedown findings, measured on a
+  real Paper server + bridge): `bodies/minecraft_bench` drops `light_level` (dead on the
+  live bridge — 0.0 everywhere, a rest-at-extreme sensor drowning the signature); the
+  frozen contingency slots move far + high, into the A4 gain's pass band
+  (cos(rest, situation) 0.9997 → 0.19 measured through the shipped encode path; the
+  live Phase-0 shakedown then passed all five checks). Plus the world-setup tooling:
+  `scripts/exp56/setup_world.py` (Paper download via the Fill v3 API with sha256
+  verification, EULA-gated; RCON `prepare`/`verify` building the frozen slots with
+  forceload) and the operator runbook `scripts/exp56/README.md`.
+
 ### Added
 - **The Exp 56 four-arm benchmark harness** (the frozen prereg's sign-off item 2):
   `bodies/minecraft_bench{,_satiated}` (opaque affordance/drive names per L12, a

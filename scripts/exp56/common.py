@@ -78,14 +78,17 @@ FROZEN: dict[str, Any] = {
     # Candidate contingency slots (world coordinates the RCON /tp uses; the
     # per-pair seed picks one, identical across that pair's arms). Chosen so
     # the situation signature spans >= 2 declared world sensors vs the rest
-    # anchor: distance_from_spawn (far vs 0) + light_level (roofed dark spot
-    # vs open) + y_altitude on the elevated slots.
+    # anchor, at deviations LARGE enough for the A4 cubic gain to pass
+    # (prereg amendment 2, measured on live bridge values 2026-09-05: the
+    # original 40-block/y-64 slots read cos 0.9997 vs rest — one cluster,
+    # separation 0.0; far+high slots read cos 0.19): distance_from_spawn
+    # ~88 of the +-128 range AND y_altitude 112 of [0,128].
     "rest_anchor": {"x": 0, "y": 64, "z": 0},
     "contingency_slots": [
-        {"x": 40, "y": 64, "z": 0},
-        {"x": -40, "y": 64, "z": 8},
-        {"x": 8, "y": 70, "z": 40},
-        {"x": -8, "y": 70, "z": -40},
+        {"x": 88, "y": 112, "z": 0},
+        {"x": -88, "y": 112, "z": 8},
+        {"x": 8, "y": 112, "z": 88},
+        {"x": -8, "y": 112, "z": -88},
     ],
 }
 
@@ -227,16 +230,18 @@ class ScriptedBridgeServer:
             pass
 
     def _snapshot(self) -> dict[str, float]:
+        # Lockstep with the bench body's DECLARED world sensors (5, no
+        # light_level — amendment 2: dead on the live bridge). time 0.25 =
+        # the live bridge's noon, so mock and live neutrals agree.
         a = self.anchor
         dist = (a["x"] ** 2 + a["z"] ** 2) ** 0.5
         jitter = lambda v, s: v + self._rng.uniform(-s, s)  # noqa: E731
         return {
-            "light_level": jitter(3.0 if dist > 20 else 12.0, 0.4),
             "y_altitude": jitter(float(a["y"]), 0.3),
             "distance_from_spawn": jitter(dist, 0.4),
             "speed": abs(jitter(0.0, 0.01)),
             "on_ground": 1.0,
-            "time_of_day": 0.5,
+            "time_of_day": 0.25,
         }
 
     def _accept_loop(self) -> None:
