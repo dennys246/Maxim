@@ -719,6 +719,18 @@ class NAc:
         # accumulates two different sources promotes to "mixed" (honest, and the
         # promotion is one-way — see _note_cluster_reward_source).
         self._cluster_reward_source: dict[tuple[str, str, str], str] = {}
+        # 1.2 poison-resistance slice (coding_habits_oasis.md §4): the INHERENT
+        # bias class — cluster biases distributed through Queen-tier curation
+        # rather than learned locally ("innate fears": a human is born afraid
+        # of falls and snakes because the species paid for them). Keys here are
+        # a SUBSET of _cluster_reward_bias's keys. Semantics enforced elsewhere:
+        # decay-exempt (decay_cluster_reward_biases skips these — innate fears
+        # do not extinguish), tighten-only under merge (hivemind.merge), and
+        # entry ONLY via Queen provenance at the ingestion adapter — no
+        # learning path calls mark_inherent_bias (a locally-learned bias never
+        # self-promotes; the safety floor must not contain a privilege
+        # escalation). See docs/plans/oasis_ingestion_contract.md §6.
+        self._inherent_bias_keys: set[tuple[str, str, str]] = set()
 
         # |RPE| of the most recent outcome; see _note_rpe / last_rpe (D60).
         self._last_rpe: float = 0.0
@@ -2528,6 +2540,36 @@ class NAc:
             return 0.0
         return self._cluster_reward_bias.get((agent_id, cluster_id, tool_signature), 0.0)
 
+    # -- Inherent bias class (1.2 poison-resistance slice) ----------------
+
+    def mark_inherent_bias(
+        self,
+        agent_id: str,
+        cluster_id: str,
+        tool_signature: str,
+    ) -> None:
+        """Mark an EXISTING cluster bias as inherent-class (Queen curation surface).
+
+        CURATION-ONLY API (coding_habits_oasis.md §4): the only sanctioned
+        callers are Queen-tier curation tooling and the ingestion adapter's
+        transport of already-marked bundles — NO learning path may call this
+        (a locally-learned bias never self-promotes into the safety floor).
+        The guard test greps production callers.
+
+        Raises ``KeyError`` when the triple holds no bias — a marker naming
+        a bias that does not exist would be the dangling-half shape (D2).
+        """
+        key = (agent_id, cluster_id, tool_signature)
+        with self._lock:
+            if key not in self._cluster_reward_bias:
+                raise KeyError(f"no cluster bias exists for {key!r}; mark_inherent_bias marks existing biases only")
+            self._inherent_bias_keys.add(key)
+
+    @property
+    def inherent_bias_keys(self) -> frozenset[tuple[str, str, str]]:
+        """The inherent-class subset of cluster-bias keys (read-only view)."""
+        return frozenset(self._inherent_bias_keys)
+
     # -- Operant delayed-reward credit (cradle_mother) --------------------
 
     def set_pending_operant_action(
@@ -2834,6 +2876,13 @@ class NAc:
         with self._lock:
             to_remove = []
             for key, bias in self._cluster_reward_bias.items():
+                # Inherent-class biases (coding_habits_oasis.md §4) are
+                # decay-EXEMPT entirely — no decay, no pruning. Innate fears
+                # do not extinguish the way learned ones do; pruning-exempt-
+                # but-still-decaying would extinguish to an un-pruned ~0,
+                # which is extinction with extra steps.
+                if key in self._inherent_bias_keys:
+                    continue
                 new_bias = bias * (1.0 - decay_factor)
                 if abs(new_bias) < 0.001:
                     to_remove.append(key)
@@ -3368,6 +3417,13 @@ class NAc:
                 "cluster_reward_source": {
                     f"{aid}\x1f{cid}\x1f{tsig}": src for (aid, cid, tsig), src in self._cluster_reward_source.items()
                 },
+                # 1.2 poison-resistance slice: the inherent-class marker — a
+                # sorted list (deterministic serialization) of composite keys
+                # that are a subset of cluster_reward_bias's keys. Absent in
+                # pre-1.2 files -> loads as empty (additive-key precedent).
+                "inherent_bias_keys": sorted(
+                    f"{aid}\x1f{cid}\x1f{tsig}" for (aid, cid, tsig) in self._inherent_bias_keys
+                ),
                 # Wire 2 (release_0_9_1.md Stage 3): per-agent Pavlovian
                 # percept valences.  Same ``\x1f`` separator as
                 # ``cluster_reward_bias`` so entity_class / failure_mode
@@ -3450,6 +3506,20 @@ class NAc:
                 self._cluster_reward_bias[(parts[0], parts[1], parts[2])] = float(bias)
             except (TypeError, ValueError):
                 continue
+
+        # 1.2 inherent-class marker. Missing field → empty (pre-1.2 files).
+        # Only markers whose bias actually loaded are kept — a marker naming
+        # a bias the file does not hold would be a dangling exemption that
+        # silently shields nothing (and could shield a LATER unrelated bias
+        # that reuses the key).
+        self._inherent_bias_keys = set()
+        for key_str in state.get("inherent_bias_keys", []) or []:
+            parts = str(key_str).split("\x1f", 2)
+            if len(parts) != 3:
+                continue
+            key = (parts[0], parts[1], parts[2])
+            if key in self._cluster_reward_bias:
+                self._inherent_bias_keys.add(key)
 
         # S1 credit provenance. Missing field → empty (pre-S1 files).
         self._cluster_reward_source = {}
