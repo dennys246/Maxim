@@ -1,0 +1,104 @@
+{
+  "stats": {
+    "isolated": {
+      "n": 50,
+      "rate_raw": 0.22,
+      "raw_ci": [
+        0.1275,
+        0.3524
+      ],
+      "rate_decisive": 0.0,
+      "decisive_ci": [
+        0.0,
+        0.0714
+      ],
+      "choice_concentration": 0.22,
+      "winning_component": {
+        "causal": 50
+      }
+    },
+    "taught": {
+      "n": 50,
+      "rate_raw": 0.84,
+      "raw_ci": [
+        0.7149,
+        0.9166
+      ],
+      "rate_decisive": 0.8,
+      "decisive_ci": [
+        0.6696,
+        0.8876
+      ],
+      "choice_concentration": 0.18,
+      "winning_component": {
+        "learned_bias": 40,
+        "causal": 10
+      }
+    },
+    "satiated": {
+      "n": 50,
+      "rate_raw": 0.12,
+      "raw_ci": [
+        0.0562,
+        0.2381
+      ],
+      "rate_decisive": 0.0,
+      "decisive_ci": [
+        0.0,
+        0.0714
+      ],
+      "choice_concentration": 0.74,
+      "winning_component": {
+        "causal": 50
+      }
+    },
+    "dangling": {
+      "n": 50,
+      "rate_raw": 0.12,
+      "raw_ci": [
+        0.0562,
+        0.2381
+      ],
+      "rate_decisive": 0.0,
+      "decisive_ci": [
+        0.0,
+        0.0714
+      ],
+      "choice_concentration": 0.74,
+      "winning_component": {
+        "causal": 50
+      }
+    }
+  },
+  "gates": {
+    "TRANSFERRED": true,
+    "ABOVE_FLOOR": true,
+    "WANT_NOT_FILE": true,
+    "BOTH_HALVES": true
+  },
+  "problems": [],
+  "verdict": "PASS",
+  "constants": {
+    "transferred_min": 0.7,
+    "above_floor_min": 0.2,
+    "want_not_file_min": 0.2,
+    "both_halves_band": 0.1,
+    "l2_concentration": 0.9,
+    "min_pairs": 50
+  },
+  "noop_kit": {
+    "receiver_unchanged": {
+      "tool": null,
+      "chose_target": false
+    },
+    "empty_state": {
+      "tool": null,
+      "chose_target": false
+    },
+    "donor_alone": {
+      "tool": "minecraft_bench_aff_a",
+      "chose_target": true
+    },
+    "kit_pass": true
+  }
+}
