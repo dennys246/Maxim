@@ -81,6 +81,7 @@ from maxim.hivemind.bundle import (
     extract_bundle,
     read_bundle_manifest,
 )
+from maxim.utils.optional_deps import OptionalDependencyError
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +191,12 @@ def _run_export(args: argparse.Namespace) -> int:
 
     output_path = Path(args.output).expanduser().resolve()
     try:
+        signer = None
+        if getattr(args, "sign", False):
+            from maxim.hivemind.signing import load_or_create_signer, public_key_path
+
+            signer = load_or_create_signer(signer_identity=args.signer_id or args.contributor_id)
+
         manifest = compose_bundle(
             nac_state=nac_state,
             ec_substrate_nodes=ec_substrate_nodes,
@@ -198,12 +205,16 @@ def _run_export(args: argparse.Namespace) -> int:
             domain=args.domain,
             apply_identity_filter=not args.no_identity_filter,
             identity_threshold=args.identity_threshold,
+            signer=signer,
             encoder_provenance=ec_encoder_provenance,
             body_ref=body_ref,
             affordance_namespace=args.affordance_namespace,
             capability_map=capability_map,
         )
     except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except OptionalDependencyError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
@@ -221,6 +232,11 @@ def _run_export(args: argparse.Namespace) -> int:
             else ""
         )
     )
+    if signer is not None:
+        print(
+            f"  signed:      ed25519 as {manifest.get('signer_identity')!r}\n"
+            f"  public key:  {public_key_path()} (share this so receivers can --trust-key)"
+        )
     if body_ref is None:
         print(
             "note: no --body-ref/--body-yaml given — bundle ships body_ref: null and "
@@ -683,6 +699,14 @@ def _run_ingest(args: argparse.Namespace) -> int:
         print(f"error: cannot read ingestion journal ({journal_path}): {exc}", file=sys.stderr)
         return 2
 
+    trusted_keys: dict[str, str] = {}
+    for entry in getattr(args, "trust_key", []) or []:
+        identity, sep, pubkey = entry.partition("=")
+        if not sep or not identity or not pubkey:
+            print(f"error: --trust-key must be IDENTITY=PUBKEY_B64, got {entry!r}", file=sys.stderr)
+            return 2
+        trusted_keys[identity] = pubkey
+
     try:
         report = ingest_bundle(
             bundle_path,
@@ -696,6 +720,8 @@ def _run_ingest(args: argparse.Namespace) -> int:
             allow_unverified_body=args.allow_unverified_body,
             allow_unstamped_geometry=args.allow_unstamped_geometry,
             force_digest=args.force_digest,
+            require_signed=getattr(args, "require_signed", False),
+            trusted_keys=trusted_keys,
         )
     except (IngestRefused, ValueError, OSError, _zipfile.BadZipFile) as exc:
         # IngestRefused and the gate-7 refusals subclass ValueError; every
@@ -793,6 +819,28 @@ def _run_inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_keygen(args: argparse.Namespace) -> int:
+    """Mint (if absent) and print the local ed25519 bundle-signing public key."""
+    try:
+        from maxim.hivemind.signing import load_or_create_signer, public_key_path, signing_key_path
+
+        signer = load_or_create_signer(signer_identity=args.signer_id)
+    except OptionalDependencyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(
+        f"signer_identity: {signer.signer_identity}\n"
+        f"public_key:      {signer.public_key_b64}\n"
+        f"private key:     {signing_key_path()} (0600; never share)\n"
+        f"public key file: {public_key_path()}\n"
+        f"share as:        --trust-key {signer.signer_identity}={signer.public_key_b64}"
+    )
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="maxim substrate", description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
@@ -846,6 +894,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "--affordance-namespace",
         default=None,
         help="Gate 7: name of the vocabulary the bundle's tool signatures live in.",
+    )
+    p_export.add_argument(
+        "--sign",
+        action="store_true",
+        help=(
+            "Slice A (1.2 P2P): sign the bundle with the persisted ed25519 key "
+            "(minted on first use under ~/.config/maxim/). Requires the [sign] extra."
+        ),
+    )
+    p_export.add_argument(
+        "--signer-id",
+        default=None,
+        help="signer_identity written to the manifest (defaults to --contributor-id).",
     )
     p_export.set_defaults(func=_run_export)
 
@@ -969,11 +1030,37 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Actually write (default is a dry-run report). Backs up the pair, journals first.",
     )
+    p_ingest.add_argument(
+        "--require-signed",
+        action="store_true",
+        help=(
+            "Slice A (1.2 P2P): refuse any bundle without a valid ed25519 signature from a "
+            "--trust-key signer. The Queen-tier default; experimental-tier ingests omit it."
+        ),
+    )
+    p_ingest.add_argument(
+        "--trust-key",
+        action="append",
+        default=[],
+        metavar="IDENTITY=PUBKEY_B64",
+        help="Trust a signer: <signer_identity>=<base64 public key>. Repeatable.",
+    )
     p_ingest.set_defaults(func=_run_ingest)
 
     p_inspect = sub.add_parser("inspect", help="Print the bundle manifest without extracting")
     p_inspect.add_argument("input", help="Path to the .zip bundle")
     p_inspect.set_defaults(func=_run_inspect)
+
+    p_keygen = sub.add_parser(
+        "keygen",
+        help="Mint (if absent) and print the local ed25519 bundle-signing public key (Slice A)",
+    )
+    p_keygen.add_argument(
+        "--signer-id",
+        required=True,
+        help="signer_identity to bind the key to (the label receivers --trust-key).",
+    )
+    p_keygen.set_defaults(func=_run_keygen)
 
     p_merge_nac = sub.add_parser(
         "merge-nac",
