@@ -23,6 +23,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Exp 56 harness — two live-only connection/timing races that crashed the first
+  campaign ~88% in** (both surfaced by live validation against a real Paper server, neither
+  by the mock). (1) *Connect race:* the bridge serves one client and frees its slot on an
+  async close event, so the campaign's per-session client churn could be rejected `bridge
+  busy: one client at a time`; `MinecraftClient.connect(confirm_timeout_s=, retries=)` now
+  waits for the first world snapshot as proof of acceptance and retries a rejection
+  (legacy no-arg callers unchanged). (2) *Teleport-vs-snapshot race:* a blind `sleep(settle)
+  → read` could read the stale rest position before the RCON `/tp` propagated into the
+  bridge's ~500 ms snapshot; `settle_until_reflected` now polls `sync_world` until the
+  measured world reflects the commanded anchor (S3 still raises if it never does). The
+  `ScriptedBridgeServer` mock is made one-client-faithful (the property whose absence hid
+  the first race) with a `one_client=False` opt-out for the concurrent-donor science tests.
+  Guards: `test_minecraft_seam.py::TestConnectConfirmRetry`,
+  `test_exp56_harness.py::TestScriptedBridgeOneClient`. Validated live: a 4-pair campaign
+  (16 rows, ~44 client cycles at 0.3 s settle) ran clean with the correct four-arm shape
+  (taught 4/4 bias-decisive, all controls at floor).
+
 ### Changed
 - **Exp 56 apparatus per prereg amendment 2** (live-shakedown findings, measured on a
   real Paper server + bridge): `bodies/minecraft_bench` drops `light_level` (dead on the

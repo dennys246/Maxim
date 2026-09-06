@@ -113,24 +113,68 @@ class MinecraftClient:
 
     # ── lifecycle ────────────────────────────────────────────────────────
 
-    def connect(self) -> None:
+    def connect(self, *, confirm_timeout_s: float | None = None, retries: int = 0, backoff_s: float = 0.5) -> None:
         """Dial the bridge and start the reader thread. Raises on failure —
         a seam that cannot reach its world must fail LOUD at startup, never
         degrade into a silently world-less agent. Reconnect-safe: clears the
-        closed flag so a reused client's reader is not stillborn."""
-        self._closed.clear()
-        sock = self._factory()
-        # create_connection's timeout PERSISTS as the socket's operation
-        # timeout — recv would raise after 10 quiet seconds and kill the
-        # reader with the wrong diagnosis (architecture-lens review, PR 3
-        # round: a quiet bridge is normal; a dead reader is not).
-        try:
-            sock.settimeout(None)
-        except OSError:
-            pass
-        self._sock = sock
-        self._reader = threading.Thread(target=self._read_loop, name="minecraft-bridge-reader", daemon=True)
-        self._reader.start()
+        closed flag so a reused client's reader is not stillborn.
+
+        CONFIRM + RETRY (default OFF — legacy callers are byte-identical):
+        the bridge serves ONE client at a time and its slot is freed by an
+        ASYNC "client closed" event, so a fast disconnect→reconnect (the
+        per-session client churn of the Exp 56 campaign) can race and be
+        rejected with ``bridge busy: one client at a time`` — a real,
+        intermittent bug the multi-client mocks could not surface (it
+        crashed the campaign ~88% in). When ``confirm_timeout_s`` is set,
+        ``connect`` waits for the first ``state`` snapshot (proof the bridge
+        accepted us as the live client — it pushes state every ~500ms) and,
+        if instead the connection is rejected/closed with no state, closes
+        and retries up to ``retries`` times with ``backoff_s`` between
+        attempts (giving the bridge's close handler time to free the slot).
+        """
+        last_err = ""
+        for attempt in range(retries + 1):
+            self._closed.clear()
+            sock = self._factory()
+            # create_connection's timeout PERSISTS as the socket's operation
+            # timeout — recv would raise after 10 quiet seconds and kill the
+            # reader with the wrong diagnosis (architecture-lens review, PR 3
+            # round: a quiet bridge is normal; a dead reader is not).
+            try:
+                sock.settimeout(None)
+            except OSError:
+                pass
+            self._sock = sock
+            self._reader = threading.Thread(target=self._read_loop, name="minecraft-bridge-reader", daemon=True)
+            self._reader.start()
+
+            if confirm_timeout_s is None:
+                return  # legacy contract: return immediately, no confirmation
+
+            # Wait for acceptance (first state) vs rejection (reader dies
+            # after the busy event closes the socket, with no state).
+            deadline = time.monotonic() + confirm_timeout_s
+            while time.monotonic() < deadline:
+                with self._lock:
+                    if self._state_ts is not None:
+                        return  # accepted — the bridge is pushing us state
+                reader = self._reader
+                if reader is None or not reader.is_alive():
+                    break  # connection closed before any state → rejected
+                time.sleep(0.02)
+
+            busy = any("busy" in str(e.get("text", "")).lower() for e in self._drain_events())
+            last_err = "bridge busy: one client at a time" if busy else "no world state within confirm window"
+            self.close()
+            if attempt < retries:
+                time.sleep(backoff_s)
+        raise ConnectionError(f"minecraft bridge connect not confirmed after {retries + 1} attempt(s): {last_err}")
+
+    def _drain_events(self) -> list[dict[str, Any]]:
+        with self._lock:
+            drained = list(self._events)
+            self._events.clear()
+            return drained
 
     def close(self) -> None:
         self._closed.set()
