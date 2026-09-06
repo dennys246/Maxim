@@ -1,0 +1,136 @@
+{
+  "ts": 1788671680.209203,
+  "mock": false,
+  "frozen": {
+    "roster_k": 8,
+    "schedule_reps_per_cell": 6,
+    "epsilon": 0.2,
+    "min_confidence": 0.3,
+    "donor_bias_floor": 0.4,
+    "link_spread_max": 0.05,
+    "link_count_tolerance": 1,
+    "probe_precontact_max": 10,
+    "probe_tail": 5,
+    "feed_amount": 0.5,
+    "relief_epsilon": 1e-09,
+    "rest_anchor": {
+      "x": 0,
+      "y": 64,
+      "z": 0
+    },
+    "contingency_slots": [
+      {
+        "x": 88,
+        "y": 112,
+        "z": 0
+      },
+      {
+        "x": -88,
+        "y": 112,
+        "z": 8
+      },
+      {
+        "x": 8,
+        "y": 112,
+        "z": 88
+      },
+      {
+        "x": -8,
+        "y": 112,
+        "z": -88
+      }
+    ]
+  },
+  "gated": true,
+  "working_tree_dirty_src_scripts": false,
+  "allow_dirty": false,
+  "provenance": {
+    "harness_repo": "/Users/dennys/RMSrv/scripts/Maxim",
+    "harness_git_hash": "4cf67cf9",
+    "executed_maxim_file": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "4cf67cf9",
+    "working_tree_dirty_src_scripts": false,
+    "pythonpath": "/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages"
+  },
+  "check1_discriminability": {
+    "transitions": 20,
+    "separation": 1.0,
+    "repeats": 20,
+    "stability": 1.0,
+    "bar": 0.7,
+    "pass": true
+  },
+  "check2_pilots": {
+    "taught_first_contact": {
+      "chosen": "minecraft_bench_aff_c",
+      "source": "substrate",
+      "substrate_confidence": 1.0
+    },
+    "taught_decisive": true,
+    "taught_margin": 0.9,
+    "donor_sanity": {
+      "arm": "taught",
+      "world_bias_max": 0.9,
+      "world_bias_entries": 1,
+      "total_cluster_bias_entries": 1,
+      "link_conf_spread": 0.0,
+      "link_count_spread": 0,
+      "inherent_keys": 0,
+      "pass": true,
+      "unstamped_world_nodes": 0,
+      "attempt": 0
+    },
+    "dangling_chose_target": false,
+    "dangling_source": "substrate",
+    "dangling_components": {
+      "causal": 0.8873,
+      "reward_bias": 0.0,
+      "learned_bias": 0.0,
+      "drive": 0.0,
+      "explore": 0.0
+    },
+    "dangling_decisive": false,
+    "dangling_ingest": {
+      "biases_rekeyed": 0,
+      "biases_dropped": 1,
+      "biases_tightened": 0,
+      "inherent_keys_admitted": 0
+    },
+    "noop_kit": {
+      "receiver_unchanged": {
+        "tool": null,
+        "chose_target": false
+      },
+      "empty_state": {
+        "tool": null,
+        "chose_target": false
+      },
+      "donor_alone": {
+        "tool": "minecraft_bench_aff_c",
+        "chose_target": true
+      },
+      "kit_pass": true
+    },
+    "pass": true
+  },
+  "check3_drive_zero": {
+    "pass": true,
+    "note": "asserted per probe decision inside the harness (raise on violation)"
+  },
+  "check4_floor": {
+    "choices": {
+      "minecraft_bench_aff_c": 2,
+      "minecraft_bench_aff_e": 3,
+      "minecraft_bench_aff_d": 3,
+      "minecraft_bench_aff_h": 1,
+      "minecraft_bench_aff_b": 1
+    },
+    "concentration": 0.3,
+    "pass": true
+  },
+  "check5_donor_at_K": {
+    "pass": true,
+    "K": 96
+  },
+  "all_pass": true
+}

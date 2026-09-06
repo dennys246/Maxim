@@ -454,6 +454,35 @@ the pilot's own gates. The transfer pilot alone cannot detect situation-blindnes
 check 1 is what catches it, and it did. The confirmatory Phase 0 will be re-run
 GATED (clean tree, merged constants) regardless of these shakedowns.
 
+**Amendment 3 — 2026-09-06, POST-DATA (Phase-0 instrument-check data only; the
+confirmatory campaign has not run), DISCLOSURE ONLY — no gate constant or apparatus
+changed; the pre-registered Phase-0 disclosure (outcome tree + sign-off).**
+The confirmatory Phase 0 ran GATED on the operator's big-mac-mini against the live
+apparatus (real Paper 1.16.5 + Mineflayer bridge + RCON; `--write-experiment-results`,
+clean tree at main-reachable `4cf67cf9`, `mock: false`, `working_tree_dirty_src_scripts:
+false`), committed at [`data/56_phase0.json`](../data/56_phase0.json). **All five checks
+PASS**, readings:
+
+- **Check 1 (L11/A4 discriminability):** separation **1.0**, stability **1.0** over 20
+  rest→situation onsets — the far+high slots (amendment 2) separate cleanly on the live
+  world, the situation-blindness the pre-amendment-2 apparatus showed (separation 0.0) is
+  gone.
+- **Check 2 (transfer pilot + dangling tripwire + no-op kit):** the taught pilot's first
+  contact is `minecraft_bench_aff_c`, substrate-sourced, **bias-decisive at
+  `learned_margin` 0.9**; donor sanity passes (world-cluster bias 0.9 ≥ 0.4, link spread
+  0.0, no inherent keys); the dangling pilot does **not** choose the target (link channel
+  neutralized as designed); the no-op kit's two must-collapse variants collapse
+  (`kit_pass: true`).
+- **Check 3 (L12 zero-prior):** `score_components["drive"] == 0.0` on every probe decision
+  (asserted, PASS).
+- **Check 4 (dithered floor):** 10 isolated probes spread across five affordances,
+  concentration **0.3** — not seed-invariant, no affordance pre-installed.
+- **Check 5 (donor at K):** donor sanity passes at the frozen K = 96.
+
+No gate constant, range, selector knob, or schedule constant was retuned as a result —
+Phase 0 passed clean, so this amendment records the readings and nothing more. The
+campaign is cleared to run.
+
 ## Amendment rule
 
 Amendments after first data (Phase 0's included) are permitted only for *structural
@@ -479,16 +508,19 @@ python scripts/analyze_exp56.py --in docs/experiments/data/56_four_arm.jsonl --g
 
 ## Sign-off (fills before the campaign; each box its own merged PR where marked)
 
-- [ ] This pre-registration merged to `main` via merge commit (never squash) — hash: `______`
-- [ ] Harness PR merged with guard tests (`bodies/minecraft_bench{,_satiated}.yaml` +
+- [x] This pre-registration merged to `main` via merge commit (never squash) — hash: `3f9ce733` (#639; amendment 1 #640, amendment 2 #642, amendment 3 below)
+- [x] Harness PR merged with guard tests (`bodies/minecraft_bench{,_satiated}.yaml` +
       the `body:`-rooted export spec, world script, the teacher, `scripts/exp56/`,
       `scripts/analyze_exp56.py` with frozen verdict constants incl. the link-balance
       and bias-decisive assertions, `--mock`/`--resume`/`--assert-noop-fails`) —
-      hash: `______`; frozen constants recorded: roster k `__`, schedule length K `__`,
-      candidate contingency slots `__`
-- [ ] Two-lens review round on the harness PR folded pre-merge (the house rule)
-- [ ] Phase 0 run + committed (`56_phase0_*.json`): check 1 `____` check 2 `____`
-      check 3 `____` check 4 `____` check 5 `____` (readings disclosed as an
-      amendment entry)
+      hash: `6219f330` (#641; world-setup tooling #643; `--spectator` #644, main tip `4cf67cf9`);
+      frozen constants recorded: roster k `8`, schedule length K `96` (8 affordances × 2
+      situation-states × 6 reps/cell), candidate contingency slots `4` — far+high per
+      amendment 2: (88,112,0)/(−88,112,8)/(8,112,88)/(−8,112,−88)
+- [x] Two-lens review round on the harness PR folded pre-merge (the house rule) — #641
+      (executor + design lenses; all findings folded before merge, verified by execution)
+- [x] Phase 0 run + committed (`56_phase0.json`): check 1 `PASS` check 2 `PASS`
+      check 3 `PASS` check 4 `PASS` check 5 `PASS` (readings disclosed in amendment 3;
+      gated on the big-mac-mini at main-reachable `4cf67cf9`, clean tree)
 - [ ] Campaign run ONCE from a clean tree at a main-reachable commit; data PR
       merge-committed; interpretation in a separate later PR (structure-or-time rule)
