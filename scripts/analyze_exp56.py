@@ -86,6 +86,15 @@ def analyze(rows: list[dict], *, min_pairs: int) -> dict:
             c = str((r.get("first_contact") or {}).get("chosen"))
             choices[c] = choices.get(c, 0) + 1
         concentration = max(choices.values()) / n if n else 0.0
+        components: dict[str, int] = {}
+        for r in arm_rows:
+            comps = ((r.get("first_contact") or {}).get("provenance") or {}).get("score_components") or {}
+            top = (
+                max(comps, key=lambda k: abs(float(comps[k] or 0.0)))
+                if comps
+                else (r.get("first_contact") or {}).get("source", "?")
+            )
+            components[str(top)] = components.get(str(top), 0) + 1
         stats[arm] = {
             "n": n,
             "rate_raw": round(p_raw, 4),
@@ -93,6 +102,7 @@ def analyze(rows: list[dict], *, min_pairs: int) -> dict:
             "rate_decisive": round(p_dec, 4),
             "decisive_ci": [round(lo_dec, 4), round(hi_dec, 4)],
             "choice_concentration": round(concentration, 4),
+            "winning_component": components,
         }
         if n < min_pairs:
             problems.append(f"arm {arm}: n={n} < {min_pairs} (frozen power)")
@@ -108,12 +118,15 @@ def analyze(rows: list[dict], *, min_pairs: int) -> dict:
     satiated = stats.get("satiated")
     dangling = stats.get("dangling")
     if taught and isolated and satiated and dangling:
-        # TRANSFERRED counts only bias-decisive successes (mechanism
-        # assertion); the comparison gates use the taught DECISIVE rate too
-        # (conservative: decisive <= raw) against the controls' raw rates.
+        # Gate semantics follow the frozen table LITERALLY (review fold I1):
+        # TRANSFERRED's row alone specifies bias-decisive counting; the
+        # difference gates read "merged-taught − isolated/satiated" with no
+        # qualifier, so they compare RAW rates. Both rates are reported;
+        # the conjunction still cannot pass without decisiveness because
+        # TRANSFERRED gates it.
         gates["TRANSFERRED"] = taught["rate_decisive"] >= GATES_V1["transferred_min"]
-        gates["ABOVE_FLOOR"] = taught["rate_decisive"] - isolated["rate_raw"] >= GATES_V1["above_floor_min"]
-        gates["WANT_NOT_FILE"] = taught["rate_decisive"] - satiated["rate_raw"] >= GATES_V1["want_not_file_min"]
+        gates["ABOVE_FLOOR"] = taught["rate_raw"] - isolated["rate_raw"] >= GATES_V1["above_floor_min"]
+        gates["WANT_NOT_FILE"] = taught["rate_raw"] - satiated["rate_raw"] >= GATES_V1["want_not_file_min"]
         gates["BOTH_HALVES"] = dangling["rate_raw"] - isolated["rate_raw"] < GATES_V1["both_halves_band"]
     else:
         problems.append("missing arm(s) — all four are required for a verdict")
@@ -125,9 +138,15 @@ def analyze(rows: list[dict], *, min_pairs: int) -> dict:
 def run_noop_kit(artifacts_dir: Path, rows: list[dict]) -> dict:
     from exp56 import common as C
 
-    taught_rows = [r for r in rows if r.get("arm") == "taught"]
+    meta_path = artifacts_dir / "meta.json"
+    if not meta_path.is_file():
+        return {"kit_pass": False, "error": f"no artifacts meta at {meta_path} (run the campaign with pair 0)"}
+    meta = json.loads(meta_path.read_text())
+    taught_rows = [
+        r for r in rows if r.get("arm") == "taught" and int(r.get("pair_seed", -1)) == int(meta["pair_seed"])
+    ]
     if not taught_rows:
-        return {"kit_pass": False, "error": "no taught rows to re-run"}
+        return {"kit_pass": False, "error": f"no taught row for artifacts pair {meta['pair_seed']}"}
     row = taught_rows[0]
     bundle = artifacts_dir / "taught.zip"
     pre_nac = json.loads((artifacts_dir / "receiver_pre_nac.json").read_text())
@@ -138,7 +157,7 @@ def run_noop_kit(artifacts_dir: Path, rows: list[dict]) -> dict:
         bundle=bundle,
         receiver_pre_nac=pre_nac,
         receiver_pre_ec=pre_ec,
-        receiver_agent_id=f"recv_taught_{row['pair_seed']}",
+        receiver_agent_id=str(meta.get("receiver_agent_id") or f"recv_taught_{row['pair_seed']}"),
         contributor_id=cfg["contributor_id"],
         first_contact=row.get("first_contact") or {},
         target_tool=f"{C.ENTITY_NAME}_{row['target_aff']}",

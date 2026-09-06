@@ -96,6 +96,8 @@ One line per var (name = purpose = owning module). Long rationales: [docs/lesson
 - `MAXIM_CRADLE_MOTHER_CREDIT` = "relief" (default) | "constant" = where the mother's operant credit VALUE comes from (Exp 52: the sign of the drive relief her feed produced — zero relief → no credit — vs the pre-Exp-52 by-fiat `feed_reward`); S6 fidelity toggle, identical across arms = `simulation/generative_runner.py` → `cradle_mother.reactive_mother_tick(credit=)`; scrub `_isolate_cradle_mother_credit_env`.
 - `MAXIM_SUBSTRATE_ACTIONS_PER_TURN` = turn-scoped action budget for the substrate-primary AUT (Exp 48 thrashing fix); unset = unbounded stopwatch regime; invalid → WARNING + unbounded, never a silently invented bound; S6 apparatus toggle — changing it between arms is a declared fidelity change = `simulation/bridge.py` + orchestrator; scrub `_isolate_maxim_substrate_actions_per_turn_env`.
 
+- `EXP56_RCON_PASSWORD` / `EXP56_BOT_NAME` = operator conveniences for the Exp 56 live campaign's argparse defaults (RCON world control / bot name) — NOT `MAXIM_*` toggles, no runtime code reads them, no conftest scrub owed = `scripts/exp56/{run_campaign,instrument_check}.py`.
+
 **Ablation-arm index** — vars used by experiment arms but homed on their mechanism's brief:
 
 | Var | Home brief |

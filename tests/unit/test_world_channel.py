@@ -97,11 +97,24 @@ class TestModalityDeclaration:
         registry = ComponentRegistry()
         checked = 0
         for ref in registry.list_refs("bodies"):
-            if ref == "bodies/minecraft_player":
-                # THE declaring body (1.1.4 PR 3) — the one legitimate
-                # world-channel feeder; its behavior is pinned by
-                # test_minecraft_seam.py, and any OTHER body joining this
-                # exemption list must argue its case in review.
+            if ref in (
+                "bodies/minecraft_player",
+                "bodies/minecraft_bench",
+                "bodies/minecraft_bench_satiated",
+            ):
+                # The legitimate world-channel feeders, each with its case
+                # argued here per this gate's own rule:
+                # - minecraft_player: THE declaring body (1.1.4 PR 3);
+                #   behavior pinned by test_minecraft_seam.py.
+                # - minecraft_bench (+ its satiated twin, which inherits
+                #   the world sensors via `extends` — the registry resolves
+                #   the merge, so both appear here): the Exp 56 frozen
+                #   benchmark apparatus
+                #   (exp56_four_arm_sharing_preregistration.md §Apparatus)
+                #   — a six-sensor world channel inside L11's per-channel
+                #   budget, pinned by test_exp56_harness.py::TestBenchBody.
+                # Any OTHER body joining this list must argue its case in
+                # review.
                 continue
             spec = registry.get(ref)
             body = _parse_entity(dict(spec.get("entity", spec)))

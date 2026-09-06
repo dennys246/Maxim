@@ -101,6 +101,7 @@ def check_pilots(bridge_port: int, world, bot: str, work: Path, *, settle: float
         bot=bot,
         settle=settle,
         keep_artifacts=True,
+        artifacts_dir=work / "pair0_artifacts",
     )
     dangling = run_pair_arm(
         cfg=cfg,
@@ -124,13 +125,22 @@ def check_pilots(bridge_port: int, world, bot: str, work: Path, *, settle: float
         first_contact=fc,
         target_tool=f"{C.ENTITY_NAME}_{cfg['target_aff']}",
     )
-    dangling_moved = bool(dangling["chose_target"] and dangling["bias_decisive"])
+    # The tripwire must be able to fail (review I7/ex-4: the old
+    # chose_target AND bias_decisive conjunction was structurally vacuous —
+    # a dangling arm cannot be bias-decisive by construction). A
+    # SUBSTRATE-SOURCED target pick at first contact is the link-channel
+    # signature; an epsilon pick of the target is the floor doing floor
+    # things. The winning components are recorded either way.
+    dangling_fc = dangling["first_contact"]
+    dangling_moved = bool(dangling["chose_target"] and dangling_fc.get("source") == "substrate")
     return {
         "taught_first_contact": {k: fc.get(k) for k in ("chosen", "source", "substrate_confidence")},
         "taught_decisive": taught["bias_decisive"],
         "taught_margin": margin,
         "donor_sanity": taught.get("donor_sanity"),
         "dangling_chose_target": dangling["chose_target"],
+        "dangling_source": dangling_fc.get("source"),
+        "dangling_components": (dangling_fc.get("provenance") or {}).get("score_components"),
         "dangling_decisive": dangling["bias_decisive"],
         "dangling_ingest": dangling.get("ingest"),
         "noop_kit": kit,

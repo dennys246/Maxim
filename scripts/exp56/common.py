@@ -30,7 +30,6 @@ action on both sides).
 
 from __future__ import annotations
 
-import argparse  # noqa: F401  (CLI modules import shapes from here)
 import json
 import logging
 import random
@@ -465,6 +464,17 @@ def build_bench_session(
         pool = _NullPool()
     encoder = SensorEncoder(ec=aut.bio.ec, config=SensorEncoderConfig())
     ranges = sensor_ranges(aut.executor.embodiment.root, tuple(aut.backend.world_owned_sensors))
+    # C2 (design-lens): the frozen selector regime requires the substrate
+    # explore bonus OFF — ambient config.json / env can silently arm it
+    # through build_bio_stack's resolution (two paths, the n-ctx-drift
+    # lesson shape). Refuse, never proceed on a diverged apparatus.
+    explore_w = float(getattr(aut.bio.nac.config, "substrate_explore_bonus_weight", 0.0))
+    if explore_w != 0.0:
+        raise RuntimeError(
+            f"exp56: substrate_explore_bonus_weight resolved to {explore_w} (frozen: 0.0) — "
+            "ambient sim.substrate_explore_bonus_weight config/env diverges from the frozen "
+            "apparatus; unset it (maxim config) and re-run (S6/S3)."
+        )
     # The hub session must be OPENED by the object that will close it, or
     # the close persists nothing (the D41/D42 lesson — an unopened hub is
     # exactly how a harness loses the very state it measures).
@@ -666,7 +676,14 @@ def donor_sanity(session: BenchSession, *, arm: str) -> dict[str, Any]:
             and count_spread <= FROZEN["link_count_tolerance"]
             and checks["inherent_keys"] == 0
         )
-    _ = ec_payload  # payload-level geometry is asserted by the strict ingest path itself
+    # I8 (design-lens): geometry stamps are part of the per-donor set —
+    # asserted HERE so an unstamped donor takes the re-run-and-record path
+    # rather than aborting the campaign at ingest.
+    geometries = getattr(session.aut.bio.ec, "_substrate_node_geometries", {}) or {}
+    unstamped_world = [nid for nid in world_nodes if geometries.get(nid) is None]
+    checks["unstamped_world_nodes"] = len(unstamped_world)
+    checks["pass"] = bool(checks["pass"]) and not unstamped_world
+    _ = ec_payload
     return checks
 
 
@@ -690,7 +707,7 @@ def close_and_stage_session(session: BenchSession, *, stage_dir: Path) -> Path:
     shutil.copyfile(ec_src, stage_dir / "aut_ec.json")
     try:
         session.aut.client.close()
-    except Exception:
+    except OSError:
         pass
     return stage_dir
 
@@ -766,9 +783,22 @@ def probe_receiver(
     """The B-phase probe: rest decisions, then the situation (the
     ARM-INDEPENDENT script trigger), first-contact readout at the frozen
     epsilon-greedy selector, then the fixed tail."""
-    rng = random.Random(pair_seed * 65537 + 3)
     nac = session.aut.bio.nac
-    contact_at = rng.randint(3, FROZEN["probe_precontact_max"])
+    # ARM-IDENTICAL dither (design-lens C1): every stochastic ingredient is
+    # a pure function of (pair_seed, decision index), so no arm's behavior
+    # can shift another draw's position in a shared stream — the prereg's
+    # "the same B-probe script per pair seed is used in all four arms" is
+    # structural, not hoped-for. contact_at is 0-indexed: randint(3, max-1)
+    # puts first contact at the 4th..10th decision ("within the first 10",
+    # design-lens I3).
+    contact_at = random.Random(pair_seed * 65537 + 3).randint(3, FROZEN["probe_precontact_max"] - 1)
+
+    def _eps_draw(idx: int) -> float:
+        return random.Random(pair_seed * 99991 + idx * 17 + 5).random()
+
+    def _choice_draw(idx: int) -> str:
+        return random.Random(pair_seed * 77773 + idx * 13 + 9).choice(ROSTER)
+
     decisions: list[dict[str, Any]] = []
     first_contact: dict[str, Any] | None = None
     total = contact_at + 1 + FROZEN["probe_tail"]
@@ -797,14 +827,14 @@ def probe_receiver(
                     f"exp56 probe decision {idx}: score_components['drive']={drive_component} != 0 "
                     "— the L12 prior is inside the selector (S3 refusal)"
                 )
-            if rng.random() < FROZEN["epsilon"]:
-                chosen = rng.choice(ROSTER)
+            if _eps_draw(idx) < FROZEN["epsilon"]:
+                chosen = _choice_draw(idx)
                 source = "epsilon"
             elif proposal is not None:
                 chosen = str(proposal["tool_name"])
                 source = "substrate"
             else:
-                chosen = rng.choice(ROSTER)
+                chosen = _choice_draw(idx)
                 source = "none_fallback"
             record = {
                 "decision": idx,

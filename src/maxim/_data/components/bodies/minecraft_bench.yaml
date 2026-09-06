@@ -15,8 +15,9 @@ component:
       an elevated slot). Sensor NAMES stay the bridge snapshot keys (the
       backend writes by declared-name match; names only reach the SHA-basis
       encoder, carrying no semantics — L12 concerns TOOL and DRIVE names).
-      Ranges copied verbatim from minecraft_player's re-centered
-      declarations (rest = the A4 neutral; D1's lever).
+      Ranges follow minecraft_player's re-centered PRINCIPLE (rest = the
+      A4 neutral; D1's lever); speed's window is narrower than the
+      player's — the principle, not the bytes, is what is copied.
     * OPAQUE affordance and drive names (L12): the eight roster affordances
       are aff_a..aff_h under the abstract `act` modulator — the per-pair
       opaque-name -> bridge-action permutation lives in the harness's
