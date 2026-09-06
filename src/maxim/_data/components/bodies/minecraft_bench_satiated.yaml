@@ -1,0 +1,26 @@
+component:
+  name: minecraft_bench_satiated
+  extends: bodies/minecraft_bench
+  category: bodies
+  archetype: humanoid
+  tags: [body, minecraft, world, benchmark, exp56, control]
+  synonyms: [satiated benchmark body, exp56 satiated body]
+  description: |
+    Exp 56 satiated-donor control body (the Exp 52/54 satiated pattern,
+    verbatim — reachy_mini_infant_satiated is the precedent): identical to
+    minecraft_bench — same six world sensors, same eight opaque affordances,
+    the SAME entity name minecraft_bench (load-bearing: the name prefixes
+    every tool signature and is the body_ref; gate 7 refuses a renamed
+    twin) — but d1 starts at 0 and never drifts. The teacher's contingent
+    feed relieves nothing, so under relief-signed operant credit it mints
+    NO reward: identical schedule, identical feed events, zero need. If a
+    receiver of this donor's bundle moves, the effect is not a learned want
+    (docs/experiments/protocols/exp56_four_arm_sharing_preregistration.md,
+    arm 3).
+entity:
+  name: minecraft_bench       # inherited anyway; restated so the control's keys are visibly shared
+  sensors:
+    d1:
+      initial: 0.0
+      drive:
+        drift_rate: 0.0

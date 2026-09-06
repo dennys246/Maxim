@@ -189,11 +189,20 @@ def build_minecraft_aut(
     persistence_dir: str,
     bridge_host: str = "127.0.0.1",
     action_timeout_s: float = 15.0,
+    entity_ref: str = MINECRAFT_BODY_REF,
+    client: Any | None = None,
 ) -> MinecraftAut:
     """Build one full AUT against one bridge, on the canonical builders.
 
     Raises on any missing piece (a harness that degrades into an
     unembodied or world-less agent measures nothing — D64's shape).
+
+    ``entity_ref`` selects the body (default: the production player body;
+    Exp 56 passes ``bodies/minecraft_bench``) and ``client`` accepts a
+    pre-built/wrapping client (Exp 56's per-pair translating proxy) — both
+    defaulted so every existing caller is byte-identical. The assembly
+    stays HERE either way: a second hand-composed builder in scripts/
+    would be the D43 composition lesson re-armed.
     """
     from maxim.embodiment.backends.minecraft import minecraft_modulator_factory
     from maxim.embodiment.component_registry import ComponentRegistry
@@ -202,8 +211,9 @@ def build_minecraft_aut(
     from maxim.simulation.minecraft import MinecraftClient, MinecraftPerceptSource
     from maxim.tools.registry import ToolRegistry
 
-    client = MinecraftClient(bridge_host, bridge_port, action_timeout_s=action_timeout_s)
-    client.connect()
+    if client is None:
+        client = MinecraftClient(bridge_host, bridge_port, action_timeout_s=action_timeout_s)
+        client.connect()
 
     component_registry = ComponentRegistry()
     bio = build_bio_stack(agent_id=agent_id, persistence_dir=persistence_dir)
@@ -228,7 +238,7 @@ def build_minecraft_aut(
         scn=bio.scn,
         cerebellum=bio.cerebellum,
         distributor=bio.distributor,
-        entity_ref=MINECRAFT_BODY_REF,
+        entity_ref=entity_ref,
         component_registry=component_registry,
         # The factory derives world_owned_sensors from the ATTACHED entity's
         # own modality: world declarations — no probe parse, no drift.
@@ -245,7 +255,7 @@ def build_minecraft_aut(
     if backend is None:
         raise RuntimeError("minecraft modulator backend did not attach — the world seam is not wired")
     if not backend.world_owned_sensors:
-        raise RuntimeError(f"{MINECRAFT_BODY_REF} declares no modality: world sensors — nothing to measure")
+        raise RuntimeError(f"{entity_ref} declares no modality: world sensors — nothing to measure")
 
     return MinecraftAut(
         agent_id=agent_id,

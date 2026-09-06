@@ -1,0 +1,24 @@
+# The `body:`-rooted export spec for Exp 56 bundle composition
+# (`maxim substrate export --body-yaml <this file>`): `load_spec` reads
+# THIS shape, not component YAMLs, and `derive_capability_map` runs the
+# real tool-naming path over it so the manifest's capability_map carries
+# the very `tool:minecraft_bench_aff_*` keys the donors' biases key on
+# (gate 7's forward-insurance half). Mirrors
+# `src/maxim/_data/components/bodies/minecraft_bench.yaml` EXACTLY on
+# entity name, modulator, and affordance names — the guard test pins the
+# two files' affordance sets equal so they cannot drift.
+body:
+  name: minecraft_bench
+  entity_type: body
+  modulators:
+    act:
+      abstract: true
+      affordances:
+        aff_a: {params: {}, description: "Perform action a."}
+        aff_b: {params: {}, description: "Perform action b."}
+        aff_c: {params: {}, description: "Perform action c."}
+        aff_d: {params: {}, description: "Perform action d."}
+        aff_e: {params: {}, description: "Perform action e."}
+        aff_f: {params: {}, description: "Perform action f."}
+        aff_g: {params: {}, description: "Perform action g."}
+        aff_h: {params: {}, description: "Perform action h."}
