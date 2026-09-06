@@ -750,10 +750,24 @@ def _run_ingest(args: argparse.Namespace) -> int:
         return 2
 
     if ec_payload is None:
-        ec_payload = {"substrate_nodes": {}}
+        # A freshly-minted EC file must carry the CC1 stamp itself — the
+        # splice branch below preserves the stamp the writing EC put there
+        # (arch-lens finding 5).
+        ec_payload = with_format_version({"substrate_nodes": {}})
     ec_payload["substrate_nodes"] = report.ec_nodes
-    atomic_write_json(str(ec_path), ec_payload)
-    atomic_write_json(str(nac_path), with_format_version(dict(report.nac), version=_NAC_FORMAT_VERSION))
+    try:
+        atomic_write_json(str(ec_path), ec_payload)
+        atomic_write_json(str(nac_path), with_format_version(dict(report.nac), version=_NAC_FORMAT_VERSION))
+    except OSError as exc:
+        # The journal entry is already durable — recoverable via
+        # --force-digest once the disk trouble is resolved; a traceback is
+        # not the rc=2 contract (executor-lens finding 6).
+        print(
+            f"error: cannot write receiver state: {exc}. The journal already records this digest; "
+            "re-run with --force-digest after resolving.",
+            file=sys.stderr,
+        )
+        return 2
 
     print(
         f"applied. Receiver updated: {nac_path.name} + {ec_path.name}\n"

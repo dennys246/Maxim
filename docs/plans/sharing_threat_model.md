@@ -188,6 +188,30 @@ re-implement them** (the gate-7 rule generalized).
   key is unverifiable, not "no capability" (the collision-context limit pinned in
   `derive_capability_map`'s docstring, PR #624).
 
+**Dated amendments to §5** (the freeze's own change mechanism; both surfaced by the
+adapter's pre-merge review round, 2026-09-05):
+
+- **V1 (2026-09-05):** the in-payload contributor-set equality admits ONE additional
+  value — the composer's honest self-reference `"local"`, which every real exporter
+  stamps (`EC`/`NAc` stamp their own material `source: "local"`; refusing it refuses
+  every honest bundle ever composed). It is normalized to `manifest.contributor_id` at
+  receiver stamping, so it cannot launder attribution to any third party; every OTHER
+  id and every reserved `_*` sentinel refuses exactly as frozen.
+- **V6 (2026-09-05):** "read from the ZIP central directory BEFORE decompression"
+  quietly assumed the directory numbers were truthful — they are attacker bytes, and
+  a binary-patched header declaring 10 bytes over an 800 MB stream routes the
+  declared-size check (measured: ~1.3 GB in-memory expansion through a naive
+  ``zf.read``). The duty's caps therefore bind the ACTUAL decompressed byte count:
+  the adapter reads every member it consumes through a bounded streaming read. The
+  declared-size pass stays as the cheap first gate.
+- **V3 (2026-09-05):** the adapter adds an operator-attested override
+  (`--allow-unstamped-geometry`, default refusal) admitting unstamped foreign nodes
+  from a legacy archive the operator vouches for — the SHA-manifested `53_agents`
+  evidence bundles predate the geometry stamp and are the 1.2 case study's donor
+  material. This extends the permissive-legacy allowance from "a receiver's OWN
+  pre-stamp files" to "a channel-trusted pre-stamp archive", consistent with §5's own
+  statement that the effective 1.2 trust boundary is the CHANNEL.
+
 **Out of scope BY DECLARATION** (so absence is a decision, not an oversight):
 
 - **`maxim substrate merge-nac` is NOT an ingestion path for foreign material.** It

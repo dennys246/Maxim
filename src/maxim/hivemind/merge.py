@@ -842,6 +842,13 @@ def nac_merge_many(
     :func:`nac_merge`, which is already order-independent for those fields
     (observation-weighted means and a true parallel Welford).
 
+    TRUSTED-LOCAL ONLY, by declaration: like ``merge-nac``, this is not an
+    ingestion path for foreign material — it runs none of the V1–V10
+    receiver duties and sits outside ``substrate_merge``'s tighten-only
+    clamp. Foreign substrate enters through ``hivemind.ingest.ingest_bundle``
+    (sharing_threat_model.md §5). Known local-consistency defect in the
+    clamp table below: docs/bugs D85.
+
     Note the internal inconsistency this resolves: within a single
     ``nac_merge`` call, ``total_observations`` sums exactly and
     ``event_outcome_welford`` uses Chan's parallel algorithm, while only the
@@ -1046,6 +1053,10 @@ def prune_nac_cluster_biases(
     * ``cluster_reward_bias`` / ``cluster_reward_source`` — keyed
       ``agent\\x1fcluster\\x1ftool_signature`` (``NAC_KEY_SEP``).
     * ``reward_bias`` — keyed ``agent:node_id``.
+    * ``inherent_bias_keys`` — markers on pruned clusters are dropped too
+      (a dangling exemption can bless a LATER foreign bias at the same
+      triple as decay-exempt; see the inline comment). Marker drops do not
+      count toward ``pruned_count`` (which counts bias entries).
 
     Local-state maintenance, NOT a merge entry point — takes no foreign
     source, so the ``trusted_sources``/``_validate_source`` reservations
@@ -1080,6 +1091,23 @@ def prune_nac_cluster_biases(
                 continue
             kept_rb[key] = value
         out["reward_bias"] = kept_rb
+    # The inherent-class markers name cluster_reward_bias keys — a marker
+    # left behind for a pruned cluster is a DANGLING EXEMPTION, and it is
+    # live ammunition, not just clutter: a later merge that lands a foreign
+    # bias at the same triple (the pruned uuid is known from the receiver's
+    # own earlier exports) unions the marker forward and load_state then
+    # blesses the FOREIGN bias as decay-exempt inherent — the exact
+    # privilege escalation the Queen-provenance entry rule exists to refuse
+    # (executor-lens finding 5, reproduced end-to-end).
+    inherent = nac_state.get("inherent_bias_keys")
+    if isinstance(inherent, list):
+        kept_markers: list[Any] = []
+        for key in inherent:
+            parts = str(key).split(NAC_KEY_SEP)
+            if len(parts) == 3 and parts[1] in ids:
+                continue
+            kept_markers.append(key)
+        out["inherent_bias_keys"] = kept_markers
     return out, pruned
 
 

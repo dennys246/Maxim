@@ -34,7 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the explicit legacy override), receiver-side re-run of the identity quarantine and content
   scrub (V4), receiver-stamped attribution (V5), uncompressed-size resource caps from the ZIP
   central directory (V6), declared-slices-only reads (V7), an ingestion journal with digest
-  dedup and contributor tombstones (V8, `substrate_ingest_journal.json`), id/domain hygiene
+  dedup and contributor tombstones (V8, `substrate_ingest_journal.json`; the tombstone
+  operator surface — the distrust/prune flow — is declared follow-up work), id/domain hygiene
   incl. row N's stamping-half close-out (V9), and capability-map shape-only handling (V10).
   Design record: `docs/plans/oasis_ingestion_contract.md`. Guard battery:
   `tests/unit/test_hivemind_ingest.py` (one refusing/clamping test per attack-matrix row) +

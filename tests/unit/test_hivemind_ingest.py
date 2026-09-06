@@ -789,3 +789,192 @@ class TestInherentClassEntry:
         assert report.nac["cluster_reward_bias"][merged_key] == -1.0
         assert report.nac["inherent_bias_keys"] == [merged_key]
         assert report.inherent_keys_admitted == 1
+
+
+class TestV10CapabilityMap:
+    def test_malformed_capability_map_refused(self, tmp_path: Path, journal: IngestionJournal) -> None:
+        contents = {"nac": {"file": "nac.json"}}
+        manifest = _manifest(contents=contents, dims={})
+        manifest["capability_map"] = ["not", "a", "mapping"]
+        bundle = _write_bundle(tmp_path / "b.zip", nac_state=_nac_state(), manifest=manifest)
+        with pytest.raises(IngestRefused) as e:
+            _ingest(bundle, journal)
+        _refused(e, "V10")
+
+    def test_capability_map_is_carried_not_interpreted(self, tmp_path: Path, journal: IngestionJournal) -> None:
+        # V10's frozen rule binds READERS ("a missed key is unverifiable,
+        # not 'no capability'"); the adapter's whole duty is shape-check +
+        # carry. The manifest in the report holds the entries verbatim.
+        contents = {"nac": {"file": "nac.json"}}
+        manifest = _manifest(contents=contents, dims={})
+        manifest["capability_map"] = {"tool:x_y": "m/y"}
+        bundle = _write_bundle(tmp_path / "b.zip", nac_state=_nac_state(), manifest=manifest)
+        report = _ingest(bundle, journal)
+        assert report.manifest["capability_map"] == {"tool:x_y": "m/y"}
+
+
+class TestV9Charset:
+    def test_whitespace_node_id_refused(self, tmp_path: Path, journal: IngestionJournal) -> None:
+        bundle = _write_bundle(tmp_path / "b.zip", ec_nodes={"n 1": _node()})
+        with pytest.raises(IngestRefused) as e:
+            _ingest(bundle, journal)
+        _refused(e, "V9")
+
+    def test_control_char_cluster_id_refused(self, tmp_path: Path, journal: IngestionJournal) -> None:
+        bundle = _write_bundle(
+            tmp_path / "b.zip",
+            nac_state=_nac_state(cluster_reward_bias={NAC_KEY_SEP.join(("a", "c\x07id", "t")): 0.5}),
+        )
+        with pytest.raises(IngestRefused) as e:
+            _ingest(bundle, journal)
+        _refused(e, "V9")
+
+    def test_huge_integer_literal_refuses_not_tracebacks(self, tmp_path: Path, journal: IngestionJournal) -> None:
+        # Arch-lens finding 1: an integer literal never meets parse_float;
+        # float(10**400) overflows and must refuse as V2, not traceback.
+        bundle = _write_bundle(
+            tmp_path / "b.zip",
+            nac_state=_nac_state(total_observations=10**400),
+        )
+        with pytest.raises(IngestRefused) as e:
+            _ingest(bundle, journal)
+        _refused(e, "V2")
+
+
+class TestExecutorLensFolds:
+    """Guards for the executor-lens review folds (2026-09-05 round)."""
+
+    def test_embedding_norm_inflation_refused(self, tmp_path: Path, journal: IngestionJournal) -> None:
+        # Finding 1 (row B): the cosine gate is magnitude-invariant but the
+        # count-weighted fold is not — a count=1 node with a 1e12-norm
+        # embedding folds and owns the merged centroid outright.
+        bundle = _write_bundle(
+            tmp_path / "b.zip",
+            ec_nodes={"d1": _node(embedding=[0.9e12, 0.5e12, 0.0, 0.0], count=1)},
+        )
+        with pytest.raises(IngestRefused) as e:
+            _ingest(bundle, journal)
+        _refused(e, "V2")
+
+    def test_zero_norm_embedding_refused(self, tmp_path: Path, journal: IngestionJournal) -> None:
+        bundle = _write_bundle(tmp_path / "b.zip", ec_nodes={"d1": _node(embedding=[0.0, 0.0, 0.0, 0.0])})
+        with pytest.raises(IngestRefused) as e:
+            _ingest(bundle, journal)
+        _refused(e, "V2")
+
+    def test_welford_mean_magnitude_refused(self, tmp_path: Path, journal: IngestionJournal) -> None:
+        # Finding 4: an asserted mean of 1e100 permanently saturates the
+        # receiver's uncertainty interval for the signature.
+        key = NAC_KEY_SEP.join(("a", "tool:probe"))
+        bundle = _write_bundle(
+            tmp_path / "b.zip",
+            nac_state=_nac_state(event_outcome_welford={key: {"mean": 1e100, "m2": 0.0, "n": 5.0}}),
+        )
+        with pytest.raises(IngestRefused) as e:
+            _ingest(bundle, journal)
+        _refused(e, "V2")
+
+    def test_welford_impossible_m2_refused(self, tmp_path: Path, journal: IngestionJournal) -> None:
+        # Finding 4's crash half: m2=1e300 overflows _merge_welford's
+        # (Δmean)² arithmetic into a traceback if admitted.
+        key = NAC_KEY_SEP.join(("a", "tool:probe"))
+        bundle = _write_bundle(
+            tmp_path / "b.zip",
+            nac_state=_nac_state(event_outcome_welford={key: {"mean": 0.5, "m2": 1e300, "n": 5.0}}),
+        )
+        with pytest.raises(IngestRefused) as e:
+            _ingest(bundle, journal)
+        _refused(e, "V2")
+
+    def test_welford_n_cap_scales_m2_proportionally(self, tmp_path: Path, journal: IngestionJournal) -> None:
+        key = NAC_KEY_SEP.join(("a", "tool:probe"))
+        bundle = _write_bundle(
+            tmp_path / "b.zip",
+            nac_state=_nac_state(event_outcome_welford={key: {"mean": 0.5, "m2": 500.0, "n": 2000.0}}),
+        )
+        report = _ingest(bundle, journal)
+        merged = report.nac["event_outcome_welford"][key]
+        assert merged["n"] == MAX_FOREIGN_COUNT
+        # variance m2/n preserved under the cap: 500/2000 == 250/1000
+        assert merged["m2"] == pytest.approx(250.0)
+
+    def test_non_list_deltas_and_history_refuse_not_traceback(self, tmp_path: Path, journal: IngestionJournal) -> None:
+        # Finding 2: TypeError family must be IngestRefused, not a traceback.
+        bundle = _write_bundle(
+            tmp_path / "b.zip",
+            nac_state=_nac_state(links={"tool:probe": [_link(temporal_delta={"observed_deltas": 7})]}),
+        )
+        with pytest.raises(IngestRefused) as e:
+            _ingest(bundle, journal)
+        _refused(e, "V2")
+        bundle2 = _write_bundle(
+            tmp_path / "b2.zip",
+            nac_state=_nac_state(links={"tool:probe": [_link(prediction_history=123)]}),
+        )
+        with pytest.raises(IngestRefused) as e:
+            _ingest(bundle2, journal)
+        _refused(e, "V2")
+
+    def test_malformed_declared_dims_refuse_not_traceback(self, tmp_path: Path, journal: IngestionJournal) -> None:
+        contents = {"ec": {"file": "ec.json"}}
+        manifest = _manifest(contents=contents, dims={})
+        manifest["encoder_provenance"]["observed_embedding_dims"] = {"audio": 4}  # int, not list
+        bundle = _write_bundle(tmp_path / "b.zip", ec_nodes={"n1": _node()}, manifest=manifest)
+        with pytest.raises(IngestRefused) as e:
+            _ingest(bundle, journal)
+        _refused(e, "V3")
+
+    def test_lying_size_header_bounded_not_inflated(
+        self, tmp_path: Path, journal: IngestionJournal, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Finding 3: the central-directory file_size is attacker bytes. A
+        # patched header declaring 10 bytes over a large stream passed the
+        # declared-size caps and then fully inflated in memory. The bounded
+        # streaming read must refuse without inflating past the cap.
+        import struct
+
+        import maxim.hivemind.ingest as ingest_mod
+
+        monkeypatch.setattr(ingest_mod, "MAX_ENTRY_UNCOMPRESSED_BYTES", 1024)
+        big_state = _nac_state()
+        big_state["padding"] = "0" * 500_000  # decompresses far past the cap
+        bundle = _write_bundle(tmp_path / "b.zip", nac_state=big_state)
+        raw = bytearray(bundle.read_bytes())
+        # Patch EVERY local-header and central-directory uncompressed-size
+        # field for nac.json to a lying small value.
+        pos = 0
+        while (loc := raw.find(b"PK\x03\x04", pos)) != -1:
+            name_len = struct.unpack_from("<H", raw, loc + 26)[0]
+            name = bytes(raw[loc + 30 : loc + 30 + name_len])
+            if name == b"nac.json":
+                struct.pack_into("<I", raw, loc + 22, 10)
+            pos = loc + 4
+        pos = 0
+        while (cen := raw.find(b"PK\x01\x02", pos)) != -1:
+            name_len = struct.unpack_from("<H", raw, cen + 28)[0]
+            name = bytes(raw[cen + 46 : cen + 46 + name_len])
+            if name == b"nac.json":
+                struct.pack_into("<I", raw, cen + 24, 10)
+            pos = cen + 4
+        bundle.write_bytes(bytes(raw))
+        with pytest.raises(IngestRefused) as e:
+            _ingest(bundle, journal)
+        _refused(e, "V6")
+
+    def test_receiver_dangling_inherent_marker_cannot_bless_foreign_bias(
+        self, tmp_path: Path, journal: IngestionJournal
+    ) -> None:
+        # Finding 5 (the escalation belt): a receiver-side marker whose
+        # bias was pruned must not survive into the fold, where a foreign
+        # non-Queen bias at the same triple would inherit decay exemption.
+        key = NAC_KEY_SEP.join(("recv", "d1", "tool:probe"))
+        receiver = _nac_state(inherent_bias_keys=[key])  # marker, NO live bias
+        donor_key = NAC_KEY_SEP.join(("aut", "d1", "tool:probe"))
+        bundle = _write_bundle(
+            tmp_path / "b.zip",
+            nac_state=_nac_state(cluster_reward_bias={donor_key: 0.9}),
+            ec_nodes={"d1": _node()},
+        )
+        report = _ingest(bundle, journal, receiver_nac=receiver, receiver_agent_id="recv")
+        assert report.nac["cluster_reward_bias"][key] == 0.9  # bias landed
+        assert report.nac["inherent_bias_keys"] == []  # ...but NOT blessed

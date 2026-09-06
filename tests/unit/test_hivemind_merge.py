@@ -1150,3 +1150,24 @@ class TestInherentKeysTransport:
         }
         out = rekey_nac_state(state, {"c1": "local9"}, to_agent_id="recv")
         assert out["inherent_bias_keys"] == [NAC_KEY_SEP.join(("recv", "local9", "t"))]
+
+
+class TestPruneDropsInherentMarkers:
+    """Executor-lens finding 5's primary fix: a pruned cluster's inherent
+    marker goes with it — a dangling exemption is live ammunition (a later
+    foreign bias at the same triple would load as decay-exempt)."""
+
+    def test_prune_drops_markers_for_pruned_clusters_only(self) -> None:
+        from maxim.hivemind.merge import prune_nac_cluster_biases
+
+        key_pruned = NAC_KEY_SEP.join(("a", "gone", "t"))
+        key_kept = NAC_KEY_SEP.join(("a", "alive", "t"))
+        state = {
+            "cluster_reward_bias": {key_pruned: -0.5, key_kept: -0.5},
+            "inherent_bias_keys": [key_pruned, key_kept],
+        }
+        out, pruned = prune_nac_cluster_biases(state, {"gone"})
+        assert pruned == 1
+        assert out["inherent_bias_keys"] == [key_kept]
+        # Input not mutated.
+        assert state["inherent_bias_keys"] == [key_pruned, key_kept]

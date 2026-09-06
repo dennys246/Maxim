@@ -65,9 +65,13 @@ contract. Order is load-bearing: cheap/structural checks run before anything is 
 parsing before anything is trusted, trust before anything is merged, and nothing is
 written until every duty has passed.
 
-1. **V6 — resource caps, from the ZIP central directory, BEFORE decompression.**
-   Entry count, per-entry uncompressed size, total uncompressed size (compressed-size
-   caps wave through high-ratio bombs). Constants in §5.
+1. **V6 — resource caps, from the ZIP central directory, BEFORE decompression —
+   AND re-enforced on actual bytes.** Entry count, per-entry uncompressed size, total
+   uncompressed size (compressed-size caps wave through high-ratio bombs). The
+   central-directory numbers are themselves attacker bytes (a binary-patched header
+   can declare 10 bytes over an 800 MB stream), so every member the adapter actually
+   reads goes through a bounded streaming read that enforces the cap on the
+   DECOMPRESSED byte count, whatever the headers claim. Constants in §5.
 2. **Manifest** — `read_bundle_manifest` (existing seam: migration chain,
    `schema_version` refusal, `_format_version` check, `kind` check).
 3. **V1 front door** — `manifest.contributor_id` must be operator-attested
@@ -144,9 +148,15 @@ written until every duty has passed.
    merged keys reach prompt annotation). Dropped/suspect entries and per-entity-class
    valence entries are reported in the result.
 10. **Merge** — `substrate_merge(receiver…, donor…, strict_geometry=True,
-    trusted_sources={contributor}, validate_node=…, validate_link=…,
-    receiver_agent_id=…)`. The reserved parameters are the *belt* behind the V1 door,
-    exactly as the threat model assigns them. **The tighten-only clamp fires INSIDE
+    trusted_sources={contributor}, receiver_agent_id=…)`. The `trusted_sources`
+    parameter is the *belt* behind the V1 door, exactly as the threat model assigns
+    it. The `validate_node`/`validate_link` callables are NOT passed: V2's frozen text
+    offers "`validate_node` / `validate_link` / **a pre-merge normalization pass**" as
+    alternative seams, and the adapter implements the whole of V2/V9 as the §3.7
+    admission pass — by the time the merge runs, every donor entry has already been
+    validated, capped, and receiver-stamped, so a per-entry callable would re-test
+    material that cannot reach the merge unvalidated. The callables stay reserved for
+    policies that must see MERGE-time context (e.g. a future Queen inward gate). **The tighten-only clamp fires INSIDE
     `substrate_merge`, post-fold** (the roadmap-decided seam — never a new merge
     function): for every signed bias dict (`cluster_reward_bias`,
     `percept_valences`, `goal_reward_bias`), a key the RECEIVER held at a negative
@@ -205,7 +215,11 @@ are adapter decisions, tunable in review:
 | `MAX_FOREIGN_COUNT` | 1 000 | V2 (row B) | foreign evidence weight ≤ ~1000 local observations; taught archive maxes at 518 |
 | `CAP_FOREIGN_CONFIDENCE` | 0.9 | V2 (row M) | `confidence` max-folds; a foreign 1.0 would be permanent |
 | `MAX_FOREIGN_DELTAS` | 50 | V2 (row K) | half the merge's `[-100:]` window — local history survives |
+| `MAX_FOREIGN_TOTAL_OBSERVATIONS` | 1 000 000 | V2 | the diagnostic counter is capped too — nothing asserted rides unbounded |
+| `MAX_FOREIGN_EMBEDDING_NORM` | 1000.0 | V2 (row B) | the count cap alone does not stop centroid dominance — the cosine gate is magnitude-invariant, the count-weighted fold is not (honest archive norms: 8–25) |
+| Welford bounds | mean ∈ [-1, 1]; m2 ∈ [0, 4·n], m2 scaled when n caps | V2 (row M) | rewards are valence-mapped into [0, 1]; an asserted 1e100 mean saturates the uncertainty interval permanently, and 1e300 m2 overflows the parallel merge |
 | foreign `memory_ids` | emptied | V2/V4 | episodes never ship; their IDs don't either (compose already enforces; receiver re-enforces) |
+| `_NODE_ID_CHARSET` | `[A-Za-z0-9_.-]{1,128}` | V9 | the identifier charset for node ids + cluster-id segments (honest ids are uuid4; refuses `\x1f`, `#`, control/whitespace/unicode) |
 
 ## 6. Interaction with the inherent bias class (semantics shipped this PR)
 
