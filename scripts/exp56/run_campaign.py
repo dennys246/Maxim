@@ -44,6 +44,20 @@ ARMS = ("isolated", "taught", "satiated", "dangling")
 BOT_NAME_ENV = "EXP56_BOT_NAME"
 
 
+def spectator_commands(name: str) -> list[str]:
+    """RCON commands to make a human a SAFE spectator (join-anytime).
+
+    ``op`` persists to ops.json (works even before the player joins — the
+    offline-mode name is enough), so whenever they connect they can
+    ``/gamemode spectator`` themselves; the immediate ``gamemode`` succeeds
+    if they are already online. Spectator is non-colliding and cannot edit
+    blocks — the one gamemode that cannot perturb the bot's physical-state
+    sensors (the situation signature). Applied on a SEPARATE RCON
+    connection so it never races the harness's teleport socket.
+    """
+    return [f"op {name}", f"gamemode spectator {name}"]
+
+
 def _existing_rows(out_path: Path) -> set[tuple[int, str]]:
     done: set[tuple[int, str]] = set()
     if out_path.is_file():
@@ -296,6 +310,13 @@ def main() -> int:
     ap.add_argument("--rcon-port", type=int, default=25575)
     ap.add_argument("--rcon-password", default=os.environ.get("EXP56_RCON_PASSWORD", ""))
     ap.add_argument("--bot-name", default=os.environ.get(BOT_NAME_ENV, "maxim_bench"))
+    ap.add_argument(
+        "--spectator",
+        default=os.environ.get("EXP56_SPECTATOR"),
+        metavar="MC_USERNAME",
+        help="Op this player + put them in spectator (join-anytime: op persists to ops.json). "
+        "Spectator is the one gamemode that cannot perturb the bot's sensors. Live runs only.",
+    )
     ap.add_argument("--settle-s", type=float, default=0.6)
     ap.add_argument("--mock", action="store_true", help="ScriptedBridgeServer wiring smoke — NEVER confirmatory")
     ap.add_argument("--resume", action="store_true")
@@ -327,6 +348,23 @@ def main() -> int:
         world = C.RconControl(args.rcon_host, args.rcon_port, args.rcon_password)
         bridge_port = args.bridge_port
         settle = args.settle_s
+
+    if args.spectator and not args.mock:
+        # A SEPARATE short-lived RCON connection — never the harness's own
+        # socket (RconControl is single-socket, not thread-safe).
+        spec = C.RconControl(args.rcon_host, args.rcon_port, args.rcon_password)
+        try:
+            for cmd in spectator_commands(args.spectator):
+                print(f"spectator> {cmd}\n           {spec.command(cmd).strip() or '(ok)'}")
+        finally:
+            spec.close()
+        print(
+            f"spectator {args.spectator!r} is op'd; join {args.rcon_host} and — if not already "
+            "in spectator — run /gamemode spectator. Stay off the slot/rest anchors; a physical "
+            "nudge trips the S3 situation-reflected assertion and aborts that pair (loud, not silent)."
+        )
+    elif args.spectator and args.mock:
+        print("note: --spectator ignored under --mock (no live world to join)")
 
     arms = [a.strip() for a in args.arms.split(",") if a.strip()]
     unknown = set(arms) - set(ARMS)

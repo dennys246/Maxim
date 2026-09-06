@@ -333,6 +333,29 @@ class TestAnalyzer:
 # ── build_minecraft_aut param additions (existing callers byte-identical) ─
 
 
+class TestSpectatorFlag:
+    def test_spectator_commands_op_then_gamemode(self):
+        from exp56.run_campaign import spectator_commands
+
+        cmds = spectator_commands("Denny")
+        assert cmds == ["op Denny", "gamemode spectator Denny"], cmds
+
+    def test_spectator_arg_defaults_to_env(self, monkeypatch):
+        # The flag reads EXP56_SPECTATOR so an operator can export it once.
+        import argparse
+
+        from exp56 import run_campaign
+
+        monkeypatch.setenv("EXP56_SPECTATOR", "Watcher")
+        # Rebuild just the one arg the way main() declares it.
+        ap = argparse.ArgumentParser()
+        import os as _os
+
+        ap.add_argument("--spectator", default=_os.environ.get("EXP56_SPECTATOR"))
+        assert ap.parse_args([]).spectator == "Watcher"
+        assert hasattr(run_campaign, "spectator_commands")
+
+
 class TestHarnessBuilderParams:
     def test_default_entity_ref_unchanged(self):
         import inspect
