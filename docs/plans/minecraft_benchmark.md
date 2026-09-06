@@ -396,6 +396,18 @@ measured on. Three caveats before anyone does it:
 
 ## The 1.2 benchmark — four arms
 
+> **Pre-registered 2026-09-05:**
+> [exp56_four_arm_sharing_preregistration.md](../experiments/protocols/exp56_four_arm_sharing_preregistration.md)
+> operationalizes this section (gates carried verbatim; the contingency is a
+> TEACHER-DELIVERED reward — the Exp 52 operant mechanism on the world channel, the
+> only shipped path that keys an exteroceptive cluster with positive credit; donors run
+> a balanced action schedule so the causal-link channel is preference-neutral by
+> construction; live-bridge apparatus; Phase-0 instrument checks against L11/L12/L1/L2).
+> Its pre-freeze two-lens review round is designed against in §Links/§Selector of the
+> prereg itself. The D43/D44 blockers named below are DISCHARGED (1.1.3 + the 1.2
+> ingestion adapter, PR #637) — ingestion in the arms runs `maxim substrate ingest`,
+> never bare `nac_merge`.
+
 **Claim under test:** *agent A's learned representation changes agent B's behaviour, where A
 and B are genuinely independent agents* — different `agent_id`, independently encoded EC.
 Independence is the whole point: the two existing federation experiments pass only because
