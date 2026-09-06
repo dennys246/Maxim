@@ -158,6 +158,34 @@ class TestPayloadPrimitive:
         assert not verify_payload(payload, sig, "not-base64!!")
 
 
+class TestDiskKey:
+    def test_mint_then_load_same_key_and_0600(self, tmp_path, monkeypatch):
+        import platform as _platform
+
+        from maxim.hivemind import signing as sg
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        first = sg.load_or_create_signer(signer_identity="queen-alpha")
+        assert sg.signing_key_path().is_file()
+        # second call loads the SAME persisted key (identical public key)
+        second = sg.load_or_create_signer(signer_identity="queen-alpha")
+        assert first.public_key_b64 == second.public_key_b64
+        # public key file holds the base64 pubkey
+        assert sg.public_key_path().read_text().strip() == first.public_key_b64
+        # private key is 0600 on POSIX (never umask-wide)
+        if _platform.system() != "Windows":
+            assert (sg.signing_key_path().stat().st_mode & 0o777) == 0o600
+
+    def test_persisted_key_signs_a_verifiable_bundle(self, tmp_path, monkeypatch):
+        from maxim.hivemind import signing as sg
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        signer = sg.load_or_create_signer(signer_identity="queen-alpha")
+        bundle, _ = _compose_signed(tmp_path, signer)
+        ok, reason = verify_bundle_signature(bundle, trusted_keys={"queen-alpha": signer.public_key_b64})
+        assert ok, reason
+
+
 class TestIngestRequireSigned:
     def _receiver(self):
         return {}, {}

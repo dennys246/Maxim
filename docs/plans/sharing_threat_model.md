@@ -20,15 +20,18 @@ branch. Statements below that lean on either say so.
 ## 1. Trust model
 
 The adversary is the **bundle author** (or anyone who modified a bundle in transit —
-at 1.2 there is no signature verification, only reserved slots). A bundle is a ZIP of
-attacker-controlled bytes; every manifest field AND every payload field is an
-**assertion**, not a fact. Verification classes:
+`ed25519` signatures are verifiable as of the 1.2 P2P signing slice when the receiver
+opts in with `require_signed`; see amendment 4 in §5 and the `signature` duty). A bundle
+is a ZIP of attacker-controlled bytes; every manifest field AND every payload field is an
+**assertion**, not a fact — except a valid `ed25519` signature from a trusted key, which
+attests the manifest (minus its signature fields) plus the raw slice bytes were not
+modified. Verification classes:
 
 | Class | Fields | Receiver stance |
 |---|---|---|
 | **Measured at compose, re-measurable at receipt** | `encoder_provenance.observed_embedding_dims`, `contents` vs the ZIP namelist | Re-measure at admission (duty **V3** — no code does this today) and refuse a mismatch. |
 | **Assertions the receiver can gate on but not verify** | Manifest: `body_ref`, `affordance_namespace`, `capability_map`, `contributor_id`, `domain`. Payload (in `ec.json`/`nac.json`): per-node `geometry`, `count`, `domain`, `source`/`contributors`, every numeric field, every key string | Gate loudly (refusal semantics), never treat as evidence. Absence is *unverifiable*, not compatible (the gate-7 / format-version `"0.x"` reasoning). |
-| **Reserved, unverified at 1.2** | `signature`, `signature_algorithm`, `signer_identity` | Ignore (never treat a present-but-unverified signature as trust). |
+| **Signature (verifiable for `ed25519`; other algorithms reserved)** | `signature`, `signature_algorithm`, `signer_identity` | Under `require_signed`, verify an `ed25519` signature against a trusted key and REFUSE on absent/unknown-algorithm/untrusted/invalid (the `signature` duty, amendment 4). Without `require_signed`, ignore — never treat a present-but-unverified signature as trust. Other declared algorithms are unverifiable → refused under `require_signed`. |
 
 A merged substrate's own recorded provenance describes only its local encoders — the
 per-contributor union rule pinned in `compose_bundle`'s MERGE SEMANTICS docstring
@@ -211,6 +214,18 @@ adapter's pre-merge review round, 2026-09-05):
   material. This extends the permissive-legacy allowance from "a receiver's OWN
   pre-stamp files" to "a channel-trusted pre-stamp archive", consistent with §5's own
   statement that the effective 1.2 trust boundary is the CHANNEL.
+- **`signature` duty (2026-09-06, P2P Slice A):** a new front-of-pipeline duty registers
+  `ed25519` bundle-signature verification. Under the receiver's opt-in `require_signed`,
+  the adapter verifies the manifest's `ed25519` signature (over the signature-excluded
+  manifest plus the raw slice bytes) against operator-supplied trusted keys
+  (`signer_identity → public key`) and REFUSES — `IngestRefused(duty="signature")`, never
+  admit-with-clamps — on an absent signature, an unknown `signature_algorithm`, an
+  untrusted signer, or an invalid signature. `require_signed=False` (the experimental
+  tier) preserves the pre-Slice-A behaviour exactly: signatures are ignored and V1 channel
+  trust alone gates admission. This raises the trust boundary from "the channel" to "a
+  key the operator trusts" for the Queen tier, while the tier's DEFAULT policy
+  (`trusted_sources`/`require_signed` wiring) remains Slice D. Guard:
+  `tests/unit/test_hivemind_signing.py`; impl `hivemind/signing.py` + `bundle.py::verify_bundle_signature`.
 
 **Out of scope BY DECLARATION** (so absence is a decision, not an oversight):
 
@@ -220,11 +235,15 @@ adapter's pre-merge review round, 2026-09-05):
   discipline). Foreign substrate MUST arrive as a bundle through the adapter;
   handing `merge-nac` a stranger's file defeats this entire document. (Follow-up
   hardening — a warning banner on the verb — is 1.2 adapter work, not frozen here.)
-- **Signature computation/verification** stays reserved until the P2P layer defines
-  key distribution. Consequence, stated plainly: until then NOTHING in the bundle
-  authenticates its author, so the effective 1.2 trust boundary is the CHANNEL — how
-  the operator obtained the bundle — matching the Queen-tier curation framing in
-  maxim_hivemind.md. V1 gates on an id the operator chose to trust, not on proof.
+- **Signature computation/verification** shipped for `ed25519` in P2P Slice A (amendment
+  4 above): `require_signed` receivers authenticate a bundle's author against a trusted
+  key. What stays reserved is automated **trust-anchor distribution** — how a receiver
+  OBTAINS the Queen's public key is still channel-based (the operator pastes a
+  `--trust-key <id>=<pubkey>`), so for the experimental tier (`require_signed=False`) and
+  for anyone who has not configured a trusted key, the effective trust boundary remains
+  the CHANNEL, matching the Queen-tier curation framing in maxim_hivemind.md. V1 still
+  gates on an id the operator chose to trust; the signature duty adds cryptographic proof
+  on top when a key is configured.
 - **Verifying `body_ref` against anything** (assertion by design, gate-7 record);
   **behavioral vetting of a want's content** (Gauntlet #2 is the quality gate, not a
   security gate — a malicious want that passes the gauntlet is V1's problem).

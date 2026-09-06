@@ -14,7 +14,9 @@ Algorithm: **ed25519** (``cryptography``, optional ``[sign]`` extra). The
 ``signature_algorithm`` string vocabulary is the one already published in
 ``docs/user/hivemind_bundle_format.md``; this module implements exactly
 ``"ed25519"`` and refuses any other declared algorithm at verify time
-(an unknown algorithm is unverifiable, never trusted).
+(an unknown algorithm is unverifiable, never trusted). The design record
+and the front-gate "needs-own" justification for signing live in
+``docs/plans/maxim_hivemind.md`` (§"Trust topology" + decision point 2).
 
 Signed payload (canonical, identical at sign and verify)
 --------------------------------------------------------
@@ -31,13 +33,13 @@ from __future__ import annotations
 
 import base64
 import json
-import os
-import platform
+import struct
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from maxim.tunnel.keys import key_file_path
+from maxim.utils.atomic_io import atomic_write_secret
 from maxim.utils.optional_deps import require_optional_dependency
 
 if TYPE_CHECKING:
@@ -76,7 +78,11 @@ def bundle_signing_payload(manifest: Mapping[str, object], slices: Mapping[str, 
     for name in sorted(slices):
         parts.append(name.encode("utf-8"))
         parts.append(slices[name].encode("utf-8"))
-    return b"\x00".join(parts)
+    # Length-prefixed framing (8-byte big-endian per part): unambiguous
+    # regardless of part contents, so no two distinct (manifest, slices)
+    # can ever collide onto the same signed bytes (defense-in-depth over a
+    # separator, which would rely on the separator byte never appearing).
+    return b"".join(struct.pack(">Q", len(p)) + p for p in parts)
 
 
 def _load_ed25519():
@@ -185,19 +191,22 @@ def public_key_path() -> Path:
 def load_or_create_signer(*, signer_identity: str) -> BundleSigner:
     """Load the persisted signer, or mint + persist one on first use.
 
-    The private key is written 0600 (POSIX); the public key alongside it,
-    world-readable, is the string a consumer trusts.
+    The private key is written through ``atomic_write_secret`` — 0600 from
+    fd creation (the key never sits umask-wide, not even in the tmp
+    window) — and the public key alongside it, world-readable, is the
+    string a consumer trusts.
+
+    Note: the keypair is the trust anchor; ``signer_identity`` is only the
+    LABEL bound to this call. Re-invoking with a different ``signer_identity``
+    re-labels the SAME persisted key, so the identity a receiver trusts can
+    drift from the key. Keep one identity per key (or delete the key file to
+    rotate) — the identity is not persisted beside the key.
     """
     path = signing_key_path()
     if path.is_file():
         return BundleSigner.from_private_pem(path.read_bytes(), signer_identity=signer_identity)
     signer = BundleSigner.generate(signer_identity=signer_identity)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(signer.private_pem())
-    if platform.system() != "Windows":
-        try:
-            os.chmod(path, 0o600)
-        except OSError:
-            pass
+    atomic_write_secret(str(path), signer.private_pem().decode("ascii"))
     public_key_path().write_text(signer.public_key_b64 + "\n")
     return signer
