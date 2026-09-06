@@ -483,6 +483,27 @@ No gate constant, range, selector knob, or schedule constant was retuned as a re
 Phase 0 passed clean, so this amendment records the readings and nothing more. The
 campaign is cleared to run.
 
+**Amendment 4 — 2026-09-06, POST-DATA (harness robustness fix; no confirmatory campaign
+data exist — the one partial live attempt CRASHED and is disclosed here as a shakedown),
+NO measurement path changed.** The first live confirmatory campaign crashed ~88% through
+(≈ pair 86 of the 42–91 range) on `bridge busy: one client at a time` → a dropped client →
+the S3 situation-reflected assertion firing on stale/empty world state. Diagnosis found
+TWO live-only races, neither observable against the multi-client mock: (1) the bridge frees
+its single-client slot on an async close event, so the campaign's per-session
+connect→disconnect churn can be rejected; (2) a blind `sleep(settle)`-then-read can observe
+the pre-teleport rest position before the RCON `/tp` reaches the bridge's ~500 ms snapshot.
+**Fix** (its own reviewed PR; the harness hash accordingly moves off `6219f330`):
+`MinecraftClient.connect` gains confirm-first-snapshot + bounded retry; the harness replaces
+the blind settle with `settle_until_reflected` (poll `sync_world` until the measured world
+reflects the commanded anchor, S3 still raises on a genuine never-reflect); the
+`ScriptedBridgeServer` mock is made one-client-faithful so this class cannot regress
+unseen. **None of the encode / teacher / merge / selector / gate paths changed** — this is
+connection + read-timing robustness only. Per the amendment rule, the affected result is
+re-run FRESH under the fixed harness: the crashed partial run and the developer live
+shakedowns (a 4-pair run: 16/16 rows clean, taught 4/4 bias-decisive, controls at floor —
+`--allow-dirty`, scratchpad, non-confirmatory) claim nothing. The confirmatory campaign
+starts over on the fixed code from an empty `--out` + fresh `--workdir`.
+
 ## Amendment rule
 
 Amendments after first data (Phase 0's included) are permitted only for *structural
@@ -513,7 +534,7 @@ python scripts/analyze_exp56.py --in docs/experiments/data/56_four_arm.jsonl --g
       the `body:`-rooted export spec, world script, the teacher, `scripts/exp56/`,
       `scripts/analyze_exp56.py` with frozen verdict constants incl. the link-balance
       and bias-decisive assertions, `--mock`/`--resume`/`--assert-noop-fails`) —
-      hash: `6219f330` (#641; world-setup tooling #643; `--spectator` #644, main tip `4cf67cf9`);
+      hash: `6219f330` (#641; world-setup tooling #643; `--spectator` #644; connection/teleport-race fix amendment 4 — new hash on that PR's merge);
       frozen constants recorded: roster k `8`, schedule length K `96` (8 affordances × 2
       situation-states × 6 reps/cell), candidate contingency slots `4` — far+high per
       amendment 2: (88,112,0)/(−88,112,8)/(8,112,88)/(−8,112,−88)

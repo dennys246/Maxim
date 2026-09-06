@@ -17,6 +17,8 @@ import json
 import socket
 import time
 
+import pytest
+
 
 from maxim.embodiment.backends.minecraft import (
     declared_world_sensor_names,
@@ -405,3 +407,63 @@ class TestDesignedRestVsWarning:
         assert not _encode_was_designed_rest(object(), "a", "world"), (
             "a fake without the probe must keep the WARNING path"
         )
+
+
+class TestConnectConfirmRetry:
+    """The bridge-connect race fix (the live campaign crash ~88% in).
+
+    The real bridge serves one client and frees its slot on an ASYNC
+    close event, so a fast disconnect->reconnect can be rejected with
+    'bridge busy: one client at a time'. connect(confirm_timeout_s=,
+    retries=) waits for the first state (acceptance) and retries a
+    rejection. These pin: accept-on-first-state, retry-past-a-rejection,
+    and give-up-after-exhaustion — with the legacy no-arg contract intact.
+    """
+
+    def test_confirm_returns_once_state_arrives(self):
+        ours, theirs = socket.socketpair()
+        client = MinecraftClient(connection_factory=lambda: theirs)
+        # Push a state BEFORE connect so the reader sees it immediately.
+        _push(ours, {"type": "state", "data": {"y_altitude": 64.0}})
+        client.connect(confirm_timeout_s=2.0, retries=2)
+        assert client.latest_state().get("y_altitude") == 64.0
+        client.close()
+
+    def test_retries_past_a_busy_rejection_then_succeeds(self):
+        # A factory that rejects the first connect (closes immediately with
+        # the busy event, as the bridge does) and accepts the second.
+        attempts = []
+
+        def factory():
+            ours, theirs = socket.socketpair()
+            attempts.append(ours)
+            if len(attempts) == 1:
+                # rejection: send busy, close our end so the reader dies
+                ours.sendall(
+                    json.dumps({"type": "event", "kind": "error", "text": "bridge busy: one client at a time"}).encode()
+                    + b"\n"
+                )
+                ours.close()
+            else:
+                ours.sendall(json.dumps({"type": "state", "data": {"y_altitude": 70.0}}).encode() + b"\n")
+            return theirs
+
+        client = MinecraftClient(connection_factory=factory)
+        client.connect(confirm_timeout_s=1.0, retries=3, backoff_s=0.05)
+        assert len(attempts) == 2, "should have retried exactly once past the rejection"
+        assert client.latest_state().get("y_altitude") == 70.0
+        client.close()
+
+    def test_gives_up_after_exhausting_retries(self):
+        def factory():
+            ours, theirs = socket.socketpair()
+            ours.sendall(
+                json.dumps({"type": "event", "kind": "error", "text": "bridge busy: one client at a time"}).encode()
+                + b"\n"
+            )
+            ours.close()
+            return theirs
+
+        client = MinecraftClient(connection_factory=factory)
+        with pytest.raises(ConnectionError, match="busy"):
+            client.connect(confirm_timeout_s=0.3, retries=2, backoff_s=0.02)

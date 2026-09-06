@@ -130,7 +130,13 @@ class TestFrozenApparatus:
 
 @pytest.fixture(scope="module")
 def scripted_world():
-    server = C.ScriptedBridgeServer(seed=5, state_interval_s=0.02)
+    # one_client=False: this shared, module-scoped server backs the SCIENCE
+    # chain tests, which legitimately open two donor sessions at once
+    # (sat + taught) to compare their telemetry — a convenience the real
+    # sequential campaign never does. The one-client faithfulness (the
+    # connection-race guard) is exercised by run_campaign's own default
+    # server and by TestScriptedBridgeOneClient with dedicated servers.
+    server = C.ScriptedBridgeServer(seed=5, state_interval_s=0.02, one_client=False)
     world = C.ScriptedWorldControl(server, settle_s=0.05)
     yield server, world
     server.close()
@@ -331,6 +337,59 @@ class TestAnalyzer:
 
 
 # ── build_minecraft_aut param additions (existing callers byte-identical) ─
+
+
+class TestScriptedBridgeOneClient:
+    """The mock is now FAITHFUL to the real bridge's one-client rule — the
+    property whose absence let the connect/disconnect race through every
+    mock run (and crash the first live campaign ~88% in)."""
+
+    def test_second_overlapping_client_is_rejected_busy(self):
+        import socket
+        import time
+
+        srv = C.ScriptedBridgeServer(seed=1)
+        try:
+            a = socket.create_connection(("127.0.0.1", srv.port), timeout=2)
+            time.sleep(0.2)  # let the server thread take the single slot
+            b = socket.create_connection(("127.0.0.1", srv.port), timeout=2)
+            b.settimeout(2.0)
+            data = b.recv(4096).decode()
+            assert "busy" in data.lower(), f"second client should be rejected busy, got {data!r}"
+            a.close()
+            b.close()
+        finally:
+            srv.close()
+
+    def test_client_confirm_retry_recovers_against_the_mock(self):
+        # End-to-end against the faithful mock: two clients in quick
+        # succession — the second uses connect(confirm+retry) and recovers
+        # once the first closes and the slot frees.
+        import socket
+        import time
+
+        from maxim.simulation.minecraft import MinecraftClient
+
+        srv = C.ScriptedBridgeServer(seed=2)
+        try:
+            first = socket.create_connection(("127.0.0.1", srv.port), timeout=2)
+            time.sleep(0.2)
+
+            client = MinecraftClient("127.0.0.1", srv.port)
+
+            def _free_slot_soon():
+                time.sleep(0.4)
+                first.close()
+
+            import threading
+
+            threading.Thread(target=_free_slot_soon, daemon=True).start()
+            # First attempt(s) hit "busy"; retry succeeds once the slot frees.
+            client.connect(confirm_timeout_s=0.5, retries=6, backoff_s=0.2)
+            assert client.latest_state(), "should have a world snapshot after a confirmed connect"
+            client.close()
+        finally:
+            srv.close()
 
 
 class TestSpectatorFlag:

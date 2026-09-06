@@ -37,6 +37,7 @@ import shutil
 import socket
 import struct
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -209,7 +210,7 @@ class ScriptedBridgeServer:
     deterministically).
     """
 
-    def __init__(self, *, seed: int = 42, state_interval_s: float = 0.02) -> None:
+    def __init__(self, *, seed: int = 42, state_interval_s: float = 0.02, one_client: bool = True) -> None:
         self._rng = random.Random(seed)
         self.anchor: dict[str, float] = dict(FROZEN["rest_anchor"])
         self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -218,6 +219,16 @@ class ScriptedBridgeServer:
         self._server.listen(4)
         self.port: int = self._server.getsockname()[1]
         self._interval = state_interval_s
+        # FAITHFUL to the real JS bridge: one client at a time (the default).
+        # The pre-fix mock accepted every connection, which is exactly why
+        # the connect/disconnect race that crashed the live campaign never
+        # showed in a mock run — a too-permissive instrument passing a
+        # harness with a real bug. With one_client, a second overlapping
+        # connect is rejected with the same "bridge busy" event the real
+        # bridge sends, so the mock now exercises MinecraftClient's
+        # confirm+retry.
+        self._one_client = one_client
+        self._client_active = __import__("threading").Lock()
         self._stop = __import__("threading").Event()
         self._accept = __import__("threading").Thread(target=self._accept_loop, daemon=True)
         self._accept.start()
@@ -261,6 +272,23 @@ class ScriptedBridgeServer:
             except OSError:
                 pass
 
+        # One-client rule, faithful to the real bridge: reject an overlapping
+        # second client with the same event, then close (no state ever sent).
+        acquired = self._client_active.acquire(blocking=False) if self._one_client else True
+        if not acquired:
+            send({"type": "event", "kind": "error", "text": "bridge busy: one client at a time"})
+            try:
+                sock.close()
+            except OSError:
+                pass
+            return
+        try:
+            self._serve_active(sock, send)
+        finally:
+            if self._one_client:
+                self._client_active.release()
+
+    def _serve_active(self, sock: socket.socket, send: "Callable[[dict[str, Any]], None]") -> None:
         sock.settimeout(self._interval)
         buffer = b""
         while not self._stop.is_set():
@@ -447,7 +475,12 @@ def build_bench_session(
     from maxim.similarity.encoder import SensorEncoder, SensorEncoderConfig
 
     inner = MinecraftClient(bridge_host, bridge_port)
-    inner.connect()
+    # Confirm + retry: the campaign churns one client per session against a
+    # one-client bridge, so a disconnect→reconnect can race the bridge's
+    # async slot-free and be rejected "bridge busy" (the crash that ended
+    # the first live campaign ~88% in). Wait for the first world snapshot as
+    # proof of acceptance; retry a rejection after a short backoff.
+    inner.connect(confirm_timeout_s=4.0, retries=8, backoff_s=0.5)
     client = TranslatingClient(inner, pair_seed=pair_seed)
     aut = build_minecraft_aut(
         agent_id=agent_id,
@@ -585,10 +618,16 @@ def run_donor_training(
     telemetry: list[dict[str, Any]] = []
     for idx, (situation, aff) in enumerate(balanced_schedule(pair_seed) if schedule is None else schedule):
         anchor = slot if situation else FROZEN["rest_anchor"]
-        world.teleport(bot_name, anchor)
-        time.sleep(settle_s)
-        session.sync_world()
-        _assert_situation_reflected(session, situation, slot, where=f"donor trial {idx}")
+        settle_until_reflected(
+            session,
+            world,
+            bot_name,
+            anchor,
+            situation=situation,
+            slot=slot,
+            where=f"donor trial {idx}",
+            timeout_s=max(5.0, settle_s * 8),
+        )
         clusters = session.encode_clusters()
         tool = f"{ENTITY_NAME}_{aff}"
         out = session.execute_and_record(tool, clusters, reasoning="exp56 balanced schedule")
@@ -607,25 +646,61 @@ def run_donor_training(
     return telemetry
 
 
-def _assert_situation_reflected(session: BenchSession, situation: bool, slot: dict[str, float], *, where: str) -> None:
-    """S3: the MEASURED world must reflect the commanded placement — the
-    situation is defined by sensors, not by the script's intent (world-seam
-    doctrine). Refusal is a raise (apparatus failure), never a warning."""
-    values = session.world_values()
-    dist = values.get("distance_from_spawn")
+def _situation_reflected(session: BenchSession, situation: bool, slot: dict[str, float]) -> "tuple[bool, float | None]":
+    """Does the MEASURED world currently reflect the commanded placement?
+    Returns ``(reflected, distance)``; distance None when the sensor is
+    absent from the snapshot."""
+    dist = session.world_values().get("distance_from_spawn")
     if dist is None:
-        raise RuntimeError(f"exp56 {where}: distance_from_spawn missing from measured world state")
+        return False, None
     expected_far = (slot["x"] ** 2 + slot["z"] ** 2) ** 0.5
-    if situation and dist < expected_far * 0.5:
-        raise RuntimeError(
-            f"exp56 {where}: situation commanded but measured distance_from_spawn={dist:.1f} "
-            f"(expected ~{expected_far:.0f}) — the world does not reflect the script (S3)"
-        )
-    if not situation and dist > expected_far * 0.5:
-        raise RuntimeError(
-            f"exp56 {where}: rest commanded but measured distance_from_spawn={dist:.1f} — "
-            "the world does not reflect the script (S3)"
-        )
+    reflected = (dist >= expected_far * 0.5) if situation else (dist <= expected_far * 0.5)
+    return reflected, dist
+
+
+def settle_until_reflected(
+    session: BenchSession,
+    world: Any,
+    bot_name: str,
+    anchor: dict[str, float],
+    *,
+    situation: bool,
+    slot: dict[str, float],
+    where: str,
+    timeout_s: float = 5.0,
+    poll_s: float = 0.15,
+) -> None:
+    """Teleport, then POLL the measured world until it reflects the commanded
+    anchor — don't assume a fixed settle is enough.
+
+    Two independent races made a blind ``sleep(settle) → read`` unsound on
+    the live bridge (both caught by live validation, not by the mock): the
+    RCON ``/tp`` takes a server tick to apply, and the bridge's periodic
+    snapshot (~500 ms) then has to carry the new position — so a single
+    short read can see the STALE rest position (measured
+    distance_from_spawn 0.7 when the far slot was commanded, the crash this
+    replaces). Polling ``sync_world`` until the situation is reflected is
+    the same confirm-don't-assume discipline as the connect confirm+retry.
+    S3 still bites: a world that never reflects the command within the
+    timeout raises (apparatus failure, loud), so a genuinely-wrong world is
+    not silently waited-out.
+    """
+    world.teleport(bot_name, anchor)
+    deadline = time.monotonic() + timeout_s
+    last_dist: float | None = None
+    while time.monotonic() < deadline:
+        session.sync_world()
+        reflected, last_dist = _situation_reflected(session, situation, slot)
+        if reflected:
+            return
+        time.sleep(poll_s)
+    kind = "situation" if situation else "rest"
+    expected = (slot["x"] ** 2 + slot["z"] ** 2) ** 0.5 if situation else 0.0
+    raise RuntimeError(
+        f"exp56 {where}: {kind} commanded but measured distance_from_spawn="
+        f"{'(missing)' if last_dist is None else f'{last_dist:.1f}'} did not reach "
+        f"~{expected:.0f} within {timeout_s:.0f}s — the world does not reflect the script (S3)"
+    )
 
 
 # ── donor sanity (prereg §Arms) ──────────────────────────────────────────
@@ -810,10 +885,17 @@ def probe_receiver(
     with RecommendCapture() as cap:
         for idx in range(total):
             situation = idx >= contact_at
-            world.teleport(bot_name, slot if situation else FROZEN["rest_anchor"])
-            time.sleep(settle_s)
-            session.sync_world()
-            _assert_situation_reflected(session, situation, slot, where=f"probe decision {idx}")
+            anchor = slot if situation else FROZEN["rest_anchor"]
+            settle_until_reflected(
+                session,
+                world,
+                bot_name,
+                anchor,
+                situation=situation,
+                slot=slot,
+                where=f"probe decision {idx}",
+                timeout_s=max(5.0, settle_s * 8),
+            )
             clusters = session.encode_clusters()
             drives = {"d1": float(session.root.vital_metrics.get("d1", 0.0))}
             n_before = len(cap.events)
