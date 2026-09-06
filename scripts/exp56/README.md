@@ -67,6 +67,22 @@ Exit 4 on any failing check, with the per-check report in
 - disclose the Phase-0 **readings as an amendment entry** in the prereg
   (its own PR, merge-commit) — the pre-registered disclosure rule.
 
+## Watching the run (optional)
+
+The world is `online-mode=false`, so join with a normal Minecraft Java client
+(`<host>:25565`) — from another machine over LAN if the server is headless.
+**Only ever watch in spectator** — the bench body's sensors are the bot's own
+position/altitude/speed/on_ground, so a physical nudge, a broken enclosure
+block, or standing on a slot corrupts the situation signature (and trips the
+harness's S3 assertion, aborting that pair loudly).
+
+`run_campaign.py --spectator <your_mc_username>` (or `export EXP56_SPECTATOR=...`)
+ops you and puts you in spectator at start; `op` persists to `ops.json`, so it
+works even if you join LATER — you're op, so `/gamemode spectator` is one
+command away. Expect the bot to BLINK between the rest pad and a slot every
+~0.6 s (it's teleported per decision, not walking); there is no in-world
+bio-state overlay — read the substrate from the JSONL, not the game.
+
 ## 4. The confirmatory campaign
 
 ```bash
@@ -75,7 +91,8 @@ python scripts/exp56/run_campaign.py \
     --arms isolated,taught,satiated,dangling --pairs 50 --seed-base 42 \
     --workdir ~/exp56_work \
     --out docs/experiments/data/56_four_arm.jsonl \
-    --rcon-password 'CHOOSE_A_PW' --write-experiment-results
+    --rcon-password 'CHOOSE_A_PW' --write-experiment-results \
+    # optional: --spectator <your_mc_username> to watch in spectator
 
 python scripts/analyze_exp56.py --in docs/experiments/data/56_four_arm.jsonl \
     --gate v1 --assert-noop-fails
