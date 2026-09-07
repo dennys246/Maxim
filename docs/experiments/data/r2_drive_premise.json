@@ -1,0 +1,64 @@
+{
+  "ts": 1788761370.047387,
+  "rung": "R2",
+  "body_ref": "bodies/minecraft_player",
+  "provenance": {
+    "harness_repo": "/Users/dennyschaedig/Scripts/Maxim",
+    "harness_git_hash": "8d05eaf9",
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "8d05eaf9",
+    "working_tree_dirty_src_scripts": false,
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages"
+  },
+  "available_tools": [
+    "minecraft_player_attack_nearest",
+    "minecraft_player_eat",
+    "minecraft_player_mine_block",
+    "minecraft_player_move_to",
+    "minecraft_player_place_block",
+    "minecraft_player_turn",
+    "read_minecraft_player_distance_from_spawn",
+    "read_minecraft_player_food",
+    "read_minecraft_player_health",
+    "read_minecraft_player_hostile_count",
+    "read_minecraft_player_is_raining",
+    "read_minecraft_player_light_level",
+    "read_minecraft_player_look_pitch",
+    "read_minecraft_player_nearest_hostile_dist",
+    "read_minecraft_player_nearest_player_dist",
+    "read_minecraft_player_on_ground",
+    "read_minecraft_player_oxygen",
+    "read_minecraft_player_saturation",
+    "read_minecraft_player_speed",
+    "read_minecraft_player_time_of_day",
+    "read_minecraft_player_xp_level",
+    "read_minecraft_player_y_altitude",
+    "sense_minecraft_player"
+  ],
+  "corrective_affordances": [
+    "minecraft_player_attack_nearest",
+    "minecraft_player_eat"
+  ],
+  "states": {
+    "STARVING+HURT": {
+      "drives_read": {
+        "health": 5.0,
+        "food": 2.0
+      },
+      "selected": "read_minecraft_player_health",
+      "reasoning": "drive:health(5.00) name-match",
+      "selected_is_corrective": false
+    },
+    "SATIATED+HEALTHY": {
+      "drives_read": {
+        "health": 20.0,
+        "food": 20.0
+      },
+      "selected": "read_minecraft_player_health",
+      "reasoning": "drive:health(20.00) name-match",
+      "selected_is_corrective": false
+    }
+  },
+  "moves_behaviour": false,
+  "verdict": "PREMISE-NULL"
+}

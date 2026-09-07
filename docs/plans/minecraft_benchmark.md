@@ -18,7 +18,7 @@
 
 
 **Status:** ACTIVE. **Part I COMPLETE** — seam shipped 1.1.4; the 1.2 headline claim EARNED (Exp 56, PASS). **Part II (the survival ladder, R0–R4) scoped 2026-09-06** — see below.
-**Target version:** 1.1.4 (seam, no claim) → 1.2 (Exp 56 result + R0–R3) → 1.3+ (R4).
+**Target version:** 1.1.4 (seam, no claim) → 1.2 (Exp 56 result + Exp 57 + R0/R1) → 1.3+ (R3/R4; R2 returned `PREMISE-NULL` 2026-09-07, deferring the survival rungs — see Part II R2).
 **Concurrent with:** 1.0 stabilization (this work proceeds in parallel without gating 1.0).
 **Depends on:** B4 Cradle ([archive/cradle_sensorimotor_development.md](archive/cradle_sensorimotor_development.md)) shipped — provides embodied learning foundation. Also benefits from [scene_actor_affordances.md](deferred/scene_actor_affordances.md) (1.1 track) for hostile mob mechanics.
 
@@ -270,7 +270,35 @@ report it, do not re-tune the apparatus toward a pass.
 **Stop rule:** if the wired drives do not move behaviour, **R3 and R4 do not run** — and we
 learn it in about a day rather than a month.
 
-### R3 — Survival benchmark *(1.2, INSTRUMENT + frozen baseline — see D2)*
+**RESULT — `PREMISE-NULL`, 2026-09-07. The stop rule FIRED.** The world-owned drives do
+NOT move behaviour toward corrective affordances, and the null is decisive on three
+independent structural breaks: (1) the NAc cold-start drive prior has no corrective
+affinity for `food`/`health` and name-matches the passive sensor-**read** tools instead
+of `eat`/`attack_nearest` (and reads raw values, so it is polarity-inverted — strongest
+when satiated); (2) `eat`'s modeled `self_effect` is credit-withheld on the live body
+(`drive_credit_withheld`, no measured-relief path for interoceptive world-owned drives),
+so the corrective affordance cannot self-learn to repair the dead prior; (3) the bridge
+`eat`/`attack_nearest` throw on an empty inventory / no mob, and there is no acquire
+affordance, so on the void world the corrective acts are *unexecutable*. Measured offline
+(the prior is a pure function; a live run adds noise, not signal) + code-confirmed for the
+learning and bridge halves. **This did not require the full live apparatus.** Full write-up
++ the three breaks as the 1.3 build list: [r2_drive_premise_check.md](../experiments/r2_drive_premise_check.md);
+instrument [scripts/r2_drive_premise_probe.py](../../scripts/r2_drive_premise_probe.py);
+record [data/r2_drive_premise.json](../experiments/data/r2_drive_premise.json).
+**This does not touch Exp 56/57/R0/R1** — those ride a *taught* want on `minecraft_bench`,
+where the teacher mints credit directly (`NAc.credit_operant_reward`, bypassing breaks
+1–2) on always-executable affordances.
+
+### R3 — Survival benchmark *(DEFERRED to 1.3 — R2 null; see below)*
+**DEFERRED 2026-09-07: R2's null removes R3 from 1.2.** With intrinsic survival pressure
+absent, R3's "isolated" arm is a flat-dead baseline, its "taught" arm reduces to Exp 56
+with a survival-flavoured contingency (not survival), and the benchmark's dynamic range
+collapses so no Goldilocks calibration exists to land. Building the survival loop — a
+corrective-need derivation for `food`/`health`, a measured-relief credit path for
+interoceptive world-owned drives, and a food-acquisition affordance in the bridge — is new
+engineering that *engineers the survival outcome* (D1's spirit) and belongs on the 1.3 line
+as a *designed* mechanism, not a 1.2 verification. The three R2 breaks are its explicit
+build list. Original R3 scope, retained for when it revives:
 **Deliverable:** a harness (arms, horizon, DV, seed set) plus a **calibrated, frozen
 baseline** across isolated / taught / shared, reporting whatever it finds.
 **DV candidates:** drive-integrity over horizon, or time-to-death; chosen at calibration.
@@ -296,8 +324,10 @@ expected and acceptable outcome.
 ## Sequencing
 
 Exp 57's pre-registration is **FROZEN**; R0 must not be retrofitted into it. Build Exp 57's
-harness *seed-parameterizable* (free foresight, no freeze violation), then R0 → R1 → R2 → R3
-in 1.2, with R4 opening on the 1.3 line beside the perception fabric.
+harness *seed-parameterizable* (free foresight, no freeze violation), then R0 → R1 in 1.2.
+**R2 ran early and returned `PREMISE-NULL` (2026-09-07), so R3 and R4 defer to the 1.3 line**
+(per R2's stop rule) — R4 opens there beside the perception fabric, and R3's survival loop
+is *designed* there rather than back-fitted. The 1.2 ladder is therefore Exp 57 + R0 + R1.
 
 ## Explicitly NOT claimed by this ladder
 
@@ -310,6 +340,7 @@ multi-agent coexistence (D3).
 ## Cross-references
 
 - [56_four_arm_sharing.md](../experiments/56_four_arm_sharing.md) — Part I's result (PASS); its "Does NOT" list is where R1/R3/R4 come from.
+- [r2_drive_premise_check.md](../experiments/r2_drive_premise_check.md) — R2's `PREMISE-NULL` (2026-09-07): the world-owned drives do not move behaviour; R3/R4 defer to 1.3.
 - [exp57_dose_response_ladder_preregistration.md](../experiments/protocols/exp57_dose_response_ladder_preregistration.md) — the scaling claim; frozen, precedes R0.
 - [v1_refinement.md](archive/v1_refinement.md) Section 8 — 1.1 track index.
 - [v1_refinement.md](archive/v1_refinement.md) CC8 — sim adapter contract audit (1.0 prereq for clean Minecraft adapter integration).
