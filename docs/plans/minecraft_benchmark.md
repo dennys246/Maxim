@@ -18,7 +18,7 @@
 
 
 **Status:** ACTIVE. **Part I COMPLETE** — seam shipped 1.1.4; the 1.2 headline claim EARNED (Exp 56, PASS). **Part II (the survival ladder, R0–R4) scoped 2026-09-06** — see below.
-**Target version:** 1.1.4 (seam, no claim) → 1.2 (Exp 56 result + Exp 57 + R0/R1) → 1.3+ (R3/R4; R2 returned `PREMISE-NULL` 2026-09-07, deferring the survival rungs — see Part II R2).
+**Target version:** 1.1.4 (seam, no claim) → 1.2 (Exp 56 result + Exp 57 + R0; R1 & R2 shipped as offline structural/premise nulls 2026-09-07) → 1.3+ (R3/R4, deferred by the R2 null — see Part II).
 **Concurrent with:** 1.0 stabilization (this work proceeds in parallel without gating 1.0).
 **Depends on:** B4 Cradle ([archive/cradle_sensorimotor_development.md](archive/cradle_sensorimotor_development.md)) shipped — provides embodied learning foundation. Also benefits from [scene_actor_affordances.md](deferred/scene_actor_affordances.md) (1.1 track) for hostile mob mechanics.
 
@@ -257,14 +257,29 @@ every Minecraft claim into a controlled variable.
 **Discipline:** the seed list is pre-registered. Choosing seeds after seeing results is
 seed-shopping and voids the rung.
 
-### R1 — Cross-layout generalization *(1.2)*
+### R1 — Cross-layout generalization *(1.2 — RESOLVED as a structural null)*
 **Question:** did Exp 56 share a *representation* or a *cached association*? A trains on S₁;
 B probes on S₂…Sₙ.
-**Why it matters:** the current result is *compatible* with transfer being a narrow lookup
-keyed to one world configuration. This is the cheapest probe that distinguishes them, and it
-is informative in both directions.
-**Stop rule:** collapse to floor is a PUBLISHABLE result that reshapes the Oasis thesis —
-report it, do not re-tune the apparatus toward a pass.
+
+**RESULT — `CACHE-CONFIRMED` (structural null), 2026-09-07. The stop rule fired, and it did
+so from the mechanism, not a live campaign.** A pre-freeze two-lens review of a *live* R1
+design caught that its headline outcome was architecturally unreachable: the cluster-keyed
+learned-bias readout is an exact-key `dict.get((agent, cluster, tool))` with no similarity
+channel, and a layout maps to a cluster by the 0.85 world cosine threshold — so a layout
+distinct enough to pass the pairwise-distinctness gate (cos < 0.85 → a different cluster id)
+necessarily *misses* the taught key. "Generalizes" and "is a genuinely different layout" are
+the **same 0.85 comparison with opposite sign**; a live campaign would only re-confirm the
+code. So R1 ships as an **offline structural null in the R2 mold**: the shared want is an
+exact-key cluster cache, cross-layout generalization is architecturally absent in 1.2, and a
+generalization channel (similarity-weighted or hierarchical cluster read) is designed 1.3
+work — building one to make R1 pass would engineer the outcome (D1's spirit). Demonstrated
+end-to-end through the real ingest + `recommend_action` path (fires at S1, collapses at a
+distinct layout, fires only at a same-cluster perturbation). This does **not** refute Exp 56
+(same-layout cross-agent transfer stands); it bounds what that transfer is. Full write-up +
+mechanism: [r1_cross_layout.md](../experiments/r1_cross_layout.md); instrument
+[scripts/r1_cross_layout_probe.py](../../scripts/r1_cross_layout_probe.py); record
+[data/r1_cross_layout.json](../experiments/data/r1_cross_layout.json). **Like R2, this did
+not require the live apparatus** — so the 1.2 live-campaign burden is Exp 57 + R0 only.
 
 ### R2 — Premise check: is survival pressure behaviorally live? *(1.2, nearly free)*
 **Question:** do the world-owned `health`/`food` drives measurably change behaviour at all
@@ -336,10 +351,13 @@ expected and acceptable outcome.
 ## Sequencing
 
 Exp 57's pre-registration is **FROZEN**; R0 must not be retrofitted into it. Build Exp 57's
-harness *seed-parameterizable* (free foresight, no freeze violation), then R0 → R1 in 1.2.
-**R2 ran early and returned `PREMISE-NULL` (2026-09-07), so R3 and R4 defer to the 1.3 line**
-(per R2's stop rule) — R4 opens there beside the perception fabric, and R3's survival loop
-is *designed* there rather than back-fitted. The 1.2 ladder is therefore Exp 57 + R0 + R1.
+harness *seed-parameterizable* (free foresight, no freeze violation); **R0** is its
+multi-seed discipline (published seed set). **R1 resolved as an offline structural null
+(`CACHE-CONFIRMED`, 2026-09-07)** and **R2 as `PREMISE-NULL` (2026-09-07)** — both from the
+mechanism, neither needing the live apparatus — so **R3 and R4 defer to the 1.3 line** (R4
+opens there beside the perception fabric; R3's survival loop and R1's generalization channel
+are both *designed* there rather than back-fitted). **The 1.2 ladder's one remaining live
+campaign is Exp 57 (+ R0's seed discipline).**
 
 ## Explicitly NOT claimed by this ladder
 
@@ -352,6 +370,7 @@ multi-agent coexistence (D3).
 ## Cross-references
 
 - [56_four_arm_sharing.md](../experiments/56_four_arm_sharing.md) — Part I's result (PASS); its "Does NOT" list is where R1/R3/R4 come from.
+- [r1_cross_layout.md](../experiments/r1_cross_layout.md) — R1's `CACHE-CONFIRMED` (2026-09-07): the shared want is an exact-key cluster cache; cross-layout generalization is absent in 1.2 (a designed 1.3 mechanism).
 - [r2_drive_premise_check.md](../experiments/r2_drive_premise_check.md) — R2's `PREMISE-NULL` (2026-09-07): the world-owned drives do not move behaviour; R3/R4 defer to 1.3.
 - [exp57_dose_response_ladder_preregistration.md](../experiments/protocols/exp57_dose_response_ladder_preregistration.md) — the scaling claim; frozen, precedes R0.
 - [v1_refinement.md](archive/v1_refinement.md) Section 8 — 1.1 track index.
