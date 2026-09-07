@@ -174,7 +174,7 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
 - [world_seam_1_1_4.md](world_seam_1_1_4.md) — **the 1.1.4 implementation plan** (2026-09-03):
   PR ladder, kickoff decisions D1–D5, the PR 0 scan-cost verdict, the non-vacuous ship gate,
   the one-block hardware schedule.
-- [minecraft_benchmark.md](minecraft_benchmark.md) — no longer a splash demo. It is the
+- [minecraft_benchmark.md](minecraft_benchmark.md) — **Part I COMPLETE** (Exp 56 PASS); **Part II = the survival ladder R0–R4, scoped 2026-09-06** (multi-seed harness → cross-layout generalization → drive premise check → survival benchmark as a 1.2 INSTRUMENT with a frozen, calibrated baseline → structure formation on the 1.3 line). No longer a splash demo. It is the
   **instrument** for the 1.2 sharing claim and the only place the "find what was seen before"
   coordination task is achievable (the Reachy Mini cannot translate). Seam lands 1.1.4;
   the four-arm benchmark is the 1.2 headline.
