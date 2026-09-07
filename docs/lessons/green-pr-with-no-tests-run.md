@@ -89,5 +89,78 @@ that does not run looks exactly like one that ran and found nothing.** The
 counter is always the same — assert that the mechanism *executed*, not merely
 that it did not complain.
 
-Mechanically checkable and not yet mechanized: a step asserting that the PR's
-check list contains the required job names.
+Mechanically checkable, and now mechanized — see the section below:
+`scripts/pr_merge_readiness.py` asserts that the required contexts are PRESENT
+(and reports every other gating surface at the same time).
+
+---
+
+## Fourth variant (2026-09-06, PR #654) — and the mechanization
+
+**Symptom, identical to the others:** `mergeable: MERGEABLE`, `mergeStateStatus:
+BLOCKED`, twelve green rows in `gh pr checks`. **Cause, new:** not a workflow that
+never fired, but a **code-scanning ALERT**. The `main-protection` ruleset carries a
+`code_scanning` rule (`alerts_threshold: all`), so two `py/clear-text-logging-
+sensitive-data` findings in the PR's own diff blocked the merge while appearing
+nowhere as a check row.
+
+**The misdiagnosis is the actual lesson.** The gating surface was found correctly —
+the rulesets were read on the first attempt. What went wrong was the next step:
+
+1. The CodeQL check read `neutral — "1 configuration not found"`. That matches this
+   document's own documented variant ("default setup needs a PUSH"), so a push was
+   made — **while `Analyze (python)` was still `in_progress`**. An aggregate check
+   was diagnosed mid-flight.
+2. The push produced `"2 configurations not found"` — *more* jobs in flight — which
+   was read as deterioration rather than as "still running", and prompted a second
+   wasted cycle.
+3. Once settled, the check's own `output.summary` said exactly what was wrong:
+   *"2 new alerts including 2 high severity security vulnerabilities"*. That text was
+   one `gh api .../check-runs --jq .output` call away the entire time.
+
+So the failure was **reaching for a remembered remedy before reading the
+instrument** — the same shape as `verify-the-instrument` and
+`diagnose-from-structured-signals-not-substrings`. Adding "and sometimes it is an
+alert" to a list of known causes would not have helped: the list is always missing
+the next variant.
+
+**Resolution of the alerts themselves:** both were false positives and were dismissed
+with a written justification. Queen keys are *public* ed25519 verification anchors,
+not secrets; neither flagged statement emitted key material (`hive list` printed
+`len(queen_keys)`, an integer; `hive trust` printed contributor ids). CodeQL taints
+the whole registry dict because it contains a key-named field, so *any* read from it
+reaching a `print` is flagged — including `o.get("name")`, which is why restructuring
+the key handling did not clear it. The hygiene fix was kept anyway (`847f46fb`):
+keys are reduced to a count before output and the printed policy is derived from
+policy fields only, per the `leader_proxy._check_auth` house rule that key-shaped
+values never flow toward output.
+
+**Postscript, and the sharpest part.** The first version of that instrument was reviewed
+before merge and found to commit *the same error it was built to prevent*: moments after a
+push — the most common moment anyone would run it — the required checks do not exist yet,
+and it asserted `required-check-absent` while **naming a cause it had not established**
+("a CONFLICTING PR produces no merge commit"). It also returned exit 0 = "ready to merge"
+for `DRAFT` / `CONFLICTING` / `BEHIND` PRs, because it consulted `mergeStateStatus` only for
+the literal value `BLOCKED` and never read `mergeable` at all — meaning this document's own
+headline case (PR #576, a CONFLICTING PR) would have received a machine-authoritative
+"READY". A live run then found two more: `/rules/branch/{branch}` 404s on this repo (so the
+"precise" ruleset read had to fall back to enumerating active rulesets — a 404 is not "no
+rules"), and a merged PR reported an unsettled non-answer.
+
+The durable rule extracted from that, now stated in the script's own docstring: **never
+assert a NEGATIVE over an unsettled snapshot.** A settled *failure* is a positive fact and
+legitimately outranks in-flight work; an *absence* is a claim about something not existing
+and is only sound once nothing is still moving. Writing a tool to enforce a discipline does
+not exempt the tool from it.
+
+**Mechanization (closes the "not yet mechanized" note above).**
+[scripts/pr_merge_readiness.py](../../scripts/pr_merge_readiness.py) answers "why is
+this PR not mergeable?" in one command, deliberately WITHOUT encoding a list of known
+causes. It reports what each surface currently says — required checks *present* (not
+merely green), each failing check's own `output.title`, open code-scanning alerts
+scoped to the PR, and ruleset rules that gate the merge without rendering as check
+rows — and it **withholds a verdict entirely while anything is `in_progress`** (exit
+code 2), which is precisely the step that was skipped above. Guard:
+[tests/unit/test_pr_merge_readiness.py](../../tests/unit/test_pr_merge_readiness.py),
+whose `TestReplaysPr654` replays this incident stage by stage: at the moment the first
+push was made, the tool must return IN-FLIGHT with zero BLOCKING findings.
