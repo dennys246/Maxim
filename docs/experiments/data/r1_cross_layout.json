@@ -1,0 +1,56 @@
+{
+  "ts": 1788799223.66429,
+  "rung": "R1",
+  "body_ref": "bodies/minecraft_bench",
+  "provenance": {
+    "harness_repo": "/Users/dennyschaedig/Scripts/Maxim",
+    "harness_git_hash": "e640beb4",
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "e640beb4",
+    "working_tree_dirty_src_scripts": false,
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages"
+  },
+  "target_tool": "minecraft_bench_aff_c",
+  "layouts": {
+    "S1_trained": {
+      "x": 88,
+      "y": 112,
+      "z": 0
+    },
+    "S_distinct": {
+      "x": 10,
+      "y": 64,
+      "z": 0
+    },
+    "S_same_cluster": {
+      "x": 88,
+      "y": 112,
+      "z": 1
+    }
+  },
+  "readout": {
+    "at_S1": {
+      "cluster_id": "141914b7-1436-4b9b-bae9-c981e882b763",
+      "bias_decisive": true,
+      "best_tool": "minecraft_bench_aff_c",
+      "learned_bias": 0.8
+    },
+    "at_S_distinct": {
+      "cluster_id": "d1a4f1e0-0f69-486e-9260-100a6494b507",
+      "bias_decisive": false,
+      "best_tool": null,
+      "learned_bias": null
+    },
+    "at_S_same_cluster": {
+      "cluster_id": "141914b7-1436-4b9b-bae9-c981e882b763",
+      "bias_decisive": true,
+      "best_tool": "minecraft_bench_aff_c",
+      "learned_bias": 0.8
+    }
+  },
+  "layouts_distinct": true,
+  "same_perturbation_stays_in_cluster": true,
+  "cache_confirmed": true,
+  "verdict": "CACHE-CONFIRMED",
+  "mechanism": "cluster_reward_bias is an exact-key dict.get with no similarity channel; a distinct layout (cos<0.85) gets a distinct cluster id -> exact-key miss -> learned_bias 0. Generalization would require cos>=0.85, i.e. the same cluster."
+}
