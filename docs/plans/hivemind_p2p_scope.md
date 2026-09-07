@@ -96,7 +96,9 @@ pattern, or a sibling handler sharing `_check_auth`/`_check_admission`):
   the Queen tier directly).
 Client side is `utils/http` (`fetch_url` for manifests, `download_to_file` for bundles).
 **Engineering invariant:** contributions land in the experimental tier tagged with provenance;
-promotion to Queen tier is a SEPARATE gated operation (Slice D), never a side effect of receipt.
+promotion to Queen tier is a SEPARATE gated operation, never a side effect of receipt.
+(Promotion was scoped to Slice D but is DEFERRED — see the Slice D block below for the blocker.
+`OasisStore.open_contribution` therefore remains shipped-but-uncalled until it lands.)
 **Ship-with-caller:** the `maxim oasis serve` command starts it; the pull/contribute CLI (Slice C)
 exercises it; guard test drives the three endpoints against a fixture Oasis.
 
@@ -115,16 +117,87 @@ exercises it; guard test drives the three endpoints against a fixture Oasis.
 **Ship-with-caller:** these ARE the callers for Slices A/B/D; guard tests on argument parsing +
 a dry-run pull against a fixture.
 
-### Slice D — Consumer trust policy + Queen-tier wiring (~100 LOC)
+### Slice D — Consumer trust policy (~100 LOC) — SHIPPED (trust policy only; promotion DEFERRED)
 Wire the default consumer policy through the shipped hooks: a fresh Maxim pulls Queen-tier
-releases with `trusted_sources = {queen-keys}`; the experimental tier is opt-in
-(`hive subscribe --experimental <oasis>`). Promotion (experimental → Queen) runs the existing
-gauntlets (Gauntlet #1 `probe_policy`, Gauntlet #2 Exp 53 readout, Gauntlet #3 coding-safety
-from the poison-resistance slice) — the promotion command re-runs the battery before signing a
-release, the "sleep-replay at fleet scale" the design frames. **No new merge code** — this is
-policy assembly over `ingest_bundle`'s `trusted_sources`/`inherent_trusted_sources` params and
-the signing check. **Engineering invariant:** default trust is Queen-only; the experimental tier
-requires an explicit opt-in per Oasis.
+releases; the experimental tier is opt-in. **No new merge code** — policy assembly over
+`ingest_bundle`'s `trusted_sources`/`inherent_trusted_sources`/`require_signed`/`trusted_keys`.
+**Engineering invariant:** default trust is Queen-only; the experimental tier and the
+decay-exempt inherent class each require an explicit per-Oasis opt-in.
+
+**Shipped:** per-Oasis policy fields on the `hive.json` entries (`allow_unsigned`,
+`inherent_trust`, `trusted_sources`) with `registry.trust_policy()` supplying defaults for
+pre-Slice-D files and FAILING LOUD on a malformed value (`bool("false")` is `True`, so coercion
+would invert a safety default); `maxim hive trust <name>` sets them, with opposing flags
+mutually exclusive so a contradictory command errors instead of silently granting the looser
+setting. Re-adding an Oasis MERGES onto the existing entry — trust policy, Queen keys, and
+unknown future fields all survive a URL correction (wiping the keys while an `allow_unsigned`
+grant survived would silently turn "Queen-only + escape hatch" into "admit anything").
+`hive pull` enforces the policy in `_build_ingest_argv`: a release not signed by a registered
+Queen key is REFUSED by default; when an operator allow-list is configured **it becomes the V1
+`trusted_sources` set handed to ingest** (passing the bundle's self-declared `contributor_id`
+instead would make V1 a tautology and leave the allow-list bypassable on the unverified path);
+and `--inherent-trust` rides only the Queen-verified path, scoped to that same id set.
+The previously-unreachable inherent path becomes reachable under an explicit opt-in — before
+this, a Queen release carrying inherent markers was refused outright, and with the default
+(`inherent_trust: false`) it still is. Guards: `test_hive_cli.py::TestTrustPolicy` /
+`TestIngestArgvConstruction` / `TestMalformedPolicyFailsLoud` / `TestConflictingTrustFlags` +
+`test_hive_pull_e2e.py` (unsigned refused-by-default vs admitted-under-opt-in; allow-list
+refusal).
+
+**Naming decisions (recorded, not silent):** the original scope's `hive subscribe
+--experimental <oasis>` shipped as **`maxim hive trust <name> --allow-unsigned`**. Both halves
+of the rename are semantic, not cosmetic: (1) one verb now sets three orthogonal trust
+dimensions, so `trust` names it better than `subscribe`; (2) more importantly, the flag does
+**not** subscribe to an Oasis's server-side `experimental/` tier — *nothing in 1.2 fetches that
+tier at all* (`hive pull` reads only `GET /v1/substrate/releases`). It disables signature
+verification for that Oasis's release stream, which also admits a tampered ex-Queen release
+whose signature was stripped. Calling that "experimental" taught the wrong mental model.
+
+**Operator consequence of the deferral (what you cannot do in 1.2):** the publish→pull path is
+complete — `oasis serve` + `oasis publish` on one side, `hive add` + `hive trust` + `hive pull`
+with Queen-only defaults on the other. The **contribute path does not close**: `hive contribute`
+pushes into `experimental/`, and nothing can move a bundle out of it. `oasis status` can only
+count what arrived; there is no verb to inspect, score, or promote it. Treat `hive contribute`
+as write-only until promotion ships.
+
+**DEFERRED — Queen-tier promotion (experimental → Queen), with the blocker named** (audit
+2026-09-06, owner decision the same day). The superseded scope text is preserved verbatim at the
+end of this block so the size of the retraction is visible. It said promotion "re-runs the
+battery" of three gauntlets. That cannot ship honestly today:
+- **Gauntlet #3 (coding-safety) does not exist** — design-only in `coding_habits_oasis.md`,
+  and `oasis_ingestion_contract.md` §6/§7 explicitly schedules it AFTER this work ("Gauntlet #3
+  rides Slice 1, after the four-arm data"; listed under out-of-scope).
+- **Gauntlets #1 and #2 exist and are headless-runnable** (`scripts/orient_backbone/live_3_learn.py::probe_policy`;
+  the Exp 53 `DryReadoutRig`, driven in-process by `gate6_merged_gauntlet.py`) **but neither
+  scores a BUNDLE** — #1 takes a live `NAc`, #2 takes on-disk agent dirs. The adapter gap is
+  narrower than it looks (`gate6_merged_gauntlet.py` already loads on-disk NAc/EC JSON pairs and
+  runs them through the shipped `substrate_merge`, so an `extract_bundle`-fed adapter is close);
+  the binding constraint is that **both are domain-specific** (orient / Exp-53 readout metrics,
+  fixed agent ids, archive-manifest-gated), so neither generalizes to an arbitrary bundle.
+- **No re-sign path exists.** Promotion needs either extract+recompose (changes the content
+  digest, re-runs the scrub, and silently drops `body_ref` → a release every receiver refuses)
+  or a small `sign_existing_bundle` that preserves the manifest byte-for-byte.
+A `promote` verb shipped now would be a mechanism that cannot run its own gate — the vacuous-guard
+shape this repo's lessons exist to prevent. **Prerequisites, in order:** (1) a bundle→gauntlet
+adapter, (2) `sign_existing_bundle`, (3) Gauntlet #3 from the poison-resistance slice, (4) a
+promotion provenance link (`experimental/<digest>` → `releases/<new digest>`; the contribution log
+has no `promoted_to` field). Note also that the first production caller of
+`NAc.mark_inherent_bias` will deliberately break
+`tests/unit/test_inherent_bias_class.py::test_mark_inherent_bias_has_no_production_caller` — that
+test is a forcing function requiring the caller to be named.
+
+> **Original scope, superseded 2026-09-06 (preserved verbatim so the retraction is auditable):**
+>
+> ### Slice D — Consumer trust policy + Queen-tier wiring (~100 LOC)
+> Wire the default consumer policy through the shipped hooks: a fresh Maxim pulls Queen-tier
+> releases with `trusted_sources = {queen-keys}`; the experimental tier is opt-in
+> (`hive subscribe --experimental <oasis>`). Promotion (experimental → Queen) runs the existing
+> gauntlets (Gauntlet #1 `probe_policy`, Gauntlet #2 Exp 53 readout, Gauntlet #3 coding-safety
+> from the poison-resistance slice) — the promotion command re-runs the battery before signing a
+> release, the "sleep-replay at fleet scale" the design frames. **No new merge code** — this is
+> policy assembly over `ingest_bundle`'s `trusted_sources`/`inherent_trusted_sources` params and
+> the signing check. **Engineering invariant:** default trust is Queen-only; the experimental tier
+> requires an explicit opt-in per Oasis.
 
 ## Decision points — resolved or teed up (they gate implementation)
 
@@ -162,9 +235,12 @@ requires an explicit opt-in per Oasis.
 Slice A (signing) ──┐
                     ├─→ Slice B (endpoints) ─→ Slice C (CLI+registry) ─→ Slice D (trust policy)
 Gauntlet #3 (poison ┘        (B needs A's verify;    (C is the caller       (D wires the
-  slice, already            C needs B; D needs        for A/B)               default policy +
-  scheduled)                the Queen tier B/C define)                       promotion gauntlets)
+  slice, already            C needs B; D needs        for A/B)               default consumer
+  scheduled)                the Queen tier B/C define)                       trust policy)
 ```
+Promotion (experimental → Queen, with its gauntlet battery) was originally the second half of
+Slice D. It is DEFERRED past this line — it needs Gauntlet #3, which the poison slice above
+still owes. See the Slice D block for the full blocker.
 
 Signing (A) is the root — it's the pre-1.2 gate and every other slice references it. Each slice
 is its own PR with a two-lens round (the P2P surface is a wire boundary; typing + review pay).
@@ -175,8 +251,11 @@ is its own PR with a two-lens round (the P2P surface is a wire boundary; typing 
 - **Front-gate honored:** only signing and the endpoints/registry/CLI are new; conflict
   resolution, the receiver poison pipeline, auth, admission, and rate-limiting are reused with
   the specific reason named above.
-- **Ship-with-a-caller:** no slice reserves capacity without a consumer — the CLI (C) is the
-  caller for A/B/D, and D's promotion re-runs the real gauntlets.
+- **Ship-with-a-caller:** the CLI (C) is the caller for A/B/D. **One exception, named rather
+  than hidden:** `OasisStore.open_contribution` shipped in B as "the Slice D promotion input"
+  and D deferred promotion, so it is reserved capacity with no production caller until the
+  promotion work lands. `hive contribute` is correspondingly a write-only path in 1.2 (see
+  the Slice D block's operator-consequence note).
 - **Two-tier invariants:** every contract above enters `[engineering]` (signing-refusal, tier
   landing, default-Queen-trust) with a guard test; nothing here claims behavioral weight — the
   sharing *claims* are Exp 56 (earned) and Exp 57 (the ladder, in prereg).

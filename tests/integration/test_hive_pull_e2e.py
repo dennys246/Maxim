@@ -3,7 +3,7 @@
 Proves the consumer composition: a real leader-proxy Oasis with a signed release,
 a registry entry naming its Queen key, and `hive pull` fetching → verifying →
 delegating to `substrate ingest`. Signed-release paths need the [sign] extra;
-the contribute path (unsigned experimental) runs unconditionally.
+the contribute path (unsigned push to the experimental tier) runs unconditionally.
 """
 
 from __future__ import annotations
@@ -158,6 +158,98 @@ def test_hive_pull_untrusted_signer_refused(tmp_path):
         reg = str(tmp_path / "hive.json")
         # registry holds a DIFFERENT key for queen-a → signature must not verify
         HiveRegistry(reg).add("alpha", base, queen_keys={"queen-a": impostor.public_key_b64})
+        sess = _receiver_session(tmp_path)
+        rc = run_hive_subcommand(
+            [
+                "--registry",
+                reg,
+                "pull",
+                "--from",
+                "alpha",
+                "--session",
+                str(sess),
+                "--receiver-body",
+                "minecraft_bench",
+                "--api-key",
+                _KEY,
+                "--apply",
+            ]
+        )
+        assert rc == 2
+        assert not (sess / "substrate_ingest_journal.json").is_file()
+    finally:
+        _stop(server)
+
+
+def _serve_unsigned_release(store, tmp_path):
+    """Place an UNSIGNED bundle in the release dir, as a lenient/compromised Oasis would.
+
+    `oasis publish` refuses unsigned, but `list_releases` serves whatever sits in the
+    directory — so this is the reachable path the consumer's --allow-unsigned opt-in defends.
+    """
+    import hashlib
+
+    b = tmp_path / "unsigned_rel.zip"
+    compose_bundle(
+        nac_state=None,
+        ec_substrate_nodes=_EC_NODES,
+        output_path=b,
+        contributor_id="oasis-alpha",
+        body_ref="minecraft_bench",
+    )
+    raw = b.read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    store.releases_dir.mkdir(parents=True, exist_ok=True)
+    (store.releases_dir / f"{digest}.zip").write_bytes(raw)
+    return digest
+
+
+def test_unsigned_release_refused_by_default_admitted_under_opt_in(tmp_path):
+    """Default trust is Queen-only; disabling verification is an explicit opt-in (Slice D)."""
+    store = OasisStore(tmp_path / "oasis")
+    _serve_unsigned_release(store, tmp_path)
+    server, base = _start(store)
+    try:
+        reg = str(tmp_path / "hive.json")
+        # a registered Queen key exists, but the offered release is unsigned
+        HiveRegistry(reg).add("alpha", base, queen_keys={"queen-a": "PUBKEY"})
+        sess = _receiver_session(tmp_path)
+        pull = [
+            "--registry",
+            reg,
+            "pull",
+            "--from",
+            "alpha",
+            "--session",
+            str(sess),
+            "--receiver-body",
+            "minecraft_bench",
+            "--api-key",
+            _KEY,
+            "--apply",
+        ]
+        # default: refused, nothing written
+        assert run_hive_subcommand(pull) == 2
+        assert not (sess / "substrate_ingest_journal.json").is_file()
+
+        # explicit per-Oasis opt-in: the same unsigned release is now admitted
+        run_hive_subcommand(["--registry", reg, "trust", "alpha", "--allow-unsigned"])
+        assert run_hive_subcommand(pull) == 0
+        assert (sess / "substrate_ingest_journal.json").is_file()
+    finally:
+        _stop(server)
+
+
+def test_trusted_source_allow_list_refuses_other_contributors(tmp_path):
+    store = OasisStore(tmp_path / "oasis")
+    _serve_unsigned_release(store, tmp_path)  # contributor_id = "oasis-alpha"
+    server, base = _start(store)
+    try:
+        reg = str(tmp_path / "hive.json")
+        HiveRegistry(reg).add("alpha", base)
+        # allow unsigned so the signature gate isn't what refuses, then
+        # restrict the operator allow-list to a DIFFERENT contributor
+        run_hive_subcommand(["--registry", reg, "trust", "alpha", "--allow-unsigned", "--trust-source", "someone-else"])
         sess = _receiver_session(tmp_path)
         rc = run_hive_subcommand(
             [

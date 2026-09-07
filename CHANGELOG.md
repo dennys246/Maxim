@@ -24,6 +24,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Consumer trust policy for pulled substrate (1.2 P2P Slice D).** Default trust is now
+  **Queen-only**: `maxim hive pull` REFUSES a release that is not signed by a Queen key
+  registered for that Oasis, and refuses the decay-exempt inherent ("safety floor") bias
+  class, unless the operator opts in per Oasis with the new `maxim hive trust <name>`
+  (`--allow-unsigned`, `--inherent`, `--trust-source ID`; opposing flags are mutually
+  exclusive so a contradictory command errors rather than granting the looser setting).
+  `--allow-unsigned` **disables signature verification** for that Oasis's release stream —
+  it is not a subscription to the server's `experimental/` tier, which nothing in 1.2
+  fetches. When an operator `--trust-source` allow-list is configured it becomes the V1
+  `trusted_sources` set passed to ingest, so the refusal is enforced by the pipeline rather
+  than only by the CLI. Policy lives on the `hive.json` entries, is assembled entirely over
+  `ingest_bundle`'s shipped hooks (no new merge code), fails loud on a malformed value, and
+  survives a re-`add` along with the Queen keys. **Makes the previously-unreachable inherent
+  path reachable** under an explicit opt-in (`hive pull` never passed `--inherent-trust`, so a
+  Queen release carrying inherent markers was refused outright — with the default it still
+  is). Guards: `tests/unit/test_hive_cli.py` (`TestTrustPolicy`, `TestIngestArgvConstruction`,
+  `TestMalformedPolicyFailsLoud`, `TestConflictingTrustFlags`),
+  `tests/integration/test_hive_pull_e2e.py`.
+  **Queen-tier promotion is deliberately NOT shipped** — its gauntlet battery cannot run
+  (Gauntlet #3 does not exist and is scheduled later; Gauntlets #1/#2 cannot score a bundle),
+  so the blocker and its prerequisites are recorded in `docs/plans/hivemind_p2p_scope.md`
+  rather than shipping a gate that cannot gate.
 - **`maxim oasis` / `maxim hive` CLIs + static Oasis registry (1.2 P2P Slice C).** The
   operator-facing halves of the substrate exchange. `maxim oasis serve` starts the Slice-B
   endpoints by injecting an `OasisStore` into the leader proxy; `oasis publish <bundle>`
