@@ -531,6 +531,37 @@ def _run_menu_sim(action: str) -> None:
         pass
 
 
+def _dispatch_hivemind_cli(raw_argv: list[str]) -> int | None:
+    """Route the substrate / oasis / hive command family; None if not one of them.
+
+    Kept out of ``_main_impl`` so adding sibling verbs (the 1.2 P2P `oasis`/`hive`
+    groups) doesn't grow that god function (roadmap 1.1.x item 16.4). Lazy imports
+    inside each branch keep the heavy runtime off the fast subcommand path.
+    """
+    if not raw_argv:
+        return None
+    verb = raw_argv[0]
+    if verb == "substrate":
+        # Hivemind shareability (v1_refinement.md §B5 PR D) — substrate snapshot
+        # bundle compose + extract, round-tripping NAc + EC state via a portable zip.
+        from maxim.hivemind.cli import run_substrate_subcommand
+
+        return run_substrate_subcommand(raw_argv[1:])
+    if verb == "oasis":
+        # Server side of the 1.2 P2P exchange (Slice C): serve the endpoints with
+        # an OasisStore, publish signed releases into the Queen tier.
+        from maxim.hivemind.oasis_cli import run_oasis_subcommand
+
+        return run_oasis_subcommand(raw_argv[1:])
+    if verb == "hive":
+        # Consumer side: the static Oasis registry, plus fetch+ingest and
+        # push-to-experimental over the Slice-B client.
+        from maxim.hivemind.hive_cli import run_hive_subcommand
+
+        return run_hive_subcommand(raw_argv[1:])
+    return None
+
+
 def _main_impl(argv: Sequence[str] | None = None) -> int:
     """Original ``main`` body.  Wrapped by :func:`main` for typed-error surfacing."""
     # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
@@ -657,28 +688,9 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         from maxim.models.model_cli import run_model_subcommand
 
         return run_model_subcommand(raw_argv[1:])
-    if raw_argv and raw_argv[0] == "substrate":
-        # Hivemind shareability (v1_refinement.md §B5 PR D) — substrate
-        # snapshot bundle compose + extract. Round-trips NAc + EC state
-        # via a portable zip archive so 1.1+ Oases can ingest contributions
-        # from LLM-AUT users.
-        from maxim.hivemind.cli import run_substrate_subcommand
-
-        return run_substrate_subcommand(raw_argv[1:])
-    if raw_argv and raw_argv[0] == "oasis":
-        # `maxim oasis serve/publish/status` — the server side of the 1.2 P2P
-        # substrate exchange (Slice C): serve the endpoints with an OasisStore,
-        # publish signed releases into the Queen tier.
-        from maxim.hivemind.oasis_cli import run_oasis_subcommand
-
-        return run_oasis_subcommand(raw_argv[1:])
-    if raw_argv and raw_argv[0] == "hive":
-        # `maxim hive add/list/pull/contribute` — the consumer side: the static
-        # Oasis registry, plus fetch+ingest and push-to-experimental over the
-        # Slice-B client.
-        from maxim.hivemind.hive_cli import run_hive_subcommand
-
-        return run_hive_subcommand(raw_argv[1:])
+    _hivemind_rc = _dispatch_hivemind_cli(raw_argv)
+    if _hivemind_rc is not None:
+        return _hivemind_rc
     if raw_argv and raw_argv[0] == "config":
         # `maxim config get/set/list/path/edit` — instance-level operator
         # config per config_unification.md C2. The verbs write to

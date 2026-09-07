@@ -90,6 +90,21 @@ class TestHiveCliArgs:
         assert rc == 2
 
 
+class TestCliDispatch:
+    """The substrate-family dispatch helper extracted from _main_impl (item 16.4)."""
+
+    def test_family_verbs_route_and_others_fall_through(self, tmp_path):
+        from maxim.cli import _dispatch_hivemind_cli
+
+        reg = str(tmp_path / "hive.json")
+        # a family verb routes and returns its rc (0 for an empty `hive list`)
+        assert _dispatch_hivemind_cli(["hive", "--registry", reg, "list"]) == 0
+        # non-family verbs and an empty argv fall through (None) so _main_impl's
+        # if-chain continues to config/peer/etc exactly as before the extraction
+        assert _dispatch_hivemind_cli(["config", "get"]) is None
+        assert _dispatch_hivemind_cli([]) is None
+
+
 class TestReleaseIdHardening:
     """Regression guards for the cross-confirmed path-traversal BLOCKER."""
 
