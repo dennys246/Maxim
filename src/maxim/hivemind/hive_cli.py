@@ -30,7 +30,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from maxim.hivemind.registry import HiveRegistry, HiveRegistryError, trust_policy
+from maxim.hivemind.registry import POLICY_FIELDS, HiveRegistry, HiveRegistryError, trust_policy
 
 
 def _parse_key_specs(specs: list[str] | None, label: str) -> dict[str, str]:
@@ -92,8 +92,13 @@ def _run_list(args: argparse.Namespace) -> int:
             return 2
         verification = "unsigned-allowed" if policy["allow_unsigned"] else "queen-only"
         allow = ", ".join(policy["trusted_sources"]) or "(any Queen-signed)"
+        # Reduce the key map to a COUNT before it can reach output. Nothing here
+        # prints key material (and Queen keys are public verification anchors,
+        # not secrets), but the house rule from `leader_proxy._check_auth` is that
+        # key-shaped values never flow into a log or print at all.
+        n_anchors: int = len(o.get("queen_keys") or {})
         print(
-            f"{o.get('name')}\t{o.get('url')}\tqueen_keys={len(o.get('queen_keys') or {})}\tdomains={domains}\n"
+            f"{o.get('name')}\t{o.get('url')}\tqueen_keys={n_anchors}\tdomains={domains}\n"
             f"    trust: {verification}   inherent: {'yes' if policy['inherent_trust'] else 'no'}   sources: {allow}"
         )
     return 0
@@ -121,7 +126,11 @@ def _run_trust(args: argparse.Namespace) -> int:
         entry = registry.set_trust(
             args.name, allow_unsigned=allow_unsigned, inherent_trust=inherent, trusted_sources=sources
         )
-        policy = trust_policy(entry)
+        # Derive the printed policy from the POLICY FIELDS ONLY — never from the
+        # whole entry, which also carries the Oasis's key map. Same house rule as
+        # above: key-shaped values do not flow toward output, even when (as here)
+        # they are public anchors and nothing would print them.
+        policy = trust_policy({field: entry[field] for field in POLICY_FIELDS if field in entry})
     except HiveRegistryError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
