@@ -23,8 +23,8 @@ deduction, so:
 it counts hand-rolled atomic renames, NOT "JSON written without ``atomic_write_json``"
 — as of 2026-08-29 not one counted site writes JSON. Five duplicate
 ``atomic_write_text``; ``hivemind/bundle.py`` (zip) and ``models/download.py`` (GGUF)
-write BYTES, for which ``atomic_io`` exposes no writer at all, so burning those down
-needs an ``atomic_write_bytes`` first. The first draft of this lint matched only the
+write BYTES — for which ``atomic_io.atomic_write_bytes`` now exists (added 2026-09-06,
+1.2 P2P Slice B), though those two sites are not yet migrated to it. The first draft of this lint matched only the
 bare ``os.replace`` spelling and reported 6 where the truth was 12 — it missed the
 ``import os as _os`` alias in ``models/download.py``, ``Path.replace`` on the
 provenance decision log (``runtime/decision_log.py``), and ``os.rename`` in
@@ -126,9 +126,9 @@ def main() -> int:
             exclude=frozenset({CANONICAL.as_posix()}),
             what="hand-rolled rename call sites",
             advice=(
-                "persist through maxim.utils.atomic_io (atomic_write_text/json/secret); a BYTES payload has no "
-                "canonical writer yet, so adding one is the prerequisite for that burn-down, not a reason to "
-                "hand-roll (CLAUDE.md atomic-persistence invariant). The count only ratchets down."
+                "persist through maxim.utils.atomic_io (atomic_write_text/json/secret/bytes — atomic_write_bytes "
+                "now exists for BYTES payloads, so there is no reason to hand-roll a rename; CLAUDE.md "
+                "atomic-persistence invariant). The count only ratchets down."
             ),
         )
     except GitUnavailable as exc:
