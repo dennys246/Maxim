@@ -748,6 +748,17 @@ execution priority:
    re-implement it. Note gate 7 is **not** what blocks D44: D43's live axes are
    `cluster_id` and `agent_id`, and the tool-signature barrier does not fire for two
    agents on one body — exactly D44's configuration.
+
+   **CLOSED — caller status verified 2026-09-06 (1.2 status pass):** both callers are
+   wired and non-test. Export: `hivemind/cli.py` derives `capability_map` via
+   `embodiment.tool_bridge::derive_capability_map` from `--body-yaml` and declares
+   `body_ref` (defaulting to the spec name), passing both into `compose_bundle`.
+   Import: `--receiver-body` is `required=True` on `maxim substrate ingest`, and the
+   ingestion adapter (`hivemind/ingest.py::ingest_bundle`, `receiver_body` a required
+   parameter) routes through `assert_bundle_body_compatible` unconditionally — the
+   refusal always runs on the ingest path; it is not re-implemented. Exercised live by
+   the Exp 56 campaign (every arm's ingest went through this path). Guards:
+   `tests/unit/test_hivemind_ingest.py`, `tests/integration/test_oasis_ingest_e2e.py`.
 8. **Evidence and ledger coherence** (added 2026-08-27 from the scorecard
    reconciliation). Gates 1–7 exist because distribution amplifies silent *state*
    errors; this gate applies the same argument to the *evidence* behind the state that
