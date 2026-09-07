@@ -84,7 +84,9 @@ never admitted-with-clamps — the same "refuse, don't dilute" rule the V1 front
 uses. **Ship-with-caller:** `maxim substrate export --sign` produces one; `maxim substrate
 ingest --require-signed` consumes it; guard test round-trips sign→verify→tamper-detect.
 
-### Slice B — Substrate HTTP endpoints on the Oasis server (~200 LOC)
+### Slice B — Substrate HTTP endpoints on the Oasis server (~200 LOC) — SHIPPED (dormant)
+**Shipped:** `hivemind/store.py` (`OasisStore`, two-tier releases/experimental, thread-serialized accept path), `hivemind/oasis_endpoints.py` (transport-agnostic handlers), `hivemind/substrate_client.py` (client over `utils/http`), the three `/v1/substrate/*` routes on `leader_proxy` (gated by an injected `OasisStore`, default an authenticated 404), and `utils/atomic_io.atomic_write_bytes`. Two-lens review folded a cross-confirmed HIGH (lost-update race on the provenance log → store lock + validate-before-write + fail-loud corrupt-log) plus the client error-contract, `Content-Length` 500, and `start_leader_proxy` module-global fixes. Guards: `test_oasis_store.py` (incl. concurrency + corrupt-log) + `test_oasis_exchange_e2e.py` (real round-trip). **Honest status:** the endpoints + client ship with a proven end-to-end test but NO production caller — `maxim oasis serve` (Slice C) is the only thing that injects a store, so the surface is dormant until C. This is a deliberate slicing choice (the endpoints cannot have a production caller without the CLI), not a satisfied ship-with-a-caller.
+
 Add a substrate surface to the existing authenticated server (the `leader_proxy` handler
 pattern, or a sibling handler sharing `_check_auth`/`_check_admission`):
 - `GET /v1/substrate/releases` — list the Oasis's published Queen-tier releases (manifests only).

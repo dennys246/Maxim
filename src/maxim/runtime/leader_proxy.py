@@ -775,6 +775,10 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     concurrency_semaphore: threading.Semaphore | None = None  # Phase 7b
     rate_limiter: Any = None  # PeerRateLimiter instance (Phase 7b)
     start_time: float = 0.0
+    # 1.2 P2P Slice B: an OasisStore enables the /v1/substrate/* exchange
+    # endpoints. Default None → those routes 404 (no new always-on peer
+    # surface on an ordinary leader; `maxim oasis serve` injects a store).
+    oasis_store: Any = None
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
         # Route to structured logger instead of stderr
@@ -833,10 +837,21 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     # Maximum request body size (1 MB). Prevents memory exhaustion from oversized payloads.
     MAX_BODY_SIZE = 1_048_576
 
+    # A substrate bundle (nac.json + ec.json + manifest, ZIP-compressed) is
+    # larger than an LLM request but still bounded — cap the /contribute body
+    # well above a typical taught-want bundle yet far below anything that
+    # threatens memory (the concurrency semaphore bounds how many land at once).
+    SUBSTRATE_MAX_BUNDLE_BYTES = 16 * 1_048_576
+
     def _read_body(self, max_size: int | None = None) -> bytes | None:
         """Read request body with size limit. Returns None if no body or over limit."""
         limit = max_size or self.MAX_BODY_SIZE
-        content_length = int(self.headers.get("Content-Length", 0))
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except (ValueError, TypeError):
+            # A malformed Content-Length header (e.g. "abc") is a client error,
+            # not a reason to 500 — treat it as "no readable body".
+            return None
         if content_length <= 0:
             return None
         if content_length > limit:
@@ -2423,6 +2438,10 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             if self._is_localhost() or self._check_auth():
                 self._route_debug(self.path)
             return
+        stripped = self.path.split("?")[0].rstrip("/")
+        if stripped == "/v1/substrate" or stripped.startswith("/v1/substrate/"):
+            self._handle_substrate_get(stripped)
+            return
         if not self._check_auth():
             return
         self._proxy_request("GET")
@@ -2446,7 +2465,10 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         if not self._check_admission():
             return
         try:
-            self._proxy_request("POST")
+            if stripped == "/v1/substrate/contribute":
+                self._handle_substrate_contribute()
+            else:
+                self._proxy_request("POST")
         finally:
             self._release_concurrency()
 
@@ -2483,6 +2505,75 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_bytes(self, code: int, body: bytes, content_type: str) -> None:
+        """Send a raw byte body (bundle download) with the same security headers as _send_json."""
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Cache-Control", "no-store")
+        cors_origin = os.environ.get("MAXIM_CORS_ORIGIN", "")
+        if cors_origin:
+            self.send_header("Access-Control-Allow-Origin", cors_origin)
+        self.end_headers()
+        self.wfile.write(body)
+
+    # ─── substrate exchange (1.2 P2P Slice B) ─────────────────────────────
+
+    def _handle_substrate_get(self, stripped_path: str) -> None:
+        """Serve GET /v1/substrate/releases and /v1/substrate/bundle/<id>.
+
+        Auth + admission are applied here (a bundle download is bandwidth worth
+        rate-limiting). When no OasisStore is configured the routes 404, so an
+        ordinary leader exposes nothing new.
+        """
+        if not self._check_auth():
+            return
+        if self.oasis_store is None:
+            self._send_json(404, {"error": "substrate exchange not enabled on this server"})
+            return
+        if not self._check_admission():
+            return
+        try:
+            from maxim.hivemind import oasis_endpoints as ep
+
+            if stripped_path == "/v1/substrate/releases":
+                resp = ep.handle_list_releases(self.oasis_store)
+            elif stripped_path.startswith("/v1/substrate/bundle/"):
+                release_id = stripped_path[len("/v1/substrate/bundle/") :]
+                resp = ep.handle_get_bundle(self.oasis_store, release_id)
+            else:
+                resp = ep.EndpointResponse.json_response(404, {"error": "unknown substrate endpoint"})
+            self._send_bytes(resp.status, resp.body, resp.content_type)
+        finally:
+            self._release_concurrency()
+
+    def _handle_substrate_contribute(self) -> None:
+        """Accept POST /v1/substrate/contribute into the experimental tier.
+
+        Called with the concurrency slot already held (do_POST releases it).
+        """
+        if self.oasis_store is None:
+            self._send_json(404, {"error": "substrate exchange not enabled on this server"})
+            return
+        body = self._read_body(max_size=self.SUBSTRATE_MAX_BUNDLE_BYTES)
+        if body is None:
+            # _read_body returns None for an oversize body (having already sent
+            # 413) OR for an absent/empty/malformed Content-Length. Only the
+            # latter needs a 400 — sending one after the 413 would double-respond.
+            try:
+                declared = int(self.headers.get("Content-Length", 0))
+            except (ValueError, TypeError):
+                declared = 0
+            if declared <= self.SUBSTRATE_MAX_BUNDLE_BYTES:
+                self._send_json(400, {"error": "empty contribution body"})
+            return
+        from maxim.hivemind import oasis_endpoints as ep
+
+        resp = ep.handle_contribute(self.oasis_store, body, source=self.client_address[0])
+        self._send_bytes(resp.status, resp.body, resp.content_type)
+
 
 # ─── server lifecycle ─────────────────────────────────────────────────────
 
@@ -2496,11 +2587,17 @@ def start_leader_proxy(
     upstream_port: int | None = None,
     api_key: str | None = None,
     bind_host: str = "0.0.0.0",
+    oasis_store: Any = None,
 ) -> HTTPServer | None:
     """Start the LeaderProxy in a daemon thread.
 
     Returns the HTTPServer instance (for shutdown), or None on failure.
     Idempotent — returns the existing server if already started.
+
+    ``oasis_store`` (an :class:`maxim.hivemind.store.OasisStore`) enables the
+    ``/v1/substrate/*`` exchange endpoints (1.2 P2P Slice B). Default ``None``
+    leaves them 404 — an ordinary leader exposes no substrate surface; only
+    ``maxim oasis serve`` passes a store.
     """
     global _leader_proxy_server
     if proxy_port is None:
@@ -2576,6 +2673,7 @@ def start_leader_proxy(
             "concurrency_semaphore": semaphore,
             "rate_limiter": peer_rate_limiter,
             "start_time": time.time(),
+            "oasis_store": oasis_store,
         },
     )
 
@@ -2605,7 +2703,12 @@ def start_leader_proxy(
         upstream_url,
         "on" if api_key else "off",
     )
-    _leader_proxy_server = server
+    # Only record the singleton for the DEFAULT port — that is the only port the
+    # idempotency guard above honors. Stashing a custom-port server (every test,
+    # every `maxim oasis serve` on a non-default port) would make a later
+    # default-port start return that unrelated server instead of binding fresh.
+    if proxy_port == DEFAULT_PROXY_PORT:
+        _leader_proxy_server = server
     return server
 
 

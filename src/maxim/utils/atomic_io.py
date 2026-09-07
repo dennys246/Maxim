@@ -129,6 +129,64 @@ def atomic_write_text(
             logger.warning("initial_mode: could not chmod %s: %s", path, e)
 
 
+def atomic_write_bytes(
+    path: str,
+    data: bytes,
+    *,
+    initial_mode: int | None = None,
+) -> None:
+    """Atomically write raw ``bytes`` to ``path``.
+
+    The binary sibling of :func:`atomic_write_text`: writes to
+    ``{path}.tmp``, fsyncs, then ``os.replace()`` to the final path,
+    cleaning up the tmp file if the replace fails. This is the canonical
+    writer for BYTES payloads (ZIP bundles, downloaded model blobs) — the
+    surface that ``atomic_io`` previously lacked, forcing call sites to
+    hand-roll the tmp + ``os.replace`` dance the atomic-persistence
+    invariant exists to prevent.
+
+    ``initial_mode`` mirrors :func:`atomic_write_text`: when set, the temp
+    file is created with these permission bits via ``os.open`` (masked by
+    the umask) and they are re-asserted on the final file after the
+    replace. Bundles are public artifacts, so callers usually leave it
+    unset; it exists so a future secret-bearing bytes writer need not
+    re-implement the fd-mode discipline.
+    """
+    parent = os.path.dirname(path) or "."
+    os.makedirs(parent, exist_ok=True)
+    tmp_path = f"{path}.tmp"
+
+    try:
+        if initial_mode is not None:
+            fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, initial_mode)
+            f_ctx = os.fdopen(fd, "wb")
+        else:
+            f_ctx = open(tmp_path, "wb")
+        with f_ctx as f:
+            f.write(data)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                # fsync unsupported on some filesystems; the write still
+                # happened, just without a durability guarantee.
+                pass
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError as cleanup_err:
+            logger.warning("Failed to clean up %s: %s", tmp_path, cleanup_err)
+        raise
+
+    if initial_mode is not None:
+        try:
+            os.chmod(path, initial_mode)
+        except OSError as e:
+            logger.warning("initial_mode: could not chmod %s: %s", path, e)
+
+
 def atomic_write_json(
     path: str,
     payload: Any,
