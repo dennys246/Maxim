@@ -665,6 +665,20 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         from maxim.hivemind.cli import run_substrate_subcommand
 
         return run_substrate_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "oasis":
+        # `maxim oasis serve/publish/status` — the server side of the 1.2 P2P
+        # substrate exchange (Slice C): serve the endpoints with an OasisStore,
+        # publish signed releases into the Queen tier.
+        from maxim.hivemind.oasis_cli import run_oasis_subcommand
+
+        return run_oasis_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "hive":
+        # `maxim hive add/list/pull/contribute` — the consumer side: the static
+        # Oasis registry, plus fetch+ingest and push-to-experimental over the
+        # Slice-B client.
+        from maxim.hivemind.hive_cli import run_hive_subcommand
+
+        return run_hive_subcommand(raw_argv[1:])
     if raw_argv and raw_argv[0] == "config":
         # `maxim config get/set/list/path/edit` — instance-level operator
         # config per config_unification.md C2. The verbs write to

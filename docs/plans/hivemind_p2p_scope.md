@@ -100,15 +100,18 @@ promotion to Queen tier is a SEPARATE gated operation (Slice D), never a side ef
 **Ship-with-caller:** the `maxim oasis serve` command starts it; the pull/contribute CLI (Slice C)
 exercises it; guard test drives the three endpoints against a fixture Oasis.
 
-### Slice C — `maxim oasis` / `hive` CLI + static registry (~150 LOC)
+### Slice C — `maxim oasis` / `hive` CLI + static registry (~150 LOC) — SHIPPED
+**Shipped:** `hivemind/oasis_cli.py` (`serve`/`publish`/`status`), `hivemind/hive_cli.py` (`add`/`remove`/`list`/`pull`/`contribute`), `hivemind/registry.py` (`HiveRegistry` over a JSON `~/.config/maxim/hive.json` — operator-explicit writes, no secrets, corrupt-registry fails loud), wired into `cli.py` dispatch. `hive pull` DELEGATES to the tested `substrate ingest` verb (fetch via Slice-B client → refuse a non-Queen signer → ingest with `--require-signed`), so verification/V1–V10/journal/backups are reused verbatim. `oasis serve` is the production caller that injects a store into `start_leader_proxy`, making Slice B non-dormant. Guards: `test_hive_cli.py` + `test_hive_pull_e2e.py` (real served-Oasis pull dry-run/apply + untrusted-signer refusal + contribute). Registry chose JSON (not a new frozen YAML dialect) and plain dicts (not a CC3 frozen dataclass). The default consumer trust *policy* (auto-Queen-require, experimental opt-in) remains Slice D.
+
 - `maxim oasis serve` (start the substrate endpoints), `oasis publish <bundle>` (sign + list a
   release), `oasis status`.
 - `maxim hive pull [--domain <d>] [--from <oasis>]` (fetch + `ingest` signed releases, default
   `trusted_sources = {configured Queen keys}`), `hive contribute <bundle> --to <oasis>`,
   `hive add <name> <url> [--queen-key <pub>]` / `hive list` (the static registry).
-- **Registry:** `hive.yml` under `~/.config/maxim/` — a list of known Oases (name, URL, optional
-  Queen public key, subscribed domains), shape-frozen like `mesh.yml`. Manual add; optional
-  seeded well-known entries (community-run, NOT project-hosted in 1.2).
+- **Registry:** `hive.json` under `~/.config/maxim/` (shipped as JSON, NOT a hand-rolled YAML
+  dialect — the `mesh.yml` parser is frozen and must not be extended) — a list of known Oases
+  (name, URL, Queen public keys, subscribed domains). Manual add; optional seeded well-known
+  entries (community-run, NOT project-hosted in 1.2).
 **Ship-with-caller:** these ARE the callers for Slices A/B/D; guard tests on argument parsing +
 a dry-run pull against a fixture.
 

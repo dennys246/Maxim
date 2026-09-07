@@ -92,6 +92,13 @@ def fetch_bundle(
     runs ``ingest_bundle(require_signed=True, trusted_keys=...)`` to verify the
     signature before merging — fetching is not trusting.
     """
+    # An id from an untrusted Oasis must never reach a URL path or the caller's
+    # dest filename unchecked — reject anything but a bare sha256 digest here so
+    # a crafted "../…" or absolute id cannot traverse (defense at the transport).
+    from maxim.hivemind.store import is_valid_release_id
+
+    if not is_valid_release_id(release_id):
+        raise SubstrateExchangeError(f"refusing to fetch malformed release id {release_id!r}")
     dest = Path(dest_path)
     try:
         http.download_to_file(
