@@ -1,0 +1,109 @@
+component:
+  name: minecraft_bench57
+  category: bodies
+  archetype: humanoid
+  tags: [body, minecraft, world, benchmark, exp57]
+  synonyms: [minecraft benchmark body exp57, exp57 body, dose-response body]
+  description: |
+    The Exp 57 dose-response ladder body — minecraft_bench (the EARNED Exp 56
+    four-arm body) with a world channel that is DIRECTION-AWARE and NOT diluted
+    by situation-constant sensors. Copied verbatim and frozen:
+
+    * The d1 interoceptive drive with its EXACT spec (entropic up-drift 0.006,
+      deprivation_threshold 0.7 / pain 0.3, satisfaction_threshold 0.3) —
+      MODELED interoception, deliberately NOT modality: world so the
+      live-readback credit withhold cannot short-circuit the operant path.
+    * The eight OPAQUE affordances aff_a..aff_h under the abstract `act`
+      modulator — the per-pair opaque-name -> bridge-action permutation lives
+      in the harness's translating client, NEVER here. Opacity is the L12
+      mitigation; do not "clarify" these names or d1.
+
+    WORLD CHANNEL = the bot's SIGNED horizontal position from spawn (offset_x,
+    offset_z), and ONLY that. WHY, in two parts:
+
+    1. DIRECTION. The Exp 56 world channel was direction-BLIND —
+       distance_from_spawn is a magnitude and y_altitude an elevation, so the
+       four FROZEN contingency slots (same ~88-block distance, same y=112,
+       differing only in BEARING) collapsed to ONE cluster (G=1). offset_x/
+       offset_z are what the game ALREADY exposes (distance_from_spawn is the
+       magnitude of exactly this signed position — less lossy than the derived
+       magnitude, not an invented sensor), so bearing now separates the slots.
+    2. NO DILUTION. The other Exp 56 world sensors (distance_from_spawn,
+       y_altitude, speed, on_ground, time_of_day) are IDENTICAL across the four
+       frozen slots — they carry zero situation information here and, through
+       the SHA-basis + A4-gain encoder, add a large shared component that
+       DILUTES the offsets (measured on the real SensorEncoder: keeping all
+       seven gave max pairwise cosine 0.8387, a jitter-fragile 0.011 margin).
+       Dropping them is the root-cause fix, not a trim for taste.
+
+    Result, measured through the real SensorEncoder on the four frozen slots +
+    rest: five distinct clusters, MAX pairwise cosine 0.3716 (margin 0.478
+    below the 0.85 pattern-completion threshold) — robust to bridge jitter. The
+    world channel touches neither the opaque affordance names nor d1, so the
+    L12 opacity mitigation is preserved.
+
+entity:
+  name: minecraft_bench57
+  entity_type: body
+  sensors:
+    # ── the modeled interoceptive drive (opaque name; the teacher's lever)
+    d1:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+      drive:
+        drift_mode: entropic
+        drift_direction: up
+        drift_rate: 0.006
+        deprivation_threshold: 0.7
+        deprivation_pain: 0.3
+        satisfaction_threshold: 0.3
+    # ── the world channel: the bot's SIGNED horizontal position from spawn.
+    # No drives, no drift — the drift loop must never fight the bridge writer.
+    # Rest sits at (0, 0) (the A4 neutral).
+    offset_x:
+      unit: blocks
+      range: [-128, 128]
+      initial: 0
+      modality: world
+    offset_z:
+      unit: blocks
+      range: [-128, 128]
+      initial: 0
+      modality: world
+  modulators:
+    act:
+      abstract: true   # capability-only — no sensors (C4)
+      affordances:
+        aff_a:
+          params: {}
+          always_active: true
+          description: "Perform action a."
+        aff_b:
+          params: {}
+          always_active: true
+          description: "Perform action b."
+        aff_c:
+          params: {}
+          always_active: true
+          description: "Perform action c."
+        aff_d:
+          params: {}
+          always_active: true
+          description: "Perform action d."
+        aff_e:
+          params: {}
+          always_active: true
+          description: "Perform action e."
+        aff_f:
+          params: {}
+          always_active: true
+          description: "Perform action f."
+        aff_g:
+          params: {}
+          always_active: true
+          description: "Perform action g."
+        aff_h:
+          params: {}
+          always_active: true
+          description: "Perform action h."

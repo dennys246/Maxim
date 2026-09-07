@@ -72,10 +72,35 @@ def _ec_for(nodes: dict) -> object:
     return ec
 
 
+_BENCH_WORLD_RANGES: "dict[str, tuple[float, float]] | None" = None
+
+
+def _bench_world_ranges() -> dict[str, tuple[float, float]]:
+    """R1 uses the Exp 56 BENCH body (minecraft_bench), so it must encode against
+    THAT body's world channel — NOT common57.world_ranges(), which is Exp 57's
+    bench57 (offsets-only). Decoupled deliberately: R1's slots were chosen to
+    separate under bench's distance/altitude channel, and R1 is a merged result
+    the Exp 57 richer-body change must not perturb."""
+    global _BENCH_WORLD_RANGES
+    if _BENCH_WORLD_RANGES is None:
+        from maxim.embodiment.component_registry import ComponentRegistry
+
+        entity = ComponentRegistry().instantiate(C.BODY_REF)
+        out: dict[str, tuple[float, float]] = {}
+        for name, s in entity.sensors.items():
+            schema = getattr(s, "reading_schema", {}) or {}
+            if schema.get("modality") == "world":
+                rng = schema.get("range")
+                if isinstance(rng, (list, tuple)) and len(rng) == 2:
+                    out[name] = (float(rng[0]), float(rng[1]))
+        _BENCH_WORLD_RANGES = out
+    return _BENCH_WORLD_RANGES
+
+
 def _encode_slot(ec: object, slot: dict, agent_id: str) -> str:
     from maxim.similarity.encoder import SensorEncoder, SensorEncoderConfig
 
-    ranges = X.world_ranges()
+    ranges = _bench_world_ranges()
     enc = SensorEncoder(ec=ec, config=SensorEncoderConfig())
     sensors = {k: v for k, v in X.world_sensors_for_slot(slot).items() if k in ranges}
     return enc.encode_sensors(agent_id=agent_id, sensors=sensors, modality="world", ranges=ranges)
@@ -167,7 +192,18 @@ def main(argv: list[str] | None = None) -> int:
 
     with tempfile.TemporaryDirectory() as td:
         donor_nac, donor_ec, cid_s1_donor = _donor_snapshot()
-        merged = X.fold_snapshots([(donor_nac, donor_ec)], RECV_AGENT, workdir=Path(td), contributor_ids=["r1-donor"])
+        # R1 uses the Exp 56 bench body (its donor tool sigs are minecraft_bench_*);
+        # fold_snapshots now defaults to Exp 57's bench57, so override to bench so
+        # the bundle body_ref/receiver_body match R1's actual apparatus.
+        merged = X.fold_snapshots(
+            [(donor_nac, donor_ec)],
+            RECV_AGENT,
+            workdir=Path(td),
+            contributor_ids=["r1-donor"],
+            body_ref=C.ENTITY_NAME,
+            body_spec_yaml=C.BODY_SPEC_YAML,
+            receiver_body=C.ENTITY_NAME,
+        )
         merged_ec_nodes = json.loads((Path(td) / "recv" / "ec.json").read_text()).get("substrate_nodes", {})
 
         at_s1 = _decisive_at(merged, merged_ec_nodes, S1)

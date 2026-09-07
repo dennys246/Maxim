@@ -24,6 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Direction-aware world sensors for the Minecraft bridge + the `minecraft_bench57`
+  experiment body (Exp 57 apparatus).** The bridge (`scripts/minecraft_bridge/index.js`)
+  now emits `offset_x`/`offset_z` — the bot's signed horizontal position from spawn (what
+  the game already exposes; `distance_from_spawn` is their magnitude), additive so existing
+  bodies ignore them. A new `bodies/minecraft_bench57` body gives Exp 57's dose-response
+  ladder a direction-aware, offsets-only world channel so its four frozen contingency slots
+  (which differ only in bearing and otherwise collapse to one cluster) separate robustly
+  (real-encoder margin 0.478); Exp 56's `minecraft_bench` is untouched, and the opaque
+  affordance/`d1` L12 controls are preserved. Experiment apparatus only — no runtime
+  behavioral claim. Operators running the live bridge must redeploy it to emit the new
+  sensors. Guards: `tests/unit/test_minecraft_bench57_body.py`, `test_exp57_harness.py`.
 - **Consumer trust policy for pulled substrate (1.2 P2P Slice D).** Default trust is now
   **Queen-only**: `maxim hive pull` REFUSES a release that is not signed by a Queen key
   registered for that Oasis, and refuses the decay-exempt inherent ("safety floor") bias

@@ -50,6 +50,25 @@ from exp56 import common as C
 CONTINGENCY_SLOTS: list[dict[str, float]] = list(C.FROZEN["contingency_slots"])
 G: int = len(CONTINGENCY_SLOTS)
 
+#: The Exp 57 body is minecraft_bench57 — minecraft_bench with the world
+#: channel made DIRECTION-AWARE (offset_x/offset_z added; see the body YAML's
+#: docstring). SAME entity name family, SAME opaque affordances, SAME d1 — the
+#: only apparatus change is the two signed-position world sensors, which let
+#: the G=4 FROZEN slots (identical distance + altitude, differing only in
+#: bearing) separate into four distinct clusters. Tool names, the roster, the
+#: coverage probe's available tools, and world_ranges all key off THIS body.
+BODY_REF57: str = "bodies/minecraft_bench57"
+ENTITY_NAME57: str = "minecraft_bench57"
+#: The `body:`-rooted export spec for bundle composition — `export --body-yaml`
+#: reads THIS (not the component YAML) to stamp body_ref=minecraft_bench57 and
+#: derive the capability_map. Mirrors the bench57 component affordances (guard-
+#: pinned). Without it the fold would stamp minecraft_bench (the provenance bug).
+BODY_SPEC57_YAML = Path(__file__).resolve().parent / "body_spec_minecraft_bench57.yaml"
+#: The eight opaque roster tool names on the bench57 body (ENTITY_NAME57 +
+#: "_" + aff) — the coverage probe's available_tools and the tool names
+#: training records into the NAc. Affordance set is shared with Exp 56.
+ROSTER57: tuple[str, ...] = tuple(f"{ENTITY_NAME57}_{a}" for a in C.AFFORDANCES)
+
 #: Design-target apparatus constants (frozen by the Phase-0 amendment, NOT
 #: here). Exposed as defaults so the harness runs; the confirmatory campaign
 #: passes the Phase-0-set values explicitly.
@@ -221,7 +240,7 @@ def train_contributor_with_snapshots(
             timeout_s=max(5.0, settle_s * 8),
         )
         clusters = session.encode_clusters()
-        tool = f"{C.ENTITY_NAME}_{aff}"
+        tool = f"{ENTITY_NAME57}_{aff}"
         session.execute_and_record(tool, clusters, reasoning="exp57 balanced schedule")
         if teach:
             C.teacher_tick(
@@ -274,6 +293,9 @@ def fold_snapshots(
     *,
     workdir: Path,
     contributor_ids: "list[str] | None" = None,
+    body_ref: str = ENTITY_NAME57,
+    body_spec_yaml: "Path | str" = BODY_SPEC57_YAML,
+    receiver_body: str = ENTITY_NAME57,
 ) -> dict[str, Any]:
     """Fold N contributor snapshots into a fresh receiver, LEFT-ASSOCIATIVELY.
 
@@ -315,12 +337,19 @@ def fold_snapshots(
         bundle = workdir / f"c{i}.zip"
         if bundle.exists():
             bundle.unlink()
-        C.export_bundle(stage, bundle, contributor_id=contributor_ids[i])
+        C.export_bundle(
+            stage,
+            bundle,
+            contributor_id=contributor_ids[i],
+            body_ref=body_ref,
+            body_spec_yaml=body_spec_yaml,
+        )
         C.ingest_bundle_into(
             receiver_home,
             bundle,
             contributor_id=contributor_ids[i],
             receiver_agent_id=receiver_agent_id,
+            receiver_body=receiver_body,
         )
 
     merged = json.loads((receiver_home / "nac.json").read_text())
@@ -370,13 +399,13 @@ def coverage(
     detail: dict[int, bool] = {}
     for g in range(G):
         clusters = contingency_clusters.get(g) or {}
-        taught_tool = f"{C.ENTITY_NAME}_{slot_to_target[g]}"
+        taught_tool = f"{ENTITY_NAME57}_{slot_to_target[g]}"
         nac = NAc(config=NACConfig())
         nac.load_state(dict(merged_nac))
         with C.RecommendCapture() as cap:
             nac.recommend_action(
                 agent_id=receiver_agent_id,
-                available_tools=list(C.ROSTER),
+                available_tools=list(ROSTER57),
                 # L12 probe drive: d1 is set ABOVE the recommend_action 0.5
                 # activation floor DELIBERATELY so the zero-prior assertion below
                 # is NON-VACUOUS (methodology-lens review). With d1=0 the scorer
@@ -427,6 +456,11 @@ def world_sensors_for_slot(slot: dict[str, float]) -> dict[str, float]:
     Mirrors ``C.ScriptedBridgeServer._snapshot`` without the seeded jitter, so
     the B-phase can re-encode a contingency against the merged EC WITHOUT a live
     bridge and pattern-complete to the merged node the taught bias is keyed on.
+
+    Includes the Exp 57 SIGNED-position sensors offset_x/offset_z (the bench57
+    body's direction-aware world channel — what makes the four FROZEN slots
+    separate); world_ranges filters to the body's declared world sensors, so an
+    Exp 56 (minecraft_bench) run that lacks them simply drops the extras.
     """
     dist = (slot["x"] ** 2 + slot["z"] ** 2) ** 0.5
     return {
@@ -435,6 +469,8 @@ def world_sensors_for_slot(slot: dict[str, float]) -> dict[str, float]:
         "speed": 0.0,
         "on_ground": 1.0,
         "time_of_day": 0.25,
+        "offset_x": max(-128.0, min(128.0, float(slot["x"]))),
+        "offset_z": max(-128.0, min(128.0, float(slot["z"]))),
     }
 
 
@@ -442,12 +478,17 @@ _WORLD_RANGES_CACHE: "dict[str, tuple[float, float]] | None" = None
 
 
 def world_ranges() -> dict[str, tuple[float, float]]:
-    """Declared world-sensor ranges from the bench body (single source)."""
+    """Declared world-sensor ranges from the bench57 body (single source).
+
+    Instantiates BODY_REF57 so the ranges include the direction-aware
+    offset_x/offset_z sensors — the encode path the B-phase uses to separate
+    the four FROZEN contingency slots.
+    """
     global _WORLD_RANGES_CACHE
     if _WORLD_RANGES_CACHE is None:
         from maxim.embodiment.component_registry import ComponentRegistry
 
-        entity = ComponentRegistry().instantiate(C.BODY_REF)
+        entity = ComponentRegistry().instantiate(BODY_REF57)
         names = [n for n, s in entity.sensors.items() if (s.reading_schema or {}).get("modality") == "world"]
         out: dict[str, tuple[float, float]] = {}
         for name in names:
