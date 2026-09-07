@@ -221,10 +221,12 @@ multi-step construction whose payoff is delayed, which is precisely what R4 test
   `hostiles` + `light` (mobs spawn in darkness and damage `health`) — which is already
   sensed. This is a stricter constraint than the thermal design and a cleaner claim.
 - **D2 — R3 ships in 1.2 as an INSTRUMENT + frozen baseline, NOT a graduated claim.**
-  Rationale: the measuring stick must predate the thing measured, so 1.3's shared
+  **SUPERSEDED by the R2 null (2026-09-07): R3 does NOT ship in 1.2 — it defers to 1.3
+  (see the R2 result and the R3 section below).** The instrument-not-claim principle is
+  retained for whenever R3 revives on the 1.3 line; only its target version moved.
+  Original rationale: the measuring stick must predate the thing measured, so 1.3's shared
   perception cannot pick a favourable metric post hoc. Precedent: 1.1.4 shipped the world
-  seam as "infrastructure only, NO behavioral claim." 1.2 therefore gains no graduation row
-  from R3; it gains a frozen baseline.
+  seam as "infrastructure only, NO behavioral claim."
 - **D3 — multi-agent coexistence is a separate AXIS, not a rung.** Stacking it on R4 would
   confound "can one agent build?" with "do several interfere?" (Exp 56's own not-claimed
   list keeps multi-agent unclaimed.)
@@ -270,18 +272,28 @@ report it, do not re-tune the apparatus toward a pass.
 **Stop rule:** if the wired drives do not move behaviour, **R3 and R4 do not run** — and we
 learn it in about a day rather than a month.
 
-**RESULT — `PREMISE-NULL`, 2026-09-07. The stop rule FIRED.** The world-owned drives do
-NOT move behaviour toward corrective affordances, and the null is decisive on three
-independent structural breaks: (1) the NAc cold-start drive prior has no corrective
+**RESULT — `PREMISE-NULL`, 2026-09-07. The stop rule FIRED.** Scope: this is the
+**substrate-primary** intrinsic path — the channel the isolated survival arm runs on, and
+the one Oasis's substrate-learning thesis rests on. The world-owned drives do NOT move
+behaviour toward corrective affordances, and the null is decisive on two SUBSTRATE-MECHANISM
+breaks plus a world-config one: (1) the NAc cold-start drive prior has no corrective
 affinity for `food`/`health` and name-matches the passive sensor-**read** tools instead
 of `eat`/`attack_nearest` (and reads raw values, so it is polarity-inverted — strongest
 when satiated); (2) `eat`'s modeled `self_effect` is credit-withheld on the live body
 (`drive_credit_withheld`, no measured-relief path for interoceptive world-owned drives),
-so the corrective affordance cannot self-learn to repair the dead prior; (3) the bridge
-`eat`/`attack_nearest` throw on an empty inventory / no mob, and there is no acquire
-affordance, so on the void world the corrective acts are *unexecutable*. Measured offline
-(the prior is a pure function; a live run adds noise, not signal) + code-confirmed for the
-learning and bridge halves. **This did not require the full live apparatus.** Full write-up
+so the corrective affordance cannot self-learn to repair the dead prior; (3) on the
+void/superflat contingency world the bridge `eat`/`attack_nearest` throw (empty inventory /
+no mob) with no acquire affordance, so the corrective acts are unexecutable *there* — this
+one is world-config-contingent (a resource-rich world would make them executable), and its
+deeper form, multi-step acquisition, is R4's thesis. Breaks (1)–(2) are substrate facts
+that flat-line the isolated arm on ANY world, so the deferral does not lean on (3).
+Measured offline (on a fresh substrate the drive prior is the ONLY active first-contact
+signal and `recommend_action` is a pure function of `(available_tools, current_drives)`, so
+a live run adds noise, not signal, and cannot produce a false null — a corrective win needs
+a nonzero score, structurally impossible here) + code-confirmed for the learning and bridge
+halves. Robust to config: even with `drive_gate_enabled=True` the drive-relevant set is the
+two read tools, so the argmax is unchanged. **This did not require the full live apparatus.**
+Full write-up
 + the three breaks as the 1.3 build list: [r2_drive_premise_check.md](../experiments/r2_drive_premise_check.md);
 instrument [scripts/r2_drive_premise_probe.py](../../scripts/r2_drive_premise_probe.py);
 record [data/r2_drive_premise.json](../experiments/data/r2_drive_premise.json).

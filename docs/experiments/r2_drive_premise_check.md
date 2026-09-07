@@ -53,15 +53,28 @@ sensor value — it scores that read *more strongly when healthy* (20.00) than w
    *interoceptive* drives is unimplemented (only the exteroceptive/azimuth measured path
    exists — "Phase 2"). So even if `eat` were tried, it accrues **no** positive credit on
    the live path, and no learned bias can form to rescue the dead prior.
-3. **The bridge cannot supply the means to survive.** `scripts/minecraft_bridge/index.js`
+3. **The bridge cannot supply the means to survive — on this world.** `scripts/minecraft_bridge/index.js`
    `eat` throws `"no food in inventory"` on an empty inventory and `attack_nearest` throws
    `"no hostile nearby"`; there is no `give`/`craft`/`pick_up` affordance. On the
    superflat/void contingency world (no mobs, no food), both corrective affordances are
-   *unexecutable* — a perfectly-motivated agent still could not eat.
+   *unexecutable* — a perfectly-motivated agent still could not eat. Unlike breaks 1–2,
+   this one is **world-config-contingent**: a resource-rich world (mobs present, inventory
+   seeded) would make `eat`/`attack_nearest` executable, and the deeper obstacle there —
+   multi-step acquisition, since only `mine_block` is offered and there is no direct food
+   path — is precisely R4's "multi-step delayed credit" thesis, not an absolute
+   unexecutability.
 
-Breaks 1–3 are independent: the intrinsic drive→action prior is dead (1), the learning
-path that could repair it is withheld (2), and the world offers no executable corrective
-act anyway (3).
+Breaks 1 and 2 are **substrate-mechanism** facts that flat-line the intrinsic path on ANY
+world: the drive→action prior is dead (1) and the learning path that could repair it is
+withheld (2). Break 3 is the world-config layer on top. The deferral rests on 1–2 alone; 3
+is why even the void-world apparatus this rung would have used cannot rescue it.
+
+**Scope: this is the substrate-primary intrinsic path.** The null is a fact about the
+*substrate-primary* action channel — the channel the survival benchmark's "isolated" arm
+runs on (substrate-primary by design, no LLM in the action path, as Exp 56/57), and the
+one Oasis's substrate-learning thesis rests on. An LLM-primary agent reading `food=2` in
+its `body_state` prose could in principle choose `eat` — but that is not the channel under
+test, and break 3 blocks the LLM path too on the void world.
 
 ## What this does — and does not — say
 
