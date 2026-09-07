@@ -247,12 +247,21 @@ class ScriptedBridgeServer:
         a = self.anchor
         dist = (a["x"] ** 2 + a["z"] ** 2) ** 0.5
         jitter = lambda v, s: v + self._rng.uniform(-s, s)  # noqa: E731
+        clamp = lambda v: max(-128.0, min(128.0, v))  # noqa: E731
         return {
             "y_altitude": jitter(float(a["y"]), 0.3),
             "distance_from_spawn": jitter(dist, 0.4),
             "speed": abs(jitter(0.0, 0.01)),
             "on_ground": 1.0,
             "time_of_day": 0.25,
+            # ADDITIVE (Exp 57): SIGNED horizontal position from the commanded
+            # anchor — the bench body ignores keys it does not declare, so the
+            # Exp 56 (minecraft_bench) apparatus is unchanged; the Exp 57
+            # (minecraft_bench57) body declares offset_x/offset_z and reads
+            # them. Clamped to the +-128 declared range, same as the real
+            # bridge's snapshot().
+            "offset_x": clamp(jitter(float(a["x"]), 0.4)),
+            "offset_z": clamp(jitter(float(a["z"]), 0.4)),
         }
 
     def _accept_loop(self) -> None:
@@ -650,7 +659,17 @@ def _situation_reflected(session: BenchSession, situation: bool, slot: dict[str,
     """Does the MEASURED world currently reflect the commanded placement?
     Returns ``(reflected, distance)``; distance None when the sensor is
     absent from the snapshot."""
-    dist = session.world_values().get("distance_from_spawn")
+    vals = session.world_values()
+    dist = vals.get("distance_from_spawn")
+    if dist is None:
+        # Bodies whose world channel is offsets-only (Exp 57's minecraft_bench57,
+        # which drops the situation-constant distance_from_spawn to avoid encoder
+        # dilution) still let us confirm the teleport: distance_from_spawn IS the
+        # magnitude of the signed offsets. Backward-compatible — Exp 56's body
+        # declares distance_from_spawn, so this branch never fires for it.
+        ox, oz = vals.get("offset_x"), vals.get("offset_z")
+        if ox is not None and oz is not None:
+            dist = (float(ox) ** 2 + float(oz) ** 2) ** 0.5
     if dist is None:
         return False, None
     expected_far = (slot["x"] ** 2 + slot["z"] ** 2) ** 0.5

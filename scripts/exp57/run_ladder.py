@@ -94,7 +94,9 @@ def _train(
     import shutil
 
     shutil.rmtree(home, ignore_errors=True)
-    session = C.build_bench_session(agent_id=f"aut_{tag}", bridge_port=bridge_port, home=home, pair_seed=seed)
+    session = C.build_bench_session(
+        agent_id=f"aut_{tag}", bridge_port=bridge_port, home=home, pair_seed=seed, body_ref=X.BODY_REF57
+    )
     snaps = X.train_contributor_with_snapshots(
         session,
         world=world,

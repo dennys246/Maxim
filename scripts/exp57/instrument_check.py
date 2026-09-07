@@ -77,7 +77,7 @@ def check_discriminability(bridge_port, world, bot, work, *, settle) -> dict:
     """Check 1: each slot separates from REST (>= 0.70) AND the four situation
     clusters are pairwise distinct."""
     session = C.build_bench_session(
-        agent_id="phase0_disc", bridge_port=bridge_port, home=work / "disc_home", pair_seed=1
+        agent_id="phase0_disc", bridge_port=bridge_port, home=work / "disc_home", pair_seed=1, body_ref=X.BODY_REF57
     )
     situation_ids: dict[int, str] = {}
     transitions = separated = repeats = stable = 0
@@ -140,7 +140,9 @@ def check_drive_zero(bridge_port, world, bot, work, *, settle) -> dict:
     seed = X.contributor_seeds(cohort_seed, 1, 1, salt=9)[0]
     k = 2 * len(C.AFFORDANCES) * PILOT_REPS * 2  # ~2 contingency blocks
     home = work / "drivezero_home"
-    session = C.build_bench_session(agent_id="dz-c0", bridge_port=bridge_port, home=home, pair_seed=seed)
+    session = C.build_bench_session(
+        agent_id="dz-c0", bridge_port=bridge_port, home=home, pair_seed=seed, body_ref=X.BODY_REF57
+    )
     snaps = _train(session, world, seed=seed, slot_to_target=slot_to_target, bot=bot, k_max=k, settle=settle)
     C.close_and_stage_session(session, stage_dir=work / "dz_stage")
     try:
@@ -166,7 +168,11 @@ def check_alignment_and_divergence(bridge_port, world, bot, work, *, settle) -> 
     finals: list = []
     for i, s in enumerate(seeds):
         session = C.build_bench_session(
-            agent_id=f"phase0_div_{i}", bridge_port=bridge_port, home=work / f"div_{i}_home", pair_seed=s
+            agent_id=f"phase0_div_{i}",
+            bridge_port=bridge_port,
+            home=work / f"div_{i}_home",
+            pair_seed=s,
+            body_ref=X.BODY_REF57,
         )
         snaps = _train(session, world, seed=s, slot_to_target=slot_to_target, bot=bot, k_max=PILOT_K_MAX, settle=settle)
         C.close_and_stage_session(session, stage_dir=work / f"div_{i}_close")
@@ -243,7 +249,7 @@ def check_calibration(bridge_port, world, bot, work, *, settle) -> dict:
     slot_to_target = X.cohort_slot_to_target(cohort_seed)
     seed = X.contributor_seeds(cohort_seed, 1, 1, salt=4)[0]
     session = C.build_bench_session(
-        agent_id="phase0_cal", bridge_port=bridge_port, home=work / "cal_home", pair_seed=seed
+        agent_id="phase0_cal", bridge_port=bridge_port, home=work / "cal_home", pair_seed=seed, body_ref=X.BODY_REF57
     )
     snaps = _train(session, world, seed=seed, slot_to_target=slot_to_target, bot=bot, k_max=PILOT_K_MAX, settle=settle)
     C.close_and_stage_session(session, stage_dir=work / "cal_close")
@@ -299,6 +305,7 @@ def check_pilot_ladder(bridge_port, world, bot, work, *, settle) -> dict:
                     bridge_port=bridge_port,
                     home=work / f"pilot_{cohort}_{rung}_{i}_home",
                     pair_seed=s,
+                    body_ref=X.BODY_REF57,
                 )
                 per_contrib.append(
                     _train(

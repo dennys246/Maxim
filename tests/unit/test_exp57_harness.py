@@ -63,7 +63,7 @@ class TestFrozenGates:
 # ── the LEFT-ASSOCIATIVE fold weighting (1/4, 1/4, 1/2) ──────────────────
 
 
-def _synthetic_snapshot(*, cid: str, value: float, tool="minecraft_bench_aff_c", agent="donor", geom="geomA", dim=8):
+def _synthetic_snapshot(*, cid: str, value: float, tool="minecraft_bench57_aff_c", agent="donor", geom="geomA", dim=8):
     """A minimal valid (NAc, EC) snapshot: one world node + one cluster bias.
 
     The embedding is identical across snapshots so three contributors' nodes
@@ -141,14 +141,14 @@ class TestFoldWeighting:
 
 class TestCoverageDV:
     def test_contingency_covered_requires_decisive_argmax(self):
-        taught = "minecraft_bench_aff_c"
+        taught = "minecraft_bench57_aff_c"
         # covered: argmax is the taught tool, learned_bias > 0, margin > 0.
         assert X.contingency_covered(
             {"best_tool": taught, "score_components": {"learned_bias": 0.5}, "learned_margin": 0.3}, taught
         )
         # argmax is a DIFFERENT tool -> not covered.
         assert not X.contingency_covered(
-            {"best_tool": "minecraft_bench_aff_a", "score_components": {"learned_bias": 0.5}, "learned_margin": 0.3},
+            {"best_tool": "minecraft_bench57_aff_a", "score_components": {"learned_bias": 0.5}, "learned_margin": 0.3},
             taught,
         )
         # learned_bias == 0 -> not covered (a causal/reward-bias win is not the claim).
@@ -172,7 +172,8 @@ class TestCoverageDV:
         # taught tool's HIGHER bias makes it the learned-bias-decisive argmax.
         agent = "recvX"
         crb = {
-            f"{agent}\x1fcidC\x1ftool:minecraft_bench_{aff}": (0.8 if aff == "aff_c" else 0.1) for aff in C.AFFORDANCES
+            f"{agent}\x1fcidC\x1ftool:minecraft_bench57_{aff}": (0.8 if aff == "aff_c" else 0.1)
+            for aff in C.AFFORDANCES
         }
         merged = {
             "version": "1.0",
@@ -206,7 +207,7 @@ class TestCoverageDV:
                 self.events = [
                     {
                         "data": {
-                            "best_tool": "minecraft_bench_aff_c",
+                            "best_tool": "minecraft_bench57_aff_c",
                             "score_components": {"learned_bias": 0.5, "drive": 0.9},
                             "learned_margin": 0.3,
                         }
@@ -572,7 +573,7 @@ class TestAntiVacuity:
     def test_noop_kit_collapses_must_collapse_variants(self, tmp_path):
         snaps = [
             _synthetic_snapshot(cid="node0", value=0.8),
-            _synthetic_snapshot(cid="node1", value=0.4, tool="minecraft_bench_aff_a"),
+            _synthetic_snapshot(cid="node1", value=0.4, tool="minecraft_bench57_aff_a"),
         ]
         kit = X.noop_coverage_kit(
             snapshots=snaps,
@@ -638,6 +639,80 @@ class TestSeedParameterization:
 
 
 # ── ScriptedBridge one-client faithfulness (reused apparatus) ────────────
+
+
+# ── the richer bench57 world channel separates the G=4 slots ─────────────
+
+
+class TestWorldSeparation:
+    """The Exp 57 apparatus fix: minecraft_bench's DIRECTION-BLIND world channel
+    (distance-magnitude + altitude) could resolve only ~5-6 clusters, so the
+    four FROZEN contingency slots — same distance, same y, differing only in
+    BEARING — barely separated (jitter-fragile). minecraft_bench57 adds the
+    SIGNED offset_x/offset_z so the four slots encode to four DISTINCT world
+    clusters through the real SensorEncoder + world_ranges() +
+    world_sensors_for_slot().
+
+    MEASURED THROUGH THE REAL ENCODER (all 7 declared bench57 world sensors):
+    max pairwise cosine 0.8387 — below the 0.85 pattern-completion threshold
+    (so the four slots DO land in four distinct clusters), but by a THIN
+    ~0.011 margin. The offsets are the only sensors that differ across the
+    four FROZEN slots; the other five kept world sensors are identical across
+    all four and dilute the discriminating signal. The task's stated
+    offline figure (0.4947) was measured on an offsets-only / smaller probe,
+    not the full 7-sensor body through the SHA-basis encoder — see the PR
+    report's separation finding. This guard pins that the slots still resolve
+    (< 0.85), NOT that the margin is robust."""
+
+    def _cosine(self, a, b):
+        import math
+
+        dot = sum(x * y for x, y in zip(a, b))
+        na = math.sqrt(sum(x * x for x in a))
+        nb = math.sqrt(sum(y * y for y in b))
+        return dot / (na * nb) if na and nb else 0.0
+
+    def test_four_slots_separate_below_the_pattern_threshold(self):
+        from maxim.similarity.ec import EntorhinalCortex
+        from maxim.similarity.encoder import SensorEncoder, SensorEncoderConfig
+
+        ranges = X.world_ranges()
+        assert {"offset_x", "offset_z"} <= set(ranges), "bench57 must declare the signed-position sensors"
+
+        def embed(sensors):
+            ec = EntorhinalCortex()
+            enc = SensorEncoder(ec=ec, config=SensorEncoderConfig())
+            filtered = {k: v for k, v in sensors.items() if k in ranges}
+            nid = enc.encode_sensors(agent_id="sep", sensors=filtered, modality="world", ranges=ranges)
+            assert nid is not None, f"slot {sensors} encoded to designed-rest (no cluster)"
+            # world is a frozen-centroid modality: the stored node embedding is
+            # the first-observation embedding, so this is the encode vector.
+            return list(ec._substrate_nodes[nid][0])
+
+        slot_embeds = [embed(X.world_sensors_for_slot(s)) for s in X.CONTINGENCY_SLOTS]
+        max_cos = max(self._cosine(slot_embeds[i], slot_embeds[j]) for i in range(X.G) for j in range(i + 1, X.G))
+        # 0.8387 through the real encoder — below 0.85, so the four slots do
+        # resolve, but the margin is thin (see the class docstring's finding).
+        assert max_cos < 0.85, f"the four slots do not separate (max pairwise cosine {max_cos:.4f})"
+
+    def test_four_distinct_clusters_and_distinct_from_rest(self):
+        from maxim.similarity.ec import EntorhinalCortex
+        from maxim.similarity.encoder import SensorEncoder, SensorEncoderConfig
+
+        ranges = X.world_ranges()
+        ec = EntorhinalCortex()
+        enc = SensorEncoder(ec=ec, config=SensorEncoderConfig())
+
+        def encode(sensors):
+            filtered = {k: v for k, v in sensors.items() if k in ranges}
+            return enc.encode_sensors(agent_id="shared", sensors=filtered, modality="world", ranges=ranges)
+
+        rest_id = encode(X.world_sensors_for_slot(C.FROZEN["rest_anchor"]))
+        slot_ids = [encode(X.world_sensors_for_slot(s)) for s in X.CONTINGENCY_SLOTS]
+        assert all(sid is not None for sid in slot_ids), slot_ids
+        assert len(set(slot_ids)) == X.G, f"slots collapsed to {len(set(slot_ids))} clusters: {slot_ids}"
+        if rest_id is not None:  # rest is non-neutral (time_of_day) so it clusters
+            assert rest_id not in slot_ids, "a contingency slot collapsed onto the rest cluster"
 
 
 class TestScriptedBridgeOneClient:

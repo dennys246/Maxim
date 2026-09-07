@@ -69,6 +69,14 @@ function snapshot() {
   }
   const spawn = bot.spawnPoint || (me ? me.position : null);
   const distSpawn = me && spawn ? Math.min(128, me.position.distanceTo(spawn)) : 0;
+  // SIGNED horizontal offset from spawn — what the game already exposes
+  // (distance_from_spawn is the magnitude of exactly this). Direction-bearing,
+  // so situations that differ only in bearing (the Exp 57 contingency slots)
+  // separate; the direction-blind distance alone collapses them. Same spawn
+  // basis as distSpawn; clamped to the +-128 body-declared range.
+  const clampOff = (v) => Math.max(-128, Math.min(128, v));
+  const offsetX = me && spawn ? clampOff(me.position.x - spawn.x) : 0;
+  const offsetZ = me && spawn ? clampOff(me.position.z - spawn.z) : 0;
   const vel = me ? me.velocity : null;
   const speed = vel ? Math.min(1, Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z)) : 0;
   return {
@@ -82,6 +90,8 @@ function snapshot() {
     hostile_count: Math.min(32, hostiles.length),
     nearest_player_dist: nearestPlayer,
     distance_from_spawn: distSpawn,
+    offset_x: offsetX,
+    offset_z: offsetZ,
     speed,
     on_ground: me && me.onGround ? 1 : 0,
     is_raining: bot.isRaining ? 1 : 0,
