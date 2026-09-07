@@ -101,6 +101,7 @@ class TestModalityDeclaration:
                 "bodies/minecraft_player",
                 "bodies/minecraft_bench",
                 "bodies/minecraft_bench_satiated",
+                "bodies/minecraft_bench57",
             ):
                 # The legitimate world-channel feeders, each with its case
                 # argued here per this gate's own rule:
@@ -113,6 +114,11 @@ class TestModalityDeclaration:
                 #   (exp56_four_arm_sharing_preregistration.md §Apparatus)
                 #   — a six-sensor world channel inside L11's per-channel
                 #   budget, pinned by test_exp56_harness.py::TestBenchBody.
+                # - minecraft_bench57: the Exp 57 dose-response body — Exp 56's
+                #   bench with a DIRECTION-AWARE offsets-only world channel
+                #   (offset_x/offset_z) so the four frozen slots separate
+                #   (prereg Amendment 1); pinned by
+                #   test_minecraft_bench57_body.py + TestWorldSeparation.
                 # Any OTHER body joining this list must argue its case in
                 # review.
                 continue
