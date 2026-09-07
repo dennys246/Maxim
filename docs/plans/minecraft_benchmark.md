@@ -17,9 +17,8 @@
 > **DEFERRED (2026-07-15 plans audit):** Stub, zero implementation (Minecraft appears only in CC8 adapter-contract docstrings). Its 1.0 must-not-preclude prerequisites (CC8 plug-replaceable adapters, CC1 `_format_version`, CC9 dual-format schema) all shipped, so nothing is decaying. **Revive when:** 1.1 splash-launch work is greenlit AND someone commits to the M0 comparison-protocol research (or a second external-world adapter consumer appears).
 
 
-**Status:** ACTIVE (revived 2026-08-30). Seam lands in **1.1.4**; the benchmark it exists for is the **1.2** headline.
-**Target version:** 1.1.4 (infrastructure, no claim) → 1.2 (the pre-registered result).
-**Target version:** 1.1
+**Status:** ACTIVE. **Part I COMPLETE** — seam shipped 1.1.4; the 1.2 headline claim EARNED (Exp 56, PASS). **Part II (the survival ladder, R0–R4) scoped 2026-09-06** — see below.
+**Target version:** 1.1.4 (seam, no claim) → 1.2 (Exp 56 result + R0–R3) → 1.3+ (R4).
 **Concurrent with:** 1.0 stabilization (this work proceeds in parallel without gating 1.0).
 **Depends on:** B4 Cradle ([archive/cradle_sensorimotor_development.md](archive/cradle_sensorimotor_development.md)) shipped — provides embodied learning foundation. Also benefits from [scene_actor_affordances.md](deferred/scene_actor_affordances.md) (1.1 track) for hostile mob mechanics.
 
@@ -188,8 +187,130 @@ A reasonable shape:
 
 ---
 
+# Part II — the survival ladder (post-Exp 56, scoped 2026-09-06)
+
+> **The Part I scope is COMPLETE.** "One contingency, two agents, four arms, a
+> pre-registered gate" landed as **Exp 56, verdict PASS** — see
+> [56_four_arm_sharing.md](../experiments/56_four_arm_sharing.md). Part II is what the
+> instrument is for next. **The Stages M0–M4 above are SUPERSEDED** — they are the
+> pre-revival stub from the Voyager/GITM comparison era that the 2026-08-30 scoping pass
+> explicitly descoped; the rungs below replace them.
+
+## The audit (2026-09-06) — how much of this already exists
+
+Per **audit-before-building**, the apparatus was inspected before any rung was scoped.
+It is far more complete than the ladder's ambition implies:
+
+| capability | status |
+|---|---|
+| World sensing | **16 channels shipped** (`bodies/minecraft_player.yaml`), incl. `health`, `food`, `light`, `hostiles` (−32…32, "rest = 0 hostiles"), `air` ("drowning descends loud"), `weather`, `depth`, `distance_from_spawn` |
+| Survival drive pressure | **ALREADY WIRED.** `health` carries a `HomeostaticDriveSpec` (`set_point: 20`); `food` carries an `EntropicDriveSpec` (`deprivation_threshold: 6.0`). Both `drift_rate: 0.0` — *world-owned*: "the game drains it, not the model" |
+| Building | **`place_block(x,y,z)` is already an affordance**, alongside `mine_block`, `attack_nearest`, `eat`, `move_to`, `turn` |
+| Multi-step credit for delayed payoff | **The gap.** Credit is tick-anchored (eligibility traces + temporal-phase fallback); one of six SCN input channels has a producer |
+
+**Consequence:** the survival substrate is not something to build — it is something to
+*verify and measure*. The one genuinely missing capability is the credit to learn a
+multi-step construction whose payoff is delayed, which is precisely what R4 tests.
+
+## Decisions (2026-09-06, owner)
+
+- **D1 — NO synthetic thermal sensor; only what the game exposes.** A thermal drive was
+  scoped and **rejected**. Rationale (owner): inventing a sensor whose purpose is to make
+  shelter rewarding is *engineering the outcome* — it measures the apparatus designer, not
+  the agent. Consequence: shelter must be motivated by game-native pressure —
+  `hostiles` + `light` (mobs spawn in darkness and damage `health`) — which is already
+  sensed. This is a stricter constraint than the thermal design and a cleaner claim.
+- **D2 — R3 ships in 1.2 as an INSTRUMENT + frozen baseline, NOT a graduated claim.**
+  Rationale: the measuring stick must predate the thing measured, so 1.3's shared
+  perception cannot pick a favourable metric post hoc. Precedent: 1.1.4 shipped the world
+  seam as "infrastructure only, NO behavioral claim." 1.2 therefore gains no graduation row
+  from R3; it gains a frozen baseline.
+- **D3 — multi-agent coexistence is a separate AXIS, not a rung.** Stacking it on R4 would
+  confound "can one agent build?" with "do several interfere?" (Exp 56's own not-claimed
+  list keeps multi-agent unclaimed.)
+- **D4 — terminology.** `EntropicDriveSpec` in this codebase means *state decay requiring
+  external action* (hunger/thirst/fatigue), **not** thermodynamic entropy. The
+  "agents organize against disorder" framing is a motivation, not a mechanism; the
+  measurable form is drive pain pressure changing behaviour.
+
+## Front-gate verdicts
+
+| rung | rides existing infrastructure | genuinely new |
+|---|---|---|
+| R0 multi-seed harness | the Exp 56/57 campaign harness | a fixed, published seed set + per-seed reporting |
+| R1 cross-layout | R0 + the whole Exp 56 apparatus | one parameter: B's seed ≠ A's seed |
+| R2 premise check | the shipped world-owned drives + pain bus | nothing — this is a verification |
+| R3 survival benchmark | sensors, drives, affordances all shipped | the DV, the horizon, and a difficulty calibration |
+| R4 structure formation | `place_block`, `hostiles`, `light` | **multi-step credit for a delayed payoff** — the real gap |
+
+## The rungs
+
+Each rung gates the next (the Exp 52 Phase-A-gates-Phase-B pattern). A rung that fails
+STOPS the ladder and is reported as a finding, not retried into success.
+
+### R0 — Multi-seed harness *(1.2, infrastructure)*
+Standardize campaigns across a **seed set fixed and published BEFORE any data**, with every
+claim reported per-seed *and* pooled. Converts "one world layout" from a permanent caveat on
+every Minecraft claim into a controlled variable.
+**Discipline:** the seed list is pre-registered. Choosing seeds after seeing results is
+seed-shopping and voids the rung.
+
+### R1 — Cross-layout generalization *(1.2)*
+**Question:** did Exp 56 share a *representation* or a *cached association*? A trains on S₁;
+B probes on S₂…Sₙ.
+**Why it matters:** the current result is *compatible* with transfer being a narrow lookup
+keyed to one world configuration. This is the cheapest probe that distinguishes them, and it
+is informative in both directions.
+**Stop rule:** collapse to floor is a PUBLISHABLE result that reshapes the Oasis thesis —
+report it, do not re-tune the apparatus toward a pass.
+
+### R2 — Premise check: is survival pressure behaviorally live? *(1.2, nearly free)*
+**Question:** do the world-owned `health`/`food` drives measurably change behaviour at all
+(eat when hungry, avoid/attack when damaged)? Single-step, Exp 45 shape.
+**Stop rule:** if the wired drives do not move behaviour, **R3 and R4 do not run** — and we
+learn it in about a day rather than a month.
+
+### R3 — Survival benchmark *(1.2, INSTRUMENT + frozen baseline — see D2)*
+**Deliverable:** a harness (arms, horizon, DV, seed set) plus a **calibrated, frozen
+baseline** across isolated / taught / shared, reporting whatever it finds.
+**DV candidates:** drive-integrity over horizon, or time-to-death; chosen at calibration.
+**The load-bearing constraint — Phase 0 is a difficulty/horizon CALIBRATION.** The baseline
+must land in the **unsaturated middle**. This is the Goldilocks finding (Exp 37/38/40:
+substrate signal appears only where priors leave headroom) applied to survival:
+- agents surviving the full horizon → ceiling → 1.3 can show nothing
+- agents all dying immediately → floor → 1.3 can show nothing
+
+A benchmark that saturates is **structurally incapable of registering the effect it exists to
+measure**, and the failure would not surface until 1.3. Calibration is therefore not optional
+polish; it is the rung.
+
+### R4 — Structure formation *(1.3+, the frontier)*
+**Question, stated so it can fail:** *does the tick-anchored credit machinery reach a
+multi-step construction with a delayed payoff?* The action primitive (`place_block`) and the
+motivation (`hostiles` + `light` + damage) already exist; only credit is missing.
+**Scoping discipline:** this is scoped as *measure whether it is reachable, and if not name
+precisely what is missing* — NOT as "build emergent architecture." The former is an
+experiment; the latter is a wish. A negative result that names the missing mechanism is the
+expected and acceptable outcome.
+
+## Sequencing
+
+Exp 57's pre-registration is **FROZEN**; R0 must not be retrofitted into it. Build Exp 57's
+harness *seed-parameterizable* (free foresight, no freeze violation), then R0 → R1 → R2 → R3
+in 1.2, with R4 opening on the 1.3 line beside the perception fabric.
+
+## Explicitly NOT claimed by this ladder
+
+Aversion transfer (Exp 55, 1.3-line), self-taught world wants (needs the 1.3 credit-path
+extension), the LLM-AUT path, live-server dynamics beyond the controlled world, and
+multi-agent coexistence (D3).
+
+---
+
 ## Cross-references
 
+- [56_four_arm_sharing.md](../experiments/56_four_arm_sharing.md) — Part I's result (PASS); its "Does NOT" list is where R1/R3/R4 come from.
+- [exp57_dose_response_ladder_preregistration.md](../experiments/protocols/exp57_dose_response_ladder_preregistration.md) — the scaling claim; frozen, precedes R0.
 - [v1_refinement.md](archive/v1_refinement.md) Section 8 — 1.1 track index.
 - [v1_refinement.md](archive/v1_refinement.md) CC8 — sim adapter contract audit (1.0 prereq for clean Minecraft adapter integration).
 - [archive/cradle_sensorimotor_development.md](archive/cradle_sensorimotor_development.md) — embodied learning foundation this builds on.
