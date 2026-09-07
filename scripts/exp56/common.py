@@ -716,9 +716,9 @@ def settle_until_reflected(
     kind = "situation" if situation else "rest"
     expected = (slot["x"] ** 2 + slot["z"] ** 2) ** 0.5 if situation else 0.0
     raise RuntimeError(
-        f"exp56 {where}: {kind} commanded but measured distance_from_spawn="
-        f"{'(missing)' if last_dist is None else f'{last_dist:.1f}'} did not reach "
-        f"~{expected:.0f} within {timeout_s:.0f}s — the world does not reflect the script (S3)"
+        f"exp56 {where}: {kind} commanded but measured distance-from-spawn="
+        f"{'(missing: neither distance_from_spawn nor offset_x/offset_z in the world channel)' if last_dist is None else f'{last_dist:.1f}'}"
+        f" did not reach ~{expected:.0f} within {timeout_s:.0f}s — the world does not reflect the script (S3)"
     )
 
 
@@ -811,10 +811,24 @@ def close_and_stage_session(session: BenchSession, *, stage_dir: Path) -> Path:
     return stage_dir
 
 
-def export_bundle(stage_dir: Path, out_zip: Path, *, contributor_id: str, dangling: bool = False) -> None:
+def export_bundle(
+    stage_dir: Path,
+    out_zip: Path,
+    *,
+    contributor_id: str,
+    dangling: bool = False,
+    body_ref: str = ENTITY_NAME,
+    body_spec_yaml: "Path | str" = BODY_SPEC_YAML,
+) -> None:
     """The REAL CLI export. ``dangling=True`` re-composes from a copy of the
     stage with ``aut_ec.json`` absent (the export's documented nac-only
-    path) — arm 4 ships the SAME donor's nac with no representation."""
+    path) — arm 4 ships the SAME donor's nac with no representation.
+
+    ``body_ref`` / ``body_spec_yaml`` default to the Exp 56 bench body; a
+    caller on a DIFFERENT body (Exp 57's minecraft_bench57) passes both so the
+    bundle stamps the REAL apparatus body — otherwise the manifest records the
+    wrong body_ref and gate 7's body-match guard validates the wrong identity
+    (the code-lens provenance finding)."""
     from maxim.hivemind.cli import run_substrate_subcommand
 
     src = stage_dir
@@ -831,16 +845,23 @@ def export_bundle(stage_dir: Path, out_zip: Path, *, contributor_id: str, dangli
             "--contributor-id",
             contributor_id,
             "--body-ref",
-            ENTITY_NAME,
+            body_ref,
             "--body-yaml",
-            str(BODY_SPEC_YAML),
+            str(body_spec_yaml),
         ]
     )
     if rc != 0:
         raise RuntimeError(f"exp56: substrate export failed (rc={rc}) for {out_zip}")
 
 
-def ingest_bundle_into(receiver_home: Path, bundle: Path, *, contributor_id: str, receiver_agent_id: str) -> dict:
+def ingest_bundle_into(
+    receiver_home: Path,
+    bundle: Path,
+    *,
+    contributor_id: str,
+    receiver_agent_id: str,
+    receiver_body: str = ENTITY_NAME,
+) -> dict:
     """The REAL CLI ingest (strict path: no unstamped-geometry override, no
     force, no inherent trust). Returns the journal's entry for the counts
     (``biases_rekeyed``/``dropped`` — the D43 honesty indicator)."""
@@ -855,7 +876,7 @@ def ingest_bundle_into(receiver_home: Path, bundle: Path, *, contributor_id: str
             "--trust",
             contributor_id,
             "--receiver-body",
-            ENTITY_NAME,
+            receiver_body,
             "--receiver-agent-id",
             receiver_agent_id,
             "--apply",

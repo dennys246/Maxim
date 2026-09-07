@@ -59,6 +59,11 @@ G: int = len(CONTINGENCY_SLOTS)
 #: coverage probe's available tools, and world_ranges all key off THIS body.
 BODY_REF57: str = "bodies/minecraft_bench57"
 ENTITY_NAME57: str = "minecraft_bench57"
+#: The `body:`-rooted export spec for bundle composition — `export --body-yaml`
+#: reads THIS (not the component YAML) to stamp body_ref=minecraft_bench57 and
+#: derive the capability_map. Mirrors the bench57 component affordances (guard-
+#: pinned). Without it the fold would stamp minecraft_bench (the provenance bug).
+BODY_SPEC57_YAML = Path(__file__).resolve().parent / "body_spec_minecraft_bench57.yaml"
 #: The eight opaque roster tool names on the bench57 body (ENTITY_NAME57 +
 #: "_" + aff) — the coverage probe's available_tools and the tool names
 #: training records into the NAc. Affordance set is shared with Exp 56.
@@ -288,6 +293,9 @@ def fold_snapshots(
     *,
     workdir: Path,
     contributor_ids: "list[str] | None" = None,
+    body_ref: str = ENTITY_NAME57,
+    body_spec_yaml: "Path | str" = BODY_SPEC57_YAML,
+    receiver_body: str = ENTITY_NAME57,
 ) -> dict[str, Any]:
     """Fold N contributor snapshots into a fresh receiver, LEFT-ASSOCIATIVELY.
 
@@ -329,12 +337,19 @@ def fold_snapshots(
         bundle = workdir / f"c{i}.zip"
         if bundle.exists():
             bundle.unlink()
-        C.export_bundle(stage, bundle, contributor_id=contributor_ids[i])
+        C.export_bundle(
+            stage,
+            bundle,
+            contributor_id=contributor_ids[i],
+            body_ref=body_ref,
+            body_spec_yaml=body_spec_yaml,
+        )
         C.ingest_bundle_into(
             receiver_home,
             bundle,
             contributor_id=contributor_ids[i],
             receiver_agent_id=receiver_agent_id,
+            receiver_body=receiver_body,
         )
 
     merged = json.loads((receiver_home / "nac.json").read_text())

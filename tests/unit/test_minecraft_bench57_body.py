@@ -92,3 +92,35 @@ class TestBench57Instantiates:
         assert set(ranges) == WORLD_SENSORS, "world_ranges must be offsets-only (no diluting sensors)"
         assert ranges["offset_x"] == (-128.0, 128.0)
         assert ranges["offset_z"] == (-128.0, 128.0)
+
+
+class TestBench57ExportSpec:
+    """The `body:`-rooted export spec (body_spec_minecraft_bench57.yaml) must
+    mirror the bench57 component's entity name + affordances, so bundles stamp
+    body_ref=minecraft_bench57 (the provenance/gate-7 fix) and derive the right
+    capability_map. Pinned so the two files cannot drift."""
+
+    def test_export_spec_matches_bench57_affordances_and_name(self):
+        import sys
+
+        sys.path.insert(0, str(REPO / "scripts"))
+        from exp57 import common57 as X
+
+        spec = yaml.safe_load(X.BODY_SPEC57_YAML.read_text())["body"]
+        assert spec["name"] == X.ENTITY_NAME57 == "minecraft_bench57"
+        assert set(spec["modulators"]["act"]["affordances"]) == OPAQUE_AFFORDANCES
+
+    def test_fold_defaults_stamp_bench57(self):
+        # fold_snapshots defaults to the bench57 body — an Exp 57 fold must stamp
+        # body_ref/receiver_body = minecraft_bench57, not minecraft_bench (the
+        # code-lens provenance defect this fixes).
+        import inspect
+        import sys
+
+        sys.path.insert(0, str(REPO / "scripts"))
+        from exp57 import common57 as X
+
+        sig = inspect.signature(X.fold_snapshots)
+        assert sig.parameters["body_ref"].default == X.ENTITY_NAME57
+        assert sig.parameters["receiver_body"].default == X.ENTITY_NAME57
+        assert sig.parameters["body_spec_yaml"].default == X.BODY_SPEC57_YAML

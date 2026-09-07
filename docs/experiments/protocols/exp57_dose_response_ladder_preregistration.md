@@ -398,6 +398,30 @@ slot-adding amendment) are frozen by the Phase-0 amendment, disclosed. δ_eff an
 count are deliberately NOT in the Phase-0 list — setting a gate margin or a power target
 from pilot data is the forbidden retune.
 
+## Amendments
+
+**Amendment 1 (pre-data; apparatus — the direction-aware world channel).** The frozen bench
+body's world channel is DIRECTION-BLIND: `distance_from_spawn` is a magnitude and `y_altitude`
+an elevation, and the four FROZEN slots sit at the same ~88-block distance and y = 112,
+differing only in BEARING, so they collapse to ONE cluster (G = 1) and Phase-0 check 1 would
+fail hard. The prereg's check-1 remediation menu named "re-place slots / re-derive geometry";
+this amendment takes a THIRD path within the same amendment rule (an apparatus-gate-failure
+fix): change the READOUT, not the geometry. A new body `bodies/minecraft_bench57` exposes the
+bot's SIGNED horizontal position (`offset_x`, `offset_z` — what the game already exposes;
+`distance_from_spawn` is their horizontal magnitude, so this is strictly less lossy, not an
+invented sensor per D1), and its world channel is OFFSETS-ONLY: the other Exp 56 world sensors
+are situation-constant across the four frozen slots, so keeping them dilutes the offsets
+through the SHA-basis + A4-gain encoder (measured on the real SensorEncoder: all seven → max
+pairwise cosine 0.8387, a jitter-fragile 0.011 margin). Offsets-only → **0.3716, a robust
+0.478 margin** below the 0.85 pattern-completion threshold; the four FROZEN slots (geometry
+UNCHANGED, G = 4 preserved) now separate. The opaque affordance names and the opaque `d1`
+drive are unchanged (L12 mitigation intact). This is a PRE-data apparatus disclosure (no
+confirmatory data exists yet); the Minecraft bridge gains `offset_x`/`offset_z` (an operator
+bridge redeploy is required before Phase 0). Bundles now stamp `body_ref=minecraft_bench57`
+(the real apparatus body). Guards: `tests/unit/test_minecraft_bench57_body.py` +
+`TestWorldSeparation` in `tests/unit/test_exp57_harness.py`. K_max/C/W remain deferred to the
+Phase-0 amendment.
+
 ## Runbook (shape; exact flags frozen with the harness PR)
 
 ```bash

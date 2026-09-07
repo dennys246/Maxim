@@ -70,10 +70,12 @@ function snapshot() {
   const spawn = bot.spawnPoint || (me ? me.position : null);
   const distSpawn = me && spawn ? Math.min(128, me.position.distanceTo(spawn)) : 0;
   // SIGNED horizontal offset from spawn — what the game already exposes
-  // (distance_from_spawn is the magnitude of exactly this). Direction-bearing,
-  // so situations that differ only in bearing (the Exp 57 contingency slots)
-  // separate; the direction-blind distance alone collapses them. Same spawn
-  // basis as distSpawn; clamped to the +-128 body-declared range.
+  // (distance_from_spawn is the HORIZONTAL-plane magnitude of this pair; the 3D
+  // distanceTo also includes the y term, so they coincide only at equal
+  // altitude — offsets are still strictly less lossy than the magnitude).
+  // Direction-bearing, so situations that differ only in bearing (the Exp 57
+  // contingency slots) separate; the direction-blind distance alone collapses
+  // them. Same spawn basis as distSpawn; clamped to the +-128 body-declared range.
   const clampOff = (v) => Math.max(-128, Math.min(128, v));
   const offsetX = me && spawn ? clampOff(me.position.x - spawn.x) : 0;
   const offsetZ = me && spawn ? clampOff(me.position.z - spawn.z) : 0;

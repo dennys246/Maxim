@@ -648,21 +648,20 @@ class TestWorldSeparation:
     """The Exp 57 apparatus fix: minecraft_bench's DIRECTION-BLIND world channel
     (distance-magnitude + altitude) could resolve only ~5-6 clusters, so the
     four FROZEN contingency slots — same distance, same y, differing only in
-    BEARING — barely separated (jitter-fragile). minecraft_bench57 adds the
-    SIGNED offset_x/offset_z so the four slots encode to four DISTINCT world
-    clusters through the real SensorEncoder + world_ranges() +
+    BEARING — collapsed to ONE cluster. minecraft_bench57's world channel is the
+    SIGNED offset_x/offset_z and ONLY that, so the four slots encode to four
+    DISTINCT world clusters through the real SensorEncoder + world_ranges() +
     world_sensors_for_slot().
 
-    MEASURED THROUGH THE REAL ENCODER (all 7 declared bench57 world sensors):
-    max pairwise cosine 0.8387 — below the 0.85 pattern-completion threshold
-    (so the four slots DO land in four distinct clusters), but by a THIN
-    ~0.011 margin. The offsets are the only sensors that differ across the
-    four FROZEN slots; the other five kept world sensors are identical across
-    all four and dilute the discriminating signal. The task's stated
-    offline figure (0.4947) was measured on an offsets-only / smaller probe,
-    not the full 7-sensor body through the SHA-basis encoder — see the PR
-    report's separation finding. This guard pins that the slots still resolve
-    (< 0.85), NOT that the margin is robust."""
+    MEASURED THROUGH THE REAL ENCODER (the shipped offsets-only body): max
+    pairwise cosine 0.3716 — a ROBUST 0.478 margin below the 0.85
+    pattern-completion threshold (jitter-worst ~0.375 over ±0.4-block trials).
+    The offsets are the only sensors that differ across the four FROZEN slots;
+    the five Exp 56 world sensors are situation-constant across them and, kept
+    in the channel, would DILUTE the offsets to a jitter-fragile 0.011 margin
+    (all-seven → 0.8387) — which is exactly why bench57's world channel is
+    offsets-only. This guard pins the ROBUST margin (< 0.5), not merely that the
+    slots resolve, so a regression that re-adds a diluting sensor is caught."""
 
     def _cosine(self, a, b):
         import math
@@ -691,9 +690,12 @@ class TestWorldSeparation:
 
         slot_embeds = [embed(X.world_sensors_for_slot(s)) for s in X.CONTINGENCY_SLOTS]
         max_cos = max(self._cosine(slot_embeds[i], slot_embeds[j]) for i in range(X.G) for j in range(i + 1, X.G))
-        # 0.8387 through the real encoder — below 0.85, so the four slots do
-        # resolve, but the margin is thin (see the class docstring's finding).
-        assert max_cos < 0.85, f"the four slots do not separate (max pairwise cosine {max_cos:.4f})"
+        # Offsets-only through the real encoder: ~0.3716. Pin the ROBUST margin
+        # (< 0.5, i.e. > 0.35 below the 0.85 pattern-completion threshold), not
+        # merely that the slots resolve (< 0.85) — so a regression that re-adds a
+        # situation-constant diluting sensor (which pushes this toward 0.84) is
+        # caught here, not discovered live.
+        assert max_cos < 0.5, f"the four slots do not separate ROBUSTLY (max pairwise cosine {max_cos:.4f})"
 
     def test_four_distinct_clusters_and_distinct_from_rest(self):
         from maxim.similarity.ec import EntorhinalCortex
@@ -711,8 +713,11 @@ class TestWorldSeparation:
         slot_ids = [encode(X.world_sensors_for_slot(s)) for s in X.CONTINGENCY_SLOTS]
         assert all(sid is not None for sid in slot_ids), slot_ids
         assert len(set(slot_ids)) == X.G, f"slots collapsed to {len(set(slot_ids))} clusters: {slot_ids}"
-        if rest_id is not None:  # rest is non-neutral (time_of_day) so it clusters
-            assert rest_id not in slot_ids, "a contingency slot collapsed onto the rest cluster"
+        # bench57's world channel is offsets-only, so rest = (offset_x, offset_z) =
+        # (0, 0) is the A4 NEUTRAL and encodes to None (no cluster). Distinct-from-
+        # rest is therefore trivially satisfied — and it is the DESIGNED behaviour
+        # (a probe at rest has no world cluster, so no situation bias fires there).
+        assert rest_id is None, "bench57 rest is the A4 neutral — it must not form a world cluster"
 
 
 class TestScriptedBridgeOneClient:
