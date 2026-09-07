@@ -60,7 +60,7 @@ from maxim.hivemind.merge import (
     nac_merge,
     tighten_negative_biases,
 )
-from maxim.hivemind.registry import HiveRegistry, HiveRegistryError
+from maxim.hivemind.registry import HiveRegistry, HiveRegistryError, trust_policy
 from maxim.hivemind.store import OasisStore, OasisStoreError
 from maxim.hivemind.substrate_client import SubstrateExchangeError
 
@@ -97,4 +97,5 @@ __all__ = [
     "SubstrateExchangeError",
     "HiveRegistry",
     "HiveRegistryError",
+    "trust_policy",
 ]

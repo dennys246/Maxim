@@ -37,6 +37,58 @@ class HiveRegistryError(Exception):
     """A registry operation was refused (bad input, or a corrupt registry file)."""
 
 
+POLICY_FIELDS = ("allow_unsigned", "inherent_trust", "trusted_sources")
+
+
+def trust_policy(entry: dict[str, Any]) -> dict[str, Any]:
+    """The per-Oasis CONSUMER trust policy, with defaults for older registry files.
+
+    The 1.2 Slice D policy surface — assembled over the shipped ``ingest_bundle``
+    hooks, no new merge code:
+
+    - ``allow_unsigned`` (default False) — accept releases this Oasis offers that
+      are NOT signed by a registered Queen key. Default trust is Queen-only.
+      **This flag disables signature verification for that Oasis's release
+      stream** — it admits a tampered ex-Queen release whose signature was
+      stripped, not merely "unsigned" content. It is NOT a subscription to the
+      server's ``experimental/`` tier: no client function or endpoint reads that
+      tier in 1.2 (``hive pull`` reads only ``GET /v1/substrate/releases``).
+      The flag is reachable because ``list_releases`` serves whatever sits in a
+      release directory, so a lenient or compromised Oasis can offer unsigned
+      content even though our own ``oasis publish`` refuses to create it.
+    - ``inherent_trust`` (default False) — admit the decay-exempt inherent
+      ("safety floor") bias class. Applied ONLY to Queen-verified releases and
+      only for the contributor ids this policy already trusts.
+    - ``trusted_sources`` (default empty = any contributor the Queen signed) —
+      an operator ``contributor_id`` allow-list. When non-empty it is passed to
+      ingest as the V1 ``trusted_sources`` set, so the refusal is enforced by the
+      pipeline and not merely by this CLI.
+
+    Malformed policy values FAIL LOUD rather than coercing: ``bool("false")`` is
+    ``True``, so a hand-edited or template-generated ``"allow_unsigned": "false"``
+    would silently invert a safety default. A registry that cannot be read as
+    written is an operator problem, not something to guess at.
+    """
+    policy: dict[str, Any] = {}
+    for field in ("allow_unsigned", "inherent_trust"):
+        value = entry.get(field, False)
+        if not isinstance(value, bool):
+            raise HiveRegistryError(
+                f"registry field {field!r} must be a JSON boolean (true/false), got {value!r} — "
+                "refusing to guess at a trust setting"
+            )
+        policy[field] = value
+    sources = entry.get("trusted_sources", [])
+    if sources is None:
+        sources = []
+    if not isinstance(sources, list) or any(not isinstance(s, str) or not s for s in sources):
+        raise HiveRegistryError(
+            f"registry field 'trusted_sources' must be a list of non-empty strings, got {sources!r}"
+        )
+    policy["trusted_sources"] = list(sources)
+    return policy
+
+
 def registry_path() -> Path:
     """The ``~/.config/maxim/hive.json`` path (XDG/Windows-aware, beside the mesh key)."""
     return key_file_path("hive.json")
@@ -95,12 +147,69 @@ class HiveRegistry:
         queen_keys: dict[str, str] | None = None,
         domains: tuple[str, ...] = (),
     ) -> dict[str, Any]:
-        """Add (or replace, by name) an Oasis. Operator-explicit write only."""
+        """Add (or update, by name) an Oasis. Operator-explicit write only.
+
+        Re-adding an existing name MERGES onto the existing entry: the trust
+        policy, any Queen keys not being replaced, and any field a future version
+        wrote are preserved. Silently resetting a trust grant (or the Queen keys
+        that make Queen-only verification possible) because the operator
+        corrected a URL would be a footgun — and dropping the keys while an
+        ``allow_unsigned`` grant survives would silently degrade the posture from
+        "Queen-only + escape hatch" to "admit anything". Change policy with
+        :meth:`set_trust`.
+
+        Returns the stored entry; ``warnings`` on the returned dict is not
+        persisted — callers surface it. A URL change while a loosening grant is
+        active is worth telling the operator about: the remote identity moved.
+        """
         keys = dict(queen_keys or {})
         _validate_add(name, url, keys)
-        entry = {"name": name, "url": url, "queen_keys": keys, "domains": list(domains)}
-        oases = [o for o in self._load() if o.get("name") != name]
+        oases = self._load()
+        existing = next((o for o in oases if o.get("name") == name), None)
+        entry: dict[str, Any] = dict(existing or {})
+        entry.update({"name": name, "url": url})
+        if keys:
+            entry["queen_keys"] = keys
+        else:
+            entry.setdefault("queen_keys", {})
+        if domains:
+            entry["domains"] = list(domains)
+        else:
+            entry.setdefault("domains", [])
+        # Normalize/validate the policy that is carried forward.
+        entry.update(trust_policy(entry))
+        oases = [o for o in oases if o.get("name") != name]
         oases.append(entry)
+        self._save(oases)
+        return entry
+
+    def set_trust(
+        self,
+        name: str,
+        *,
+        allow_unsigned: bool | None = None,
+        inherent_trust: bool | None = None,
+        trusted_sources: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Set the consumer trust policy for a registered Oasis (operator-explicit).
+
+        Only the fields passed are changed; ``None`` leaves a field alone.
+        """
+        oases = self._load()
+        entry = next((o for o in oases if o.get("name") == name), None)
+        if entry is None:
+            raise HiveRegistryError(f"no registered oasis named {name!r} (see `maxim hive list`)")
+        policy = trust_policy(entry)
+        if allow_unsigned is not None:
+            policy["allow_unsigned"] = bool(allow_unsigned)
+        if inherent_trust is not None:
+            policy["inherent_trust"] = bool(inherent_trust)
+        if trusted_sources is not None:
+            for source in trusted_sources:
+                if not source or not isinstance(source, str):
+                    raise HiveRegistryError(f"trusted source must be a non-empty string, got {source!r}")
+            policy["trusted_sources"] = list(trusted_sources)
+        entry.update(policy)
         self._save(oases)
         return entry
 
