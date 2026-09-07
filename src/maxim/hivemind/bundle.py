@@ -69,6 +69,7 @@ from __future__ import annotations
 import contextlib
 import copy
 import datetime as _dt
+import io
 import json
 import logging
 import os
@@ -950,19 +951,11 @@ def extract_bundle(
     return manifest
 
 
-def read_bundle_manifest(bundle_path: str | Path) -> dict[str, Any]:
-    """Read the manifest from a bundle without extracting it.
-
-    Convenience for CLI ``maxim substrate inspect`` and 1.1 Oasis
-    discovery. Validates ``kind`` + ``schema_version`` like
-    :func:`extract_bundle`.
-    """
-    bundle_path = Path(bundle_path)
-    with zipfile.ZipFile(bundle_path, "r") as zf:
-        if "manifest.json" not in zf.namelist():
-            raise ValueError(f"bundle {bundle_path} missing manifest.json")
-        manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
-
+def _manifest_from_zip(zf: zipfile.ZipFile, source_label: str) -> dict[str, Any]:
+    """Read + validate ``manifest.json`` from an open bundle ZIP (kind/schema/format)."""
+    if "manifest.json" not in zf.namelist():
+        raise ValueError(f"bundle {source_label} missing manifest.json")
+    manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
     if not isinstance(manifest, dict):
         raise ValueError(f"manifest.json must be a JSON object, got {type(manifest).__name__}")
     manifest = migrate_bundle_envelope(manifest)
@@ -975,6 +968,30 @@ def read_bundle_manifest(bundle_path: str | Path) -> dict[str, Any]:
             f"manifest schema_version {schema_v!r} unsupported (this build supports up to {BUNDLE_SCHEMA_VERSION})"
         )
     return manifest
+
+
+def read_bundle_manifest(bundle_path: str | Path) -> dict[str, Any]:
+    """Read the manifest from a bundle without extracting it.
+
+    Convenience for CLI ``maxim substrate inspect`` and 1.1 Oasis
+    discovery. Validates ``kind`` + ``schema_version`` like
+    :func:`extract_bundle`.
+    """
+    bundle_path = Path(bundle_path)
+    with zipfile.ZipFile(bundle_path, "r") as zf:
+        return _manifest_from_zip(zf, str(bundle_path))
+
+
+def read_bundle_manifest_bytes(raw: bytes) -> dict[str, Any]:
+    """Read + validate a bundle manifest from raw ZIP bytes, touching no disk.
+
+    The in-memory sibling of :func:`read_bundle_manifest`, for validating a
+    received contribution BEFORE it is committed to disk (Oasis ``/contribute``).
+    Raises the same ``ValueError`` / ``zipfile.BadZipFile`` on a malformed or
+    wrong-kind bundle.
+    """
+    with zipfile.ZipFile(io.BytesIO(raw), "r") as zf:
+        return _manifest_from_zip(zf, "<contribution bytes>")
 
 
 __all__ = [

@@ -13,7 +13,45 @@ import stat
 
 import pytest
 
-from maxim.utils.atomic_io import atomic_write_json, atomic_write_secret, atomic_write_text
+from maxim.utils.atomic_io import (
+    atomic_write_bytes,
+    atomic_write_json,
+    atomic_write_secret,
+    atomic_write_text,
+)
+
+
+class TestAtomicWriteBytes:
+    """The canonical BYTES writer (1.2 P2P Slice B — bundle blobs on disk)."""
+
+    def test_round_trips_binary(self, tmp_path) -> None:
+        target = tmp_path / "blob.bin"
+        payload = bytes(range(256)) * 8  # includes NULs and high bytes
+        atomic_write_bytes(str(target), payload)
+        assert target.read_bytes() == payload
+
+    def test_overwrites_existing(self, tmp_path) -> None:
+        target = tmp_path / "blob.bin"
+        target.write_bytes(b"old")
+        atomic_write_bytes(str(target), b"\x00\x01\x02")
+        assert target.read_bytes() == b"\x00\x01\x02"
+
+    def test_creates_parent_directories(self, tmp_path) -> None:
+        target = tmp_path / "nested" / "deep" / "blob.bin"
+        atomic_write_bytes(str(target), b"x")
+        assert target.read_bytes() == b"x"
+
+    def test_no_tmp_file_left_on_success(self, tmp_path) -> None:
+        target = tmp_path / "blob.bin"
+        atomic_write_bytes(str(target), b"x")
+        assert not (tmp_path / "blob.bin.tmp").exists()
+
+    def test_initial_mode_is_applied(self, tmp_path) -> None:
+        if os.name == "nt":  # pragma: no cover — POSIX perms only
+            pytest.skip("POSIX mode bits")
+        target = tmp_path / "blob.bin"
+        atomic_write_bytes(str(target), b"secret-blob", initial_mode=0o600)
+        assert stat.S_IMODE(os.stat(target).st_mode) == 0o600
 
 
 class TestAtomicWriteText:

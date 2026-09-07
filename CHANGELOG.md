@@ -24,6 +24,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Hivemind substrate HTTP exchange endpoints (1.2 P2P Slice B).** Three authenticated
+  routes on the existing leader-proxy server let Oases share bundles: `GET
+  /v1/substrate/releases` (Queen-tier release summaries), `GET /v1/substrate/bundle/<id>`
+  (download a signed bundle), and `POST /v1/substrate/contribute` (submit a bundle to the
+  experimental tier). The endpoints are inert until a leader is given an `OasisStore`
+  (default: an authenticated 404 — no new *capability*, and nothing reachable without the
+  bearer token), reusing the proxy's Bearer auth, per-IP rate limiting, and concurrency
+  admission. A new `hivemind.store.OasisStore` keeps two disk tiers (`releases/` requires a
+  signed manifest at the door; `experimental/` holds received contributions tagged with
+  provenance and NEVER promotes on receipt — promotion is a separate gated Slice D
+  operation), and serializes the accept path so concurrent contributions cannot lose an
+  audit record. Client transport is `hivemind.substrate_client` (its own file per the
+  typed-peer-transports rule, over `utils/http`). Adds the canonical
+  `utils/atomic_io.atomic_write_bytes`. The production caller that injects a store
+  (`maxim oasis serve`) is Slice C, so this surface ships **dormant** — the composition is
+  proven end-to-end by the integration test, not yet wired into a running Oasis. Guards:
+  `tests/unit/test_oasis_store.py` (incl. the concurrency + corrupt-log regressions),
+  `tests/integration/test_oasis_exchange_e2e.py` (real client↔server↔store round-trip),
+  `tests/unit/test_atomic_io.py`.
 - **Hivemind bundle signing + verification (1.2 P2P Slice A).** `ed25519` release
   signatures via the new optional `[sign]` extra (`cryptography`): `maxim substrate export
   --sign` signs a bundle with a persisted key, `maxim substrate ingest --require-signed

@@ -34,6 +34,7 @@ from maxim.hivemind.bundle import (
     compose_bundle,
     extract_bundle,
     read_bundle_manifest,
+    read_bundle_manifest_bytes,
 )
 from maxim.hivemind.ingest import (
     IngestionJournal,
@@ -59,6 +60,8 @@ from maxim.hivemind.merge import (
     nac_merge,
     tighten_negative_biases,
 )
+from maxim.hivemind.store import OasisStore, OasisStoreError
+from maxim.hivemind.substrate_client import SubstrateExchangeError
 
 __all__ = [
     "BUNDLE_KIND",
@@ -82,9 +85,13 @@ __all__ = [
     "is_identity_domain",
     "nac_merge",
     "read_bundle_manifest",
+    "read_bundle_manifest_bytes",
     "IngestionJournal",
     "IngestRefused",
     "IngestReport",
     "ingest_bundle",
     "tighten_negative_biases",
+    "OasisStore",
+    "OasisStoreError",
+    "SubstrateExchangeError",
 ]
