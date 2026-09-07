@@ -25,6 +25,8 @@ Role detection sits upstream of all three layers: it runs ONCE at process start 
 
 If you want a mutable field *in* a declarative file ("operator committed their intent"), stop: it belongs in `~/.maxim/util/` with a `maxim peer list-<thing>` surface.
 
+`~/.config/maxim/hive.json` (the 1.2 Oasis registry, `hivemind/registry.py`) is a fourth declarative file — written ONLY by the operator-explicit `maxim hive add`/`remove` verbs via `HiveRegistry.add`/`remove` → `atomic_write_json` + `with_format_version`. Unlike `config.json`/`mesh.yml` it carries a deliberate CI-grep EXEMPTION: it holds no secret (Queen public keys are verification anchors; the bearer token is per-invocation, never stored) and has no runtime writer, so the operator-explicit-write discipline is by-construction rather than grep-enforced. Adding a runtime writer would forfeit that exemption — route such a need to `~/.maxim/util/` instead.
+
 ## 2. Key files
 
 | Area | Key files |

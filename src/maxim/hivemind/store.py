@@ -71,13 +71,23 @@ class OasisStoreError(Exception):
     """A store operation was refused (unsigned release, malformed bundle)."""
 
 
+def is_valid_release_id(release_id: str) -> bool:
+    """True iff ``release_id`` is a bare sha256 hex digest (no separators, no ``..``).
+
+    The canonical shape check for a release id — reused by the client transport
+    and the ``hive pull`` loop so an id from an untrusted Oasis can never reach a
+    filesystem path (traversal / absolute-path escape) before it is validated.
+    """
+    return bool(_RELEASE_ID_RE.match(release_id))
+
+
 def _validate_release_id(release_id: str) -> str:
     """Return ``release_id`` iff it is a bare sha256 hex digest, else raise.
 
     The id becomes a filename; anything but ``[0-9a-f]{64}`` (no separators,
     no ``..``) is refused before it can reach the filesystem.
     """
-    if not _RELEASE_ID_RE.match(release_id):
+    if not is_valid_release_id(release_id):
         raise OasisStoreError(f"invalid release id {release_id!r} (expected a sha256 hex digest)")
     return release_id
 
@@ -109,7 +119,10 @@ class OasisStore:
         enforces that an unsigned artifact never occupies the release tier.
         """
         raw = Path(bundle_path).read_bytes()
-        manifest = read_bundle_manifest(bundle_path)  # validates kind/schema/format-version
+        try:
+            manifest = read_bundle_manifest(bundle_path)  # validates kind/schema/format-version
+        except _MALFORMED_BUNDLE as exc:
+            raise OasisStoreError(f"not a valid substrate bundle: {exc}") from exc
         if not manifest.get("signature") or not manifest.get("signature_algorithm"):
             raise OasisStoreError(
                 "release bundles must be signed (compose with --sign); "

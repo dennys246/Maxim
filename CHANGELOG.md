@@ -24,6 +24,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`maxim oasis` / `maxim hive` CLIs + static Oasis registry (1.2 P2P Slice C).** The
+  operator-facing halves of the substrate exchange. `maxim oasis serve` starts the Slice-B
+  endpoints by injecting an `OasisStore` into the leader proxy; `oasis publish <bundle>`
+  adds a signed bundle to the Queen-tier release store (refuses unsigned); `oasis status`
+  reports tier counts. `maxim hive add/remove/list` manage a JSON registry at
+  `~/.config/maxim/hive.json` (name → URL + Queen public keys + subscribed domains;
+  operator-explicit writes only, no secrets — Queen keys are public verification anchors);
+  `hive pull --from <oasis>` fetches signed releases and ingests them by **delegating to the
+  existing `substrate ingest` verb** (verification + the V1–V10 gauntlet + journal reused,
+  not reimplemented), dry-run by default, `--apply` to write, refusing a release whose
+  signer is not a registered Queen key for that Oasis; `hive contribute <bundle> --to
+  <oasis>` pushes to the experimental tier. This wires the production caller
+  (`oasis serve`) that makes Slice B non-dormant. Two-lens review folded a cross-confirmed
+  BLOCKER (a release id from an untrusted Oasis was used as a filesystem path before the
+  signature check — a traversal / arbitrary-write hole; ids are now validated to a bare
+  sha256 digest at the client transport AND the pull loop) plus a fail-closed `oasis serve`
+  (refuses a non-loopback bind without a bearer key unless `--insecure`), clean rc-2 on a
+  malformed bundle, and a store-less-singleton guard. Guards: `tests/unit/test_hive_cli.py`
+  (incl. the traversal + insecure-bind + malformed-bundle regressions),
+  `tests/integration/test_hive_pull_e2e.py` (real served-Oasis pull dry-run/apply +
+  untrusted-signer refusal + contribute).
 - **Hivemind substrate HTTP exchange endpoints (1.2 P2P Slice B).** Three authenticated
   routes on the existing leader-proxy server let Oases share bundles: `GET
   /v1/substrate/releases` (Queen-tier release summaries), `GET /v1/substrate/bundle/<id>`
