@@ -161,20 +161,32 @@ def check_alignment_and_divergence(bridge_port, world, bot, work, *, settle, k_m
     """Checks 2 + 2b: alignment shared-vs-union split, and contributor
     divergence (Jaccard < 1, union grows N=1->pilot).
 
-    ``k_max`` MUST be the PARTWAY per-agent budget (the calibrated K_max where a
-    single contributor covers ~half the contingencies), NOT the calibration scan
-    depth PILOT_K_MAX: at a SATURATING budget every contributor covers ALL G
-    contingencies, so the pairwise Jaccard is trivially 1.0 and the union cannot
-    grow — a false divergence failure. The divergence this check exists to verify
-    is only observable while single-contributor coverage is below ceiling (the
-    same budget the ladder runs at). main() runs calibration first and passes its
-    proposed K_max here."""
+    The two sub-checks have OPPOSITE budget needs, so they are read at TWO
+    checkpoints of ONE deep training (per-trial snapshots), not one budget:
+
+    * **2b divergence** at the PARTWAY per-agent budget ``k_max`` (the calibrated
+      K_max where a single contributor covers ~half the contingencies — the same
+      budget the ladder runs at). Divergence is only observable BELOW ceiling: at
+      a saturating budget every contributor covers ALL G, so Jaccard is trivially
+      1.0 and the union cannot grow (the first false failure).
+    * **2 alignment** at the DEEP/saturating checkpoint, where contributors DO
+      cover overlapping contingencies, so ``ec_merge_aligned`` has same-situation
+      clusters to fold to a SHARED key — the only budget where the shared-vs-union
+      split is observable. Measuring alignment at the partway budget (where
+      contributors diverge and share nothing) gives ``shared_estimate == 0`` for a
+      body whose merge is perfectly healthy (the second false failure).
+
+    main() runs calibration first and passes its proposed K_max as ``k_max``."""
     cohort_seed = 9001
     slot_to_target = X.cohort_slot_to_target(cohort_seed)
     pilot_n = 3
     seeds = X.contributor_seeds(cohort_seed, pilot_n, pilot_n, salt=99)
-    covered: list[set[int]] = []
-    finals: list = []
+    # Train ONCE to a DEEP budget (the scan depth, > any partway K_max), keeping
+    # per-trial snapshots so divergence reads at the partway checkpoint and
+    # alignment reads at the deep checkpoint.
+    align_depth = max(PILOT_K_MAX, k_max + 1)
+    partway_idx = max(0, min(k_max, align_depth) - 1)
+    all_snaps: list = []
     for i, s in enumerate(seeds):
         session = C.build_bench_session(
             agent_id=f"phase0_div_{i}",
@@ -183,19 +195,20 @@ def check_alignment_and_divergence(bridge_port, world, bot, work, *, settle, k_m
             pair_seed=s,
             body_ref=X.BODY_REF57,
         )
-        snaps = _train(session, world, seed=s, slot_to_target=slot_to_target, bot=bot, k_max=k_max, settle=settle)
+        snaps = _train(session, world, seed=s, slot_to_target=slot_to_target, bot=bot, k_max=align_depth, settle=settle)
         C.close_and_stage_session(session, stage_dir=work / f"div_{i}_close")
-        finals.append(snaps[-1])
-        covered.append(
-            _covered_set(
-                snaps[-1],
-                receiver_agent_id=f"recv-div-{i}",
-                slot_to_target=slot_to_target,
-                work=work / f"div_{i}_fold",
-            )
-        )
+        all_snaps.append(snaps)
 
-    # 2b: mean pairwise Jaccard + union growth.
+    # 2b DIVERGENCE — covered sets at the PARTWAY checkpoint.
+    covered: list[set[int]] = [
+        _covered_set(
+            snaps[partway_idx],
+            receiver_agent_id=f"recv-div-{i}",
+            slot_to_target=slot_to_target,
+            work=work / f"div_{i}_fold",
+        )
+        for i, snaps in enumerate(all_snaps)
+    ]
     jaccards = []
     for a, b in itertools.combinations(range(pilot_n), 2):
         inter = len(covered[a] & covered[b])
@@ -205,17 +218,18 @@ def check_alignment_and_divergence(bridge_port, world, bot, work, *, settle, k_m
     union_1 = len(covered[0])
     union_all = len(set().union(*covered)) if covered else 0
 
-    # 2: fold two SAME-contingency contributors vs a same-vs-different check by
-    # inspecting the merged bias-key count against the per-contributor counts.
+    # 2 ALIGNMENT — fold two contributors at the DEEP checkpoint (guaranteed
+    # overlap), so same-situation clusters align to a SHARED key. Their raw bias
+    # keys are on disjoint per-contributor cluster ids (independent EC), so
+    # shared_estimate > 0 iff the fold RE-KEYED overlapping contingencies onto
+    # common receiver clusters — the alignment signal.
+    deep0, deep1 = all_snaps[0][-1], all_snaps[1][-1]
     merged_two = X.fold_snapshots(
-        [finals[0], finals[1]], "recv-align", workdir=work / "align_fold", contributor_ids=["c0", "c1"]
+        [deep0, deep1], "recv-align", workdir=work / "align_fold", contributor_ids=["c0", "c1"]
     )
-    keys0 = set((finals[0][0].get("cluster_reward_bias") or {}).keys())
-    keys1 = set((finals[1][0].get("cluster_reward_bias") or {}).keys())
+    keys0 = set((deep0[0].get("cluster_reward_bias") or {}).keys())
+    keys1 = set((deep1[0].get("cluster_reward_bias") or {}).keys())
     merged_keys = set((merged_two.get("cluster_reward_bias") or {}).keys())
-    # After re-key, shared contingencies collapse to one key (convex-combined);
-    # distinct ones union. So merged_keys <= |keys0| + |keys1| and shared > 0
-    # iff any contingency was covered by both.
     shared_estimate = max(0, len(keys0) + len(keys1) - len(merged_keys))
     # 2b bar strengthened (methodology-lens finding 7): `jaccard < 1.0` only
     # trips on BYTE-identical contributors — 95%-identical ones (which still
@@ -223,11 +237,11 @@ def check_alignment_and_divergence(bridge_port, world, bot, work, *, settle, k_m
     # BELOW a real ceiling so contributors "genuinely differ" (the prereg's
     # word), not merely differ by one element.
     JACCARD_MAX = 0.8
-    # 2 gated (not just reported): the merge must actually SHARE at least one key
-    # (over-aligning collapses to all-shared; under-aligning never averages, so
-    # shared==0 with distinct contingencies is the under-alignment failure). With
-    # G=4 slots and 3 contributors covering overlapping-but-distinct sets, some
-    # sharing AND some union is the healthy signal.
+    # 2 gated (not just reported): at the DEEP checkpoint the two contributors
+    # cover overlapping contingencies, so a healthy merge MUST re-key them to a
+    # SHARED key (shared_estimate > 0). shared==0 THERE is genuine under-alignment
+    # (the merge never averages same-situation clusters) — a real apparatus
+    # failure, not the partway-divergence artifact this split fixed.
     aligns = shared_estimate > 0
     return {
         "mean_pairwise_jaccard": round(mean_jaccard, 4),
