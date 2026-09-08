@@ -157,9 +157,18 @@ def check_drive_zero(bridge_port, world, bot, work, *, settle) -> dict:
         return {"pass": False, "error": str(exc)}
 
 
-def check_alignment_and_divergence(bridge_port, world, bot, work, *, settle) -> dict:
+def check_alignment_and_divergence(bridge_port, world, bot, work, *, settle, k_max: int = PILOT_K_MAX) -> dict:
     """Checks 2 + 2b: alignment shared-vs-union split, and contributor
-    divergence (Jaccard < 1, union grows N=1->pilot)."""
+    divergence (Jaccard < 1, union grows N=1->pilot).
+
+    ``k_max`` MUST be the PARTWAY per-agent budget (the calibrated K_max where a
+    single contributor covers ~half the contingencies), NOT the calibration scan
+    depth PILOT_K_MAX: at a SATURATING budget every contributor covers ALL G
+    contingencies, so the pairwise Jaccard is trivially 1.0 and the union cannot
+    grow — a false divergence failure. The divergence this check exists to verify
+    is only observable while single-contributor coverage is below ceiling (the
+    same budget the ladder runs at). main() runs calibration first and passes its
+    proposed K_max here."""
     cohort_seed = 9001
     slot_to_target = X.cohort_slot_to_target(cohort_seed)
     pilot_n = 3
@@ -174,7 +183,7 @@ def check_alignment_and_divergence(bridge_port, world, bot, work, *, settle) -> 
             pair_seed=s,
             body_ref=X.BODY_REF57,
         )
-        snaps = _train(session, world, seed=s, slot_to_target=slot_to_target, bot=bot, k_max=PILOT_K_MAX, settle=settle)
+        snaps = _train(session, world, seed=s, slot_to_target=slot_to_target, bot=bot, k_max=k_max, settle=settle)
         C.close_and_stage_session(session, stage_dir=work / f"div_{i}_close")
         finals.append(snaps[-1])
         covered.append(
@@ -393,11 +402,18 @@ def main() -> int:
         report["check1_discriminability"] = check_discriminability(
             bridge_port, world, args.bot_name, work, settle=settle
         )
+        # Calibration runs BEFORE the divergence check: check 2b must measure
+        # contributor divergence at the PARTWAY per-agent budget (the calibrated
+        # K_max), not the saturating scan depth — else every contributor covers
+        # all G contingencies and the union can't grow (a false failure). Report
+        # keys keep the check1..check5 order regardless of computation order.
+        _cal = check_calibration(bridge_port, world, args.bot_name, work, settle=settle)
+        _partway_k = int(_cal.get("proposed_K_max") or PILOT_K_MAX)
         report["check2_2b_alignment_divergence"] = check_alignment_and_divergence(
-            bridge_port, world, args.bot_name, work, settle=settle
+            bridge_port, world, args.bot_name, work, settle=settle, k_max=_partway_k
         )
         report["check3_drive_zero"] = check_drive_zero(bridge_port, world, args.bot_name, work, settle=settle)
-        report["check4_calibration"] = check_calibration(bridge_port, world, args.bot_name, work, settle=settle)
+        report["check4_calibration"] = _cal
         report["check5_pilot_ladder"] = check_pilot_ladder(bridge_port, world, args.bot_name, work, settle=settle)
     finally:
         world.close()
