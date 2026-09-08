@@ -179,6 +179,9 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
   coordination task is achievable (the Reachy Mini cannot translate). Seam lands 1.1.4;
   the four-arm benchmark is the 1.2 headline.
 
+Deferred 2026-09-07 (filed from the 1.2-window design pass):
+- [deferred/hf_hive_repository.md](deferred/hf_hive_repository.md) — Hugging Face Hive Repository: Phase 1 read-only distribution of Queen-signed release bundles + the replay Space (revive at the 1.2 release transaction — launch companion, zero new trust surface); Phase 2 public submissions + gauntlet + main stream (revive only when the Slice-D promotion prerequisites land AND "validated bundle" has a defensible meaning AND decision point 4 is deliberately re-opened).
+
 Deferred in the 2026-08-27 post-1.1.0 triage (banner + revive trigger at the top of each doc):
 - [deferred/acting_coach_body_state_ablation.md](deferred/acting_coach_body_state_ablation.md) + [deferred/exp44_overnight_runcard.md](deferred/exp44_overnight_runcard.md) — prerequisites shipped (#391), the body-state arms never validly ran, nothing owns them. Revive when graduation row #11 (B3 Acting Coach) is scheduled for a decision.
 - [deferred/maxim_console.md](deferred/maxim_console.md) + [deferred/maxim_ui.md](deferred/maxim_ui.md) + [deferred/reachy_app_maxim_seams.md](deferred/reachy_app_maxim_seams.md) + [deferred/reachy_dm_app.md](deferred/reachy_dm_app.md) — the UI line: Phase 0 / MVP seams SHIPPED (`maxim serve` #416, seams #419–#428, `src/maxim/console/`), everything after unscheduled by the 1.1→1.3 roadmap. Revive as a set when a user-facing local front door is scheduled into a release (FIT Phase-0 on the Pi first).
