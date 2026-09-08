@@ -400,7 +400,7 @@ from pilot data is the forbidden retune.
 
 ## Amendments
 
-**Amendment 1 (pre-data; apparatus — the direction-aware world channel).** The frozen bench
+**Amendment 1 — 2026-09-07, PRE-DATA, apparatus: the direction-aware world channel.** The frozen bench
 body's world channel is DIRECTION-BLIND: `distance_from_spawn` is a magnitude and `y_altitude`
 an elevation, and the four FROZEN slots sit at the same ~88-block distance and y = 112,
 differing only in BEARING, so they collapse to ONE cluster (G = 1) and Phase-0 check 1 would
@@ -422,6 +422,31 @@ bridge redeploy is required before Phase 0). Bundles now stamp `body_ref=minecra
 `TestWorldSeparation` in `tests/unit/test_exp57_harness.py`. K_max/C/W remain deferred to the
 Phase-0 amendment.
 
+**Amendment 2 — 2026-09-07, POST-DATA, harness: the check-2/2b budget split.** The first two live
+Phase-0 runs FAILED check 2/2b, both as instrument artifacts, fixed and re-confirmed before
+any confirmatory data (PRs #663, #665): check 2b (contributor divergence) had measured at the
+calibration SCAN DEPTH (64), where a single contributor already covers all G → Jaccard
+trivially 1.0; and check 2 (alignment) needs the OPPOSITE — a budget where contributors
+OVERLAP so same-situation clusters fold to a shared key. The two sub-checks were conflated
+onto one budget. Fix: train each contributor once to the deep budget (per-trial snapshots) and
+read 2b divergence at the PARTWAY checkpoint (the calibrated K_max) and 2 alignment at the DEEP
+checkpoint. No science/gate constant changed; the coverage DV, gates, and rung set are
+untouched. This is a harness-bug amendment (the amendment rule's named category), disclosed
+pre-data. Guard: the live re-run below is all-green.
+
+**Amendment 3 — 2026-09-07, POST-DATA, Phase-0 apparatus constants FROZEN.** The Phase-0 gate ran live on
+the real Paper 1.16.5 server at `main`-reachable `db6fd598`, clean `src`/`scripts` tree, and
+**PASSED all six checks** (record: [../data/57_phase0.json](../data/57_phase0.json)):
+check 1 discriminability separation 1.0 / stability 1.0, four pairwise-distinct situation
+clusters; check 2/2b alignment shared + divergence (Jaccard 0.33, union grows); check 3 L12
+`score_components["drive"] == 0` on every probe; check 4 the single-contributor coverage curve
+(0.25 at ~trial 12, 0.5 at ~20, 0.75 at ~34, 1.0 at ~60); check 5 pilot ladder τ(8) median 12
+≪ τ(1) median 46. **The apparatus constants are hereby FROZEN for the confirmatory campaign:
+K_max = 20, C = 3/4 = 0.75, W = 3** (the calibration proposal, landing a single contributor at
+½ = 2 of 4 at K_max and the criterion below the coverage ceiling with headroom). The GATE
+constants (rungs {1,2,4,8}, δ_eff = 0, p < 0.05, ≥ 20 cohorts) remain as frozen at the prereg
+merge — unchanged by this amendment.
+
 ## Runbook (shape; exact flags frozen with the harness PR)
 
 ```bash
@@ -438,19 +463,21 @@ python scripts/analyze_exp57.py --in docs/experiments/data/57_ladder.jsonl --gat
 
 ## Sign-off (fills before the campaign; each box its own merged PR where marked)
 
-- [ ] This pre-registration merged to `main` via merge commit (never squash) — hash: `____`
+- [x] This pre-registration merged to `main` via merge commit (never squash) — hash: `d15ca4c0` (#649)
 - [x] Two-lens review round on THIS draft folded pre-freeze (design/methodology +
       code-accuracy) — the Exp 56 discipline; both lenses returned FIX-FIRST, all three
       cross-/single-lens blockers + the HIGH/MODERATE refinements folded (see the Status
       header for the folded findings)
-- [ ] Harness PR merged with guard tests (`scripts/exp57/` reusing `scripts/exp56/common.py`;
+- [x] Harness PR merged with guard tests (`scripts/exp57/` reusing `scripts/exp56/common.py`;
       the G = 4 world script + the N-AUT contributor sequencing with independent per-contributor
       seed/order; `scripts/analyze_exp57.py` with frozen gate constants incl. the JT
       permutation trend test + the two censoring-artifact guards, δ_eff = 0, the noise floor,
-      and `--assert-noop-fails`; `--mock`/`--resume`) — hash: `____`; frozen GATE constants
-      recorded: rungs `{1,2,4,8}`, δ_eff `0`, p `0.05`, cohorts `≥20`; apparatus constants
-      set in Phase 0: G `4` (or the amended slot count), K_max `__`, C `__` (target ¾), W `__` (target 3)
-- [ ] Phase 0 run + committed (`57_phase0.json`): checks 1, 2, 2b, 3, 4, 5 PASS; apparatus
-      constants set + disclosed in the Phase-0 amendment (gated, clean tree, main-reachable)
+      and `--assert-noop-fails`; `--mock`/`--resume`) — hash: `281446b1` (#660; richer body
+      #662, check-2/2b budget splits #663/#665); frozen GATE constants recorded: rungs
+      `{1,2,4,8}`, δ_eff `0`, p `0.05`, cohorts `≥20`; apparatus constants set in Phase 0:
+      G `4`, K_max `20`, C `0.75` (¾), W `3`
+- [x] Phase 0 run + committed (`57_phase0.json`): checks 1, 2, 2b, 3, 4, 5 PASS; apparatus
+      constants set + disclosed in the Phase-0 amendment (gated, clean tree, main-reachable —
+      `db6fd598`, all six checks PASS; see Amendment 3)
 - [ ] Confirmatory ladder run ONCE from a clean tree at a main-reachable commit; data PR
       merge-committed; interpretation in a separate later PR (structure-or-time rule)

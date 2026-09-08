@@ -1,0 +1,157 @@
+{
+  "ts": 1788842784.266552,
+  "mock": false,
+  "G": 4,
+  "slots": [
+    {
+      "x": 88,
+      "y": 112,
+      "z": 0
+    },
+    {
+      "x": -88,
+      "y": 112,
+      "z": 8
+    },
+    {
+      "x": 8,
+      "y": 112,
+      "z": 88
+    },
+    {
+      "x": -8,
+      "y": 112,
+      "z": -88
+    }
+  ],
+  "gated": true,
+  "working_tree_dirty_src_scripts": false,
+  "allow_dirty": false,
+  "provenance": {
+    "harness_repo": "/Users/dennys/RMSrv/scripts/Maxim",
+    "harness_git_hash": "db6fd598",
+    "executed_maxim_file": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "db6fd598",
+    "working_tree_dirty_src_scripts": false,
+    "pythonpath": "/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/src"
+  },
+  "check1_discriminability": {
+    "separation": 1.0,
+    "stability": 1.0,
+    "pairwise_distinct_situation_clusters": true,
+    "situation_cluster_count": 4,
+    "bar": 0.7,
+    "pass": true
+  },
+  "check2_2b_alignment_divergence": {
+    "mean_pairwise_jaccard": 0.3333,
+    "jaccard_max": 0.8,
+    "union_N1": 1,
+    "union_Npilot": 2,
+    "merged_bias_keys": 4,
+    "shared_key_estimate": 4,
+    "union_grows": true,
+    "merge_shares_a_key": true,
+    "pass": true
+  },
+  "check3_drive_zero": {
+    "pass": true,
+    "note": "score_components['drive']==0 held on every coverage probe decision"
+  },
+  "check4_calibration": {
+    "coverage_curve": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.25,
+      0.25,
+      0.25,
+      0.25,
+      0.25,
+      0.25,
+      0.25,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      0.75,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "endpoint_coverage": 1.0,
+    "proposed_K_max": 20,
+    "proposed_C": 0.75,
+    "proposed_W": 3,
+    "note": "PROPOSAL ONLY \u2014 freeze K_max/C/W by a pre-campaign amendment. Target: single contributor ~1/2 at K_max; C = 3/4; W = 3.",
+    "pass": true
+  },
+  "check5_pilot_ladder": {
+    "tau_rung1": [
+      44,
+      47,
+      65,
+      39,
+      46
+    ],
+    "tau_rung8": [
+      13,
+      12,
+      9,
+      11,
+      13
+    ],
+    "median_tau_1": 46,
+    "median_tau_8": 12,
+    "tau8_lt_tau1_obtainable": true,
+    "cohorts": 5,
+    "pass": true
+  },
+  "all_pass": true
+}
