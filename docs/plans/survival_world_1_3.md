@@ -6,6 +6,11 @@ benchmark), R4 (structure formation), and the shared-perception fabric they exis
 measure. It is NOT yet a pre-registration — it's the brainstorm that a prereg is drafted
 from once the build list below is real and the world elements are chosen.
 
+> **Phased plan / release scope:** [roadmap_1_3.md](roadmap_1_3.md) — the survival world is 1.3
+> ("Oasis-2") as of the 2026-09-09 rescope (perception fabric → 1.4). This doc is the *design*
+> surface; the roadmap orders it into phases by mechanism dependency and names the pivotal
+> may-fail claim.
+
 ## The shift 1.3 makes: teacher-reward → game-reward
 
 Everything through Exp 57 learns from a **teacher** — a harness caregiver delivers
