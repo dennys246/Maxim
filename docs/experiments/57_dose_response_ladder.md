@@ -99,11 +99,17 @@ A lone agent (N = 1) covers only ¼ of the situation at K_max and **never** reac
 agent inside a crèche of 8 reaches criterion in ~10.5 of its own trials. Meanwhile one agent
 given all the trials reaches criterion at ~43–46 (uncensored once its budget ≥ 46).
 
+The confirmatory N = 1 endpoint coverage (0.25 = 1 of 4) came in *below* the Phase-0
+calibration's ~0.5 projection — a single contributor proved more censored than the K_max = 20
+freeze had designed for, which concentrates censoring at small N. That is the anti-conservative
+artifact guard i exists to control: dropping the fully-censored rungs still yields the
+decreasing trend at p ≈ 1e-4, so the conclusion does not rest on the censored bottom rung.
+
 ## The gates
 
 | gate | rule | result | verdict |
 |---|---|---|---|
-| **MONOTONICITY** (primary) | τ(creche(N)) falls across N by JT (permutation null, p < 0.05) **and** both censoring-artifact guards | JT p ≈ 1e-4 (stat 2056.5); **guard i** drop-censored p ≈ 1e-4 (stat 1086.5); **guard ii** endpoint coverage rises 0.25→0.50→0.75→0.75 (Spearman ρ 0.949) | ✅ PASS |
+| **MONOTONICITY** (primary) | τ(creche(N)) falls across N by JT (permutation null, p < 0.05) **and** both censoring-artifact guards | JT p ≈ 1e-4 (stat 2056.5); **guard i** drop-censored p ≈ 1e-4 (stat 1086.5); **guard ii** endpoint coverage rises 0.25→0.50→0.75→0.75 (Spearman ρ 0.949, p = 0.051 — the gate is the direction-of-ρ check `endpoint_spearman_min = 0` over the four rungs, not a p-threshold; the top step is saturated at C, so ρ is marginal on n = 4) | ✅ PASS |
 | **NOT-JUST-MORE-DATA** | N × τ(creche(N)) ≤ `single_matched(N)` at δ_eff = 0, every rung N ≥ 2 | 42 > 41, 62 > 46, 84 > 43 | ❌ FAIL |
 | **NOISE-FLOOR** | `creche_none` coverage stays below C | 0.0 at every rung | ✅ PASS |
 | **L2_SEED_VARIANCE** | per-seed spread present, N = 1 concentration ≤ 0.9 | distinct {0.0, 0.25, 0.5}, concentration 0.75 | ✅ PASS |
@@ -115,10 +121,15 @@ but graded coverage widening (guard ii) that survives dropping the fully-censore
 
 ## What this shows — and what it does NOT
 
-**Shows:** collective learning is a **per-participant win and a parallelism win**. Joining a
-crèche roughly quarters the trials each agent personally needs (τ 21→10.5 from N=1 to N=8),
-by widening the coverage of a single shared contingency through the real convex-combination
-fold — the primary claim the apparatus was built to test, earned in its robust form.
+**Shows:** collective learning is a **per-participant win**. A lone agent never reaches the
+3-of-4 criterion in 20 trials; an agent inside a crèche of 8 reaches it in ~10.5 of its own
+trials — and against a single agent given unlimited trials (which reaches criterion at
+~43–46), that is roughly a *quarter* as many per-agent trials. Pooling wins by widening the
+coverage of a single shared contingency through the real convex-combination fold — the
+primary claim the apparatus was built to test, earned in its robust form. (The per-agent τ
+sequence 21 → 21 → 15.5 → 10.5 across N = 1/2/4/8 is a within-crèche 2× step from the
+censored floor to N = 8; the ~4× figure is the crèche-of-8 agent against the *alone*
+baseline, not against the censored N = 1 value.)
 
 **Does NOT (the pre-registered qualification):** pooling is **not a total-sample free lunch**.
 At every rung the crèche spends more aggregate experience to reach criterion than one agent
@@ -129,9 +140,10 @@ accumulates undiluted. This is a real property of the shipped `substrate_merge` 
 apparatus artifact — the fold is left-associative ¼¼½ convex combination by design.
 
 **Honest scope in one line:** one campaign, one world layout, substrate-primary, in
-Minecraft, 20 cohorts/rung — pooling buys each participant faster learning and parallelism,
-at a total-experience cost; whether a different merge (coverage-preserving rather than
-mean-clamped) closes that cost is 1.3-line work, not claimed here.
+Minecraft, 20 cohorts/rung, teacher-taught wants — pooling buys each participant faster
+learning at a total-experience cost; whether a different merge (coverage-preserving rather
+than mean-clamped) closes that cost is 1.3-line work, not claimed here. This is not a scaling
+LAW (the gate is monotone decrease, not a functional form).
 
 Note the framing the metric fixes: NOT-JUST-MORE-DATA compares *total serial experience*.
 The crèche's 84 agent-trials at N = 8 are spent across 8 agents in parallel (10.5 each),
