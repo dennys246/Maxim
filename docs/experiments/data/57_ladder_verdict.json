@@ -1,0 +1,132 @@
+{
+  "constants": {
+    "cohorts_min": 20,
+    "delta_eff": 0,
+    "endpoint_spearman_min": 0.0,
+    "l2_concentration_max": 0.9,
+    "p_threshold": 0.05,
+    "permutations": 10000,
+    "rungs": [
+      1,
+      2,
+      4,
+      8
+    ]
+  },
+  "criterion": 0.75,
+  "gate_details": {
+    "L2_SEED_VARIANCE": {
+      "distinct_values": [
+        0.0,
+        0.25,
+        0.5
+      ],
+      "max": 0.9,
+      "n1_concentration": 0.75,
+      "n_cohorts": 20
+    },
+    "MONOTONICITY": {
+      "endpoint_medians": [
+        0.25,
+        0.5,
+        0.75,
+        0.75
+      ],
+      "endpoint_spearman": {
+        "p_value": 0.05131670194948612,
+        "rho": 0.9486832980505139
+      },
+      "guard_i_drop_censored": true,
+      "guard_ii_endpoint_rises": true,
+      "jt": {
+        "p_value": 9.999000099990002e-05,
+        "permutations": 10000,
+        "statistic": 2056.5
+      },
+      "jt_drop_censored": {
+        "p_value": 9.999000099990002e-05,
+        "permutations": 10000,
+        "statistic": 1086.5
+      },
+      "pass_jt": true
+    },
+    "NOISE_FLOOR": {
+      "creche_none_by_rung": {
+        "1": 0.0,
+        "2": 0.0,
+        "4": 0.0,
+        "8": 0.0
+      },
+      "creche_none_max_coverage": 0.0,
+      "criterion": 0.75
+    },
+    "NOT_JUST_MORE_DATA": {
+      "rung_2": {
+        "N_times_creche_tau": 42.0,
+        "ok": false,
+        "single_matched_tau": 41.0
+      },
+      "rung_4": {
+        "N_times_creche_tau": 62.0,
+        "ok": false,
+        "single_matched_tau": 46.0
+      },
+      "rung_8": {
+        "N_times_creche_tau": 84.0,
+        "ok": false,
+        "single_matched_tau": 43.0
+      }
+    }
+  },
+  "gates": {
+    "L2_SEED_VARIANCE": true,
+    "MONOTONICITY": true,
+    "NOISE_FLOOR": true,
+    "NOT_JUST_MORE_DATA": false
+  },
+  "noop_kit": {
+    "empty_fold": {
+      "coverage": 0.0
+    },
+    "kit_pass": true,
+    "receiver_unchanged": {
+      "coverage": 0.0
+    },
+    "rekeyed_alone": {
+      "coverage": 0.25
+    },
+    "ts": 1788914830.022442
+  },
+  "problems": [],
+  "stats": {
+    "rung_1": {
+      "creche_tau_median": 21.0,
+      "n_cohorts": 20,
+      "n_creche_none": 20,
+      "n_single_matched": 20,
+      "single_matched_tau_median": 21.0
+    },
+    "rung_2": {
+      "creche_tau_median": 21.0,
+      "n_cohorts": 20,
+      "n_creche_none": 20,
+      "n_single_matched": 20,
+      "single_matched_tau_median": 41.0
+    },
+    "rung_4": {
+      "creche_tau_median": 15.5,
+      "n_cohorts": 20,
+      "n_creche_none": 20,
+      "n_single_matched": 20,
+      "single_matched_tau_median": 46.0
+    },
+    "rung_8": {
+      "creche_tau_median": 10.5,
+      "n_cohorts": 20,
+      "n_creche_none": 20,
+      "n_single_matched": 20,
+      "single_matched_tau_median": 43.0
+    }
+  },
+  "verdict": "PARTIAL"
+}
