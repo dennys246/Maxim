@@ -318,6 +318,29 @@ apparatus re-baseline; do NOT run two versions long-term (operational overhead +
 collision risk). Staying on 1.16.5 is the zero-port-cost alternative but buys simpler mechanics
 and an old Java pin — not worth it given husbandry/crafting/farming are the 1.3 headline.
 
+## World vs. substrate: what gets built, and who builds it
+
+A recurring confusion worth pinning: **RCON builds the WORLD; the AGENT builds the substrate;
+nothing is hand-built in Minecraft.**
+- **The world (blocks + entities)** is assembled by **RCON command scripts** — `/fill`,
+  `/setblock`, `/summon`, `/clone`, `/effect` — run by the harness. Reproducible, seeded, no
+  manual block placement. A "cave" is just stone + air + darkness placed at coordinates; RCON
+  holds no concept of "cave."
+- **The substrate (clusters + learned bias)** is the AGENT's, formed from its **game-native
+  sensors** as it experiences the world: a cave becomes a recurring region of sensor-space
+  (`light_level` low, block-census stone-enclosed, `y_altitude` low, no sky) that the EC
+  clusters, and "cave = danger" is a LEARNED bias on that cluster after mobs attack it there.
+  There is no "cave" symbol and no `is_in_cave` flag — handing one would be engineering the
+  concept (a D1 violation). **Design consequence:** a classroom is only learnable if
+  game-native sensors render it SEPARABLE from its surroundings; verify that separability
+  through the real encoder BEFORE running (the instrument lesson — and note `light_level` read
+  DEAD in Exp 56, so cave-distinctness may have to rest on block-census / altitude / sky).
+- **Operator setup (hosting, not building):** stand up a Java Paper server for the chosen
+  version (offline mode, RCON enabled + password, daylight/mob-spawn gamerules — the
+  `~/exp56_server` pattern), run the mineflayer bridge (`node index.js`), run the harness. The
+  only optional hand-work is sketching a layout on a Mac Java client — and even then the real
+  classroom is rebuilt by RCON.
+
 ## Open design questions (to resolve before a prereg)
 
 1. Is AVOIDANCE (negative-credit, Tier 0) genuinely more tractable than APPROACH on the
