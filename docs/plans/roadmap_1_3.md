@@ -42,6 +42,18 @@ breaks) and **R1** (no cross-context generalization — the substrate is exact-k
   flagship) and the cheap **dark=danger avoidance** probe (rides the already-wired negative-
   credit path — the most tractable first contingency).
 
+### Phase 1b — Survival reflex tier *(new mechanism; gated `[engineering]`)*
+A fast, innate reaction — startle / flee / flinch on damage or threat-onset — firing BELOW the
+deliberation loop. Motivation: the learned-want layer is slow, and in a world with real damage
+**you can't learn if the first hostile kills you on contact**; an innate reflex buys time for
+the slow layer to learn (the reactive-DN + deliberative-substrate two-system story). **Scope
+gate:** this is a genuine new mechanism (action below deliberation), so it enters `[engineering]`
+and must earn behavioral weight — and the honest prior question is whether the existing
+negative-credit path already covers the behavior (learned avoidance needs experience; a reflex
+fires on first contact — the survival world is exactly where "first contact is lethal" justifies
+the innate version). **Distinct from the DN-canonical *orienting* reflex**, which is
+perception-coupled (cochlear/DoA → robot head) and stays in 1.4.
+
 ### Phase 2 — Shared survival wants *(the pivotal may-fail claim; the 1.3 headline)*
 Agent A learns "dark = danger" / eat-when-hungry the hard way → exports its substrate → agent B
 ingests it → **B survives its first night better, never bitten.** Needs only Phase 1 + the 1.2
@@ -89,6 +101,9 @@ undeclared default). Full design: [intrinsic_motivation_1_3.md](intrinsic_motiva
 
 ## Not in 1.3 (moved / parallel)
 
-- **Perception fabric + reflex tier + microduck + Exp 55 → 1.4** (the hardware thread; sequencing
-  in [roadmap_1_3_path.md](roadmap_1_3_path.md), now the 1.4 plan). Independent of the Minecraft
-  survival world.
+- **Perception fabric + microduck + Exp 55 + breeding → 1.4**, now the **"shared perception"**
+  release: richer video/audio (cochlear front-end, vision encoder, binding) **plus sharing at the
+  perception layer**. The **DN-canonical *orienting* reflex stays here** — it is perception-coupled
+  (fed by the cochlear/DoA front-end, moves a robot head; Minecraft has neither), and is distinct
+  from 1.3's survival reflex (Phase 1b). Caveat: sharing perception *representations* inherits R1's
+  transfer bound (harder than sharing wants). Sequencing: [roadmap_1_3_path.md](roadmap_1_3_path.md).
