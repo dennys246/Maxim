@@ -23,6 +23,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-09 — "Oasis"
+
+The substrate-sharing line. A taught want now transfers between genuinely independent
+agents through a shipped P2P exchange, and the collective-learning scaling question is
+answered with an honest qualification. **Exp 56 EARNED** — the 1.2 headline: agent A's
+learned world-keyed operant bias, exported as a signed bundle and ingested into an
+independent agent B, changes B's first-contact behaviour, needing the taught
+representation (four-arm live campaign, n = 50/arm, all gates PASS). **Exp 57 PARTIAL** —
+the dose-response scaling claim: pooling N independent partial learners lets each agent
+reach criterion in fewer of its own trials as N grows (MONOTONICITY PASS, robust form),
+but the pool spends more *total* experience than one agent given all of it
+(NOT-JUST-MORE-DATA fail) — a per-participant win, not a total-sample free lunch; the
+convex-combination merge cost is named as the 1.3 audit target. The Hivemind
+P2P substrate exchange shipped end to end (Slices A–D: ed25519 bundle signing, the
+authenticated HTTP endpoints, the `oasis`/`hive` CLIs + registry, and Queen-only consumer
+trust); Queen-tier promotion is deliberately deferred with its blocker recorded. R1
+(cross-layout) and R2 (drive premise) resolved as pre-registered offline structural nulls,
+bounding the claims and scoping the 1.3 survival line. Gates 1/3/7/8 closed.
+
 ### Added
 - **Direction-aware world sensors for the Minecraft bridge + the `minecraft_bench57`
   experiment body (Exp 57 apparatus).** The bridge (`scripts/minecraft_bridge/index.js`)
