@@ -23,6 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`maxim.console.make_pairing_announcer` — a one-call announcer factory for the spoken-code
+  pairing surface (A9.1).** `build_app(pairing_announcer=…)` takes a `(code: str) -> None`
+  callable that speaks the pairing code aloud, but pymaxim shipped no ready one — so an embedder
+  (e.g. the Reachy bootstrap) had to compose a TTS engine with the media loop's `speak` inside
+  its own bootstrap, which is composition logic in the presentation layer (an ARCHITECTURE.md
+  layer-ownership violation). The factory owns that composition in the library: pass it a TTS
+  engine (`synthesize(text)` + optional `sample_rate`) and an audio sink (`speak(samples,
+  sample_rate=…)`) and it returns the callable, wired in one line. Digit-by-digit default phrase
+  for room clarity; sample rate defaults to the TTS engine's; runs on the console's daemon thread
+  and never propagates — a failure is logged by exception TYPE only, and the code is never logged
+  (A7). Import-light (stdlib only; TTS + sink injected), so `import maxim.console` stays
+  FastAPI-free. Guard: `tests/unit/test_pairing_announcer.py`.
+
 ## [1.2.0] - 2026-09-09 — "Oasis"
 
 The substrate-sharing line. A taught want now transfers between genuinely independent

@@ -10,6 +10,10 @@ from __future__ import annotations
 
 from typing import Sequence
 
+# Import-light: announcer.py imports only the stdlib (TTS + audio sink are injected),
+# so re-exporting the factory here does NOT pull FastAPI/pydantic.
+from maxim.console.announcer import make_pairing_announcer
+
 
 def run_serve_subcommand(argv: Sequence[str]) -> int:
     """Entry point for ``maxim serve`` (dispatched from cli.py).
@@ -28,4 +32,4 @@ def run_serve_subcommand(argv: Sequence[str]) -> int:
     return run_serve(list(argv))
 
 
-__all__ = ["run_serve_subcommand"]
+__all__ = ["make_pairing_announcer", "run_serve_subcommand"]
