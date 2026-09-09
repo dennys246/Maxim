@@ -78,6 +78,18 @@ the most tractable starting contingency, distinct from APPROACH.
   the APPROACH counterpart of the Tier-0 avoidance. Needs the corrective prior + a
   light-affording action.
 
+**Dining hall — the R2-break-1 flagship (owner idea, 2026-09-08).** The cleanest first
+classroom AND the concrete proof that R2's break #1 is closed: a controlled room the agent
+enters at LOW health/food (controlled onset — the nursery's controlled-stimulus trick, no
+waiting for natural depletion), food on hand. `food`/`health` low → `eat` → measured relief
+→ operant credit on (deficit-situation, `eat`). If the agent learns to eat when in deficit
+and *not* otherwise, the drive→corrective-action link R2 found dead is alive. Standalone,
+buildable the moment the corrective-need derivation + measured-relief credit land — no
+generalization, no delay. **Caveat on "transfer":** teaching food-heals-**ME** here does NOT
+auto-transfer to feed-the-**wolf** (the husbandry classroom below) — that is other-healing in
+a different situation cluster, i.e. the R1 cross-context wall, not a free consequence of the
+dining hall. The dining hall proves rung 1; it does not hand you rung 3.
+
 ### Tier 2 — spatial / cross-context (needs the R1 generalization channel)
 - **"Resource is over there":** a location→resource association that generalizes across
   *similar* locations rather than firing at one exact cluster. Directly the R1 wall.
@@ -167,6 +179,55 @@ survival benchmark. It reuses two already-flagged missing primitives (the R1
 generalization/abstraction channel for hierarchy; a value-accruing curiosity term for
 salience). Treat it as a sibling of R3/R4, sharing the world but not the survival claim.
 
+### Wolf husbandry / taming classroom (owner idea, 2026-09-08) — an entity that regulates the agent's homeostasis
+The husbandry north-star realized NATURALLY (not by a hand-wired bond), and the cleanest test
+of "an entity adjusts the agent's own homeostasis/entropy." Two rungs at different depths — do
+not bundle them, or the hard half rides a mechanism that isn't there:
+- **Defense (single-step; buildable after the survival loop).** A wild wolf attacks a hostile
+  that is ALSO attacking the agent (the commensal shared-enemy first contact) → the hostile
+  deals less damage → the agent's health drive is RELIEVED by the wolf's action → operant
+  credit lands (Exp 52 path). The relief is game-native; nothing hand-codes "wolf = good." The
+  agent learns to value/stay-near the defender because it mechanically keeps it alive.
+- **Upkeep (delayed, multi-step — R4 frontier).** Maintain the ally at a resource cost so it
+  keeps defending: pay now, defense later. The SAME delayed-credit primitive crafting needs;
+  downstream of the R4 build, NOT free with defense.
+- **D1 mechanic correction (verify actuation before designing).** Minecraft wolves have NO
+  hunger bar — inventing one is a synthetic mechanic (D1 violation, the R2/instrument lesson).
+  Native mechanics giving the SAME learnable loop: **bones TAME** (wild→yours, one-time),
+  **meat HEALS** a tamed wolf, tamed wolves auto-attack what attacks the owner. So upkeep =
+  "heal the wolf (a resource cost) → it survives to keep defending you," every link a real
+  game mechanic — no invented sensor.
+- **Action-dependence is load-bearing (the R2 trap restated).** Auto-friendly as a STARTING
+  state is fine (it gives the first positive contact), but the LEARNED behaviour must causally
+  gate the relief — if the wolf defends regardless of anything the agent does, the outcome is
+  action-independent and there is nothing to learn (exactly R2's dead loop). Feeding/healing
+  must actually change whether the defender persists.
+- **Homeostasis framing:** the wolf becomes an entity the agent learns to maintain *because*
+  maintaining it regulates the agent's own state (threat down, at a resource cost) — the
+  husbandry vision, formed through the world's physics rather than a hand-wired bond. Breeding
+  (population dynamics over time) is a further axis — park it at 1.4+, don't inflate 1.3.
+
+### Crafting classroom (owner idea, 2026-09-08) — the delayed-credit / structure showcase (R4)
+Crafting is combinatorial (resource → intermediate → tool → better resource) and self-
+generating, so it reads as a natural novelty/salience testbed. But the honest framing: its
+VALUE is that it FORCES multi-step delayed credit — gather → craft intermediate (no payoff) →
+craft tool (still none) → use the tool to reach a resource you could not before. The reward is
+several steps removed from the first action = precisely the R4 primitive that does not exist.
+- **The trap (R1 restated):** if crafting is just "discover the fixed recipe set," it is an
+  exact-key recipe CACHE with no generalization — R1 all over again. The version worth building
+  is the one whose reward is delayed and whose structure (wood→planks→sticks→tools) could
+  transfer. So crafting is not a free classroom; it is R4's showcase, built AFTER the delayed-
+  credit substrate, not alongside it. A "rich garbage-yard of resources" (owner framing) is a
+  good dense discovery space — but Goldilocks applies: too rich → everything novel → no
+  discrimination; density must leave prior-headroom.
+- **Novelty must ignite-then-fade, not stay flat (correction to "each combo equally novel").**
+  Permanently-equal novelty kills the learning signal. Equal-on-first-encounter, yes;
+  equal-forever, no — use the learning-progress (v2 / (iii)) form from
+  [intrinsic_motivation_1_3.md](intrinsic_motivation_1_3.md), context-keyed on `(craft_action,
+  ingredient-cluster)` so each new combo re-ignites and mastered ones fade.
+- **Embody the station through SEM** (each recipe an affordance acted on) — the SEM binding is
+  the right vehicle, but it rides on the delayed-credit reward, which is the actual build.
+
 ### Tier 3 — R4 frontier (delayed, multi-step credit)
 - **Farming (the owner's idea):** sense seeds on the ground → (auto-plant next day) →
   crop grows → harvest → eat → relief. A payoff delayed a full day across multiple steps.
@@ -233,6 +294,30 @@ generalization channel is the thing under test. So:
   and makes a live demo. Per-rung CLAIMS still use a fresh agent per classroom. Both are on
   the menu — name which one each run is.
 
+## Minecraft version — build-platform decision (2026-09-08)
+
+The bridge uses **mineflayer `^4.20.0`** and does NOT hardcode a Minecraft version — it
+negotiates the protocol from the server it connects to. Exp 56/57 ran on **Paper 1.16.5**
+(Java 11–16). Versions are **not freely interchangeable**: the transport layer is flexible
+within mineflayer's supported range, but game MECHANICS (wolf taming, crafting recipes, food
+values, mob AI) and block/item/entity NAMES differ across versions, so a version move needs a
+sensor **port + verify pass**, and it counts as a "Minecraft bridge protocol change" — a
+re-run trigger for the Exp 56/57 graduation guards (any reused apparatus, e.g. the shared-want
+fabric, must be re-baselined on the new version).
+
+**Requirements for any chosen version:** (1) mature mineflayer support — NOT the newest
+release (mineflayer lags fresh versions and is buggy on them); (2) Paper/Spigot in offline
+mode with RCON + daylight/mob-spawn control (deterministic classrooms); (3) every sensor
+re-verified on that version (the instrument lesson); (4) matching Java.
+
+**Decision (proposed):** the 1.3 world's headline mechanics — husbandry (wolves), crafting,
+farming — are richer/cleaner on a MODERN version, so move the 1.3 line to **one modern *stable*
+version and commit to it** (target **1.20.1 / 1.20.4**: mature mineflayer support, Java 17;
+treat 1.21.x as "verify mineflayer support first"). Eat the one-time sensor re-verify + the
+apparatus re-baseline; do NOT run two versions long-term (operational overhead + `~/.maxim`
+collision risk). Staying on 1.16.5 is the zero-port-cost alternative but buys simpler mechanics
+and an old Java pin — not worth it given husbandry/crafting/farming are the 1.3 headline.
+
 ## Open design questions (to resolve before a prereg)
 
 1. Is AVOIDANCE (negative-credit, Tier 0) genuinely more tractable than APPROACH on the
@@ -247,8 +332,10 @@ generalization channel is the thing under test. So:
 
 ## Sequencing (proposed)
 
-Finish Exp 57 → ship 1.2 as scoped → open 1.3 with: (a) the survival-loop build (R2's 3
-breaks) + a cheap avoidance-vs-approach probe; (b) R3 survival benchmark (instrument +
-frozen baseline, Goldilocks-calibrated); (c) the R1 generalization channel; (d) R4 (farming
-/ shelter, delayed credit); (e) the shared-survival-want fabric. The owner's world design
-feeds (b)–(e).
+1.2 SHIPPED (Exp 56 EARNED + Exp 57 PARTIAL, 2026-09-09). Open 1.3 with: (a) the survival-loop
+build (R2's 3 breaks) + the **dining hall** (R2-break-1 flagship) + a cheap avoidance-vs-
+approach probe; (b) R3 survival benchmark (instrument + frozen baseline, Goldilocks-calibrated)
+— **single-step wolf defense** rides here; (c) the R1 generalization channel (unlocks the
+dining-hall→wolf transfer + spatial); (d) R4 delayed credit (farming / shelter / **crafting** /
+**wolf upkeep**); (e) the shared-survival-want fabric. Breeding is 1.4+. The owner's world
+design feeds (b)–(e).
