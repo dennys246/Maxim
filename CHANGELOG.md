@@ -36,6 +36,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and never propagates — a failure is logged by exception TYPE only, and the code is never logged
   (A7). Import-light (stdlib only; TTS + sink injected), so `import maxim.console` stays
   FastAPI-free. Guard: `tests/unit/test_pairing_announcer.py`.
+- **`maxim.utils.audio.make_device_speak_sink(mini)` + `push_audio_to_device(...)` — the single
+  Reachy-speaker sink, reachable from a bare SDK handle.** The pairing announcer needs a `speak`
+  sink *before any agent exists* (the owner signs in via spoken-code pairing before the
+  SetupWizard runs), but the only sink was `MediaLoopMixin.speak`, which lives in the full
+  embodied runtime. The device-speak body is now a standalone function needing only the SDK
+  handle; `MediaLoopMixin.speak` calls it (one implementation), and an embedder wires
+  `make_pairing_announcer(tts=TTSEngine(), speak=make_device_speak_sink(reachy_mini))` with no
+  composition of its own. Construction is inert (closes over the handle only — offline-test
+  safe). Guard: `tests/unit/test_device_speak_sink.py`.
+
+### Fixed
+- **Device audio was pushed as int16 into a float32 pipeline (silent noise).** `reachy_mini`'s
+  `push_audio_sample` is typed `NDArray[float32]` and wraps `.tobytes()` with no conversion,
+  while Piper TTS returns int16 — so pushing straight through reinterpreted the bytes as float32
+  (garbage at half duration). `MediaLoopMixin.speak` did exactly this while its *local* fallback
+  converted, so **embodied Piper speech on the Reachy speaker path was affected too**, not only
+  the (new) pairing announce. The int16→float32 conversion now lives once in
+  `utils.audio._to_device_float32`, applied on both the device and local paths. The A9.1 gate is
+  that the owner *hears* the code, so this closes a silent security-property failure. (Sample-rate
+  handling into the fixed-rate device pipeline is a separate question flagged for hardware
+  verification — Piper is 22050 Hz and the SDK `push_audio_sample` takes no rate.)
 
 ## [1.2.0] - 2026-09-09 — "Oasis"
 

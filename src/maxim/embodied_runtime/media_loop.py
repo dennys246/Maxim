@@ -727,37 +727,19 @@ class MediaLoopMixin:
         Returns:
             True if audio was played successfully, False otherwise.
         """
-        if samples is None or len(samples) == 0:
-            return False
+        # Single device-speak implementation lives in utils.audio (it owns the
+        # int16 -> float32 conversion the SDK requires and the WebRTC/local fallback),
+        # so the pairing announcer can reach the same sink from a bare SDK handle
+        # without the embodied runtime. This body just binds `self`.
+        from maxim.utils.audio import push_audio_to_device
 
-        # Check if local audio is preferred (set via environment)
-        prefer_local = os.environ.get("MAXIM_TTS_LOCAL", "").lower() in ("1", "true", "yes")
-
-        # Try Reachy speaker first (unless local is preferred)
-        if not prefer_local:
-            try:
-                self.mini.media.push_audio_sample(samples)
-                return True
-            except Exception as e:
-                # Check if this is a "not implemented" error (WebRTC limitation)
-                error_str = str(e).lower()
-                if "not implemented" in error_str or "webrtc" in error_str:
-                    self.log.info("Reachy speaker not available (WebRTC), using local audio")
-                else:
-                    warn("Failed to play audio on Reachy: %s", e, logger=self.log)
-                    self._note_connection_failure("audio", e)
-
-        # Fall back to local audio playback
-        try:
-            from maxim.utils.audio import play_audio_local
-
-            success = play_audio_local(samples, sample_rate=sample_rate, blocking=False)
-            if success:
-                self.log.debug("Playing audio through local speakers")
-            return success
-        except Exception as e:
-            warn("Local audio playback failed: %s", e, logger=self.log)
-            return False
+        return push_audio_to_device(
+            self.mini,
+            samples,
+            sample_rate=sample_rate,
+            log=self.log,
+            on_failure=lambda e: self._note_connection_failure("audio", e),
+        )
 
     def look(self, save_file=None, show=True, release=False):
         # Grab frame from reachy mini camera
