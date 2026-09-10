@@ -23,7 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-10 — "Spoken-code loop"
+
+Completes the spoken-code device-pairing loop end to end and clears the 1.2.0 console
+contract-lag. The pulse console UI shipped its 0.5.0 contract (maxim-pulse v0.3.0), so this
+release vendors the matching bundle — the startup warning and the on-screen banner 1.2.0
+carried are gone — and pairs it with the two pymaxim pieces the loop needs: the announcer
+factory and the device speak sink. Infrastructure only, no behavioral claim.
+
 ### Added
+- **Console UI re-vendored to contract 0.5.0 (from maxim-pulse v0.3.0).** The 1.2.0 wheel
+  shipped the 0.4.0 bundle (pulse had no 0.5.0 yet), so the server's 0.5.0 contract logged a
+  mismatch warning at startup and drew a banner on every screen. This release vendors the
+  canonical v0.3.0 `console-dist` (contract 0.5.0), clearing both — and the spoken-code pairing
+  UI (the A9.1 device sign-in screen) is now present.
 - **`maxim.console.make_pairing_announcer` — a one-call announcer factory for the spoken-code
   pairing surface (A9.1).** `build_app(pairing_announcer=…)` takes a `(code: str) -> None`
   callable that speaks the pairing code aloud, but pymaxim shipped no ready one — so an embedder
