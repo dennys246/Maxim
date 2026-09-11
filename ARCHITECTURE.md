@@ -1,6 +1,6 @@
 # Architecture (Maxim)
 
-> Last reviewed 2026-08-26 against the 1.1.0 tree. The layer-ownership rules below are what `maxim --audit-architecture` enforces (baseline `src/maxim/utils/architecture_baseline.json`, CI-gated). **Known gap:** the Key Modules section predates several live subsystems — `comms/`, `doctor/`, `hivemind/`, `imagination/`, `motion/`, `reactions/`, `roy/`, `tunnel/`, `default_network/`, `console/` — see `docs/reference.md` for the current inventory until this section is refreshed.
+> Last reviewed 2026-09-10 against the 1.2.1 tree. The layer-ownership rules below are what `maxim --audit-architecture` enforces (baseline `src/maxim/utils/architecture_baseline.json`, CI-gated). The Key Modules section was refreshed 2026-09-10 to add the subsystems it had predated (`comms/`, `doctor/`, `hivemind/`, `imagination/`, `motion/`, `reactions/`, `roy/`, `tunnel/`, `default_network/`, `console/`); `docs/reference.md` carries the full file-level inventory.
 
 Maxim is a bio-inspired cognitive architecture for AI agents. It combines a 5-agent pipeline (Perception, Memory, Exec, Goal, Statistician) with biological memory systems (Hippocampus, ATL, Angular Gyrus, SCN, NAc) and a reactive Default Network. Works headless, in simulation, or connected to a robot.
 
@@ -169,6 +169,16 @@ If a component cannot be tested in isolation, the architecture is violated.
 - `src/maxim/models/movement/`: MotorCortex model (ConvNeXt-Tiny head-movement prediction).
 - `src/maxim/models/audio/`: Whisper wrapper (transcription backend).
 - `src/maxim/models/language/`: optional local LLM routing (transcript → agentic action).
+- `src/maxim/hivemind/`: substrate-sharing layer — signed bundle export/ingest + the 1.2 P2P exchange (`oasis`/`hive` CLIs, Queen-only trust).
+- `src/maxim/console/`: `maxim serve` localhost Console backend + the OpenAPI facade contract (import-light; FastAPI in the `[console]` extra).
+- `src/maxim/doctor/`: `maxim doctor` — environment diagnostics + guided setup.
+- `src/maxim/tunnel/`: Cloudflare tunnel integration for leader-mode clusters (`maxim tunnel`).
+- `src/maxim/comms/`: communication gateway + channel transport (Twilio SMS/voice via the `[comms]` extra).
+- `src/maxim/motion/`: low-level motion primitives and action helpers (SDK-sanctioned `move_head`).
+- `src/maxim/reactions/`: reactive stimulus→response layer (the reflex tier).
+- `src/maxim/default_network/`: Default Network — reactive behavior layer.
+- `src/maxim/imagination/`: real-time entity design from novel percept mentions.
+- `src/maxim/roy/`: Roy harness — persona-convergence crucible utilities.
 - `src/maxim/interactive/`: universal prompt protocol and rich terminal display.
   - `prompts.py`: PromptRequest, PromptHandler ABC, PromptType enum. Every user interaction flows through this protocol (DM choices, architect interviews, freeform chat, confirmations).
   - `display.py`: Rich-based split-panel terminal UI with scrolling agent log, status bar, and input area. Graceful degradation without `rich`.
