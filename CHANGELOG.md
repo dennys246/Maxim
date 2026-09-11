@@ -23,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **God-function length ratchet in CI (`scripts/lint_function_length.py`).** The 2026-08-27
+  score card's standing Maintainability complaint was "CI does not bound any function's length"
+  — and the three largest functions had grown. This pins `run_agentic_loop` /
+  `start_simulation_mode` / `_main_impl` at their current spans (3488 / 3324 / 1747) and fails
+  CI if any grows; a real extraction lowers the pin (ratchet-down only, like the atomic-io
+  ratchet). Fails loud if a pinned function is renamed/moved rather than silently passing. First
+  item of the 1.3 quality burndown ([docs/plans/burndown_1_3.md](docs/plans/burndown_1_3.md)).
+  Guard: `tests/unit/test_lint_function_length.py`.
+
 ## [1.2.1] - 2026-09-10 — "Spoken-code loop"
 
 Completes the spoken-code device-pairing loop end to end and clears the 1.2.0 console

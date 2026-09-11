@@ -1048,6 +1048,15 @@ jobs:
           # per-file; new files start at zero; burn-down is free).
           python3 scripts/lint_atomic_io_ratchet.py
 
+      - name: God-function length ratchet (Maintainability score-card mechanization)
+        # The 2026-08-27 card's standing complaint: "CI does not bound any
+        # function's length" and all three god-functions had GROWN. Pins
+        # run_agentic_loop / start_simulation_mode / _main_impl at their current
+        # spans; fails if any grows (ratchet-down only — decomposition lowers the
+        # pin). Positive control: tests/unit/test_lint_function_length.py.
+        run: |
+          python3 scripts/lint_function_length.py
+
       - name: Harness provenance lint (Exp 42b retraction lesson)
         run: |
           # Any scripts/**/*.py that spawns `maxim` sub-sims must call
