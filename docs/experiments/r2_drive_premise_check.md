@@ -6,10 +6,13 @@
 > drive-affinity heuristic no longer feeds it raw sensor values or lands on passive `read_` tools.
 > Re-running `r2_drive_premise_probe.py` (prior-only) now reports `moves_behaviour: true` — hungry/hurt →
 > `eat`, satiated → nothing. **But that probe instruments the prior ONLY**; the survival PREMISE this doc
-> names needs all three breaks, and **breaks 2 (measured-relief credit so the want is LEARNED) and 3 (the
-> world affording the acts) remain open** — so the status below stays NULL and the gated
-> `data/r2_drive_premise.json` 1.2 record is deliberately unchanged. See
-> `tests/unit/test_survival_drive_prior.py` and CHANGELOG `[Unreleased]`.
+> names needs all three breaks. **Break 2 has since landed the measured-relief credit PATH**
+> (`tests/unit/test_survival_learns_break2.py`) — a hungry agent's real `eat` relief is now credited to
+> the interoception cluster instead of being withheld — but **break 3 (a world that affords the acts)
+> remains open**, and this probe (prior-only) is deliberately NOT re-run for break 2 (it does not
+> instrument the credit path). So the status below stays NULL and the gated `data/r2_drive_premise.json`
+> 1.2 record is unchanged. See `tests/unit/test_survival_drive_prior.py`,
+> `tests/unit/test_survival_learns_break2.py`, and CHANGELOG `[Unreleased]`.
 
 **Status: PREMISE-NULL, 2026-09-07.** The Minecraft survival ladder's R2 rung
 ([minecraft_benchmark.md](../plans/minecraft_benchmark.md) Part II) asks whether the

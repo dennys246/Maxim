@@ -25,6 +25,7 @@ def _world_body(food_initial: float):
                     "unit": "points",
                     "range": [0, 40],
                     "initial": food_initial,
+                    "modality": "world",  # world-owned interoceptive drive (as minecraft_player)
                     "drive": {
                         "drift_mode": "entropic",
                         "drift_direction": "down",
@@ -108,3 +109,62 @@ def test_affordance_declaring_no_drive_is_not_blamed_for_ambient_drain():
     tool = ModulatorAffordanceTool(body, mod, "move_to", schema, "minecraft_player_move_to", embodiment=emb)
     side = tool.execute().side_effects or {}
     assert side.get("drive_relief_channel") != "interoceptive"  # not blamed for the drain
+
+
+def test_exteroceptive_live_drive_is_not_locally_measured_when_backend_abstains():
+    """The two-lens DO-NOT-SHIP regression: a live-owned EXTEROCEPTIVE drive (azimuth,
+    modality 'audio') in self_effect, whose motor backend ABSTAINS this cycle (timeout —
+    no measured_drive_transitions) while the async DoA thread moved vital_metrics toward
+    center, must NOT fabricate interoceptive credit. Modality-gating (not backend-reporting)
+    is what keeps azimuth off the local path.
+    """
+    from maxim.embodiment.body import Embodiment
+    from maxim.embodiment.sem import AffordanceSchema, ModulatorResult
+    from maxim.embodiment.spec import _parse_entity
+    from maxim.embodiment.tool_bridge import ModulatorAffordanceTool
+
+    body = _parse_entity(
+        {
+            "name": "robot",
+            "entity_type": "body",
+            "sensors": {
+                "azimuth": {
+                    "unit": "rad",
+                    "range": [-1, 1],
+                    "initial": -0.5,
+                    "modality": "audio",  # EXTEROCEPTIVE — backend-measured, never local
+                    "drive": {
+                        "drift_mode": "homeostatic",
+                        "set_point": 0.0,
+                        "drift_rate": 0.0,
+                        "comfort_band": 0.0,
+                    },
+                }
+            },
+        }
+    )
+    emb = Embodiment(body)
+    emb.live_world_set_sensors = {"azimuth"}
+
+    class _AbstainingBackend:  # the Reachy motor backend on a post-turn DoA timeout
+        name = "motor"
+
+        def check_affordance_requires(self, _n):
+            return (True, "")
+
+        def execute(self, affordance, params):
+            body.vital_metrics["azimuth"] = -0.2  # async DoA thread moved it toward center
+            return ModulatorResult(  # success, but NO measured_drive_transitions (abstained)
+                modulator_name="motor",
+                entity_name="robot",
+                affordance=affordance,
+                params=params,
+                success=True,
+            )
+
+    schema = AffordanceSchema(description="Turn", self_effect={"azimuth": -0.3})
+    tool = ModulatorAffordanceTool(body, _AbstainingBackend(), "turn", schema, "robot_turn", embodiment=emb)
+    side = tool.execute().side_effects or {}
+    # No fabricated sign, and never routed interoceptive (old behavior: withheld).
+    assert side.get("drive_relief_channel") != "interoceptive"
+    assert side.get("drive_potential_diff") is None
