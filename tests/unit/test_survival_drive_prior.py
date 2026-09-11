@@ -12,12 +12,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from maxim.embodiment.sem import EntropicDriveSpec, HomeostaticDriveSpec
-from maxim.runtime.agent_loop import (
-    _corrective_intensity,
-    _corrective_need_for,
-    _read_drive_states,
+from maxim.embodiment.sem import (
+    EntropicDriveSpec,
+    HomeostaticDriveSpec,
+    corrective_need_intensity,
 )
+from maxim.runtime.agent_loop import _corrective_need_for, _read_drive_states
 
 
 def _executor(health: float, food: float):
@@ -50,9 +50,9 @@ def test_need_name_mapping():
 
 def test_homeostatic_intensity_preserves_legacy_cold_formula():
     spec = HomeostaticDriveSpec(set_point=20.0, drift_rate=0.0, comfort_band=6.0)
-    assert _corrective_intensity(spec, 5.0) == 1.0  # min(1, |5-20|) — deep deficit saturates
-    assert _corrective_intensity(spec, 20.0) is None  # at set_point
-    assert _corrective_intensity(spec, 16.0) is None  # within the comfort band (dev -4 < 6)
+    assert corrective_need_intensity(spec, 5.0) == 1.0  # min(1, |5-20|) — deep deficit saturates
+    assert corrective_need_intensity(spec, 20.0) is None  # at set_point
+    assert corrective_need_intensity(spec, 16.0) is None  # within the comfort band (dev -4 < 6)
 
 
 def test_entropic_intensity_is_graded():
@@ -63,9 +63,9 @@ def test_entropic_intensity_is_graded():
         deprivation_pain=0.5,
         satisfaction_threshold=16.0,
     )
-    assert _corrective_intensity(spec, 2.0) == 1.0  # below deprivation -> max
-    assert _corrective_intensity(spec, 11.0) == 0.5  # (16-11)/(16-6)
-    assert _corrective_intensity(spec, 20.0) is None  # above satisfaction -> no need
+    assert corrective_need_intensity(spec, 2.0) == 1.0  # below deprivation -> max
+    assert corrective_need_intensity(spec, 11.0) == 0.5  # (16-11)/(16-6)
+    assert corrective_need_intensity(spec, 20.0) is None  # above satisfaction -> no need
 
 
 def test_starving_and_hurt_emits_corrective_needs():
@@ -87,13 +87,17 @@ def test_satiated_and_healthy_emits_no_corrective_need():
 
 # End-to-end through the real consumer (recommend_action), mirroring the R2 probe:
 # this is the committed form of the PREMISE-NULL -> PREMISE-HELD flip.
+# The real minecraft_player affordance set (avatar: move_to/turn/mine_block/place_block/
+# eat/attack_nearest) + the two passive sensor reads.
 _ROSTER = [
     "read_minecraft_player_health",
     "read_minecraft_player_food",
     "minecraft_player_eat",
     "minecraft_player_attack_nearest",
     "minecraft_player_place_block",
-    "minecraft_player_move_forward",
+    "minecraft_player_mine_block",
+    "minecraft_player_move_to",
+    "minecraft_player_turn",
 ]
 _CORRECTIVE = {"minecraft_player_eat", "minecraft_player_attack_nearest"}
 

@@ -51,9 +51,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hardcoded `"cold"` sniff into `_DRIVE_CORRECTIVE_NEEDS` *without* touching the CC3-frozen
   `DriveSpec`; (2) passive `read_` tools accrue no drive relevance (a need is relieved by a
   corrective *action*, never by reading the sensor that measures it). Result: hungry/hurt → `eat`,
-  satiated → rests; the R2 probe flips PREMISE-NULL → PREMISE-HELD. LLM-free path only
-  (`propose_via_substrate`); Exp 37/38 unaffected. Break 2 (measured-relief credit so it *learns*)
-  and break 3 (the world affording the acts) still ahead. Guard:
+  satiated → rests. The **prior-only** R2 probe (which instruments the cold-start prior only)
+  now selects corrective affordances — its verdict flips — but the **survival premise itself
+  remains NULL**: breaks 2 (measured-relief credit so it *learns*, not just starts pointed right)
+  and 3 (the world affording the acts) are still ahead, and the gated `r2_drive_premise.json`
+  1.2 record stands unchanged. The interoceptive floor is flight/freeze/recover; FIGHT (attack)
+  on a danger cue is the Phase-1b reflex, not this. Intensity math lives in
+  `embodiment/sem.py::corrective_need_intensity` (isinstance-dispatched). LLM-free path only
+  (`propose_via_substrate`); Exp 37/38 unaffected. Guard:
   `tests/unit/test_survival_drive_prior.py`.
 
 ## [1.2.1] - 2026-09-10 — "Spoken-code loop"
