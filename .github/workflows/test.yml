@@ -1048,6 +1048,16 @@ jobs:
           # per-file; new files start at zero; burn-down is free).
           python3 scripts/lint_atomic_io_ratchet.py
 
+      - name: '[Unreleased] entry on a src change (versioning policy, roadmap 16.10)'
+        # The owed half of the versioning policy: lint_version_sync enforces "main
+        # ahead of PyPI"; this enforces the pair — a diff touching src/maxim/*.py
+        # must grow CHANGELOG's [Unreleased] (release transactions, which add a new
+        # version header, are exempt). Diff-scoped, so it lives beside the atomic-io
+        # ratchet where origin/main is available. Positive control:
+        # tests/unit/test_lint_unreleased_on_src_change.py.
+        run: |
+          python3 scripts/lint_unreleased_on_src_change.py
+
       - name: God-function length ratchet (Maintainability score-card mechanization)
         # The 2026-08-27 card's standing complaint: "CI does not bound any
         # function's length" and all three god-functions had GROWN. Pins
