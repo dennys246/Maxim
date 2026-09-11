@@ -530,6 +530,13 @@ _DRIVE_TOOL_AFFINITIES: dict[str, tuple[str, ...]] = {
     "cold": ("warm", "fire", "blanket", "huddle"),
     "thermal": ("warm", "fire", "blanket", "huddle"),
     "fear": ("flee", "hide", "retreat", "escape"),
+    # Defensive repertoire for a health/threat deficit (fight/flight/freeze mapped to
+    # real affordances; "fawn"/appease has no clean world affordance yet). The
+    # anticipatory "danger-cue -> threat" trigger is the Phase-1b reflex tier; this
+    # entry is the deliberative interoceptive floor (low health -> defend/escape).
+    # NB: no "block" keyword — it false-matches place_block/mine_block (building, not
+    # defense). Keywords must name defensive ACTIONS, not nouns.
+    "threat": ("attack", "flee", "hide", "retreat", "escape", "defend"),
     "curiosity": ("examine", "look", "sense", "inspect"),
     "pain": ("rest", "heal", "tend", "withdraw"),
 }
@@ -2070,7 +2077,15 @@ class NAc:
 
             # Component 3: drive-relevance (cold-start heuristic)
             tool_lower = tool_name.lower()
-            for drive_name, drive_value in drives.items():
+            # R2 break 1: a drive-need is relieved by a corrective ACTION, never by
+            # reading the sensor that measures it — `health` was name-matching
+            # `read_minecraft_player_health` (and even the "hunger"→"food" affinity
+            # keyword matches `read_..._food`). Passive sensor-read tools accrue NO
+            # drive relevance; corrective needs reach real affordances (eat / the
+            # defensive repertoire) through the matches below.
+            # (docs/experiments/r2_drive_premise_check.md).
+            drive_items = {} if tool_lower.startswith("read_") else drives
+            for drive_name, drive_value in drive_items.items():
                 # NOTE: this 0.5 activation floor is intentionally the same value
                 # as ``drive_gate_threshold`` (the B7 gate below). They are
                 # coupled by design — a tool only enters ``drive_relevant`` when a
@@ -2082,7 +2097,7 @@ class NAc:
                     continue
                 drive_lower = drive_name.lower()
 
-                # Direct name substring match
+                # Direct name substring match (passive reads already excluded above).
                 if drive_lower in tool_lower:
                     score += drive_value
                     comp["drive"] += drive_value
