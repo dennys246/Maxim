@@ -1067,6 +1067,15 @@ jobs:
         run: |
           python3 scripts/lint_function_length.py
 
+      - name: Orphan-module ratchet (dead-code lesson mechanization)
+        # CLAUDE.md's dead-code lesson ("15 dead modules shipping in the wheel,
+        # no automated test enforces"). Lists any src/maxim module referenced
+        # nowhere in src/tests/scripts/pyproject; grandfathered set is empty
+        # (0 orphans today), so ANY new orphan fails. Ratchet-down only.
+        # Positive control: tests/unit/test_lint_orphan_modules.py.
+        run: |
+          python3 scripts/lint_orphan_modules.py
+
       - name: Harness provenance lint (Exp 42b retraction lesson)
         run: |
           # Any scripts/**/*.py that spawns `maxim` sub-sims must call
