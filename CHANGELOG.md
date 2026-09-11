@@ -32,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ratchet). Fails loud if a pinned function is renamed/moved rather than silently passing. First
   item of the 1.3 quality burndown ([docs/plans/burndown_1_3.md](docs/plans/burndown_1_3.md)).
   Guard: `tests/unit/test_lint_function_length.py`.
+- **Orphan-module ratchet in CI (`scripts/lint_orphan_modules.py`).** Mechanizes CLAUDE.md's
+  dead-code lesson ("15 dead modules ~8,500 LOC shipping in the wheel; no automated test
+  enforces"). Lists any `src/maxim/**` module referenced nowhere in src/tests/scripts/pyproject
+  (permissive matching — the safe direction is to under-report a dead module, never false-flag a
+  live one); the grandfathered set is **empty** (zero orphans today — the 8 that looked orphaned
+  in a src-only scan each turned out to have a dedicated test), so any NEW orphan fails CI.
+  Ratchet-down only; `__main__` is allow-listed. Second guard of the 1.3 quality burndown
+  ([docs/plans/burndown_1_3.md](docs/plans/burndown_1_3.md) Batch 1). Guard:
+  `tests/unit/test_lint_orphan_modules.py`.
 
 ## [1.2.1] - 2026-09-10 — "Spoken-code loop"
 
