@@ -32,6 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ratchet). Fails loud if a pinned function is renamed/moved rather than silently passing. First
   item of the 1.3 quality burndown ([docs/plans/burndown_1_3.md](docs/plans/burndown_1_3.md)).
   Guard: `tests/unit/test_lint_function_length.py`.
+- **`[Unreleased]`-on-src-change lint in CI (`scripts/lint_unreleased_on_src_change.py`).** The
+  owed half of the versioning policy (CLAUDE.md §Versioning / roadmap item 16.10): `lint_version_sync`
+  enforces "main ahead of PyPI"; this enforces the pair — a diff touching `src/maxim/**/*.py` must
+  grow `CHANGELOG`'s `## [Unreleased]` section, with release transactions (a new `## [X.Y.Z]` header)
+  exempt. Diff-scoped against the merge-base with origin/main; docs/tests/scripts-only diffs don't
+  trigger it. Third guard of the 1.3 quality burndown ([docs/plans/burndown_1_3.md](docs/plans/burndown_1_3.md)
+  Batch 1). Guard: `tests/unit/test_lint_unreleased_on_src_change.py`.
 
 ## [1.2.1] - 2026-09-10 — "Spoken-code loop"
 
