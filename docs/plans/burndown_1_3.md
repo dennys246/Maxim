@@ -6,6 +6,30 @@ that runs *alongside* the survival-world 1.3 build ([roadmap_1_3.md](roadmap_1_3
 of it. It is optional quality work: no behavioral-graduation row is `Stale` or `Broken`, so
 nothing here gates a release.
 
+## Status — 2026-09-10: Batches 1–2 shipped; **remainder deferred to post-1.3**
+
+Owner decision (2026-09-10): ship the high-value low-risk guards + claim-truth now, then
+**pivot back to the survival-world 1.3 build**; pick the rest up **after 1.3**.
+
+**Done / in review:**
+- **Batch 1 (guards):** function-length ratchet **merged** (#678); orphan-module ratchet (#679)
+  and `[Unreleased]`-on-src lint (#680) in review.
+- **Batch 2 (claim-truth):** #681 — ARCHITECTURE Key-Modules refresh + D10/D29 caveats.
+  Verifying first showed **most Batch-2 items were already fixed after the stale 2026-08-27
+  card** (L185/L186 guards + data-lost notes landed 2026-08-29; all 20 Tier-3 rows disposed
+  2026-08-30), so only the genuinely-remaining bits shipped.
+
+**Deferred to post-1.3 (pick up in this order):**
+- **Batch 0 — commission the owed re-score cards** (Codex 1.1.0 + both 1.2). *The lever.* The
+  card critiques are largely stale, so we're aiming at a three-cuts-old baseline until this runs.
+  Assessor action.
+- **Batch 1 remainder — D63** (wire `pr_merge_readiness`'s required-checks-present check into a
+  merge gate/ruleset). Needs repo-settings, partly the owner's action.
+- **Batch 3 (small correctness):** N1 campaign params, D32 foundational preamble, D84
+  honest-refuse, D49 benchmark honesty, plus the D46/D50 code fixes.
+- **Batch 4 (opportunistic):** fail-loud Stage 3, god-function decomposition, mypy scope, D19,
+  behavioral-suite thickening.
+
 ## Three framing facts
 
 1. **The score-card baseline is stale.** The newest card is the 1.1.0 re-score (2026-08-27,

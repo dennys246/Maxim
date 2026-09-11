@@ -15,9 +15,7 @@ import importlib.util
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent.parent
-_SPEC = importlib.util.spec_from_file_location(
-    "lint_orphan_modules", _REPO / "scripts" / "lint_orphan_modules.py"
-)
+_SPEC = importlib.util.spec_from_file_location("lint_orphan_modules", _REPO / "scripts" / "lint_orphan_modules.py")
 assert _SPEC and _SPEC.loader
 _LINT = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_LINT)
