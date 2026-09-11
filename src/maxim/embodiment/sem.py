@@ -264,6 +264,38 @@ def drive_pain_for_value(spec: DriveSpec, value: float) -> float:
     return 0.0
 
 
+def corrective_need_intensity(spec: DriveSpec, value: float) -> float | None:
+    """Cold-start action-selection PRIOR: the deficit intensity in [0, 1] a drive
+    emits as a *corrective need*, or None when the drive is not in deficit.
+
+    Deliberately NOT ``drive_pain_for_value``: this feeds the substrate-primary
+    action-selection prior (``_read_drive_states`` → ``NAc.recommend_action``), which
+    wants a simple monotone deficit magnitude AND must keep the pre-existing "cold"
+    derivation BYTE-IDENTICAL — ``min(1, |value - set_point|)`` — whereas
+    ``drive_pain_for_value`` weights by ``comfort_band``/``pain_scale``, which would move
+    every thermal body's cold intensity. Kept here (the embodiment layer owns drive
+    semantics), dispatched by ``isinstance`` beside the pain/comfort helpers, rather
+    than re-derived in the runtime.
+
+    Homeostatic: below set_point past the comfort band → ``min(1, |value - set_point|)``.
+    Entropic draining ("down"): graded from the satisfaction threshold down to the
+    deprivation threshold. Entropic "up" drives and above-set_point deficits have no
+    corrective direction here (return None) — the 1.3 survival-loop scope (break 1).
+    """
+    if isinstance(spec, HomeostaticDriveSpec):
+        deviation = value - spec.set_point
+        if deviation < -spec.comfort_band:
+            return min(1.0, abs(deviation))
+        return None
+    if isinstance(spec, EntropicDriveSpec):
+        if spec.drift_direction == "down" and value < spec.satisfaction_threshold:
+            span = spec.satisfaction_threshold - spec.deprivation_threshold
+            if span <= 0:
+                return 1.0
+            return max(0.0, min(1.0, (spec.satisfaction_threshold - value) / span))
+    return None
+
+
 def drive_comfort_progress(spec: DriveSpec, before: float, after: float) -> float:
     """How far an action moved a drive TOWARD comfort (before → after).
 

@@ -522,6 +522,13 @@ class NACConfig:
 # proposal. Stand-in for proper EC embedding similarity (Phase 0+ replaces).
 # See NAc.recommend_action(). Keys are lowercase drive names; values are
 # substrings to match in tool names (also lowercase).
+# The naming convention for a passive sensor-READ tool (emitted by
+# embodiment/tool_bridge as ``read_<entity>_<sensor>``). A drive-need is never relieved
+# by reading the sensor that measures it, so these accrue no drive relevance (R2 break 1).
+# Documented here as the contract; a body whose sensor-read tools are named otherwise
+# (e.g. the ``sense`` universal-sense scheme) is unaffected by the exclusion.
+_PASSIVE_READ_PREFIX = "read_"
+
 _DRIVE_TOOL_AFFINITIES: dict[str, tuple[str, ...]] = {
     "hunger": ("eat", "pick_up", "food", "consume", "feed"),
     "thirst": ("drink", "water", "consume"),
@@ -530,6 +537,14 @@ _DRIVE_TOOL_AFFINITIES: dict[str, tuple[str, ...]] = {
     "cold": ("warm", "fire", "blanket", "huddle"),
     "thermal": ("warm", "fire", "blanket", "huddle"),
     "fear": ("flee", "hide", "retreat", "escape"),
+    # Interoceptive floor for a health deficit ("I am injured"): FLIGHT / FREEZE /
+    # recover only. FIGHT (attack) is deliberately EXCLUDED — attacking when merely
+    # injured with no threat present is wrong (review round, both lenses); the full
+    # fight/flight/freeze/fawn response fires on a DANGER CUE at the Phase-1b reflex
+    # tier (its own mechanism), not from interoception. "fawn"/appease and most of
+    # these have no clean world affordance in the void body yet. No "block" keyword —
+    # it false-matches place_block/mine_block. Keywords name defensive ACTIONS.
+    "threat": ("flee", "hide", "retreat", "escape", "withdraw", "defend", "shelter"),
     "curiosity": ("examine", "look", "sense", "inspect"),
     "pain": ("rest", "heal", "tend", "withdraw"),
 }
@@ -2070,7 +2085,16 @@ class NAc:
 
             # Component 3: drive-relevance (cold-start heuristic)
             tool_lower = tool_name.lower()
-            for drive_name, drive_value in drives.items():
+            # R2 break 1: a drive-need is relieved by a corrective ACTION, never by
+            # reading the sensor that measures it — `health` was name-matching
+            # `read_minecraft_player_health` (and even the "hunger"→"food" affinity
+            # keyword matches `read_..._food`). Passive sensor-read tools accrue NO
+            # drive relevance; corrective needs reach real affordances (eat / the
+            # defensive repertoire) through the matches below.
+            # (docs/experiments/r2_drive_premise_check.md). `_PASSIVE_READ_PREFIX` is
+            # the sensor-read tool naming convention emitted by tool_bridge.
+            drive_items = {} if tool_lower.startswith(_PASSIVE_READ_PREFIX) else drives
+            for drive_name, drive_value in drive_items.items():
                 # NOTE: this 0.5 activation floor is intentionally the same value
                 # as ``drive_gate_threshold`` (the B7 gate below). They are
                 # coupled by design — a tool only enters ``drive_relevant`` when a
@@ -2080,9 +2104,19 @@ class NAc:
                 # exist that the gate excludes. (review fold)
                 if drive_value <= 0.5:
                     continue
+                # ROOT fix (R2, cross-confirmed by both review lenses): this heuristic
+                # operates on [0,1] NEED intensities. A raw sensor value (health/food on
+                # a 0-40 scale, largest when SATIATED) is not a normalized need and must
+                # never reach the score — it would swamp the derived corrective need with
+                # inverted polarity on ANY matching tool, not only read_ ones (a
+                # `gather_food` affordance would re-home the exact R2 pathology). The
+                # derived corrective need (in [0,1]) carries the signal; the raw drive is
+                # skipped. Drives are [0,1] by contract; a value >1 is a raw sensor.
+                if drive_value > 1.0:
+                    continue
                 drive_lower = drive_name.lower()
 
-                # Direct name substring match
+                # Direct name substring match (passive reads already excluded above).
                 if drive_lower in tool_lower:
                     score += drive_value
                     comp["drive"] += drive_value

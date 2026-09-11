@@ -875,6 +875,36 @@ def _run_deliberation_cycles(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+# Drive-name substring -> the corrective NEED emitted when that drive is in DEFICIT
+# (first match wins). This generalizes the former hardcoded "cold" name-sniff (the fix
+# `_read_drive_states`'s own NOTE anticipated) WITHOUT adding a field to the CC3-frozen
+# DriveSpec. The emitted need name is what `NAc._DRIVE_TOOL_AFFINITIES` keys on, so a
+# deficit lands on a corrective affordance instead of the polarity-inverted raw sensor
+# value R2 found (the intrinsic survival loop, break 1 — docs/experiments/r2_drive_premise_check.md).
+# Brittleness, stated: this is a drive-NAME substring map (first match wins), the same
+# name-convention the code's old "cold" sniff used and that CC3 forbids replacing with a
+# DriveSpec field (both specs SHAPE-FROZEN at 1.0). It mis-fires on other bodies' drive
+# names (a health drive named `hp`/`vitality` gets nothing; `food_temperature` -> `cold`
+# by order). Scoped to the 1.3 minecraft_player survival body (break 1); a body with
+# differently-named drives must extend this table. Entropic "up" drives derive no need
+# (corrective_need_intensity returns None) — deliberately out of scope for break 1.
+_DRIVE_CORRECTIVE_NEEDS: tuple[tuple[str, str], ...] = (
+    ("temp", "cold"),
+    ("thermal", "cold"),
+    ("food", "hunger"),  # entropic drain: low food -> "hunger" -> eat (existing affinity)
+    ("health", "threat"),  # homeostatic deficit: low health -> "threat" (flight/freeze/recover)
+)
+
+
+def _corrective_need_for(ds_name: str) -> str | None:
+    """The corrective-need name a drive emits on deficit, or None (substring, first match)."""
+    low = ds_name.lower()
+    for needle, need in _DRIVE_CORRECTIVE_NEEDS:
+        if needle in low:
+            return need
+    return None
+
+
 def _read_drive_states(executor: Any) -> dict[str, float]:
     """Extract current drive values from the executor's embodiment.
 
@@ -892,9 +922,9 @@ def _read_drive_states(executor: Any) -> dict[str, float]:
         return {}
 
     drives: dict[str, float] = {}
-    # Derived corrective "cold" need (see below). Accumulated as the max
-    # breach across all homeostatic thermal drives, emitted once at the end.
-    cold_need = 0.0
+    # Derived corrective NEEDS (see below), keyed by need name, accumulated as the
+    # max breach across all drives that map to that need, emitted once at the end.
+    derived_needs: dict[str, float] = {}
     for ent in embodiment.root.walk():
         specs = getattr(ent, "drive_specs", {})
         for ds_name, spec in specs.items():
@@ -914,34 +944,32 @@ def _read_drive_states(executor: Any) -> dict[str, float]:
                 continue
             drives[ds_name] = fval
 
-            # Derive a positive corrective "cold" need from homeostatic thermal
-            # DEFICITS. The drive-affinity heuristic in NAc.recommend_action only
-            # fires on positive [0,1] need intensities (entropic drives like
-            # hunger that climb up), so a homeostatic deficit — cold = a
-            # temperature drive sitting below its set_point — is otherwise
-            # invisible to substrate-primary action selection, and warmth-seeking
-            # affordances never become salient. This completes the homeostatic
-            # drive protocol for the LLM-free path (this function is only called
-            # by propose_via_substrate; LLM-AUT reads body_state directly, so
-            # Exp 37/38 are unaffected). The derived need maps to the existing
-            # "cold" affinity → ("warm","fire","blanket","huddle"). Above-set_point
-            # (hot) has no corrective affinity entry today, so only the cold
-            # direction is derived.
-            # NOTE: thermal drives are detected by NAME convention ("temp"/
-            # "thermal" in the drive name) — the affinity table is keyed on the
-            # semantic "cold" need, and we have no structured drive→need-name map
-            # yet. If a thermal drive is named otherwise, add it here (or give
-            # DriveSpec a declared corrective-need name).
-            set_point = getattr(spec, "set_point", None)
-            if set_point is not None and ("temp" in ds_name.lower() or "thermal" in ds_name.lower()):
-                comfort = float(getattr(spec, "comfort_band", 0.0) or 0.0)
-                deviation = fval - float(set_point)
-                if deviation < -comfort:  # below set_point, past the comfort band
-                    cold_need = max(cold_need, min(1.0, abs(deviation)))
+            # Derive a positive corrective NEED from this drive's DEFICIT. The
+            # drive-affinity heuristic in NAc.recommend_action only fires on positive
+            # [0,1] need intensities, so a raw sensor value (largest when SATIATED) is
+            # invisible-or-inverted for action selection — R2's finding: behaviour
+            # "moves backwards". A drive that maps to a corrective need
+            # (_DRIVE_CORRECTIVE_NEEDS: food->hunger, health->threat, thermal->cold)
+            # emits that need at its deficit intensity, which the affinity table lands
+            # on the corrective affordance (eat / defensive repertoire / warm-seek).
+            # LLM-free path only (propose_via_substrate); LLM-AUT reads body_state
+            # directly, so Exp 37/38 are unaffected.
+            need = _corrective_need_for(ds_name)
+            if need is not None:
+                # Intensity math lives in the embodiment layer (isinstance-dispatched
+                # beside drive_pain_for_value), not re-derived here.
+                from maxim.embodiment.sem import corrective_need_intensity
 
-    if cold_need > 0.0:
-        # setdefault: never clobber a real drive literally named "cold".
-        drives.setdefault("cold", cold_need)
+                intensity = corrective_need_intensity(spec, fval)
+                if intensity is not None and intensity > 0.0:
+                    derived_needs[need] = max(derived_needs.get(need, 0.0), intensity)
+
+    for need, intensity in derived_needs.items():
+        # setdefault: never clobber a real drive literally named e.g. "cold"/"hunger".
+        # NB: the derived need (normalized [0,1]) is ALSO encoded into the interoception
+        # ModalityChannel below, not only the action prior — intended, and it takes the
+        # legacy [0,1] range map (see _read_drive_ranges) exactly like the "cold" need.
+        drives.setdefault(need, intensity)
     return drives
 
 

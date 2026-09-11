@@ -1,5 +1,16 @@
 # R2 — Premise check: do the world-owned drives move behaviour? (a null)
 
+> **1.3 UPDATE (2026-09-11): break 1 closes — the PRIOR half only; the survival premise is still NULL.**
+> The 1.3 survival-loop build fixed R2 break 1 (the drive→corrective-action prior): `_read_drive_states`
+> now derives a normalized corrective NEED on deficit (`food→hunger`, `health→threat`), and the
+> drive-affinity heuristic no longer feeds it raw sensor values or lands on passive `read_` tools.
+> Re-running `r2_drive_premise_probe.py` (prior-only) now reports `moves_behaviour: true` — hungry/hurt →
+> `eat`, satiated → nothing. **But that probe instruments the prior ONLY**; the survival PREMISE this doc
+> names needs all three breaks, and **breaks 2 (measured-relief credit so the want is LEARNED) and 3 (the
+> world affording the acts) remain open** — so the status below stays NULL and the gated
+> `data/r2_drive_premise.json` 1.2 record is deliberately unchanged. See
+> `tests/unit/test_survival_drive_prior.py` and CHANGELOG `[Unreleased]`.
+
 **Status: PREMISE-NULL, 2026-09-07.** The Minecraft survival ladder's R2 rung
 ([minecraft_benchmark.md](../plans/minecraft_benchmark.md) Part II) asks whether the
 `minecraft_player` world-owned drives (`health` homeostatic, `food` entropic, both

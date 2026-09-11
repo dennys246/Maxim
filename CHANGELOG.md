@@ -49,6 +49,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   trigger it. Third guard of the 1.3 quality burndown ([docs/plans/burndown_1_3.md](docs/plans/burndown_1_3.md)
   Batch 1). Guard: `tests/unit/test_lint_unreleased_on_src_change.py`.
 
+### Changed
+- **The substrate-primary drive prior now moves behaviour toward corrective affordances (1.3
+  survival loop, R2 break 1).** R2 (docs/experiments/r2_drive_premise_check.md) found the
+  intrinsic path dead: `_read_drive_states` emitted raw sensor values (largest when *satiated*)
+  and the drive-affinity heuristic name-matched them onto passive `read_*` sensor tools, so a
+  starving/hurt substrate-primary agent scored *reading its health* above *eating*. Fixed on two
+  fronts: (1) a deficit now derives a normalized corrective **need** — `food→hunger`,
+  `health→threat` (the fight/flight/freeze defensive repertoire), generalizing the former
+  hardcoded `"cold"` sniff into `_DRIVE_CORRECTIVE_NEEDS` *without* touching the CC3-frozen
+  `DriveSpec`; (2) passive `read_` tools accrue no drive relevance (a need is relieved by a
+  corrective *action*, never by reading the sensor that measures it). Result: hungry/hurt → `eat`,
+  satiated → rests. The **prior-only** R2 probe (which instruments the cold-start prior only)
+  now selects corrective affordances — its verdict flips — but the **survival premise itself
+  remains NULL**: breaks 2 (measured-relief credit so it *learns*, not just starts pointed right)
+  and 3 (the world affording the acts) are still ahead, and the gated `r2_drive_premise.json`
+  1.2 record stands unchanged. The interoceptive floor is flight/freeze/recover; FIGHT (attack)
+  on a danger cue is the Phase-1b reflex, not this. Intensity math lives in
+  `embodiment/sem.py::corrective_need_intensity` (isinstance-dispatched). LLM-free path only
+  (`propose_via_substrate`); Exp 37/38 unaffected. Guard:
+  `tests/unit/test_survival_drive_prior.py`.
+
 ## [1.2.1] - 2026-09-10 — "Spoken-code loop"
 
 Completes the spoken-code device-pairing loop end to end and clears the 1.2.0 console
