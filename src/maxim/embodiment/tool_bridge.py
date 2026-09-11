@@ -508,22 +508,24 @@ class ModulatorAffordanceTool(Tool):
             _drive_pre = set(getattr(_body_pre, "drive_specs", {}) or {})
             _sensors_pre = getattr(_body_pre, "sensors", {}) or {}
 
-            def _is_interoceptive_world_drive(_name: str) -> bool:
+            def _is_world_channel_sensor(_name: str) -> bool:
                 # Discriminate by the sensor's DECLARED modality, not by whether a
                 # backend reported it this cycle (two-lens review, cross-confirmed
                 # DO-NOT-SHIP): an EXTEROCEPTIVE live drive (azimuth, modality "audio")
                 # is measured+attributed by its motor backend, which ABSTAINS on a
                 # post-turn timeout — a local vital_metrics diff would then fabricate a
                 # sign the backend declined to vouch for and mis-route it off the
-                # direction cluster. Only world-owned interoceptive drives (modality
-                # "world" — food/health) are measured here.
+                # direction cluster. `modality: "world"` marks a sensor the WORLD backend
+                # writes synchronously (spec.py: it is the exteroceptive-perception-channel
+                # tag; interoception membership is NOT this field — it comes from the
+                # `drive:` declaration). We locally measure only the sensors in the
+                # intersection below (world-channel AND a declared, live-owned self_effect
+                # drive), which for food/health is the interoceptive-credited set.
                 _sensor = _sensors_pre.get(_name)
                 _schema = getattr(_sensor, "reading_schema", None) or {}
                 return _schema.get("modality") == "world"
 
-            _measured_intero_sensors = {
-                s for s in (_self_pre & _live_pre & _drive_pre) if _is_interoceptive_world_drive(s)
-            }
+            _measured_intero_sensors = {s for s in (_self_pre & _live_pre & _drive_pre) if _is_world_channel_sensor(s)}
             if _measured_intero_sensors:
                 _mpre = getattr(_body_pre, "vital_metrics", {}) or {}
                 for s in _measured_intero_sensors:
@@ -672,16 +674,25 @@ class ModulatorAffordanceTool(Tool):
                     _credited_intero = True
             if _measured_any and abs(_measured_total) > 1e-9:
                 # ADD the measured relief to any MODELED (non-live) self_effect drive's
-                # diff rather than discarding it (a co-declared modeled interoceptive
-                # drive keeps its relief — review F2). For the shipped cases the modeled
-                # diff is None (azimuth-only turns; minecraft eat's food is live+stripped),
-                # so this equals the old wholesale replace. Route to the cluster the
-                # relief is conditioned on: interoceptive world drives (food/health —
-                # break 2) to the interoceptive cluster; exteroceptive (azimuth) to the
-                # direction-bearing audio cluster (production EC node ids — the Exp 45/46
-                # bin-keyed biases are a DISJOINT space; unification is the
-                # sem_motor_binding.md follow-up). Modeled drives are always interoceptive
-                # (exteroceptive drives are live+stripped), so no cross-channel mix arises.
+                # diff rather than discarding it (review F2). For every shipped case the
+                # modeled diff is None (azimuth-only turns; minecraft eat's food is
+                # live+stripped at line 600), so this equals the old wholesale replace.
+                # Route by the cluster the relief is conditioned on: locally-measured
+                # world-channel drives (food/health — break 2) to the interoceptive
+                # cluster; backend-measured exteroceptive (azimuth) to the direction-
+                # bearing audio cluster (the Exp 45/46 bin-keyed biases are a DISJOINT
+                # EC-node space; unification is the sem_motor_binding.md follow-up).
+                #
+                # LIMITATION (cross-confirmed review SHOULD-FIX): `_credited_intero` is
+                # set only from locally-measured world drives, and downstream
+                # (tool_dispatch) this single scalar books ONE sign-only ±1 to ONE
+                # cluster. So an affordance co-declaring a MODELED interoceptive drive
+                # AND a MEASURED exteroceptive one would sum across channels and
+                # misroute. No shipped affordance does this — corrective eat/attack are
+                # interoceptive+live, turn is exteroceptive, and they never share one
+                # tool — so the guarantee holds by CONFIG, not by type. The type-safe fix
+                # is per-sensor channel routing (the sem_motor_binding.md follow-up,
+                # deferred with break 3).
                 drive_potential_diff = (drive_potential_diff or 0.0) + _measured_total
                 drive_credit_withheld = False
                 drive_relief_channel = "interoceptive" if _credited_intero else "exteroceptive"
