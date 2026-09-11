@@ -69,6 +69,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `embodiment/sem.py::corrective_need_intensity` (isinstance-dispatched). LLM-free path only
   (`propose_via_substrate`); Exp 37/38 unaffected. Guard:
   `tests/unit/test_survival_drive_prior.py`.
+- **The substrate now LEARNS an interoceptive want from measured world relief (1.3 survival loop,
+  R2 break 2).** Break 1 made a hungry agent *start* pointed at `eat`, but `eat`'s `self_effect`
+  targets a live-owned sensor, so its modeled credit was stripped (`drive_credit_withheld`) and no
+  bias could form — the want was innate, never learned. Now `ModulatorAffordanceTool.execute`
+  measures the affordance's DECLARED live-owned drives before the world action vs after the world
+  syncs, and credits the real relief (`drive_comfort_progress`) — replacing the withheld marker —
+  on the **interoceptive** channel. Measuring only the *declared* drives is the correctness move:
+  an affordance that declares no drive effect (`move_to`) is never blamed for the ambient entropic
+  drain of food it never touched. The exteroceptive azimuth path is untouched (a backend-reported
+  sensor is authoritative and never clobbered by the local measurement). Break 3 (a world that
+  affords the acts) is still ahead. Guard: `tests/unit/test_survival_learns_break2.py`.
 
 ## [1.2.1] - 2026-09-10 — "Spoken-code loop"
 
