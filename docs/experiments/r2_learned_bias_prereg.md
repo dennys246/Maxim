@@ -5,6 +5,17 @@
 > BEFORE the first data timestamp; the data PR references the frozen commit (research-claim
 > non-negotiables). Any change after the first data point is a dated addendum, never an edit to the
 > frozen sections.
+>
+> **PRE-DATA AMENDMENT (2026-09-12, before any data — legitimate, nothing observed).** The
+> harness two-lens review found the original primary metric (a raw `None→eat` flip) CONFOUNDED: a
+> successful eat books a cluster-INDEPENDENT `tool:eat` causal link (`nac.observe`) that the
+> ablation does NOT suppress and that alone flips the probe in BOTH arms — so the raw flip measures
+> generic repetition, not the drive-relief CLUSTER credit the claim is about (length-matched →
+> forced null; length-mismatched → false held). **The primary metric is amended to the MARGINAL
+> cluster probe** (§ Metrics): the difference between `recommend_action(current_clusters=encoded)`
+> and `current_clusters=None` on the SAME trained NAc, which cancels the prior and the causal link
+> and isolates the learned cluster bias. Caught pre-data; the raw-flip design below is superseded by
+> the marginal design.
 
 ## Question
 
@@ -71,18 +82,25 @@ Three arms, same seeds across arms, same world, same training length:
   (food ≤10 already eats cold → no flip headroom; food ≥16 needs an implausibly large bias.)
 - **`recommend_action` is DETERMINISTIC** given (frozen NAc, drives) — verified pre-freeze (5/5
   identical, stable across fresh instances). So `K = 1`: `P(select eat | F)` is binary per seed.
-- **Primary statistic (literal):** at each `F`, per seed, `flip(F) ∈ {0,1}` = (post-training frozen
-  NAc selects `eat` at `F`) AND (cold NAc did not) — a **None→eat flip**. The arm's value at `F` is
-  the **flip-fraction** across its `N` seeds. `Δ` is unnecessary — the cold pick at each `F` is a
-  fixed `None` (disclosure below), so the post-training pick IS the signal.
-- **Structural pre-registration:** the metric IS "the fraction of seeds whose post-training frozen
-  NAc flips `None→eat` at each fixed probe state, compared across arms." No post-hoc substitution of
-  a different probe set, statistic, or window; all three `F` are pre-registered as primary (a single
-  `F` passing is the multi-deficit robustness, not cherry-picking). Probing uses the same
-  `recommend_action` the smoke/R2 probe use (same real consumer), `min_confidence = 0.0`.
-- **Secondary (graded, supporting):** at an already-eat state (food = 8, cold conf ≈0.56, below the
-  0.70 saturation), does post-training eat-confidence rise? Supports the mechanism; the claim rests
-  on the flip primary.
+- **Primary statistic (MARGINAL cluster probe — amended):** at each `F`, per seed, on the SAME
+  post-training frozen NAc, `marginal_flip(F) ∈ {0,1}` = (`recommend_action(current_clusters=encoded)`
+  selects `eat`) AND NOT (`recommend_action(current_clusters=None)` selects `eat`). The `None`-clusters
+  call scores prior + causal-link only; the encoded-clusters call adds the learned cluster bias — so
+  the difference is **purely the learned cluster bias's marginal behavioural effect**, with the
+  cluster-independent causal link (which is in BOTH calls) cancelled. The arm's value at `F` is the
+  **marginal-flip-fraction** across its `N` seeds. By construction NO-CREDIT/SATIATED have
+  cluster-bias 0 → `current_clusters=encoded` == `None` → marginal_flip ≡ 0.
+- **Structural pre-registration:** the metric IS "the fraction of seeds whose post-training NAc
+  selects `eat` WITH its encoded clusters but NOT without them, at each fixed probe state, compared
+  across arms." No post-hoc substitution of a different probe set, statistic, or window; all three
+  `F` are pre-registered as primary (a single `F` passing is the multi-deficit robustness, not
+  cherry-picking). Probing uses the same `recommend_action` the smoke/R2 probe use (same real
+  consumer), `min_confidence = 0.0`. (The raw `None→eat` flip is retained as a REPORTED diagnostic —
+  it exposes the causal-link contribution — but is NOT the claim.)
+- **Secondary (mechanism, supporting only):** the learned reward-bias magnitude on the eat-associated
+  interoception cluster (`cluster_reward_bias(agent_id, cid, "tool:eat")`), which the ablation zeros
+  by construction. Should co-move with the marginal-flip primary in LEARNING and stay 0 in the
+  controls. Reported; the claim rests on the behavioural primary.
 
 ## Pre-freeze apparatus disclosure (measured 2026-09-12, stated here; frozen sections above unchanged)
 
@@ -98,31 +116,33 @@ pre-freeze instrument state). `recommend_action` verified deterministic. Cold-pr
 | ≤6 | 1.0 | eat | 0.70 (saturated) |
 
 So the `None`-band is food ≥11; the eat-transition is at food 10; the probe set {11,12,13} sits
-in the `None`-band where a learned bias can produce a flip.
-- **Secondary (mechanism, supporting only):** the learned reward-bias magnitude on the
-  eat-associated cluster, before vs after — a direct substrate read that should co-move with the
-  behavioural Δ in the LEARNING arm and stay flat in the ablation/satiated arms. Reported, but the
-  claim is defined on the behavioural primary.
+in the `None`-band where a learned cluster bias can produce a marginal flip.
 
 ## Decision rule (frozen — no post-hoc motion)
 
-`N = 20` seeds/arm; `M = 0.20` (the minimum meaningful flip-fraction). `flipfrac_ARM(F)` = the
-fraction of the arm's `N` seeds whose post-training frozen NAc flips `None→eat` at `F`.
+`N = 20` seeds/arm; `M = 0.20` (the minimum meaningful marginal-flip-fraction). `mflipfrac_ARM(F)` =
+the fraction of the arm's `N` seeds with a MARGINAL cluster flip at `F` (eat selected WITH encoded
+clusters but NOT without — § Metrics). Arms run the SAME episode count (cycle-matched; the controls
+do not stop early on a flat-zero bias trace — review fix).
 
 **PREMISE-HELD (learning demonstrated) iff, for at least one pre-registered probe state `F`, ALL of:**
-1. `flipfrac_LEARNING(F) ≥ M` (the learning arm moves that probe off the cold `None`), AND
-2. `flipfrac_LEARNING(F) > flipfrac_NO-CREDIT(F)` by a one-sided permutation test on the per-seed
-   binary flips, `p < 0.05`, AND
-3. `flipfrac_LEARNING(F) > flipfrac_SATIATED(F)` by the same test, `p < 0.05`.
+1. `mflipfrac_LEARNING(F) ≥ M` (the learned cluster bias moves that probe), AND
+2. `mflipfrac_LEARNING(F) > mflipfrac_NO-CREDIT(F)` by a one-sided permutation test on the per-seed
+   marginal flips, `p < 0.05`, AND
+3. `mflipfrac_LEARNING(F) > mflipfrac_SATIATED(F)` by the same test, `p < 0.05`.
 
 (Reporting all three `F`; a single `F` satisfying the rule is a pass because each was pre-registered
-as primary — this is the multi-deficit robustness, not post-hoc selection.)
+as primary — this is the multi-deficit robustness, not post-hoc selection.) Seeds flagged
+`credit_did_not_book` (LEARNING), `ablation_leaked` (NO-CREDIT), or `did_not_plateau` are REFUSED —
+the run exits non-zero on the gated write rather than letting a vacuous/under-trained seed sit in the
+denominator (review fix; the prereg's own anti-vacuity rule, now enforced not just recorded).
 
 Otherwise **PREMISE-NULL stands** (a null ships as a null — the Exp 53 shape). In particular:
-- `flipfrac_LEARNING ≈ flipfrac_NO-CREDIT` at every `F` → the movement is the prior/repetition, not
-  credit → NULL.
-- `flipfrac_LEARNING ≈ 0` at every `F` even with credit that booked → no learning transferred to any
-  probe (see cluster-generalization limit) → NULL/INCONCLUSIVE, reported with the mechanism reason,
+- `mflipfrac_LEARNING ≈ mflipfrac_NO-CREDIT` at every `F` → the cluster credit did not change
+  behaviour beyond the prior/causal baseline → NULL.
+- `mflipfrac_LEARNING ≈ 0` at every `F` even with credit that booked → the learned cluster bias did
+  not transfer to any probe (see cluster-generalization limit) → NULL/INCONCLUSIVE, reported with the
+  mechanism reason,
   NEVER reinterpreted into a pass.
 
 The gated `data/r2_drive_premise.json` record and the R2 doc's PREMISE-NULL status flip to
@@ -143,6 +163,26 @@ PREMISE-HELD ONLY on rule satisfaction, in the same PR as the data.
 - **The ablation must actually ablate.** In the NO-CREDIT arm the harness asserts the eat-cluster
   bias stayed flat (credit genuinely withheld); otherwise the "ablation" is a mislabelled copy of
   the learning arm and refuses.
+- **The refusals are ENFORCED, not merely recorded (review fix).** `credit_did_not_book`,
+  `ablation_leaked`, and `did_not_plateau` cause a non-zero exit on the gated write — a flagged seed
+  is never allowed to sit in the metric denominator (the original harness computed the flags and
+  ignored them — the exact vacuous-guard failure the prereg cites).
+- **Instrument still holds at run time (review fix).** The harness asserts `pre_flip` (the cold-NAc
+  pick) is non-eat at every probe `F` before counting a seed — apparatus drift that moved the cold
+  prior would otherwise make a probe silently un-flippable (a false null). It also asserts each
+  training episode actually reached the deep-deficit band (food ≤ 4) — a drain that stalls high
+  trains the wrong cluster.
+- **Arms are cycle-matched and interleaved (review fix).** All arms run the same episode budget (the
+  controls do not stop early on a flat-zero bias), and arms are interleaved within each seed
+  (`for seed: for arm`) so live-world/time drift cannot alias onto arm.
+- **Broadened frozen-apparatus assertion (review fix).** Beyond `substrate_explore_bonus_weight`, the
+  harness pins the config surface that governs clustering + bias magnitude (`max_cluster_reward_bias`,
+  reward-bias decay, and the EC similarity/centroid thresholds that decide whether food-4 and food-11
+  land in the same cluster — the generalization result hinges on these), refusing on a drifted
+  `~/.maxim` config.
+- **Per-episode credit-source recorded (review fix).** Each LEARNING episode records whether the
+  credit was `drive_relief`-sourced vs the generic tool-success floor, so a PREMISE-HELD earned
+  partly by the floor (not the game-native relief the claim names) is auditable, not hidden.
 
 ## Data + provenance
 
@@ -152,16 +192,24 @@ PREMISE-HELD ONLY on rule satisfaction, in the same PR as the data.
 
 ## Known-limit acknowledgments
 
-- **Cluster generalization is the live risk.** Credit books on the cluster encoded at credit time
-  (strong deficit); the probe encodes a different cluster (mild deficit). If the substrate's
-  clusters are too fine to transfer, the LEARNING arm's Δ is ~0 even though credit booked — a
-  genuine NULL, not a bug to tune away. ⟨DECIDE⟩ mitigation: probe at multiple deficits (incl.
-  within the trained range) and pre-register each, OR accept single-`F_probe` and report the
-  transfer limit honestly.
+- **The cluster-independent causal link is why the metric is MARGINAL (review-caught).** A
+  successful eat books a `tool:eat` causal link (`nac.observe`) that is not cluster-keyed and is not
+  suppressed by the ablation; it alone can flip the raw probe in every arm. The marginal metric
+  (with-clusters minus without-clusters) cancels it. Residual risk: if the learned cluster bias is
+  small relative to the prior+causal baseline, the marginal flip is ~0 even when the bias moved off
+  zero — a real NULL (the behavioural effect was below the argmax-flip threshold). The secondary
+  cluster-bias-magnitude read distinguishes "bias didn't form" from "bias formed but didn't flip the
+  choice"; both are honest nulls of the behavioural claim, reported as such.
+- **Cluster generalization is the other live risk.** Credit books on the cluster encoded at credit
+  time (strong deficit, food ~4); the probe encodes a milder cluster (food 11–13). If the substrate's
+  clusters are too fine to transfer, the LEARNING arm's marginal flip is ~0 even though credit
+  booked — a genuine NULL, not a bug to tune away. Mitigated by the multi-deficit probe {11,12,13}
+  (graded transfer distances) and the magnitude secondary.
 - **The LLM-knows-what-food-is confound does NOT apply** — the action path is substrate-primary,
   no LLM. (It would apply to an LLM-primary arm; out of scope here.)
 - **Single body, single world.** This is not a cross-world generalization claim.
-- **Repetition without relief** is controlled by the satiated arm, not merely asserted.
+- **Repetition without relief** is controlled by the NO-CREDIT arm (eats, builds the same causal
+  link, but the cluster credit is suppressed); time/drift by the SATIATED arm (no eat episodes).
 
 ## The ladder (this is rung 1)
 
