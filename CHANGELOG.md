@@ -69,6 +69,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `embodiment/sem.py::corrective_need_intensity` (isinstance-dispatched). LLM-free path only
   (`propose_via_substrate`); Exp 37/38 unaffected. Guard:
   `tests/unit/test_survival_drive_prior.py`.
+- **Measured-relief credit for interoceptive world drives — unblocks a learnable want (1.3 survival
+  loop, R2 break 2 of 3).** Break 1 made a hungry agent *start* pointed at `eat`, but `eat`'s
+  `self_effect` targets a live-owned sensor, so its modeled credit was stripped
+  (`drive_credit_withheld`) and no bias could form. Now `ModulatorAffordanceTool.execute` measures
+  the affordance's DECLARED interoceptive world drives (`modality: world`) before the world action
+  vs after the world syncs, and credits the *real* relief (`drive_comfort_progress`, replacing the
+  modeled `+4`) on the interoception cluster. This unblocks the credit PATH; a *learned* want is a
+  composition across breaks 2 + 3 plus a multi-trial run — not demonstrated here, and R2 stays
+  PREMISE-NULL until break 3 (a world that affords the acts) lands. Correctness: only the
+  *declared* drives are measured (so `move_to` isn't blamed for ambient food drain), and the
+  channel is gated on the sensor's declared **modality**, not on backend reporting — so the
+  exteroceptive azimuth path is byte-unchanged even when its motor backend abstains on a timeout
+  (a two-lens review caught that this was a live regression in the first cut). Guard:
+  `tests/unit/test_survival_learns_break2.py` (incl. the abstaining-backend regression).
 
 ## [1.2.1] - 2026-09-10 — "Spoken-code loop"
 
