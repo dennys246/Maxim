@@ -150,11 +150,31 @@ async function runAction(name, params) {
       return "placed";
     }
     case "eat": {
-      const food = bot.inventory.items().find((i) => i.name.includes("bread") || i.foodPoints);
-      if (!food) throw new Error("no food in inventory");
-      await bot.equip(food, "hand");
+      const item = bot.inventory.items().find((i) => i.name.includes("bread") || i.foodPoints);
+      if (!item) throw new Error("no food in inventory");
+      const before = bot.food;
+      await bot.equip(item, "hand");
       await bot.consume();
-      return `ate ${food.name}`;
+      // bot.food is updated by a server packet that lands a tick or two AFTER
+      // consume() resolves, so the action_result snapshot() below would otherwise
+      // read stale food and the relief would surface on the NEXT action — which
+      // mis-attributes the eat's measured-relief credit (break 2) to whatever the
+      // agent did next in a multi-action loop. Poll until bot.food ACTUALLY changes
+      // (a fixed-delay fallback flickered near the food cap when the packet was slow),
+      // capped at 1.5s so we never hang. (Eat-local; other affordances and Exp 56's
+      // roster untouched.)
+      await new Promise((res) => {
+        if (bot.food !== before) return res();
+        let waited = 0;
+        const iv = setInterval(() => {
+          waited += 50;
+          if (bot.food !== before || waited >= 1500) {
+            clearInterval(iv);
+            res();
+          }
+        }, 50);
+      });
+      return `ate ${item.name}`;
     }
     case "attack_nearest": {
       const target = bot.nearestEntity((e) => e.kind === "Hostile mobs");

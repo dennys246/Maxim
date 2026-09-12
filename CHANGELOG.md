@@ -48,6 +48,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exempt. Diff-scoped against the merge-base with origin/main; docs/tests/scripts-only diffs don't
   trigger it. Third guard of the 1.3 quality burndown ([docs/plans/burndown_1_3.md](docs/plans/burndown_1_3.md)
   Batch 1). Guard: `tests/unit/test_lint_unreleased_on_src_change.py`.
+- **Break-3 survival apparatus + live loop-closure smoke (1.3 survival loop, R2 break 3).** Dev
+  tooling under `scripts/survival_world/`: `setup_world.py` stands up a Paper 1.16.5 survival
+  world (hunger drains — game-native pressure, D1-clean — and food is seeded so `eat` is a single
+  executable corrective act), and `break3_smoke.py` drives the loop against the live bridge. The
+  smoke validated — on the real path — that all three R2 breaks COMPOSE: under a real deficit the
+  substrate prior selects `eat` (break 1), `eat` executes via the bridge (break 3), and the food
+  rise syncs and break-2 emits the measured-relief SIGNAL on the interoception channel (the credit
+  path's INPUT — the smoke does not call `record_outcome`, so no cluster reward is booked; that
+  and the learned bias are the measurement's job) (break 2). It also caught a one-action credit-lag
+  (the bridge's `eat` snapshot predated mineflayer's food-update packet), **fixed eat-local in
+  `scripts/minecraft_bridge/index.js`**. This is COMPOSITION validation, not the measurement — R2
+  stays PREMISE-NULL until a pre-registered, reviewed, provenance-stamped learned-bias run (see
+  docs/experiments/r2_drive_premise_check.md). Not shipped in the wheel.
 
 ### Changed
 - **The substrate-primary drive prior now moves behaviour toward corrective affordances (1.3
