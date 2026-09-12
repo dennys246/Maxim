@@ -102,8 +102,12 @@ def _setup(args: argparse.Namespace) -> int:
             dl = build["downloads"]["server:default"]
             print(f"downloading Paper {MC_VERSION} build {build['id']} ({dl['size']} bytes) …")
             download_to_file(dl["url"], jar, expected_bytes=int(dl["size"]))
-            print(f"downloaded + sha256-verified: {jar}")
+            print(f"downloaded + size-verified: {jar}")
         except Exception as exc:
+            # download_to_file writes straight to the final path with no .partial staging,
+            # so a mid-stream drop / size mismatch leaves a truncated jar that the NEXT run's
+            # `if not jar.exists()` would treat as complete. Remove it so the next run re-downloads.
+            jar.unlink(missing_ok=True)
             print(
                 f"WARNING: automatic Paper download failed ({type(exc).__name__}: {exc}).\n"
                 f"Download Paper {MC_VERSION} manually from https://papermc.io/downloads/all "
@@ -175,8 +179,12 @@ def _verify(args: argparse.Namespace) -> int:
             print(f"gamerule {rule}: {resp}  {'OK' if ok else 'MISMATCH (want ' + val + ')'}")
             bad += 0 if ok else 1
         # `clear <player> bread 0` reports the count without removing (vanilla dry-run form).
+        # 1.16.5 replies "Found N matching item(s) on player X" (has food) or "No items were
+        # found on player X" (none) — match the FAILURE string, not a "0 item" substring that
+        # never appears in either reply (which would make this guard vacuous).
         cnt = rcon.command(f"clear {args.username} minecraft:bread 0").strip()
-        holds = "0 item" not in cnt and "no player" not in cnt.lower()
+        low = cnt.lower()
+        holds = "no items were found" not in low and "no player" not in low
         print(f"food held by {args.username}: {cnt}  {'OK' if holds else 'NONE — re-run prepare'}")
         bad += 0 if holds else 1
     finally:

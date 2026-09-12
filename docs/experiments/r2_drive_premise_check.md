@@ -11,15 +11,19 @@
 > the interoception cluster instead of being withheld. **Break 3 (a world that affords the acts) now
 > has a live apparatus** (`scripts/survival_world/setup_world.py` — a Paper 1.16.5 survival world
 > where hunger drains and food is seeded) and a **live smoke** (`scripts/survival_world/break3_smoke.py`)
-> that drove the loop against the real bridge: under a real deficit (food ~4) the substrate prior
-> selected `eat`, `eat` executed, food rose, and break-2 credited the interoception cluster
-> `+5.0` — **all three breaks COMPOSE on the live path**. (The smoke also caught a one-action
+> that drove the loop against the real bridge: under a real hunger deficit the substrate prior
+> selected `eat`, `eat` executed, food rose, and break-2 produced the measured-relief SIGNAL on
+> the interoception channel (`drive_relief_channel = "interoceptive"`, positive measured
+> food-delta) — **all three breaks COMPOSE on the live path**. (The smoke also caught a one-action
 > credit-lag — the bridge's `eat` snapshot predated mineflayer's food-update packet — fixed
 > eat-local in `scripts/minecraft_bridge/index.js`.)
 >
-> **This is composition validation, NOT the measurement.** R2's PREMISE ("do the world drives
-> measurably MOVE behaviour") is a LEARNED-bias claim across many trials; the smoke is a wiring
-> check (print-only, no gated results). So the status below stays PREMISE-NULL and the gated
+> **This is composition validation, NOT the measurement — and it validates the credit path's
+> INPUT, not the booking.** The smoke reads the relief SIGNAL break-2 emits (`side_effects`); it
+> does NOT call `record_outcome`, so no cluster reward is booked and no bias forms — that (and the
+> LEARNED-bias claim R2's premise actually asks, "do the world drives measurably MOVE behaviour
+> across many trials") is the pre-registered measurement's job, run through the real agent loop.
+> The smoke is print-only (no gated results). So the status below stays PREMISE-NULL and the gated
 > `data/r2_drive_premise.json` 1.2 record is unchanged until a pre-registered, two-lens-reviewed,
 > provenance-stamped learned-bias run flips it. See `tests/unit/test_survival_drive_prior.py`,
 > `tests/unit/test_survival_learns_break2.py`, `scripts/survival_world/`, and CHANGELOG `[Unreleased]`.

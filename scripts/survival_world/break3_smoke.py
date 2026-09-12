@@ -28,13 +28,14 @@ already run:
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 import tempfile
 import time
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT))
+SCRIPTS_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(SCRIPTS_DIR))
 
 from exp56.common import RconControl  # noqa: E402
 
@@ -87,6 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     from maxim.runtime.agent_loop import _read_drive_states
+    from maxim.runtime.tool_dispatch import read_learning_side_effects
     from maxim.simulation.minecraft_harness import build_minecraft_aut
     from maxim.tools.introspection import INTROSPECTION_TOOL_NAMES
 
@@ -109,9 +111,10 @@ def main(argv: list[str] | None = None) -> int:
     live = getattr(aut.executor.embodiment, "live_world_set_sensors", None)
     print(f"live_world_set_sensors (must contain 'food'): {sorted(live) if live else live}\n")
 
-    rcon = RconControl(args.rcon_host, args.rcon_port, args.rcon_password)
+    rcon = None
     rows: list[dict] = []
     try:
+        rcon = RconControl(args.rcon_host, args.rcon_port, args.rcon_password)
         deficit_food = _drain_until_hungry(
             aut, rcon, args.username, target=args.target_food, timeout_s=args.drain_timeout_s
         )
@@ -138,15 +141,18 @@ def main(argv: list[str] | None = None) -> int:
                 break
             out = aut.executor.execute({"tool_name": eat_tool, "params": {}})
             food_after = _food(aut)
-            side = out.side_effects or {}
+            # The canonical parser the real turn uses (agent_loop / exp56 execute_and_record),
+            # not a raw side_effects dict read. NOTE: this reads the relief SIGNAL break-2
+            # produces; it does NOT call record_outcome, so no cluster reward is BOOKED here.
+            side = read_learning_side_effects(out)
             rows.append(
                 {
                     "eat_success": bool(getattr(out, "success", False)),
                     "food_before": food_before,
                     "food_after": food_after,
-                    "channel": side.get("drive_relief_channel"),
-                    "diff": side.get("drive_potential_diff"),
-                    "withheld": side.get("drive_credit_withheld"),
+                    "channel": side.drive_relief_channel,
+                    "diff": side.drive_potential_diff,
+                    "withheld": side.drive_credit_withheld,
                 }
             )
             r = rows[-1]
@@ -156,11 +162,13 @@ def main(argv: list[str] | None = None) -> int:
                 + ("" if r["eat_success"] else f"  error={out.error!r}")
             )
     finally:
-        rcon.close()
+        if rcon is not None:
+            rcon.close()
         try:
             aut.client.close()
         except Exception:
             pass
+        shutil.rmtree(persistence_dir, ignore_errors=True)  # throwaway fresh substrate
 
     def _rose(r):
         return r["food_before"] is not None and r["food_after"] is not None and r["food_after"] > r["food_before"]
@@ -174,13 +182,17 @@ def main(argv: list[str] | None = None) -> int:
     print(f"break 1 (prior picks eat under a real deficit): {break1} (picked {prior_pick}; drives={drives})")
     print(f"break 3 (eat EXECUTES via bridge):              {len(executed)}/{len(rows)} eats")
     print(f"  food actually rose after eat:                  {len(rose)}/{len(executed)} executed")
-    print(f"break 2 (interoceptive relief credited):        {len(credited)}/{len(rose)} risen")
-    # LOOP CLOSES requires ALL THREE: the prior fired (break 1), eat executed and food rose
-    # (break 3), and every rise credited interoceptive (break 2). Crediting alone is not enough
-    # — without break 1 the deficit was too mild and the prior never chose eat.
+    print(f"break 2 (interoceptive relief SIGNAL):          {len(credited)}/{len(rose)} risen")
+    # COMPOSITION requires ALL THREE: the prior fired (break 1), eat executed and food rose
+    # (break 3), and every rise produced an interoceptive relief signal (break 2). The signal is
+    # the credit path's INPUT; it is not enough alone — without break 1 the deficit was too mild
+    # and the prior never chose eat.
     if break1 and executed and rose and credited and len(credited) == len(rose):
-        print("\nLOOP CLOSES: breaks 1+2+3 compose on the live path (composition validated).")
-        print("Next: the pre-registered learned-bias-over-trials measurement (moves R2 off PREMISE-NULL).")
+        print("\nCOMPOSITION VALIDATED: prior->eat->measured interoceptive relief SIGNAL fires live")
+        print("(break 1 selects eat, break 3 executes it, break 2 measures + routes the relief).")
+        print("SCOPE: this validates the credit path's INPUT (side effects) — NOT the cluster")
+        print("BOOKING (record_outcome) or a learned bias, which are the pre-registered")
+        print("measurement's job (the run that moves R2 off PREMISE-NULL).")
         return 0
     print("\nLOOP DID NOT CLOSE — see the failing stage(s) above.")
     if not break1:

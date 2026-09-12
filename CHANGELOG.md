@@ -54,11 +54,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   executable corrective act), and `break3_smoke.py` drives the loop against the live bridge. The
   smoke validated — on the real path — that all three R2 breaks COMPOSE: under a real deficit the
   substrate prior selects `eat` (break 1), `eat` executes via the bridge (break 3), and the food
-  rise syncs and is credited to the interoception cluster `+5.0` (break 2). It also caught a
-  one-action credit-lag (the bridge's `eat` snapshot predated mineflayer's food-update packet),
-  **fixed eat-local in `scripts/minecraft_bridge/index.js`**. This is COMPOSITION validation, not
-  the measurement — R2 stays PREMISE-NULL until a pre-registered, reviewed, provenance-stamped
-  learned-bias run (see docs/experiments/r2_drive_premise_check.md). Not shipped in the wheel.
+  rise syncs and break-2 emits the measured-relief SIGNAL on the interoception channel (the credit
+  path's INPUT — the smoke does not call `record_outcome`, so no cluster reward is booked; that
+  and the learned bias are the measurement's job) (break 2). It also caught a one-action credit-lag
+  (the bridge's `eat` snapshot predated mineflayer's food-update packet), **fixed eat-local in
+  `scripts/minecraft_bridge/index.js`**. This is COMPOSITION validation, not the measurement — R2
+  stays PREMISE-NULL until a pre-registered, reviewed, provenance-stamped learned-bias run (see
+  docs/experiments/r2_drive_premise_check.md). Not shipped in the wheel.
 
 ### Changed
 - **The substrate-primary drive prior now moves behaviour toward corrective affordances (1.3
