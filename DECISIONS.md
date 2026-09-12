@@ -2,6 +2,46 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-09-12 — Harness-injected interoceptive signals: a labelled second lane beside D1
+
+Decision:
+
+- **D1 (game-native pressure only — no synthetic sensor, no bespoke reward) continues to govern
+  ENVIRONMENT-DRIVEN claims** — any claim of the form "the environment's / game's own drives moved
+  behaviour" (e.g. the R2 survival-loop flip). These use ONLY game-exposed state and game-native
+  reward; no injection, ever.
+- **A separate, explicitly-labelled lane** permits harness-injected interoceptive signals (e.g. a
+  homeostatic PAIN valence for an out-of-bounds state the environment under-models) as the
+  **INDEPENDENT VARIABLE** of a **substrate-mechanism** claim: "given signal X, the substrate
+  integrates it into its policy." Four rules make the lane safe:
+  1. **World-state stays game-truthful** — inject a pain SIGNAL / body valence only; never fabricate
+     damage or a state the environment cannot itself produce.
+  2. **Harness-only** (never `src/`, never shipped), **deterministic**, and declared in the
+     experiment's pre-registration.
+  3. **The claim is scoped to the substrate's integration of the injected signal — NEVER "the
+     environment taught it."** The injected signal is named as the manipulated variable in the
+     prereg. (This is the load-bearing rule.)
+  4. **Game-native-premise rungs never use injection** — the R2 flip (rung 1) and any
+     environment-driven claim stay strictly game-native.
+
+Reason:
+
+- The bio-inspired substrate's value includes integrating interoceptive pain/valence the way a body
+  does, but a test world (Minecraft) under-models many embodiable costs (over-fullness caps at 20
+  with no penalty; the game never punishes it). Studying whether the substrate correctly integrates
+  such a signal is legitimate — and is a DIFFERENT claim from "the environment afforded the lesson."
+  D1 as written would forbid the study; a blanket exception would erode into outcome-engineering
+  (the Exp 42b-retraction family: measuring a possibility, presenting it as proof it happened). The
+  labelled-lane + claim-boundary keeps both honest without weakening D1.
+
+Tradeoffs:
+
+- The boundary between the two lanes is a CLAIM-discipline line, not a mechanical one — enforced by
+  prereg review (rule #3 stated in every injected-signal prereg), not a lint. The risk is a future
+  reader relaxing it into "we can inject when convenient"; rule #3 up front is the guard.
+- Scope: injection is for mechanism rungs only. The first consumer is the planned R2 homeostasis
+  rung (rung 2), NOT the R2 flip (rung 1, game-native). See `docs/experiments/r2_learned_bias_prereg.md`.
+
 ## 2026-08-19 — `maxim.run()` uses canonical ingress and owns its resources (D15/D16)
 
 Decision:
