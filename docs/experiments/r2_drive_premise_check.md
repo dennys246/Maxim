@@ -6,13 +6,23 @@
 > drive-affinity heuristic no longer feeds it raw sensor values or lands on passive `read_` tools.
 > Re-running `r2_drive_premise_probe.py` (prior-only) now reports `moves_behaviour: true` — hungry/hurt →
 > `eat`, satiated → nothing. **But that probe instruments the prior ONLY**; the survival PREMISE this doc
-> names needs all three breaks. **Break 2 has since landed the measured-relief credit PATH**
-> (`tests/unit/test_survival_learns_break2.py`) — a hungry agent's real `eat` relief is now credited to
-> the interoception cluster instead of being withheld — but **break 3 (a world that affords the acts)
-> remains open**, and this probe (prior-only) is deliberately NOT re-run for break 2 (it does not
-> instrument the credit path). So the status below stays NULL and the gated `data/r2_drive_premise.json`
-> 1.2 record is unchanged. See `tests/unit/test_survival_drive_prior.py`,
-> `tests/unit/test_survival_learns_break2.py`, and CHANGELOG `[Unreleased]`.
+> names needs all three breaks. **Break 2 landed the measured-relief credit PATH**
+> (`tests/unit/test_survival_learns_break2.py`) — a hungry agent's real `eat` relief is credited to
+> the interoception cluster instead of being withheld. **Break 3 (a world that affords the acts) now
+> has a live apparatus** (`scripts/survival_world/setup_world.py` — a Paper 1.16.5 survival world
+> where hunger drains and food is seeded) and a **live smoke** (`scripts/survival_world/break3_smoke.py`)
+> that drove the loop against the real bridge: under a real deficit (food ~4) the substrate prior
+> selected `eat`, `eat` executed, food rose, and break-2 credited the interoception cluster
+> `+5.0` — **all three breaks COMPOSE on the live path**. (The smoke also caught a one-action
+> credit-lag — the bridge's `eat` snapshot predated mineflayer's food-update packet — fixed
+> eat-local in `scripts/minecraft_bridge/index.js`.)
+>
+> **This is composition validation, NOT the measurement.** R2's PREMISE ("do the world drives
+> measurably MOVE behaviour") is a LEARNED-bias claim across many trials; the smoke is a wiring
+> check (print-only, no gated results). So the status below stays PREMISE-NULL and the gated
+> `data/r2_drive_premise.json` 1.2 record is unchanged until a pre-registered, two-lens-reviewed,
+> provenance-stamped learned-bias run flips it. See `tests/unit/test_survival_drive_prior.py`,
+> `tests/unit/test_survival_learns_break2.py`, `scripts/survival_world/`, and CHANGELOG `[Unreleased]`.
 
 **Status: PREMISE-NULL, 2026-09-07.** The Minecraft survival ladder's R2 rung
 ([minecraft_benchmark.md](../plans/minecraft_benchmark.md) Part II) asks whether the

@@ -154,6 +154,21 @@ async function runAction(name, params) {
       if (!food) throw new Error("no food in inventory");
       await bot.equip(food, "hand");
       await bot.consume();
+      // bot.food is updated by a server packet that lands a tick or two AFTER
+      // consume() resolves, so the action_result snapshot() below would otherwise
+      // read stale food and the relief would surface on the NEXT action — which
+      // mis-attributes the eat's measured-relief credit (break 2) to whatever the
+      // agent did next in a multi-action loop. Wait for the food update so the
+      // result snapshot reflects THIS eat. (Eat-local; does not touch the other
+      // affordances or Exp 56's roster.)
+      await new Promise((res) => {
+        const done = () => {
+          bot.removeListener("health", done);
+          res();
+        };
+        bot.once("health", done);
+        setTimeout(done, 500); // fallback: never hang if no update fires
+      });
       return `ate ${food.name}`;
     }
     case "attack_nearest": {
