@@ -78,9 +78,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--rcon-port", type=int, default=25575)
     ap.add_argument("--rcon-password", required=True)
     ap.add_argument("--username", default="maxim", help="the bridge bot's username")
-    ap.add_argument("--eats", type=int, default=4, help="how many eat cycles from the deficit")
-    ap.add_argument("--target-food", type=float, default=4.0, help="drain food to at/below this first")
-    ap.add_argument("--drain-timeout-s", type=float, default=45.0)
+    ap.add_argument("--eats", type=int, default=4, help="max eat cycles from the deficit")
+    ap.add_argument("--target-food", type=float, default=3.0, help="drain food to at/below this first")
+    # A heavily-saturated bot (from a prior run's eating) drains slowly — the food bar only
+    # falls once the saturation buffer is gone — so give the drain real headroom.
+    ap.add_argument("--drain-timeout-s", type=float, default=120.0)
+    ap.add_argument("--satisfaction", type=float, default=16.0, help="stop eating at/above this")
     args = ap.parse_args(argv)
 
     from maxim.runtime.agent_loop import _read_drive_states
@@ -128,6 +131,11 @@ def main(argv: list[str] | None = None) -> int:
 
         for i in range(args.eats):
             food_before = _food(aut)
+            if food_before is not None and food_before >= args.satisfaction:
+                # Satiated — no deficit left to relieve; eating here only tests the food
+                # cap, not the loop. Stop rather than log noisy near-cap eats.
+                print(f"eat {i}: skipped (food {food_before} >= satisfaction {args.satisfaction})")
+                break
             out = aut.executor.execute({"tool_name": eat_tool, "params": {}})
             food_after = _food(aut)
             side = out.side_effects or {}
@@ -161,16 +169,23 @@ def main(argv: list[str] | None = None) -> int:
     rose = [r for r in executed if _rose(r)]
     credited = [r for r in rose if r["channel"] == "interoceptive" and (r["diff"] or 0) > 0]
 
+    break1 = prior_pick == eat_tool
     print("\n--- verdict ---")
-    print(f"break 1 (prior picks eat under a real deficit): {prior_pick == eat_tool} (picked {prior_pick})")
+    print(f"break 1 (prior picks eat under a real deficit): {break1} (picked {prior_pick}; drives={drives})")
     print(f"break 3 (eat EXECUTES via bridge):              {len(executed)}/{len(rows)} eats")
     print(f"  food actually rose after eat:                  {len(rose)}/{len(executed)} executed")
     print(f"break 2 (interoceptive relief credited):        {len(credited)}/{len(rose)} risen")
-    if executed and rose and credited:
+    # LOOP CLOSES requires ALL THREE: the prior fired (break 1), eat executed and food rose
+    # (break 3), and every rise credited interoceptive (break 2). Crediting alone is not enough
+    # — without break 1 the deficit was too mild and the prior never chose eat.
+    if break1 and executed and rose and credited and len(credited) == len(rose):
         print("\nLOOP CLOSES: breaks 1+2+3 compose on the live path (composition validated).")
         print("Next: the pre-registered learned-bias-over-trials measurement (moves R2 off PREMISE-NULL).")
         return 0
-    print("\nLOOP DID NOT CLOSE — see the first failing stage above.")
+    print("\nLOOP DID NOT CLOSE — see the failing stage(s) above.")
+    if not break1:
+        print(f"  break 1: the prior did not pick eat — deficit likely too mild (food={deficit_food}).")
+        print("  Drain deeper (lower --target-food / raise --drain-timeout-s) so hunger is real.")
     if executed and not rose:
         print("  HINT: eat succeeded but food did not rise post-sync — likely the bridge's `eat`")
         print("  returns before bot.consume() resolves, so the backend syncs stale food. That is a")
