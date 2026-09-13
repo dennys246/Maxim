@@ -1,0 +1,49 @@
+{
+  "ts": 1789341041.452642,
+  "bars": {
+    "separability": 0.7,
+    "day_light_min": 13.0,
+    "dark_light_max": 1.0
+  },
+  "provenance": {
+    "executed_maxim_file": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "d667df8065ac",
+    "working_tree_dirty_src_scripts": false,
+    "python": "/Users/dennys/RMSrv/scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages"
+  },
+  "world_sensor_count_note": "17 modality:world sensors (L11 dilution context)",
+  "instrument_error": null,
+  "apparatus": {
+    "rest": {
+      "x": -362.5,
+      "y": 69.0,
+      "z": -245.5
+    },
+    "box": {
+      "x": -314,
+      "y0": 149,
+      "z": -245
+    }
+  },
+  "check1_light": {
+    "day_min": 15.0,
+    "day_median": 15.0,
+    "dark_max": 0.0,
+    "dark_median": 0.0,
+    "n_rest": 20,
+    "n_dark": 40,
+    "settle_timeouts": 0,
+    "pass": true
+  },
+  "check2_world_separability": {
+    "transitions": 20,
+    "separation": 1.0,
+    "repeats": 20,
+    "stability": 1.0,
+    "none_encodes": 0,
+    "min_n": 15,
+    "pass": true
+  },
+  "all_pass": true
+}
