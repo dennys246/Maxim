@@ -26,6 +26,11 @@ that generalizes belongs here.
   `max(block, sky − darkness(time))` fix, and the 1.18 block-light-0 spawn-rule trap.
   (First live 1.20.4 session, 2026-09-13.)
 
+- [sensor-range-clamps.md](sensor-range-clamps.md) — world sensors clamp to their body-declared
+  ranges (`y_altitude` caps at 128): compare harness expectations against the SENSED value via
+  `_read_world_ranges`, never raw world truth; states beyond a cap are indistinguishable to the
+  agent. (Survival Phase-0 first run, 2026-09-13.)
+
 - [experiment-catalog-candidates.md](experiment-catalog-candidates.md) — a prioritized **backlog** of
   11 reusable wiring lessons harvested from all 92 past experiments (catalog workflow, 2026-09-13);
   each becomes a full page as we next touch that subsystem. Highest-priority: the substrate→LLM

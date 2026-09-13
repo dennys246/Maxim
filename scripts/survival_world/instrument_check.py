@@ -113,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[FAIL] provenance: {exc}")
         return 3
 
-    from maxim.runtime.agent_loop import _encode_current_clusters
+    from maxim.runtime.agent_loop import _encode_current_clusters, _read_world_ranges
     from maxim.simulation.minecraft_harness import build_minecraft_aut
 
     report: dict = {
@@ -186,16 +186,35 @@ def main(argv: list[str] | None = None) -> int:
         dark_tp = {"x": float(bx), "y": float(by0 + 1), "z": float(bz)}
         report["apparatus"] = {"rest": rest, "box": {"x": bx, "y0": by0, "z": bz}}
 
+        # The body CLAMPS each world sensor to its declared range (minecraft_player.yaml:
+        # y_altitude is [0, 128] — "y>128 clamps"), so the settle target must be the value
+        # the SENSOR can actually reach, not raw world truth: the first live run timed out
+        # all 40 dark samples waiting for y=151 from a sensor that tops out at 128.
+        y_lo, y_hi = _read_world_ranges(aut.executor).get("y_altitude", (float("-inf"), float("inf")))
+
+        def sensed_y(world_y: float) -> float:
+            return min(max(world_y, y_lo), y_hi)
+
+        rest_sensed_y = sensed_y(rest["y"])
+        dark_sensed_y = sensed_y(dark_tp["y"])
+        if abs(rest_sensed_y - dark_sensed_y) <= 2 * Y_TOLERANCE:
+            raise InstrumentError(
+                f"rest and dark sensed-y targets ({rest_sensed_y}, {dark_sensed_y}) are within "
+                f"the settle tolerance of each other after range-clamping [{y_lo}, {y_hi}] — "
+                "the settle predicate cannot discriminate the conditions (rest anchor too high?)."
+            )
+
         light_rest: list[float] = []
         light_dark: list[float] = []
         ids: list[tuple[bool, str | None]] = []  # (in_dark, world_cluster_id)
         settle_timeouts = 0
         for _cycle in range(args.cycles):
             for in_dark in (False, True, True):  # rest, onset, repeat — exp56 check-1 shape
-                target_y = dark_tp["y"] if in_dark else rest["y"]
+                target_y = dark_sensed_y if in_dark else rest_sensed_y
                 rcon.teleport(args.username, dark_tp if in_dark else rest)
-                # Settle on POSITION truth (y separates the conditions by ~80 blocks and is
-                # independent of the light metric under test) — the settle-until-reflected
+                # Settle on POSITION truth (the range-clamped sensed y separates the two
+                # conditions — guarded above — and is independent of the light metric under
+                # test) — the settle-until-reflected
                 # pattern; a blind sleep can sample the previous condition (exp56's measured
                 # stale-snapshot incident).
                 vm = settle_until(
