@@ -21,6 +21,12 @@ that generalizes belongs here.
   **cluster reward bias**), why they confound behavioural credit-isolation, and how to design a
   probe that separates them. (R2 learned-bias, 2026-09-12.)
 
+- [experiment-catalog-candidates.md](experiment-catalog-candidates.md) — a prioritized **backlog** of
+  11 reusable wiring lessons harvested from all 92 past experiments (catalog workflow, 2026-09-13);
+  each becomes a full page as we next touch that subsystem. Highest-priority: the substrate→LLM
+  annotation channel being lossy (recurs across 9 cards), cross-agent want-transfer's coverage
+  ceiling, and relief-sourced operant credit.
+
 _(stubs to fill as we hit them):_
 - `drives-and-corrective-affinity.md` — deriving a corrective NEED from a world-owned drive; the
   read-tool trap (R2 break 1).
