@@ -47,6 +47,27 @@ function send(obj) {
   if (client && !client.destroyed) client.write(JSON.stringify(obj) + "\n");
 }
 
+// Perceived brightness at the agent — the debug-screen quantity, NOT raw block light.
+// Block light alone reads 0 on a sunlit surface (the sun feeds SKY light; block light
+// counts only torches/lava/etc.), which is why the sensor read "dead 0 everywhere" in
+// Exp 56: broad daylight and a lethal cave are the same 0. Effective light =
+// max(block, sky - darkness(time)): full sun ~15 at noon, moonlit surface ~4, cave 0.
+// Both halves are game-exposed (D1-clean). Sky darkness ramps over dusk (12000-13800)
+// and dawn (22200-24000), 11 through the night — the vanilla brightness ramp, linearized.
+function skyDarkness() {
+  const t = (bot.time?.timeOfDay ?? 0) % 24000;
+  if (t < 12000) return 0;
+  if (t < 13800) return (11 * (t - 12000)) / 1800;
+  if (t < 22200) return 11;
+  return (11 * (24000 - t)) / 1800;
+}
+function perceivedLight(me) {
+  if (!bot.world || !me) return 7;
+  const block = bot.world.getBlockLight?.(me.position) ?? 0;
+  const sky = bot.world.getSkyLight?.(me.position) ?? 0;
+  return Math.max(block, Math.max(0, sky - skyDarkness()));
+}
+
 function snapshot() {
   // Emits EVERY modality:world sensor bodies/minecraft_player.yaml declares
   // (16 — the L11 re-measure needs the channel above the ~12 safe band);
@@ -86,7 +107,7 @@ function snapshot() {
     food: bot.food ?? 20,
     saturation: Math.min(10, bot.foodSaturation ?? 5),
     oxygen: bot.oxygenLevel ?? 20,
-    light_level: bot.world && me ? (bot.world.getBlockLight?.(me.position) ?? 7) : 7,
+    light_level: perceivedLight(me),
     y_altitude: me ? me.position.y : 64,
     nearest_hostile_dist: nearest,
     hostile_count: Math.min(32, hostiles.length),
@@ -194,6 +215,7 @@ const server = net.createServer((sock) => {
     return;
   }
   client = sock;
+  console.log("bridge client connected");
   let buffer = "";
   sock.on("data", (chunk) => {
     buffer += chunk.toString("utf8");
@@ -220,7 +242,10 @@ const server = net.createServer((sock) => {
     }
   });
   sock.on("close", () => {
-    if (client === sock) client = null;
+    if (client === sock) {
+      client = null;
+      console.log("bridge client disconnected");
+    }
   });
   sock.on("error", () => {});
 });
@@ -229,6 +254,10 @@ bot.once("spawn", () => {
   server.listen(BRIDGE_PORT, "127.0.0.1", () => {
     console.log(`maxim minecraft bridge: game ${MC_HOST}:${MC_PORT} <-> tcp 127.0.0.1:${BRIDGE_PORT}`);
   });
+  // One state line to stdout (after chunks/light settle) so an operator can see the bot
+  // is alive and sensors read without attaching a TCP client; state otherwise flows
+  // only over the bridge socket.
+  setTimeout(() => console.log("spawn state: " + JSON.stringify(snapshot())), 2000);
   setInterval(() => send({ type: "state", data: snapshot() }), STATE_INTERVAL_MS);
   event("info", "player spawned");
 });
