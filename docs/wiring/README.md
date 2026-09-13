@@ -31,6 +31,12 @@ that generalizes belongs here.
   `_read_world_ranges`, never raw world truth; states beyond a cap are indistinguishable to the
   agent. (Survival Phase-0 first run, 2026-09-13.)
 
+- [pain-needs-declared-failure-modes.md](pain-needs-declared-failure-modes.md) — pain fires
+  only from a body's DECLARED failure modes; drives alone publish nothing. `minecraft_player`
+  declares none, so Minecraft damage is painless (PainBus `total_published: 0` with 8
+  subscribers idle) and every negative-learning channel starves upstream. Check
+  `total_published`, never `subscriber_count`. (Dark=danger probe, 2026-09-13.)
+
 - [experiment-catalog-candidates.md](experiment-catalog-candidates.md) — a prioritized **backlog** of
   11 reusable wiring lessons harvested from all 92 past experiments (catalog workflow, 2026-09-13);
   each becomes a full page as we next touch that subsystem. Highest-priority: the substrate→LLM
