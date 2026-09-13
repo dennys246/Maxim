@@ -52,6 +52,15 @@ Every experiment entry follows this structure:
 
 ## Index
 
+> **Status audit (catalog workflow, 2026-09-13, 92 experiments):** ✅ 33 EARNED · ⭕ 17 NULL (a null
+> is a result) · 🧪 18 POC · 🔧 8 INFRA · ❔ 8 UNKNOWN · ⏭️ 5 SUPERSEDED · 🟡 2 PARTIAL · 🕸️ 1 STALE.
+> The per-experiment status + one-line findings live in the sections below. **Files stay FLAT** — a
+> measured reorg found ~870 cross-links with only 18 lint-guarded, so a physical move into subdirs
+> would break ~98% silently; the by-line grouping here delivers the navigability at zero link risk.
+> The reusable "wire-a-subsystem-into-an-environment" lessons the catalog surfaced are aggregated in
+> [../wiring/](../wiring/) (see `experiment-catalog-candidates.md`). **Follow-up:** the 8 UNKNOWN docs
+> lack a stated verdict — worth adding a status line to each when next touched.
+
 ### Substrate P0–P4: mechanism validation
 
 | Entry | Date | Status | Decision |
