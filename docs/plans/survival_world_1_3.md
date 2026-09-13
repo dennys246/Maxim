@@ -315,13 +315,33 @@ release (mineflayer lags fresh versions and is buggy on them); (2) Paper/Spigot 
 mode with RCON + daylight/mob-spawn control (deterministic classrooms); (3) every sensor
 re-verified on that version (the instrument lesson); (4) matching Java.
 
-**Decision (proposed):** the 1.3 world's headline mechanics — husbandry (wolves), crafting,
-farming — are richer/cleaner on a MODERN version, so move the 1.3 line to **one modern *stable*
-version and commit to it** (target **1.20.1 / 1.20.4**: mature mineflayer support, Java 17;
-treat 1.21.x as "verify mineflayer support first"). Eat the one-time sensor re-verify + the
-apparatus re-baseline; do NOT run two versions long-term (operational overhead + `~/.maxim`
-collision risk). Staying on 1.16.5 is the zero-port-cost alternative but buys simpler mechanics
-and an old Java pin — not worth it given husbandry/crafting/farming are the 1.3 headline.
+**DECIDED 2026-09-13 (owner): port to Paper 1.20.4 NOW, before any 1.3 measurement.** The
+original proposal above argued from richer mechanics; the decisive argument turned out to be
+cost accumulation, established when a stay-on-1.16.5 recommendation was examined against data:
+
+- **The feared re-baseline is ~1 hour, not days.** The full Exp 56 four-arm campaign (200
+  trials) took ~51 minutes of wall clock (first→last `ts` in `data/56_four_arm.jsonl`). The
+  version re-baseline also *absorbs* the already-owed Exp 56 guard rerun (the shared
+  `index.js` eat-lag fix) — two owed campaigns become one.
+- **Version-bound artifacts accumulate the longer the move waits.** Everything 1.3 builds is
+  version-sensitive: the sensor-separability verification, the feature-based world channel,
+  the dark-cave classroom, and the R3 frozen Goldilocks baseline (mob AI/spawn/food mechanics
+  differ across versions, so a calibrated survival horizon does not port). Moving at the R4
+  boundary would mean paying the verify twice and re-doing the R3 calibration mid-release.
+- **1.18+ changed the dark=danger mechanic itself:** hostile mobs spawn only at block-light
+  **0** (vs ≤7 in 1.16.5), which makes darkness a *sharper* game-native contingency but
+  changes classroom design and `light_level` thresholds — the claims should be designed
+  against the final mechanics, not migrated across them.
+- **Accepted risk (owner, 2026-09-13):** the fabric re-baseline could fail to replicate on
+  1.20.4. That ships as a finding, not a blocker — "if it fails then it's worth learning now."
+  The 1.2 Exp 56 claim stays earned on its version either way; Exp 57's PARTIAL is NOT re-run
+  (multi-rung cost, nothing in 1.3 reuses it) and stays honestly 1.16.5-pinned.
+
+**1.20.4 specifically** (not 1.20.1): same Java 17 requirement, same mature mineflayer support
+(`^4.20.0` negotiates it), latest of the 1.20.x line the bridge deps cover. 1.21.x stays
+"verify mineflayer support first." Do NOT run two versions long-term (operational overhead +
+`~/.maxim` collision risk); `scripts/exp56/` stays 1.16.5-pinned only until its re-baseline
+port, then retires the old server dir.
 
 ## World vs. substrate: what gets built, and who builds it
 
