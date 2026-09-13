@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 """R2 learned-bias measurement (rung 1) — the frozen prereg is docs/experiments/r2_learned_bias_prereg.md.
 
+Dormant since 2026-09-13: the learned-bias line is RESOLVED — the drive-relief cluster credit
+FORMS (bias=1.0) but is a behavioural MESSENGER, not a cause; selection is carried by the innate
+prior + the state-blind tool:eat causal link, which the credit is redundant with (see
+docs/experiments/r2_learned_bias_v2_prereg.md §Outcome and
+docs/wiring/substrate-learning-channels.md). This harness never took confirmatory data (the v2
+design review superseded the line before a run). Kept per dormancy-over-deletion as the
+retired-line instrument; no new features build on it, and resurrection requires a new experiment
+that earns the weight (a substrate-architecture change making the cluster credit contribute to
+selection beyond a tie-margin), not "we have time now."
+
 Does break-2's measured DRIVE-RELIEF credit, booked through the REAL record_outcome path over
 train-to-plateau hungry->eat->relief episodes, TEACH a substrate-primary agent a learned CLUSTER
 bias that changes behaviour beyond its innate prior + the generic tool:eat causal link?
