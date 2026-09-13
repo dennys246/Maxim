@@ -27,6 +27,19 @@
 > `data/r2_drive_premise.json` 1.2 record is unchanged until a pre-registered, two-lens-reviewed,
 > provenance-stamped learned-bias run flips it. See `tests/unit/test_survival_drive_prior.py`,
 > `tests/unit/test_survival_learns_break2.py`, `scripts/survival_world/`, and CHANGELOG `[Unreleased]`.
+>
+> **LEARNED-BIAS LINE RESOLVED (2026-09-12): the drive-relief CLUSTER credit forms but is a
+> behavioural MESSENGER, not a cause — line closed.** Two isolation designs (v1 marginal probe, v2
+> state-contingency titration) + a four-lens experiment-DESIGN review + decisive offline experiments
+> established that action selection is driven by the innate prior + the state-blind tool-success
+> causal link (learned from hunger-driven eating), which the cluster credit is redundant with; the
+> credit only adds a near-tautological score margin or breaks ties. So R2's behavioural premise, to
+> the extent it holds, is carried by prior + causal link — NOT the cluster-credit channel; R2 stays
+> PREMISE-NULL for the cluster-credit-specific behavioural claim, and no live learned-bias run is
+> owed (the offline experiments settled it for ~minutes of compute). Full write-up:
+> `r2_learned_bias_v2_prereg.md` (Outcome) + `rationale/r2_learned_bias_v2/` +
+> `docs/wiring/substrate-learning-channels.md`. Redirected to the 1.3 survival-world build (the
+> composed loop works without the credit being the sole driver).
 
 **Status: PREMISE-NULL, 2026-09-07.** The Minecraft survival ladder's R2 rung
 ([minecraft_benchmark.md](../plans/minecraft_benchmark.md) Part II) asks whether the

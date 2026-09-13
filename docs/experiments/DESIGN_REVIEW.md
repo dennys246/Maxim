@@ -46,16 +46,17 @@ sight. Every design review that discovers something new adds a `docs/wiring/` en
 
 ## Per-experiment layout + the synthesis step
 
-Each experiment is a directory `docs/experiments/<slug>/`:
+Preregs stay FLAT named files (the existing `docs/experiments/*.md` convention); the design-review
+rationale is collected under a single `rationale/` collector dir (alongside `data/`, `results/`,
+`protocols/`), one subdir per experiment:
 
-    docs/experiments/<slug>/
-      prereg.md                 # the (draft, then frozen) pre-registration
-      rationale/
-        confounding.md          # one file per lens — the reviewer's findings, PRESERVED
-        bio-faithful.md
-        wiring.md
-        environment.md
-      outcome.md                # dated, after the run
+    docs/experiments/<slug>_prereg.md         # the (draft, then frozen) pre-registration (flat)
+    docs/experiments/rationale/<slug>/
+      confounding.md                          # one file per lens — the reviewer's findings, PRESERVED
+      bio-faithful.md
+      wiring.md
+      environment.md
+    docs/experiments/<slug>_outcome.md        # or the prereg's Outcome addendum, after the run
 
 Each lens's review is written to `rationale/<lens>.md` verbatim (preserve the reasoning — it is why
 the design is what it is; future experiments read it). **Then the main session** (this Claude) reads
