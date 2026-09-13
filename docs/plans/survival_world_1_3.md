@@ -72,9 +72,11 @@ the most tractable starting contingency, distinct from APPROACH.
   negative link → the agent stops doing it / flees. Immediate, game-native. Shareable.
 - **Darkness = danger (avoidance form):** being in a low-`light_level` cluster reliably
   precedes mob damage → negative valence on the dark-situation cluster. Rides negative
-  credit, not the corrective prior. *Caveat:* `light_level` read DEAD (0 everywhere) in
-  Exp 56 — verify the sensor works before relying on it. Shareable (the headline "share a
-  fear").
+  credit, not the corrective prior. *Caveat RESOLVED 2026-09-13:* the "dead" `light_level`
+  was raw block light (0 under sunlight by definition); the bridge now reports perceived
+  brightness, live-verified on 1.20.4 — see
+  [../wiring/world-light-sensing.md](../wiring/world-light-sensing.md). Shareable (the
+  headline "share a fear").
 
 ### Tier 1 — approach / immediate corrective (needs R2 breaks 1+2, and 3 for the act)
 - **Eat when hungry:** `food` low → `eat` → relief. The canonical R2 build. Needs the
@@ -358,8 +360,9 @@ nothing is hand-built in Minecraft.**
   There is no "cave" symbol and no `is_in_cave` flag — handing one would be engineering the
   concept (a D1 violation). **Design consequence:** a classroom is only learnable if
   game-native sensors render it SEPARABLE from its surroundings; verify that separability
-  through the real encoder BEFORE running (the instrument lesson — and note `light_level` read
-  DEAD in Exp 56, so cave-distinctness may have to rest on block-census / altitude / sky).
+  through the real encoder BEFORE running (the instrument lesson — the Exp 56 "dead `light_level`" turned out to be a bridge
+  semantics bug, fixed + live-verified 2026-09-13, so light IS available as a discriminating
+  feature; see [../wiring/world-light-sensing.md](../wiring/world-light-sensing.md)).
 - **Operator setup (hosting, not building):** stand up a Java Paper server for the chosen
   version (offline mode, RCON enabled + password, daylight/mob-spawn gamerules — the
   `~/exp56_server` pattern), run the mineflayer bridge (`node index.js`), run the harness. The
@@ -370,7 +373,10 @@ nothing is hand-built in Minecraft.**
 
 1. Is AVOIDANCE (negative-credit, Tier 0) genuinely more tractable than APPROACH on the
    current substrate? A cheap first probe (like R2) could settle it and pick the first rung.
-2. Does `light_level` actually read on the live bridge (it was dead in Exp 56)? Verify first.
+2. ~~Does `light_level` actually read on the live bridge (it was dead in Exp 56)?~~
+   RESOLVED 2026-09-13: it was reading raw block light (0 under sunlight by definition);
+   now perceived brightness, verified live on 1.20.4 (noon surface = 15). The remaining
+   check is the dark side (cave/roofed box ≈ 0) + encoder separability — Step 1.
 3. The generalization-channel design (R1's build): similarity-weighted read vs a
    hierarchical "situation-kind" cluster — which, and does it disturb the exact-key
    guarantees Exp 56/57 rely on?

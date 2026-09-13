@@ -21,6 +21,11 @@ that generalizes belongs here.
   **cluster reward bias**), why they confound behavioural credit-isolation, and how to design a
   probe that separates them. (R2 learned-bias, 2026-09-12.)
 
+- [world-light-sensing.md](world-light-sensing.md) — block light ≠ brightness: why `light_level`
+  read "dead 0 everywhere" in Exp 56 (raw block light is 0 under sunlight), the
+  `max(block, sky − darkness(time))` fix, and the 1.18 block-light-0 spawn-rule trap.
+  (First live 1.20.4 session, 2026-09-13.)
+
 - [experiment-catalog-candidates.md](experiment-catalog-candidates.md) — a prioritized **backlog** of
   11 reusable wiring lessons harvested from all 92 past experiments (catalog workflow, 2026-09-13);
   each becomes a full page as we next touch that subsystem. Highest-priority: the substrate→LLM
