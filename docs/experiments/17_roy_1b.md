@@ -1,5 +1,10 @@
 # Roy-1b — substrate-primary on held-out fixture (second methodology iteration)
 
+> **Status (audit 2026-09-13): NULL** — the cluster wire is structurally healthy under
+> substrate-primary but all three arms produced the identical action distribution (the held-out
+> fixture's percepts never fire the priming-acquired EC clusters); with Roy-1a this established
+> the symmetric structural-vs-behavioral gap.
+
 **Date:** 2026-05-12 (run completed 2026-05-11 23:17 local)
 **Plan:** [persona_convergence_crucible.md § "Iteration log"](../plans/deferred/persona_convergence_crucible.md)
 **Companion:** [16_roy_1a.md](16_roy_1a.md) (A/B partner) · [15_g4_cluster_reward_wire.md](15_g4_cluster_reward_wire.md) (Roy-0 baseline)

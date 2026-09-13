@@ -3,6 +3,9 @@
 **Date:** 2026-04-22
 **Version:** 0.8.x (post-PFC Stage 1+2 ship)
 **Status:** PROTOCOL DEFINED — awaiting live LLM run
+
+> **Status (audit 2026-09-13): STALE** — protocol defined and infrastructure test-verified
+> (commit 499151e5), but the live LLM run it awaits never happened; H1–H7 were never scored.
 **Depends on:** [pfc_deliberation_cycle.md](../plans/archive/pfc_deliberation_cycle.md)
 
 ---

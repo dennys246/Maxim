@@ -1,5 +1,12 @@
 # R2 learned-bias pre-registration — does measured relief TEACH a substrate-primary agent to eat when hungry?
 
+> **Status (audit 2026-09-13): SUPERSEDED** — this v1 prereg never took data (the Outcome
+> placeholder below is empty by design); its raw-flip design was superseded by the marginal-cluster
+> design, and the whole R2 learned-bias question was then resolved offline (commit 96509352: the
+> cluster credit is a behavioural MESSENGER, not a cause — see
+> [r2_learned_bias_v2_prereg.md](r2_learned_bias_v2_prereg.md) §Outcome and
+> [../wiring/substrate-learning-channels.md](../wiring/substrate-learning-channels.md)).
+
 > **STATUS: FROZEN PRE-REGISTRATION (2026-09-12) — NO data taken.** All parameters are settled
 > (§ Open decisions → ALL RESOLVED). This document must be merged to `main` with a clean tree
 > BEFORE the first data timestamp; the data PR references the frozen commit (research-claim

@@ -1,5 +1,9 @@
 # Temporal Credit Validation — Experiment Results
 
+> **Status (audit 2026-09-13): STALE** — protocol + runner shipped ~2026-04 (commit 6dccd363)
+> but the 4-set run was never executed; every Result cell still reads TBD and no data exists
+> under `data/` or `results/`.
+
 **Plan:** [temporal_credit_integration.md](../plans/archive/temporal_credit_integration.md)
 **Protocol:** [temporal_credit_validation.md](protocols/temporal_credit_validation.md)
 **Date:** TBD
