@@ -33,7 +33,27 @@ NO-CREDIT ablation (suppress the cluster credit) does NOT suppress the causal li
 select eat → null regardless of whether the drive credit "works." (Predicted by the two-lens
 review before the run; confirmed by the run.)
 
-## How to wire an experiment that CAN isolate the drive-relief (cluster) credit
+## Definitive result (2026-09-12): the cluster credit is a MESSENGER, not a behavioural cause
+
+The v2 isolation design (state-contingency + a competitor titration) was taken to a four-lens design
+review + decisive offline experiments *before building it*. The result: **there is no robust,
+non-tautological behavioural effect to isolate on this substrate.** Replicating the learned NAc with
+K∈{1,2,3} `turn`-competitors that build causal links EQUAL to eat's (0.89), at the hungry probe:
+- **eat is selected WITHOUT the cluster credit** at every K — the causal link + the argmax tiebreak
+  already pick it. Adding the +1.0 credit changes the *margin*, not the *pick*.
+- The credit's only behavioural role is (a) a near-tautological score margin (≈ the bias magnitude
+  itself) or (b) breaking a tie in the razor-thin case the tiebreak disfavours eat.
+
+So on this substrate the drive-relief cluster credit **forms** (mechanism real, bias reaches 1.0) but
+does not **drive selection** — the innate prior + the state-blind causal link do. Two isolation
+designs (v1 marginal, v2 titration) hit this same wall; per the cycle-divergence rule that is the
+signal the mechanism is the messenger. **Wiring implication:** do NOT design an experiment whose claim
+requires the cluster credit to be the behavioural cause — it will null or measure a tautology. If a
+line needs drive-relief to *drive* behaviour, that is a substrate-architecture change (make the
+credit contribute to selection beyond a tie-margin), not an experiment-design problem. (R2
+learned-bias v1+v2, `docs/experiments/r2_learned_bias_v2_prereg.md` Outcome + `rationale/`.)
+
+## How to wire an experiment that CAN isolate the drive-relief (cluster) credit (attempted — see the result above)
 
 The cluster credit's real job is **state-conditioned, competitive selection** — "choose eat over
 other things, *specifically* when hungry." Give it that job:
