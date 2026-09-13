@@ -5,6 +5,10 @@
 **Stage:** S1 (Universal sense + discover_tools + hybrid prompt mode)
 **Status:** In progress
 
+> **Status (audit 2026-09-13): POC** — the happy path passed all gates (turn-1 affordance use,
+> zero cold-start regression; commit d144507); the "In progress" header above is stale — the
+> discovery-path S2 follow-up (`discover_tools`/`sense` exercised for real) was never run.
+
 ---
 
 ## Hypothesis

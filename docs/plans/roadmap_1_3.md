@@ -26,11 +26,14 @@ breaks) and **R1** (no cross-context generalization — the substrate is exact-k
 ## Phases (by dependency)
 
 ### Phase 0 — Platform + instrument *(cheap, gating; do first)*
-- Stand up the chosen **modern MC version (1.20.1 / 1.20.4)**, port the bridge/sensors, and
+- Stand up the chosen **modern MC version (DECIDED 2026-09-13: Paper 1.20.4** — see
+  [survival_world_1_3.md](survival_world_1_3.md) §"Minecraft version"**)**, port the bridge/sensors, and
   **verify sensor separability through the real encoder before any claim** (the `light_level`-
   dead lesson: a classroom the sensors can't separate can't be learned).
-- Resolve the re-baseline: moving off 1.16.5 re-triggers the Exp 56/57 guards — re-run the
-  shared-want fabric on 1.20.1 or keep it pinned; do not run two versions long-term.
+- Resolve the re-baseline — RESOLVED 2026-09-13 with the version decision: the Exp 56
+  shared-want fabric IS re-baselined on 1.20.4 (~1 hr measured; absorbs the owed eat-lag
+  guard rerun) before any claim reuses it; Exp 57's PARTIAL stays honestly 1.16.5-pinned
+  (multi-rung cost, nothing in 1.3 reuses it). Do not run two versions long-term.
 - Platform facts (see [survival_world_1_3.md](survival_world_1_3.md) §"World vs. substrate" and
   §"Minecraft version"): Java Edition only (mineflayer); classrooms built by **RCON command
   scripts**, nothing hand-built; the operator hosts (Paper server + bridge + harness).

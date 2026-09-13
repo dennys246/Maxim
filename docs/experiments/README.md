@@ -58,8 +58,16 @@ Every experiment entry follows this structure:
 > measured reorg found ~870 cross-links with only 18 lint-guarded, so a physical move into subdirs
 > would break ~98% silently; the by-line grouping here delivers the navigability at zero link risk.
 > The reusable "wire-a-subsystem-into-an-environment" lessons the catalog surfaced are aggregated in
-> [../wiring/](../wiring/) (see `experiment-catalog-candidates.md`). **Follow-up:** the 8 UNKNOWN docs
-> lack a stated verdict — worth adding a status line to each when next touched.
+> [../wiring/](../wiring/) (see `experiment-catalog-candidates.md`). **Follow-up RESOLVED 2026-09-13:** the audit
+> counted 8 UNKNOWN docs without enumerating them; a re-sweep found 9 candidates lacking a stated
+> verdict (the audit's exact cut is not recoverable) and each now carries an evidence-based
+> `Status (audit 2026-09-13)` line: STALE — `temporal_credit_validation` (never run),
+> `09_pfc_deliberation_cycle` (live run never happened); SUPERSEDED —
+> `hippocampal_recall_experiment` (plan doc; runs live in the run-notes), `r2_learned_bias_prereg`
+> (v1 never took data; line resolved offline); POC — `sem_tool_discovery_s1` (S2 never run);
+> PARTIAL — `hippocampal_recall_run_notes` (memory survives, behavioral recall fails),
+> `37_cross_model_results` (4 fires done, cloud arm deferred); NULL — `16_roy_1a`, `17_roy_1b`
+> (the symmetric structural-vs-behavioral gap). The counts above remain the audit's snapshot.
 
 ### Substrate P0–P4: mechanism validation
 

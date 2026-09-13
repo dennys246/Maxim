@@ -1,5 +1,10 @@
 # Hippocampal Recall Experiment — Run Notes
 
+> **Status (audit 2026-09-13): PARTIAL** — memory survival after 3 interference turns confirmed
+> (1.0) but behavioral recall from indirect cues failed (the AUT never connected the door cue to
+> "say Verath"); the memory-exists-vs-recall-fails split motivated the introspection
+> `remember`-tool line.
+
 ## Run 2026-04-06 (Direct Injection, Qwen2.5-14B orch + Mistral-7B AUT)
 
 ### Setup

@@ -1,5 +1,9 @@
 # Hippocampal Recall Experiment Plan
 
+> **Status (audit 2026-09-13): SUPERSEDED** — plan-stage doc frozen at "Ready to run"; the
+> actual runs and findings are recorded in
+> [hippocampal_recall_run_notes.md](hippocampal_recall_run_notes.md).
+
 > **Status:** Ready to run. All infrastructure implemented.
 > **Depends on:** Research Protocol (complete), dual-LLM wiring (complete), campaign YAMLs (complete).
 > **Replaces:** Standalone Dungeon Master MVP as first deliverable. DM runtime still ships later.

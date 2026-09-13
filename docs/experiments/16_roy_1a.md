@@ -1,5 +1,10 @@
 # Roy-1a — llm-primary on held-out fixture (first methodology iteration)
 
+> **Status (audit 2026-09-13): NULL** — priming substrate carries forward structurally
+> (cluster-bias L2 2.45, unchanged across AUT modes) but zero behavioral expression via the
+> cluster path under llm-primary test; the salience KS divergence (0.879, p=2.1e-9) is the
+> positive methodology signal.
+
 **Date:** 2026-05-12 (run completed 2026-05-11 21:17 local)
 **Plan:** [persona_convergence_crucible.md § "Iteration log"](../plans/deferred/persona_convergence_crucible.md)
 **Companion:** [15_g4_cluster_reward_wire.md](15_g4_cluster_reward_wire.md) (Roy-0 baseline this iteration builds on) · [14_g3_roy_preflight_probe.md](14_g3_roy_preflight_probe.md) (pre-flight probe)

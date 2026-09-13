@@ -1,5 +1,10 @@
 # Exp 37 — Cross-Model Results
 
+> **Status (audit 2026-09-13): PARTIAL** — four open-source fires complete with the
+> Goldilocks-zone + reasoning-amplifies-substrate findings (`data/37_results*.jsonl`); the
+> cloud-comparison arm was deferred behind the prompt-caching refactor and the "IN PROGRESS"
+> header below was never closed out.
+
 **Status:** IN PROGRESS 2026-06-13 (4 open-source fires complete: Qwen14B, Qwen32B, Mistral24B → **Goldilocks-zone finding**; DeepSeek-R1-Distill-Qwen-32B → **reasoning amplifies substrate** [bucket R-A] + first clean Wire-A ablation; cloud comparisons deferred behind prompt-caching refactor).
 **Companion doc:** [37_cross_session_graduation.md](37_cross_session_graduation.md) — pre-registration + per-fire verdict writeups.
 **Plan:** [docs/plans/archive/exp37_cross_model_characterization.md](../plans/archive/exp37_cross_model_characterization.md) — methodology + sequencing.
