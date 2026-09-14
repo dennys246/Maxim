@@ -1,10 +1,19 @@
 # Exp 58 — Phase-1 survival wants: deficit-contingent eating + learned dark-fear (pain→cluster valence)
 
-> **STATUS: DRAFT v2 (2026-09-14) — POST four-lens design review, PRE-freeze.** v1 went to
-> the four lenses (findings preserved verbatim in `rationale/exp58_survival_wants/`); this
-> version folds them. Six DO-NOT-BUILDs were returned — the dead read path independently by
-> THREE lenses — all folded below; the dismissed/deferred items are recorded in §Fold log.
-> Freezes on `main` before any data timestamp, after the mechanism + apparatus PRs land.
+> **STATUS: FROZEN PRE-REGISTRATION (2026-09-14) — NO live data taken.** v1 → four-lens
+> design review (six DO-NOT-BUILDs; rationale preserved verbatim in
+> `rationale/exp58_survival_wants/`) → folded v2 → mechanism built as **Wire 4** (PR #700,
+> two-lens code reviewed; note the Wire-3→Wire-4 rename — Wire 3 was taken) → **offline
+> instrument gates G1–G3 PASSED on clean main**
+> ([data/exp58_offline_gates.json](data/exp58_offline_gates.json), gated run @ 0847b61f):
+> G2 same-cluster PASS (the DNB-2 write/read mismatch measured absent), G1 read-path PASS
+> (the full pain→fear→`flee` composition through `propose_via_substrate`: dark fear −1.0,
+> lit 0.0, flee proposed exactly and only at the feared situation), **G3: the cave-mouth
+> gradient encodes to a third cluster → the secondary entry-avoidance DV is NOT LICENSED
+> and is hereby DROPPED — the primary DV is escape (time-in-dark / latency-to-exit), as
+> pre-committed below.** Classroom apparatus: `setup_world.py classroom` (same PR as this
+> freeze). This document must be on `main` before the first live data timestamp; any
+> change after the first data point is a dated addendum, never an edit.
 > Owner decision 2026-09-14: the fear mechanism is the pain→cluster negative-valence write.
 
 ## The two claims

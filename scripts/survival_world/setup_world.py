@@ -179,6 +179,12 @@ _GAMERULES = {
     "doImmediateRespawn": "true",
     "keepInventory": "true",
     "doDaylightCycle": "false",
+    # Exp 58 env lens SF-1: storms make the daytime surface spawnable, rain
+    # extinguishes burning zombies (the pursuit-containment mechanic), and
+    # `is_raining` flips cluster identity mid-arm.
+    "doWeatherCycle": "false",
+    # Belt (env NIT): zombies must not break the classroom geometry.
+    "mobGriefing": "false",
 }
 
 
@@ -241,6 +247,83 @@ def _verify(args: argparse.Namespace) -> int:
     return 0
 
 
+def _classroom(args: argparse.Namespace) -> int:
+    """Build the Exp 58 dark-fear classroom over RCON (prereg §Apparatus).
+
+    Geometry (all vanilla, D1-compatible — every mechanic is the game's own):
+
+    - SAFE AREA: a sky-exposed 9x9 platform centred on the anchor at frozen
+      day. Adult zombies that pursue out here BURN (game-native containment,
+      env DNB-2) — which is why the spawner pins adults. Bot spawnpoint set
+      here so a death never strands the AUT elsewhere (env SF-4).
+    - DARK ROOM: a sealed stone room east of the platform (interior 7x7x4,
+      block-light 0 by construction), joined by a doorway with a closed
+      OAK DOOR the bot can open but zombies cannot break on normal
+      difficulty (env DNB-2). Bread chest omitted v1 — the safe area is
+      where regen happens (bread seeded via `prepare`, env SF-3).
+    - SPAWNER: a zombie monster-spawner at the room centre — spawners ignore
+      `doMobSpawning false` (which this world sets globally to kill the
+      natural-cave contamination, env DNB-1), require block-light 0 (light
+      the room and it stops: dark→zombies stays a REAL game mechanic), and
+      pin type + adult + density + proximity via NBT: SpawnData IsBaby:0b,
+      MaxNearbyEntities 2, RequiredPlayerRange 8 (spawns only while the bot
+      is inside), SpawnCount 1.
+
+    ``--sweep`` kills classroom-range zombies (arm boundaries / probe
+    windows, confounding S2). Idempotent: re-running rebuilds in place.
+    """
+    from survival_world.common import bot_pos
+
+    rcon = RconControl(args.rcon_host, args.rcon_port, args.rcon_password)
+    try:
+        if args.sweep:
+            resp = rcon.command("kill @e[type=minecraft:zombie,distance=..64]")
+            print(f"rcon> kill zombies r64\n      {resp.strip() or '(none)'}")
+            return 0
+        ax, ay, az = (
+            (args.anchor_x, args.anchor_y, args.anchor_z) if args.anchor_x is not None else bot_pos(rcon, args.username)
+        )
+        ax, ay, az = int(ax), int(ay), int(az)
+        floor = ay - 1
+        cmds = [
+            # Safe platform 9x9 (stone floor, sky above cleared 6 high).
+            f"fill {ax - 4} {floor} {az - 4} {ax + 4} {floor} {az + 4} minecraft:smooth_stone",
+            f"fill {ax - 4} {ay} {az - 4} {ax + 4} {ay + 5} {az + 4} minecraft:air",
+            # Dark room shell east of the platform: outer 9x9 footprint,
+            # walls/floor/roof stone, interior 7x7x4 air. West wall touches
+            # the platform edge at x = ax+5.
+            f"fill {ax + 5} {floor} {az - 4} {ax + 13} {ay + 4} {az + 4} minecraft:stone hollow",
+            # Doorway (2 high) in the west wall at platform level + oak door.
+            f"fill {ax + 5} {ay} {az} {ax + 5} {ay + 1} {az} minecraft:air",
+            f"setblock {ax + 5} {ay} {az} minecraft:oak_door[facing=east,half=lower]",
+            f"setblock {ax + 5} {ay + 1} {az} minecraft:oak_door[facing=east,half=upper]",
+            # Zombie spawner at room centre, floor level.
+            f"setblock {ax + 9} {ay} {az} minecraft:spawner"
+            + '{SpawnData:{entity:{id:"minecraft:zombie",IsBaby:0b}},'
+            + "MaxNearbyEntities:2s,RequiredPlayerRange:8s,SpawnCount:1s,"
+            + "MinSpawnDelay:100s,MaxSpawnDelay:300s,SpawnRange:3s}",
+            # Global: natural spawning OFF (the spawner is the only source).
+            "gamerule doMobSpawning false",
+            # Bot respawns on the safe platform.
+            f"spawnpoint {args.username} {ax} {ay} {az}",
+        ]
+        for cmd in cmds:
+            resp = rcon.command(cmd).strip()
+            print(f"rcon> {cmd[:96]}\n      {resp or '(ok)'}")
+            low = resp.lower()
+            if "unknown" in low or "expected" in low or "incorrect" in low:
+                print("\nCLASSROOM BUILD FAILED on the command above — nothing gated may run.")
+                return 4
+        print(
+            f"\nclassroom built at anchor ({ax},{ay},{az}): safe platform (spawnpoint), "
+            f"dark room east (door at x={ax + 5}), zombie spawner at ({ax + 9},{ay},{az}).\n"
+            f"Verify darkness: stand the bot inside and read light_level == 0."
+        )
+        return 0
+    finally:
+        rcon.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="1.3 survival world (R2 break 3) setup")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -256,6 +339,17 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--rcon-port", type=int, default=25575)
     s.add_argument("--rcon-password", required=True)
     s.set_defaults(fn=_setup)
+
+    c = sub.add_parser("classroom", help="build the Exp 58 dark-fear classroom (or --sweep zombies)")
+    c.add_argument("--rcon-host", default="127.0.0.1")
+    c.add_argument("--rcon-port", type=int, default=25575)
+    c.add_argument("--rcon-password", required=True)
+    c.add_argument("--username", default="maxim")
+    c.add_argument("--anchor-x", type=float, default=None)
+    c.add_argument("--anchor-y", type=float, default=None)
+    c.add_argument("--anchor-z", type=float, default=None)
+    c.add_argument("--sweep", action="store_true", help="kill classroom-range zombies (arm boundary)")
+    c.set_defaults(fn=_classroom)
 
     for name, fn, helptext in (
         ("prepare", _prepare, "seed food + set conditions over RCON (bot must be joined)"),
