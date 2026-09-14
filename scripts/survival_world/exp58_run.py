@@ -275,8 +275,9 @@ def main(argv: list[str] | None = None) -> int:
                 rcon.teleport(args.username, dark)
                 if settle_until(aut, lambda vm: vm.get("light_level") == 0, timeout_s=10.0) is None:
                     raise Refusal("dark room does not read light 0 (door closed) — classroom geometry / relight?")
-                # NOW open the door for the flee-actuation check (the bot must exit).
-                _set_door(True)
+                # Flee-actuation check with the door CLOSED — flee itself must
+                # open it (canOpenDoors) AND cross the plane; if it can't, the
+                # seed refuses before any measurement.
                 flee_tool = next(t for t in aut.executor.registry.list() if t.endswith("_flee"))
                 out = aut.executor.execute({"tool_name": flee_tool, "params": {}})
                 deadline = time.monotonic() + 30.0
@@ -301,6 +302,7 @@ def main(argv: list[str] | None = None) -> int:
                 _stop_motion()
                 # Pre-training dark-cluster identity (the live-G2 triple: this,
                 # the training majority, and the post-training probe cluster).
+                _set_door(False)  # flee left it open; the dark read needs it closed (no leak)
                 rcon.teleport(args.username, dark)
                 if settle_until(aut, lambda vm: vm.get("light_level") == 0, timeout_s=10.0) is None:
                     raise Refusal("pre-training dark settle failed")
@@ -309,7 +311,11 @@ def main(argv: list[str] | None = None) -> int:
                 deaths0 = _deaths()
 
                 def _probe(label: str) -> dict:
-                    _set_door(True)
+                    # Door stays CLOSED: the flee affordance opens it to exit
+                    # (bridge Movements canOpenDoors=true), so the dark chamber
+                    # stays sealed/dark until the bot chooses to leave — no
+                    # block-light leak from the lit safe chamber during the window.
+                    _set_door(False)
                     _sweep()
                     _heal()
                     if settle_until(aut, lambda vm: (vm.get("food") or 0) >= 16, timeout_s=10.0) is None:
@@ -431,7 +437,7 @@ def main(argv: list[str] | None = None) -> int:
                     raise Refusal(f"only {usable}/{FROZEN['K_usable_episodes']} usable episodes")
 
                 # ── Cluster identification + LIVE G2 gate ──
-                _set_door(True)
+                _set_door(False)  # dark cluster is identified at light 0 (door closed, no leak)
                 _sweep()
                 rcon.teleport(args.username, dark)
                 if settle_until(aut, lambda vm: vm.get("light_level") == 0, timeout_s=10.0) is None:
