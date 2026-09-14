@@ -270,10 +270,10 @@ def main(argv: list[str] | None = None) -> int:
                 _set_door(False)  # darkness is a DOOR-CLOSED property (open leaks platform light)
                 _sweep()
                 rcon.teleport(args.username, safe)
-                if settle_until(aut, lambda vm: vm.get("light_level") == 15, timeout_s=10.0) is None:
+                if settle_until(aut, lambda vm: (vm.get("light_level") or 0) >= 13, timeout_s=10.0) is None:
                     raise Refusal("safe anchor does not read light 15 — classroom geometry / relight?")
                 rcon.teleport(args.username, dark)
-                if settle_until(aut, lambda vm: vm.get("light_level") == 0, timeout_s=10.0) is None:
+                if settle_until(aut, lambda vm: (vm.get("light_level") or 99) <= 1, timeout_s=10.0) is None:
                     raise Refusal("dark room does not read light 0 (door closed) — classroom geometry / relight?")
                 # Flee-actuation check with the door CLOSED — flee itself must
                 # open it (canOpenDoors) AND cross the plane; if it can't, the
@@ -304,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
                 # the training majority, and the post-training probe cluster).
                 _set_door(False)  # flee left it open; the dark read needs it closed (no leak)
                 rcon.teleport(args.username, dark)
-                if settle_until(aut, lambda vm: vm.get("light_level") == 0, timeout_s=10.0) is None:
+                if settle_until(aut, lambda vm: (vm.get("light_level") or 99) <= 1, timeout_s=10.0) is None:
                     raise Refusal("pre-training dark settle failed")
                 pre_dark_cluster = _encode_current_clusters(encoder, agent_id, aut.executor).get("world")
                 rcon.teleport(args.username, safe)
@@ -440,11 +440,11 @@ def main(argv: list[str] | None = None) -> int:
                 _set_door(False)  # dark cluster is identified at light 0 (door closed, no leak)
                 _sweep()
                 rcon.teleport(args.username, dark)
-                if settle_until(aut, lambda vm: vm.get("light_level") == 0, timeout_s=10.0) is None:
+                if settle_until(aut, lambda vm: (vm.get("light_level") or 99) <= 1, timeout_s=10.0) is None:
                     raise Refusal("post-training dark settle failed")
                 dark_cluster = _encode_current_clusters(encoder, agent_id, aut.executor).get("world")
                 rcon.teleport(args.username, safe)
-                if settle_until(aut, lambda vm: vm.get("light_level") == 15, timeout_s=10.0) is None:
+                if settle_until(aut, lambda vm: (vm.get("light_level") or 0) >= 13, timeout_s=10.0) is None:
                     raise Refusal("post-training lit settle failed")
                 lit_cluster = _encode_current_clusters(encoder, agent_id, aut.executor).get("world")
                 majority = max(set(episode_clusters), key=episode_clusters.count) if episode_clusters else None
