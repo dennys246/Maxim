@@ -318,11 +318,40 @@ def _classroom(args: argparse.Namespace) -> int:
             if "unknown" in low or "expected" in low or "incorrect" in low:
                 print("\nCLASSROOM BUILD FAILED on the command above — nothing gated may run.")
                 return 4
+        # Record the EXACT built geometry so the harness reads it instead of
+        # re-deriving from the bot's (drifting) live position — a half-block
+        # teleport drift put door_x off by one in the first dry-run. Written
+        # outside the repo (no dirty-tree impact on the harness provenance gate).
+        import json as _json
+
+        anchor_file = Path.home() / ".maxim" / "exp58_classroom.json"
+        anchor_file.parent.mkdir(parents=True, exist_ok=True)
+        geom = {
+            "anchor": [ax, ay, az],
+            "door_x": ax + 5,
+            "dark_x": ax + 7,  # 2 past the door, clear of the spawner at ax+9
+            "flee_x": ax,
+            "flee_z": az,
+        }
+        anchor_file.write_text(_json.dumps(geom, indent=2))
+
+        # Force a chunk RELIGHT: the bulk /fill left mineflayer's skylight
+        # stale (the safe platform read dark, the dark room read bright until
+        # reloaded). Teleport the bot past view-distance so the classroom
+        # chunks unload, then back — Paper recomputes light on reload. Distance
+        # 340 blocks > 8-chunk view distance.
+        import time as _time
+
+        rcon.command(f"tp {args.username} {ax} {ay} {az + 340}")
+        _time.sleep(3.0)
+        rcon.command(f"tp {args.username} {ax} {ay} {az}")
+        _time.sleep(1.0)
+
         print(
             f"\nclassroom built at anchor ({ax},{ay},{az}): safe platform (spawnpoint), "
             f"dark room east (door at x={ax + 5}), zombie spawner at ({ax + 9},{ay},{az}).\n"
-            f"START THE BRIDGE WITH THE FLEE ANCHOR: --flee_x={ax} --flee_z={az}\n"
-            f"Verify darkness: stand the bot inside and read light_level == 0."
+            f"geometry recorded -> {anchor_file}; chunks relit (tp away+back).\n"
+            f"START THE BRIDGE WITH THE FLEE ANCHOR: --flee_x={ax} --flee_z={az}"
         )
         return 0
     finally:

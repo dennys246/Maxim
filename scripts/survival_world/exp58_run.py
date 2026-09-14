@@ -154,14 +154,22 @@ def main(argv: list[str] | None = None) -> int:
 
     run_id = uuid.uuid4().hex[:12]
     rcon = C.RconControl(args.rcon_host, args.rcon_port, args.rcon_password)
-    ax, ay, az = bot_pos(rcon, args.username)
-    door_x = args.door_x if args.door_x is not None else ax + 5.0
-    # door_x+2, NOT +4: the classroom spawner block occupies (anchor+9) = door_x+4
-    # at feet level — teleporting INTO it glitches movement (executor finding 3).
-    dark_x = args.dark_x if args.dark_x is not None else door_x + 2.0
+    # Geometry from the classroom's RECORDED anchor, never re-derived from the
+    # bot's live position (a half-block teleport drift put door_x off by one in
+    # the first dry-run — geometry must be the built truth, not wherever the
+    # bot happens to stand). --door-x/--dark-x still override for ad-hoc use.
+    anchor_file = Path.home() / ".maxim" / "exp58_classroom.json"
+    try:
+        geom = json.loads(anchor_file.read_text())
+    except OSError:
+        print(f"[FAIL] classroom geometry not found: {anchor_file} — run `setup_world.py classroom` first")
+        return 3
+    ax, ay, az = (float(v) for v in geom["anchor"])
+    door_x = args.door_x if args.door_x is not None else float(geom["door_x"])
+    dark_x = args.dark_x if args.dark_x is not None else float(geom["dark_x"])
     safe = {"x": ax, "y": ay, "z": az}
     dark = {"x": dark_x, "y": ay, "z": az}
-    print(f"run {run_id}: arm={args.arm} safe=({ax:.0f},{ay:.0f},{az:.0f}) door_x={door_x:.0f}")
+    print(f"run {run_id}: arm={args.arm} anchor=({ax:.0f},{ay:.0f},{az:.0f}) door_x={door_x:.0f} dark_x={dark_x:.0f}")
 
     def _set_door(open_: bool) -> None:
         state = "true" if open_ else "false"
@@ -259,14 +267,16 @@ def main(argv: list[str] | None = None) -> int:
                     raise Refusal("bridge never delivered state")
 
                 # ── Geometry + actuation preflights ──
+                _set_door(False)  # darkness is a DOOR-CLOSED property (open leaks platform light)
+                _sweep()
                 rcon.teleport(args.username, safe)
                 if settle_until(aut, lambda vm: vm.get("light_level") == 15, timeout_s=10.0) is None:
-                    raise Refusal("safe anchor does not read light 15 — classroom geometry?")
-                _set_door(True)
-                _sweep()
+                    raise Refusal("safe anchor does not read light 15 — classroom geometry / relight?")
                 rcon.teleport(args.username, dark)
                 if settle_until(aut, lambda vm: vm.get("light_level") == 0, timeout_s=10.0) is None:
-                    raise Refusal("dark room does not read light 0 — classroom geometry?")
+                    raise Refusal("dark room does not read light 0 (door closed) — classroom geometry / relight?")
+                # NOW open the door for the flee-actuation check (the bot must exit).
+                _set_door(True)
                 flee_tool = next(t for t in aut.executor.registry.list() if t.endswith("_flee"))
                 out = aut.executor.execute({"tool_name": flee_tool, "params": {}})
                 deadline = time.monotonic() + 30.0
