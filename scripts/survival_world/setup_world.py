@@ -304,8 +304,12 @@ def _classroom(args: argparse.Namespace) -> int:
             + "MinSpawnDelay:100s,MaxSpawnDelay:300s,SpawnRange:3s}",
             # Global: natural spawning OFF (the spawner is the only source).
             "gamerule doMobSpawning false",
-            # Bot respawns on the safe platform.
+            # Bot respawns on the safe platform. NOTE this does NOT update the
+            # live client's bot.spawnPoint (login-packet only) — the bridge's
+            # flee anchor comes from --flee_x/--flee_z instead (DNR-1).
             f"spawnpoint {args.username} {ax} {ay} {az}",
+            # Death accounting objective for the harness's death cap (SF-2).
+            "scoreboard objectives add exp58_deaths deathCount",
         ]
         for cmd in cmds:
             resp = rcon.command(cmd).strip()
@@ -317,6 +321,7 @@ def _classroom(args: argparse.Namespace) -> int:
         print(
             f"\nclassroom built at anchor ({ax},{ay},{az}): safe platform (spawnpoint), "
             f"dark room east (door at x={ax + 5}), zombie spawner at ({ax + 9},{ay},{az}).\n"
+            f"START THE BRIDGE WITH THE FLEE ANCHOR: --flee_x={ax} --flee_z={az}\n"
             f"Verify darkness: stand the bot inside and read light_level == 0."
         )
         return 0

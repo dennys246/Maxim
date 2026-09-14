@@ -200,3 +200,56 @@ tree; gated evidence path; data PR merge-commit; a null ships as a null. Build o
 mechanism PR (store + subscriber + loop-order + `flee`; bio-memory + runtime-tools +
 embodiment briefs; two-lens code review) → instrument gates offline → apparatus PR →
 freeze → live run.
+
+## Addendum 2026-09-14 (dated, pre-data): harness protocol refinements
+
+Recorded BEFORE the first live data timestamp, per the freeze rule. The Claim-B harness
+(`scripts/survival_world/exp58_run.py`, two-lens reviewed) refines the frozen design in
+the following ways, each with its rationale; where an addendum item supersedes a frozen
+sentence, the sentence is named:
+
+1. **Training is confined, PROPOSE-ONLY conditioning** (the contextual-fear-conditioning
+   chamber): during exposure episodes the bot is confined in the dark room (door closed)
+   and the harness drives `propose_via_substrate` ticks — the exact composition the
+   offline gates verified — with NO action execution. Rationale: (a) a full loop in a
+   sealed room books `record_outcome` FAILURE credit on every blocked `flee` — an
+   arm-asymmetric negative causal link on the very read path the probe measures
+   (verified against `tool_dispatch.record_outcome`); (b) it makes exposure structurally
+   arm-independent, resolving confounding S1 more strongly than schedule-matching.
+   SUPERSEDES the frozen sentence "`evaluate_failures` ticks during lit recovery ride
+   the real loop" — lit-recovery ticks are also propose-only (same composition, no
+   execution). Consequence, disclosed: the causal-link surface enters the probes
+   untrained in BOTH arms.
+2. **Probes are SHEPHERDED PLACEMENTS, not free roam** — SUPERSEDES "free roam only in
+   probes". Measured basis: substrate-primary has no param-free "enter" affordance, so
+   the naive entry rate is ~0 (env SF-6) and free-roam probes would produce no
+   dark-entries to measure in either arm. Protocol (identical pre/post and across arms):
+   6 placements per probe window; each placement teleports the bot to the dark-room
+   interior with the FULL agent loop live (real execution); DV = latency to cross the
+   door plane (RCON ground truth), censored at 45 s; kill-sweep + disclosed full-heal
+   (instant_health + saturation effects) before the window and between placements; door
+   OPEN during probes (probes are mob-free, so containment is moot). The frozen
+   "time-in-dark per entry" DV reduces to this latency under placements; gates apply to
+   censored per-seed medians with the same 0.5× ratios.
+3. **Flee actuation is a PREFLIGHT** (verify-actuation-before-theorizing): the review
+   measured that the pre-fix apparatus could not execute `flee` at all (the pathfinder
+   does not open closed doors, and `bot.spawnPoint` is the world spawn, not the
+   classroom). The bridge now takes an explicit `--flee_x/--flee_z` anchor (printed by
+   the classroom builder), and each seed begins with one real executor `flee` from
+   inside the dark room that must cross the door plane, or the seed refuses (exit 4, no
+   data). The per-seed record carries `flee_negative_links` so any residual in-probe
+   flee failures are auditable.
+4. **Live G2 is a per-seed stop rule**: the noted world cluster is captured at every
+   usable episode; the training-majority cluster must equal the probe-identified dark
+   cluster or the seed is REFUSED — an unreadable fear write must never ship as a
+   behavioural null. (The offline G2 verified this only for scripted states; hostile
+   sensors differ maximally between pain time and swept probe time.)
+5. **Stop rules implemented in the harness**: offline-gates record present with
+   `all_pass` true; frozen-apparatus fingerprint (fear α/cap/θ/allowlist, encoder
+   pattern threshold) asserted and stamped per record; usable-episode bound asserted
+   below the body's health comfort band; death cap 2 per seed (scoreboard
+   `exp58_deaths`); under-K/geometry/settle failures refuse. REFUSED seeds append a
+   record with a `refusal` field and no behavioural DVs — the verdict script excludes
+   them and reports the refusal count.
+6. **Record identity**: every invocation stamps a `run_id`; the verdict script must refuse
+   duplicate (arm, seed) rows absent explicit resolution.
