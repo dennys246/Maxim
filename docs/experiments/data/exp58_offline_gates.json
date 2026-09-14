@@ -1,0 +1,51 @@
+{
+  "ts": 1789404575.106282,
+  "train_ticks": 6,
+  "provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "0847b61f0295",
+    "working_tree_dirty_src_scripts": false,
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python3",
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages"
+  },
+  "instrument_error": null,
+  "G2_same_cluster": {
+    "pain_time_world": "6169a268-3207-4bf6-a850-e885d4353397",
+    "healthy_dark_world": "6169a268-3207-4bf6-a850-e885d4353397",
+    "pass": true
+  },
+  "G1_read_path": {
+    "pain_published_during_training": 6,
+    "dark_world_fear": -1.0,
+    "lit_world_fear": 0.0,
+    "dark_probe_tool": "minecraft_player_flee",
+    "lit_probe_tool": null,
+    "pass": true
+  },
+  "G3_boundary_sweep": {
+    "sweep": [
+      {
+        "state": "lit_surface",
+        "world_cluster": "0028899d-90a4-4434-ac78-29118be29572",
+        "is_dark_cluster": false
+      },
+      {
+        "state": "mouth_outer",
+        "world_cluster": "1a5bdfae-3986-49b2-8f99-70ece9f72f74",
+        "is_dark_cluster": false
+      },
+      {
+        "state": "mouth_inner",
+        "world_cluster": "1a5bdfae-3986-49b2-8f99-70ece9f72f74",
+        "is_dark_cluster": false
+      },
+      {
+        "state": "interior",
+        "world_cluster": "6169a268-3207-4bf6-a850-e885d4353397",
+        "is_dark_cluster": true
+      }
+    ],
+    "entry_avoidance_licensed": false
+  },
+  "all_pass": true
+}
