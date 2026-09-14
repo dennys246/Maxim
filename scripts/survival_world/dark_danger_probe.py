@@ -6,12 +6,27 @@ the agent takes damage while the dark world-cluster is active. Three channels ar
 (docs/wiring/substrate-learning-channels.md), and which of them actually carries the fear
 decides what "the agent learns dark = danger" can honestly claim:
 
-  A. state-blind negative CAUSAL LINK on the in-flight tool ("moving is bad" — everywhere);
-  B. cluster-keyed negative reward bias via ``update_cluster_reward`` (reward<0 is accepted
-     and clamped to [-cap, +cap]; sole live caller is ``tool_dispatch.record_outcome``) —
-     and if so, keyed to the WORLD cluster (dark) or the INTEROCEPTION cluster (the health
-     channel itself);
-  C. neither — the fear-write is missing and becomes a NAMED Phase-1 build item.
+  A. state-blind negative CAUSAL LINK on the in-flight tool — correctly SUPPRESSED for
+     bystander actions by tool_bridge's B8 delta filter (Exp 42: a zombie bite during eat
+     must not blame eat), so dark=danger cannot and should not ride action-blame;
+  B. cluster-keyed negative reward bias (``update_cluster_reward`` accepts reward<0) — but
+     its only live caller is action-scoped ``record_outcome``; NO pain path writes it;
+  W2. Pavlovian percept valence (``create_percept_valence_subscriber`` →
+     ``record_percept_valence``) — the designed situation-ish fear channel, keyed
+     (entity_class, failure_mode) and read by the salience scorer.
+
+Iterations 1-7 of this probe established, in order: the damage magnitude must CROSS the
+health drive's comfort_band (6.0 — sitting exactly ON it reads as no pain); the publish
+latch clears only when an evaluation observes recovery (healthy-tick required); pain DOES
+publish in-window at intensity 1.0; the pending-event/similarity path misses by design;
+and ``pain_bus.recent`` shows a LOSSY 1-key view of signals (its own comment says so)
+while actual subscribers receive the rich 8-key context — Wire 2 DOES fire: percept
+aversion -1.0 under (entity_class='minecraft_player', failure_mode='drive:health'). But
+that key is the SUFFERING BODY's class + drive — situation-BLIND: it cannot separate
+dark from lit. Net: fear exists at percept-class grain; SITUATION-fear (valence keyed to
+the co-active dark world-cluster) has no write channel — a Phase-1 DESIGN item
+(extend the fear key with the co-active world cluster, or a pain->cluster valence
+write), not a config fix.
 
 Fully OFFLINE: a scripted NDJSON bridge (same frozen protocol as the real
 ``scripts/minecraft_bridge/index.js``) stages a dark+threatened state and a health drop
@@ -42,7 +57,7 @@ from survival_world.common import make_fresh_encoder, settle_until  # noqa: E402
 
 AGENT_ID = "dark_danger_probe"
 EPISODES = 8
-DAMAGE_PER_EPISODE = 6.0  # health 20 -> 14 during the in-flight action
+DAMAGE_PER_EPISODE = 12.0  # health 20 -> 8: clearly past the health drive comfort_band (set_point 20, band 6.0 -> pain fires below 14; the first probe run used exactly 6.0 and sat ON the band edge, manufacturing a false "pain never fires")
 
 # Full 17-field state (the shape scripts/minecraft_bridge/index.js::snapshot emits).
 LIT_SAFE = {
@@ -177,6 +192,13 @@ def main() -> int:
         entity_ref="bodies/minecraft_player",
     )
     encoder = make_fresh_encoder(aut)
+    # Mirror run_minecraft_aut: the sync pump keeps vital_metrics fresh ASYNCHRONOUSLY, so
+    # the in-execute evaluate_failures (tool_bridge, post-effect) can see damage that lands
+    # with the action_result — the in-window pain that ToolPainBridge attributes DIRECTLY.
+    from maxim.simulation.minecraft_harness import MinecraftSyncPump
+
+    pump = MinecraftSyncPump(aut, interval_s=0.05)
+    pump.start()
     pool: Any = ContextPool()
     recent: list[dict] = []
     findings: dict[str, Any] = {}
@@ -213,6 +235,32 @@ def main() -> int:
             clusters = _encode_current_clusters(encoder, AGENT_ID, aut.executor)
             out = aut.executor.execute({"tool_name": probe_tool, "params": {}})
             side = read_learning_side_effects(out)
+            if ep == 0:
+                # Captured IMMEDIATELY post-execute: did the in-window evaluate_failures
+                # (tool_bridge post-effect) publish pain, and is the pending tool event
+                # alive before anything consumes it?
+                se = getattr(out, "side_effects", None) or {}
+                findings["episode0_post_execute"] = {
+                    "pain_published_in_window": aut.bio.pain_bus.get_stats().get("total_published", 0),
+                    "nac_pending_events": aut.bio.nac.stats().get("pending_events"),
+                    "side_effect_keys": sorted(se.keys()),
+                    "embodiment_failures": se.get("embodiment_failures"),
+                    "embodiment_failed_flag": side.embodiment_failed,
+                }
+            # PAIN TICK BEFORE record_outcome (ordering probe, iteration 5): attribution
+            # walks the NAc _pending_events buffer and record_outcome CONSUMES the pending
+            # tool event when it attributes the success outcome — so pain arriving after
+            # record_outcome finds an empty buffer. Evaluating here (post-damage, pre-
+            # record) tests whether the attribution composes when the ordering permits.
+            if settle_until(aut, lambda vm: vm.get("health") == hurt["health"], timeout_s=5.0) is None:
+                print(f"INSTRUMENT ERROR: episode {ep}: damaged health never reached vital_metrics")
+                return 4
+            try:
+                fired = aut.executor.embodiment.evaluate_failures()
+            except Exception as exc:
+                print(f"INSTRUMENT ERROR: evaluate_failures raised: {exc!r}")
+                return 4
+            findings.setdefault("failure_events_per_episode", []).append(len(fired or []))
             record_outcome(
                 agent_id=AGENT_ID,
                 tool_name=probe_tool,
@@ -242,27 +290,30 @@ def main() -> int:
                     "outcome_valence": str(side.outcome_valence),
                     "success": bool(getattr(out, "success", False)),
                 }
-            # The real loop ticks evaluate_failures() once per iteration (agent_loop.py
-            # ~1450-1461: "Ticking evaluate_failures() here" — the pain intake). Without
-            # this tick the health drop never reaches the PainBus and the probe would
-            # measure the absence of its OWN harness, not of the wiring. Settle on the
-            # dropped health first so the pain evaluator sees the post-damage body.
-            if settle_until(aut, lambda vm: vm.get("health") == hurt["health"], timeout_s=5.0) is None:
-                print(f"INSTRUMENT ERROR: episode {ep}: damaged health never reached vital_metrics")
-                return 4
-            try:
-                fired = aut.executor.embodiment.evaluate_failures()
-            except Exception as exc:
-                print(f"INSTRUMENT ERROR: evaluate_failures raised: {exc!r}")
-                return 4
-            findings.setdefault("failure_events_per_episode", []).append(len(fired or []))
             bridge.set_state(DARK_THREAT)  # heal between episodes (fresh 20 next round)
             settle_until(aut, lambda vm: vm.get("health") == 20, timeout_s=5.0)
+            # Healthy-state tick (the real loop evaluates EVERY iteration): the drive-pain
+            # publish latch clears on hysteresis only when an evaluation OBSERVES recovery —
+            # without this tick the latch stays set and re-entry publishes nothing (run #2
+            # measured total_published 1 across 8 breaches for exactly this reason).
+            try:
+                aut.executor.embodiment.evaluate_failures()
+            except Exception as exc:
+                print(f"INSTRUMENT ERROR: healthy-tick evaluate_failures raised: {exc!r}")
+                return 4
 
         # ── Readout 0: did PAIN fire at all? (the layer beneath both credit channels) ──
         findings["pain_bus"] = {
             "stats": aut.bio.pain_bus.get_stats(),
             "recent_signals": len(aut.bio.pain_bus.recent),
+            "signals": [
+                {
+                    "intensity": round(getattr(s, "intensity", -1.0), 3),
+                    "pain_type": str(getattr(s, "pain_type", "?")),
+                    "context_keys": sorted((getattr(s, "context", None) or {}).keys()),
+                }
+                for s in aut.bio.pain_bus.recent
+            ],
         }
 
         # ── Readout A: state-blind negative causal link on the tool ──
@@ -277,6 +328,11 @@ def main() -> int:
             "dark_world": nac.cluster_reward_bias(AGENT_ID, dark_world, sig),
             "lit_world": nac.cluster_reward_bias(AGENT_ID, lit_world, sig),
             "dark_interoception": nac.cluster_reward_bias(AGENT_ID, dark_clusters.get("interoception"), sig),
+        }
+
+        # ── Readout W2: Pavlovian percept valences (the designed situation-fear store) ──
+        findings["W2_percept_valences"] = {
+            str(k): v for k, v in (getattr(nac, "_percept_valences", None) or {}).items()
         }
 
         # ── Readout C: behaviour — is the tool avoided STATE-CONTINGENTLY? ──
@@ -301,6 +357,10 @@ def main() -> int:
         findings["C_recommendation_by_context"] = picks
     finally:
         try:
+            pump.stop()
+        except Exception as exc:
+            print(f"WARNING: pump stop raised: {exc!r}")
+        try:
             aut.bio.on_session_end()
         except Exception as exc:
             print(f"WARNING: bio teardown raised: {exc!r}")
@@ -321,25 +381,22 @@ def main() -> int:
     print(f"B  world-cluster (dark) bias:                      {b_world:+.4f}")
     print(f"B  interoception-cluster bias:                     {b_intero:+.4f}")
     print(f"B  lit-world bias (specificity control, expect 0): {findings['B_cluster_bias']['lit_world']:+.4f}")
+    w2 = findings.get("W2_percept_valences", {})
+    print(f"W2 Pavlovian percept valences:                      {w2 if w2 else '(empty)'}")
     if b_world < 0:
         print("=> cluster-keyed fear DOES form on the dark WORLD cluster — Phase 1 can claim it.")
-    elif b_intero < 0:
-        print("=> damage books negatively to INTEROCEPTION, not the world cluster — dark-keyed")
-        print("   fear needs a wiring extension (named Phase-1 build item).")
-    elif a:
-        print("=> only the STATE-BLIND channel fired: avoidance would punish the action everywhere,")
-        print("   not in the dark specifically — the fear-write is a named Phase-1 build item.")
-    elif findings.get("pain_bus", {}).get("stats", {}).get("total_published", -1) == 0:
-        print("=> NO PAIN WAS EVER PUBLISHED: evaluate_failures fired zero events because the")
-        print("   body declares NO failure modes (minecraft_player.yaml has drives but no pain")
-        print("   triggers), so damage never becomes a PainSignal and every negative-learning")
-        print("   channel starves upstream — while the pain->NAc subscribers sit wired and idle")
-        print("   (see pain_bus.stats.subscriber_count). Named Phase-1 build item: declare the")
-        print("   body's failure modes (health-damage nociception), then RE-RUN this probe to")
-        print("   measure which channels the pain actually reaches.")
+    elif w2:
+        print("=> Wire 2 percept aversion formed — situation-fear exists at percept-class grain;")
+        print("   check whether its key (entity_class) can carry the dark-situation claim.")
+    elif findings.get("pain_bus", {}).get("stats", {}).get("total_published", -1) > 0:
+        print("=> Pain publishes but NO fear store received it: action-blame is CORRECTLY")
+        print("   suppressed for bystander actions (B8 delta filter, Exp 42), the cluster-")
+        print("   bias store has no pain-side caller, and Wire 2 did not form (check the")
+        print("   signal's entity_name/failure_mode context keys — note pain_bus.recent")
+        print("   shows a LOSSY 1-key view; subscribers receive the rich context).")
     else:
-        print("=> NO negative learning fired despite pain publishing — the break is in the")
-        print("   pain->NAc attribution window/traces; inspect pain_bus stats vs A/B readouts.")
+        print("=> No pain published — check damage magnitude vs the health drive comfort_band")
+        print("   (6.0: a drop landing exactly ON the band edge reads as in-band, no pain).")
     return 0
 
 
