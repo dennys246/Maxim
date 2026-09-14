@@ -432,6 +432,13 @@ def _validate_nac_payload(
     and validates key hygiene. The V4 scrub/quarantine re-run happens
     AFTER this pass (:func:`_receiver_scrub`).
     """
+    # Exp 58: fear does not travel yet (Phase-2 deferral) — a compliant bundle
+    # never carries `cluster_fear` (scrub excludes it); a hand-built one that
+    # does gets it STRIPPED here, noted, before any merge can fold it.
+    if "cluster_fear" in nac_state:
+        nac_state = {k: v for k, v in nac_state.items() if k != "cluster_fear"}
+        notes.append(f"stripped cluster_fear from {contributor_id}: fear transport is Phase-2 (Exp 58)")
+
     state = copy.deepcopy(nac_state)
     state.pop("_format_version", None)
     # The donor's decay clock is not the receiver's: nac_merge keeps the

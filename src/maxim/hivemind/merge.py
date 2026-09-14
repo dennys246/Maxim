@@ -535,6 +535,32 @@ def nac_merge(
         # the two: decay is elapsed-time-based, and the younger state is the
         # one whose biases have decayed least.
         "saved_at": _later_saved_at(left.get("saved_at"), right.get("saved_at")),
+        # Exp 58 fear wire (Wire 4): situation-keyed fear. Absent from the rebuilt dict
+        # = the same receiver-side delete-state class as `cluster_reward_source`
+        # above (executor-lens catch before it ever shipped): a routine
+        # merge-nac would wipe every learned fear on the receiver —
+        # indistinguishable from an extinction result in Phase 2. Fear folds
+        # by MIN (deepest fear survives — the tighten-only direction the
+        # negative-bias clamp already codifies for ingest); values clamped to
+        # [-1.0, 0] so a malformed side can smuggle neither positive "fear"
+        # nor unbounded magnitude through the fold. MIN preserves the
+        # documented commutativity contract (left-preserve would not); the
+        # Phase-2 deferral is enforced at the BUNDLE boundary instead (scrub
+        # excludes + ingest strips), so for ingests the foreign side is
+        # always empty and this degenerates to receiver-preservation.
+        "cluster_fear": {
+            k: max(
+                -1.0,
+                min(
+                    0.0,
+                    min(
+                        float(left.get("cluster_fear", {}).get(k, 0.0)),
+                        float(right.get("cluster_fear", {}).get(k, 0.0)),
+                    ),
+                ),
+            )
+            for k in {*(left.get("cluster_fear") or {}), *(right.get("cluster_fear") or {})}
+        },
         "event_outcome_welford": _merge_welford(
             left.get("event_outcome_welford", {}) or {},
             right.get("event_outcome_welford", {}) or {},

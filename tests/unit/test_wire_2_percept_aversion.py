@@ -558,7 +558,7 @@ class TestBuildPainBusAutoWires:
         hippo.capture = MagicMock()
         nac = _fresh_nac()
         bus = build_pain_bus(hippocampus=hippo, nac=nac)
-        assert bus.get_stats()["direct_pain_subscribers"] == 3
+        assert bus.get_stats()["direct_pain_subscribers"] == 4
 
     def test_nac_none_skips_percept_valence_subscriber(self) -> None:
         """Opt-out: nac=None → no Wire 2 subscriber."""

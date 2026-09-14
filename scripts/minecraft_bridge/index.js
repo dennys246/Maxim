@@ -170,6 +170,20 @@ async function runAction(name, params) {
       await bot.placeBlock(ref, new (require("vec3").Vec3)(0, 1, 0));
       return "placed";
     }
+    case "flee": {
+      // Wire 4 (Exp 58): species-typical flight — retreat to the spawn/safe
+      // anchor. Param-free (substrate-selectable); canDig=false so the bot
+      // cannot tunnel through classroom walls (env lens SF-8).
+      // No position fallback: a goto-to-where-you-stand resolves instantly and
+      // would book flight SUCCESS for doing nothing (executor-lens catch).
+      const anchor = bot.spawnPoint;
+      if (!anchor) throw new Error("no spawn anchor to flee to");
+      const fm = new Movements(bot);
+      fm.canDig = false;
+      bot.pathfinder.setMovements(fm);
+      await bot.pathfinder.goto(new goals.GoalNearXZ(anchor.x, anchor.z, 2));
+      return "fled to anchor";
+    }
     case "eat": {
       const item = bot.inventory.items().find((i) => i.name.includes("bread") || i.foodPoints);
       if (!item) throw new Error("no food in inventory");

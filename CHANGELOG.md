@@ -24,6 +24,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Wire 4 — situation-keyed fear (pain→cluster negative valence; Exp 58, 1.3 Phase 1).**
+  A new NAc store `(agent_id, cluster_id, failure_mode) → valence ∈ [-cap, 0]` written by the
+  auto-wired PainBus subscriber `create_pain_cluster_fear_subscriber` against the clusters the
+  agent loop notes each tick (`NAc.note_active_clusters` — the loop's encode now runs BEFORE its
+  `evaluate_failures` pain tick so pain keys to the current situation), read back as an
+  anticipatory threat need (`NAc.anticipatory_threat_need`, max-combined with the innate reactive
+  `health→threat` need) feeding the drive-prior machinery, and consumed by the new param-free
+  `flee` affordance on the Minecraft body (bridge-implemented retreat to the spawn anchor,
+  `canDig=false`). Failure-mode allowlist (`drive:health` v1) so hunger pain cannot write fear
+  onto lit/dining clusters; no per-tick decay by design (extinction is re-learning), slow 7-day
+  wall-decay class; NAc persistence format 1.3 → 1.4 (additive `cluster_fear` key, older payloads
+  load clean). Shaped by the Exp 58 four-lens design review
+  (`docs/experiments/rationale/exp58_survival_wants/`); the read path being dead on this body was
+  a triple-confirmed DO-NOT-BUILD. Mechanism enters `[engineering]`; no behavioural claim until
+  the Exp 58 run.
 - **God-function length ratchet in CI (`scripts/lint_function_length.py`).** The 2026-08-27
   score card's standing Maintainability complaint was "CI does not bound any function's length"
   — and the three largest functions had grown. This pins `run_agentic_loop` /

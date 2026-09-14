@@ -133,6 +133,9 @@ def fold_legacy_cluster_id(
 # - 1.2 → 1.3 (nac_cross_session_persistence.md): added ``saved_at``
 #   wall-clock stamp; ``load()`` uses it for decay-on-load. Missing
 #   ``saved_at`` (pre-1.3 payload) → no decay applied.
+# - 1.3 → 1.4 (Wire 4, Exp 58 / 1.3 Phase 1): added ``cluster_fear`` —
+#   situation-keyed fear (pain→cluster negative valence), keyed
+#   (agent_id, cluster_id, failure_mode). Missing → empty.
 #
 # All upgrades are additive: ``load_state`` reads missing keys as empty
 # dicts so older payloads (1.0 / 1.1 / 1.2) load cleanly. The bumped
@@ -140,7 +143,7 @@ def fold_legacy_cluster_id(
 # file was written by a different schema generation. The schema-version
 # coexistence convention is documented in CLAUDE.md
 # ("Persistence-format contract").
-_NAC_FORMAT_VERSION: str = "1.3"
+_NAC_FORMAT_VERSION: str = "1.4"
 
 
 # Exp 37 cross-session graduation ablation arm 3 env var.
@@ -370,6 +373,30 @@ class NACConfig:
     # channel is therefore a selection-dynamics change — re-check gate
     # calibration when the channel registry grows.
     max_cluster_reward_bias: float = 1.0
+
+    # Wire 4 (Exp 58, 1.3 Phase 1): pain→cluster fear — SITUATION-keyed
+    # negative valence, keyed (agent_id, cluster_id, failure_mode). Written
+    # by the PainBus subscriber ``create_pain_cluster_fear_subscriber``
+    # against the clusters noted per tick via ``note_active_clusters``;
+    # read as an ANTICIPATORY threat need (``anticipatory_threat_need``)
+    # that feeds the drive-prior machinery. Clamped to
+    # ``[-max_cluster_fear, 0]`` (fear only in v1 — counter-conditioning
+    # has no producer; extinction is active re-learning, not a timer, so
+    # there is NO per-tick decay by design: the store lives in the SLOW
+    # 7-day wall-decay class beside ``percept_valences``). The
+    # ``failure_mode`` key + allowlist exist so hunger pain cannot write
+    # fear onto lit/dining clusters (Exp 58 wiring lens W-5).
+    cluster_fear_alpha: float = 0.5
+    max_cluster_fear: float = 1.0
+    # θ: |fear| at/above this on an ACTIVE cluster reads as anticipatory
+    # threat. COUPLED to recommend_action's drive-relevance activation
+    # floor (drive_value > 0.5): a need in (0.3, 0.5] would clear a lower
+    # θ and then be silently ignored by the floor — a dead zone the
+    # executor-lens review caught. Keep θ ABOVE that floor. Arithmetic:
+    # K=10 episodes × alpha 0.5 saturates at the 1.0 cap — 2× margin
+    # over θ=0.5 (the pre-registered arithmetic, Exp 58 confounding S3).
+    cluster_fear_threshold: float = 0.5
+    cluster_fear_failure_modes: "frozenset[str]" = frozenset({"drive:health"})
 
     # Wire 2 (release_0_9_1.md Stage 3): Pavlovian percept aversion.
     # Per-agent, per-(entity_class, failure_mode) valence accumulated by the
@@ -802,6 +829,21 @@ class NAc:
         # ``_format_version`` bumped from 1.0 → 1.1 on the NAc dump;
         # backward-compat reader returns empty dict for older payloads.
         self._percept_valences: dict[tuple[str, str, str], float] = {}
+
+        # Wire 4 (Exp 58, 1.3 Phase 1): situation-keyed fear —
+        # (agent_id, cluster_id, failure_mode) → valence in
+        # [-max_cluster_fear, 0]. Same ``\x1f`` persistence encoding as
+        # the sibling triple-keyed maps. Written by the pain→cluster-fear
+        # subscriber against ``_noted_active_clusters``; NOT touched by
+        # per-tick decay (extinction is re-learning, not a timer — Exp 58
+        # bio lens SF-2); wall-decays in the SLOW 7-day class.
+        self._cluster_fear: dict[tuple[str, str, str], float] = {}
+        # The per-tick active-cluster stash the fear subscriber reads —
+        # {agent_id: {modality: cluster_id}}, noted by the agent loop
+        # right after each tick's encode (the ``set_pending_operant_action``
+        # precedent: loop-owned state stashed ON NAc so PainBus subscribers
+        # need only the NAc handle). Runtime-ephemeral: never persisted.
+        self._noted_active_clusters: dict[str, dict[str, str]] = {}
 
         # Wire 1 (release_0_9_1.md Stage 4): per-(agent_id, event_signature)
         # Welford online variance state for the reward signal across
@@ -3043,6 +3085,91 @@ class NAc:
             return 0.0
         return self._percept_valences.get((agent_id, entity_class, failure_mode), 0.0)
 
+    # -- Wire 4: situation-keyed fear (Exp 58, 1.3 Phase 1) ---------------
+
+    def note_active_clusters(self, agent_id: str, clusters: "dict[str, str] | None") -> None:
+        """Stash the CURRENT tick's active clusters for the fear subscriber.
+
+        Called by the agent loop right after each tick's encode (which the
+        loop performs BEFORE its ``evaluate_failures`` pain tick — Exp 58
+        wiring W-4: pain must see this tick's situation, or damage on the
+        lit→dark transition tick books fear on the LIT cluster). ``None``
+        or empty clears the stash — pain with no noted situation books
+        nothing, which is the honest no-op (never a stale situation).
+        """
+        if not agent_id:
+            raise ValueError("note_active_clusters requires non-empty agent_id")
+        with self._lock:
+            if clusters:
+                self._noted_active_clusters[agent_id] = dict(clusters)
+            else:
+                self._noted_active_clusters.pop(agent_id, None)
+
+    def active_clusters(self, agent_id: str) -> "dict[str, str]":
+        """The clusters last noted for ``agent_id`` (empty when none)."""
+        with self._lock:
+            return dict(self._noted_active_clusters.get(agent_id, {}))
+
+    def record_cluster_fear(
+        self,
+        agent_id: str,
+        cluster_id: str,
+        failure_mode: str,
+        intensity: float,
+    ) -> None:
+        """Accumulate situation-keyed fear from a pain signal.
+
+        ``intensity`` is the PainSignal intensity in [0, 1]; the update is
+        ``valence -= cluster_fear_alpha * intensity``, clamped to
+        ``[-max_cluster_fear, 0]``. ``failure_mode`` outside the
+        ``cluster_fear_failure_modes`` allowlist is a silent no-op BY
+        DESIGN (Exp 58 wiring W-5: hunger pain must not write fear onto
+        the lit/dining clusters — the allowlist is the filter, and it
+        lives here so every write path inherits it). Empty ``agent_id``
+        raises; empty ``cluster_id`` is a no-op (no situation to key —
+        the ``update_cluster_reward`` contract).
+        """
+        if not agent_id:
+            raise ValueError("record_cluster_fear requires non-empty agent_id")
+        if not cluster_id or not failure_mode:
+            return
+        if failure_mode not in self.config.cluster_fear_failure_modes:
+            return
+        with self._lock:
+            key = (agent_id, cluster_id, failure_mode)
+            current = self._cluster_fear.get(key, 0.0)
+            updated = current - self.config.cluster_fear_alpha * max(0.0, float(intensity))
+            self._cluster_fear[key] = max(-self.config.max_cluster_fear, min(updated, 0.0))
+
+    def cluster_fear(self, agent_id: str, cluster_id: "str | None") -> float:
+        """Read the deepest fear on a cluster (≤ 0; 0.0 when none/unknown)."""
+        if not agent_id or not cluster_id:
+            return 0.0
+        with self._lock:
+            values = [v for (aid, cid, _fm), v in self._cluster_fear.items() if aid == agent_id and cid == cluster_id]
+        return min(values) if values else 0.0
+
+    def anticipatory_threat_need(self, agent_id: str, clusters: "dict[str, str] | None") -> float:
+        """Learned fear of the ACTIVE situation as a normalized [0, 1] need.
+
+        The Wire-3 READ: the deepest fear across the given active clusters,
+        expressed as a positive threat-need intensity when it clears
+        ``cluster_fear_threshold`` (θ), else 0.0. The caller combines it
+        with the innate reactive ``health→threat`` need by **max, never
+        sum** (Exp 58 bio SF-6: a sum can exceed 1.0 and be dropped by the
+        raw-sensor guard). Normalized by construction: |valence| ≤
+        ``max_cluster_fear`` = 1.0.
+        """
+        if not agent_id or not clusters:
+            return 0.0
+        deepest = min((self.cluster_fear(agent_id, cid) for cid in clusters.values()), default=0.0)
+        # min(1.0, ...) guards a config with max_cluster_fear > 1.0: a need
+        # above 1.0 would be silently dropped by recommend_action's
+        # raw-sensor guard (drive_value > 1.0 → skip) — the fear signal
+        # vanishing entirely is worse than saturating it.
+        magnitude = min(1.0, -deepest)
+        return magnitude if magnitude >= self.config.cluster_fear_threshold else 0.0
+
     def _note_rpe(self, rpe: float | None) -> None:
         """Stash the most recent Rescorla-Wagner prediction error magnitude.
 
@@ -3466,6 +3593,13 @@ class NAc:
                 "percept_valences": {
                     f"{aid}\x1f{ec}\x1f{fm}": valence for (aid, ec, fm), valence in self._percept_valences.items()
                 },
+                # Wire 4 (Exp 58, 1.3 Phase 1): situation-keyed fear, same
+                # ``\x1f`` encoding (failure_mode carries ``:``). Absent in
+                # pre-1.4 files → loads as empty. The active-cluster stash is
+                # runtime-ephemeral and deliberately NOT persisted.
+                "cluster_fear": {
+                    f"{aid}\x1f{cid}\x1f{fm}": valence for (aid, cid, fm), valence in self._cluster_fear.items()
+                },
                 # Wire 1 (release_0_9_1.md Stage 4): per-(agent_id,
                 # event_signature) Welford state for outcome variance.
                 # ``\x1f`` separator joins the composite key so a future
@@ -3579,6 +3713,21 @@ class NAc:
             except (TypeError, ValueError):
                 continue
 
+        # Wire 4 (Exp 58): situation-keyed fear. Missing field → empty
+        # (backward-compat: pre-1.4 payloads). Loaded values are re-clamped
+        # to [-max_cluster_fear, 0] so a hand-edited or foreign file cannot
+        # smuggle positive "fear" or exceed the cap.
+        self._cluster_fear = {}
+        for key_str, valence in state.get("cluster_fear", {}).items():
+            parts = key_str.split("\x1f", 2)
+            if len(parts) != 3:
+                continue
+            try:
+                v = float(valence)
+            except (TypeError, ValueError):
+                continue
+            self._cluster_fear[(parts[0], parts[1], parts[2])] = max(-self.config.max_cluster_fear, min(v, 0.0))
+
         # Wire 1 (release_0_9_1.md Stage 4): per-(agent_id, event_signature)
         # Welford state. Missing field → empty dict (backward-compat: any
         # ``aut_nac.json`` written before Wire 1 lacks this key and
@@ -3614,7 +3763,10 @@ class NAc:
         Two half-life schedules:
         - ``cluster_bias_wall_decay_half_life_s`` → ``_cluster_reward_bias``
         - ``bias_wall_decay_half_life_s`` → ``_reward_bias``,
-          ``_goal_reward_bias``, ``_percept_valences``
+          ``_goal_reward_bias``, ``_percept_valences``, ``_cluster_fear``
+          (fear has NO tick-anchored decay, so unlike its siblings a
+          sub-floor fear entry is never pruned by a later in-session
+          tick — it wall-decays only)
 
         Entries the decay itself pushes below the 0.001 magnitude floor
         are pruned (same floor as the tick-anchored ``decay_*``
@@ -3659,6 +3811,13 @@ class NAc:
             self._percept_valences, p = _decay(self._percept_valences, slow)
             if p:
                 results["percept_valences_pruned"] = p
+            # Wire 4: fear wall-decays in the SLOW class only — no per-tick
+            # decay caller exists BY DESIGN (Exp 58: extinction is active
+            # re-learning; a fear must survive the training→probe gap and
+            # the cross-session boundary Phase 2 needs).
+            self._cluster_fear, p = _decay(self._cluster_fear, slow)
+            if p:
+                results["cluster_fear_pruned"] = p
             self._cluster_reward_bias, p = _decay(self._cluster_reward_bias, fast)
             if p:
                 results["cluster_reward_bias_pruned"] = p
@@ -3675,6 +3834,7 @@ class NAc:
         Backward-compat reader accepts older payloads:
             - 1.0: ``percept_valences`` + ``event_outcome_welford`` absent
             - 1.1 (Wire 2): ``event_outcome_welford`` absent
+            - ≤1.3: ``cluster_fear`` absent (Wire 4, Exp 58)
         Both missing keys deserialise to empty dicts; the version drift
         is surfaced once per process via ``check_format_version``.
         """

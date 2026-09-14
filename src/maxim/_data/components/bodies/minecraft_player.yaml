@@ -169,3 +169,13 @@ entity:
         attack_nearest:
           params: {}
           description: "Attack the nearest hostile mob"
+        flee:
+          # Wire 4 (Exp 58): the threat need's consumer on this body — the
+          # design-review triple-confirmed DO-NOT-BUILD was that the
+          # _DRIVE_TOOL_AFFINITIES["threat"] table matched ZERO affordances
+          # here, so learned fear scored nothing. Param-free BY DESIGN:
+          # substrate-primary recommend_action emits empty params, so flight
+          # must be a fixed action pattern (retreat to the safe spawn
+          # anchor), not coordinate navigation.
+          params: {}
+          description: "Flight response: retreat to the spawn anchor without digging"

@@ -560,6 +560,69 @@ def create_pain_nac_subscriber(
     return _on_pain
 
 
+def create_pain_cluster_fear_subscriber(
+    nac: Any,
+    intensity_threshold: float = 0.3,
+) -> Callable[["PainSignal"], None]:
+    """Wire 4 (Exp 58, 1.3 Phase 1): situation-keyed fear subscriber.
+
+    Books negative valence onto the CO-ACTIVE **world** cluster when pain
+    arrives — the situation-fear channel the Step-2 probe measured as
+    absent (`docs/wiring/pain-needs-declared-failure-modes.md`: Wire 2
+    keys on the suffering body's class and is situation-blind;
+    ``cluster_reward_bias`` had no pain-side caller; action-blame is
+    correctly B8-suppressed). Writes ``nac._cluster_fear`` via
+    ``NAc.record_cluster_fear`` on ``(agent_id, cluster_id,
+    failure_mode)`` keys — disjoint from every sibling map.
+
+    Situation source: ``nac.active_clusters(agent_id)``, the stash the
+    agent loop notes right after each tick's encode (which the loop runs
+    BEFORE its pain tick, so pain sees THIS tick's situation — the
+    lit→dark transition-tick trap, Exp 58 wiring W-4). No noted clusters
+    → no write (never a stale situation). WORLD cluster only: fear keyed
+    to the interoception cluster ("being hurt") is tautological.
+
+    The failure-mode allowlist (v1: ``drive:health``) is enforced inside
+    ``record_cluster_fear`` so every write path inherits it — hunger pain
+    must not write fear onto the lit/dining clusters (wiring W-5).
+    Interactive-mode gated like the sibling NAc subscribers.
+    """
+
+    def _on_pain(signal: PainSignal) -> None:
+        if signal.intensity < intensity_threshold:
+            return
+        try:
+            from maxim.simulation.sim_logger import InteractiveMode, get_interactive_mode
+
+            if get_interactive_mode() == InteractiveMode.ON:
+                return
+        except Exception:
+            log_swallowed_exception()
+
+        context = signal.context or {}
+        agent_id = str(context.get("agent_id") or "")
+        failure_mode = str(context.get("failure_mode") or "")
+        if not agent_id or not failure_mode:
+            return  # out-of-spec producer (the Wire-2 posture): nothing to key on
+        # LOCKSTEP: "world" is embodiment's WORLD_TAG by value — proprioception
+        # must not import embodiment (layering), so a WORLD_TAG rename must
+        # update this literal or the fear store silently never writes.
+        world_cluster = nac.active_clusters(agent_id).get("world")
+        if not world_cluster:
+            return
+        try:
+            nac.record_cluster_fear(
+                agent_id=agent_id,
+                cluster_id=world_cluster,
+                failure_mode=failure_mode,
+                intensity=signal.intensity,
+            )
+        except Exception:
+            logger.exception("pain→cluster-fear recording failed")
+
+    return _on_pain
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Canonical PainBus construction site (Wave 1, biosystem_unification)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -681,6 +744,16 @@ def build_pain_bus(
         # attribution map (_links via record_outcome) and Wire-A's
         # cluster-keyed reward bias (_cluster_reward_bias).
         bus.subscribe(create_percept_valence_subscriber(nac))
+        # Wire 4 (Exp 58, 1.3 Phase 1): situation-keyed fear. Auto-wired
+        # like Wires 1/2 (a harness-level attach would recreate the
+        # three-CLI-site bug class and make a fear-ablated agent the
+        # accidental default everywhere). Writes ``nac._cluster_fear`` on
+        # (agent_id, cluster_id, failure_mode) keys — disjoint from all
+        # sibling maps — against the clusters the loop noted for this
+        # tick via ``nac.note_active_clusters``. The failure-mode
+        # allowlist lives in ``NAc.record_cluster_fear`` itself so every
+        # write path inherits it (hunger pain must not write lit fear).
+        bus.subscribe(create_pain_cluster_fear_subscriber(nac))
     for sub in additional_subscribers:
         bus.subscribe(sub)
     return bus

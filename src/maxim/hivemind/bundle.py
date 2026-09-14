@@ -336,6 +336,12 @@ def scrub_nac_state_for_bundle(nac_state: dict[str, Any]) -> dict[str, Any]:
     stay unique per link list, valence classes stay separate.
     """
     scrubbed = dict(nac_state)
+    # Exp 58 fear (cluster_fear) does NOT travel in bundles yet: fear-transport
+    # is a NAMED Phase-2 item (exp58_survival_wants_prereg.md §Mechanism 7 — five
+    # wiring items, two silent-fail). Excluding it here is the deferral's gate;
+    # ingest strips it from foreign payloads as defense in depth, and nac_merge
+    # min-folds whatever remains (receiver-preserving once this exclusion holds).
+    scrubbed.pop("cluster_fear", None)
 
     # links: scrub each link, re-key on the scrubbed event signature,
     # and fold links that now share (event_sig, outcome_sig) via

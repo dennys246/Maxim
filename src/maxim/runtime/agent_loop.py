@@ -1445,27 +1445,25 @@ def propose_via_substrate(
             if not available_tools:
                 return None
 
-    # Substrate-primary mode owns its own clock — without an LLM submit
-    # path there's no other code that calls into the embodiment, so
-    # drive drift would never advance. Ticking evaluate_failures() here
-    # mirrors the llm-primary path, where the tick is event-driven via
-    # tool execution (tool_bridge / sim tools calling evaluate_failures):
-    # applies wall-clock drift via tick_vital_drift, then evaluates
-    # failures (which publish pain signals to NAc). See the CLAUDE.md
-    # embodiment-tick invariant.
-    embodiment = getattr(executor, "embodiment", None)
-    if embodiment is not None:
-        try:
-            embodiment.evaluate_failures()
-        except Exception:
-            logger.debug("substrate-primary tick: evaluate_failures raised", exc_info=True)
-
     # Per-modality channel reads (extero/intero seam). Each channel is read
-    # once; interoception feeds ``current_drives`` (the drive-affinity
-    # heuristic — perception is not a need, so exteroceptive channels stay
-    # out of it) and EVERY non-empty channel gets its OWN encode below.
+    # once here for the ENCODE; interoception is re-read after the pain
+    # tick below so selection sees post-drift drives. EVERY non-empty
+    # channel gets its OWN encode below.
+    #
+    # ORDER (Wire 4, Exp 58 wiring W-4): the encode runs BEFORE the
+    # evaluate_failures pain tick so pain published this tick books fear
+    # on THIS tick's situation clusters — pre-fix, damage on the lit→dark
+    # transition tick saw the PREVIOUS tick's clusters and wrote fear on
+    # the LIT cluster (aimed straight at the specificity gate). Cluster
+    # identity from the pre-drift snapshot is equivalent for this purpose:
+    # world-owned sensors do not drift, and one tick of drift cannot move
+    # a cluster id. ACCEPTED LAG (architecture-lens): bodies with
+    # metadata["health"] == "derived" refresh health from modulator
+    # integrities INSIDE evaluate_failures, so their interoception encode
+    # now lags integrity damage by one tick (self-correcting next tick);
+    # the minecraft body is bridge-written, not derived, so Exp 58 is
+    # unaffected — revisit if a derived-health body joins a fear line.
     channel_values: dict[str, dict[str, float]] = {ch.tag: ch.read_values(executor) for ch in _SUBSTRATE_CHANNELS}
-    drives = channel_values.get(INTEROCEPTION_TAG, {})
 
     # Phase 0 sensor encoding — feed the current sensor snapshot to EC so
     # substrate-primary mode produces nodes the way the LLM-primary
@@ -1521,6 +1519,47 @@ def propose_via_substrate(
                     len(vals),
                 )
     cluster_id = clusters.get(INTEROCEPTION_TAG)
+
+    # Wire 4 (Exp 58): stash THIS tick's clusters on NAc so the
+    # pain→cluster-fear subscriber keys fear to the current situation.
+    # Noted even when empty (clears the stash — pain with no situation
+    # books nothing rather than a stale one).
+    try:
+        nac.note_active_clusters(agent_id, clusters or None)
+    except Exception:
+        logger.warning("note_active_clusters raised — pain this tick cannot key to a situation", exc_info=True)
+
+    # Substrate-primary mode owns its own clock — without an LLM submit
+    # path there's no other code that calls into the embodiment, so
+    # drive drift would never advance. Ticking evaluate_failures() here
+    # mirrors the llm-primary path, where the tick is event-driven via
+    # tool execution (tool_bridge / sim tools calling evaluate_failures):
+    # applies wall-clock drift via tick_vital_drift, then evaluates
+    # failures (which publish pain signals — now keyed to the clusters
+    # noted above). See the CLAUDE.md embodiment-tick invariant.
+    embodiment = getattr(executor, "embodiment", None)
+    if embodiment is not None:
+        try:
+            embodiment.evaluate_failures()
+        except Exception:
+            logger.debug("substrate-primary tick: evaluate_failures raised", exc_info=True)
+
+    # Post-drift interoception re-read: selection must see the drives the
+    # pain tick just advanced (the pre-hoist behaviour, preserved).
+    drives = dict(_read_drive_states(executor))
+
+    # Wire 4 READ: learned fear of the ACTIVE situation surfaces as an
+    # anticipatory threat need, combined with the innate reactive
+    # ``health→threat`` need by MAX, never sum (Exp 58 bio SF-6 — a sum
+    # can exceed 1.0 and be dropped by recommend_action's raw-sensor
+    # guard). Zero when no active cluster clears the fear threshold.
+    try:
+        fear_need = float(nac.anticipatory_threat_need(agent_id, clusters or None))
+    except Exception:
+        logger.warning("anticipatory_threat_need raised — learned fear is silent this tick", exc_info=True)
+        fear_need = 0.0
+    if fear_need > 0.0:
+        drives["threat"] = max(float(drives.get("threat", 0.0) or 0.0), fear_need)
 
     resolved_min_confidence = _resolve_min_confidence(min_confidence)
     recommendation = nac.recommend_action(
