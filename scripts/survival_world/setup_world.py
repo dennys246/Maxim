@@ -280,12 +280,26 @@ def _classroom(args: argparse.Namespace) -> int:
             resp = rcon.command("kill @e[type=minecraft:zombie,distance=..64]")
             print(f"rcon> kill zombies r64\n      {resp.strip() or '(none)'}")
             return 0
-        ax, ay, az = (
-            (args.anchor_x, args.anchor_y, args.anchor_z) if args.anchor_x is not None else bot_pos(rcon, args.username)
-        )
+        anchor_file = Path.home() / ".maxim" / "exp58_classroom.json"
+        if args.anchor_x is not None:
+            ax, ay, az = args.anchor_x, args.anchor_y, args.anchor_z
+        elif anchor_file.exists():
+            # Rebuild IN PLACE at the recorded anchor — never re-derive from the
+            # bot's drifting live position (successive rebuilds at drifted
+            # anchors left overlapping, offset, light-leaking structures; the
+            # first dry-run's dark room leaked skylight through exactly such a
+            # seam). --anchor-x overrides to relocate deliberately.
+            ax, ay, az = json.loads(anchor_file.read_text())["anchor"]
+        else:
+            ax, ay, az = bot_pos(rcon, args.username)
         ax, ay, az = int(ax), int(ay), int(az)
         floor = ay - 1
         cmds = [
+            # RESET the site to air first (structure footprint + generous margin):
+            # a rebuild must never leave a prior/overlapping build's walls, or the
+            # seam leaks light into the sealed dark room. Clears from the floor up
+            # only (natural terrain below is untouched).
+            f"fill {ax - 10} {floor} {az - 10} {ax + 19} {ay + 8} {az + 10} minecraft:air",
             # Safe platform 9x9 (stone floor, sky above cleared 6 high).
             f"fill {ax - 4} {floor} {az - 4} {ax + 4} {floor} {az + 4} minecraft:smooth_stone",
             f"fill {ax - 4} {ay} {az - 4} {ax + 4} {ay + 5} {az + 4} minecraft:air",
@@ -319,12 +333,8 @@ def _classroom(args: argparse.Namespace) -> int:
                 print("\nCLASSROOM BUILD FAILED on the command above — nothing gated may run.")
                 return 4
         # Record the EXACT built geometry so the harness reads it instead of
-        # re-deriving from the bot's (drifting) live position — a half-block
-        # teleport drift put door_x off by one in the first dry-run. Written
-        # outside the repo (no dirty-tree impact on the harness provenance gate).
-        import json as _json
-
-        anchor_file = Path.home() / ".maxim" / "exp58_classroom.json"
+        # re-deriving from the bot's (drifting) live position. Written outside
+        # the repo (no dirty-tree impact on the harness provenance gate).
         anchor_file.parent.mkdir(parents=True, exist_ok=True)
         geom = {
             "anchor": [ax, ay, az],
@@ -333,7 +343,7 @@ def _classroom(args: argparse.Namespace) -> int:
             "flee_x": ax,
             "flee_z": az,
         }
-        anchor_file.write_text(_json.dumps(geom, indent=2))
+        anchor_file.write_text(json.dumps(geom, indent=2))
 
         # Force a chunk RELIGHT: the bulk /fill left mineflayer's skylight
         # stale (the safe platform read dark, the dark room read bright until
