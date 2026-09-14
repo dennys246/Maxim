@@ -37,6 +37,8 @@ const MC_PORT = parseInt(args.mc_port || "25565", 10);
 const BRIDGE_PORT = parseInt(args.bridge_port || "25567", 10);
 const USERNAME = args.username || "maxim";
 const STATE_INTERVAL_MS = parseInt(args.state_interval_ms || "500", 10);
+const FLEE_X = args.flee_x !== undefined ? parseFloat(args.flee_x) : null;
+const FLEE_Z = args.flee_z !== undefined ? parseFloat(args.flee_z) : null;
 
 const bot = mineflayer.createBot({ host: MC_HOST, port: MC_PORT, username: USERNAME });
 bot.loadPlugin(pathfinder);
@@ -170,14 +172,28 @@ async function runAction(name, params) {
       await bot.placeBlock(ref, new (require("vec3").Vec3)(0, 1, 0));
       return "placed";
     }
+    case "stop": {
+      // Clear any residual pathfinder goal. A goto promise PERSISTS across
+      // Python-side timeouts and /tp (executor-lens finding 1) — a stale goal
+      // self-moves the bot during later placements/training. The harness
+      // calls this at phase boundaries.
+      bot.pathfinder.setGoal(null);
+      return "stopped";
+    }
     case "flee": {
-      // Wire 4 (Exp 58): species-typical flight — retreat to the spawn/safe
-      // anchor. Param-free (substrate-selectable); canDig=false so the bot
-      // cannot tunnel through classroom walls (env lens SF-8).
+      // Wire 4 (Exp 58): species-typical flight — retreat to the SAFE anchor.
+      // Param-free (substrate-selectable); canDig=false so the bot cannot
+      // tunnel through classroom walls (env lens SF-8).
+      // ANCHOR: explicit --flee_x/--flee_z bridge args (the classroom's safe
+      // platform, printed by setup_world classroom). bot.spawnPoint is the
+      // WORLD spawn from the login packet — /spawnpoint never updates it and
+      // it points wherever the world was created (run-harness review DNR-1);
+      // it remains only a last-resort fallback for non-classroom use.
       // No position fallback: a goto-to-where-you-stand resolves instantly and
       // would book flight SUCCESS for doing nothing (executor-lens catch).
-      const anchor = bot.spawnPoint;
-      if (!anchor) throw new Error("no spawn anchor to flee to");
+      const anchor =
+        FLEE_X !== null && FLEE_Z !== null ? { x: FLEE_X, z: FLEE_Z } : bot.spawnPoint;
+      if (!anchor) throw new Error("no flee anchor (pass --flee_x/--flee_z)");
       const fm = new Movements(bot);
       fm.canDig = false;
       bot.pathfinder.setMovements(fm);
