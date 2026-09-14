@@ -253,3 +253,31 @@ sentence, the sentence is named:
    them and reports the refusal count.
 6. **Record identity**: every invocation stamps a `run_id`; the verdict script must refuse
    duplicate (arm, seed) rows absent explicit resolution.
+
+## Addendum 2 (dated 2026-09-14, pre-data): underground cave classroom + light tolerance
+
+The surface classroom could not be made dark: Paper's bulk `/fill` does not recompute
+SKYLIGHT, so a command-built surface roof left the sealed room at a uniform light 15
+(diagnosed live — three ruled-out theories then a direct light-gradient measurement; a
+chunk reload and a single-`setblock` toggle both failed to relight). The classroom is
+therefore built UNDERGROUND (owner decision; also the doc's original "a cave, not a
+hand-darkened room" intent), which stands on the two reliable light mechanisms and never
+uses the broken skylight-removal path:
+- **deep burial → skylight 0 natively** (carving air under solid rock needs no recompute —
+  the correct value equals the stored value), and
+- **block light** from a `light[level=15]` block lights the safe chamber (the separate,
+  reliable path).
+
+`setup_world.py classroom` now encases a solid-stone cuboid at y=40 and carves a lit safe
+chamber (spawnpoint + flee anchor) and a longer dark chamber (spawner at the far end),
+joined by an oak door; the bridge's `flee` opens the door (`canOpenDoors`) so the dark
+chamber stays sealed/0 except during an exit; the harness closes the door for every
+dark-light read. Verified live (first full dry-run): safe 15/13, dark 0, flee opens the
+door and crosses the plane, all 10 training episodes landed from the spawner.
+
+**Light tolerance:** the lit/dark preflight gates are a tolerant band — safe `light ≥ 13`,
+dark `light ≤ 1` — not exact `15`/`0`. A live block-light sensor jitters 13–15 with the
+bot's sub-block position relative to the source; exact-equality invited flaky refusals.
+13-vs-0 remains a crisp, well-separated split, and the world cluster is formed from all 17
+sensors, so a 13↔15 jitter on one axis is negligible to cluster identity. The scientific
+contingency (dark cluster vs lit cluster) is unchanged.
