@@ -31,11 +31,13 @@ that generalizes belongs here.
   `_read_world_ranges`, never raw world truth; states beyond a cap are indistinguishable to the
   agent. (Survival Phase-0 first run, 2026-09-13.)
 
-- [pain-needs-declared-failure-modes.md](pain-needs-declared-failure-modes.md) — pain fires
-  only from a body's DECLARED failure modes; drives alone publish nothing. `minecraft_player`
-  declares none, so Minecraft damage is painless (PainBus `total_published: 0` with 8
-  subscribers idle) and every negative-learning channel starves upstream. Check
-  `total_published`, never `subscriber_count`. (Dark=danger probe, 2026-09-13.)
+- [pain-needs-declared-failure-modes.md](pain-needs-declared-failure-modes.md) — CORRECTED
+  entry: the full damage-fear topology. Drive pain DOES publish (band-crossing + latch
+  semantics); action-blame is correctly B8-suppressed for bystander actions; Wire 2 percept
+  aversion fires but is SITUATION-BLIND (keyed to the suffering body's class, not the
+  co-active world cluster) — so "dark = danger" has NO write channel on current wiring: a
+  Phase-1 design item. Plus four instrument traps, incl. `pain_bus.recent` being a lossy
+  view. (Dark=danger probe, 7 iterations, 2026-09-13.)
 
 - [experiment-catalog-candidates.md](experiment-catalog-candidates.md) — a prioritized **backlog** of
   11 reusable wiring lessons harvested from all 92 past experiments (catalog workflow, 2026-09-13);
