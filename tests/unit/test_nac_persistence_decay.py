@@ -23,7 +23,7 @@ import json
 
 import pytest
 
-from maxim.decisions.nac import NAc, NACConfig, Valence
+from maxim.decisions.nac import _NAC_FORMAT_VERSION, NAc, NACConfig, Valence
 
 DAY_S = 86400.0
 WEEK_S = 604800.0
@@ -71,7 +71,7 @@ class TestSavedAtStamp:
         path = str(tmp_path / "nac.json")
         _populated_nac(path).save()
         with open(path) as f:
-            assert json.load(f)["_format_version"] == "1.3"
+            assert json.load(f)["_format_version"] == _NAC_FORMAT_VERSION
 
 
 class TestDecayOnLoad:

@@ -70,6 +70,7 @@ Tell them apart by the plan or version in scope: "P2 Stage 2" + substrate → re
 |---|---|
 | `Roy-N` | The paraphrase-collapse / persona-inertness experiment lineage (Roy-2c … Roy-5b) — substrate probes |
 | `Wire-A / Wire 1 / 2 / 3` | Substrate→LLM-context annotation mechanisms (0.9.1): Wire-A cluster-bias, Wire 1 variance, Wire 2 imagination-signal, Wire 3 |
+| `Wire 4` | Situation-keyed fear (Exp 58, 1.3 Phase 1): pain→cluster negative valence in `NAc._cluster_fear`, read as an anticipatory threat need; consumer is the `flee` affordance |
 | `Exp N` | Numbered experiments in [docs/experiments/](../experiments/) (e.g. Exp 42 substrate-primary GRADUATE, Exp 44 LLM-primary choice) |
 | Goldilocks zone | The Exp 37/38/40 finding: substrate helps only where the LLM prior leaves headroom |
 | cradle | Sensorimotor developmental sim (infant body, narrative acts) |
