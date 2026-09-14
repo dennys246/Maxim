@@ -195,7 +195,9 @@ async function runAction(name, params) {
         FLEE_X !== null && FLEE_Z !== null ? { x: FLEE_X, z: FLEE_Z } : bot.spawnPoint;
       if (!anchor) throw new Error("no flee anchor (pass --flee_x/--flee_z)");
       const fm = new Movements(bot);
-      fm.canDig = false;
+      fm.canDig = false;        // no tunnelling through classroom walls (env SF-8)
+      fm.canOpenDoors = true;   // open the dark-chamber door to flee (keeps it
+                                // closed otherwise, so the dark chamber stays sealed)
       bot.pathfinder.setMovements(fm);
       await bot.pathfinder.goto(new goals.GoalNearXZ(anchor.x, anchor.z, 2));
       return "fled to anchor";
