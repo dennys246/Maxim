@@ -46,7 +46,8 @@ stable pre-damage cue.
    + latency censored at first damage; rescue-teleport cap ~18–20s (below ~25s death), rescue
    recorded as CENSORED (rescue restores oxygen like a real surface — must distinguish). [confounding, environment]
 5. **Live separability gate** — run `scripts/survival_world/l11_geometry_probe.py` on the built water
-   pool (shore vs submerged) as the `authorizes_build` gate before the full harness. [all lenses]
+   pool (shore vs submerged) as the RUN-authorizing gate before the full harness (`authorizes_build`
+   stays False — it is a run gate, not a substrate-build gate; see §Gate (ii)). [all lenses]
 6. **Build hygiene** — `doMobSpawning false` (water spawns DROWNED zombies at block-light 0 = a
    second pain source), fully-walled water column (source blocks; open top = the escape), forceload
    before teleport, rescue onto a DRY platform, geometry anchor file. [environment-E4]
@@ -129,7 +130,51 @@ PASS the check stamps `measured{t_damage_onset_min/max_s, t_surface_max_s, t_sin
 distance_from_spawn}` into the anchor record so chunks (ii)/(iii) budget their dives from measured
 truth (chunk ii's probe must sample within `t_damage_onset_min_s` minus margin and rescue). The
 run-authorizing gate remains chunk (ii): `l11_geometry_probe` shore vs submerged on this pool,
-cos < 0.85 + distinct frozen-EC ids, measured live.
+cos < 0.85 + distinct frozen-EC ids on live-CAPTURED vectors replayed offline (§Gate (ii)).
+
+## Gate (ii) — the run-authorizing separability probe (chunk ii, built 2026-09-15; NOT yet run)
+
+`scripts/survival_world/l11_geometry_probe.py` generalized (`--anchor-file`), run on the BUILT pool
+AFTER the apparatus check has PASSED (it reads the check's stamped `measured.t_damage_onset_min_s`
+and refuses to dive without it). Capture: baseline `shore` first, then `submerged`, each settled on
+the sensor that DEFINES it (`probe_settle`: `is_in_water` 0 + grounded / `is_in_water` 1 — not
+altitude); submerged samples are taken in VISITS of at most onset − 3 s, rescued to the shore between
+visits with sensed oxygen restored (a health drop inside the budget rescues early). Analyze (pure,
+offline, the shipped `SensorEncoder` + frozen-centroid EC, record keys role-positional with a
+`situation_labels` map so the Slice-1 record stays reproducible) adds:
+
+- `contrast_early_vs_late_oxygen` — the submerged samples split at oxygen ≥ 16 (dive-second-0, the
+  RECALL moment) vs ≤ 13 (the drive's pain edge, the CONDITIONING moment where Wire-4 books fear);
+  `same_cluster` = every late id also appears among the early ids. This is the bio-faithful lens's
+  DNB-2 preflight ("conditioning-moment cluster == recall-moment cluster"), MEASURED. An empty bin
+  is unmeasured (`None`), never a pass.
+- `run_gate` — `cos_a4 < 0.85` AND fresh-EC ids distinct AND `early_late_same_cluster` is True (SET
+  EQUALITY of early and late ids — a jitter-split early bin is the conservative FAIL, since fear booked
+  on one member reads 0.0 on a dive that lands on the other) AND no visit recorded `settled: false`,
+  on a dive trace. **`pass` authorizes chunk (iii)'s harness to RUN under the frozen prereg; it
+  authorizes NO substrate change (`authorizes_build` stays False).** A `pass: false` here is the
+  Exp 58 outcome again (null-with-cause at the instrument) and stops the line before any trial.
+- **Necessary, not sufficient.** This is an OFFLINE fresh-EC replay of live-captured vectors in a
+  controlled order: evidence of the geometry (and the sub-bin, which a live preflight cannot cheaply
+  give), NOT of the live agent's EC at trial time (bootstrap/spawn-transient prototypes under
+  first-touch allocation). Chunk (iii)'s harness therefore MUST still raise `Refusal` on its own live
+  cluster-distinct preflight (shore vs submerged through `_encode_current_clusters` on the live
+  executor, the exp58_run pattern) before trial 1. Both are required; neither substitutes.
+- Capture safety (folded from review): a dive settle must confirm within 3 s (the check's bar) and
+  inside the budget or capture rescues and REFUSES (never "samples anyway" underwater); a stale
+  bridge snapshot (> 1.5 s, 8 consecutive) rescues and refuses; a zero-sample visit refuses; the
+  rescue settle bar is the check's own `oxygen ≥ 19`, never stricter than what the apparatus PASSED
+  at; a refusal writes no trace. `--anchor-file` is required so a pool probe can never silently
+  probe the cave.
+
+Offline expectation (stated so it can be wrong): cos ≈ 0.79 at the pool's spawn distance (the
+placement guards keep both capped distance sensors off their caps), and early/late the same cluster.
+The reason is NOT only "too little oxygen mass at the pain edge" (13/40 → v 0.325, w ≈ 0.043): the
+late bin runs down to the budget's floor (oxygen ≈ 3, w ≈ 0.61). Replayed on the real 17-sensor
+ranges through the shipped embed + a fresh EC (architecture lens): cos(early, late) = 1.000 @13,
+0.977 @5, 0.948 @3, **0.862 @0** — the expectation holds down to the floor, and oxygen 0 sits within
+0.01 of the threshold, which is exactly why the −3 s budget margin (and rescue before damage onset)
+matters. Record → `docs/experiments/data/exp60_geometry_<date>.json` via a merge-commit data PR.
 
 ## The claim
 

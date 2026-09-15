@@ -17,7 +17,10 @@ mitigation is the muzzle. This probe tests that prediction on real vectors.
 DIAGNOSIS ONLY — it NOMINATES a remedy direction and authorizes NO build. The
 build gate is Slice 2's live re-encode past the exact cluster-distinct preflight
 that blocked Exp 58 (per the plan, offline geometry only nominates). A
-separation-only reading here never authorizes a substrate change.
+separation-only reading here never authorizes a substrate change. (Exp 60 chunk
+(ii), below, adds a RUN gate — authorization for a harness to run under a frozen
+prereg, which is a different thing from a substrate build; both stay distinct in
+the record: ``authorizes_build`` is always False, ``run_gate`` is its own block.)
 
 Faithfulness (the whole point — don't repeat the false-confidence trap):
   * capture reads the encoder INPUT via production `_read_world_states` /
@@ -39,13 +42,34 @@ capture is live (operator-run: server + bridge + `setup_world.py classroom`);
 analyze is pure and offline — reproducible from the captured trace, and unit-
 testable without a network.
 
+Exp 60 chunk (ii) — the RUN-AUTHORIZING gate on the water classroom. The same probe,
+generalized (docs/experiments/exp60_drowning_avoidance_prereg.md §Gate (ii)): ``capture
+--anchor-file ~/.maxim/exp60_water_classroom.json`` reads the situations (``probe_situations``:
+shore = baseline, submerged = contrast), settles each on the sensor that DEFINES it
+(``probe_settle``: is_in_water, not altitude), and — because the contrast situation drowns the
+bot — dives in VISITS budgeted from the apparatus check's MEASURED damage onset
+(``measured.t_damage_onset_min_s`` − 3 s; refuses to dive without it), rescuing to the shore
+(``probe_rescue``) and settling oxygen between visits. Labels travel in the trace provenance so
+``analyze`` stays reproducible on the Slice-1 trace unchanged; record keys stay ROLE-positional
+(``v_safe``/``safe_ids`` = baseline, ``v_dark``/``dark_ids`` = contrast) with a
+``situation_labels`` map. Two additions in ``analyze``: an early-vs-late oxygen SUB-BIN of the
+contrast samples (dive-second-0 full air vs the ≤13-bubble pain edge where Wire-4 books fear —
+the bio-faithful lens's "conditioning-moment cluster == recall-moment cluster" preflight,
+measured) and an explicit ``run_gate`` block (A4 cosine below threshold, fresh-EC ids distinct,
+early/late same cluster). ``authorizes_build`` stays False — this authorizes a RUN of the frozen
+prereg's harness, never a substrate change.
+
 Usage
 -----
     # LIVE (operator), against the standing Exp 58 classroom + bridge:
     python scripts/survival_world/l11_geometry_probe.py capture \
-        --rcon-password <pw> --samples 30 \
+        --anchor-file ~/.maxim/exp58_classroom.json --rcon-password <pw> --samples 30 \
         --trace ~/.maxim/l11_geometry_trace.jsonl
     # (defaults: --bridge-port 25567 --rcon-port 25575 --username maxim)
+    # Exp 60 water classroom (after exp60_water_check PASSED and stamped `measured`):
+    python scripts/survival_world/l11_geometry_probe.py capture \
+        --anchor-file ~/.maxim/exp60_water_classroom.json --rcon-password <pw> \
+        --samples 30 --trace ~/.maxim/exp60_geometry_trace.jsonl
 
     # OFFLINE (anywhere), on the captured trace:
     python scripts/survival_world/l11_geometry_probe.py analyze \
@@ -79,20 +103,128 @@ if str(_REPO_ROOT / "src") not in sys.path:
 MOVE_EPS = 0.05  # normalized safe↔dark delta above which a sensor "moved"
 GAIN_MASS_EPS = 0.05  # gain weight above which a sensor "carries mass" under A4
 PATTERN_THRESHOLD = 0.85  # the world pattern-completion cosine (reported, from config)
+DEFAULT_LABELS = ("safe", "dark")  # Slice-1 / Exp 58 trace roles: (baseline, contrast)
+Y_SETTLE_TOLERANCE = 3.0  # altitude settle band (the Exp 58 shape; clamped per body range)
+# Exp 60 dive visits: budget from the apparatus check's MEASURED damage onset, minus margin.
+DIVE_MARGIN_S = 3.0
+EARLY_OXYGEN_MIN = 16.0  # dive-second-0 bin: full/near-full air (bridge oxygenLevel of 20)
+LATE_OXYGEN_MAX = 13.0  # the oxygen drive's pain edge (set_point 20 − comfort_band 6)
+DEFAULT_ANCHOR = Path.home() / ".maxim" / "exp58_classroom.json"
+DIVE_SETTLE_S = 3.0  # a dive must reflect within this (exp60_water_check.IN_WATER_WITHIN_S) — else apparatus fault
+RESCUE_OXYGEN_MIN = 19.0  # == exp60_water_check.RECOVER_OXYGEN_MIN (the bar the apparatus PASSED at; test-pinned)
+STALE_STATE_S = 1.5  # == exp60_water_check.STALE_STATE_S (3x the 500 ms bridge cadence)
+STALE_MAX_CONSECUTIVE = 8  # == exp60_water_check.STALE_MAX_CONSECUTIVE (~2 s of stale polls)
 
 
 # ─────────────────────────────────────── shared ───────────────────────────────
 
 
-def _classroom_geometry() -> dict[str, Any]:
-    anchor = Path.home() / ".maxim" / "exp58_classroom.json"
+def _classroom_geometry(anchor: Path = DEFAULT_ANCHOR) -> dict[str, Any]:
     try:
         return json.loads(anchor.read_text())
     except OSError as exc:  # apparatus failure, name it — never measure a guess
         raise SystemExit(
             f"[FAIL] classroom geometry not found: {anchor} — run "
-            f"`setup_world.py classroom` on the live server first ({exc})"
+            f"`setup_world.py classroom` / `water_classroom` on the live server first ({exc})"
         )
+
+
+def situations_from_anchor(geom: dict[str, Any]) -> dict[str, Any]:
+    """Normalize EITHER anchor shape into one situation plan (pure; unit-tested).
+
+    Exp 58 (``anchor``/``dark``/``mid_y``): labels safe/dark, settle on altitude.
+    Exp 60 (``probe_situations`` + ``probe_settle`` + ``probe_rescue`` + ``measured``):
+    labels in file order (baseline first), settle on the DEFINING sensor, and a dive
+    budget for every situation that names a rescue — ``None`` when the apparatus check
+    has not stamped ``measured`` yet (capture REFUSES to dive on None: an unmeasured
+    onset would drown the bot).
+    """
+    if "probe_situations" in geom:
+        labels = list(geom["probe_situations"])
+        if len(labels) != 2:
+            raise SystemExit(f"[FAIL] anchor probe_situations must name exactly 2 situations, got {labels}")
+        positions = {
+            lab: {"x": float(p[0]), "y": float(p[1]), "z": float(p[2])} for lab, p in geom["probe_situations"].items()
+        }
+        measured = geom.get("measured") or {}
+        onset = measured.get("t_damage_onset_min_s")
+        return {
+            "labels": labels,
+            "positions": positions,
+            "settle": {lab: dict(rule) for lab, rule in (geom.get("probe_settle") or {}).items()},
+            "rescue": dict(geom.get("probe_rescue") or {}),
+            "dive_budget_s": None if onset is None else max(0.0, float(onset) - DIVE_MARGIN_S),
+            "measured": measured or None,
+        }
+    sx, sy, sz = (float(v) for v in geom["anchor"])
+    dx, dy, dz = (float(v) for v in geom["dark"])
+    return {
+        "labels": list(DEFAULT_LABELS),
+        "positions": {"safe": {"x": sx, "y": sy, "z": sz}, "dark": {"x": dx, "y": dy, "z": dz}},
+        "settle": {"safe": {"y_altitude": sy}, "dark": {"y_altitude": dy}},
+        "rescue": {},
+        "dive_budget_s": None,
+        "measured": None,
+        "mid_y": float(geom.get("mid_y", (sy + dy) / 2)),
+    }
+
+
+def settle_predicate(rule: dict[str, float], ranges: dict[str, Any]):
+    """Predicate over vital_metrics for one situation's settle rule (pure).
+
+    ``y_altitude`` settles within Y_SETTLE_TOLERANCE of the target CLAMPED to the body
+    range (docs/wiring/sensor-range-clamps.md); a ``{"min": m}`` rule settles at ``v >= m``;
+    every other sensor (the binary state-flags) must sit within 0.5 of the wanted value.
+    An empty rule settles at once.
+    """
+
+    def _ok(vm: dict[str, Any]) -> bool:
+        for name, want in rule.items():
+            try:
+                v = float(vm.get(name, float("nan")))
+            except (TypeError, ValueError):
+                return False
+            if v != v:  # NaN: sensor absent from the snapshot
+                return False
+            if isinstance(want, dict):
+                if v < float(want["min"]):
+                    return False
+            elif name == "y_altitude":
+                lo, hi = ranges.get(name, (float("-inf"), float("inf")))
+                if abs(v - min(max(float(want), lo), hi)) > Y_SETTLE_TOLERANCE:
+                    return False
+            elif abs(v - float(want)) > 0.5:
+                return False
+        return True
+
+    return _ok
+
+
+def early_late_bins(rows: list[dict[str, float]], ids: list[str]) -> dict[str, Any] | None:
+    """Split the CONTRAST samples by oxygen into dive-second-0 vs pain-edge bins (pure).
+
+    Returns None when the samples carry no oxygen (a non-dive trace). ``same_cluster``
+    is True iff the early and late id SETS are EQUAL — the cluster fear is booked on
+    (late, at the pain edge) is exactly the cluster active at re-submersion (early). A
+    jitter-split early bin ({A, A'}) with late {A} is the conservative FAIL: fear booked
+    on A reads 0.0 on a fresh dive that lands on A' (architecture-lens fold; the Exp 58
+    Addendum-4 6/4 split is the precedent). None when a bin is empty (unmeasured, never
+    "passed").
+    """
+    if not rows or not any("oxygen" in r for r in rows):
+        return None
+    early = sorted({i for r, i in zip(rows, ids) if r.get("oxygen", 0.0) >= EARLY_OXYGEN_MIN})
+    late = sorted({i for r, i in zip(rows, ids) if r.get("oxygen", 99.0) <= LATE_OXYGEN_MAX})
+    same = None if (not early or not late) else set(late) == set(early)
+    return {
+        "early_oxygen_min": EARLY_OXYGEN_MIN,
+        "late_oxygen_max": LATE_OXYGEN_MAX,
+        "early_ids": early,
+        "late_ids": late,
+        "n_early": sum(1 for r in rows if r.get("oxygen", 0.0) >= EARLY_OXYGEN_MIN),
+        "n_late": sum(1 for r in rows if r.get("oxygen", 99.0) <= LATE_OXYGEN_MAX),
+        "same_cluster": same,
+    }
 
 
 def _code_hash() -> str:
@@ -118,14 +250,17 @@ def capture(args: argparse.Namespace) -> int:
     from maxim.simulation.minecraft_harness import MinecraftSyncPump, build_minecraft_aut
     from survival_world.common import settle_until
 
-    geom = _classroom_geometry()
-    sx, sy, sz = (float(v) for v in geom["anchor"])
-    dx, dy, dz = (float(v) for v in geom["dark"])
-    mid_y = float(geom["mid_y"])
-    situations = {
-        "safe": {"x": sx, "y": sy, "z": sz},
-        "dark": {"x": dx, "y": dy, "z": dz},
-    }
+    anchor_path = Path(args.anchor_file).expanduser()
+    plan = situations_from_anchor(_classroom_geometry(anchor_path))
+    labels = plan["labels"]
+    situations = plan["positions"]
+    for lab in labels:
+        if lab in plan["rescue"] and plan["dive_budget_s"] is None:
+            raise SystemExit(
+                f"[FAIL] situation {lab!r} needs a rescue but the anchor carries no measured damage "
+                "onset — run exp60_water_check.py to PASS first (it stamps `measured`); an unmeasured "
+                "dive budget would drown the bot."
+            )
 
     rcon = C.RconControl(args.rcon_host, args.rcon_port, args.rcon_password)
     import tempfile
@@ -149,44 +284,140 @@ def capture(args: argparse.Namespace) -> int:
     provenance = {
         "kind": "provenance",
         "code_hash": _code_hash(),
-        "classroom_anchor": {"safe": [sx, sy, sz], "dark": [dx, dy, dz], "mid_y": mid_y},
+        "anchor_file": str(anchor_path),
+        "situations": labels,  # [baseline, contrast] — analyze reads the roles from here
+        "classroom_anchor": {lab: [situations[lab]["x"], situations[lab]["y"], situations[lab]["z"]] for lab in labels},
+        "settle": plan["settle"],
+        "rescue": plan["rescue"],
+        "dive_budget_s": plan["dive_budget_s"],
+        "measured": plan["measured"],
         "world_ranges": ranges,
         "world_sensor_count": len(ranges),
         "samples_requested": args.samples,
+        "cadence_s": args.cadence_s,
         "bridge": {"host": args.bridge_host, "port": args.bridge_port},
     }
+    if "mid_y" in plan:
+        provenance["classroom_anchor"]["mid_y"] = plan["mid_y"]
     records.append(provenance)
-    print(f"[capture] {len(ranges)} declared world sensors; {args.samples} samples/situation")
+    print(f"[capture] {len(ranges)} declared world sensors; {args.samples} samples/situation; situations {labels}")
 
-    for label, pos in situations.items():
-        rcon.teleport(args.username, pos)
-        target_y = pos["y"]
-        # Settle on the SENSED y (clamped [0,128] per body YAML) reaching the target
-        # depth band — the same settle discipline exp58_run/instrument_check use.
-        clamped_y = max(0.0, min(128.0, target_y))
+    def _settle(label: str, timeout_s: float = 20.0) -> bool:
+        rule = plan["settle"].get(label, {})
+        return settle_until(aut, settle_predicate(rule, ranges), timeout_s=timeout_s) is not None
 
-        def _at_depth(vm: dict[str, Any], ty: float = clamped_y) -> bool:
+    def _one_sample(label: str, visit: int, t_in: float, settled: bool) -> bool | None:
+        """True = recorded; False = nothing synced yet; None = the snapshot is STALE.
+
+        `sync_world_sensors` re-syncs the client's LAST snapshot, which persists after the
+        bridge dies — a dead bridge would otherwise be recorded as 30 identical samples
+        (the exp60_water_check `_sample` discipline, mirrored).
+        """
+        if aut.client.state_age_s() > STALE_STATE_S:
+            return None
+        if aut.backend.sync_world_sensors() <= 0:
+            return False
+        state = _read_world_states(aut.executor)
+        # keep only declared world sensors (production encodes exactly these)
+        state = {k: float(v) for k, v in state.items() if k in ranges}
+        records.append(
+            {
+                "kind": "sample",
+                "situation": label,
+                "visit": visit,
+                "t_in_situation": round(t_in, 3),
+                "settled": settled,
+                "state": state,
+            }
+        )
+        return True
+
+    def _heal() -> None:
+        rcon.command(f"effect give {args.username} minecraft:instant_health 1 10 true")
+
+    def _refuse(msg: str, rescue_to: str | None) -> None:
+        # Apparatus fault, not data: rescue FIRST (never leave the bot underwater), write NO
+        # trace (a partial trace must never be analyzable), then refuse.
+        if rescue_to is not None:
             try:
-                return abs(float(vm.get("y_altitude", -999.0)) - ty) <= 3.0
-            except (TypeError, ValueError):
-                return False
+                rcon.teleport(args.username, situations[rescue_to])
+            except Exception as exc:  # the refusal below is the primary error; name this one
+                print(f"[capture] WARNING: rescue teleport raised during refusal: {exc!r}")
+        raise SystemExit(f"[FAIL] {msg} — no trace written")
 
-        if settle_until(aut, _at_depth, timeout_s=20.0) is None:
-            print(f"[capture] WARN settle at {label} did not confirm depth — sampling anyway")
-        n = 0
-        while n < args.samples:
-            if aut.backend.sync_world_sensors() <= 0:
-                time.sleep(args.cadence_s)
-                continue
-            state = _read_world_states(aut.executor)
-            # keep only declared world sensors (production encodes exactly these)
-            state = {k: float(v) for k, v in state.items() if k in ranges}
-            records.append({"kind": "sample", "situation": label, "state": state})
-            n += 1
-            time.sleep(args.cadence_s)
-        print(f"[capture] {label}: recorded {n} samples")
+    # Order is pre-registered baseline-first then contrast (first-touch frozen-centroid
+    # allocation is order-sensitive; analyze reports it, never hides it).
+    try:
+        for label in labels:
+            pos = situations[label]
+            rescue_to = plan["rescue"].get(label)
+            budget = plan["dive_budget_s"]
+            n = 0
+            visit = 0
+            while n < args.samples:
+                n_at_start = n
+                rcon.teleport(args.username, pos)
+                t0 = time.monotonic()  # the check's frame: t from teleport (settle time counts)
+                if rescue_to is not None:
+                    # A dive settle must confirm FAST (the check's IN_WATER_WITHIN_S) and inside the
+                    # budget; a miss is an apparatus fault (drained head cell, stalled bridge) — refuse,
+                    # never "sample anyway" underwater past the measured damage onset.
+                    if not _settle(label, timeout_s=min(DIVE_SETTLE_S, budget)):
+                        _refuse(
+                            f"{label!r} settle rule {plan['settle'].get(label, {})} did not confirm within {min(DIVE_SETTLE_S, budget):.1f}s",
+                            rescue_to,
+                        )
+                    settled = True
+                else:
+                    settled = _settle(label)
+                    if not settled:
+                        print(
+                            f"[capture] WARN settle at {label} (rule {plan['settle'].get(label, {})}) did not confirm — sampling anyway, recorded UNSETTLED"
+                        )
+                health0 = None
+                stale = 0
+                while n < args.samples:
+                    t_in = time.monotonic() - t0
+                    if rescue_to is not None and t_in >= budget:
+                        break  # budget exhausted: rescue, then another visit
+                    got = _one_sample(label, visit, t_in, settled)
+                    if got is None:
+                        stale += 1
+                        if stale >= STALE_MAX_CONSECUTIVE:
+                            _refuse(
+                                f"bridge stopped delivering fresh state at {label!r} ({stale} stale polls)", rescue_to
+                            )
+                    elif got:
+                        stale = 0
+                        n += 1
+                        h = records[-1]["state"].get("health")
+                        if rescue_to is not None and h is not None:
+                            health0 = h if health0 is None else health0
+                            if h < health0:
+                                records[-1]["health_drop"] = True
+                                print(
+                                    f"[capture] {label}: health dropped ({health0}->{h}) inside the budget — rescuing early"
+                                )
+                                break
+                    time.sleep(args.cadence_s)
+                if rescue_to is None:
+                    break
+                rcon.teleport(args.username, situations[rescue_to])
+                rule = dict(plan["settle"].get(rescue_to, {}))
+                # a real breath between visits (the latch clears on OBSERVED recovery); the bar is
+                # the apparatus check's own RECOVER bar, never stricter than what it PASSED at
+                rule.setdefault("oxygen", {"min": RESCUE_OXYGEN_MIN})
+                if settle_until(aut, settle_predicate(rule, ranges), timeout_s=20.0) is None:
+                    _refuse(f"rescue to {rescue_to!r} did not restore the rest state (rule {rule})", None)
+                _heal()
+                visit += 1
+                if n == n_at_start:
+                    _refuse(f"{label!r} visit {visit} produced zero samples — the budget/settle cannot progress", None)
+            visits = visit if rescue_to is not None else 1
+            print(f"[capture] {label}: recorded {n} samples over {visits} visit(s)")
+    finally:
+        pump.stop()
 
-    pump.stop()
     out = Path(args.trace).expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(json.dumps(r) for r in records) + "\n")
@@ -221,13 +452,23 @@ def analyze(args: argparse.Namespace) -> int:
     ranges = {k: tuple(v) for k, v in prov.get("world_ranges", {}).items()}
     if not ranges:
         raise SystemExit("[FAIL] trace carries no world_ranges provenance — recapture")
-    samples: dict[str, list[dict[str, float]]] = {}
+    raw: dict[str, list[dict[str, float]]] = {}
     for r in recs:
         if r.get("kind") == "sample":
-            samples.setdefault(r["situation"], []).append({k: float(v) for k, v in r["state"].items()})
-    for label in ("safe", "dark"):
-        if not samples.get(label):
-            raise SystemExit(f"[FAIL] trace has no '{label}' samples")
+            raw.setdefault(r["situation"], []).append({k: float(v) for k, v in r["state"].items()})
+    base_label, contrast_label = list(prov.get("situations")) if prov.get("situations") else list(DEFAULT_LABELS)
+    for label in (base_label, contrast_label):
+        if not raw.get(label):
+            raise SystemExit(f"[FAIL] trace has no '{label}' samples (situations {[base_label, contrast_label]})")
+    # ROLE-positional keys: "safe" = baseline, "dark" = contrast — the Slice-1 record
+    # shape is a cited instrument; labels ride alongside in `situation_labels`.
+    samples: dict[str, list[dict[str, float]]] = {"safe": raw[base_label], "dark": raw[contrast_label]}
+    situation_labels = {"safe": base_label, "dark": contrast_label}
+    is_dive = bool(prov.get("rescue"))
+    # A visit that never confirmed its situation is recorded, never hidden: on a dive
+    # trace it FAILS the run gate (a gate computed on unconfirmed samples is the
+    # silent-failure shape; architecture-lens fold).
+    unsettled = sorted({r["situation"] for r in recs if r.get("kind") == "sample" and r.get("settled") is False})
 
     cfg = SensorEncoderConfig()
     gained = "world" in cfg.gain_modalities
@@ -301,9 +542,34 @@ def analyze(args: argparse.Namespace) -> int:
             "distinct": len(safe_set & dark_set) == 0,
             "safe_id_count": len(safe_set),
             "dark_id_count": len(dark_set),
+            # per-sample contrast ids (sample order) for the early/late sub-bin
+            "_dark_ids_by_sample": ids["dark"],
         }
 
     clusters = _cluster_ids()
+    dark_ids_by_sample = clusters.pop("_dark_ids_by_sample")
+    # Exp 60 chunk (ii): conditioning-moment (late, pain edge) vs recall-moment (early,
+    # dive-second-0) cluster — only meaningful on a dive trace.
+    sub_bins = early_late_bins(samples["dark"], dark_ids_by_sample) if is_dive else None
+    run_gate = {
+        "applies_to": "situation-fear RUN authorization on this apparatus (Exp 60 chunk ii) — never a substrate build",
+        "cos_a4_below_threshold": cos_a4 < PATTERN_THRESHOLD,
+        "fresh_ec_ids_distinct": bool(clusters["distinct"]),
+        "early_late_same_cluster": None if sub_bins is None else sub_bins["same_cluster"],
+        "is_dive_trace": is_dive,
+    }
+    run_gate["unsettled_situations"] = unsettled
+    run_gate["pass"] = bool(
+        is_dive
+        and not unsettled
+        and run_gate["cos_a4_below_threshold"]
+        and run_gate["fresh_ec_ids_distinct"]
+        and run_gate["early_late_same_cluster"] is True  # None (unmeasured bin) never passes
+    )
+    run_gate["necessary_not_sufficient"] = (
+        "offline fresh-EC replay of live-captured vectors; chunk (iii)'s harness MUST still refuse on "
+        "its own LIVE cluster-distinct preflight (the live agent's EC, exp58_run pattern) before trial 1"
+    )
 
     # ── Diagnosis (nominates a direction; authorizes no build) ──
     moved = [s for s in per_sensor if s["moved"]]
@@ -346,16 +612,33 @@ def analyze(args: argparse.Namespace) -> int:
             "before anything is concluded. Report the discrepancy; do not declare victory."
         )
 
+    if is_dive:
+        # Gate-phrased readings: the Exp 58/Slice-2 text below would contradict the run gate.
+        bl, cl = base_label, contrast_label
+        reading = {
+            "absent": f"No world sensor moves between {bl} and {cl}: the cue is not sensed — apparatus fault.",
+            "gain_silenced": f"{bl}/{cl} movers rest near the A4 neutral — the cue is not a neutral→extreme swing.",
+            "diluted_present": f"{bl}/{cl} movers carry mass but share a cluster id — diluted; run gate FAILS.",
+            "separable_here": f"{bl}/{cl} separate on the offline fresh-EC replay; the run_gate block decides "
+            "(with the early/late sub-bin), authorizes_build stays False, and chunk (iii)'s live preflight is "
+            "still required.",
+        }[verdict]
+
     record = {
         "_format_version": "1.0",
         "kind": "l11_geometry_diagnosis",
         "slice": 1,
+        "experiment": "exp60_chunk_ii_run_gate" if is_dive else "l11_slice1",
         "authorizes_build": False,
         "code_hash": prov.get("code_hash", _code_hash()),
+        "situation_labels": situation_labels,
         "provenance": {
+            "anchor_file": prov.get("anchor_file"),
             "classroom_anchor": prov.get("classroom_anchor"),
+            "dive_budget_s": prov.get("dive_budget_s"),
+            "measured": prov.get("measured"),
             "world_sensor_count": len(ranges),
-            "samples": {k: len(v) for k, v in samples.items()},
+            "samples": {k: len(v) for k, v in samples.items()},  # role-keyed (safe=baseline, dark=contrast)
             "gain_modality": gained,
             "gain_exponent": p,
             "pattern_threshold": cfg.pattern_threshold,
@@ -367,6 +650,8 @@ def analyze(args: argparse.Namespace) -> int:
             "a4_above_threshold": cos_a4 > PATTERN_THRESHOLD,
         },
         "cluster_ids_offline_fresh_ec": clusters,
+        "contrast_early_vs_late_oxygen": sub_bins,
+        "run_gate": run_gate,
         "per_sensor": per_sensor,
         "movers": [s["sensor"] for s in moved],
         "moved_but_silenced": [s["sensor"] for s in silenced],
@@ -376,16 +661,24 @@ def analyze(args: argparse.Namespace) -> int:
     }
 
     # Human summary
+    bl, cl = base_label, contrast_label
     print("\n=== L11 geometry diagnosis (Slice 1 — authorizes NO build) ===")
     print(
         f"world sensors: {len(ranges)}  gain: {'A4 p=%s' % p if gained else 'OFF'}  "
-        f"samples: safe={len(samples['safe'])} dark={len(samples['dark'])}"
+        f"samples: {bl}={len(samples['safe'])} {cl}={len(samples['dark'])}"
     )
-    print(f"cos(safe,dark)  A4={cos_a4:.4f}  A0={cos_a0:.4f}  (threshold {PATTERN_THRESHOLD})")
+    print(f"cos({bl},{cl})  A4={cos_a4:.4f}  A0={cos_a0:.4f}  (threshold {PATTERN_THRESHOLD})")
     print(
-        f"offline fresh-EC cluster ids: safe={clusters['safe_ids']} dark={clusters['dark_ids']} "
+        f"offline fresh-EC cluster ids: {bl}={clusters['safe_ids']} {cl}={clusters['dark_ids']} "
         f"distinct={clusters['distinct']}"
     )
+    if sub_bins is not None:
+        print(
+            f"{cl} early(oxygen>={EARLY_OXYGEN_MIN:.0f}) ids={sub_bins['early_ids']} n={sub_bins['n_early']}  "
+            f"late(oxygen<={LATE_OXYGEN_MAX:.0f}) ids={sub_bins['late_ids']} n={sub_bins['n_late']}  "
+            f"same_cluster={sub_bins['same_cluster']}"
+        )
+    print(f"RUN GATE (Exp 60 chunk ii): {'PASS' if run_gate['pass'] else 'no'}  {run_gate}")
     print(f"\n{'sensor':<22}{'Δnorm':>8}{'w_safe':>9}{'w_dark':>9}  flags")
     for s in per_sensor:
         flags = []
@@ -437,6 +730,13 @@ def main(argv: list[str] | None = None) -> int:
     cap.add_argument("--username", default="maxim")
     cap.add_argument("--samples", type=int, default=30, help="samples per situation")
     cap.add_argument("--cadence-s", type=float, default=0.5)
+    cap.add_argument(
+        "--anchor-file",
+        required=True,
+        help=f"classroom anchor record: the Exp 58 shape ({DEFAULT_ANCHOR}) or the Exp 60 `probe_situations` shape "
+        "(~/.maxim/exp60_water_classroom.json, with the water check's measured dive budget). Required so a pool "
+        "probe can never silently probe the cave.",
+    )
     cap.add_argument("--trace", required=True, help="output JSONL trace path")
     cap.set_defaults(func=capture)
 

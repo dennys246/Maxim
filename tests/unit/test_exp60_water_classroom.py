@@ -185,7 +185,9 @@ class TestAnchorRecord:
         assert rec["_format_version"] == "1.0"
         assert rec["shore"] == list(GEOM["shore"]) and rec["submerged"] == list(GEOM["submerged"])
         assert rec["surface_y"] == GEOM["shore_y"] and rec["depth"] == GEOM["depth"]
-        assert set(rec["probe_situations"]) == {"shore", "submerged"}
+        assert list(rec["probe_situations"]) == ["shore", "submerged"]  # baseline FIRST
+        assert rec["probe_settle"] == {"shore": {"is_in_water": 0, "on_ground": 1}, "submerged": {"is_in_water": 1}}
+        assert rec["probe_rescue"] == {"submerged": "shore"}
         assert rec["deaths_objective"] == "exp60_deaths"
 
 

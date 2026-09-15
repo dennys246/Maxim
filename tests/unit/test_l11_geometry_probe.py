@@ -135,3 +135,211 @@ def test_analyze_refuses_trace_without_ranges(tmp_path):
     p.write_text(json.dumps({"kind": "sample", "situation": "safe", "state": {"y_altitude": 40}}) + "\n")
     with pytest.raises(SystemExit):
         main(["analyze", "--trace", str(p), "--json", str(tmp_path / "x.json")])
+
+
+# ───────────────────── Exp 60 chunk (ii): generalized probe + run gate ─────────────────────
+
+from survival_world import l11_geometry_probe as probe  # noqa: E402
+
+
+def _exp60_anchor(measured=True):
+    a = {
+        "probe_situations": {"shore": [99, 40, -40], "submerged": [104, 35, -40]},
+        "probe_settle": {"shore": {"is_in_water": 0, "on_ground": 1}, "submerged": {"is_in_water": 1}},
+        "probe_rescue": {"submerged": "shore"},
+    }
+    if measured:
+        a["measured"] = {"t_damage_onset_min_s": 16.25}
+    return a
+
+
+class TestSituationsFromAnchor:
+    def test_exp58_shape_keeps_safe_dark_and_altitude_settle(self):
+        plan = probe.situations_from_anchor({"anchor": [10, 40, 5], "dark": [30, 28, 5], "mid_y": 34})
+        assert plan["labels"] == ["safe", "dark"]
+        assert plan["settle"] == {"safe": {"y_altitude": 40.0}, "dark": {"y_altitude": 28.0}}
+        assert plan["rescue"] == {} and plan["dive_budget_s"] is None and plan["mid_y"] == 34.0
+
+    def test_exp60_shape_budgets_dives_from_the_measured_onset(self):
+        plan = probe.situations_from_anchor(_exp60_anchor())
+        assert plan["labels"] == ["shore", "submerged"]  # baseline first
+        assert plan["positions"]["submerged"] == {"x": 104.0, "y": 35.0, "z": -40.0}
+        assert plan["settle"]["submerged"] == {"is_in_water": 1}
+        assert plan["rescue"] == {"submerged": "shore"}
+        assert plan["dive_budget_s"] == pytest.approx(16.25 - probe.DIVE_MARGIN_S)
+
+    def test_exp60_shape_without_measured_has_no_budget(self):
+        plan = probe.situations_from_anchor(_exp60_anchor(measured=False))
+        assert plan["dive_budget_s"] is None and plan["measured"] is None
+
+    def test_exactly_two_situations(self):
+        with pytest.raises(SystemExit):
+            probe.situations_from_anchor({"probe_situations": {"a": [0, 0, 0]}})
+
+
+class TestSettlePredicate:
+    def test_altitude_clamps_to_the_body_range(self):
+        ok = probe.settle_predicate({"y_altitude": 151}, {"y_altitude": (0, 128)})
+        assert ok({"y_altitude": 128.0})  # sensed cap (docs/wiring/sensor-range-clamps.md)
+        assert not ok({"y_altitude": 120.0})
+
+    def test_min_rule_settles_at_or_above_the_bar(self):
+        ok = probe.settle_predicate({"oxygen": {"min": 19.0}}, {})
+        assert ok({"oxygen": 19.0}) and ok({"oxygen": 20.0}) and not ok({"oxygen": 18.0})
+
+    def test_rescue_and_staleness_bars_match_the_apparatus_check(self):
+        # the probe must never demand MORE than the bar the apparatus check PASSED at
+        from survival_world import exp60_water_check as chk
+
+        assert probe.RESCUE_OXYGEN_MIN == chk.RECOVER_OXYGEN_MIN
+        assert probe.DIVE_SETTLE_S == chk.IN_WATER_WITHIN_S
+        assert probe.STALE_STATE_S == chk.STALE_STATE_S
+        assert probe.STALE_MAX_CONSECUTIVE == chk.STALE_MAX_CONSECUTIVE
+
+    def test_binary_flags_settle_on_their_value_and_absent_sensor_never_settles(self):
+        ok = probe.settle_predicate({"is_in_water": 1, "on_ground": 0}, {})
+        assert ok({"is_in_water": 1.0, "on_ground": 0.0})
+        assert not ok({"is_in_water": 0.0, "on_ground": 0.0})
+        assert not ok({"is_in_water": 1.0})  # on_ground missing from the snapshot
+        assert probe.settle_predicate({}, {})({})
+
+
+class TestEarlyLateBins:
+    def test_non_dive_rows_return_none(self):
+        assert probe.early_late_bins([{"y_altitude": 1.0}], ["c1"]) is None
+
+    def test_same_cluster_iff_early_and_late_id_sets_are_equal(self):
+        rows = [{"oxygen": 20.0}, {"oxygen": 18.0}, {"oxygen": 12.0}, {"oxygen": 6.0}]
+        b = probe.early_late_bins(rows, ["c1", "c1", "c1", "c1"])
+        assert b["same_cluster"] is True and b["n_early"] == 2 and b["n_late"] == 2
+        b = probe.early_late_bins(rows, ["c1", "c1", "c1", "c2"])
+        assert b["same_cluster"] is False and b["late_ids"] == ["c1", "c2"]
+        # a jitter-split EARLY bin is the conservative FAIL: fear booked on c1 reads 0.0
+        # on a fresh dive that lands on c1' (subset semantics would have passed this)
+        b = probe.early_late_bins(rows, ["c1", "c1b", "c1", "c1"])
+        assert b["same_cluster"] is False and b["early_ids"] == ["c1", "c1b"]
+
+    def test_empty_bin_is_unmeasured_not_passed(self):
+        b = probe.early_late_bins([{"oxygen": 20.0}, {"oxygen": 19.0}], ["c1", "c1"])
+        assert b["same_cluster"] is None and b["late_ids"] == []
+
+
+def _write_dive_trace(tmp_path: Path, ranges, *, contrast_in_water=1.0, n=20, unsettled=False) -> Path:
+    """An Exp 60-shaped trace: labelled situations, rescue, oxygen depleting across a visit."""
+    prov = {
+        "kind": "provenance",
+        "code_hash": "test",
+        "situations": ["shore", "submerged"],
+        "rescue": {"submerged": "shore"},
+        "dive_budget_s": 13.25,
+        "world_ranges": ranges,
+        "world_sensor_count": len(ranges),
+    }
+    recs = [prov]
+
+    def base():
+        s = {"y_altitude": 40, "nearest_hostile_dist": 64, "light_level": 0, "is_in_water": 0, "oxygen": 20}
+        for i in range(12):
+            s[f"filler{i}"] = 0.5
+        return s
+
+    for _ in range(n):
+        recs.append({"kind": "sample", "situation": "shore", "state": base()})
+    for i in range(n):
+        s = base()
+        s["y_altitude"] = 35
+        s["is_in_water"] = contrast_in_water
+        s["oxygen"] = max(0, 20 - i)  # one visit: 20 → 1 across the samples
+        rec = {"kind": "sample", "situation": "submerged", "state": s}
+        if unsettled and i == 0:
+            rec["settled"] = False
+        recs.append(rec)
+    p = tmp_path / "dive.jsonl"
+    p.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    return p
+
+
+def _dive_ranges():
+    r = {
+        "y_altitude": [0, 128],
+        "nearest_hostile_dist": [0, 128],
+        "light_level": [0, 15],
+        "is_in_water": [-1, 1],
+        "oxygen": [0, 40],
+    }
+    for i in range(12):
+        r[f"filler{i}"] = [0, 1]
+    return r
+
+
+def test_labels_ride_the_trace_and_keys_stay_role_positional(tmp_path):
+    rec = _run(tmp_path, _write_dive_trace(tmp_path, _dive_ranges()))
+    assert rec["situation_labels"] == {"safe": "shore", "dark": "submerged"}
+    assert rec["provenance"]["samples"] == {"safe": 20, "dark": 20}
+    water = next(s for s in rec["per_sensor"] if s["sensor"] == "is_in_water")
+    assert water["v_safe"] == 0.5 and water["v_dark"] == 1.0  # baseline / contrast roles
+    assert rec["authorizes_build"] is False
+
+
+def test_run_gate_passes_on_a_separable_dive_trace(tmp_path):
+    """is_in_water neutral→extreme separates; early (full air) and late (pain edge) submerged
+    samples land in the same fresh-EC cluster → the Exp 60 run gate PASSES; build stays refused."""
+    rec = _run(tmp_path, _write_dive_trace(tmp_path, _dive_ranges()))
+    gate = rec["run_gate"]
+    assert rec["cosine"]["a4_gained"] < 0.85
+    assert gate["is_dive_trace"] and gate["cos_a4_below_threshold"] and gate["fresh_ec_ids_distinct"]
+    bins = rec["contrast_early_vs_late_oxygen"]
+    assert bins["n_early"] >= 4 and bins["n_late"] >= 4 and bins["same_cluster"] is True
+    assert gate["early_late_same_cluster"] is True and gate["pass"] is True
+    assert rec["authorizes_build"] is False
+
+
+def test_run_gate_fails_on_an_unsettled_visit_even_when_geometry_separates(tmp_path):
+    """A gate computed on samples that never confirmed their situation is the silent-failure
+    shape: recorded, and it FAILS the run gate with the situation named."""
+    rec = _run(tmp_path, _write_dive_trace(tmp_path, _dive_ranges(), unsettled=True))
+    assert rec["run_gate"]["cos_a4_below_threshold"] and rec["run_gate"]["fresh_ec_ids_distinct"]
+    assert rec["run_gate"]["unsettled_situations"] == ["submerged"]
+    assert rec["run_gate"]["pass"] is False
+
+
+def test_dive_record_names_its_experiment_and_keeps_role_keyed_sample_counts(tmp_path):
+    rec = _run(tmp_path, _write_dive_trace(tmp_path, _dive_ranges()))
+    assert rec["experiment"] == "exp60_chunk_ii_run_gate"
+    assert rec["provenance"]["samples"] == {"safe": 20, "dark": 20}
+    assert "preflight" in rec["run_gate"]["necessary_not_sufficient"]
+    assert "run_gate" in rec["reading"] or "separate" in rec["reading"]  # dive-phrased, not the Slice-2 text
+    assert "Slice 2" not in rec["reading"]
+
+
+def test_run_gate_fails_when_the_cue_does_not_move(tmp_path):
+    rec = _run(tmp_path, _write_dive_trace(tmp_path, _dive_ranges(), contrast_in_water=0.0))
+    assert rec["run_gate"]["pass"] is False
+    assert rec["run_gate"]["fresh_ec_ids_distinct"] is False
+
+
+def test_slice1_shaped_trace_has_no_dive_gate(tmp_path):
+    """The Exp 58 / Slice-1 trace shape (no situations, no rescue) still analyzes unchanged
+    and can never pass the run gate (not a dive trace; sub-bins unmeasured)."""
+    ranges = _ranges()
+
+    def st():
+        s = {"y_altitude": 40, "nearest_hostile_dist": 16, "light_level": 7}
+        for i in range(14):
+            s[f"filler{i}"] = 0.5
+        return s
+
+    rec = _run(tmp_path, _write_trace(tmp_path, st, st, ranges))
+    assert rec["situation_labels"] == {"safe": "safe", "dark": "dark"}
+    assert rec["experiment"] == "l11_slice1"
+    assert rec["contrast_early_vs_late_oxygen"] is None
+    assert rec["run_gate"]["is_dive_trace"] is False and rec["run_gate"]["pass"] is False
+
+
+def test_capture_refuses_to_dive_without_a_measured_onset(tmp_path, monkeypatch):
+    """The dive budget comes from the apparatus check's stamped `measured`; without it the
+    contrast situation (which names a rescue) must refuse before any teleport."""
+    anchor = tmp_path / "anchor.json"
+    anchor.write_text(json.dumps(_exp60_anchor(measured=False)))
+    with pytest.raises(SystemExit, match="measured damage onset"):
+        main(["capture", "--rcon-password", "x", "--anchor-file", str(anchor), "--trace", str(tmp_path / "t.jsonl")])
