@@ -60,6 +60,52 @@ scope: the drive + sensor + actuator are justified game-native/bio-faithful addi
 real interoceptive alarm; in-water a real perceived state; surfacing a real act), not gold-plating —
 but they DO make this a real build, not a config tweak.
 
+## Apparatus (chunk i, built 2026-09-15 — pending the live apparatus check)
+
+`setup_world.py water_classroom` (pure geometry `water_classroom_geometry`, unit-tested in
+`tests/unit/test_exp60_water_classroom.py`) builds ONE stone-encased room at the Exp 58 depth
+band (`SHORE_Y=40`) — deliberately the band the offline cos≈0.79 estimate was computed on
+(light 0, frozen day, y≈40), so the live vectors match the estimate's base vector; a surface
+pool would change `light_level` and re-open the "estimated on a different geometry" trap.
+
+| Element | Blocks (anchor `ax, az`, depth `D=5`) | Purpose |
+|---|---|---|
+| Stone shell | x [ax−6, ax+9], y [34−D, 45], z [az−4, az+4] | overwrites natural caves/water; every pool face is stone |
+| Air chamber | x [ax−3, ax+5], y [40, 42], z [az−1, az+1] | 3-high headroom over shore + pool |
+| Shore | dry stone top y=39 under x [ax−3, ax+1]; anchor (ax−1, 40, az) | rest/rescue target, spawnpoint |
+| Lip | (ax+2, 39) stone | keeps the shore floor and the top water layer apart (no flow) |
+| Pool | x [ax+3, ax+5], y [40−D, 39], z [az−1, az+1], `minecraft:water` | 45 SOURCE blocks, 3 wide, D deep, open top |
+| Submerged target | (ax+4, 40−D, az) | feet on the floor, head at 41−D in water: dive-second-0 reads `is_in_water` 1 with full air |
+| Surface cell | (ax+4, 40, az) | the reachable air, D−1 = 4 blocks above the submerged head |
+
+Hygiene (environment E4, folded): `forceload add` first; `doMobSpawning false` set by the builder
+and treated as APPARATUS-OWNED (the Phase-0 instrument check restores it to `true` on exit, so
+the water check VERIFIES it and refuses rather than toggling); `spawnpoint` on the shore;
+`exp60_deaths` deathCount objective; no spawner/clustermob/soul sand/magma. Every `fill` reply is
+checked, then after a 2 s fluid-tick pause ten `execute if block` assertions must pass (submerged
+head cell is water; surface/shore cells air; shore floor, pool floor, lip stone; bottom/top/corner
+pool cells `water[level=0]` = sources, not drained). **Placement guard:** the bridge caps
+`nearest_hostile_dist` at 64 and 64 is that sensor's neutral midpoint, so the pool centre must be
+≥ 72 blocks (horizontal) from both the recorded Exp 58 anchor and its `dark` point (the persistent
+clustermob) or both water situations carry constant hostile mass; the builder refuses otherwise.
+Recorded truth: `~/.maxim/exp60_water_classroom.json` (`shore`, `submerged`, `surface_y`,
+`depth`, `pool`, `forceload`, `deaths_objective`, `probe_situations{shore,submerged}`) — the
+check, the probe (chunk ii, `--anchor-file`) and the harness drive off the record, never live
+position.
+
+**Live apparatus check** `scripts/survival_world/exp60_water_check.py` (gated evidence →
+`docs/experiments/data/exp60_water_apparatus.json`; 3 cycles, every gate on every cycle):
+W1 shore baseline (`is_in_water` 0, `on_ground` 1, oxygen full, `hostile_count` 0,
+`nearest_hostile_dist` ≥ 64); W2 dive from the floor (`is_in_water` 1 within 3 s; idle bot holds
+at the floor for 6 s — no auto-float; oxygen monotone through the pain edge ≤ 13 bubbles to 0;
+exactly ONE drowning-damage tick lands so the damage-onset edge of the DV window is MEASURED,
+gate [12, 20] s; health ≥ 16 at rescue); W3 rescue restores sensed oxygen ≥ 19 within 10 s;
+W4 the real registered `*_escape_water` tool through `aut.executor.execute` (production consumer)
+puts the head in air within 6 s by bridge truth (`is_in_water` 0; the action's own string is
+recorded, not trusted); W5 sink-back time (informational — the harness's rescue budget after a
+surface). The run-authorizing gate remains chunk (ii): `l11_geometry_probe` shore vs submerged on
+this pool, cos < 0.85 + distinct frozen-EC ids, measured live.
+
 ## The claim
 
 A survival agent LEARNS to escape the drowning situation — it surfaces / leaves water sooner after
