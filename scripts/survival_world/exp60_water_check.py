@@ -230,6 +230,28 @@ def measured_edges(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def all_cycles_pass(cycles: list[dict[str, Any]], expected: int) -> bool:
+    """PASS iff every EXPECTED cycle is present, complete and passed (pure).
+
+    An incomplete cycle (an instrument error mid-cycle preserves the partial record
+    with ``incomplete: True`` and no ``pass`` key) can never count as a pass.
+    """
+    return bool(cycles) and len(cycles) == expected and all(c.get("pass", False) is True for c in cycles)
+
+
+def _preserve_partial(report: dict[str, Any], rec: dict[str, Any] | None, stage: str) -> None:
+    """An instrument error mid-cycle must not discard the cycle's measured stages (pure).
+
+    The first live run died at W4's precondition and lost W2's dive series — the one
+    thing that would have said whether `is_in_water` ever read 1 at the dive target.
+    """
+    report["failed_at"] = stage
+    if rec is not None:
+        rec["incomplete"] = True
+        rec["failed_at"] = stage
+        report["cycles"].append(rec)
+
+
 def _stamp_measured(report: dict[str, Any], out_path: Path) -> None:
     """On PASS, write the measured edges into the anchor record (dev-tool state)."""
     report["_out_path"] = str(out_path)
@@ -298,8 +320,7 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     def _finish(code: int) -> int:
-        cycles = report["cycles"]
-        report["all_pass"] = bool(cycles) and len(cycles) == args.cycles and all(c["pass"] for c in cycles)
+        report["all_pass"] = all_cycles_pass(report["cycles"], args.cycles)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(report, indent=2))
         print(json.dumps({k: report[k] for k in ("cycles", "instrument_error", "all_pass")}, indent=2))
@@ -333,6 +354,18 @@ def main(argv: list[str] | None = None) -> int:
     def _rescue() -> None:
         rcon.teleport(args.username, shore)
 
+    def _context() -> dict[str, Any]:
+        """The last snapshot the body holds + its age — so a 'did not reflect' error says
+        WHERE the bot was (teleport happened? flag wrong?) instead of only that it failed."""
+        vm = sync_snapshot(aut) or {}
+        return {
+            "state_age_s": round(float(aut.client.state_age_s()), 3),
+            **{k: _f(vm, k, float("nan")) for k in ("is_in_water", "y_altitude", "oxygen", "health", "on_ground")},
+        }
+
+    rec: dict[str, Any] | None = None  # the cycle in progress — preserved on an instrument error
+    stage = "preflight"
+
     try:
         # Startup gate: the bridge must deliver the Exp 60 sensors before anything is measured.
         if settle_until(aut, lambda vm: "is_in_water" in vm and "oxygen" in vm, timeout_s=8.0) is None:
@@ -354,7 +387,8 @@ def main(argv: list[str] | None = None) -> int:
             raise InstrumentError("no *_escape_water tool registered — body/executor mis-wired (Exp 60 substrate)")
 
         for cycle in range(args.cycles):
-            rec: dict[str, Any] = {"cycle": cycle}
+            rec = {"cycle": cycle}
+            stage = "w1_shore"
             # ── W1 shore baseline ──
             _rescue()
             _heal()
@@ -369,7 +403,9 @@ def main(argv: list[str] | None = None) -> int:
                 timeout_s=RECOVER_WITHIN_S,
             )
             if vm is None:
-                raise InstrumentError("shore baseline never settled (dry, grounded, full air, full health)")
+                raise InstrumentError(
+                    f"shore baseline never settled (dry, grounded, full air, full health); last {_context()}"
+                )
             hostile_count = _f(vm, "hostile_count", 99)
             nearest = _f(vm, "nearest_hostile_dist", 0)
             spawn_dist = _f(vm, "distance_from_spawn", 999)
@@ -396,6 +432,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
 
             # ── W2 dive: sample until the FIRST damage tick (or the cap), then rescue ──
+            stage = "w2_dive"
             rcon.teleport(args.username, sub)
             t0 = time.monotonic()
             samples: list[dict[str, Any]] = []
@@ -425,19 +462,28 @@ def main(argv: list[str] | None = None) -> int:
             rec["w2_dive"] = w2
 
             # ── W3 recovery on the dry shore ──
+            stage = "w3_recover"
             vm = settle_until(
                 aut,
                 lambda vm: _f(vm, "is_in_water", 1) < 0.5 and _f(vm, "oxygen", 0) >= RECOVER_OXYGEN_MIN,
                 timeout_s=RECOVER_WITHIN_S,
             )
             t_recover = None if vm is None else round(time.monotonic() - t_rescue, 3)
-            rec["w3_recover"] = {"t_recover": t_recover, "pass": t_recover is not None}
+            ctx = _context() if vm is None else None
+            rec["w3_recover"] = {"t_recover": t_recover, "pass": t_recover is not None, "context_on_timeout": ctx}
+            if vm is None and ctx is not None and ctx["is_in_water"] >= 0.5:
+                # Not a slow recovery — the rescue TELEPORT never reflected: instrument, not measurement.
+                raise InstrumentError(f"W3: rescue teleport to the shore did not reflect (still submerged); last {ctx}")
             _heal()
 
             # ── W4 escape_water through the REAL executor (bridge truth decides) ──
+            stage = "w4_escape"
             rcon.teleport(args.username, sub)
             if settle_until(aut, lambda vm: _f(vm, "is_in_water", 0) >= 0.5, timeout_s=IN_WATER_WITHIN_S) is None:
-                raise InstrumentError("W4: is_in_water did not reflect the submerged teleport")
+                raise InstrumentError(
+                    f"W4: is_in_water did not reflect the submerged teleport within {IN_WATER_WITHIN_S}s; "
+                    f"last {_context()} (target {sub})"
+                )
             outcome: dict[str, Any] = {}
 
             def _run_tool(tool_name: str = tool, sink: dict[str, Any] = outcome) -> None:
@@ -500,6 +546,7 @@ def main(argv: list[str] | None = None) -> int:
 
             rec["pass"] = bool(w1["pass"] and w2["pass"] and rec["w3_recover"]["pass"] and w4["pass"])
             report["cycles"].append(rec)
+            rec = None
             print(
                 f"cycle {cycle}: shore={'ok' if w1['pass'] else 'FAIL'} "
                 f"dive={'ok' if w2['pass'] else 'FAIL'} (in_water {w2['t_in_water']}s, pain {w2['t_pain_edge']}s, "
@@ -510,10 +557,12 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"   - {r}")
     except InstrumentError as exc:
         report["instrument_error"] = str(exc)
+        _preserve_partial(report, rec, stage)
         print(f"INSTRUMENT ERROR: {exc}")
         return _finish(4)
     except Exception as exc:  # record the failure as evidence, then surface it fully
         report["instrument_error"] = f"unexpected: {exc!r}"
+        _preserve_partial(report, rec, stage)
         traceback.print_exc()
         return _finish(4)
     finally:
@@ -536,7 +585,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"WARNING: bridge client close raised: {exc!r}")
         shutil.rmtree(persistence_dir, ignore_errors=True)  # throwaway fresh substrate
 
-    code = _finish(0 if all(c["pass"] for c in report["cycles"]) else 4)
+    code = _finish(0 if all_cycles_pass(report["cycles"], args.cycles) else 4)
     if code == 0:
         _stamp_measured(report, out_path)
     if code != 0:
