@@ -153,6 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     box: tuple[int, int, int] | None = None
     rest: dict[str, float] | None = None
     mob_spawning_disabled = False
+    mob_spawning_prev = "true"
     try:
         # Startup gate: the bridge must actually deliver state before anything is measured —
         # connect() confirms nothing by default, and a one-client-bridge rejection would
@@ -171,6 +172,11 @@ def main(argv: list[str] | None = None) -> int:
         # No NEW spawns while the instrument runs (the dark box is a spawnable space when the
         # bot is > 24 blocks away). Restored in the finally; existing cave mobs remain —
         # honest world-channel noise, not controlled away.
+        # Restore what was READ, not a hardcoded `true`: the Exp 60 water classroom
+        # owns doMobSpawning=false as an apparatus condition, and a blind restore
+        # re-enabled spawning under it (Exp 60 chunk-i architecture-lens fold).
+        prev = rcon.command("gamerule doMobSpawning").strip().lower()
+        mob_spawning_prev = "true" if "true" in prev else "false"
         rcon.command("gamerule doMobSpawning false")
         mob_spawning_disabled = True
 
@@ -307,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
         # of the restore (bot sealed in the box, spawning left off, box left in the world).
         if mob_spawning_disabled:
             try:
-                rcon.command("gamerule doMobSpawning true")
+                rcon.command(f"gamerule doMobSpawning {mob_spawning_prev}")
             except Exception as exc:
                 print(f"WARNING: could not restore doMobSpawning: {exc!r}")
         if rest is not None:

@@ -70,7 +70,7 @@ pool would change `light_level` and re-open the "estimated on a different geomet
 
 | Element | Blocks (anchor `ax, az`, depth `D=5`) | Purpose |
 |---|---|---|
-| Stone shell | x [ax−6, ax+9], y [34−D, 45], z [az−4, az+4] | overwrites natural caves/water; every pool face is stone |
+| Stone shell | x [ax−6, ax+9], y [37−D, 45], z [az−4, az+4] | overwrites natural caves/water; every pool face is stone |
 | Air chamber | x [ax−3, ax+5], y [40, 42], z [az−1, az+1] | 3-high headroom over shore + pool |
 | Shore | dry stone top y=39 under x [ax−3, ax+1]; anchor (ax−1, 40, az) | rest/rescue target, spawnpoint |
 | Lip | (ax+2, 39) stone | keeps the shore floor and the top water layer apart (no flow) |
@@ -88,23 +88,48 @@ pool cells `water[level=0]` = sources, not drained). **Placement guard:** the br
 `nearest_hostile_dist` at 64 and 64 is that sensor's neutral midpoint, so the pool centre must be
 ≥ 72 blocks (horizontal) from both the recorded Exp 58 anchor and its `dark` point (the persistent
 clustermob) or both water situations carry constant hostile mass; the builder refuses otherwise.
+**Second placement guard (architecture-lens fold, replayed on the real encoder bases —
+`docs/experiments/data/exp60_spawn_distance_check.py`):** `distance_from_spawn` is the same sensor
+class the other way — a 3D distance to WORLD spawn (the login-packet spawn; `/spawnpoint` never
+moves it) capped at 128 on range [−128, 128], so far from spawn it is a full-weight CONSTANT the
+offline estimate never modelled (its base vector sat 36 blocks from spawn). Replayed cos(shore,
+submerged at full air): 0.786 @36, 0.794 @90, 0.802 @100, 0.834 @120, **0.8525 @128 = same
+cluster**. Bound: the submerged target ≤ 90 blocks (3D) from world spawn — checked by the builder
+when `--spawn-x/y/z` is given (spawn is not readable over RCON) and ALWAYS gated live by the
+check's W1 on the sensed value. (`offset_x/z` are bridge-only, not body sensors.) The Exp 58 cave
+sits ~36 from spawn, so both guards are jointly satisfiable on the far side of spawn from it.
 Recorded truth: `~/.maxim/exp60_water_classroom.json` (`shore`, `submerged`, `surface_y`,
 `depth`, `pool`, `forceload`, `deaths_objective`, `probe_situations{shore,submerged}`) — the
 check, the probe (chunk ii, `--anchor-file`) and the harness drive off the record, never live
 position.
 
 **Live apparatus check** `scripts/survival_world/exp60_water_check.py` (gated evidence →
-`docs/experiments/data/exp60_water_apparatus.json`; 3 cycles, every gate on every cycle):
-W1 shore baseline (`is_in_water` 0, `on_ground` 1, oxygen full, `hostile_count` 0,
-`nearest_hostile_dist` ≥ 64); W2 dive from the floor (`is_in_water` 1 within 3 s; idle bot holds
-at the floor for 6 s — no auto-float; oxygen monotone through the pain edge ≤ 13 bubbles to 0;
-exactly ONE drowning-damage tick lands so the damage-onset edge of the DV window is MEASURED,
-gate [12, 20] s; health ≥ 16 at rescue); W3 rescue restores sensed oxygen ≥ 19 within 10 s;
-W4 the real registered `*_escape_water` tool through `aut.executor.execute` (production consumer)
-puts the head in air within 6 s by bridge truth (`is_in_water` 0; the action's own string is
-recorded, not trusted); W5 sink-back time (informational — the harness's rescue budget after a
-surface). The run-authorizing gate remains chunk (ii): `l11_geometry_probe` shore vs submerged on
-this pool, cos < 0.85 + distinct frozen-EC ids, measured live.
+`docs/experiments/data/exp60_water_apparatus.json`; 3 cycles, every gate on every cycle; a bridge
+that stops delivering fresh state is an INSTRUMENT error, never a measured FAIL): W1 shore
+baseline settles dry/grounded/sensed oxygen ≥ 19/health 20 and GATES `nearest_hostile_dist` ≥ 64
+and `distance_from_spawn` ≤ 90 (`hostile_count`, `light_level`, `time_of_day` recorded, not gated —
+`hostile_count` counts every hostile the SERVER tracks, a tracking-range fact the placement guard
+does not control; one far mob is separability-inert); W2 dive from the floor (`is_in_water` 1
+within 3 s; idle bot holds at the floor for 6 s — no auto-float; oxygen monotone through the pain
+edge ≤ 13 bubbles, oxygen-zero time recorded; ONE drowning-damage tick lands — rarely two, 4 Hz
+sampling vs the 1 s tick — so the damage-onset edge of the DV window is MEASURED (~16 s: damage
+starts when air reaches −20, one second after 0), gate [12, 20] s; health ≥ 16 at rescue; the
+check's own rescue cap is 22 s — the HARNESS's rescue cap is chunk (iii)'s and stays at E2's
+18–20 s); W3 rescue restores sensed oxygen ≥ 19 within 10 s; W4 the real registered
+`*_escape_water` tool through `aut.executor.execute` (production consumer) puts the head in air
+within 6 s by bridge truth (`is_in_water` 0; the actuator now holds a 600 ms breath after the
+head clears so the surfaced state outlives one 500 ms snapshot — before this fold it released
+jump the same tick and the surface was unobservable; the backend now forwards the bridge's own
+"surfaced"/"capped" string as `metadata["detail"]`, recorded beside the truth, never gated on);
+W5 sink-back time (informational — the harness's rescue budget; `is_in_water` reads the head
+BLOCK, ~0.7 blocks below the eye height the game breathes at, so it reads sink-back early =
+conservative). **Definition carried into chunk (iii): "surfaced" = the first bridge read of
+`is_in_water` 0 after the dive (momentary); the harness rescues to the shore on that read.** On
+PASS the check stamps `measured{t_damage_onset_min/max_s, t_surface_max_s, t_sinkback_min_s,
+distance_from_spawn}` into the anchor record so chunks (ii)/(iii) budget their dives from measured
+truth (chunk ii's probe must sample within `t_damage_onset_min_s` minus margin and rescue). The
+run-authorizing gate remains chunk (ii): `l11_geometry_probe` shore vs submerged on this pool,
+cos < 0.85 + distinct frozen-EC ids, measured live.
 
 ## The claim
 

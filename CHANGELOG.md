@@ -91,6 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   docs/experiments/r2_drive_premise_check.md). Not shipped in the wheel.
 
 ### Changed
+- Minecraft backend forwards the bridge's success `detail` string as tool-output metadata (`metadata["detail"]`), so harnesses can record an actuator's own outcome claim beside the bridge truth they gate on (Exp 60 chunk i; previously dropped on success).
 - **The substrate-primary drive prior now moves behaviour toward corrective affordances (1.3
   survival loop, R2 break 1).** R2 (docs/experiments/r2_drive_premise_check.md) found the
   intrinsic path dead: `_read_drive_states` emitted raw sensor values (largest when *satiated*)

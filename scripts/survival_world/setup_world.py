@@ -426,6 +426,14 @@ WATER_MIN_DEPTH, WATER_MAX_DEPTH = 3, 12  # < 3: the floor-placed head is not in
 # neutral midpoint (range [0,128]). Exp 58's persistent clustermob must therefore sit
 # BEYOND the cap from the pool, or both water situations carry constant hostile mass.
 WATER_MIN_DIST_FROM_EXP58 = 72
+# ...and the SAME sensor class the other way: `distance_from_spawn` (3D distance to WORLD
+# spawn, capped at 128, range [-128,128] → neutral at 0) becomes a full-weight CONSTANT in
+# both water situations when the pool is far from spawn — the offline cos≈0.79 estimate
+# never modelled it (its base vector sat 36 blocks from spawn). Replayed on the real encoder
+# bases (exp60_spawn_distance_check.py in the experiments data dir): cos(shore, submerged) 0.786
+# @36 blocks, 0.794 @90, 0.802 @100, 0.834 @120, 0.8525 @128 = SAME cluster. Bound: 90 (3D).
+# Architecture-lens fold (Exp 60 chunk i); `offset_x/z` are bridge-only, not body sensors.
+WATER_MAX_DIST_FROM_SPAWN = 90
 WATER_ANCHOR_FILE = Path.home() / ".maxim" / "exp60_water_classroom.json"
 EXP58_ANCHOR_FILE = Path.home() / ".maxim" / "exp58_classroom.json"
 
@@ -541,10 +549,36 @@ def exp58_clearance(geom: dict, exp58_geom: dict | None) -> tuple[bool, float]:
     return dmin >= WATER_MIN_DIST_FROM_EXP58, dmin
 
 
-def water_anchor_record(geom: dict) -> dict:
-    """The recorded built truth the check/probe/harness drive off (never live position)."""
+def spawn_clearance(geom: dict, spawn: tuple[float, float, float] | None) -> tuple[bool, float | None]:
+    """(ok, 3D distance) from the submerged target to WORLD spawn; ``(True, None)`` when unknown.
+
+    World spawn is the login-packet spawn the bridge measures ``distance_from_spawn``
+    against (``/spawnpoint`` never moves it) and is not readable over RCON, so the
+    builder checks it only when the operator passes ``--spawn-x/y/z``; the live check
+    gates the SENSED value regardless (``exp60_water_check`` W1, <= 90).
+    """
+    if spawn is None:
+        return True, None
+    bx, by, bz = geom["submerged"]
+    sx, sy, sz = (float(v) for v in spawn)
+    d = ((bx - sx) ** 2 + (by - sy) ** 2 + (bz - sz) ** 2) ** 0.5
+    return d <= WATER_MAX_DIST_FROM_SPAWN, d
+
+
+def water_anchor_record(
+    geom: dict,
+    *,
+    exp58_clearance_blocks: float | None = None,
+    spawn_clearance_blocks: float | None = None,
+) -> dict:
+    """The recorded built truth the check/probe/harness drive off (never live position).
+
+    ``None`` clearances mean NOT CHECKED (record absent / spawn not given) — never "clear".
+    """
     return {
         "_format_version": "1.0",
+        "exp58_clearance_blocks": exp58_clearance_blocks,
+        "spawn_clearance_blocks": spawn_clearance_blocks,
         "shore": list(geom["shore"]),
         "submerged": list(geom["submerged"]),
         "surface_y": geom["shore_y"],
@@ -559,10 +593,14 @@ def water_anchor_record(geom: dict) -> dict:
 
 
 def _read_json_or_none(path: Path) -> dict | None:
+    """ABSENT → None; any other read failure is loud (a permission error or a different
+    $HOME must not read as "no Exp 58 record" and vacate the clearance guard)."""
     try:
         return json.loads(path.read_text())
-    except OSError:
+    except FileNotFoundError:
         return None
+    except OSError as exc:
+        raise SystemExit(f"cannot read anchor record {path}: {exc}")
     except ValueError as exc:
         raise SystemExit(f"corrupt anchor record {path}: {exc}")
 
@@ -575,8 +613,13 @@ def _water_classroom(args: argparse.Namespace) -> int:
     ``doMobSpawning false``, recorded anchor file. Every fill reply and every
     post-build block check is verified — a silent apparatus failure (head in an air
     gap, drained column, wet shore) must refuse the build, never masquerade as a null.
-    Idempotent: rebuilds in place at the recorded anchor. ``--sweep`` kills
-    zombies/drowned within 64 of the shore (arm boundaries).
+    Two PLACEMENT guards keep capped distance sensors off their caps (each cap is a
+    full-weight constant in both water situations): >= 72 blocks from the Exp 58
+    clustermob (``nearest_hostile_dist`` horizon 64) and <= 90 blocks from WORLD spawn
+    (``distance_from_spawn`` cap 128; checked here only with ``--spawn-x/y/z``, always
+    checked live by ``exp60_water_check`` W1). Idempotent: rebuilds in place at the
+    recorded anchor. ``--sweep`` kills zombies (sparing the Exp 58 clustermob) and
+    drowned within 64 of the shore (arm boundaries).
     """
     from survival_world.common import bot_pos
 
@@ -588,11 +631,13 @@ def _water_classroom(args: argparse.Namespace) -> int:
                 print(f"no water classroom recorded at {WATER_ANCHOR_FILE} — build first")
                 return 4
             sx, sy, sz = recorded["shore"]
-            for mob in ("zombie", "drowned"):
+            # Spare the Exp 58 clustermob (apparatus, not spillover) — the 72-block
+            # clearance leaves it 1 block outside this radius at the margin.
+            for sel in ("zombie,tag=!exp58clustermob", "drowned"):
                 resp = rcon.command(
-                    f"execute positioned {sx} {sy} {sz} run kill @e[type=minecraft:{mob},distance=..64]"
+                    f"execute positioned {sx} {sy} {sz} run kill @e[type=minecraft:{sel},distance=..64]"
                 )
-                print(f"rcon> kill {mob} r64 @shore\n      {resp.strip() or '(none)'}")
+                print(f"rcon> kill {sel} r64 @shore\n      {resp.strip() or '(none)'}")
             return 0
         if args.anchor_x is not None:
             ax, az = args.anchor_x, args.anchor_z
@@ -601,8 +646,13 @@ def _water_classroom(args: argparse.Namespace) -> int:
             ax += 1  # shore is anchor-1 (see geometry)
         else:
             ax, _ay, az = bot_pos(rcon, args.username)
-        geom = water_classroom_geometry(int(ax), int(az), depth=args.depth)
-        ok, dmin = exp58_clearance(geom, _read_json_or_none(EXP58_ANCHOR_FILE))
+        try:
+            geom = water_classroom_geometry(int(ax), int(az), depth=args.depth)
+        except ValueError as exc:
+            print(f"usage: {exc}")
+            return 2
+        exp58_rec = _read_json_or_none(EXP58_ANCHOR_FILE)
+        ok, dmin = exp58_clearance(geom, exp58_rec)
         if not ok:
             print(
                 f"REFUSING: pool centre is {dmin:.0f} blocks (horizontal) from the recorded Exp 58 "
@@ -611,13 +661,37 @@ def _water_classroom(args: argparse.Namespace) -> int:
                 f"Pass --anchor-x/--anchor-z at least {WATER_MIN_DIST_FROM_EXP58 - dmin:.0f} blocks further away."
             )
             return 4
+        exp58_blocks = None if exp58_rec is None else round(dmin, 1)
+        if exp58_rec is None:
+            print(f"NOTE: no Exp 58 record at {EXP58_ANCHOR_FILE} — clustermob clearance NOT checked (recorded null).")
+        spawn = None
+        if any(v is not None for v in (args.spawn_x, args.spawn_y, args.spawn_z)):
+            if any(v is None for v in (args.spawn_x, args.spawn_y, args.spawn_z)):
+                print("usage: --spawn-x, --spawn-y and --spawn-z must be given together")
+                return 2
+            spawn = (args.spawn_x, args.spawn_y, args.spawn_z)
+        ok, dspawn = spawn_clearance(geom, spawn)
+        if not ok:
+            print(
+                f"REFUSING: submerged target is {dspawn:.0f} blocks (3D) from world spawn {spawn}; need "
+                f"<= {WATER_MAX_DIST_FROM_SPAWN} or `distance_from_spawn` (cap 128) is a full-weight "
+                f"CONSTANT in both water situations — replayed cos 0.8525 at the cap = same cluster "
+                f"(exp60_spawn_distance_check.py in the experiments data dir). Pass --anchor-x/--anchor-z nearer spawn."
+            )
+            return 4
+        if spawn is None:
+            print(
+                "NOTE: world spawn not given (--spawn-x/y/z) — distance_from_spawn is gated LIVE by "
+                f"exp60_water_check W1 (sensed value must be <= {WATER_MAX_DIST_FROM_SPAWN})."
+            )
         for cmd in water_classroom_commands(geom, args.username):
             resp = rcon.command(cmd).strip()
             print(f"rcon> {cmd[:96]}\n      {resp or '(ok)'}")
             low = resp.lower()
             bad = "unknown" in low or "expected" in low or "incorrect" in low
-            if cmd.startswith("fill") and "filled" not in low:
-                bad = True  # 'No blocks were filled' / unloaded chunk: the geometry is not built
+            # "No blocks were filled" CONTAINS "filled" — test the failure reply explicitly.
+            if cmd.startswith("fill") and ("filled" not in low or "no blocks were filled" in low):
+                bad = True  # nothing placed / unloaded chunk: the geometry is not built
             if bad:
                 print("\nWATER CLASSROOM BUILD FAILED on the command above — nothing gated may run.")
                 return 4
@@ -630,7 +704,12 @@ def _water_classroom(args: argparse.Namespace) -> int:
                 return 4
             print(f"verified: {proves}")
         WATER_ANCHOR_FILE.parent.mkdir(parents=True, exist_ok=True)
-        WATER_ANCHOR_FILE.write_text(json.dumps(water_anchor_record(geom), indent=2) + "\n")
+        record = water_anchor_record(
+            geom,
+            exp58_clearance_blocks=exp58_blocks,
+            spawn_clearance_blocks=None if dspawn is None else round(dspawn, 1),
+        )
+        WATER_ANCHOR_FILE.write_text(json.dumps(record, indent=2) + "\n")
         sx, sy, sz = geom["shore"]
         bx, by, bz = geom["submerged"]
         print(
@@ -638,11 +717,13 @@ def _water_classroom(args: argparse.Namespace) -> int:
             f"pool {geom['pool']} ({geom['depth']} deep, source water, walled, open top), "
             f"submerged target {geom['submerged']} (head at y={by + 1} in water, "
             f"{geom['depth'] - 1} blocks below air at y={sy}). "
-            f"Exp 58 clearance {dmin:.0f} blocks. doMobSpawning=false is APPARATUS-OWNED (the "
+            f"Exp 58 clearance {exp58_blocks} blocks (null = not checked); world-spawn clearance "
+            f"{record['spawn_clearance_blocks']} blocks (null = not given; W1 gates it live). "
+            f"doMobSpawning=false is APPARATUS-OWNED (the "
             f"Phase-0 instrument check restores it to true — rebuild/verify before a gated run).\n"
             f"geometry recorded -> {WATER_ANCHOR_FILE}\n"
-            f"next: python scripts/survival_world/exp60_water_check.py --rcon-password '<pw>' "
-            f"--username {args.username}"
+            f"next (clean tree, PYTHONPATH=$PWD/src): python scripts/survival_world/exp60_water_check.py "
+            f"--rcon-password '<pw>' --username {args.username} --write-experiment-results"
         )
         return 0
     finally:
@@ -681,10 +762,22 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--rcon-port", type=int, default=25575)
     w.add_argument("--rcon-password", required=True)
     w.add_argument("--username", default="maxim")
-    w.add_argument("--anchor-x", type=float, default=None)
+    w.add_argument(
+        "--anchor-x",
+        type=float,
+        default=None,
+        help="classroom anchor x (with --anchor-z); default: the recorded exp60 anchor, else the JOINED bot's position",
+    )
     w.add_argument("--anchor-z", type=float, default=None)
-    w.add_argument("--depth", type=int, default=WATER_DEPTH_DEFAULT, help="water column depth in blocks")
-    w.add_argument("--sweep", action="store_true", help="kill zombies/drowned within 64 of the shore")
+    w.add_argument(
+        "--spawn-x", type=float, default=None, help="WORLD spawn x (with -y/-z): enables the <=90-block spawn guard"
+    )
+    w.add_argument("--spawn-y", type=float, default=None)
+    w.add_argument("--spawn-z", type=float, default=None)
+    w.add_argument("--depth", type=int, default=WATER_DEPTH_DEFAULT, help="water column depth in blocks (3..12)")
+    w.add_argument(
+        "--sweep", action="store_true", help="kill zombies (not the exp58 clustermob) + drowned within 64 of the shore"
+    )
     w.set_defaults(fn=_water_classroom)
 
     for name, fn, helptext in (

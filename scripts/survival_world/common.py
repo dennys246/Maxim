@@ -94,7 +94,9 @@ def build_dark_box(rcon: Any, cx: int, y0: int, cz: int) -> None:
     while the check happily reads sky light.
     """
     resp = rcon.command(f"fill {cx - 2} {y0} {cz - 2} {cx + 2} {y0 + 4} {cz + 2} minecraft:stone hollow")
-    if "filled" not in resp.lower():
+    # "No blocks were filled" CONTAINS "filled" — test the failure reply explicitly
+    # (a vacuous guard; caught by the Exp 60 chunk-i executor lens).
+    if "filled" not in resp.lower() or "no blocks were filled" in resp.lower():
         raise InstrumentError(f"dark-box fill did not confirm: {resp!r}")
 
 

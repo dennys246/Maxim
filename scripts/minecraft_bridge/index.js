@@ -228,15 +228,24 @@ async function runAction(name, params) {
         return b && (b.name === "water" || b.name === "bubble_column");
       };
       if (!headWater()) return "already at surface";
+      // A surface is a BREATH, not a tick: keep swimming up for SURFACE_HOLD_MS
+      // after the head first clears so the surfaced state persists for at
+      // least one STATE_INTERVAL_MS snapshot (the body can observe air; the
+      // game refills air only while the eyes are out) — releasing jump the
+      // same tick the head clears sank the bot back within a few ticks, an
+      // unobservable "surface" (Exp 60 chunk-i executor-lens fold).
+      const SURFACE_HOLD_MS = 600;
       bot.setControlState("jump", true);
       try {
         await new Promise((res) => {
           let waited = 0;
+          let clearedAt = null;
           const iv = setInterval(() => {
             waited += 100;
-            // stop when the head clears water, or a hard 8s cap (never hang the
+            if (clearedAt === null && !headWater()) clearedAt = waited;
+            // stop after the post-clear hold, or a hard 8s cap (never hang the
             // action loop — a walled column with no reachable air would hang)
-            if (!headWater() || waited >= 8000) {
+            if ((clearedAt !== null && waited - clearedAt >= SURFACE_HOLD_MS) || waited >= 8000) {
               clearInterval(iv);
               res();
             }

@@ -22,8 +22,10 @@ if str(SCRIPTS) not in sys.path:
 from survival_world import exp60_water_check as chk  # noqa: E402
 from survival_world.setup_world import (  # noqa: E402
     WATER_DEPTH_DEFAULT,
+    WATER_MAX_DIST_FROM_SPAWN,
     WATER_MIN_DIST_FROM_EXP58,
     exp58_clearance,
+    spawn_clearance,
     water_anchor_record,
     water_classroom_commands,
     water_classroom_geometry,
@@ -158,7 +160,26 @@ class TestExp58Clearance:
         assert exp58_clearance(GEOM, None) == (True, float("inf"))
 
 
+class TestSpawnClearance:
+    def test_unknown_spawn_is_not_checked_not_cleared(self):
+        assert spawn_clearance(GEOM, None) == (True, None)
+
+    def test_three_d_distance_bound(self):
+        bx, by, bz = GEOM["submerged"]
+        ok, d = spawn_clearance(GEOM, (bx + WATER_MAX_DIST_FROM_SPAWN, by, bz))
+        assert ok and d == pytest.approx(WATER_MAX_DIST_FROM_SPAWN)
+        # the sensor is a 3D distance: a vertical offset counts
+        ok, d = spawn_clearance(GEOM, (bx + WATER_MAX_DIST_FROM_SPAWN, by + 30, bz))
+        assert not ok and d > WATER_MAX_DIST_FROM_SPAWN
+
+
 class TestAnchorRecord:
+    def test_clearances_default_to_not_checked(self):
+        rec = water_anchor_record(GEOM)
+        assert rec["exp58_clearance_blocks"] is None and rec["spawn_clearance_blocks"] is None
+        rec = water_anchor_record(GEOM, exp58_clearance_blocks=80.0, spawn_clearance_blocks=42.5)
+        assert rec["exp58_clearance_blocks"] == 80.0 and rec["spawn_clearance_blocks"] == 42.5
+
     def test_record_carries_what_the_check_probe_and_harness_read(self):
         rec = water_anchor_record(GEOM)
         assert rec["_format_version"] == "1.0"
@@ -236,3 +257,38 @@ class TestEvaluateSurface:
         s = [{"t": t / 4, "in_water": t / 4 < 7.0, "oxygen": 10} for t in range(0, 40)]
         r = chk.evaluate_surface(s)
         assert not r["pass"] and r["t_surface"] == 7.0
+
+
+class TestCheckContract:
+    def test_frozen_gamerules_cover_prepare_and_builder_conditions(self):
+        assert chk.FROZEN_GAMERULES == {
+            "doMobSpawning": "false",
+            "doDaylightCycle": "false",
+            "doWeatherCycle": "false",
+            "doImmediateRespawn": "true",
+            "keepInventory": "true",
+        }
+
+    def test_spawn_bound_matches_the_builder(self):
+        assert chk.SPAWN_DIST_MAX == WATER_MAX_DIST_FROM_SPAWN
+
+    def test_measured_edges_from_a_pass_report(self):
+        report = {
+            "ts": 1.0,
+            "cycles": [
+                {
+                    "w1_shore": {"distance_from_spawn": 40.0},
+                    "w2_dive": {"t_damage_onset": 16.25},
+                    "w4_escape": {"t_surface": 2.5, "t_sinkback": 3.75},
+                },
+                {
+                    "w1_shore": {"distance_from_spawn": 41.0},
+                    "w2_dive": {"t_damage_onset": 16.5},
+                    "w4_escape": {"t_surface": 3.0, "t_sinkback": None},
+                },
+            ],
+        }
+        m = chk.measured_edges(report)
+        assert m["t_damage_onset_min_s"] == 16.25 and m["t_damage_onset_max_s"] == 16.5
+        assert m["t_surface_max_s"] == 3.0 and m["t_sinkback_min_s"] == 3.75
+        assert m["distance_from_spawn"] == 41.0
