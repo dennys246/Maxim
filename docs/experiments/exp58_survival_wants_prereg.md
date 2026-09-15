@@ -370,3 +370,39 @@ the *right* framing (a place is dangerous because a threat is there), and it is 
 the pit separate cleanly when it did. The preflight cluster-distinct check remains the gate:
 if safe and dark still encode to the same cluster, the seed refuses (no forcing). Danger
 cue is now depth + reliable hostile; light remains unused (Addendum 3).
+
+## Outcome (2026-09-14): BLOCKED at the cluster-separability instrument check — L11 dilution, live
+
+Exp 58's Claim B never reached a gated behavioural measurement. The Wire-4 MECHANISM works —
+a full live dry-run showed the composed loop fire end to end: the bot flees up the staircase,
+the pre-probe baseline is cleanly censored, all 10 conditioning episodes land (zombie bites →
+pain → fear accumulates to the −1.0 cap on the active world cluster). What does NOT hold is the
+prerequisite the whole design rests on: **the danger situation and the safe situation do not
+form distinct world clusters.**
+
+Across the apparatus iterations the SAME barrier appeared under three discriminators —
+light (unreliable/non-physical here), depth alone (too small a fraction of the y_altitude
+range), and finally depth + a verified-adjacent persistent hostile + a ~21-block position gap.
+Even that three-axis contrast encodes safe and dark to ONE cluster (cluster-distinct preflight
+refuses). This is **L11 sensor dilution realized live**: the 17-sensor world channel averages
+each sensor to ~1/17, so no *partial* contrast clears the 0.85 pattern-completion threshold, and
+none of the survival contrasts is full-range (`hostile_count` is even identical at both, since
+the bridge counts all loaded hostiles; only `nearest_hostile_dist`, `y_altitude`, and position
+swing, partially). Phase-0's `survival_phase0` gate reported 1.0/1.0 separability only because
+its box swung light AND altitude across their FULL ranges at once — the offline gates validated
+an easier problem than the live classroom, and that is the honest lesson here.
+
+**Verdict: NULL-WITH-CAUSE (instrument-blocked), same family as R1/R2.** Situation-keyed fear
+requires the situation to form a distinct cluster; the 17-sensor world channel does not provide
+one for these survival contrasts. This does not refute the Wire-4 mechanism (it fires); it
+bounds what can be measured on the current substrate. No gated data was taken (every live run
+refused at the cluster-distinct / live-G2 preflight — the guards did their job).
+
+**Prerequisite for reviving Exp 58: address L11 for the world channel** — the diagnostic-first
+plan (capture live survival vectors, measure the real cosine geometry, replay channel-split /
+scaled-threshold / gain remedies on them, then build the one that separates) is the path.
+Channel-splitting the world modality (L11's own recommendation; the `modality:` sub-channel
+schema in `minecraft_benchmark.md`) is the leading candidate, chosen from data, built with its
+own review + Exp 56/57 re-baseline. Instruments that gave false confidence and must be fixed
+alongside: `survival_phase0` and the exp58 offline gates used big-multi-axis / scripted contrasts
+that did not exercise the live single-axis separation — the diagnostic replaces them.
