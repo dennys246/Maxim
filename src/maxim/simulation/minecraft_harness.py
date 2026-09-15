@@ -113,6 +113,7 @@ class FakeBridgeServer:
             "speed": r.uniform(0, 0.4),
             "on_ground": float(r.random() > 0.2),
             "is_raining": float(r.random() > 0.9),
+            "is_in_water": float(r.random() > 0.9),
             "xp_level": float(r.randint(0, 10)),
             "look_pitch": r.uniform(-1.2, 1.2),
             "time_of_day": r.random(),

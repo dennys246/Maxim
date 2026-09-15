@@ -104,6 +104,16 @@ function snapshot() {
   const offsetZ = me && spawn ? clampOff(me.position.z - spawn.z) : 0;
   const vel = me ? me.velocity : null;
   const speed = vel ? Math.min(1, Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z)) : 0;
+  // Exp 60: is_in_water — the stable underwater cue. Primary signal is the block
+  // at the HEAD (position + 1): head-submerged is exactly the condition under
+  // which oxygen depletes, so it tracks the drowning situation, not just feet
+  // getting wet. me.isInWater is an OR fallback for versions/edge cases.
+  const headBlock = me ? bot.blockAt(me.position.offset(0, 1, 0)) : null;
+  const inWater =
+    (me && me.isInWater) ||
+    (headBlock && (headBlock.name === "water" || headBlock.name === "bubble_column"))
+      ? 1
+      : 0;
   return {
     health: bot.health ?? 20,
     food: bot.food ?? 20,
@@ -120,6 +130,7 @@ function snapshot() {
     speed,
     on_ground: me && me.onGround ? 1 : 0,
     is_raining: bot.isRaining ? 1 : 0,
+    is_in_water: inWater,
     xp_level: Math.min(50, bot.experience ? bot.experience.level : 0),
     look_pitch: me ? me.pitch : 0,
     time_of_day: bot.time ? (bot.time.timeOfDay % 24000) / 24000 : 0,
@@ -201,6 +212,39 @@ async function runAction(name, params) {
       bot.pathfinder.setMovements(fm);
       await bot.pathfinder.goto(new goals.GoalNearXZ(anchor.x, anchor.z, 2));
       return "fled to anchor";
+    }
+    case "surface": {
+      // Exp 60: escape drowning by swimming UP. The pathfinder is DEAD in water
+      // (mineflayer-pathfinder move generators hard-return on liquid nodes, so
+      // `flee`/goto throws NoPath from a submerged start — env-lens E1). This
+      // bypasses the pathfinder entirely: hold the `jump` control (which is
+      // swim-up while submerged) until the HEAD block is air again, then
+      // release. Oxygen recovers game-natively once surfaced. Param-free.
+      const headWater = () => {
+        const e = bot.entity;
+        if (!e) return false;
+        const b = bot.blockAt(e.position.offset(0, 1, 0));
+        return b && (b.name === "water" || b.name === "bubble_column");
+      };
+      if (!headWater()) return "already at surface";
+      bot.setControlState("jump", true);
+      try {
+        await new Promise((res) => {
+          let waited = 0;
+          const iv = setInterval(() => {
+            waited += 100;
+            // stop when the head clears water, or a hard 8s cap (never hang the
+            // action loop — a walled column with no reachable air would hang)
+            if (!headWater() || waited >= 8000) {
+              clearInterval(iv);
+              res();
+            }
+          }, 100);
+        });
+      } finally {
+        bot.setControlState("jump", false);
+      }
+      return headWater() ? "surface: still submerged (capped)" : "surfaced";
     }
     case "eat": {
       const item = bot.inventory.items().find((i) => i.name.includes("bread") || i.foodPoints);

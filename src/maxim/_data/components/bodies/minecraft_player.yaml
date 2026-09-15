@@ -96,6 +96,20 @@ entity:
       range: [0, 40]   # rest (20, surfaced) = midpoint; drowning descends loud
       initial: 20
       modality: world
+      # Exp 60: air-hunger. Oxygen depletion must publish pain (failure mode
+      # `drive:oxygen`) so Wire-4 can book drowning-fear onto the underwater
+      # cluster BEFORE tissue damage — without this drive, drowning reaches the
+      # NAc only as `drive:health` at oxygen=0 (damage onset), which is too late
+      # for the anticipatory surfacing the experiment tests. Mirrors `health`
+      # (homeostatic, world-owned truth, comfort_band pain below 14 bubbles):
+      # pain fires ~5s into a ~15s dive, well before the ~15s drowning-damage
+      # onset — the pre-damage anticipation window.
+      drive:
+        drift_mode: homeostatic
+        set_point: 20
+        drift_rate: 0.0        # world-owned: the bridge writes the game's air truth
+        comfort_band: 6.0      # pain below 14 bubbles (mirrors health)
+        pain_scale: 0.5
     hostile_count:
       unit: count
       range: [-32, 32] # rest (0 hostiles) = midpoint; the negative half is unobservable by design
@@ -119,6 +133,18 @@ entity:
     is_raining:
       unit: bool
       range: [-1, 1]   # rest (clear, 0) = midpoint; rain (1) shouts
+      initial: 0
+      modality: world
+    is_in_water:
+      unit: bool
+      # Exp 60: the STABLE underwater cue. `oxygen` alone only separates the
+      # underwater cluster at oxygen~0 (= drowning-damage onset) — measured, the
+      # whole ~15s pre-damage dive reads as the shore cluster, so anticipation
+      # had no distinct cluster to key on. A binary in-water flag ON from dive
+      # second 0 makes underwater a distinct cluster through the entire
+      # pre-damage window (measured cos(shore, submerged) ~0.79 at full air).
+      # Rest (dry, 0) = midpoint (silent); in-water (1) shouts at gain weight 1.0.
+      range: [-1, 1]   # mirrors is_raining: rest 0 = midpoint, submerged 1 = loud
       initial: 0
       modality: world
     xp_level:
@@ -179,3 +205,13 @@ entity:
           # anchor), not coordinate navigation.
           params: {}
           description: "Flight response: retreat to the spawn anchor without digging"
+        surface:
+          # Exp 60: the threat need's WATER consumer. `flee` is DEAD in water —
+          # mineflayer-pathfinder's move generators hard-return on liquid nodes,
+          # so goto throws NoPath from any submerged start. `surface` bypasses
+          # the pathfinder with a raw swim-up (jump control) held until the head
+          # block is air again. Param-free (substrate-primary emits no params).
+          # Named to match _DRIVE_TOOL_AFFINITIES["threat"] (which now lists
+          # "surface") so learned drowning-fear actually scores this action.
+          params: {}
+          description: "Escape drowning: swim straight up to air (bypasses the water-dead pathfinder)"

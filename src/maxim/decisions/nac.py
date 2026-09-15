@@ -396,7 +396,11 @@ class NACConfig:
     # K=10 episodes × alpha 0.5 saturates at the 1.0 cap — 2× margin
     # over θ=0.5 (the pre-registered arithmetic, Exp 58 confounding S3).
     cluster_fear_threshold: float = 0.5
-    cluster_fear_failure_modes: "frozenset[str]" = frozenset({"drive:health"})
+    # `drive:oxygen` (Exp 60): air-hunger pain books drowning-fear onto the
+    # underwater cluster before tissue damage. Added alongside `drive:health`
+    # so the drowning contingency has a drowning-SPECIFIC failure mode rather
+    # than collapsing into generic injury fear (bio-faithful lens, Exp 60).
+    cluster_fear_failure_modes: "frozenset[str]" = frozenset({"drive:health", "drive:oxygen"})
 
     # Wire 2 (release_0_9_1.md Stage 3): Pavlovian percept aversion.
     # Per-agent, per-(entity_class, failure_mode) valence accumulated by the
@@ -571,7 +575,7 @@ _DRIVE_TOOL_AFFINITIES: dict[str, tuple[str, ...]] = {
     # tier (its own mechanism), not from interoception. "fawn"/appease and most of
     # these have no clean world affordance in the void body yet. No "block" keyword —
     # it false-matches place_block/mine_block. Keywords name defensive ACTIONS.
-    "threat": ("flee", "hide", "retreat", "escape", "withdraw", "defend", "shelter"),
+    "threat": ("flee", "hide", "retreat", "escape", "withdraw", "defend", "shelter", "surface"),
     "curiosity": ("examine", "look", "sense", "inspect"),
     "pain": ("rest", "heal", "tend", "withdraw"),
 }
