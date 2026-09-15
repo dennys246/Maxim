@@ -586,9 +586,14 @@ def water_anchor_record(
         "pool": list(geom["pool"]),
         "forceload": list(geom["forceload"]),
         "deaths_objective": "exp60_deaths",
-        # Generic situation map so l11_geometry_probe can take --anchor-file without
-        # borrowing Exp 58's anchor/dark names.
+        # Generic situation plan so l11_geometry_probe can take --anchor-file without
+        # borrowing Exp 58's anchor/dark names: baseline FIRST (first-touch order),
+        # settle on the sensor that DEFINES each situation (not altitude), and the
+        # contrast situation names its rescue — the probe budgets each dive visit from
+        # the check's stamped `measured.t_damage_onset_min_s` and refuses without it.
         "probe_situations": {"shore": list(geom["shore"]), "submerged": list(geom["submerged"])},
+        "probe_settle": {"shore": {"is_in_water": 0, "on_ground": 1}, "submerged": {"is_in_water": 1}},
+        "probe_rescue": {"submerged": "shore"},
     }
 
 

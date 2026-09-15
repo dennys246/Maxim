@@ -199,3 +199,5 @@ four-lens design review + two-lens code review + the Exp 56/57 re-baseline.
   adapter that does not re-implement the encoder.
 - Fix `hostile_count` counts-all-loaded-mobs (identical at safe/dark) at capture time, or exclude it
   from the contrast and note the apparatus artefact in the record.
+
+> **2026-09-15 addendum (Exp 60 chunk ii):** the Slice-1 probe now ALSO serves Exp 60's run-authorizing separability gate on the water classroom (`capture --anchor-file`, budgeted dive visits with rescue, early/late oxygen sub-bin, `run_gate` block). The charter here is unchanged: `authorizes_build` stays False; a RUN gate (harness may run under a frozen prereg) is a different authorization from a substrate build, and is itself necessary-not-sufficient (chunk iii carries the live preflight). See `docs/experiments/exp60_drowning_avoidance_prereg.md` §Gate (ii).
