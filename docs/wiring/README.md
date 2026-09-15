@@ -39,6 +39,12 @@ that generalizes belongs here.
   Phase-1 design item. Plus four instrument traps, incl. `pain_bus.recent` being a lossy
   view. (Dark=danger probe, 7 iterations, 2026-09-13.)
 
+- [cluster-dilution-blocks-situation-fear.md](cluster-dilution-blocks-situation-fear.md) — L11
+  live: on a 17-sensor world channel, partial-axis contrasts between situations don't clear the
+  0.85 separation threshold, so a situation-keyed contingency (Exp 58 dark/danger fear) can't form
+  a distinct cluster to key on. Measure the live cosine geometry before building; remedies are
+  substrate-level (channel-split / scaled threshold / gain). (Exp 58, 2026-09-14.)
+
 - [experiment-catalog-candidates.md](experiment-catalog-candidates.md) — a prioritized **backlog** of
   11 reusable wiring lessons harvested from all 92 past experiments (catalog workflow, 2026-09-13);
   each becomes a full page as we next touch that subsystem. Highest-priority: the substrate→LLM
