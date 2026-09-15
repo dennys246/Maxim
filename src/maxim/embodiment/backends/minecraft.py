@@ -142,7 +142,11 @@ class MinecraftWorldBackend:
         # world may have moved).
         self.sync_world_sensors()
         if ok:
-            return _result(success=True)
+            # Forward the bridge's own outcome string (e.g. escape_water's
+            # "surfaced" vs "surface: still submerged (capped)") so a harness
+            # can RECORD what the actuator claimed next to the bridge truth it
+            # gates on — it was dropped here before (Exp 60 chunk-i fold).
+            return _result(success=True, metadata={"detail": str(result.get("detail", ""))})
         if unknown:
             # The Reachy honesty convention, faithfully: dispatch was
             # accepted and completion is UNVERIFIABLE (timeout / close) —

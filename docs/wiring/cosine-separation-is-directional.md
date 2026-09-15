@@ -67,6 +67,14 @@ little, or moves while staying on the same side of its neutral point.
    the deferred **set-point-aware neutral** substrate primitive (`docs/plans/setpoint_aware_neutral.md`,
    `_sensor_embed` decision D1) that makes contribution relative to a sensor's rest value so small
    off-baseline moves rotate the embedding.
+6. **A CAPPED distance sensor becomes a full-weight constant at its cap — bound apparatus
+   placement, not just the cue.** `distance_from_spawn` (3D to WORLD spawn, cap 128, neutral 0)
+   is silent near spawn and a w=1.0 constant in EVERY situation of a far-away classroom, diluting
+   any cue there. Replayed for Exp 60 (`docs/experiments/data/exp60_spawn_distance_check.py`):
+   cos(shore, submerged) 0.786 at 36 blocks from spawn → 0.8525 at the cap = same cluster. Same
+   shape as `nearest_hostile_dist` the other way (its cap 64 IS neutral, so keep hostiles beyond
+   it). When a classroom moves, re-replay with every capped/constant sensor at the values the NEW
+   site will actually read — the Exp 58 base vector is only valid at the Exp 58 site.
 
 ## See also
 
