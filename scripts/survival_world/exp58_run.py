@@ -450,26 +450,43 @@ def main(argv: list[str] | None = None) -> int:
                 if settle_until(aut, lambda vm: (vm.get("y_altitude") or 0) >= mid_y, timeout_s=10.0) is None:
                     raise Refusal("post-training safe depth not reached")
                 lit_cluster = _encode_current_clusters(encoder, agent_id, aut.executor).get("world")
-                majority = max(set(episode_clusters), key=episode_clusters.count) if episode_clusters else None
-                record["live_g2"] = {
-                    "pre_training_dark_cluster": pre_dark_cluster,
-                    "training_majority_cluster": majority,
-                    "probe_dark_cluster": dark_cluster,
-                    "pass": bool(majority) and majority == dark_cluster,
-                }
-                # Diagnosability: the agent's full fear map (wrong-cluster writes visible).
+                # The deep pit spans a small cluster NEIGHBOURHOOD, not one id — the
+                # 17-sensor world vector jitters across the 0.85 boundary, so the same
+                # spot re-completes to a few ids across episodes, and fear spreads to
+                # whichever was active at each pain (Addendum 4). Record the oscillation.
+                theta = float(aut.bio.nac.config.cluster_fear_threshold)
+                dark_fear = round(aut.bio.nac.cluster_fear(agent_id, dark_cluster), 4)
+                lit_fear = round(aut.bio.nac.cluster_fear(agent_id, lit_cluster), 4) if lit_cluster else 0.0
+                record["dark_fear"] = dark_fear
+                record["lit_fear"] = lit_fear
+                # Diagnosability: the agent's full fear map (which clusters got fear).
                 record["cluster_fear_dump"] = {
                     f"{cid}|{fm}": v
                     for (aid, cid, fm), v in getattr(aut.bio.nac, "_cluster_fear", {}).items()
                     if aid == agent_id
                 }
+                record["live_g2"] = {
+                    "pre_training_dark_cluster": pre_dark_cluster,
+                    "training_majority_cluster": (
+                        max(set(episode_clusters), key=episode_clusters.count) if episode_clusters else None
+                    ),
+                    "probe_dark_cluster": dark_cluster,
+                    "distinct_episode_clusters": len(set(episode_clusters)),
+                    # READABILITY + SPECIFICITY, not id-matching (Addendum 4): the guard's
+                    # job is "can the probe read the fear" — the probe-activated cluster
+                    # must carry fear AND the safe cluster must not. An id-match proxy
+                    # falsely refused a seed whose fear was demonstrably readable (fear
+                    # spread across the oscillating pit clusters, incl. the probe's).
+                    # Self-protects against EXCESSIVE instability: too many clusters →
+                    # fear diluted below θ on the probe cluster → refuse.
+                    "pass": dark_fear <= -theta and abs(lit_fear) < theta,
+                }
                 if not record["live_g2"]["pass"]:
                     raise Refusal(
-                        "LIVE G2 FAILED: fear trained on a different world cluster than the probe "
-                        "activates — an unreadable write must not ship as a behavioural null"
+                        f"LIVE G2 FAILED: probe cluster fear={dark_fear} (need <= {-theta}) / "
+                        f"safe cluster fear={lit_fear} (need |.| < {theta}) — fear not readable at "
+                        "the probe state, or not situation-specific; must not ship as a behavioural null"
                     )
-                record["dark_fear"] = round(aut.bio.nac.cluster_fear(agent_id, dark_cluster), 4)
-                record["lit_fear"] = round(aut.bio.nac.cluster_fear(agent_id, lit_cluster), 4) if lit_cluster else 0.0
 
                 post = _probe("post")
                 sig = f"tool:{flee_tool}"
