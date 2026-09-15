@@ -39,6 +39,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`docs/experiments/rationale/exp58_survival_wants/`); the read path being dead on this body was
   a triple-confirmed DO-NOT-BUILD. Mechanism enters `[engineering]`; no behavioural claim until
   the Exp 58 run.
+- **Exp 60 drowning-avoidance substrate (reuses Wire 4 on a cue that separates).** Exp 58's
+  dark=danger died at the instrument (dark/safe never formed distinct world clusters — L11
+  dilution, verified unfixable by encoding remedy); Exp 60 keeps the mechanism and swaps the cue
+  to drowning, which separates. Three additions to the Minecraft body: an `is_in_water` binary
+  world sensor (the stable pre-damage underwater cue — oxygen alone only separates at
+  drowning-damage onset), an air-hunger `drive` on `oxygen` (+ `drive:oxygen` in the Wire-4 fear
+  allowlist) so asphyxia books a drowning-specific fear before tissue damage, and an
+  `escape_water` affordance that bypasses the water-dead pathfinder (`setControlState('jump')`).
+  Four-lens design review + two-lens code review folded
+  (`docs/experiments/rationale/exp60-drowning/` + `.../exp60-drowning-code/`); encoding verified
+  inert at rest (a resting sensor is the zero vector — no persisted-substrate change). Substrate
+  only, `[engineering]`; the water apparatus, the live separability gate, and the harness are
+  not built and no behavioural claim is made.
 - **God-function length ratchet in CI (`scripts/lint_function_length.py`).** The 2026-08-27
   score card's standing Maintainability complaint was "CI does not bound any function's length"
   — and the three largest functions had grown. This pins `run_agentic_loop` /
