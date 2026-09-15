@@ -43,7 +43,18 @@ that generalizes belongs here.
   live: on a 17-sensor world channel, partial-axis contrasts between situations don't clear the
   0.85 separation threshold, so a situation-keyed contingency (Exp 58 dark/danger fear) can't form
   a distinct cluster to key on. Measure the live cosine geometry before building; remedies are
-  substrate-level (channel-split / scaled threshold / gain). (Exp 58, 2026-09-14.)
+  substrate-level (channel-split / scaled threshold / gain). (Exp 58, 2026-09-14.) **Superseded as
+  the operative mental model by ↓ cosine-separation-is-directional.**
+
+- [cosine-separation-is-directional.md](cosine-separation-is-directional.md) — **the deep form of
+  L11, read this first for any situation-keyed contingency.** Cosine sees DIRECTION not magnitude,
+  so the A4 gain (a magnitude weight) can't make situations separate; only a sensor that rotates the
+  summed vector (a neutral→extreme / full-range-across-neutral swing) separates them — a small
+  one-sided move never does, at any gain. Corollaries: the gain-weight "mass" metric predicts
+  contribution not separability; use a binary rest-neutral state-flag for a stable pre-event cluster;
+  replay any remedy offline on real captured vectors first; adding a rest-neutral sensor is safe but
+  re-tagging an existing one orphans persisted nodes; the pathfinder is dead in water. (Exp 58 →
+  Slice-2 reject → Exp 60, 2026-09-15; verified `docs/experiments/data/*_cosine_check.py`.)
 
 - [experiment-catalog-candidates.md](experiment-catalog-candidates.md) — a prioritized **backlog** of
   11 reusable wiring lessons harvested from all 92 past experiments (catalog workflow, 2026-09-13);
