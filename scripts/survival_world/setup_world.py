@@ -314,6 +314,13 @@ def _classroom(args: argparse.Namespace) -> int:
         dark_x = ax + 20  # deep in the pit, far from the stairs (big position + depth signal)
         spawn_x = ax + 25
         cmds = [
+            # FORCELOAD the classroom chunks so they stay resident with NO player
+            # online: RCON `summon` into an UNLOADED chunk silently relocates the
+            # entity to the always-loaded spawn chunks (the clustermob landed at
+            # world spawn until this) — and the persistent clustermob + spawner must
+            # survive between runs regardless of where the bot is. Must precede the
+            # summon so the pit chunk is loaded when the mob is placed.
+            f"forceload add {ax - 6} {az - 4} {pit_x1 + 3} {az + 4}",
             # ENCASE the whole footprint (+ margin) in solid stone — overwrites
             # natural cave/lava/water so every chamber has clean, sky-sealed
             # walls (skylight 0 by burial, though we no longer depend on it).
@@ -346,8 +353,7 @@ def _classroom(args: argparse.Namespace) -> int:
             # chamber (Addendum 5 — L11 dilution made depth-alone too weak/jittery).
             "kill @e[type=minecraft:zombie,tag=exp58clustermob]",
             f"summon minecraft:zombie {clustermob_x} {DARK_Y} {az} "
-            + "{NoAI:1b,PersistenceRequired:1b,Silent:1b,IsBaby:0b,CustomName:"
-            + '\'{"text":"exp58-clustermob"}\',Tags:["exp58clustermob"]}',
+            + '{NoAI:1b,PersistenceRequired:1b,Silent:1b,IsBaby:0b,Tags:["exp58clustermob"]}',
             # Global: natural spawning OFF (spawner + clustermob are the only mobs).
             "gamerule doMobSpawning false",
             # Bot respawns in the safe chamber.
@@ -362,6 +368,21 @@ def _classroom(args: argparse.Namespace) -> int:
             if "unknown" in low or "expected" in low or "incorrect" in low:
                 print("\nCLASSROOM BUILD FAILED on the command above — nothing gated may run.")
                 return 4
+        # VERIFY the clustermob actually landed in the pit (not relocated to spawn
+        # by an unloaded chunk — the world-spawn bug forceload fixes). Refuse the
+        # build if it is not within 3 blocks of its intended pit cell, so a
+        # mis-placed hostile can never quietly leave the danger cluster unformed.
+        check = rcon.command(
+            f"execute if entity @e[type=minecraft:zombie,tag=exp58clustermob,"
+            f"x={clustermob_x},y={DARK_Y},z={az},distance=..3]"
+        )
+        if "passed" not in check.lower():
+            print(
+                f"\nCLASSROOM BUILD FAILED: clustermob not in the pit at "
+                f"({clustermob_x},{DARK_Y},{az}) — got {check.strip()!r}. "
+                "Is the bridge bot online so the pit chunk loads? (forceload should cover it.)"
+            )
+            return 4
         anchor_file.parent.mkdir(parents=True, exist_ok=True)
         geom = {
             "anchor": [anchor_x, SAFE_Y, az],
