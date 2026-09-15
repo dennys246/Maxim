@@ -1,0 +1,252 @@
+{
+  "_format_version": "1.0",
+  "kind": "l11_geometry_diagnosis",
+  "slice": 1,
+  "authorizes_build": false,
+  "code_hash": "de7e343f548a0eebf2c91761dd8626ccf7479717",
+  "provenance": {
+    "classroom_anchor": {
+      "safe": [
+        -363.0,
+        40.0,
+        -240.0
+      ],
+      "dark": [
+        -342.0,
+        28.0,
+        -240.0
+      ],
+      "mid_y": 34.0
+    },
+    "world_sensor_count": 16,
+    "samples": {
+      "safe": 30,
+      "dark": 30
+    },
+    "gain_modality": true,
+    "gain_exponent": 3.0,
+    "pattern_threshold": 0.85,
+    "code": {
+      "executed_maxim_file": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/__init__.py",
+      "executed_git_hash": "de7e343f548a",
+      "working_tree_dirty_src_scripts": false,
+      "python": "/Users/dennys/RMSrv/scripts/Maxim/.venv/bin/python",
+      "pythonpath": "/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages"
+    }
+  },
+  "cosine": {
+    "a4_gained": 0.9767,
+    "a0_ungained": 0.9959,
+    "threshold": 0.85,
+    "a4_above_threshold": true
+  },
+  "cluster_ids_offline_fresh_ec": {
+    "safe_ids": [
+      "112197cb-9df9-49c5-851d-48f622c991bd"
+    ],
+    "dark_ids": [
+      "112197cb-9df9-49c5-851d-48f622c991bd",
+      "a3a12b94-420c-431f-94b9-f85c55462a49"
+    ],
+    "shared_ids": [
+      "112197cb-9df9-49c5-851d-48f622c991bd"
+    ],
+    "distinct": false,
+    "safe_id_count": 1,
+    "dark_id_count": 2
+  },
+  "per_sensor": [
+    {
+      "sensor": "saturation",
+      "v_safe": 0.5,
+      "v_dark": 0.38,
+      "norm_delta": 0.12,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0138,
+      "moved": true,
+      "carries_mass": false,
+      "moved_but_silenced": true
+    },
+    {
+      "sensor": "nearest_hostile_dist",
+      "v_safe": 0.1786,
+      "v_dark": 0.0871,
+      "norm_delta": 0.0915,
+      "gain_w_safe": 0.2656,
+      "gain_w_dark": 0.563,
+      "moved": true,
+      "carries_mass": true,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "health",
+      "v_safe": 0.5,
+      "v_dark": 0.4206,
+      "norm_delta": 0.0794,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.004,
+      "moved": true,
+      "carries_mass": false,
+      "moved_but_silenced": true
+    },
+    {
+      "sensor": "on_ground",
+      "v_safe": 0.5,
+      "v_dark": 0.4417,
+      "norm_delta": 0.0583,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0016,
+      "moved": true,
+      "carries_mass": false,
+      "moved_but_silenced": true
+    },
+    {
+      "sensor": "y_altitude",
+      "v_safe": 0.3125,
+      "v_dark": 0.2755,
+      "norm_delta": 0.037,
+      "gain_w_safe": 0.0527,
+      "gain_w_dark": 0.0905,
+      "moved": false,
+      "carries_mass": true,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "distance_from_spawn",
+      "v_safe": 0.6412,
+      "v_dark": 0.6665,
+      "norm_delta": 0.0254,
+      "gain_w_safe": 0.0225,
+      "gain_w_dark": 0.0369,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "hostile_count",
+      "v_safe": 0.5469,
+      "v_dark": 0.5714,
+      "norm_delta": 0.0245,
+      "gain_w_safe": 0.0008,
+      "gain_w_dark": 0.0029,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "speed",
+      "v_safe": 0.5392,
+      "v_dark": 0.5374,
+      "norm_delta": 0.0018,
+      "gain_w_safe": 0.0005,
+      "gain_w_dark": 0.0004,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "food",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "is_raining",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "light_level",
+      "v_safe": 0.0,
+      "v_dark": 0.0,
+      "norm_delta": 0.0,
+      "gain_w_safe": 1.0,
+      "gain_w_dark": 1.0,
+      "moved": false,
+      "carries_mass": true,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "look_pitch",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "nearest_player_dist",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "oxygen",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "time_of_day",
+      "v_safe": 0.0417,
+      "v_dark": 0.0417,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.7703,
+      "gain_w_dark": 0.7703,
+      "moved": false,
+      "carries_mass": true,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "xp_level",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    }
+  ],
+  "movers": [
+    "saturation",
+    "nearest_hostile_dist",
+    "health",
+    "on_ground"
+  ],
+  "moved_but_silenced": [
+    "saturation",
+    "health",
+    "on_ground"
+  ],
+  "live_contributors": [
+    "nearest_hostile_dist"
+  ],
+  "verdict": "diluted_present",
+  "reading": "Movers carry gain mass, yet safe/dark still share a cluster id — dilution proper: real contrast summed across many sensors stays above the 0.85 threshold. Nominated Slice-2 arms: per-type channel-split (each channel back in the small-N regime) and/or a 1−k/N scaled threshold, each replayed through production code and confirmed by a LIVE re-encode."
+}

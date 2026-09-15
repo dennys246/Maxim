@@ -51,6 +51,35 @@ confidence (the verify-the-instrument lesson, one level deeper).
   `y_altitude` so 12 blocks reads as a big swing) without a confounding-lens check — it is
   D1-adjacent (tuning the instrument to make one experiment pass).
 
+## Live measurement (Slice-1 diagnostic, 2026-09-15)
+
+The L11 geometry probe (`scripts/survival_world/l11_geometry_probe.py`) measured the real
+safe-vs-dark geometry on the standing classroom (16 world sensors, A4 gain p=3.0, 30
+samples/situation). Verdict **`diluted_present`** — and it corrected the pre-measurement
+hypothesis in a useful way:
+
+- **cos(safe, dark) = 0.977 gained (A4) / 0.996 ungained (A0)** — both far above the 0.85
+  threshold; fresh-EC cluster ids were NOT distinct (dark oscillated between safe's id and a
+  second). The gain IS working (0.996 → 0.977) but can't clear the constant-sensor mass.
+- **The discriminator is NOT gain-silenced** (the substrate lens's prediction). Exactly one
+  sensor carries the contrast with real gain mass: `nearest_hostile_dist` (weight 0.27 at safe
+  → 0.56 at dark, Δnorm 0.092) — the clustermob going from ~22 blocks away to adjacent.
+- **The dilution is driven by CONSTANT full-weight sensors.** `light_level` (weight **1.0** in
+  both, Δ=0 — the "safe" chamber at y=40 is also underground/dark) and `time_of_day` (weight
+  **0.77** in both, Δ=0) carry maximal mass but zero contrast, pinning the cosine near 1.0 and
+  out-voting the one sensor doing real work. The near-neutral movers (`saturation`, `health`,
+  `on_ground`) are correctly silenced and are apparatus noise anyway.
+- **Depth is nearly static.** `y_altitude` came out below the move threshold (Δnorm 0.037) —
+  the signal Exp 58 leaned on barely moves in normalized space; hostile-adjacency, not depth,
+  is what carries the (still-diluted) contrast.
+
+**Consequence for the remedy:** per-type channel-split is the nominated fix, but for a sharper
+reason than "rescue a silenced signal" — isolate the *discriminating* threat/spatial sensors
+(`nearest_hostile_dist`, `hostile_count`, `y_altitude`, `distance_from_spawn`) into a small-N
+channel away from the constant environmental sensors (`light_level`, `time_of_day`) that
+dominate the full-channel sum. A `1−k/N` scaled threshold is the secondary arm. Both must pass
+a LIVE re-encode in Slice 2 — the geometry probe only nominates (`authorizes_build=False`).
+
 ## See also
 
 `docs/limits/l11_sensor_dilution.md` (the measured 1/N law, A4 bake-off, grouping + scaled
