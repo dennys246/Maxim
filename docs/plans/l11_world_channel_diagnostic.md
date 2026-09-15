@@ -10,6 +10,29 @@ clusters on the ~17-sensor `world` channel (L11 dilution, live —
 **B GATES C**: no substrate change is built until the diagnostic proves, on a *live re-encode*, that
 a remedy separates the real situations — and its effect on Exp 56/57 is established, not assumed.
 
+## Slice-1 RESULT (2026-09-15) — measured, `diluted_present`
+
+Ran on the live classroom (16 world sensors, A4 p=3.0, 30 samples/situation;
+record `docs/experiments/data/l11_geometry_2026-09-15.json`). **cos(safe,dark) = 0.977 (A4) /
+0.996 (A0)**, fresh-EC ids not distinct → verdict **`diluted_present`**. The measurement
+corrected the pre-registration's leading hypothesis:
+
+- The discriminator is **not** gain-silenced. `nearest_hostile_dist` is the lone live
+  contributor (gain weight 0.27→0.56; the clustermob ~22 blocks → adjacent). The gain passes
+  it through (A0 0.996 → A4 0.977) but can't clear the threshold.
+- The dilution is **constant-sensor mass**: `light_level` (weight 1.0 both, Δ0) and
+  `time_of_day` (0.77 both, Δ0) carry maximal mass, zero contrast — they out-vote the one
+  working sensor and pin the cosine near 1.
+- **Depth is nearly static** (`y_altitude` Δnorm 0.037, below move threshold) — the Exp 58
+  discriminator barely moves; hostile-adjacency carries the contrast.
+
+**Refined Slice-2 aim (was "isolate depth/threat"):** a per-type channel-split that puts the
+*discriminating* sensors (`nearest_hostile_dist`, `hostile_count`, `y_altitude`,
+`distance_from_spawn`) in a small-N threat/spatial channel, away from the constant
+environmental sensors that dominate the full-channel sum. `1−k/N` scaled threshold is the
+secondary arm. Both replay through production code and must pass a LIVE re-encode past the
+Exp 58 cluster-distinct preflight (§5) — Slice 1 only nominated.
+
 ## Why a diagnostic first (the lesson)
 
 The Exp 58 apparatus saga was *reasoning about* the fix (light → depth → depth+hostile) and building
