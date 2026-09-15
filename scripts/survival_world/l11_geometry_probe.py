@@ -43,8 +43,9 @@ Usage
 -----
     # LIVE (operator), against the standing Exp 58 classroom + bridge:
     python scripts/survival_world/l11_geometry_probe.py capture \
-        --bridge-port 25566 --rcon-port 25575 --rcon-password <pw> \
-        --samples 30 --trace ~/.maxim/l11_geometry_trace.jsonl
+        --rcon-password <pw> --samples 30 \
+        --trace ~/.maxim/l11_geometry_trace.jsonl
+    # (defaults: --bridge-port 25567 --rcon-port 25575 --username maxim)
 
     # OFFLINE (anywhere), on the captured trace:
     python scripts/survival_world/l11_geometry_probe.py analyze \
@@ -416,12 +417,13 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     cap = sub.add_parser("capture", help="LIVE: stage bot at safe/dark, record world-sensor reads")
+    # Defaults match survival_world/exp58_run.py + setup_world.py (one convention).
     cap.add_argument("--bridge-host", default="127.0.0.1")
-    cap.add_argument("--bridge-port", type=int, default=25566)
+    cap.add_argument("--bridge-port", type=int, default=25567)
     cap.add_argument("--rcon-host", default="127.0.0.1")
     cap.add_argument("--rcon-port", type=int, default=25575)
-    cap.add_argument("--rcon-password", default="maxim")
-    cap.add_argument("--username", default="MaximBot")
+    cap.add_argument("--rcon-password", required=True)
+    cap.add_argument("--username", default="maxim")
     cap.add_argument("--samples", type=int, default=30, help="samples per situation")
     cap.add_argument("--cadence-s", type=float, default=0.5)
     cap.add_argument("--trace", required=True, help="output JSONL trace path")
