@@ -314,3 +314,30 @@ class TestPartialCyclePreservation:
         report2 = {"cycles": []}
         chk._preserve_partial(report2, None, "preflight")
         assert report2["failed_at"] == "preflight" and report2["cycles"] == []
+
+
+class TestBridgeRosterGate:
+    def test_gate_reads_the_raw_bridge_roster_not_the_body(self):
+        # a pre-#719 bridge emits oxygen but not is_in_water: the body would still CARRY
+        # is_in_water (declared, initial 0) — the gate must name it missing
+        old_bridge = {
+            "oxygen": 20,
+            "health": 20,
+            "y_altitude": 35,
+            "on_ground": 1,
+            "nearest_hostile_dist": 64,
+            "distance_from_spawn": 70,
+        }
+        assert chk.missing_bridge_sensors(old_bridge, chk.REQUIRED_BRIDGE_SENSORS) == {"is_in_water"}
+        assert chk.missing_bridge_sensors({**old_bridge, "is_in_water": 0}, chk.REQUIRED_BRIDGE_SENSORS) == set()
+        assert chk.missing_bridge_sensors({}, chk.REQUIRED_BRIDGE_SENSORS) == set(chk.REQUIRED_BRIDGE_SENSORS)
+
+    def test_required_roster_covers_every_gated_sensor(self):
+        assert {
+            "is_in_water",
+            "oxygen",
+            "health",
+            "y_altitude",
+            "nearest_hostile_dist",
+            "distance_from_spawn",
+        } <= chk.REQUIRED_BRIDGE_SENSORS

@@ -104,6 +104,10 @@ HOSTILE_HORIZON = 64.0  # bridge cap for nearest_hostile_dist == the sensor's ne
 SPAWN_DIST_MAX = 90.0  # setup_world.WATER_MAX_DIST_FROM_SPAWN (replayed: 0.794 @90, 0.8525 @128 cap)
 STALE_STATE_S = 1.5  # a snapshot older than this (3x the 500 ms bridge cadence) is NOT fresh truth
 STALE_MAX_CONSECUTIVE = 8  # ~2 s of stale polls = the bridge stopped delivering → instrument error
+# Every sensor a gate or settle rule reads MUST be emitted by the running bridge (raw roster).
+REQUIRED_BRIDGE_SENSORS = frozenset(
+    {"is_in_water", "oxygen", "health", "y_altitude", "on_ground", "nearest_hostile_dist", "distance_from_spawn"}
+)
 FROZEN_GAMERULES = {
     "doMobSpawning": "false",
     "doDaylightCycle": "false",
@@ -228,6 +232,15 @@ def measured_edges(report: dict[str, Any]) -> dict[str, Any]:
         "evidence_record": str(report.get("_out_path", "")),
         "ts": report["ts"],
     }
+
+
+def missing_bridge_sensors(raw_state: dict[str, Any], required: frozenset[str]) -> set[str]:
+    """Required sensors ABSENT from the raw bridge snapshot (pure).
+
+    Judged on the bridge's own keys — the body cannot answer this question because it
+    carries every declared sensor whether or not the bridge ever wrote it.
+    """
+    return set(required) - set(raw_state or {})
 
 
 def all_cycles_pass(cycles: list[dict[str, Any]], expected: int) -> bool:
@@ -370,8 +383,19 @@ def main(argv: list[str] | None = None) -> int:
         # Startup gate: the bridge must deliver the Exp 60 sensors before anything is measured.
         if settle_until(aut, lambda vm: "is_in_water" in vm and "oxygen" in vm, timeout_s=8.0) is None:
             raise InstrumentError(
-                "bridge never delivered a snapshot carrying is_in_water + oxygen — bridge dead/busy "
-                "or body regression; check the bridge terminal for 'bridge busy: one client at a time'."
+                "bridge never delivered a snapshot — bridge dead/busy or body regression; check the "
+                "bridge terminal for 'bridge busy: one client at a time'."
+            )
+        # ...and the gate must read the RAW bridge roster, not the body: the body always carries
+        # every DECLARED sensor (at its initial value), so `"is_in_water" in vital_metrics` is
+        # vacuous. The first live run measured exactly this — oxygen depleting at the pool floor
+        # while is_in_water sat at 0 — because the running bridge predated the Exp 60 substrate
+        # and never emitted the key (vacuous-guard family; fixed here).
+        missing = missing_bridge_sensors(aut.client.latest_state(), REQUIRED_BRIDGE_SENSORS)
+        if missing:
+            raise InstrumentError(
+                f"the running bridge does not emit {sorted(missing)} — it predates the Exp 60 substrate "
+                "(#719). Restart `node index.js` from current main in the bridge tmux, then re-run."
             )
         # Apparatus-owned world conditions are VERIFIED, not toggled (the Phase-0 instrument
         # check restores doMobSpawning to true on exit — a stale world must refuse here).
