@@ -341,3 +341,32 @@ world-cluster ids the deep pit spans, all carrying fear; the safe chamber occupi
 disjoint neighbourhood with none. The scientific claim (situation-keyed fear changes
 escape behaviour) is unchanged; the gate now verifies the mechanism's actual requirement
 directly rather than through a fragile id-equality proxy.
+
+## Addendum 5 (dated 2026-09-14, pre-data): persistent hostile → reliable danger-cluster separation
+
+The depth-only danger cluster proved UNSTABLE across runs: the same deep pit sometimes
+separated from the safe chamber and sometimes MERGED into one world cluster. Root cause is
+L11 sensor dilution — a 12-block `y_altitude` difference is only ~0.09 of the cosine across
+17 world sensors, well under the 0.85 separation threshold, so whether safe and dark split
+depended on whatever *else* happened to differ at encode time (mainly whether a spawner
+zombie was present). This is a genuine substrate limit, and the offline gates missed it
+because they used big multi-axis (Phase-0 light box) or scripted contrasts, not the live
+single-axis case. (Honest note: those gates validated the instrument on an easier problem.)
+
+**Fix (owner decision): give the danger cluster a reliable, big, multi-axis contrast by
+making the pit ALWAYS hostile.** The classroom now summons a **persistent `NoAI`,
+`PersistenceRequired` "clustermob" zombie** deep in the pit — it never moves, attacks, or
+despawns; it exists solely so `nearest_hostile_dist` (and the hostile axis generally)
+reliably differs between the safe chamber (far from it) and the dark pit (adjacent). The
+spawner (now higher-rate) still provides the AI attackers that deal training damage; sweeps
+(`setup_world --sweep`, and the harness's per-poll probe sweep) SPARE the clustermob
+(`tag=!exp58clustermob`) so the danger cluster keeps its hostile axis while the AI
+attackers are cleared for the full-health probe. The pit is also lengthened (14 blocks) so
+depth + position + hostile are all sizeable, reliable axes — and to leave depth headroom
+for the Exp 59 treasure layer.
+
+This makes the contingency "a deep place with a monster in it = danger," which is arguably
+the *right* framing (a place is dangerous because a threat is there), and it is what made
+the pit separate cleanly when it did. The preflight cluster-distinct check remains the gate:
+if safe and dark still encode to the same cluster, the seed refuses (no forcing). Danger
+cue is now depth + reliable hostile; light remains unused (Addendum 3).
