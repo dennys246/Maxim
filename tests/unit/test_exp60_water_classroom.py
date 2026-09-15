@@ -294,3 +294,50 @@ class TestCheckContract:
         assert m["t_damage_onset_min_s"] == 16.25 and m["t_damage_onset_max_s"] == 16.5
         assert m["t_surface_max_s"] == 3.0 and m["t_sinkback_min_s"] == 3.75
         assert m["distance_from_spawn"] == 41.0
+
+
+class TestPartialCyclePreservation:
+    def test_incomplete_cycle_never_counts_as_pass(self):
+        good = {"cycle": 0, "pass": True}
+        assert chk.all_cycles_pass([good, {"cycle": 1, "pass": True}], 2)
+        assert not chk.all_cycles_pass([good], 2)  # fewer cycles than expected
+        assert not chk.all_cycles_pass([good, {"cycle": 1, "incomplete": True, "failed_at": "w4_escape"}], 2)
+        assert not chk.all_cycles_pass([], 0) and not chk.all_cycles_pass([], 3)
+
+    def test_partial_record_is_preserved_with_its_stage(self):
+        report = {"cycles": [{"cycle": 0, "pass": True}]}
+        rec = {"cycle": 1, "w1_shore": {"pass": True}, "w2_dive": {"pass": False}}
+        chk._preserve_partial(report, rec, "w4_escape")
+        assert report["failed_at"] == "w4_escape"
+        assert report["cycles"][-1] is rec and rec["incomplete"] is True and rec["failed_at"] == "w4_escape"
+        # nothing in progress (error before the loop): report still names the stage, cycles untouched
+        report2 = {"cycles": []}
+        chk._preserve_partial(report2, None, "preflight")
+        assert report2["failed_at"] == "preflight" and report2["cycles"] == []
+
+
+class TestBridgeRosterGate:
+    def test_gate_reads_the_raw_bridge_roster_not_the_body(self):
+        # a pre-#719 bridge emits oxygen but not is_in_water: the body would still CARRY
+        # is_in_water (declared, initial 0) — the gate must name it missing
+        old_bridge = {
+            "oxygen": 20,
+            "health": 20,
+            "y_altitude": 35,
+            "on_ground": 1,
+            "nearest_hostile_dist": 64,
+            "distance_from_spawn": 70,
+        }
+        assert chk.missing_bridge_sensors(old_bridge, chk.REQUIRED_BRIDGE_SENSORS) == {"is_in_water"}
+        assert chk.missing_bridge_sensors({**old_bridge, "is_in_water": 0}, chk.REQUIRED_BRIDGE_SENSORS) == set()
+        assert chk.missing_bridge_sensors({}, chk.REQUIRED_BRIDGE_SENSORS) == set(chk.REQUIRED_BRIDGE_SENSORS)
+
+    def test_required_roster_covers_every_gated_sensor(self):
+        assert {
+            "is_in_water",
+            "oxygen",
+            "health",
+            "y_altitude",
+            "nearest_hostile_dist",
+            "distance_from_spawn",
+        } <= chk.REQUIRED_BRIDGE_SENSORS

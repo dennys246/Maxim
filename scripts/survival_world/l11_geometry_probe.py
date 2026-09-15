@@ -279,6 +279,25 @@ def capture(args: argparse.Namespace) -> int:
     if not ranges:
         pump.stop()
         raise SystemExit("[FAIL] no declared world ranges — body/executor mis-wired")
+    # The settle rules must read sensors the RUNNING bridge actually emits (raw roster) — the
+    # body carries every declared sensor at its initial value whether or not the bridge writes
+    # it, so a stale bridge would make `is_in_water` a constant 0 and every dive settle refuse
+    # (or, worse, a rest-state rule pass on a value nobody measured). Wait for the first raw
+    # snapshot, then check the keys.
+    needed = {name for rule in plan["settle"].values() for name in rule} | (
+        {"oxygen", "health"} if plan["rescue"] else set()
+    )
+    deadline = time.monotonic() + 8.0
+    while not aut.client.latest_state() and time.monotonic() < deadline:
+        time.sleep(0.25)
+    raw = aut.client.latest_state()
+    missing = sorted(needed - set(raw or {}))
+    if not raw or missing:
+        pump.stop()
+        raise SystemExit(
+            f"[FAIL] the running bridge does not emit {missing or 'any state'} — restart `node index.js` "
+            "from current main (the Exp 60 sensors shipped in #719) before capturing"
+        )
 
     records: list[dict[str, Any]] = []
     provenance = {
