@@ -313,3 +313,31 @@ changes escape behaviour — is unchanged; only the sensor that defines the situ
 from light to depth. Live-verified end to end in the prior dry-run (before this pivot):
 the full pain→fear→flee loop fired, all 10 training episodes landed; the pivot removes the
 one unreliable dependency.
+
+## Addendum 4 (dated 2026-09-14, pre-data): live-G2 gate = readability + specificity, not id-match
+
+The first full depth-cave dry-run ran end to end (flee climbed the staircase, pre-probe
+censored baseline, 10 training episodes) and the live-G2 stop rule fired — but inspection
+of the record showed it was an OVER-STRICT PROXY, not a real false null. The deep pit does
+not encode to a single cluster: the 17-sensor world vector jitters across the 0.85
+pattern-completion boundary, so the same spot re-completes to a small NEIGHBOURHOOD of ids
+(observed 2: 6 episodes on one, 4 on the other). Fear spread to BOTH (each reached the
+−1.0 cap), and the post-training probe activated one of them (`d7d…`) which carried
+`dark_fear = −1.0`. So the fear was demonstrably READABLE at the probe state — the
+measurement would have worked — yet the guard refused because its proxy required the
+training-MAJORITY cluster id to equal the probe id (`a76 ≠ d7d`).
+
+**Fix (owner-approved): the live-G2 gate checks the condition it was always meant to —
+readability + specificity — not id-matching.** A seed passes iff the probe-activated dark
+cluster carries fear (`dark_fear ≤ −θ`, θ=0.5) AND the safe cluster does not
+(`|lit_fear| < θ`). This is strictly better: it still refuses a genuine false null (probe
+cluster with no fear → `dark_fear ≈ 0`), and it self-protects against EXCESSIVE cluster
+instability (too many oscillating clusters → fear diluted below θ on the probe cluster →
+refuse). The per-seed record now also stamps `distinct_episode_clusters` and the full
+`cluster_fear_dump`, so the pit's cluster neighbourhood is disclosed, not hidden.
+
+Interpretation note for the verdict: the "danger cluster" is a small neighbourhood of
+world-cluster ids the deep pit spans, all carrying fear; the safe chamber occupies a
+disjoint neighbourhood with none. The scientific claim (situation-keyed fear changes
+escape behaviour) is unchanged; the gate now verifies the mechanism's actual requirement
+directly rather than through a fragile id-equality proxy.
