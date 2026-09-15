@@ -250,39 +250,36 @@ def _verify(args: argparse.Namespace) -> int:
 def _classroom(args: argparse.Namespace) -> int:
     """Build the Exp 58 dark-fear CAVE classroom over RCON (prereg §Apparatus).
 
-    UNDERGROUND by design (owner decision 2026-09-14 + the doc's original "cave"
-    idea). The surface build hit a Paper light-engine limitation: bulk /fill does
-    NOT recompute SKYLIGHT, so a command-built surface roof cannot darken the room
-    (the sealed box read a uniform 15). Underground sidesteps it entirely on TWO
-    reliable mechanisms:
-      * DEEP BURIAL → skylight 0 NATIVELY. Carving air under solid rock needs no
-        recompute — the cells were 0 (solid) and stay 0 (no sky above). Correct
-        value == stored value, so the broken skylight-removal path is never used.
-      * BLOCK LIGHT (a light source) is computed on a SEPARATE, reliable path
-        (torches/spawner mechanics), so the lit SAFE room reads 15 from a placed
-        light block.
+    DEPTH-based danger cluster (owner decision 2026-09-14, Addendum 3). The
+    ``light_level`` sensor proved UNRELIABLE in this world — spatially patchy,
+    inconsistent run-to-run, and skylight-contaminated underground (a buried
+    cell read 14 at day / 0 at night; neighbours read block-light values with no
+    source). Paper/mineflayer light here cannot carry the contingency. So the
+    danger cluster is discriminated by ``y_altitude`` — the bot's own position,
+    read straight from the entity with NO lighting engine involved (100%
+    reliable) — plus hostile presence. Still a game-native cave: descend deep to
+    where the monsters are.
 
-    Geometry (all vanilla, D1-compatible — a real cave: dark depths spawn mobs,
-    a lit chamber is safe). Everything at depth Y_CAVE, encased in a solid stone
-    cuboid (overwrites natural caves/lava/water for clean walls); the AUT is
-    TELEPORTED between chambers by the harness (no surface access needed):
+    Geometry, encased in one solid stone cuboid at depth (the AUT is teleported
+    in for placements/training; it FLEES up the staircase):
 
-    - SAFE chamber (west): carved air, a ``light[level=15]`` block at the anchor
-      → block light 15. Bot spawnpoint here (death never strands the AUT).
-    - DARK chamber (east, longer): carved air, NO light → 0. Zombie SPAWNER at the
-      far end (spawners ignore ``doMobSpawning false`` and require block-light 0 —
-      light the room and it stops: dark→zombies stays a REAL game mechanic; NBT
-      pins adult + density + proximity).
-    - Dividing wall with an OAK DOOR. Closed for the dark-light check and during
-      training (dark chamber isolated → 0); the flee affordance opens it to exit
-      (bridge Movements canOpenDoors=true, canDig=false).
+    - SAFE chamber (upper, floor y=SAFE_Y): carved air, anchor + spawnpoint +
+      flee target. No hostiles (kept swept).
+    - STAIRCASE: 1-up-1-over stone steps (2 wide, 2-high headroom) from the safe
+      chamber down-east to the dark pit — pathfinder climbs it to flee.
+    - DARK pit (lower, floor y=DARK_Y): carved air, zombie SPAWNER at the far
+      end (spawners ignore ``doMobSpawning false``; NBT pins adult + density +
+      proximity). Deep + hostile = the danger cluster.
 
-    ``--sweep`` kills classroom-range zombies (arm boundaries / probe windows,
-    confounding S2). Idempotent: rebuilds IN PLACE at the recorded anchor.
+    No door, no light source, no relight — nothing depends on the broken
+    skylight path. ``--sweep`` kills classroom-range zombies (arm boundaries /
+    probe windows). Idempotent: rebuilds IN PLACE at the recorded anchor.
     """
     from survival_world.common import bot_pos
 
-    y_cave = 40  # deep under solid rock (surface ~69): skylight 0 by burial
+    SAFE_Y = 40
+    DARK_Y = 28
+    MID_Y = (SAFE_Y + DARK_Y) // 2  # 34 — the "exited the dark" boundary the harness uses
 
     rcon = RconControl(args.rcon_host, args.rcon_port, args.rcon_password)
     try:
@@ -294,49 +291,50 @@ def _classroom(args: argparse.Namespace) -> int:
         if args.anchor_x is not None:
             ax, _ay, az = args.anchor_x, args.anchor_y, args.anchor_z
         elif anchor_file.exists():
-            # Rebuild IN PLACE at the recorded anchor (never re-derive from the
-            # bot's drifting live position). --anchor-x relocates deliberately.
             ax, _ay, az = json.loads(anchor_file.read_text())["anchor"]
         else:
             ax, _ay, az = bot_pos(rcon, args.username)
         ax, az = int(ax), int(az)
-        ay = y_cave  # the classroom floor level (underground), regardless of surface y
-        # Chamber layout along +x from the anchor (safe west, dark east):
-        #   safe interior  x [ax-4 .. ax]          (anchor light + spawnpoint at ax-2)
-        #   dividing wall   x  ax+1                 (door at ax+1)
-        #   dark interior  x [ax+2 .. ax+10]        (spawner at ax+9; dark_x = ax+4)
-        door_x = ax + 1
-        dark_x = ax + 4
-        light_x = ax - 2
-        spawn_x = ax + 9
-        floor = ay - 1
+        # Layout along +x (east): safe chamber, staircase down, dark pit.
+        #   safe interior  x [ax-3 .. ax+1], floor SAFE_Y   (anchor at ax-1)
+        #   staircase       x  ax+2 .. ax+13, floor SAFE_Y-1 .. DARK_Y (1 down per x)
+        #   dark pit        x  ax+14 .. ax+20, floor DARK_Y  (spawner at ax+18; dark_x = ax+16)
+        anchor_x = ax - 1
+        stair_x0 = ax + 2
+        n_steps = SAFE_Y - DARK_Y  # 12
+        dark_x = ax + 16
+        spawn_x = ax + 18
         cmds = [
-            # ENCASE: a solid stone cuboid over the whole footprint + margin —
-            # overwrites any natural cave/lava/water so the chambers have clean,
-            # sky-sealed walls (skylight 0 inside by burial).
-            f"fill {ax - 8} {floor} {az - 6} {ax + 14} {ay + 5} {az + 6} minecraft:stone",
-            # Carve SAFE chamber (west): 5 long x 5 wide x 3 high air.
-            f"fill {ax - 4} {ay} {az - 2} {ax} {ay + 2} {az + 2} minecraft:air",
-            # Carve DARK chamber (east): 9 long x 5 wide x 3 high air.
-            f"fill {ax + 2} {ay} {az - 2} {ax + 10} {ay + 2} {az + 2} minecraft:air",
-            # Dividing wall already stone (from the encase); punch a 2-high
-            # doorway at the anchor z and hang a closed oak door.
-            f"fill {door_x} {ay} {az} {door_x} {ay + 1} {az} minecraft:air",
-            f"setblock {door_x} {ay} {az} minecraft:oak_door[facing=east,half=lower,open=false]",
-            f"setblock {door_x} {ay + 1} {az} minecraft:oak_door[facing=east,half=upper,open=false]",
-            # LIT safe area: an invisible full-bright light block at the anchor
-            # cell → block light 15 (the reliable path; no skylight dependency).
-            f"setblock {light_x} {ay} {az} minecraft:light[level=15]",
-            # Zombie spawner at the far end of the dark chamber, floor level.
-            f"setblock {spawn_x} {ay} {az} minecraft:spawner"
+            # ENCASE the whole footprint (+ margin) in solid stone — overwrites
+            # natural cave/lava/water so every chamber has clean, sky-sealed
+            # walls (skylight 0 by burial, though we no longer depend on it).
+            f"fill {ax - 6} {DARK_Y - 2} {az - 4} {ax + 23} {SAFE_Y + 4} {az + 4} minecraft:stone",
+            # Carve SAFE chamber (5 long x 3 wide x 3 high air) at SAFE_Y.
+            f"fill {ax - 3} {SAFE_Y} {az - 1} {ax + 1} {SAFE_Y + 2} {az + 1} minecraft:air",
+            # Carve DARK pit (7 long x 3 wide x 3 high air) at DARK_Y.
+            f"fill {ax + 14} {DARK_Y} {az - 1} {ax + 20} {DARK_Y + 2} {az + 1} minecraft:air",
+        ]
+        # Carve the staircase: step i (0..n_steps) at x = stair_x0+i, floor y =
+        # (SAFE_Y-1)-i, with 2-high headroom above and 2 wide (z-1..z). The floor
+        # stays stone (from the encase); we carve the two air blocks a walker
+        # occupies. 1-up-1-over is standard pathfinder-climbable stairs.
+        for i in range(n_steps + 2):
+            sx = stair_x0 + i
+            fy = (SAFE_Y - 1) - i
+            if fy < DARK_Y:
+                fy = DARK_Y
+            cmds.append(f"fill {sx} {fy + 1} {az - 1} {sx} {fy + 2} {az + 1} minecraft:air")
+        cmds += [
+            # Zombie spawner at the far end of the dark pit, floor level.
+            f"setblock {spawn_x} {DARK_Y} {az} minecraft:spawner"
             + '{SpawnData:{entity:{id:"minecraft:zombie",IsBaby:0b}},'
             + "MaxNearbyEntities:2s,RequiredPlayerRange:8s,SpawnCount:1s,"
             + "MinSpawnDelay:100s,MaxSpawnDelay:300s,SpawnRange:3s}",
             # Global: natural spawning OFF (the spawner is the only source).
             "gamerule doMobSpawning false",
-            # Bot respawns in the lit safe chamber.
-            f"spawnpoint {args.username} {light_x} {ay} {az}",
-            # Death accounting objective for the harness's death cap (SF-2).
+            # Bot respawns in the safe chamber.
+            f"spawnpoint {args.username} {anchor_x} {SAFE_Y} {az}",
+            # Death accounting for the harness's death cap.
             "scoreboard objectives add exp58_deaths deathCount",
         ]
         for cmd in cmds:
@@ -346,25 +344,25 @@ def _classroom(args: argparse.Namespace) -> int:
             if "unknown" in low or "expected" in low or "incorrect" in low:
                 print("\nCLASSROOM BUILD FAILED on the command above — nothing gated may run.")
                 return 4
-        # Record the EXACT built geometry (anchor = the LIT cell; the harness's
-        # safe teleport + flee anchor land there). Written outside the repo.
         anchor_file.parent.mkdir(parents=True, exist_ok=True)
         geom = {
-            "anchor": [light_x, ay, az],
-            "door_x": door_x,
-            "dark_x": dark_x,
-            "flee_x": light_x,
+            "anchor": [anchor_x, SAFE_Y, az],
+            "dark": [dark_x, DARK_Y, az],
+            "safe_y": SAFE_Y,
+            "dark_y": DARK_Y,
+            "mid_y": MID_Y,
+            "flee_x": anchor_x,
             "flee_z": az,
         }
         anchor_file.write_text(json.dumps(geom, indent=2))
 
         print(
-            f"\ncave classroom built underground at y={ay}: lit safe chamber (anchor "
-            f"({light_x},{ay},{az}), light[15]), dark chamber east (door at x={door_x}, "
-            f"dark_x={dark_x}), zombie spawner at ({spawn_x},{ay},{az}).\n"
-            f"No relight needed (burial = skylight 0 natively; block light 15 in safe).\n"
+            f"\ndepth cave built: SAFE chamber floor y={SAFE_Y} (anchor ({anchor_x},{SAFE_Y},{az})), "
+            f"staircase down-east, DARK pit floor y={DARK_Y} (dark_x={dark_x}), spawner at "
+            f"({spawn_x},{DARK_Y},{az}). Danger cluster = depth (y_altitude) + hostiles; light "
+            f"NOT used (unreliable here). 'Exited dark' = y_altitude > {MID_Y}.\n"
             f"geometry recorded -> {anchor_file}.\n"
-            f"START THE BRIDGE WITH THE FLEE ANCHOR: --flee_x={light_x} --flee_z={az}"
+            f"START THE BRIDGE WITH THE FLEE ANCHOR: --flee_x={anchor_x} --flee_z={az}"
         )
         return 0
     finally:

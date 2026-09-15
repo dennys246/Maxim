@@ -281,3 +281,35 @@ bot's sub-block position relative to the source; exact-equality invited flaky re
 13-vs-0 remains a crisp, well-separated split, and the world cluster is formed from all 17
 sensors, so a 13↔15 jitter on one axis is negligible to cluster identity. The scientific
 contingency (dark cluster vs lit cluster) is unchanged.
+
+## Addendum 3 (dated 2026-09-14, pre-data): light_level abandoned → depth-based danger cluster
+
+The underground cave's light also proved unusable. A day/night probe (owner's diagnostic
+idea) showed `light_level` in this world is **not a reliable instrument**: an underground
+cell read 14 at day / 0 at night (skylight-contaminated where burial should give 0), a
+cell with no light source read 13 day and night, and the same coordinates gave different
+values across repeated probes. Paper/mineflayer light here is spatially patchy,
+run-to-run inconsistent, and skylight-leaking underground — three independent failure
+modes (on top of Exp 56's "read DEAD"). No geometry fixes a sensor that answers the same
+question differently each time.
+
+**Decision (owner): abandon `light_level` as the discriminator; define the danger cluster
+by DEPTH.** `y_altitude` is the bot's own position, read straight from the entity with no
+lighting engine — 100% reliable. The classroom is now a deep pit (floor y=28) below a safe
+chamber (floor y=40), joined by a staircase the bot flees UP; the danger cluster separates
+on `y_altitude` (a strong ~12-block signal) **plus** hostile presence (the spawner's
+zombies). No door, no light source, no relight — nothing depends on the broken skylight
+path. It is *more* faithful to the cave idea, not less: descend into the deep dark where
+the monsters are.
+
+Harness changes (same mechanism, same DV family): geometry preflights check `y_altitude`
+(safe ≥ mid_y=34, pit < mid_y) instead of light; a preflight asserts the safe and dark
+world clusters are DISTINCT (the separation requirement light used to carry); `_in_dark`
+= `y_altitude < mid_y`; the flee-latency DV = time for `y_altitude` to rise past mid_y as
+the bot climbs out; door logic removed. The recorded `dark_fear`/`lit_fear` keys are the
+fear on the deep-pit cluster and the safe-chamber cluster respectively (`lit_` retained as
+the field name; it now means "safe/upper"). The scientific claim — situation-keyed fear
+changes escape behaviour — is unchanged; only the sensor that defines the situation moved
+from light to depth. Live-verified end to end in the prior dry-run (before this pivot):
+the full pain→fear→flee loop fired, all 10 training episodes landed; the pivot removes the
+one unreliable dependency.
