@@ -71,9 +71,12 @@ entity:
       # in the PR 4 re-measure; kept scalar until measured.
     # ── Minecraft-scale growth (L11 re-measure prereg): the channel must
     # exceed the ~12-sensor safe band for the retirement-grade re-measure
-    # — and this is the "maximally embody" intent anyway. 16 world sensors
-    # total; the bridge snapshot and FakeBridgeServer emit every one
-    # (lockstep-pinned in tests). All bridge-written: no drives, no drift.
+    # — and this is the "maximally embody" intent anyway. 17 world sensors
+    # total (Exp 60 added `is_in_water`); the bridge snapshot and
+    # FakeBridgeServer emit every one (lockstep-pinned in tests). All
+    # bridge-written truth; `health`/`food`/`oxygen` additionally carry
+    # world-owned drives (drift_rate 0 — the game writes the value, the drive
+    # only reads it for pain), the rest are drive-less/drift-less.
     #
     # RANGE PRINCIPLE (D1's lever, applied deliberately — the L11-prereg
     # review round MEASURED the alternative failing): A4's neutral is the
@@ -205,13 +208,20 @@ entity:
           # anchor), not coordinate navigation.
           params: {}
           description: "Flight response: retreat to the spawn anchor without digging"
-        surface:
+        escape_water:
           # Exp 60: the threat need's WATER consumer. `flee` is DEAD in water —
           # mineflayer-pathfinder's move generators hard-return on liquid nodes,
-          # so goto throws NoPath from any submerged start. `surface` bypasses
-          # the pathfinder with a raw swim-up (jump control) held until the head
+          # so goto throws NoPath from any submerged start. This bypasses the
+          # pathfinder with a raw swim-up (jump control) held until the head
           # block is air again. Param-free (substrate-primary emits no params).
-          # Named to match _DRIVE_TOOL_AFFINITIES["threat"] (which now lists
-          # "surface") so learned drowning-fear actually scores this action.
+          # Named `escape_water` (NOT `surface`) so it substring-matches the
+          # EXISTING _DRIVE_TOOL_AFFINITIES["threat"] "escape" keyword without a
+          # generic "surface" token that would false-match other bodies'
+          # affordances (e.g. alien_xenomorph `climb_surface`) — code-review S2.
+          #
+          # Surfacing is DELIBERATELY a LEARNED response only: `oxygen` has NO
+          # innate corrective need (_DRIVE_CORRECTIVE_NEEDS has no ("oxygen",
+          # "threat")), unlike `health`. An innate oxygen→threat reflex would
+          # confound Exp 60's anticipatory-LEARNING claim — do not add one.
           params: {}
           description: "Escape drowning: swim straight up to air (bypasses the water-dead pathfinder)"

@@ -575,7 +575,7 @@ _DRIVE_TOOL_AFFINITIES: dict[str, tuple[str, ...]] = {
     # tier (its own mechanism), not from interoception. "fawn"/appease and most of
     # these have no clean world affordance in the void body yet. No "block" keyword —
     # it false-matches place_block/mine_block. Keywords name defensive ACTIONS.
-    "threat": ("flee", "hide", "retreat", "escape", "withdraw", "defend", "shelter", "surface"),
+    "threat": ("flee", "hide", "retreat", "escape", "withdraw", "defend", "shelter"),
     "curiosity": ("examine", "look", "sense", "inspect"),
     "pain": ("rest", "heal", "tend", "withdraw"),
 }

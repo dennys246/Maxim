@@ -108,12 +108,13 @@ function snapshot() {
   // at the HEAD (position + 1): head-submerged is exactly the condition under
   // which oxygen depletes, so it tracks the drowning situation, not just feet
   // getting wet. me.isInWater is an OR fallback for versions/edge cases.
+  // HEAD-block only (NOT me.isInWater): oxygen depletes exactly when the head
+  // is submerged, so this tracks the DROWNING situation. me.isInWater is true
+  // for any water contact incl. feet-wet wading (head in air, oxygen full, not
+  // drowning) — including it would inject non-drowning states into the
+  // underwater cluster and disagree with escape_water's head-only check (S1).
   const headBlock = me ? bot.blockAt(me.position.offset(0, 1, 0)) : null;
-  const inWater =
-    (me && me.isInWater) ||
-    (headBlock && (headBlock.name === "water" || headBlock.name === "bubble_column"))
-      ? 1
-      : 0;
+  const inWater = headBlock && (headBlock.name === "water" || headBlock.name === "bubble_column") ? 1 : 0;
   return {
     health: bot.health ?? 20,
     food: bot.food ?? 20,
@@ -213,7 +214,7 @@ async function runAction(name, params) {
       await bot.pathfinder.goto(new goals.GoalNearXZ(anchor.x, anchor.z, 2));
       return "fled to anchor";
     }
-    case "surface": {
+    case "escape_water": {
       // Exp 60: escape drowning by swimming UP. The pathfinder is DEAD in water
       // (mineflayer-pathfinder move generators hard-return on liquid nodes, so
       // `flee`/goto throws NoPath from a submerged start — env-lens E1). This
