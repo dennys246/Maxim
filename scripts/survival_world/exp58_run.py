@@ -5,34 +5,32 @@ Runs the frozen prereg's Claim-B design (docs/experiments/exp58_survival_wants_p
 WITH its dated 2026-09-14 harness addendum) against the live 1.20.4 classroom. Per
 seed × arm:
 
+DANGER cluster = DEPTH + hostiles (Addendum 3): light_level proved unreliable in this
+world (patchy, skylight-contaminated underground), so the dark pit is discriminated by
+y_altitude — the bot's own position, no lighting engine — plus the spawner's zombies.
+The bot is teleported into the deep pit and FLEES UP the staircase; "exited the dark" =
+y_altitude rises above mid_y.
+
   1. PREFLIGHTS (all before any measurement; refusal = exit 3/4, no data):
      - offline gates record exists with all_pass true (prereg instrument-gate stop rule);
-     - frozen-apparatus fingerprint asserted + stamped (explore weight, encoder pattern
-       threshold, θ/α/cap/allowlist, subscriber intensity floor, health drive spec) and
-       the usable-episode bound checked against the body's comfort band;
-     - classroom geometry verified live (light 15 at the safe anchor, 0 in the dark room);
-     - FLEE ACTUATION CHECK (verify-actuation-before-theorizing): with the door OPEN, one
-       real executor flee from inside the dark room must cross the door plane — the
-       review's DNR-1 measured that the previous design could not (closed door is
-       impassable to the pathfinder; bot.spawnPoint is the WORLD spawn — the bridge now
-       takes --flee_x/--flee_z and the harness opens the door for probes).
-  2. PRE-PROBE: kill-sweep + full-heal, DOOR OPEN (probes are mob-free so containment is
-     moot), P shepherded placements into the dark room with the FULL loop live; DV =
-     LATENCY-TO-EXIT (RCON ground truth, censored at the window cap). Executed-action
-     counts per window recorded (the lit-activity gate's DV).
-  3. TRAINING: DOOR CLOSED (containment), K confined damage episodes via PROPOSE-ONLY
-     ticks (the conditioning chamber — no execution: a failed flee would book
-     arm-asymmetric negative credit on the read path itself; record_outcome verified
-     unreachable on this path). Usable episode = pain PUBLISHED with the dark
-     world-cluster active AND health ≤ 13; the NOTED WORLD CLUSTER IS CAPTURED PER
-     EPISODE — the live G2: training-majority cluster must equal the probe-identified
-     dark cluster or the seed is REFUSED (an unreadable fear write must never ship as a
-     behavioural null).
-  4. POST-PROBE: identical to (2). Flee negative-link count recorded (probe
-     self-poisoning audit).
+     - frozen-apparatus fingerprint asserted + stamped (fear α/cap/θ/allowlist, encoder
+       threshold, explore weight) and the usable-episode bound checked vs the comfort band;
+     - geometry via y_altitude (reliable): the bot reaches the safe chamber's depth and the
+       pit's depth; the safe and dark WORLD CLUSTERS must be DISTINCT (the real separation
+       requirement, now carried by depth + hostiles);
+     - FLEE ACTUATION CHECK (verify-actuation-before-theorizing): one real executor flee
+       must climb the staircase OUT of the pit (y past mid_y) or the seed refuses.
+  2. PRE-PROBE: kill-sweep + full-heal, P shepherded placements into the pit with the FULL
+     loop live; DV = LATENCY-TO-EXIT (time for y_altitude to rise past mid_y, RCON ground
+     truth, censored at the window cap). Executed-action counts recorded (lit-activity DV).
+  3. TRAINING: K confined damage episodes via PROPOSE-ONLY ticks in the pit (the
+     conditioning chamber — no execution: a full loop would book arm-asymmetric negative
+     credit on the flee read path). Usable episode = pain PUBLISHED with the dark world
+     cluster active AND health ≤ 13; the noted cluster is captured per episode — the live
+     G2: training-majority == probe dark cluster or REFUSE (no unreadable-write null).
+  4. POST-PROBE: identical to (2). Flee negative-link count recorded (self-poisoning audit).
   5. Per-seed record appended (run_id-stamped) through the gated evidence path. Under-K,
-     failed live-G2, or death-cap seeds are stamped REFUSED and their behavioural DVs
-     are not written.
+     failed live-G2, or death-cap seeds are stamped REFUSED with no behavioural DVs.
 
 Run ON the bridge box, server + bridge up (bridge started with --flee_x/--flee_z from
 the classroom build output), classroom built:
@@ -111,8 +109,6 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--rcon-port", type=int, default=25575)
     ap.add_argument("--rcon-password", required=True)
     ap.add_argument("--username", default="maxim")
-    ap.add_argument("--door-x", type=float, default=None)
-    ap.add_argument("--dark-x", type=float, default=None)
     ap.add_argument("--write-experiment-results", action="store_true")
     ap.add_argument("--allow-dirty", action="store_true")
     args = ap.parse_args(argv)
@@ -154,28 +150,29 @@ def main(argv: list[str] | None = None) -> int:
 
     run_id = uuid.uuid4().hex[:12]
     rcon = C.RconControl(args.rcon_host, args.rcon_port, args.rcon_password)
-    # Geometry from the classroom's RECORDED anchor, never re-derived from the
-    # bot's live position (a half-block teleport drift put door_x off by one in
-    # the first dry-run — geometry must be the built truth, not wherever the
-    # bot happens to stand). --door-x/--dark-x still override for ad-hoc use.
+    # Geometry from the classroom's RECORDED anchor file, never re-derived from
+    # the bot's live position (geometry must be the built truth, not wherever the
+    # bot happens to stand — a teleport drift once put the derived coords off by
+    # one).
     anchor_file = Path.home() / ".maxim" / "exp58_classroom.json"
     try:
         geom = json.loads(anchor_file.read_text())
     except OSError:
         print(f"[FAIL] classroom geometry not found: {anchor_file} — run `setup_world.py classroom` first")
         return 3
-    ax, ay, az = (float(v) for v in geom["anchor"])
-    door_x = args.door_x if args.door_x is not None else float(geom["door_x"])
-    dark_x = args.dark_x if args.dark_x is not None else float(geom["dark_x"])
-    safe = {"x": ax, "y": ay, "z": az}
-    dark = {"x": dark_x, "y": ay, "z": az}
-    print(f"run {run_id}: arm={args.arm} anchor=({ax:.0f},{ay:.0f},{az:.0f}) door_x={door_x:.0f} dark_x={dark_x:.0f}")
-
-    def _set_door(open_: bool) -> None:
-        state = "true" if open_ else "false"
-        dx, dz = int(door_x), int(az)
-        rcon.command(f"setblock {dx} {int(ay)} {dz} minecraft:oak_door[facing=east,half=lower,open={state}]")
-        rcon.command(f"setblock {dx} {int(ay) + 1} {dz} minecraft:oak_door[facing=east,half=upper,open={state}]")
+    # Depth-based geometry (Addendum 3): the danger cluster is DEEP + hostile,
+    # discriminated by y_altitude (reliable) — light is not used. safe is the
+    # upper chamber; dark is the lower pit; the bot flees UP the staircase, and
+    # "exited the dark" = y_altitude rises above mid_y.
+    sx, sy, sz = (float(v) for v in geom["anchor"])
+    dx, dy, dz = (float(v) for v in geom["dark"])
+    mid_y = float(geom["mid_y"])
+    safe = {"x": sx, "y": sy, "z": sz}
+    dark = {"x": dx, "y": dy, "z": dz}
+    print(
+        f"run {run_id}: arm={args.arm} safe=({sx:.0f},{sy:.0f},{sz:.0f}) "
+        f"dark=({dx:.0f},{dy:.0f},{dz:.0f}) mid_y={mid_y:.0f}"
+    )
 
     def _sweep(radius: int = 64) -> None:
         # `execute at <bot>` so distance measures from the CLASSROOM, not the
@@ -195,8 +192,11 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
     def _in_dark() -> bool:
-        x, _, _ = bot_pos(rcon, args.username)
-        return x > door_x
+        # "In the dark pit" = below the mid depth. y_altitude (bot position) is
+        # the reliable discriminator; light is not used (Addendum 3). Fleeing UP
+        # the staircase raises y past mid_y → exited.
+        _, y, _ = bot_pos(rcon, args.username)
+        return y < mid_y
 
     records: list[dict] = []
     exit_code = 0
@@ -266,18 +266,28 @@ def main(argv: list[str] | None = None) -> int:
                 if settle_until(aut, lambda vm: vm.get("light_level") is not None, timeout_s=10.0) is None:
                     raise Refusal("bridge never delivered state")
 
-                # ── Geometry + actuation preflights ──
-                _set_door(False)  # darkness is a DOOR-CLOSED property (open leaks platform light)
+                # ── Geometry + separability + actuation preflights ──
+                # Position sanity via y_altitude (reliable): the bot reaches the
+                # safe chamber's depth up top and the dark pit's depth below.
                 _sweep()
                 rcon.teleport(args.username, safe)
-                if settle_until(aut, lambda vm: (vm.get("light_level") or 0) >= 13, timeout_s=10.0) is None:
-                    raise Refusal("safe anchor does not read light 15 — classroom geometry / relight?")
+                if settle_until(aut, lambda vm: (vm.get("y_altitude") or 0) >= mid_y, timeout_s=10.0) is None:
+                    raise Refusal("safe chamber depth not reached — classroom geometry?")
+                safe_cluster_pre = _encode_current_clusters(encoder, agent_id, aut.executor).get("world")
                 rcon.teleport(args.username, dark)
-                if settle_until(aut, lambda vm: (vm.get("light_level") or 99) <= 1, timeout_s=10.0) is None:
-                    raise Refusal("dark room does not read light 0 (door closed) — classroom geometry / relight?")
-                # Flee-actuation check with the door CLOSED — flee itself must
-                # open it (canOpenDoors) AND cross the plane; if it can't, the
-                # seed refuses before any measurement.
+                if settle_until(aut, lambda vm: (vm.get("y_altitude") or 99) < mid_y, timeout_s=10.0) is None:
+                    raise Refusal("dark pit depth not reached — classroom geometry?")
+                dark_cluster_pre = _encode_current_clusters(encoder, agent_id, aut.executor).get("world")
+                # The DANGER cluster must be distinct from the safe cluster, or
+                # fear keyed on it would also fire in safety (the real separation
+                # requirement, now carried by depth + hostiles, not light).
+                if not dark_cluster_pre or dark_cluster_pre == safe_cluster_pre:
+                    raise Refusal(
+                        f"safe and dark encode to the same world cluster ({safe_cluster_pre}) — "
+                        "depth/hostile separation insufficient; apparatus needs a stronger contrast"
+                    )
+                # Flee-actuation check: flee must climb the staircase OUT of the
+                # pit (y past mid_y); if it can't, refuse before any measurement.
                 flee_tool = next(t for t in aut.executor.registry.list() if t.endswith("_flee"))
                 out = aut.executor.execute({"tool_name": flee_tool, "params": {}})
                 deadline = time.monotonic() + 30.0
@@ -286,9 +296,10 @@ def main(argv: list[str] | None = None) -> int:
                 if _in_dark():
                     raise Refusal(
                         f"flee actuation check FAILED (success={getattr(out, 'success', None)}, "
-                        f"error={getattr(out, 'error', None)!r}) — bridge --flee_x/--flee_z set? door open?"
+                        f"error={getattr(out, 'error', None)!r}) — can the bot climb the stairs? "
+                        "bridge --flee_x/--flee_z set?"
                     )
-                print("  preflight: flee actuation OK (crossed the door plane)")
+                print("  preflight: flee actuation OK (climbed out of the pit)")
 
                 def _stop_motion() -> None:
                     # Clear any residual pathfinder goal (bridge `stop`): a goto
@@ -302,20 +313,14 @@ def main(argv: list[str] | None = None) -> int:
                 _stop_motion()
                 # Pre-training dark-cluster identity (the live-G2 triple: this,
                 # the training majority, and the post-training probe cluster).
-                _set_door(False)  # flee left it open; the dark read needs it closed (no leak)
                 rcon.teleport(args.username, dark)
-                if settle_until(aut, lambda vm: (vm.get("light_level") or 99) <= 1, timeout_s=10.0) is None:
-                    raise Refusal("pre-training dark settle failed")
+                if settle_until(aut, lambda vm: (vm.get("y_altitude") or 99) < mid_y, timeout_s=10.0) is None:
+                    raise Refusal("pre-training dark depth not reached")
                 pre_dark_cluster = _encode_current_clusters(encoder, agent_id, aut.executor).get("world")
                 rcon.teleport(args.username, safe)
                 deaths0 = _deaths()
 
                 def _probe(label: str) -> dict:
-                    # Door stays CLOSED: the flee affordance opens it to exit
-                    # (bridge Movements canOpenDoors=true), so the dark chamber
-                    # stays sealed/dark until the bot chooses to leave — no
-                    # block-light leak from the lit safe chamber during the window.
-                    _set_door(False)
                     _sweep()
                     _heal()
                     if settle_until(aut, lambda vm: (vm.get("food") or 0) >= 16, timeout_s=10.0) is None:
@@ -380,8 +385,7 @@ def main(argv: list[str] | None = None) -> int:
 
                 pre = _probe("pre")
 
-                # ── Training (door closed; propose-only conditioning) ──
-                _set_door(False)
+                # ── Training (propose-only conditioning in the pit) ──
                 _stop_motion()  # a residual flee goal would walk the bot out (finding 1)
                 usable = 0
                 attempts = 0
@@ -437,15 +441,14 @@ def main(argv: list[str] | None = None) -> int:
                     raise Refusal(f"only {usable}/{FROZEN['K_usable_episodes']} usable episodes")
 
                 # ── Cluster identification + LIVE G2 gate ──
-                _set_door(False)  # dark cluster is identified at light 0 (door closed, no leak)
                 _sweep()
                 rcon.teleport(args.username, dark)
-                if settle_until(aut, lambda vm: (vm.get("light_level") or 99) <= 1, timeout_s=10.0) is None:
-                    raise Refusal("post-training dark settle failed")
+                if settle_until(aut, lambda vm: (vm.get("y_altitude") or 99) < mid_y, timeout_s=10.0) is None:
+                    raise Refusal("post-training dark depth not reached")
                 dark_cluster = _encode_current_clusters(encoder, agent_id, aut.executor).get("world")
                 rcon.teleport(args.username, safe)
-                if settle_until(aut, lambda vm: (vm.get("light_level") or 0) >= 13, timeout_s=10.0) is None:
-                    raise Refusal("post-training lit settle failed")
+                if settle_until(aut, lambda vm: (vm.get("y_altitude") or 0) >= mid_y, timeout_s=10.0) is None:
+                    raise Refusal("post-training safe depth not reached")
                 lit_cluster = _encode_current_clusters(encoder, agent_id, aut.executor).get("world")
                 majority = max(set(episode_clusters), key=episode_clusters.count) if episode_clusters else None
                 record["live_g2"] = {
@@ -502,10 +505,6 @@ def main(argv: list[str] | None = None) -> int:
             with open(out_path, "a") as fh:
                 fh.write(json.dumps(record) + "\n")
     finally:
-        try:
-            _set_door(False)
-        except Exception as exc:
-            print(f"WARNING: could not close the door: {exc!r}")
         rcon.close()
 
     ok = sum(1 for r in records if r.get("refusal") is None)
