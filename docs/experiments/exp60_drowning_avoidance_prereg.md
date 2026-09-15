@@ -10,6 +10,56 @@
 > 0→1.0), so "underwater/low-air" is a genuinely distinct world cluster. This prereg is the
 > brainstorm the four-lens review reads; it is NOT the frozen prereg.
 
+## Four-lens review outcome (2026-09-15): VIABLE, but needs 3 additions + a re-cut DV
+
+All four lenses returned DO-NOT-BUILD **as drafted** — but unlike the Slice-2 channel-split
+(unfixable), Exp 60 is FIXABLE, and they converge on one buildable design. The cue is a genuine
+upgrade over dark=danger (measured below). Rationale: `docs/experiments/rationale/exp60-drowning/`.
+
+**Measured (offline, real encoder bases — the verify-the-instrument gate, done early):** the raw
+oxygen swing separates only at the BOTTOM of the dive —
+
+| oxygen (of 40) | cos(shore, state) | pre-damage? |
+|---|---|---|
+| 20 → 4 (the whole ~15s air window) | 1.000 → 0.936 | same cluster as shore (no fear) |
+| 2 | 0.872 | same |
+| 0 (damage onset) | 0.779 | distinct |
+
+So the anticipation window is EMPTY on oxygen alone — the feared cluster == the damage state
+(confounding-DNB-1, wiring-SF-1). **Fix, also measured: a binary `isInWater` sensor makes the
+underwater cluster distinct from dive-second-0** (cos 0.792 at full air → 0.685 depleted), giving a
+stable pre-damage cue.
+
+**Required additions before freeze (cross-confirmed across lenses):**
+1. **`isInWater` binary world sensor** (mineflayer exposes it; D1-legal) — the stable pre-damage
+   underwater cluster. *Verified it separates from second 0.* [confounding, wiring, environment]
+2. **An air-hunger / oxygen drive** — oxygen has NO `drive:` block today (only health/food), so
+   drowning reaches Wire-4 only as generic `drive:health` at damage onset. A breath drive makes
+   asphyxia publish pain EARLY and drowning-specific; add `drive:oxygen` to
+   `NACConfig.cluster_fear_failure_modes`. [bio-faithful, wiring]
+3. **A `surface`/`escape_water` actuator that BYPASSES the pathfinder** — `flee` is DEAD in water
+   (mineflayer-pathfinder hard-returns on liquid nodes, verified in source; `GoalNearXZ` ignores Y).
+   Use `bot.setControlState('jump', true)` held until surfaced; add the name to
+   `_DRIVE_TOOL_AFFINITIES["threat"]` or the read path emits nothing (Exp 58 dead-path bug); ship a
+   live swim-out actuation preflight. [environment-E1, wiring-DNB-2]
+4. **DV re-cut to the 0–15s pre-damage air window** — primary = P(surface before first damage tick)
+   + latency censored at first damage; rescue-teleport cap ~18–20s (below ~25s death), rescue
+   recorded as CENSORED (rescue restores oxygen like a real surface — must distinguish). [confounding, environment]
+5. **Live separability gate** — run `scripts/survival_world/l11_geometry_probe.py` on the built water
+   pool (shore vs submerged) as the `authorizes_build` gate before the full harness. [all lenses]
+6. **Build hygiene** — `doMobSpawning false` (water spawns DROWNED zombies at block-light 0 = a
+   second pain source), fully-walled water column (source blocks; open top = the escape), forceload
+   before teleport, rescue onto a DRY platform, geometry anchor file. [environment-E4]
+7. **Confounding guards** — no-damage probe (full-heal, mob-free, full-air submersion), yoke exposure
+   across arms, specificity gate (`|shore_fear| < 0.2·|water_fear|`). [confounding]
+
+**Positives the review confirmed:** idle bot sinks (drowning real, no auto-float); reaching air
+restores oxygen game-natively; substrate has headroom (no oxygen drive, pathfinder doesn't
+auto-surface); Wire-4 read path is LIVE (`threat→flee` wired, unlike Exp 58's first pass). Front-gate
+scope: the drive + sensor + actuator are justified game-native/bio-faithful additions (asphyxia is a
+real interoceptive alarm; in-water a real perceived state; surfacing a real act), not gold-plating —
+but they DO make this a real build, not a config tweak.
+
 ## The claim
 
 A survival agent LEARNS to escape the drowning situation — it surfaces / leaves water sooner after
