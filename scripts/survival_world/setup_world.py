@@ -284,8 +284,11 @@ def _classroom(args: argparse.Namespace) -> int:
     rcon = RconControl(args.rcon_host, args.rcon_port, args.rcon_password)
     try:
         if args.sweep:
-            resp = rcon.command("kill @e[type=minecraft:zombie,distance=..64]")
-            print(f"rcon> kill zombies r64\n      {resp.strip() or '(none)'}")
+            # Spare the persistent cluster-mob (Addendum 5): it is part of the
+            # apparatus (it gives the danger cluster its reliable hostile axis),
+            # not spawner spillover to clear.
+            resp = rcon.command("kill @e[type=minecraft:zombie,tag=!exp58clustermob,distance=..64]")
+            print(f"rcon> kill zombies (spare clustermob) r64\n      {resp.strip() or '(none)'}")
             return 0
         anchor_file = Path.home() / ".maxim" / "exp58_classroom.json"
         if args.anchor_x is not None:
@@ -295,24 +298,30 @@ def _classroom(args: argparse.Namespace) -> int:
         else:
             ax, _ay, az = bot_pos(rcon, args.username)
         ax, az = int(ax), int(az)
-        # Layout along +x (east): safe chamber, staircase down, dark pit.
+        # Layout along +x (east): safe chamber, staircase down, LONG dark pit.
         #   safe interior  x [ax-3 .. ax+1], floor SAFE_Y   (anchor at ax-1)
         #   staircase       x  ax+2 .. ax+13, floor SAFE_Y-1 .. DARK_Y (1 down per x)
-        #   dark pit        x  ax+14 .. ax+20, floor DARK_Y  (spawner at ax+18; dark_x = ax+16)
+        #   dark pit        x  ax+14 .. ax+27 (14 long), floor DARK_Y
+        #     clustermob at ax+18, dark_x (placement/encode) ax+20, spawner ax+25
         anchor_x = ax - 1
         stair_x0 = ax + 2
         n_steps = SAFE_Y - DARK_Y  # 12
-        dark_x = ax + 16
-        spawn_x = ax + 18
+        pit_x0 = ax + 14
+        pit_x1 = ax + 27  # ADEQUATELY LONG pit (14 blocks) — room for the danger
+        # zone, deep separation, and headroom to add a deeper TREASURE layer in the
+        # follow-up experiment (see docs/experiments/exp59_layered_cave_prereg.md).
+        clustermob_x = ax + 18
+        dark_x = ax + 20  # deep in the pit, far from the stairs (big position + depth signal)
+        spawn_x = ax + 25
         cmds = [
             # ENCASE the whole footprint (+ margin) in solid stone — overwrites
             # natural cave/lava/water so every chamber has clean, sky-sealed
             # walls (skylight 0 by burial, though we no longer depend on it).
-            f"fill {ax - 6} {DARK_Y - 2} {az - 4} {ax + 23} {SAFE_Y + 4} {az + 4} minecraft:stone",
+            f"fill {ax - 6} {DARK_Y - 2} {az - 4} {pit_x1 + 3} {SAFE_Y + 4} {az + 4} minecraft:stone",
             # Carve SAFE chamber (5 long x 3 wide x 3 high air) at SAFE_Y.
             f"fill {ax - 3} {SAFE_Y} {az - 1} {ax + 1} {SAFE_Y + 2} {az + 1} minecraft:air",
-            # Carve DARK pit (7 long x 3 wide x 3 high air) at DARK_Y.
-            f"fill {ax + 14} {DARK_Y} {az - 1} {ax + 20} {DARK_Y + 2} {az + 1} minecraft:air",
+            # Carve the LONG DARK pit (3 wide x 3 high air) at DARK_Y.
+            f"fill {pit_x0} {DARK_Y} {az - 1} {pit_x1} {DARK_Y + 2} {az + 1} minecraft:air",
         ]
         # Carve the staircase: step i (0..n_steps) at x = stair_x0+i, floor y =
         # (SAFE_Y-1)-i, with 2-high headroom above and 2 wide (z-1..z). The floor
@@ -325,12 +334,21 @@ def _classroom(args: argparse.Namespace) -> int:
                 fy = DARK_Y
             cmds.append(f"fill {sx} {fy + 1} {az - 1} {sx} {fy + 2} {az + 1} minecraft:air")
         cmds += [
-            # Zombie spawner at the far end of the dark pit, floor level.
+            # Zombie spawner at the far end of the pit (AI attackers → training damage).
             f"setblock {spawn_x} {DARK_Y} {az} minecraft:spawner"
             + '{SpawnData:{entity:{id:"minecraft:zombie",IsBaby:0b}},'
-            + "MaxNearbyEntities:2s,RequiredPlayerRange:8s,SpawnCount:1s,"
-            + "MinSpawnDelay:100s,MaxSpawnDelay:300s,SpawnRange:3s}",
-            # Global: natural spawning OFF (the spawner is the only source).
+            + "MaxNearbyEntities:3s,RequiredPlayerRange:12s,SpawnCount:2s,"
+            + "MinSpawnDelay:80s,MaxSpawnDelay:200s,SpawnRange:4s}",
+            # Clear any prior clustermob (rebuild), then summon THE persistent one:
+            # a NoAI zombie that never moves/attacks/despawns — it exists only to
+            # give the danger cluster its reliable HOSTILE axis at encode/probe
+            # time, so depth + hostiles is a stable multi-axis contrast vs the safe
+            # chamber (Addendum 5 — L11 dilution made depth-alone too weak/jittery).
+            "kill @e[type=minecraft:zombie,tag=exp58clustermob]",
+            f"summon minecraft:zombie {clustermob_x} {DARK_Y} {az} "
+            + "{NoAI:1b,PersistenceRequired:1b,Silent:1b,IsBaby:0b,CustomName:"
+            + '\'{"text":"exp58-clustermob"}\',Tags:["exp58clustermob"]}',
+            # Global: natural spawning OFF (spawner + clustermob are the only mobs).
             "gamerule doMobSpawning false",
             # Bot respawns in the safe chamber.
             f"spawnpoint {args.username} {anchor_x} {SAFE_Y} {az}",
@@ -358,9 +376,10 @@ def _classroom(args: argparse.Namespace) -> int:
 
         print(
             f"\ndepth cave built: SAFE chamber floor y={SAFE_Y} (anchor ({anchor_x},{SAFE_Y},{az})), "
-            f"staircase down-east, DARK pit floor y={DARK_Y} (dark_x={dark_x}), spawner at "
-            f"({spawn_x},{DARK_Y},{az}). Danger cluster = depth (y_altitude) + hostiles; light "
-            f"NOT used (unreliable here). 'Exited dark' = y_altitude > {MID_Y}.\n"
+            f"staircase down-east, LONG DARK pit floor y={DARK_Y} (dark_x={dark_x}), persistent "
+            f"clustermob at ({clustermob_x},{DARK_Y},{az}), spawner at ({spawn_x},{DARK_Y},{az}). "
+            f"Danger cluster = depth (y_altitude) + RELIABLE hostile (the clustermob); light NOT "
+            f"used. 'Exited dark' = y_altitude > {MID_Y}.\n"
             f"geometry recorded -> {anchor_file}.\n"
             f"START THE BRIDGE WITH THE FLEE ANCHOR: --flee_x={anchor_x} --flee_z={az}"
         )

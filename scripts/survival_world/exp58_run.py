@@ -177,8 +177,12 @@ def main(argv: list[str] | None = None) -> int:
     def _sweep(radius: int = 64) -> None:
         # `execute at <bot>` so distance measures from the CLASSROOM, not the
         # console/world-spawn origin (executor finding 5: a classroom >64 from
-        # world spawn made the old sweep a silent no-op).
-        rcon.command(f"execute at {args.username} run kill @e[type=minecraft:zombie,distance=..{radius}]")
+        # world spawn made the old sweep a silent no-op). SPARE the persistent
+        # clustermob (Addendum 5) — it is the danger cluster's reliable hostile
+        # axis, not spawner spillover; only the AI attackers are swept.
+        rcon.command(
+            f"execute at {args.username} run kill @e[type=minecraft:zombie,tag=!exp58clustermob,distance=..{radius}]"
+        )
 
     def _heal() -> None:
         rcon.command(f"effect give {args.username} minecraft:instant_health 1 10 true")
