@@ -403,6 +403,17 @@ def analyze(args: argparse.Namespace) -> int:
 
     if args.json:
         out = Path(args.json).expanduser()
+        # Stamp code provenance into the decision record (plan discipline:
+        # "provenance-stamped decision record") AND satisfy the gated-record
+        # preflight — the diagnosis names docs/experiments/data/. Diagnostic,
+        # not gated behavioural data, so --allow-dirty is offered (stamped).
+        sys.path.insert(0, str(_REPO_ROOT / "scripts"))
+        import maxim  # noqa: PLC0415  (deferred: keep _provenance the maxim-free surface)
+        from _provenance import in_process_code_provenance  # noqa: PLC0415
+
+        record["provenance"]["code"] = in_process_code_provenance(
+            _REPO_ROOT, maxim.__file__, out_path=out, allow_dirty=args.allow_dirty
+        )
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(record, indent=2) + "\n")
         print(f"[analyze] wrote diagnosis -> {out}")
@@ -432,6 +443,11 @@ def main(argv: list[str] | None = None) -> int:
     an = sub.add_parser("analyze", help="OFFLINE: diagnose geometry from a captured trace")
     an.add_argument("--trace", required=True)
     an.add_argument("--json", default=None, help="write the diagnosis record here")
+    an.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="permit a dirty tree when writing the record (stamps allow_dirty; diagnostic only)",
+    )
     an.set_defaults(func=analyze)
 
     args = ap.parse_args(argv)
