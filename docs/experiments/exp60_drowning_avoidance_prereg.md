@@ -324,10 +324,27 @@ floor and shore states gate (ii) measured are unchanged by this (eyes at 36.6 in
 the harness's live cluster-distinct preflight re-checks every seed. Next: one FEAR seed diagnostic
 run (ungated) to read the ticks, then the fix that measurement names, then the second run.
 
+**Amendment 4 — 2026-09-15, POST-DATA, the cause the diagnostic named: bridge state cadence.** The
+one-seed diagnostic with window telemetry (#730) read `ticks=1 proposed=[] calls=[]` in every
+placement: the loop ticked ONCE per window (on the shore, during the warm-up) and never again. Offline
+sweep against the fake bridge (loop ticks in 6 s vs the bridge's state interval): 100 ms → 9 ticks
+(gaps 0.5–1.0 s), 200 ms → 7, 250 ms → 6, 330 ms → 4, **500 ms → 3 (gaps 1.8–2.5 s)** — the loop's
+substrate tick gap is ≈ 5× the bridge's state interval, with or without the sync pump (measured both
+ways). The live bridge ran at its default 500 ms, so a 4.3 s window held at most one in-water tick,
+too late to act; the mechanism never ran. Fix (apparatus + instrument, no substrate change): the
+bridge runs at `--state_interval_ms=100` (its own flag; the loop then proposes within ~1 s of the
+teleport and the measured 1.5–1.9 s escape fits), and the harness MEASURES the cadence at preflight
+(median interval between fresh snapshots) and refuses above 0.15 s; the value is stamped per seed.
+The apparatus check and gate (ii) records are unaffected (their edges are wall-clock physics sampled
+by their own loops). OWED, outside this experiment: why the agent loop needs ~5 percepts per substrate
+tick in sim mode (a loop-design question for the runtime brief). The run-1 records (INCOMPLETE) stand;
+run 2 proceeds under this amendment.
+
 ## Operator runbook (the frozen protocol, executed from a clean main checkout at or after the freeze)
 
-1. big-mac-mini: `git checkout main && git pull`; RESTART the bridge (`flee` changed in #728) and
-   confirm its `spawn state:` line carries `is_in_water`.
+1. big-mac-mini: `git checkout main && git pull`; RESTART the bridge **with `--state_interval_ms=100`**
+   (Amendment 4; `flee` and `is_in_water` also changed in #728/#730) and confirm its `spawn state:` line
+   carries `is_in_water`.
 2. `export PYTHONPATH="$PWD/src"` (its own line), then the FEAR arm, then the ABLATED arm:
    `python scripts/survival_world/exp60_run.py run --arm fear --rcon-password '<pw>' --username maxim --write-experiment-results`
    (same with `--arm ablated`). Each seed prints its preflights, placements, training episodes and

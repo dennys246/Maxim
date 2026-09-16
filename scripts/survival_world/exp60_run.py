@@ -56,8 +56,13 @@ gates (incl. specificity). Duplicate (arm, seed) rows REFUSE unless ``--run-id``
 Proposal cadence inside the loop is 2 Hz (``llm_submit_interval`` 0.5 s), stated so latencies
 are read against it.
 
-Run ON the bridge box (server + bridge from current main, classroom built, records merged):
+Run ON the bridge box (server + bridge from current main, classroom built, records merged).
+The bridge MUST run at a 100 ms state cadence — the loop's substrate tick gap is ~5x the
+bridge's state interval (measured), so the default 500 ms yields one tick per 4.3 s window;
+the preflight measures the cadence and refuses a slow bridge:
 
+    (cd scripts/minecraft_bridge && node index.js --mc_host=127.0.0.1 --mc_port=25565 \\
+        --bridge_port=25567 --username=maxim --state_interval_ms=100)
     export PYTHONPATH="$PWD/src"
     python scripts/survival_world/exp60_run.py run --arm fear --rcon-password '<pw>' \\
         --username maxim --write-experiment-results
@@ -115,6 +120,10 @@ FROZEN: dict[str, Any] = {
     "probe_cap_margin_s": 0.75,  # probe cap = measured air-hunger pain edge (min) − this (US-FREE window)
     "train_cap_margin_s": 1.0,  # training cap = measured damage onset (min) − this (pre-damage)
     "loop_warm_s": 1.0,  # the full loop runs on the shore this long before a placement teleport
+    # The loop's substrate tick gap is ~5x the bridge's state interval (MEASURED offline: 500 ms →
+    # 1.8–2.5 s gaps = one tick per 4.3 s window; 100 ms → 0.5–1 s). The bridge must run at
+    # --state_interval_ms=100 and the harness MEASURES it at preflight (refuses a slow bridge).
+    "bridge_state_interval_max_s": 0.15,
     "usable_oxygen_max": 12.0,  # the SATURATING publish (intensity 1.0); must sit BELOW set_point − comfort_band
     "usable_pain_intensity_min": 1.0,
     "seeds": (11, 12, 13, 14, 15),
@@ -335,6 +344,15 @@ def fingerprint_drift(live: dict[str, Any], frozen: dict[str, Any]) -> list[str]
     return sorted(k for k in set(live) | set(frozen) if norm(live.get(k)) != norm(frozen.get(k)))
 
 
+def median_interval_s(reset_times: list[float]) -> float | None:
+    """Median gap between consecutive snapshot arrivals (pure). None below two arrivals."""
+    if len(reset_times) < 2:
+        return None
+    gaps = sorted(b - a for a, b in zip(reset_times, reset_times[1:]))
+    n = len(gaps)
+    return gaps[n // 2] if n % 2 else (gaps[n // 2 - 1] + gaps[n // 2]) / 2.0
+
+
 def min_pain_edge_s(apparatus: dict[str, Any]) -> float | None:
     """The earliest measured air-hunger pain edge across the apparatus check's cycles (pure)."""
     edges = [c.get("w2_dive", {}).get("t_pain_edge") for c in apparatus.get("cycles", [])]
@@ -429,6 +447,19 @@ def _run(args: argparse.Namespace) -> int:
         f"run {run_id}: arm={args.arm} shore={shore} submerged={sub} probe cap={probe_cap_s:.2f}s "
         f"(pain edge min {pain_edge_min:.2f}) train cap={train_cap_s:.2f}s (onset min {onset_min:.2f})"
     )
+
+    def _measure_bridge_cadence(aut: Any, seconds: float = 3.0) -> float | None:
+        """Median interval between FRESH bridge snapshots, from the client's state-age resets."""
+        arrivals: list[float] = []
+        last_age = None
+        t_end = time.monotonic() + seconds
+        while time.monotonic() < t_end:
+            age = aut.client.state_age_s()
+            if last_age is not None and age < last_age:  # a reset = a new snapshot arrived
+                arrivals.append(time.monotonic() - age)
+            last_age = age
+            time.sleep(0.01)
+        return median_interval_s(arrivals)
 
     def _heal() -> None:
         rcon.command(f"effect give {args.username} minecraft:instant_health 1 10 true")
@@ -621,6 +652,17 @@ def _run(args: argparse.Namespace) -> int:
                 missing = missing_bridge_sensors(aut.client.latest_state(), REQUIRED_BRIDGE_SENSORS)
                 if missing:
                     raise Refusal(f"the running bridge does not emit {sorted(missing)} — restart it from current main")
+                # The loop's tick rate is bound to the bridge's state cadence (~5 percepts per
+                # substrate tick, measured): a 500 ms bridge gives ONE tick per 4.3 s window and
+                # the mechanism cannot act inside it (first live run: 120 windows, ticks=1,
+                # actions=0). Measure the cadence; refuse a slow bridge.
+                cadence = _measure_bridge_cadence(aut)
+                record["bridge_state_interval_s"] = cadence
+                if cadence is None or cadence > FROZEN["bridge_state_interval_max_s"]:
+                    raise Refusal(
+                        f"bridge state cadence {cadence}s > {FROZEN['bridge_state_interval_max_s']}s — restart the bridge "
+                        "with --state_interval_ms=100 (the loop ticks ~5 snapshots apart; at 500 ms one tick fits a window)"
+                    )
                 for rule, want in (
                     ("doMobSpawning", "false"),
                     ("doDaylightCycle", "false"),

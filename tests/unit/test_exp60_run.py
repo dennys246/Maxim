@@ -232,6 +232,19 @@ class TestFrozenContract:
         assert float(oxy["comfort_band"]) == H.FROZEN["fingerprint"]["oxygen_drive"]["comfort_band"]
 
 
+class TestBridgeCadence:
+    def test_median_interval(self):
+        assert H.median_interval_s([0.0, 0.1, 0.21, 0.3]) == pytest.approx(0.1, abs=0.01)
+        assert H.median_interval_s([0.0, 0.5, 1.0]) == pytest.approx(0.5)
+        assert H.median_interval_s([0.0]) is None and H.median_interval_s([]) is None
+
+    def test_frozen_cadence_bound_fits_the_window(self):
+        # ~5 snapshots per substrate tick (measured): the bound must leave >= 4 ticks per window
+        fp = H.FROZEN
+        ticks_per_window = 4.33 / (5 * fp["bridge_state_interval_max_s"])
+        assert ticks_per_window >= 4
+
+
 class TestWindowTelemetry:
     def test_ticks_are_relative_to_the_first_tick_and_carry_the_proposal(self, tmp_path):
         import json as _json
