@@ -203,6 +203,14 @@ async function runAction(name, params) {
       // it remains only a last-resort fallback for non-classroom use.
       // No position fallback: a goto-to-where-you-stand resolves instantly and
       // would book flight SUCCESS for doing nothing (executor-lens catch).
+      // The pathfinder is DEAD in water (its move generators hard-return on liquid
+      // nodes — env lens E1): a submerged flee cannot succeed, and letting goto think
+      // for its 5 s timeout only delays the honest failure. Fail FAST so the read path's
+      // name tie-break (flee sorts after escape_water) costs one tick, not the window
+      // (Exp 60 chunk-iii review).
+      if (bot.entity && bot.entity.isInWater) {
+        throw new Error("flee: submerged — the pathfinder is dead in water; escape_water is the water actuator");
+      }
       const anchor =
         FLEE_X !== null && FLEE_Z !== null ? { x: FLEE_X, z: FLEE_Z } : bot.spawnPoint;
       if (!anchor) throw new Error("no flee anchor (pass --flee_x/--flee_z)");
