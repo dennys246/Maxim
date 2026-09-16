@@ -141,6 +141,24 @@ class TestVerdictFolds:
         assert v["verdict"] == "INCOMPLETE" and "fear/seed0×2" in v["duplicates"]
         assert H.compute_verdict(recs + [rerun], run_id="aaa")["verdict"] == "EARNED"
 
+    def test_two_arms_are_two_run_ids_and_both_must_be_selected(self):
+        # each `run` invocation mints its own id: the FEAR arm and the ABLATED arm of one trial
+        # carry different ids, so the selection takes one id PER ARM (the live run-2 shape)
+        recs = [_seed("fear", s, 0.0, 1.0) for s in range(5)] + [
+            _seed("ablated", s, 0.0, 0.0, water_fear=0.0) for s in range(5)
+        ]
+        for r in recs:
+            r["run_id"] = "fear-run" if r["arm"] == "fear" else "ablated-run"
+        stale = [_seed("fear", s, 0.0, 0.0) for s in range(5)] + [
+            _seed("ablated", s, 0.0, 0.0, water_fear=0.0) for s in range(5)
+        ]
+        for r in stale:
+            r["run_id"] = "run-1"
+        both = stale + recs
+        assert H.compute_verdict(both)["verdict"] == "INCOMPLETE"  # duplicates unselected
+        assert H.compute_verdict(both, run_id=["fear-run"])["verdict"] == "INCOMPLETE"  # one arm only
+        assert H.compute_verdict(both, run_id=["fear-run", "ablated-run"])["verdict"] == "EARNED"
+
     def test_more_than_five_clean_seeds_is_incomplete_not_a_bigger_n(self):
         recs = [_seed("fear", s, 0.0, 1.0) for s in range(6)] + [
             _seed("ablated", s, 0.0, 0.0, water_fear=0.0) for s in range(5)
