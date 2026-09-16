@@ -176,6 +176,28 @@ ranges through the shipped embed + a fresh EC (architecture lens): cos(early, la
 0.01 of the threshold, which is exactly why the −3 s budget margin (and rescue before damage onset)
 matters. Record → `docs/experiments/data/exp60_geometry_<date>.json` via a merge-commit data PR.
 
+**Amendment 1 — 2026-09-15, POST-DATA, gate (ii) first-run outcome + the saturation-rest fix.**
+
+**First live run (2026-09-15, `exp60_geometry_2026-09-15.json`, landed via data PR #725): run gate
+FAIL — null-with-cause, measured.** cos(shore, submerged) A4 = **0.8502** (threshold 0.85); fresh-EC ids NOT distinct (the
+submerged samples split between the shore id and a new id — first-touch allocation sitting on the
+threshold); early/late same cluster = True; no unsettled visit; `is_in_water` the lone live
+contributor; hostile sensors at neutral; `distance_from_spawn` 69. The gap to the replayed 0.787
+is ONE sensor: `saturation` carried gain weight 1.0 in BOTH situations. Its declared rest (5, the
+midpoint of `[0, 10]`) is a value the game never RESTS at — fed reads the bridge clamp 10, drained
+reads 0; 5 is a transient on the drain path (the Slice-1 base vector carried 0.5 there by
+drain-timing luck: 5.0 live) — so it was a full-weight CONSTANT no estimate modelled.
+Replayed (`docs/experiments/data/exp60_saturation_rest_check.py`): saturation at an extreme 0.8500,
+at rest 0.7872. **Fix (representation, root cause):** the body's range principle applied to the
+MEASURED rest — `saturation: range [0, 20], initial 10` (fed = midpoint = silent; drain descends
+loud, mirroring health/food); the probe satiates between visits like the check. Only
+`minecraft_player` declares saturation (the Exp 56/57 bench bodies do not) — no persisted substrate
+is re-encoded. The gate is then RE-RUN; the apparatus check record stands (its gates read no
+saturation). The replayed margin is thin (0.787 vs 0.85) and still carries two known full-weight
+constants that ARE modelled in that number — `light_level` (0, underground) and `time_of_day`
+(frozen 1000 → w 0.77) — so a second FAIL would re-open the apparatus+representation question on
+those two (`l11_slice2_cosine_check.py::with_rangefix` measured re-centring them), not this fix.
+
 ## The claim
 
 A survival agent LEARNS to escape the drowning situation — it surfaces / leaves water sooner after

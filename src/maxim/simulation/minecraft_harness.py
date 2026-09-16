@@ -102,7 +102,7 @@ class FakeBridgeServer:
         return {
             "health": max(0.0, min(20.0, 14.0 + r.uniform(-4, 6))),
             "food": max(0.0, min(20.0, 12.0 + r.uniform(-6, 6))),
-            "saturation": r.uniform(0, 5),
+            "saturation": r.uniform(8, 10),  # fed = the bridge clamp 10 = the body's rest
             "oxygen": max(0.0, min(20.0, 18.0 + r.uniform(-4, 2))),
             "light_level": float(r.randint(0, 15)),
             "y_altitude": 64.0 + r.uniform(-8, 8),
