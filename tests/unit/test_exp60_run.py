@@ -238,11 +238,15 @@ class TestBridgeCadence:
         assert H.median_interval_s([0.0, 0.5, 1.0]) == pytest.approx(0.5)
         assert H.median_interval_s([0.0]) is None and H.median_interval_s([]) is None
 
-    def test_frozen_cadence_bound_fits_the_window(self):
-        # ~5 snapshots per substrate tick (measured): the bound must leave >= 4 ticks per window
-        fp = H.FROZEN
-        ticks_per_window = 4.33 / (5 * fp["bridge_state_interval_max_s"])
-        assert ticks_per_window >= 4
+    def test_frozen_cadence_bound_is_sensor_freshness(self):
+        # the DV clock samples is_in_water at 4 Hz: the bridge's snapshot interval must not exceed
+        # the sampling period, or a latency read inherits up to one stale interval
+        assert H.FROZEN["bridge_state_interval_max_s"] <= 0.25
+
+    def test_loop_liveness_contract(self):
+        # 2 Hz proposal cadence → ~6 ticks in the 3 s window; 4 is the floor with margin
+        assert H.FROZEN["loop_liveness_min_ticks"] == 4 and H.FROZEN["loop_liveness_s"] == 3.0
+        assert H.FROZEN["loop_liveness_min_ticks"] <= H.FROZEN["loop_liveness_s"] / 0.5
 
 
 class TestWindowTelemetry:

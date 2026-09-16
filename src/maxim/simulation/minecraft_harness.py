@@ -61,6 +61,12 @@ _DEFAULT_MAX_STATE_AGE_S = 5.0
 class FakeBridgeServer:
     """A seeded scripted world speaking the frozen NDJSON protocol.
 
+    ``events`` (default False) — whether to emit a periodic text "event" line. The LIVE
+    bridge emits text events only on chat/death, so the live-faithful fake emits none;
+    the old always-on "wind shifts" event kept the substrate-primary loop awake offline
+    while the live loop idled (Exp 60, 2026-09-16). Pass ``events=True`` only to exercise
+    the text-percept path.
+
     Dev/test support: lets the WHOLE two-AUT loop run without Minecraft.
     SEEDED, not deterministic across runs (executor-lens correction): one
     shared rng drawn from per-connection threads makes each client's stream
@@ -73,11 +79,15 @@ class FakeBridgeServer:
     design.
     """
 
-    def __init__(self, *, seed: int = 42, state_interval_s: float = 0.1) -> None:
+    def __init__(self, *, seed: int = 42, state_interval_s: float = 0.1, events: bool = False) -> None:
         import random
 
         self._rng = random.Random(seed)
         self._interval = state_interval_s
+        # ``events=False`` reproduces the LIVE bridge, which emits text events only on
+        # chat/death: the periodic "wind shifts" event below is what kept the substrate-
+        # primary loop awake offline while the live loop idled (Exp 60, 2026-09-16).
+        self._events = events
         self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._server.bind(("127.0.0.1", 0))
@@ -142,7 +152,7 @@ class FakeBridgeServer:
         while not self._stop.is_set():
             send({"type": "state", "data": self._snapshot()})
             next_event += 1
-            if next_event % 5 == 0:
+            if self._events and next_event % 5 == 0:
                 send({"type": "event", "kind": "info", "text": f"the wind shifts (tick {next_event})"})
             try:
                 chunk = sock.recv(65536)

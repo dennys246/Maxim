@@ -239,7 +239,9 @@ class TestWiringPins:
         import maxim.runtime.agent_loop as al
 
         src = inspect.getsource(al.run_agentic_loop)
-        branch_start = src.index('aut_mode == "substrate-primary" and ctrl.pending_proposal is None')
+        # The branch head is the shared cadence predicate (2026-09-16, substrate wake source):
+        # substrate-primary AND no pending proposal AND cadence elapsed, in ONE helper.
+        branch_start = src.index("if _substrate_tick_due(aut_mode, ctrl, llm_submit_interval):")
         gate_pos = src.index("not substrate_action_gate()", branch_start)
         propose_pos = src.index("propose_via_substrate(", branch_start)
         assert gate_pos < propose_pos, (

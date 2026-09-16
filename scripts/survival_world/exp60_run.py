@@ -57,9 +57,10 @@ Proposal cadence inside the loop is 2 Hz (``llm_submit_interval`` 0.5 s), stated
 are read against it.
 
 Run ON the bridge box (server + bridge from current main, classroom built, records merged).
-The bridge MUST run at a 100 ms state cadence — the loop's substrate tick gap is ~5x the
-bridge's state interval (measured), so the default 500 ms yields one tick per 4.3 s window;
-the preflight measures the cadence and refuses a slow bridge:
+The bridge MUST run at a 100 ms state cadence for sensor FRESHNESS (the DV clock reads is_in_water
+from the latest snapshot at 4 Hz, so the snapshot interval must not exceed the 0.25 s sampling
+period); the preflight measures the cadence and refuses a slow bridge, and a LOOP LIVENESS
+preflight refuses a loop that does not reach its substrate branch >= 4 times in 3 s on the shore:
 
     (cd scripts/minecraft_bridge && node index.js --mc_host=127.0.0.1 --mc_port=25565 \\
         --bridge_port=25567 --username=maxim --state_interval_ms=100)
@@ -120,10 +121,18 @@ FROZEN: dict[str, Any] = {
     "probe_cap_margin_s": 0.75,  # probe cap = measured air-hunger pain edge (min) − this (US-FREE window)
     "train_cap_margin_s": 1.0,  # training cap = measured damage onset (min) − this (pre-damage)
     "loop_warm_s": 1.0,  # the full loop runs on the shore this long before a placement teleport
-    # The loop's substrate tick gap is ~5x the bridge's state interval (MEASURED offline: 500 ms →
-    # 1.8–2.5 s gaps = one tick per 4.3 s window; 100 ms → 0.5–1 s). The bridge must run at
+    # Sensor FRESHNESS for a 4 Hz-sampled 4.3 s window: the DV clock reads is_in_water from the
+    # latest snapshot, so a 500 ms bridge adds up to 0.5 s to every latency. The bridge runs at
     # --state_interval_ms=100 and the harness MEASURES it at preflight (refuses a slow bridge).
+    # (The "loop ticks ~5 snapshots apart" reading that first motivated this was the FAKE
+    # bridge's every-5th-state event waking the loop; the live loop was idling for want of any
+    # event at all — fixed in the loop itself, agent_loop `_substrate_tick_due`, 2026-09-16.)
     "bridge_state_interval_max_s": 0.15,
+    # Loop LIVENESS preflight: the full loop on the shore must reach its substrate branch this many
+    # times in this window (2 Hz proposal cadence → ~6 expected) or the seed refuses BEFORE any
+    # placement — run 1 read one tick per window (agent_loop idle-gate defect, Amendment 5/6).
+    "loop_liveness_min_ticks": 4,
+    "loop_liveness_s": 3.0,
     "usable_oxygen_max": 12.0,  # the SATURATING publish (intensity 1.0); must sit BELOW set_point − comfort_band
     "usable_pain_intensity_min": 1.0,
     "seeds": (11, 12, 13, 14, 15),
@@ -652,16 +661,45 @@ def _run(args: argparse.Namespace) -> int:
                 missing = missing_bridge_sensors(aut.client.latest_state(), REQUIRED_BRIDGE_SENSORS)
                 if missing:
                     raise Refusal(f"the running bridge does not emit {sorted(missing)} — restart it from current main")
-                # The loop's tick rate is bound to the bridge's state cadence (~5 percepts per
-                # substrate tick, measured): a 500 ms bridge gives ONE tick per 4.3 s window and
-                # the mechanism cannot act inside it (first live run: 120 windows, ticks=1,
-                # actions=0). Measure the cadence; refuse a slow bridge.
+                # Sensor FRESHNESS: the DV clock reads is_in_water from the latest snapshot at 4 Hz,
+                # so the bridge's snapshot interval must not exceed the sampling period. Measure the
+                # cadence; refuse a slow bridge. (The loop's own tick rate no longer depends on it —
+                # agent_loop._substrate_tick_due, 2026-09-16.)
                 cadence = _measure_bridge_cadence(aut)
                 record["bridge_state_interval_s"] = cadence
                 if cadence is None or cadence > FROZEN["bridge_state_interval_max_s"]:
                     raise Refusal(
                         f"bridge state cadence {cadence}s > {FROZEN['bridge_state_interval_max_s']}s — restart the bridge "
-                        "with --state_interval_ms=100 (the loop ticks ~5 snapshots apart; at 500 ms one tick fits a window)"
+                        "with --state_interval_ms=100 (sensor freshness: the snapshot interval must not exceed the 0.25 s sampling period)"
+                    )
+                # ── Loop LIVENESS: the full loop, on the shore, must tick at its cadence ──
+                _rescue("liveness")
+                live_path = Path(persistence_dir) / "telemetry_liveness.jsonl"
+                live_telem = SubstrateTelemetry(log_path=live_path, agent_id=agent_id)
+                live_stop = threading.Event()
+                live_loop = threading.Thread(
+                    target=run_minecraft_aut,
+                    args=(aut,),
+                    kwargs={
+                        "max_steps": 100_000,
+                        "target_hz": FROZEN["loop_hz"],
+                        "stop_event": live_stop,
+                        "substrate_telemetry": live_telem,
+                    },
+                    daemon=True,
+                )
+                live_loop.start()
+                time.sleep(FROZEN["loop_liveness_s"])
+                live_stop.set()
+                live_loop.join(timeout=20.0)
+                _stop_motion()
+                live_ticks = _telemetry_ticks(live_path, 0.0)
+                record["loop_liveness_ticks"] = len(live_ticks)
+                if live_loop.is_alive() or len(live_ticks) < FROZEN["loop_liveness_min_ticks"]:
+                    raise Refusal(
+                        f"loop liveness: {len(live_ticks)} substrate tick(s) in {FROZEN['loop_liveness_s']}s on the shore "
+                        f"(need >= {FROZEN['loop_liveness_min_ticks']}) — the loop is not reaching its substrate branch; "
+                        "no window can measure anything (see loop_tick_probe.py)"
                     )
                 for rule, want in (
                     ("doMobSpawning", "false"),

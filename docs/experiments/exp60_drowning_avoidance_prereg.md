@@ -340,6 +340,31 @@ by their own loops). OWED, outside this experiment: why the agent loop needs ~5 
 tick in sim mode (a loop-design question for the runtime brief). The run-1 records (INCOMPLETE) stand;
 run 2 proceeds under this amendment.
 
+**Amendment 5 — 2026-09-16, POST-DATA, the cause named by measurement: the substrate-primary loop
+idled for want of text events (runtime defect, fixed in the loop).** Re-diagnosis at a 100 ms bridge
+(cadence preflight PASSED) still read `ticks=1` per window. `loop_tick_probe.py` on the live box: the
+loop iterated ~50× in 8 s (recv-bound, not compute-bound) yet reached its substrate branch once; NO
+proposal was ever installed. Read from the loop: its idle gate wakes on pending input/work, a sim
+percept, a carried percept, the first step, or an awaited LLM — the Minecraft harness passes no LLM
+worker (the orchestrator does, where `_submitted_recently` wakes its loop by accident), and the
+Minecraft percept source's `has_pending` is the EVENT queue (chat/death), not state.
+The live bridge emits no events during a dive, so the loop idled after step 0. The fake bridge emits
+an event every 5th snapshot, which both masked the defect offline and produced Amendment 4's "one tick
+per five snapshots" reading (its 100 ms requirement stands for sensor freshness; its causal claim is
+superseded by this one; this CLOSES Amendment 4's owed item). Fix (runtime, root cause): the substrate
+submit cadence is a wake source in its own right (`agent_loop._substrate_tick_due`, also the substrate
+branch's own predicate — one site); regression guard
+`tests/unit/test_substrate_primary_wake.py` on a fake bridge with events OFF, verified RED on the
+pre-fix loop (1 tick / 2.5 s) and green after. No substrate/representation change; the run-1 and
+diagnostic records stand as INCOMPLETE-with-instrument-cause. Run 2 proceeds under this amendment.
+
+**Amendment 6 — 2026-09-16, POST-DATA, apparatus refusal added: loop liveness preflight.** The
+harness now starts the full loop on the shore with telemetry before any window and REFUSES the seed
+unless the loop reaches its substrate branch ≥ 4 times in 3 s (`FROZEN["loop_liveness_min_ticks"]`,
+`loop_liveness_s`). Run 1 read one tick per window; this preflight would have refused seed 1 before
+the first placement. No DV or gate changes; the bridge-cadence preflight stays, re-rationalised as
+sensor FRESHNESS (the snapshot interval must not exceed the 0.25 s sampling period).
+
 ## Operator runbook (the frozen protocol, executed from a clean main checkout at or after the freeze)
 
 1. big-mac-mini: `git checkout main && git pull`; RESTART the bridge **with `--state_interval_ms=100`**

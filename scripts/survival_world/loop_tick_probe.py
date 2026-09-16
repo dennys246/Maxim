@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.fake:
         from maxim.simulation.minecraft_harness import FakeBridgeServer
 
-        srv = FakeBridgeServer(state_interval_s=0.1)
+        srv = FakeBridgeServer(state_interval_s=0.1, events=False)  # the live condition: no text events
         port = srv.port
     pdir = tempfile.mkdtemp(prefix="loop_tick_probe_")
     aut = build_minecraft_aut(
@@ -121,10 +121,13 @@ def main(argv: list[str] | None = None) -> int:
             prof.disable()
 
     th = threading.Thread(target=_target, daemon=True)
-    th.start()
-    time.sleep(args.seconds)
-    stop.set()
-    th.join(timeout=30.0)
+    try:
+        th.start()
+        time.sleep(args.seconds)
+    finally:
+        stop.set()
+        th.join(timeout=30.0)
+        LoopController.pending_proposal = _orig_prop  # class-wide patch: restore no matter what
     joined = not th.is_alive()
 
     rows = []
@@ -143,7 +146,6 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"\nsubstrate ticks in {args.seconds:.0f} s: 0 — the loop never reached its substrate branch")
     print(f"loop thread stopped cleanly: {joined}")
-    LoopController.pending_proposal = _orig_prop
     print(f"\npending_proposal timeline ({len(installs)} events; s from loop start):")
     for ev in installs[:40]:
         print("  ", json.dumps(ev))
@@ -159,6 +161,8 @@ def main(argv: list[str] | None = None) -> int:
         aut.client.close()
     except Exception as exc:
         print(f"WARNING: client close raised: {exc!r}")
+    if srv is not None:
+        srv.close()
     shutil.rmtree(pdir, ignore_errors=True)
     return 0
 

@@ -1827,6 +1827,41 @@ def resolve_llm_loop_overrides() -> tuple[int | None, int | None]:
     )
 
 
+def _substrate_tick_due(aut_mode: str, ctrl: Any, llm_submit_interval: float) -> bool:
+    """Is the substrate-primary branch due to propose? (Its OWN wake source.)
+
+    Substrate-primary is a SENSOR-driven mode: it proposes from the sensed world
+    (synced into the body), never from text percepts, so the percept/event queue is
+    not its wake source — its submit cadence is. Without this term a live bridge that
+    emits no chat/death events left the loop idling after step 0 (Exp 60, 2026-09-16:
+    120 probe windows, ONE substrate tick each; the fake bridge's periodic "wind
+    shifts" event masked it offline and produced the "one tick per five snapshots"
+    cadence). Scope: the Minecraft HARNESS path passes no LLM worker; the orchestrator
+    does construct one for substrate-primary runs, where ``_submitted_recently`` wakes
+    the loop every iteration by accident (left as-is — NAc decay runs per non-idle
+    iteration, so changing it would change what Exp 56/57 re-runs measure). The same
+    predicate gates the substrate branch itself — ONE site, no drift.
+    Guard: tests/unit/test_substrate_primary_wake.py (RED on the pre-fix loop).
+    """
+    return (
+        aut_mode == "substrate-primary"
+        and ctrl.pending_proposal is None
+        and (time.time() - ctrl.last_llm_submit_time) > llm_submit_interval
+    )
+
+
+def _loop_is_idle(*wake_sources: object) -> bool:
+    """True when NO wake source holds — the loop sleeps ``idle_sleep_s`` and continues.
+
+    Extracted with the substrate wake term (function-length ratchet: grow the god
+    function by extracting, never inline). Order of the sources is documented at the
+    call site: pending input, pending work, sim percept, carried percept, first step,
+    awaited LLM, substrate tick due. Truthiness semantics are the old ``not (a or b …)``:
+    a third-party ``has_pending`` may return a count, so the sources are ``object``.
+    """
+    return not any(wake_sources)
+
+
 def run_agentic_loop(
     agent: Any,
     environment: Any,
@@ -2246,6 +2281,7 @@ def run_agentic_loop(
         #   - Pending action followup (tool result needs LLM processing)
         #   - Pending next_actions chain (multi-step plan in progress)
         #   - First iteration (startup — run initial cycle once)
+        #   - Carried live percept / awaited LLM job / substrate tick due (see _loop_is_idle)
         _has_pending_input = bool(state.data.get("pending_cli_input") or state.data.get("pending_voice_input"))
         _has_pending_work = bool(
             ctrl.pending_proposal or ctrl.pending_action_followup or pending_next_actions or ctrl.pending_plan_proposal
@@ -2291,13 +2327,9 @@ def run_agentic_loop(
             _planning_attempt_is_active(_planning_attempt_state) if _planning_liveness_on else _submitted_recently
         )
 
-        if not (
-            _has_pending_input
-            or _has_pending_work
-            or _has_sim_percept
-            or _has_carried_percept
-            or _is_first_step
-            or _awaiting_llm
+        _wake = _has_pending_input or _has_pending_work or _has_sim_percept or _has_carried_percept
+        if _loop_is_idle(
+            _wake, _is_first_step, _awaiting_llm, _substrate_tick_due(aut_mode, ctrl, llm_submit_interval)
         ):
             # D13 planning-liveness backstop: the loop is about to idle, but
             # the exact job for the last planning submit is terminal and no
@@ -4267,56 +4299,55 @@ def run_agentic_loop(
         # the substrate has no opinion (no learned bias, no active drive),
         # the tick is IDLE — no random fallback. Mutually exclusive with
         # the LLM submit branch below.
-        if aut_mode == "substrate-primary" and ctrl.pending_proposal is None:
+        if _substrate_tick_due(aut_mode, ctrl, llm_submit_interval):  # ONE predicate, shared with the idle gate
             now = time.time()
-            if now - ctrl.last_llm_submit_time > llm_submit_interval:
-                # Turn-scoped action budget (apparatus standard S6; the Exp 48
-                # thrashing fix). A denied tick skips the proposal — the AUT
-                # idles until the orchestrator opens the next turn window —
-                # but still advances last_llm_submit_time and fires telemetry
-                # (proposal=None, gated=True) so the cadence stays observable
-                # AND gate-idle is distinguishable from substrate-no-opinion
-                # IDLE in the telemetry artifact itself (review fold — the
-                # once-per-window sim_log line alone marks the window, not
-                # the rows). Drive drift is unaffected: it is wall-clock-lazy
-                # and the next propose_via_substrate applies the accumulated dt.
-                _substrate_gate_denied = substrate_action_gate is not None and not substrate_action_gate()
-                substrate_proposal = None
-                if not _substrate_gate_denied:
-                    substrate_proposal = propose_via_substrate(
-                        nac=_loop_nac,
-                        agent_id=_loop_agent_id,
-                        executor=executor,
-                        sensor_encoder=_loop_sensor_encoder,
+            # Turn-scoped action budget (apparatus standard S6; the Exp 48
+            # thrashing fix). A denied tick skips the proposal — the AUT
+            # idles until the orchestrator opens the next turn window —
+            # but still advances last_llm_submit_time and fires telemetry
+            # (proposal=None, gated=True) so the cadence stays observable
+            # AND gate-idle is distinguishable from substrate-no-opinion
+            # IDLE in the telemetry artifact itself (review fold — the
+            # once-per-window sim_log line alone marks the window, not
+            # the rows). Drive drift is unaffected: it is wall-clock-lazy
+            # and the next propose_via_substrate applies the accumulated dt.
+            _substrate_gate_denied = substrate_action_gate is not None and not substrate_action_gate()
+            substrate_proposal = None
+            if not _substrate_gate_denied:
+                substrate_proposal = propose_via_substrate(
+                    nac=_loop_nac,
+                    agent_id=_loop_agent_id,
+                    executor=executor,
+                    sensor_encoder=_loop_sensor_encoder,
+                )
+            ctrl.last_llm_submit_time = now
+            if substrate_proposal is not None:
+                ctrl.pending_proposal = substrate_proposal
+                if sim.is_sim_mode:
+                    sim.log(
+                        "EXEC",
+                        f"substrate-primary proposal: tool="
+                        f"{substrate_proposal.action.get('tool_name') if substrate_proposal.action else None} "
+                        f"confidence={substrate_proposal.confidence:.2f} "
+                        f"reasoning={substrate_proposal.reasoning[:80]}",
                     )
-                ctrl.last_llm_submit_time = now
-                if substrate_proposal is not None:
-                    ctrl.pending_proposal = substrate_proposal
-                    if sim.is_sim_mode:
-                        sim.log(
-                            "EXEC",
-                            f"substrate-primary proposal: tool="
-                            f"{substrate_proposal.action.get('tool_name') if substrate_proposal.action else None} "
-                            f"confidence={substrate_proposal.confidence:.2f} "
-                            f"reasoning={substrate_proposal.reasoning[:80]}",
-                        )
 
-                # Phase 0 telemetry — fires every tick (proposal or
-                # IDLE). Fail-soft: telemetry exceptions never crash
-                # the loop. See simulation/substrate_telemetry.py.
-                if substrate_telemetry is not None:
-                    try:
-                        _ec_ref = getattr(memory_hub, "ec", None) if memory_hub is not None else None
-                        substrate_telemetry.snapshot(
-                            step=step_num,
-                            nac=_loop_nac,
-                            ec=_ec_ref,
-                            executor=executor,
-                            proposal=substrate_proposal,
-                            gated=_substrate_gate_denied,
-                        )
-                    except Exception:
-                        logger.debug("substrate telemetry callback raised", exc_info=True)
+            # Phase 0 telemetry — fires every tick (proposal or
+            # IDLE). Fail-soft: telemetry exceptions never crash
+            # the loop. See simulation/substrate_telemetry.py.
+            if substrate_telemetry is not None:
+                try:
+                    _ec_ref = getattr(memory_hub, "ec", None) if memory_hub is not None else None
+                    substrate_telemetry.snapshot(
+                        step=step_num,
+                        nac=_loop_nac,
+                        ec=_ec_ref,
+                        executor=executor,
+                        proposal=substrate_proposal,
+                        gated=_substrate_gate_denied,
+                    )
+                except Exception:
+                    logger.debug("substrate telemetry callback raised", exc_info=True)
 
         if aut_mode != "substrate-primary" and llm_worker and ctrl.pending_proposal is None:
             now = time.time()
