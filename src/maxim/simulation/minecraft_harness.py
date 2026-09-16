@@ -339,7 +339,8 @@ def _loop_kwargs(
     target_hz: float,
     substrate_telemetry: Any | None = None,
 ) -> dict[str, Any]:
-    """The `run_agentic_loop` keyword set — a PURE function so the ship
+    """The `run_agentic_loop` keyword set — a DETERMINISTIC function (it mints a fresh
+    autonomy controller per call, so not pure) so the ship
     gate's consolidation/aut-mode pins test the exact kwargs the harness
     passes (not a hand-composed sequence; the D43 §5 lesson).
 
@@ -347,8 +348,22 @@ def _loop_kwargs(
     given — a harness that must SEE what the loop proposed per tick (Exp 60 chunk iii:
     120 probe windows with zero executed actions and no telemetry to say why) passes
     it; the kwargs are otherwise byte-identical to the pinned set."""
+    from maxim.agents.autonomy import AutonomyController, AutonomyLevel
+
     kwargs: dict[str, Any] = {
         "aut_mode": "substrate-primary",
+        # AUTONOMOUS, as the orchestrator hands its sim AUTs (orchestrator.py `aut_autonomy`):
+        # the loop's default is PLANNING — "requires human approval for all actions" — under
+        # which NO BODY AFFORDANCE is ever executed (only the ALWAYS_ALLOWED no-op head tools
+        # could pass; Exp 60, 2026-09-16: fear proposed `flee` every tick, executor calls = [];
+        # no harness on this path had ever executed a body affordance). At AUTONOMOUS the
+        # SupervisionPolicy is not consulted, so the default policy equals the orchestrator's;
+        # the no-op head tools (move, track_target, …) are now in the substrate's competitive
+        # universe here too (always succeed — a credit-snowball risk the harness's per-window
+        # call record makes visible; follow-up in the simulation brief).
+        # Guard: tests/unit/test_substrate_primary_wake.py
+        # ::test_substrate_proposal_is_executed_on_the_harness_loop (RED on the pre-fix runner).
+        "autonomy_controller": AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS),
         "percept_source": aut.percept_source,
         "pain_bus": aut.bio.pain_bus,
         "memory_hub": aut.bio.memory_hub,

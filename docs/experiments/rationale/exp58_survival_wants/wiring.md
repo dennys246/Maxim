@@ -285,3 +285,8 @@ Say which in the prereg.
 | decay | `_loop_bio_tick_maintenance` | NEW caller or declared exempt (W-7) |
 | bundle travel | `nac_merge` + `rekey_nac_state` + prune + `nac_merge_many` | silently dropped today (W-6) |
 | mechanism gate | probe variant driving `propose_via_substrate` | probe as-written does NOT consume the seam (W-2) |
+
+> **Correction note — 2026-09-16.** "live trials run the real composition" / "an end-to-end
+> mechanism-in-the-loop test is genuinely available" described the composition as reviewed; on the
+> `run_minecraft_aut` path the loop ran at PLANNING autonomy and never executed a body affordance
+> (Exp 60 Amendment 7; fixed in `_loop_kwargs`). The composition is now executable there.

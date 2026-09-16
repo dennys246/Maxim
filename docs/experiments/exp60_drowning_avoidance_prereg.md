@@ -218,7 +218,8 @@ those two (`l11_slice2_cosine_check.py::with_rangefix` measured re-centring them
 
 ## Design (iii) — the trial harness (chunk iii, built 2026-09-15, two-lens folded; frozen with the prereg in chunk iv)
 
-`scripts/survival_world/exp60_run.py` (modelled on `exp58_run.py`, which ran live; pure halves
+`scripts/survival_world/exp60_run.py` (modelled on `exp58_run.py`, which ran live — but never executed a
+proposal through its loop, Amendment 7; pure halves
 unit-tested in `tests/unit/test_exp60_run.py`). Authorized by gate (ii)'s PASS
 (`exp60_geometry_2026-09-15b.json`, cos 0.7874, ids distinct, early/late same cluster).
 
@@ -364,6 +365,31 @@ unless the loop reaches its substrate branch ≥ 4 times in 3 s (`FROZEN["loop_l
 `loop_liveness_s`). Run 1 read one tick per window; this preflight would have refused seed 1 before
 the first placement. No DV or gate changes; the bridge-cadence preflight stays, re-rationalised as
 sensor FRESHNESS (the snapshot interval must not exceed the 0.25 s sampling period).
+
+**Amendment 7 — 2026-09-16, POST-DATA, the third instrument cause: the harness loop ran at PLANNING
+autonomy and never executed a substrate proposal (runtime/harness defect, fixed in the loop runner).**
+The post-fix one-seed diagnostic read `ticks≈9–11` per window (the wake fix works), `proposed=[flee,
+flee, …]` in every post placement (the learned fear is READ live through the production path), and
+`calls=[]` (nothing reached the executor; the loop's consecutive-same-tool cap fired on the unexecuted
+proposals). Measured offline: the loop's default `AutonomyController` level is PLANNING, whose
+`can_execute_action` answers "requires human approval for all actions" for every body affordance, and
+`should_prompt("plan_approval")` returns True UNCONDITIONALLY (AUTO and OFF modes both treat plan
+approval as critical), so the loop's "non-interactive auto-approve" branch is dead code and the
+queued proposal expires unexecuted; the orchestrator hands its sim AUTs an AUTONOMOUS controller,
+`run_minecraft_aut` handed none. No harness on this path (Exp 58 probes included) had ever executed a BODY AFFORDANCE through the
+loop (the always-allowed no-op head tools were the only exception). Fix:
+`_loop_kwargs` passes an AUTONOMOUS controller (orchestrator parity); regression guard
+`test_substrate_proposal_is_executed_on_the_harness_loop` (RED on the pre-fix runner: fear proposed,
+0 executor calls in 10 s; green after). No substrate/representation change. The design's remaining
+unknowns are now genuinely behavioural: whether `flee` (the name tie-break's first pick, fast-failing
+in water) yields to `escape_water` inside the 4.3 s window, and the DVs themselves. Two loop
+behaviours the fix makes reachable are recorded, not changed: the consecutive-same-tool cap
+(`_MAX_CONSECUTIVE_SAME_TOOL` = 5, keyed on identical params) drops every 6th identical proposal
+without executing it — a sustained identical fear response runs at a 5/6 duty cycle, visible in the
+record as a proposal tick with no executor call; and `check_hard_stop` pauses the controller to
+PLANNING for the rest of a run on any percept transcript containing "stop"/"halt" (chat only on this
+bridge; the harness's `stop` is an action, not a percept). Run 2 proceeds
+under this amendment, after a one-seed diagnostic shows executed calls.
 
 ## Operator runbook (the frozen protocol, executed from a clean main checkout at or after the freeze)
 
