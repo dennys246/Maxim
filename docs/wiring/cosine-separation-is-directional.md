@@ -64,9 +64,10 @@ little, or moves while staying on the same side of its neutral point.
 5. **If a real contrast still won't separate, the block is APPARATUS + REPRESENTATION, not the
    channel grouping.** No amount of channel-splitting or thresholding rescues a near-collinear pair.
    The honest fixes are upstream: an apparatus whose cue swings a sensor full-range across neutral, or
-   the deferred **set-point-aware neutral** substrate primitive (`docs/plans/setpoint_aware_neutral.md`,
-   `_sensor_embed` decision D1) that makes contribution relative to a sensor's rest value so small
-   off-baseline moves rotate the embedding.
+   a binary in-state flag at rest-neutral (corollary 2). *Corrected 2026-09-16:* this corollary used to
+   name the deferred **set-point-aware neutral** primitive (`docs/plans/setpoint_aware_neutral.md`) as a
+   third fix; its four-lens review measured that no static set-point opens the arc between two
+   same-side readings (corollary 7), so it is not a fix for this block and the plan is DEFERRED.
 6. **A CAPPED distance sensor becomes a full-weight constant at its cap — bound apparatus
    placement, not just the cue.** `distance_from_spawn` (3D to WORLD spawn, cap 128, neutral 0)
    is silent near spawn and a w=1.0 constant in EVERY situation of a far-away classroom, diluting
@@ -82,6 +83,20 @@ little, or moves while staying on the same side of its neutral point.
    transient on the drain path. The Slice-1 base vector carried 0.5 there by drain-timing luck. Replay with the values the bot will ACTUALLY carry after
    the heal/satiate effects, then declare the range so the measured rest is the midpoint (fixed:
    `[0, 20]`, initial 10). A declared "rest" that the world never visits is a constant, not a neutral.
+
+7. **A single graded sensor has at most 90° of direction to give, and a same-side excursion uses a
+   few degrees of it — no placement of the neutral can create an arc between two readings on the same
+   side of it.** Each sensor contributes in the plane of its two SHA bases at `θ(v) = atan2(v, 1−v)`;
+   `v ∈ [0,1]` sweeps one quadrant. `nearest_hostile_dist` 0.179→0.087 is 6.9° (cos 0.993 for that
+   sensor alone) and at best 9.5° under any re-centred neutral; the ~32° the 0.85 threshold needs
+   comes only from a swing ACROSS the neutral with dominant mass (corollary 1). Measured 2026-09-16 in
+   the set-point-aware-neutral design review (`docs/experiments/rationale/setpoint-neutral/`): status
+   quo 0.9766, weight-only 0.9593, re-centred mix 0.9576, signed deviation 0.9550 on the Slice-1
+   safe/dark vectors. Corollary for a contingency keyed on a graded sensor that never crosses neutral:
+   it is representation-limited on this encoder — change the cue (a binary state flag, or a sensor
+   that crosses neutral), not the neutral. A static per-sensor set-point is the range declaration by
+   another name (identical digit for digit through `_normalize_value`); an adaptive one zeroes the rest
+   vector and separates noise (20/20 jitter pairs), and belongs on the salience layer if anywhere.
 
 ## See also
 

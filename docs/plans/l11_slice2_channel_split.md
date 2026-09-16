@@ -149,6 +149,12 @@ options, for the owner to choose:
   *rest* value, so a small move off baseline rotates the embedding — directly addressing the
   direction problem. This is its own substrate project with its own design + review, larger than
   the split, but it is the mechanism-faithful fix and would help beyond this one experiment.
+  *Correction 2026-09-16 (four-lens design review of B, DO-NOT-BUILD as proposed):* measured on
+  the same Slice-1 vectors, NO static set-point form clears 0.85 (0.955–0.959) — two same-side
+  readings of one graded sensor differ by a few degrees whatever the neutral (the two-basis arc,
+  corollary 7 of `docs/wiring/cosine-separation-is-directional.md`); a static declared set-point is
+  numerically the range declaration already in use, and the adaptive reading collapses stability
+  20/20. B is DEFERRED; the sentence "a small move off baseline rotates the embedding" is withdrawn.
 - **(C) Pivot the survival want to a contingency the sensors CAN separate** — one keyed on a sensor
   that swings full-range (crosses neutral) rather than dark=danger. Accepts dark=danger as
   infeasible on this body's sensor suite and banks it as a representation-limited null.
