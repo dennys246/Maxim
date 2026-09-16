@@ -118,7 +118,7 @@ function snapshot() {
   return {
     health: bot.health ?? 20,
     food: bot.food ?? 20,
-    saturation: Math.min(10, bot.foodSaturation ?? 5),
+    saturation: Math.min(10, bot.foodSaturation ?? 10), // fallback = the clamp = the body's rest
     oxygen: bot.oxygenLevel ?? 20,
     light_level: perceivedLight(me),
     y_altitude: me ? me.position.y : 64,

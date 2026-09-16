@@ -91,8 +91,18 @@ entity:
     # 0.405 — clean separation.
     saturation:
       unit: points
-      range: [0, 10]   # game scale caps ~5-20; JS clamps to 10; rest ~5 = midpoint
-      initial: 5
+      # MEASURED 2026-09-15 (Exp 60 gate (ii), first live run): the game never RESTS at
+      # the old midpoint 5 — a fed bot holds 10-20 (the bridge clamps to 10) and a
+      # drained bot 0, so with range [0,10] BOTH natural states sat at an extreme and
+      # carried gain weight 1.0 as a CONSTANT in every situation. That constant mass
+      # alone lifted cos(shore, submerged) from the replayed 0.787 to the measured
+      # 0.8502 (> 0.85) and split the underwater cluster. The range principle applied
+      # to the measured rest: fed (= the bridge clamp, 10) is the midpoint and silent;
+      # hunger drain descends loud, mirroring `health`/`food`. Only this body declares
+      # saturation (the Exp 56/57 bench bodies do not) — no persisted substrate is
+      # re-encoded by this change. Replay: docs/experiments/data/exp60_saturation_rest_check.py
+      range: [0, 20]   # rest = FED (bridge clamp 10) = midpoint; drain 10->0 descends loud
+      initial: 10
       modality: world
     oxygen:
       unit: bubbles
