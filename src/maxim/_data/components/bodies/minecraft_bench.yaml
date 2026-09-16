@@ -58,26 +58,31 @@ entity:
     y_altitude:
       unit: blocks
       range: [0, 128]
+      rest: 64
       initial: 64
       modality: world
     distance_from_spawn:
       unit: blocks
       range: [-128, 128]
+      rest: 0
       initial: 0
       modality: world
     speed:
       unit: blocks_per_tick
       range: [-0.5, 0.5]
+      rest: 0
       initial: 0
       modality: world
     on_ground:
       unit: bool
       range: [-1, 3]
+      rest: 1
       initial: 1
       modality: world
     time_of_day:
       unit: ratio
       range: [0, 1]
+      rest: null  # NO rest: cyclic (wraps at midnight); a known constant-mass contributor that drifts through the day
       initial: 0.0
       modality: world
   modulators:

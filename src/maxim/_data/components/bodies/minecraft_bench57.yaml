@@ -64,11 +64,13 @@ entity:
     offset_x:
       unit: blocks
       range: [-128, 128]
+      rest: 0
       initial: 0
       modality: world
     offset_z:
       unit: blocks
       range: [-128, 128]
+      rest: 0
       initial: 0
       modality: world
   modulators:
