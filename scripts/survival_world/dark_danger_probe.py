@@ -63,7 +63,7 @@ DAMAGE_PER_EPISODE = 12.0  # health 20 -> 8: clearly past the health drive comfo
 LIT_SAFE = {
     "health": 20,
     "food": 20,
-    "saturation": 5,
+    "saturation": 10,  # fed = bridge clamp = body rest (range [0,20] since Exp 60)
     "oxygen": 20,
     "light_level": 15,
     "y_altitude": 69,

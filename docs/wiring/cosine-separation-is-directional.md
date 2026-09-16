@@ -74,7 +74,14 @@ little, or moves while staying on the same side of its neutral point.
    cos(shore, submerged) 0.786 at 36 blocks from spawn → 0.8525 at the cap = same cluster. Same
    shape as `nearest_hostile_dist` the other way (its cap 64 IS neutral, so keep hostiles beyond
    it). When a classroom moves, re-replay with every capped/constant sensor at the values the NEW
-   site will actually read — the Exp 58 base vector is only valid at the Exp 58 site.
+   site will actually read — the Exp 58 base vector is only valid at the Exp 58 site. **And not only
+   site sensors: INTEROCEPTIVE state the protocol sets counts too.** The first live Exp 60 gate run
+   (2026-09-15) measured cos 0.8502 vs the replayed 0.787 because `saturation` sat at an extreme
+   (gain weight 1.0, constant in both situations): its declared rest (5, the midpoint of `[0,10]`)
+   is a value the game never RESTS at — fed reads the bridge clamp 10, drained reads 0, and 5 is a
+   transient on the drain path. The Slice-1 base vector carried 0.5 there by drain-timing luck. Replay with the values the bot will ACTUALLY carry after
+   the heal/satiate effects, then declare the range so the measured rest is the midpoint (fixed:
+   `[0, 20]`, initial 10). A declared "rest" that the world never visits is a constant, not a neutral.
 
 ## See also
 

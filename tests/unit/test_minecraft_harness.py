@@ -284,7 +284,7 @@ class TestL11AnalyzerOnSyntheticTrace:
         base = {
             "health": 20.0,
             "food": 20.0,
-            "saturation": 5.0,
+            "saturation": 10.0,  # fed = bridge clamp = body rest
             "oxygen": 20.0,
             "light_level": 7.0,
             "y_altitude": 64.0,
@@ -371,7 +371,7 @@ class TestL11AnalyzerOnSyntheticTrace:
         base = {
             "health": 20.0,
             "food": 20.0,
-            "saturation": 5.0,
+            "saturation": 10.0,  # fed = bridge clamp = body rest
             "oxygen": 20.0,
             "light_level": 7.0,
             "y_altitude": 64.0,

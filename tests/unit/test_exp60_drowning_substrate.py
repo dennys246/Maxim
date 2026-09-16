@@ -112,3 +112,22 @@ class TestEscapeWaterAffordance:
         # guard S2: a generic "surface" keyword would false-match other bodies'
         # affordances (e.g. alien_xenomorph climb_surface).
         assert "surface" not in _DRIVE_TOOL_AFFINITIES["threat"]
+
+
+class TestSaturationRestsAtTheBridgeClamp:
+    """Exp 60 gate (ii) first live run: `saturation` sat at an extreme in BOTH situations and
+    its constant mass lifted cos(shore, submerged) from 0.787 to 0.8502. The game never rests at
+    the old midpoint (5): a fed bot reads the bridge clamp (10), a drained bot 0. The range must
+    put the FED clamp at the A4-neutral midpoint (docs/wiring/cosine-separation-is-directional.md
+    corollary 6)."""
+
+    BRIDGE_CLAMP = 10  # scripts/minecraft_bridge/index.js: Math.min(10, bot.foodSaturation)
+
+    def test_fed_state_is_the_midpoint_and_the_initial(self):
+        s = _body_sensors()["saturation"]
+        lo, hi = s["range"]
+        assert (lo + hi) / 2 == self.BRIDGE_CLAMP == s["initial"]
+
+    def test_bridge_clamp_is_what_the_test_assumes(self):
+        js = (Path(__file__).resolve().parents[2] / "scripts" / "minecraft_bridge" / "index.js").read_text()
+        assert f"saturation: Math.min({self.BRIDGE_CLAMP}, bot.foodSaturation" in js

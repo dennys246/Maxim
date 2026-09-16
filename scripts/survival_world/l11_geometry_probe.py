@@ -112,6 +112,7 @@ LATE_OXYGEN_MAX = 13.0  # the oxygen drive's pain edge (set_point 20 − comfort
 DEFAULT_ANCHOR = Path.home() / ".maxim" / "exp58_classroom.json"
 DIVE_SETTLE_S = 3.0  # a dive must reflect within this (exp60_water_check.IN_WATER_WITHIN_S) — else apparatus fault
 RESCUE_OXYGEN_MIN = 19.0  # == exp60_water_check.RECOVER_OXYGEN_MIN (the bar the apparatus PASSED at; test-pinned)
+SATURATION_REST = 10.0  # the bridge clamp == the body's declared rest (minecraft_player.yaml saturation midpoint)
 STALE_STATE_S = 1.5  # == exp60_water_check.STALE_STATE_S (3x the 500 ms bridge cadence)
 STALE_MAX_CONSECUTIVE = 8  # == exp60_water_check.STALE_MAX_CONSECUTIVE (~2 s of stale polls)
 
@@ -352,7 +353,11 @@ def capture(args: argparse.Namespace) -> int:
         return True
 
     def _heal() -> None:
+        # Satiate as well as heal (confounding-lens SF-3, and what exp60_water_check's rescue does): the
+        # bot must sit at its RESTING interoceptive state between visits, or a drifting
+        # food/saturation carries constant mass into every sample.
         rcon.command(f"effect give {args.username} minecraft:instant_health 1 10 true")
+        rcon.command(f"effect give {args.username} minecraft:saturation 1 10 true")
 
     def _refuse(msg: str, rescue_to: str | None) -> None:
         # Apparatus fault, not data: rescue FIRST (never leave the bot underwater), write NO
@@ -367,6 +372,11 @@ def capture(args: argparse.Namespace) -> int:
     # Order is pre-registered baseline-first then contrast (first-touch frozen-centroid
     # allocation is order-sensitive; analyze reports it, never hides it).
     try:
+        # Satiate + heal BEFORE the baseline visit, for BOTH anchor shapes: the first live gate
+        # run started satiated only because the apparatus check had just run (an accident of
+        # ordering); a fresh/respawned bot carries the game's default saturation 5 = a constant
+        # off-rest value in every sample (executor-lens fold).
+        _heal()
         for label in labels:
             pos = situations[label]
             rescue_to = plan["rescue"].get(label)
@@ -426,6 +436,9 @@ def capture(args: argparse.Namespace) -> int:
                 # a real breath between visits (the latch clears on OBSERVED recovery); the bar is
                 # the apparatus check's own RECOVER bar, never stricter than what it PASSED at
                 rule.setdefault("oxygen", {"min": RESCUE_OXYGEN_MIN})
+                # the satiate is OBSERVED, not assumed: sensed saturation back at the bridge clamp
+                # (= the body's declared rest) before the next visit
+                rule.setdefault("saturation", {"min": SATURATION_REST})
                 if settle_until(aut, settle_predicate(rule, ranges), timeout_s=20.0) is None:
                     _refuse(f"rescue to {rescue_to!r} did not restore the rest state (rule {rule})", None)
                 _heal()
