@@ -198,6 +198,94 @@ constants that ARE modelled in that number — `light_level` (0, underground) an
 (frozen 1000 → w 0.77) — so a second FAIL would re-open the apparatus+representation question on
 those two (`l11_slice2_cosine_check.py::with_rangefix` measured re-centring them), not this fix.
 
+## Design (iii) — the trial harness (chunk iii, built 2026-09-15, two-lens folded; frozen with the prereg in chunk iv)
+
+`scripts/survival_world/exp60_run.py` (modelled on `exp58_run.py`, which ran live; pure halves
+unit-tested in `tests/unit/test_exp60_run.py`). Authorized by gate (ii)'s PASS
+(`exp60_geometry_2026-09-15b.json`, cos 0.7874, ids distinct, early/late same cluster).
+
+**Arms and seeds.** FEAR (Wire-4 live) vs ABLATED (the cluster-fear subscriber detached at
+harness level, verified exactly one; pain still publishes, Wire 2 still fires). Fresh agent per
+seed × arm (throwaway persistence), the frozen seeds 11–15, **5 seeds per arm**, seed = unit.
+
+**The unconditioned stimulus is the air-hunger pain, not drowning damage.** The apparatus check
+measured `drive:oxygen` pain at **5.09–5.44 s** from the teleport and drowning damage at
+16.07–16.65 s. A test trial must be **US-free**, so the probe cap is the measured pain edge (min)
+− 0.75 s ≈ **4.3 s**, not the damage onset: a longer window would CONDITION the FEAR arm during the
+pre-probe and un-yoke exposure (both review lenses, cross-confirmed). The measured escape (1.45–1.83 s
+from the action call) fits inside it.
+
+**Per-seed preflights (refusal = stamped REFUSED, no behavioural DVs).** (1) Both gated records on
+main PASS — apparatus `all_pass` (it also supplies the pain edge) and geometry `run_gate.pass` — and
+the anchor carries the check's stamped measured onset. (2) Frozen-apparatus fingerprint asserted +
+stamped: fear α 0.5 / cap 1.0 / θ 0.5, allowlist {drive:health, drive:oxygen}, encoder threshold
+0.85, explore weight 0.0, the oxygen drive (set_point 20, comfort_band 6) and the declared ranges of
+`is_in_water` [−1,1] / `oxygen` [0,40] / `saturation` [0,20]; `usable_oxygen_max` 12 asserted below
+the band edge. (3) Raw bridge roster; frozen gamerules verified, not toggled. (4) **LIVE
+cluster-distinct preflight** on the live agent's EC (shore ≠ submerged) — gate (ii)'s
+necessary-not-sufficient partner. (5) **Escape actuation through the BACKEND** (the bridge action
+called directly, never the executor — an executor success books a POSITIVE causal link that makes
+`escape_water` selectable with zero fear in both arms): head in air within 6 s by bridge truth, then
+`get_positive_outcomes(escape_water)` asserted EMPTY before the pre-probe.
+
+**Probes (identical pre and post, both arms).** 6 placements. Each: rescue (shore; observed oxygen
+≥ 19; heal + satiate settled: health 20, food ≥ 16, saturation ≥ 10) → the FULL loop started and
+WARMED on the shore for 1 s (loop boot is not in the window) → `stop` → teleport to the pool floor
+(**the window's clock starts at the teleport**, the check's frame) → sample at 4 Hz until the first
+`is_in_water` 0 read, a health drop, or the cap → **rescue teleport FIRST, then the loop is stopped**.
+Per placement: latency from the teleport; censored at the cap; **DIRTY** (excluded from P(surface),
+reported, and counted as unyoked exposure) if any pain publish landed inside the window, the health
+dropped, or arrival health < 20. Actions executed, `escape_water` calls and `flee` calls recorded
+(the read path's FIRST fear-driven pick is `flee` by name tie-break; the bridge now fails a
+submerged `flee` FAST, so it costs one tick and a negative link, disclosed here). A placement that
+never read `is_in_water` 1 is excluded as `never_submerged` (instrument, reported). Then a 10 s shore
+free-roam with the loop live: actions and water entry recorded (structurally near 0 v 0 — no drive
+fires on the shore; it re-tests specificity, not gated). **After the pre-probe the water cluster must
+carry exactly 0 fear (both arms) and no unyoked US event may have occurred, or the seed refuses**
+("the probe cap is not below the pain edge on this apparatus"). Proposal cadence inside the loop is
+2 Hz (`llm_submit_interval` 0.5 s).
+
+**Training (yoked, harness-scheduled, propose-only, confined).** K = 10 usable episodes per seed,
+identical schedule across arms. Episode: rescue → teleport to the floor → propose-only ticks at
+4 Hz (no execution) until a **`drive:oxygen` PainSignal at intensity 1.0** is PUBLISHED (bus
+subscriber) with the underwater world cluster noted, head in water and sensed oxygen ≤ 12 — the
+SATURATING publish (~6 s in; a 0.5-intensity write converges fear to exactly −θ, which the loop's
+strict activation floor treats as dead) → rescue → 4 healthy ticks so the latch observes recovery.
+Cap = measured damage onset (min) − 1 s ≈ 15 s. ANY health drop on arrival at the shore, or any
+`drive:health` pain during training, REFUSES the seed (conditioning was not pre-damage). More than
+2 deaths per seed refuses.
+
+**Live G2 (readability, refusal) + specificity (mechanism DV, verdict gate).** After training the
+PRODUCTION read `anticipatory_threat_need` must clear the loop's activation floor (> 0.5) on the
+probe-activated underwater cluster AND on every distinct training-episode cluster (a jitter-split
+minority id must not be dead at recall); the ABLATED arm must read exactly 0 on both clusters
+(ablation verified). |shore fear| < 0.2·|water fear| is RECORDED per seed and gated in the verdict
+(a Wire-4 property: shore bleed ships as NULL-with-cause, not as an instrument fault). `escape_water`
+and `flee` negative-link counts recorded; the full per-agent fear map dumped for diagnosability.
+
+**DVs and gates (the verdict, pure, `exp60_run.py verdict`, same gated-evidence path as `run`).**
+Primary DV = post-training **P(surface before the US)** per seed over clean placements in the
+US-free window. Gates: FEAR post median ≥ 0.5; ABLATED post median ≤ 0.2; every FEAR seed's post >
+its own pre (strict; pre ≈ 0 by construction); exact two-sample permutation test (252
+relabellings), one-sided FEAR > ABLATED on post P(surface), p < 0.05; specificity on every FEAR
+seed. Secondary (reported, not gated): latency among surfaced placements; shore-roam activity and
+water entry; `escape_water`/`flee` calls per placement; positive escape links per probe. Verdict ∈
+{EARNED, NULL, INCOMPLETE}: INCOMPLETE when either arm has ≠ 5 clean seeds or the JSONL holds
+duplicate (arm, seed) rows without `--run-id` (refusals named, never dropped); a gate failure after
+every preflight passed ships as a behavioural NULL.
+
+**Stop rules / refusals.** Missing/failed gated records; no measured pain edge; fingerprint drift;
+band-edge trap; stale bridge roster; gamerule drift; live clusters not distinct; escape actuation
+failure; a positive escape link after the preflight; pre-probe not US-free; < K usable episodes;
+damage during training; > 2 deaths; live G2 (readability / ablation); loop thread not stopping;
+bridge stale mid-window; provenance/dirty tree. Refusals are stamped, never silently dropped.
+
+**Explicitly NOT claimed.** Transfer to a second agent / fear travel in bundles (the substrate
+strips fear on ingest by design); entry-avoidance from the shore (recorded, not gated); "learned vs
+innate oxygen avoidance" (oxygen has NO innate corrective need by design — this tests learned
+situation-fear in a US-free window, where the innate `health→threat` reaction cannot fire);
+extinction dynamics; graduation-row changes before the run.
+
 ## The claim
 
 A survival agent LEARNS to escape the drowning situation — it surfaces / leaves water sooner after

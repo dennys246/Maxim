@@ -280,12 +280,12 @@ class TestCheckContract:
             "cycles": [
                 {
                     "w1_shore": {"distance_from_spawn": 40.0},
-                    "w2_dive": {"t_damage_onset": 16.25},
+                    "w2_dive": {"t_damage_onset": 16.25, "t_pain_edge": 5.19},
                     "w4_escape": {"t_surface": 2.5, "t_sinkback": 3.75},
                 },
                 {
                     "w1_shore": {"distance_from_spawn": 41.0},
-                    "w2_dive": {"t_damage_onset": 16.5},
+                    "w2_dive": {"t_damage_onset": 16.5, "t_pain_edge": 5.09},
                     "w4_escape": {"t_surface": 3.0, "t_sinkback": None},
                 },
             ],
@@ -294,6 +294,7 @@ class TestCheckContract:
         assert m["t_damage_onset_min_s"] == 16.25 and m["t_damage_onset_max_s"] == 16.5
         assert m["t_surface_max_s"] == 3.0 and m["t_sinkback_min_s"] == 3.75
         assert m["distance_from_spawn"] == 41.0
+        assert m["t_pain_edge_min_s"] == 5.09
 
 
 class TestPartialCyclePreservation:

@@ -221,11 +221,13 @@ def measured_edges(report: dict[str, Any]) -> dict[str, Any]:
     """The built-truth numbers chunks (ii)/(iii) must drive off (pure; from a PASS report)."""
     cycles = report["cycles"]
     onsets = [c["w2_dive"]["t_damage_onset"] for c in cycles]
+    pain_edges = [c["w2_dive"]["t_pain_edge"] for c in cycles if c["w2_dive"].get("t_pain_edge") is not None]
     surfaces = [c["w4_escape"]["t_surface"] for c in cycles]
     sinkbacks = [c["w4_escape"]["t_sinkback"] for c in cycles if c["w4_escape"]["t_sinkback"] is not None]
     return {
         "t_damage_onset_min_s": min(onsets),
         "t_damage_onset_max_s": max(onsets),
+        "t_pain_edge_min_s": min(pain_edges) if pain_edges else None,  # the US-free probe cap's anchor
         "t_surface_max_s": max(surfaces),
         "t_sinkback_min_s": min(sinkbacks) if sinkbacks else None,
         "distance_from_spawn": max(c["w1_shore"]["distance_from_spawn"] for c in cycles),
