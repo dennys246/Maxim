@@ -233,13 +233,17 @@ def exact_permutation_p(a: list[float], b: list[float]) -> dict[str, Any]:
     return {"observed_diff": round(obs, 4), "p_one_sided": count / total if total else None, "relabellings": total}
 
 
-def select_run(records: list[dict[str, Any]], run_id: str | None) -> tuple[list[dict[str, Any]], list[str]]:
+def select_run(
+    records: list[dict[str, Any]], run_id: "list[str] | str | None"
+) -> tuple[list[dict[str, Any]], list[str]]:
     """Filter to one run and name duplicate (arm, seed) rows (pure).
 
     A re-run appended to the same JSONL must never double n: without ``run_id`` any
     duplicate (arm, seed) is a refusal reason; with it, only that run's rows count.
     """
-    rows = [r for r in records if run_id is None or r.get("run_id") == run_id]
+    # Each `run` invocation mints its own run_id, so a two-arm trial is TWO ids — one per arm.
+    wanted = set([run_id] if isinstance(run_id, str) else (run_id or []))
+    rows = [r for r in records if not wanted or r.get("run_id") in wanted]
     seen: dict[tuple[str, Any], int] = {}
     for r in rows:
         seen[(r.get("arm"), r.get("seed"))] = seen.get((r.get("arm"), r.get("seed")), 0) + 1
@@ -248,7 +252,7 @@ def select_run(records: list[dict[str, Any]], run_id: str | None) -> tuple[list[
 
 
 def compute_verdict(
-    records: list[dict[str, Any]], *, gates: dict[str, Any] = GATES, run_id: str | None = None
+    records: list[dict[str, Any]], *, gates: dict[str, Any] = GATES, run_id: "list[str] | str | None" = None
 ) -> dict[str, Any]:
     """The prereg's gate decision from per-seed records (pure).
 
@@ -263,7 +267,7 @@ def compute_verdict(
             "_format_version": "1.0",
             "kind": "exp60_verdict",
             "verdict": "INCOMPLETE",
-            "reason": f"duplicate (arm, seed) rows: {dups} — pass --run-id",
+            "reason": f"duplicate (arm, seed) rows: {dups} — pass --run-id ONCE PER ARM (each arm invocation mints its own id)",
             "duplicates": dups,
         }
     clean = [r for r in records if r.get("refusal") is None and "post" in r and "pre" in r]
@@ -1131,7 +1135,7 @@ def _verdict(args: argparse.Namespace) -> int:
     recs = [json.loads(ln) for ln in Path(args.data).expanduser().read_text().splitlines() if ln.strip()]
     v = compute_verdict(recs, run_id=args.run_id)
     v["data"] = str(args.data)
-    v["run_id"] = args.run_id
+    v["run_ids"] = args.run_id
     print(json.dumps({k: v[k] for k in v if k not in ("per_seed", "gates")}, indent=2))
     print(f"VERDICT: {v['verdict']}")
     if args.json:
@@ -1177,7 +1181,12 @@ def main(argv: list[str] | None = None) -> int:
     v = sub.add_parser("verdict", help="OFFLINE: gate decision from the per-seed JSONL")
     v.add_argument("--data", required=True)
     v.add_argument("--json", default=None)
-    v.add_argument("--run-id", default=None, help="select one run's rows when the JSONL holds re-runs")
+    v.add_argument(
+        "--run-id",
+        action="append",
+        default=None,
+        help="select these runs' rows when the JSONL holds re-runs — repeat once per ARM (each `run` invocation mints its own id)",
+    )
     v.add_argument("--write-experiment-results", action="store_true")
     v.add_argument("--allow-dirty", action="store_true")
     v.set_defaults(func=_verdict)
