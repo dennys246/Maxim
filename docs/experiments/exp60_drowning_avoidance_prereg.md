@@ -1,6 +1,24 @@
-# Exp 60 (DRAFT, not frozen) — learned drowning-avoidance: Wire-4 situation-fear on a separable cue
+# Exp 60 (FROZEN 2026-09-15) — learned drowning-avoidance: Wire-4 situation-fear on a separable cue
 
-> **STATUS: DRAFT for four-lens experiment-DESIGN review (2026-09-15). NOT frozen, NO harness.**
+> **STATUS: FROZEN 2026-09-15 at main db7749f3b75f (chunk iv). Run AUTHORIZED; no trial data taken yet.**
+> The binding sections are **§Apparatus** (built; check PASSED 3/3, data PR #724), **§Gate (ii)**
+> with its Amendment 1 (FAIL 0.8502 → saturation-rest fix #726 → re-run PASS 0.7874, data PR #727)
+> and **§Design (iii)** (harness #728, two-lens folded). Everything below §Design (iii) — the
+> four-lens outcome list, "The claim", "Why this rung is viable", the open questions and the parked
+> list — is the DRAFT history the design grew from and is kept verbatim; where it conflicts with
+> §Design (iii), §Design (iii) governs. Named superseded sentences: the "0–15 s pre-damage window …
+> rescue-teleport cap ~18–20 s" in Required-additions item 4 (the probe window is the US-FREE
+> ≈ 4.3 s below the measured air-hunger pain edge; the damage onset bounds TRAINING only); the
+> claim's "latency to leave water / time-in-water" DV (now P(surface before the US) in that window,
+> latency secondary); "ABLATED (Wire-4 zeroed)" (the fear SUBSCRIBER is detached; pain still
+> publishes). Data discipline: every record via the gated evidence path on a clean main checkout
+> at or after this freeze, landed by merge-commit data PR; a null ships as a null.
+>
+> **Amendment 2 — 2026-09-15, POST-DATA, the freeze.** POST-DATA relative to the apparatus and gate
+> records (#724, #725, #727) that this document governs; PRE-DATA relative to the trials, which
+> may not begin before this header is on main. The status text above and the two section-header
+> updates below are the only changes; §Design (iii) is unchanged from #728.
+>
 > The pivot from Exp 58 (dark=danger, blocked): the SAME Wire-4 situation-fear mechanism — which
 > we proved *fires* (dry-run: fear accumulates, flee executes) — applied to a survival cue that
 > ACTUALLY SEPARATES on today's substrate. Exp 58 died at the instrument (dark/safe wouldn't
@@ -61,7 +79,7 @@ scope: the drive + sensor + actuator are justified game-native/bio-faithful addi
 real interoceptive alarm; in-water a real perceived state; surfacing a real act), not gold-plating —
 but they DO make this a real build, not a config tweak.
 
-## Apparatus (chunk i, built 2026-09-15 — pending the live apparatus check)
+## Apparatus (chunk i, built 2026-09-15; live apparatus check PASSED 3/3 — data PR #724)
 
 `setup_world.py water_classroom` (pure geometry `water_classroom_geometry`, unit-tested in
 `tests/unit/test_exp60_water_classroom.py`) builds ONE stone-encased room at the Exp 58 depth
@@ -132,7 +150,7 @@ truth (chunk ii's probe must sample within `t_damage_onset_min_s` minus margin a
 run-authorizing gate remains chunk (ii): `l11_geometry_probe` shore vs submerged on this pool,
 cos < 0.85 + distinct frozen-EC ids on live-CAPTURED vectors replayed offline (§Gate (ii)).
 
-## Gate (ii) — the run-authorizing separability probe (chunk ii, built 2026-09-15; NOT yet run)
+## Gate (ii) — the run-authorizing separability probe (chunk ii; first run FAIL → Amendment 1 → re-run PASS, data PR #727)
 
 `scripts/survival_world/l11_geometry_probe.py` generalized (`--anchor-file`), run on the BUILT pool
 AFTER the apparatus check has PASSED (it reads the check's stamped `measured.t_damage_onset_min_s`
@@ -285,6 +303,19 @@ strips fear on ingest by design); entry-avoidance from the shore (recorded, not 
 innate oxygen avoidance" (oxygen has NO innate corrective need by design — this tests learned
 situation-fear in a US-free window, where the innate `health→threat` reaction cannot fire);
 extinction dynamics; graduation-row changes before the run.
+
+## Operator runbook (the frozen protocol, executed from a clean main checkout at or after the freeze)
+
+1. big-mac-mini: `git checkout main && git pull`; RESTART the bridge (`flee` changed in #728) and
+   confirm its `spawn state:` line carries `is_in_water`.
+2. `export PYTHONPATH="$PWD/src"` (its own line), then the FEAR arm, then the ABLATED arm:
+   `python scripts/survival_world/exp60_run.py run --arm fear --rcon-password '<pw>' --username maxim --write-experiment-results`
+   (same with `--arm ablated`). Each seed prints its preflights, placements, training episodes and
+   G2; a refused seed prints its reason and is stamped. Budget ≈ 8–9 min per seed.
+3. `python scripts/survival_world/exp60_run.py verdict --data docs/experiments/data/exp60_trials.jsonl --json docs/experiments/data/exp60_verdict.json --write-experiment-results`
+   (pass `--run-id` only if the JSONL holds a re-run).
+4. One merge-commit data PR with `exp60_trials.jsonl` + `exp60_verdict.json`; then §Outcome is
+   written from the verdict (EARNED / NULL / INCOMPLETE), never before.
 
 ## The claim
 
