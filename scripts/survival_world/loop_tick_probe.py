@@ -82,6 +82,37 @@ def main(argv: list[str] | None = None) -> int:
     prof = cProfile.Profile()
     stop = threading.Event()
 
+    # The substrate branch runs ONLY while no proposal is pending. Log every install/clear
+    # of the controller's pending_proposal with the proposal's SOURCE, so a proposal that is
+    # installed by another path and never executed (the live symptom: one substrate tick,
+    # then silence) is named — strategy, tool, approval flag, plan text.
+    from maxim.runtime.loop_controller import LoopController
+
+    t_start = time.monotonic()
+    installs: list[dict] = []
+    _orig_prop = LoopController.pending_proposal
+
+    def _set(self, proposal):  # type: ignore[no-untyped-def]
+        if proposal is None:
+            installs.append({"t": round(time.monotonic() - t_start, 3), "event": "clear"})
+        else:
+            act = getattr(proposal, "action", None) or {}
+            installs.append(
+                {
+                    "t": round(time.monotonic() - t_start, 3),
+                    "event": "install",
+                    "strategy": getattr(proposal, "strategy_used", None),
+                    "tool": act.get("tool_name") if isinstance(act, dict) else None,
+                    "requires_approval": bool(getattr(proposal, "requires_approval", False)),
+                    "has_plan_text": bool(getattr(proposal, "plan_text", None)),
+                    "confidence": getattr(proposal, "confidence", None),
+                    "reasoning": (getattr(proposal, "reasoning", "") or "")[:80],
+                }
+            )
+        _orig_prop.fset(self, proposal)
+
+    LoopController.pending_proposal = property(_orig_prop.fget, _set)
+
     def _target() -> None:
         prof.enable()
         try:
@@ -112,6 +143,12 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"\nsubstrate ticks in {args.seconds:.0f} s: 0 — the loop never reached its substrate branch")
     print(f"loop thread stopped cleanly: {joined}")
+    LoopController.pending_proposal = _orig_prop
+    print(f"\npending_proposal timeline ({len(installs)} events; s from loop start):")
+    for ev in installs[:40]:
+        print("  ", json.dumps(ev))
+    if not installs:
+        print("   (no proposal was ever installed or cleared)")
 
     out = io.StringIO()
     st = pstats.Stats(prof, stream=out)
