@@ -1,0 +1,121 @@
+{
+  "_format_version": "1.0",
+  "kind": "exp60_verdict",
+  "gates": {
+    "seeds_per_arm": 5,
+    "fear_post_p_surface_min": 0.5,
+    "ablated_post_p_surface_max": 0.2,
+    "fear_post_minus_pre_min": 0.0,
+    "permutation_alpha": 0.05,
+    "specificity_ratio": 0.2
+  },
+  "per_seed": {
+    "fear": [
+      {
+        "seed": 11,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 1.0,
+        "water_fear": -1.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 12,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 1.0,
+        "water_fear": -1.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 13,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 1.0,
+        "water_fear": -1.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 14,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 1.0,
+        "water_fear": -1.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 15,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 1.0,
+        "water_fear": -1.0,
+        "shore_fear": 0.0
+      }
+    ],
+    "ablated": [
+      {
+        "seed": 11,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 0.0,
+        "water_fear": 0.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 12,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 0.0,
+        "water_fear": 0.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 13,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 0.0,
+        "water_fear": 0.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 14,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 0.0,
+        "water_fear": 0.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 15,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 0.0,
+        "water_fear": 0.0,
+        "shore_fear": 0.0
+      }
+    ]
+  },
+  "refused": [],
+  "n_clean": {
+    "fear": 5,
+    "ablated": 5
+  },
+  "fear_post_median": 1.0,
+  "fear_pre_median": 0.0,
+  "ablated_post_median": 0.0,
+  "permutation": {
+    "observed_diff": 1.0,
+    "p_one_sided": 0.003968253968253968,
+    "relabellings": 252
+  },
+  "checks": {
+    "fear_post_median_ge_min": true,
+    "ablated_post_median_le_max": true,
+    "fear_post_gt_pre_every_seed": true,
+    "permutation_p_lt_alpha": true,
+    "fear_specificity_every_seed": true
+  },
+  "verdict": "EARNED",
+  "data": "docs/experiments/data/exp60_trials.jsonl",
+  "run_ids": [
+    "301eb2edff6d",
+    "eeb92752ee2b"
+  ],
+  "provenance": {
+    "executed_maxim_file": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "3cbe4405d5c1",
+    "working_tree_dirty_src_scripts": false,
+    "python": "/Users/dennys/RMSrv/scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/src"
+  }
+}
