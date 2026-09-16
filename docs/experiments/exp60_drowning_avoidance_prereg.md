@@ -304,6 +304,26 @@ innate oxygen avoidance" (oxygen has NO innate corrective need by design — thi
 situation-fear in a US-free window, where the innate `health→threat` reaction cannot fire);
 extinction dynamics; graduation-row changes before the run.
 
+**Amendment 3 — 2026-09-15, POST-DATA, first trial run INCOMPLETE with instrument cause; harness
+instrumented, in-water sensor at eye height.** The first run (FEAR 4/5 clean, ABLATED 5/5; verdict
+INCOMPLETE; landed as the first `exp60_trials.jsonl`/`exp60_verdict.json` records) is NOT a
+behavioural result: all 120 probe placements across both arms and both probes reported zero executed
+actions and zero negative links on either `escape_water` or `flee`, including FEAR seeds whose fear
+read −1.0 and passed G2 through the production read — the loop never acted inside any window. A
+mechanism that does not run looks exactly like one that ran and found nothing, and the harness had
+no window-level telemetry to tell the two apart (instrument gap). Reproduced offline against the fake
+bridge: the loop proposes `flee` at 0.7 every 0.5 s when fear sits on the active cluster, boot is
+0.01 s, and fear survives a window's session end/start — so the live difference must be MEASURED.
+Changes: (1) the loop runner forwards an optional `SubstrateTelemetry` writer and the harness records
+every loop tick (proposal, active clusters, drives) and every executor call (tool, success, error,
+time) per placement; (2) FEAR seed 13 refused the actuation preflight "still submerged (capped)"
+while its state showed oxygen 20 and y 38.75 — the bridge's `is_in_water` read the head BLOCK
+(y+1), which is the top water layer for a bot floating in the eye-in-air band; the sensor and
+`escape_water`'s stop rule now read the EYE height (1.62), the game's own breathing criterion. The
+floor and shore states gate (ii) measured are unchanged by this (eyes at 36.6 in water / 41.6 in air);
+the harness's live cluster-distinct preflight re-checks every seed. Next: one FEAR seed diagnostic
+run (ungated) to read the ticks, then the fix that measurement names, then the second run.
+
 ## Operator runbook (the frozen protocol, executed from a clean main checkout at or after the freeze)
 
 1. big-mac-mini: `git checkout main && git pull`; RESTART the bridge (`flee` changed in #728) and

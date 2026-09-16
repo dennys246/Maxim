@@ -230,3 +230,38 @@ class TestFrozenContract:
         oxy = sensors["oxygen"]["drive"]
         assert float(oxy["set_point"]) == H.FROZEN["fingerprint"]["oxygen_drive"]["set_point"]
         assert float(oxy["comfort_band"]) == H.FROZEN["fingerprint"]["oxygen_drive"]["comfort_band"]
+
+
+class TestWindowTelemetry:
+    def test_ticks_are_relative_to_the_first_tick_and_carry_the_proposal(self, tmp_path):
+        import json as _json
+
+        p = tmp_path / "t.jsonl"
+        rows = [
+            {
+                "ts": 100.0,
+                "step": 1,
+                "proposal": None,
+                "gated": False,
+                "nac": {"active_clusters": {"world": "w1"}},
+                "drives": {"threat": 0.0, "food": 0.2},
+            },
+            {
+                "ts": 100.5,
+                "step": 2,
+                "proposal": {"tool_name": "minecraft_player_flee", "confidence": 0.7},
+                "gated": False,
+                "nac": {},
+                "drives": {"threat": 1.0},
+            },
+        ]
+        p.write_text("\n".join(_json.dumps(r) for r in rows) + "\n")
+        ticks = H._telemetry_ticks(p, t0_monotonic=0.0)
+        assert [t["t_from_first_tick"] for t in ticks] == [0.0, 0.5]
+        assert ticks[1]["proposal"] == "minecraft_player_flee" and ticks[0]["proposal"] is None
+        assert ticks[0]["active_clusters"] == {"world": "w1"} and ticks[1]["drives"] == {"threat": 1.0}
+
+    def test_missing_or_empty_file_is_no_ticks_not_a_crash(self, tmp_path):
+        assert H._telemetry_ticks(tmp_path / "missing.jsonl", 0.0) == []
+        (tmp_path / "empty.jsonl").write_text("")
+        assert H._telemetry_ticks(tmp_path / "empty.jsonl", 0.0) == []

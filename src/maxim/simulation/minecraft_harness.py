@@ -321,11 +321,23 @@ class MinecraftSyncPump:
                 logger.warning("minecraft sync pump (%s): tick raised", self._aut.agent_id, exc_info=True)
 
 
-def _loop_kwargs(aut: MinecraftAut, *, max_steps: int, stop_event: threading.Event, target_hz: float) -> dict[str, Any]:
+def _loop_kwargs(
+    aut: MinecraftAut,
+    *,
+    max_steps: int,
+    stop_event: threading.Event,
+    target_hz: float,
+    substrate_telemetry: Any | None = None,
+) -> dict[str, Any]:
     """The `run_agentic_loop` keyword set — a PURE function so the ship
     gate's consolidation/aut-mode pins test the exact kwargs the harness
-    passes (not a hand-composed sequence; the D43 §5 lesson)."""
-    return {
+    passes (not a hand-composed sequence; the D43 §5 lesson).
+
+    ``substrate_telemetry`` (a ``SubstrateTelemetry`` writer) is forwarded ONLY when
+    given — a harness that must SEE what the loop proposed per tick (Exp 60 chunk iii:
+    120 probe windows with zero executed actions and no telemetry to say why) passes
+    it; the kwargs are otherwise byte-identical to the pinned set."""
+    kwargs: dict[str, Any] = {
         "aut_mode": "substrate-primary",
         "percept_source": aut.percept_source,
         "pain_bus": aut.bio.pain_bus,
@@ -338,6 +350,9 @@ def _loop_kwargs(aut: MinecraftAut, *, max_steps: int, stop_event: threading.Eve
         # close, or the consolidation being measured never persists.
         "consolidation": "full",
     }
+    if substrate_telemetry is not None:
+        kwargs["substrate_telemetry"] = substrate_telemetry
+    return kwargs
 
 
 def run_minecraft_aut(
@@ -346,6 +361,7 @@ def run_minecraft_aut(
     max_steps: int = 60,
     target_hz: float = 4.0,
     stop_event: "threading.Event | None" = None,
+    substrate_telemetry: Any | None = None,
 ) -> None:
     """Run one AUT's full agent loop (blocking; run each AUT on a thread)."""
     from maxim.agents.maxim_agent import MaximAgent
@@ -370,7 +386,13 @@ def run_minecraft_aut(
             build_memory(),
             build_decision_engine(),
             aut.executor,
-            **_loop_kwargs(aut, max_steps=max_steps, stop_event=stop_event or threading.Event(), target_hz=target_hz),
+            **_loop_kwargs(
+                aut,
+                max_steps=max_steps,
+                stop_event=stop_event or threading.Event(),
+                target_hz=target_hz,
+                substrate_telemetry=substrate_telemetry,
+            ),
         )
     finally:
         # The bio-stack's OWN session end (cerebellum save + distributor
