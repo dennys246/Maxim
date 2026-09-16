@@ -434,6 +434,7 @@ jobs:
         # ruff check/format pass in the same commit.
         run: |
           pip install "ruff==0.14.14"
+          pip install "pyyaml>=6.0,<7.0"  # scripts/lint_body_rest_neutral.py reads body YAML
           ruff check src/ tests/
           ruff format --check src/ tests/
 
@@ -1066,6 +1067,17 @@ jobs:
         # pin). Positive control: tests/unit/test_lint_function_length.py.
         run: |
           python3 scripts/lint_function_length.py
+
+      - name: Body rest-at-neutral lint (L11 range principle; Exp 60 saturation lesson)
+        # Every A4-gained sensor must declare where it RESTS (`rest:` or a
+        # homeostatic set_point) and that rest must be its range midpoint —
+        # a declared rest the world never visits is a full-weight CONSTANT
+        # (Exp 60 gate (ii) failed at cos 0.8502 on `saturation` [0,10]).
+        # Prints the declared no-rest roster every run. H1 of the 2026-09-16
+        # set-point-aware-neutral review. Positive control:
+        # tests/unit/test_lint_body_rest_neutral.py.
+        run: |
+          python3 scripts/lint_body_rest_neutral.py
 
       - name: Orphan-module ratchet (dead-code lesson mechanization)
         # CLAUDE.md's dead-code lesson ("15 dead modules shipping in the wheel,

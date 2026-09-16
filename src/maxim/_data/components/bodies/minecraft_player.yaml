@@ -37,6 +37,7 @@ entity:
     food:
       unit: points
       range: [0, 40]   # rest (20, full) = midpoint = A4-neutral
+      rest: 20
       initial: 20
       modality: world
       drive:
@@ -48,21 +49,25 @@ entity:
     light_level:
       unit: level
       range: [0, 15]
+      rest: null  # NO rest: light is place- and time-dependent; a known constant-mass contributor (2026-09-16 review)
       initial: 7
       modality: world
     y_altitude:
       unit: blocks
       range: [0, 128]  # rest (surface y~64) = midpoint; y>128 clamps (the lever, applied)
+      rest: 64
       initial: 64
       modality: world
     nearest_hostile_dist:
       unit: blocks
       range: [0, 128]  # bridge caps at 64 ("beyond horizon") = midpoint; approach descends loud
+      rest: 64
       initial: 64
       modality: world
     time_of_day:
       unit: ratio
       range: [0, 1]
+      rest: null  # NO rest: cyclic (wraps at midnight); a known constant-mass contributor that drifts through the day
       initial: 0.0
       modality: world
       # WRAPS at midnight: 0.99 and 0.01 are two game-minutes apart but
@@ -102,6 +107,7 @@ entity:
       # saturation (the Exp 56/57 bench bodies do not) — no persisted substrate is
       # re-encoded by this change. Replay: docs/experiments/data/exp60_saturation_rest_check.py
       range: [0, 20]   # rest = FED (bridge clamp 10) = midpoint; drain 10->0 descends loud
+      rest: 10
       initial: 10
       modality: world
     oxygen:
@@ -126,26 +132,31 @@ entity:
     hostile_count:
       unit: count
       range: [-32, 32] # rest (0 hostiles) = midpoint; the negative half is unobservable by design
+      rest: 0
       initial: 0
       modality: world
     distance_from_spawn:
       unit: blocks
       range: [-128, 128] # rest (at spawn) = midpoint; wandering shouts
+      rest: 0
       initial: 0
       modality: world
     speed:
       unit: blocks_per_tick
       range: [-1, 1]   # rest (still) = midpoint
+      rest: 0
       initial: 0
       modality: world
     on_ground:
       unit: bool
       range: [-1, 3]   # rest (grounded, 1) = midpoint; airborne (0) speaks at w=0.125
+      rest: 1
       initial: 1
       modality: world
     is_raining:
       unit: bool
       range: [-1, 1]   # rest (clear, 0) = midpoint; rain (1) shouts
+      rest: 0
       initial: 0
       modality: world
     is_in_water:
@@ -158,21 +169,25 @@ entity:
       # pre-damage window (measured cos(shore, submerged) ~0.79 at full air).
       # Rest (dry, 0) = midpoint (silent); in-water (1) shouts at gain weight 1.0.
       range: [-1, 1]   # mirrors is_raining: rest 0 = midpoint, submerged 1 = loud
+      rest: 0
       initial: 0
       modality: world
     xp_level:
       unit: levels
       range: [-50, 50] # rest (0) = midpoint; gaining levels shouts
+      rest: 0
       initial: 0
       modality: world
     nearest_player_dist:
       unit: blocks
       range: [0, 128]  # bridge caps at 64 = midpoint; a nearing player descends loud
+      rest: 64
       initial: 64
       modality: world
     look_pitch:
       unit: radians
       range: [-1.5708, 1.5708]
+      rest: 0
       initial: 0
       modality: world
   modulators:

@@ -95,3 +95,9 @@ verified table); `docs/experiments/exp60_drowning_avoidance_prereg.md` (the viab
 move generators hard-return on liquid nodes, so `flee`/`goto` throws `NoPath` from any submerged
 start. Water actuation must bypass the pathfinder (`bot.setControlState("jump", true)` = swim up),
 as `escape_water` does. (Exp 60 environment lens, verified in the vendored pathfinder source.)
+
+**Regression guard for corollary 6's rest-at-midpoint half (2026-09-16):** `scripts/lint_body_rest_neutral.py`
+(CI) requires every gained ranged sensor to declare its rest (`rest:`, or a homeostatic `set_point`,
+never both) at the range midpoint and prints the `rest: null` roster — the DECLARATION half; whether
+the world rests there is the apparatus check's measurement (`exp60_water_check.py`). The encode
+primitive itself is pinned by `tests/unit/test_encoder_golden_v1.py`.
