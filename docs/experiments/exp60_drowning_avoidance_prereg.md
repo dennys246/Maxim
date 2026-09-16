@@ -1,6 +1,8 @@
 # Exp 60 (FROZEN 2026-09-15) — learned drowning-avoidance: Wire-4 situation-fear on a separable cue
 
-> **STATUS: FROZEN 2026-09-15 at main db7749f3b75f (chunk iv). Run AUTHORIZED; no trial data taken yet.**
+> **STATUS: FROZEN 2026-09-15 at main db7749f3b75f (chunk iv). OUTCOME 2026-09-16: EARNED — see
+> [§Outcome](#outcome-2026-09-16-earned--learned-anticipatory-drowning-avoidance-through-wire-4-situation-fear-on-the-is_in_water-cue)
+> (run 2, data PR #736; run 1 INCOMPLETE at the instrument, Amendments 3–7).**
 > The binding sections are **§Apparatus** (built; check PASSED 3/3, data PR #724), **§Gate (ii)**
 > with its Amendment 1 (FAIL 0.8502 → saturation-rest fix #726 → re-run PASS 0.7874, data PR #727)
 > and **§Design (iii)** (harness #728, two-lens folded). Everything below §Design (iii) — the
@@ -466,3 +468,96 @@ The exact water apparatus geometry, the surface affordance (reuse `flee`-up vs a
 action), the failure-mode allowlist entry, the anticipation-latency DV's precise definition, and the
 death-cap/rescue. All are the four-lens review's job. This doc fixes the IDEA and its reuse of the
 merged Wire-4 mechanism on a cue that separates.
+
+## Outcome (2026-09-16): EARNED — learned, anticipatory drowning-avoidance through Wire-4 situation-fear on the `is_in_water` cue
+
+**Verdict record:** `docs/experiments/data/exp60_verdict.json` (data PR #736), computed by
+`exp60_run.py verdict --run-id 301eb2edff6d --run-id eeb92752ee2b` at main `3cbe4405` on a clean
+tree from `docs/experiments/data/exp60_trials.jsonl`. Run 2 (the verdict input) executed at main
+`2708e208` (after #733, the last instrument fix) between 20:36 and 21:32 UTC, FEAR arm first, then
+ABLATED, five seeds each (11–15), no refusals, `working_tree_dirty_src_scripts: false`. Every
+frozen preflight passed on every seed: bridge cadence 0.101 s (≤ 0.15), loop liveness 6 ticks
+(≥ 4), actuation preflight `surfaced` at ~1.5 s through the bridge (not the executor), live
+clusters distinct, `get_positive_outcomes(escape_water) == []` before the pre-probe.
+
+**Every gate PASS (all five, as frozen in §Design (iii)):**
+
+| Gate | Frozen threshold | Measured |
+|---|---|---|
+| FEAR post median P(surface before the US) | ≥ 0.5 | **1.0** (5/5 seeds at 1.0) |
+| ABLATED post median P(surface) | ≤ 0.2 | **0.0** (5/5 seeds at 0.0) |
+| FEAR post > pre, every seed | strict | **0.0 → 1.0** on all five (pre censored 30/30, zero calls) |
+| Exact permutation, one-sided FEAR > ABLATED | p < 0.05 | **p = 1/252 = 0.0040** (the floor for 5 v 5; observed diff 1.0) |
+| Specificity, every FEAR seed | ratio 0.2 | **shore fear 0.0 vs water fear −1.0** on all five; live G2 need 1.0 on the probe cluster, one episode cluster per seed (the probe cluster itself) |
+
+**Secondary DVs (reported, not gated).** Post-training FEAR latency to surface over the 30
+placements: min 1.28 s, median 1.72 s, max 3.34 s — all inside the 4.34 s US-free window and
+well before the 5.09 s air-hunger pain edge (`pain_edge_min_s` 5.085, `probe_cap_s` 4.335, both
+read from the merged apparatus record). The first post placement of EVERY FEAR seed shows the
+predicted name tie-break: one `flee` call (fails fast, "submerged — the pathfinder is dead in
+water", one negative link) then `escape_water` succeeds; latency on that first placement is
+2.9–3.3 s, on the remaining five 1.3–2.3 s with `escape_water` the only call (2–3 calls per
+placement; `flee_negative_links` = 2 per seed, `escape_negative_links` = 0). ABLATED made ZERO
+executor calls in all 30 post placements (all censored at the cap), exactly as pre. Training was
+yoked by construction and measured equal: every seed in both arms had 10/10 usable episodes,
+20 `drive:oxygen` pain signals, 0 `drive:health` pain signals, 0 deaths, one episode cluster.
+`cluster_fear_dump` after training: FEAR `{<water cluster>|drive:oxygen: −1.0}` on every seed
+(cap reached), ABLATED `{}` (the subscriber is detached; the pain still published — 20 signals).
+
+**What is claimed.** The behavioural contrast is LEARNED (the ABLATED twin had the same water, the
+same pain, the same episodes, the same actuator and the same loop, and never surfaced),
+SITUATION-SPECIFIC (shore cluster carries 0 fear; the anticipatory need reads 1.0 on the water
+cluster only), and ANTICIPATORY (the agent leaves the water a median 3.4 s before its own
+air-hunger pain would have fired — in the pre-probe, with the same body in the same water, it
+sat there until rescued). The read→act path is the PRODUCTION one: PainBus `drive:oxygen` →
+`create_pain_cluster_fear_subscriber` → `NAc.record_cluster_fear` on the cluster the loop noted
+that tick → `anticipatory_threat_need` → `recommend_action` → `escape_water` executed by
+`run_agentic_loop` at AUTONOMOUS autonomy; no hand-composed sequence anywhere in the measurement
+(D43). This is the Wire-4 mechanism's behavioural graduation — the claim Exp 58 could not reach
+because dark/safe never separated; here the cue separates (gate (ii), cos 0.787) and the same
+mechanism carries the same contingency.
+
+**Caveat, stated as recorded.** After the first surfaced placement of each FEAR seed,
+`escape_water` carries a POSITIVE causal link (`positive_escape_links` per post probe: 47–51 per
+FEAR seed; 0 in every pre probe and 0 everywhere in ABLATED). Placements 2–6 of each post probe
+are therefore read through fear PLUS a positive link, not fear alone. The fear-only read is the
+FIRST post placement per seed: 5/5 surfaced, latency 2.9–3.3 s, still inside the window. The
+ablation is unaffected — ABLATED cannot acquire the link because nothing ever selects the
+actuator — so the contrast stands; but a per-placement decomposition of fear vs positive-link
+drive is NOT measured here and is not claimed. Recorded loop behaviour, unchanged (Amendment 7):
+the consecutive-same-tool cap explains the 2–3 (not 6+) `escape_water` calls per placement.
+
+**Not claimed.** Transfer between agents (Phase 2; fear does not travel in bundles — Wire-4
+invariant (c)); generalization to other water bodies or depths (one pool, one geometry, one
+seed set); any innate-vs-learned decomposition beyond the ablation (the game applies no damage
+inside the window; the un-feared bot demonstrably does not surface on its own); persistence
+across sessions or extinction dynamics (no re-test after a delay); any effect of the `flee`
+tie-break beyond the ~1.5 s it costs the first placement.
+
+**Run 1 (INCOMPLETE, preserved in the same JSONL).** Run ids `0e5f7ee98b2d` (FEAR) and
+`7439a7a969e8` (ABLATED), executed at the freeze commit `be038305` on 2026-09-16 02:47–03:30
+UTC. Fear was readable at −1.0 in every FEAR seed and ZERO actions were executed in all 54
+placements; FEAR seed 13 refused at the escape-actuation preflight (`surface: still submerged
+(capped)`). Three instrument causes, each measured and fixed before run 2 with a RED-verified
+regression guard, none touching substrate or representation: window telemetry absent and
+`is_in_water` read at the head block (#730, Amendment 3); the bridge state cadence (#731,
+Amendment 4, re-rationalised as freshness in Amendment 5); the substrate-primary loop's idle
+gate needing a text event to wake (#732, Amendments 5–6); the harness loop running at PLANNING
+autonomy, which never executes a body affordance (#733, Amendment 7). Full arc and the
+measurement ladder any future harness must climb:
+[docs/wiring/harness-loop-must-be-proven-live.md](../wiring/harness-loop-must-be-proven-live.md).
+Run 1 is the instrument's null, not the mechanism's, and is kept because a record that
+cannot act is exactly what the ladder now guards against.
+
+**Ledger + guards.** Row added to
+[docs/plans/behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md)
+(Tier 1). Re-run on: `NAc.record_cluster_fear` / `anticipatory_threat_need` / the Wire-4 allowlist
+change; `recommend_action` drive-activation floor change; `SensorEncoder` / EC world-modality or
+`minecraft_player` sensor-range change (`is_in_water`, `oxygen`, `saturation` are in the frozen
+fingerprint); `escape_water` / bridge water handling change; `run_agentic_loop` idle gate or
+autonomy handling change; minor-version heartbeat. Regression guards:
+`scripts/survival_world/exp60_run.py` (`run` refusals + pure `verdict`),
+`tests/unit/test_exp60_run.py`, `tests/unit/test_exp60_water_classroom.py`,
+`tests/unit/test_l11_geometry_probe.py`, `tests/unit/test_substrate_primary_wake.py` (the loop
+wakes and executes on the live-faithful fake bridge), `tests/unit/test_cluster_fear.py`, and the
+data files above.

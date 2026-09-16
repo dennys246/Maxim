@@ -44,6 +44,9 @@ breaks) and **R1** (no cross-context generalization — the substrate is exact-k
 - **Validate with the dining hall** (spawn low-health → learn to `eat` → relief; the R2-break-1
   flagship) and the cheap **dark=danger avoidance** probe (rides the already-wired negative-
   credit path — the most tractable first contingency).
+  - *2026-09-16:* dark=danger **BLOCKED at the instrument** (Exp 58 — dark/safe never separate on
+    the summed world channel, L11); the contingency **EARNED as drowning-avoidance** (Exp 60 — same
+    Wire-4 mechanism, `is_in_water` cue, FEAR 5/5 vs ABLATED 0/5, p = 1/252; prereg §Outcome).
 
 ### Phase 1b — Survival reflex tier *(new mechanism; gated `[engineering]`)*
 A fast, innate reaction — startle / flee / flinch on damage or threat-onset — firing BELOW the
@@ -58,7 +61,7 @@ the innate version). **Distinct from the DN-canonical *orienting* reflex**, whic
 perception-coupled (cochlear/DoA → robot head) and stays in 1.4.
 
 ### Phase 2 — Shared survival wants *(the pivotal may-fail claim; the 1.3 headline)*
-Agent A learns "dark = danger" / eat-when-hungry the hard way → exports its substrate → agent B
+Agent A learns "dark = danger" (→ "water = drowning", per Exp 60, 2026-09-16) / eat-when-hungry the hard way → exports its substrate → agent B
 ingests it → **B survives its first night better, never bitten.** Needs only Phase 1 + the 1.2
 fabric — **not** R1 or R4 — so it is the honest minimal 1.3 that can actually ship. A recorded
 failure ships as a failure.
