@@ -16,6 +16,14 @@ that generalizes belongs here.
 
 ## Subsystem docs
 
+- [harness-loop-must-be-proven-live.md](harness-loop-must-be-proven-live.md) — a substrate-primary
+  HARNESS loop must be proven able to tick AND act before any window can measure anything: three
+  instrument causes behind one `actions=0` symptom (idle gate had no substrate wake source; bridge
+  cadence; the loop ran at PLANNING autonomy and never executed a body affordance), the measurement
+  ladder that named them (window telemetry → thread profile → proposal timeline → read the gate →
+  reproduce the LIVE condition offline), and the preflights every harness now carries. (Exp 60 trial
+  harness, 2026-09-15/16.)
+
 - [substrate-learning-channels.md](substrate-learning-channels.md) — the TWO learning channels a
   successful action writes (state-blind tool-success **causal link** vs state-conditioned
   **cluster reward bias**), why they confound behavioural credit-isolation, and how to design a
