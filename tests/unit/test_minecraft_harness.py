@@ -40,6 +40,10 @@ class TestLoopKwargsPins:
         aut.bio.pain_bus = aut.bio.memory_hub = aut.bio.hippocampus = None
         kwargs = _loop_kwargs(aut, max_steps=5, stop_event=threading.Event(), target_hz=2.0)
         assert kwargs["consolidation"] == "full"
+        # AUTONOMOUS (orchestrator parity): PLANNING never executes a substrate proposal
+        from maxim.agents.autonomy import AutonomyLevel
+
+        assert kwargs["autonomy_controller"].current_level == AutonomyLevel.AUTONOMOUS
         # the optional telemetry writer is forwarded ONLY when given (Exp 60 harness instrument)
         assert "substrate_telemetry" not in kwargs
         with_t = _loop_kwargs(

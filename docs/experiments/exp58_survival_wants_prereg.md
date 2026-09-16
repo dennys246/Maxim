@@ -406,3 +406,15 @@ schema in `minecraft_benchmark.md`) is the leading candidate, chosen from data, 
 own review + Exp 56/57 re-baseline. Instruments that gave false confidence and must be fixed
 alongside: `survival_phase0` and the exp58 offline gates used big-multi-axis / scripted contrasts
 that did not exercise the live single-axis separation — the diagnostic replaces them.
+
+**Correction note — 2026-09-16, POST-DATA (Exp 60 Amendment 7).** Three sentences above describe
+the dry-run as the loop "firing end to end" / "flee climbed the staircase": Addendum 3 ("Live-verified
+end to end in the prior dry-run"), Addendum 4 ("The first full depth-cave dry-run ran end to end") and
+§Outcome ("a full live dry-run showed the composed loop fire end to end: the bot flees up the
+staircase"). The staircase flee was the harness's PREFLIGHT actuation check (`exp58_run.py`, a direct
+`executor.execute`), not the agent loop; training is propose-only by design; and the "cleanly
+censored" pre-probe is exactly what the loop produces at its default PLANNING autonomy level, under
+which `run_minecraft_aut` never executed a body affordance (measured 2026-09-16; fixed in
+`_loop_kwargs`, guard `tests/unit/test_substrate_primary_wake.py`). The mechanism's WRITE side
+(pain→cluster fear) and the offline read gates stand as measured; the loop-executed READ was never
+demonstrated live on this line. No Exp 58 claim rested on it (BLOCKED at the instrument, above).
