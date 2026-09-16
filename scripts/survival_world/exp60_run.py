@@ -420,6 +420,7 @@ def _run(args: argparse.Namespace) -> int:
     from maxim.similarity.encoder import SensorEncoderConfig
     from maxim.simulation.minecraft import MinecraftClient
     from maxim.simulation.minecraft_harness import MinecraftSyncPump, build_minecraft_aut, run_minecraft_aut
+    from maxim.simulation.substrate_telemetry import SubstrateTelemetry
     from survival_world.common import make_fresh_encoder
 
     run_id = uuid.uuid4().hex[:12]
@@ -491,6 +492,33 @@ def _run(args: argparse.Namespace) -> int:
                 )
 
             aut.bio.pain_bus.subscribe(_record_pain)
+            # Every executor call this seed makes — tool, outcome, error, time — so a window
+            # can show what the loop DID, not only what succeeded (the first live run had 120
+            # windows with `actions=0` and nothing to say whether the loop proposed, executed
+            # and failed, or never proposed; instrument gap, fixed here).
+            calls: list[dict[str, Any]] = []
+            _orig_execute = aut.executor.execute
+
+            def _spy_execute(action: dict[str, Any]) -> Any:
+                t = time.monotonic()
+                try:
+                    out = _orig_execute(action)
+                except Exception as exc:
+                    calls.append(
+                        {"t": t, "tool": (action or {}).get("tool_name"), "success": False, "error": repr(exc)}
+                    )
+                    raise
+                calls.append(
+                    {
+                        "t": t,
+                        "tool": (action or {}).get("tool_name"),
+                        "success": getattr(out, "success", None),
+                        "error": getattr(out, "error", None),
+                    }
+                )
+                return out
+
+            aut.executor.execute = _spy_execute  # instance attribute; the loop calls executor.execute(action)
 
             def _pain_between(t_a: float, t_b: float) -> list[dict[str, Any]]:
                 return [
@@ -670,10 +698,18 @@ def _run(args: argparse.Namespace) -> int:
                     RESCUE FIRST (teleport to the shore) and only then stop/join the loop."""
                     stop = threading.Event()
                     actions0 = len(getattr(aut.executor, "_tools_succeeded", []) or [])
+                    calls0 = len(calls)
+                    telem_path = Path(persistence_dir) / f"telemetry_{label}_{int(time.time() * 1000)}.jsonl"
+                    telem = SubstrateTelemetry(log_path=telem_path, agent_id=agent_id)
                     loop = threading.Thread(
                         target=run_minecraft_aut,
                         args=(aut,),
-                        kwargs={"max_steps": 100_000, "target_hz": FROZEN["loop_hz"], "stop_event": stop},
+                        kwargs={
+                            "max_steps": 100_000,
+                            "target_hz": FROZEN["loop_hz"],
+                            "stop_event": stop,
+                            "substrate_telemetry": telem,
+                        },
                         daemon=True,
                     )
                     loop.start()
@@ -711,9 +747,13 @@ def _run(args: argparse.Namespace) -> int:
                     if stuck:
                         raise Refusal(f"{label}: loop thread did not stop")
                     succeeded = list(getattr(aut.executor, "_tools_succeeded", []) or [])[actions0:]
+                    ticks = _telemetry_ticks(telem_path, t0)
+                    window_calls = [{**c, "t": round(c["t"] - t0, 3)} for c in calls[calls0:]]
                     return {
                         "samples": samples,
                         "actions": succeeded,
+                        "calls": window_calls,
+                        "ticks": ticks,
                         "t0": t0,
                         "t_rescue": t_rescue,
                         "us_events": _pain_between(t0, t_rescue),
@@ -744,8 +784,12 @@ def _run(args: argparse.Namespace) -> int:
                         arrival_health = _rescue(f"{label}-placement-{i}-after")
                         cls = classify_placement(win["samples"], cap_s=probe_cap_s)
                         cls["actions"] = win["actions"]
-                        cls["escape_water_calls"] = sum(1 for a in win["actions"] if a.endswith("_escape_water"))
-                        cls["flee_calls"] = sum(1 for a in win["actions"] if a.endswith("_flee"))
+                        cls["calls"] = win["calls"]  # every executor call, incl. failures
+                        cls["ticks"] = win["ticks"]  # every loop tick: proposal + what the loop saw
+                        cls["escape_water_calls"] = sum(
+                            1 for c in win["calls"] if str(c["tool"]).endswith("_escape_water")
+                        )
+                        cls["flee_calls"] = sum(1 for c in win["calls"] if str(c["tool"]).endswith("_flee"))
                         cls["us_events"] = win["us_events"]
                         cls["arrival_health"] = arrival_health
                         if win["us_events"] or arrival_health < 20.0:
@@ -754,9 +798,11 @@ def _run(args: argparse.Namespace) -> int:
                             cls["surfaced"] = False
                             cls["censored"] = True
                         placements.append(cls)
+                        proposed = [t["proposal"] for t in win["ticks"] if t.get("proposal")]
                         print(
                             f"  {label} placement {i}: {'SURFACED %.2fs' % cls['latency_s'] if cls['surfaced'] else 'censored'}"
-                            f"{' [DIRTY]' if cls['dirty'] else ''} actions={len(win['actions'])} flee={cls['flee_calls']}"
+                            f"{' [DIRTY]' if cls['dirty'] else ''} ticks={len(win['ticks'])} proposed={proposed[:4]} "
+                            f"calls={[(c['tool'], c['success']) for c in win['calls']][:4]}"
                         )
                         if _deaths() - deaths0 > FROZEN["death_cap"]:
                             raise Refusal(f"death cap exceeded ({_deaths() - deaths0})")
@@ -953,6 +999,44 @@ def _run(args: argparse.Namespace) -> int:
     ok = sum(1 for r in records if r.get("refusal") is None)
     print(f"\narm={args.arm} run={run_id}: {ok}/{len(records)} seeds clean -> {out_path}")
     return exit_code
+
+
+def _telemetry_ticks(path: Path, t0_monotonic: float) -> list[dict[str, Any]]:
+    """Compress a window's SubstrateTelemetry JSONL into per-tick rows (pure over the file).
+
+    Rows carry wall-clock ``ts``; the window's clock is monotonic, so ticks are reported
+    relative to the FIRST row (the loop's first tick) and the proposal/tool per tick.
+    """
+    try:
+        lines = [ln for ln in path.read_text().splitlines() if ln.strip()]
+    except OSError:
+        return []
+    rows = []
+    for ln in lines:
+        try:
+            rows.append(json.loads(ln))
+        except ValueError:
+            continue
+    if not rows:
+        return []
+    first_ts = rows[0].get("ts", 0.0)
+    out = []
+    for r in rows:
+        prop = r.get("proposal") or {}
+        nac = r.get("nac") or {}
+        out.append(
+            {
+                "t_from_first_tick": round(float(r.get("ts", 0.0)) - float(first_ts), 3),
+                "step": r.get("step"),
+                "proposal": prop.get("tool_name") or prop.get("tool") if isinstance(prop, dict) else prop,
+                "gated": r.get("gated"),
+                "active_clusters": nac.get("active_clusters") if isinstance(nac, dict) else None,
+                "drives": {k: v for k, v in (r.get("drives") or {}).items() if k in ("threat", "oxygen", "health")}
+                if isinstance(r.get("drives"), dict)
+                else None,
+            }
+        )
+    return out
 
 
 class _NullCtx:

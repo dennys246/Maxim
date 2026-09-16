@@ -40,6 +40,12 @@ class TestLoopKwargsPins:
         aut.bio.pain_bus = aut.bio.memory_hub = aut.bio.hippocampus = None
         kwargs = _loop_kwargs(aut, max_steps=5, stop_event=threading.Event(), target_hz=2.0)
         assert kwargs["consolidation"] == "full"
+        # the optional telemetry writer is forwarded ONLY when given (Exp 60 harness instrument)
+        assert "substrate_telemetry" not in kwargs
+        with_t = _loop_kwargs(
+            aut, max_steps=5, stop_event=threading.Event(), target_hz=2.0, substrate_telemetry=object()
+        )
+        assert "substrate_telemetry" in with_t
         assert kwargs["aut_mode"] == "substrate-primary"
 
 

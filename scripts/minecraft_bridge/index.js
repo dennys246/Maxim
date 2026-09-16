@@ -113,8 +113,12 @@ function snapshot() {
   // for any water contact incl. feet-wet wading (head in air, oxygen full, not
   // drowning) — including it would inject non-drowning states into the
   // underwater cluster and disagree with escape_water's head-only check (S1).
-  const headBlock = me ? bot.blockAt(me.position.offset(0, 1, 0)) : null;
-  const inWater = headBlock && (headBlock.name === "water" || headBlock.name === "bubble_column") ? 1 : 0;
+  // EYE height (1.62), not the head BLOCK (y+1): the game breathes iff the EYES are in
+  // water, and a bot floating at y≈38.75 (eyes 40.37 = air, oxygen refilling) still
+  // has its head block (39) in the top water layer. The head-block read refused a
+  // live seed as "still submerged" while the state showed oxygen 20 (Exp 60 trials).
+  const eyeBlock = me ? bot.blockAt(me.position.offset(0, me.eyeHeight ?? 1.62, 0)) : null;
+  const inWater = eyeBlock && (eyeBlock.name === "water" || eyeBlock.name === "bubble_column") ? 1 : 0;
   return {
     health: bot.health ?? 20,
     food: bot.food ?? 20,
@@ -232,7 +236,8 @@ async function runAction(name, params) {
       const headWater = () => {
         const e = bot.entity;
         if (!e) return false;
-        const b = bot.blockAt(e.position.offset(0, 1, 0));
+        // eye height, matching the is_in_water sensor and the game's breathing rule
+        const b = bot.blockAt(e.position.offset(0, e.eyeHeight ?? 1.62, 0));
         return b && (b.name === "water" || b.name === "bubble_column");
       };
       if (!headWater()) return "already at surface";
