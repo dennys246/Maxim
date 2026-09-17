@@ -270,19 +270,21 @@ def test_donor_sanity_refuses_each_named_shape(tmp_path: Path, fear, links, epis
     assert not s["pass"] and any(why in r for r in s["reasons"]), s["reasons"]
 
 
-def test_donor_sanity_tolerates_the_pain_credits_zero_valued_node_keys_and_refuses_a_positive_one(
+def test_donor_sanity_names_zero_valued_and_non_zero_reward_bias_keys_apart_and_refuses_both(
     tmp_path: Path,
 ) -> None:
-    """Dry run 2026-09-17 (pair 200): training alone leaves ZERO-valued `reward_bias` keys — the
-    pain's negative credit clamped at 0.0 by `NAc.credit_node` — and both donors were refused as
-    "a probe happened". A zero key reads like an absent one; only a POSITIVE bias proves a positive
-    reaction (relief / success) was credited before export."""
+    """Dry run 1 (2026-09-17, pair 200): training left ZERO-valued `reward_bias` keys — the pain's
+    negative credit clamped at 0.0 and STORED by the pre-fix `NAc.credit_node` — and both donors
+    were refused as "a probe happened". The NAc now removes a bias that clamps to zero, so on a
+    fresh donor a zero key means a stale install or a regressed writer (refused, by name), and a
+    NON-ZERO bias means a positive reaction was credited before export (refused, by name)."""
     fear = {"a\x1fw1\x1fdrive:oxygen": -1.0}
     zero = {"a:w1": 0.0, "a:s1": 0.0, "a:other": 0.0}
     s = E.donor_sanity_staged(
         _stage(tmp_path, fear=fear, reward_bias=zero), donor_kind="fear", episode_clusters=["w1"], shore_node="s1"
     )
-    assert s["pass"], s["reasons"]
+    assert not s["pass"] and any("ZERO-valued" in r and "stale" in r for r in s["reasons"]), s["reasons"]
+    assert not any("non-zero" in r for r in s["reasons"])
     assert s["reward_bias_zero_nodes"] == 3
     s = E.donor_sanity_staged(
         _stage(tmp_path, fear=fear, reward_bias={**zero, "a:s1": 0.05}, name="pos"),
@@ -291,7 +293,13 @@ def test_donor_sanity_tolerates_the_pain_credits_zero_valued_node_keys_and_refus
         shore_node="s1",
     )
     assert not s["pass"] and any("non-zero node bias" in r for r in s["reasons"]), s["reasons"]
+    assert any("ZERO-valued" in r for r in s["reasons"])
     assert s["reward_bias_zero_nodes"] == 2
+    # the clean shape: no key at all
+    s = E.donor_sanity_staged(
+        _stage(tmp_path, fear=fear, name="clean"), donor_kind="fear", episode_clusters=["w1"], shore_node="s1"
+    )
+    assert s["pass"] and s["reward_bias_zero_nodes"] == 0
 
 
 def test_donor_sanity_ablated_must_carry_no_fear_and_the_staged_world_node_must_exist(tmp_path: Path) -> None:

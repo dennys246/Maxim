@@ -464,8 +464,10 @@ class TestNAcMaintenance:
         assert nac.reward_bias("agent-1", "node-a") > 0.0
 
     def test_pain_through_the_distributor_leaves_no_reward_bias_keys(self, nac):
-        """The Exp 61 shape: an eligible node, a NEGATIVE reward distributed to it — the persisted
-        `reward_bias` stays empty (the pre-fix NAc stored one 0.0 key per eligible node)."""
+        """The Exp 61 shape: eligible nodes, a NEGATIVE reward distributed to them — the persisted
+        `reward_bias` stays empty (the pre-fix NAc stored one 0.0 key per eligible node). This drives
+        the NAc-side `distribute_reward`; the live loop's `TemporalCreditDistributor` path ends at the
+        same `credit_node` and is pinned end to end by the Exp 61 smoke's staged footprint."""
         nac.update_eligibility("agent-1", "node-a", 1.0)
         nac.update_eligibility("agent-1", "node-b", 0.5)
         nac.distribute_reward("agent-1", -1.0)

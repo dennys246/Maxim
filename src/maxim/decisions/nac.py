@@ -2484,10 +2484,12 @@ class NAc:
         node via eligibility traces. Positive reward increases bias
         (widens recognition radius), negative reward decreases it.
 
-        A bias that clamps to zero is REMOVED, not stored: the decay path
-        already prunes a bias that falls below 0.001 rather than keeping a
-        near-zero key, and ``reward_bias()`` reads an absent key as 0.0, so
-        a stored 0.0 carried no meaning — it only shipped. Before
+        A bias that clamps to zero is REMOVED, not stored: ``reward_bias()``
+        reads an absent key as 0.0, so a stored 0.0 carried no meaning — it
+        only shipped. (The decay path keeps its own, separate floor: it
+        prunes a bias that FALLS below 0.001, so a tiny positive credit may
+        be stored here and pruned on the next tick. Two thresholds, one
+        meaning: zero is absent.) Before
         2026-09-17 a pain credited to a fresh node stored ``0.0`` under the
         node's key; in Exp 61's dry run those phantom keys travelled in the
         donor bundle and tripped the staged-donor sanity check.
