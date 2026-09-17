@@ -18,8 +18,9 @@ against the scripted bridge (its oxygen drains), the fear lands on the water clu
 and the STAGED sanity passes. That arm went RED on the dry run of 2026-09-17 (pair 200): the pain
 credit leaves ZERO-valued node `reward_bias` keys (negative credit, clamped by `NAc.credit_node`),
 which the sanity check read as "a probe happened" and refused both donors. The check now refuses
-only a POSITIVE node bias; the test pins that training does write the zero keys, so the arm
-cannot pass vacuously.
+only a NON-ZERO node bias, and the NAc no longer stores a bias that clamps to zero (the key is
+removed, as the decay prune already did below 0.001); the test pins that training leaves NO
+`reward_bias` key, with fear at the cap on the water cluster, so the arm cannot pass vacuously.
 
 Not proven here: the live bridge's timing (the one-pair dry run's job, build step 4).
 """
@@ -181,9 +182,10 @@ def test_donor_sequence_over_the_scripted_bridge_passes_the_staged_sanity(tmp_pa
         stage = tmp_path / "donor_stage"
         close_and_stage(aut, pump, stage)
         staged = json.loads((stage / "aut_nac.json").read_text())
-        # the pain credit's footprint: ZERO-valued node keys, never a positive one, never a link
+        # the pain credit leaves NO node key behind (a bias that clamps to zero is removed — the
+        # pre-2026-09-17 NAc stored one 0.0 key per eligible node here; three shipped per donor)
         rb = staged.get("reward_bias") or {}
-        assert rb and all(float(v) == 0.0 for v in rb.values()), rb
+        assert rb == {}, rb
         assert not staged.get("links") and not staged.get("event_outcome_welford"), staged.keys()
         sanity = donor_sanity_staged(
             stage,
@@ -192,7 +194,7 @@ def test_donor_sequence_over_the_scripted_bridge_passes_the_staged_sanity(tmp_pa
             shore_node=g2["live_g2"]["probe_shore_cluster"],
         )
         assert sanity["pass"], sanity["reasons"]
-        assert sanity["fear_shipped"] >= 1 and sanity["reward_bias_zero_nodes"] == len(rb)
+        assert sanity["fear_shipped"] >= 1 and sanity["reward_bias_zero_nodes"] == 0
     finally:
         try:
             aut.client.close()

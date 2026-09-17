@@ -310,6 +310,9 @@ def donor_sanity_staged(
     # A zero-valued key reads exactly like an absent one (`NAc.reward_bias` returns 0.0 either way).
     # The invariant is therefore NO POSITIVE node bias: a positive value can only come from a
     # positive reaction (relief / success) being credited — an execution or a probe before export.
+    # Since the same day `NAc.credit_node` REMOVES a bias that clamps to zero, so a fresh donor
+    # stages `reward_bias == {}`; the zero tolerance stays for files an older NAc wrote (the count
+    # is reported, and a non-zero `reward_bias_zero_nodes` on a fresh campaign is worth a look).
     positive_rb = {k: v for k, v in (nac.get("reward_bias") or {}).items() if float(v) != 0.0}
     if positive_rb:
         reasons.append(

@@ -446,6 +446,31 @@ class TestNAcMaintenance:
         reduced = nac.reward_bias("agent-1", "node-a")
         assert reduced < initial
 
+    def test_negative_credit_on_a_fresh_node_stores_no_key(self, nac):
+        """A pain credited to a node it never rewarded leaves NOTHING behind — not a 0.0 key.
+        Exp 61 dry run 1 (2026-09-17): three such keys shipped in every donor bundle."""
+        nac.credit_node("agent-1", "node-a", reward=-1.0)
+        assert ("agent-1", "node-a") not in nac._reward_bias
+        assert nac.reward_bias("agent-1", "node-a") == 0.0
+        assert nac.dump()["reward_bias"] == {}
+
+    def test_negative_credit_that_drives_a_bias_to_zero_removes_its_key(self, nac):
+        nac.credit_node("agent-1", "node-a", reward=1.0)
+        assert ("agent-1", "node-a") in nac._reward_bias
+        nac.credit_node("agent-1", "node-a", reward=-100.0)
+        assert ("agent-1", "node-a") not in nac._reward_bias
+        # a later positive credit starts from zero again
+        nac.credit_node("agent-1", "node-a", reward=1.0)
+        assert nac.reward_bias("agent-1", "node-a") > 0.0
+
+    def test_pain_through_the_distributor_leaves_no_reward_bias_keys(self, nac):
+        """The Exp 61 shape: an eligible node, a NEGATIVE reward distributed to it — the persisted
+        `reward_bias` stays empty (the pre-fix NAc stored one 0.0 key per eligible node)."""
+        nac.update_eligibility("agent-1", "node-a", 1.0)
+        nac.update_eligibility("agent-1", "node-b", 0.5)
+        nac.distribute_reward("agent-1", -1.0)
+        assert nac.dump()["reward_bias"] == {}
+
     def test_decay_reward_biases_prunes_near_zero(self, nac):
         """Biases below 0.001 are removed."""
         nac._reward_bias[("agent-1", "node-a")] = 0.0005
