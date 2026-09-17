@@ -300,3 +300,24 @@ class TestWindowTelemetry:
         assert H._telemetry_ticks(tmp_path / "missing.jsonl", 0.0) == []
         (tmp_path / "empty.jsonl").write_text("")
         assert H._telemetry_ticks(tmp_path / "empty.jsonl", 0.0) == []
+
+
+def test_verdict_over_the_committed_exp60_record_matches_the_committed_verdict() -> None:
+    """The lift's proof, mechanical (Exp 61 architecture lens S11): `compute_verdict` over the
+    committed Exp 60 trials with the two run ids must reproduce the committed verdict's checks and
+    verdict — a refactor of the runner that moved a pure function cannot move a shipped verdict."""
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    rows = [
+        json.loads(ln)
+        for ln in (root / "docs/experiments/data/exp60_trials.jsonl").read_text().splitlines()
+        if ln.strip()
+    ]
+    committed = json.loads((root / "docs/experiments/data/exp60_verdict.json").read_text())
+    v = H.compute_verdict(rows, run_id=committed["run_ids"])
+    assert v["verdict"] == committed["verdict"] == "EARNED"
+    assert v["checks"] == committed["checks"]
+    assert v["n_clean"] == committed["n_clean"]
+    assert v["permutation"] == committed["permutation"]

@@ -81,7 +81,6 @@ import os
 import shutil
 import sys
 import tempfile
-import threading
 import time
 import uuid
 from pathlib import Path
@@ -98,17 +97,33 @@ from _provenance import (  # noqa: E402
     in_process_code_provenance,
 )
 from exp56 import common as C  # noqa: E402
-from survival_world.common import InstrumentError, settle_until, sync_snapshot  # noqa: E402
-from survival_world.exp60_water_check import (  # noqa: E402
-    IN_WATER_WITHIN_S,
-    RECOVER_OXYGEN_MIN,
-    REQUIRED_BRIDGE_SENSORS,
-    STALE_MAX_CONSECUTIVE,
-    STALE_STATE_S,
-    SURFACE_WITHIN_S,
-    missing_bridge_sensors,
+from survival_world.common import InstrumentError  # noqa: E402
+from survival_world.water_trial import (  # noqa: E402  (re-exported: the Exp 60 unit tests pin these names)
+    Refusal,
+    WaterTrial,
+    _detach_fear_subscriber,
+    _f,
+    _median,
+    _telemetry_ticks,
+    classify_placement,
+    fingerprint_drift,
+    median_interval_s,
+    min_pain_edge_s,
+    p_surface,
 )
-from survival_world.l11_geometry_probe import SATURATION_REST  # noqa: E402
+
+__all__ = [
+    "Refusal",
+    "_detach_fear_subscriber",
+    "_f",
+    "_median",
+    "_telemetry_ticks",
+    "classify_placement",
+    "fingerprint_drift",
+    "median_interval_s",
+    "min_pain_edge_s",
+    "p_surface",
+]
 
 ANCHOR_FILE = Path.home() / ".maxim" / "exp60_water_classroom.json"
 APPARATUS_RECORD = "docs/experiments/data/exp60_water_apparatus.json"
@@ -161,55 +176,7 @@ GATES: dict[str, Any] = {
 }
 
 
-class Refusal(RuntimeError):
-    """A prereg stop rule fired — the seed must not produce a verdict row."""
-
-
 # ─────────────────────────── pure helpers (unit-tested) ───────────────────────────
-
-
-def classify_placement(samples: list[dict[str, Any]], *, cap_s: float) -> dict[str, Any]:
-    """One probe placement from ``(t, in_water, health)`` samples, t from teleport (pure).
-
-    ``surfaced`` = the first head-in-air read AFTER the head was seen in water and BEFORE
-    any health drop or the cap. A health drop inside the window is a DIRTY placement
-    (damage occurred: the window was not damage-free) and censors it.
-    """
-    seen_water = False
-    health0 = None
-    for s in samples:
-        if s["t"] > cap_s:
-            break
-        if health0 is None and s.get("health") is not None:
-            health0 = s["health"]
-        if s.get("health") is not None and health0 is not None and s["health"] < health0:
-            return {"surfaced": False, "latency_s": None, "censored": True, "dirty": True, "t_end": s["t"]}
-        if s["in_water"]:
-            seen_water = True
-        elif seen_water:
-            return {"surfaced": True, "latency_s": round(s["t"], 3), "censored": False, "dirty": False, "t_end": s["t"]}
-    return {
-        "surfaced": False,
-        "latency_s": None,
-        "censored": True,
-        "dirty": False,
-        "t_end": samples[-1]["t"] if samples else 0.0,
-        "never_submerged": not seen_water,
-    }
-
-
-def p_surface(probe: dict[str, Any]) -> float | None:
-    """Per-seed P(surface before first damage tick) over the probe's CLEAN placements."""
-    ps = [p for p in probe.get("placements", []) if not p.get("dirty") and not p.get("never_submerged")]
-    if not ps:
-        return None
-    return sum(1 for p in ps if p["surfaced"]) / len(ps)
-
-
-def _median(xs: list[float]) -> float:
-    s = sorted(xs)
-    n = len(s)
-    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2.0
 
 
 def exact_permutation_p(a: list[float], b: list[float]) -> dict[str, Any]:
@@ -340,55 +307,7 @@ def compute_verdict(
     return out
 
 
-def fingerprint_drift(live: dict[str, Any], frozen: dict[str, Any]) -> list[str]:
-    """Keys whose live value differs from the frozen apparatus (pure; lists compared sorted)."""
-
-    def norm(v: Any) -> Any:
-        if isinstance(v, (list, tuple)):
-            return (
-                sorted(norm(x) for x in v) if all(not isinstance(x, (list, dict)) for x in v) else [norm(x) for x in v]
-            )
-        if isinstance(v, dict):
-            return {k: norm(x) for k, x in sorted(v.items())}
-        if isinstance(v, float):
-            return round(v, 6)
-        return v
-
-    return sorted(k for k in set(live) | set(frozen) if norm(live.get(k)) != norm(frozen.get(k)))
-
-
-def median_interval_s(reset_times: list[float]) -> float | None:
-    """Median gap between consecutive snapshot arrivals (pure). None below two arrivals."""
-    if len(reset_times) < 2:
-        return None
-    gaps = sorted(b - a for a, b in zip(reset_times, reset_times[1:]))
-    n = len(gaps)
-    return gaps[n // 2] if n % 2 else (gaps[n // 2 - 1] + gaps[n // 2]) / 2.0
-
-
-def min_pain_edge_s(apparatus: dict[str, Any]) -> float | None:
-    """The earliest measured air-hunger pain edge across the apparatus check's cycles (pure)."""
-    edges = [c.get("w2_dive", {}).get("t_pain_edge") for c in apparatus.get("cycles", [])]
-    edges = [float(e) for e in edges if e is not None]
-    return min(edges) if edges else None
-
-
 # ─────────────────────────────────── live ───────────────────────────────────
-
-
-def _detach_fear_subscriber(aut: Any) -> int:
-    bus = aut.bio.pain_bus
-    targets = [cb for cb in list(bus._pain_signal_subs) if "cluster_fear" in getattr(cb, "__qualname__", "")]
-    for cb in targets:
-        bus.unsubscribe(cb)
-    return len(targets)
-
-
-def _f(vm: dict[str, Any], key: str, default: float) -> float:
-    try:
-        return float(vm.get(key, default))
-    except (TypeError, ValueError):
-        return default
 
 
 def _run(args: argparse.Namespace) -> int:
@@ -444,46 +363,17 @@ def _run(args: argparse.Namespace) -> int:
         return 3
     probe_cap_s = pain_edge_min - FROZEN["probe_cap_margin_s"]  # US-FREE window
     train_cap_s = onset_min - FROZEN["train_cap_margin_s"]  # pre-damage conditioning
-    shore = {"x": float(geom["shore"][0]), "y": float(geom["shore"][1]), "z": float(geom["shore"][2])}
-    sub = {"x": float(geom["submerged"][0]), "y": float(geom["submerged"][1]), "z": float(geom["submerged"][2])}
 
-    from maxim.runtime.agent_loop import _encode_current_clusters, _read_world_ranges, propose_via_substrate
-    from maxim.similarity.encoder import SensorEncoderConfig
     from maxim.simulation.minecraft import MinecraftClient
-    from maxim.simulation.minecraft_harness import MinecraftSyncPump, build_minecraft_aut, run_minecraft_aut
-    from maxim.simulation.substrate_telemetry import SubstrateTelemetry
+    from maxim.simulation.minecraft_harness import MinecraftSyncPump, build_minecraft_aut
     from survival_world.common import make_fresh_encoder
 
     run_id = uuid.uuid4().hex[:12]
     rcon = C.RconControl(args.rcon_host, args.rcon_port, args.rcon_password)
     print(
-        f"run {run_id}: arm={args.arm} shore={shore} submerged={sub} probe cap={probe_cap_s:.2f}s "
+        f"run {run_id}: arm={args.arm} shore={geom['shore']} submerged={geom['submerged']} probe cap={probe_cap_s:.2f}s "
         f"(pain edge min {pain_edge_min:.2f}) train cap={train_cap_s:.2f}s (onset min {onset_min:.2f})"
     )
-
-    def _measure_bridge_cadence(aut: Any, seconds: float = 3.0) -> float | None:
-        """Median interval between FRESH bridge snapshots, from the client's state-age resets."""
-        arrivals: list[float] = []
-        last_age = None
-        t_end = time.monotonic() + seconds
-        while time.monotonic() < t_end:
-            age = aut.client.state_age_s()
-            if last_age is not None and age < last_age:  # a reset = a new snapshot arrived
-                arrivals.append(time.monotonic() - age)
-            last_age = age
-            time.sleep(0.01)
-        return median_interval_s(arrivals)
-
-    def _heal() -> None:
-        rcon.command(f"effect give {args.username} minecraft:instant_health 1 10 true")
-        rcon.command(f"effect give {args.username} minecraft:saturation 1 10 true")
-
-    def _deaths() -> int:
-        resp = rcon.command(f"scoreboard players get {args.username} {geom.get('deaths_objective', 'exp60_deaths')}")
-        try:
-            return int(resp.split(" has ")[1].split()[0])
-        except (IndexError, ValueError):
-            return 0
 
     records: list[dict[str, Any]] = []
     exit_code = 0
@@ -521,403 +411,48 @@ def _run(args: argparse.Namespace) -> int:
                 "gate_record_code_hash": gate.get("code_hash"),
                 "refusal": None,
             }
-            # The bus subscriber runs for the WHOLE seed: every pain publish is timestamped so a
-            # probe window can prove it was US-free (or be marked DIRTY + unyoked exposure).
-            signals: list[dict[str, Any]] = []
-
-            def _record_pain(sig: Any) -> None:
-                ctx = getattr(sig, "context", None) or {}
-                signals.append(
-                    {
-                        "t": time.monotonic(),
-                        "failure_mode": ctx.get("failure_mode"),
-                        "intensity": float(getattr(sig, "intensity", 0.0)),
-                    }
-                )
-
-            aut.bio.pain_bus.subscribe(_record_pain)
-            # Every executor call this seed makes — tool, outcome, error, time — so a window
-            # can show what the loop DID, not only what succeeded (the first live run had 120
-            # windows with `actions=0` and nothing to say whether the loop proposed, executed
-            # and failed, or never proposed; instrument gap, fixed here).
-            calls: list[dict[str, Any]] = []
-            _orig_execute = aut.executor.execute
-
-            def _spy_execute(action: dict[str, Any]) -> Any:
-                t = time.monotonic()
-                try:
-                    out = _orig_execute(action)
-                except Exception as exc:
-                    calls.append(
-                        {"t": t, "tool": (action or {}).get("tool_name"), "success": False, "error": repr(exc)}
-                    )
-                    raise
-                calls.append(
-                    {
-                        "t": t,
-                        "tool": (action or {}).get("tool_name"),
-                        "success": getattr(out, "success", None),
-                        "error": getattr(out, "error", None),
-                    }
-                )
-                return out
-
-            aut.executor.execute = _spy_execute  # instance attribute; the loop calls executor.execute(action)
-
-            def _pain_between(t_a: float, t_b: float) -> list[dict[str, Any]]:
-                return [
-                    s for s in signals if t_a <= s["t"] <= t_b and s["failure_mode"] in ("drive:oxygen", "drive:health")
-                ]
-
-            def _rescue(label: str) -> float:
-                """Shore + OBSERVED recovery + satiation. Returns the SENSED health on arrival
-                (before the heal) so callers can see whether damage happened."""
-                rcon.teleport(args.username, shore)
-                vm = settle_until(
-                    aut,
-                    lambda vm: _f(vm, "is_in_water", 1) < 0.5 and _f(vm, "oxygen", 0) >= RECOVER_OXYGEN_MIN,
-                    timeout_s=15.0,
-                )
-                if vm is None:
-                    raise Refusal(f"{label}: rescue did not restore air on the shore")
-                arrival_health = _f(vm, "health", 20.0)
-                _heal()
-                if (
-                    settle_until(
-                        aut,
-                        lambda vm: _f(vm, "health", 0) >= 20.0
-                        and _f(vm, "food", 0) >= 16.0
-                        and _f(vm, "saturation", 0) >= SATURATION_REST,
-                        timeout_s=10.0,
-                    )
-                    is None
-                ):
-                    raise Refusal(
-                        f"{label}: heal/satiate never settled (health 20, food >= 16, saturation >= {SATURATION_REST})"
-                    )
-                return arrival_health
-
-            def _stop_motion() -> None:
-                try:
-                    aut.client.call_action("stop", {})
-                except Exception as exc:
-                    print(f"WARNING: stop action raised: {exc!r}")
-
-            def _sample(t0: float) -> dict[str, Any] | None:
-                if aut.client.state_age_s() > STALE_STATE_S:
-                    return None
-                vm = sync_snapshot(aut)
-                if vm is None or "is_in_water" not in vm:
-                    return None  # never let an absent key read as a surface
-                return {
-                    "t": round(time.monotonic() - t0, 3),
-                    "in_water": _f(vm, "is_in_water", 0) >= 0.5,
-                    "health": _f(vm, "health", 20.0),
-                    "oxygen": _f(vm, "oxygen", 20.0),
-                }
-
-            def _submerge(label: str) -> float:
-                """Teleport to the pool floor; returns the TELEPORT time (the window's clock)."""
-                _stop_motion()
-                t_tp = time.monotonic()
-                rcon.teleport(args.username, sub)
-                if settle_until(aut, lambda vm: _f(vm, "is_in_water", 0) >= 0.5, timeout_s=IN_WATER_WITHIN_S) is None:
-                    _rescue(label)
-                    raise Refusal(f"{label}: is_in_water did not reflect the submerged teleport")
-                return t_tp
-
+            trial = WaterTrial(
+                aut=aut,
+                rcon=rcon,
+                username=args.username,
+                geom=geom,
+                frozen=FROZEN,
+                probe_cap_s=probe_cap_s,
+                train_cap_s=train_cap_s,
+                persistence_dir=persistence_dir,
+                agent_id=agent_id,
+                encoder=encoder,
+            )
+            trial.attach_instruments()
             try:
                 # ── Fingerprint (frozen-apparatus stop rule) ──
-                cfg = aut.bio.nac.config
-                oxy = aut.executor.embodiment.root.drive_specs.get("oxygen")
-                ranges = _read_world_ranges(aut.executor)
-                live_fp = {
-                    "cluster_fear_alpha": cfg.cluster_fear_alpha,
-                    "max_cluster_fear": cfg.max_cluster_fear,
-                    "cluster_fear_threshold": cfg.cluster_fear_threshold,
-                    "cluster_fear_failure_modes": sorted(cfg.cluster_fear_failure_modes),
-                    "encoder_pattern_threshold": float(SensorEncoderConfig().pattern_threshold),
-                    "substrate_explore_bonus_weight": float(getattr(cfg, "substrate_explore_bonus_weight", 0.0)),
-                    "oxygen_drive": None
-                    if oxy is None
-                    else {"set_point": float(oxy.set_point), "comfort_band": float(oxy.comfort_band)},
-                    "sensor_ranges": {
-                        k: [float(v) for v in ranges[k]] for k in ("is_in_water", "oxygen", "saturation") if k in ranges
-                    },
-                }
-                record["fingerprint_live"] = live_fp
-                drift = fingerprint_drift(live_fp, FROZEN["fingerprint"])
-                if drift:
-                    raise Refusal(f"config fingerprint drift on {drift}: live={live_fp}")
-                if oxy is None or FROZEN["usable_oxygen_max"] >= oxy.set_point - oxy.comfort_band:
-                    raise Refusal("usable_oxygen_max does not sit below the oxygen comfort band (band-edge trap)")
-                if "drive:oxygen" not in cfg.cluster_fear_failure_modes:
-                    raise Refusal("drive:oxygen not in the fear allowlist")
-
+                record["fingerprint_live"] = trial.check_fingerprint(FROZEN["usable_oxygen_max"])
                 if args.arm == "ablated":
                     detached = _detach_fear_subscriber(aut)
                     record["detached_subscribers"] = detached
                     if detached != 1:
                         raise Refusal(f"expected exactly 1 fear subscriber, detached {detached}")
-
-                if settle_until(aut, lambda vm: "is_in_water" in vm and "oxygen" in vm, timeout_s=10.0) is None:
-                    raise Refusal("bridge never delivered state")
-                missing = missing_bridge_sensors(aut.client.latest_state(), REQUIRED_BRIDGE_SENSORS)
-                if missing:
-                    raise Refusal(f"the running bridge does not emit {sorted(missing)} — restart it from current main")
-                # Sensor FRESHNESS: the DV clock reads is_in_water from the latest snapshot at 4 Hz,
-                # so the bridge's snapshot interval must not exceed the sampling period. Measure the
-                # cadence; refuse a slow bridge. (The loop's own tick rate no longer depends on it —
-                # agent_loop._substrate_tick_due, 2026-09-16.)
-                cadence = _measure_bridge_cadence(aut)
-                record["bridge_state_interval_s"] = cadence
-                if cadence is None or cadence > FROZEN["bridge_state_interval_max_s"]:
-                    raise Refusal(
-                        f"bridge state cadence {cadence}s > {FROZEN['bridge_state_interval_max_s']}s — restart the bridge "
-                        "with --state_interval_ms=100 (sensor freshness: the snapshot interval must not exceed the 0.25 s sampling period)"
-                    )
+                record["bridge_state_interval_s"] = trial.check_bridge()
                 # ── Loop LIVENESS: the full loop, on the shore, must tick at its cadence ──
-                _rescue("liveness")
-                live_path = Path(persistence_dir) / "telemetry_liveness.jsonl"
-                live_telem = SubstrateTelemetry(log_path=live_path, agent_id=agent_id)
-                live_stop = threading.Event()
-                live_loop = threading.Thread(
-                    target=run_minecraft_aut,
-                    args=(aut,),
-                    kwargs={
-                        "max_steps": 100_000,
-                        "target_hz": FROZEN["loop_hz"],
-                        "stop_event": live_stop,
-                        "substrate_telemetry": live_telem,
-                    },
-                    daemon=True,
-                )
-                live_loop.start()
-                time.sleep(FROZEN["loop_liveness_s"])
-                live_stop.set()
-                live_loop.join(timeout=20.0)
-                _stop_motion()
-                live_ticks = _telemetry_ticks(live_path, 0.0)
-                record["loop_liveness_ticks"] = len(live_ticks)
-                if live_loop.is_alive() or len(live_ticks) < FROZEN["loop_liveness_min_ticks"]:
-                    raise Refusal(
-                        f"loop liveness: {len(live_ticks)} substrate tick(s) in {FROZEN['loop_liveness_s']}s on the shore "
-                        f"(need >= {FROZEN['loop_liveness_min_ticks']}) — the loop is not reaching its substrate branch; "
-                        "no window can measure anything (see loop_tick_probe.py)"
-                    )
-                for rule, want in (
-                    ("doMobSpawning", "false"),
-                    ("doDaylightCycle", "false"),
-                    ("doWeatherCycle", "false"),
-                    ("doImmediateRespawn", "true"),
-                    ("keepInventory", "true"),
-                ):
-                    resp = rcon.command(f"gamerule {rule}").strip().lower()
-                    if want not in resp:
-                        raise Refusal(f"gamerule {rule} is not {want} ({resp!r})")
-
+                record["loop_liveness_ticks"] = trial.check_liveness()
+                trial.check_gamerules()
                 # ── LIVE cluster-distinct preflight (the live agent's EC) ──
-                _rescue("preflight")
-                shore_cluster_pre = _encode_current_clusters(encoder, agent_id, aut.executor).get("world")
-                _submerge("preflight")
-                water_cluster_pre = _encode_current_clusters(encoder, agent_id, aut.executor).get("world")
-                if not water_cluster_pre or water_cluster_pre == shore_cluster_pre:
-                    _rescue("preflight")
-                    raise Refusal(
-                        f"shore and submerged encode to the same LIVE world cluster ({shore_cluster_pre}) — "
-                        "the offline gate passed but the live EC does not separate; not a behavioural null"
-                    )
-                # ── Escape actuation check through the BACKEND, never the executor: an executor
-                #    success would book a POSITIVE causal link that makes escape_water selectable
-                #    with ZERO fear in both arms (executor lens, CRITICAL). The bridge action is
-                #    called directly; bridge truth (is_in_water 0) decides. ──
-                escape_tool = next((t for t in aut.executor.registry.list() if t.endswith("_escape_water")), None)
-                flee_tool = next((t for t in aut.executor.registry.list() if t.endswith("_flee")), None)
-                if escape_tool is None:
-                    raise Refusal("no *_escape_water tool registered")
-                t0 = time.monotonic()
-                outcome: dict[str, Any] = {}
-
-                def _bridge_escape() -> None:
-                    try:
-                        outcome.update(aut.client.call_action("escape_water", {}))
-                    except Exception as exc:
-                        outcome["ok"] = False
-                        outcome["detail"] = repr(exc)
-
-                th = threading.Thread(target=_bridge_escape, daemon=True)
-                th.start()
-                surfaced_at = None
-                while time.monotonic() - t0 < SURFACE_WITHIN_S + 2.0:
-                    s = _sample(t0)
-                    if s is not None and not s["in_water"]:
-                        surfaced_at = s["t"]
-                        break
-                    time.sleep(0.25)
-                th.join(timeout=10.0)
-                record["actuation_preflight"] = {
-                    "t_surface": surfaced_at,
-                    "bridge": {k: outcome.get(k) for k in ("ok", "detail")},
-                }
-                if surfaced_at is None or surfaced_at > SURFACE_WITHIN_S:
-                    _rescue("preflight")
-                    raise Refusal(
-                        f"escape actuation check FAILED ({outcome}) — head not in air within {SURFACE_WITHIN_S}s"
-                    )
-                _rescue("preflight")
-                pos_links = len(aut.bio.nac.get_positive_outcomes(f"tool:{escape_tool}"))
-                if pos_links:
-                    raise Refusal(
-                        f"preflight seeded {pos_links} positive causal link(s) on escape_water — the probe would surface without fear"
-                    )
+                shore_cluster_pre, water_cluster_pre = trial.check_clusters_distinct()
+                # ── Escape actuation check through the BACKEND, never the executor ──
+                trial.resolve_tools()
+                record["actuation_preflight"] = trial.check_escape_actuation()
+                trial.check_no_positive_escape_link()
                 print(
                     f"  preflight: live clusters distinct ({shore_cluster_pre[:8]} vs {water_cluster_pre[:8]}); "
-                    f"escape actuation OK ({surfaced_at}s); no positive escape link"
+                    f"escape actuation OK ({record['actuation_preflight']['t_surface']}s); no positive escape link"
                 )
-                deaths0 = _deaths()
+                trial.deaths0 = trial.deaths()
 
-                def _loop_window(seconds: float, *, enter: Any, on_sample: Any, label: str) -> dict[str, Any]:
-                    """WARM the full loop on the shore, `enter()` the situation (returns the
-                    window's t0), sample at 4 Hz until `on_sample` says stop or the cap; then
-                    RESCUE FIRST (teleport to the shore) and only then stop/join the loop."""
-                    stop = threading.Event()
-                    actions0 = len(getattr(aut.executor, "_tools_succeeded", []) or [])
-                    calls0 = len(calls)
-                    telem_path = Path(persistence_dir) / f"telemetry_{label}_{int(time.time() * 1000)}.jsonl"
-                    telem = SubstrateTelemetry(log_path=telem_path, agent_id=agent_id)
-                    loop = threading.Thread(
-                        target=run_minecraft_aut,
-                        args=(aut,),
-                        kwargs={
-                            "max_steps": 100_000,
-                            "target_hz": FROZEN["loop_hz"],
-                            "stop_event": stop,
-                            "substrate_telemetry": telem,
-                        },
-                        daemon=True,
-                    )
-                    loop.start()
-                    time.sleep(FROZEN["loop_warm_s"])  # loop boot is NOT inside the window
-                    samples: list[dict[str, Any]] = []
-                    stale = 0
-                    t0 = enter()
-                    t_rescue = None
-                    stuck = False
-                    try:
-                        while time.monotonic() - t0 < seconds:
-                            s = _sample(t0)
-                            if s is None:
-                                stale += 1
-                                if stale >= STALE_MAX_CONSECUTIVE:
-                                    raise InstrumentError(
-                                        f"{label}: bridge stopped delivering fresh state inside a loop window"
-                                    )
-                            else:
-                                stale = 0
-                                samples.append(s)
-                                if on_sample(s):
-                                    break
-                            time.sleep(0.25)
-                    finally:
-                        t_rescue = time.monotonic()
-                        try:
-                            rcon.teleport(args.username, shore)  # rescue BEFORE the loop drains
-                        except Exception as exc:
-                            print(f"WARNING: rescue teleport raised: {exc!r}")
-                        stop.set()
-                        loop.join(timeout=20.0)
-                        stuck = loop.is_alive()
-                        _stop_motion()
-                    if stuck:
-                        raise Refusal(f"{label}: loop thread did not stop")
-                    succeeded = list(getattr(aut.executor, "_tools_succeeded", []) or [])[actions0:]
-                    ticks = _telemetry_ticks(telem_path, t0)
-                    window_calls = [{**c, "t": round(c["t"] - t0, 3)} for c in calls[calls0:]]
-                    return {
-                        "samples": samples,
-                        "actions": succeeded,
-                        "calls": window_calls,
-                        "ticks": ticks,
-                        "t0": t0,
-                        "t_rescue": t_rescue,
-                        "us_events": _pain_between(t0, t_rescue),
-                    }
-
-                def _probe(label: str) -> dict[str, Any]:
-                    placements = []
-                    for i in range(FROZEN["placements_per_probe"]):
-                        _rescue(f"{label}-placement-{i}")
-                        seen = {"water": False, "h0": None}
-
-                        def _until(s: dict[str, Any]) -> bool:
-                            if seen["h0"] is None:
-                                seen["h0"] = s["health"]
-                            if s["health"] < seen["h0"]:
-                                return True  # damage: rescue NOW (dirty placement)
-                            if s["in_water"]:
-                                seen["water"] = True
-                                return False
-                            return seen["water"]  # first head-in-air read after being submerged
-
-                        win = _loop_window(
-                            probe_cap_s,
-                            enter=lambda: _submerge(f"{label}-placement-{i}"),
-                            on_sample=_until,
-                            label=label,
-                        )
-                        arrival_health = _rescue(f"{label}-placement-{i}-after")
-                        cls = classify_placement(win["samples"], cap_s=probe_cap_s)
-                        cls["actions"] = win["actions"]
-                        cls["calls"] = win["calls"]  # every executor call, incl. failures
-                        cls["ticks"] = win["ticks"]  # every loop tick: proposal + what the loop saw
-                        cls["escape_water_calls"] = sum(
-                            1 for c in win["calls"] if str(c["tool"]).endswith("_escape_water")
-                        )
-                        cls["flee_calls"] = sum(1 for c in win["calls"] if str(c["tool"]).endswith("_flee"))
-                        cls["us_events"] = win["us_events"]
-                        cls["arrival_health"] = arrival_health
-                        if win["us_events"] or arrival_health < 20.0:
-                            # the window was NOT US-free / damage-free: exclude and count as unyoked exposure
-                            cls["dirty"] = True
-                            cls["surfaced"] = False
-                            cls["censored"] = True
-                        placements.append(cls)
-                        proposed = [t["proposal"] for t in win["ticks"] if t.get("proposal")]
-                        print(
-                            f"  {label} placement {i}: {'SURFACED %.2fs' % cls['latency_s'] if cls['surfaced'] else 'censored'}"
-                            f"{' [DIRTY]' if cls['dirty'] else ''} ticks={len(win['ticks'])} proposed={proposed[:4]} "
-                            f"calls={[(c['tool'], c['success']) for c in win['calls']][:4]}"
-                        )
-                        if _deaths() - deaths0 > FROZEN["death_cap"]:
-                            raise Refusal(f"death cap exceeded ({_deaths() - deaths0})")
-                    # Shore free-roam: activity control + P(enter water) secondary (structurally near
-                    # 0 v 0 — no drive fires on the shore; it re-tests specificity, recorded not gated)
-                    _rescue(f"{label}-roam")
-                    roam = _loop_window(
-                        FROZEN["shore_roam_s"],
-                        enter=time.monotonic,
-                        on_sample=lambda s: s["in_water"],
-                        label=f"{label}-roam",
-                    )
-                    _rescue(f"{label}-roam-end")
-                    return {
-                        "placements": placements,
-                        "p_surface": p_surface({"placements": placements}),
-                        "cap_s": probe_cap_s,
-                        "unyoked_us_events": sum(len(p["us_events"]) for p in placements),
-                        "positive_escape_links": len(aut.bio.nac.get_positive_outcomes(f"tool:{escape_tool}")),
-                        "shore_roam": {
-                            "actions": roam["actions"],
-                            "entered_water": any(s["in_water"] for s in roam["samples"]),
-                            "window_s": FROZEN["shore_roam_s"],
-                        },
-                    }
-
-                pre = _probe("pre")
+                pre = trial.probe("pre")
                 # The pre-probe must have been US-free: ZERO fear on the water cluster, both arms.
-                _submerge("post-pre-check")
-                water_cluster_after_pre = _encode_current_clusters(encoder, agent_id, aut.executor).get("world")
-                _rescue("post-pre-check")
+                trial.submerge("post-pre-check")
+                water_cluster_after_pre = trial.encode_world_cluster()
+                trial.rescue("post-pre-check")
                 water_fear_pre = round(aut.bio.nac.cluster_fear(agent_id, water_cluster_after_pre), 4)
                 record["water_fear_pre"] = water_fear_pre
                 if water_fear_pre != 0.0 or pre["unyoked_us_events"]:
@@ -927,138 +462,28 @@ def _run(args: argparse.Namespace) -> int:
                     )
 
                 # ── Training: yoked, propose-only conditioning at the pool floor ──
-                usable = 0
-                attempts = 0
-                episode_clusters: list[str] = []
-                deadline = time.monotonic() + FROZEN["K_usable_episodes"] * (train_cap_s + 20.0) * 1.5
-                while usable < FROZEN["K_usable_episodes"] and time.monotonic() < deadline:
-                    attempts += 1
-                    _rescue(f"train-{attempts}")
-                    t0 = _submerge(f"train-{attempts}")
-                    while time.monotonic() - t0 < train_cap_s:
-                        n_before = len(signals)
-                        propose_via_substrate(
-                            nac=aut.bio.nac, agent_id=agent_id, executor=aut.executor, sensor_encoder=encoder
-                        )
-                        new = [
-                            s
-                            for s in signals[n_before:]
-                            if s["failure_mode"] == "drive:oxygen"
-                            and s["intensity"] >= FROZEN["usable_pain_intensity_min"]
-                        ]
-                        vm = sync_snapshot(aut) or {}
-                        noted = aut.bio.nac.active_clusters(agent_id).get("world")
-                        if (
-                            new
-                            and noted
-                            and _f(vm, "is_in_water", 0) >= 0.5
-                            and _f(vm, "oxygen", 99) <= FROZEN["usable_oxygen_max"]
-                        ):
-                            episode_clusters.append(noted)
-                            usable += 1
-                            print(
-                                f"  training: usable episode {usable}/{FROZEN['K_usable_episodes']} (oxygen {vm.get('oxygen')})"
-                            )
-                            break
-                        time.sleep(1.0 / FROZEN["loop_hz"])
-                    arrival_health = _rescue(f"train-{attempts}-end")
-                    if arrival_health < 20.0:
-                        raise Refusal(
-                            f"drowning DAMAGE during propose-only training (health {arrival_health}) — the cap did not keep conditioning pre-damage"
-                        )
-                    for _ in range(4):  # healthy ticks: the latch observes recovery
-                        propose_via_substrate(
-                            nac=aut.bio.nac, agent_id=agent_id, executor=aut.executor, sensor_encoder=encoder
-                        )
-                        time.sleep(0.25)
-                    if _deaths() - deaths0 > FROZEN["death_cap"]:
-                        raise Refusal(f"death cap exceeded ({_deaths() - deaths0})")
-                record["training"] = {
-                    "usable_episodes": usable,
-                    "attempts": attempts,
-                    "oxygen_pain_signals": sum(1 for s in signals if s["failure_mode"] == "drive:oxygen"),
-                    "health_pain_signals": sum(1 for s in signals if s["failure_mode"] == "drive:health"),
-                    "episode_clusters": episode_clusters,
-                    "deaths": _deaths() - deaths0,
-                }
-                if usable < FROZEN["K_usable_episodes"]:
-                    raise Refusal(f"only {usable}/{FROZEN['K_usable_episodes']} usable episodes")
-                if record["training"]["health_pain_signals"]:
-                    raise Refusal("drowning DAMAGE pain fired during propose-only training")
+                record["training"], episode_clusters = trial.train()
 
                 # ── LIVE G2: readability through the PRODUCTION read (+ ablation verified) ──
-                _submerge("g2")
-                water_cluster = _encode_current_clusters(encoder, agent_id, aut.executor).get("world")
-                _rescue("g2")
-                shore_cluster = _encode_current_clusters(encoder, agent_id, aut.executor).get("world")
-                theta = float(cfg.cluster_fear_threshold)
-                water_fear = round(aut.bio.nac.cluster_fear(agent_id, water_cluster), 4)
-                shore_fear = round(aut.bio.nac.cluster_fear(agent_id, shore_cluster), 4) if shore_cluster else 0.0
-                need_probe = aut.bio.nac.anticipatory_threat_need(agent_id, {"world": water_cluster})
-                need_episodes = {
-                    cid: aut.bio.nac.anticipatory_threat_need(agent_id, {"world": cid}) for cid in set(episode_clusters)
-                }
-                record.update({"water_fear": water_fear, "shore_fear": shore_fear})
-                lock = getattr(aut.bio.nac, "_lock", None)
-                with lock if lock is not None else _NullCtx():
-                    record["cluster_fear_dump"] = {
-                        f"{cid}|{fm}": v
-                        for (aid, cid, fm), v in getattr(aut.bio.nac, "_cluster_fear", {}).items()
-                        if aid == agent_id
-                    }
-                # the loop's activation floor is STRICT (> 0.5): a need of exactly θ is dead at recall
-                live_floor = 0.5
-                if args.arm == "fear":
-                    g2_pass = need_probe > live_floor and all(n > live_floor for n in need_episodes.values())
-                else:
-                    g2_pass = water_fear == 0.0 and shore_fear == 0.0 and need_probe == 0.0
-                record["live_g2"] = {
-                    "pre_water_cluster": water_cluster_pre,
-                    "training_majority_cluster": max(set(episode_clusters), key=episode_clusters.count)
-                    if episode_clusters
-                    else None,
-                    "probe_water_cluster": water_cluster,
-                    "probe_shore_cluster": shore_cluster,
-                    "distinct_episode_clusters": len(set(episode_clusters)),
-                    "need_probe_cluster": need_probe,
-                    "need_episode_clusters": need_episodes,
-                    "specificity_ok": abs(shore_fear) < FROZEN["specificity_ratio"] * abs(water_fear)
-                    if water_fear
-                    else None,
-                    "pass": g2_pass,
-                }
-                if not g2_pass:
-                    raise Refusal(
-                        f"LIVE G2 FAILED ({args.arm}): need on probe cluster={need_probe}, on episode clusters={need_episodes}, "
-                        f"water fear={water_fear} shore fear={shore_fear} (θ={theta}, floor {live_floor}) — fear not readable at "
-                        "recall through the production read; must not ship as a behavioural null"
-                    )
+                record.update(trial.live_g2(args.arm, episode_clusters, water_cluster_pre))
 
-                post = _probe("post")
-                record["escape_negative_links"] = len(aut.bio.nac.get_negative_outcomes(f"tool:{escape_tool}"))
-                record["flee_negative_links"] = (
-                    len(aut.bio.nac.get_negative_outcomes(f"tool:{flee_tool}")) if flee_tool else None
-                )
+                post = trial.probe("post")
+                record.update(trial.negative_links())
                 record["pre"] = pre
                 record["post"] = post
                 print(
                     f"seed {seed}: pre P(surface)={pre['p_surface']} post P(surface)={post['p_surface']} "
-                    f"fear={water_fear}/{shore_fear} escape_neg_links={record['escape_negative_links']} flee_neg_links={record['flee_negative_links']}"
+                    f"fear={record['water_fear']}/{record['shore_fear']} escape_neg_links={record['escape_negative_links']} "
+                    f"flee_neg_links={record['flee_negative_links']}"
                 )
             except (Refusal, InstrumentError) as exc:
+                record.update(getattr(exc, "partial", None) or {})  # the refused step's own measurements
                 record["refusal"] = str(exc)
                 print(f"REFUSED seed {seed}: {exc}")
                 exit_code = 4
             finally:
-                try:
-                    aut.bio.pain_bus.unsubscribe(_record_pain)
-                except Exception as exc:
-                    print(f"WARNING: pain unsubscribe raised: {exc!r}")
-                try:
-                    rcon.teleport(args.username, shore)
-                    _heal()
-                except Exception as exc:
-                    print(f"WARNING: final rescue raised: {exc!r}")
+                trial.detach_instruments()
+                trial.final_rescue()
                 try:
                     pump.stop()
                 except Exception as exc:
@@ -1083,52 +508,6 @@ def _run(args: argparse.Namespace) -> int:
     ok = sum(1 for r in records if r.get("refusal") is None)
     print(f"\narm={args.arm} run={run_id}: {ok}/{len(records)} seeds clean -> {out_path}")
     return exit_code
-
-
-def _telemetry_ticks(path: Path, t0_monotonic: float) -> list[dict[str, Any]]:
-    """Compress a window's SubstrateTelemetry JSONL into per-tick rows (pure over the file).
-
-    Rows carry wall-clock ``ts``; the window's clock is monotonic, so ticks are reported
-    relative to the FIRST row (the loop's first tick) and the proposal/tool per tick.
-    """
-    try:
-        lines = [ln for ln in path.read_text().splitlines() if ln.strip()]
-    except OSError:
-        return []
-    rows = []
-    for ln in lines:
-        try:
-            rows.append(json.loads(ln))
-        except ValueError:
-            continue
-    if not rows:
-        return []
-    first_ts = rows[0].get("ts", 0.0)
-    out = []
-    for r in rows:
-        prop = r.get("proposal") or {}
-        nac = r.get("nac") or {}
-        out.append(
-            {
-                "t_from_first_tick": round(float(r.get("ts", 0.0)) - float(first_ts), 3),
-                "step": r.get("step"),
-                "proposal": prop.get("tool_name") or prop.get("tool") if isinstance(prop, dict) else prop,
-                "gated": r.get("gated"),
-                "active_clusters": nac.get("active_clusters") if isinstance(nac, dict) else None,
-                "drives": {k: v for k, v in (r.get("drives") or {}).items() if k in ("threat", "oxygen", "health")}
-                if isinstance(r.get("drives"), dict)
-                else None,
-            }
-        )
-    return out
-
-
-class _NullCtx:
-    def __enter__(self) -> None:
-        return None
-
-    def __exit__(self, *exc: Any) -> None:
-        return None
 
 
 def _verdict(args: argparse.Namespace) -> int:
