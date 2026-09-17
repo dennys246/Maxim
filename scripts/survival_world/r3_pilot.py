@@ -41,7 +41,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from _provenance import in_process_code_provenance  # noqa: E402
-from survival_world import common as C  # noqa: E402
+from exp56 import common as C  # noqa: E402  — REPO_ROOT + RconControl live here (as exp61_run)
 from survival_world.common import InstrumentError, settle_until, sync_snapshot  # noqa: E402
 from survival_world.exp60_run import ANCHOR_FILE, APPARATUS_RECORD, FROZEN  # noqa: E402
 from survival_world.exp60_water_check import STALE_MAX_CONSECUTIVE, STALE_STATE_S  # noqa: E402
