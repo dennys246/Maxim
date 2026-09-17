@@ -86,9 +86,12 @@ class Pilot:
             C.REPO_ROOT, __import__("maxim").__file__, out_path=self.out, allow_dirty=args.allow_dirty
         )
         sub = self.geom["submerged"]
-        self.floor = {"x": sub[0] + 0.5, "y": float(sub[1]), "z": sub[2] + 0.5}
-        surf = self.geom["surface"]
-        self.cap_slab = (surf[0] - 1, surf[1], surf[2] - 1, surf[0] + 1, surf[1], surf[2] + 1)
+        # the record's exact submerged point, as WaterTrial teleports (the proven seam)
+        self.floor = {"x": float(sub[0]), "y": float(sub[1]), "z": float(sub[2])}
+        # the pool's first AIR layer is `surface_y` (the record's `shore_y`; water occupies
+        # shore_y-depth .. shore_y-1); the cap is the 3x3 over the pool centre at that layer
+        surf_y = int(self.geom["surface_y"])
+        self.cap_slab = (sub[0] - 1, surf_y, sub[2] - 1, sub[0] + 1, surf_y, sub[2] + 1)
 
     # ── assembly ──
 
