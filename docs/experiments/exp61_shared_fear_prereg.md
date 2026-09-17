@@ -1,6 +1,7 @@
-# Exp 61 (DRAFT v2.1, 2026-09-16, four-lens review FOLDED, harness-reconciled) — shared survival fear: a learned drowning-fear transfers between independent agents and drives the receiver's first loop-live submersion
+# Exp 61 (DRAFT v2.2, 2026-09-17, four-lens review FOLDED, harness-reconciled, dry-run fold) — shared survival fear: a learned drowning-fear transfers between independent agents and drives the receiver's first loop-live submersion
 
-> **STATUS: DRAFT v2.1 — the four-lens design review ran on v1 (2026-09-16; all four lenses
+> **STATUS: DRAFT v2.2 — v2.2 folds the one-pair dry run of 2026-09-17 (build step 4; one finding, below
+> under donor sanity and in the build order). The four-lens design review ran on v1 (2026-09-16; all four lenses
 > FIX-THEN-BUILD; three DO-NOT-BUILDs, all folded below; reports preserved verbatim under
 > `docs/experiments/rationale/exp61-shared-fear/`). The two decisions the fold left to the owner were
 > taken 2026-09-16: **D1 = the 0.75 social discount at the ingest bound (Option A); D2 = arm sizes
@@ -175,8 +176,14 @@ only hand-composed element — dropped.
 
 **Donor sanity — asserted on the STAGED `aut_nac.json` / `aut_ec.json`, the files the export reads;
 a failure is an apparatus fault, re-pairs on a fresh seed, and is recorded, never filtered:**
-`links == {}`, `event_outcome_welford == {}`, `cluster_reward_bias == {}`, `reward_bias == {}`
-(the proof that no probe happened); `percept_valences` carries the `drive:oxygen` entry (the pain
+`links == {}`, `event_outcome_welford == {}`, `cluster_reward_bias == {}` (the proof that no probe
+happened), and node-level `reward_bias` carries NO POSITIVE value — it MAY carry zero-valued keys,
+because the pain credit itself writes them (`temporal_credit.distribute` hands each eligible node a
+negative share of the pain and `NAc.credit_node` clamps it at 0.0 but stores the key; a zero key
+reads exactly like an absent one, and a positive one can only come from a relief/success reaction
+credited before export). v2.2: the dry run of 2026-09-17 refused BOTH pair-200 donors on three
+zero-valued keys under the v2.1 wording `reward_bias == {}`; the count ships as
+`reward_bias_zero_nodes` per donor row; `percept_valences` carries the `drive:oxygen` entry (the pain
 published, both donor kinds); arm-2 donor: ≥ 1 `cluster_fear` key (a jitter-split donor may carry
 two — wiring SF-1), ALL under `drive:oxygen` (any other mode is a named refusal), ALL on world nodes
 noted during its training episodes, ALL at exactly −1.0, NONE on the shore node; arm-3 donor: no
@@ -347,7 +354,13 @@ Exp 56's `close_and_stage_session`, `export_bundle` (incl. `dangling=True`), `in
    the re-open; the export needs a `body:`-rooted spec; Fisher's denominator).
 4. One-pair dry run of every arm on big-mac-mini (the plumbing pilot: counters, tags, timing, the
    hub-session persistence on the LIVE path, the pain edge re-measured), recorded as a diagnostic,
-   not data. Any change it forces goes into v2.2 before the freeze.
+   not data. Any change it forces goes into v2.2 before the freeze. **Dry run 1 (2026-09-17, pair
+   200): apparatus passed; both donors trained 10/10 usable episodes and were REFUSED by donor
+   sanity on `reward_bias` (three zero-valued node keys — the pain credit's clamp, see donor
+   sanity); the three donor-fed receiver arms therefore did not run; the isolated receiver ran and
+   read the structural floor (censored, no proposal, no call). Fold = v2.2 (the sanity restated as
+   "no POSITIVE node bias"; the offline smoke now runs the donor sequence end to end and pins that
+   training writes the zero keys). Dry run 2 re-runs all four arms.**
 5. Freeze (docs-only PR: v2.x → FROZEN), then the campaign from a clean main at ONE code hash
    (`git pull` forbidden between the first and last row); merge-commit data PR; §Outcome from the
    verdict, never before.

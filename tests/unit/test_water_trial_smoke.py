@@ -12,9 +12,16 @@ and the staging close (`exp61_run.close_and_stage`) persists that fear — the h
 review found (the loop's own session pair had closed the hub; the staged nac carried fear 0)
 goes RED here on the pre-fold code and green after.
 
-Not proven here: propose-only TRAINING (needs the body's oxygen drive to publish pain through the
-sync pump — a live-apparatus property) and the live bridge's timing. Those are the one-pair dry
-run's job (build step 4).
+The donor sequence (`exp61_run._Campaign.donor`: liveness → clusters → train → G2 → stage) is
+also run here end to end: propose-only training publishes the oxygen pain through the sync pump
+against the scripted bridge (its oxygen drains), the fear lands on the water cluster at the cap,
+and the STAGED sanity passes. That arm went RED on the dry run of 2026-09-17 (pair 200): the pain
+credit leaves ZERO-valued node `reward_bias` keys (negative credit, clamped by `NAc.credit_node`),
+which the sanity check read as "a probe happened" and refused both donors. The check now refuses
+only a POSITIVE node bias; the test pins that training does write the zero keys, so the arm
+cannot pass vacuously.
+
+Not proven here: the live bridge's timing (the one-pair dry run's job, build step 4).
 """
 
 from __future__ import annotations
@@ -30,7 +37,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from survival_world.exp61_run import close_and_stage  # noqa: E402
+from survival_world.exp61_run import close_and_stage, donor_sanity_staged  # noqa: E402
 from survival_world.scripted_water import ScriptedWaterBridge, ScriptedWaterControl  # noqa: E402
 from survival_world.water_trial import Refusal, WaterTrial  # noqa: E402
 
@@ -128,6 +135,64 @@ def test_water_trial_ticks_acts_and_the_staging_close_persists_fear(tmp_path: Pa
         assert keys and staged["cluster_fear"][keys[0]] == -1.0, staged.get("cluster_fear")
         ec = json.loads((stage / "aut_ec.json").read_text())
         assert water_c in ec["substrate_nodes"] and ec["substrate_nodes"][water_c]["modality"] == "world"
+    finally:
+        try:
+            aut.client.close()
+        except Exception:
+            pass
+        srv.close()
+
+
+@pytest.mark.timeout(240)
+def test_donor_sequence_over_the_scripted_bridge_passes_the_staged_sanity(tmp_path: Path) -> None:
+    srv = ScriptedWaterBridge(shore=SHORE, submerged=SUBMERGED)
+    rcon = ScriptedWaterControl(srv)
+    agent_id = "smoke_donor"
+    aut, encoder, pump, home = _build(tmp_path, srv, agent_id)
+    trial = WaterTrial(
+        aut=aut,
+        rcon=rcon,
+        username="maxim",
+        geom=GEOM,
+        frozen=FAST,
+        probe_cap_s=3.0,
+        train_cap_s=12.0,
+        persistence_dir=home,
+        agent_id=agent_id,
+        encoder=encoder,
+        settle_guard={"is_raining": 0.0, "nearest_player_dist": 64.0},
+    )
+    trial.attach_instruments()
+    try:
+        # the donor sequence, in `_Campaign.donor`'s order (no fingerprint: FAST carries none)
+        trial.check_bridge()
+        assert trial.check_liveness() >= FAST["loop_liveness_min_ticks"]
+        trial.check_gamerules()
+        _shore_pre, water_pre = trial.check_clusters_distinct()
+        trial.resolve_tools()
+        trial.rescue("donor-ready")
+        trial.deaths0 = trial.deaths()
+        training, episode_clusters = trial.train()
+        assert training["usable_episodes"] >= FAST["K_usable_episodes"], training
+        g2 = trial.live_g2("fear", episode_clusters, water_pre)
+        assert trial.calls == [], "propose-only training must never reach the executor"
+        trial.detach_instruments()
+        trial.final_rescue()
+        stage = tmp_path / "donor_stage"
+        close_and_stage(aut, pump, stage)
+        staged = json.loads((stage / "aut_nac.json").read_text())
+        # the pain credit's footprint: ZERO-valued node keys, never a positive one, never a link
+        rb = staged.get("reward_bias") or {}
+        assert rb and all(float(v) == 0.0 for v in rb.values()), rb
+        assert not staged.get("links") and not staged.get("event_outcome_welford"), staged.keys()
+        sanity = donor_sanity_staged(
+            stage,
+            donor_kind="fear",
+            episode_clusters=episode_clusters,
+            shore_node=g2["live_g2"]["probe_shore_cluster"],
+        )
+        assert sanity["pass"], sanity["reasons"]
+        assert sanity["fear_shipped"] >= 1 and sanity["reward_bias_zero_nodes"] == len(rb)
     finally:
         try:
             aut.client.close()
