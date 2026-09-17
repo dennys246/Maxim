@@ -1,17 +1,22 @@
-# Exp 61 (DRAFT v2.3, 2026-09-17, four-lens review FOLDED, harness-reconciled, dry-run fold) — shared survival fear: a learned drowning-fear transfers between independent agents and drives the receiver's first loop-live submersion
+# Exp 61 (FROZEN 2026-09-17 at v2.3 — four-lens review FOLDED, harness-reconciled, dry runs 1+2 DONE) — shared survival fear: a learned drowning-fear transfers between independent agents and drives the receiver's first loop-live submersion
 
-> **STATUS: DRAFT v2.3 — v2.2 folded the one-pair dry run of 2026-09-17 (build step 4; one finding, below
-> under donor sanity and in the build order); v2.3 records that the finding was the NAc's own wart, fixed at
-> the source the same day, and restores the sanity check to its v2.1 strength. The four-lens design review ran on v1 (2026-09-16; all four lenses
+> **STATUS: FROZEN 2026-09-17 (this PR; docs-only). What is frozen is v2.3 as it stands below — the
+> claim, the arms (24 / 12 / 12 / 24), the receiver lifecycle, the DVs and gates, the stop rules, the
+> harness constants in `exp61_run.FROZEN`, and the operator runbook at the end. Build step 4 is DONE:
+> dry run 1 (2026-09-17) found the NAc's zero-key wart, fixed at the source (#746); dry run 2 (same day,
+> after the fix, `dryrun2-2026-09-17`) ran every row of pair 200 clean — apparatus, both donors, the
+> anti-vacuity kit, all four receivers — with the transferred receiver's first contact a SUCCESS on both
+> DVs and the three controls at the structural floor (the record is under build step 4; the rows are
+> committed as a diagnostic beside the data, never counted). No trial data are taken before this PR is
+> ON MAIN; the campaign runs at ONE code hash from a clean checkout at or after it. History: v2.2 folded
+> dry run 1; v2.3 restored the donor sanity to its v2.1 strength. The four-lens design review ran on v1 (2026-09-16; all four lenses
 > FIX-THEN-BUILD; three DO-NOT-BUILDs, all folded below; reports preserved verbatim under
 > `docs/experiments/rationale/exp61-shared-fear/`). The two decisions the fold left to the owner were
 > taken 2026-09-16: **D1 = the 0.75 social discount at the ingest bound (Option A); D2 = arm sizes
 > 24 / 12 / 12 / 24.** Build steps 1–3 SHIPPED (#742 red gate; #743 mechanism + harness, each two-lens
 > reviewed); v2.1 reconciles this text with the harness AS BUILT (the two code reviews' design
 > findings: the dangling arm's donor policy, apparatus checks once per pair, the settle guard,
-> Fisher's exact test, the anti-vacuity row, the frozen constants the harness carries). The FREEZE
-> (v2.1 → FROZEN) is its own docs-only PR AFTER the one-pair dry run (build step 4), and no trial
-> data are taken before it.**
+> Fisher's exact test, the anti-vacuity row, the frozen constants the harness carries).**
 > This is the 1.3 Phase-2 headline (`docs/plans/roadmap_1_3.md` §Phase 2) with its want re-pointed
 > from "dark = danger" (Exp 58, BLOCKED at the instrument) to "water = drowning" (Exp 60, EARNED
 > 2026-09-16): *agent A learns the hard way → exports its substrate → agent B ingests it → B leaves
@@ -368,7 +373,52 @@ Exp 56's `close_and_stage_session`, `export_bundle` (incl. `dangling=True`), `in
    zero keys were the NAc's wart — `credit_node` stored a bias it had clamped to 0.0 — fixed at the
    source (a zero bias is removed; the smoke pins `reward_bias == {}` after training), and the sanity
    check restored to `reward_bias == {}` with the zero case named as a stale-install/regression
-   refusal. Dry run 2 re-runs all four arms on the fixed NAc.**
-5. Freeze (docs-only PR: v2.x → FROZEN), then the campaign from a clean main at ONE code hash
-   (`git pull` forbidden between the first and last row); merge-commit data PR; §Outcome from the
-   verdict, never before.
+   refusal. Dry run 2 (2026-09-17, after #746, campaign id `dryrun2-2026-09-17`, pair 200): NO
+   refused row — apparatus, donor fear, donor ablated, the anti-vacuity kit and all four receivers
+   clean at ONE code hash (`cf6d1cc0`, the post-#746 main, tree clean). Apparatus: live clusters
+   distinct, escape actuation 1.52 s through the bridge with zero executor calls, bridge cadence
+   0.101 s, liveness 6 ticks. Donors: 10/10 usable episodes each (20 oxygen pain signals, 0 health,
+   0 deaths); the fear donor staged `cluster_fear` −1.0 on its water node and 0.0 on the shore, the
+   ablated donor staged none; both sanities PASSED with `reward_bias == {}` (the live proof of #746).
+   Kit: the aligned merge read 1.0, the receiver-unchanged and empty-state variants 0.0. TRANSFERRED
+   ingest: `fear_rekeyed` 1, dropped 0, below floor 0, discount 0.75, donor nodes 3; first contact
+   SUCCESS (decision DV, behavioural DV and drive-decisive provenance all true; `flee` call at
+   1.03 s, `escape_water` call at 1.78 s, first air at 3.15 s; the receiver's FIRST proposal under
+   the foreign fear was `flee`, which fails in water — the pathfinder is dead there — and its
+   second was `escape_water`, executed; the campaign's rows are read with that pattern in mind: a
+   flee-first receiver spends part of the window before the escape fires). ISOLATED,
+   CLUSTER-NOT-FEAR and DANGLING all censored with no proposal and no call (arm 3 shipped the
+   percept valence but no fear; arm 4 shipped nac-only: `fear_dropped` 1, donor EC nodes 0). The
+   analyzer read INCOMPLETE by count alone (1 pair per arm), the kit row PASSED, specificity and
+   both-halves PASSED, and the two Fisher gates read p = 0.5 as one pair must. Rows:
+   `docs/experiments/data/exp61_dryrun2_2026-09-17.jsonl` (diagnostic; the verdict never reads it).
+   HONEST LIMIT: the pain edge was NOT re-measured live on either dry run — the harness derives the
+   probe cap (4.33 s) and the train cap (15.07 s) from Exp 60's apparatus record measured
+   2026-09-15 on this same server and world (`exp60_water_apparatus.json`, `t_pain_edge` minimum
+   5.08 s, margin 0.75 s). The belt that stands in for a re-measure: a pain event INSIDE a
+   receiver's window is the dirty class, a named refusal, so a drifted edge shows up as refused
+   rows, never as false successes; the campaign's drift check covers the actuation side.**
+5. **Freeze = THIS PR (docs-only, v2.3 → FROZEN).** Then the campaign from a clean main at ONE code
+   hash (`git pull` forbidden between the first and last row); merge-commit data PR; §Outcome from
+   the verdict, never before. The runbook follows.
+
+## Operator runbook (the frozen protocol, executed from a clean main checkout at or after the freeze)
+
+1. big-mac-mini: `git checkout main && git pull` (the checkout must contain this FROZEN prereg);
+   RESTART the bridge with `--state_interval_ms=100` and confirm its `spawn state:` line carries
+   `is_in_water` (a long-running bridge serves the OLD roster after a pull). No second player on the
+   server for the whole campaign, or spectator ≥ 64 blocks; no rain (the settle guard refuses both).
+2. `export PYTHONPATH="$PWD/src"` on its own line, then the campaign, ONE invocation, all four arms,
+   ≈ 2.9–3.4 h (24 apparatus checks + 24 trainings + 72 receivers + the kit):
+   `python scripts/survival_world/exp61_run.py run --campaign-id exp61-campaign-1 --workdir ~/exp61_campaign --rcon-password '<pw>' --username maxim --write-experiment-results`
+   The output is `docs/experiments/data/exp61_pairs.jsonl`; the tree must be CLEAN (no
+   `--allow-dirty`); the harness refuses a `maxim` that is not this checkout's. Each row prints its
+   preflights, ingest report and first contact; a refused row prints its cause and is stamped, never
+   dropped. If the run stops (Ctrl-C, a crash), resume the SAME campaign id at the SAME code hash:
+   `... run --resume --campaign-id exp61-campaign-1 --workdir ~/exp61_campaign ...` — clean rows are
+   skipped, refused rows re-run and supersede. A `git pull` between rows ends the campaign: rows at
+   two hashes read INCOMPLETE.
+3. `python scripts/survival_world/exp61_run.py verdict --data docs/experiments/data/exp61_pairs.jsonl --json docs/experiments/data/exp61_verdict.json --campaign-id exp61-campaign-1 --write-experiment-results`
+4. One MERGE-COMMIT data PR with `exp61_pairs.jsonl` + `exp61_verdict.json`; then §Outcome is
+   written from the verdict (EARNED / NULL / INCOMPLETE), never before; then the graduation ledger
+   row and the CHANGELOG line, from the same verdict.
