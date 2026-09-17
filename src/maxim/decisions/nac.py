@@ -2484,6 +2484,16 @@ class NAc:
         node via eligibility traces. Positive reward increases bias
         (widens recognition radius), negative reward decreases it.
 
+        A bias that clamps to zero is REMOVED, not stored: ``reward_bias()``
+        reads an absent key as 0.0, so a stored 0.0 carried no meaning — it
+        only shipped. (The decay path keeps its own, separate floor: it
+        prunes a bias that FALLS below 0.001, so a tiny positive credit may
+        be stored here and pruned on the next tick. Two thresholds, one
+        meaning: zero is absent.) Before
+        2026-09-17 a pain credited to a fresh node stored ``0.0`` under the
+        node's key; in Exp 61's dry run those phantom keys travelled in the
+        donor bundle and tripped the staged-donor sanity check.
+
         Args:
             agent_id: Agent whose recognition should be modulated.
             node_id: ATL node to credit.
@@ -2494,8 +2504,12 @@ class NAc:
             current = self._reward_bias.get(key, 0.0)
             updated = current + self.config.reward_bias_alpha * reward
             # Clamp to [0, max_reward_bias] — bias only widens, never inverts
-            self._reward_bias[key] = max(0.0, min(updated, self.config.max_reward_bias))
-            new_bias = self._reward_bias[key]
+            new_bias = max(0.0, min(updated, self.config.max_reward_bias))
+            if new_bias <= 0.0:
+                # zero is absent (the same meaning the decay prune gives it)
+                self._reward_bias.pop(key, None)
+            else:
+                self._reward_bias[key] = new_bias
             logger.debug(
                 "NAc credit_node(%s, %s): %.4f → %.4f (reward=%.2f)",
                 agent_id[:8] if agent_id else "?",

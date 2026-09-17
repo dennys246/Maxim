@@ -303,20 +303,29 @@ def donor_sanity_staged(
     for field in ("links", "event_outcome_welford", "cluster_reward_bias"):
         if nac.get(field):
             reasons.append(f"{field} is not empty ({len(nac[field])}) — a probe or an execution happened before export")
-    # Node-level `reward_bias` is written by the pain credit ITSELF: `temporal_credit.distribute`
-    # hands each eligible node a NEGATIVE share of the pain, and `NAc.credit_node` clamps that to
-    # 0.0 but still stores the key (dry run 2026-09-17, pair 200: both donors carried three
-    # zero-valued keys and were refused as "a probe happened"; reproduced offline in the smoke).
-    # A zero-valued key reads exactly like an absent one (`NAc.reward_bias` returns 0.0 either way).
-    # The invariant is therefore NO POSITIVE node bias: a positive value can only come from a
-    # positive reaction (relief / success) being credited — an execution or a probe before export.
-    positive_rb = {k: v for k, v in (nac.get("reward_bias") or {}).items() if float(v) != 0.0}
-    if positive_rb:
+    # Node-level `reward_bias` must be EMPTY on a fresh donor, and the two ways it is not are told
+    # apart. Dry run 1 (2026-09-17, pair 200) refused both donors on three ZERO-valued keys: the
+    # pain credit (`temporal_credit.distribute` → `NAc.credit_node`, a negative share clamped at
+    # 0.0) used to STORE the key. That was the NAc's wart, fixed the same day (`credit_node` now
+    # removes a bias that clamps to zero — the meaning the decay prune already gave it), and the
+    # offline smoke pins that propose-only training stages `reward_bias == {}`. Donors are always
+    # trained fresh, in THIS process, so a zero key here can only mean the running `maxim` is not
+    # the repo's (a provenance fault) or a zero-writer regressed into the NAc — both refuse. A
+    # NON-ZERO bias can only come from a positive reaction (relief / success) being credited: a
+    # probe or an execution before export. The zero count stays on the row for the record.
+    rb = nac.get("reward_bias") or {}
+    nonzero_rb = {k: v for k, v in rb.items() if float(v) != 0.0}
+    reward_bias_zero_nodes = len(rb) - len(nonzero_rb)
+    if nonzero_rb:
         reasons.append(
-            f"reward_bias carries {len(positive_rb)} non-zero node bias(es) — a positive reaction was credited: "
+            f"reward_bias carries {len(nonzero_rb)} non-zero node bias(es) — a positive reaction was credited: "
             "a probe or an execution happened before export"
         )
-    reward_bias_zero_nodes = len(nac.get("reward_bias") or {}) - len(positive_rb)
+    if reward_bias_zero_nodes:
+        reasons.append(
+            f"reward_bias carries {reward_bias_zero_nodes} ZERO-valued node key(s) — the running NAc still stores "
+            "the pain credit's clamp (fixed 2026-09-17): a stale `maxim` install or a regressed writer"
+        )
     pv = nac.get("percept_valences") or {}
     if not any(FEAR_MODE in str(k) for k in pv):
         reasons.append("percept_valences carries no drive:oxygen entry — the pain never published")

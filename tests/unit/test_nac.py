@@ -446,6 +446,50 @@ class TestNAcMaintenance:
         reduced = nac.reward_bias("agent-1", "node-a")
         assert reduced < initial
 
+    @pytest.mark.multi_agent_modes
+    def test_negative_credit_on_a_fresh_node_stores_no_key(self, multi_agent_modes):
+        """A pain credited to a node it never rewarded leaves NOTHING behind — not a 0.0 key.
+        Exp 61 dry run 1 (2026-09-17): three such keys shipped in every donor bundle. Runs in all
+        three agent modes: the pop is keyed on (agent_id, node_id), so one agent's pain never
+        touches another's stash."""
+        for agent_id in multi_agent_modes.agent_ids:
+            nac = multi_agent_modes.nac_for(agent_id)
+            nac.credit_node(agent_id, "node-a", reward=-1.0)
+            assert (agent_id, "node-a") not in nac._reward_bias
+            assert nac.reward_bias(agent_id, "node-a") == 0.0
+        for agent_id in multi_agent_modes.agent_ids:
+            assert multi_agent_modes.nac_for(agent_id).dump()["reward_bias"] == {}
+
+    @pytest.mark.multi_agent_modes
+    def test_negative_credit_that_drives_a_bias_to_zero_removes_its_key(self, multi_agent_modes):
+        """Driving one agent's bias to zero removes ITS key only; in the shared-instance tripwire
+        the other agent's positive bias on the same node must survive."""
+        ids = multi_agent_modes.agent_ids
+        for agent_id in ids:
+            multi_agent_modes.nac_for(agent_id).credit_node(agent_id, "node-a", reward=1.0)
+            assert (agent_id, "node-a") in multi_agent_modes.nac_for(agent_id)._reward_bias
+        victim = ids[0]
+        nac = multi_agent_modes.nac_for(victim)
+        nac.credit_node(victim, "node-a", reward=-100.0)
+        assert (victim, "node-a") not in nac._reward_bias
+        for other in ids[1:]:
+            assert multi_agent_modes.nac_for(other).reward_bias(other, "node-a") > 0.0, (
+                "removing one agent's zeroed bias must not touch another agent's key"
+            )
+        # a later positive credit starts from zero again
+        nac.credit_node(victim, "node-a", reward=1.0)
+        assert nac.reward_bias(victim, "node-a") > 0.0
+
+    def test_pain_through_the_distributor_leaves_no_reward_bias_keys(self, nac):
+        """The Exp 61 shape: eligible nodes, a NEGATIVE reward distributed to them — the persisted
+        `reward_bias` stays empty (the pre-fix NAc stored one 0.0 key per eligible node). This drives
+        the NAc-side `distribute_reward`; the live loop's `TemporalCreditDistributor` path ends at the
+        same `credit_node` and is pinned end to end by the Exp 61 smoke's staged footprint."""
+        nac.update_eligibility("agent-1", "node-a", 1.0)
+        nac.update_eligibility("agent-1", "node-b", 0.5)
+        nac.distribute_reward("agent-1", -1.0)
+        assert nac.dump()["reward_bias"] == {}
+
     def test_decay_reward_biases_prunes_near_zero(self, nac):
         """Biases below 0.001 are removed."""
         nac._reward_bias[("agent-1", "node-a")] = 0.0005
