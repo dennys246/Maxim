@@ -1,4 +1,4 @@
-# R3 (DRAFT v2, 2026-09-17, four-lens design review FOLDED) — the lethal-window benchmark: what a carried survival drive buys at the one moment it matters, measured on a depth-calibrated, frozen gauntlet
+# R3 (DRAFT v2.1, 2026-09-17, four-lens design review FOLDED, owner decisions D1–D5 TAKEN) — the lethal-window benchmark: what a carried survival drive buys at the one moment it matters, measured on a depth-calibrated, frozen gauntlet
 
 > **STATUS: DRAFT v2 — the four-lens design review ran on v1 (2026-09-17; confounding, bio-faithful,
 > wiring and environment, reports preserved verbatim under
@@ -7,7 +7,8 @@
 > SHOULD-FIX below and records what was dismissed and why. Nothing is built; no live measurement
 > has been taken. This is the 1.3 Phase-3 rung (`docs/plans/roadmap_1_3.md` §Phase 3), an
 > INSTRUMENT plus a FROZEN BASELINE, never a graduated claim (`minecraft_benchmark.md` D2). The
-> owner decisions D1–D5 are listed at the end; the build order starts with a MEASURED pilot,
+> owner decisions D1–D5 were TAKEN 2026-09-17 (recorded at the end, with the one design idea
+> considered and held out); the build order starts with a MEASURED pilot,
 > because two of v1's load-bearing "facts" were extrapolations from windows built to prevent the
 > very thing they were cited for.**
 
@@ -215,19 +216,36 @@ underwater at 45 s is refused.
 - **Long loop-live episodes (H up to 600 s):** never proven live beyond 15 s; memory and link
   growth measured per build; the one-event unit removes the need.
 
-## Owner decisions
+## Owner decisions (TAKEN 2026-09-17)
 
-- **D1 — the five arms as tabled, at a floor of n = 12 each** (60 agents + 24 trainings for C/E
-  + 12 donors for D ≈ 36 trainings × ≈ 2.5–3 min + 60 events × ≤ 45 s + apparatus ≈ 2.5–3.5 h;
-  plus R3-cal at 12 per cell × the cells walked, ≈ 10 min per cell). Recommended: keep all five;
-  E is cheap and is the only control that separates "exposure" from "drive" for the floor.
-- **D2 — primary DVs `escaped_before_damage` + `t_surface`;** survival secondary. Recommended.
-- **D3 — depth as the axis, calibrated on arm A's survival.** Recommended; the pilot measures
-  whether depth actually moves arm A before any sweep is declared final.
-- **D4 — start state = the Exp 60/61 heal settle** (declared injection, parity with every prior
-  fear read) rather than the game-native respawn state (food 20, saturation 5). Recommended: the
-  heal settle; the alternative changes the cluster key relative to training.
-- **D5 — `naturalRegeneration true`** (the game default) frozen and verified. Recommended.
+- **D1 — the five arms as tabled, n = 12 each. TAKEN.** (60 agents + 24 trainings for C/E + 12
+  donors for D ≈ 36 trainings × ≈ 2.5–3 min + 60 events × ≤ 45 s + apparatus ≈ 2.5–3.5 h; plus
+  R3-cal at 12 per cell × the cells walked, ≈ 10 min per cell.) E stays: it is the only control
+  that separates "exposure" from "drive" against the floor, and it is cheap.
+- **D2 — primary DVs `escaped_before_damage` + `t_surface`; survival secondary. TAKEN as written.**
+- **D3 — depth as the axis, calibrated on arm A's survival. TAKEN.** The pilot measures whether
+  depth actually moves arm A before any sweep is declared final. **Considered and held out of R3
+  (owner idea, 2026-09-17): an internal PRESSURE signal** — a body (SEM) component that transforms
+  depth into an interoceptive homeostatic/entropic signal. The categorization is settled in its
+  favour: altitude is game-exposed, and a transform of an exposed quantity into an internal one is
+  the same class as the eye-height `is_in_water` flag, NOT the invented world fact D1 forbids. It
+  is held out of R3 on the CONFOUND, not on D1: as a sensor it re-keys every cluster the trained
+  fear sits on (a new channel in the summed vector) and gives R3 nothing depth-through-oxygen does
+  not already give (oxygen is the game's pressure analog — the deeper, the longer the air-hunger
+  before the head clears — and it is the drive every arm already senses); as a DRIVE it would be a
+  route to air that fires on placement in every arm, collapsing the benchmark to the ceiling for
+  the same structural reason v1 did. It is a legitimate design candidate for its own front-gate
+  and four-lens review after R3-bench (perception line / Phase 1b-adjacent), never inside R3.
+- **D4 — start state = the Exp 60/61 heal settle. TAKEN** (declared injection, parity with every
+  prior fear read; the game-native respawn state — food 20, saturation 5 — would change the
+  cluster key relative to training).
+- **D5 — `naturalRegeneration true` (the game default) frozen and verified for the campaign.
+  TAKEN.** Running both settings as two gauntlets was considered (it would show how much of the
+  floor arm's survival is regeneration) and rejected as doubling the campaign and splitting the
+  frozen file; instead the PILOT records the death edge under BOTH settings (one deliberate
+  drowning each way), so the off-regeneration edge is a measured number in the gauntlet file, and
+  an off-regeneration baseline is one gamerule flip and a re-run under the ledger's existing
+  gamerule trigger.
 
 ## Build order
 
