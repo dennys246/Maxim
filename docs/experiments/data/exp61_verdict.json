@@ -1,0 +1,115 @@
+{
+  "_format_version": "1.0",
+  "kind": "exp61_verdict",
+  "campaign_id": "exp61-campaign-1",
+  "refused": [],
+  "n_clean": {
+    "isolated": 24,
+    "transferred": 12,
+    "cluster_not_fear": 12,
+    "dangling": 24
+  },
+  "rates": {
+    "isolated": {
+      "n": 24,
+      "successes": 0,
+      "rate": 0.0,
+      "wilson95": [
+        0.0,
+        0.13797620655132792
+      ],
+      "decision_dv_rate": 0.0,
+      "behavioural_dv_rate": 0.0,
+      "not_decisive": 0
+    },
+    "transferred": {
+      "n": 12,
+      "successes": 12,
+      "rate": 1.0,
+      "wilson95": [
+        0.7575059904469021,
+        1.0
+      ],
+      "decision_dv_rate": 1.0,
+      "behavioural_dv_rate": 1.0,
+      "not_decisive": 0
+    },
+    "cluster_not_fear": {
+      "n": 12,
+      "successes": 0,
+      "rate": 0.0,
+      "wilson95": [
+        0.0,
+        0.2424940095530979
+      ],
+      "decision_dv_rate": 0.0,
+      "behavioural_dv_rate": 0.0,
+      "not_decisive": 0
+    },
+    "dangling": {
+      "n": 24,
+      "successes": 0,
+      "rate": 0.0,
+      "wilson95": [
+        0.0,
+        0.13797620655132792
+      ],
+      "decision_dv_rate": 0.0,
+      "behavioural_dv_rate": 0.0,
+      "not_decisive": 0
+    }
+  },
+  "permutation": {
+    "transferred_vs_isolated": {
+      "p_one_sided": 7.989277111831584e-10,
+      "observed_diff": 1.0,
+      "k": [
+        12,
+        0
+      ],
+      "n": [
+        12,
+        24
+      ],
+      "test": "fisher-exact-one-sided (hypergeometric; = exact permutation on binaries)"
+    },
+    "transferred_vs_cluster_not_fear": {
+      "p_one_sided": 3.698011505253395e-07,
+      "observed_diff": 1.0,
+      "k": [
+        12,
+        0
+      ],
+      "n": [
+        12,
+        12
+      ],
+      "test": "fisher-exact-one-sided (hypergeometric; = exact permutation on binaries)"
+    }
+  },
+  "checks": {
+    "transferred": true,
+    "above_floor": true,
+    "cluster_not_fear": true,
+    "both_halves": true,
+    "specificity": true,
+    "anti_vacuity": true
+  },
+  "gates": {
+    "transferred_min": 0.7,
+    "above_floor_min": 0.2,
+    "cluster_not_fear_min": 0.2,
+    "both_halves_max": 0.1,
+    "alpha": 0.05
+  },
+  "verdict": "EARNED",
+  "incomplete_cause": null,
+  "data": "docs/experiments/data/exp61_pairs.jsonl",
+  "provenance": {
+    "executed_maxim_file": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "4e25b4754219",
+    "working_tree_dirty_src_scripts": false,
+    "python": "/Users/dennys/RMSrv/scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages"
+  }
+}
