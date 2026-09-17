@@ -66,6 +66,14 @@ ingests it → **B survives its first night better, never bitten.** Needs only P
 fabric — **not** R1 or R4 — so it is the honest minimal 1.3 that can actually ship. A recorded
 failure ships as a failure.
 
+**EARNED 2026-09-17 via Exp 61** (`docs/experiments/exp61_shared_fear_prereg.md` §Outcome; data PR
+#748): B leaves the water on its FIRST loop-live submersion, never having felt the air-hunger pain —
+12/12 transferred receivers against 0/24 isolated, 0/12 cluster-not-fear and 0/24 dangling, at one
+code hash, zero refusals, all six frozen gates PASS. The want that travelled is the drowning-fear
+(Wire-4 `cluster_fear`, discounted ×0.75 at the ingest bound); "dark = danger" stays BLOCKED at
+the instrument (Exp 58) and eat-when-hungry is prior-driven (R2). Not earned here: extinction,
+scaling, generalization to another pool, hive-side promotion.
+
 ### Phase 3 — R3 survival benchmark *(instrument + frozen baseline, Goldilocks-calibrated)*
 Measures the survival advantage the learned drives buy. **Single-step wolf defense** rides here
 (wild wolf attacks the agent's attacker → health relief → operant credit). Instrument first,

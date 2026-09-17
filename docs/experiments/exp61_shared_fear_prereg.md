@@ -422,3 +422,72 @@ Exp 56's `close_and_stage_session`, `export_bundle` (incl. `dangling=True`), `in
 4. One MERGE-COMMIT data PR with `exp61_pairs.jsonl` + `exp61_verdict.json`; then §Outcome is
    written from the verdict (EARNED / NULL / INCOMPLETE), never before; then the graduation ledger
    row and the CHANGELOG line, from the same verdict.
+
+## Outcome (2026-09-17): EARNED — a learned drowning-fear transfers between independent agents through the shipped bundle path and drives the receiver's first loop-live submersion
+
+**Verdict record:** `docs/experiments/data/exp61_verdict.json` (data PR #748, merge commit), computed by
+`exp61_run.py verdict --campaign-id exp61-campaign-1` on big-mac-mini at main `4e25b475` (the freeze
+merge, #747) on a clean tree from `docs/experiments/data/exp61_pairs.jsonl`. The campaign ran at that
+ONE hash in one invocation, 17:05–18:11 UTC (1.10 h; the frozen prereg landed on main at 17:03),
+121 rows, **zero refusals**: 24 apparatus, 12 fear + 12 ablated donors, 1 anti-vacuity kit row, 72
+receivers. Every row carries `working_tree_dirty_src_scripts: false`.
+
+**Every gate PASS (all six, as frozen in §Dependent measures and gates):**
+
+| Gate | Frozen threshold | Measured |
+|---|---|---|
+| TRANSFERRED | arm-2 first-contact success ≥ 0.70 | **12/12 = 1.0** (Wilson 95 % [0.758, 1.0]); decision DV 12/12, behavioural DV 12/12, drive-decisive on every row, 0 dirty windows |
+| ABOVE-FLOOR | arm 2 − arm 1 ≥ 0.20, Fisher one-sided p < 0.05 | **1.0 − 0.0 = 1.0**; **p = 8.0 × 10⁻¹⁰** (12/12 v 0/24) |
+| CLUSTER-NOT-FEAR | arm 2 − arm 3 ≥ 0.20, Fisher one-sided p < 0.05 | **1.0 − 0.0 = 1.0**; **p = 3.7 × 10⁻⁷** (12/12 v 0/12) |
+| BOTH-HALVES | arm 4 − arm 1 < 0.10; every arm-4 ingest `fear_rekeyed == 0`, `fear_dropped == shipped` | **0/24 v 0/24**; 24/24 ingests rekeyed 0, dropped 1 (= shipped), donor EC nodes 0 |
+| SPECIFICITY | every arm-2 pair passes lifecycle step 4 (loop OFF) | **12/12**: shore fear 0.0, water fear **−0.75** (= −1.0 × the 0.75 discount), need 0.75 > θ 0.5, ids distinct, `pain_publishes` 0 at the gate |
+| ANTI-VACUITY | the kit row present and passing | **present**: aligned merge read 1.0 (`fear_rekeyed` 1); receiver-unchanged 0.0; empty-state 0.0 |
+
+**Apparatus, once per pair (24/24 passed):** live shore and water clusters distinct on every pair;
+escape actuation through the bridge with zero executor calls, `t_surface` min 1.20 s, median 1.46 s,
+max 1.57 s (bound 2.5 s); bridge cadence 0.101–0.102 s (bound 0.15 s); gamerules and the settle
+guard (`is_raining == 0`, `nearest_player_dist == 64`) at every rescue of every row.
+
+**Donors (24/24 clean, yoked by construction and measured equal):** every donor of both kinds ran
+10/10 usable episodes in 10 attempts, 0 health pain, 0 deaths; oxygen pain signals 20 on 23 donors
+and 19 on one (a fear donor). Fear donors staged `cluster_fear` **−1.0** on the water node and 0.0 on
+the shore, one key each, on a node their training noted; ablated donors staged none. Every staged
+sanity passed with `links == {}`, `event_outcome_welford == {}`, `cluster_reward_bias == {}` and
+`reward_bias == {}` (the live proof of #746 on all 24). Loop liveness 6 ticks (one donor 5, bound 4).
+
+**Transport (the mechanism read, arm 2, 12/12):** ingest `fear_rekeyed` 1, `fear_dropped` 0,
+`fear_below_floor` 0, `fear_discount` 0.75, donor EC nodes 3, on every pair; the loop-OFF
+representation gate then read the SAME node id as the transferred node with `water_fear`
+−0.7499997 and `anticipatory_threat_need` 0.7499997 — the discounted value, exactly, before any
+loop ran. Arm 3 (ablated donor): `fear_rekeyed` 0 on all 12, the `drive:oxygen` percept valence
+(−1.0) shipped and the cluster geometry shipped, and the receiver made ZERO executor calls in
+12/12 windows — the cluster's presence is not the fear. Arm 4 (nac-only): every fear entry
+dropped at ingest for want of its world node (24/24), zero calls in 24/24 windows.
+
+**First contact (the DVs).** Transferred receivers: `escape_water` call at min 1.38 s, median
+1.72 s, max 1.86 s after the teleport; first air at min 2.70 s, median 3.14 s, max 3.53 s — every
+one inside the 4.34 s US-free window, a median ≈ 1.9 s before the 5.09 s pain edge. The predicted
+tie-break showed on **12/12** receivers: one `flee` call first (fails fast — the pathfinder is dead
+in water), then `escape_water` (`flee_calls` 1, `escape_calls` 1 on every row; 24 calls total across
+the arm). The three control arms made **zero** executor calls in 60/60 windows (all censored at
+the cap, none dirty). The recorded second placement surfaced 12/12 at median 1.73 s with no `flee`
+(the receiver's own positive `escape_water` link, 3 per receiver after first contact — recorded,
+never a DV).
+
+**Budget and process.** 1.10 h for the whole campaign against the 2.9–3.4 h estimate (the
+donors dominate; receivers ran ≈ 20 s each). Harness RSS 42 → 148 MB over 121 rows. No `--resume`
+was needed. Dangling pairs 212–223 reused the arm-2 donor of pair k−12 as frozen (`donor_pair`
+recorded on every row).
+
+**Honest limits (recorded, as frozen):** the pain edge was NOT re-measured live on campaign day —
+`pain_edge_min_s` 5.085 and both caps are read from Exp 60's apparatus record (same server and
+world, 2026-09-15); the dirty class (pain inside a receiver's window) is a named refusal and fired
+on 0/72 windows. The discount's magnitude is not distinguished by this DV (0.75 lands the need at
+0.75, above θ; 1.0 would too). Nothing here about extinction, scaling (N donors), generalization to
+another pool, positive-want transfer, or the hive-side promotion of the exchange — see §What this
+experiment does NOT claim, unchanged.
+
+**What this earns:** the 1.3 Phase-2 headline (`docs/plans/roadmap_1_3.md` §Phase 2) — a
+survival want learned the hard way by one agent, exported through the shipped signed-bundle path,
+lands on an independent agent and drives its FIRST loop-live submersion, never having felt the
+air-hunger pain. Ledger row: `docs/plans/behavioral_graduation_candidates.md` (Tier 1, beside Exp 60).
