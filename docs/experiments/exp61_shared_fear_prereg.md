@@ -1,11 +1,15 @@
-# Exp 61 (DRAFT v2, 2026-09-16, four-lens review FOLDED) — shared survival fear: a learned drowning-fear transfers between independent agents and drives the receiver's first loop-live submersion
+# Exp 61 (DRAFT v2.1, 2026-09-16, four-lens review FOLDED, harness-reconciled) — shared survival fear: a learned drowning-fear transfers between independent agents and drives the receiver's first loop-live submersion
 
-> **STATUS: DRAFT v2 — the four-lens design review ran on v1 (2026-09-16; all four lenses
+> **STATUS: DRAFT v2.1 — the four-lens design review ran on v1 (2026-09-16; all four lenses
 > FIX-THEN-BUILD; three DO-NOT-BUILDs, all folded below; reports preserved verbatim under
 > `docs/experiments/rationale/exp61-shared-fear/`). The two decisions the fold left to the owner were
 > taken 2026-09-16: **D1 = the 0.75 social discount at the ingest bound (Option A); D2 = arm sizes
-> 24 / 12 / 12 / 24.** The build order below is authorized; the freeze (v2 → FROZEN) is its own
-> docs-only PR after the harness lands, and no trial data are taken before it.**
+> 24 / 12 / 12 / 24.** Build steps 1–3 SHIPPED (#742 red gate; #743 mechanism + harness, each two-lens
+> reviewed); v2.1 reconciles this text with the harness AS BUILT (the two code reviews' design
+> findings: the dangling arm's donor policy, apparatus checks once per pair, the settle guard,
+> Fisher's exact test, the anti-vacuity row, the frozen constants the harness carries). The FREEZE
+> (v2.1 → FROZEN) is its own docs-only PR AFTER the one-pair dry run (build step 4), and no trial
+> data are taken before it.**
 > This is the 1.3 Phase-2 headline (`docs/plans/roadmap_1_3.md` §Phase 2) with its want re-pointed
 > from "dark = danger" (Exp 58, BLOCKED at the instrument) to "water = drowning" (Exp 60, EARNED
 > 2026-09-16): *agent A learns the hard way → exports its substrate → agent B ingests it → B leaves
@@ -108,8 +112,8 @@ WITHOUT `receiver_agent_id` → 0.0 (proves the agent-id rewrite is load-bearing
 clamped, discounted and allowlisted; an out-of-allowlist mode and a positive value do not". The brief's
 invariant (c) and its guard line are rewritten in the same commit as the flip. Dropped from v1: a
 two-process key-stability test (the keys are `\x1f`-joined strings, nothing PYTHONHASHSEED can touch).
-Docs in the same PR: `docs/user/hivemind_bundle_format.md` V2 bounds,
-`docs/plans/oasis_ingestion_contract.md`.
+Docs in the same PR: `docs/plans/oasis_ingestion_contract.md` V2 bounds (the user-facing
+`hivemind_bundle_format.md` carries no field roster — corrected at v2.1), the brief's invariant (c).
 
 Front-gate: no new mechanism, no new bus — the sibling field `cluster_reward_bias` already takes
 every one of these paths; this extends them to `cluster_fear` under the same rules plus one bound and
@@ -148,8 +152,13 @@ one scalar.
 
 ## Arms
 
-One donor per receiver, paired by seed (no donor reused across receivers; arm 4 re-composes arm 2's
-donor stage, as Exp 56). Donors follow the Exp 60 training protocol (propose-only yoked training on
+One donor per receiver in the arms that MEASURE the fear (arms 2 and 3: no donor reused across
+receivers). Arm 4 re-composes a fear donor's staged nac-only (as Exp 56): pairs 1–12 re-use their
+own arm-2 donor, pairs 13–24 the arm-2 donor of pair k−12 — donor identity is immaterial there
+because the fear is DROPPED by construction (the row measures the drop accounting and the floor),
+so the no-reuse rule is scoped to arms 2/3 and the reuse is recorded per row as ``donor_pair``
+(harness review, architecture S3; the alternative — 12 fear donors trained only to be exported
+nac-only — cost ≈ 30 min for nothing the arm measures). Donors follow the Exp 60 training protocol (propose-only yoked training on
 the saturating `drive:oxygen` pain, K = 10 usable episodes, rescue at the training cap) inside a hub
 session, and are exported from the staged files before any probe.
 
@@ -158,7 +167,7 @@ session, and are exported from the staged files before any probe.
 | 1 **isolated** | none | fresh B, no ingestion, one placement | floor (structurally `None`; Exp 60 fresh agents 0/60) | 24 |
 | 2 **transferred-fear** | FEAR training (subscriber attached) → staged → exported; `cluster_fear` ships | fresh B + A's bundle via `maxim substrate ingest --receiver-agent-id B` (strict geometry) | the claim | 12 |
 | 3 **cluster-not-fear** (want-not-file) | ABLATED training (identical submersions and pain; subscriber detached) → staged → exported | fresh B + A′'s bundle, same path | the arrival of the underwater CLUSTER (A′'s EC carries it) and of everything else training leaves is not the arrival of fear — the load-bearing control | 12 |
-| 4 **dangling-half** | the SAME fear donors as arm 2 | fresh B + a re-compose of A's stage with `aut_ec.json` absent (the export's nac-only path) | fear keys without the representation buy nothing, LOUDLY: `fear_dropped == shipped`, `fear_rekeyed == 0` — the representation-half check (not the load-bearing falsifier: it cannot fail through the link channel, there are no links) | 24 |
+| 4 **dangling-half** | a fear donor's stage, nac-only (pairs 1–12: their own arm-2 donor; 13–24: pair k−12's) | fresh B + a re-compose of A's stage with `aut_ec.json` absent (the export's nac-only path) | fear keys without the representation buy nothing, LOUDLY: `fear_dropped == shipped`, `fear_rekeyed == 0` — the representation-half check (not the load-bearing falsifier: it cannot fail through the link channel, there are no links) | 24 |
 
 A never-submerged donor is redundant with arm 3 (confounding); a fifth arm with fear re-pointed to
 the SHORE node is unnecessary once receiver-side specificity is gated (F4) and would be the design's
@@ -176,10 +185,14 @@ ONE geometry tag (recorded); manifest `created_at` recorded beside the training-
 
 ## Receiver lifecycle (numbered; the wet preflights never run on B)
 
-0. **Throwaway agent (fresh persistence, discarded):** the live cluster-distinct check, the escape
-   actuation check (through the bridge, never the executor; `t_surface ≤ 2.5 s`), gamerules, raw
-   bridge roster, cadence ≤ 0.15 s, `is_raining == 0`, `nearest_player_dist == 64`. Apparatus
-   properties; once per pair.
+0. **Throwaway agent (fresh persistence, discarded), ONCE PER PAIR, before the pair's donors:** the
+   live cluster-distinct check, the escape actuation check (through the bridge, never the executor;
+   `t_surface ≤ 2.5 s`, and ZERO executor calls during it), gamerules, raw bridge roster, cadence
+   ≤ 0.15 s, `is_raining == 0`, `nearest_player_dist == 64`. Written as its own `apparatus` row; a
+   refused apparatus row skips the whole pair (nothing it measures is trustworthy; `--resume`
+   retries it). In addition, EVERY rescue settle — donor, throwaway and receiver alike — re-checks
+   `is_raining == 0` and `nearest_player_dist == 64` (the trial's settle guard; an ABSENT key
+   refuses, never defaults to the passing value — environment S4).
 1. **B pre-ingest:** `build_minecraft_aut` → no loop, no water → full close and stage; assert B's
    `ec.json` holds ZERO world nodes and B's `nac.json` no `cluster_fear`.
 2. **Ingest** via the real CLI with `--receiver-agent-id` = B's agent id (the same id the reboot uses);
@@ -196,7 +209,10 @@ ONE geometry tag (recorded); manifest `created_at` recorded beside the training-
    and `== 0` elsewhere; `cluster_fear(B, live shore node) == 0` and ids distinct (receiver
    specificity, F4). Each miss is its OWN named refusal class ("did not complete into the imported
    node", "fear not readable", "fear on the shore"), measured BEFORE the one-shot placement is spent.
-5. **First contact:** the first teleport into water B ever receives with the loop live — the DV.
+5. **First contact:** the first teleport into water B ever receives with the loop live — the DV. An
+   executed `escape_water` with NO captured NAc_RECOMMEND proposal is a named REFUSAL (the sink did
+   not deliver — an instrument inconsistency, never a mechanism null); the executed proposal is the
+   first escape-best event that PASSED the gate (a sub-threshold escape-best event is never executed).
 6. Rescue at the cap; one further placement recorded (fear + own link), never gated; teardown.
    Persistence dirs are DURABLE per pair (donor stage, bundles, receiver homes) — no `rmtree`.
 
@@ -237,20 +253,36 @@ dropped for that reason, stated. Arms interleave by seed as the drift control.
 | gate | rule |
 |---|---|
 | **TRANSFERRED** | arm-2 first-contact success rate ≥ 0.70 — a TOLERANCE for the timing failure mode (with a deterministic selector the expected rate is ≈ 1.0 minus timing), not Exp 56's ε-greedy constant |
-| **ABOVE-FLOOR** | arm 2 − arm 1 ≥ 0.20, and exact one-sided permutation p < 0.05 on the receiver binaries |
-| **CLUSTER-NOT-FEAR** | arm 2 − arm 3 ≥ 0.20, and exact one-sided permutation p < 0.05 |
+| **ABOVE-FLOOR** | arm 2 − arm 1 ≥ 0.20, and Fisher's exact one-sided p < 0.05 on the receiver binaries |
+| **CLUSTER-NOT-FEAR** | arm 2 − arm 3 ≥ 0.20, and Fisher's exact one-sided p < 0.05 |
 | **BOTH-HALVES** | arm 4 − arm 1 < 0.10 one-sided, AND every arm-4 ingest shows `fear_rekeyed == 0`, `fear_dropped == shipped` |
 | **SPECIFICITY** | every arm-2 pair passed lifecycle step 4 (shore fear 0, water fear at the post-discount value, ids distinct); refusals named and counted |
-| **ANTI-VACUITY** | one arm-2 pair per campaign re-run against `substrate_merge` no-op variants (receiver-unchanged, empty-state) must collapse to the floor |
+| **ANTI-VACUITY** | the kit runs over the FIRST clean arm-2 pair's staged files (the real aligned `substrate_merge` must make the receiver read the fear; the no-op variants receiver-unchanged and empty-state must read 0) and is written as a campaign row the verdict REQUIRES — absent → INCOMPLETE, failed → NULL (D62: a gate that cannot fail is not a gate) |
 
-Gates are point-estimate margins with 95 % Wilson intervals REPORTED (house style). **D2 —
-RECOMMENDED arm sizes:** arms 1 and 4 at n = 24 (no training cost; arm 4 reuses arm-2 donors), arms 2
-and 3 at n = 12: the 0/24 Wilson upper bound is 0.14, below the 0.20 margins, and BOTH-HALVES
-"< 0.10" means ≤ 2 of 24 rather than ≤ 1 of 12 (confounding F3, V7). Budget ≈ 2.4–2.8 h on
-big-mac-mini (donor ≈ 2.5–3 min, receiver ≈ 60–90 s; environment N-3). Verdict ∈ {EARNED, NULL,
-INCOMPLETE}: all six gates for EARNED; a failed BOTH-HALVES with the rest passing is NOT a partial
-pass (Exp 56's rule); INCOMPLETE when any arm has fewer than n clean pairs, on the timing class, on
-drift, or on rows spanning two code hashes (refusals named, never dropped).
+Gates are point-estimate margins with 95 % Wilson intervals REPORTED (house style). The exact test on
+two BINARY arms is Fisher's exact one-sided test (the hypergeometric tail), which IS the exact
+permutation test on binaries in closed form — Exp 60's enumeration over relabellings is exact too,
+but 12 v 24 binaries is > 10⁹ relabellings (harness review). **D2 (decided): arm sizes** arms 1 and 4
+at n = 24, arms 2 and 3 at n = 12: the 0/24 Wilson upper bound is 0.14, below the 0.20 margins, and
+BOTH-HALVES "< 0.10" means ≤ 2 of 24 rather than ≤ 1 of 12 (confounding F3, V7). **Budget, restated
+for the harness as built:** 24 apparatus checks (≈ 1 min each) + 24 trainings (12 fear + 12 ablated,
+≈ 2.5–3 min each) + 72 receivers (≈ 60–90 s each) ≈ 2.9–3.4 h on big-mac-mini. Verdict ∈ {EARNED,
+NULL, INCOMPLETE}: all six gates for EARNED; a failed BOTH-HALVES with the rest passing is NOT a
+partial pass (Exp 56's rule); INCOMPLETE when any arm has fewer than n clean pairs, on campaign
+drift, on rows (donor, apparatus or receiver) spanning two code hashes, on a missing kit row, or —
+with the cause named — when the decision DV passes while the behavioural DV fails (actuation
+timing); a campaign whose transfer surfaces were won by another score component is NULL with the
+count named. A later CLEAN row supersedes an earlier REFUSED row for the same (arm, pair) — what
+`--resume` writes — and the refusal is still named; two clean rows for one key are a duplicate.
+
+**Frozen with the harness (`exp61_run.FROZEN`; the analyzer refuses drift):** pair seeds 200–223;
+the dangling-donor offset 12; the 0.75 discount (asserted against the ingest constant at campaign
+start); the fear cap −1.0; the read floor 0.5; `actuation_max_s` 2.5; `drift_max_s` 0.5 (last-quartile
+median − first-quartile median of the apparatus `t_surface` and of arm-2's first-contact latency);
+the settle guard `{is_raining: 0, nearest_player_dist: 64}`; and a LITERAL copy of every Exp 60
+number the harness depends on (K = 10, 6 placements per Exp 60 probe, caps, margins, liveness,
+cadence, the fingerprint), pinned equal to Exp 60's FROZEN by a unit test so a later Exp 60 edit
+fails loudly instead of being inherited.
 
 ## Stop rules / refusals
 
@@ -302,13 +334,20 @@ Exp 56's `close_and_stage_session`, `export_bundle` (incl. `dangling=True`), `in
 
 ## Build order (after the owner's D1/D2 decisions)
 
-1. Red gate `tests/unit/test_exp61_fear_transport.py` (`xfail(strict=True)`) — its own small PR.
-2. Fear transport `src/` PR: the nine sites + discount + `fear_below_floor` + the deliberate flip +
-   brief invariant (c) rewritten + bundle-format docs — two-lens code review.
-3. Harness PR: `WaterTrial` extraction with the Exp 60 verdict-diff proof; `exp61_run.py` (arms, donor
-   flow with hub session and staged sanity, receiver lifecycle, DVs, counters, durable workdir/resume,
-   pair ids) + pure `verdict` — two-lens code review; pure halves unit-tested.
-4. One-pair dry run of every arm on big-mac-mini (the plumbing pilot: counters, tags, timing),
-   recorded as a diagnostic, not data.
-5. Freeze (docs-only PR: v2 → FROZEN, D1/D2 recorded, pain edge re-measured), then the campaign from a
-   clean main at one code hash; merge-commit data PR; §Outcome from the verdict, never before.
+1. **DONE (#742):** red gate `tests/unit/test_exp61_fear_transport.py` (`xfail(strict=True)`, RED at
+   the receiver read 0.0 and the missing counters).
+2. **DONE (#743, commit 1):** fear transport `src/` — the nine sites + discount + `fear_below_floor` +
+   the deliberate flip + brief invariant (c) rewritten + contract V2 bounds; two-lens review folded
+   (incl. the invalidate TOMBSTONE recording pruned fear).
+3. **DONE (#743, commit 2):** harness — `water_trial.WaterTrial` lifted from `exp60_run._run` (the Exp
+   60 verdict byte-identical before/after, now a mechanical test), `exp61_run.py` `run`/`verdict`,
+   `scripted_water.py` + the offline smoke that proves the shared class ticks, acts through the bridge
+   only, executes the escape under fear and PERSISTS fear at the staging close; two-lens review folded
+   (the loop's own session pair closes the hub session — every donor would have staged fear 0 without
+   the re-open; the export needs a `body:`-rooted spec; Fisher's denominator).
+4. One-pair dry run of every arm on big-mac-mini (the plumbing pilot: counters, tags, timing, the
+   hub-session persistence on the LIVE path, the pain edge re-measured), recorded as a diagnostic,
+   not data. Any change it forces goes into v2.2 before the freeze.
+5. Freeze (docs-only PR: v2.x → FROZEN), then the campaign from a clean main at ONE code hash
+   (`git pull` forbidden between the first and last row); merge-commit data PR; §Outcome from the
+   verdict, never before.
