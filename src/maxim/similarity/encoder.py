@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 
 import hashlib
+import math
 import logging
 from dataclasses import dataclass
 from typing import Any
@@ -602,6 +603,73 @@ def _sensor_embed(
     return vec
 
 
+def sensor_geometry_fields(
+    *,
+    modality: str,
+    declared_sensors: "list[str] | None",
+    declared_ranges: "dict[str, tuple[float, float]] | None",
+    embedding_dim: int,
+    gain: float | None,
+) -> dict[str, Any]:
+    """The ONE derivation of a sensor node's geometry-tag fields (D66 obligation discharged).
+
+    ``encode_sensors`` (live) and ``EntorhinalCortex._migrate_legacy_geometries`` (the D66
+    migrate half) both build their tag through this function, so the two sites cannot drift
+    — the risk ``ec.py`` recorded when ``gain`` was added to one site and not the other.
+
+    Fields: ``encoder``/``modality``/``declared_sensors``/``normalization``/``embedding_dim``
+    always; ``gain`` only when a gain applies (an ungained modality's tag is byte-identical to
+    pre-A4, pinned by the golden); and, ONLY under gain, ``ranges`` — the declared range VALUES,
+    float-normalised so ``[0, 20]`` and ``[0.0, 20.0]`` are one space. A range is part of the
+    ``v → contribution`` map, so a re-declaration is a same-dimension space change the tag must
+    see: ``saturation`` ``[0,10] → [0,20]`` (#726) changed every saturation reading's position on
+    its bases while the tag stayed identical, and persisted world nodes silently pattern-completed
+    across it. Scoped to gained modalities (2026-09-16 H2, Option A): that is where a wrong rest
+    is a full-weight constant and where the hole was walked through; an ungained range
+    re-declaration keeps the hole and is the recorded trigger for widening the scope.
+
+    Under gain with no declared ranges the field is simply absent (a range-blind gained encode
+    is a distinct space by its ``normalization`` already). A caller migrating a GAINED node from
+    provenance must pass the RECORDED ranges — never guess them — or not migrate at all.
+    """
+    ranges_norm: dict[str, list[float]] | None = None
+    if declared_ranges:
+        # Validated HERE, once, for every caller: lists from JSON or tuples from the body walk
+        # alike; a malformed entry raises (a DECLARATION error is loud — unlike a weird reading,
+        # which `_normalize_value` clips); zeros are sign-normalised (`-0.0` and `0.0` are one
+        # space); and when `declared_sensors` is also given it must name the same set — two
+        # inputs for one fact must not disagree inside the one helper.
+        ranges_norm = {}
+        for name, value in sorted(declared_ranges.items()):
+            try:
+                lo, hi = value
+                lo_f, hi_f = float(lo) + 0.0, float(hi) + 0.0
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"declared range for {name!r} must be [lo, hi], got {value!r}") from exc
+            if not (math.isfinite(lo_f) and math.isfinite(hi_f)):
+                raise ValueError(f"declared range for {name!r} must be finite, got {value!r}")
+            ranges_norm[str(name)] = [lo_f, hi_f]
+        if declared_sensors is not None and set(map(str, declared_sensors)) != set(ranges_norm):
+            raise ValueError(
+                f"declared_sensors {sorted(map(str, declared_sensors))} != declared_ranges keys {sorted(ranges_norm)}"
+            )
+        declared_sensors = sorted(ranges_norm)
+    fields: dict[str, Any] = {
+        "encoder": "sensor",
+        "modality": modality,
+        "declared_sensors": sorted(declared_sensors) if declared_sensors else None,
+        "normalization": "range-aware" if declared_sensors else "range-blind",
+        "embedding_dim": embedding_dim,
+    }
+    if gain is not None:
+        # float() normalizes the format: a config carrying int 3 and one carrying 3.0 are the
+        # SAME space and must produce the SAME tag ("p3.0"), or same-space nodes mutually skip.
+        fields["gain"] = f"p{float(gain)}"
+        if ranges_norm:
+            fields["ranges"] = ranges_norm
+    return fields
+
+
 def encoding_geometry_tag(**fields: Any) -> str:
     """A short stable id for the ENCODING SPACE a vector was produced in.
 
@@ -869,6 +937,15 @@ class SensorEncoder:
                 # files written before this cannot be migrated and must be
                 # re-encoded, which the load-time warning says explicitly.
                 "declared_sensors": declared,
+                # H2 (2026-09-16): the declared range VALUES, so the D66 migrate
+                # half can re-derive a GAINED tag (which carries them) instead of
+                # guessing. Merge rule in `record_encoder_provenance`: last-write,
+                # and a session that changes them mid-way is flagged mixed.
+                "declared_ranges": (
+                    {str(n): [float(lo) + 0.0, float(hi) + 0.0] for n, (lo, hi) in sorted(ranges.items())}
+                    if ranges
+                    else None
+                ),
                 # A4: the applied gain is part of the embedding's identity —
                 # None for ungained modalities (pre-A4-identical space).
                 "gain_exponent": applied_gain,
@@ -915,20 +992,19 @@ class SensorEncoder:
         # an ungained modality's tag stays byte-identical to pre-A4 (adding
         # `gain="linear"` would gratuitously re-stale every existing node's
         # tag for a space that did not change). Pinned by tests.
-        tag_fields: dict[str, Any] = {
-            "encoder": "sensor",
-            "modality": modality,
-            "declared_sensors": declared,
-            "normalization": "range-aware" if ranges else "range-blind",
-            "embedding_dim": len(embedding),
-        }
-        if applied_gain is not None:
-            # float() normalizes the format: a config carrying int 3 and one
-            # carrying 3.0 are the SAME space and must produce the SAME tag
-            # ("p3.0"), or same-space nodes mutually skip (architecture-lens
-            # review, PR 1 round).
-            tag_fields["gain"] = f"p{float(applied_gain)}"
-        geometry = encoding_geometry_tag(**tag_fields)
+        # H2 (2026-09-16): ONE helper derives the fields here and in the D66
+        # migrate half; under gain it also carries the declared range VALUES
+        # (a range re-declaration is a same-dimension space change — the
+        # `saturation` [0,10]→[0,20] hole). See `sensor_geometry_fields`.
+        geometry = encoding_geometry_tag(
+            **sensor_geometry_fields(
+                modality=modality,
+                declared_sensors=declared,
+                declared_ranges=ranges,
+                embedding_dim=len(embedding),
+                gain=applied_gain,
+            )
+        )
         result = self.ec.pattern_complete_or_separate(
             embedding=embedding,
             modality=modality,

@@ -115,6 +115,88 @@ not byte-replayable under the current body — the close-out is corollary 7, whi
 without a run). The plan's Q5 sentence that B "would make the small-move wants representable"
 (struck at all three sites: here, the Slice-2 §Decision (B), the direction lesson's corollary 5).
 
+## H2 design (2026-09-16, designed pre-build; shipped in the same PR): range VALUES enter the geometry tag
+
+**Status: Option A APPROVED by the owner 2026-09-16 (gained spaces only); built in the same PR as this
+section with a two-lens code review folded before merge. H1 + H3 shipped in #739 (the golden this
+change must trip).**
+
+**The hole (regression lens R2, wiring S1 — live, not hypothetical).** `encode_sensors` tags a node's
+space with `{encoder, modality, declared_sensors, normalization, embedding_dim, gain?}` — the sensor
+NAMES and the normalization MODE, never the range VALUES (`encoder.py` records this as a stated
+deferral). But a range is part of the `v → contribution` map: `saturation` `[0,10] → [0,20]` (#726)
+changed where every saturation reading lands on its two bases while the tag stayed identical, so
+persisted world nodes encoded under `[0,10]` silently pattern-complete against `[0,20]` readings, no
+`_note_geometry_mismatch` fires, and the committed L11 replay re-printed 0.0566 → 0.0881 with no
+mechanism change. The tag exists precisely to close same-dimension space changes (Gate 2 / D4); this
+is one it cannot see.
+
+**Mechanics that bound the design (read 2026-09-16).** A stored node whose tag differs from the live
+tag is MASKED out of pattern completion and warned once per (modality, stored, live) triple
+(`ec.py::_note_geometry_mismatch`); the remedy is `maxim substrate invalidate --drop-geometry <tag>`
+(`hivemind/merge.py::invalidate_stale_geometry_nodes` — removal + NAc-bias pruning, never in-place
+re-encode, because EC stores centroids not readings). Unstamped (`None`) nodes are a separate
+permissive class; `ec.py`'s D66 migrate re-derives a tag from provenance (`declared_sensors` +
+a single `normalization_modes` entry) and carries the recorded obligation "if `tag_fields` grows again,
+derive both from one helper". Hivemind ingest refuses unstamped foreign nodes at admission and, under
+`strict_geometry`, refuses folds across differing tags. `record_encoder_provenance` merges:
+`sensor_names` as a union, `normalization` into a modes list, everything else last-write-wins.
+
+**The scope decision (owner's call).**
+
+- **Option A (recommended): add `ranges={name: [lo, hi]}` to the tag ONLY where gain applies (the
+  `gain` field's own pattern).** Interoception and audio tags stay byte-identical (the H3 golden pins
+  them literally); only gained (world) spaces move. Rationale: the range principle is load-bearing
+  under the gain, where a wrong rest is a full-weight constant, and it is where the hole was walked
+  through. Blast radius: every persisted WORLD node (Minecraft sessions only — throwaway by
+  convention; the frozen Exp 60 fingerprint already pins ranges separately) reads as a stale geometry
+  on next load, is masked with the one-line warning, and is removed by the existing invalidate path.
+  Honest residual: an ungained range re-declaration (an interoception drive's `[0,1] → [0,2]`) keeps
+  the same hole; recorded as the revive trigger for Option B.
+- **Option B: add range values for every range-aware modality.** Closes the hole everywhere and
+  re-stales EVERY persisted range-aware node (every Reachy / cradle / infant session, every hivemind
+  bundle with interoception nodes) at once; every EARNED row whose guard reuses persisted substrate
+  or a bundle across the change needs a re-run. Not recommended now; it is the right end state if a
+  range re-declaration on an ungained sensor ever happens.
+
+**Build (Option A), composition-shaped — one PR, no orphan pieces (D43).**
+1. `encoder.py::sensor_geometry_fields(modality, declared_ranges, embedding_dim, gain)` — ONE helper
+   returning the tag fields; `encode_sensors` AND the `ec.py` D66 migrate derivation both call it
+   (discharging the recorded obligation). Under gain it adds `ranges` as a canonical
+   `{name: [float(lo), float(hi)]}` (float-normalised like `gain`, so `[0, 20]` and `[0.0, 20.0]`
+   are one space); ungained → no field → byte-identical.
+2. Provenance: `encode_sensors` also records `declared_ranges` (last-write) and, if a later stamp in
+   the same session differs, `declared_ranges_mixed: true` — the migrate half refuses to derive a tag
+   for a mixed session, exactly as it does for mixed normalization modes (a session that changed its
+   ranges is itself the finding).
+3. Migrate: gained nodes are always stamped at creation, so nothing unstamped can migrate; nodes
+   stamped in the OLD format are stale by construction and take the existing invalidate path. The
+   warning text gains one sentence naming this case.
+4. Golden: `test_world_tag_through_the_encode_sensors_seam` and the literal world tag go RED before
+   the change (the strict gate) and are regenerated once, with the diff stated as "world tag gained
+   the `ranges` field; every vector and every ungained tag unchanged".
+5. Tests (new, `tests/unit/test_geometry_tag_ranges.py`): the saturation replay as a red gate —
+   `[0,10]` vs `[0,20]` on one gained sensor must produce DIFFERENT tags and the mismatch warning
+   must fire once when a node stamped under one meets the other; ungained tags identical to the
+   golden; the two derivation sites agree on a fixture body (the one-helper obligation as a test);
+   two-process stability with `PYTHONHASHSEED`; int/float range canonicalisation.
+6. Fingerprints: Exp 60's frozen fingerprint already carries `sensor_ranges` (drift refuses a run), so
+   no change to a FROZEN prereg; for future preregs the geometry tag string itself is the
+   recommended fingerprint field (one string covers names, mode, dim, gain, ranges).
+
+**Re-run bill (Option A), priced against the ledger's triggers.** `_sensor_embed` is byte-identical
+(H3 golden), so no row re-runs for the ENCODING; the tag format changes for world spaces only.
+Rows naming `SensorEncoder`/`_sensor_embed`: Exp 42, 48, 53b (interoception/audio — tags unchanged;
+dated discharge annotation in the same PR), Exp 56, 57 (world; each campaign encodes donor and
+receiver fresh per run and ships its own bundles — no persisted world substrate crosses the change;
+discharge annotation), Exp 60 (world; every seed uses fresh persistence; discharge annotation).
+Persisted Minecraft sessions under `~/.maxim` on the operator boxes are the only artefacts that
+re-stale, and they are not evidence.
+
+**Not in scope.** Option B; putting units in the tag; any change to `_normalize_value` or the
+bases (the golden forbids it); the hivemind bundle format (the tag is an opaque string there and a
+new field rides inside it).
+
 ## The problem it fixes
 
 `_sensor_embed`'s A4 gain weights each sensor by `w = (|v − 0.5|·2)^p` — magnitude relative to the

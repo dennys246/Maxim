@@ -307,6 +307,7 @@ class TestA4GainEncoding:
             embedding_dim=384,
         )
         assert ec._substrate_node_geometries[node] != ungained_tag
+        # H2 (2026-09-16): a gained tag also carries the declared range VALUES.
         assert ec._substrate_node_geometries[node] == encoding_geometry_tag(
             encoder="sensor",
             modality="world",
@@ -314,6 +315,7 @@ class TestA4GainEncoding:
             normalization="range-aware",
             embedding_dim=384,
             gain="p3.0",
+            ranges={"light": [0.0, 1.0]},
         )
 
     def test_gain_exponent_recorded_in_provenance(self):
