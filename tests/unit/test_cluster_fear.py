@@ -210,10 +210,11 @@ class TestFearRead:
 
 
 class TestFearHivemindPosture:
-    """Phase-2 deferral enforced at all three sites (Exp 58 wiring W-6 fold):
-    scrub excludes, ingest strips, merge min-folds (commutative — receiver-
-    preserving given the scrub). A partial fold here reproduces the D43
-    delete-state class the merge's own comments memorialize."""
+    """Fear TRAVELS since Exp 61 (2026-09-16; the Exp 58 Phase-2 deferral is
+    discharged): scrub ships it clamped + allowlisted, ingest validates and
+    discounts it (refusal, not strip — see `test_exp61_fear_transport.py` for
+    the composition), merge min-folds (commutative). A partial fold here
+    reproduces the D43 delete-state class the merge's own comments memorialize."""
 
     def _state_with_fear(self, value: float = -0.6) -> dict:
         nac = _nac()
@@ -222,11 +223,19 @@ class TestFearHivemindPosture:
         assert "cluster_fear" in state and state["cluster_fear"]
         return state
 
-    def test_bundle_scrub_excludes_fear(self):
+    def test_bundle_scrub_ships_fear_clamped_and_allowlisted(self):
+        """Flipped deliberately in the Exp 61 mechanism PR (it pinned `"cluster_fear" not in
+        scrubbed` from the Exp 58 fold until then)."""
         from maxim.hivemind.bundle import scrub_nac_state_for_bundle
 
-        scrubbed = scrub_nac_state_for_bundle(self._state_with_fear())
-        assert "cluster_fear" not in scrubbed, "fear must not travel in bundles (Phase-2 deferral)"
+        state = self._state_with_fear()
+        scrubbed = scrub_nac_state_for_bundle(state)
+        assert scrubbed["cluster_fear"] == state["cluster_fear"], "an allowlisted, in-range fear ships verbatim"
+        state["cluster_fear"][f"{AGENT}\x1f{LIT}\x1fdrive:food"] = -0.9  # not allowlisted
+        state["cluster_fear"][f"{AGENT}\x1f{LIT}\x1fdrive:health"] = 0.3  # positive is not fear
+        scrubbed = scrub_nac_state_for_bundle(state)
+        assert f"{AGENT}\x1f{LIT}\x1fdrive:food" not in scrubbed["cluster_fear"]
+        assert f"{AGENT}\x1f{LIT}\x1fdrive:health" not in scrubbed["cluster_fear"], "a non-negative value is not a fear"
 
     def test_merge_preserves_receiver_fear_and_commutes(self):
         from maxim.hivemind.merge import nac_merge

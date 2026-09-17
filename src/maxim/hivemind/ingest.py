@@ -33,7 +33,6 @@ import hashlib
 import json
 import logging
 import math
-import re
 import time
 import zipfile
 from dataclasses import dataclass, field
@@ -48,6 +47,7 @@ from maxim.hivemind.bundle import (
 )
 from maxim.hivemind.identity import filter_identity_bearing_links, is_identity_bearing
 from maxim.hivemind.merge import (
+    NODE_ID_CHARSET,
     NAC_KEY_SEP,
     SubstrateMergeResult,
     _validate_source,
@@ -82,6 +82,14 @@ MAX_FOREIGN_TOTAL_OBSERVATIONS: int = 1_000_000
 #: V2 (row M) — ``confidence`` max-folds in ``_merge_link_pair``; a foreign
 #: 1.0 would be permanent. Foreign confidence is capped below it.
 CAP_FOREIGN_CONFIDENCE: float = 0.9
+#: Exp 61 (2026-09-16, prereg D1): a fear admitted from a FOREIGN bundle is multiplied by
+#: this before the MIN fold — vicarious conditioning is real, drives avoidance without the
+#: observer's own US, and is reliably weaker than direct conditioning; a re-export hands the
+#: next hop the discount squared (chain attenuation with no provenance field). 0.75 keeps
+#: a saturated donor (−1.0 → −0.75) above the strict activation floor (0.5) with margin;
+#: `merge-nac` (trusted-local) stays verbatim. There is deliberately NO foreign cap on
+#: fear magnitude beyond [-1, 0]: a cap at/below the floor would be a structural null.
+FOREIGN_FEAR_DISCOUNT: float = 0.75
 #: V2 (row K) — foreign list fields are truncated BELOW the merge's
 #: ``[-100:]`` tail-truncation window so they cannot evict local history.
 MAX_FOREIGN_DELTAS: int = 50
@@ -233,6 +241,13 @@ class IngestReport:
     inherent_keys_admitted: int
     links_dropped_identity: int
     welford_dropped_identity: int
+    #: Exp 61 fear transport — the honest indicator for the fear field, same shape as
+    #: the bias counts: keys re-keyed onto surviving clusters, keys dropped because the
+    #: donor cluster did not survive the aligned merge, and keys that landed BELOW the
+    #: read floor (|v| ≤ θ after the discount) and so will never act.
+    fear_rekeyed: int = 0
+    fear_dropped: int = 0
+    fear_below_floor: int = 0
     valence_entries: dict[str, float] = field(default_factory=dict)
     undeclared_members: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -402,7 +417,7 @@ def _sweep_and_stamp_provenance(entry: dict[str, Any], *, contributor_id: str, w
 #: refuses the NAC_KEY_SEP byte and every other control/whitespace
 #: character by construction, and '#' (the merge's collision-suffix
 #: marker — a pre-crafted '#' id masquerades as a prior collision).
-_NODE_ID_CHARSET = re.compile(r"^[A-Za-z0-9_.\-]{1,128}$")
+_NODE_ID_CHARSET = NODE_ID_CHARSET  # owned by merge.py so the export scrub filters by the same rule
 
 
 def _check_key_shape(key: str, parts_expected: int, *, where: str) -> list[str]:
@@ -432,13 +447,6 @@ def _validate_nac_payload(
     and validates key hygiene. The V4 scrub/quarantine re-run happens
     AFTER this pass (:func:`_receiver_scrub`).
     """
-    # Exp 58: fear does not travel yet (Phase-2 deferral) — a compliant bundle
-    # never carries `cluster_fear` (scrub excludes it); a hand-built one that
-    # does gets it STRIPPED here, noted, before any merge can fold it.
-    if "cluster_fear" in nac_state:
-        nac_state = {k: v for k, v in nac_state.items() if k != "cluster_fear"}
-        notes.append(f"stripped cluster_fear from {contributor_id}: fear transport is Phase-2 (Exp 58)")
-
     state = copy.deepcopy(nac_state)
     state.pop("_format_version", None)
     # The donor's decay clock is not the receiver's: nac_merge keeps the
@@ -544,11 +552,20 @@ def _validate_nac_payload(
     else:
         state["total_observations"] = total_obs
 
+    from maxim.decisions.nac import DEFAULT_CLUSTER_FEAR_FAILURE_MODES  # noqa: PLC0415 — one allowlist, no cycle
+
+    fear_discounted = 0
     for field_name, lo, hi, parts_expected in (
         ("reward_bias", 0.0, 1.0, 0),
         ("goal_reward_bias", -1.0, 1.0, 0),
         ("cluster_reward_bias", -1.0, 1.0, 3),
         ("percept_valences", -1.0, 1.0, 3),
+        # Wire-4 fear travels since Exp 61 (2026-09-16): bounded [-1, 0] (fear only),
+        # triple-keyed, cluster id charset-checked like a bias, failure mode REFUSED
+        # outside the Wire-4 allowlist (a privilege-shaped field: refusal, not strip —
+        # the `inherent` posture), and DISCOUNTED by `FOREIGN_FEAR_DISCOUNT` before the
+        # MIN fold (vicarious fear is weaker than direct conditioning; prereg D1).
+        ("cluster_fear", -1.0, 0.0, 3),
     ):
         entries = state.get(field_name, {}) or {}
         if not isinstance(entries, dict):
@@ -559,7 +576,7 @@ def _validate_nac_payload(
         for key, value in entries.items():
             if parts_expected:
                 parts = _check_key_shape(str(key), parts_expected, where=f"{field_name}[{key!r}]")
-                if field_name == "cluster_reward_bias" and not _NODE_ID_CHARSET.match(parts[1]):
+                if field_name in ("cluster_reward_bias", "cluster_fear") and not _NODE_ID_CHARSET.match(parts[1]):
                     raise IngestRefused(
                         duty="V9",
                         reason=(
@@ -567,8 +584,26 @@ def _validate_nac_payload(
                             "(no '#' collision masquerade, no control/whitespace)"
                         ),
                     )
-            validated[str(key)] = _require_in_range(value, lo, hi, where=f"{field_name}[{key!r}]")
+                if field_name == "cluster_fear" and parts[2] not in DEFAULT_CLUSTER_FEAR_FAILURE_MODES:
+                    raise IngestRefused(
+                        duty="V2",
+                        reason=(
+                            f"cluster_fear failure mode {parts[2]!r} is not in the Wire-4 allowlist "
+                            f"{sorted(DEFAULT_CLUSTER_FEAR_FAILURE_MODES)} — a fear no local pain could have written"
+                        ),
+                    )
+            bounded = _require_in_range(value, lo, hi, where=f"{field_name}[{key!r}]")
+            if field_name == "cluster_fear":
+                if bounded == 0.0:
+                    continue  # a zero fear is not a fear — never re-keyed, never counted
+                bounded = bounded * FOREIGN_FEAR_DISCOUNT
+                fear_discounted += 1
+            validated[str(key)] = bounded
         state[field_name] = validated
+    if fear_discounted:
+        notes.append(
+            f"cluster_fear: {fear_discounted} entr{'y' if fear_discounted == 1 else 'ies'} discounted ×{FOREIGN_FEAR_DISCOUNT} (foreign fear is vicarious, prereg Exp 61 D1)"
+        )
 
     welford = state.get("event_outcome_welford", {}) or {}
     if not isinstance(welford, dict):
@@ -1045,6 +1080,10 @@ def ingest_bundle(
         "biases_rekeyed": result.biases_rekeyed,
         "biases_dropped": result.biases_dropped,
         "biases_tightened": result.biases_tightened,
+        "fear_rekeyed": result.fear_rekeyed,
+        "fear_dropped": result.fear_dropped,
+        "fear_below_floor": result.fear_below_floor,
+        "fear_discount": FOREIGN_FEAR_DISCOUNT if result.fear_rekeyed else None,
         "inherent_keys_admitted": admitted_inherent,
         "links_dropped_identity": links_dropped,
         "welford_dropped_identity": welford_dropped,
@@ -1062,6 +1101,9 @@ def ingest_bundle(
         biases_rekeyed=result.biases_rekeyed,
         biases_dropped=result.biases_dropped,
         biases_tightened=result.biases_tightened,
+        fear_rekeyed=result.fear_rekeyed,
+        fear_dropped=result.fear_dropped,
+        fear_below_floor=result.fear_below_floor,
         inherent_keys_admitted=admitted_inherent,
         links_dropped_identity=links_dropped,
         welford_dropped_identity=welford_dropped,
@@ -1074,6 +1116,7 @@ def ingest_bundle(
 
 __all__ = [
     "CAP_FOREIGN_CONFIDENCE",
+    "FOREIGN_FEAR_DISCOUNT",
     "IngestReport",
     "IngestRefused",
     "IngestionJournal",
