@@ -300,9 +300,23 @@ def donor_sanity_staged(
     tags = {nd.get("geometry") for nid, nd in nodes.items() if nid in world_nodes}
     fear = nac.get("cluster_fear") or {}
     reasons: list[str] = []
-    for field in ("links", "event_outcome_welford", "cluster_reward_bias", "reward_bias"):
+    for field in ("links", "event_outcome_welford", "cluster_reward_bias"):
         if nac.get(field):
             reasons.append(f"{field} is not empty ({len(nac[field])}) — a probe or an execution happened before export")
+    # Node-level `reward_bias` is written by the pain credit ITSELF: `temporal_credit.distribute`
+    # hands each eligible node a NEGATIVE share of the pain, and `NAc.credit_node` clamps that to
+    # 0.0 but still stores the key (dry run 2026-09-17, pair 200: both donors carried three
+    # zero-valued keys and were refused as "a probe happened"; reproduced offline in the smoke).
+    # A zero-valued key reads exactly like an absent one (`NAc.reward_bias` returns 0.0 either way).
+    # The invariant is therefore NO POSITIVE node bias: a positive value can only come from a
+    # positive reaction (relief / success) being credited — an execution or a probe before export.
+    positive_rb = {k: v for k, v in (nac.get("reward_bias") or {}).items() if float(v) != 0.0}
+    if positive_rb:
+        reasons.append(
+            f"reward_bias carries {len(positive_rb)} non-zero node bias(es) — a positive reaction was credited: "
+            "a probe or an execution happened before export"
+        )
+    reward_bias_zero_nodes = len(nac.get("reward_bias") or {}) - len(positive_rb)
     pv = nac.get("percept_valences") or {}
     if not any(FEAR_MODE in str(k) for k in pv):
         reasons.append("percept_valences carries no drive:oxygen entry — the pain never published")
@@ -338,6 +352,7 @@ def donor_sanity_staged(
         "reasons": reasons,
         "fear_shipped": len(fear),
         "fear_keys": sorted(fear),
+        "reward_bias_zero_nodes": reward_bias_zero_nodes,
         "world_nodes": len(world_nodes),
         "geometry_tag": next(iter(tags)) if len(tags) == 1 else None,
         "saved_at": nac.get("saved_at"),

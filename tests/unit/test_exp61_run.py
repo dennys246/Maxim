@@ -212,14 +212,24 @@ def test_first_contact_censoring_classes_and_the_two_refusals() -> None:
 # ── staged donor sanity ──
 
 
-def _stage(tmp_path: Path, *, fear: dict | None, links=None, water="w1", tag="gABC", nodes=None, name="stage") -> Path:
+def _stage(
+    tmp_path: Path,
+    *,
+    fear: dict | None,
+    links=None,
+    water="w1",
+    tag="gABC",
+    nodes=None,
+    name="stage",
+    reward_bias=None,
+) -> Path:
     stage = tmp_path / name
     stage.mkdir(parents=True)
     nac = {
         "links": links or {},
         "event_outcome_welford": {},
         "cluster_reward_bias": {},
-        "reward_bias": {},
+        "reward_bias": reward_bias or {},
         "percept_valences": {"a\x1fdrowning\x1fdrive:oxygen": -0.5},
         "cluster_fear": fear if fear is not None else {},
         "saved_at": 1.0,
@@ -258,6 +268,30 @@ def test_donor_sanity_refuses_each_named_shape(tmp_path: Path, fear, links, epis
     stage = _stage(tmp_path, fear=fear, links=links)
     s = E.donor_sanity_staged(stage, donor_kind="fear", episode_clusters=episodes, shore_node="s1")
     assert not s["pass"] and any(why in r for r in s["reasons"]), s["reasons"]
+
+
+def test_donor_sanity_tolerates_the_pain_credits_zero_valued_node_keys_and_refuses_a_positive_one(
+    tmp_path: Path,
+) -> None:
+    """Dry run 2026-09-17 (pair 200): training alone leaves ZERO-valued `reward_bias` keys — the
+    pain's negative credit clamped at 0.0 by `NAc.credit_node` — and both donors were refused as
+    "a probe happened". A zero key reads like an absent one; only a POSITIVE bias proves a positive
+    reaction (relief / success) was credited before export."""
+    fear = {"a\x1fw1\x1fdrive:oxygen": -1.0}
+    zero = {"a:w1": 0.0, "a:s1": 0.0, "a:other": 0.0}
+    s = E.donor_sanity_staged(
+        _stage(tmp_path, fear=fear, reward_bias=zero), donor_kind="fear", episode_clusters=["w1"], shore_node="s1"
+    )
+    assert s["pass"], s["reasons"]
+    assert s["reward_bias_zero_nodes"] == 3
+    s = E.donor_sanity_staged(
+        _stage(tmp_path, fear=fear, reward_bias={**zero, "a:s1": 0.05}, name="pos"),
+        donor_kind="fear",
+        episode_clusters=["w1"],
+        shore_node="s1",
+    )
+    assert not s["pass"] and any("non-zero node bias" in r for r in s["reasons"]), s["reasons"]
+    assert s["reward_bias_zero_nodes"] == 2
 
 
 def test_donor_sanity_ablated_must_carry_no_fear_and_the_staged_world_node_must_exist(tmp_path: Path) -> None:
