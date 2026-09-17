@@ -107,6 +107,11 @@ class TestInvalidateCli:
                         j(("a1", "live-1", "tool:x_turn")): 0.2,
                     },
                     "reward_bias": {"a1:stale-2": 0.3},
+                    # Exp 61: fear travels, so an invalidated cluster's fear is pruned AND tombstoned.
+                    "cluster_fear": {
+                        j(("a1", "stale-1", "drive:oxygen")): -1.0,
+                        j(("a1", "live-1", "drive:oxygen")): -0.75,
+                    },
                 }
             )
         )
@@ -158,6 +163,9 @@ class TestInvalidateCli:
         assert sorted(ts["removed_nodes"]) == ["stale-1", "stale-2"]
         assert ts["removed_nodes"]["stale-1"]["embedding"] == [1.0, 0.0]
         assert ts["pruned_nac_entries"]["reward_bias"] == {"a1:stale-2": 0.3}
+        # the pruned FEAR is recorded verbatim too (executor-lens fold, Exp 61 mechanism PR)
+        assert ts["pruned_nac_entries"]["cluster_fear"] == {NAC_KEY_SEP.join(("a1", "stale-1", "drive:oxygen")): -1.0}
+        assert nac["cluster_fear"] == {NAC_KEY_SEP.join(("a1", "live-1", "drive:oxygen")): -0.75}
         assert ts["drop_geometry"] == OLD_GEOM
 
     def test_apply_requires_the_full_target(self, tmp_path):

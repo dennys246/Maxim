@@ -95,7 +95,11 @@ written until every duty has passed.
    - Structural shape: slices must be JSON objects of the documented shapes; node/key
      counts capped (§5).
    - **V2 bounds**: every numeric field finite; `cluster_reward_bias`,
-     `percept_valences`, `goal_reward_bias` in [-1, 1] and `reward_bias` in [0, 1] —
+     `percept_valences`, `goal_reward_bias` in [-1, 1], `reward_bias` in [0, 1] and
+     `cluster_fear` in [-1, 0] (Exp 61, 2026-09-16: fear travels; triple-keyed, cluster id
+     charset-checked, failure mode REFUSED outside the Wire-4 allowlist, and multiplied by
+     `FOREIGN_FEAR_DISCOUNT` 0.75 before the MIN fold — a vicarious fear is weaker than a
+     direct one; the ingest report/journal carry `fear_rekeyed`/`fear_dropped`/`fear_below_floor`) —
      out-of-range is *refused* (an honest composer cannot produce it);
      `predicted_value` in [-1, 1]; `confidence` in [0, 1] and additionally **capped**
      at `CAP_FOREIGN_CONFIDENCE` (a max-fold field — one asserted 1.0 would otherwise

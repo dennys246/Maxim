@@ -1,12 +1,13 @@
-"""Exp 61 — the RED GATE for fear transport (1.3 Phase 2), written to fail.
+"""Exp 61 — the gate for fear transport (1.3 Phase 2): RED before the mechanism, green with it.
 
 `docs/experiments/exp61_shared_fear_prereg.md` §Mechanism: a learned Wire-4 `cluster_fear` must
 travel from donor A to an independent receiver B through the SHIPPED bundle path — real
 `compose_bundle` → real `ingest_bundle` (journal, `receiver_agent_id`) → B loads the report — and
 be READ by the real consumer (`anticipatory_threat_need` on the node B's own reading completes
-into, then `recommend_action`). On `main` today the scrub pops `cluster_fear`, ingest strips it
-from a hand-built bundle, and the receiver reads 0.0: the two arms marked `xfail(strict=True)`
-below are RED for that reason and for no other.
+into, then `recommend_action`). Before the mechanism (PR #742 landed this file with two arms
+`xfail(strict=True)`) the scrub popped `cluster_fear`, ingest stripped it, and the receiver read
+0.0; the mechanism PR removed the markers IN PLACE (nine hivemind sites moved together) — the
+same arms, the same calls, now green.
 
 Discipline (CLAUDE.md "a fix ships with a CALLER"; D44's precedent in
 `test_d44_merge_behavioural_delta.py`): these arms call what consumers call — never a hand-composed
@@ -154,7 +155,6 @@ def test_independence_is_real_not_assumed() -> None:
 # ── the gate ──────────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="Exp 61 red gate: the bundle scrub pops cluster_fear; the receiver reads 0.0")
 def test_transferred_fear_is_read_on_the_receiver_and_selects_escape(tmp_path: Path) -> None:
     """The claim's composition: real export → real ingest (agent id rewritten, strict geometry) →
     B's OWN submerged reading completes into the imported water node → the transferred fear is
@@ -172,6 +172,14 @@ def test_transferred_fear_is_read_on_the_receiver_and_selects_escape(tmp_path: P
         "every transported fear key must carry the RECEIVER's agent id after ingest"
     )
 
+    # The counters (the falsifier's accounting) and the discounted VALUE (prereg D1: −1.0 × 0.75).
+    assert (report.fear_rekeyed, report.fear_dropped, report.fear_below_floor) == (1, 0, 0)
+    assert report.journal_entry["fear_rekeyed"] == 1 and report.journal_entry["fear_discount"] == 0.75
+    # Post-ingest reachability (wiring SF-4's shape, through the REAL path): every surviving fear
+    # key names a cluster the receiver's EC can emit — no dangling fear after a fold.
+    assert all(k.split("\x1f")[1] in report.ec_nodes for k in report.nac["cluster_fear"])
+    assert b.nac.cluster_fear(b.agent_id, b_water) == pytest.approx(-0.75)
+
     # The credit half, at the real consumer.
     need = b.nac.anticipatory_threat_need(b.agent_id, {"world": b_water})
     assert need > NACConfig().cluster_fear_threshold, f"transferred fear must clear the strict floor, read {need}"
@@ -186,7 +194,6 @@ def test_transferred_fear_is_read_on_the_receiver_and_selects_escape(tmp_path: P
     assert rec is not None and rec["tool_name"] in ESCAPE_TOOLS, rec
 
 
-@pytest.mark.xfail(strict=True, reason="Exp 61 red gate: the ingest report carries no fear counters yet")
 def test_dangling_half_drops_the_fear_loudly(tmp_path: Path) -> None:
     """The falsifier's accounting (the representation half): a nac-only bundle (no `ec.json`) must
     drop every fear key — counted, never faked — and the receiver must read nothing."""
@@ -197,6 +204,7 @@ def test_dangling_half_drops_the_fear_loudly(tmp_path: Path) -> None:
     b = _fresh_receiver("recv-B")
     report = _ingest_into(b, _export(a, _bundle_path(tmp_path, a, "dangling"), ec=False), tmp_path)
     assert report.fear_dropped == shipped and report.fear_rekeyed == 0 and report.fear_below_floor == 0
+    assert report.nac.get("cluster_fear", {}) == {} and report.journal_entry["fear_discount"] is None
     assert b.nac.anticipatory_threat_need(b.agent_id, {"world": b.cluster_for("water")}) == 0.0
 
 
@@ -228,3 +236,85 @@ def test_ingest_without_receiver_agent_id_reads_nothing(tmp_path: Path) -> None:
     b = _fresh_receiver("recv-B")
     _ingest_into(b, _export(a, _bundle_path(tmp_path, a, "noid")), tmp_path, rewrite_agent_id=False)
     assert b.nac.anticipatory_threat_need(b.agent_id, {"world": b.cluster_for("water")}) == 0.0
+
+
+# ── the ingest bound and the counters, one arm each ───────────────────────────────────────────
+
+
+def test_out_of_allowlist_failure_mode_is_refused_not_stripped(tmp_path: Path) -> None:
+    from maxim.hivemind.ingest import IngestRefused
+
+    a = Agent("donor-A")
+    a_water = a.cluster_for("water")
+    state = a.nac.dump()
+    state["cluster_fear"] = {f"{a.agent_id}\x1f{a_water}\x1fdrive:food": -1.0}  # a fear no local pain could write
+    out = _bundle_path(tmp_path, a, "badmode")
+    compose_bundle(
+        nac_state=state, ec_substrate_nodes=a.ec_nodes(), output_path=out, contributor_id=a.agent_id, body_ref=BODY
+    )
+    # The export-side scrub already drops it; a hand-built bundle that smuggles it past the scrub is REFUSED.
+    import json
+    import zipfile
+
+    with zipfile.ZipFile(out) as zf:
+        assert "cluster_fear" not in json.loads(zf.read("nac.json"))
+    hand_built = tmp_path / f"{a.agent_id}__handbuilt.zip"
+    with zipfile.ZipFile(out) as src, zipfile.ZipFile(hand_built, "w") as dst:
+        for item in src.infolist():
+            data = src.read(item.filename)
+            if item.filename == "nac.json":
+                payload = json.loads(data)
+                payload["cluster_fear"] = state["cluster_fear"]
+                data = json.dumps(payload).encode()
+            dst.writestr(item, data)
+    b = _fresh_receiver("recv-B")
+    with pytest.raises(IngestRefused) as exc:
+        _ingest_into(b, hand_built, tmp_path)
+    assert exc.value.duty == "V2" and "Wire-4 allowlist" in str(exc.value), exc.value
+
+
+def test_a_fear_that_arrives_below_the_floor_is_counted_and_never_acts(tmp_path: Path) -> None:
+    """A donor at −0.5 (one episode) ships; after the 0.75 discount it is −0.375 — re-keys cleanly,
+    is COUNTED below the floor, and the real consumer reads 0.0 (bio-faithful SF-2)."""
+    a = Agent("donor-A")
+    a_water = a.learn_drowning_fear(episodes=1)
+    assert a.nac.cluster_fear(a.agent_id, a_water) == -0.5
+    b = _fresh_receiver("recv-B")
+    report = _ingest_into(b, _export(a, _bundle_path(tmp_path, a, "weak")), tmp_path)
+    assert (report.fear_rekeyed, report.fear_dropped, report.fear_below_floor) == (1, 0, 1)
+    assert b.nac.cluster_fear(b.agent_id, b.cluster_for("water")) == pytest.approx(-0.375)
+    assert b.nac.anticipatory_threat_need(b.agent_id, {"world": b.cluster_for("water")}) == 0.0
+
+
+def test_prune_removes_fear_on_invalidated_clusters() -> None:
+    from maxim.hivemind.merge import prune_nac_cluster_biases
+
+    a = Agent("donor-A")
+    a_water = a.learn_drowning_fear()
+    pruned_state, n = prune_nac_cluster_biases(a.nac.dump(), {a_water})
+    assert n == 1 and pruned_state["cluster_fear"] == {}
+
+
+def test_n_way_merge_keeps_the_pairwise_min_for_fear() -> None:
+    from maxim.hivemind.merge import nac_merge_many
+
+    key = f"x\x1fc\x1f{FAILURE_MODE}"
+    states = [NAc(NACConfig()).dump() for _ in range(3)]
+    for st, v in zip(states, (-0.2, -0.9, -0.4), strict=True):
+        st["cluster_fear"] = {key: v}
+    merged = nac_merge_many(states, sources=["a", "b", "c"])
+    assert merged["cluster_fear"][key] == -0.9
+
+
+def test_scrub_ships_fear_clamped_and_allowlisted() -> None:
+    from maxim.hivemind.bundle import scrub_cluster_fear_for_bundle
+
+    raw = {
+        f"a\x1fc1\x1f{FAILURE_MODE}": -1.5,  # clamped to -1.0
+        "a\x1fc2\x1fdrive:health": 0.4,  # positive is not fear → dropped (never inflates the counters)
+        "a\x1fc2b\x1fdrive:health": 0.0,  # zero is not fear → dropped
+        "a\x1fc3\x1fdrive:food": -1.0,  # not allowlisted → dropped
+        "malformed-key": -1.0,  # not a triple → dropped
+        "a\x1fbad id!\x1fdrive:health": -1.0,  # cluster id fails the charset the receiver refuses (V9) → dropped
+    }
+    assert scrub_cluster_fear_for_bundle(raw) == {f"a\x1fc1\x1f{FAILURE_MODE}": -1.0}

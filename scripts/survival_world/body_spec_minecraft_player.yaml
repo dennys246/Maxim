@@ -1,0 +1,25 @@
+# The `body:`-rooted export spec for Exp 61 bundle composition
+# (`maxim substrate export --body-yaml <this file>`): `load_spec` reads THIS
+# shape, not component YAMLs (a component file is refused with "YAML must have
+# a 'body' key"), and `derive_capability_map` runs the real tool-naming path
+# over it so the manifest's capability_map carries the very
+# `tool:minecraft_player_*` keys the donor's state names (gate 7's
+# forward-insurance half). Mirrors
+# `src/maxim/_data/components/bodies/minecraft_player.yaml` EXACTLY on entity
+# name, modulator and affordance names — `tests/unit/test_exp61_run.py` pins
+# the two files' affordance sets equal so they cannot drift (Exp 56's pattern).
+body:
+  name: minecraft_player
+  entity_type: body
+  modulators:
+    avatar:
+      abstract: true
+      affordances:
+        move_to: {params: {x: float, z: float}, description: "Pathfind to the given x/z coordinates"}
+        turn: {params: {degrees: float}, description: "Turn the view by the given degrees"}
+        mine_block: {params: {x: float, y: float, z: float}, description: "Mine the block at the given coordinates"}
+        place_block: {params: {x: float, y: float, z: float}, description: "Place a held block at the given coordinates"}
+        eat: {params: {}, description: "Eat held food"}
+        attack_nearest: {params: {}, description: "Attack the nearest hostile mob"}
+        flee: {params: {}, description: "Flight response: retreat to the spawn anchor"}
+        escape_water: {params: {}, description: "Escape drowning: swim straight up to air"}

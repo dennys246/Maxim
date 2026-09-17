@@ -54,6 +54,7 @@ this module's.
 from __future__ import annotations
 
 import copy
+import re
 from dataclasses import dataclass
 from collections.abc import Callable
 from typing import Any
@@ -544,10 +545,12 @@ def nac_merge(
         # negative-bias clamp already codifies for ingest); values clamped to
         # [-1.0, 0] so a malformed side can smuggle neither positive "fear"
         # nor unbounded magnitude through the fold. MIN preserves the
-        # documented commutativity contract (left-preserve would not); the
-        # Phase-2 deferral is enforced at the BUNDLE boundary instead (scrub
-        # excludes + ingest strips), so for ingests the foreign side is
-        # always empty and this degenerates to receiver-preservation.
+        # documented commutativity contract (left-preserve would not). Since
+        # Exp 61 (2026-09-16) the foreign side CARRIES fear — validated,
+        # discounted ×FOREIGN_FEAR_DISCOUNT and re-keyed at the ingest bound —
+        # and MIN keeps the deeper of the receiver's own and the donor's
+        # (a receiver's −1.0 survives a foreign −0.75; an absent receiver
+        # entry takes the foreign value).
         "cluster_fear": {
             k: max(
                 -1.0,
@@ -605,6 +608,11 @@ def nac_merge(
 #: module of the hivemind package, because ``bundle.py`` already imports from
 #: ``merge.py`` — the reverse would cycle.
 NAC_KEY_SEP = "\x1f"
+#: The identifier charset a cluster id must satisfy at the bundle boundary (ingest REFUSES
+#: V9 otherwise; the export scrub filters fear keys by the same rule so a compliant bundle is
+#: never refused by construction). Owned here because both `bundle.py` and `ingest.py` import
+#: this module and neither may import the other.
+NODE_ID_CHARSET = re.compile(r"^[A-Za-z0-9_.\-]{1,128}$")
 
 DEFAULT_FROZEN_CENTROID_MODALITIES: frozenset[str] = frozenset({"interoception", "audio", "world"})
 
@@ -988,7 +996,12 @@ def rekey_nac_state(
     Returns a new dict; the input is not mutated.
     """
     out = dict(nac_state)
-    for field in ("cluster_reward_bias", "cluster_reward_source"):
+    # `cluster_fear` (Exp 61, 2026-09-16) is keyed on the same triple shape —
+    # `(agent_id, cluster_id, failure_mode)` — and takes the same path: the
+    # cluster through `id_map`, the agent id to the receiver's (the read path
+    # `NAc.cluster_fear` filters on agent id; an un-rewritten key reads 0.0
+    # silently), and a fear whose donor cluster did not survive is dropped.
+    for field in ("cluster_reward_bias", "cluster_reward_source", "cluster_fear"):
         src = nac_state.get(field)
         if not isinstance(src, dict):
             continue
@@ -1077,12 +1090,13 @@ def prune_nac_cluster_biases(
     cluster-keyed surfaces of a dumped NAc state:
 
     * ``cluster_reward_bias`` / ``cluster_reward_source`` — keyed
-      ``agent\\x1fcluster\\x1ftool_signature`` (``NAC_KEY_SEP``).
+      ``agent\\x1fcluster\\x1ftool_signature`` (``NAC_KEY_SEP``) — and
+      ``cluster_fear`` (Exp 61), keyed ``agent\\x1fcluster\\x1ffailure_mode``.
     * ``reward_bias`` — keyed ``agent:node_id``.
     * ``inherent_bias_keys`` — markers on pruned clusters are dropped too
       (a dangling exemption can bless a LATER foreign bias at the same
       triple as decay-exempt; see the inline comment). Marker drops do not
-      count toward ``pruned_count`` (which counts bias entries).
+      count toward ``pruned_count`` (which counts bias AND fear entries).
 
     Local-state maintenance, NOT a merge entry point — takes no foreign
     source, so the ``trusted_sources``/``_validate_source`` reservations
@@ -1095,7 +1109,10 @@ def prune_nac_cluster_biases(
     ids = set(cluster_ids)
     out = dict(nac_state)
     pruned = 0
-    for field in ("cluster_reward_bias", "cluster_reward_source"):
+    # `cluster_fear` (Exp 61): once fear travels, a fear key naming an invalidated
+    # cluster is D2's dangling shape too — pruned on the same rule, and COUNTED in
+    # `pruned_count` beside the bias entries (the CLI labels the total accordingly).
+    for field in ("cluster_reward_bias", "cluster_reward_source", "cluster_fear"):
         src = nac_state.get(field)
         if not isinstance(src, dict):
             continue
@@ -1265,6 +1282,13 @@ class SubstrateMergeResult:
     #: poison-resistance slice). 0 on every purely-positive merge — the
     #: sign-scope guarantee the benchmark's taught arms rely on.
     biases_tightened: int = 0
+    #: Exp 61 (2026-09-16) — the same honest indicator for Wire-4 fear, which
+    #: re-keys through the same id map: re-keyed onto a surviving cluster,
+    #: dropped with a cluster that did not survive, or landed BELOW the read
+    #: floor (|v| ≤ θ) where it re-keys cleanly and never acts.
+    fear_rekeyed: int = 0
+    fear_dropped: int = 0
+    fear_below_floor: int = 0
 
 
 def substrate_merge(
@@ -1339,9 +1363,20 @@ def substrate_merge(
         biases = state.get("cluster_reward_bias")
         return len(biases) if isinstance(biases, dict) else 0
 
+    def _fear_count(state: dict[str, Any]) -> int:
+        src = state.get("cluster_fear")
+        return len(src) if isinstance(src, dict) else 0
+
     before = _bias_count(donor_nac)
+    fear_before = _fear_count(donor_nac)
     rekeyed_donor = rekey_nac_state(donor_nac, aligned.id_map, to_agent_id=receiver_agent_id)
     after = _bias_count(rekeyed_donor)
+    fear_after = _fear_count(rekeyed_donor)
+    from maxim.decisions.nac import DEFAULT_CLUSTER_FEAR_THRESHOLD  # noqa: PLC0415 — one θ, no cycle
+
+    fear_below_floor = sum(
+        1 for v in (rekeyed_donor.get("cluster_fear") or {}).values() if abs(float(v)) <= DEFAULT_CLUSTER_FEAR_THRESHOLD
+    )
 
     merged_nac = nac_merge(
         receiver_nac,
@@ -1365,6 +1400,9 @@ def substrate_merge(
         biases_rekeyed=after,
         biases_dropped=before - after,
         biases_tightened=tightened,
+        fear_rekeyed=fear_after,
+        fear_dropped=fear_before - fear_after,
+        fear_below_floor=fear_below_floor,
     )
 
 

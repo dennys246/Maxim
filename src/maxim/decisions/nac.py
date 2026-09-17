@@ -299,6 +299,22 @@ def _emit_recommend_action_event(
         pass
 
 
+# Wire-4 situation-keyed fear: the ONE source for the two numbers the hivemind boundary must agree
+# with the read path on (Exp 61 fear transport, 2026-09-16 — bio-faithful lens SF-2/SF-3: a second
+# literal at the ingest bound would rot silently, exactly like a duplicated modality string).
+# ``NACConfig`` defaults reference these; ``hivemind/bundle.py``, ``hivemind/ingest.py`` and
+# ``hivemind/merge.py`` import them lazily — not for a cycle (the NAc imports no hivemind
+# module) but by the hivemind convention that its modules carry no module-level ``maxim.*``
+# imports outside ``hivemind``/``utils``, keeping the ``oasis``/``hive`` CLIs import-light.
+# HONEST LIMIT: the bundle boundary enforces the SHIPPED DEFAULT, not a receiver's configured
+# ``NACConfig`` (``ingest_bundle`` takes dicts and has no config handle, and ``load_state``
+# does not re-filter); a receiver whose config NARROWS the allowlist or raises θ is not
+# protected at ingest. Exp 61 runs both sides at the default; widening the boundary to a
+# configured receiver is the recorded follow-up if a narrowed receiver ever ingests.
+DEFAULT_CLUSTER_FEAR_FAILURE_MODES: "frozenset[str]" = frozenset({"drive:health", "drive:oxygen"})
+DEFAULT_CLUSTER_FEAR_THRESHOLD: float = 0.5
+
+
 @dataclass(frozen=True)
 class NACConfig:
     """Configuration for Nucleus Accumbens."""
@@ -395,12 +411,12 @@ class NACConfig:
     # executor-lens review caught. Keep θ ABOVE that floor. Arithmetic:
     # K=10 episodes × alpha 0.5 saturates at the 1.0 cap — 2× margin
     # over θ=0.5 (the pre-registered arithmetic, Exp 58 confounding S3).
-    cluster_fear_threshold: float = 0.5
+    cluster_fear_threshold: float = DEFAULT_CLUSTER_FEAR_THRESHOLD
     # `drive:oxygen` (Exp 60): air-hunger pain books drowning-fear onto the
     # underwater cluster before tissue damage. Added alongside `drive:health`
     # so the drowning contingency has a drowning-SPECIFIC failure mode rather
     # than collapsing into generic injury fear (bio-faithful lens, Exp 60).
-    cluster_fear_failure_modes: "frozenset[str]" = frozenset({"drive:health", "drive:oxygen"})
+    cluster_fear_failure_modes: "frozenset[str]" = DEFAULT_CLUSTER_FEAR_FAILURE_MODES
 
     # Wire 2 (release_0_9_1.md Stage 3): Pavlovian percept aversion.
     # Per-agent, per-(entity_class, failure_mode) valence accumulated by the

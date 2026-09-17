@@ -84,7 +84,7 @@ from maxim.hivemind.identity import (
     filter_identity_bearing_links,
     is_identity_bearing,
 )
-from maxim.hivemind.merge import NAC_KEY_SEP, _merge_link_pair, _merge_welford, _validate_source
+from maxim.hivemind.merge import NAC_KEY_SEP, NODE_ID_CHARSET, _merge_link_pair, _merge_welford, _validate_source
 from maxim.hivemind.signing import SIGNATURE_ALGORITHM, bundle_signing_payload, verify_payload
 from maxim.utils.atomic_io import atomic_write_text
 from maxim.utils.format_version import FORMAT_VERSION, check_format_version
@@ -324,6 +324,34 @@ def _scrub_link_for_bundle(link: dict[str, Any]) -> dict[str, Any]:
     return scrubbed
 
 
+def scrub_cluster_fear_for_bundle(fear: Any) -> dict[str, float]:
+    """The export-side filter for Wire-4 fear (Exp 61): well-formed triple keys only (charset as
+    the ingest bound), allowlisted failure mode only, strictly NEGATIVE values clamped to ``[-1, 0)``
+    (a zero or positive value is not a fear and would only inflate the receiver's counters);
+    anything else is dropped here
+    (the receiver's ingest bound REFUSES the same shapes — the two sites agree by
+    reading one allowlist). Pure; returns a fresh dict."""
+    from maxim.decisions.nac import DEFAULT_CLUSTER_FEAR_FAILURE_MODES  # noqa: PLC0415 — no cycle; lazy by choice
+
+    if not isinstance(fear, dict):
+        return {}
+    kept: dict[str, float] = {}
+    for key, value in fear.items():
+        parts = str(key).split(NAC_KEY_SEP)
+        if len(parts) != 3 or not all(parts) or not NODE_ID_CHARSET.match(parts[1]):
+            continue  # the receiver would refuse the whole bundle (V2/V9); filter by the same rule
+        if parts[2] not in DEFAULT_CLUSTER_FEAR_FAILURE_MODES:
+            continue
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            continue
+        if v != v or v >= 0.0:  # NaN, or not a fear (zero / positive) — a zero fear must not count as one
+            continue
+        kept[str(key)] = max(-1.0, v)
+    return kept
+
+
 def scrub_nac_state_for_bundle(nac_state: dict[str, Any]) -> dict[str, Any]:
     """Scrub a ``NAc.dump()``-shaped state dict for bundle export.
 
@@ -336,12 +364,18 @@ def scrub_nac_state_for_bundle(nac_state: dict[str, Any]) -> dict[str, Any]:
     stay unique per link list, valence classes stay separate.
     """
     scrubbed = dict(nac_state)
-    # Exp 58 fear (cluster_fear) does NOT travel in bundles yet: fear-transport
-    # is a NAMED Phase-2 item (exp58_survival_wants_prereg.md §Mechanism 7 — five
-    # wiring items, two silent-fail). Excluding it here is the deferral's gate;
-    # ingest strips it from foreign payloads as defense in depth, and nac_merge
-    # min-folds whatever remains (receiver-preserving once this exclusion holds).
-    scrubbed.pop("cluster_fear", None)
+    # Wire-4 fear (`cluster_fear`) TRAVELS since Exp 61 (1.3 Phase 2, 2026-09-16;
+    # the Exp 58 deferral is discharged). It ships in the exact shape
+    # `NAc.dump()` writes — triple keys `agent\x1fcluster\x1ffailure_mode` —
+    # clamped to [-1, 0] (fear only; a positive value is not fear) and filtered
+    # to the Wire-4 allowlist, the same filter `NAc.record_cluster_fear`
+    # applies on the write path. The receiver's ingest bound re-validates all
+    # of this (refusal, not strip), applies the social discount, and re-keys
+    # through the aligned EC id map; `nac_merge` MIN-folds. Nine sites move
+    # together — see `docs/experiments/exp61_shared_fear_prereg.md` §Mechanism.
+    scrubbed["cluster_fear"] = scrub_cluster_fear_for_bundle(nac_state.get("cluster_fear"))
+    if not scrubbed["cluster_fear"]:
+        scrubbed.pop("cluster_fear", None)
 
     # links: scrub each link, re-key on the scrubbed event signature,
     # and fold links that now share (event_sig, outcome_sig) via

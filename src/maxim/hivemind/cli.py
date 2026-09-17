@@ -386,7 +386,7 @@ def _run_invalidate(args: argparse.Namespace) -> int:
     new_nac = None
     if isinstance(nac_state, dict):
         new_nac, pruned_count = prune_nac_cluster_biases(nac_state, set(removed_ids))
-        for field in ("cluster_reward_bias", "cluster_reward_source", "reward_bias"):
+        for field in ("cluster_reward_bias", "cluster_reward_source", "reward_bias", "cluster_fear"):
             old_field = nac_state.get(field)
             new_field = new_nac.get(field)
             if isinstance(old_field, dict) and isinstance(new_field, dict):
@@ -397,7 +397,8 @@ def _run_invalidate(args: argparse.Namespace) -> int:
     print(
         f"invalidate {args.modality!r} nodes with geometry {args.drop_geometry!r}:\n"
         f"  EC nodes removed:    {len(removed_ids)} of {len(nodes)}\n"
-        f"  NAc biases pruned:   {pruned_count}" + ("" if nac_state is not None else "  (no aut_nac.json in session)")
+        f"  NAc entries pruned:  {pruned_count} (biases + fear)"
+        + ("" if nac_state is not None else "  (no aut_nac.json in session)")
     )
 
     if not args.apply:
@@ -735,6 +736,7 @@ def _run_ingest(args: argparse.Namespace) -> int:
         f"  body_ref:          {report.manifest.get('body_ref')}\n"
         f"  biases rekeyed:    {report.biases_rekeyed} (dropped: {report.biases_dropped})\n"
         f"  biases tightened:  {report.biases_tightened}\n"
+        f"  fear rekeyed:      {report.fear_rekeyed} (dropped: {report.fear_dropped}, below floor: {report.fear_below_floor})\n"
         f"  inherent admitted: {report.inherent_keys_admitted}\n"
         f"  donor EC nodes:    {len(report.id_map)}"
     )
