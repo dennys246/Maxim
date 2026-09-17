@@ -98,6 +98,9 @@ TAG_FIELDS: dict[str, dict[str, object]] = {
         normalization="range-aware",
         embedding_dim=DIM,
         gain="p3.0",
+        # H2 (2026-09-16, Option A): a GAINED tag carries the declared range VALUES. Fixture
+        # regenerated once for this field; every vector and every ungained tag unchanged (diffed).
+        ranges={n: [float(lo), float(hi)] for n, (lo, hi) in sorted(_WORLD_RANGES.items())},
     ),
     "interoception_infant_operant": dict(
         encoder="sensor",

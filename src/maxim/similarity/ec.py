@@ -585,7 +585,9 @@ class EntorhinalCortex:
         (bodies can grow sensors mid-session); ``normalization`` values
         accumulate into ``normalization_modes`` (a session that mixed
         range-aware and range-blind calls must say so — "mixed" is a
-        finding, not an error); every other field is last-write-wins.
+        finding, not an error); ``declared_ranges`` is last-write and sets
+        ``declared_ranges_mixed`` when a later stamp differs (H2); every
+        other field is last-write-wins.
         Values must be JSON-serializable (they ride ``save()``).
         """
         entry = self._encoder_provenance.setdefault(key, {})
@@ -603,6 +605,22 @@ class EntorhinalCortex:
                 modes = set(modes_raw) if isinstance(modes_raw, (list, tuple, set)) else set()
                 modes.add(v)
                 entry["normalization_modes"] = sorted(modes)
+            elif k == "declared_ranges":
+                # H2: last-write, but a session that CHANGES its declared ranges
+                # is itself the finding — its gained nodes are not all in one
+                # space — so flag it; the D66 migrate half refuses to derive a
+                # gained tag from a mixed record (like mixed normalization).
+                prev = entry.get("declared_ranges")
+                if v is None:
+                    # A range-blind call is already recorded in `normalization_modes`;
+                    # it must not erase the ranges the gained nodes were written under.
+                    continue
+                if prev is not None and prev != v:
+                    # Values OR key set (a body that grew a ranged sensor): stricter than
+                    # the ungained `declared_sensors` last-write by design — such a
+                    # session's gained nodes are not all in one space.
+                    entry["declared_ranges_mixed"] = True
+                entry["declared_ranges"] = v
             else:
                 entry[k] = v
 
@@ -1027,7 +1045,7 @@ class EntorhinalCortex:
         if not unstamped:
             return 0
 
-        from maxim.similarity.encoder import encoding_geometry_tag
+        from maxim.similarity.encoder import encoding_geometry_tag, sensor_geometry_fields
 
         stamped = 0
         skipped: dict[str, int] = {}
@@ -1051,23 +1069,38 @@ class EntorhinalCortex:
                 # A file whose session MIXED normalization modes is itself the
                 # finding: its nodes are not all in one space, so there is no
                 # single correct tag and guessing would manufacture one.
-                if declared is not None and len(set(modes)) <= 1:
-                    # NOTE (PR 1 review): this derivation and encode_sensors'
-                    # live tag construction are now two sites that must agree.
-                    # A GAINED modality's tag carries a `gain` field this
-                    # derivation does not emit — correct today only because
-                    # gained (world) nodes are always stamped at creation, so
-                    # no unstamped gained node can exist to migrate. If
-                    # `tag_fields` grows again, derive both from one helper —
-                    # a wrong migrated tag is worse than none (see the skip
-                    # warning below).
-                    tag = encoding_geometry_tag(
-                        encoder="sensor",
-                        modality=modality,
-                        declared_sensors=sorted(declared),
-                        normalization="range-aware" if declared else "range-blind",
-                        embedding_dim=len(emb),
-                    )
+                gain = prov.get("gain_exponent")
+                declared_ranges = prov.get("declared_ranges")
+                ranges_mixed = bool(prov.get("declared_ranges_mixed", False))
+                # H2 (2026-09-16): this derivation and encode_sensors' live tag
+                # construction go through ONE helper (`sensor_geometry_fields`),
+                # discharging the PR-1 obligation. A GAINED tag carries the
+                # declared range VALUES, so a gained node can be migrated only
+                # from RECORDED ranges: a file without them (written before H2),
+                # or whose session changed them mid-way (mixed), is skipped —
+                # a wrong migrated tag is worse than none (see the skip
+                # warning below). Gained nodes are always stamped at creation,
+                # so this branch is reached only for unstamped legacy files.
+                derivable = declared is not None and len(set(modes)) <= 1
+                if derivable and gain is not None and (declared_ranges is None or ranges_mixed):
+                    derivable = False
+                if derivable:
+                    try:
+                        tag = encoding_geometry_tag(
+                            **sensor_geometry_fields(
+                                modality=modality,
+                                declared_sensors=sorted(declared),
+                                declared_ranges=declared_ranges if gain is not None else None,
+                                embedding_dim=len(emb),
+                                gain=gain,
+                            )
+                        )
+                    except (TypeError, ValueError) as exc:
+                        # A corrupt PERSISTED value (hand-edited or malformed ranges) must
+                        # skip the node, not refuse the whole load — the same posture the
+                        # `sensor_names` merge takes. Counted under the warning below.
+                        logger.debug("EC: cannot derive a geometry tag for %s (%s): %s", nid, modality, exc)
+                        tag = None
             if tag is None:
                 skipped[modality] = skipped.get(modality, 0) + 1
                 continue
@@ -1086,9 +1119,11 @@ class EntorhinalCortex:
                 "(by modality: %s). They remain permissive — they will match any geometry and "
                 "adopt the first live tag that touches them — which is safe but means the "
                 "gate-1 guard does not protect them until then. This happens for sensor nodes "
-                "written before `declared_sensors` was recorded, and for any file whose session "
-                "mixed normalization modes. The remedy is a re-encode; a wrong tag would be "
-                "worse than none, so they are left alone.",
+                "written before `declared_sensors` was recorded, for any file whose session "
+                "mixed normalization modes, and for GAINED nodes whose file does not record the "
+                "declared ranges (written before H2, 2026-09-16) or whose session changed them. "
+                "The remedy is a re-encode; a wrong tag would be worse than none, so they are "
+                "left alone.",
                 sum(skipped.values()),
                 ", ".join(f"{k}={v}" for k, v in sorted(skipped.items())),
             )
