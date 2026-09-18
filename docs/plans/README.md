@@ -2,7 +2,8 @@
 
 Current version: **1.2.1** (`pyproject.toml` + `src/maxim/__init__.py`; PyPI: https://pypi.org/project/pymaxim/ — `main` is ahead of PyPI by policy, CLAUDE.md §Versioning; checked by `scripts/lint_version_sync.py`). 1.2.1 = **"Spoken-code loop"**: completes the spoken-code device-pairing loop (console UI contract 0.5.0 re-vendored + `make_pairing_announcer` + the device speak sink; int16→float32 device-audio fix) and clears the 1.2.0 console contract-lag. 1.2.0 = **"Oasis"**: the substrate-sharing line — **Exp 56 EARNED** + **Exp 57 PARTIAL** + the **Hivemind P2P exchange** (Slices A–D); R1/R2 offline nulls; gates 1/3/7/8 closed. 1.1.4 = **"The world seam"**, 1.1.3 = **"Reachability"**, 1.1.2 = **"Decomposition"**, 1.1.1 = **"Enforcement"**.
 Now: **1.1.x follow-through** (items 1–16 in [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) —
-- [roadmap_1_3.md](roadmap_1_3.md) — **the 1.3 plan** ("Oasis-2", the survival world; rescoped 2026-09-09): the phased survival-loop → shared-survival-wants roadmap with per-rung mechanism-dependency markers. · [roadmap_1_3_path.md](roadmap_1_3_path.md) — the perception-fabric sequencing (Stage A duck → Stage B engine seam → Stage C fabric), **now the 1.4 plan** (perception fabric moved to 1.4 in the same rescope).
+- [roadmap_1_4.md](roadmap_1_4.md) — **the 1.4 plan** (working title "Anticipation", re-pointed 2026-09-18, five-lens reviewed): generalization + sequence credit + a trajectory instrument on the survival rig — Exp 62 → E1 conflict → [relief store] → E2 pockets → E3 strategic breathing; primitives on a variant body; release thresholds T1–T4 set, T5/T6 conditional; the release name is fixed at the transaction from the highest EARNED rung.
+- [roadmap_1_3.md](roadmap_1_3.md) — **the 1.3 plan** ("Oasis-2", the survival world; rescoped 2026-09-09): the phased survival-loop → shared-survival-wants roadmap with per-rung mechanism-dependency markers. · [roadmap_1_3_path.md](roadmap_1_3_path.md) — **DEFERRED 2026-09-18 on a physical trigger (a second body exists); NOT the 1.4 plan** — the perception-fabric sequencing (Stage A duck → Stage B engine seam → Stage C fabric), **now the 1.4 plan** (perception fabric moved to 1.4 in the same rescope).
 - [burndown_1_3.md](burndown_1_3.md) — **the 1.3 quality burndown** (2026-09-10): the incremental-improvement track that runs *alongside* the survival build — cheap guards + claim-truth + small correctness fixes chipping at the weakest 1.1/1.2 score-card grades. Optional (nothing `Stale`/`Broken`); batched by PR.
 first up: Exp 54 Phase B/C on the robot — Phase A GRADUATED 2026-08-27 on the Reachy-native nursery body — then the loudness/onset-salience design and Exp 44b's
 confirmatory campaign) **and the gates before 1.2 Oasis + Hivemind** (gates 1–8 there),
@@ -33,7 +34,7 @@ learned) and Exp 53b (it reads out on the physical robot).
 | **1.1** | **"Sensorimotor" release closure** — merged embodiment work plus D13/D14 liveness, stable Python API truth, hermetic fast tests, atomic NAc+EC invalidation, architecture-audit regression enforcement, S4, remaining heartbeat chapters, release mechanics, and agent-guidance convergence. **Zero new mechanisms.** | **Published 2026-08-26** (tag `v1.1.0`; Exp 52 + Exp 53b recorded, item 18 → 1.1.1) — history in [roadmap](roadmap_1_1_to_1_3.md#11-cut-line--reconciled-2026-08-19-reopened-2026-08-25) |
 | **1.2** | **Oasis** — peer substrate sharing + P2P protocol. | **PUBLISHED 2026-09-09** (tag `v1.2.0`, [PyPI](https://pypi.org/project/pymaxim/1.2.0/)) — [Exp 56](../experiments/56_four_arm_sharing.md) EARNED (headline) + [Exp 57](../experiments/57_dose_response_ladder.md) PARTIAL (dose-response scaling); P2P slices A→D merged (#651–#654, [scope](hivemind_p2p_scope.md)); R1/R2 offline nulls; gates 1/3/7/8 closed. |
 | **1.3** | **"Oasis-2" — the survival world** (rescoped 2026-09-09) — learning reward FROM the game: the survival loop (R2's 3 breaks), the survival world with marked classrooms, **the survival reflex tier** (innate startle/flee below deliberation), and the headline **shared survival wants**. Plan: [roadmap_1_3.md](roadmap_1_3.md); designs: [survival_world_1_3.md](survival_world_1_3.md), [intrinsic_motivation_1_3.md](intrinsic_motivation_1_3.md). | Planned. Pivotal may-fail (shared-survival-want / R3 benchmark). |
-| **1.4** | **"Shared perception"** (was "perception fabric + reflex tier"; retitled 2026-09-09) — richer video/audio (cochlear front-end, vision encoder, binding, three-factor calibration — [cross_modal_perception_fabric.md](cross_modal_perception_fabric.md), [three_factor_credit_assignment.md](three_factor_credit_assignment.md)) **plus sharing at the perception layer**, the **DN-canonical orienting reflex** (perception-coupled; distinct from 1.3's survival reflex), the microduck, Exp 55, breeding. Pivotal may-fail (Stage 0c); shared-perception inherits R1's transfer bound. | Planned |
+| **1.4** | **Working title "Anticipation"** — re-pointed 2026-09-18 ([roadmap_1_4.md](roadmap_1_4.md)): generalization + sequence credit + a trajectory instrument on the survival rig; the name is fixed at the release transaction from the highest EARNED rung. **"Shared perception" DEFERRED 2026-09-18 on a physical trigger** (a second body exists; plan intact in [roadmap_1_3_path.md](roadmap_1_3_path.md)) — it was: richer video/audio (cochlear front-end, vision encoder, binding, three-factor calibration — [cross_modal_perception_fabric.md](cross_modal_perception_fabric.md), [three_factor_credit_assignment.md](three_factor_credit_assignment.md)) **plus sharing at the perception layer**, the **DN-canonical orienting reflex** (perception-coupled; distinct from 1.3's survival reflex), the microduck, Exp 55, breeding. Pivotal may-fail (Stage 0c); shared-perception inherits R1's transfer bound. | Planned |
 
 **Discipline (carried forward from the 1.1 freeze):** existing behavior is not assumed live
 because a type or bridge exists — release claims require an executed contract test or a
@@ -136,7 +137,7 @@ Deep-audited 2026-08-27; release authority reconciled 2026-08-19.
   (Exp 55) is 1.3-line. Defines the inherent bias class (Queen-promoted, decay-exempt,
   tighten-only) and the pain-credit extension decision.
 
-### 1.4 design (perception fabric; rescoped from 1.3 → 1.4 on 2026-09-09; kept in root because the roadmap names them)
+### Shared perception design (deferred 2026-09-18 on a physical trigger — a second body; was the 1.4 design; kept in root because the roadmap names them)
 
 - [cross_modal_perception_fabric.md](cross_modal_perception_fabric.md) — the 1.3
   perception fabric (rev 4; Stage 0a complete via H1, 0b/0c are the gate).
@@ -170,7 +171,12 @@ Deep-audited 2026-08-27; release authority reconciled 2026-08-19.
 
 ## Deferred (revive on trigger)
 
+
 Design work preserved in [deferred/](deferred/). Each has an explicit "revive when" condition (full rationale in the banner at the top of each doc).
+
+**Deferred 2026-09-18 (owner):**
+
+- **Shared perception** — [roadmap_1_3_path.md](roadmap_1_3_path.md) + [cross_modal_perception_fabric.md](cross_modal_perception_fabric.md) + [microduck_intent_layer.md](microduck_intent_layer.md) + [hybrid_substrate_reflex_runtime.md](hybrid_substrate_reflex_runtime.md) + Exp 55 + breeding — **DEFERRED 2026-09-18 (owner).** Revive when: a second body physically exists (a real backend registered through `maxim.robots`, or the operator records its arrival). Stage A (the baseline measurement) runs unchanged on revival. Files stay in root because the roadmap names them.
 
 **Revived 2026-08-30** by the 1.2 scoping dive:
 - [world_seam_1_1_4.md](world_seam_1_1_4.md) — **the 1.1.4 implementation plan** (2026-09-03):
