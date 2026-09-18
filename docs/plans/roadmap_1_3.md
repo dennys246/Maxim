@@ -1,7 +1,7 @@
 # Roadmap 1.3 — "Oasis-2": the survival world
 
 **Scoped 2026-09-09** (owner decision: survival world ← 1.3; perception fabric + microduck +
-Exp 55 → 1.4 — see the rescope note in [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md)). This is
+Exp 55 → 1.4; **1.4 re-pointed 2026-09-18 → [roadmap_1_4.md](roadmap_1_4.md)** — see the rescope note in [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md)). This is
 the phased plan and dependency map; the world/classroom designs live in
 [survival_world_1_3.md](survival_world_1_3.md) and [intrinsic_motivation_1_3.md](intrinsic_motivation_1_3.md),
 and the Minecraft benchmark in [minecraft_benchmark.md](minecraft_benchmark.md) Part II.
@@ -48,7 +48,7 @@ breaks) and **R1** (no cross-context generalization — the substrate is exact-k
     the summed world channel, L11); the contingency **EARNED as drowning-avoidance** (Exp 60 — same
     Wire-4 mechanism, `is_in_water` cue, FEAR 5/5 vs ABLATED 0/5, p = 1/252; prereg §Outcome).
 
-### Phase 1b — Survival reflex tier *(new mechanism; gated `[engineering]`)*
+### Phase 1b — Survival reflex tier *(new mechanism; gated `[engineering]`)* — **DEFERRED 2026-09-18** on a named trigger: the measured onset-to-death window of a hostile against this loop's ≈ 1 s reaction (R3: first proposal 0.99 s after the teleport); longer than a second ⇒ the innate `health→threat` need + Wire-4 cover it and 1b is never built ([roadmap_1_4.md](roadmap_1_4.md) §Not in 1.4)
 A fast, innate reaction — startle / flee / flinch on damage or threat-onset — firing BELOW the
 deliberation loop. Motivation: the learned-want layer is slow, and in a world with real damage
 **you can't learn if the first hostile kills you on contact**; an innate reflex buys time for
@@ -83,17 +83,17 @@ C 3.2 / D 3.1 / E 28.1 s to air, 60/60 drive-decisive, survival a ceiling; froze
 two instrument rules, amended (post-data, instrument-only) report COMPLETE. The baseline lives in
 `docs/experiments/r3_survival_benchmark_prereg.md` §Outcome; nothing graduated.
 
-### Phase 4 — R1 generalization channel *(frontier; likely 1.3-late / 1.4)*
+### Phase 4 — R1 generalization channel *(frontier; likely 1.3-late / 1.4)* → **[roadmap_1_4.md](roadmap_1_4.md) Phase 1 (Exp 62) / Phase 5 (keying)**
 Cross-context. Unlocks the dining-hall→wolf *transfer*, spatial "resource is over there," and
 cross-layout. A genuine architectural build — the substrate is exact-key today (R1
 CACHE-CONFIRMED).
 
-### Phase 5 — R4 delayed / multi-step credit *(frontier; likely 1.3-late / 1.4)*
+### Phase 5 — R4 delayed / multi-step credit *(frontier; likely 1.3-late / 1.4)* → **[roadmap_1_4.md](roadmap_1_4.md) Phase 5 (credit ROUTING first) / E3**
 Unlocks **crafting** (the delayed-credit showcase, not a recipe cache), **wolf upkeep**,
 **farming**, **shelter**. The canonical "does tick-anchored credit reach a delayed
 construction?" question.
 
-### Phase 6 — Intrinsic motivation *(own line, parallel — sibling of R3/R4)*
+### Phase 6 — Intrinsic motivation *(own line, parallel — sibling of R3/R4)* — **2026-09-18: stays a parallel line, NOT in 1.4's ladder; guardrail restated there (must not silently power E1–E3)**
 `success × novelty` vs learning-progress (`Δsuccess`); the **mining classroom** is its testbed;
 guardrail — it must NOT silently power R3 (declared ablation arm or its own line, never an
 undeclared default). Full design: [intrinsic_motivation_1_3.md](intrinsic_motivation_1_3.md).
@@ -119,7 +119,7 @@ undeclared default). Full design: [intrinsic_motivation_1_3.md](intrinsic_motiva
 
 ## Not in 1.3 (moved / parallel)
 
-- **Perception fabric + microduck + Exp 55 + breeding → 1.4**, now the **"shared perception"**
+- **Perception fabric + microduck + Exp 55 + breeding → DEFERRED 2026-09-18 on a physical trigger** (a second body exists; sequencing preserved unchanged in [roadmap_1_3_path.md](roadmap_1_3_path.md); 1.4 is [roadmap_1_4.md](roadmap_1_4.md)), formerly the **"shared perception"**
   release: richer video/audio (cochlear front-end, vision encoder, binding) **plus sharing at the
   perception layer**. The **DN-canonical *orienting* reflex stays here** — it is perception-coupled
   (fed by the cochlear/DoA front-end, moves a robot head; Minecraft has neither), and is distinct

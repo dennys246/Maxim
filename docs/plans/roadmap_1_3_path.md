@@ -1,7 +1,6 @@
 # The 1.3 path — baseline, engines, fabric
 
-**Status:** DRAFT 2026-09-01, written immediately after 1.1.2 published. **RESCOPED 2026-09-09:
-this is now the 1.4 sequencing plan** — the perception fabric + microduck moved from 1.3 to 1.4
+**Status:** DRAFT 2026-09-01, written immediately after 1.1.2 published. **DEFERRED 2026-09-18 (owner) — revive trigger: a second body physically exists (a real backend registered through `maxim.robots`, or the operator records the body's arrival here); Stage A runs unchanged on revival. NOT the 1.4 plan — 1.4 is [roadmap_1_4.md](roadmap_1_4.md).** (Rescoped 2026-09-09: it was the 1.4 sequencing plan) — the perception fabric + microduck moved from 1.3 to 1.4
 when the survival world became 1.3 ("Oasis-2"; see [roadmap_1_3.md](roadmap_1_3.md) and the
 rescope note in [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md)). The staging below (duck baseline
 → engine seam → fabric) is unchanged; only its release slot moved. It does not restate the
