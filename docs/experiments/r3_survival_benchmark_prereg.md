@@ -1,6 +1,11 @@
-# R3 (DRAFT v3.1, 2026-09-17, four-lens review FOLDED twice, D1–D5 TAKEN, PILOT MEASURED) — the lethal-window benchmark: what a carried survival drive buys at the one moment it matters, measured on a depth-calibrated, frozen gauntlet
+# R3 (FROZEN 2026-09-18 at v3.1 — four-lens review FOLDED twice, D1–D5 TAKEN, PILOT MEASURED, R3-cal DONE) — the lethal-window benchmark: what a carried survival drive buys at the one moment it matters, measured on a depth-calibrated, frozen gauntlet
 
-> **STATUS: DRAFT v3.1 — the four-lens DELTA re-run on v3 is FOLDED (all four FIX-THEN-BUILD, no
+> **STATUS: FROZEN 2026-09-18 (this PR, a MERGE COMMIT: it carries the calibration rows and the gauntlet
+> file whose hash the bench looks up on main). R3-cal (build step 4) is DONE: campaign `r3-cal-1`, 12 clean
+> floor-arm events at depth 5 at ONE hash (`6b16bbe9`, the harness merge, clean tree), the gauntlet
+> `docs/experiments/data/r3_gauntlet.json` validated and every clean row drift-free against it (§Calibration
+> result below). No bench row is taken before this PR is on main; the bench runs at one hash from a clean
+> checkout at or after it. History: v3.1 folded the delta re-run (all four FIX-THEN-BUILD, no
 > DO-NOT-BUILD; reports `rationale/r3-survival-benchmark/*-v3.md`); v3.1 corrects four numbers, pins the
 > saturation reservoir the pilot exposed, rewrites the calibration statement, promotes pain-seconds beside
 > time-to-air, and lists the harness must-nots the pilot's own code would otherwise pass on. Build step 1, the PILOT, is DONE (2026-09-17, big-mac-mini, hash `5d1e6a62`, clean tree;
@@ -302,6 +307,31 @@ water node (encoded at the rescue settle) and the submerged reading at each cand
 every learned arm trains at the FROZEN depth (exact-key cache), and its representation gate is
 read at that depth before the event.
 
+## Calibration result (R3-cal, 2026-09-18, the frozen numbers)
+
+Campaign `r3-cal-1` on big-mac-mini, 00:53–01:37 UTC (44 min), harness at `6b16bbe9`, clean tree.
+Apparatus row PASSED (flee to the shore anchor in 13 ms; bridge escape to air 1.48 s; cadence, liveness,
+clusters distinct, gamerules under the real names, surface cell air, `deaths` objective reset and read
+back, true reservoir read). Twelve floor-arm events, one fresh agent each, subscriber DETACHED:
+
+| floor arm (A innate-only), n = 12 | value |
+|---|---|
+| `survived` | **12 / 12** — the declared CEILING, as predicted |
+| `t_surface` | median **27.96 s** (27.66–28.29; bootstrap 95 % of the median 27.83–28.16) |
+| health lost | median **10.7 hp** (10.7–12.8) |
+| oxygen-pain seconds | median **22.5 s** (22.0–22.7) |
+| health-pain seconds | 1.9–2.5 s |
+| drive-decisive executed escape | 12 / 12 (the aggregate drive component, causal 0, learned 0) |
+| true saturation at the teleport | 20 on every row → reservoir band **[19, 21]** (food likewise) |
+| loop tick period | band **[0.39, 0.77] s** (median ± 2 IQR) |
+| stale-sample tail (clean rows) | ≤ 0.128 s against the 0.15 s limit |
+
+One row (seed 403) was REFUSED on a single stale sample (0.242 s) and re-run under `--resume`; the
+re-run superseded it. Three apparatus rows refused before any agent was spent — `doInsomnia` not yet
+false on the server, the bridge without its flee anchor, the bridge's bot not in the world after a
+restart — each a world precondition now in the runbook. The floor's spread (SD ≈ 0.2 s on `t_surface`)
+is narrower than the delta review's ≈ 0.35 s estimate: the innate route is a clock.
+
 ## The frozen gauntlet file (D5)
 
 `docs/experiments/data/r3_gauntlet.json`, written by R3-cal, read by R3-bench, refused on drift
@@ -416,7 +446,7 @@ underwater at 45 s is refused.
    its branch — fine for a diagnostic, not for data); `allow_dirty` false; the gauntlet file carries the
    pilot's provenance fields, `rss_mb` (≈ 1 MB per row; no per-episode subprocess needed at one event
    per agent), and `exp60_run.FROZEN` by VALUE (sha256).
-4. R3-cal live (the one verification cell) → gauntlet file → freeze PR (v3.x → FROZEN).
+4. **DONE (2026-09-18):** R3-cal live (the one verification cell) → gauntlet file → this freeze PR (v3.1 → FROZEN, a merge commit).
 5. R3-bench campaign at one hash → merge-commit data PR → §Outcome: the frozen baseline and the
    reported contrasts, each with its mechanism beside it, and what they do not say.
 
@@ -456,3 +486,24 @@ an instrument constant; the harness must-nots listed in the build order. World: 
 under its real name; `doInsomnia` in code; every set read back; the surface cell verified air; the
 flee anchor recorded and refused. Pilot rows re-labelled "attributed by elimination" (the drive
 read was empty by a key-path bug). Nothing reopens the design; nothing needs `src/`.
+
+## Operator runbook — R3-bench (the frozen protocol, from a clean main checkout at or after the freeze)
+
+1. big-mac-mini: `git checkout main && git pull` (the checkout must contain this FROZEN prereg AND the
+   gauntlet file). World preconditions, each a refusal at the apparatus row if missed: the bridge
+   RESTARTED with `--state_interval_ms=100 --flee_x=-393 --flee_z=-312` (the `--key=value` form; stop the
+   old bridge in its tmux session first, or the port is taken; after a restart confirm the server sees the
+   bot: `list` shows `maxim` and `data get entity maxim foodSaturationLevel` answers a number — a bridge
+   whose bot never logged in serves a fallback snapshot); `gamerule doInsomnia false` on the server; no
+   second player; no rain; the pool's surface cell air.
+2. `export PYTHONPATH="$PWD/src"`, then ONE invocation, all five arms interleaved, ≈ 3–3.5 h (60 events,
+   12 fear trainings for C, 12 for E, 12 Exp 61 donors + receivers for D):
+   `python scripts/survival_world/r3_run.py bench --campaign-id r3-bench-1 --workdir ~/r3_bench --rcon-password '<pw>' --username maxim --write-experiment-results`
+   The output is `docs/experiments/data/r3_bench.jsonl`; the tree must be CLEAN; the bench refuses a
+   gauntlet that does not validate or whose calibration hash is not on `origin/main`, and refuses every
+   row that drifts from it. If the run stops, resume the SAME campaign id at the SAME hash with
+   `--resume`; clean rows are skipped, refused rows re-run and supersede. No `git pull` between rows.
+3. `python scripts/survival_world/r3_run.py report --data docs/experiments/data/r3_bench.jsonl --gauntlet docs/experiments/data/r3_gauntlet.json --json docs/experiments/data/r3_report.json --campaign-id r3-bench-1`
+4. One MERGE-COMMIT data PR with `r3_bench.jsonl` + `r3_report.json`; then §Outcome from the report:
+   the frozen baseline and the reported contrasts, each with its mechanism beside it, and what they do
+   not say — nothing graduated.
