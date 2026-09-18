@@ -1,6 +1,6 @@
-# Exp 62 (DRAFT v2, 2026-09-17, four-lens design review FOLDED) — cross-context transfer of the drowning-fear BY THE BODY: what the shipped survival body already carries across pools, the context wall it does not cross, and why a pressure sensor is not the lever
+# Exp 62 (DRAFT v2.1, 2026-09-18 — owner decisions D1–D4 TAKEN; four-lens design review FOLDED) — cross-context transfer of the drowning-fear BY THE BODY: what the shipped survival body already carries across pools, the context wall it does not cross, and why a pressure sensor is not the lever
 
-> **STATUS: DRAFT v2 — v1 (the pressure-interoception claim) went to the full four-lens design review
+> **STATUS: DRAFT v2.1 (owner decisions D1–D4 TAKEN 2026-09-18: pool 2 at y 95; n 12/12/3; rung A RUNS; the pressure drive deferred with its 1.4 path recorded) — v1 (the pressure-interoception claim) went to the full four-lens design review
 > on 2026-09-17; all four lenses returned DO-NOT-BUILD as drafted, and all four ran the SAME offline
 > replay independently on the committed pool-1 vectors and got the same grid (reports preserved under
 > `docs/experiments/rationale/exp62-pressure-interoception/`; the replay is now a committed check,
@@ -129,18 +129,18 @@ the vector) and is not proposed for it.
 - Nothing about extinction (Exp 61's recorded gap, sharpened: a fear reached by shared mass is
   reached at every same-class pool and nothing discounts it).
 
-## Owner decisions
+## Owner decisions (TAKEN 2026-09-18 — D1 y 95; D2 as tabled; D3 YES; D4 deferred, its 1.4 path recorded)
 
 - **D1 — pool 2's placement:** stacked, floor y 95 (recommended) or y 10; both replayed as hits;
-  y 95 keeps pool 2's own separation comfortably clear (0.79 vs the deep band's marginal 0.83).
-- **D2 — n:** 12 / 12 / 3 as tabled. Recommended.
+  y 95 keeps pool 2's own separation comfortably clear (0.79 vs the deep band's marginal 0.83). **TAKEN: y 95.**
+- **D2 — n:** 12 / 12 / 3 as tabled. Recommended. **TAKEN: as tabled.**
 - **D3 — run rung A at all?** It is predicted at the ceiling. Recommended YES: it turns a §Not-claimed
   line in two EARNED experiments into a measured, bounded result with a live representation read, it
   measures the §World topology thesis, and it costs ≈ 2 h plus plumbing the two-pool world needs
   anyway (rung B and any future cross-context work stand on it). Its `docs/wiring/` entry: *a place
-  sensor only place-keys a fear near an extreme; near its rest it is silent by design.*
+  sensor only place-keys a fear near an extreme; near its rest it is silent by design.* **TAKEN: YES — rung A runs.**
 - **D4 — the pressure drive:** deferred with the bar above (a game-native pressure cost must exist;
-  the allowlist change re-fires two ledger rows). Recommended: deferred, not scheduled.
+  the allowlist change re-fires two ledger rows). Recommended: deferred, not scheduled. **TAKEN: deferred; its 1.4 path is recorded in [roadmap_1_4.md](../plans/roadmap_1_4.md) §Pressure — no sensor in E1 (the depths must stay one cluster), and pressure/depth is a candidate INPUT to the graded predictor if E3 names one, entering only through that plan with the replay as its evidence.**
 
 ## Build order
 
