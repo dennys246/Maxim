@@ -1,0 +1,186 @@
+{
+  "_format_version": "1.0",
+  "kind": "r3_gauntlet",
+  "campaign_id": "r3-cal-1",
+  "frozen": {
+    "version": "v3.1",
+    "arms": {
+      "A_innate_only": 12,
+      "B_in_situ": 12,
+      "C_self_learned": 12,
+      "D_shared": 12,
+      "E_exposed_ablated": 12
+    },
+    "cal": {
+      "arm": "A_innate_only",
+      "n": 12,
+      "seeds": [
+        400,
+        401,
+        402,
+        403,
+        404,
+        405,
+        406,
+        407,
+        408,
+        409,
+        410,
+        411
+      ]
+    },
+    "depth": 5,
+    "lethal_cap_s": 45.0,
+    "hold_hz": 4.0,
+    "state_age_max_s": 0.15,
+    "gamerules": [
+      [
+        "doMobSpawning",
+        "false"
+      ],
+      [
+        "doDaylightCycle",
+        "false"
+      ],
+      [
+        "doWeatherCycle",
+        "false"
+      ],
+      [
+        "doImmediateRespawn",
+        "true"
+      ],
+      [
+        "keepInventory",
+        "true"
+      ],
+      [
+        "naturalRegeneration",
+        "true"
+      ],
+      [
+        "drowningDamage",
+        "true"
+      ],
+      [
+        "doInsomnia",
+        "false"
+      ]
+    ],
+    "settle_guard": {
+      "is_raining": 0.0,
+      "nearest_player_dist": 64.0,
+      "hostile_count": 0.0
+    },
+    "reservoir_tolerance": 1.0,
+    "tick_period_iqr_mult": 2.0,
+    "foreign_fear_discount": 0.75,
+    "read_floor": 0.5,
+    "exp60_frozen_sha256": "2619da6f33b5a1699807a3c2cb9bd7a4b92c6657f74b921ce7a8361f3c69e06d"
+  },
+  "depth": 5,
+  "cal_code_hash": "6b16bbe9b32f",
+  "cal_rows_sha256": "6f764cfef3e7926356e6d56c1fb00dd6a7d63e5620348966a70a9cf0f8dc02dc",
+  "n_cal": 12,
+  "apparatus_record": "docs/experiments/data/exp60_water_apparatus_2026-09-17.json",
+  "apparatus_record_ts": 1789685590.522203,
+  "anchor_measured": {
+    "t_damage_onset_min_s": 16.063,
+    "t_damage_onset_max_s": 16.202,
+    "t_pain_edge_min_s": 5.153,
+    "t_surface_max_s": 1.536,
+    "t_sinkback_min_s": 2.119,
+    "distance_from_spawn": 69.17369442208505,
+    "evidence_record": "/Users/dennys/RMSrv/scripts/Maxim/docs/experiments/data/exp60_water_apparatus.json",
+    "ts": 1789685590.522203
+  },
+  "gamerules": [
+    [
+      "doMobSpawning",
+      "false"
+    ],
+    [
+      "doDaylightCycle",
+      "false"
+    ],
+    [
+      "doWeatherCycle",
+      "false"
+    ],
+    [
+      "doImmediateRespawn",
+      "true"
+    ],
+    [
+      "keepInventory",
+      "true"
+    ],
+    [
+      "naturalRegeneration",
+      "true"
+    ],
+    [
+      "drowningDamage",
+      "true"
+    ],
+    [
+      "doInsomnia",
+      "false"
+    ]
+  ],
+  "flee_preflight": {
+    "latency_s": 0.037,
+    "bridge": {
+      "ok": true,
+      "detail": "fled to anchor"
+    }
+  },
+  "reservoir_band": {
+    "foodSaturationLevel": [
+      19.0,
+      21.0
+    ],
+    "foodLevel": [
+      19.0,
+      21.0
+    ]
+  },
+  "tick_period_band_s": [
+    0.394,
+    0.768
+  ],
+  "floor_arm": {
+    "survived": 12,
+    "t_surface": {
+      "n": 12,
+      "min": 27.663,
+      "median": 27.959,
+      "max": 28.288,
+      "median_ci95": [
+        27.833,
+        28.16
+      ]
+    },
+    "health_lost": {
+      "n": 12,
+      "min": 10.667,
+      "median": 10.667,
+      "max": 12.833,
+      "median_ci95": [
+        10.667,
+        11.084
+      ]
+    },
+    "oxygen_pain_s": {
+      "n": 12,
+      "min": 22.02,
+      "median": 22.473,
+      "max": 22.705,
+      "median_ci95": [
+        22.28,
+        22.588
+      ]
+    }
+  },
+  "written_at": 1789695505.337566
+}
