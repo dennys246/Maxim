@@ -176,6 +176,16 @@ def main() -> int:
     path = Path(args.inp)
     rows = load_rows(path)
     report = analyze(rows, min_pairs=args.min_pairs)
+    # One platform per file (re-baseline port, 2026-09-18): rows carry the server's measured
+    # `version` reply; a file mixing platforms (or pre-port rows without the field beside rows
+    # with it) has no single apparatus and gets no verdict.
+    versions = sorted({str(r.get("server_version")) for r in rows})
+    report["server_versions"] = versions
+    if len(versions) > 1:
+        report["problems"].append(
+            f"APPARATUS: rows span {len(versions)} server versions {versions} — one platform per file"
+        )
+        report["verdict"] = "NO-VERDICT"
 
     if args.assert_noop_fails:
         artifacts = Path(args.artifacts) if args.artifacts else path.parent / "pair0_artifacts"
