@@ -37,7 +37,9 @@ from _provenance import (  # noqa: E402
     executed_code_provenance,
     preflight_gated_record_or_exit,
 )
+from _paper_server import server_version_matches  # noqa: E402
 from exp56 import common as C  # noqa: E402
+from exp56.setup_world import MC_VERSION  # noqa: E402  (the apparatus version, one source)
 
 REPO_ROOT = C.REPO_ROOT
 ARMS = ("isolated", "taught", "satiated", "dangling")
@@ -349,6 +351,19 @@ def main() -> int:
         bridge_port = args.bridge_port
         settle = args.settle_s
 
+    # The platform is MEASURED into every row (re-baseline port, 2026-09-18): Paper's `version`
+    # reply names the Minecraft version; a mismatch refuses the campaign before any row (exit 3),
+    # and the analyzer refuses a file that mixes platforms. Mock rows carry "mock".
+    if args.mock:
+        server_version = "mock"
+    else:
+        server_version = world.command("version").strip()
+        if not server_version_matches(server_version, MC_VERSION):
+            print(f"REFUSING: the server's `version` reply does not name MC {MC_VERSION}: {server_version!r}")
+            world.close()
+            return 3
+    preflight_platform = {"server_version": server_version, "mc_version_expected": MC_VERSION}
+
     if args.spectator and not args.mock:
         # A SEPARATE short-lived RCON connection — never the harness's own
         # socket (RconControl is single-socket, not thread-safe).
@@ -416,6 +431,7 @@ def main() -> int:
                     )
                     row["mock"] = bool(args.mock)
                     row.update(preflight)
+                    row.update(preflight_platform)
                     row["provenance"] = provenance
                     fh.write(json.dumps(row) + "\n")
                     fh.flush()

@@ -550,3 +550,21 @@ python scripts/analyze_exp56.py --in docs/experiments/data/56_four_arm.jsonl --g
       data PR #647 merge-committed (`8fb94cec`); interpretation +
       [graduation row](../../plans/behavioral_graduation_candidates.md) in this separate PR
       ([write-up](../56_four_arm_sharing.md)), independently reviewed before merge
+
+## Re-baseline runs (post-EARNED; NOT amendments — the frozen protocol re-executed on a new platform)
+
+Amendments govern the original design before its confirmatory data; that ONCE clause is discharged.
+A re-baseline is the same frozen protocol, arms, n, gates and analyzer run again because a ledger
+re-run trigger fired. It never re-types a frozen constant; if the apparatus cannot be reproduced on
+the new platform (e.g. the surface height), that is a server-setup failure, recorded, not a design
+change.
+
+- **RB-1 — Paper 1.20.4 (planned 2026-09-18; roadmap_1_3.md Phase 0).** Triggers fired: "Minecraft
+  bridge protocol change" (the 1.20.4 port + the R3 verbs) and the minor-version heartbeat. Port:
+  `scripts/exp56/setup_world.py` targets 1.20.4 with a 128-layer flat stack (the 1.18+ world floor is
+  y=−64) so the surface stays at y=63 — MEASURED by `verify`'s surface probe, never assumed; every row
+  carries the server's `version` reply (`server_version`), the campaign refuses any other platform,
+  the analyzer refuses a mixed file. Data: `docs/experiments/data/exp56_rebaseline_1204/` (Phase 0,
+  campaign, verdict, the committed `pair0_artifacts/` kit); the 1.16.5 files are untouched. Ledger:
+  the row is annotated "Re-baselined <date> on Paper 1.20.4 at <hash>: gates <result>"; on a FAIL the
+  1.16.5 row is not un-earned but goes Stale for 1.3 reuse and blocks 1.3.0. Outcome: _pending_.

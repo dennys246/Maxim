@@ -31,7 +31,9 @@ from _provenance import (  # noqa: E402
     executed_code_provenance,
     preflight_gated_record_or_exit,
 )
+from _paper_server import server_version_matches  # noqa: E402
 from exp56 import common as C  # noqa: E402
+from exp56.setup_world import MC_VERSION  # noqa: E402
 from exp56.run_campaign import run_pair_arm  # noqa: E402
 
 DISCRIMINABILITY_BAR = 0.70  # prereg Phase-0 check 1 (both separation and stability)
@@ -236,6 +238,14 @@ def main() -> int:
     report: dict = {"ts": time.time(), "mock": bool(args.mock), "frozen": C.FROZEN}
     report.update(preflight)
     report["provenance"] = provenance
+    if args.mock:
+        report["server_version"] = "mock"
+    else:
+        report["server_version"] = world.command("version").strip()
+        if not server_version_matches(report["server_version"], MC_VERSION):
+            print(f"REFUSING: the server's `version` reply does not name MC {MC_VERSION}: {report['server_version']!r}")
+            return 3
+    report["mc_version_expected"] = MC_VERSION
     try:
         report["check1_discriminability"] = check_discriminability(
             bridge_port, world, args.bot_name, work, settle=settle

@@ -10,7 +10,7 @@ refuses a verdict on mock rows.
 
 ## Prerequisites
 
-- **Java 11–16** (Minecraft 1.16.5 refuses 17+): `brew install openjdk@11`.
+- **Java 17+** (Paper 1.20.4 requires it; the EARNED 2026-09-06 campaign ran on 1.16.5 with Java 11 — re-baseline port 2026-09-18): `brew install --cask temurin@17`.
 - **Node** (for the Mineflayer bridge): `cd scripts/minecraft_bridge && npm install`.
 - macOS: allow the terminal Local Network access (System Settings → Privacy)
   or the bridge/RCON connects will silently hang.
@@ -21,13 +21,14 @@ refuses a verdict on mock rows.
 ## 1. Stand up the world (one-time)
 
 ```bash
-# Download Paper 1.16.5, write configs. EULA acceptance is YOUR action:
-python scripts/exp56/setup_world.py setup --dir ~/exp56_server --accept-eula \
+# Download Paper 1.20.4, write configs. EULA acceptance is YOUR action:
+python scripts/exp56/setup_world.py setup --dir ~/exp56_server_1204 --accept-eula \
     --rcon-password 'CHOOSE_A_PW'
 
 # First boot (generates the superflat world with the surface at y=63 —
 # feet at y=64, the bench body's neutral). Leave it running:
-cd ~/exp56_server && java -Xms1G -Xmx2G -jar paper-1.16.5.jar nogui
+cd ~/exp56_server_1204 && "$(/usr/libexec/java_home -v 17)/bin/java" -Xms1G -Xmx2G -jar paper-1.20.4.jar nogui
+# a FRESH dir: the 1.16.5 world is the EARNED apparatus and stays untouched; java_home pins 17 per invocation
 
 # From the repo root, against the RUNNING server — sets daylight/weather/
 # mobs off, noon, world spawn at the frozen rest anchor, and BUILDS the
@@ -85,16 +86,18 @@ bio-state overlay — read the substrate from the JSONL, not the game.
 
 ## 4. The confirmatory campaign
 
+**Re-baseline on 1.20.4 (2026-09-18):** the EARNED 1.16.5 files (`56_phase0.json`, `56_four_arm.jsonl`, `56_four_arm_verdict.json`) are never appended to or overwritten — the campaign APPENDS to `--out`, so the re-baseline writes into its own directory `docs/experiments/data/exp56_rebaseline_1204/` (Phase 0 with `--out .../56_phase0.json`, the campaign, the verdict, and this time the committed `pair0_artifacts/` kit). Every row carries the server's measured `version` reply (`server_version`); the campaign refuses a server that is not MC 1.20.4 and the analyzer refuses a file that mixes platforms. The ledger row is then annotated in its own voice: "Re-baselined <date> on Paper 1.20.4 at <hash>: all four gates <PASS/FAIL>"; a FAIL does not un-earn the 1.16.5 row — it goes Stale for 1.3 reuse and blocks 1.3.0 until resolved.
+
 ```bash
 export MAXIM_OPERANT_ONLY_CREDIT=1
 python scripts/exp56/run_campaign.py \
     --arms isolated,taught,satiated,dangling --pairs 50 --seed-base 42 \
     --workdir ~/exp56_work \
-    --out docs/experiments/data/56_four_arm.jsonl \
+    --out docs/experiments/data/exp56_rebaseline_1204/56_four_arm.jsonl \
     --rcon-password 'CHOOSE_A_PW' --write-experiment-results \
     # optional: --spectator <your_mc_username> to watch in spectator
 
-python scripts/analyze_exp56.py --in docs/experiments/data/56_four_arm.jsonl \
+python scripts/analyze_exp56.py --in docs/experiments/data/exp56_rebaseline_1204/56_four_arm.jsonl \
     --gate v1 --assert-noop-fails
 ```
 
@@ -110,7 +113,7 @@ python scripts/analyze_exp56.py --in docs/experiments/data/56_four_arm.jsonl \
 
 | symptom | cause / fix |
 |---|---|
-| server exits on boot with class-version errors | Java 17+ — use openjdk 11–16 |
+| server exits on boot with class-version errors | Java older than 17 — Paper 1.20.4 needs temurin@17 |
 | `RCON authentication failed` | password mismatch with `server.properties`; restart the server after edits |
 | bridge prints nothing / harness times out | bridge not connected to the game (check `--mc_port`), or a second client tried to attach (one client per bridge) |
 | `exp56 … the world does not reflect the script (S3)` | `prepare` not run, wrong RCON target name, or the bot spawned before `setworldspawn` — restart the bridge after `prepare` |
