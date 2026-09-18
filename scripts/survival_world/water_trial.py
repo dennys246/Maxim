@@ -17,6 +17,7 @@ Those stay in the two runners (``in_process_code_provenance`` + ``evidence_out_p
 from __future__ import annotations
 
 import json
+import re
 import sys
 import threading
 import time
@@ -46,6 +47,17 @@ GAMERULES: tuple[tuple[str, str], ...] = (
     ("doImmediateRespawn", "true"),
     ("keepInventory", "true"),
 )
+# R3 (the lethal window) verifies three more — the Exp 60/61 roster above stays as frozen:
+# regeneration moves the death edge by 7.7 s (pilot), drowning damage IS the hazard (the pilot
+# misspelled it `doDrowningDamage`; the 1.20.4 name is `drowningDamage`), insomnia is a belt for a
+# multi-hour campaign. An UNKNOWN-name reply is an instrument error, never a recorded absence.
+R3_GAMERULES: tuple[tuple[str, str], ...] = GAMERULES + (
+    ("naturalRegeneration", "true"),
+    ("drowningDamage", "true"),
+    ("doInsomnia", "false"),
+)
+_UNKNOWN_GAMERULE = ("incorrect argument", "unknown", "<--[here]")
+_NUM_TOKEN = re.compile(r"(-?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?)[fdbsL]?\b")
 
 
 class Refusal(RuntimeError):
@@ -85,11 +97,16 @@ def _detach_fear_subscriber(aut: Any) -> int:
     return len(targets)
 
 
-def _telemetry_ticks(path: Path, t0_monotonic: float) -> list[dict[str, Any]]:
+def _telemetry_ticks(path: Path, t0_monotonic: float, *, t0_wall: float | None = None) -> list[dict[str, Any]]:
     """Compress a window's SubstrateTelemetry JSONL into per-tick rows (pure over the file).
 
-    Rows carry wall-clock ``ts``; the window's clock is monotonic, so ticks are reported
-    relative to the FIRST row (the loop's first tick) and the proposal/tool per tick.
+    Rows carry wall-clock ``ts``. Without ``t0_wall`` (Exp 60/61's windows) ticks are reported
+    relative to the FIRST row (the loop's first tick — ≈ ``loop_warm_s`` BEFORE the teleport, a
+    clock the window's monotonic ``t`` does not share; ``t0_monotonic`` is kept for those callers
+    and unused). With ``t0_wall`` (R3's lethal event: ``time.time()`` stamped AT the teleport) every
+    tick also carries ``t`` on the window's clock, so proposals and executor calls are comparable.
+    The drive snapshot is nested (``drives.drives`` keyed by body sensor name); the earlier reader
+    looked one level up and recorded nothing.
     """
     try:
         lines = [ln for ln in path.read_text().splitlines() if ln.strip()]
@@ -108,18 +125,24 @@ def _telemetry_ticks(path: Path, t0_monotonic: float) -> list[dict[str, Any]]:
     for r in rows:
         prop = r.get("proposal") or {}
         nac = r.get("nac") or {}
-        out.append(
-            {
-                "t_from_first_tick": round(float(r.get("ts", 0.0)) - float(first_ts), 3),
-                "step": r.get("step"),
-                "proposal": prop.get("tool_name") or prop.get("tool") if isinstance(prop, dict) else prop,
-                "gated": r.get("gated"),
-                "active_clusters": nac.get("active_clusters") if isinstance(nac, dict) else None,
-                "drives": {k: v for k, v in (r.get("drives") or {}).items() if k in ("threat", "oxygen", "health")}
-                if isinstance(r.get("drives"), dict)
-                else None,
-            }
+        dr = r.get("drives")
+        # live rows nest the values (`drives.drives`, keyed by body sensor); a flat dict is accepted too
+        inner = (
+            dr.get("drives")
+            if isinstance(dr, dict) and isinstance(dr.get("drives"), dict)
+            else (dr if isinstance(dr, dict) else {})
         )
+        tick = {
+            "t_from_first_tick": round(float(r.get("ts", 0.0)) - float(first_ts), 3),
+            "step": r.get("step"),
+            "proposal": prop.get("tool_name") or prop.get("tool") if isinstance(prop, dict) else prop,
+            "gated": r.get("gated"),
+            "active_clusters": nac.get("active_clusters") if isinstance(nac, dict) else None,
+            "drives": {k: v for k, v in inner.items() if k in ("threat", "oxygen", "health", "food")} or None,
+        }
+        if t0_wall is not None:
+            tick["t"] = round(float(r.get("ts", 0.0)) - float(t0_wall), 3)
+        out.append(tick)
     return out
 
 
@@ -275,14 +298,27 @@ class WaterTrial:
             try:
                 out = orig(action)
             except Exception as exc:
-                calls.append({"t": t, "tool": (action or {}).get("tool_name"), "success": False, "error": repr(exc)})
+                calls.append(
+                    {
+                        "t": t,
+                        "t_return": time.monotonic(),
+                        "tool": (action or {}).get("tool_name"),
+                        "success": False,
+                        "error": repr(exc),
+                        "detail": None,
+                    }
+                )
                 raise
+            output = str(getattr(out, "output", "") or "")
+            m = re.search(r"'detail': '([^']*)'", output)
             calls.append(
                 {
                     "t": t,
+                    "t_return": time.monotonic(),  # a call in flight at death RETURNS after respawn (pilot)
                     "tool": (action or {}).get("tool_name"),
                     "success": getattr(out, "success", None),
                     "error": getattr(out, "error", None),
+                    "detail": m.group(1) if m else None,
                 }
             )
             return out
@@ -321,14 +357,76 @@ class WaterTrial:
         self.rcon.command(f"effect give {self.username} minecraft:instant_health 1 10 true")
         self.rcon.command(f"effect give {self.username} minecraft:saturation 1 10 true")
 
+    @property
+    def deaths_objective(self) -> str:
+        return str(self.geom.get("deaths_objective", "exp60_deaths"))
+
     def deaths(self) -> int:
-        resp = self.rcon.command(
-            f"scoreboard players get {self.username} {self.geom.get('deaths_objective', 'exp60_deaths')}"
-        )
+        """The `deaths` scoreboard read. A parse failure is an InstrumentError — NEVER 0: in a lethal
+        window death is the DV, and a silent zero reads a death as a surface (R3 wiring lens SF-4/SF-C)."""
+        resp = self.rcon.command(f"scoreboard players get {self.username} {self.deaths_objective}")
         try:
             return int(resp.split(" has ")[1].split()[0])
-        except (IndexError, ValueError):
-            return 0
+        except (IndexError, ValueError) as exc:
+            raise InstrumentError(f"deaths objective unreadable: {resp!r}") from exc
+
+    def preflight_deaths_objective(self) -> None:
+        """The objective EXISTS, is set to 0 and READS BACK 0 before a lethal event."""
+        listed = self.rcon.command("scoreboard objectives list")
+        if self.deaths_objective not in listed:
+            raise InstrumentError(f"deaths objective {self.deaths_objective!r} is not on the server: {listed!r}")
+        self.rcon.command(f"scoreboard players set {self.username} {self.deaths_objective} 0")
+        if self.deaths() != 0:
+            raise InstrumentError("deaths objective did not read back 0 after the reset")
+
+    def read_food_state(self) -> dict[str, float]:
+        """The TRUE food state over RCON (`data get entity`): the bridge clamps sensed saturation at 10
+        while the apparatus heal sets ≈ 20 underneath — the reservoir that funds the regen-on margin
+        (R3 confounding lens F17). Read at every event teleport; frozen in the gauntlet file."""
+        out: dict[str, float] = {}
+        for field in ("foodLevel", "foodSaturationLevel", "foodExhaustionLevel"):
+            resp = self.rcon.command(f"data get entity {self.username} {field}")
+            nums = _NUM_TOKEN.findall(resp.split(":")[-1])
+            if not nums:
+                raise InstrumentError(f"could not parse {field} from RCON reply: {resp!r}")
+            out[field] = float(nums[-1])
+        return out
+
+    def check_surface_cell_air(self) -> None:
+        """The pool's first air layer is AIR (a stone cap left by a drowning diagnostic makes every
+        event a 45 s refusal with no other symptom)."""
+        sx, _sy, sz = self.geom["submerged"]
+        y = int(self.geom["surface_y"])
+        resp = self.rcon.command(f"execute if block {int(sx)} {y} {int(sz)} minecraft:air")
+        if "passed" not in resp.lower():
+            raise Refusal(f"the pool's surface cell ({sx}, {y}, {sz}) is not air: {resp!r}")
+
+    def set_gamerule(self, rule: str, value: str) -> str:
+        """SET then READ BACK — the set's echo is not a verification (pilot: `regen_restored` was the echo)."""
+        self.rcon.command(f"gamerule {rule} {value}")
+        resp = self.rcon.command(f"gamerule {rule}").strip()
+        if any(tok in resp.lower() for tok in _UNKNOWN_GAMERULE):
+            raise InstrumentError(f"gamerule {rule!r} is not a rule on this server: {resp!r}")
+        if value not in resp.lower():
+            raise InstrumentError(f"gamerule {rule} did not read back {value}: {resp!r}")
+        return resp
+
+    def check_flee_anchor(self) -> dict[str, Any]:
+        """`flee` through the BRIDGE on the shore, never the executor. The anchor must be set (the
+        bridge takes `--flee_x/--flee_z` at start; without them it is world spawn, a no-path from the
+        sealed room — the pilot recorded "No path to the goal!" in 15 ms and did NOT refuse). With
+        the anchor AT the shore the call is a free success by construction; recorded as such."""
+        self.rescue("flee-preflight")
+        t0 = time.monotonic()
+        try:
+            out = self.aut.client.call_action("flee", {})
+        except Exception as exc:
+            out = {"ok": False, "detail": repr(exc)}
+        res = {"latency_s": round(time.monotonic() - t0, 3), "bridge": {k: out.get(k) for k in ("ok", "detail")}}
+        detail = str(out.get("detail") or "").lower()
+        if not out.get("ok") or "no path" in detail or "no flee anchor" in detail or res["latency_s"] > 0.5:
+            raise Refusal(f"flee anchor preflight (must answer fled ≤ 0.5 s): {res}", partial={"flee_preflight": res})
+        return res
 
     def pain_between(self, t_a: float, t_b: float) -> list[dict[str, Any]]:
         return [
@@ -507,9 +605,11 @@ class WaterTrial:
             )
         return len(live_ticks)
 
-    def check_gamerules(self) -> None:
-        for rule, want in GAMERULES:
+    def check_gamerules(self, rules: tuple[tuple[str, str], ...] = GAMERULES) -> None:
+        for rule, want in rules:
             resp = self.rcon.command(f"gamerule {rule}").strip().lower()
+            if any(tok in resp for tok in _UNKNOWN_GAMERULE):
+                raise InstrumentError(f"gamerule {rule!r} is not a rule on this server: {resp!r}")
             if want not in resp:
                 raise Refusal(f"gamerule {rule} is not {want} ({resp!r})")
 
@@ -851,6 +951,252 @@ class WaterTrial:
         }
 
     # ── teardown ─────────────────────────────────────────────────────────────────────
+
+    # ── R3: the lethal window (no rescue inside; the pilot's `live_window` with its must-nots fixed) ──
+
+    def _drive_specs(self) -> dict[str, Any]:
+        specs: dict[str, Any] = {}
+        root = getattr(getattr(self.aut.executor, "embodiment", None), "root", None)
+        if root is None:
+            return specs
+        for ent in root.walk():
+            for name, spec in getattr(ent, "drive_specs", {}).items():
+                specs[name.split(".", 1)[-1]] = spec
+        return specs
+
+    def sample_full(self, t0: float, deaths0: int) -> dict[str, Any] | None:
+        """One 4 Hz sample: the snapshot FIRST, then the `deaths` objective (that order is load-bearing —
+        reversed, a respawn snapshot reads as a surface). Carries the settle-guard keys."""
+        age = self.aut.client.state_age_s()
+        if age > STALE_STATE_S:
+            return None
+        vm = sync_snapshot(self.aut)
+        if vm is None or "is_in_water" not in vm:
+            return None
+        return {
+            "t": round(time.monotonic() - t0, 3),
+            "state_age_s": round(age, 3),
+            "in_water": _f(vm, "is_in_water", 0) >= 0.5,
+            "health": _f(vm, "health", 20.0),
+            "oxygen": _f(vm, "oxygen", 20.0),
+            "food": _f(vm, "food", -1.0),
+            "saturation": _f(vm, "saturation", -1.0),
+            "y": _f(vm, "y_altitude", -1.0),
+            "is_raining": _f(vm, "is_raining", -1.0),
+            "nearest_player_dist": _f(vm, "nearest_player_dist", -1.0),
+            "hostile_count": _f(vm, "hostile_count", -1.0),
+            "deaths_delta": self.deaths() - deaths0,
+        }
+
+    def lethal_event(self, label: str, *, cap_s: float, hold_hz: float = 4.0) -> dict[str, Any]:
+        """ONE unrescued submersion with the loop live — R3's unit of measurement.
+
+        Ends at the FIRST of: the head clears (the first sample with `is_in_water` 0 — the eye-block
+        sensor; feet stay below the water line) → teleport to the shore IMMEDIATELY, then stop the
+        loop (the pilot joined first and left a re-sinking agent exposed for the join; no linger);
+        death (`deaths_delta` > 0, corroborated by the respawn discontinuity within one sample) →
+        respawn already did it; the cap → teleport + Refusal. One wall clock `t0_wall` stamped at the
+        teleport makes ticks, calls and samples comparable. Decision provenance from `RecommendCapture`
+        (the pilot's drive column was empty). Pain-seconds are integrated from the SAMPLE series to
+        `t_surface` with `drive_pain_for_value` (never from the publishes, which count deepenings).
+        """
+        from maxim.embodiment.sem import drive_pain_for_value
+        from maxim.simulation.minecraft_harness import run_minecraft_aut
+        from maxim.simulation.substrate_telemetry import SubstrateTelemetry
+        from exp56.common import RecommendCapture
+
+        specs = self._drive_specs()
+        stop = threading.Event()
+        calls0 = len(self.calls)
+        sig0 = len(self.signals)
+        telem_path = self.persistence_dir / f"telemetry_{label}_{int(time.time() * 1000)}.jsonl"
+        telem = SubstrateTelemetry(log_path=telem_path, agent_id=self.agent_id)
+        loop = threading.Thread(
+            target=run_minecraft_aut,
+            args=(self.aut,),
+            kwargs={
+                "max_steps": 100_000,
+                "target_hz": self.frozen["loop_hz"],
+                "stop_event": stop,
+                "substrate_telemetry": telem,
+            },
+            daemon=True,
+        )
+        samples: list[dict[str, Any]] = []
+        end: str | None = None
+        t_surface: float | None = None
+        t_death: float | None = None
+        guard_breach: dict[str, Any] | None = None
+        stale = 0
+        self.preflight_deaths_objective()
+        period = 1.0 / hold_hz
+        t0: float | None = None
+        t0_wall: float | None = None
+        deaths0 = 0
+        food_at_teleport: dict[str, float] = {}
+        with RecommendCapture() as cap:
+            try:
+                loop.start()  # inside the try: a refused submerge must STOP this thread (a leaked loop keeps
+                # emitting NAc_RECOMMEND into the process-wide sink and drains the agent under a closed client)
+                time.sleep(self.frozen["loop_warm_s"])  # loop boot is NOT inside the window
+                deaths0 = self.deaths()
+                self.stop_motion()
+                food_at_teleport = self.read_food_state()  # right before the teleport
+                t0_wall = time.time()
+                t0 = self.submerge(label)
+                while time.monotonic() - t0 < cap_s:
+                    tick_start = time.monotonic()
+                    s = self.sample_full(t0, deaths0)
+                    if s is None:
+                        stale += 1
+                        if stale >= STALE_MAX_CONSECUTIVE:
+                            raise InstrumentError(f"{label}: bridge stopped delivering fresh state inside the window")
+                    else:
+                        stale = 0
+                        samples.append(s)
+                        if self.settle_guard and guard_breach is None:
+                            for key, want in self.settle_guard.items():
+                                if key in s and abs(float(s[key]) - float(want)) > 1e-6:
+                                    guard_breach = {"key": key, "value": s[key], "t": s["t"]}
+                        if s["deaths_delta"] > 0:
+                            # the scoreboard may LEAD the respawn snapshot by up to a sample (a death landing
+                            # between the snapshot's timestamp and the RCON reply): keep sampling briefly for
+                            # the respawn discontinuity, corroborate on THAT sample; t_death = this one
+                            end, t_death = "death", s["t"]
+                            for _ in range(6):
+                                if not s["in_water"] and s["health"] >= 20.0:
+                                    break
+                                time.sleep(period)
+                                nxt = self.sample_full(t0, deaths0)
+                                if nxt is not None:
+                                    samples.append(nxt)
+                                    s = nxt
+                            break
+                        if not s["in_water"]:
+                            end, t_surface = "surface", s["t"]
+                            self.rcon.teleport(self.username, self.shore)  # the exit, BEFORE the loop stops
+                            break
+                    time.sleep(max(0.0, period - (time.monotonic() - tick_start)))
+                if end is None:
+                    end = "cap"
+            finally:
+                t_end = time.monotonic()
+                if end != "surface" and end != "death":
+                    try:  # the cap AND any exception inside the window: never leave the bot underwater
+                        self.rcon.teleport(self.username, self.shore)
+                    except Exception as exc:
+                        print(f"WARNING: post-window teleport raised: {exc!r}")
+                stop.set()
+                loop.join(timeout=20.0)
+                stuck = loop.is_alive()
+                self.stop_motion()
+                self.reopen_hub_session()
+            events = [
+                {**dict(e.get("data", {})), "t": e.get("t")}
+                for e in cap.events
+                if e.get("agent_id") in (None, self.agent_id)  # never another row's leaked events
+            ]
+        if t0 is None:
+            raise InstrumentError(f"{label}: the event never started")
+        partial_evidence = {
+            "samples": samples,
+            "calls": [{**c, "t": round(c["t"] - t0, 3)} for c in self.calls[calls0:]],
+        }
+        if stuck:
+            raise Refusal(f"{label}: loop thread did not stop", partial={"event_partial": partial_evidence})
+        deaths_after = self.deaths() - deaths0
+        if end != "death" and deaths_after > 0:
+            raise Refusal(
+                f"INSTRUMENT: {label}: deaths rose AFTER the window ended as {end!r} (a post-window death)",
+                partial={"event_partial": partial_evidence},
+            )
+        if end == "death":
+            after = [x for x in samples if x["t"] >= (t_death or 0.0)]
+            if not after or after[-1]["in_water"] or after[-1]["health"] < 20.0:
+                raise Refusal(
+                    f"INSTRUMENT: {label}: death read but no respawn discontinuity within {len(after)} sample(s)",
+                    partial={"event_partial": partial_evidence},
+                )
+        cut = t_surface if t_surface is not None else (t_death if t_death is not None else cap_s)
+        window = [x for x in samples if x["t"] <= cut]
+        pain_s: dict[str, float] = {}
+        for drive in ("oxygen", "health"):
+            spec = specs.get(drive)
+            total = 0.0
+            for a, b in zip(window, window[1:]):
+                if spec is not None:
+                    total += drive_pain_for_value(spec, float(a[drive])) * (b["t"] - a["t"])
+            pain_s[drive] = round(total, 3) if spec is not None else None
+        window_calls = [
+            {**c, "t": round(c["t"] - t0, 3), "t_return": round(c["t_return"] - t0, 3)} for c in self.calls[calls0:]
+        ]
+        for c in window_calls:
+            c["post_event"] = c["t"] > cut
+            if end == "death" and t_death is not None and c["t"] <= t_death < c["t_return"] and c.get("success"):
+                c["surfaced_by_respawn"] = True
+        ticks = _telemetry_ticks(telem_path, t0, t0_wall=t0_wall)
+        if not ticks:
+            raise Refusal(
+                f"INSTRUMENT: {label}: the loop wrote no telemetry ticks ({telem_path.name})",
+                partial={"event_partial": partial_evidence},
+            )
+        in_window = [
+            t for t in ticks if "t" in t and 0.0 <= t["t"] <= (t_end - t0)
+        ]  # the cadence band is IN-WATER ticks
+        periods = sorted(b["t"] - a["t"] for a, b in zip(in_window, in_window[1:]))
+        escape_events = [
+            e for e in events if str(e.get("best_tool", "")).endswith("escape_water") and e.get("passed_gate") is True
+        ]
+        first_escape_call = next((c for c in window_calls if str(c["tool"]).endswith("escape_water")), None)
+        health_in_window = [x["health"] for x in window]
+        t_first_damage = next((x["t"] for x in samples if x["health"] < 20.0), None)
+        pain = [
+            {"t": round(p["t"] - t0, 3), "failure_mode": p["failure_mode"], "intensity": p["intensity"]}
+            for p in self.signals[sig0:]
+            if p["t"] <= t_end
+        ]
+        row = {
+            "label": label,
+            "end": end,
+            "t0_wall": t0_wall,
+            "t_surface": t_surface,
+            "t_death": t_death,
+            "t_end": round(t_end - t0, 3),
+            "survived": end == "surface",
+            "t_first_damage": t_first_damage,
+            # the event's OWN observed onset decides (env lens N-2); the anchor's minimum is reported beside it
+            "escaped_before_damage": t_surface is not None and (t_first_damage is None or t_surface < t_first_damage),
+            "escaped_before_anchor_onset": t_surface is not None
+            and t_surface < float(self.geom["measured"]["t_damage_onset_min_s"]),
+            "min_health": min(health_in_window) if health_in_window else None,
+            "health_lost": round(20.0 - min(health_in_window), 3) if health_in_window else None,
+            "min_oxygen": min(x["oxygen"] for x in window) if window else None,
+            "pain_seconds": pain_s,
+            "pain_publishes": pain,
+            "calls": window_calls,
+            "t_first_call": window_calls[0]["t"] if window_calls else None,
+            "t_escape_call": first_escape_call["t"] if first_escape_call else None,
+            "decision_events": events[:12],
+            "executed_escape_event": escape_events[0] if escape_events else None,
+            "ticks": ticks,
+            "tick_period_median_s": round(_median(periods), 3) if periods else None,
+            "tick_period_iqr_s": round(periods[3 * len(periods) // 4] - periods[len(periods) // 4], 3)
+            if len(periods) >= 4
+            else None,
+            "sample_period_median_s": round(_median(sorted(b["t"] - a["t"] for a, b in zip(samples, samples[1:]))), 3)
+            if len(samples) > 1
+            else None,
+            "max_state_age_s": max((x["state_age_s"] for x in samples), default=None),
+            "food_at_teleport": food_at_teleport,
+            "guard_breach": guard_breach,
+            "samples": samples,
+            "deaths_delta_after": deaths_after,
+        }
+        if end == "cap":
+            raise Refusal(
+                f"{label}: alive underwater at the {cap_s:.0f} s cap — an instrument fault", partial={"event": row}
+            )
+        return row
 
     def final_rescue(self) -> None:
         try:

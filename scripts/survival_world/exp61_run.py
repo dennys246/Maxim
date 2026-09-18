@@ -1060,6 +1060,15 @@ class _Campaign:
         return row
 
 
+# Public names for the seams R3 (`r3_run.py`) reuses — the private ones are Exp 61's own; this is
+# the coupling surface, made explicit so a change here is a visible change to a frozen harness.
+build_aut = _build
+load_json = _load_json
+rss_mb = _rss_mb
+world_ids = _world_ids
+Exp61Campaign = _Campaign
+
+
 def _existing_clean(out_path: Path, campaign_id: str) -> set[tuple[str, str, int]]:
     done: set[tuple[str, str, int]] = set()
     if not out_path.is_file():

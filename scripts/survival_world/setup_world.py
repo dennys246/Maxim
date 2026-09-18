@@ -185,6 +185,9 @@ _GAMERULES = {
     "doImmediateRespawn": "true",
     "keepInventory": "true",
     "doDaylightCycle": "false",
+    # R3 belt: a multi-hour campaign exceeds the insomnia threshold; phantoms are already blocked
+    # by the frozen day and doMobSpawning, but the rule is cheap and VERIFIED by R3's roster.
+    "doInsomnia": "false",
     # Exp 58 env lens SF-1: storms make the daytime surface spawnable, rain
     # extinguishes burning zombies (the pursuit-containment mechanic), and
     # `is_raining` flips cluster identity mid-arm.

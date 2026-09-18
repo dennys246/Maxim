@@ -224,9 +224,11 @@ every arm with regeneration on, declared); `escaped_before_damage` (a ROUTE-ORDE
 START and RETURN times and the bridge `detail` per call (`surfaced` / `already at surface` / `capped`
 / `surfaced_by_respawn`); links accounted by call time (≤ `t_surface` = the event's; later = post-event,
 recorded); **decision provenance per proposal** (`RecommendCapture` + `decision_decisive`, Exp 61
-step 5): the executed escape must be drive-decisive with a read `threat` component — a REFUSAL
-condition for the anti-vacuity A/B rows, and the reason the pilot's rows are labelled "attributed by
-elimination"; for arm B, the acquisition curve (publishes to the first proposal, `cluster_fear_dump`
+step 5): the executed escape must be drive-decisive — what that READS is the aggregate `drive` score
+component (> 0) with causal 0 and learned 0 on the executed escape's `NAc_RECOMMEND` event; the event
+carries no per-need breakdown, so there is no named `threat` term to read (a `src/` change, not this
+line's), and the route is named by the arm's declared channel plus that read — a REFUSAL condition for
+every executed escape, and the reason the pilot's rows are labelled "attributed by elimination"; for arm B, the acquisition curve (publishes to the first proposal, `cluster_fear_dump`
 after); the loop's tick-period distribution per event (measured 1.4–1.8 Hz against a nominal 4 — the
 largest variance term in every arm, an INSTRUMENT constant: median/IQR frozen in the gauntlet file, a
 row outside the band refused); `t_first_damage` per event (own onset earlier than the anchor's
@@ -311,6 +313,11 @@ hash; the calibration code hash (R3-bench refuses unless `git merge-base --is-an
 on main); the per-arm subscriber declaration; the offline replay's result. Bench rows at a hash
 other than the gauntlet's read INCOMPLETE.
 
+**Deferred from the gauntlet file as built (named, not forgotten):** the per-arm subscriber
+declaration lives in `r3_run.FROZEN`/`DETACHED` rather than the file; the offline cosine replay vs
+depth (build step 2) is moot at a single frozen depth (5, the Exp 60 apparatus) and is owed only if a
+depth ever changes; the fingerprint is verified per row (`check_fingerprint`), not copied into the file.
+
 ## Refusals and stop rules
 
 Every Exp 60/61 apparatus refusal (fingerprint, cadence ≤ 0.15 s at every sample, liveness,
@@ -390,7 +397,7 @@ underwater at 45 s is refused.
    measured; two consequences folded (regeneration as the coarse lever; the gamerule roster).
    **Next: the four-lens re-run on THIS version**, then the harness.
 2. Offline cosine replay of the submerged reading vs depth (corollary 3).
-3. Harness PR: `WaterTrial.lethal_event(depth)` beside `placement` (no fork) — **what it must NOT
+3. **DONE (the harness PR; two-lens folded).** Harness PR: `WaterTrial.lethal_event(depth)` beside `placement` (no fork) — **what it must NOT
    inherit from the pilot's `live_window`** (wiring delta lens): join-before-teleport (teleport to the
    shore FIRST on a surface, then stop the loop; no linger); the silent `deaths()` zero (raise; preflight
    exists + set-0 + read-back; snapshot-then-scoreboard order); two clocks (one wall `t0` stamped at the
