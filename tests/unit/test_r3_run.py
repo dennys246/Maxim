@@ -255,3 +255,106 @@ def test_offline_campaign_apparatus_and_one_event_per_in_process_arm(tmp_path: P
     rep = R.report(rows, campaign_id="smoke")
     assert rep["status"] == "INCOMPLETE" and "A_innate_only: 1 clean rows < 12" in rep["incomplete_cause"]
     assert rep["arms"]["B_in_situ"]["drive_decisive"] == 1
+    assert rep["arms"]["A_innate_only"]["idle_tick_period_median_s"]["n"] == 1  # computed from the row's ticks
+
+
+def test_amendment_2_recounts_only_pure_tick_band_refusals_with_complete_events() -> None:
+    rows = _campaign_rows()
+    band = _event("C_self_learned", 500, t_surface=3.1, tick=0.79)
+    band["refusal"] = "Refusal: gauntlet drift: tick period median 0.786 outside the gauntlet band [0.394, 0.768]"
+    two = _event("D_shared", 501, t_surface=3.1, tick=0.79)
+    two["refusal"] = (
+        "gauntlet drift: tick period median 0.79 outside the gauntlet band [0.394, 0.768]; reservoir foodSaturationLevel=5.0 outside the gauntlet band [19.0, 21.0]"
+    )
+    stale = _event("E_exposed_ablated", 502, t_surface=27.7)
+    stale["refusal"] = "Refusal: a sample was stale (0.169 s > 0.15) — cal and bench alike"
+    capped = _event("C_self_learned", 503, t_surface=None, end="cap", tick=0.79)
+    capped["refusal"] = "gauntlet drift: tick period median 0.79 outside the gauntlet band [0.394, 0.768]"
+    out, recounted = R.reclassify_under_amendments(rows + [band, two, stale, capped])
+    assert [(r["arm"], r["seed"]) for r in recounted] == [("C_self_learned", 500)]
+    by = {(r["arm"], r["seed"]): r for r in out if r.get("kind") == "event"}
+    assert by[("C_self_learned", 500)]["refusal"] is None and by[("C_self_learned", 500)]["amended"]["amendment"] == 2
+    assert (
+        by[("D_shared", 501)]["refusal"]
+        and by[("E_exposed_ablated", 502)]["refusal"]
+        and by[("C_self_learned", 503)]["refusal"]
+    )
+    assert R.reclassify_under_amendments([])[1] == []
+    # narrower than a hand recount: a BELOW-band or MISSING median is F22's regression signature — never recounted
+    below = _event("C_self_learned", 504, t_surface=3.1, tick=0.2)
+    below["refusal"] = "gauntlet drift: tick period median 0.2 outside the gauntlet band [0.394, 0.768]"
+    missing = _event("C_self_learned", 505, t_surface=3.1, tick=0.79)
+    missing["event"]["tick_period_median_s"] = None
+    missing["refusal"] = "gauntlet drift: tick period median None outside the gauntlet band [0.394, 0.768]"
+    assert R.reclassify_under_amendments([below, missing])[1] == []
+    # the frozen supersede rule wins: a LATER clean row for the same (arm, seed) blocks the recount — never both
+    orig = _event("C_self_learned", 506, t_surface=3.1, tick=0.79)
+    orig["refusal"] = "gauntlet drift: tick period median 0.79 outside the gauntlet band [0.394, 0.768]"
+    orig["ts"] = 1.0
+    rerun = _event("C_self_learned", 506, t_surface=3.2)
+    rerun["ts"] = 2.0
+    out2, rec2 = R.reclassify_under_amendments([orig, rerun])
+    assert rec2 == [] and out2[0]["refusal"] and out2[1]["refusal"] is None
+    earlier = dict(rerun, ts=0.5)  # an EARLIER clean row is not a supersede — the recount stands
+    assert len(R.reclassify_under_amendments([earlier, orig])[1]) == 1
+
+
+def test_amendment_1_harness_unchanged_between_reads_git_diff(monkeypatch) -> None:
+    import subprocess as sp
+
+    class _Out:
+        def __init__(self, stdout, rc=0):
+            self.stdout, self.returncode, self.stderr = stdout, rc, ""
+
+    calls: list[str] = []
+
+    def _git(diff_out: str, *, ancestor: bool = True, diff_rc: int = 0):
+        def run(cmd, **k):
+            calls.append(cmd[1])
+            if cmd[1] == "merge-base":
+                return _Out("", rc=0 if ancestor else 1)
+            return _Out(diff_out, rc=diff_rc)
+
+        return run
+
+    monkeypatch.setattr(sp, "run", _git("docs/experiments/data/r3_cal.jsonl\ndocs/experiments/x.md\n"))
+    assert R.harness_unchanged_between("a", "b") == (True, []) and calls == ["merge-base", "diff"]
+    for path in ("scripts/survival_world/r3_run.py", "pyproject.toml", "data/robots.yaml", "scenarios/x.yaml"):
+        monkeypatch.setattr(sp, "run", _git(path + "\n"))
+        ok, touched = R.harness_unchanged_between("a", "b")
+        assert not ok and touched == [path], path
+    monkeypatch.setattr(sp, "run", _git("", ancestor=False))  # not an ancestor → fail-closed, no diff read
+    calls.clear()
+    assert R.harness_unchanged_between("a", "b")[0] is False and calls == ["merge-base"]
+    monkeypatch.setattr(sp, "run", _git("", diff_rc=128))
+    assert R.harness_unchanged_between("a", "b")[0] is False
+
+
+def test_amendment_1_holds_for_the_real_r3_cal_and_bench_hashes() -> None:
+    ok, touched = R.harness_unchanged_between("6b16bbe9", "4cca5524")  # cal PR merge-base → bench hash
+    assert ok and touched == []
+    assert R.harness_unchanged_between("4cca5524", "6b16bbe9")[0] is False  # the reverse is not an ancestor
+
+
+def test_report_hash_rule_yields_to_ancestry_flag() -> None:
+    rows = _campaign_rows()
+    g = {"cal_code_hash": "other", "reservoir_band": [19.0, 21.0], "tick_period_band_s": [0.394, 0.768]}
+    assert "other than the gauntlet" in (R.report(rows, gauntlet=g)["incomplete_cause"] or "")
+    assert "other than the gauntlet" not in (
+        R.report(rows, gauntlet=g, hash_rule_satisfied_by_ancestry=True)["incomplete_cause"] or ""
+    )
+
+
+def test_idle_tick_period_ignores_proposing_ticks() -> None:
+    ev = {
+        "ticks": [
+            {"t": 0.0},
+            {"t": 0.5},
+            {"t": 1.0, "proposal": "x_flee"},
+            {"t": 1.8, "proposal": "x_escape_water"},
+            {"t": 2.3},
+            {"t": 2.8},
+        ]
+    }
+    assert R.idle_tick_period_median_s(ev) == 0.5  # the 0.8 s tie-break dispatch is excluded
+    assert R.idle_tick_period_median_s({"ticks": [{"t": 0.0}, {"t": 0.7, "proposal": "x"}]}) is None

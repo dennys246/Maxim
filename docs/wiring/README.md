@@ -39,6 +39,13 @@ that generalizes belongs here.
   `_read_world_ranges`, never raw world truth; states beyond a cap are indistinguishable to the
   agent. (Survival Phase-0 first run, 2026-09-13.)
 
+- [instrument-band-statistic-matches-window.md](instrument-band-statistic-matches-window.md) — a
+  per-event instrument band must be calibrated on the SHORTEST window any arm will produce: R3's
+  tick-cadence band, frozen on 46-period floor-arm windows, read the `flee` tie-break interval on
+  ≈ 3 s escape windows (1–2 periods) and refused rows by tick PHASE — a selection on the DV's own
+  timing, while idle cadence was arm-invariant. Put cadence bands on idle ticks over a like-for-like
+  window, refuse only with enough periods, report the count. (R3 bench amendment, 2026-09-18.)
+
 - [pain-needs-declared-failure-modes.md](pain-needs-declared-failure-modes.md) — CORRECTED
   entry: the full damage-fear topology. Drive pain DOES publish (band-crossing + latch
   semantics); action-blame is correctly B8-suppressed for bystander actions; Wire 2 percept

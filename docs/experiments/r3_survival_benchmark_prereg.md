@@ -1,6 +1,11 @@
-# R3 (FROZEN 2026-09-18 at v3.1 — four-lens review FOLDED twice, D1–D5 TAKEN, PILOT MEASURED, R3-cal DONE) — the lethal-window benchmark: what a carried survival drive buys at the one moment it matters, measured on a depth-calibrated, frozen gauntlet
+# R3 (FROZEN 2026-09-18 at v3.1; BENCHED 2026-09-18, AMENDED post-data instrument-only — §Outcome at the end) — the lethal-window benchmark: what a carried survival drive buys at the one moment it matters, measured on a depth-calibrated, frozen gauntlet
 
-> **STATUS: FROZEN 2026-09-18 (this PR, a MERGE COMMIT: it carries the calibration rows and the gauntlet
+> **OUTCOME (2026-09-18): the frozen report reads INCOMPLETE on two instrument rules; the amended report
+> (§Amendments, two-lens floor review folded) reads COMPLETE — 60 events, five arms × 12, one hash
+> `4cca5524`, survival a ceiling in every arm, and the ordering the design predicted: A 28.0 / B 8.6 /
+> C 3.2 / D 3.1 / E 28.1 s to air. An instrument and a frozen baseline; nothing graduated. §Outcome.**
+>
+> **STATUS (at the freeze): FROZEN 2026-09-18 (this PR, a MERGE COMMIT: it carries the calibration rows and the gauntlet
 > file whose hash the bench looks up on main). R3-cal (build step 4) is DONE: campaign `r3-cal-1`, 12 clean
 > floor-arm events at depth 5 at ONE hash (`6b16bbe9`, the harness merge, clean tree), the gauntlet
 > `docs/experiments/data/r3_gauntlet.json` validated and every clean row drift-free against it (§Calibration
@@ -487,6 +492,81 @@ under its real name; `doInsomnia` in code; every set read back; the surface cell
 flee anchor recorded and refused. Pilot rows re-labelled "attributed by elimination" (the drive
 read was empty by a key-path bug). Nothing reopens the design; nothing needs `src/`.
 
+## Amendments (2026-09-18, POST-DATA, INSTRUMENT-ONLY — the owner's decision after the bench; each names its evidence)
+
+The bench (`r3-bench-1`, 60 events, hash `4cca5524`) ran clean on every agent and its frozen report
+read INCOMPLETE on two rules that are facts about the INSTRUMENT, not about any row's outcome. Both
+are amended here, after the data, in the open, and the amended analysis is a pure, tested function
+of the rows (`r3_run.report --amended`: `harness_unchanged_between`, `reclassify_under_amendments`)
+beside the frozen one — never a hand recount. The floor of the design review (confounding +
+bio-faithful) runs on this section before the §Outcome is written.
+
+**Amendment 1 — the hash rule as frozen cannot be satisfied; the real precondition is named.** D5 and
+§Dependent measures said "bench rows at a hash other than the gauntlet's read INCOMPLETE". The
+calibration data PR itself advances main, so no bench can ever run at the calibration hash; the
+rule as worded refuses every bench by construction (the vacuous-gate shape, inverted). The
+precondition the bench actually enforces, and the one that matters, is that the gauntlet's
+calibration hash is an ANCESTOR of the bench hash and that no behaviour-bearing TRACKED file changed
+between them (`scripts/`, `src/`, `tests/`, `pyproject.toml`, `data/`, `scenarios/`; `docs/` cannot
+alter behaviour — the apparatus and anchor records are pinned per row). Evidence: `6b16bbe9` is an
+ancestor of `4cca5524` and `git diff --name-only` between them touches `r3_cal.jsonl`,
+`r3_gauntlet.json` and this prereg only. The report's `--amended` path runs both git checks,
+fail-closed, and records them (`amendment_1`); a non-ancestor or a touched file is INCOMPLETE, and
+the frozen hash rule then yields to a report FLAG, never to a rewritten hash. Stated, not governed
+by any git rule: the bridge, the Minecraft server and the venv — only the bridge cadence check and
+the fingerprint guard those. **Ordering consequence:** a bench row taken AFTER this amendment's PR
+merges would fail Amendment 1 by its own rule (the PR touches `scripts/` and `tests/`), so the E 388
+re-run had to execute at `4cca5524` and its row lands in the bench data PR, BEFORE the amendment.
+
+**Amendment 2 — the tick-period band was frozen on a 46-period statistic and applied to a 1–2-period
+one; the refusals fell by tick phase.** The band ([0.39, 0.77] s) is the median ± 2 IQR of the
+IN-WINDOW tick periods of twelve floor-arm events, each ≈ 28 s long (≈ 46 periods per row). On a
+carried-fear event of ≈ 3 s the in-window ticks are at most one idle tick, the `flee` tick and the
+`escape_water` tick — ONE or TWO periods — and one of them is always the `flee` tie-break dispatch,
+0.70–0.79 s in EVERY arm (A 0.745, B 0.765, C 0.786, D 0.767, E 0.736). Every one of the seven refused
+rows (C 342/349/351, D 360/364/366/368) has exactly one in-window period, the tie-break; four one-period
+rows passed only because theirs ran under 0.768. Whether a row was refused was decided by where the
+loop's tick fell relative to the teleport — phase, not workload. **The loop does not tick slower with a
+carried fear:** the IDLE cadence (periods between two non-proposing ticks over the whole telemetry) is
+A 0.581 / B 0.578 / C 0.584 / D 0.566 / E 0.581 s (C vs A, Mann–Whitney p = 0.76). The first draft of
+this amendment said "trained agents tick ≈ 17 % slower"; the bio-faithful lens refuted it from the
+rows, and E — trained, ticking like A — was the control read the wrong way round. Every refused row's
+event is COMPLETE (surfaced 2.6–3.4 s, no damage, no pain publish, drive-decisive, state age ≤ 0.10 s).
+The refused rows are NOT identical to the clean ones on the DV, and the difference runs AGAINST the
+claim: a one-period row is one whose `flee` fired on the first in-water tick, so the frozen rule
+selectively refused C's FAST tail — refused C median 2.997 s against clean 3.277 s, and seed 351 at
+2.587 s is the fastest C row of all (D: refused 3.203 vs clean 3.131 — no tail). The recount moves
+C's median from 3.277 to 3.180 s (−0.10 s) and D's not at all (3.131); no contrast changes (C vs B
+is a complete separation either way). The justification is the instrument — the refusal never
+measured the agent — not the recounted rows' outcomes. Amended: a row whose ONLY refusal is that
+band, whose median is numeric and ABOVE the band (a below-band or missing median is the regression
+signature the band was frozen for), whose event is complete, and for which no LATER clean row exists
+for the same (arm, seed) — the frozen supersede rule wins, never both — is counted, with the original
+refusal recorded on the row (`amended.original_refusal`); the covariate the report carries is the
+IDLE cadence (`arms.*.idle_tick_period_median_s`, pure over the rows' ticks) with the in-window
+number labelled for what it is; every other refusal stands, in particular the stale-sample rule
+(E 388, 0.169 s, a true instrument refusal — re-run under `--resume --only E_exposed_ablated` at the
+bench hash, superseding; the `--only` matters: a plain `--resume` would also re-run the seven
+band-refused rows, and the supersede guard would then drop each recount for the re-run). Why recount
+rather than re-run: a re-run replays the same phase lottery (≈ 7 of 24 would refuse again), and
+re-running until a row passes selects rows whose `flee` fired later — a selection on the DV's own
+timing. What the amendment does NOT do: change any DV, any arm, the gauntlet's other bands, or the
+stale-sample limit.
+
+**Honesty note.** These are rules loosened after the data. They are admissible because neither
+touches an outcome in the claim's favour: the recount lowers C's median, and the hash rule was
+unsatisfiable by any bench. The band did not detect an instrument difference; it
+flagged its own inapplicability — the same band would refuse a FRESH agent with a 3 s event and pass a
+trained one with a 28 s event. The frozen report is kept beside the amended one in
+`docs/experiments/data/` (`r3_report.json` frozen; `r3_report_amended.json` amended), and §Outcome
+reports both statuses. The lesson for the next campaign, recorded in
+[docs/wiring/instrument-band-statistic-matches-window.md](../wiring/instrument-band-statistic-matches-window.md):
+**calibrate a per-event instrument statistic on the SHORTEST window any arm will produce, and match
+the band's statistic to the row's n** — a cadence band belongs on idle ticks over a like-for-like
+window, refuses only with enough periods behind the median, and reports the tick count per row. An
+A-only calibration could not have revealed this: the frozen instrument assumed a tick-period
+DISTRIBUTION per event, and on the escape arms there is none.
+
 ## Operator runbook — R3-bench (the frozen protocol, from a clean main checkout at or after the freeze)
 
 1. big-mac-mini: `git checkout main && git pull` (the checkout must contain this FROZEN prereg AND the
@@ -507,3 +587,76 @@ read was empty by a key-path bug). Nothing reopens the design; nothing needs `sr
 4. One MERGE-COMMIT data PR with `r3_bench.jsonl` + `r3_report.json`; then §Outcome from the report:
    the frozen baseline and the reported contrasts, each with its mechanism beside it, and what they do
    not say — nothing graduated.
+
+## Outcome (2026-09-18) — R3-bench `r3-bench-1`, 60 events, hash `4cca5524`, clean tree
+
+**Frozen status, verbatim (`r3_report.json`, the frozen code at the bench hash):**
+`INCOMPLETE (C_self_learned: 9 clean rows < 12; D_shared: 8 clean rows < 12; rows at hash(es) ['4cca5524a686'] other than the gauntlet's 6b16bbe9b32f)`.
+Both causes are the instrument rules §Amendments names; neither is a row's outcome. One true refusal
+stood and was superseded by the protocol's own resume: E 388, a stale sample (0.169 s > 0.15), re-run
+under `--resume --only E_exposed_ablated` at the same hash (surfaced 28.174 s).
+
+**Amended status (`r3_report_amended.json`, `report --amended`, pure over the same rows):** `COMPLETE`.
+Amendment 1 holds (`6b16bbe9` is an ancestor of `4cca5524`; no behaviour-bearing tracked file between
+them). Amendment 2 recounts seven rows (C 342/349/351, D 360/364/366/368): each refused by the tick band
+alone, numeric and above it, complete, unsuperseded. Both reports sit in `docs/experiments/data/`; the
+numbers below are the amended report's, with the frozen medians beside them where they differ.
+
+| arm (n = 12 each) | survived | escaped before damage | t_surface median s [boot 95 %] | oxygen pain s | health pain s | health lost | drive-decisive | idle cadence s |
+|---|---|---|---|---|---|---|---|---|
+| A innate only | 12/12 | 0 | **27.995** [27.88, 28.15] | 22.47 | 2.13 | 10.67 | 12/12 | 0.58 |
+| B in situ | 12/12 | 12 | **8.575** [8.45, 8.74] | 3.03 | 0 | 0 | 12/12 | 0.58 |
+| C self-learned | 12/12 | 12 | **3.180** [3.00, 3.30] (frozen, n = 9: 3.277) | 0 | 0 | 0 | 12/12 | 0.58 |
+| D shared (Exp 61 receiver) | 12/12 | 12 | **3.131** [3.05, 3.34] (frozen, n = 8: 3.131) | 0 | 0 | 0 | 12/12 | 0.56 |
+| E exposed, ablated | 12/12 | 0 | **28.084** [27.87, 28.17] | 22.51 | 2.25 | 10.83 | 12/12 | 0.58 |
+
+Survival is the declared CEILING (Wilson 95 % lower bound 0.76 at 12/12, regeneration on) and
+separates nothing; `escaped_before_damage` is the route-order flag and reads exactly as declared
+(A/E ≡ 0, B/C/D ≡ 12 — the anti-vacuity check, passed, not a DV). Every executed escape in every arm
+was drive-decisive (aggregate `drive` > 0, causal 0, learned 0) — the route is the arm's declared
+channel plus that read, on 60 of 60. No event was censored; no death; no guard breach; the apparatus
+rows clean.
+
+**Contrasts (Mann–Whitney on `t_surface`, n = 12 v 12; a complete separation floors p at 3.7e-5):**
+
+| contrast | mechanism | Δ median s | p | Δ oxygen pain s |
+|---|---|---|---|---|
+| C − A | carried fear vs the innate health reflex | −24.8 | 3.7e-5 | −22.5 |
+| B − A | in-situ Wire-4 acquisition vs the reflex | −19.4 | 3.7e-5 | −19.4 |
+| C − B | carrying the fear vs learning it there | −5.4 | 3.7e-5 | −3.0 |
+| C − E | the drive vs the exposure without it | −24.9 | 3.7e-5 | −22.5 |
+| D beside C | the discounted vicarious fear beside the self-learned one — reported, never a contrast | −0.05 | 0.84 | 0 |
+
+**What the rows say, in mechanism terms.**
+- **What the carried drive buys at the one moment it matters: ≈ 25 s of latency, ≈ 11 hp and ≈ 22 s
+  of oxygen pain — not life.** With regeneration on, the innate `health → threat` reflex surfaces every
+  fresh agent at ≈ 28 s (health 20 → 9.3, the floor's fault tail absent: 12/12); the drive's whole
+  contribution is the cost it removes, in the drives' own currency.
+- **E ≡ A.** Trained exactly as C and then detached, E surfaces at 28.08 s against A's 28.00 with the
+  same pain and the same damage: the exposure without the subscriber buys nothing, and E ticks like A
+  (idle cadence 0.579 v 0.579). What C carries is the Wire-4 need, not a memory of the pool.
+- **D ≡ C.** The Exp 61 receiver — the discounted −0.75 fear ingested from a donor's export — escapes
+  at 3.13 s against C's 3.18 (p 0.84), pain-free and damage-free on 12/12. As the design said: both
+  clear θ, same affinity, same tie-break; the discount buys no latency to measure, and none is claimed.
+- **C's 3.18 s decomposes into instrument and mechanism.** From the rows' own call stamps (medians):
+  first proposal at 0.99 s (the first loop tick after the teleport); `flee` fails in 1 ms (the
+  pathfinder is dead in water) and the loop's next tick dispatches `escape_water` 0.77 s later (the
+  tie-break tax, one loop period, ≈ 24 % of the latency); head clear 1.43 s after the escape call
+  (the ascent from depth 5). D: 0.95 / 0.75 / 1.44. The pilot's 3.15 ± 0.20 s is met (3.18 [3.00, 3.30]).
+- **C − B is the pain-free descent, and only that.** B's first proposal comes at 6.36 s — after the
+  oxygen-12 publish it needs to book the fear — then the SAME tie-break (0.76 s) and the SAME ascent
+  (1.47 s). The 5.4 s gap is structural (C fires on the first tick, B cannot before the publish), a
+  complete separation as predicted, and B's 3.0 s of oxygen pain is the acquisition's price.
+- **The gauntlet held on the fields that measure the world**: reservoir, apparatus record, anchor,
+  roster, flee reply, drift-free on every clean row; the cadence band's failure was the statistic, not
+  the loop (§Amendments; `docs/wiring/instrument-band-statistic-matches-window.md`).
+
+**What this does NOT say.** Nothing here is graduated and nothing is a claim about learning: R3 is the
+instrument and the frozen baseline the roadmap's Phase 3 asked for. It does not measure the survival
+value of a drive against DEATH (survival is a ceiling by design at this depth with regeneration on —
+the regen-off cell was rejected as doubling the campaign, §Owner decisions D5); it does not distinguish D from C (structurally
+identical by the argmax); it does not test any drive but the oxygen fear; the tick-cadence band is
+a covariate here, not a gate, and the next campaign freezes its band on idle ticks. The numbers to
+re-run against, on any harness, runtime or wiring change touching Wire 4, the innate reflex, the
+NAc credit path or the loop cadence: **A 27.995 / B 8.575 / C 3.180 / D 3.131 / E 28.084 s**, oxygen
+pain 22.5 / 3.0 / 0 / 0 / 22.5 s, on the gauntlet at `6b16bbe9`, bench at `4cca5524`.

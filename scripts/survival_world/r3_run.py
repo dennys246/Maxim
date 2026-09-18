@@ -118,6 +118,21 @@ def mann_whitney_p(a: list[float], b: list[float]) -> float | None:
     return float(mannwhitneyu(a, b, alternative="two-sided").pvalue)
 
 
+def idle_tick_period_median_s(event: dict[str, Any]) -> float | None:
+    """The loop's IDLE cadence: the median period between consecutive ticks where NEITHER proposes,
+    over the event's whole telemetry (pure over `event.ticks`). The harness's in-window
+    `tick_period_median_s` degenerates to 1–2 periods on a ≈ 3 s event — one of them always the
+    `flee` tie-break dispatch (≈ 0.77 s in every arm) — so it is not a cadence there (bio-faithful
+    lens on the amendments, 2026-09-18); this one is."""
+    ticks = [t for t in (event.get("ticks") or []) if "t" in t]
+    periods = [
+        b["t"] - a["t"]
+        for a, b in zip(ticks, ticks[1:])
+        if not a.get("proposal") and not b.get("proposal") and b["t"] > a["t"]
+    ]
+    return round(_median(periods), 3) if periods else None
+
+
 def _dist(xs: list[float]) -> dict[str, Any]:
     xs = sorted(x for x in xs if x is not None)
     if not xs:
@@ -132,10 +147,15 @@ def _dist(xs: list[float]) -> dict[str, Any]:
 
 
 def report(
-    rows: list[dict[str, Any]], *, campaign_id: str | None = None, gauntlet: dict[str, Any] | None = None
+    rows: list[dict[str, Any]],
+    *,
+    campaign_id: str | None = None,
+    gauntlet: dict[str, Any] | None = None,
+    hash_rule_satisfied_by_ancestry: bool = False,
 ) -> dict[str, Any]:
     """Pure over the rows. Reported with intervals; nothing gated except completeness (and, with the
-    gauntlet given, D5: bench rows at a hash other than the gauntlet's read INCOMPLETE)."""
+    gauntlet given, D5: bench rows at a hash other than the gauntlet's read INCOMPLETE — unless the
+    caller has established Amendment 1's ancestry + unchanged-harness precondition and says so)."""
     if campaign_id:
         rows = [r for r in rows if r.get("campaign_id") == campaign_id]
     events = [r for r in rows if r.get("kind") == "event"]
@@ -160,7 +180,10 @@ def report(
             "health_pain_s": _dist([(e.get("pain_seconds") or {}).get("health") for e in ev]),
             "health_lost": _dist([e.get("health_lost") for e in ev]),
             "drive_decisive": sum(1 for r in rs if r.get("decisive")),
-            "tick_period_median_s": _dist([e.get("tick_period_median_s") for e in ev]),
+            # in-window median: 1–2 periods on a short event, dominated by the flee tie-break — NOT a cadence
+            "tick_period_median_s_in_window": _dist([e.get("tick_period_median_s") for e in ev]),
+            # the loop's idle cadence, the covariate that IS comparable across arms
+            "idle_tick_period_median_s": _dist([idle_tick_period_median_s(e) for e in ev]),
         }
 
     def ts(arm: str) -> list[float]:
@@ -208,7 +231,7 @@ def report(
         incomplete.append("no clean apparatus row")
     if gauntlet is not None:
         off = [h for h in hashes if h != str(gauntlet.get("cal_code_hash"))]
-        if off:
+        if off and not hash_rule_satisfied_by_ancestry:
             incomplete.append(f"rows at hash(es) {off} other than the gauntlet's {gauntlet.get('cal_code_hash')}")
         dirty = [r for r in events if not r.get("refusal") and r.get("dirty")]
         if dirty:
@@ -339,6 +362,103 @@ def validate_gauntlet(g: dict[str, Any]) -> list[str]:
         if not g.get(key):
             why.append(f"no {key}")
     return why
+
+
+# ── Amendments (2026-09-18, post-data, INSTRUMENT-ONLY; prereg §Amendments) ──
+
+TICK_BAND_REFUSAL = "gauntlet drift: tick period median"
+# behaviour-bearing TRACKED inputs: harness, runtime, tests, the dependency manifest, data/ (util +
+# robots.yaml), scenarios/. Not governed by any git rule — the bridge, the Minecraft server, the venv;
+# only the bridge cadence check and the fingerprint guard those.
+HARNESS_PATHS = ("scripts/", "src/", "tests/", "pyproject.toml", "data/", "scenarios/")
+
+
+def harness_unchanged_between(cal_hash: str, bench_hash: str) -> tuple[bool, list[str]]:
+    """Amendment 1's real precondition: the calibration hash is an ANCESTOR of the bench hash AND no
+    behaviour-bearing tracked file changed between them (the frozen wording "rows at a hash other
+    than the gauntlet's" was structurally unsatisfiable — the calibration PR itself advances main).
+    Fail-closed: any git failure or a non-ancestor is False."""
+    try:
+        anc = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", cal_hash, bench_hash],
+            cwd=C.REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if anc.returncode != 0:
+            return False, [f"{cal_hash} is not an ancestor of {bench_hash}"]
+        out = subprocess.run(
+            ["git", "diff", "--name-only", cal_hash, bench_hash],
+            cwd=C.REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, [f"git failed: {exc}"]
+    if out.returncode != 0:
+        return False, [f"git diff failed: {out.stderr.strip()[:120]}"]
+    touched = [p for p in out.stdout.splitlines() if p.strip() and p.startswith(HARNESS_PATHS)]
+    return not touched, touched
+
+
+def _band_hi(core: str) -> float | None:
+    """The upper edge of the band quoted in a tick-band refusal ('... outside the gauntlet band [lo, hi]')."""
+    try:
+        return float(core.split("[", 1)[1].split("]", 1)[0].split(",")[1])
+    except (IndexError, ValueError):
+        return None
+
+
+def reclassify_under_amendments(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Amendment 2: the loop tick-period band was frozen on 46-period floor-arm windows; a ≈3 s
+    escape window holds ONE or TWO periods, one of them always the `flee` tie-break dispatch
+    (0.70–0.79 s in every arm), so the in-window "median" degenerates to that interval and the band
+    refuses rows by tick PHASE, not cadence (idle cadence is arm-invariant, ±15 ms). A row whose ONLY
+    refusal is that band, whose median is numeric and ABOVE the band (a below-band or missing median
+    is the regression signature the band was frozen for), whose event is COMPLETE (a surface or a
+    death with its detector read), and for which no LATER clean row exists for the same (arm, seed)
+    (the frozen supersede rule wins) is counted, with the reason recorded on the row; the covariate
+    the report carries is the idle cadence. Every other refusal (a stale sample, a guard breach, a
+    non-decisive escape, drift on any other field) stands. Pure; returns (rows, the rows re-counted)."""
+    out: list[dict[str, Any]] = []
+    recounted: list[dict[str, Any]] = []
+    later_clean: dict[tuple[str, int], float] = {}
+    for r in rows:
+        if r.get("kind") == "event" and not r.get("refusal") and r.get("seed") is not None:
+            key = (str(r.get("arm")), int(r["seed"]))
+            later_clean[key] = max(later_clean.get(key, 0.0), float(r.get("ts") or 0.0))
+    for r in rows:
+        ref = str(r.get("refusal") or "")
+        core = ref.removeprefix("Refusal: ")
+        ev = r.get("event") or {}
+        tp = ev.get("tick_period_median_s")
+        hi = _band_hi(core) if core.startswith(TICK_BAND_REFUSAL) else None
+        key = (str(r.get("arm")), int(r["seed"])) if r.get("seed") is not None else None
+        superseded = key in later_clean and later_clean[key] > float(r.get("ts") or 0.0)
+        if (
+            r.get("kind") == "event"
+            and core.startswith(TICK_BAND_REFUSAL)
+            and ";" not in core  # ONLY the band (gauntlet_drift joins reasons with '; ')
+            and ev.get("end") in ("surface", "death")
+            and isinstance(tp, (int, float))
+            and hi is not None
+            and float(tp) > hi
+            and not superseded
+        ):
+            r2 = dict(r)
+            r2["refusal"] = None
+            r2["amended"] = {
+                "amendment": 2,
+                "original_refusal": ref,
+                "tick_period_median_s": ev.get("tick_period_median_s"),
+            }
+            out.append(r2)
+            recounted.append(r2)
+        else:
+            out.append(r)
+    return out, recounted
 
 
 def _is_ancestor_of_main(sha: str) -> bool:
@@ -792,7 +912,47 @@ def _report(args: argparse.Namespace) -> int:
     if args.gauntlet:
         gp = Path(args.gauntlet)
         g = load_json(gp if gp.is_absolute() else C.REPO_ROOT / gp)
-    rep = report(rows, campaign_id=args.campaign_id, gauntlet=g)
+    amended: dict[str, Any] | None = None
+    if args.amended:
+        # Amendment 1: the hash rule is ANCESTRY + no harness change between the hashes (checked here, recorded)
+        bench_hashes = sorted(
+            {
+                str((r.get("provenance") or {}).get("executed_git_hash"))
+                for r in rows
+                if r.get("campaign_id") == args.campaign_id
+            }
+        )
+        cal_hash = str((g or {}).get("cal_code_hash"))
+        checks = {h: harness_unchanged_between(cal_hash, h) for h in bench_hashes}
+        rows, recounted = reclassify_under_amendments(rows)
+        amended = {
+            "amendment_1": {
+                "cal_code_hash": cal_hash,
+                "bench_hashes": bench_hashes,
+                "harness_unchanged": {h: ok for h, (ok, _) in checks.items()},
+                "touched": {h: t for h, (_, t) in checks.items()},
+            },
+            "amendment_2": {
+                "recounted": [
+                    {"arm": r["arm"], "seed": r["seed"], "tick_period_median_s": r["amended"]["tick_period_median_s"]}
+                    for r in recounted
+                ]
+            },
+        }
+    rep = report(
+        rows,
+        campaign_id=args.campaign_id,
+        gauntlet=g,
+        hash_rule_satisfied_by_ancestry=amended is not None and all(ok for ok, _ in checks.values()),
+    )
+    if amended is not None:
+        rep["amended"] = amended
+        if not all(amended["amendment_1"]["harness_unchanged"].values()):
+            rep["status"] = "INCOMPLETE"
+            rep["incomplete_cause"] = (
+                (rep.get("incomplete_cause") or "")
+                + "; Amendment 1 unmet: the calibration hash is not an ancestor with an unchanged harness"
+            ).strip("; ")
     print(json.dumps(rep, indent=2, default=str))
     print(f"STATUS: {rep['status']}" + (f" ({rep['incomplete_cause']})" if rep["incomplete_cause"] else ""))
     if args.json:
@@ -829,6 +989,9 @@ def main() -> int:
     v.add_argument("--json", default=None)
     v.add_argument("--campaign-id", default=None)
     v.add_argument("--gauntlet", default=None, help="compare every row's hash to the gauntlet's cal hash (D5)")
+    v.add_argument(
+        "--amended", action="store_true", help="apply the 2026-09-18 instrument-only amendments (prereg §Amendments)"
+    )
     v.set_defaults(func=_report)
     args = p.parse_args()
     return int(args.func(args))
