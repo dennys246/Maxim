@@ -1,0 +1,413 @@
+{
+  "_format_version": "1.0",
+  "kind": "r3_report",
+  "campaign_id": "r3-bench-1",
+  "frozen_version": "v3.1",
+  "refused": [
+    {
+      "arm": "D_shared",
+      "seed": 360,
+      "refusal": "gauntlet drift: tick period median 0.769 outside the gauntlet band [0.394, 0.768]"
+    },
+    {
+      "arm": "C_self_learned",
+      "seed": 342,
+      "refusal": "Refusal: gauntlet drift: tick period median 0.786 outside the gauntlet band [0.394, 0.768]"
+    },
+    {
+      "arm": "D_shared",
+      "seed": 364,
+      "refusal": "gauntlet drift: tick period median 0.778 outside the gauntlet band [0.394, 0.768]"
+    },
+    {
+      "arm": "D_shared",
+      "seed": 366,
+      "refusal": "gauntlet drift: tick period median 0.787 outside the gauntlet band [0.394, 0.768]"
+    },
+    {
+      "arm": "D_shared",
+      "seed": 368,
+      "refusal": "gauntlet drift: tick period median 0.793 outside the gauntlet band [0.394, 0.768]"
+    },
+    {
+      "arm": "E_exposed_ablated",
+      "seed": 388,
+      "refusal": "Refusal: a sample was stale (0.169 s > 0.15) \u2014 cal and bench alike"
+    },
+    {
+      "arm": "C_self_learned",
+      "seed": 349,
+      "refusal": "Refusal: gauntlet drift: tick period median 0.786 outside the gauntlet band [0.394, 0.768]"
+    },
+    {
+      "arm": "C_self_learned",
+      "seed": 351,
+      "refusal": "Refusal: gauntlet drift: tick period median 0.773 outside the gauntlet band [0.394, 0.768]"
+    }
+  ],
+  "code_hashes": [
+    "4cca5524a686"
+  ],
+  "arms": {
+    "A_innate_only": {
+      "n": 12,
+      "survived": 12,
+      "survived_wilson95": [
+        0.7575059904469021,
+        1.0
+      ],
+      "escaped_before_damage": 0,
+      "t_surface": {
+        "n": 12,
+        "min": 27.453,
+        "median": 27.995,
+        "max": 28.491,
+        "median_ci95": [
+          27.884,
+          28.15
+        ]
+      },
+      "censored": 0,
+      "oxygen_pain_s": {
+        "n": 12,
+        "min": 21.951,
+        "median": 22.467,
+        "max": 22.959,
+        "median_ci95": [
+          22.396,
+          22.684
+        ]
+      },
+      "health_pain_s": {
+        "n": 12,
+        "min": 1.535,
+        "median": 2.126,
+        "max": 2.606,
+        "median_ci95": [
+          1.961,
+          2.3
+        ]
+      },
+      "health_lost": {
+        "n": 12,
+        "min": 10.667,
+        "median": 10.667,
+        "max": 12.667,
+        "median_ci95": [
+          10.667,
+          10.917
+        ]
+      },
+      "drive_decisive": 12,
+      "tick_period_median_s": {
+        "n": 12,
+        "min": 0.574,
+        "median": 0.583,
+        "max": 0.594,
+        "median_ci95": [
+          0.577,
+          0.589
+        ]
+      }
+    },
+    "B_in_situ": {
+      "n": 12,
+      "survived": 12,
+      "survived_wilson95": [
+        0.7575059904469021,
+        1.0
+      ],
+      "escaped_before_damage": 12,
+      "t_surface": {
+        "n": 12,
+        "min": 8.314,
+        "median": 8.575,
+        "max": 9.122,
+        "median_ci95": [
+          8.451,
+          8.744
+        ]
+      },
+      "censored": 0,
+      "oxygen_pain_s": {
+        "n": 12,
+        "min": 2.711,
+        "median": 3.033,
+        "max": 3.618,
+        "median_ci95": [
+          2.947,
+          3.181
+        ]
+      },
+      "health_pain_s": {
+        "n": 12,
+        "min": 0.0,
+        "median": 0.0,
+        "max": 0.0,
+        "median_ci95": [
+          0.0,
+          0.0
+        ]
+      },
+      "health_lost": {
+        "n": 12,
+        "min": 0.0,
+        "median": 0.0,
+        "max": 0.0,
+        "median_ci95": [
+          0.0,
+          0.0
+        ]
+      },
+      "drive_decisive": 12,
+      "tick_period_median_s": {
+        "n": 12,
+        "min": 0.554,
+        "median": 0.585,
+        "max": 0.597,
+        "median_ci95": [
+          0.577,
+          0.593
+        ]
+      }
+    },
+    "C_self_learned": {
+      "n": 9,
+      "survived": 9,
+      "survived_wilson95": [
+        0.700854948272956,
+        1.0
+      ],
+      "escaped_before_damage": 9,
+      "t_surface": {
+        "n": 9,
+        "min": 2.992,
+        "median": 3.277,
+        "max": 3.439,
+        "median_ci95": [
+          2.995,
+          3.334
+        ]
+      },
+      "censored": 0,
+      "oxygen_pain_s": {
+        "n": 9,
+        "min": 0.0,
+        "median": 0.0,
+        "max": 0.0,
+        "median_ci95": [
+          0.0,
+          0.0
+        ]
+      },
+      "health_pain_s": {
+        "n": 9,
+        "min": 0.0,
+        "median": 0.0,
+        "max": 0.0,
+        "median_ci95": [
+          0.0,
+          0.0
+        ]
+      },
+      "health_lost": {
+        "n": 9,
+        "min": 0.0,
+        "median": 0.0,
+        "max": 0.0,
+        "median_ci95": [
+          0.0,
+          0.0
+        ]
+      },
+      "drive_decisive": 9,
+      "tick_period_median_s": {
+        "n": 9,
+        "min": 0.643,
+        "median": 0.682,
+        "max": 0.722,
+        "median_ci95": [
+          0.655,
+          0.713
+        ]
+      }
+    },
+    "D_shared": {
+      "n": 8,
+      "survived": 8,
+      "survived_wilson95": [
+        0.6755924316585924,
+        1.0
+      ],
+      "escaped_before_damage": 8,
+      "t_surface": {
+        "n": 8,
+        "min": 2.893,
+        "median": 3.131,
+        "max": 3.474,
+        "median_ci95": [
+          2.919,
+          3.329
+        ]
+      },
+      "censored": 0,
+      "oxygen_pain_s": {
+        "n": 8,
+        "min": 0.0,
+        "median": 0.0,
+        "max": 0.0,
+        "median_ci95": [
+          0.0,
+          0.0
+        ]
+      },
+      "health_pain_s": {
+        "n": 8,
+        "min": 0.0,
+        "median": 0.0,
+        "max": 0.0,
+        "median_ci95": [
+          0.0,
+          0.0
+        ]
+      },
+      "health_lost": {
+        "n": 8,
+        "min": 0.0,
+        "median": 0.0,
+        "max": 0.0,
+        "median_ci95": [
+          0.0,
+          0.0
+        ]
+      },
+      "drive_decisive": 8,
+      "tick_period_median_s": {
+        "n": 8,
+        "min": 0.606,
+        "median": 0.653,
+        "max": 0.707,
+        "median_ci95": [
+          0.613,
+          0.675
+        ]
+      }
+    },
+    "E_exposed_ablated": {
+      "n": 11,
+      "survived": 11,
+      "survived_wilson95": [
+        0.7411670300055737,
+        1.0
+      ],
+      "escaped_before_damage": 0,
+      "t_surface": {
+        "n": 11,
+        "min": 27.549,
+        "median": 28.07,
+        "max": 28.408,
+        "median_ci95": [
+          27.819,
+          28.161
+        ]
+      },
+      "censored": 0,
+      "oxygen_pain_s": {
+        "n": 11,
+        "min": 22.151,
+        "median": 22.497,
+        "max": 22.814,
+        "median_ci95": [
+          22.235,
+          22.662
+        ]
+      },
+      "health_pain_s": {
+        "n": 11,
+        "min": 1.734,
+        "median": 2.225,
+        "max": 2.578,
+        "median_ci95": [
+          2.147,
+          2.4
+        ]
+      },
+      "health_lost": {
+        "n": 11,
+        "min": 10.667,
+        "median": 10.833,
+        "max": 12.833,
+        "median_ci95": [
+          10.667,
+          11.167
+        ]
+      },
+      "drive_decisive": 11,
+      "tick_period_median_s": {
+        "n": 11,
+        "min": 0.578,
+        "median": 0.582,
+        "max": 0.595,
+        "median_ci95": [
+          0.579,
+          0.592
+        ]
+      }
+    }
+  },
+  "contrasts": {
+    "C_minus_A": {
+      "mechanism": "carried fear vs the innate health reflex",
+      "t_surface_median_diff_s": -24.718,
+      "t_surface_mann_whitney_p": 0.00014348670002530624,
+      "oxygen_pain_median_diff_s": -22.467,
+      "censored": {
+        "C_self_learned": 0,
+        "A_innate_only": 0
+      }
+    },
+    "B_minus_A": {
+      "mechanism": "in-situ Wire-4 acquisition vs the innate reflex",
+      "t_surface_median_diff_s": -19.42,
+      "t_surface_mann_whitney_p": 3.6584553538971e-05,
+      "oxygen_pain_median_diff_s": -19.434,
+      "censored": {
+        "B_in_situ": 0,
+        "A_innate_only": 0
+      }
+    },
+    "C_minus_B": {
+      "mechanism": "carrying the fear vs learning it there (the pain-free descent to the oxygen-12 publish)",
+      "t_surface_median_diff_s": -5.298,
+      "t_surface_mann_whitney_p": 0.00014348670002530624,
+      "oxygen_pain_median_diff_s": -3.033,
+      "censored": {
+        "C_self_learned": 0,
+        "B_in_situ": 0
+      }
+    },
+    "C_minus_E": {
+      "mechanism": "the drive vs the exposure without it",
+      "t_surface_median_diff_s": -24.793,
+      "t_surface_mann_whitney_p": 0.00019709416773215247,
+      "oxygen_pain_median_diff_s": -22.497,
+      "censored": {
+        "C_self_learned": 0,
+        "E_exposed_ablated": 0
+      }
+    },
+    "D_beside_C": {
+      "mechanism": "the discounted vicarious fear beside the self-learned one \u2014 reported, never a contrast",
+      "t_surface_median_diff_s": -0.146,
+      "t_surface_mann_whitney_p": 0.4807075277663513,
+      "oxygen_pain_median_diff_s": 0.0,
+      "censored": {
+        "D_shared": 0,
+        "C_self_learned": 0
+      }
+    }
+  },
+  "status": "INCOMPLETE",
+  "incomplete_cause": "C_self_learned: 9 clean rows < 12; D_shared: 8 clean rows < 12; E_exposed_ablated: 11 clean rows < 12; rows at hash(es) ['4cca5524a686'] other than the gauntlet's 6b16bbe9b32f",
+  "what_this_is": "an instrument and a frozen baseline; nothing here is graduated"
+}
