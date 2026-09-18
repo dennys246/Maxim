@@ -78,6 +78,10 @@ scaling, generalization to another pool, hive-side promotion.
 Measures the survival advantage the learned drives buy. **Single-step wolf defense** rides here
 (wild wolf attacks the agent's attacker → health relief → operant credit). Instrument first,
 verdict second.
+**Instrument DONE (2026-09-18):** R3-bench `r3-bench-1` on the frozen gauntlet — A 28.0 / B 8.6 /
+C 3.2 / D 3.1 / E 28.1 s to air, 60/60 drive-decisive, survival a ceiling; frozen report INCOMPLETE on
+two instrument rules, amended (post-data, instrument-only) report COMPLETE. The baseline lives in
+`docs/experiments/r3_survival_benchmark_prereg.md` §Outcome; nothing graduated.
 
 ### Phase 4 — R1 generalization channel *(frontier; likely 1.3-late / 1.4)*
 Cross-context. Unlocks the dining-hall→wolf *transfer*, spatial "resource is over there," and
