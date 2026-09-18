@@ -168,6 +168,15 @@ def _xyz(t: list) -> dict[str, float]:
     return {"x": float(t[0]), "y": float(t[1]), "z": float(t[2])}
 
 
+# `slow` (nightly lane + local, not the per-PR gate): this composes the WHOLE campaign in one process — five agent
+# loops, the scripted bridge's server thread and the client's reader thread share the GIL — and the frozen
+# stale-sample rule (0.15 s) is a REAL-TIME property of that process: one runner stall between two snapshots refuses
+# the row, exactly as the rig refused E 388 at 0.169 s (2026-09-18, CI: 0.348 s on the E event, three green runs
+# on main before it). Relaxing the limit or ignoring a stale refusal here would hollow out the one field the rig
+# refused on; a "deterministic" clock would disable the check with extra steps. The rule's arithmetic is unit-tested
+# above; the composition is proven here, on a host that can hold 4 Hz — run it before every harness PR:
+#   PYTHONPATH="$PWD/src" python -m pytest tests/unit/test_r3_run.py -k offline_campaign -q
+@pytest.mark.slow
 @pytest.mark.timeout(600)
 def test_offline_campaign_apparatus_and_one_event_per_in_process_arm(tmp_path: Path, monkeypatch) -> None:
     from survival_world import water_trial as WT
