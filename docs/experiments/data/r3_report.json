@@ -294,63 +294,63 @@
       }
     },
     "E_exposed_ablated": {
-      "n": 11,
-      "survived": 11,
+      "n": 12,
+      "survived": 12,
       "survived_wilson95": [
-        0.7411670300055737,
+        0.7575059904469021,
         1.0
       ],
       "escaped_before_damage": 0,
       "t_surface": {
-        "n": 11,
+        "n": 12,
         "min": 27.549,
-        "median": 28.07,
+        "median": 28.084,
         "max": 28.408,
         "median_ci95": [
-          27.819,
-          28.161
+          27.87,
+          28.168
         ]
       },
       "censored": 0,
       "oxygen_pain_s": {
-        "n": 11,
+        "n": 12,
         "min": 22.151,
-        "median": 22.497,
+        "median": 22.508,
         "max": 22.814,
         "median_ci95": [
-          22.235,
-          22.662
+          22.276,
+          22.652
         ]
       },
       "health_pain_s": {
-        "n": 11,
+        "n": 12,
         "min": 1.734,
-        "median": 2.225,
+        "median": 2.246,
         "max": 2.578,
         "median_ci95": [
           2.147,
-          2.4
+          2.383
         ]
       },
       "health_lost": {
-        "n": 11,
+        "n": 12,
         "min": 10.667,
         "median": 10.833,
         "max": 12.833,
         "median_ci95": [
           10.667,
-          11.167
+          11.0
         ]
       },
-      "drive_decisive": 11,
+      "drive_decisive": 12,
       "tick_period_median_s": {
-        "n": 11,
-        "min": 0.578,
-        "median": 0.582,
+        "n": 12,
+        "min": 0.577,
+        "median": 0.581,
         "max": 0.595,
         "median_ci95": [
           0.579,
-          0.592
+          0.589
         ]
       }
     }
@@ -388,9 +388,9 @@
     },
     "C_minus_E": {
       "mechanism": "the drive vs the exposure without it",
-      "t_surface_median_diff_s": -24.793,
-      "t_surface_mann_whitney_p": 0.00019709416773215247,
-      "oxygen_pain_median_diff_s": -22.497,
+      "t_surface_median_diff_s": -24.807,
+      "t_surface_mann_whitney_p": 0.00014348670002530624,
+      "oxygen_pain_median_diff_s": -22.508,
       "censored": {
         "C_self_learned": 0,
         "E_exposed_ablated": 0
@@ -408,6 +408,6 @@
     }
   },
   "status": "INCOMPLETE",
-  "incomplete_cause": "C_self_learned: 9 clean rows < 12; D_shared: 8 clean rows < 12; E_exposed_ablated: 11 clean rows < 12; rows at hash(es) ['4cca5524a686'] other than the gauntlet's 6b16bbe9b32f",
+  "incomplete_cause": "C_self_learned: 9 clean rows < 12; D_shared: 8 clean rows < 12; rows at hash(es) ['4cca5524a686'] other than the gauntlet's 6b16bbe9b32f",
   "what_this_is": "an instrument and a frozen baseline; nothing here is graduated"
 }
