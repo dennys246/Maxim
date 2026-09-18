@@ -413,6 +413,27 @@ underwater at 45 s is refused.
 5. R3-bench campaign at one hash → merge-commit data PR → §Outcome: the frozen baseline and the
    reported contrasts, each with its mechanism beside it, and what they do not say.
 
+## Apparatus re-check (2026-09-17, after the pilot)
+
+The water classroom was rebuilt in place after the pilot (the surface cell had already tested AIR;
+the rebuild was unnecessary but harmless) and the rebuild rewrote the anchor record, so the Exp 60
+water check ran again and re-stamped it (hash `6b9720d6`, clean tree, all checks PASS). This is the
+"pain edge re-measured on campaign day" the Exp 61 freeze recorded as an honest limit, now done for
+R3. Recorded beside the original, never over it — the 2026-09-15 record is the one Exp 60 and 61 ran
+against and cite: `docs/experiments/data/exp60_water_apparatus_2026-09-17.json`. **R3's harness reads
+THIS record** (pain edge, surfacing) and the re-stamped anchor (`measured.t_damage_onset_min_s`).
+
+| edge | 2026-09-15 (Exp 60/61) | 2026-09-17 (R3) |
+|---|---|---|
+| pain edge (3 cycles) | 5.09–5.44 s | 5.15–5.28 s |
+| damage onset | 16.07–16.65 s | 16.06–16.20 s |
+| bridge escape to air | 1.45–1.83 s | 1.40–1.54 s |
+| sink-back after the breath | — | ≥ 2.12 s |
+| distance from spawn | 69.17 | 69.17 |
+
+Consequence for the frozen numbers: the US-free probe cap derived from this record is 4.40 s
+(5.153 − 0.75) instead of Exp 60/61's 4.335 s; the train cap 15.06 s is unchanged to two decimals.
+
 ## Delta review record (v3 → v3.1, 2026-09-17)
 
 The four-lens re-run on v3 returned FIX-THEN-BUILD from every lens, no DO-NOT-BUILD, and agreed on
