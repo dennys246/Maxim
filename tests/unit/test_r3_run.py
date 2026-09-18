@@ -340,6 +340,15 @@ def test_amendment_1_harness_unchanged_between_reads_git_diff(monkeypatch) -> No
 
 
 def test_amendment_1_holds_for_the_real_r3_cal_and_bench_hashes() -> None:
+    import subprocess
+
+    for sha in ("6b16bbe9", "4cca5524"):  # the check is fail-closed, so a SHALLOW clone (CI fetch-depth 1) reads False
+        if subprocess.run(
+            ["git", "cat-file", "-e", f"{sha}^{{commit}}"], cwd=R.C.REPO_ROOT, capture_output=True
+        ).returncode:
+            pytest.skip(
+                f"{sha} not in this clone's history (shallow checkout) — the real-pair check needs full history"
+            )
     ok, touched = R.harness_unchanged_between("6b16bbe9", "4cca5524")  # cal PR merge-base → bench hash
     assert ok and touched == []
     assert R.harness_unchanged_between("4cca5524", "6b16bbe9")[0] is False  # the reverse is not an ancestor
