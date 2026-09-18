@@ -35,6 +35,22 @@ altitudes above 128 are one altitude to this body), so classroom/apparatus desig
 place their discriminating states *inside* the declared ranges of the sensors expected to
 carry them.
 
+## The reservoir behind a clamp (R3, 2026-09-17)
+
+A clamp can hide a QUANTITY the world keeps spending. The apparatus heal (`WaterTrial.heal`:
+`effect give … saturation`) sets the player's TRUE saturation to ≈ 20; the bridge clamps the
+sensed `saturation` at 10. In the R3 pilot's unrescued drowning the health series held 18–20 for
+nine seconds after damage onset while every sample read saturation 10 — the game was spending 20 →
+10 underneath — and health collapsed the moment the sensed value reached 0. The floor arm's
+regeneration-on margin to death (5.2 s) and its health lost are quantities of that INVISIBLE
+reservoir; a game-native start (respawn saturation 5) would move them by ≈ 6–7 s, and no
+fingerprint over sensed values would notice. Rule: **when a frozen number depends on a clamped
+sensor's true value, read the true value by a game-native path and freeze THAT** — R3 reads
+`foodSaturationLevel` / `foodLevel` / `foodExhaustionLevel` over RCON (`data get entity`) at every
+event teleport (`WaterTrial.read_food_state`), records them per row, and the gauntlet file carries the
+accepted band (`r3_run.write_gauntlet` → `gauntlet_drift` refuses a row outside it). The confounding
+lens's delta report has the series: `docs/experiments/rationale/r3-survival-benchmark/confounding-v3.md`.
+
 ## See also
 
 [world-light-sensing.md](world-light-sensing.md) (the sibling sensor-semantics lesson);
