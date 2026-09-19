@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "hash_scheme": "stable-sha256-v1",
+  "config": {
+    "num_lsh_tables": 4,
+    "bits_per_table": 8,
+    "default_k": 10,
+    "min_similarity": 0.3,
+    "enable_semantic": false
+  },
+  "lsh": {
+    "num_tables": 4,
+    "bits_per_table": 8,
+    "tables": [
+      {},
+      {},
+      {},
+      {}
+    ],
+    "signatures": {}
+  },
+  "inverted": {
+    "by_tool": {},
+    "by_outcome": {},
+    "by_mode": {},
+    "by_hour": {},
+    "by_day": {}
+  },
+  "signatures": {},
+  "substrate_nodes": {},
+  "encoder_provenance": {},
+  "_format_version": "1.0"
+}

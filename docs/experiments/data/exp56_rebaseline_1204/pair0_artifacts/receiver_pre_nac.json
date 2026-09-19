@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "links": {},
+  "outcome_index": {},
+  "priors": {},
+  "total_observations": 0,
+  "reward_bias": {},
+  "goal_reward_bias": {},
+  "cluster_reward_bias": {},
+  "cluster_reward_source": {},
+  "inherent_bias_keys": [],
+  "percept_valences": {},
+  "cluster_fear": {},
+  "event_outcome_welford": {},
+  "saved_at": 1789824521.002186,
+  "_format_version": "1.4"
+}
