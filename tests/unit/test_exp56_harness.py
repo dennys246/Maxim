@@ -424,3 +424,16 @@ class TestHarnessBuilderParams:
         sig = inspect.signature(build_minecraft_aut)
         assert sig.parameters["entity_ref"].default == MINECRAFT_BODY_REF
         assert sig.parameters["client"].default is None
+
+
+def test_restart_without_resume_onto_existing_rows_is_refused(tmp_path, monkeypatch, capsys):
+    """RB-1 (2026-09-19): a start → stop → restart without --resume duplicated the first pair's row
+    and the analyzer counted it. A non-empty --out now refuses unless --resume is passed."""
+    from exp56 import run_campaign as RC
+
+    out = tmp_path / "rows.jsonl"
+    out.write_text(json.dumps({"pair_seed": 42, "arm": "isolated"}) + "\n")
+    monkeypatch.setattr(sys, "argv", ["run_campaign.py", "--mock", "--pairs", "1", "--out", str(out), "--allow-dirty"])
+    assert RC.main() == 2
+    assert "pass --resume" in capsys.readouterr().out
+    assert out.read_text().count("\n") == 1  # nothing appended
