@@ -1,8 +1,10 @@
 # Measurement limits — the instrument ledger
 
 > **Score cards** live in [score_cards/](score_cards/). The current baseline is the v1.3.0
-> re-score ([2026-09-19-claude.md](score_cards/2026-09-19-claude.md)) and its Codex twin, graded
-> blind to it. **Method, from 2026-09-19 on:** three firewalled evidence agents grade groups of
+> re-score: [2026-09-19-claude.md](score_cards/2026-09-19-claude.md) and
+> [2026-09-19-codex.md](score_cards/2026-09-19-codex.md), graded blind to each other. The Claude
+> card's §Divergence compares them and shows most of the spread tracking what each assessor could
+> execute, not a disagreement about facts. **Method, from 2026-09-19 on:** three firewalled evidence agents grade groups of
 > axes in a THROWAWAY WORKTREE AT THE TAG with the earlier cards, the burndown and every
 > grade-quoting passage physically removed — instructions alone are not a firewall, because grades
 > leak through ordinary evidence (a `_comment` in `utils/function_length_baseline.json`, comments
