@@ -1,5 +1,7 @@
 # pymaxim 1.2.1 — "Spoken-code loop"
 
+> **CORRECTION (2026-09-19, added with 1.3.0).** The headline below overclaims: 1.2.1 shipped the spoken-code pairing PIECES, not the composition. No shipped command wires the announcer, so `maxim serve` runs with pairing disabled (`/api/pair/*` → 409) and sign-in is still by token; pairing needs an embedder owning both the console and a live robot handle, and the audible sample-rate check on hardware is still owed. The text below is left as published. Full correction: the 1.3.0 CHANGELOG section and [release_1_3_0.md](release_1_3_0.md).
+
 **Released 2026-09-10 (UTC — PyPI `upload_time`).** `pip install --upgrade pymaxim`
 
 A focused patch on 1.2.0 "Oasis": it completes the spoken-code device-pairing loop end to end
