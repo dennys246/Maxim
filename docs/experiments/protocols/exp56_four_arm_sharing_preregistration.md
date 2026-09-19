@@ -567,4 +567,16 @@ change.
   the analyzer refuses a mixed file. Data: `docs/experiments/data/exp56_rebaseline_1204/` (Phase 0,
   campaign, verdict, the committed `pair0_artifacts/` kit); the 1.16.5 files are untouched. Ledger:
   the row is annotated "Re-baselined <date> on Paper 1.20.4 at <hash>: gates <result>"; on a FAIL the
-  1.16.5 row is not un-earned but goes Stale for 1.3 reuse and blocks 1.3.0. Outcome: _pending_.
+  1.16.5 row is not un-earned but goes Stale for 1.3 reuse and blocks 1.3.0.
+  **Outcome (2026-09-19): PASS, identical to the EARNED campaign.** Run on the big-mac-mini at
+  main-reachable `8f8191e5`, clean tree, `mock: false`, a fresh server dir, every row stamped
+  `server_version` = Paper git-Paper-499 (MC: 1.20.4). `verify`'s surface probe measured grass at
+  y=63 (the 128-layer stack holds the frozen neutral). Phase 0: 5/5 PASS, every reading identical
+  to the 1.16.5 record (separation 1.0, stability 1.0, taught margin 0.9, dangling causal 0.8873,
+  floor concentration 0.3). Campaign: TRANSFERRED 0.80 ≥ 0.70; ABOVE-FLOOR 0.84 − 0.22 = 0.62 ≥ 0.20;
+  WANT-NOT-FILE 0.84 − 0.12 = 0.72 ≥ 0.20; BOTH-HALVES 0.12 − 0.22 = −0.10 < 0.10; `kit_pass: true`.
+  **Disclosed:** `(pair 42, isolated)` was written twice (the operator started, stopped and restarted
+  without `--resume`); both copies chose the same non-target option. The file is committed unedited;
+  the frozen analyzer over it PASSES (isolated 11/51 = 0.2157), and the same analyzer under the
+  harness's own resume rule (first write stands) PASSES with the numbers above. No gate depends on
+  the duplicate. A write-time guard now refuses such a restart (#767).
