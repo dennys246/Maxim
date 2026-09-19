@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Docs-only: moved-plan references updated inside `src/`.** The 2026-09-19 plans audit archived or
+  deferred 33 plan documents; 50 files under `src/`, `tests/`, `scripts/` and `.github/` carried their old
+  paths in comments and docstrings (60 lines, path strings only). No behavioural change, no API change —
+  recorded here because the versioning policy asks a `src/`-touching change to declare itself.
+
 ## [1.3.0] - 2026-09-19 — "Oasis-2"
 
 The survival world. 1.2 shared a want a teacher put there; 1.3 moves the learning signal to the
