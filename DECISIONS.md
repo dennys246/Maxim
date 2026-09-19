@@ -2,6 +2,74 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-09-19 — 1.4 re-pointed to the survival line; "Shared perception" deferred on a physical trigger
+
+Decision:
+
+- **1.4 continues the survival world** — generalization, multi-step credit and a trajectory
+  instrument (`docs/plans/roadmap_1_4.md`, five-lens reviewed 2026-09-18) — instead of the
+  "Shared perception" release (perception fabric + microduck + Exp 55 + breeding).
+- **"Shared perception" is DEFERRED on a PHYSICAL trigger, not a date:** it revives the day a
+  second robot body exists (a real backend registered through `maxim.robots`, or the operator
+  records its arrival). Its plan stays intact (`docs/plans/roadmap_1_3_path.md`) and Stage A (the
+  baseline measurement of the new body) runs unchanged on revival.
+- **The deferred JEPA plan is re-pointed, not revived.** It is a PROJECTION layer (384-dim sensor ↔
+  768-dim language); the survival line may need a PREDICTOR (a latent forward model), which is a
+  different mechanism. A predictor enters only through its own plan, after the shipped Cerebellum
+  forward model and `anticipatory_pre_activate` are audited.
+
+Reason:
+
+- The microduck is backordered for an unknown time; planning a release around hardware that does
+  not exist turns a may-fail experiment into an indefinite wait.
+- The survival line has momentum, an instrument (R3) and a working rig, and the three gaps it names
+  (R1 exact-key substrate, R4 call-window credit, a reactive-only fear) are the next honest questions.
+
+Tradeoffs:
+
+- 1.4 has no new modality; the perception claims move out at least one release.
+- A deferral with a physical trigger has no calendar check — the plans audit reads the README
+  §Deferred entry, which names the trigger.
+
+## 2026-09-19 — Variant bodies for new classrooms; what they shield and what they do not
+
+Decision:
+
+- A classroom that needs new affordances or sensors uses a **variant body**
+  (`extends: bodies/minecraft_player`), never an edit to the shipped body, so the shipped body's
+  EARNED rows (Exp 60, Exp 61) keep their apparatus.
+- The variant shields ONLY body-change triggers. It does NOT shield a bridge protocol change, a
+  `recommend_action` change, a credit-path change, a harness change against R3's §Outcome clause,
+  a substrate/EC rule, or the minor-version heartbeat. Each of those fires by its letter and is
+  re-run or discharged with a dated annotation on the ledger row.
+- A variant renames every tool signature (`{body}_{affordance}`): cluster-keyed fear carries across
+  bodies, biases do not, and bundle ingest across bodies refuses at gate 7. A rung on a variant
+  re-runs its R3 baseline arms on the variant before it measures against them.
+
+Reason: the 1.4 review (scope + wiring lenses) showed "a variant body" read as a general shield
+while most 1.4 changes fire triggers the body never touches.
+
+Tradeoffs: every new classroom pays a small baseline re-run; in exchange no EARNED row changes
+apparatus silently.
+
+## 2026-09-19 — A release is named at the transaction from its highest EARNED result
+
+Decision:
+
+- A release's working title is not its name. The name is fixed in the release transaction from
+  the highest rung with a recorded EARNED; the CHANGELOG headline claims exactly that rung, names
+  the highest rung attempted, and never describes a mechanism that did not enter. A release with
+  no earned claim ships under an instrument name (as 1.1.4 "The world seam" did).
+- A "recorded outcome" means a prereg frozen on main before the first data timestamp, a
+  merge-committed data PR at one hash, a COMPLETE report (or amendments folded and floor-reviewed),
+  and a §Outcome that leads with the frozen status verbatim.
+
+Reason: 1.4's working title "Anticipation" names the mechanism its last rung (E3) tests, and E3 may
+not run or may record a null before 1.4.0 ships. 1.2.1's headline ("end to end") is the recorded
+example of a name outrunning what shipped.
+
+Tradeoffs: a less evocative name when a hard rung misses; the name stays true.
+
 ## 2026-09-12 — Harness-injected interoceptive signals: a labelled second lane beside D1
 
 Decision:

@@ -568,10 +568,12 @@ change.
   campaign, verdict, the committed `pair0_artifacts/` kit); the 1.16.5 files are untouched. Ledger:
   the row is annotated "Re-baselined <date> on Paper 1.20.4 at <hash>: gates <result>"; on a FAIL the
   1.16.5 row is not un-earned but goes Stale for 1.3 reuse and blocks 1.3.0.
-  **Outcome (2026-09-19): PASS, identical to the EARNED campaign.** Run on the big-mac-mini at
+  **Outcome (2026-09-19): PASS, identical to the EARNED campaign** — row for row under first-row-stands
+  (a same-seed reproduction on the new platform, not an independent replication). Run on the big-mac-mini at
   main-reachable `8f8191e5`, clean tree, `mock: false`, a fresh server dir, every row stamped
-  `server_version` = Paper git-Paper-499 (MC: 1.20.4). `verify`'s surface probe measured grass at
-  y=63 (the 128-layer stack holds the frozen neutral). Phase 0: 5/5 PASS, every reading identical
+  `server_version` = Paper git-Paper-499 (MC: 1.20.4). `verify`'s surface probe reported grass at
+  y=63 on the operator's run ("surface measured at y=63"; the console output is not a committed
+  record — Phase 0's identical readings are the committed evidence the apparatus held). Phase 0: 5/5 PASS, every reading identical
   to the 1.16.5 record (separation 1.0, stability 1.0, taught margin 0.9, dangling causal 0.8873,
   floor concentration 0.3). Campaign: TRANSFERRED 0.80 ≥ 0.70; ABOVE-FLOOR 0.84 − 0.22 = 0.62 ≥ 0.20;
   WANT-NOT-FILE 0.84 − 0.12 = 0.72 ≥ 0.20; BOTH-HALVES 0.12 − 0.22 = −0.10 < 0.10; `kit_pass: true`.
