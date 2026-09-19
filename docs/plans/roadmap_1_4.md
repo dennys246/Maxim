@@ -421,6 +421,25 @@ credit_on_progress audit; argmax + hunger  →   R3 A+C on the variant (one cell
 E1 prereg → four-lens → freeze             →   E1 pilot → campaign
 ```
 
+## Parallel lines — outside the ladder, with their own entry conditions
+
+Neither is a rung; neither may silently power E1–E3. A line touching a survival rung enters as a
+declared arm or not at all (1.3's D1 posture, applied to research lines).
+
+- **Intrinsic motivation** (`roadmap_1_3.md` Phase 6): `success × novelty` vs learning-progress, with
+  the mining classroom as its testbed. Unscheduled.
+- **Grounded language + the cross-modal projection** ([grounded_language_acquisition.md](grounded_language_acquisition.md),
+  revived 2026-09-19 as a parallel line; [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md)
+  revives with it). **Entry condition: the paired-data audit** — ~50 lines over committed
+  survival-world runs, counting (sensor vector, text percept) pairs per situation, how many distinct
+  texts there are, and how many are TEMPLATED game strings rather than language. The survival world
+  supplies on every tick what the cradle never did: a sensor vector and a text percept of the same
+  moment. The audit commits to nothing and is the honest test of whether the pairing is language or
+  labels. It passes → both plans revive together behind a prereg and a four-lens review. It fails →
+  both go to `archive/` with the measurement recorded.
+  **Why parallel and not a rung:** 1.4's ladder already carries a may-fail headline (E3) and an
+  instrument rebuild; a second research line inside it would make a null in either unreadable.
+
 ## What is NOT in 1.4
 
 - **Shared perception** — deferred on a physical trigger (a second body); Stage A unchanged on

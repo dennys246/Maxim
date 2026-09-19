@@ -1,5 +1,34 @@
 # Grounded Language Acquisition + Substrate-Primary AUT (parallel-mode architecture)
 
+> **REVIVED 2026-09-19 as a PARALLEL LINE, with an entry condition (owner decision).** The
+> 2026-09-19 plans audit flagged this file: it declared itself the active umbrella while no roadmap
+> referenced it, and two files it names were never written (`src/maxim/language/binding_registry.py`,
+> `tests/integration/test_substrate_action_generation.py` — treat every unbuilt path below as a
+> proposal, not a description). The thesis it sketched was meanwhile validated by another route:
+> 1.2 and 1.3 earned substrate-primary action selection, a learned situation-fear, and its transfer
+> between agents, with no language model in the action path.
+>
+> **What changed in this plan's favour is DATA.** Phase 2's symbol-binding layer is structurally the
+> projection in [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md),
+> whose blocker was never the idea but the absence of paired cross-modal examples. The survival world
+> produces a pairing on every tick: a world sensor vector, and a text percept of the same moment
+> (`MinecraftPerceptSource` turns each bridge event into `[minecraft:<kind>] <text>`).
+>
+> **Entry condition — the paired-data audit, and nothing else starts before it.** ~50 lines over
+> committed survival-world runs, answering: how many (sensor vector, text percept) pairs exist per
+> run and per situation; how many DISTINCT texts, and how many are templated game strings rather
+> than language (a template is a label — grounding on labels is not grounding language, and this is
+> the risk the audit exists to measure); whether the pairs cover more than one situation; and what
+> the sensor side looks like at the moment the text arrives. The audit commits to nothing. If it
+> passes, this plan's Phase 1–2 and the projection plan revive TOGETHER, with a pre-registered
+> experiment and the usual four-lens review. If it fails, this file says so and goes to `archive/`.
+>
+> **It is a parallel line, not a rung of 1.4** ([roadmap_1_4.md](roadmap_1_4.md) §Parallel lines):
+> 1.4's ladder already carries a may-fail headline and an instrument rebuild, and a second research
+> line inside it would make a null in either hard to read. Same guardrail as intrinsic motivation:
+> it must not silently power E1–E3 — if any language path ever touches the survival rungs, it enters
+> as a declared arm or not at all.
+
 **Status:** ACTIVE — promoted from deferred 2026-05-09 after E4 validation surfaced the LLM-band-aid drift (60-70% of recent engineering effort spent on LLM-mitigation scaffolding, ~845 LOC of band-aid code, growing). The MVP for negative-instruction tool-failure hints failed validation (n=6 per arm, no benefit observed; default flipped OFF), making the architectural pivot urgent.
 **Begins:** Phase -1 + Phase 0 harness in 1.0 (parallel to docs work). Full Phase 0 validation, Phase 1, and Phase 2 in 1.1+. Substrate-primary AUT mode (the parallel-architecture work) interleaves with the language phases.
 **Companion plans:** [persona_convergence_crucible.md](deferred/persona_convergence_crucible.md) (Roy methodology — same long-horizon shape), [behavioral_convergence_practice.md](deferred/behavioral_convergence_practice.md), [memory_consolidation_practice.md](archive/memory_consolidation_practice.md), [v1_refinement.md](archive/v1_refinement.md) (Phase 0 harness scope add)

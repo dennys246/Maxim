@@ -84,10 +84,12 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
 
 ### Substrate-primary spine (1.2 Oasis + Hivemind)
 
-- [grounded_language_acquisition.md](grounded_language_acquisition.md) — **DISPOSITION
-  OWED (flagged by the 2026-09-19 audit):** it declares itself the active umbrella, names two
-  files that were never written, and no roadmap references it — while the thesis it sketched
-  was validated by another route (1.2/1.3). Archive it, or re-point Phases 1–3 at a roadmap. Evidence now: Exp 42 (safe-vs-harm), Exp 52
+- [grounded_language_acquisition.md](grounded_language_acquisition.md) — **a PARALLEL LINE as of
+  2026-09-19** (`roadmap_1_4.md` §Parallel lines), not the active umbrella it used to call itself:
+  its thesis was validated by another route in 1.2/1.3, and its Phase 2 is structurally the deferred
+  cross-modal projection. **Entry condition: the paired-data audit** over survival-world runs — does
+  the tick-by-tick (sensor vector, text percept) pairing carry language or templated labels? Passes →
+  it and the projection plan revive together; fails → both archive. Evidence now: Exp 42 (safe-vs-harm), Exp 52
   (the want is learned), Exp 53b (it reads out on a body). Phases 1–3 are the 1.2+ arc.
 - [maxim_hivemind.md](maxim_hivemind.md) — **1.2 = Oasis + Hivemind.** B5 shareability
   SHIPPED (#305–#311); the Oasis ingestion contract, the re-keyed merge (gate 6) and the
