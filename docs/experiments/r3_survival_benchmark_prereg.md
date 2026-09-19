@@ -555,7 +555,16 @@ stale-sample limit.
 
 **Honesty note.** These are rules loosened after the data. They are admissible because neither
 touches an outcome in the claim's favour: the recount lowers C's median, and the hash rule was
-unsatisfiable by any bench. The band did not detect an instrument difference; it
+unsatisfiable by any bench. **[Erratum 2026-09-19, the release's different-reader pass:** the
+clause above is wrong in direction. A LOWER time to air is a faster escape, so restoring C's
+refused fast rows moved every C contrast further in the claim's direction (C−A −24.718 → −24.816,
+C−B −5.298 → −5.396, C−E −24.807 → −24.904; D−C −0.146 → −0.049). It was the FROZEN rule that ran
+against the claim. The effect is 0.10 s and no conclusion changes. The amendment stands on the
+instrument argument alone — the band measured tick phase, never the agent — not on the rows'
+outcomes. Also: the idle cadence named in Amendment 2 (A 0.581 / … , periods between two
+non-proposing ticks over the whole telemetry) and the report's `idle_tick_period_median_s`
+(A 0.579 / B 0.583 / C 0.581 / D 0.555 / E 0.579) are two computations of the same idea; the report's
+is the one to cite.**] The band did not detect an instrument difference; it
 flagged its own inapplicability — the same band would refuse a FRESH agent with a 3 s event and pass a
 trained one with a 28 s event. The frozen report is kept beside the amended one in
 `docs/experiments/data/` (`r3_report.json` frozen; `r3_report_amended.json` amended), and §Outcome
@@ -617,7 +626,7 @@ was drive-decisive (aggregate `drive` > 0, causal 0, learned 0) — the route is
 channel plus that read, on 60 of 60. No event was censored; no death; no guard breach; the apparatus
 rows clean.
 
-**Contrasts (Mann–Whitney on `t_surface`, n = 12 v 12; a complete separation floors p at 3.7e-5):**
+**Contrasts (Mann–Whitney on `t_surface`, n = 12 v 12; the report's normal approximation floors p at 3.7e-5 for a complete separation — the exact p is 7.4e-7):**
 
 | contrast | mechanism | Δ median s | p | Δ oxygen pain s |
 |---|---|---|---|---|
@@ -632,7 +641,7 @@ rows clean.
   of oxygen pain — not life.** With regeneration on, the innate `health → threat` reflex surfaces every
   fresh agent at ≈ 28 s (health 20 → 9.3, the floor's fault tail absent: 12/12); the drive's whole
   contribution is the cost it removes, in the drives' own currency.
-- **E ≡ A.** Trained exactly as C and then detached, E surfaces at 28.08 s against A's 28.00 with the
+- **E ≡ A.** Given the same pain exposure as C with the fear subscriber detached throughout training (every E row carries an empty `cluster_fear_dump` — it never formed a fear), E surfaces at 28.08 s against A's 28.00 with the
   same pain and the same damage: the exposure without the subscriber buys nothing, and E ticks like A
   (idle cadence 0.579 v 0.579). What C carries is the Wire-4 need, not a memory of the pool.
 - **D ≡ C.** The Exp 61 receiver — the discounted −0.75 fear ingested from a donor's export — escapes
@@ -642,7 +651,7 @@ rows clean.
   first proposal at 0.99 s (the first loop tick after the teleport); `flee` fails in 1 ms (the
   pathfinder is dead in water) and the loop's next tick dispatches `escape_water` 0.77 s later (the
   tie-break tax, one loop period, ≈ 24 % of the latency); head clear 1.43 s after the escape call
-  (the ascent from depth 5). D: 0.95 / 0.75 / 1.44. The pilot's 3.15 ± 0.20 s is met (3.18 [3.00, 3.30]).
+  (the ascent from depth 5). D: 0.95 / 0.75 / 1.44. Exp 61's 3.15 ± 0.20 s is met (3.18 [3.00, 3.30]).
 - **C − B is the pain-free descent, and only that.** B's first proposal comes at 6.36 s — after the
   oxygen-12 publish it needs to book the fear — then the SAME tie-break (0.76 s) and the SAME ascent
   (1.47 s). The 5.4 s gap is structural (C fires on the first tick, B cannot before the publish), a

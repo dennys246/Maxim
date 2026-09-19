@@ -3,10 +3,10 @@
 **Released 2026-09-19 (UTC — PyPI `upload_time`).** `pip install --upgrade pymaxim`
 
 1.2 showed that a want a teacher put into one agent can travel to another. 1.3 takes the teacher
-out. The reward now comes from the world itself: on a live Minecraft server (Paper 1.20.4), with no
-language model anywhere in the action path, an agent that feels air-hunger underwater learns a fear
-of that situation — and a second agent that never felt the pain inherits the fear and acts on it
-the first time it is submerged. Minecraft here is an instrument, not a demo: a world Maxim does not
+out. The learning signal now comes from the world itself — the game's own pain: on a live Minecraft
+server (Paper 1.20.4), with no language model anywhere in the action path, an agent that feels
+air-hunger underwater learns a fear of that situation — and a second agent that never felt the pain
+inherits the fear and acts on it the first time its own loop runs underwater. Minecraft here is an instrument, not a demo: a world Maxim does not
 control, with real pain, real relief, and states the agent can be measured in.
 
 ## The two claims
@@ -18,8 +18,9 @@ leaves the water *before* the pain would fire. Its yoked twin — same pain expo
 subscriber detached — never does. Five seeds per arm, six pain-free probe placements each: FEAR
 1.0 against ABLATED 0.0 on every seed, exact permutation p = 1/252 (the floor for five against
 five); the fear is specific (water −1.0, shore 0.0). Latency to air after training: median
-1.72 s, all inside the 4.34 s window before pain.
-[Prereg + outcome](../experiments/exp60_drowning_avoidance_prereg.md).
+1.72 s, all inside the 4.34 s window before pain — though placements 2–6 are also helped by the
+positive link the first escape books; the fear-only first placement took 2.9–3.3 s.
+[Prereg + outcome](https://github.com/dennys246/Maxim/blob/main/docs/experiments/exp60_drowning_avoidance_prereg.md).
 
 **Exp 61 EARNED — the headline: a survival fear transfers between agents.** A donor learns the fear
 the hard way and exports its substrate through the shipped signed-bundle path. A fresh receiver
@@ -28,7 +29,7 @@ direct — reboots, and on its first loop-live submersion leaves the water, neve
 pain. 12/12 transferred receivers against 0/24 isolated, 0/12 where the donor's cluster shipped but
 its fear did not, and 0/24 where the fear shipped without its cluster: Fisher one-sided
 p = 8.0 × 10⁻¹⁰, all six frozen gates PASS, one code hash, zero refusals.
-[Prereg + outcome](../experiments/exp61_shared_fear_prereg.md).
+[Prereg + outcome](https://github.com/dennys246/Maxim/blob/main/docs/experiments/exp61_shared_fear_prereg.md).
 
 ## The instrument — R3, the survival benchmark
 
@@ -41,26 +42,28 @@ matters: one unrescued submersion per fresh agent. Five arms × 12 agents, time 
 | B | learns the fear there, in the water | 8.6 s |
 | C | carries a fear it learned earlier | 3.2 s |
 | D | carries a fear it received (Exp 61's receiver) | 3.1 s |
-| E | trained like C, fear detached | 28.1 s |
+| E | the same pain exposure as C, fear subscriber detached throughout (it never formed a fear) | 28.1 s |
 
 Every agent in every arm survived — by design, with regeneration on, survival is a ceiling. What
 the drive buys is the cost it removes: about 25 s of latency, about 11 health points and about
-22 s of oxygen pain. **Not life.** E ≡ A (the exposure alone buys nothing), D ≡ C (the received fear
+22 s of oxygen pain. **Not life.** E ≡ A (the pain exposure without the fear buys nothing), D ≡ C (the received fear
 acts like the learned one). R3 is an instrument and a baseline; nothing graduated.
 
-It is also reported with its one post-data change in the open. The frozen report read INCOMPLETE
+It is also reported with its two post-data amendments in the open. The frozen report read INCOMPLETE
 on two rules that turned out to be facts about the instrument, not the agents: a code-hash rule no
 bench could satisfy, and a loop-cadence band that, on 3-second events, measured the tick phase
 rather than the cadence. Both were amended after the data, instrument-only, reviewed by two
-independent lenses, and disclosed beside the frozen report — the recount moved the carried-fear
-median *down*, against the claim, and no contrast changed.
-[Prereg, amendments + outcome](../experiments/r3_survival_benchmark_prereg.md).
+independent lenses, and disclosed beside the frozen report. The frozen band had refused the carried-fear arm's fastest
+rows; restoring them moved its median 0.10 s faster, in the claim's direction, and no contrast's
+conclusion changed. The amendment rests on the instrument argument, not on the rows' outcomes.
+[Prereg, amendments + outcome](https://github.com/dennys246/Maxim/blob/main/docs/experiments/r3_survival_benchmark_prereg.md).
 
 ## Exp 56, re-baselined
 
 The 1.2 headline (a taught want transfers) was re-run on the new platform because its own
-re-run triggers fired. Every rate is identical to the 1.16.5 campaign (taught 0.84 raw / 0.80
-decisive against isolated 0.22; all four gates and the anti-vacuity kit PASS), with the
+re-run triggers fired. Every row matches the 1.16.5 campaign's (taught 0.84 raw / 0.80
+decisive against isolated 0.22; all four gates and the anti-vacuity kit PASS) — a same-seed
+reproduction on the new platform, not an independent replication, with the
 Minecraft version measured from the server into every row. One duplicated row from an operator
 restart is disclosed, left in the file, and moves no gate.
 
@@ -96,7 +99,7 @@ bridge.
 
 1.4's working direction is generalization and multi-step credit on the same world: an agent that
 has to trade a want against a fear, reach food several moves away, and learn when to come up for
-air ([roadmap](../plans/roadmap_1_4.md)). Its name is decided at release from the highest result it
+air ([roadmap](https://github.com/dennys246/Maxim/blob/main/docs/plans/roadmap_1_4.md)). Its name is decided at release from the highest result it
 earns. The perception fabric and the microduck wait for a second robot body.
 
 ## Upgrading

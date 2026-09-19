@@ -7,7 +7,7 @@ last ≈ 3 s: their in-window ticks are at most one idle tick, the `flee` tick a
 tick — ONE or TWO periods — and one of them is always the `flee` tie-break dispatch, 0.70–0.79 s in
 EVERY arm. A 46-period median and a 1-period "median" are different statistics; the band read the
 tie-break interval and refused rows by where the loop's tick fell relative to the teleport. The loop's
-idle cadence was identical across arms to ± 15 ms (C vs A, p = 0.76). The first draft of the
+idle cadence was near-identical across arms (0.555–0.583 s; C vs A, p = 0.76). The first draft of the
 amendment even explained it as "trained agents tick slower" — a mechanism the rows refuted (the
 trained-but-detached arm ticked like the fresh one). Two review lenses caught it from the rows.
 
