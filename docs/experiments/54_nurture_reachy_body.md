@@ -9,7 +9,7 @@ cradle-mother harness, `sweep`/`--factory`/`--gate C` on the Exp 53 readout harn
 `analyze_exp54_magnitude.py`). **Run:** Phase A `main` @ `93887e6e`, big-mac-mini, `~/exp54/phaseA`,
 2026-08-26 19:10 → 2026-08-27 01:50 MDT, 36/36 runs, 0 failed, ~660 s/run, mistral-7b narrator
 in-process. Roadmap 1.1.x item 15; the prerequisite for the Oasis case study
-([plans/oasis_case_study_taught_orient.md](../plans/oasis_case_study_taught_orient.md)).
+([plans/oasis_case_study_taught_orient.md](../plans/archive/oasis_case_study_taught_orient.md)).
 **Raw data (S4):** [data/54_phaseA_nursery.jsonl](data/54_phaseA_nursery.jsonl) ·
 [data/54_phaseA_runs/](data/54_phaseA_runs/README.md) (per-run provenance; mother logs archived
 off-repo) · [data/54_agents/](data/54_agents/) + [data/54_agents_manifest.json](data/54_agents_manifest.json)

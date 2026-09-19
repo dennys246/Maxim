@@ -18,7 +18,7 @@ A platform page therefore answers three questions:
 
 1. **What can the hardware actually sense and do?** (and, just as important, what it *can't* — the limits are load-bearing).
 2. **How does the body YAML declare those capabilities** so Maxim engages exactly the drives/affordances the hardware supports?
-3. **Where does each perception stage run** (the [perception pipeline placement](../plans/perception_pipeline_placement.md) model) — for a self-contained robot, all-local; for a sensor-only peer, distributed.
+3. **Where does each perception stage run** (the [perception pipeline placement](../plans/deferred/perception_pipeline_placement.md) model) — for a self-contained robot, all-local; for a sensor-only peer, distributed.
 
 When a capability is absent (e.g. a microphone array that can't resolve elevation), the body simply doesn't declare it — no code change, no dead config. That "declare what the hardware supports, adapt the rest" pattern is the whole point.
 

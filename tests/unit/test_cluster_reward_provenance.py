@@ -125,7 +125,7 @@ class TestProducerWiring:
     that operant credit lands on the last action, a coin flip under alternation,
     which would tag cleanly as "operant" here while being uncorrelated with the
     taught behaviour. The read-side counterpart is
-    docs/plans/decision_provenance.md (explore_decisive / score components).
+    docs/plans/deferred/decision_provenance.md (explore_decisive / score components).
     """
 
     def test_operant_credit_is_tagged(self, nac):

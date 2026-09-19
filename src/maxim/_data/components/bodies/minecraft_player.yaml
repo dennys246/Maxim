@@ -5,7 +5,7 @@ component:
   tags: [body, minecraft, world, player, bridge]
   synonyms: [minecraft body, player body, minecraft avatar]
   description: |
-    The Minecraft player body (1.1.4 world seam, docs/plans/world_seam_1_1_4.md
+    The Minecraft player body (1.1.4 world seam, docs/plans/archive/world_seam_1_1_4.md
     PR 3). World-state sensors declare `modality: world` — the first body to
     feed the A4-gained, frozen-centroid world channel (which RE-fires L11's
     re-measure trigger when this body first runs; see the L11 note). Every

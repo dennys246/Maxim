@@ -347,7 +347,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     # --persona / --sim-persona were REMOVED in 1.1 (deprecated in 0.9; the
     # persona system was hard-deleted per
-    # docs/plans/deferred/persona_cleanup_and_mode_transition.md Stages 3-5).
+    # docs/plans/archive/persona_cleanup_and_mode_transition.md Stages 3-5).
     # Note: the short alias `--mode` is intentionally NOT added here because
     # the core run-mode flag at line 57 already owns that token (live/train/
     # reflection/sleep/agentic/exploration). Freeing `--mode` for sim use is

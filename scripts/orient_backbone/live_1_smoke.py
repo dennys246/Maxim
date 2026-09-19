@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Phase 1, Step 1 — Reachy hardware smoke test (RUN ON/ AGAINST THE DEVICE).
 
-docs/plans/reachy_orient_live.md Step 1. Verifies the THREE primitives the live
+docs/plans/deferred/reachy_orient_live.md Step 1. Verifies the THREE primitives the live
 orient loop needs, SEPARATELY, before we stack NAc on top:
   (a) connect + wake,  (b) read onboard DoA,  (c) move head_yaw.
 

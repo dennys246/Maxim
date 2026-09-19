@@ -11,7 +11,7 @@ only) to a 2x2 MAGNITUDE set. The magnitudes are load-bearing, not cosmetic —
 learnable because the big step OVERSHOOTS near centre. Changing these values
 moves the derived decision boundary (`gain*(|d_big|+|d_normal|)/2`) and re-opens
 [Exp 45c](../../docs/experiments/45c_flip_bins.md), which reached magnitude 1.00
-with them. See docs/plans/substrate_native_orienting.md +
+with them. See docs/plans/deferred/substrate_native_orienting.md +
 docs/embodiment/porting_orient_loop.md ("The design constants are DERIVED").
 
 Updated 2026-07-31 (live_audio_orient_wiring.md Stages 0b + 0c):

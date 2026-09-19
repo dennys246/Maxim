@@ -1,6 +1,6 @@
 """Minecraft world seam — transport client + PerceptSource (1.1.4 PR 3).
 
-The Python half of the world bridge (`docs/plans/world_seam_1_1_4.md` §PR 3;
+The Python half of the world bridge (`docs/plans/archive/world_seam_1_1_4.md` §PR 3;
 design source `docs/plans/minecraft_benchmark.md` §"What to build"). The JS
 half — a Mineflayer process — lives in `scripts/minecraft_bridge/` (dev-side,
 not packaged) and owns the game connection; this module owns:

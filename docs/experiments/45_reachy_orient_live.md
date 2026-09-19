@@ -7,8 +7,8 @@ method section was retracted the same day (a head-frame bug in our motion code
 faked a DoA pathology). **The three result arms are unaffected** — they are
 sign-based / substrate-only and survive a proportional gain error; see "WHY THE
 RESULTS BELOW STILL STAND".
-**Plans:** [substrate_native_orienting.md](../plans/substrate_native_orienting.md)
-(umbrella + rigor bar) · [reachy_orient_live.md](../plans/reachy_orient_live.md)
+**Plans:** [substrate_native_orienting.md](../plans/deferred/substrate_native_orienting.md)
+(umbrella + rigor bar) · [reachy_orient_live.md](../plans/deferred/reachy_orient_live.md)
 (runbook). **Scripts:** [scripts/orient_backbone/](../../scripts/orient_backbone/)
 (`live_2_reactive.py`, `live_3_learn.py`, `doa_sweep.py`, `orient_merge_arm.py`).
 

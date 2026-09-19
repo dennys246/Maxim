@@ -2,7 +2,7 @@
 
 **Status:** COMPLETE (2026-08-04; H3 attribution corrected 2026-08-06). H1 supported, H2 1.00, H3 1.00 (B) / 0.969 (C) — both pass.
 Results below the Amendments section. Phase 3 Arm 1 of
-[sem_motor_binding.md](../plans/sem_motor_binding.md); owner-designed scenario
+[sem_motor_binding.md](../plans/deferred/sem_motor_binding.md); owner-designed scenario
 (2026-08-04): "a simulation that requires both a combination of body movement
 and head movement to center on a sound for reward."
 

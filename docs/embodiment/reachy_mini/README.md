@@ -52,7 +52,7 @@ Maxim pins `reachy-mini[gstreamer]>=1.8.3,<2.0` (pyproject `reachy` extra).
 
 Reachy Mini is a **self-contained** embodiment: one node runs the whole
 perception → cognition → action loop. In
-[perception-placement](../../plans/perception_pipeline_placement.md) terms,
+[perception-placement](../../plans/deferred/perception_pipeline_placement.md) terms,
 every stage is local — nothing crosses a wire.
 
 - **Sensors / drives / affordances** are declared in the body YAML (see

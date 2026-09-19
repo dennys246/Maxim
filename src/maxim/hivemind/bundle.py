@@ -553,7 +553,7 @@ class BundleBodyMismatch(ValueError):
     LOUDNESS: without the check, a cross-body bundle merges "successfully",
     contributes exactly 0.0 (its tool signatures carry the sender's entity
     name — D43 barrier 3), and reads out as "this agent has learned nothing
-    yet". See docs/plans/d43_merge_correctness.md §5a.
+    yet". See docs/plans/archive/d43_merge_correctness.md §5a.
     """
 
     def __init__(self, *, bundle_body: str | None, receiver_body: str) -> None:
@@ -563,7 +563,7 @@ class BundleBodyMismatch(ValueError):
             f"bundle was learned on body {bundle_body!r} but the receiver is {receiver_body!r}. "
             "Tool signatures are entity-prefixed, so merging this bundle would report success and "
             "contribute exactly 0.0. Re-export from the receiver's body, or adopt a capability "
-            "namespace (docs/plans/d43_merge_correctness.md §5a)."
+            "namespace (docs/plans/archive/d43_merge_correctness.md §5a)."
         )
 
 
@@ -791,7 +791,7 @@ def compose_bundle(
         # adopting a capability namespace later is a READER-side change with no
         # migration — which is the half `register_bundle_migration` cannot cover,
         # since it migrates the manifest and never the keyed payload.
-        # See docs/plans/d43_merge_correctness.md §5a.
+        # See docs/plans/archive/d43_merge_correctness.md §5a.
         "capability_map": dict(capability_map or {}),
     }
 

@@ -8,7 +8,7 @@ fail**, three of which were discovered by running them for the first time.
 
 ## Fail-loud Stage 2 finally ran, and the answer is zero
 
-[`docs/plans/god_function_decomposition.md`](https://github.com/dennys246/Maxim/blob/main/docs/plans/god_function_decomposition.md)
+[`docs/plans/archive/god_function_decomposition.md`](https://github.com/dennys246/Maxim/blob/main/docs/plans/archive/god_function_decomposition.md)
 gates every extraction on *"zero new `swallowed_exception` firings vs the Stage-2 baseline."*
 **Stage 2 had never been run, so that baseline did not exist and the gate could not fail.**
 

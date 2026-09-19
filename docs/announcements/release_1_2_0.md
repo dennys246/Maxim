@@ -57,7 +57,7 @@ Four slices, each reviewed and merged on its own:
   class, unless the operator opts in per Oasis with `maxim hive trust`.
 
 **Queen-tier promotion is deliberately not shipped** — its gauntlet battery cannot run yet
-(Gauntlet #3 does not exist), so the blocker is recorded in `docs/plans/hivemind_p2p_scope.md`
+(Gauntlet #3 does not exist), so the blocker is recorded in `docs/plans/archive/hivemind_p2p_scope.md`
 rather than shipping a gate that cannot gate. `hive contribute` is write-only in 1.2.
 
 ## The nulls that bound the claims

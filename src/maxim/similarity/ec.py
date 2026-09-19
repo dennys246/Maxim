@@ -109,7 +109,7 @@ class _ModalityMatrix:
     rate: p95 crosses the 5 ms budget at ≈238 nodes against a ≈8,375-node
     session horizon (verdict *index-prerequisite*; frozen rule + data in
     ``scripts/ec_scan_cost.py`` / ``docs/experiments/data/
-    ec_scan_cost_2026-09-03.json``, plan ``docs/plans/world_seam_1_1_4.md``
+    ec_scan_cost_2026-09-03.json``, plan ``docs/plans/archive/world_seam_1_1_4.md``
     §PR 0 result). This is the chosen remedy: the SAME cosine as one numpy
     matrix–vector product (0.89 ms p95 at a 20k-node store) — exact, not
     approximate. No ANN structure enters the substrate.

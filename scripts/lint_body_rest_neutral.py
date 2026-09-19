@@ -44,7 +44,7 @@ Ungained modalities (interoception drives, audio) are out of scope — their con
 gain-weighted, so their neutral is not load-bearing.
 
 Naming: if a RUNTIME set-point declaration is ever built (the deferred primitive's revival path in
-``docs/plans/setpoint_aware_neutral.md``), it MUST read this same ``rest:`` key — not a new key — so
+``docs/plans/deferred/setpoint_aware_neutral.md``), it MUST read this same ``rest:`` key — not a new key — so
 the lint's declaration and the encoder's neutral cannot be two concepts.
 
 Exits: 0 clean; 1 violations (stderr). Positive control: ``tests/unit/test_lint_body_rest_neutral.py``

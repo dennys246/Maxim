@@ -1,6 +1,6 @@
 """Guards for the inherent bias class (1.2 poison-resistance slice, NAc side).
 
-coding_habits_oasis.md §4 / docs/plans/oasis_ingestion_contract.md §6: the
+coding_habits_oasis.md §4 / docs/plans/archive/oasis_ingestion_contract.md §6: the
 class marker persists through dump/load, is decay-EXEMPT (with the
 anti-vacuity arm: a non-inherent bias under the same conditions decays and
 prunes — a guard that cannot fail is not a guard), enters only through the

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Hivemind merge arm — fleet-learning mechanics on real orient-policy NAcs.
 
-Runbook Follow-up A (docs/plans/reachy_orient_live.md) + gauntlet #1 of the
+Runbook Follow-up A (docs/plans/deferred/reachy_orient_live.md) + gauntlet #1 of the
 Queen-tier trust topology (docs/plans/maxim_hivemind.md "Trust topology").
 No robot needed — pure substrate operations on saved NAc files.
 

@@ -499,7 +499,7 @@ def run_generative_campaign(
         # (rewards the prior orient) → place the sound stimulus → guide the head
         # (fading scaffold) → speak motherese. ``embodiment`` is already in scope;
         # motherese uses the NON-gated percept-source inject (send_and_wait is
-        # suppressed in substrate-primary). See docs/plans/cradle_mother.md.
+        # suppressed in substrate-primary). See docs/plans/deferred/cradle_mother.md.
         _phase = arc.phases[narrator._phase_idx] if narrator._phase_idx < len(arc.phases) else None
         if _phase is not None and getattr(_phase, "mother_scaffold", None) is not None and embodiment is not None:
             try:

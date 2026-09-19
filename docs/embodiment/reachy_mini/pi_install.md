@@ -24,7 +24,7 @@ branch, and it is a small pure-Python client.
 
 | Excluded | Why |
 |---|---|
-| `semantic` | Declares `torch>=2.1`. Measured on aarch64 it resolves **torch + triton + nvidia-\* CUDA shards** — and torch alone is a ~450 MB runtime floor ([FIT](fit_runbook.md)). The encoder belongs on the **leader** ([perception_pipeline_placement.md](../../plans/perception_pipeline_placement.md)). |
+| `semantic` | Declares `torch>=2.1`. Measured on aarch64 it resolves **torch + triton + nvidia-\* CUDA shards** — and torch alone is a ~450 MB runtime floor ([FIT](fit_runbook.md)). The encoder belongs on the **leader** ([perception_pipeline_placement.md](../../plans/deferred/perception_pipeline_placement.md)). |
 | `llm-llama` / `llm-server` | No local inference on the peer. |
 | `training` | TensorFlow. |
 | `yolo` | AGPL, and not needed for the MVP. |

@@ -3,7 +3,7 @@
 **Charter:** does the world game-natively afford it (D1 — no synthetic sensor/reward), are the
 needed states/acts reachable AND measurable, does the bridge/world behave the way the design
 assumes? Reviewed against: the prereg draft (`docs/experiments/exp58_survival_wants_prereg.md`),
-`docs/plans/survival_world_1_3.md`, `docs/wiring/world-light-sensing.md` +
+`docs/plans/archive/survival_world_1_3.md`, `docs/wiring/world-light-sensing.md` +
 `docs/wiring/sensor-range-clamps.md`, `scripts/survival_world/setup_world.py`,
 `scripts/minecraft_bridge/index.js`, `bodies/minecraft_player.yaml`,
 `docs/experiments/data/survival_phase0.json`, and real Paper 1.20.4 mechanics.

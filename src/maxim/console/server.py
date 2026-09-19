@@ -286,7 +286,7 @@ def _refuse_in_sandbox(request: Request) -> None:
 # LAN bind (decision A9; refused under sandbox mode, where auth is off). Bearer auth (the auth block below)
 # authenticates the CALLER; this guard still constrains what a page in an
 # authenticated operator's own browser can be made to relay — defense in
-# depth, not redundancy (docs/plans/console_tunnel_hardening.md, decision
+# depth, not redundancy (docs/plans/deferred/console_tunnel_hardening.md, decision
 # A8). Resolved ONCE at build_app and carried on ``app.state.trust`` — a
 # request cannot flip it.
 
@@ -376,7 +376,7 @@ def _origin_allowed(origin_header: str, trust: _TrustPolicy) -> bool:
 
 # ── bearer auth (always on, fail-closed; sandbox is the one exception) ───────
 #
-# docs/plans/console_tunnel_hardening.md, decisions A1–A8. The console token
+# docs/plans/deferred/console_tunnel_hardening.md, decisions A1–A8. The console token
 # (`tunnel/keys.py::ensure_console_token`, an mxc_-prefixed 256-bit secret in
 # ~/.config/maxim/console_token) authenticates every /api/* route, /docs,
 # /openapi.json and /ws. There is deliberately NO off toggle — a default-off

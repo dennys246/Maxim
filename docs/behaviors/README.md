@@ -17,7 +17,7 @@ This folder documents how to write them:
   without re-discovering the seams.
 
 See also: [../default_network.md](../default_network.md) (DN architecture overview),
-[../plans/hybrid_substrate_reflex_runtime.md](../plans/hybrid_substrate_reflex_runtime.md) (the audio
+[../plans/hybrid_substrate_reflex_runtime.md](../plans/deferred/hybrid_substrate_reflex_runtime.md) (the audio
 reflex plan), and [../plans/reviews/hybrid_runtime_two_lens_review.md](../plans/reviews/hybrid_runtime_two_lens_review.md)
 (the three-lens review that surfaced the audio gaps).
 

@@ -13,7 +13,7 @@ designed against below (§Links, §Selector), not discovered at campaign price.
 **Lineage:** Exp 42/45 (cross-**session**) → Exp 52 (the want is learned) → Exp 53/53b
 (cross-**context**: the want reads out on a physical body) → this (cross-**agent**:
 *someone else's* substrate drives an agent that never learned it). The claim ladder is
-[oasis_case_study_taught_orient.md](../../plans/oasis_case_study_taught_orient.md)'s.
+[oasis_case_study_taught_orient.md](../../plans/archive/oasis_case_study_taught_orient.md)'s.
 **Merge semantics under test are the REAL 1.2 semantics** (roadmap sequencing decision
 1, the reason this prereg waited for PR #637): ingestion runs through
 `maxim substrate ingest` — the V1–V10 adapter + `substrate_merge` (aligned re-key,
@@ -55,7 +55,7 @@ Four things must be true for the answer to be "the representation transferred":
 The A-phase rides the SHIPPED operant path and nothing else; the pre-review draft
 assumed self-caused drive-relief credit could key a world cluster, which the code
 refutes (reward credit is interoception-only by decided design —
-[coding_habits_oasis.md](../../plans/coding_habits_oasis.md) §5, "not touched"; the
+[coding_habits_oasis.md](../../plans/deferred/coding_habits_oasis.md) §5, "not touched"; the
 exteroceptive extension is pain-only, 1.3). The mechanism that DOES key an
 exteroceptive cluster with positive operant credit is Exp 52's:
 

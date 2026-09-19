@@ -7,7 +7,7 @@ mechanism's actual purpose? Read against `docs/agents/bio-memory.md` (Wire-4, NA
 (`src/maxim/_data/components/bodies/minecraft_player.yaml`), `src/maxim/decisions/nac.py`,
 `src/maxim/runtime/agent_loop.py::_read_drive_states` / `propose_via_substrate`,
 `src/maxim/embodiment/sem.py`, `src/maxim/proprioception/pain_bus.py`, the Exp 60/61 preregs and
-outcomes, `docs/plans/survival_world_1_3.md`, `docs/plans/intrinsic_motivation_1_3.md`, and the
+outcomes, `docs/plans/archive/survival_world_1_3.md`, `docs/plans/deferred/intrinsic_motivation_1_3.md`, and the
 Exp 60/61 apparatus (`scripts/survival_world/water_trial.py`, `setup_world.py`).
 
 The short version: the draft's central premise — *"the one hazard that kills is the one nothing but
@@ -297,8 +297,8 @@ health reflex is a prior that will act in R3 the moment damage lands.
   cap per episode; naive 0/30 in US-free windows; positive escape links 47–51 after the first
   success; `flee` tie-break); Exp 61 prereg §Arms, §Receiver lifecycle, §Does NOT claim
   (no extinction, no positive writer, wall decay only).
-- `docs/plans/survival_world_1_3.md` (D1; the R2 breaks; Tier ladder), `docs/plans/roadmap_1_3.md`
-  §Phase 1b / 3 / 6, `docs/plans/intrinsic_motivation_1_3.md` (reward unbuilt; guardrail),
+- `docs/plans/archive/survival_world_1_3.md` (D1; the R2 breaks; Tier ladder), `docs/plans/roadmap_1_3.md`
+  §Phase 1b / 3 / 6, `docs/plans/deferred/intrinsic_motivation_1_3.md` (reward unbuilt; guardrail),
   `docs/plans/minecraft_benchmark.md` §R3 (original scope: DV chosen at calibration;
   drive-integrity or time-to-death), `docs/wiring/substrate-learning-channels.md` (eat link
   saturation trap).

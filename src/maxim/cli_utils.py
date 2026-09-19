@@ -55,7 +55,7 @@ def _missing_backend_dependency(backend_type: str) -> tuple[str, str] | None:
 
 # Default flow-shape label when --sim-mode is not passed. The persona
 # system (and the --persona/--sim-persona flags) was hard-removed in 1.1
-# per docs/plans/deferred/persona_cleanup_and_mode_transition.md Stages
+# per docs/plans/archive/persona_cleanup_and_mode_transition.md Stages
 # 3-5; --sim-mode is a free-form label recorded in reports/logs, while
 # flow behavior is driven by the dispatch path (campaign YAML,
 # --research, benchmark, ...), exactly as it always was.
