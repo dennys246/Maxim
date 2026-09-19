@@ -399,7 +399,17 @@ def main() -> int:
             f"error: --resume with a redirected output ({out_path}); pass --write-experiment-results or a non-committed --out"
         )
         return 2
-    done = _existing_rows(out_path) if args.resume else set()
+    prior = _existing_rows(out_path)
+    if prior and not args.resume:
+        # The campaign APPENDS. A start → stop → restart WITHOUT --resume writes the first pair's
+        # rows twice, and the analyzer counts both (Exp 56 RB-1, 2026-09-19: one duplicated
+        # (pair 42, isolated) row, n 51 in one arm — disclosed, no gate moved). Refuse instead.
+        print(
+            f"error: {out_path} already holds {len(prior)} (pair, arm) rows; pass --resume to continue "
+            f"that campaign, or choose a fresh --out"
+        )
+        return 2
+    done = prior if args.resume else set()
 
     import tempfile
 
