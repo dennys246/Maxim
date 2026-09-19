@@ -1,15 +1,15 @@
 # Three-Factor Credit Assignment (architectural stance + calibration learning)
 
 **Status:** DESIGN NOTE (2026-08-06). Zero code. Owner-initiated, arising from the
-[cross_modal_perception_fabric.md](cross_modal_perception_fabric.md) design pass.
+[cross_modal_perception_fabric.md](deferred/cross_modal_perception_fabric.md) design pass.
 Mostly **names what already exists**; proposes exactly one small new learnable.
 **Target version:** 1.3 (the stance applies immediately and retroactively; the
 calibration learner is 1.3 work).
 **Owns (proposed):** the learning-rule stance, the per-learnable teacher-signal
 rule, and the consolidation-window update discipline.
-**Companion plans:** [cross_modal_perception_fabric.md](cross_modal_perception_fabric.md)
+**Companion plans:** [cross_modal_perception_fabric.md](deferred/cross_modal_perception_fabric.md)
 (Layer-2 calibration is this note's motivating learnable) ·
-[sem_motor_binding.md](sem_motor_binding.md) ·
+[sem_motor_binding.md](deferred/sem_motor_binding.md) ·
 [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md)
 (the thesis-boundary question this note sharpens).
 

@@ -3,7 +3,7 @@
 **Scoped 2026-09-09** (owner decision: survival world ← 1.3; perception fabric + microduck +
 Exp 55 → 1.4; **1.4 re-pointed 2026-09-18 → [roadmap_1_4.md](roadmap_1_4.md)** — see the rescope note in [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md)). This is
 the phased plan and dependency map; the world/classroom designs live in
-[survival_world_1_3.md](survival_world_1_3.md) and [intrinsic_motivation_1_3.md](intrinsic_motivation_1_3.md),
+[survival_world_1_3.md](archive/survival_world_1_3.md) and [intrinsic_motivation_1_3.md](deferred/intrinsic_motivation_1_3.md),
 and the Minecraft benchmark in [minecraft_benchmark.md](minecraft_benchmark.md) Part II.
 
 ## The thesis
@@ -27,7 +27,7 @@ breaks) and **R1** (no cross-context generalization — the substrate is exact-k
 
 ### Phase 0 — Platform + instrument *(cheap, gating; do first)*
 - Stand up the chosen **modern MC version (DECIDED 2026-09-13: Paper 1.20.4** — see
-  [survival_world_1_3.md](survival_world_1_3.md) §"Minecraft version"**)**, port the bridge/sensors, and
+  [survival_world_1_3.md](archive/survival_world_1_3.md) §"Minecraft version"**)**, port the bridge/sensors, and
   **verify sensor separability through the real encoder before any claim** (the `light_level`-
   dead lesson: a classroom the sensors can't separate can't be learned).
 - Resolve the re-baseline — RESOLVED 2026-09-13 with the version decision: the Exp 56
@@ -35,7 +35,7 @@ breaks) and **R1** (no cross-context generalization — the substrate is exact-k
   guard rerun) before any claim reuses it — **DONE 2026-09-19 (RB-1): PASS, every rate identical
   to the EARNED campaign** (prereg §Re-baseline runs; data #766); Exp 57's PARTIAL stays honestly 1.16.5-pinned
   (multi-rung cost, nothing in 1.3 reuses it). Do not run two versions long-term.
-- Platform facts (see [survival_world_1_3.md](survival_world_1_3.md) §"World vs. substrate" and
+- Platform facts (see [survival_world_1_3.md](archive/survival_world_1_3.md) §"World vs. substrate" and
   §"Minecraft version"): Java Edition only (mineflayer); classrooms built by **RCON command
   scripts**, nothing hand-built; the operator hosts (Paper server + bridge + harness).
 
@@ -97,7 +97,7 @@ construction?" question.
 ### Phase 6 — Intrinsic motivation *(own line, parallel — sibling of R3/R4)* — **2026-09-18: stays a parallel line, NOT in 1.4's ladder; guardrail restated there (must not silently power E1–E3)**
 `success × novelty` vs learning-progress (`Δsuccess`); the **mining classroom** is its testbed;
 guardrail — it must NOT silently power R3 (declared ablation arm or its own line, never an
-undeclared default). Full design: [intrinsic_motivation_1_3.md](intrinsic_motivation_1_3.md).
+undeclared default). Full design: [intrinsic_motivation_1_3.md](deferred/intrinsic_motivation_1_3.md).
 
 ## Critical path vs. frontier
 

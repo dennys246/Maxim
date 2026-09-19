@@ -390,6 +390,22 @@ otherwise an instrument name, as 1.1.4 shipped "The world seam" with no claim). 
 headline claims exactly that rung, names the highest rung attempted, and never describes a mechanism
 that did not enter.
 
+## Before 1.4 — the 1.3.x hardening line
+
+[roadmap_1_3_x.md](roadmap_1_3_x.md) (drafted 2026-09-19 from the v1.3.0 blind re-score): **1.3.1**
+fixes the defects that card found and ships the enforcement each one needs — a gating lane that
+installs the console + crypto extras (today NO lane runs the signed-bundle or console tests, the
+path both the 1.2 and 1.3 headlines travel), the nightly model-cache lane green, the
+prereg-before-data lint extended to cover 1.3's own experiments, `export_memories()` which always
+reports 0, and the function-length + mypy ratchets. **1.3.2** is the `agent_loop` decomposition with
+behaviour-preservation gates and the Exp 60/61 re-run triggers discharged. Both are infrastructure
+only, no behavioural claim.
+
+They come FIRST because Phase 0 below builds its instrument on `agent_loop.py`: decomposing
+afterwards means building that instrument twice, and refactoring while a may-fail experiment runs
+confounds a null with the refactor (the divergence rule). Exp 62 depends on neither and runs in
+parallel.
+
 ## Schedule that keeps the rig busy (scope lens SF-8)
 
 ```

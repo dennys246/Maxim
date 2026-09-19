@@ -7,7 +7,7 @@
 **Depends on:** P3.5 (persistence protocol), P4 (cross-modal binding), Working Memory Stage 7 (promotion_pressure)
 **Blocks:** 1.0 release
 **Parent:** [substrate_binding_persistence.md](substrate_binding_persistence.md)
-**Related:** [memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md)
+**Related:** [memory_consolidation_practice.md](memory_consolidation_practice.md)
 **Results:** [experiments/p5_stress_persistence_results.md](../../experiments/p5_stress_persistence_results.md)
 
 ## Goal

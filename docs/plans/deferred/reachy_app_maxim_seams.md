@@ -27,7 +27,7 @@
 | Config write path | `config_writer.write_config` ([config_writer.py:96](../../../src/maxim/runtime/config_writer.py)) |
 | TTS / STT | `TTSEngine` (piper) + `faster-whisper` (`audio` extra); `agent_loop` consumes `pending_voice_input` |
 | Fiction-vs-fact provenance | `Episode.imagined` / `tag_imagined_links` / `decay_imagined_links` ([orchestrator.py:2740](../../../src/maxim/simulation/orchestrator.py)) |
-| Orient-to-speaker | Exp 45/48 DoA + head-frame; [perception_pipeline_placement.md](../perception_pipeline_placement.md) |
+| Orient-to-speaker | Exp 45/48 DoA + head-frame; [perception_pipeline_placement.md](perception_pipeline_placement.md) |
 
 The scope below is what these do **not** yet cleanly provide.
 
@@ -131,7 +131,7 @@ Three rules make it work: **(1) provenance-filter** — show real memories; in-f
 
 **Front-gate:** ride existing infra? **STT/TTS exist; the placement abstraction exists.** New work is only the loop wiring + a conditional cut point.
 
-**Work:** wire the push-to-talk voice loop (start/stop-capture signal → STT → transcript → `DMRuntime` response → TTS), driven by HANDLE's `play_campaign`. **Only if** the FIT/latency spike shows Pi-side whisper is the bottleneck: wire STT as a placeable perception stage per [perception_pipeline_placement.md](../perception_pipeline_placement.md) so it runs on the owner's leader. Turn-taking needs no new mechanism (push-to-talk + the DM's normal response — see reachy_dm_app.md Risk #1).
+**Work:** wire the push-to-talk voice loop (start/stop-capture signal → STT → transcript → `DMRuntime` response → TTS), driven by HANDLE's `play_campaign`. **Only if** the FIT/latency spike shows Pi-side whisper is the bottleneck: wire STT as a placeable perception stage per [perception_pipeline_placement.md](perception_pipeline_placement.md) so it runs on the owner's leader. Turn-taking needs no new mechanism (push-to-talk + the DM's normal response — see reachy_dm_app.md Risk #1).
 
 **Regression guard:** a mocked loop turn (fake audio → fake STT → DM → fake TTS) advances campaign state; latency-spike numbers recorded in the plan, not asserted.
 
@@ -179,4 +179,4 @@ Remaining sub-decisions (deferred to build, not blocking):
 ## References
 
 - App-repo plans: [reachy_mini_app.md](../archive/reachy_mini_app.md) · [reachy_dm_app.md](reachy_dm_app.md) · seed [AGENTS.md/CLAUDE.md](../maxim_pulse_seed)
-- [perception_pipeline_placement.md](../perception_pipeline_placement.md) (VOICE STT placement) · [deferred/dungeon_master_extensions.md](dungeon_master_extensions.md) (CONTENT depth gate)
+- [perception_pipeline_placement.md](perception_pipeline_placement.md) (VOICE STT placement) · [deferred/dungeon_master_extensions.md](dungeon_master_extensions.md) (CONTENT depth gate)

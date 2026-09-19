@@ -87,7 +87,7 @@ Sum-then-branch-on-sign sites use the SIGNED 64-bit variant (an unsigned digest 
 - **`cli.py::main` naming drift:** the startup ordering (configure_logging → detect_and_apply_role → ... → dispatch) lives in `cli.py::_main_impl`; `main()` is now a thin BackendError-surfacing wrapper. Guards citing `cli.py::main` mean the `_main_impl` body.
 - **`config.json::llm.profile` vs `active_llm_model.{role}.txt` drift is by design** — `maxim --llm <model>` updates runtime state only, never config.json; the singleton check fails loud with the `maxim config set llm.profile` resolution. Details home in docs/agents/llm-routing.md (declarative-vs-runtime-model-state).
 - **Pre-stable-hash persisted files are permanently dead** for hash-keyed lookups (no `hash_scheme` marker) — loaders warn; do not try to "repair" them.
-- **Two advisory-file-lock abstractions coexist** (`maxim.utils.process_lock` for model downloads, `filelock.FileLock` for drain/config state); unification is a deferred shell plan (`docs/plans/deferred/cross_platform_file_lock.md`).
+- **Two advisory-file-lock abstractions coexist** (`maxim.utils.process_lock` for model downloads, `filelock.FileLock` for drain/config state); unification is a deferred shell plan (`docs/plans/archive/cross_platform_file_lock.md`).
 - **Versioning:** `pyproject.toml` and `src/maxim/__init__.py` must stay in sync (rule lives in CLAUDE.md core — not restated here).
 
 ## 5. Env vars owned

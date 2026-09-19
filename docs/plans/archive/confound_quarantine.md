@@ -3,7 +3,7 @@
 **Status:** draft, pre-implementation
 **Ships in:** 0.9.x (experimental); flag lifecycle decided in 1.0 conditional on Phase A outcome — see "Risks" §R1 for branches
 **Owns:** prompt-injection gates in [src/maxim/agents/prompt_builder.py](../../src/maxim/agents/prompt_builder.py), [src/maxim/agents/exec_prompts.py](../../src/maxim/agents/exec_prompts.py), [src/maxim/prompts/acting_coach.py](../../src/maxim/prompts/acting_coach.py); orchestrator state path in [src/maxim/simulation/orchestrator.py](../../src/maxim/simulation/orchestrator.py); persona default in [src/maxim/simulation/personas.py](../../src/maxim/simulation/personas.py); arc routing in [src/maxim/cli.py](../../src/maxim/cli.py); env-var contract doc in [docs/user/configuration.md](../../user/configuration.md) under CC4
-**Companion plans:** [v1_refinement.md](v1_refinement.md) §V2 + §CC4, [persona_cleanup_and_mode_transition.md](../deferred/persona_cleanup_and_mode_transition.md)
+**Companion plans:** [v1_refinement.md](v1_refinement.md) §V2 + §CC4, [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md)
 **Branch:** `confound-quarantine`
 
 ## Motivation

@@ -19,7 +19,7 @@ Added 2026-05-27 per CLAUDE.md Principle 3.
 - B3 SEM world enrichment → [sem_world_enrichment.md](sem_world_enrichment.md)
 - bio_emergent_persona_foundations wires → [bio_emergent_persona_foundations.md](../deferred/bio_emergent_persona_foundations.md)
 - scene_actor_affordances → [scene_actor_affordances.md](../deferred/scene_actor_affordances.md)
-- persona_cleanup → [persona_cleanup_and_mode_transition.md](../deferred/persona_cleanup_and_mode_transition.md)
+- persona_cleanup → [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md)
 - ec_centroid_drift_fix (V1 substrate prerequisite) → [ec_centroid_drift_fix.md](ec_centroid_drift_fix.md)
 
 **For the 1.0 work owned directly by this plan (Section 3 cleanup C4-C6, Section 6 docs D1-D3, Section 7 contract clarification):**

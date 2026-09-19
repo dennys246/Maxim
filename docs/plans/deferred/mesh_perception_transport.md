@@ -1,11 +1,11 @@
 # Mesh Perception Transport — peer-tunneled sensory percepts
 
-> **DEFERRED (2026-07-15 plans audit):** 1.0 prep SHIPPED (PR #329 — `PERCEPT_PUSH`/`PERCEPT_ACK` enum slots, `to_wire_dict`/`from_wire_dict`, two CLAUDE.md invariants); the 1.1 transport is unbuilt and the single-cut-point framing is superseded by [perception_pipeline_placement.md](../perception_pipeline_placement.md) (see the 2026-06-22 CORRECTION banner in-doc). **Revive when:** perception_pipeline_placement reaches a cut point that places a stage across the wire (its 1.2+ leader-side segmentation / frame transport) — this plan is then the byte-mover implementation vehicle.
+> **DEFERRED (2026-07-15 plans audit):** 1.0 prep SHIPPED (PR #329 — `PERCEPT_PUSH`/`PERCEPT_ACK` enum slots, `to_wire_dict`/`from_wire_dict`, two CLAUDE.md invariants); the 1.1 transport is unbuilt and the single-cut-point framing is superseded by [perception_pipeline_placement.md](perception_pipeline_placement.md) (see the 2026-06-22 CORRECTION banner in-doc). **Revive when:** perception_pipeline_placement reaches a cut point that places a stage across the wire (its 1.2+ leader-side segmentation / frame transport) — this plan is then the byte-mover implementation vehicle.
 
 
 **Status:** Shell plan, drafted 2026-06-02. 1.0 prep work scoped; 1.1 implementation sketched.
 
-> **CORRECTION (2026-06-22):** This plan's "no raw frames, peer always segments, ships event-shaped percepts" framing assumed a single frozen cut point in the perception pipeline. That conflated *what a stage does* with *where it runs* — the mirror-image of the mistake [`lane_capability_placement_split.md`](../archive/lane_capability_placement_split.md) corrected for LLM lanes. **Where each perception stage runs is a placement decision, per stage** — see [`perception_pipeline_placement.md`](../perception_pipeline_placement.md). The raw-frames ban demotes from invariant to **default-with-opt-out** (see the v1 non-goal below). Nothing shipped needs undoing: `Percept.to_wire_dict` remains valid as the *post-segmentation cut-point payload* — one of several, additive. The transport in this plan is the byte-mover *between* placed stages; the placement plan decides which stages sit on which side of the wire.
+> **CORRECTION (2026-06-22):** This plan's "no raw frames, peer always segments, ships event-shaped percepts" framing assumed a single frozen cut point in the perception pipeline. That conflated *what a stage does* with *where it runs* — the mirror-image of the mistake [`lane_capability_placement_split.md`](../archive/lane_capability_placement_split.md) corrected for LLM lanes. **Where each perception stage runs is a placement decision, per stage** — see [`perception_pipeline_placement.md`](perception_pipeline_placement.md). The raw-frames ban demotes from invariant to **default-with-opt-out** (see the v1 non-goal below). Nothing shipped needs undoing: `Percept.to_wire_dict` remains valid as the *post-segmentation cut-point payload* — one of several, additive. The transport in this plan is the byte-mover *between* placed stages; the placement plan decides which stages sit on which side of the wire.
 **Scope:** ~80-150 LOC of refactor + wire-format reservations in 1.0; ~400-600 LOC of transport + adapter + endpoint family in 1.1.
 **Target versions:** 1.0 (prep + reservations only — no transport), 1.1 (full ship alongside Hivemind).
 **Gates:** None as a 1.0 release gate. The 1.0 prep items gate themselves on the refactor-now-or-refactor-later test (see "Why land prep in 1.0" below).
@@ -34,7 +34,7 @@
 | Candidate | Why insufficient (or sufficient) |
 |---|---|
 | `_MaximPeerBackend` for transport | Wrong layer. The Plan 3 R2.5 invariant "exactly one HTTP call per call-site, no retry, no internal cooldown" is LLM-inference-specific and was earned via incident. Forcing perception payloads through that backend either dilutes the invariant or requires a parallel call path with `try: retry` (forbidden by the CI grep). Sibling typed backend is the right answer. |
-| [`mesh_doc_transport.md`](mesh_doc_transport.md) (deferred C9) | **Could carry low-rate event percepts** (scene summaries, transcribed audio chunks, detection rosters) since those are small JSON docs by `(namespace, key)`. Real-time percept streams want lower latency + sequence semantics that the doc-transport KV-drop shape doesn't model well. Verdict: doc transport is a **fallback path** for non-time-critical percepts; a typed perception transport is needed for the real-time path. |
+| [`../archive/mesh_doc_transport.md`](../archive/mesh_doc_transport.md) (deferred C9) | **Could carry low-rate event percepts** (scene summaries, transcribed audio chunks, detection rosters) since those are small JSON docs by `(namespace, key)`. Real-time percept streams want lower latency + sequence semantics that the doc-transport KV-drop shape doesn't model well. Verdict: doc transport is a **fallback path** for non-time-critical percepts; a typed perception transport is needed for the real-time path. |
 | `PerceptSource` Protocol + `Percept.to_dict/from_dict` | **Sufficient at the adapter layer.** A `RemotePerceptSource` implementing the existing 4-member Protocol is ~80 LOC of pure adapter code — no Protocol changes needed. This is the "rides on" half of the answer. |
 | Existing `MeshMessage` + `MeshMessageType` enum | **Sufficient at the envelope layer.** Adding `PERCEPT_PUSH` (and possibly `PERCEPT_ACK`) to the enum is genuinely additive — same precedent as the reserved `INFERENCE_REQUEST/RESPONSE` slots. |
 
@@ -258,13 +258,13 @@ Explicitly out of scope for v1, but: does the wire envelope shape allow a future
 - **(a) Yes, if `Percept.metadata` can carry an opaque blob reference** — peer ships small frames inline, large frames via a separate blob endpoint. Compatible with v1 by design.
 - **(b) No, raw frames need a separate transport (e.g., WebSocket on the leader proxy)** — then v1 needs to commit to an upgrade path.
 
-**Recommendation to validate:** (a) with the v1 cap that inline payloads stay under 1MB (same as `mesh_doc_transport.md`). Large-frame streaming is a 1.2+ concern when (and if) the substrate-level vision encoder is load-bearing enough to need them.
+**Recommendation to validate:** (a) with the v1 cap that inline payloads stay under 1MB (same as `../archive/mesh_doc_transport.md`). Large-frame streaming is a 1.2+ concern when (and if) the substrate-level vision encoder is load-bearing enough to need them.
 
 ---
 
 ## v1 scope cut (explicit non-goals for 1.1 ship)
 
-- **No raw video / raw audio frames over the wire *in the first cut point*** (demoted from invariant to default per the 2026-06-22 correction). The default placement keeps segmentation/STT on the peer and ships event-shaped percepts — frames stay local. Placing segmentation on a leader (e.g. a no-GPU sensor peer) opts into a frame-transport cut point under a size cap; that is a 1.2+ second cut point built on demand, not a banned path. See [`perception_pipeline_placement.md`](../perception_pipeline_placement.md).
+- **No raw video / raw audio frames over the wire *in the first cut point*** (demoted from invariant to default per the 2026-06-22 correction). The default placement keeps segmentation/STT on the peer and ships event-shaped percepts — frames stay local. Placing segmentation on a leader (e.g. a no-GPU sensor peer) opts into a frame-transport cut point under a size cap; that is a 1.2+ second cut point built on demand, not a banned path. See [`perception_pipeline_placement.md`](perception_pipeline_placement.md).
 - **No bidirectional perception flow.** Leader → peer "look at this" is out of scope. Perception flows peer → leader only.
 - **No multi-peer fan-in of the same modality.** Two Reachy peers reporting vision to one leader is allowed (different node names) but the leader doesn't reconcile them — agent loop sees both as independent `PerceptSource`s.
 - **No per-percept ACL / authorization beyond cluster key.** Same v1 limitation as the doc-transport plan; C7 per-peer identity layers on top later.
@@ -321,8 +321,8 @@ Update this plan when:
 
 ## Related plans
 
-- [`reactive_peer_mesh_roadmap.md`](../reactive_peer_mesh_roadmap.md) — this plan slots in as Stage C10
-- [`deferred/mesh_doc_transport.md`](mesh_doc_transport.md) — Stage C9 sibling, complementary transport (event docs vs. real-time percepts)
+- [`reactive_peer_mesh_roadmap.md`](reactive_peer_mesh_roadmap.md) — this plan slots in as Stage C10
+- [`deferred/mesh_doc_transport.md`](../archive/mesh_doc_transport.md) — Stage C9 sibling, complementary transport (event docs vs. real-time percepts)
 - [`maxim_hivemind.md`](../maxim_hivemind.md) — 1.1+ substrate-bundle exchange, second consumer of the typed-transport-per-purpose pattern
 - [`v1_refinement.md`](../archive/v1_refinement.md) — 1.0 plan; Prep items 1-4 (and optionally 5) slot into this scope
 - [`grounded_language_acquisition.md`](../grounded_language_acquisition.md) — substrate-primary AUT mode; the cognition layer that ultimately consumes the tunneled percepts

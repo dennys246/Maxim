@@ -2,7 +2,7 @@
 
 **Status:** ACTIVE — promoted from deferred 2026-05-09 after E4 validation surfaced the LLM-band-aid drift (60-70% of recent engineering effort spent on LLM-mitigation scaffolding, ~845 LOC of band-aid code, growing). The MVP for negative-instruction tool-failure hints failed validation (n=6 per arm, no benefit observed; default flipped OFF), making the architectural pivot urgent.
 **Begins:** Phase -1 + Phase 0 harness in 1.0 (parallel to docs work). Full Phase 0 validation, Phase 1, and Phase 2 in 1.1+. Substrate-primary AUT mode (the parallel-architecture work) interleaves with the language phases.
-**Companion plans:** [persona_convergence_crucible.md](deferred/persona_convergence_crucible.md) (Roy methodology — same long-horizon shape), [behavioral_convergence_practice.md](deferred/behavioral_convergence_practice.md), [memory_consolidation_practice.md](deferred/memory_consolidation_practice.md), [v1_refinement.md](archive/v1_refinement.md) (Phase 0 harness scope add)
+**Companion plans:** [persona_convergence_crucible.md](deferred/persona_convergence_crucible.md) (Roy methodology — same long-horizon shape), [behavioral_convergence_practice.md](deferred/behavioral_convergence_practice.md), [memory_consolidation_practice.md](archive/memory_consolidation_practice.md), [v1_refinement.md](archive/v1_refinement.md) (Phase 0 harness scope add)
 **Operating context:** Roy long-horizon simulations (sim-years of subjective experience) with persistent substrate across sessions, plus deliberately text-heavy curricular sims (mom-reading, teacher-student, dialogue). The substrate-primary AUT runs in **parallel mode** — the existing LLM-AUT path remains available so users can continue running D&D campaigns and other long-horizon LLM-driven sims while this work matures.
 
 ## Front-gate scope pressure (retroactive)
@@ -185,7 +185,7 @@ So: do the cheap thesis-tests first, then earn the right to the expensive build.
 **Gate / kill criterion:**
 - **Pass:** measurable EC cluster formation tied to repeating sensorimotor patterns; NAc reward_bias differentiates drive-resolution events from null events; cross-session re-activation > chance.
 - **Fail:** no detectable substrate structure after 50+ sessions of Roy-scale exposure. **Stops the program.** If bio-systems can't form concepts without linguistic supervision, the thesis is wrong and Phases 1-4 have nothing to ground in.
-- **Mixed:** clusters form but don't persist, or persist but don't generalize. Diagnostic, not fatal — feeds [memory_consolidation_practice.md](deferred/memory_consolidation_practice.md).
+- **Mixed:** clusters form but don't persist, or persist but don't generalize. Diagnostic, not fatal — feeds [memory_consolidation_practice.md](archive/memory_consolidation_practice.md).
 
 **What this DOESN'T test:** language. Phase 0 is intentionally pre-linguistic. Whether words can later bind to these clusters is Phase 2's question.
 
@@ -299,7 +299,7 @@ Pretrained tokenizers (BPE from GPT-2/3/4, SentencePiece, etc.) carry priors. Th
 ### Catastrophic forgetting across sessions
 
 Online learning + persistent weights = a known disaster mode. Mitigation across all phases:
-- **Replay-based consolidation:** hippocampal episodes are already replayed during sleep ([memory_consolidation_practice.md](deferred/memory_consolidation_practice.md)). Extend the replay path to feed the binding-layer (Phase 2) and language model (Phase 3) training batches. This is biologically motivated and operationally necessary.
+- **Replay-based consolidation:** hippocampal episodes are already replayed during sleep ([memory_consolidation_practice.md](archive/memory_consolidation_practice.md)). Extend the replay path to feed the binding-layer (Phase 2) and language model (Phase 3) training batches. This is biologically motivated and operationally necessary.
 - **Per-session checkpoints with rollback:** if a session destabilizes the model (loss spike, eval collapse), revert. The cost is one sim's worth of learning; the benefit is bounded blast radius.
 - **Importance-weighted updates:** linguistic events tied to high-valence outcomes weight more in the consolidation batch. This piggybacks on existing valence machinery.
 

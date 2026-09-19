@@ -230,6 +230,6 @@ because keeping the app repo thin is itself one of the standards.
 - [`runtime/agent_factory.py`](../../../src/maxim/runtime/agent_factory.py) — `create_full_agent` (:364)
 - [`runtime/config_writer.py`](../../../src/maxim/runtime/config_writer.py) — sanctioned `config.json` writer (setup page writes through this)
 - [`docs/embodiment/reachy_mini/`](../../embodiment/reachy_mini/README.md) — WS-era transport, connect, motion, audio (the hardware truth)
-- [`perception_pipeline_placement.md`](../perception_pipeline_placement.md) — self-contained (all-local) vs distributed placement framing
+- [`perception_pipeline_placement.md`](../deferred/perception_pipeline_placement.md) — self-contained (all-local) vs distributed placement framing
 - pyproject `reachy` extra — `reachy-mini[gstreamer]>=1.8.3,<2.0` ([pyproject.toml:75](../../../pyproject.toml))
 - Pollen: [Make and publish your Reachy Mini App](https://huggingface.co/blog/pollen-robotics/make-and-publish-your-reachy-mini-apps) · [Building & Publishing Apps (HF docs)](https://huggingface.co/docs/reachy_mini/SDK/apps) · [reachy-mini-desktop-app](https://github.com/pollen-robotics/reachy-mini-desktop-app)

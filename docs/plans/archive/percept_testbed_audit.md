@@ -15,7 +15,7 @@ surface. Every claim below is grounded in the facet reports' file:line.
 real, smaller, high-value gap — but the specific "manifest rides `PerceptSource`" design fails
 the front-gate on four independent counts:
 
-1. **It collides with active work.** `docs/plans/perception_pipeline_placement.md` is *active*
+1. **It collides with active work.** `docs/plans/deferred/perception_pipeline_placement.md` is *active*
    (not deferred; #383 merged, #384/#385 open) and already owns a planned `config.json::perception`
    declarative surface, with the **audio conventions already resolved** (`"audio"` modality tag,
    frozen-centroid — already in `ec.py:216`, normalize-at-the-sensor to `[-1,1]`) **and an explicit

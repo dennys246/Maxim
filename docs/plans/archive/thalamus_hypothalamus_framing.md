@@ -101,7 +101,7 @@ LLM lanes earned:
 
 | Axis | Question | Owner |
 |---|---|---|
-| **Placement** | *Where* does each pipeline stage run (sensor / GPU leader / substrate owner)? | [perception_pipeline_placement.md](../perception_pipeline_placement.md) (active, 1.1) |
+| **Placement** | *Where* does each pipeline stage run (sensor / GPU leader / substrate owner)? | [perception_pipeline_placement.md](../deferred/perception_pipeline_placement.md) (active, 1.1) |
 | **Thalamic relay / gating** | *Which* channels pass, *how much* (gate/gain), routed to *where in cognition* (LLM vs substrate)? | this frame |
 | **Hypothalamic drive** | *What* homeostatic/motivational state do interoceptive signals integrate to? | the drive system (already here) |
 
@@ -233,6 +233,6 @@ falls out of serving it.
 ## Related
 
 - [percept_testbed_audit.md](percept_testbed_audit.md) — the four-facet audit this frames.
-- [perception_pipeline_placement.md](../perception_pipeline_placement.md) — the orthogonal *placement* axis (active, 1.1).
-- [embodiment_runtime_wiring.md](embodiment_runtime_wiring.md) / [hybrid_substrate_reflex_runtime.md](../hybrid_substrate_reflex_runtime.md) — Track 1 (body wired) / Track 2 (the reflex); the runtime this lands in.
-- [substrate_native_orienting.md](../substrate_native_orienting.md) — the azimuth "two learning signals" (signed EC state + folded drive reward) the dual-organ split explains.
+- [perception_pipeline_placement.md](../deferred/perception_pipeline_placement.md) — the orthogonal *placement* axis (active, 1.1).
+- [embodiment_runtime_wiring.md](embodiment_runtime_wiring.md) / [hybrid_substrate_reflex_runtime.md](../deferred/hybrid_substrate_reflex_runtime.md) — Track 1 (body wired) / Track 2 (the reflex); the runtime this lands in.
+- [substrate_native_orienting.md](../deferred/substrate_native_orienting.md) — the azimuth "two learning signals" (signed EC state + folded drive reward) the dual-organ split explains.

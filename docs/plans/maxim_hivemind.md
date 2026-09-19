@@ -214,7 +214,7 @@ This won't be perfect. Pure peer-to-peer systems with open contribution always h
 
 The poison-resistance hooks above say how bad substrate is *rejected*; they don't say how
 good substrate *earns trust*. The first concrete cross-robot payload — the Reachy orient
-policy ([substrate_native_orienting.md](substrate_native_orienting.md)) — made the gap
+policy ([substrate_native_orienting.md](deferred/substrate_native_orienting.md)) — made the gap
 concrete: one contributor with a flipped sign calibration uploads an *inverted* policy,
 and mean-merge dilutes every consumer toward zero. The answer is a tiered, asymmetric
 flow policy:
@@ -409,7 +409,7 @@ These do not block 1.1, but they **do** gate Oasis/Hivemind implementation in 1.
 Exp 52 (the want is learned) + Exp 53b (it reads out on the physical robot, files
 unchanged) give the project its first shareable learned substrate: two JSON files per
 agent, SHA-manifested, provenance-stamped, no episodes. Adopted as the 1.2 motivating
-case study — [oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md).
+case study — [oasis_case_study_taught_orient.md](archive/oasis_case_study_taught_orient.md).
 It forces three contracts: (1) bundle = NAc+EC pair + declared action namespace (bias
 keys are body-prefixed tool names — a typed-bundle vs body-agnostic-key decision);
 (2) **Gauntlet #2** = the Exp 53 readout harness with zero-bias controls, which already

@@ -1,5 +1,12 @@
+
+> **⚠ TRIGGER MAY HAVE FIRED — owner read owed (flagged by the 2026-09-19 plans audit).** 1.3.0
+> changed the loop's ordering around `evaluate_failures` (the encode now runs before the pain tick)
+> and added a second PainBus attribution consumer (`create_pain_cluster_fear_subscriber`). Both
+> resemble this plan's own revive triggers. Nobody has checked whether they fire it by the letter;
+> someone who knows the pain path should read this before 1.4's credit-routing audit (`roadmap_1_4.md`
+> Phase 5), which would otherwise re-derive whatever this plan already decided.
 > **PHASES 0-1 SHIPPED (2026-07-28, `feat/transition-drive-pain`, PR #435)** as Stage 0a of
-> [live_audio_orient_wiring.md](../live_audio_orient_wiring.md).
+> [live_audio_orient_wiring.md](live_audio_orient_wiring.md).
 >
 > **SHIPPED SHAPE DIFFERS FROM THIS PLAN — read this before Phase 3.** The plan proposed
 > latching BOTH attribution channels and then retiring B8 (Phase 3). A pre-merge two-lens
@@ -45,7 +52,7 @@
 >   change, its own validation); recorded as dormant infrastructure in CLAUDE.md.
 
 > **PHASES 0-1 SHIPPED (2026-07-28, `feat/transition-drive-pain`)** as Stage 0a of
-> [live_audio_orient_wiring.md](../live_audio_orient_wiring.md) (the Track-2 live-azimuth
+> [live_audio_orient_wiring.md](live_audio_orient_wiring.md) (the Track-2 live-azimuth
 > wiring is the trigger that fired). The breach latch lives on
 > `Embodiment.__init__::_drive_breach`; both channels now fire on band entry only.
 > Regression guard: `tests/unit/test_transition_drive_pain.py` (5 transition assertions
