@@ -47,6 +47,11 @@ Owner decision (2026-09-10): ship the high-value low-risk guards + claim-truth n
 
 ## Batch 0 — commission the owed score cards *(process, not code; do first)*
 
+**SUPERSEDED 2026-09-19.** The Codex 1.1.0 card and both 1.2 cards were never produced, and would
+grade states nobody works on. Replaced by the v1.3.0 re-score at the tag: the Claude card
+[2026-09-19-claude.md](../limits/score_cards/2026-09-19-claude.md) (three blind evidence agents,
+grades unadjusted) and its Codex twin graded blind to it. The remaining batches aim at those grades.
+
 Re-score at the 1.2 cut, both assessors; produce the Codex 1.1.0 card blind to the Claude one.
 Without it the burndown targets three-cuts-old grades. Owner/assessor action.
 
