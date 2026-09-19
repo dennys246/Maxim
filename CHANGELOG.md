@@ -23,6 +23,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-19 — "Oasis-2"
+
+The survival world. 1.2 shared a want a teacher put there; 1.3 moves the reward to the GAME and
+shares a survival want. On a live Paper 1.20.4 world, with no LLM in the action path: an agent
+that feels air-hunger underwater learns a fear keyed to that situation and leaves the water
+before the pain on its next submersion (**Exp 60 EARNED**); that fear, exported through the
+shipped signed-bundle path, drives a fresh agent that never felt the pain out of the water on
+its FIRST submersion (**Exp 61 EARNED — the 1.3 headline**); and the **R3 survival benchmark**
+measures, on a frozen gauntlet, what a carried drive buys at the one moment it matters — an
+instrument and a frozen baseline, nothing graduated. **Exp 56** (the 1.2 headline) is
+**re-baselined on 1.20.4**, identical. Not earned, stated plainly: "dark = danger" is BLOCKED at
+the instrument (Exp 58 — the sensors cannot separate the situations); eat-when-hungry is
+prior-driven (R2); the fear's reach to another pool is Exp 62, pending; the survival reflex tier
+(Phase 1b) is deferred on a named trigger. Announcement: `docs/announcements/release_1_3_0.md`.
+
+### Correction to 1.2.1
+
+1.2.1's headline says it "completes the spoken-code device-pairing loop end to end". It shipped
+the PIECES (contract 0.5.0, `maxim.console.make_pairing_announcer`, the device speak sink, the
+int16→float32 audio fix) but not the composition: no shipped command constructs the announcer,
+so `maxim serve` runs with pairing disabled (`/api/pair/*` → 409) and still signs in by token.
+Pairing needs an embedder that owns both the console and a live Reachy handle, and the audible
+sample-rate check on hardware is still owed. The 1.2.1 section below is left as published.
+
+### Re-baseline
 - **Exp 56 re-baselined on Paper 1.20.4 (RB-1) — PASS, identical to the EARNED 1.16.5 campaign.** The world builder ported to 1.20.4 with a 128-layer flat stack (the 1.18+ world floor is y=−64; `verify` now MEASURES the surface at y=63), shared Paper-server helpers for both world builders (`scripts/_paper_server.py`), and the server's own `version` reply stamped on every row (the campaign refuses another platform, the analyzer refuses a mixed file). Phase 0 5/5 with every reading identical; taught 0.84 raw / 0.80 decisive, isolated 0.22, satiated 0.12, dangling 0.12, `kit_pass: true`. One duplicated row from an operator restart is disclosed and moves no gate; a restart without `--resume` onto a non-empty `--out` now refuses. Exp 61's reuse of the fabric on 1.20.4 is covered.
 ### Added
 - **Exp 61 EARNED — shared survival fear: a learned drowning-fear transfers between independent agents through the shipped signed-bundle path and drives the receiver's FIRST loop-live submersion (the 1.3 Phase-2 headline).** One campaign on big-mac-mini at one code hash (`4e25b475`, 1.10 h, 121 rows, zero refusals): 12/12 transferred receivers executed `escape_water` on their first submersion (escape call median 1.72 s, first air median 3.14 s, all inside the US-free window) against 0/24 isolated, 0/12 cluster-not-fear (the ablated donor's cluster and percept valence shipped, the fear did not) and 0/24 dangling (the fear dropped at ingest for want of its world node); Fisher one-sided p = 8.0e-10 and 3.7e-7; the loop-OFF gate read the discounted fear (−0.75) exactly on every receiver; the anti-vacuity kit passed. Prereg `docs/experiments/exp61_shared_fear_prereg.md` §Outcome; data PR #748; ledger Tier 1.
