@@ -287,6 +287,12 @@ fear-side gradient today; the prereg says so, and a recorded failure ships as a 
 None is built in advance; each gets a plan, a written front-gate answer against the shipped
 infrastructure the review located, and the full four-lens review.
 
+- **The B8 disposition rides with this audit (owner decision 2026-09-19).**
+  `deferred/transition_based_drive_pain.md` shipped its latch in July; its last phase proposed
+  retiring B8's delta-attribution filter and its own review then found B8 load-bearing, so the
+  premise is gone. The audit below has to understand attribution anyway: settle whether that phase
+  has content left, and if the code cannot settle it, run a pre-registered arm either way rather
+  than arguing it.
 - **Credit routing (R4, first).** The eligibility trace already reaches step three; it lands on the
   recognition `_reward_bias` (0.20 cap, cluster-blind, fed by the reaction-path reward) which the
   selection surface does not read. Audit: route existing trace credit to the selection surface before

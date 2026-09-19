@@ -14,6 +14,11 @@
 > open question is narrower: whether Phase 3 has any content left at all. That is a decision, not a
 > deferral waiting on an event; whoever opens 1.4's credit-routing audit should settle it, because
 > both touch how attribution reaches the NAc.
+>
+> **OWNER DECISION 2026-09-19:** settle it inside that audit, and if reading the code cannot settle
+> it, MEASURE it — an experiment in either direction is admissible (keep B8 vs retire it is a
+> behavioural question about attribution, and this repo answers those with a pre-registered arm, not
+> an argument). Until then this file stays deferred with no work owed.
 
 > **PHASES 0-1 SHIPPED (2026-07-28, `feat/transition-drive-pain`)** as Stage 0a of
 > [live_audio_orient_wiring.md](live_audio_orient_wiring.md) (the Track-2 live-azimuth
