@@ -5,7 +5,7 @@
 additions** the visual path already has for free. This doc records exactly what's missing, why, and
 the intended shape — so the audio orienting reflex (running the Exp 45 learned turn-toward-sound
 policy) can be built without re-discovering the seams. It is the companion to the plan
-[../plans/hybrid_substrate_reflex_runtime.md](../plans/hybrid_substrate_reflex_runtime.md) and the
+[../plans/hybrid_substrate_reflex_runtime.md](../plans/deferred/hybrid_substrate_reflex_runtime.md) and the
 review [../plans/reviews/hybrid_runtime_two_lens_review.md](../plans/reviews/hybrid_runtime_two_lens_review.md);
 keep those three in sync as the work lands.
 
@@ -115,7 +115,7 @@ exteroceptive encoder) is the principled long-term path but is out of scope here
 
 ## Where this connects
 
-- Plan (owns A0–A4 as steps): [../plans/hybrid_substrate_reflex_runtime.md](../plans/hybrid_substrate_reflex_runtime.md)
+- Plan (owns A0–A4 as steps): [../plans/hybrid_substrate_reflex_runtime.md](../plans/deferred/hybrid_substrate_reflex_runtime.md)
 - Review (why each addition is needed): [../plans/reviews/hybrid_runtime_two_lens_review.md](../plans/reviews/hybrid_runtime_two_lens_review.md)
 - Body wiring prerequisite (declaration seam): [../plans/archive/embodiment_runtime_wiring.md](../plans/archive/embodiment_runtime_wiring.md)
 - The policy + az_bin/sidecar convention: [../embodiment/porting_orient_loop.md](../embodiment/porting_orient_loop.md)

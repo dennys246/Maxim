@@ -119,7 +119,7 @@ WITHOUT `receiver_agent_id` → 0.0 (proves the agent-id rewrite is load-bearing
 clamped, discounted and allowlisted; an out-of-allowlist mode and a positive value do not". The brief's
 invariant (c) and its guard line are rewritten in the same commit as the flip. Dropped from v1: a
 two-process key-stability test (the keys are `\x1f`-joined strings, nothing PYTHONHASHSEED can touch).
-Docs in the same PR: `docs/plans/oasis_ingestion_contract.md` V2 bounds (the user-facing
+Docs in the same PR: `docs/plans/archive/oasis_ingestion_contract.md` V2 bounds (the user-facing
 `hivemind_bundle_format.md` carries no field roster — corrected at v2.1), the brief's invariant (c).
 
 Front-gate: no new mechanism, no new bus — the sibling field `cluster_reward_bias` already takes

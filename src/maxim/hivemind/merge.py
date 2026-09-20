@@ -625,7 +625,7 @@ DEFAULT_FROZEN_CENTROID_MODALITIES: frozenset[str] = frozenset({"interoception",
 # folded `cluster_reward_bias` on exact string keys — so a foreign want landed
 # under a cluster id that is not a node in the receiver's EC, read out as
 # exactly 0.0, and the merge reported success. See
-# docs/plans/d43_merge_correctness.md.
+# docs/plans/archive/d43_merge_correctness.md.
 #
 # THE THRESHOLD IS PER MODALITY, and this is the half no plan document named.
 # The 0.44 default is `ECConfig.pattern_complete_threshold`, tuned for

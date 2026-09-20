@@ -26,7 +26,7 @@ KEY_BYTES = 32  # 256-bit random key → 43 char base64url-ish string
 # original single-key behaviour byte-identically). "console_token" is the
 # console credential (maxim serve bearer auth) — a SEPARATE file on purpose:
 # one credential must not grant both inference and console admin
-# (docs/plans/console_tunnel_hardening.md, decision A1). Its mxc_ prefix makes
+# (docs/plans/deferred/console_tunnel_hardening.md, decision A1). Its mxc_ prefix makes
 # a leaked token self-identifying and secret-scanner-teachable, GitHub-style.
 MESH_KEY_NAME = "api_key"
 CONSOLE_KEY_NAME = "console_token"

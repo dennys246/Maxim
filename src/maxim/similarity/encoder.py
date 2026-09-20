@@ -835,7 +835,7 @@ class SensorEncoder:
                 cluster space and inherit the right centroid policy (audio
                 is frozen-centroid by default, like interoception — see
                 ``ECConfig.frozen_centroid_modalities`` and
-                ``docs/plans/perception_pipeline_placement.md`` Q5).
+                ``docs/plans/deferred/perception_pipeline_placement.md`` Q5).
             ranges: (P1) ``{sensor_name: (lo, hi)}`` per-sensor value range so
                 signed sensors (azimuth / thermal on ``[-1, 1]``) normalize
                 MONOTONICALLY instead of folding (left / center / right stay

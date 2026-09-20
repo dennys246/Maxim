@@ -1,5 +1,11 @@
 # Minecraft as the sharing apparatus (1.1.4 seam → 1.2 benchmark)
 
+
+> **Status note 2026-09-19 (plans audit):** R0–R3 all shipped — R3 is an instrument and a frozen
+> baseline in 1.3.0, nothing graduated (`docs/experiments/r3_survival_benchmark_prereg.md` §Outcome).
+> R4 (delayed / multi-step credit) moved to [roadmap_1_4.md](roadmap_1_4.md) Phase 5, where the first
+> step is auditing the SHIPPED eligibility trace's routing rather than a new rule. This file stays the
+> ladder's own record; the live sequencing is the roadmap's.
 > **REVIVED 2026-08-30 from `deferred/` by the 1.2 scoping dive.** The deferral banner
 > below is kept as the record. What changed: the 1.2 scoping pass established that
 > Minecraft is not a demo or a splash launch — it is the **instrument** for the 1.2
@@ -564,7 +570,7 @@ measured on. Three caveats before anyone does it:
   Python loop with no cap and no pruning (2.7 ms @ 100 nodes, 136 ms @ 5,000 — per encode,
   per channel, per tick). Measured at A4's allocation rate 2026-09-03: verdict
   index-prerequisite; see `scripts/ec_scan_cost.py` +
-  [world_seam_1_1_4.md](world_seam_1_1_4.md) §PR 0 result)*. Raising the sensor count
+  [world_seam_1_1_4.md](archive/world_seam_1_1_4.md) §PR 0 result)*. Raising the sensor count
   without addressing cluster-count growth trades a representation ceiling for a latency one.
 
 ### Two traps to design against, both verified

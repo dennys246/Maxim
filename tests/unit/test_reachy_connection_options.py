@@ -1,7 +1,7 @@
 """Unit tests for ReachyMiniController connection flexibility (host/tunnel/mode).
 
 Regression guard for the robots.yaml-driven connection options folded into the
-controller (docs/plans/reachy_orient_live.md): an explicit `host` bypasses the
+controller (docs/plans/deferred/reachy_orient_live.md): an explicit `host` bypasses the
 mDNS hard-gate that fails on macOS/hotspot; `tunnel` forces the localhost_only
 SSH-tunnel path; defaults preserve the legacy network+mDNS behavior.
 """

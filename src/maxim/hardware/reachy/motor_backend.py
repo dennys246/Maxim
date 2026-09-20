@@ -29,7 +29,7 @@ reading stamped after the motion settles. Timeout or staleness → no
 credit (never the modeled delta). The backend only MEASURES; the credit
 formula (drive_comfort_progress) and emission stay in the bio layer
 (tool_bridge reads ``metadata["measured_drive_transitions"]``). See
-docs/plans/sem_motor_binding.md Phase 2.
+docs/plans/deferred/sem_motor_binding.md Phase 2.
 
 DN contention: the DefaultNetwork runs on its own thread and its gaze
 behaviors would fight a 1.5-3 s body turn — the backend inhibits the DN

@@ -3,12 +3,12 @@
 **Captures taken 2026-08-30 from a clean tree at `6f3f3b7d`; baseline artifact regenerated at
 `258389f8`, also from a clean tree (see Provenance below — the first cut of this file got that
 wrong).** Plan:
-[../../../plans/measurement_path_fail_loud.md](../../../plans/measurement_path_fail_loud.md) §Stage 2.
+[../../../plans/measurement_path_fail_loud.md](../../../plans/deferred/measurement_path_fail_loud.md) §Stage 2.
 Tool: [`scripts/fail_loud_stage2.py`](../../../../scripts/fail_loud_stage2.py).
 
 ## Why this exists
 
-[`god_function_decomposition.md`](../../../plans/god_function_decomposition.md) sets a per-PR
+[`god_function_decomposition.md`](../../../plans/archive/god_function_decomposition.md) sets a per-PR
 behaviour gate for every extraction: *"zero new `swallowed_exception` firings vs the Stage-2
 baseline."* Stage 2 had never been run, so that baseline did not exist and the gate could not
 fail. This directory is the artifact the gate cites.

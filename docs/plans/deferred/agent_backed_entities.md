@@ -2,7 +2,7 @@
 
 **Status:** **DEFERRED** (2026-04-28). Design preserved for post-1.0 revival.
 **Scope:** ~600-900 LOC net new across `embodiment/`, `runtime/`, `imagination/`, `simulation/`, `peer/`, `interactive/`, plus a new `_data/cast/` directory and Cradle role-arc extensions.
-**Depends on:** Cradle sensorimotor development ([../archive/cradle_sensorimotor_development.md](../archive/cradle_sensorimotor_development.md)) — shipped 2026-04-25 ([exp 11](../../experiments/11_cradle_sensorimotor_poc.md)); reactive peer mesh ([../reactive_peer_mesh_roadmap.md](../reactive_peer_mesh_roadmap.md)) C3.4+ for VRAM/lane telemetry; Wave 1 P4 multi-agent attribution (PR #202, shipped) for the per-agent isolation guarantees this plan depends on.
+**Depends on:** Cradle sensorimotor development ([../archive/cradle_sensorimotor_development.md](../archive/cradle_sensorimotor_development.md)) — shipped 2026-04-25 ([exp 11](../../experiments/11_cradle_sensorimotor_poc.md)); reactive peer mesh ([../reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md)) C3.4+ for VRAM/lane telemetry; Wave 1 P4 multi-agent attribution (PR #202, shipped) for the per-agent isolation guarantees this plan depends on.
 **Gates:** None.
 **Branch:** TBD
 
@@ -370,7 +370,7 @@ This unblocks recurring-character sims (DM campaigns with consistent antagonists
 
 - [../scene_actor_affordances.md](scene_actor_affordances.md) — diagnostic for whether this plan is needed; revives this plan if it doesn't close the dragon-narration gap.
 - [../archive/cradle_sensorimotor_development.md](../archive/cradle_sensorimotor_development.md) — Cradle infrastructure this plan extends. Shipped 2026-04-25.
-- [../reactive_peer_mesh_roadmap.md](../reactive_peer_mesh_roadmap.md) — Mesh telemetry this plan reads.
+- [../reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) — Mesh telemetry this plan reads.
 - [../v1_refinement.md](../archive/v1_refinement.md) P4 — multi-agent attribution shipped PR #202; load-bearing for this plan's per-agent semantics.
 - [../v1_refinement.md](../archive/v1_refinement.md) CC1 — `_format_version` shipped PR #203; cast manifest compatibility checks compose with this scheme.
 - [mother_npc_stimulus_plan.md](mother_npc_stimulus_plan.md) — Stimulus pattern subsumed by cast members.

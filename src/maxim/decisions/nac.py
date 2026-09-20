@@ -791,7 +791,7 @@ class NAc:
         # entry ONLY via Queen provenance at the ingestion adapter — no
         # learning path calls mark_inherent_bias (a locally-learned bias never
         # self-promotes; the safety floor must not contain a privilege
-        # escalation). See docs/plans/oasis_ingestion_contract.md §6.
+        # escalation). See docs/plans/archive/oasis_ingestion_contract.md §6.
         self._inherent_bias_keys: set[tuple[str, str, str]] = set()
 
         # |RPE| of the most recent outcome; see _note_rpe / last_rpe (D60).

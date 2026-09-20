@@ -1,7 +1,7 @@
 """Minecraft world backend — SEM affordances become real game actions (1.1.4 PR 3).
 
 The world-seam counterpart of ``hardware/reachy/motor_backend.py``, copying
-its contract exactly (`docs/plans/world_seam_1_1_4.md` §PR 3; the plan's
+its contract exactly (`docs/plans/archive/world_seam_1_1_4.md` §PR 3; the plan's
 "copy the Reachy pattern" instruction):
 
 * ``attach_backends``-shaped factory (:func:`minecraft_modulator_factory`)

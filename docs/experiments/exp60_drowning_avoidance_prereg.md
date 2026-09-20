@@ -24,7 +24,7 @@
 > The pivot from Exp 58 (dark=danger, blocked): the SAME Wire-4 situation-fear mechanism — which
 > we proved *fires* (dry-run: fear accumulates, flee executes) — applied to a survival cue that
 > ACTUALLY SEPARATES on today's substrate. Exp 58 died at the instrument (dark/safe wouldn't
-> cluster-separate; verified unfixable by encoding remedy — `docs/plans/l11_slice2_channel_split.md`).
+> cluster-separate; verified unfixable by encoding remedy — `docs/plans/archive/l11_slice2_channel_split.md`).
 > Drowning is the fix for the apparatus half: `oxygen` (modality world, range [0,40], rest 20 =
 > normalized 0.5) descends to 0 underwater — a full half-range swing to an extreme (gain weight
 > 0→1.0), so "underwater/low-air" is a genuinely distinct world cluster. This prereg is the

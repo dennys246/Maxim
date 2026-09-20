@@ -1,6 +1,6 @@
 # Set-point-aware neutral — REGRESSION lens (four-lens design review, 2026-09-16)
 
-Reviewed: `docs/plans/setpoint_aware_neutral.md` (DESIGN PLAN DRAFT 2026-09-15) on branch
+Reviewed: `docs/plans/deferred/setpoint_aware_neutral.md` (DESIGN PLAN DRAFT 2026-09-15) on branch
 `docs/exp60-outcome-earned`. Remit: what the change can break among results already EARNED, the
 re-run bill, whether the proposed guards (opt-in, byte-identical default) are sufficient, and whether
 the plan's DO-NOT-SHIP condition is actually checkable. Read-only except this file.
@@ -72,7 +72,7 @@ the plan's DO-NOT-SHIP condition is actually checkable. Read-only except this fi
   snapshots with `state` dicts) supports a stability / discrimination replay; the Slice-1 and Exp 60
   records support separation only.
 - **Cost evidence (first→last `ts` in the committed JSONL).** Exp 56: 51.0 min for 4 arms × n=50
-  (`56_four_arm.jsonl`; `docs/plans/survival_world_1_3.md` says the same). Exp 57: 91.5 min
+  (`56_four_arm.jsonl`; `docs/plans/archive/survival_world_1_3.md` says the same). Exp 57: 91.5 min
   (`57_ladder.jsonl`, 9,200 rows). Exp 60: 13.1 min (FEAR) + 14.0 min (ABLATED), 5 seeds each
   (`exp60_trials.jsonl`, run ids `301eb2edff6d` / `eeb92752ee2b`). Exp 42: `--mock` for CI, real
   fire = `smollm-1.7b-instruct` narrator with an LLM-free AUT (`benchmark_exp42_preference.py`).

@@ -1,6 +1,6 @@
 # Set-point-aware neutral — BIO-FAITHFUL lens (four-lens design review, 2026-09-16)
 
-Reviewer lens: does "set-point-aware neutral" (`docs/plans/setpoint_aware_neutral.md`, the L11
+Reviewer lens: does "set-point-aware neutral" (`docs/plans/deferred/setpoint_aware_neutral.md`, the L11
 line's "B") do the substrate's REAL job — make a situation the world distinguishes land in a
 distinct EC cluster — or does it re-spell a lever the body already has while leaving the
 measured failure untouched? Read against the code, the owning brief, the L11 ledger, the
@@ -56,7 +56,7 @@ stability 20/20 (measured). Details, evidence and the concrete replacement follo
 - `docs/wiring/cosine-separation-is-directional.md` (the measured lesson): cosine sees direction;
   the separating moves are neutral→extreme or extreme→opposite extreme; a small same-side move
   does not rotate the sum; corollary 4 — adding a rest-at-neutral sensor is safe, changing an
-  existing sensor's encoding is destructive. `docs/plans/l11_slice2_channel_split.md` §Decision
+  existing sensor's encoding is destructive. `docs/plans/archive/l11_slice2_channel_split.md` §Decision
   names B as "the mechanism-faithful fix" but its own bio-faithful lens
   (`rationale/l11-slice2/bio-faithful.md`, DO-NOT-BUILD 2) already noted in parentheses: "even
   set-point neutrality would not help here" for the dark/safe pair.

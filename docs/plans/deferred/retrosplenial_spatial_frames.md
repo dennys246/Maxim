@@ -212,7 +212,7 @@ graduation-ledger discipline, applied in advance.
    many nodes and H-B must separate distinct places. Until this passes, every later step
    is decoration. NOTE this touches the EC drift lesson's territory — thresholds are
    pre-registered, never tuned on the outcome.
-3. [cross_modal_perception_fabric.md](../cross_modal_perception_fabric.md) — its
+3. [cross_modal_perception_fabric.md](cross_modal_perception_fabric.md) — its
    orient-windowed binding is where multi-vantage identity would consume this, and its
    suspected "2-cluster ceiling" is the same measurement (see §2 item 3).
 4. RSC transform + `space` channel behind a flag, default OFF.

@@ -6,7 +6,7 @@
 **Target version:** 1.1+ (post-tau-split, post-SCN-tying).
 **Status:** Draft. Plan written 2026-05-26, prompted by user's observation during the post-Roy-3c-bisect session: "the ultimate goal of decay is to enable forgetting more or less of unimportant or not used information — theoretically can't we create within a simulation have a particular percept occur and adjust the decay so it just begins to form a short term memory, then in another phase we'd do the same but for long-term memories and consolidations."
 **Owns:** [`src/maxim/decisions/nac.py`](../../src/maxim/decisions/nac.py) (NAc decay parameters), [`src/maxim/memory/`](../../src/maxim/memory/) (tier-transition mechanisms), `scripts/calibrate_decay.py` (new), `docs/experiments/3X_decay_calibration_baseline.md` (new), `docs/experiments/3X_decay_calibration_results.md` (new).
-**Companion plans:** [cluster_reward_bias_decay_tau_split.md](../archive/cluster_reward_bias_decay_tau_split.md) (Phase A of the prerequisite chain), [scn_decay_anchoring.md](scn_decay_anchoring.md) *(to be written as Phase C kickoff output)* (Phase B prerequisite), [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) (the bio-fidelity thesis this plan operationalizes), [persona_convergence_crucible.md](persona_convergence_crucible.md) (whose iterations would consume calibrated values), [memory_consolidation_practice.md](memory_consolidation_practice.md) (companion living doc — calibration framework feeds back into the consolidation mechanism this practice doc refines).
+**Companion plans:** [cluster_reward_bias_decay_tau_split.md](../archive/cluster_reward_bias_decay_tau_split.md) (Phase A of the prerequisite chain), [scn_decay_anchoring.md](scn_decay_anchoring.md) *(to be written as Phase C kickoff output)* (Phase B prerequisite), [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) (the bio-fidelity thesis this plan operationalizes), [persona_convergence_crucible.md](persona_convergence_crucible.md) (whose iterations would consume calibrated values), [memory_consolidation_practice.md](../archive/memory_consolidation_practice.md) (companion living doc — calibration framework feeds back into the consolidation mechanism this practice doc refines).
 
 ## Why this plan exists
 
@@ -140,7 +140,7 @@ If a 1.0 Roy iteration produces a specific decay-tuning surprise that the calibr
 
 ## Cross-references to companion docs
 
-- **[memory_consolidation_practice.md](memory_consolidation_practice.md)** — living practice doc that refines the SHORT_TERM → LONG_TERM consolidation mechanism. Phase 4 of this plan depends on consolidation mechanism maturity tracked there.
+- **[memory_consolidation_practice.md](../archive/memory_consolidation_practice.md)** — living practice doc that refines the SHORT_TERM → LONG_TERM consolidation mechanism. Phase 4 of this plan depends on consolidation mechanism maturity tracked there.
 - **[behavioral_convergence_practice.md](behavioral_convergence_practice.md)** — living doc that tracks "does the agent actually get better across sessions." Calibrated decay values feed into this; the practice doc surfaces when calibration produced values that don't translate to behavioral improvement.
 - **[persona_convergence_crucible.md](persona_convergence_crucible.md)** — Roy iterations consume calibrated values; their results validate the calibration framework's choices.
 

@@ -1,6 +1,6 @@
 # The exteroception/interoception (multi-modality) seam
 
-> **✅ SHIPPED 2026-07-22 (PR #411) — `ModalityChannel`/`AUDIO_TAG`, `recommend_action(current_clusters=)`, `record_outcome(clusters=)`; CI-guarded by `tests/unit/test_modality_seam.py`. Its deferred list is absorbed by `../cross_modal_perception_fabric.md` / `../modality_resolution_and_alignment.md`.**
+> **✅ SHIPPED 2026-07-22 (PR #411) — `ModalityChannel`/`AUDIO_TAG`, `recommend_action(current_clusters=)`, `record_outcome(clusters=)`; CI-guarded by `tests/unit/test_modality_seam.py`. Its deferred list is absorbed by `../deferred/cross_modal_perception_fabric.md` / `../deferred/modality_resolution_and_alignment.md`.**
 
 **Status:** MVP SHIPPED (2026-07-22, branch `feat/credit-on-progress`) — design synthesized from a 3-lens parallel review (substrate-encoding / bio-fidelity / abstraction). Fixes the root cause of the embodied cradle orient failure (memory `reference_extero_intero_dilution_root_cause.md`): exteroceptive direction dilutes among interoceptive drives in one text-embedding cluster → the agent is blind to direction.
 

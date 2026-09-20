@@ -145,7 +145,7 @@ change — the mechanism PR's site list becomes NINE, moved together:
 9. `nac_merge` — unchanged, but a test must pin that `nac_merge_many` preserves the pairwise min for
    fear (it does today only because min is associative and the N-way overwrite skips the field).
 Plus the docs that roster the bounded fields (`docs/user/hivemind_bundle_format.md` V2 bounds,
-`docs/plans/oasis_ingestion_contract.md`) and the brief's invariant (c) rewritten in the same PR.
+`docs/plans/archive/oasis_ingestion_contract.md`) and the brief's invariant (c) rewritten in the same PR.
 
 **DNB-2. "Receiver preflights (Exp 60's, unchanged)" contradicts the claim "B has never been
 underwater" and, run on B post-ingest, exercises the mechanism BEFORE the DV.** Evidence:

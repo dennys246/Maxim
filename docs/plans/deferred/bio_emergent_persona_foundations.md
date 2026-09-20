@@ -7,7 +7,7 @@
 **Ships in:** ~~1.0 (Stages 0-3)~~ → ~~1.1 (Stages 0-3)~~ → **0.9.1 (Stages 0-3 + new Wire-A cluster-bias annotation)**. Roy-2pc (PR #243) reproduced the structural-vs-behavioral gap on a positive-control fixture — five Roy iterations established that the cluster_reward_bias path is behaviorally inert across both AUT modes regardless of percept overlap. The annotation pattern routes around the block.
 **1.0 disposition rationale (now superseded):** [docs/experiments/12_v1_phased_attribution.md](../../experiments/12_v1_phased_attribution.md) Phase A reproduced cross-session recall without scaffolds — that result still holds, but the Roy harness produced a *different* falsification target (substrate writes correctly, doesn't translate to action selection) that the annotation wires address.
 **Owns:** decision-time wiring across [decisions/nac.py](../../src/maxim/decisions/nac.py), [runtime/agent_loop.py](../../src/maxim/runtime/agent_loop.py), [runtime/gating.py](../../src/maxim/runtime/gating.py), [embodiment/](../../src/maxim/embodiment/), [proprioception/pain_bus.py](../../src/maxim/proprioception/pain_bus.py)
-**Companion plans:** [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md) (clears the cognitive dissonance), [persona_convergence_crucible.md](persona_convergence_crucible.md) (uses these foundations for Roy experiments)
+**Companion plans:** [persona_cleanup_and_mode_transition.md](../archive/persona_cleanup_and_mode_transition.md) (clears the cognitive dissonance), [persona_convergence_crucible.md](persona_convergence_crucible.md) (uses these foundations for Roy experiments)
 
 ## Front-gate scope pressure (retroactive)
 
@@ -238,4 +238,4 @@ Each stage gets its own pre-merge two-lens review (Executor + Architecture lense
 - Does not promise visible persona divergence. That's the Crucible doc's question.
 - Does not ship Wires 4 or 5. They wait for Crucible findings to motivate them.
 - Does not redesign action ranking as a substrate-driven pre-filter. That's a post-1.0 architectural decision the Crucible's three-arm results will inform.
-- Does not touch the prompt-injection persona surface. That's [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md).
+- Does not touch the prompt-injection persona surface. That's [persona_cleanup_and_mode_transition.md](../archive/persona_cleanup_and_mode_transition.md).

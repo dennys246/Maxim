@@ -2,7 +2,7 @@
 
 Implements the frozen receiver validation contract of
 ``docs/plans/sharing_threat_model.md`` §5 against the step order pinned in
-``docs/plans/oasis_ingestion_contract.md`` §3. Every duty ROUTES THROUGH the
+``docs/plans/archive/oasis_ingestion_contract.md`` §3. Every duty ROUTES THROUGH the
 existing seams — ``read_bundle_manifest``, ``assert_bundle_body_compatible``,
 ``filter_identity_bearing_links`` / ``is_identity_bearing``,
 ``scrub_nac_state_for_bundle``, and ``substrate_merge`` with the reserved

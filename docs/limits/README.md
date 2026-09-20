@@ -1,5 +1,19 @@
 # Measurement limits — the instrument ledger
 
+> **Score cards** live in [score_cards/](score_cards/). The current baseline is the v1.3.0
+> re-score: [2026-09-19-claude.md](score_cards/2026-09-19-claude.md) and
+> [2026-09-19-codex.md](score_cards/2026-09-19-codex.md), graded blind to each other. The Claude
+> card's §Divergence compares them and shows most of the spread tracking what each assessor could
+> execute, not a disagreement about facts. **Method, from 2026-09-19 on:** three firewalled evidence agents grade groups of
+> axes in a THROWAWAY WORKTREE AT THE TAG with the earlier cards, the burndown and every
+> grade-quoting passage physically removed — instructions alone are not a firewall, because grades
+> leak through ordinary evidence (a `_comment` in `utils/function_length_baseline.json`, comments
+> in `scripts/check_slow_lane.py` and `test.yml`, the cards link in `docs/index.md`). The
+> assembler is usually NOT blind and therefore does not adjust the agents' grades; every contact is
+> disclosed in the card, the evidence reports are committed beside it, and letter grades stay out
+> of any file auto-loaded into an agent's context.
+
+
 **What this is.** The fifth ledger. The repo tracks *behavioral* claims
 ([behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md)),
 *algorithmic* claims ([bio_faithful_roadmap.md](../plans/bio_faithful_roadmap.md)),
@@ -101,7 +115,7 @@ your metric can actually see.
 - **Measured:** RSC pre-check 2026-08-11 (`scripts/rsc_precheck.py`;
   [deferred/retrosplenial_spatial_frames.md](../plans/deferred/retrosplenial_spatial_frames.md) §2);
   production measurement 3 → 7 nodes with the place code
-  ([modality_resolution_and_alignment.md](../plans/modality_resolution_and_alignment.md) §7).
+  ([modality_resolution_and_alignment.md](../plans/deferred/modality_resolution_and_alignment.md) §7).
 - **Design consequence:** graded-orient claims need the place code ON
   (`MAXIM_PLACE_CODE_EXTEROCEPTION`, default OFF; its default-ON gates are the
   1.1.x roadmap item) or an explicit hand-binned readout; and splitting one

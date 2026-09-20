@@ -2207,7 +2207,7 @@ def register_persona(
     """DEPRECATED — accepted and ignored on 1.0.x; raises from 1.1 onward.
 
     The persona system was hard-deleted in #482 per
-    [docs/plans/deferred/persona_cleanup_and_mode_transition.md](../../docs/plans/deferred/persona_cleanup_and_mode_transition.md).
+    [docs/plans/archive/persona_cleanup_and_mode_transition.md](../../docs/plans/archive/persona_cleanup_and_mode_transition.md).
     Registered personas never shaped orchestrator behaviour — the
     ``context_prompt`` was never injected and the registry was label-only
     (audit finding in the plan) — so ignoring the call costs no behaviour
@@ -2251,7 +2251,7 @@ def register_persona(
             "maxim.register_persona() was removed in 1.1 — the persona system was "
             "hard-deleted (its context_prompt was never injected; the registry was "
             "label-only). Use imagine(mode=...) for the report label. See "
-            "docs/plans/deferred/persona_cleanup_and_mode_transition.md."
+            "docs/plans/archive/persona_cleanup_and_mode_transition.md."
         )
 
     warnings.warn(
@@ -2259,7 +2259,7 @@ def register_persona(
         "system was removed and the registry was label-only (the context_prompt "
         "was never injected, even in 1.0.0). This call is accepted for 1.0.x "
         "compatibility and RAISES from 1.1. Pass imagine(mode=...) for the "
-        "report label. See docs/plans/deferred/persona_cleanup_and_mode_transition.md.",
+        "report label. See docs/plans/archive/persona_cleanup_and_mode_transition.md.",
         DeprecationWarning,
         stacklevel=2,
     )

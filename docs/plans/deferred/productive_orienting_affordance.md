@@ -1,6 +1,6 @@
 # Productive orienting affordance — make attending-to-sound pay off
 
-> **⏸ DEFERRED 2026-08-27 — Phases 1–2 ✅ SHIPPED (PR #403: hear, localize, turn toward sound); only the 2-axis/elevation decision is open, and `../live_audio_orient_wiring.md` already defers it per the N=1 rule. **Revive when** a second-axis body exists and forces the two-drives-vs-`√(az²+el²)` decision.**
+> **⏸ DEFERRED 2026-08-27 — Phases 1–2 ✅ SHIPPED (PR #403: hear, localize, turn toward sound); only the 2-axis/elevation decision is open, and `live_audio_orient_wiring.md` already defers it per the N=1 rule. **Revive when** a second-axis body exists and forces the two-drives-vs-`√(az²+el²)` decision.**
 
 **Status:** Design draft (2026-07-19). Follows the audio/DoA recognition work in PR #402
 (`thalamus_relay_design_pass.md` stage 4). Recognition is done — a DoA percept reaches the agent's

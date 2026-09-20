@@ -198,7 +198,7 @@ When MCP spec hits 1.0 stability and we have a concrete user need (Maxim user wa
 - [v1_refinement.md](../archive/v1_refinement.md) CC9 — 1.0 prerequisite (dual-format Tool schema). Shipped PR #204.
 - [v1_refinement.md](../archive/v1_refinement.md) CC11 — `Tool.cancel()` hook composes with MCP cancellation semantics.
 - [v1_refinement.md](../archive/v1_refinement.md) Section 8 — 1.1 track index.
-- [reactive_peer_mesh_roadmap.md](../reactive_peer_mesh_roadmap.md) — sister concern: Maxim-to-Maxim communication. MCP is Maxim-to-other-agents.
+- [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) — sister concern: Maxim-to-Maxim communication. MCP is Maxim-to-other-agents.
 - [minecraft_benchmark.md](minecraft_benchmark.md) — sister 1.1 work; Minecraft adapter could be exposed via MCP server mode for stream demos.
 - Anthropic MCP spec: https://spec.modelcontextprotocol.io/
 - MCP Python SDK: https://github.com/modelcontextprotocol/python-sdk

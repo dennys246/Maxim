@@ -1,6 +1,6 @@
 """Console bearer auth — always on, fail-closed; sandbox is the one exception.
 
-Acceptance suite for hardening PR 2 (docs/plans/console_tunnel_hardening.md,
+Acceptance suite for hardening PR 2 (docs/plans/deferred/console_tunnel_hardening.md,
 decisions A1–A8). Every refusal is paired with its accepting counterpart so a
 guard that refuses everything cannot pass; the fail-closed test is the
 anti-`leader_proxy._check_auth` trap (that check returns True on an EMPTY

@@ -65,7 +65,7 @@ little, or moves while staying on the same side of its neutral point.
    channel grouping.** No amount of channel-splitting or thresholding rescues a near-collinear pair.
    The honest fixes are upstream: an apparatus whose cue swings a sensor full-range across neutral, or
    a binary in-state flag at rest-neutral (corollary 2). *Corrected 2026-09-16:* this corollary used to
-   name the deferred **set-point-aware neutral** primitive (`docs/plans/setpoint_aware_neutral.md`) as a
+   name the deferred **set-point-aware neutral** primitive (`docs/plans/deferred/setpoint_aware_neutral.md`) as a
    third fix; its four-lens review measured that no static set-point opens the arc between two
    same-side readings (corollary 7), so it is not a fix for this block and the plan is DEFERRED.
 6. **A CAPPED distance sensor becomes a full-weight constant at its cap — bound apparatus
@@ -103,7 +103,7 @@ little, or moves while staying on the same side of its neutral point.
 `docs/limits/l11_sensor_dilution.md` (the 1/N mass law — necessary background, but this direction
 framing supersedes "it's dilution" as the operative mental model);
 [cluster-dilution-blocks-situation-fear.md](cluster-dilution-blocks-situation-fear.md) (the live
-Exp 58 realization); `docs/plans/l11_slice2_channel_split.md` §Decision (the rejected remedy + the
+Exp 58 realization); `docs/plans/archive/l11_slice2_channel_split.md` §Decision (the rejected remedy + the
 verified table); `docs/experiments/exp60_drowning_avoidance_prereg.md` (the viable cue).
 
 **Embodiment gotcha noted here so it isn't lost:** the mineflayer pathfinder is DEAD in water — its

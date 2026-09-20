@@ -300,7 +300,7 @@ def info(message: str, *args: object, logger: Optional[logging.Logger] = None) -
         print(f"[INFO] {formatted}")
 
 
-# Fail-loud Stage 1 (docs/plans/measurement_path_fail_loud.md): per-site dedup
+# Fail-loud Stage 1 (docs/plans/deferred/measurement_path_fail_loud.md): per-site dedup
 # so every distinct swallow site announces itself at WARNING exactly once per
 # process, DEBUG after — loud enough for Stage 2's firing-site inventory,
 # quiet enough for hot defensive paths.

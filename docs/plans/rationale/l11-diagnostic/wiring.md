@@ -7,7 +7,7 @@ building a substrate change. But as worded it points its remedy replay at a
 faithful live-capture tool that already exists. Several seams need naming precisely or
 the record will be TRUE of the harness, not of the running agent.
 
-Reviewed: `docs/plans/l11_world_channel_diagnostic.md` against the real path —
+Reviewed: `docs/plans/archive/l11_world_channel_diagnostic.md` against the real path —
 bridge `scripts/minecraft_bridge/index.js::snapshot` → `MinecraftClient.latest_state` →
 `backends/minecraft.py::sync_world_sensors` (`world_set_axis`, clamps to declared range) →
 `agent_loop._read_world_states`/`_read_world_ranges` (`_read_declared_modality_states`,

@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Docs-only: moved-plan references updated inside `src/`.** The 2026-09-19 plans audit archived or
+  deferred 33 plan documents; 50 files under `src/`, `tests/`, `scripts/` and `.github/` carried their old
+  paths in comments and docstrings (60 lines, path strings only). No behavioural change, no API change —
+  recorded here because the versioning policy asks a `src/`-touching change to declare itself.
+
 ## [1.3.0] - 2026-09-19 — "Oasis-2"
 
 The survival world. 1.2 shared a want a teacher put there; 1.3 moves the learning signal to the
@@ -269,7 +274,7 @@ bounding the claims and scoping the 1.3 survival line. Gates 1/3/7/8 closed.
   `tests/integration/test_hive_pull_e2e.py`.
   **Queen-tier promotion is deliberately NOT shipped** — its gauntlet battery cannot run
   (Gauntlet #3 does not exist and is scheduled later; Gauntlets #1/#2 cannot score a bundle),
-  so the blocker and its prerequisites are recorded in `docs/plans/hivemind_p2p_scope.md`
+  so the blocker and its prerequisites are recorded in `docs/plans/archive/hivemind_p2p_scope.md`
   rather than shipping a gate that cannot gate.
 - **`maxim oasis` / `maxim hive` CLIs + static Oasis registry (1.2 P2P Slice C).** The
   operator-facing halves of the substrate exchange. `maxim oasis serve` starts the Slice-B
@@ -398,7 +403,7 @@ bounding the claims and scoping the 1.3 survival line. Gates 1/3/7/8 closed.
   dedup and contributor tombstones (V8, `substrate_ingest_journal.json`; the tombstone
   operator surface — the distrust/prune flow — is declared follow-up work), id/domain hygiene
   incl. row N's stamping-half close-out (V9), and capability-map shape-only handling (V10).
-  Design record: `docs/plans/oasis_ingestion_contract.md`. Guard battery:
+  Design record: `docs/plans/archive/oasis_ingestion_contract.md`. Guard battery:
   `tests/unit/test_hivemind_ingest.py` (one refusing/clamping test per attack-matrix row) +
   `tests/integration/test_oasis_ingest_e2e.py` (the taught seed-43 archive composed via the
   real CLI export and ingested into a fresh `create.agent()` receiver).
@@ -654,11 +659,11 @@ bounding the claims and scoping the 1.3 survival line. Gates 1/3/7/8 closed.
   + `docs/experiments/data/ec_scan_cost_2026-09-03.json`): per-encode cost of the exact
   `pattern_complete_or_separate` scan at the A4 gain's ~120× cluster-allocation rate, mixed-modality
   store (production shares one EC across channels), metric/horizon/decision-rule frozen in the
-  docstring before the run. Kickoff plan: `docs/plans/world_seam_1_1_4.md`.
+  docstring before the run. Kickoff plan: `docs/plans/archive/world_seam_1_1_4.md`.
 
 ### Security
 - **Console bearer auth — always on, fail-closed** (tunnel-hardening PR 2, decisions A1–A8 of
-  `docs/plans/console_tunnel_hardening.md`): every `/api/*` route, `/docs`, `/openapi.json` and
+  `docs/plans/deferred/console_tunnel_hardening.md`): every `/api/*` route, `/docs`, `/openapi.json` and
   `/ws` on `maxim serve` now require the console token — an `mxc_`-prefixed 256-bit secret in
   its own 0600 file (`~/.config/maxim/console_token`, distinct from the mesh key), printed at
   serve start as a `#token=` fragment URL and managed via `maxim serve --show-token` /
@@ -684,7 +689,7 @@ bounding the claims and scoping the 1.3 survival line. Gates 1/3/7/8 closed.
   authentication. `console.allowed_origins` graduates from a sandbox-only knob to the general
   trusted-origins list. Behavior change: an untrusted-origin browser page can no longer attach
   to `/ws` even outside sandbox mode. First rung of
-  `docs/plans/console_tunnel_hardening.md` (2026-09-03 console security audit; bearer auth,
+  `docs/plans/deferred/console_tunnel_hardening.md` (2026-09-03 console security audit; bearer auth,
   admission control, and the pre-GA authorization pass are the ladder's next PRs).
   Two-lens review fold: origin entries canonicalize loudly at `build_app` (malformed entry =
   `ConfigurationError`; default ports dropped so `https://x:443` matches the `https://x`
@@ -1074,7 +1079,7 @@ bounding the claims and scoping the 1.3 survival line. Gates 1/3/7/8 closed.
 - Fail-loud **Stage 2** measured (`scripts/fail_loud_stage2.py` + baseline under
   `docs/experiments/data/fail_loud_stage2/`): **zero swallowed-exception firings** across
   75,654 records over both modes. The extraction gate in
-  `docs/plans/god_function_decomposition.md` had been citing a baseline that did not exist.
+  `docs/plans/archive/god_function_decomposition.md` had been citing a baseline that did not exist.
 - First `run_agentic_loop` extraction: sections **7** (step callback) and **8.5** (NAc
   per-tick maintenance) are now module-level `_loop_step_callback` /
   `_loop_bio_tick_maintenance`, exercised directly by
