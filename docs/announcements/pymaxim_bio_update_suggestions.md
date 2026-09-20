@@ -1,4 +1,93 @@
-# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05)
+# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19)
+
+## 1.3.0 refresh — 2026-09-19 ("Oasis-2"; PyPI `upload_time` 2026-09-19T20:24Z, tag `v1.3.0` @ `ad541dd7`)
+
+**Framing rule, applied.** 1.3 moves the LEARNING SIGNAL from a teacher to the world — the game's
+own pain — not "the reward" (the reward half, eat-when-hungry, came out prior-driven in R2).
+Minecraft is the instrument, never a demo: no page says "Maxim plays Minecraft" or implies general
+competence. The honest shape, used verbatim across the site: a substrate-primary agent, no LLM in
+the action path, learns a fear keyed to a situation from game-native pain, and that fear transfers
+to an agent that never felt it. Every claim carries its scope (one contingency, one pool, one world
+layout, substrate-primary) and the four named non-claims (extinction, scaling, another pool,
+hive-side promotion). R3 is presented as an instrument and a frozen baseline with **nothing
+graduated**, and its "survival is a ceiling — the drive buys cost, not life" reading is stated
+wherever its numbers appear. Site fix: **maxim-web PR #25** (`docs/1-3-0-oasis-2`); this section is
+its engine companion.
+
+**Correcting the record on 1.2.1.** The site DID cover 1.2.1 (maxim-web #24, merged 2026-09-10) and
+inherited its "completes the spoken-code device-pairing loop end to end" headline. That sentence is
+gone: `/reference/cli/` now states the correction — the pieces ship (contract 0.5.0 and its pairing
+screen, `make_pairing_announcer`, the device speak sink, the audio fix), the composition does not;
+**no shipped command constructs the announcer**, so a plain `maxim serve` runs with pairing disabled
+and pairing needs an embedder owning both the console and a live robot handle. Verified live on the
+wheel, not inferred: `/api/hello` → `{"contract_version":"0.5.0","auth":"bearer","pairing":"none"}`
+and `POST /api/pair/request` → **409**. D87's two hardware-owed audio properties are named beside it.
+
+**Verified against the artifact, not a proxy.**
+
+- **Clean venv** (`python3 -m venv` on 3.14, `pip install pymaxim==1.3.0`, then the `console`
+  extra). `ComponentRegistry().list_refs()` = **97** = the regenerated `components.json` count
+  (`--label "pymaxim 1.3.0 (PyPI wheel)"`); no components added or removed since 1.2.0 — the 1.3
+  body work MODIFIED `minecraft_player` (gains the `is_in_water` sensor and the `flee` /
+  `escape_water` affordances), which the catalog diff shows and the count does not. **No**
+  Mineflayer/bridge JS anywhere in the wheel, so the site keeps saying the live seam needs a
+  checkout — now naming Paper **1.20.4**.
+- **CLI flags:** every `--flag` in a site bash block (63 across 15 verb groups) checked against the
+  1.3.0 wheel's `--help`. **One real defect found and fixed:** the site documented
+  `maxim substrate keygen --identity <id>` in two places (`/reference/cli/`, `/guides/oasis/`); the
+  flag is **`--signer-id`**. It came from the 1.2.0 refresh misreading the help text's metavar
+  (`signer_identity to bind the key to`) as the flag name — a command nobody had run. **48** Python
+  snippets compile.
+- **The score card's own finding, honoured:** `maxim substrate invalidate --drop-geometry` does not
+  run as written in these notes — `--help` on the wheel shows `--drop-geometry` takes the stale tag
+  as a VALUE and needs `--session`, plus `--apply` to write anything. The site publishes the
+  two-step form instead (census first, then the tag it prints).
+- **Engine truth read at the tag**, not from a summary: `release_1_3_0.md`, CHANGELOG `[1.3.0]`,
+  `exp60_*` / `exp61_*` / `r3_survival_benchmark_prereg.md` §Outcome, the Exp 56 prereg's
+  §Re-baseline runs, the graduation ledger's Tier-1 rows, and
+  `docs/limits/score_cards/2026-09-19-claude.md`.
+- **Build:** `pnpm build` clean, 54 pages; **3,416** internal hrefs + fragments resolve in `dist/`
+  (URL-decoding checker); all 53 sitemap routes present.
+
+### Findings (route → claim before → truth source → fix)
+
+| Route | Before | Truth source | Fix |
+|---|---|---|---|
+| `/getting-started/` | 1.2.1 "Spoken-code loop"; "It completes the spoken-code device-pairing loop end to end" | PyPI `upload_time`; `release_1_3_0.md`; the 1.3.0 §Correction | 1.3.0 "Oasis-2" (2026-09-19 UTC); the learning signal moved from teacher to world; Exp 60 / Exp 61 / R3 in three bullets with R3's "not life"; the four non-claims and the BLOCKED dark=danger stated; the 1.2.1 overclaim removed, not re-worded |
+| `/research/evidence/` | 1.2 claims only; seam bullet said claims "landed in 1.2" | `exp60_*`, `exp61_*`, `r3_*` §Outcome | Three new entries: Exp 60 (with the positive-link caveat and the fear-only first placement), Exp 61 (with the three control arms and the loop-OFF gate wording), R3 as an instrument with its two post-data amendments disclosed; seam bullet now names 1.2 AND 1.3 and the 1.20.4 move |
+| `/research/evidence/` § where it didn't hold up | no Exp 58 | Exp 58 prereg; Exp 60 §pivot | "Dark means danger" recorded as BLOCKED at the instrument — the sensors cannot separate the situations, so the cue was swapped to water |
+| `/research/limits/` | L11 table with A4 0.0566 / 0.9984 as "the re-measure" | `l11_sensor_dilution.md` 2026-09-15 row | The 09-15 re-read of the SAME trace added beside it (A4 0.0881 / 1.0 / 0.6852, same verdict); the 09-04 numbers stand as measured under the old `saturation` range, and the delta is that one sensor |
+| `/reference/cli/` | `keygen --identity`; hello without `pairing`; pairing "available" | wheel `--help`; live `maxim serve` probe; 1.3.0 §Correction | `--signer-id`; `"pairing":"none"` in the hello body; the pairing bullet rewritten to the correction (409, no shipped command wires it, embedder needed) with D87 kept; `cluster_fear` transport + the 0.75 discount; the two-step `invalidate` recipe |
+| `/guides/oasis/` | `keygen --identity`; bundles carry wants only | CHANGELOG § Wire-4 fear travels in bundles | `--signer-id`; a bundle can carry a learned situation FEAR, clamped + allowlisted on export, bounded and discounted ×0.75 on ingest, dropped if its world node did not survive; pair 1.3 exporters with 1.3 receivers |
+| `/guides/simulation/` | seam "is apparatus for 1.2" | 1.2/1.3 outcomes | "carried the 1.2 and 1.3 behavioural claims" |
+| landing | 1.2 headline first | `exp60_*`, `exp61_*`, `r3_*` | New first card: the fear learned from the world and transferred, with the control twin, the 12/12-vs-zero shape, and R3's cost-not-life reading |
+| `src/data/experiments.json` | 89 rows | the three §Outcome sections | Exp 60 + Exp 61 `recorded`, R3 `reference-only` (an instrument, nothing graduated); Exp 56 row annotated with RB-1 and its disclosed duplicate row |
+
+**Left as is, deliberately.** The 1.2 claims (Exp 56 earned, Exp 57 partial with its total-experience
+cost) are untouched — 1.3 did not revisit them, and the Exp 56 re-baseline is a same-seed
+reproduction, so the site says exactly that and does not upgrade it to a replication. The nine
+simulation pages keep their "at 1.1.3" verification stamps. The components count stays 97 because
+nothing was added — the body diff is visible in the catalog instead.
+
+**Not carried to the site.** 1.4's name (decided at release from the highest earned result — the
+site presents "generalization and multi-step credit" as a direction, never a promise) and the
+perception fabric / microduck, which wait for a second robot body.
+
+### Acceptance checks — 1.3.0
+
+- [x] Version line 1.3.0 "Oasis-2", date 2026-09-19 (UTC upload time), all four release links resolve.
+- [x] No page says or implies Maxim plays Minecraft; every mention calls it the instrument.
+- [x] Exp 60 and Exp 61 each carry their scope and their named non-claims; Exp 61's "first loop-live submersion" wording preserved (the lifecycle's loop-OFF gate submerges once before the measured run).
+- [x] R3 presented as an instrument with nothing graduated; "survival is a ceiling / the drive buys cost, not life" wherever its numbers appear; both amendments disclosed.
+- [x] The 1.2.1 overclaim is gone and the correction is stated where pairing is documented, verified live (`pairing":"none"`, 409).
+- [x] The 1.2 claims are byte-unchanged; the Exp 56 re-baseline is described as a same-seed reproduction, not a replication.
+- [x] Every CLI flag re-checked against the 1.3.0 wheel `--help` (one defect found and fixed: `keygen --signer-id`); 48/48 Python snippets compile; the `invalidate` recipe is the runnable two-step form.
+- [x] Counts derived: components 97 from the wheel registry, experiments 92 from `experiments.json`.
+- [x] `pnpm build` clean (54 pages); 3,416 internal links + fragments resolve; 53/53 sitemap routes present.
+- [ ] **After merge/deploy:** re-crawl the live sitemap, confirm the version line via `live-site-check`, and confirm `/research/evidence/` serves the three new entries and `/reference/cli/` the pairing correction.
+- [ ] **Human-only (carried since 1.0.9):** visual / mobile / keyboard / accessibility pass in a real browser — the new R3 table at narrow widths and the longer evidence page's heading rhythm.
+
+---
 
 ## 1.1.4 refresh — 2026-09-05 ("The world seam"; PyPI `upload_time` 2026-09-05T02:47Z, tag `v1.1.4` @ `db4410de`)
 
