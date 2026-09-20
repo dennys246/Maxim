@@ -799,6 +799,7 @@ class SensorEncoder:
         self.config = config or SensorEncoderConfig()
         self._last_sensors: dict[tuple[str, str], dict[str, float]] = {}  # per (agent_id, modality)
         self._last_node_id: dict[tuple[str, str], str] = {}  # per (agent_id, modality)
+        self._last_margin: dict[tuple[str, str], float] = {}  # per (agent_id, modality), issue #786
         # Ranges identity per stash key (executor-lens review, artifact
         # stamping): the delta gate keyed on VALUES only, so a caller
         # switching ranges (range-blind → range-aware — exactly the P1
@@ -869,6 +870,10 @@ class SensorEncoder:
             and self._max_delta(prev, sensors) < self.config.min_delta
             and self._last_ranges.get(stash_key) == ranges
         ):
+            # No scan happened, so there is no margin for THIS call. Dropping the stash makes
+            # `last_encode_margin` return None ("not measured") rather than silently handing back
+            # the previous scan's number as if it described this one (issue #786).
+            self._last_margin.pop(stash_key, None)
             return self._last_node_id.get(stash_key)
 
         # A4 (1.1.4): per-modality nonlinear gain — see SensorEncoderConfig
@@ -1055,6 +1060,10 @@ class SensorEncoder:
         self._last_sensors[stash_key] = dict(sensors)
         self._last_node_id[stash_key] = result.node_id
         self._last_ranges[stash_key] = dict(ranges) if ranges else None
+        # The MARGIN this encode resolved by (issue #786) — stashed the same per-(agent, modality)
+        # way `last_encode_was_designed_rest` already is, so no signature and no hot path moves.
+        # Read-only: nothing decides on it.
+        self._last_margin[stash_key] = result.best_similarity
 
         logger.debug(
             "Encoded sensor pattern → node %s (sim=%.3f, new=%s, sensors=%d)",
@@ -1065,6 +1074,19 @@ class SensorEncoder:
         )
 
         return result.node_id
+
+    def last_encode_margin(self, *, agent_id: str, modality: str) -> float | None:
+        """The best COMPARABLE similarity the most recent ``encode_sensors`` for this
+        (agent, modality) saw — the match margin, whatever the threshold did with it.
+
+        ``None`` when this pair has not encoded yet, or when the most recent call was bypassed by
+        the ``min_delta`` gate (no scan ran, so no margin exists for it — the cached node is still
+        returned); ``-1.0`` when there was nothing comparable
+        to score against, which is different from "scored 0.0". On a completion it equals the
+        similarity that earned the node; on a separation it is the score the reading separated BY,
+        which the node id alone cannot express. READ-ONLY instrumentation (issue #786).
+        """
+        return self._last_margin.get((agent_id or "", modality))
 
     def last_encode_was_designed_rest(self, *, agent_id: str, modality: str) -> bool:
         """True when the most recent ``encode_sensors`` for this (agent,
