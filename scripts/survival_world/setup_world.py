@@ -534,18 +534,87 @@ def spawn_clearance(geom: dict, spawn: tuple[float, float, float] | None) -> tup
     return d <= WATER_MAX_DIST_FROM_SPAWN, d
 
 
+def record_shell(record: dict) -> tuple[int, int, int, int, int, int] | None:
+    """This pool's shell cuboid — stamped, or DERIVED for a record written before the stamp.
+
+    Pool 1's record on the rig predates ``shell``. Without this the two-pool guard would take its
+    "cannot check" branch on the one record it exists to check, and the obvious remedy (rebuild
+    pool 1) replaces the record wholesale and drops the ``measured`` block that Exp 60's harness and
+    R3's gauntlet refuse to run without. Deriving costs nothing and keeps the apparatus untouched.
+    """
+    shell = record.get("shell")
+    if shell is not None:
+        if not (
+            isinstance(shell, (list, tuple)) and len(shell) == 6 and all(isinstance(v, (int, float)) for v in shell)
+        ):
+            raise ValueError(f"record has a malformed shell: {shell!r}")
+        return tuple(int(v) for v in shell)  # type: ignore[return-value]
+    try:  # the same geometry this module builds: shore x is anchor-1, so the anchor is shore x + 1
+        shore = record["shore"]
+        return tuple(  # type: ignore[return-value]
+            water_classroom_geometry(
+                int(shore[0]) + 1, int(shore[2]), depth=int(record["depth"]), shore_y=int(record["surface_y"])
+            )["shell"]
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def pools_disjoint(geom: dict, other_record: dict | None) -> tuple[bool, str]:
+    """Exp 62 two-pool guard: a second pool must not intersect the first pool's SHELL.
+
+    Stacked pools share x/z by design (the cross-pool cosine is what Exp 62 measures), so the
+    only separation is vertical and the shells must not overlap by a single block — a shared
+    wall would let one build's fill punch a hole in the other's, and a drained or leaking column
+    reads as a null instead of an apparatus failure. ``None`` (no other record) is disjoint:
+    nothing to collide with. Pure; unit-tested.
+    """
+    if other_record is None:
+        return True, "no other pool given — NOT CHECKED"
+    other = record_shell(other_record)
+    if other is None:
+        return True, "other record carries neither a shell nor the geometry to derive one — NOT CHECKED"
+    ax0, ay0, az0, ax1, ay1, az1 = geom["shell"]
+    bx0, by0, bz0, bx1, by1, bz1 = other
+    overlap = min(ax1, bx1) >= max(ax0, bx0) and min(ay1, by1) >= max(ay0, by0) and min(az1, bz1) >= max(az0, bz0)
+    if overlap:
+        return False, f"shells intersect: this {tuple(geom['shell'])} vs recorded {tuple(other)}"
+    if min(ax1, bx1) < max(ax0, bx0) or min(az1, bz1) < max(az0, bz0):
+        return True, "shells are separated horizontally"
+    gap = max(ay0, by0) - min(ay1, by1) - 1  # blocks of solid world between the two shells
+    return True, f"vertical gap {gap} block(s) between shells"
+
+
 def water_anchor_record(
     geom: dict,
     *,
     exp58_clearance_blocks: float | None = None,
     spawn_clearance_blocks: float | None = None,
+    world_spawn: tuple[float, float, float] | None = None,
+    pool_id: str = "pool1",
+    pool_clearance: dict | None = None,
 ) -> dict:
     """The recorded built truth the check/probe/harness drive off (never live position).
 
     ``None`` clearances mean NOT CHECKED (record absent / spawn not given) — never "clear".
     """
+    shore_x, _shore_y, shore_z = geom["shore"]
     return {
         "_format_version": "1.0",
+        # Exp 62: the pool this record describes, and the truths a SECOND pool needs — the shell
+        # (the disjointness guard reads it), the flee anchor the bridge must be started with, and
+        # the world spawn the distance-from-spawn cap is measured against. `None` = not given,
+        # never "clear" (the live check gates it either way).
+        "pool_id": pool_id,
+        "shell": list(geom["shell"]),
+        "flee_x": int(shore_x),
+        "flee_z": int(shore_z),
+        "world_spawn": list(world_spawn) if world_spawn else None,
+        # None = NOT CHECKED (no --stack-on), never "clear" — the same idiom as the two guards below.
+        "pool_clearance": pool_clearance,
+        # `/spawnpoint` is per PLAYER, not per pool: the last build owns every respawn in the world.
+        # A harness that can respawn in this pool must re-assert it (Exp 62's harness does).
+        "spawnpoint_set_for": pool_id,
         "exp58_clearance_blocks": exp58_clearance_blocks,
         "spawn_clearance_blocks": spawn_clearance_blocks,
         "shore": list(geom["shore"]),
@@ -597,12 +666,41 @@ def _water_classroom(args: argparse.Namespace) -> int:
     """
     from survival_world.common import bot_pos
 
+    anchor_file = Path(args.anchor_file).expanduser() if args.anchor_file else WATER_ANCHOR_FILE
+    if args.backfill:
+        # Add the Exp 62 fields to a record written before them, touching nothing else — in
+        # particular NOT `measured`, whose loss makes exp60_run and r3_run refuse every row.
+        rec = _read_json_or_none(anchor_file)
+        if rec is None:
+            print(f"no water classroom recorded at {anchor_file} — nothing to backfill")
+            return 4
+        try:
+            shell = record_shell(rec)
+        except ValueError as exc:
+            print(f"REFUSING: {exc}")
+            return 4
+        if shell is None:
+            print(f"REFUSING: {anchor_file} lacks shore/depth/surface_y — cannot derive the shell; rebuild it instead.")
+            return 4
+        before = dict(rec)
+        rec.setdefault("pool_id", args.pool_id)
+        rec["shell"] = list(shell)
+        rec.setdefault("flee_x", int(rec["shore"][0]))
+        rec.setdefault("flee_z", int(rec["shore"][2]))
+        rec.setdefault("world_spawn", None)
+        rec.setdefault("pool_clearance", None)
+        rec.setdefault("spawnpoint_set_for", rec.get("pool_id", args.pool_id))
+        assert rec.get("measured") == before.get("measured")  # the whole point of --backfill
+        anchor_file.write_text(json.dumps(rec, indent=2) + "\n")
+        added = sorted(set(rec) - set(before))
+        print(f"backfilled {anchor_file}: added {added or '(nothing — already current)'}; measured preserved.")
+        return 0
     rcon = RconControl(args.rcon_host, args.rcon_port, args.rcon_password)
     try:
-        recorded = _read_json_or_none(WATER_ANCHOR_FILE)
+        recorded = _read_json_or_none(anchor_file)
         if args.sweep:
             if not recorded:
-                print(f"no water classroom recorded at {WATER_ANCHOR_FILE} — build first")
+                print(f"no water classroom recorded at {anchor_file} — build first")
                 return 4
             sx, sy, sz = recorded["shore"]
             # Spare the Exp 58 clustermob (apparatus, not spillover) — the 72-block
@@ -613,6 +711,16 @@ def _water_classroom(args: argparse.Namespace) -> int:
                 )
                 print(f"rcon> kill {sel} r64 @shore\n      {resp.strip() or '(none)'}")
             return 0
+        shore_y = args.shore_y
+        if shore_y is None:
+            shore_y = int(recorded["surface_y"]) if recorded and "surface_y" in recorded else WATER_SHORE_Y
+        elif recorded and "surface_y" in recorded and int(recorded["surface_y"]) != int(shore_y):
+            print(
+                f"REFUSING: {anchor_file} records this pool at shore y {recorded['surface_y']}, but --shore-y "
+                f"{shore_y} was given. A rebuild at another height is a DIFFERENT pool: pass a new --anchor-file "
+                f"(and --stack-on this one), or drop --shore-y to rebuild in place."
+            )
+            return 2
         if args.anchor_x is not None:
             ax, az = args.anchor_x, args.anchor_z
         elif recorded:
@@ -621,10 +729,40 @@ def _water_classroom(args: argparse.Namespace) -> int:
         else:
             ax, _ay, az = bot_pos(rcon, args.username)
         try:
-            geom = water_classroom_geometry(int(ax), int(az), depth=args.depth)
+            geom = water_classroom_geometry(int(ax), int(az), depth=args.depth, shore_y=shore_y)
         except ValueError as exc:
             print(f"usage: {exc}")
             return 2
+        # Exp 62: a stacked pool must not share a wall with the other one (one fill away from
+        # draining its column). The other pool is named EXPLICITLY — the build must not be a
+        # function of whatever else happens to sit in the directory.
+        pool_clearance: dict | None = None
+        if args.stack_on:
+            other_path = Path(args.stack_on).expanduser()
+            other_rec = _read_json_or_none(other_path)
+            if other_rec is None:
+                print(
+                    f"REFUSING: --stack-on {other_path} does not exist; give the other pool's record or omit the flag."
+                )
+                return 4
+            try:
+                ok_gap, why_gap = pools_disjoint(geom, other_rec)
+            except ValueError as exc:
+                print(f"REFUSING: cannot read the other pool's shell ({exc}) — fix that record or rebuild it.")
+                return 4
+            if not ok_gap:
+                print(
+                    f"REFUSING: this build would collide with the pool recorded at {other_path} — {why_gap}.\n"
+                    f"Stacked pools need disjoint shells; move --shore-y further from the other pool's."
+                )
+                return 4
+            print(f"pool clearance vs {other_path.name}: {why_gap}")
+            pool_clearance = {"other_record": str(other_path), "result": why_gap}
+        else:
+            print(
+                "NOTE: no --stack-on given — pool-vs-pool clearance NOT CHECKED (recorded null). "
+                "Exp 62's second pool MUST pass the first pool's record."
+            )
         exp58_rec = _read_json_or_none(EXP58_ANCHOR_FILE)
         ok, dmin = exp58_clearance(geom, exp58_rec)
         if not ok:
@@ -677,13 +815,16 @@ def _water_classroom(args: argparse.Namespace) -> int:
                 print(f"\nWATER CLASSROOM BUILD FAILED: {proves} — `{cmd}` -> {resp!r}")
                 return 4
             print(f"verified: {proves}")
-        WATER_ANCHOR_FILE.parent.mkdir(parents=True, exist_ok=True)
+        anchor_file.parent.mkdir(parents=True, exist_ok=True)
         record = water_anchor_record(
             geom,
+            pool_id=args.pool_id,
+            world_spawn=spawn,
+            pool_clearance=pool_clearance,
             exp58_clearance_blocks=exp58_blocks,
             spawn_clearance_blocks=None if dspawn is None else round(dspawn, 1),
         )
-        WATER_ANCHOR_FILE.write_text(json.dumps(record, indent=2) + "\n")
+        anchor_file.write_text(json.dumps(record, indent=2) + "\n")
         sx, sy, sz = geom["shore"]
         bx, by, bz = geom["submerged"]
         print(
@@ -695,9 +836,21 @@ def _water_classroom(args: argparse.Namespace) -> int:
             f"{record['spawn_clearance_blocks']} blocks (null = not given; W1 gates it live). "
             f"doMobSpawning=false is APPARATUS-OWNED (the "
             f"Phase-0 instrument check restores it to true — rebuild/verify before a gated run).\n"
-            f"geometry recorded -> {WATER_ANCHOR_FILE}\n"
+            f"geometry recorded -> {anchor_file}\n"
             f"next (clean tree, PYTHONPATH=$PWD/src): python scripts/survival_world/exp60_water_check.py "
             f"--rcon-password '<pw>' --username {args.username} --write-experiment-results"
+            + (
+                ""
+                if anchor_file == WATER_ANCHOR_FILE
+                else (f" \\\n    --anchor-file {anchor_file} --out <this pool's OWN apparatus record>")
+            )
+            + (
+                ""
+                if anchor_file == WATER_ANCHOR_FILE
+                else "\n  (both flags are REQUIRED for a second pool: without them the check reads pool 1's "
+                "record, stamps THIS pool's timings into it, and overwrites Exp 60's committed apparatus. "
+                "Run the check without --out and it refuses, naming the path to use.)"
+            )
         )
         return 0
     finally:
@@ -749,6 +902,42 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--spawn-y", type=float, default=None)
     w.add_argument("--spawn-z", type=float, default=None)
     w.add_argument("--depth", type=int, default=WATER_DEPTH_DEFAULT, help="water column depth in blocks (3..12)")
+    w.add_argument(
+        "--shore-y",
+        type=int,
+        default=None,
+        help="shore floor height (Exp 62 stacks a second pool at a different --shore-y; default is pool 1's)",
+    )
+    w.add_argument(
+        "--anchor-file",
+        default=None,
+        help=(
+            "where to record this pool's geometry (default: the Exp 60 record). A SECOND pool must pass its own "
+            "path — one fixed path means a rebuild overwrites the first pool's `measured` block, which the "
+            "harnesses refuse to run without."
+        ),
+    )
+    w.add_argument(
+        "--stack-on",
+        default=None,
+        help=(
+            "the OTHER pool's record; its shell must not touch this build's (Exp 62 stacks pool 2 over pool 1). "
+            "Omitted = NOT CHECKED, recorded null."
+        ),
+    )
+    w.add_argument(
+        "--backfill",
+        action="store_true",
+        help=(
+            "add the Exp 62 fields (shell, flee anchor, pool id) to an EXISTING record without building or "
+            "touching `measured` — how pool 1's pre-Exp-62 record is armed for the clearance guard"
+        ),
+    )
+    w.add_argument(
+        "--pool-id",
+        default="pool1",
+        help="name stamped into the record so a row can say which pool it ran in (Exp 62 uses pool1/pool2)",
+    )
     w.add_argument(
         "--sweep", action="store_true", help="kill zombies (not the exp58 clustermob) + drowned within 64 of the shore"
     )

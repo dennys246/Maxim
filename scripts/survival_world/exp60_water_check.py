@@ -84,6 +84,7 @@ from exp56 import common as C  # noqa: E402
 from survival_world.common import InstrumentError, settle_until, sync_snapshot  # noqa: E402
 
 ANCHOR_FILE = Path.home() / ".maxim" / "exp60_water_classroom.json"
+_DEFAULT_OUT = "docs/experiments/data/exp60_water_apparatus.json"
 
 # ── Gates (fixed by intent before the first live run; the prereg freezes them) ──
 CYCLES = 3
@@ -267,21 +268,34 @@ def _preserve_partial(report: dict[str, Any], rec: dict[str, Any] | None, stage:
         report["cycles"].append(rec)
 
 
-def _stamp_measured(report: dict[str, Any], out_path: Path) -> None:
-    """On PASS, write the measured edges into the anchor record (dev-tool state)."""
+def _stamp_measured(report: dict[str, Any], out_path: Path, *, anchor_file: Path) -> None:
+    """On PASS, write the measured edges into THIS pool's anchor record (dev-tool state).
+
+    Exp 62: the pool is a parameter. One fixed path meant checking pool 2 overwrote pool 1's
+    record — and the `measured` block is exactly what the harnesses refuse to run without.
+    """
     report["_out_path"] = str(out_path)
     try:
-        rec = json.loads(ANCHOR_FILE.read_text())
+        rec = json.loads(anchor_file.read_text())
         rec["measured"] = measured_edges(report)
-        ANCHOR_FILE.write_text(json.dumps(rec, indent=2) + "\n")
-        print(f"measured edges stamped -> {ANCHOR_FILE} ({rec['measured']})")
+        anchor_file.write_text(json.dumps(rec, indent=2) + "\n")
+        print(f"measured edges stamped -> {anchor_file} ({rec['measured']})")
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        print(f"WARNING: could not stamp measured edges into {ANCHOR_FILE}: {exc!r}")
+        print(f"WARNING: could not stamp measured edges into {anchor_file}: {exc!r}")
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", default="docs/experiments/data/exp60_water_apparatus.json")
+    ap.add_argument("--out", default=_DEFAULT_OUT)
+    ap.add_argument(
+        "--anchor-file",
+        default=None,
+        help=(
+            "the pool record to read and stamp `measured` into (default: the Exp 60 record). "
+            "Exp 62's second pool passes its own — one fixed path means checking pool 2 destroys "
+            "pool 1's measured block, which every harness refuses to run without."
+        ),
+    )
     ap.add_argument("--bridge-host", default="127.0.0.1")
     ap.add_argument("--bridge-port", type=int, default=25567)
     ap.add_argument("--rcon-host", default="127.0.0.1")
@@ -342,15 +356,29 @@ def main(argv: list[str] | None = None) -> int:
         print(f"exp60 water apparatus: {'PASS' if report['all_pass'] else 'FAIL'} -> {out_path}")
         return code
 
+    anchor_file = Path(args.anchor_file).expanduser() if args.anchor_file else ANCHOR_FILE
+    if args.anchor_file and args.out == _DEFAULT_OUT:
+        # The evidence path is pool 1's committed apparatus record, which exp60_run and R3 read.
+        # Checking another pool while writing there would overwrite a FROZEN artifact with this
+        # pool's numbers — the same class of damage as the record overwrite --anchor-file fixes.
+        print(
+            f"usage: --anchor-file needs an explicit --out (default {_DEFAULT_OUT} is pool 1's committed "
+            f"apparatus record). Try --out docs/experiments/data/exp62_pool2_water_apparatus.json"
+        )
+        return 2
     try:
-        geom = json.loads(ANCHOR_FILE.read_text())
+        geom = json.loads(anchor_file.read_text())
     except (OSError, ValueError) as exc:
-        report["instrument_error"] = f"no water classroom record at {ANCHOR_FILE} ({exc}) — build first"
+        report["instrument_error"] = f"no water classroom record at {anchor_file} ({exc}) — build first"
         print(f"INSTRUMENT ERROR: {report['instrument_error']}")
         return _finish(4)
     shore = {"x": float(geom["shore"][0]), "y": float(geom["shore"][1]), "z": float(geom["shore"][2])}
     sub = {"x": float(geom["submerged"][0]), "y": float(geom["submerged"][1]), "z": float(geom["submerged"][2])}
-    report["apparatus"] = {"anchor_file": str(ANCHOR_FILE), **{k: geom[k] for k in ("shore", "submerged", "depth")}}
+    report["apparatus"] = {
+        "anchor_file": str(anchor_file),
+        "pool_id": geom.get("pool_id", "pool1"),
+        **{k: geom[k] for k in ("shore", "submerged", "depth")},
+    }
 
     persistence_dir = tempfile.mkdtemp(prefix="exp60_water_check_")
     aut = build_minecraft_aut(
@@ -613,7 +641,7 @@ def main(argv: list[str] | None = None) -> int:
 
     code = _finish(0 if all_cycles_pass(report["cycles"], args.cycles) else 4)
     if code == 0:
-        _stamp_measured(report, out_path)
+        _stamp_measured(report, out_path, anchor_file=anchor_file)
     if code != 0:
         print(
             "  A gated check failed on at least one cycle — read the cycle's `reasons`. The pool\n"
