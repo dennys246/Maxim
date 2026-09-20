@@ -66,6 +66,42 @@ def derive_world_spawn(snapshots: list[dict[str, Any]], positions: list[dict[str
     if len(snapshots) != 2 or len(positions) != 2:
         raise ValueError("derive_world_spawn needs exactly two (snapshot, position) pairs")
     out: dict[str, Any] = {"readings": []}
+    # VERIFY THE ACTUATION FIRST. First live run (2026-09-20): both readings came back identical —
+    # same offsets, same distance — although the pools are 55 blocks apart in y, and the row then
+    # reported "disagrees" without saying why. A snapshot whose own altitude is not the position it
+    # claims is a stale read, not a measurement; refuse instead of deriving from it.
+    out["actuation"] = [
+        {
+            "expected_y": pos["y"],
+            "sensed_y": snap.get("y_altitude"),
+            "matches": snap.get("y_altitude") is not None and abs(float(snap["y_altitude"]) - pos["y"]) <= 1.0,
+        }
+        for snap, pos in zip(snapshots, positions, strict=True)
+    ]
+    if not all(m["matches"] for m in out["actuation"]):
+        out.update(
+            {
+                "x": None,
+                "y": None,
+                "z": None,
+                "y_residual": None,
+                "agrees": False,
+                "refusal": "a snapshot was not taken at the position it claims — stale read, not a measurement",
+            }
+        )
+        return out
+    if snapshots[0] == snapshots[1]:
+        out.update(
+            {
+                "x": None,
+                "y": None,
+                "z": None,
+                "y_residual": None,
+                "agrees": False,
+                "refusal": "both readings are the same snapshot",
+            }
+        )
+        return out
     candidates: list[float] = []
     for snap, pos in zip(snapshots, positions, strict=True):
         dx, dz = float(snap["offset_x"]), float(snap["offset_z"])
@@ -100,6 +136,26 @@ def derive_world_spawn(snapshots: list[dict[str, Any]], positions: list[dict[str
     out["y_residual"] = round(best_err, 3) if best_err is not None else None
     out["agrees"] = out["x"] is not None and out["z"] is not None and out["y"] is not None
     return out
+
+
+def fresh_raw_state(trial: WaterTrial, *, expect_y: float, timeout_s: float = 3.0) -> dict[str, Any]:
+    """The RAW bridge state, waited until it reports the altitude we teleported to.
+
+    ``latest_state()`` returns the last snapshot the bridge pushed; right after a teleport that can
+    still be the PREVIOUS pool's. The spawn row derives from the DIFFERENCE between two positions,
+    so reading the same snapshot twice is a silent non-measurement — which is what the first live
+    run produced. On timeout this returns whatever it has and lets the caller's actuation check
+    refuse: never silently derive from a stale read.
+    """
+    deadline = time.monotonic() + timeout_s
+    state: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        state = dict(trial.aut.client.latest_state() or {})
+        y = state.get("y_altitude")
+        if y is not None and abs(float(y) - expect_y) <= 1.0:
+            return state
+        time.sleep(0.1)
+    return state
 
 
 def context_constants(trial: WaterTrial, label: str) -> dict[str, Any]:
@@ -209,12 +265,12 @@ def run(
     # The spawn row reads the RAW bridge state, not the sensed snapshot: `offset_x`/`offset_z` are
     # bridge fields the body does not declare as sensors (its roster is 17 world sensors, offsets not
     # among them), so `sync_snapshot` — which returns what the BODY senses — cannot see them.
-    trial1.rescue("precheck-spawn-1")
-    snap1 = dict(trial1.aut.client.latest_state() or {})
     geom1 = trial1.geom
+    trial1.rescue("precheck-spawn-1")
+    snap1 = fresh_raw_state(trial1, expect_y=float(geom1["shore"][1]))
     trial1.use_geometry(geom2)
     trial1.rescue("precheck-spawn-2")
-    snap2 = dict(trial1.aut.client.latest_state() or {})
+    snap2 = fresh_raw_state(trial1, expect_y=float(geom2["shore"][1]))
     pool2_context = context_constants(trial1, "pool2")
     trial1.use_geometry(geom1)
     pool1_context = context_constants(trial1, "pool1")
