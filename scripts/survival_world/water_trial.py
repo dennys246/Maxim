@@ -933,8 +933,16 @@ class WaterTrial:
         nac = self.aut.bio.nac
         self.submerge("g2")
         water_cluster = self.encode_world_cluster()
+        # The RAW sensor state at the moment of the reading that decides the gate. Exp 62 reads one
+        # agent in two pools, and light/time are the full-weight constants the cross-pool cosine
+        # rests on — so when the read misses, the record must be able to say WHICH live thing
+        # differed instead of only "something live". Captured here because this is the only moment
+        # the body is submerged at the pool being read; a snapshot taken by the caller before or
+        # after this call is at the SHORE, and before `submerge` it is at the previous pool.
+        sensed_probe = self.read_context()
         self.rescue("g2")
         shore_cluster = self.encode_world_cluster()
+        sensed_shore = self.read_context()
         theta = float(nac.config.cluster_fear_threshold)
         water_fear = round(nac.cluster_fear(self.agent_id, water_cluster), 4)
         shore_fear = round(nac.cluster_fear(self.agent_id, shore_cluster), 4) if shore_cluster else 0.0
@@ -962,6 +970,8 @@ class WaterTrial:
                 "distinct_episode_clusters": len(set(episode_clusters)),
                 "need_probe_cluster": need_probe,
                 "need_episode_clusters": need_episodes,
+                "sensed_at_probe": sensed_probe,
+                "sensed_at_shore": sensed_shore,
                 "specificity_ok": abs(shore_fear) < self.frozen["specificity_ratio"] * abs(water_fear)
                 if water_fear
                 else None,
@@ -976,6 +986,14 @@ class WaterTrial:
                 partial=fields,
             )
         return fields
+
+    def read_context(self) -> dict[str, Any]:
+        """The full-weight constants and the place absolutes as the BODY senses them right now."""
+        state = self.aut.client.latest_state() or {}
+        return {
+            k: state.get(k)
+            for k in ("light_level", "time_of_day", "y_altitude", "distance_from_spawn", "is_in_water", "oxygen")
+        }
 
     def negative_links(self) -> dict[str, int | None]:
         nac = self.aut.bio.nac

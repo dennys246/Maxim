@@ -576,6 +576,28 @@ def test_one_row_of_each_arm_against_a_two_pool_scripted_bridge(tmp_path: Path, 
     assert same["first_contact"]["escape_calls"] >= 1
     assert same["positive_escape_links_after_training"] == 0, "propose-only training must book no link"
 
+    # THE regression gate for the 2026-09-20 dry run: `use_geometry` moves where the trial
+    # teleports TO, not the bot, so a snapshot taken beside it reported pool 1's shore for every
+    # arm — a field that looked measured and was not. The read-pool reading must come from the
+    # moment the body is submerged AT the read pool.
+    for arm, expect_y in (("same", 60.0), ("cross", 101.0), ("cross_ablated", 101.0)):
+        ls = rows[arm]["live_state"]
+        assert ls["read_pool_submerged"], f"{arm}: no sensed state at the read pool"
+        assert ls["read_pool_submerged"]["y_altitude"] == pytest.approx(expect_y, abs=1.5), (
+            f"{arm}: the read-pool reading is at y {ls['read_pool_submerged']['y_altitude']}, not the read pool's {expect_y}"
+        )
+        assert ls["read_pool_submerged"]["is_in_water"], f"{arm}: the read-pool reading is not submerged"
+        assert ls["context_matches_training_pool"]["match"] is True, ls["context_matches_training_pool"]
+    # and the cross arms really did read a DIFFERENT pool than they trained in
+    assert (
+        rows["cross"]["live_state"]["read_pool_submerged"]["y_altitude"]
+        != rows["cross"]["train_pool_state"]["y_altitude"]
+    ), "the cross arm read the pool it trained in — use_geometry did not take effect"
+    assert (
+        rows["same"]["live_state"]["read_pool_submerged"]["y_altitude"]
+        == rows["same"]["train_pool_state"]["y_altitude"]
+    ), "the same arm must read the pool it trained in"
+
     cross = rows["cross"]
     assert cross["refusal"] is None, f"a cross row must be CLEAN whichever way the node gate lands: {cross['refusal']}"
     assert cross["node_gate"]["booked_at_training_nodes"] is True

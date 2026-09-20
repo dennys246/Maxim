@@ -907,10 +907,13 @@ class Exp62Campaign:
             row["previous_geometry_pool_id"] = (previous or {}).get("pool_id")
 
             # 4. the NODE gate at the read pool, loop OFF — THE RESULT.
-            # The live snapshot is recorded on BOTH sides: when the gate misses, §Outcome has to
-            # name WHICH live thing differed, and light/time is the named suspect (A1). Without it
-            # the report can only say "the replay was wrong about something live".
-            row["live_state"] = {"read_pool": _context_snapshot(trial)}
+            # `use_geometry` moves where the trial TELEPORTS TO; it does not move the bot. So a
+            # snapshot taken here is still at the previous pool's shore, and labelling it
+            # "read_pool" would be a field that looks measured and is not — the 2026-09-20 dry run
+            # reported y 40 (pool 1's shore) for every arm, cross arms included. The reading that
+            # matters is taken inside `live_g2`, at the moment the body is submerged at the read
+            # pool (`live_g2.sensed_at_probe`), and is folded into the row below.
+            row["live_state"] = {"before_read_at_previous_pool": _context_snapshot(trial)}
             try:
                 fields = trial.live_g2(FROZEN["g2_arm"][arm], episode_clusters, water_pre)
                 g2_raised = None
@@ -922,6 +925,16 @@ class Exp62Campaign:
                 if not fields:
                     raise
             row.update(fields)
+            g2 = fields.get("live_g2") or {}
+            row["live_state"]["read_pool_submerged"] = g2.get("sensed_at_probe")
+            row["live_state"]["read_pool_shore"] = g2.get("sensed_at_shore")
+            # The A1 check, now on the right side of the teleport: the full-weight constants must
+            # read the SAME at the training pool and the read pool, or the contrast is a light/time
+            # contrast wearing a pool's name. Recorded, not gated — a mismatch here is a finding
+            # about the apparatus and the campaign's own gate records already refused the known one.
+            row["live_state"]["context_matches_training_pool"] = _context_agrees(
+                row.get("train_pool_state"), g2.get("sensed_at_probe")
+            )
             node = classify_g2(fields, arm=arm, floor=FROZEN["read_floor"])
             node["g2_raised"] = g2_raised
             row["node_gate"] = node
@@ -1019,6 +1032,23 @@ def cite_gate_records(
             "failure — re-probe after a client reconnect and cite THAT record)"
         )
     return cited, records
+
+
+def _context_agrees(train: dict[str, Any] | None, read: dict[str, Any] | None) -> dict[str, Any]:
+    """Do the full-weight constants read the same at both pools, LIVE? (pure)
+
+    The campaign's gate is on the committed RECORDS (`cite_gate_records`), which can be satisfied by
+    a record that no longer describes the world. This is the same question asked of the world.
+    """
+    if not train or not read:
+        return {"match": None, "why": "a snapshot is missing — the comparison was not made"}
+    diffs = [f"{k}: train {train.get(k)} v read {read.get(k)}" for k in CONTEXT_SENSORS if train.get(k) != read.get(k)]
+    return {
+        "match": not diffs,
+        "mismatches": diffs,
+        "train": {k: train.get(k) for k in CONTEXT_SENSORS},
+        "read": {k: read.get(k) for k in CONTEXT_SENSORS},
+    }
 
 
 def _context_snapshot(trial: WaterTrial) -> dict[str, Any]:
