@@ -589,6 +589,23 @@ def gate_record_matches_pool(rec: dict[str, Any], anchor: dict[str, Any]) -> str
     return None
 
 
+def sensed_place(rec: dict[str, Any], where: str) -> tuple[float, float] | None:
+    """(y_altitude, distance_from_spawn) as the BODY sensed them, from a gate-(ii) record.
+
+    The replay's `pool2()` takes raw y and d and re-applies the encoder's normalizations
+    (`y/128`, `(d+128)/256`), so inverting the record's stored normalized values hands it exactly
+    what it wants. This is what the probe actually measured, which beats recomputing the pair from
+    anchor coordinates — and it needs no `world_spawn`, which is stamped only when a pool is BUILT
+    with `--spawn-x/y/z` (world spawn is not readable over RCON, so both live pools carry null).
+    """
+    key = "v_dark" if where == "submerged" else "v_safe"
+    by = {r["sensor"]: r for r in rec.get("per_sensor") or []}
+    y, d = by.get("y_altitude"), by.get("distance_from_spawn")
+    if y is None or d is None or y.get(key) is None or d.get(key) is None:
+        return None
+    return float(y[key]) * 128.0, float(d[key]) * 256.0 - 128.0
+
+
 def _dist3(a: Any, b: Any) -> float:
     ax, ay, az = (a["x"], a["y"], a["z"]) if isinstance(a, dict) else (a[0], a[1], a[2])
     bx, by, bz = (b["x"], b["y"], b["z"]) if isinstance(b, dict) else (b[0], b[1], b[2])
@@ -603,13 +620,14 @@ def replay_prediction(
     gate1: dict[str, Any] | None = None,
     gate2: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Re-run the committed offline replay on the geometry that was ACTUALLY BUILT — twice.
+    """Re-run the committed offline replay on the geometry that ACTUALLY EXISTS — twice.
 
     The prereg's 0.999 is for the *recommended* floor y 95; the pools on the rig are where the
     operator's clearance guard put them, so a copied constant would be a prediction about a pool
     that does not exist. This loads the committed replay module by path (it is the artifact under
     citation, not a library) and overrides pool 2's two place ABSOLUTES on pool 1's sensor map —
-    the replay's own "stacked pool 2" row, and the citable prediction.
+    the replay's own "stacked pool 2" row, and the citable prediction. The absolutes come from the
+    gate records, i.e. what the BODY sensed at each pool (see :func:`sensed_place`).
 
     That synthetic construction cannot see a light or time difference: pool 2's other sensors are
     pool 1's by definition. So when both pools' gate-(ii) records are supplied, the cosine their
@@ -632,19 +650,32 @@ def replay_prediction(
             f"the replay no longer reproduces its own live record ({base:.4f} v {mod.LIVE:.4f}) — "
             "the sensor→basis mapping moved; the prediction is not citable"
         )
-    spawn1, spawn2 = rec1.get("world_spawn"), rec2.get("world_spawn")
-    # compared NUMERICALLY: the builder writes a list and the pre-check a dict, and [0, 64, 0] must
-    # not refuse against [0.0, 64.0, 0.0]
-    if spawn1 is None or spawn2 is None or _dist3(spawn1, spawn2) > 1e-6:
-        raise Refusal(
-            "the two anchor records do not carry ONE stamped world_spawn "
-            f"({spawn1!r} v {spawn2!r}) — distance_from_spawn is not derivable"
-        )
-    y1, y2 = float(rec1["submerged"][1]), float(rec2["submerged"][1])
-    d1, d2 = _dist3(spawn1, rec1["submerged"]), _dist3(spawn1, rec2["submerged"])
+    # WHERE the place absolutes come from. Preferred: the gate records, because that is what the
+    # body sensed at each pool — and it needs no `world_spawn`, which is stamped only when a pool is
+    # built with `--spawn-x/y/z` and is null on both live pools. Fallback: the anchor coordinates
+    # plus a stamped world spawn, for a what-if over geometry that has not been probed yet.
+    place1 = sensed_place(gate1, "submerged") if gate1 is not None else None
+    place2 = sensed_place(gate2, "submerged") if gate2 is not None else None
+    shore2_place = sensed_place(gate2, "shore") if gate2 is not None else None
+    place_source = "gate records (sensed)"
+    if place1 is None or place2 is None or shore2_place is None:
+        place_source = "anchor coordinates + stamped world_spawn"
+        spawn1, spawn2 = rec1.get("world_spawn"), rec2.get("world_spawn")
+        # compared NUMERICALLY: the builder writes a list and the pre-check a dict, and [0, 64, 0]
+        # must not refuse against [0.0, 64.0, 0.0]
+        if spawn1 is None or spawn2 is None or _dist3(spawn1, spawn2) > 1e-6:
+            raise Refusal(
+                "the place absolutes are not derivable: the gate records carry no y_altitude/"
+                "distance_from_spawn pair, and the anchors do not carry ONE stamped world_spawn "
+                f"({spawn1!r} v {spawn2!r}) — pass both gate records, or rebuild with --spawn-x/y/z"
+            )
+        place1 = (float(rec1["submerged"][1]), _dist3(spawn1, rec1["submerged"]))
+        place2 = (float(rec2["submerged"][1]), _dist3(spawn1, rec2["submerged"]))
+        shore2_place = (float(rec2["shore"][1]), _dist3(spawn1, rec2["shore"]))
+    (y1, d1), (y2, d2) = place1, place2
     s1 = mod.embed(mod.pool2(mod.SUB, y=y1, d=d1))
     s2 = mod.embed(mod.pool2(mod.SUB, y=y2, d=d2))
-    shore2 = mod.embed(mod.pool2(mod.SHORE, y=float(rec2["shore"][1]), d=_dist3(spawn1, rec2["shore"])))
+    shore2 = mod.embed(mod.pool2(mod.SHORE, y=shore2_place[0], d=shore2_place[1]))
     cross = mod.cos(s1, s2)
     own2 = mod.cos(shore2, s2)
     th = float(FROZEN["cosine_threshold"])
@@ -656,22 +687,18 @@ def replay_prediction(
     # cosine). It says nothing about whether the anchors describe the pools the records describe —
     # and the prediction is built from `pool2(SUB, y, d)`, i.e. the anchors. Those two bindings are
     # what `gate1` closes: anchor ↔ cited record ↔ the record the replay predicts from.
-    round_trip: float | None = None
     from_records: dict[str, Any] | None = None
     if gate1 is not None:
+        # The replay's basis is a HARDCODED record (`mod.REC`). `reproduces_live_record` proves the
+        # encoder mapping has not moved — not that those vectors describe the pool 1 being run.
+        # This binds them. The record-to-anchor half of the chain is `gate_record_matches_pool`,
+        # asserted in `cite_gate_records` before any of this runs.
         cited_sub = {r["sensor"]: r["v_dark"] for r in gate1.get("per_sensor") or []}
         if cited_sub != mod.SUB:
             raise Refusal(
                 f"the cited pool-1 gate record is not the one the replay predicts from "
                 f"({Path(mod.REC).name}) — re-point the replay or cite that record; a prediction "
                 "from a different pool 1 is not citable"
-            )
-        round_trip = mod.cos(mod.embed(cited_sub), s1)
-        if round_trip < 0.999:
-            raise Refusal(
-                f"pool 1 re-derived from its ANCHOR geometry does not reproduce its own probe vector "
-                f"(cos {round_trip:.4f}) — the anchor and the cited record describe different pools; "
-                "the prediction is not citable"
             )
     if gate1 is not None and gate2 is not None:
         r1 = mod.embed({s["sensor"]: s["v_dark"] for s in gate1.get("per_sensor") or []})
@@ -688,7 +715,7 @@ def replay_prediction(
     return {
         "replay_script": str(Path(script).resolve()),
         "reproduces_live_record": round(base, 4),
-        "pool1_anchor_vs_record_cosine": round(round_trip, 4) if round_trip is not None else None,
+        "place_absolutes_from": place_source,
         "from_gate_records": from_records,
         "threshold": th,
         "pool1": {"submerged_y": y1, "distance_from_spawn": round(d1, 2)},

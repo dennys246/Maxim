@@ -675,7 +675,6 @@ def test_the_replay_refuses_when_the_records_and_the_synthetic_prediction_disagr
     with pytest.raises(E.Refusal, match="opposite sides"):
         E.replay_prediction(r1, r2, gate1=_gate(POOL1_GATE), gate2=_gate(POOL2_GATE_STALE))
     out = E.replay_prediction(r1, r2, gate1=_gate(POOL1_GATE), gate2=_gate(POOL2_GATE_RECONNECT))
-    assert out["pool1_anchor_vs_record_cosine"] >= 0.999
     assert out["from_gate_records"]["predicted_cross_hit"] is True
     assert out["from_gate_records"]["cross_pool_cosine"] > out["threshold"]
 
@@ -691,14 +690,38 @@ def test_the_replay_refuses_a_pool1_record_it_does_not_predict_from() -> None:
         )
 
 
-def test_an_anchor_describing_a_different_pool_than_the_cited_record_refuses() -> None:
-    """anchor <-> cited record <-> the record the replay predicts from: all three must be one pool."""
-    wrong = _real_pool1_anchor()
-    wrong["submerged"] = [10.0, 59.0, 20.0]  # a pool 1 at a different altitude than its probe saw
-    with pytest.raises(E.Refusal, match="describe different pools"):
-        E.replay_prediction(
-            wrong, _rec(95, 90, spawn=POOL1_SPAWN), gate1=_gate(POOL1_GATE), gate2=_gate(POOL2_GATE_RECONNECT)
-        )
+def test_an_anchor_describing_a_different_pool_than_its_cited_record_refuses() -> None:
+    """anchor <-> cited record <-> the record the replay predicts from: all three must be one pool.
+
+    The anchor half is asserted at its real home, `cite_gate_records`, before any prediction runs —
+    the replay itself no longer touches the anchors when records are supplied.
+    """
+    geoms = {"pool1": {"submerged": [10.0, 59.0, 20.0]}, "pool2": {"submerged": [10.0, 90.0, 20.0]}}
+    with pytest.raises(E.Refusal, match="records swapped\\?"):
+        E.cite_gate_records([str(POOL1_GATE), str(POOL2_GATE_RECONNECT)], geoms)
+
+
+def test_the_place_absolutes_come_from_the_records_so_no_world_spawn_is_needed() -> None:
+    """The rig's actual case: both pools were built without --spawn-x/y/z, so `world_spawn` is null
+    in both anchors (world spawn is not readable over RCON). The gate records carry y_altitude and
+    distance_from_spawn as SENSED values, which is what the prediction wants — and is what the body
+    actually measured, rather than a recomputation from coordinates."""
+    a1 = {"shore": [-393, 40, -312], "submerged": [-388, 35, -312], "world_spawn": None}
+    a2 = {"shore": [-393, 95, -312], "submerged": [-388, 90, -312], "world_spawn": None}
+    out = E.replay_prediction(a1, a2, gate1=_gate(POOL1_GATE), gate2=_gate(POOL2_GATE_RECONNECT))
+    assert out["place_absolutes_from"] == "gate records (sensed)"
+    assert out["predicted_cross_hit"] is True and out["pool2_separates_internally"] is True
+    # the sensed floors agree with the BUILT floors — the records describe these pools
+    assert out["pool1"]["submerged_y"] == pytest.approx(35.0, abs=0.01)
+    assert out["pool2"]["submerged_y"] == pytest.approx(90.0, abs=0.01)
+
+
+def test_without_records_it_falls_back_to_the_anchors_and_says_which_source_it_used() -> None:
+    out = E.replay_prediction(_rec(64, 59), _rec(105, 100))
+    assert out["place_absolutes_from"] == "anchor coordinates + stamped world_spawn"
+    a = _rec(64, 59) | {"world_spawn": None}
+    with pytest.raises(E.Refusal, match="not derivable"):
+        E.replay_prediction(a, _rec(105, 100))
 
 
 # ───────────────── the remaining review folds ─────────────────
