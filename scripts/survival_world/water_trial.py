@@ -288,6 +288,16 @@ class WaterTrial:
         )
 
     def attach_instruments(self) -> None:
+        """Idempotent by refusal: a second attach would wrap the FIRST trial's spy, so every call
+        it records would be counted twice and the pain subscriber would fire twice per publish.
+        Exp 62 runs two pools per agent, which is exactly when this happens (prereg §Apparatus:
+        "ONE instrument attach — the executor spy must not double-wrap")."""
+        if getattr(self, "_orig_execute", None) is not None:
+            raise InstrumentError(
+                "instruments are already attached to this agent — a second attach double-wraps the "
+                "executor spy and double-counts every call; build one WaterTrial per agent and give "
+                "it the pool's geometry, or detach first"
+            )
         self.aut.bio.pain_bus.subscribe(self._record_pain)
         self._orig_execute = self.aut.executor.execute
         orig = self._orig_execute

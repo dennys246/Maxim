@@ -238,3 +238,26 @@ def test_deaths_parse_failure_raises_and_preflight_resets(tmp_path: Path) -> Non
     with pytest.raises(InstrumentError, match="unreadable"):
         t.deaths()
     srv.close()
+
+
+def test_attaching_instruments_twice_refuses(monkeypatch):
+    """Exp 62 runs two pools per agent — a second attach would wrap the first trial's spy.
+
+    The prereg's apparatus paragraph names this: "ONE instrument attach — the executor spy must
+    not double-wrap". Double-wrapping would count every call twice and fire the pain subscriber
+    twice per publish, which reads as a louder agent rather than as a defect.
+    """
+    import types
+
+    from survival_world.common import InstrumentError
+    from survival_world.water_trial import WaterTrial
+
+    trial = object.__new__(WaterTrial)
+    trial.calls = []
+    trial._orig_execute = lambda action: None  # already attached
+    trial.aut = types.SimpleNamespace(
+        bio=types.SimpleNamespace(pain_bus=types.SimpleNamespace(subscribe=lambda _cb: None)),
+        executor=types.SimpleNamespace(execute=lambda action: None),
+    )
+    with pytest.raises(InstrumentError, match="already attached"):
+        trial.attach_instruments()
