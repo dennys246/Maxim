@@ -202,8 +202,16 @@ class _ModalityMatrix:
         base_threshold: float,
         overrides: dict[str, float],
         live_geometry: str | None,
-    ) -> tuple[str | None, float]:
+    ) -> tuple[str | None, float, float]:
         """Best eligible (geometry-compatible, over-threshold) node, or (None, -1).
+
+        Returns ``(node_id, similarity, best_comparable)``. The third value is the
+        highest similarity over every COMPARABLE row — live, geometry-compatible —
+        regardless of the threshold, i.e. the match MARGIN that the threshold
+        decision throws away. It respects the geometry mask because a near-miss
+        against an incomparable encoding space is not a near-miss at all; it
+        ignores the threshold because that is the whole point. ``-1.0`` means
+        nothing comparable existed to score against.
 
         Known reference divergences, both unreachable at production
         thresholds (base 0.44/0.85; `NAc.get_threshold_overrides` clamps to
@@ -213,11 +221,11 @@ class _ModalityMatrix:
         — the tombstone mechanism) and early-returns on a zero-norm query.
         """
         if self.n == 0 or len(embedding) != self.mat.shape[1]:
-            return None, -1.0
+            return None, -1.0, -1.0
         vec = np.asarray(embedding, dtype=np.float64)
         query_norm = float(np.linalg.norm(vec))
         if query_norm == 0.0:
-            return None, -1.0
+            return None, -1.0, -1.0
         mat = self.mat[: self.n]
         norms = self.norms[: self.n]
         sims = mat @ vec
@@ -247,10 +255,20 @@ class _ModalityMatrix:
             )
             eligible &= mask
 
+        # The MARGIN: best over everything COMPARABLE, threshold ignored. `eligible`
+        # has already had the geometry mask applied above; re-deriving the comparable
+        # set from the same masks keeps the two in step without a second pass.
+        comparable = live_rows.copy()
+        if live_geometry is not None and any(
+            g is not None and g != live_geometry and count > 0 for g, count in self.geom_counts.items()
+        ):
+            comparable &= np.fromiter((g is None or g == live_geometry for g in self.geoms), dtype=bool, count=self.n)
+        best_comparable = float(np.max(np.where(comparable, sims, -np.inf))) if comparable.any() else -1.0
+
         if not eligible.any():
-            return None, -1.0
+            return None, -1.0, best_comparable
         best_row = int(np.argmax(np.where(eligible, sims, -np.inf)))
-        return self.ids[best_row], float(sims[best_row])
+        return self.ids[best_row], float(sims[best_row]), best_comparable
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -443,11 +461,27 @@ class PatternResult:
         node_id: ATL node this percept mapped to (existing or new).
         similarity: Cosine similarity to the matched node (0.0 if new).
         is_new: True if a new node was created (separation).
+        best_similarity: The best COMPARABLE similarity the scan saw, whatever
+            the threshold did with it — the match MARGIN. On a completion it
+            equals ``similarity``; on a separation it is the score the percept
+            separated BY, which ``similarity`` reports as 0.0.
+
+            Without it a separation at 0.849 (a hair under a 0.85 threshold)
+            and one at 0.05 (nothing remotely close) are indistinguishable
+            everywhere downstream — the decision is kept and its evidence is
+            discarded. ``-1.0`` means there was nothing comparable to score
+            against (an empty or wholly incomparable store), which is different
+            from "scored 0.0".
+
+            READ-ONLY instrumentation: no consumer makes a decision on it. A
+            graded read AT the cluster boundary is a mechanism and needs its own
+            experiment (Exp 62 Rung B).
     """
 
     node_id: str
     similarity: float
     is_new: bool
+    best_similarity: float = -1.0
 
 
 class EntorhinalCortex:
@@ -714,7 +748,7 @@ class EntorhinalCortex:
                     self._note_geometry_mismatch(modality, stored_geom, geometry)
 
         matrix = self._matrix_for(modality, len(embedding))
-        best_node, best_sim = matrix.scan(embedding, base_threshold, overrides, geometry)
+        best_node, best_sim, best_comparable = matrix.scan(embedding, base_threshold, overrides, geometry)
 
         if best_node is not None:
             # Gate 1: STAMP ON FIRST TOUCH. Every `ec.json` written before the
@@ -743,7 +777,9 @@ class EntorhinalCortex:
                     is_new=False,
                     modality=modality,
                 )
-                return PatternResult(node_id=best_node, similarity=best_sim, is_new=False)
+                return PatternResult(
+                    node_id=best_node, similarity=best_sim, is_new=False, best_similarity=best_comparable
+                )
 
             # Update centroid: running mean of all embeddings that completed here.
             # new_centroid = (old_centroid * n + new_embedding) / (n + 1)
@@ -759,7 +795,7 @@ class EntorhinalCortex:
                 is_new=False,
                 modality=modality,
             )
-            return PatternResult(node_id=best_node, similarity=best_sim, is_new=False)
+            return PatternResult(node_id=best_node, similarity=best_sim, is_new=False, best_similarity=best_comparable)
 
         # Separation — allocate a new node ID but don't register yet.
         # The caller (LinguisticEncoder) registers via register_substrate_node
@@ -773,7 +809,7 @@ class EntorhinalCortex:
             is_new=True,
             modality=modality,
         )
-        return PatternResult(node_id=new_id, similarity=0.0, is_new=True)
+        return PatternResult(node_id=new_id, similarity=0.0, is_new=True, best_similarity=best_comparable)
 
     def pattern_complete_readonly(
         self,
@@ -816,7 +852,7 @@ class EntorhinalCortex:
                     self._note_geometry_mismatch(modality, stored_geom, geometry)
 
         matrix = self._matrix_for(modality, len(embedding))
-        best_node, best_sim = matrix.scan(embedding, base_threshold, overrides, geometry)
+        best_node, best_sim, best_comparable = matrix.scan(embedding, base_threshold, overrides, geometry)
 
         if best_node is not None:
             _emit_ec_activation(
@@ -825,7 +861,7 @@ class EntorhinalCortex:
                 is_new=False,
                 modality=modality,
             )
-            return PatternResult(node_id=best_node, similarity=best_sim, is_new=False)
+            return PatternResult(node_id=best_node, similarity=best_sim, is_new=False, best_similarity=best_comparable)
 
         new_id = str(uuid4())
         _emit_ec_activation(
@@ -834,7 +870,7 @@ class EntorhinalCortex:
             is_new=True,
             modality=modality,
         )
-        return PatternResult(node_id=new_id, similarity=0.0, is_new=True)
+        return PatternResult(node_id=new_id, similarity=0.0, is_new=True, best_similarity=best_comparable)
 
     def _note_geometry_mismatch(self, modality: str, stored: str, live: str) -> None:
         """Report a live-vs-stored encoding-space divergence ONCE per triple.
