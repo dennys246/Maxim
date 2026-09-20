@@ -94,6 +94,13 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
 - [maxim_hivemind.md](maxim_hivemind.md) — **1.2 = Oasis + Hivemind.** B5 shareability
   SHIPPED (#305–#311); the Oasis ingestion contract, the re-keyed merge (gate 6) and the
   bundle action namespace (gate 7) are the 1.2 work.
+- [public_oasis.md](public_oasis.md) — **PROPOSED 2026-09-19**, scoping only: a public Oasis on own
+  hardware at `oasis.pymaxim.bio`. Verdict **publish, do not accept** — Phase 1 (read-only release
+  tier over a tunnel) rides entirely on shipped infrastructure and adds no trust decision; Phase 2
+  (submissions) stays deferred because V1's operator allowlist IS the trust boundary and the
+  promotion gauntlet that would replace it has zero of its four prerequisites. Re-opens decision
+  point 4 for publication only; the discovery-only website stance is preserved. Self-hosted sibling
+  of [deferred/hf_hive_repository.md](deferred/hf_hive_repository.md).
 
 ### The R4 credit map
 
