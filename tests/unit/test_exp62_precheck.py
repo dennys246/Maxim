@@ -42,7 +42,14 @@ class TestSpawnDerivation:
         snaps = []
         for p in positions:
             dx, dy, dz = p["x"] - spawn["x"], p["y"] - spawn["y"], p["z"] - spawn["z"]
-            snaps.append({"offset_x": dx, "offset_z": dz, "distance_from_spawn": (dx * dx + dy * dy + dz * dz) ** 0.5})
+            snaps.append(
+                {
+                    "offset_x": dx,
+                    "offset_z": dz,
+                    "distance_from_spawn": (dx * dx + dy * dy + dz * dz) ** 0.5,
+                    "y_altitude": p["y"],
+                }
+            )
         out = P.derive_world_spawn(snaps, positions)
         assert out["agrees"]
         assert out["x"] == pytest.approx(spawn["x"]) and out["z"] == pytest.approx(spawn["z"])
@@ -51,11 +58,20 @@ class TestSpawnDerivation:
     def test_disagreeing_readings_report_None_rather_than_a_confident_number(self):
         positions = [{"x": 130.0, "y": 40.0, "z": -10.0}, {"x": 130.0, "y": 95.0, "z": -10.0}]
         snaps = [
-            {"offset_x": 30.0, "offset_z": 40.0, "distance_from_spawn": 55.0},
-            {"offset_x": 31.0, "offset_z": 40.0, "distance_from_spawn": 55.0},  # x disagrees
+            {"offset_x": 30.0, "offset_z": 40.0, "distance_from_spawn": 55.0, "y_altitude": 40.0},
+            {"offset_x": 31.0, "offset_z": 40.0, "distance_from_spawn": 55.0, "y_altitude": 95.0},  # x disagrees
         ]
         out = P.derive_world_spawn(snaps, positions)
         assert out["x"] is None and not out["agrees"]
+
+    def test_a_stale_read_is_refused_not_derived_from(self):
+        """The first live run's actual failure: two readings, identical, 55 blocks apart in y."""
+        positions = [{"x": -393.0, "y": 40.0, "z": -312.0}, {"x": -393.0, "y": 95.0, "z": -312.0}]
+        stale = {"offset_x": -25.0, "offset_z": -56.0, "distance_from_spawn": 65.498, "y_altitude": 40.0}
+        out = P.derive_world_spawn([stale, dict(stale)], positions)
+        assert not out["agrees"] and "stale read" in out["refusal"]
+        assert out["actuation"][1]["matches"] is False  # the second reading is not where it claims
+        assert out["x"] is None, "a refused row must not publish a spawn"
 
     def test_it_refuses_a_single_reading(self):
         with pytest.raises(ValueError):
