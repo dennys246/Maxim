@@ -2,6 +2,55 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-09-19 — Decision point 4 re-opened for PUBLICATION only: a project-hosted Oasis that publishes and never accepts
+
+Decision:
+
+- **The project runs a public Oasis** at `oasis.pymaxim.bio`, on the owner's own hardware behind a
+  Cloudflare Tunnel, serving the Queen release tier **read-only**. This re-opens decision point 4
+  ([docs/plans/archive/hivemind_p2p_scope.md](docs/plans/archive/hivemind_p2p_scope.md)
+  §Decision points: *"no project-hosted Oasis in 1.2 … the project runs none"*), which was an
+  operational-burden decision. Publication's burden is static signed blobs, no inbound trust and no
+  curation labor.
+- **The deferral stands for SUBMISSIONS.** `POST /v1/substrate/contribute` is not opened to the
+  public — not into trusted state, and not into the quarantine tier — until the six conditions in
+  [docs/plans/public_oasis.md](docs/plans/public_oasis.md) §Phase 2 all hold. `hive contribute`
+  remains write-only, unchanged from 1.2 and from 1.4's stated posture.
+- **The discovery-only website stance is PRESERVED, not reversed.** `pymaxim.bio` keeps linking to
+  Oases rather than routing to them; the Oasis is a peer served from the rig on its own subdomain,
+  which [docs/plans/maxim_hivemind.md](docs/plans/maxim_hivemind.md) already anticipates
+  (*"Public Oasis — eventual reference instances … that anyone can connect to"*) under a topology
+  that stays flat (*"No hierarchy … The Hivemind mesh has no root"*). Adopting the Queen role is a
+  per-Oasis role, never a canonical root. The hosted-Console non-goal is untouched.
+- **Entry condition:** the Phase 0 prerequisites — a CI lane that installs `cryptography` (1.3.1
+  scope), the public format-freeze pass, a human privacy read of the exemplar's key material, and a
+  licensing posture for published bundles.
+
+Reason:
+
+- The receiver's trust boundary is an operator-typed allowlist: `hivemind/ingest.py::ingest_bundle`
+  refuses any `contributor_id` absent from `trusted_sources`, and `substrate ingest --trust` is
+  `required=True`. The frozen threat model designates everything behind that door defense-in-depth
+  rather than the boundary, and says the clamps *"bound magnitude, not INTENT."* Accepting strangers
+  would delete the only trust decision and substitute nothing: the Queen promotion gauntlet was
+  deferred 2026-09-06 with four prerequisites and none has landed.
+- Publication, by contrast, adds **no new trust decision at all**. Consumers verify the Queen
+  signature, never the host that served the bytes, so a mirror is untrusted by construction — the
+  same property that made the Hugging Face plan's Phase 1 cheap.
+- It makes the domain real, exercises the pull path against real strangers, and hardens the bundle
+  wire boundary in public, without spending 1.4's ladder.
+
+Tradeoffs:
+
+- An uptime promise on hardware that also runs experiments; §Open questions Q2 owes an availability
+  posture and a what-the-site-says-when-it-is-down answer.
+- The "give back" half of the story stays aspirational and must be described that way — never
+  rounded up.
+- Publishing freezes the bundle shape in public: future format changes now break strangers, not two
+  coordinated repos.
+- Re-opening a deferred decision point for one half invites pressure to open the other. The six
+  Phase 2 conditions exist so that pressure meets a list rather than a mood.
+
 ## 2026-09-19 — 1.4 re-pointed to the survival line; "Shared perception" deferred on a physical trigger
 
 Decision:
