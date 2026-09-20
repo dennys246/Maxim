@@ -121,7 +121,7 @@ If the secondary criterion fails (delta survives ablation of all bio-mechanisms)
 - **[v1_refinement.md](v1_refinement.md)** — names benchmarking as a 1.0 gate but does not specify acceptance criteria. This doc fills that gap.
 - **[behavioral_graduation_candidates.md](../behavioral_graduation_candidates.md)** — the sibling 1.0 gate. The secondary criterion of this gate (mechanism-attributable delta) is what couples the two — passing this gate without the graduation gate means the bio-attribution is unsupported.
 - **[behavioral_convergence_practice.md](../deferred/behavioral_convergence_practice.md)** — the living doc for ongoing behavioral hypotheses. Once the 1.0 benchmark passes, the doc keeps tracking newer hypotheses post-1.0 — same shape as the post-1.0 lifecycle in graduation candidates.
-- **[memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md)** — the long-horizon retention practice doc. Out of scope for 1.0 benchmarking but relevant for 1.1+ long-horizon questions.
+- **[memory_consolidation_practice.md](memory_consolidation_practice.md)** — the long-horizon retention practice doc. Out of scope for 1.0 benchmarking but relevant for 1.1+ long-horizon questions.
 - **[minecraft_benchmark.md](../minecraft_benchmark.md)** — the 1.1 showpiece. Builds on whatever protocol this gate establishes; Minecraft adapts it to a third-party-recognizable environment.
 
 ## Implementation plan (out of scope here)

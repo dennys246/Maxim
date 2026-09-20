@@ -7,10 +7,10 @@ rescope note in [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md)). The staging bel
 designs it orders; each stage names the plan that owns it.
 
 **Companion plans, unchanged and still authoritative in their own areas:**
-[microduck_intent_layer.md](microduck_intent_layer.md) (the duck design exploration, rev 2
-post-review) · [cross_modal_perception_fabric.md](cross_modal_perception_fabric.md) (the
+[microduck_intent_layer.md](deferred/microduck_intent_layer.md) (the duck design exploration, rev 2
+post-review) · [cross_modal_perception_fabric.md](deferred/cross_modal_perception_fabric.md) (the
 fabric, Stage 0 gates Stage 1) · [three_factor_credit_assignment.md](three_factor_credit_assignment.md) ·
-[sem_motor_binding.md](sem_motor_binding.md) ·
+[sem_motor_binding.md](deferred/sem_motor_binding.md) ·
 [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) (deferred;
 off the near-term path).
 
@@ -32,7 +32,7 @@ in, and the reason for that order.
 **Every EARNED behavioural result this project has is sound-orienting** — Exp 45, 52, 53b, 54.
 One validated behaviour, one modality.
 
-`microduck_intent_layer.md` §1.1 then establishes, from two independent enumerations of the
+`deferred/microduck_intent_layer.md` §1.1 then establishes, from two independent enumerations of the
 duck's sensing, that **no microphone appears in either**. The duck's supplied sensor suite is
 proprioceptive and locomotor: 48 proprioception + command channels, pose, contacts, fall
 state, projected gravity, per-joint commanded-vs-measured, servo temperature, battery.
@@ -42,7 +42,7 @@ class on a new modality**, and it needs its own pre-registered experiment to ear
 
 That has been read as a risk to plan around. **It is better read as the thing to measure
 first.** A baseline resolves it empirically in less time than it takes to argue about, and
-`microduck_intent_layer.md` §8 already names the mic-array question as blocking design. Stage
+`deferred/microduck_intent_layer.md` §8 already names the mic-array question as blocking design. Stage
 A is that measurement.
 
 ---
@@ -57,10 +57,10 @@ can be made to do. Stage A is not an attempt to earn a behavioural claim.
 - the mic-array question — absent, presence-only, or directional. **Demoted 2026-09-01 from
   "the single highest-value fact" to one line of this pass**: the operator has decided the duck's
   value is locomotion, so the duck is a new behaviour class either way and this no longer selects
-  between two experiments ([microduck_intent_layer.md](microduck_intent_layer.md) §1.1).
+  between two experiments ([microduck_intent_layer.md](deferred/microduck_intent_layer.md) §1.1).
   **Answered from vendor documentation 2026-09-01: mics present, direction absent** — audio sits
   in `mediad`'s telepresence pipeline with no array/DoA documented, so presence-only
-  ([microduck_intent_layer.md](microduck_intent_layer.md) §1.1). Documented, not measured; Stage A
+  ([microduck_intent_layer.md](deferred/microduck_intent_layer.md) §1.1). Documented, not measured; Stage A
   confirms. Note the answer has nowhere truthful to land until `StreamCapability` can distinguish
   presence from direction (§8 item 10) — and this robot is the case that proves it, since
   `has_audio()` would return True while the orient line stays impossible. Stage B work, testable
@@ -117,7 +117,7 @@ safety is touched, so a two-lens round is required (the CLAUDE.md hardware-safet
 
 ## Stage C — the perception fabric
 
-Unchanged and still owned by [cross_modal_perception_fabric.md](cross_modal_perception_fabric.md).
+Unchanged and still owned by [cross_modal_perception_fabric.md](deferred/cross_modal_perception_fabric.md).
 Its own rule stands: **do not open Stage 1 until the Stage 0 preconditions pass.** Stage 0a is
 COMPLETE (rev 4); 0b gained an expressibility criterion and 0c a decisiveness clause. 0c is
 the experiment that earns the mechanism.
@@ -137,7 +137,7 @@ designed against that. Running Stage C first would design against an assumption.
   recommendations precisely because they converted a 1.3 exploration into decisions binding
   1.1.3. That correction holds. Gate 7 and the bias-key namespace belong to
   [1.1.3](roadmap_1_1_to_1_3.md); the duck is an INPUT to them, not a decision about them.
-- **A schedule change.** The duck stays in 1.3 (`microduck_intent_layer.md` §7).
+- **A schedule change.** The duck stays in 1.3 (`deferred/microduck_intent_layer.md` §7).
 
 ## Prerequisites worth doing regardless
 

@@ -171,7 +171,7 @@ When implementing a non-trivial tool, mind these `Tool` contract surfaces:
 The persona system was hard-deleted in #482 (`simulation/personas.py` no longer
 exists) and `maxim.register_persona()` raises from 1.1.0. Use `imagine(mode=...)`
 / `--sim-mode` for the report/log label; behavioural disposition is bio-emergent.
-Background: `docs/plans/deferred/persona_cleanup_and_mode_transition.md`.
+Background: `docs/plans/archive/persona_cleanup_and_mode_transition.md`.
 
 ## License
 

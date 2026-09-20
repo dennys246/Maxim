@@ -24,7 +24,7 @@ Earned: Rescorla-Wagner value learning per link (ΔV = α(R−V), novelty-adapti
 module level shares the role, not the algorithm.
 | Gap | Intent | Trigger / target |
 |---|---|---|
-| TD bootstrapping (γV(s′), value chaining) | **ANALOG** | Deliberate: the roadmap direction is three-factor credit (eligibility × reward × modulation, [cross_modal_perception_fabric.md](cross_modal_perception_fabric.md)), not TD backup. Revisit only if multi-step credit demonstrably fails a real task. |
+| TD bootstrapping (γV(s′), value chaining) | **ANALOG** | Deliberate: the roadmap direction is three-factor credit (eligibility × reward × modulation, [cross_modal_perception_fabric.md](deferred/cross_modal_perception_fabric.md)), not TD backup. Revisit only if multi-step credit demonstrably fails a real task. |
 | Compound-cue competition (ΣV in R-W) | OPEN | Becomes EARN if multi-cue contexts (several entities sharing an outcome) show mis-attribution in a pre-registered probe. |
 | Dopamine-like global broadcast | OPEN | The ValenceSignal/WMS salience path is the current partial analog. |
 
@@ -58,7 +58,7 @@ Earned: genuine Kuramoto dynamics + Hebbian coupling learning.
 | Gap | Intent | Trigger / target |
 |---|---|---|
 | LTD / decay of unused bindings | **EARN (candidate)** | Monotonic edge growth clamped at max is a known long-session concern; pair with decay-calibration work when cross-session lifetimes matter (1.2). |
-| STDP | ANALOG | Tick granularity is wrong for spike timing; orient-windowed Hebbian binding ([cross_modal_perception_fabric.md](cross_modal_perception_fabric.md)) is the temporal-window analog we DO intend. |
+| STDP | ANALOG | Tick granularity is wrong for spike timing; orient-windowed Hebbian binding ([cross_modal_perception_fabric.md](deferred/cross_modal_perception_fabric.md)) is the temporal-window analog we DO intend. |
 
 ### ATL (`memory/atl.py`) — FUNCTIONAL
 Hub-and-spoke degradation: ANALOG (diagnostic biology, not a capability we need).

@@ -42,7 +42,7 @@ See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current 
 
 **Living practice docs (paired with substrate_plan):**
 - [behavioral_convergence_practice.md](docs/plans/deferred/behavioral_convergence_practice.md) — does the agent actually get better across sessions? Living doc, not a gate.
-- [memory_consolidation_practice.md](docs/plans/deferred/memory_consolidation_practice.md) — refines the P8 sleep-replay mechanism. Kicks in when P8 ships in 0.5.
+- [memory_consolidation_practice.md](docs/plans/archive/memory_consolidation_practice.md) — refines the P8 sleep-replay mechanism. Kicks in when P8 ships in 0.5.
 
 **Parallel:**
 - [tool_refinement_plan.md](docs/plans/deferred/tool_refinement_plan.md) — living doc for agent tool curation.

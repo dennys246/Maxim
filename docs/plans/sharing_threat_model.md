@@ -250,9 +250,9 @@ adapter's pre-merge review round, 2026-09-05):
 
 ## 6. Citations
 
-Costing and merge mechanics: [d43_merge_correctness.md](d43_merge_correctness.md);
+Costing and merge mechanics: [d43_merge_correctness.md](archive/d43_merge_correctness.md);
 gate-7 record: [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) §Gates +
-[oasis_case_study_taught_orient.md](oasis_case_study_taught_orient.md) §1; D8 count
+[oasis_case_study_taught_orient.md](archive/oasis_case_study_taught_orient.md) §1; D8 count
 provenance: the gate-3 D8 pre-registration
 (`docs/experiments/protocols/d8_read_mutation_preregistration.md`, lands with the
 gate-3 branch — the ordering dependency in the header). Bundle mechanics:
@@ -269,6 +269,6 @@ adapter PR that implements a duty without its guard test has not shipped the dut
 > **2026-09-05 (adapter shipped — citation only, no contract change):** the 1.2
 > ingestion adapter is `src/maxim/hivemind/ingest.py::ingest_bundle` (operator surface
 > `maxim substrate ingest`; step order + adapter decisions:
-> [oasis_ingestion_contract.md](oasis_ingestion_contract.md)). §5's duty guards live in
+> [oasis_ingestion_contract.md](archive/oasis_ingestion_contract.md)). §5's duty guards live in
 > `tests/unit/test_hivemind_ingest.py` (one refusing/clamping test per §4 attack row) and
 > `tests/integration/test_oasis_ingest_e2e.py` (the real-archive end-to-end proof).

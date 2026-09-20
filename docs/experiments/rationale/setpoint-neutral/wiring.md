@@ -1,6 +1,6 @@
 # Set-point-aware neutral — WIRING lens (four-lens design review, 2026-09-16)
 
-**Design under review:** `docs/plans/setpoint_aware_neutral.md` (L11 line "B"). **Remit:** real
+**Design under review:** `docs/plans/deferred/setpoint_aware_neutral.md` (L11 line "B"). **Remit:** real
 consumers and real seams (D43 — a fix ships with a CALLER), blast radius, persisted-substrate
 compatibility, and whether any replay could pass while the live path stays unchanged.
 **Read first:** `docs/experiments/DESIGN_REVIEW.md`, `docs/wiring/README.md`,
@@ -118,7 +118,7 @@ change"); 194 Exp 56 ("`SensorEncoder` / EC world-modality change"); 195 Exp 57 
 196 Exp 60 ("`SensorEncoder` / EC world-modality change, `minecraft_player` sensor-range change").
 Rows 183/185/187 say "encoder swap" (text encoder; not fired by this).
 
-**Decision D1** the plan and the docstring cite lives in `docs/plans/world_seam_1_1_4.md`
+**Decision D1** the plan and the docstring cite lives in `docs/plans/archive/world_seam_1_1_4.md`
 §Decisions ("ship the measured equation literally … a body whose set point is far from its range
 midpoint rests loud; the body author's lever today is declaring the range around the set point"),
 not in `docs/limits/l11_sensor_dilution.md` (which mentions set point only in bake-off prose).
@@ -274,7 +274,7 @@ raise at `spec._build_reading_schema` (parse time, `ValueError`, the same class 
 ### NIT
 
 **N1.** The plan cites "plan decision D1" through `encoder.py`; the decision text is in
-`docs/plans/world_seam_1_1_4.md` §Decisions, not in `docs/limits/l11_sensor_dilution.md`. Cite the
+`docs/plans/archive/world_seam_1_1_4.md` §Decisions, not in `docs/limits/l11_sensor_dilution.md`. Cite the
 file so the bio-faithful lens reads the recorded consequence ("the body author's lever today is
 declaring the range around the set point") rather than the bake-off prose.
 

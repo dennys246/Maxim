@@ -1,6 +1,6 @@
 # Wiring the SEM body into the live runtime — so the substrate has a body again
 
-> **✅ SHIPPED 2026-07-17 (PR #400) — Track 1 (Layers 1 + 3a/3b, Track A). Layer 2 → `../live_audio_orient_wiring.md`; Track 2 → `../hybrid_substrate_reflex_runtime.md` (1.3 reflex tier).**
+> **✅ SHIPPED 2026-07-17 (PR #400) — Track 1 (Layers 1 + 3a/3b, Track A). Layer 2 → `../deferred/live_audio_orient_wiring.md`; Track 2 → `../deferred/hybrid_substrate_reflex_runtime.md` (1.3 reflex tier).**
 
 **Status:** DRAFT plan (2026-07-17). Prerequisite for
 [orient_runtime_integration.md](orient_runtime_integration.md) Landing 1 (audio as a
@@ -416,7 +416,7 @@ Exp 45 orient policy runnable** — that's Track 2.
 - **P1** — give the Reachy runtime a substrate-primary path (full mode, or a hybrid where
   orienting is substrate-primary under LLM cognition). This is the architecture decision
   the operator named; it's a plan of its own, not a sub-step.
-**Track 2 is now drafted: [hybrid_substrate_reflex_runtime.md](../hybrid_substrate_reflex_runtime.md)** — the reflex-as-DN-Behavior design (P1 hybrid + P2 az_bin keying), which merges with the runtime plan's Landing 2.
+**Track 2 is now drafted: [hybrid_substrate_reflex_runtime.md](../deferred/hybrid_substrate_reflex_runtime.md)** — the reflex-as-DN-Behavior design (P1 hybrid + P2 az_bin keying), which merges with the runtime plan's Landing 2.
 
 - **P2** — in that path, key azimuth on the **az_bin string** (+ boundary sidecar from
   Steps 1/2), bypassing `SensorEncoder`, so the queen-mind policy is directly usable
@@ -456,4 +456,4 @@ is a significant runtime change.
 - The Exp 44 body_state ablation + the `_maybe_wire_body_state` seam: [acting_coach_body_state_ablation.md](../deferred/acting_coach_body_state_ablation.md)
 - `build_executor` invariant: [CLAUDE.md](../../../CLAUDE.md)
 - The body: [bodies/reachy_mini.yaml](../../../src/maxim/_data/components/bodies/reachy_mini.yaml)
-- Layer-1 result the body serves: [substrate_native_orienting.md](../substrate_native_orienting.md)
+- Layer-1 result the body serves: [substrate_native_orienting.md](../deferred/substrate_native_orienting.md)

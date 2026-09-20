@@ -1,6 +1,6 @@
 """Direct tests for the extracted numbered sections of ``run_agentic_loop``.
 
-docs/plans/god_function_decomposition.md — the first extraction (1.1.2 Cluster
+docs/plans/archive/god_function_decomposition.md — the first extraction (1.1.2 Cluster
 B). The point of the plan is auditability: a behavioural delta emitted from a
 3,500-line function cannot be checked for contamination. A section that has
 been moved out but is still only reachable by running the whole loop has not

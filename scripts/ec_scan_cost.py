@@ -10,7 +10,7 @@ not help. Production shares ONE EC across all modality channels and the scan
 iterates the WHOLE store, filtering modality in Python, so per-encode cost
 scales with the TOTAL node count across channels. This harness measures that
 cost against the REAL `EntorhinalCortex` before A4 ships, per the plan
-(`docs/plans/world_seam_1_1_4.md` PR 0 / decision D4).
+(`docs/plans/archive/world_seam_1_1_4.md` PR 0 / decision D4).
 
 **Metric, horizon and decision rule are frozen here, before any run**, per the
 house rule that gates are chosen before data.

@@ -85,8 +85,8 @@ Sizes: all **S** except Tier-3 (**M**, judgement per row).
 
 ## Batch 4 — larger, now-unblocked engineering *(opportunistic; competes with the survival build)*
 
-- **Fail-loud Stage 3** (roadmap item 6) — narrow the measurement-path swallows; **green-lit** (Stage 2 measured *zero* firings) — `docs/plans/measurement_path_fail_loud.md` — **S/M**
-- **God-function decomposition** (items 7 + 12; do together) — more extractions against the AST baseline the Batch-1 ratchet pins — `docs/plans/god_function_decomposition.md` — **L**
+- **Fail-loud Stage 3** (roadmap item 6) — narrow the measurement-path swallows; **green-lit** (Stage 2 measured *zero* firings) — `docs/plans/deferred/measurement_path_fail_loud.md` — **S/M**
+- **God-function decomposition** (items 7 + 12; do together) — more extractions against the AST baseline the Batch-1 ratchet pins — `docs/plans/archive/god_function_decomposition.md` — **L**
 - **Widen mypy** beyond the ~5 public-API files — `.github/workflows/test.yml` — **M**
 - **D19 architecture-debt** ratchet toward zero — **M–L**
 - **Behavioral-suite thickening** for Exp 52/53b/56 (still ~5 files) — `tests/behavioral/` — **M–L**
@@ -94,7 +94,7 @@ Sizes: all **S** except Tier-3 (**M**, judgement per row).
 ## Explicitly OUT of scope
 
 - **Hardware/research-gated** (owed, not tractable-software): Exp 54 B/C, Exp 50, Exp 44b at-power, D30/D31/D87, place-code default-ON. *One pullable slice:* the **L8 record-stamping** fix (stamp model/endpoint/n_ctx/quantization on every run record) is Exp 44b's prerequisite and is cheap on its own.
-- **Deferred plans whose trigger 1.2 just fired — NEW-MECHANISM, not debt**, and each its own decision: **HF hive Phase 1** ([deferred/hf_hive_repository.md](deferred/hf_hive_repository.md), the launch companion) and the **reactive-peer-mesh C10 event-slice** ([reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) §5).
+- **Deferred plans whose trigger 1.2 just fired — NEW-MECHANISM, not debt**, and each its own decision: **HF hive Phase 1** ([deferred/hf_hive_repository.md](deferred/hf_hive_repository.md), the launch companion) and the **reactive-peer-mesh C10 event-slice** ([reactive_peer_mesh_roadmap.md](deferred/reactive_peer_mesh_roadmap.md) §5).
 - **DORMANT-for-a-reason:** D51 (LSHIndex — "needs a design decision, not a patch"), D45 (SpatialMemoryBridge — mark Dormant), D9 producers (mechanism dormant).
 
 ## Recommended pull

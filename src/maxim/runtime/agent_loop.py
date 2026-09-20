@@ -1275,7 +1275,7 @@ def _read_exteroceptive_ranges(executor: Any) -> "dict[str, tuple[float, float]]
 # selection-dynamics change; re-check gate calibration (min_confidence)
 # when you add one. The world channel's addition was RE-BASELINED, not
 # assumed: scripts/selection_dynamics_rebaseline.py + the committed record
-# (docs/plans/world_seam_1_1_4.md §PR 2). The channel is inert (empty read →
+# (docs/plans/archive/world_seam_1_1_4.md §PR 2). The channel is inert (empty read →
 # no encode) for every body that declares no `modality: world` sensor.
 _SUBSTRATE_CHANNELS: "tuple[ModalityChannel, ...]" = (
     ModalityChannel(INTEROCEPTION_TAG, _read_drive_states, _read_drive_ranges),
@@ -1669,7 +1669,7 @@ def _maybe_auto_revert_display() -> None:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Extracted numbered sections of ``run_agentic_loop``
-# (docs/plans/god_function_decomposition.md — mechanical moves only)
+# (docs/plans/archive/god_function_decomposition.md — mechanical moves only)
 #
 # Each ``_loop_<slug>`` below is one numbered section banner lifted verbatim out
 # of the loop body and given a name. The context object is the ``LoopController``

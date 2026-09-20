@@ -54,5 +54,5 @@ prints a `spawn state:` line to stdout for exactly this check.
 
 ## See also
 
-`docs/plans/survival_world_1_3.md` §"World vs. substrate" (the dead-sensor caveats this
+`docs/plans/archive/survival_world_1_3.md` §"World vs. substrate" (the dead-sensor caveats this
 entry retires); Exp 56 phase-0 instrument notes; [substrate-learning-channels.md](substrate-learning-channels.md).

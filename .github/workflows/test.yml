@@ -1014,7 +1014,7 @@ jobs:
 
       - name: No-silent-swallows lint (Stage 4 of measurement_path_fail_loud)
         run: |
-          # Two checks per docs/plans/measurement_path_fail_loud.md Stage 4:
+          # Two checks per docs/plans/deferred/measurement_path_fail_loud.md Stage 4:
           # (1) zero-total bare `except Exception: pass/continue` over the 16
           #     measurement-path files (purged in Stage 1, PR #487 — this
           #     lock keeps them at zero);

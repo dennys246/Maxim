@@ -287,6 +287,12 @@ fear-side gradient today; the prereg says so, and a recorded failure ships as a 
 None is built in advance; each gets a plan, a written front-gate answer against the shipped
 infrastructure the review located, and the full four-lens review.
 
+- **The B8 disposition rides with this audit (owner decision 2026-09-19).**
+  `deferred/transition_based_drive_pain.md` shipped its latch in July; its last phase proposed
+  retiring B8's delta-attribution filter and its own review then found B8 load-bearing, so the
+  premise is gone. The audit below has to understand attribution anyway: settle whether that phase
+  has content left, and if the code cannot settle it, run a pre-registered arm either way rather
+  than arguing it.
 - **Credit routing (R4, first).** The eligibility trace already reaches step three; it lands on the
   recognition `_reward_bias` (0.20 cap, cluster-blind, fed by the reaction-path reward) which the
   selection surface does not read. Audit: route existing trace credit to the selection surface before
@@ -390,6 +396,22 @@ otherwise an instrument name, as 1.1.4 shipped "The world seam" with no claim). 
 headline claims exactly that rung, names the highest rung attempted, and never describes a mechanism
 that did not enter.
 
+## Before 1.4 — the 1.3.x hardening line
+
+[roadmap_1_3_x.md](roadmap_1_3_x.md) (drafted 2026-09-19 from the v1.3.0 blind re-score): **1.3.1**
+fixes the defects that card found and ships the enforcement each one needs — a gating lane that
+installs the console + crypto extras (today NO lane runs the signed-bundle or console tests, the
+path both the 1.2 and 1.3 headlines travel), the nightly model-cache lane green, the
+prereg-before-data lint extended to cover 1.3's own experiments, `export_memories()` which always
+reports 0, and the function-length + mypy ratchets. **1.3.2** is the `agent_loop` decomposition with
+behaviour-preservation gates and the Exp 60/61 re-run triggers discharged. Both are infrastructure
+only, no behavioural claim.
+
+They come FIRST because Phase 0 below builds its instrument on `agent_loop.py`: decomposing
+afterwards means building that instrument twice, and refactoring while a may-fail experiment runs
+confounds a null with the refactor (the divergence rule). Exp 62 depends on neither and runs in
+parallel.
+
 ## Schedule that keeps the rig busy (scope lens SF-8)
 
 ```
@@ -404,6 +426,25 @@ credit_on_progress audit; argmax + hunger  →   R3 A+C on the variant (one cell
   replays (committed)                          Exp 56 re-baseline (≈ 51 min) if T4 chooses DONE
 E1 prereg → four-lens → freeze             →   E1 pilot → campaign
 ```
+
+## Parallel lines — outside the ladder, with their own entry conditions
+
+Neither is a rung; neither may silently power E1–E3. A line touching a survival rung enters as a
+declared arm or not at all (1.3's D1 posture, applied to research lines).
+
+- **Intrinsic motivation** (`roadmap_1_3.md` Phase 6): `success × novelty` vs learning-progress, with
+  the mining classroom as its testbed. Unscheduled.
+- **Grounded language + the cross-modal projection** ([grounded_language_acquisition.md](grounded_language_acquisition.md),
+  revived 2026-09-19 as a parallel line; [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md)
+  revives with it). **Entry condition: the paired-data audit** — ~50 lines over committed
+  survival-world runs, counting (sensor vector, text percept) pairs per situation, how many distinct
+  texts there are, and how many are TEMPLATED game strings rather than language. The survival world
+  supplies on every tick what the cradle never did: a sensor vector and a text percept of the same
+  moment. The audit commits to nothing and is the honest test of whether the pairing is language or
+  labels. It passes → both plans revive together behind a prereg and a four-lens review. It fails →
+  both go to `archive/` with the measurement recorded.
+  **Why parallel and not a rung:** 1.4's ladder already carries a may-fail headline (E3) and an
+  instrument rebuild; a second research line inside it would make a null in either unreadable.
 
 ## What is NOT in 1.4
 

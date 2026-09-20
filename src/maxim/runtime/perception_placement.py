@@ -24,7 +24,7 @@ This module ships the value type + target enum + coherence validator
 (commit 2). Pinned-ness is a property of a *stage* (``PerceptionStage``),
 not of an individual placement value.
 
-See ``docs/plans/perception_pipeline_placement.md``.
+See ``docs/plans/deferred/perception_pipeline_placement.md``.
 
 Dormant since 2026-08-07: zero production callers — the type layer merged
 (PRs #382-#385 era) but nothing in ``src/maxim/`` ever constructs or
@@ -211,7 +211,7 @@ class PerceptionStage:
 
 # The canonical perception pipeline. Order is the data-flow order; pinned
 # stages are fixed by physics (see the stage model in
-# docs/plans/perception_pipeline_placement.md). An unconfigured pipeline
+# docs/plans/deferred/perception_pipeline_placement.md). An unconfigured pipeline
 # resolves every stage to its default_origin — which is all-symbolic and,
 # in the self-contained single-node case, all-local: byte-identical to
 # today's behaviour (no distribution).

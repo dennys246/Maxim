@@ -68,6 +68,22 @@ Core retains the three session-killing bullets (`--interactive false` from scrip
 
 ## 5. Live gotchas / known gaps
 
+- **Operating the live rig (big-mac-mini) — operator facts learned 2026-09-19 during the Exp 56
+  re-baseline.** Repo at `~/RMSrv/scripts/Maxim`; `ssh`/`scp` to it work non-interactively, so
+  verify state there rather than asking for pastes. **tmux `minecraft` IS the survival Paper
+  server** (cwd `~/maxim-mc-survival-1.20`); `mc-survival` is only a shell; `minecraft-bridge`
+  holds the bridge; the Exp 56 apparatus has its own server and bridge sessions. **Both Minecraft
+  servers default to game port 25565 and RCON 25575** (neither `server.properties` template sets
+  `server-port`), so a second server dies at boot with `BindException: Address already in use` —
+  the stack tail looks like a Netty crash, so read the CRASH REPORT HEAD, and find the holder with
+  `lsof -nP -iTCP:25565 -iTCP:25575 -sTCP:LISTEN` plus `lsof -a -p <pid> -d cwd -Fn`. **Stop the
+  other bridge too**, not just its server: a live bridge reconnects as soon as the port answers and
+  logs its bot into the new world as a second player — a confound for any body sensing
+  `nearest_player_dist`. Paper 1.20.4 needs **Java 17+** and the shell default may be older, so
+  start servers with `"$(/usr/libexec/java_home -v 17)/bin/java"`. The rig's interactive zsh does
+  **not** treat `#` as a comment — never put an inline comment in a command written for the
+  operator (it becomes arguments: `lsof: status error on #`).
+
 - **[engineering] `run_minecraft_aut` hands the loop an AUTONOMOUS controller (orchestrator parity); full arc + measurement ladder in [docs/wiring/harness-loop-must-be-proven-live.md](../wiring/harness-loop-must-be-proven-live.md); a harness AUT at the loop's default PLANNING level never executes a body affordance.** PLANNING answers "requires human approval for all actions" and the non-interactive auto-approve branch is dead code, so proposals expire unexecuted (only the always-allowed no-op head tools pass). Exp 60's diagnostic read `proposed=[flee…] calls=[]` on every window (2026-09-16); no harness on this path had ever executed a body affordance (Exp 58's "end to end" dry-run sentences carry a dated correction). Same family as the #732 idle-gate defect: the harness passed nothing the orchestrator passes. Safety on a live bot at AUTONOMOUS: `attack_nearest` is param-free and CAN fire; `mine_block`/`place_block` fail at the bridge without params; the no-op head tools always succeed (credit-snowball risk) — a classroom is throwaway, and the per-window call record shows every execution. Regression guard: [tests/unit/test_substrate_primary_wake.py](../../tests/unit/test_substrate_primary_wake.py) — `test_substrate_proposal_is_executed_on_the_harness_loop` (RED on the pre-fix runner) + `test_planning_level_never_executes_a_body_affordance` (the mechanised red arm). A harness that records executor calls per window (as exp60_run does) makes this class visible; one that records only successes does not. Follow-ups filed here, not fixed: the loop's PLANNING "non-interactive auto-approve" branch is dead code (`should_prompt("plan_approval")` is unconditionally True — the comment there is wrong); the consecutive-same-tool cap (5 identical params, targets LLM hallucination loops) has no substrate-primary exemption, so a sustained identical fear response executes at a 5/6 duty cycle (owner's design call); `check_hard_stop` pauses the controller for the run on any percept transcript containing "stop"/"halt" — chat only on this bridge.
 - **The fake bridge's text events are not the live bridge's.** `simulation/minecraft_harness.py::FakeBridgeServer` emitted a "wind shifts" event every 5th snapshot, which kept the substrate-primary loop awake offline while the live bridge (events only on chat/death) idled it after step 0 (Exp 60, 2026-09-16). Default is now `events=False`; any loop-liveness check must run the events-off condition (verify-with-the-real-consumer). Diagnostic: `scripts/survival_world/loop_tick_probe.py`.
 

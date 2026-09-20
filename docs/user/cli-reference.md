@@ -195,7 +195,7 @@ Subcommands for managing a remote leader node over a Cloudflare tunnel.
 | `maxim peer key` | Print the raw stored API key to stdout (for piping / export idioms like `export KEY=$(maxim peer key)`). Reads `config.json::lanes.large.remote_api_key_ref` first; falls back to `peer.yml::api_key` for back-compat. |
 | `maxim peer key set [KEY]` | Update the stored API key in place without re-running `peer connect`. Validates latin-1 encoding (HTTP Bearer token requirement). If `KEY` is omitted, prompts with hidden input. Writes the canonical `~/.config/maxim/api_key` (mode 0600) referenced by `config.json`, and also updates `peer.yml` for 1.x back-compat. |
 
-**Future (post-Stage C3.6):** `/v1/mesh/*` admin API, per-agent rate limiting, request-trace ring buffer, cluster key rotation, C4.6 auto-undrain via periodic health probe. Full arc tracked in [docs/plans/reactive_peer_mesh_roadmap.md](../plans/reactive_peer_mesh_roadmap.md).
+**Future (post-Stage C3.6):** `/v1/mesh/*` admin API, per-agent rate limiting, request-trace ring buffer, cluster key rotation, C4.6 auto-undrain via periodic health probe. Full arc tracked in [docs/plans/deferred/reactive_peer_mesh_roadmap.md](../plans/deferred/reactive_peer_mesh_roadmap.md).
 
 ### Drain state layer
 

@@ -11,7 +11,7 @@ sufficient** — the residual is a **single-far-bin big-turn-cell starvation** (
 one far bin never gets a positive exploration sample of its big turn), which is a coverage limit
 of per-cell tabular argmax. That residual is now S3's concrete motivation and the new S4's target
 (below). S2 motivation weakened by measurement. Original draft 2026-07-16; replication +
-S3/S4 update 2026-07-23. Follow-on to [substrate_native_orienting.md](../substrate_native_orienting.md)
+S3/S4 update 2026-07-23. Follow-on to [substrate_native_orienting.md](substrate_native_orienting.md)
 Layer 1 / [Exp 45](../../experiments/45_reachy_orient_live.md) (all arms EARNED). Scope: the
 **magnitude** half of the orient policy, and — as its natural test case — whether the
 bio-regions that *should* own continuous magnitude (IPS, Angular Gyrus, Cerebellum) are

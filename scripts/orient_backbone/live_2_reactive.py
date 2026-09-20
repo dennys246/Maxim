@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Phase 1, Step 2 — reactive orient, NO learning (coordinate-frame calibration).
 
-docs/plans/reachy_orient_live.md Step 2. PRIMARY PURPOSE: calibrate the
+docs/plans/deferred/reachy_orient_live.md Step 2. PRIMARY PURPOSE: calibrate the
 coordinate-frame sign — confirm that a discrete turn toward the sensed side
 REDUCES |azimuth|, and determine the sign to pass to Step 3 (--flip-sign).
 

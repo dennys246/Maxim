@@ -38,7 +38,7 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 |---|---|---|
 | `maxim.research(...) -> ResearchResult` | ⚠️ Experimental | Research orchestrator surface still evolving. Prompt templates, paper structure, and reviewer logic may change. |
 | `maxim.on(event_name, callback) -> EventHandle` | ⚠️ Experimental | Event names + payload fields may grow. Subscription mechanism may evolve to support filters or async callbacks. |
-| `maxim.register_persona(...)` | ⛔ REMOVED in 1.1 | Raises `RuntimeError` (the promised 1.1 removal — the symbol survives one cycle so old code fails loudly with a pointer, not an `AttributeError`; dropped entirely in 1.2). The persona system was hard-deleted; use `--sim-mode` / `imagine(mode=...)` for the report label plus bio-emergent disposition mechanics. See [`docs/plans/deferred/persona_cleanup_and_mode_transition.md`](../plans/deferred/persona_cleanup_and_mode_transition.md). |
+| `maxim.register_persona(...)` | ⛔ REMOVED in 1.1 | Raises `RuntimeError` (the promised 1.1 removal — the symbol survives one cycle so old code fails loudly with a pointer, not an `AttributeError`; dropped entirely in 1.2). The persona system was hard-deleted; use `--sim-mode` / `imagine(mode=...)` for the report label plus bio-emergent disposition mechanics. See [`docs/plans/archive/persona_cleanup_and_mode_transition.md`](../plans/archive/persona_cleanup_and_mode_transition.md). |
 
 ---
 

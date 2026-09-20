@@ -175,7 +175,7 @@ Two-lens review (Executor + Architecture) — this is a freeze-decision, exactly
 ## Related plans
 
 - [maxim_hivemind.md](../maxim_hivemind.md) — the substrate-sharing layer this audit hardens for
-- [reactive_peer_mesh_roadmap.md](../reactive_peer_mesh_roadmap.md) — peer/leader mesh, where `cluster_key` lives
+- [reactive_peer_mesh_roadmap.md](../deferred/reactive_peer_mesh_roadmap.md) — peer/leader mesh, where `cluster_key` lives
 - [config_unification.md](config_unification.md) — where `api_key_ref` validation landed
 - [v1_refinement.md](v1_refinement.md) Section 7 / CC13 — this plan's index entry
 

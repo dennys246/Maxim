@@ -8,7 +8,7 @@ corresponding public key (``--trust-key <identity>=<pubkey>``). Bearer
 tokens prove "you may talk to this server"; a bundle signature proves
 "this substrate is the signer's, unmodified" — a different property, so
 this rides no existing key surface (front-gate: needs-own, per
-``docs/plans/hivemind_p2p_scope.md`` Slice A).
+``docs/plans/archive/hivemind_p2p_scope.md`` Slice A).
 
 Algorithm: **ed25519** (``cryptography``, optional ``[sign]`` extra). The
 ``signature_algorithm`` string vocabulary is the one already published in

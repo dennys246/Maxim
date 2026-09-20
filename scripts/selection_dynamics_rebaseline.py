@@ -11,7 +11,7 @@ re-baseline: a CHARACTERIZATION of what the third channel does to selection,
 against the real `NAc`, recorded before any body feeds the channel.
 
 **This is a baseline, not a gate** — stated so the output is not over-read.
-The recorded decision (plan `docs/plans/world_seam_1_1_4.md` §PR 2):
+The recorded decision (plan `docs/plans/archive/world_seam_1_1_4.md` §PR 2):
 `min_confidence` stays 0.3 for 1.1.4 (infrastructure, no behavioral claim;
 the channel is inert for every existing body), and THIS record is the
 reference against which 1.2's calibration — measured on real Minecraft

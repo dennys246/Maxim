@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Phase 1, Step 3 — the live learning orient loop (substrate-primary, no LLM).
 
-docs/plans/reachy_orient_live.md Step 3 + the substrate_native_orienting.md
+docs/plans/deferred/reachy_orient_live.md Step 3 + the substrate_native_orienting.md
 rigor bar. Each speech-gated trial:
 
     az_before (live DoA) -> state = az_bin -> epsilon-greedy

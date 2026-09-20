@@ -67,7 +67,7 @@ routing), NOT `runtime/` (already the god-package). **The first slice does NOT c
 or `embodiment/` next to the concrete sources (`AzimuthDoASource`, `EmbodimentPerceptSource`), **not**
 in `simulation/sources.py`, which is protocol-only (Architecture NIT). The `perception/` name is
 *reserved* to coordinate with the active
-[perception_pipeline_placement.md](../perception_pipeline_placement.md) `config.json::perception` **config
+[perception_pipeline_placement.md](../deferred/perception_pipeline_placement.md) `config.json::perception` **config
 section** (that plan creates a config surface, not a package — so this is a future coordination point,
 not an existing sibling to align with).
 
@@ -293,5 +293,5 @@ label — folded); the relay stays `[engineering]` with no behavioral claim (NIT
 
 - [thalamus_hypothalamus_framing.md](thalamus_hypothalamus_framing.md) — the organizing frame; this doc decides its fork.
 - [percept_testbed_audit.md](percept_testbed_audit.md) — the four-facet audit; M2/M3 are the measurement half this slice unblocks.
-- [perception_pipeline_placement.md](../perception_pipeline_placement.md) — the orthogonal placement axis + the `config.json::perception` surface the eventual `gain`/`enabled` config rides.
+- [perception_pipeline_placement.md](../deferred/perception_pipeline_placement.md) — the orthogonal placement axis + the `config.json::perception` surface the eventual `gain`/`enabled` config rides.
 - [embodiment_runtime_wiring.md](embodiment_runtime_wiring.md) — Track 1 (body wired, merged #400); the runtime this lands in.

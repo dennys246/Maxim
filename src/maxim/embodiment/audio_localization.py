@@ -6,7 +6,7 @@ sample-aligned 4-mic raw access**, so a custom ITD/TDOA front-end is not
 feasible on that hardware. Instead the chip computes Direction-of-Arrival
 on-chip and the SDK exposes it; we consume that. See
 ``docs/embodiment/reachy_mini/audio_localization.md`` for the full hardware analysis and
-``docs/plans/perception_pipeline_placement.md`` for where this sits in the
+``docs/plans/deferred/perception_pipeline_placement.md`` for where this sits in the
 perception pipeline (commit 4 — the DoA-consumption front-end).
 
 This module is **hardware-agnostic**: :class:`AzimuthDoASource` takes an
