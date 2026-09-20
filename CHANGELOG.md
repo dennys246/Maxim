@@ -175,6 +175,8 @@ sample-rate check on hardware is still owed. The 1.2.1 section below is left as 
 
 ## [1.2.1] - 2026-09-10 — "Spoken-code loop"
 
+> **CORRECTION (2026-09-19, added with 1.3.0).** The headline below overclaims: 1.2.1 shipped the spoken-code pairing PIECES, not the composition. No shipped command wires the announcer, so `maxim serve` runs with pairing disabled (`/api/pair/*` → 409) and sign-in is still by token; pairing needs an embedder owning both the console and a live robot handle, and the audible sample-rate check on hardware is still owed. The text below is left as published. Full correction: the 1.3.0 CHANGELOG section and `docs/announcements/release_1_3_0.md`.
+
 Completes the spoken-code device-pairing loop end to end and clears the 1.2.0 console
 contract-lag. The pulse console UI shipped its 0.5.0 contract (maxim-pulse v0.3.0), so this
 release vendors the matching bundle — the startup warning and the on-screen banner 1.2.0
