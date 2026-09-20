@@ -1060,12 +1060,17 @@ class _Campaign:
         return row
 
 
-# Public names for the seams R3 (`r3_run.py`) reuses — the private ones are Exp 61's own; this is
-# the coupling surface, made explicit so a change here is a visible change to a frozen harness.
+# Public names for the seams later harnesses reuse — R3 (`r3_run.py`), Exp 62 (`exp62_run.py`) and
+# the Exp 62 pre-check (`exp62_precheck.py`); the private ones are Exp 61's own. This is the
+# coupling surface, made explicit so a change here is a visible change to a frozen harness. It
+# exposes PRIVATE names only: the module's public ones (`close_and_stage`, `wilson_interval`,
+# `fisher_one_sided_p`, `decision_decisive`, `first_contact_outcome`, `exp60_frozen_matches`,
+# `ESCAPE_SUFFIX`, `FROZEN`) are already part of the surface and are imported directly.
 build_aut = _build
 load_json = _load_json
 rss_mb = _rss_mb
 world_ids = _world_ids
+quartile_medians = _quartile_medians
 Exp61Campaign = _Campaign
 
 
