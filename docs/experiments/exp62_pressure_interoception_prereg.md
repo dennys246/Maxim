@@ -89,6 +89,47 @@ rescued, no post probe: zero escape links at the boundary, asserted):
 | 2 **same** | pool 1 | pool 1 | 12 | fires (the ceiling; Exp 60's result on this apparatus) |
 | 3 **cross, fear-ablated** | pool 1, subscriber detached | pool 2 | 3 | censored, zero calls (anti-vacuity: the apparatus does not surface an agent by itself) |
 
+**Protocol clauses frozen with the harness (v3, 2026-09-20).** Five things the built harness does
+that v2 did not authorize. They are recorded here BEFORE the first campaign row, and the harness
+refuses rather than scores on each:
+
+1. **The NODE gate has FOUR clauses, not three.** v2's mechanism-read sentence names same-node,
+   water fear at the cap, and shore fear 0; it also says "Exp 61 step 4 verbatim", and that step's
+   fourth clause is the PRODUCTION read — `anticipatory_threat_need` on the read pool's node must
+   exceed the consumer's STRICT activation floor (> 0.5, not ≥). A node that resolves correctly but
+   reads at or below the floor is dead at recall, so it is a gate failure, not a pass.
+2. **ONE probe cap for both pools:** `min(pool 1, pool 2 pain edge) − margin`, not a per-pool cap.
+   A per-pool cap would make the arms' first-contact latencies incomparable and put the cap
+   difference inside the very contrast the rung measures. **Refusal condition:** if the two pools'
+   pain edges ever diverge far enough that `min − margin` leaves no usable window at the slower pool
+   (no arm can surface before the cap), that is an APPARATUS refusal, not a behavioural null.
+3. **A SAME-arm campaign-drift gate** (last-quartile minus first-quartile median first-contact
+   latency > 0.5 s → INCOMPLETE). The SAME arm is the within-pool ceiling: if it drifts across the
+   campaign the apparatus drifted, and it would have moved the cross arm the same way. Arms are
+   interleaved seed by seed so drift hits them equally.
+4. **Gate (ii) is CITED, not re-run** — it is its own script, and citing a frozen artifact is
+   stronger provenance than a fresh run. The citation is gated: each record is bound to its pool by
+   the probe's own `y_altitude`, its `run_gate` must PASS, and **the two records must agree on
+   `light_level` and `time_of_day` at both shore and floor**. A `run_gate` PASS alone is NOT that
+   check: pool 2's first probe read `light_level` 1.0 and its reconnect read 0.0, **both records
+   pass their own gate**, and citing the stale one puts the real cross-pool cosine at 0.5878 (a MISS)
+   while the synthetic replay still says 0.9995 — the campaign would have measured the LIGHT
+   contrast and published it as the pool contrast. The replay row additionally computes the cosine
+   the two records' OWN probe vectors imply and refuses when it and the synthetic prediction fall on
+   opposite sides of the threshold.
+5. **The live context check is RECORDED, not gated.** Every row stamps the full-weight constants as
+   the BODY sensed them at the training pool and at the submerged read at the read pool
+   (`live_state.context_matches_training_pool`). The committed-record gate in (4) can be satisfied by
+   a record that no longer describes the world; this is the same question asked of the world. It is
+   recorded rather than gated because the record-side gate already refuses the known failure, and a
+   second gate on a sensor this world reports unreliably would refuse rows for the instrument's
+   noise. A mismatch is a finding for §Outcome.
+
+**Also recorded per row (v3):** the MARGIN each read resolved by — `node_gate.read_margin` — beside
+the node id. The gate turns on a threshold comparison and this apparatus runs ≈ 0.06 from that
+threshold, so a row carrying only the id cannot say whether it resolved comfortably or by a hair.
+Read-only; no gate reads it.
+
 **DVs and gates** (Exp 60/61's, in the US-free rescued window — nothing learns inside the read):
 decision DV + behavioural DV at first contact; NODE gate (arm 1's pool-2 reading resolves to the
 trained node id, loop OFF, ≥ 11/12 — the mechanism read, and the one gate that can fail for a reason
@@ -151,3 +192,25 @@ the vector) and is not proposed for it.
    "predicted" with measured.
 4. Harness PR (`exp62_run.py` on `WaterTrial`, three arms, the NODE gate, the replay row); two-lens
    code review; one-pair dry run; freeze; campaign after R3-cal; merge-commit data PR; §Outcome.
+
+**Status 2026-09-20 — steps 1–4 DONE through the dry run; this v3 IS the freeze.**
+
+- Harness merged (#780) after a two-lens round that cross-confirmed a blocking defect: the light/time
+  gate of clause (4) was unimplemented. Folded before merge, with its red gate running against the
+  committed stale record.
+- Two follow-ups: #781 (the replay takes its place absolutes from the gate records — `world_spawn` is
+  stamped only when a pool is BUILT with `--spawn-x/y/z`, and both live pools were not) and #782 (the
+  read-pool snapshot was taken before the bot moved, so it read the OLD pool — mutation-tested).
+- **Dry run `exp62-dry-2`, n=1 per arm, all three CLEAN.** `cross`: NODE pass, same node, need 1.0,
+  fear −1.0, surfaced drive-decisive at 2.952 s. `same`: NODE pass, 3.172 s. `cross_ablated`: no node
+  gate (it has an ablation check), censored, ZERO executor calls. Light 0.0 / time 0.0417 at both
+  pools live, `match: True` on every row, and the sensed distances (70.04 / 62.13) match the cited
+  gate records to the digit. **n=1 earns nothing** — this is instrument validation, and the frozen
+  arm sizes are 12/12/3.
+- Measured property worth carrying to §Outcome: `cross_ablated` resolves to the SAME node with
+  need 0.0 and fear 0.0. Arm 3 is therefore a clean **valence** ablation, not a representation
+  ablation — the arm-1/arm-3 contrast is the fear alone, with the representation held identical.
+  That is stronger than v2 claims for it.
+- Operating margin to carry into the campaign: first-contact latencies ran 2.95–3.17 s against a
+  4.29 s cap (≈ 25 % headroom, against 1.78 s offline). The clause-(3) drift gate is load-bearing
+  over a two-hour run.
