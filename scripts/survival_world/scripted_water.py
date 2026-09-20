@@ -49,7 +49,8 @@ class ScriptedWaterBridge:
         self,
         *,
         shore: dict[str, float],
-        submerged: dict[str, float],
+        submerged: dict[str, float] | list[dict[str, float]],
+        world_spawn: dict[str, float] | None = None,
         state_interval_s: float = 0.05,
         oxygen_drain_per_s: float = 1.0,
         escape_delay_s: float = 0.3,
@@ -65,8 +66,14 @@ class ScriptedWaterBridge:
         oxygen 20 and the game-native respawn saturation (5) — so a harness's death branch and its
         detector are red-gated OFFLINE (R3 wiring lens SF-C)."""
         self.shore = dict(shore)
-        self.submerged = dict(submerged)
+        # Exp 62 runs TWO pools in one world, so "in water" is a property of WHICH point the bot was
+        # teleported to, not of a single point. A dict stays a dict for every existing caller; a list
+        # of dicts makes the second pool representable offline.
+        self.submerged = dict(submerged) if isinstance(submerged, dict) else dict(submerged[0])
+        self._submerged_points = [dict(submerged)] if isinstance(submerged, dict) else [dict(p) for p in submerged]
         self.anchor: dict[str, float] = dict(shore)
+        # The world spawn the offsets are measured against (the live bridge reads bot.spawnPoint).
+        self.world_spawn: dict[str, float] = dict(world_spawn or {"x": 0.0, "y": 64.0, "z": 0.0})
         self._interval = state_interval_s
         self._drain = oxygen_drain_per_s
         self._escape_delay = escape_delay_s
@@ -113,8 +120,11 @@ class ScriptedWaterBridge:
                 self._submerged_since = None
 
     def _in_water_locked(self) -> bool:
-        a, s = self.anchor, self.submerged
-        return abs(a["x"] - s["x"]) < 0.5 and abs(a["y"] - s["y"]) < 0.5 and abs(a["z"] - s["z"]) < 0.5
+        a = self.anchor
+        return any(
+            abs(a["x"] - s["x"]) < 0.5 and abs(a["y"] - s["y"]) < 0.5 and abs(a["z"] - s["z"]) < 0.5
+            for s in self._submerged_points
+        )
 
     def _snapshot(self) -> dict[str, float]:
         with self._lock:
@@ -156,7 +166,18 @@ class ScriptedWaterBridge:
             "saturation": saturation,
             "oxygen": oxygen,
             "hostile_count": 0.0,
-            "distance_from_spawn": self._spawn_distance,
+            # Spawn-relative, like the live bridge: SIGNED offsets plus the 3D distance. Exp 62's
+            # pre-check derives world spawn from these rather than adding a bridge field (a protocol
+            # change fires the re-run trigger on four EARNED ledger rows), so the offline run has to
+            # carry them or that row proves nothing.
+            "offset_x": float(self.anchor["x"]) - self.world_spawn["x"],
+            "offset_z": float(self.anchor["z"]) - self.world_spawn["z"],
+            "distance_from_spawn": (
+                (float(self.anchor["x"]) - self.world_spawn["x"]) ** 2
+                + (float(self.anchor["y"]) - self.world_spawn["y"]) ** 2
+                + (float(self.anchor["z"]) - self.world_spawn["z"]) ** 2
+            )
+            ** 0.5,
             "speed": 0.0,
             "on_ground": 0.0 if in_water else 1.0,
             "is_raining": 0.0,

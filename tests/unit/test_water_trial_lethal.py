@@ -261,3 +261,28 @@ def test_attaching_instruments_twice_refuses(monkeypatch):
     )
     with pytest.raises(InstrumentError, match="already attached"):
         trial.attach_instruments()
+
+
+def test_a_second_trial_on_the_same_agent_refuses_to_double_wrap():
+    """Exp 62 runs one trial per pool on one agent — the case a per-trial flag cannot see.
+
+    The first trial's guard lives on `self`; a second trial has its own. The sentinel rides on the
+    installed wrapper instead, so the agent itself carries the "already instrumented" fact.
+    """
+    import types
+
+    from survival_world.common import InstrumentError
+    from survival_world.water_trial import WaterTrial
+
+    def _wrapped(action):
+        return None
+
+    _wrapped._water_trial_spy = True  # what the FIRST trial installed
+    second = object.__new__(WaterTrial)
+    second.calls = []
+    second.aut = types.SimpleNamespace(
+        bio=types.SimpleNamespace(pain_bus=types.SimpleNamespace(subscribe=lambda _cb: None)),
+        executor=types.SimpleNamespace(execute=_wrapped),
+    )
+    with pytest.raises(InstrumentError, match="double-wraps"):
+        second.attach_instruments()
