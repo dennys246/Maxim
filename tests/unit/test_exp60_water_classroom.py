@@ -20,11 +20,32 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from survival_world import exp60_water_check as chk  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _never_touch_the_real_records(tmp_path, monkeypatch):
+    """No test may read or write ``~/.maxim/exp60_water_classroom.json``.
+
+    A review of this very file caught it writing there: the builder/check default paths are module
+    constants, so a test that forgets to patch them edits the LIVE apparatus record — on the rig
+    that means injecting a synthetic `measured` block into the pool Exp 60 and R3 run on, with no
+    git copy to restore from. Autouse, so forgetting is not possible.
+    """
+    from survival_world import setup_world as SW
+
+    monkeypatch.setattr(SW, "WATER_ANCHOR_FILE", tmp_path / "guard_exp60_water_classroom.json")
+    monkeypatch.setattr(SW, "EXP58_ANCHOR_FILE", tmp_path / "guard_exp58_classroom.json")
+    monkeypatch.setattr(chk, "ANCHOR_FILE", tmp_path / "guard_check_record.json")
+
+
 from survival_world.setup_world import (  # noqa: E402
     WATER_DEPTH_DEFAULT,
+    WATER_SHORE_Y,
     WATER_MAX_DIST_FROM_SPAWN,
     WATER_MIN_DIST_FROM_EXP58,
     exp58_clearance,
+    pools_disjoint,
+    record_shell,
     spawn_clearance,
     water_anchor_record,
     water_classroom_commands,
@@ -342,3 +363,283 @@ class TestBridgeRosterGate:
             "nearest_hostile_dist",
             "distance_from_spawn",
         } <= chk.REQUIRED_BRIDGE_SENSORS
+
+
+class TestTwoPoolPlumbing:
+    """Exp 62 plumbing: a SECOND pool at another height, recorded in its OWN file.
+
+    The failure this guards against is concrete: one fixed anchor path meant building or checking
+    pool 2 overwrote pool 1's record — and the `measured` block in it is what every harness refuses
+    to run without (it happened twice during the R3 campaign, recovered by `git checkout --`).
+    """
+
+    def test_shore_y_moves_the_whole_pool_and_keeps_its_shape(self):
+        low, high = water_classroom_geometry(0, 0), water_classroom_geometry(0, 0, shore_y=95)
+        assert low["shore_y"] == WATER_SHORE_Y and high["shore_y"] == 95
+        dy = 95 - WATER_SHORE_Y
+        for key in ("shore", "submerged", "surface", "pool_floor", "submerged_head", "lip", "shore_floor"):
+            assert [high[key][0], high[key][1] - dy, high[key][2]] == list(low[key]), key
+        assert high["depth"] == low["depth"]  # the column is as deep, just higher up
+        # the forceload is an x/z footprint: stacking must not change it (same chunks, no load window)
+        assert high["forceload"] == low["forceload"]
+
+    def test_stacked_pools_are_disjoint_and_an_overlap_refuses(self):
+        pool1 = water_classroom_geometry(0, 0)
+        rec1 = water_anchor_record(pool1, pool_id="pool1")
+        ok, why = pools_disjoint(water_classroom_geometry(0, 0, shore_y=95), rec1)
+        assert ok and "vertical gap" in why
+        # one block of overlap is a shared wall — refuse it
+        touching = water_classroom_geometry(0, 0, shore_y=WATER_SHORE_Y + (pool1["shell"][4] - pool1["shell"][1]))
+        ok2, why2 = pools_disjoint(touching, rec1)
+        assert not ok2 and "intersect" in why2
+
+    def test_a_legacy_record_is_DERIVED_not_waved_through(self):
+        """Pool 1's record on the rig predates `shell`; deriving it is what arms the guard. The
+        alternative — rebuilding pool 1 for the field — drops `measured` and makes exp60_run and
+        r3_run refuse every row."""
+        pool1 = water_classroom_geometry(0, 0)
+        legacy = {k: v for k, v in water_anchor_record(pool1).items() if k != "shell"}
+        assert record_shell(legacy) == tuple(pool1["shell"])
+        ok, why = pools_disjoint(water_classroom_geometry(0, 0, shore_y=95), legacy)
+        assert ok and "vertical gap" in why
+        ok2, why2 = pools_disjoint(water_classroom_geometry(0, 0, shore_y=41), legacy)
+        assert not ok2 and "intersect" in why2
+
+    def test_guard_says_NOT_CHECKED_only_when_it_truly_cannot(self):
+        pool2 = water_classroom_geometry(0, 0, shore_y=95)
+        assert pools_disjoint(pool2, None) == (True, "no other pool given — NOT CHECKED")
+        ok, why = pools_disjoint(pool2, {"pool_id": "mystery"})
+        assert ok and "NOT CHECKED" in why
+        with pytest.raises(ValueError):
+            record_shell({"shell": [1, 2, 3]})
+
+    def test_reported_gap_is_the_blocks_between_the_shells(self):
+        pool1 = water_classroom_geometry(0, 0)
+        rec1 = water_anchor_record(pool1)
+        height = pool1["shell"][4] - pool1["shell"][1]
+        one_gap = water_classroom_geometry(0, 0, shore_y=WATER_SHORE_Y + height + 2)
+        assert pools_disjoint(one_gap, rec1) == (True, "vertical gap 1 block(s) between shells")
+        assert pools_disjoint(water_classroom_geometry(400, 400), rec1) == (True, "shells are separated horizontally")
+
+    def test_record_carries_what_a_second_pool_needs(self):
+        geom = water_classroom_geometry(0, 0, shore_y=95)
+        rec = water_anchor_record(geom, pool_id="pool2", world_spawn=(1.0, 64.0, 2.0))
+        assert rec["pool_id"] == "pool2"
+        assert rec["shell"] == list(geom["shell"])  # the disjointness guard reads this
+        assert (rec["flee_x"], rec["flee_z"]) == (geom["shore"][0], geom["shore"][2])  # bridge --flee_x/_z
+        assert rec["world_spawn"] == [1.0, 64.0, 2.0]
+        assert rec["surface_y"] == 95 and rec["depth"] == geom["depth"]
+        # not given is None, never "clear"
+        assert water_anchor_record(geom)["world_spawn"] is None
+
+    def test_check_stamps_measured_into_the_pool_it_was_given(self, tmp_path):
+        pool1, pool2 = tmp_path / "exp60_water_classroom.json", tmp_path / "exp62_pool2_water_classroom.json"
+        import json
+
+        pool1.write_text(json.dumps({"pool_id": "pool1", "measured": {"t_damage_onset_min_s": 16.0}}))
+        pool2.write_text(json.dumps({"pool_id": "pool2"}))
+        report = {
+            "ts": 1.0,
+            "cycles": [
+                {
+                    "w1_shore": {"distance_from_spawn": 12.0},
+                    "w2_dive": {"t_damage_onset": 16.2, "t_pain_edge": 5.2},
+                    "w4_escape": {"t_surface": 2.1, "t_sinkback": 2.4},
+                }
+            ],
+        }
+        chk._stamp_measured(report, tmp_path / "out.json", anchor_file=pool2)
+        assert "measured" in json.loads(pool2.read_text())  # the pool we asked for
+        assert json.loads(pool1.read_text())["measured"] == {"t_damage_onset_min_s": 16.0}  # untouched
+
+
+class TestTwoPoolBuildOffline:
+    """The builder RUN end to end, twice, against a fake server — not just its pure helpers.
+
+    The standing rule is that a rig-bound script runs offline before its PR; the pure geometry
+    tests above would not have caught a flag that never reaches `water_classroom_geometry`, a
+    record written to the wrong path, or a guard that refuses nothing because it reads the file
+    it is about to write.
+    """
+
+    class FakeRcon:
+        """Answers exactly the verbs the builder issues, and remembers them."""
+
+        def __init__(self, **_kw):
+            self.sent: list[str] = []
+
+        def command(self, cmd: str) -> str:
+            self.sent.append(cmd)
+            head = cmd.split()[0]
+            if head == "fill":
+                return "Successfully filled 9 block(s)"
+            if head == "execute":  # every post-build block assertion
+                return "Test passed"
+            if head == "forceload":
+                return "Marked chunks to be force loaded"
+            if head in {"spawnpoint", "setworldspawn"}:
+                return "Set the spawn point"
+            if head == "gamerule":
+                return f"Gamerule {cmd.split()[1]} is now set to: false"
+            return "(ok)"
+
+        def close(self) -> None:
+            pass
+
+    def _build(self, monkeypatch, tmp_path, *, shore_y, anchor_file, pool_id, extra=()):
+        import time as _time
+
+        from survival_world import setup_world as SW
+
+        fake = self.FakeRcon()
+        monkeypatch.setattr(SW, "RconControl", lambda *a, **k: fake)
+        monkeypatch.setattr(SW, "EXP58_ANCHOR_FILE", tmp_path / "no_exp58.json")
+        monkeypatch.setattr(_time, "sleep", lambda *_a: None)
+        argv = [
+            "water_classroom",
+            "--rcon-password",
+            "x",
+            "--anchor-x",
+            "0",
+            "--anchor-z",
+            "0",
+            *(() if shore_y is None else ("--shore-y", str(shore_y))),
+            "--anchor-file",
+            str(anchor_file),
+            "--pool-id",
+            pool_id,
+            *extra,
+        ]
+        return SW.main(argv), fake
+
+    def test_two_pools_build_into_their_own_records_and_the_first_is_untouched(self, monkeypatch, tmp_path):
+        import json
+
+        pool1 = tmp_path / "exp60_water_classroom.json"
+        pool2 = tmp_path / "exp62_pool2_water_classroom.json"
+
+        rc, fake1 = self._build(monkeypatch, tmp_path, shore_y=40, anchor_file=pool1, pool_id="pool1")
+        assert rc == 0, "pool 1 build refused"
+        rec1 = json.loads(pool1.read_text())
+        assert rec1["pool_id"] == "pool1" and rec1["surface_y"] == 40
+        assert any(c.startswith("fill") for c in fake1.sent) and any(c.startswith("forceload") for c in fake1.sent)
+
+        # the check's stamp is what a rebuild of the OTHER pool must not destroy
+        rec1["measured"] = {"t_damage_onset_min_s": 16.07}
+        pool1.write_text(json.dumps(rec1))
+
+        rc2, _ = self._build(monkeypatch, tmp_path, shore_y=95, anchor_file=pool2, pool_id="pool2")
+        assert rc2 == 0, "pool 2 build refused"
+        rec2 = json.loads(pool2.read_text())
+        assert rec2["pool_id"] == "pool2" and rec2["surface_y"] == 95
+        assert rec2["shore"][1] == 95 and rec2["submerged"][1] == 95 - rec2["depth"]
+        assert json.loads(pool1.read_text())["measured"] == {"t_damage_onset_min_s": 16.07}  # the whole point
+
+    def test_a_colliding_second_pool_is_refused_before_any_fill(self, monkeypatch, tmp_path):
+        pool1 = tmp_path / "exp60_water_classroom.json"
+        pool2 = tmp_path / "exp62_pool2_water_classroom.json"
+        assert self._build(monkeypatch, tmp_path, shore_y=40, anchor_file=pool1, pool_id="pool1")[0] == 0
+        rc, fake = self._build(
+            monkeypatch, tmp_path, shore_y=41, anchor_file=pool2, pool_id="pool2", extra=("--stack-on", str(pool1))
+        )
+        assert rc == 4, "an overlapping shell must refuse"
+        assert not pool2.exists(), "a refused build must not leave a record"
+        assert not any(c.startswith("fill") for c in fake.sent), "it must refuse BEFORE touching the world"
+
+    def test_without_stack_on_the_guard_says_so_and_records_null(self, monkeypatch, tmp_path, capsys):
+        """The build must not be a function of ambient directory contents — but silence is not ok."""
+        import json
+
+        pool2 = tmp_path / "exp62_pool2_water_classroom.json"
+        assert self._build(monkeypatch, tmp_path, shore_y=95, anchor_file=pool2, pool_id="pool2")[0] == 0
+        assert "NOT CHECKED" in capsys.readouterr().out
+        assert json.loads(pool2.read_text())["pool_clearance"] is None
+
+    def test_stack_on_records_the_clearance_it_measured(self, monkeypatch, tmp_path):
+        import json
+
+        pool1, pool2 = tmp_path / "p1.json", tmp_path / "p2.json"
+        self._build(monkeypatch, tmp_path, shore_y=40, anchor_file=pool1, pool_id="pool1")
+        rc, _ = self._build(
+            monkeypatch, tmp_path, shore_y=95, anchor_file=pool2, pool_id="pool2", extra=("--stack-on", str(pool1))
+        )
+        assert rc == 0
+        clearance = json.loads(pool2.read_text())["pool_clearance"]
+        assert clearance["other_record"] == str(pool1) and "vertical gap" in clearance["result"]
+
+    def test_a_rebuild_inherits_the_recorded_height_and_a_mismatch_refuses(self, monkeypatch, tmp_path):
+        """A hard default of 40 would silently rebuild pool 2 down inside pool 1's band."""
+        import json
+
+        pool2 = tmp_path / "p2.json"
+        self._build(monkeypatch, tmp_path, shore_y=95, anchor_file=pool2, pool_id="pool2")
+        rc, _ = self._build(monkeypatch, tmp_path, shore_y=None, anchor_file=pool2, pool_id="pool2")
+        assert rc == 0 and json.loads(pool2.read_text())["surface_y"] == 95
+        rc2, fake2 = self._build(monkeypatch, tmp_path, shore_y=40, anchor_file=pool2, pool_id="pool2")
+        assert rc2 == 2, "rebuilding one record at another height is a different pool — refuse"
+        assert not any(c.startswith("fill") for c in fake2.sent)
+        assert json.loads(pool2.read_text())["surface_y"] == 95
+
+    def test_backfill_adds_the_new_fields_and_keeps_measured(self, monkeypatch, tmp_path):
+        import json
+
+        from survival_world import setup_world as SW
+
+        pool1 = tmp_path / "p1.json"
+        legacy = {k: v for k, v in water_anchor_record(water_classroom_geometry(0, 0)).items() if k != "shell"}
+        legacy["measured"] = {"t_damage_onset_min_s": 16.07}
+        pool1.write_text(json.dumps(legacy))
+        assert SW.main(["water_classroom", "--rcon-password", "x", "--anchor-file", str(pool1), "--backfill"]) == 0
+        rec = json.loads(pool1.read_text())
+        assert rec["measured"] == {"t_damage_onset_min_s": 16.07}, "backfill must never touch measured"
+        assert rec["shell"] == list(water_classroom_geometry(0, 0)["shell"])
+        assert (rec["flee_x"], rec["flee_z"]) == (legacy["shore"][0], legacy["shore"][2])
+
+    def test_the_printed_next_step_names_this_pool(self, monkeypatch, tmp_path, capsys):
+        pool2 = tmp_path / "exp62_pool2_water_classroom.json"
+        self._build(monkeypatch, tmp_path, shore_y=95, anchor_file=pool2, pool_id="pool2")
+        out = capsys.readouterr().out
+        assert "--anchor-file" in out and "exp62_pool2_water_apparatus.json" in out
+
+    def test_a_failed_fill_or_verification_refuses_the_build(self, monkeypatch, tmp_path):
+        """The fake must not only speak success — the builder's refusal branches are load-bearing."""
+        import time as _time
+
+        from survival_world import setup_world as SW
+
+        class Broken(TestTwoPoolBuildOffline.FakeRcon):
+            def __init__(self, mode):
+                super().__init__()
+                self.mode = mode
+
+            def command(self, cmd: str) -> str:
+                self.sent.append(cmd)
+                if self.mode == "fill" and cmd.startswith("fill"):
+                    return "No blocks were filled"
+                if self.mode == "verify" and cmd.startswith("execute"):
+                    return "Test failed"
+                return super().command(cmd)
+
+        for mode in ("fill", "verify"):
+            rec = tmp_path / f"{mode}.json"
+            monkeypatch.setattr(SW, "RconControl", lambda *a, _m=mode, **k: Broken(_m))
+            monkeypatch.setattr(_time, "sleep", lambda *_a: None)
+            rc = SW.main(
+                [
+                    "water_classroom",
+                    "--rcon-password",
+                    "x",
+                    "--anchor-x",
+                    "0",
+                    "--anchor-z",
+                    "0",
+                    "--shore-y",
+                    "40",
+                    "--anchor-file",
+                    str(rec),
+                    "--pool-id",
+                    "pool1",
+                ]
+            )
+            assert rc == 4, f"a {mode} failure must refuse the build"
+            assert not rec.exists(), "a refused build must not record geometry that is not there"
