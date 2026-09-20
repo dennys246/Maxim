@@ -287,16 +287,39 @@ class WaterTrial:
             }
         )
 
+    def use_geometry(self, geom: dict[str, Any]) -> dict[str, Any]:
+        """Point this trial at ANOTHER pool, keeping the agent and its single instrument attach.
+
+        Exp 62 reads one agent in two pools. Building a second WaterTrial would double-wrap the
+        executor spy (attach_instruments refuses it), so the geometry is what moves. Returns the
+        geometry replaced, so a caller can put it back.
+        """
+        previous = self.geom
+        self.geom = geom
+        self.shore = {"x": float(geom["shore"][0]), "y": float(geom["shore"][1]), "z": float(geom["shore"][2])}
+        self.sub = {
+            "x": float(geom["submerged"][0]),
+            "y": float(geom["submerged"][1]),
+            "z": float(geom["submerged"][2]),
+        }
+        return previous
+
     def attach_instruments(self) -> None:
         """Idempotent by refusal: a second attach would wrap the FIRST trial's spy, so every call
         it records would be counted twice and the pain subscriber would fire twice per publish.
         Exp 62 runs two pools per agent, which is exactly when this happens (prereg §Apparatus:
         "ONE instrument attach — the executor spy must not double-wrap")."""
-        if getattr(self, "_orig_execute", None) is not None:
+        # Per-TRIAL: re-attaching the same trial. Per-AGENT: a SECOND trial (Exp 62 runs one per
+        # pool) wrapping the same executor — which the per-trial check alone cannot see, because the
+        # new trial has its own `self`. The sentinel rides on the installed wrapper, so it catches
+        # both. (Prereg §Apparatus: "ONE instrument attach — the executor spy must not double-wrap".)
+        if getattr(self, "_orig_execute", None) is not None or getattr(
+            self.aut.executor.execute, "_water_trial_spy", False
+        ):
             raise InstrumentError(
                 "instruments are already attached to this agent — a second attach double-wraps the "
-                "executor spy and double-counts every call; build one WaterTrial per agent and give "
-                "it the pool's geometry, or detach first"
+                "executor spy (every call counted twice, the pain subscriber fired twice per publish); "
+                "attach ONCE per agent and pass each pool's geometry to the call that needs it"
             )
         self.aut.bio.pain_bus.subscribe(self._record_pain)
         self._orig_execute = self.aut.executor.execute
@@ -333,6 +356,7 @@ class WaterTrial:
             )
             return out
 
+        _spy_execute._water_trial_spy = True  # the per-AGENT sentinel the guard above reads
         self.aut.executor.execute = _spy_execute  # instance attribute; the loop calls executor.execute(action)
 
     def detach_instruments(self) -> None:
