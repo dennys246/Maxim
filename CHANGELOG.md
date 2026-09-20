@@ -23,6 +23,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The EC now carries the match MARGIN.** `PatternResult.best_similarity` reports the best
+  *comparable* similarity a pattern decision saw — whatever the threshold did with it — on both the
+  completion and the separation branch. Previously a separation reported `similarity=0.0` and the
+  scan returned `-1.0` for anything under threshold, so a percept that separated by a hair and one
+  that separated by a mile were indistinguishable downstream, in persistence, and in every
+  experiment record: the decision was kept and its evidence discarded. Surfaced per
+  `(agent, modality)` by `SensorEncoder.last_encode_margin()`, which returns `None` when the
+  `min_delta` gate bypassed the scan (no measurement was taken) and `-1.0` when nothing comparable
+  existed to score against — neither of which is "scored 0.0". The margin respects the geometry
+  mask, because a near miss in an incomparable encoding space is not a near miss.
+  **Read-only instrumentation:** no consumer decides on it, no threshold moves, no geometry tag
+  changes and no persisted node re-keys. A *graded* read at the cluster boundary remains a
+  mechanism that needs its own experiment. (#786)
+
 - **Docs-only: moved-plan references updated inside `src/`.** The 2026-09-19 plans audit archived or
   deferred 33 plan documents; 50 files under `src/`, `tests/`, `scripts/` and `.github/` carried their old
   paths in comments and docstrings (60 lines, path strings only). No behavioural change, no API change —

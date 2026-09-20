@@ -534,6 +534,20 @@ class WaterTrial:
 
         return _encode_current_clusters(self.encoder, self.agent_id, self.aut.executor).get("world")
 
+    def world_cluster_margin(self) -> float | None:
+        """The margin the LAST world encode resolved by (issue #786).
+
+        The cluster id says WHICH node; this says how close the call was. Exp 62's NODE gate turns
+        on that call and the apparatus runs ~0.06 from its threshold, so a row carrying only the id
+        cannot say whether it resolved comfortably or by a hair. ``None`` = not measured (the
+        min_delta gate bypassed the scan, or no encode has happened); ``-1.0`` = nothing comparable.
+        Call it immediately after `encode_world_cluster`.
+        """
+        fn = getattr(self.encoder, "last_encode_margin", None)
+        if fn is None:  # a fake encoder without the accessor: absent, not zero
+            return None
+        return fn(agent_id=self.agent_id, modality="world")
+
     # ── preflights ───────────────────────────────────────────────────────────────────
 
     def measure_bridge_cadence(self, seconds: float = 3.0) -> float | None:
@@ -933,6 +947,7 @@ class WaterTrial:
         nac = self.aut.bio.nac
         self.submerge("g2")
         water_cluster = self.encode_world_cluster()
+        water_margin = self.world_cluster_margin()
         # The RAW sensor state at the moment of the reading that decides the gate. Exp 62 reads one
         # agent in two pools, and light/time are the full-weight constants the cross-pool cosine
         # rests on — so when the read misses, the record must be able to say WHICH live thing
@@ -942,6 +957,7 @@ class WaterTrial:
         sensed_probe = self.read_context()
         self.rescue("g2")
         shore_cluster = self.encode_world_cluster()
+        shore_margin = self.world_cluster_margin()
         sensed_shore = self.read_context()
         theta = float(nac.config.cluster_fear_threshold)
         water_fear = round(nac.cluster_fear(self.agent_id, water_cluster), 4)
@@ -972,6 +988,9 @@ class WaterTrial:
                 "need_episode_clusters": need_episodes,
                 "sensed_at_probe": sensed_probe,
                 "sensed_at_shore": sensed_shore,
+                # how CLOSE the call was, not just which node it landed on (issue #786)
+                "probe_margin": water_margin,
+                "shore_margin": shore_margin,
                 "specificity_ok": abs(shore_fear) < self.frozen["specificity_ratio"] * abs(water_fear)
                 if water_fear
                 else None,
