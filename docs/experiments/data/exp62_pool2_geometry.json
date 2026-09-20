@@ -1,0 +1,295 @@
+{
+  "_format_version": "1.0",
+  "kind": "l11_geometry_diagnosis",
+  "slice": 1,
+  "experiment": "exp60_chunk_ii_run_gate",
+  "authorizes_build": false,
+  "code_hash": "e390073818c67cb93a96246651db009610945026",
+  "situation_labels": {
+    "safe": "shore",
+    "dark": "submerged"
+  },
+  "provenance": {
+    "anchor_file": "/Users/dennys/.maxim/exp62_pool2_water_classroom.json",
+    "classroom_anchor": {
+      "shore": [
+        -393.0,
+        95.0,
+        -312.0
+      ],
+      "submerged": [
+        -388.0,
+        90.0,
+        -312.0
+      ]
+    },
+    "dive_budget_s": 13.140999999999998,
+    "measured": {
+      "t_damage_onset_min_s": 16.141,
+      "t_damage_onset_max_s": 16.401,
+      "t_pain_edge_min_s": 5.043,
+      "t_surface_max_s": 1.617,
+      "t_sinkback_min_s": 2.311,
+      "distance_from_spawn": 65.49809157525127,
+      "evidence_record": "/Users/dennys/RMSrv/scripts/Maxim/docs/experiments/data/exp62_pool2_water_apparatus.json",
+      "ts": 1789871865.391049
+    },
+    "world_sensor_count": 17,
+    "samples": {
+      "safe": 30,
+      "dark": 30
+    },
+    "gain_modality": true,
+    "gain_exponent": 3.0,
+    "pattern_threshold": 0.85,
+    "code": {
+      "executed_maxim_file": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/__init__.py",
+      "executed_git_hash": "e390073818c6",
+      "working_tree_dirty_src_scripts": false,
+      "python": "/Users/dennys/RMSrv/scripts/Maxim/.venv/bin/python",
+      "pythonpath": "/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages"
+    }
+  },
+  "cosine": {
+    "a4_gained": 0.7683,
+    "a0_ungained": 0.9721,
+    "threshold": 0.85,
+    "a4_above_threshold": false
+  },
+  "cluster_ids_offline_fresh_ec": {
+    "safe_ids": [
+      "fa9d4b5f-e409-4dfa-b45c-4e939a42172e"
+    ],
+    "dark_ids": [
+      "33c253ec-8ba4-4750-b9cb-3da89439bf30"
+    ],
+    "shared_ids": [],
+    "distinct": true,
+    "safe_id_count": 1,
+    "dark_id_count": 1
+  },
+  "contrast_early_vs_late_oxygen": {
+    "early_oxygen_min": 16.0,
+    "late_oxygen_max": 13.0,
+    "early_ids": [
+      "33c253ec-8ba4-4750-b9cb-3da89439bf30"
+    ],
+    "late_ids": [
+      "33c253ec-8ba4-4750-b9cb-3da89439bf30"
+    ],
+    "n_early": 11,
+    "n_late": 14,
+    "same_cluster": true
+  },
+  "run_gate": {
+    "applies_to": "situation-fear RUN authorization on this apparatus (Exp 60 chunk ii) \u2014 never a substrate build",
+    "cos_a4_below_threshold": true,
+    "fresh_ec_ids_distinct": true,
+    "early_late_same_cluster": true,
+    "is_dive_trace": true,
+    "unsettled_situations": [],
+    "pass": true,
+    "necessary_not_sufficient": "offline fresh-EC replay of live-captured vectors; chunk (iii)'s harness MUST still refuse on its own LIVE cluster-distinct preflight (the live agent's EC, exp58_run pattern) before trial 1"
+  },
+  "per_sensor": [
+    {
+      "sensor": "is_in_water",
+      "v_safe": 0.5,
+      "v_dark": 1.0,
+      "norm_delta": 0.5,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 1.0,
+      "moved": true,
+      "carries_mass": true,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "oxygen",
+      "v_safe": 0.5,
+      "v_dark": 0.32,
+      "norm_delta": 0.18,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0467,
+      "moved": true,
+      "carries_mass": false,
+      "moved_but_silenced": true
+    },
+    {
+      "sensor": "y_altitude",
+      "v_safe": 0.7422,
+      "v_dark": 0.7031,
+      "norm_delta": 0.0391,
+      "gain_w_safe": 0.1136,
+      "gain_w_dark": 0.067,
+      "moved": false,
+      "carries_mass": true,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "speed",
+      "v_safe": 0.5392,
+      "v_dark": 0.5025,
+      "norm_delta": 0.0367,
+      "gain_w_safe": 0.0005,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "distance_from_spawn",
+      "v_safe": 0.7559,
+      "v_dark": 0.7427,
+      "norm_delta": 0.0132,
+      "gain_w_safe": 0.134,
+      "gain_w_dark": 0.1144,
+      "moved": false,
+      "carries_mass": true,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "food",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "health",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "hostile_count",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "is_raining",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "light_level",
+      "v_safe": 1.0,
+      "v_dark": 1.0,
+      "norm_delta": 0.0,
+      "gain_w_safe": 1.0,
+      "gain_w_dark": 1.0,
+      "moved": false,
+      "carries_mass": true,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "look_pitch",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "nearest_hostile_dist",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "nearest_player_dist",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "on_ground",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "saturation",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "time_of_day",
+      "v_safe": 0.0417,
+      "v_dark": 0.0417,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.7703,
+      "gain_w_dark": 0.7703,
+      "moved": false,
+      "carries_mass": true,
+      "moved_but_silenced": false
+    },
+    {
+      "sensor": "xp_level",
+      "v_safe": 0.5,
+      "v_dark": 0.5,
+      "norm_delta": 0.0,
+      "gain_w_safe": 0.0,
+      "gain_w_dark": 0.0,
+      "moved": false,
+      "carries_mass": false,
+      "moved_but_silenced": false
+    }
+  ],
+  "movers": [
+    "is_in_water",
+    "oxygen"
+  ],
+  "moved_but_silenced": [
+    "oxygen"
+  ],
+  "live_contributors": [
+    "is_in_water"
+  ],
+  "verdict": "separable_here",
+  "reading": "shore/submerged separate on the offline fresh-EC replay; the run_gate block decides (with the early/late sub-bin), authorizes_build stays False, and chunk (iii)'s live preflight is still required."
+}
