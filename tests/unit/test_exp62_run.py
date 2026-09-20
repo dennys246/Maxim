@@ -16,8 +16,8 @@ getting this backwards would either drop the result or publish a training failur
 from __future__ import annotations
 
 import json
+import math
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -37,20 +37,36 @@ ESC = "minecraft_player_escape_water"
 # ─────────────────────────── the frozen block ───────────────────────────
 
 
-def test_frozen_constants_are_the_same_objects_exp60_and_exp61_froze() -> None:
-    """A later Exp 60/61 edit must fail HERE, never be inherited silently into a frozen campaign."""
+def test_the_borrowed_constants_are_checked_against_their_sources_not_copied_from_them() -> None:
+    """A later Exp 60/61 edit must fail HERE, never be inherited silently into a frozen campaign.
+
+    The blocks are LITERALS for exactly this reason: a deep copy taken at import would take any
+    source edit with it, and the equality below could never fail. Pinned by mutating the source.
+    """
     assert E.frozen_matches() == []
     assert E.FROZEN["exp60"] == FROZEN61["exp60"]
     assert E.FROZEN["read_floor"] == FROZEN61["read_floor"] == 0.5
     assert E.FROZEN["fear_value_cap"] == FROZEN61["fear_value_cap"] == -1.0
+    assert E.FROZEN["cosine_threshold"] == E.FROZEN["exp60"]["fingerprint"]["encoder_pattern_threshold"]
+
+
+def test_a_one_sided_edit_to_exp61s_block_is_reported_as_drift(monkeypatch) -> None:
+    """The leg that a deep copy would have made vacuous — mutate the SOURCE and the check must fire."""
+    monkeypatch.setitem(FROZEN61["settle_guard"], "nearest_player_dist", 999.0)
+    assert any("settle_guard" in d for d in E.frozen_matches())
+    monkeypatch.undo()
+    monkeypatch.setitem(FROZEN61["exp60"], "death_cap", 99)
+    assert any("exp60" in d for d in E.frozen_matches())
 
 
 def test_the_arms_read_the_pools_the_prereg_says() -> None:
     assert E.FROZEN["read_pool"] == {"cross": "pool2", "same": "pool1", "cross_ablated": "pool2"}
     assert E.FROZEN["arms"] == {"cross": 12, "same": 12, "cross_ablated": 3}
-    assert all(E.FROZEN["train_pool"] == "pool1" for _ in E.FROZEN["arms"])
-    # every arm trains in the same pool: the contrast is where it READS, nothing else
-    assert len({E.FROZEN["train_pool"]}) == 1
+    assert E.FROZEN["train_pool"] == "pool1"
+    # the contrast is WHERE IT READS and nothing else: cross and same differ in read_pool alone
+    assert E.FROZEN["read_pool"]["cross"] != E.FROZEN["read_pool"]["same"]
+    assert E.FROZEN["g2_arm"]["cross"] == E.FROZEN["g2_arm"]["same"] == "fear"
+    assert set(E.FROZEN["read_pool"]) == set(E.FROZEN["arms"]) == set(E.FROZEN["seeds"]) == set(E.ARM_ORDER)
 
 
 def test_seeds_do_not_collide_between_arms() -> None:
@@ -128,9 +144,9 @@ def test_the_ablated_arm_passes_only_on_nothing_readable_and_a_leak_is_an_instru
     clean = E.classify_g2(
         _fields(water=0.0, shore_fear=0.0, need_probe=0.0, needs={"N1": 0.0}), arm="cross_ablated", floor=FLOOR
     )
-    assert clean["refusal"] is None and clean["pass"] is True
+    assert clean["refusal"] is None and clean["ablation_held"] is True and clean["pass"] is None
     leaked = E.classify_g2(_fields(), arm="cross_ablated", floor=FLOOR)
-    assert leaked["pass"] is False and "detach did not hold" in leaked["refusal"]
+    assert leaked["ablation_held"] is False and "detach did not hold" in leaked["refusal"]
     assert "never a null" in leaked["refusal"]
 
 
@@ -142,6 +158,22 @@ def _rec(shore_y: float, sub_y: float, spawn=None):
         "shore": [10.0, shore_y, 20.0],
         "submerged": [10.0, sub_y, 20.0],
         "world_spawn": spawn if spawn is not None else {"x": 0.0, "y": 64.0, "z": 0.0},
+    }
+
+
+# Pool 1 as its own committed probe saw it: y_altitude 0.2734 -> y 35, distance_from_spawn 0.7736
+# -> d 70.04 (the encoder's normalizations, inverted). An anchor that re-derives to these is the
+# only one the replay will predict from once a gate record is cited.
+POOL1_SUB_Y = 35.0
+POOL1_DIST = 0.7736 * 256.0 - 128.0
+POOL1_SPAWN = {"x": 10.0 - math.sqrt(POOL1_DIST**2 - (64.0 - POOL1_SUB_Y) ** 2), "y": 64.0, "z": 20.0}
+
+
+def _real_pool1_anchor() -> dict:
+    return {
+        "shore": [10.0, 40.0, 20.0],
+        "submerged": [10.0, POOL1_SUB_Y, 20.0],
+        "world_spawn": POOL1_SPAWN,
     }
 
 
@@ -198,7 +230,10 @@ def _row(arm, seed, *, node=True, success=True, t_air=2.5, calls=1, refusal=None
         "t_first_air": t_air if success else None,
         "escape_calls": calls,
         "flee_calls": 0,
+        "placement": {"calls": [{"tool": ESC, "success": True}] * calls},
     }
+    # the ablated arm has NO node gate — `pass` None, and an ablation that held
+    gate = {"pass": None, "ablation_held": True} if arm == "cross_ablated" else {"pass": node}
     return {
         "kind": "row",
         "arm": arm,
@@ -207,7 +242,7 @@ def _row(arm, seed, *, node=True, success=True, t_air=2.5, calls=1, refusal=None
         "campaign_id": "c1",
         "provenance": {"executed_git_hash": hash_},
         "refusal": refusal,
-        "node_gate": {"pass": node},
+        "node_gate": gate,
         "first_contact": fc,
     }
 
@@ -230,7 +265,7 @@ def _campaign(**over):
         _row(
             "cross_ablated",
             640 + i,
-            **{"node": True, "success": False, "t_air": None, "calls": 0, **over.get("abl", {})},
+            **{"success": False, "t_air": None, "calls": 0, **over.get("abl", {})},
         )
         for i in range(3)
     ]
@@ -278,8 +313,10 @@ def test_a_failed_same_arm_says_the_apparatus_is_what_was_measured_not_the_carry
 
 
 def test_anti_vacuity_fails_when_the_ablated_arm_calls_the_executor_at_all() -> None:
+    """Counted over EVERY executor call the spy recorded, not just the two water affordances."""
     v = E.compute_verdict(_campaign(abl={"success": False, "t_air": None, "calls": 1}), campaign_id="c1")
-    assert v["checks"]["ANTI_VACUITY"] is False and v["verdict"] == "NULL"
+    assert v["checks"]["ANTI_VACUITY"] is False and v["verdict"] == "INCOMPLETE"
+    assert v["rates"]["cross_ablated"]["executor_calls"] == 3
 
 
 def test_a_missing_replay_or_apparatus_row_is_INCOMPLETE_not_a_quiet_pass() -> None:
@@ -362,12 +399,18 @@ def test_the_plan_interleaves_the_arms_so_drift_hits_them_equally() -> None:
 
 def test_two_records_with_one_pool_id_refuse_because_a_build_overwrote_one(tmp_path: Path) -> None:
     a, b = tmp_path / "a.json", tmp_path / "b.json"
-    a.write_text(json.dumps({"measured": {}, "pool_id": "pool1"}))
-    b.write_text(json.dumps({"measured": {}, "pool_id": "pool1"}))
+    full = {"t_pain_edge_min_s": 5.1, "t_damage_onset_min_s": 16.0}
+    a.write_text(json.dumps({"measured": full, "pool_id": "pool1"}))
+    b.write_text(json.dumps({"measured": full, "pool_id": "pool1"}))
     with pytest.raises(E.Refusal, match="one of them was overwritten"):
         E.load_geoms(str(a), str(b))
     b.write_text(json.dumps({"pool_id": "pool2"}))
     with pytest.raises(E.Refusal, match="no `measured` block"):
+        E.load_geoms(str(a), str(b))
+    # a PARTIAL block is its own refusal: the caps come from these keys, and a bare KeyError three
+    # frames later is not the documented refusal
+    b.write_text(json.dumps({"pool_id": "pool2", "measured": {"t_pain_edge_min_s": 5.4}}))
+    with pytest.raises(E.Refusal, match="no t_damage_onset_min_s"):
         E.load_geoms(str(a), str(b))
 
 
@@ -452,8 +495,27 @@ def test_one_row_of_each_arm_against_a_two_pool_scripted_bridge(tmp_path: Path, 
             monkeypatch.setitem(block, key, value)
     assert E.frozen_matches() == [], "the drift guard must still be satisfied, not bypassed"
 
-    gate = tmp_path / "gate.json"
-    gate.write_text(json.dumps({"cosine": {"a4_gained": 0.78, "threshold": 0.85}, "run_gate": {"pass": True}}))
+    def _stub_gate(sub_y: float) -> str:
+        """A gate-(ii) record shaped like the real ones: the binding reads y_altitude, the prereg's
+        gate reads light/time, and both pools carry the SAME dark, frozen-day constants."""
+        path = tmp_path / f"gate_{int(sub_y)}.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "cosine": {"a4_gained": 0.78, "threshold": 0.85},
+                    "run_gate": {"pass": True},
+                    "verdict": "separable_here",
+                    "per_sensor": [
+                        {"sensor": "y_altitude", "v_safe": (sub_y + 4) / 128.0, "v_dark": sub_y / 128.0},
+                        {"sensor": "light_level", "v_safe": 0.0, "v_dark": 0.0},
+                        {"sensor": "time_of_day", "v_safe": 0.0417, "v_dark": 0.0417},
+                    ],
+                }
+            )
+        )
+        return str(path)
+
+    gates = [_stub_gate(60.0), _stub_gate(101.0)]
     out = tmp_path / "rows.jsonl"
     args = argparse.Namespace(
         rcon_host="h",
@@ -463,7 +525,7 @@ def test_one_row_of_each_arm_against_a_two_pool_scripted_bridge(tmp_path: Path, 
         bridge_host="127.0.0.1",
         bridge_port=srv.port,
         workdir=str(tmp_path / "work"),
-        gate_record=[str(gate), str(gate)],
+        gate_record=gates,
     )
     camp = E.Exp62Campaign(
         args,
@@ -474,6 +536,19 @@ def test_one_row_of_each_arm_against_a_two_pool_scripted_bridge(tmp_path: Path, 
     )
     # one cap for BOTH pools: below pool 1's 5.1 s pain edge AND pool 2's 5.4 s
     assert camp.probe_cap_s == pytest.approx(5.1 - E.FROZEN["exp60"]["probe_cap_margin_s"])
+    ap = camp.apparatus_citation()
+    assert ap["refusal"] is None, ap["refusal"]
+    assert ap["context_constants"]["match"] is True
+    # the light/time gate is LIVE here, not merely present: a lit pool 2 stops the campaign
+    lit = json.loads(Path(gates[1]).read_text())
+    for row in lit["per_sensor"]:
+        if row["sensor"] == "light_level":
+            row["v_safe"] = row["v_dark"] = 1.0
+    lit_path = tmp_path / "gate_101_lit.json"
+    lit_path.write_text(json.dumps(lit))
+    camp.args.gate_record = [gates[0], str(lit_path)]
+    assert "LIGHT/TIME contrast" in (camp.apparatus_citation()["refusal"] or "")
+    camp.args.gate_record = gates
     assert camp.apparatus_citation()["refusal"] is None
 
     prev = Path.cwd()
@@ -511,7 +586,10 @@ def test_one_row_of_each_arm_against_a_two_pool_scripted_bridge(tmp_path: Path, 
     abl = rows["cross_ablated"]
     assert abl["refusal"] is None, abl["refusal"]
     assert abl["detached_subscribers"] == 1
-    assert abl["water_fear"] == 0.0 and abl["node_gate"]["pass"] is True
+    # the ablated arm has no node gate — it has an ablation check, and publishing `pass=True` here
+    # would read as "the ablated agent resolved to the trained node", its own opposite
+    assert abl["water_fear"] == 0.0
+    assert abl["node_gate"]["pass"] is None and abl["node_gate"]["ablation_held"] is True
     assert abl["first_contact"]["escape_calls"] == 0, "the apparatus must not surface an agent by itself"
     assert abl["first_contact"]["success"] is False
 
@@ -521,4 +599,180 @@ def test_one_row_of_each_arm_against_a_two_pool_scripted_bridge(tmp_path: Path, 
     v = E.compute_verdict(written, campaign_id="offline")
     assert v["verdict"] == "INCOMPLETE" and "clean rows <" in v["incomplete_cause"]
     assert v["rates"]["cross_ablated"]["executor_calls"] == 0
-    assert time.time() > 0  # the rows carry a ts; nothing here is frozen in time
+
+
+# ───────────────── the light/time gate: the red gate for the finding that blocked this PR ─────────────────
+
+DATA = Path(__file__).resolve().parents[2] / "docs" / "experiments" / "data"
+POOL1_GATE = DATA / "exp60_geometry_2026-09-15b.json"
+POOL2_GATE_STALE = DATA / "exp62_pool2_geometry.json"
+POOL2_GATE_RECONNECT = DATA / "exp62_pool2_geometry_reconnect.json"
+
+
+def _gate(path: Path) -> dict:
+    return json.loads(path.read_text())
+
+
+def test_the_committed_stale_light_record_is_refused_and_the_reconnect_one_is_not() -> None:
+    """Run against the REAL committed records, because this is not a hypothetical failure.
+
+    Pool 2's first probe read `light_level` 1.0 and its reconnect read 0.0 — the prereg's named
+    "stale-light read at a freshly filled box". BOTH carry `run_gate.pass: true`, so a gate-pass
+    check alone cites either. Citing the stale one puts the real cross-pool cosine at 0.5878 (a
+    MISS) while the synthetic replay prediction still says HIT, because light is unrepresentable
+    in a place-absolutes-only construction: the campaign would have measured the LIGHT contrast
+    and published it as the pool contrast.
+    """
+    assert _gate(POOL2_GATE_STALE)["run_gate"]["pass"] is True, "the trap is that the stale record passes its own gate"
+    bad = E.context_constants_match(_gate(POOL1_GATE), _gate(POOL2_GATE_STALE))
+    assert not bad["match"]
+    assert any("light_level" in m for m in bad["mismatches"]), bad["mismatches"]
+    good = E.context_constants_match(_gate(POOL1_GATE), _gate(POOL2_GATE_RECONNECT))
+    assert good["match"], good["mismatches"]
+
+
+def test_time_of_day_is_gated_too_not_only_light() -> None:
+    rec = json.loads(json.dumps(_gate(POOL2_GATE_RECONNECT)))
+    for row in rec["per_sensor"]:
+        if row["sensor"] == "time_of_day":
+            row["v_dark"] = 0.5  # noon at the floor
+    out = E.context_constants_match(_gate(POOL1_GATE), rec)
+    assert not out["match"] and any("time_of_day" in m for m in out["mismatches"])
+
+
+def test_an_absent_context_sensor_is_a_mismatch_not_a_silent_pass() -> None:
+    rec = json.loads(json.dumps(_gate(POOL2_GATE_RECONNECT)))
+    rec["per_sensor"] = [r for r in rec["per_sensor"] if r["sensor"] != "light_level"]
+    out = E.context_constants_match(_gate(POOL1_GATE), rec)
+    assert not out["match"] and any("absent" in m for m in out["mismatches"])
+
+
+def test_gate_records_are_bound_to_their_pool_by_the_probes_own_altitude() -> None:
+    """Argument order alone would let a swapped pair through every other check in the harness."""
+    pool1_anchor = {"submerged": [10.0, 35.0, 20.0]}
+    pool2_anchor = {"submerged": [10.0, 90.0, 20.0]}
+    assert E.gate_record_matches_pool(_gate(POOL1_GATE), pool1_anchor) is None
+    assert E.gate_record_matches_pool(_gate(POOL2_GATE_RECONNECT), pool2_anchor) is None
+    swapped = E.gate_record_matches_pool(_gate(POOL2_GATE_RECONNECT), pool1_anchor)
+    assert swapped and "records swapped?" in swapped
+    assert "no y_altitude" in (E.gate_record_matches_pool({"per_sensor": []}, pool1_anchor) or "")
+
+
+def test_cite_gate_records_refuses_the_real_stale_pair_before_any_agent_is_built(tmp_path: Path) -> None:
+    geoms = {"pool1": {"submerged": [10.0, 35.0, 20.0]}, "pool2": {"submerged": [10.0, 90.0, 20.0]}}
+    with pytest.raises(E.Refusal, match="LIGHT/TIME contrast"):
+        E.cite_gate_records([str(POOL1_GATE), str(POOL2_GATE_STALE)], geoms)
+    cited, records = E.cite_gate_records([str(POOL1_GATE), str(POOL2_GATE_RECONNECT)], geoms)
+    assert [c["pool"] for c in cited] == ["pool1", "pool2"] and set(records) == {"pool1", "pool2"}
+    with pytest.raises(E.Refusal, match="pass --gate-record twice"):
+        E.cite_gate_records([str(POOL1_GATE)], geoms)
+
+
+def test_the_replay_refuses_when_the_records_and_the_synthetic_prediction_disagree() -> None:
+    """The synthetic construction cannot see light; the records can. Disagreement is an apparatus
+    refusal, not a prediction — this is the number that would have been published as HIT."""
+    r1, r2 = _real_pool1_anchor(), _rec(95, 90, spawn=POOL1_SPAWN)
+    with pytest.raises(E.Refusal, match="opposite sides"):
+        E.replay_prediction(r1, r2, gate1=_gate(POOL1_GATE), gate2=_gate(POOL2_GATE_STALE))
+    out = E.replay_prediction(r1, r2, gate1=_gate(POOL1_GATE), gate2=_gate(POOL2_GATE_RECONNECT))
+    assert out["pool1_anchor_vs_record_cosine"] >= 0.999
+    assert out["from_gate_records"]["predicted_cross_hit"] is True
+    assert out["from_gate_records"]["cross_pool_cosine"] > out["threshold"]
+
+
+def test_the_replay_refuses_a_pool1_record_it_does_not_predict_from() -> None:
+    foreign = json.loads(json.dumps(_gate(POOL1_GATE)))
+    for row in foreign["per_sensor"]:
+        if row["sensor"] == "y_altitude":
+            row["v_dark"] = 0.9
+    with pytest.raises(E.Refusal, match="not the one the replay predicts from"):
+        E.replay_prediction(
+            _real_pool1_anchor(), _rec(95, 90, spawn=POOL1_SPAWN), gate1=foreign, gate2=_gate(POOL2_GATE_RECONNECT)
+        )
+
+
+def test_an_anchor_describing_a_different_pool_than_the_cited_record_refuses() -> None:
+    """anchor <-> cited record <-> the record the replay predicts from: all three must be one pool."""
+    wrong = _real_pool1_anchor()
+    wrong["submerged"] = [10.0, 59.0, 20.0]  # a pool 1 at a different altitude than its probe saw
+    with pytest.raises(E.Refusal, match="describe different pools"):
+        E.replay_prediction(
+            wrong, _rec(95, 90, spawn=POOL1_SPAWN), gate1=_gate(POOL1_GATE), gate2=_gate(POOL2_GATE_RECONNECT)
+        )
+
+
+# ───────────────── the remaining review folds ─────────────────
+
+
+def test_a_failed_encode_at_the_read_pool_refuses_rather_than_scoring_a_node_miss() -> None:
+    """`encode_world_cluster` returns None on an encode failure — it never raises into the loop.
+    Scoring that as a carry miss would publish an instrument failure as the finding."""
+    out = E.classify_g2(_fields(probe=None, shore=None, need_probe=0.0), arm="cross", floor=FLOOR)
+    assert out["pass"] is False and "no live world cluster" in out["refusal"]
+
+
+def test_a_missing_shore_cluster_refuses_because_specificity_would_be_credited_vacuously() -> None:
+    """`live_g2` sets shore_fear to 0.0 when the shore cluster is absent — which SATISFIES the
+    specificity clause. A row must not pass a gate it never measured."""
+    out = E.classify_g2(_fields(shore=None), arm="cross", floor=FLOOR)
+    assert out["pass"] is False and "specificity cannot be measured" in out["refusal"]
+
+
+def test_a_none_need_refuses_rather_than_raising_out_of_the_rows_handler() -> None:
+    out = E.classify_g2(_fields(needs={"N1": None}), arm="cross", floor=FLOOR)
+    assert out["refusal"] is not None and "training failure" in out["refusal"]
+
+
+def test_the_ablated_arm_has_no_node_gate_and_is_not_counted_in_one() -> None:
+    """`pass=True` there would publish as 'the ablated arm resolved to the trained node in 3/3'."""
+    out = E.classify_g2(_fields(water=0.0, need_probe=0.0, needs={"N1": 0.0}), arm="cross_ablated", floor=FLOOR)
+    assert out["pass"] is None and out["ablation_held"] is True
+    v = E.compute_verdict(_campaign(), campaign_id="c1")
+    assert v["rates"]["cross_ablated"]["node_gate"]["n"] == 0
+    assert v["rates"]["cross_ablated"]["node_gate"]["rate"] is None
+
+
+def test_a_duplicate_clean_row_blocks_EARNED_instead_of_letting_the_first_silently_win() -> None:
+    rows = _campaign()
+    dup = _row("cross", 600, success=False, ts=9999.0)
+    rows.append(dup)
+    v = E.compute_verdict(rows, campaign_id="c1")
+    assert v["verdict"] == "INCOMPLETE", "the first row would otherwise supply every number"
+    assert "duplicate clean" in v["incomplete_cause"]
+
+
+def test_an_anti_vacuity_failure_is_an_INSTRUMENT_statement_not_a_mechanism_NULL() -> None:
+    v = E.compute_verdict(_campaign(abl={"success": True, "t_air": 2.0, "calls": 1}), campaign_id="c1")
+    assert v["checks"]["ANTI_VACUITY"] is False
+    assert v["verdict"] == "INCOMPLETE"
+    assert "the apparatus, not the carry" in v["incomplete_cause"]
+
+
+def test_every_non_earned_verdict_names_a_cause() -> None:
+    cases = [
+        _campaign(cross={"success": False, "t_air": None}),
+        _campaign(same={"success": False, "t_air": None}),
+        _campaign(abl={"success": False, "t_air": None, "calls": 2}),
+        [r for r in _campaign() if r.get("kind") != "replay"],
+    ]
+    rows = _campaign()
+    next(r for r in rows if r.get("arm") == "same")["provenance"] = {"executed_git_hash": "deadbeefdead"}
+    cases.append(rows)
+    for i, c in enumerate(cases):
+        v = E.compute_verdict(c, campaign_id="c1")
+        assert v["verdict"] != "EARNED"
+        assert v["incomplete_cause"], f"case {i} produced a bare {v['verdict']} with no cause"
+
+
+def test_rows_with_an_unknown_arm_are_named_not_silently_dropped() -> None:
+    rows = _campaign()
+    rows.append(_row("cross_lit", 700, ts=5000.0))
+    v = E.compute_verdict(rows, campaign_id="c1")
+    assert v["verdict"] == "INCOMPLETE" and "unknown arm" in v["incomplete_cause"]
+
+
+def test_world_spawn_is_compared_numerically_so_a_list_and_a_dict_agree() -> None:
+    a = _rec(64, 59, spawn=[0.0, 64.0, 0.0])
+    b = _rec(105, 100, spawn={"x": 0, "y": 64, "z": 0})
+    out = E.replay_prediction(a, b)
+    assert out["pool1"]["distance_from_spawn"] == pytest.approx(22.91, abs=0.01)

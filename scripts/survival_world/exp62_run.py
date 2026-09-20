@@ -41,6 +41,14 @@ and readable at all. Booked but not readable at the read pool → a clean row wi
 finding. Not booked → a refusal, because a training failure must never be reported as a carry
 failure. That distinction is the whole confound.
 
+**Cite pool 2's RECONNECT gate record.** Its first probe read `light_level` 1.0 and the reconnect
+read 0.0 — the prereg's named "stale-light read at a freshly filled box". Both records carry
+`run_gate.pass: true`, so a gate-pass check alone waves the stale one through, and the real
+cross-pool cosine would be 0.5878 (a MISS) while the synthetic replay prediction still said 0.9995
+(a HIT), because light is unrepresentable in that construction. The harness now refuses the pair
+outright (`cite_gate_records`), and computes the cosine the records' own vectors imply beside the
+prediction — but the recipe above names the right record.
+
 **One probe cap for both pools.** The cap is ``min(pool 1, pool 2 pain edge) − margin``, so the
 window is identical in every arm and sits below BOTH pools' pain edges. A per-pool cap would make
 the arms' latencies incomparable and put the cap difference inside the contrast.
@@ -49,11 +57,13 @@ Run ON the bridge box (server + bridge from current main at ONE code hash — no
 the first and last row; bridge at ``--state_interval_ms=100``; no second player)::
 
     export PYTHONPATH="$PWD/src"
-    python scripts/survival_world/exp62_run.py replay --campaign-id <id> --write-experiment-results
+    python scripts/survival_world/exp62_run.py replay --campaign-id <id> --write-experiment-results \\
+        --gate-record docs/experiments/data/exp60_geometry_2026-09-15b.json \\
+        --gate-record docs/experiments/data/exp62_pool2_geometry_reconnect.json
     python scripts/survival_world/exp62_run.py run --campaign-id <id> --rcon-password '<pw>' \\
         --workdir ~/exp62_work \\
         --gate-record docs/experiments/data/exp60_geometry_2026-09-15b.json \\
-        --gate-record docs/experiments/data/exp62_pool2_geometry.json --write-experiment-results
+        --gate-record docs/experiments/data/exp62_pool2_geometry_reconnect.json --write-experiment-results
     python scripts/survival_world/exp62_run.py verdict --data docs/experiments/data/exp62_rows.jsonl \\
         --campaign-id <id> --json docs/experiments/data/exp62_verdict.json --write-experiment-results
 """
@@ -61,8 +71,8 @@ the first and last row; bridge at ``--state_interval_ms=100``; no second player)
 from __future__ import annotations
 
 import argparse
-import copy
 import json
+import shutil
 import math
 import os
 import sys
@@ -90,10 +100,12 @@ from survival_world.exp61_run import (  # noqa: E402
     exp60_frozen_matches,
     first_contact_outcome,
     fisher_one_sided_p,
+    quartile_medians,
     wilson_interval,
 )
 from survival_world.exp61_run import FROZEN as FROZEN61  # noqa: E402
-from survival_world.water_trial import Refusal, WaterTrial, _detach_fear_subscriber  # noqa: E402
+from survival_world.r3_run import bootstrap_median_ci  # noqa: E402
+from survival_world.water_trial import Refusal, WaterTrial, _detach_fear_subscriber, _median  # noqa: E402
 
 REPO_ROOT = C.REPO_ROOT
 REPLAY_SCRIPT = REPO_ROOT / "docs" / "experiments" / "data" / "exp62_cross_pool_replay.py"
@@ -120,26 +132,62 @@ FROZEN: dict[str, Any] = {
         "node_min": 11 / 12,
         "cross_min": 0.70,
         "same_min": 0.70,
-        "alpha": 0.05,
     },
-    # DEEP COPIES, not aliases: `frozen_matches()` compares these against Exp 61's live blocks, and
-    # a comparison of an object with itself can never fail. A later edit on either side shows up.
-    "settle_guard": copy.deepcopy(FROZEN61["settle_guard"]),
-    "exp60": copy.deepcopy(FROZEN61["exp60"]),
+    # Reported, never gated: the prereg's statistic is the INTERVAL, not p ("both fear arms are
+    # predicted at the ceiling"), so Fisher is recorded where a contrast exists and decides nothing.
+    "reported_not_gated": {"alpha": 0.05},
+    # LITERAL copies, exactly as Exp 61 copies Exp 60's (its FROZEN comment says why): a later edit
+    # to Exp 60's or Exp 61's block must FAIL `frozen_matches()`, never be inherited silently. A
+    # deep copy taken at import would take that edit with it and the equality could never fail.
+    "settle_guard": {"is_raining": 0.0, "nearest_player_dist": 64.0},
+    "exp60": {
+        "K_usable_episodes": 10,
+        "placements_per_probe": 6,
+        "shore_roam_s": 10.0,
+        "probe_cap_margin_s": 0.75,
+        "train_cap_margin_s": 1.0,
+        "loop_warm_s": 1.0,
+        "bridge_state_interval_max_s": 0.15,
+        "loop_liveness_min_ticks": 4,
+        "loop_liveness_s": 3.0,
+        "usable_oxygen_max": 12.0,
+        "usable_pain_intensity_min": 1.0,
+        "loop_hz": 4.0,
+        "death_cap": 2,
+        "specificity_ratio": 0.2,
+        "fingerprint": {
+            "cluster_fear_alpha": 0.5,
+            "max_cluster_fear": 1.0,
+            "cluster_fear_threshold": 0.5,
+            "cluster_fear_failure_modes": ["drive:health", "drive:oxygen"],
+            "encoder_pattern_threshold": 0.85,
+            "substrate_explore_bonus_weight": 0.0,
+            "oxygen_drive": {"set_point": 20.0, "comfort_band": 6.0},
+            "sensor_ranges": {"is_in_water": [-1.0, 1.0], "oxygen": [0.0, 40.0], "saturation": [0.0, 20.0]},
+        },
+    },
 }
 ARM_ORDER = ("cross", "same", "cross_ablated")
 
 
 def frozen_matches() -> list[str]:
-    """Every borrowed constant, checked against its source — Exp 61's, and through it Exp 60's."""
+    """Every borrowed constant, checked against its source — Exp 61's, and through it Exp 60's.
+
+    The blocks above are LITERALS, so each comparison here is a real one: a one-sided edit in any
+    of the three harnesses shows up as drift instead of propagating silently into a live campaign.
+    """
     drift = list(exp60_frozen_matches())
     if FROZEN["exp60"] != FROZEN61["exp60"]:
         drift.append("exp60 block differs from exp61's")
     if FROZEN["settle_guard"] != FROZEN61["settle_guard"]:
         drift.append("settle_guard differs from exp61's")
-    for k in ("fear_value_cap", "read_floor"):
-        if FROZEN[k] != FROZEN61[k]:
+    for k in ("fear_value_cap", "read_floor", "drift_max_s"):
+        if FROZEN[k] != FROZEN61.get(k, FROZEN61["gates"].get(k)):
             drift.append(f"{k} differs from exp61's")
+    # `cosine_threshold` has TWO live sources it could drift from — the encoder's pattern threshold
+    # (enforced live by `check_fingerprint`) and the replay module's own TH. Both are checked.
+    if FROZEN["cosine_threshold"] != FROZEN["exp60"]["fingerprint"]["encoder_pattern_threshold"]:
+        drift.append("cosine_threshold differs from the encoder pattern threshold the fingerprint pins")
     return drift
 
 
@@ -171,7 +219,7 @@ def classify_g2(fields: dict[str, Any], *, arm: str, floor: float) -> dict[str, 
     need_probe = g2.get("need_probe_cluster")
     water_fear = fields.get("water_fear")
     shore_fear = fields.get("shore_fear")
-    booked = bool(needs) and all(float(n) > floor for n in needs.values())
+    booked = bool(needs) and all(n is not None and float(n) > floor for n in needs.values())
     out: dict[str, Any] = {
         "arm": arm,
         "trained_node": trained,
@@ -186,7 +234,9 @@ def classify_g2(fields: dict[str, Any], *, arm: str, floor: float) -> dict[str, 
         "why": None,
     }
     if arm == "cross_ablated":
-        # anti-vacuity: NOTHING may be readable. A leak is an instrument failure, not a result.
+        # Anti-vacuity: NOTHING may be readable, so this arm HAS no node gate — it has an ablation
+        # check. `pass` stays None: a True here would be published as "the ablated arm's reading
+        # resolved to the trained node in 3/3", which is the opposite of what it means.
         clean = water_fear == 0.0 and shore_fear == 0.0 and (need_probe or 0.0) == 0.0 and not booked
         out["refusal"] = (
             None
@@ -197,7 +247,8 @@ def classify_g2(fields: dict[str, Any], *, arm: str, floor: float) -> dict[str, 
                 "an instrument failure, never a null"
             )
         )
-        out["pass"] = out["refusal"] is None
+        out["ablation_held"] = out["refusal"] is None
+        out["pass"] = None
         return out
     if not booked:
         out["refusal"] = (
@@ -206,7 +257,22 @@ def classify_g2(fields: dict[str, Any], *, arm: str, floor: float) -> dict[str, 
         )
         out["pass"] = False
         return out
-    if probe and shore and probe == shore:
+    # `encode_world_cluster` returns None on an encode failure or a stale snapshot (it never raises
+    # into the loop). Scoring that as a node MISS would publish an instrument failure as the
+    # finding — and the one-cluster clause below is skipped precisely when `probe` is None. Exp 60's
+    # `check_clusters_distinct` refuses on a missing cluster; this must not invert it.
+    if not probe:
+        out["refusal"] = "the read pool produced no live world cluster — an instrument failure, not a carry miss"
+        out["pass"] = False
+        return out
+    if not shore:
+        out["refusal"] = (
+            "the read pool produced no live SHORE cluster — specificity cannot be measured, and a "
+            "shore fear of 0 would credit the clause vacuously"
+        )
+        out["pass"] = False
+        return out
+    if probe == shore:
         out["refusal"] = (
             f"the read pool's shore and water encode to ONE live cluster ({probe}) — it cannot measure a carry"
         )
@@ -218,6 +284,7 @@ def classify_g2(fields: dict[str, Any], *, arm: str, floor: float) -> dict[str, 
     out["pass"] = bool(
         out["same_node"]
         and water_fear == FROZEN["fear_value_cap"]
+        and shore is not None  # specificity was MEASURED, not inherited from a missing cluster
         and shore_fear == 0.0
         and (need_probe is not None and float(need_probe) > floor)
     )
@@ -239,19 +306,6 @@ def _node_gate_reason(out: dict[str, Any], floor: float) -> str:
     return "; ".join(bits)
 
 
-def quartile_medians(xs: list[float]) -> tuple[float | None, float | None]:
-    if len(xs) < 4:
-        return None, None
-    q = max(1, len(xs) // 4)
-
-    def med(v: list[float]) -> float:
-        v = sorted(v)
-        m = len(v) // 2
-        return v[m] if len(v) % 2 else (v[m - 1] + v[m]) / 2
-
-    return med(xs[:q]), med(xs[-q:])
-
-
 def campaign_drift(rows: list[dict[str, Any]], *, max_s: float) -> list[str]:
     """The SAME arm is the within-pool ceiling: its first-contact latency drifting across the
     campaign is the apparatus drifting, and it would move the cross arm the same way."""
@@ -270,18 +324,11 @@ def campaign_drift(rows: list[dict[str, Any]], *, max_s: float) -> list[str]:
 # ─────────────────────────── pure: the verdict ───────────────────────────
 
 
-def _median(xs: list[float]) -> float | None:
-    if not xs:
-        return None
-    s = sorted(xs)
-    m = len(s) // 2
-    return s[m] if len(s) % 2 else (s[m - 1] + s[m]) / 2
-
-
 def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> dict[str, Any]:
     """The prereg's five gates over the committed rows. Pure; nothing here graduates anything."""
     in_campaign = [r for r in rows if campaign_id is None or r.get("campaign_id") == campaign_id]
     refused: list[str] = []
+    duplicates: list[str] = []
     # A later CLEAN row supersedes an earlier REFUSED row for the same (arm, seed) — what --resume
     # writes. The refusal is still NAMED; refusals are never dropped, and never counted as zeros.
     clean_by_key: dict[tuple[str, int], dict[str, Any]] = {}
@@ -291,7 +338,10 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
             refused.append(f"{r['arm']} seed {r['seed']}: {r['refusal']}")
             continue
         if key in clean_by_key:
-            refused.append(f"duplicate clean (arm, seed) row {key} — pass --campaign-id to select one campaign")
+            # NOT a footnote: the first row silently supplies every number while the second is
+            # invisible to all of them. A campaign restarted without --resume under one id lands
+            # 24 clean cross rows and reports run 1's rate as if it were the campaign's.
+            duplicates.append(f"duplicate clean (arm, seed) row {key} — pass --campaign-id to select one campaign")
             continue
         clean_by_key[key] = r
     clean: dict[str, list[dict[str, Any]]] = {a: [] for a in FROZEN["arms"]}
@@ -310,7 +360,12 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
         succ = [1.0 if fc.get("success") else 0.0 for fc in fcs]
         binaries[arm] = succ
         k, n = int(sum(succ)), len(succ)
-        node = [1.0 if (r.get("node_gate") or {}).get("pass") else 0.0 for r in rs]
+        # an arm whose `pass` is None has NO node gate (the ablated arm) — it is not a zero
+        node = [
+            1.0 if (r.get("node_gate") or {}).get("pass") else 0.0
+            for r in rs
+            if (r.get("node_gate") or {}).get("pass") is not None
+        ]
         kn = int(sum(node))
         lat = [float(fc["t_first_air"]) for fc in fcs if fc.get("t_first_air") is not None]
         rates[arm] = {
@@ -323,13 +378,21 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
                 "n": len(node),
                 "rate": (kn / len(node)) if node else None,
                 "wilson95": list(wilson_interval(kn, len(node))) if node else None,
+                "not_applicable": len(node) == 0 and bool(rs),
             },
+            "ablation_held": sum(1 for r in rs if (r.get("node_gate") or {}).get("ablation_held")),
             "decision_dv_rate": (sum(1 for fc in fcs if fc.get("decision_dv")) / n) if n else None,
             "behavioural_dv_rate": (sum(1 for fc in fcs if fc.get("behavioural_dv")) / n) if n else None,
             "not_decisive": sum(1 for fc in fcs if fc.get("behavioural_dv") and not fc.get("decisive")),
-            "executor_calls": sum(int(fc.get("escape_calls") or 0) + int(fc.get("flee_calls") or 0) for fc in fcs),
+            # EVERY executor call the spy recorded — "the apparatus does not surface an agent by
+            # itself" is a claim about the executor, not about two affordances of it
+            "executor_calls": sum(len((fc.get("placement") or {}).get("calls") or []) for fc in fcs),
+            "escape_calls": sum(int(fc.get("escape_calls") or 0) for fc in fcs),
             "t_first_air_s": sorted(lat),
-            "t_first_air_median": _median(lat),
+            "t_first_air_median": _median(lat) if lat else None,
+            # the prereg's INFORMATIVE number: "both fear arms are predicted at the ceiling, so the
+            # statistic is the interval, not p". Fisher below is recorded, and gates nothing.
+            "t_first_air_median_ci95": list(bootstrap_median_ci(lat)) if len(lat) >= 2 else None,
         }
 
     g = FROZEN["gates"]
@@ -338,13 +401,18 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
         for a in FROZEN["arms"]
         if rates[a]["n"] < FROZEN["arms"][a]
     ]
-    incomplete.extend(campaign_drift(in_campaign, max_s=FROZEN["drift_max_s"]))
+    incomplete.extend(campaign_drift(list(clean_by_key.values()), max_s=FROZEN["drift_max_s"]))
     replay_rows = [r for r in in_campaign if r.get("kind") == "replay" and r.get("refusal") is None]
     apparatus_rows = [r for r in in_campaign if r.get("kind") == "apparatus" and r.get("refusal") is None]
     if not replay_rows:
         incomplete.append("no replay row recorded for this campaign")
     if not apparatus_rows:
         incomplete.append("no apparatus citation row recorded for this campaign")
+    incomplete.extend(duplicates)
+    refused.extend(duplicates)
+    unknown = {str(r.get("arm")) for r in in_campaign if r.get("kind") == "row"} - set(FROZEN["arms"])
+    if unknown:
+        incomplete.append(f"rows carry unknown arm(s) {sorted(unknown)} — they are in no rate and no gate")
 
     cross, same, abl = rates["cross"], rates["same"], rates["cross_ablated"]
     replay = replay_consistency(replay_rows, cross["node_gate"]["rate"])
@@ -353,7 +421,10 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
         "NODE": cross["node_gate"]["rate"] is not None and cross["node_gate"]["rate"] >= g["node_min"],
         "CROSS": cross["rate"] is not None and cross["rate"] >= g["cross_min"],
         "SAME": same["rate"] is not None and same["rate"] >= g["same_min"],
-        "ANTI_VACUITY": abl["n"] > 0 and abl["rate"] == 0.0 and abl["executor_calls"] == 0,
+        "ANTI_VACUITY": abl["n"] > 0
+        and abl["rate"] == 0.0
+        and abl["executor_calls"] == 0
+        and abl["ablation_held"] == abl["n"],
         "REPLAY": bool(replay["pass"]),
     }
     fisher = (
@@ -381,6 +452,16 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
             verdict, cause = "INCOMPLETE", "actuation timing: the decision DV passes while the behavioural DV fails"
         elif not checks["REPLAY"]:
             verdict, cause = "INCOMPLETE", replay.get("note") or "the replay and the live NODE outcome disagree"
+        elif not checks["ANTI_VACUITY"]:
+            # An apparatus that surfaces an agent by itself, or an ablation that leaked, is a
+            # statement about the INSTRUMENT. Calling it NULL would assert a mechanism result on an
+            # apparatus that cannot support one — the same shape as a failed SAME arm.
+            verdict, cause = (
+                "INCOMPLETE",
+                f"anti-vacuity failed: the ablated arm surfaced {abl['successes']}/{abl['n']} with "
+                f"{abl['executor_calls']} executor call(s), ablation held in {abl['ablation_held']}/{abl['n']} "
+                "row(s) — the apparatus, not the carry, is what this measured",
+            )
         else:
             verdict = "NULL"
             if not checks["SAME"]:
@@ -394,8 +475,15 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
                 )
             elif not checks["NODE"]:
                 cause = "the pool-2 reading does not resolve to the trained node — the fear does not carry across pools here"
+            else:
+                cause = (
+                    f"the cross arm's first-contact rate {cross['rate']} is below the frozen {g['cross_min']} "
+                    "while its node gate holds — the fear reads at pool 2 but does not drive the escape there"
+                )
     if incomplete:
         cause = "; ".join(incomplete)
+    elif verdict != "EARNED" and not cause:
+        cause = "; ".join(refused) or "no cause recorded"
     return {
         "_format_version": "1.0",
         "kind": "exp62_verdict",
@@ -447,20 +535,88 @@ def replay_consistency(replay_rows: list[dict[str, Any]], live_node_rate: float 
 # ─────────────────────────── the replay row ───────────────────────────
 
 
+# The constants the cross-pool cosine actually rests on. Both carry `rest: null` by design and ride
+# at (or near) full gain, so a difference in either ROTATES the vector far more than the place
+# absolutes do — which is the whole contrast. The prereg gates them equal for that reason.
+CONTEXT_SENSORS = ("light_level", "time_of_day")
+
+
+def context_constants_match(rec1: dict[str, Any], rec2: dict[str, Any]) -> dict[str, Any]:
+    """Do the two pools' committed gate-(ii) records agree on light and time? (pure)
+
+    The prereg's §Apparatus requires it in as many words — "Light and time GATED equal at pool 2's
+    shore and floor (the full-weight constants; a stale-light read at a freshly filled box is the
+    known failure)". That failure is not hypothetical: pool 2's FIRST probe read `light_level` 1.0
+    and its reconnect read 0.0, and both records carry `run_gate.pass: true`, so a gate-pass check
+    alone waves the stale one through. Citing it would put the real cross-pool cosine at 0.588 (a
+    MISS) while the synthetic replay prediction still said 0.999 (a HIT) — the harness would have
+    measured the LIGHT contrast and called it the pool.
+    """
+    v1 = {s["sensor"]: s for s in rec1.get("per_sensor") or []}
+    v2 = {s["sensor"]: s for s in rec2.get("per_sensor") or []}
+    rows, mismatches = [], []
+    for sensor in CONTEXT_SENSORS:
+        a, b = v1.get(sensor), v2.get(sensor)
+        if a is None or b is None:
+            mismatches.append(f"{sensor} absent from {'pool 1' if a is None else 'pool 2'}'s record")
+            continue
+        row = {
+            "sensor": sensor,
+            "pool1": {"shore": a.get("v_safe"), "submerged": a.get("v_dark")},
+            "pool2": {"shore": b.get("v_safe"), "submerged": b.get("v_dark")},
+        }
+        rows.append(row)
+        for where, key in (("shore", "v_safe"), ("submerged", "v_dark")):
+            if a.get(key) != b.get(key):
+                mismatches.append(f"{sensor} at the {where}: pool 1 {a.get(key)} v pool 2 {b.get(key)}")
+    return {"rows": rows, "mismatches": mismatches, "match": not mismatches and len(rows) == len(CONTEXT_SENSORS)}
+
+
+def gate_record_matches_pool(rec: dict[str, Any], anchor: dict[str, Any]) -> str | None:
+    """Is this gate-(ii) record the one for THIS pool? (pure)
+
+    The records carry no `pool_id`, so binding them by CLI argument order alone makes a swapped pair
+    undetectable — and a swapped pair passes every other check in this harness. The probe's own
+    `y_altitude` is the discriminator: pool 1 and pool 2 sit at different heights by construction.
+    """
+    row = next((s for s in rec.get("per_sensor") or [] if s["sensor"] == "y_altitude"), None)
+    if row is None or row.get("v_dark") is None:
+        return "the gate record carries no y_altitude reading — it cannot be bound to a pool"
+    sensed = float(row["v_dark"]) * 128.0  # the encoder's y normalization, inverted
+    built = float(anchor["submerged"][1])
+    if abs(sensed - built) > 1.5:
+        return f"the gate record was probed at y≈{sensed:.1f} but this pool's floor is y {built:.1f} — records swapped?"
+    return None
+
+
 def _dist3(a: Any, b: Any) -> float:
     ax, ay, az = (a["x"], a["y"], a["z"]) if isinstance(a, dict) else (a[0], a[1], a[2])
     bx, by, bz = (b["x"], b["y"], b["z"]) if isinstance(b, dict) else (b[0], b[1], b[2])
     return math.sqrt((float(ax) - float(bx)) ** 2 + (float(ay) - float(by)) ** 2 + (float(az) - float(bz)) ** 2)
 
 
-def replay_prediction(rec1: dict[str, Any], rec2: dict[str, Any], *, script: Path = REPLAY_SCRIPT) -> dict[str, Any]:
-    """Re-run the committed offline replay on the geometry that was ACTUALLY BUILT.
+def replay_prediction(
+    rec1: dict[str, Any],
+    rec2: dict[str, Any],
+    *,
+    script: Path = REPLAY_SCRIPT,
+    gate1: dict[str, Any] | None = None,
+    gate2: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Re-run the committed offline replay on the geometry that was ACTUALLY BUILT — twice.
 
     The prereg's 0.999 is for the *recommended* floor y 95; the pools on the rig are where the
     operator's clearance guard put them, so a copied constant would be a prediction about a pool
     that does not exist. This loads the committed replay module by path (it is the artifact under
-    citation, not a library) and overrides only pool 2's two place absolutes — exactly its own
-    "stacked pool 2" row.
+    citation, not a library) and overrides pool 2's two place ABSOLUTES on pool 1's sensor map —
+    the replay's own "stacked pool 2" row, and the citable prediction.
+
+    That synthetic construction cannot see a light or time difference: pool 2's other sensors are
+    pool 1's by definition. So when both pools' gate-(ii) records are supplied, the cosine their
+    ACTUAL `v_dark` vectors imply is computed beside it, and the two disagreeing across the
+    threshold is a refusal. The synthetic number is the prediction; the record-derived one is what
+    catches a pool that was not built to spec. (Without it, the stale-light pool-2 record predicts
+    HIT at 0.9995 and the real vectors say 0.5878.)
     """
     import importlib.util
 
@@ -477,7 +633,9 @@ def replay_prediction(rec1: dict[str, Any], rec2: dict[str, Any], *, script: Pat
             "the sensor→basis mapping moved; the prediction is not citable"
         )
     spawn1, spawn2 = rec1.get("world_spawn"), rec2.get("world_spawn")
-    if spawn1 is None or spawn2 is None or json.dumps(spawn1, sort_keys=True) != json.dumps(spawn2, sort_keys=True):
+    # compared NUMERICALLY: the builder writes a list and the pre-check a dict, and [0, 64, 0] must
+    # not refuse against [0.0, 64.0, 0.0]
+    if spawn1 is None or spawn2 is None or _dist3(spawn1, spawn2) > 1e-6:
         raise Refusal(
             "the two anchor records do not carry ONE stamped world_spawn "
             f"({spawn1!r} v {spawn2!r}) — distance_from_spawn is not derivable"
@@ -490,9 +648,48 @@ def replay_prediction(rec1: dict[str, Any], rec2: dict[str, Any], *, script: Pat
     cross = mod.cos(s1, s2)
     own2 = mod.cos(shore2, s2)
     th = float(FROZEN["cosine_threshold"])
+    if abs(th - float(mod.TH)) > 1e-9:
+        raise Refusal(
+            f"the replay's threshold ({mod.TH}) is not this harness's ({th}) — the prediction is not comparable"
+        )
+    # The guard above validates the ENCODER MAPPING (`embed(SUB)` still reproduces the record's
+    # cosine). It says nothing about whether the anchors describe the pools the records describe —
+    # and the prediction is built from `pool2(SUB, y, d)`, i.e. the anchors. Those two bindings are
+    # what `gate1` closes: anchor ↔ cited record ↔ the record the replay predicts from.
+    round_trip: float | None = None
+    from_records: dict[str, Any] | None = None
+    if gate1 is not None:
+        cited_sub = {r["sensor"]: r["v_dark"] for r in gate1.get("per_sensor") or []}
+        if cited_sub != mod.SUB:
+            raise Refusal(
+                f"the cited pool-1 gate record is not the one the replay predicts from "
+                f"({Path(mod.REC).name}) — re-point the replay or cite that record; a prediction "
+                "from a different pool 1 is not citable"
+            )
+        round_trip = mod.cos(mod.embed(cited_sub), s1)
+        if round_trip < 0.999:
+            raise Refusal(
+                f"pool 1 re-derived from its ANCHOR geometry does not reproduce its own probe vector "
+                f"(cos {round_trip:.4f}) — the anchor and the cited record describe different pools; "
+                "the prediction is not citable"
+            )
+    if gate1 is not None and gate2 is not None:
+        r1 = mod.embed({s["sensor"]: s["v_dark"] for s in gate1.get("per_sensor") or []})
+        r2 = mod.embed({s["sensor"]: s["v_dark"] for s in gate2.get("per_sensor") or []})
+        rec_cross = mod.cos(r1, r2)
+        from_records = {"cross_pool_cosine": round(rec_cross, 4), "predicted_cross_hit": bool(rec_cross >= th)}
+        if (rec_cross >= th) != (cross >= th):
+            raise Refusal(
+                f"the synthetic prediction ({cross:.4f}) and the pools' OWN probe vectors ({rec_cross:.4f}) "
+                f"fall on opposite sides of {th} — the pools differ in something the place-absolutes-only "
+                "construction cannot represent (light and time are the candidates); this is an apparatus "
+                "refusal, not a prediction"
+            )
     return {
         "replay_script": str(Path(script).resolve()),
         "reproduces_live_record": round(base, 4),
+        "pool1_anchor_vs_record_cosine": round(round_trip, 4) if round_trip is not None else None,
+        "from_gate_records": from_records,
         "threshold": th,
         "pool1": {"submerged_y": y1, "distance_from_spawn": round(d1, 2)},
         "pool2": {"submerged_y": y2, "distance_from_spawn": round(d2, 2)},
@@ -525,7 +722,10 @@ class Exp62Campaign:
         self.provenance = provenance
         self.out_path = out_path
         self.campaign_id = campaign_id
-        self.rcon = C.RconControl(args.rcon_host, args.rcon_port, args.rcon_password)
+        self._rcon: Any | None = None  # LAZY: `RconControl.__init__` connects eagerly, and the
+        # replay row needs no world control. Constructing it in __init__ made the documented
+        # `replay` invocation crash before writing anything — and the replay row is one of the five
+        # frozen gates, so every verdict would have read INCOMPLETE.
         fz = FROZEN["exp60"]
         # ONE cap for both pools: the window must sit below BOTH pain edges, or the arms' latencies
         # are not comparable and the cap difference lands inside the contrast.
@@ -535,6 +735,17 @@ class Exp62Campaign:
         self.train_cap_s = float(geoms["pool1"]["measured"]["t_damage_onset_min_s"]) - fz["train_cap_margin_s"]
         self.workdir = Path(args.workdir).expanduser().resolve()
         self.workdir.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def rcon(self) -> Any:
+        if self._rcon is None:
+            self._rcon = C.RconControl(self.args.rcon_host, self.args.rcon_port, self.args.rcon_password)
+        return self._rcon
+
+    def close(self) -> None:
+        if self._rcon is not None:
+            self._rcon.close()
+            self._rcon = None
 
     def base_row(self, kind: str, arm: str, seed: int | str) -> dict[str, Any]:
         return {
@@ -561,21 +772,10 @@ class Exp62Campaign:
             drift = frozen_matches()
             if drift:
                 raise Refusal(f"frozen constants drifted from Exp 60/61 on {drift}")
-            cited = []
-            for label, path in zip(("pool1", "pool2"), self.args.gate_record, strict=True):
-                rec = json.loads(Path(path).expanduser().read_text())
-                entry = {
-                    "pool": label,
-                    "record": str(path),
-                    "cos_a4": (rec.get("cosine") or {}).get("a4_gained"),
-                    "threshold": (rec.get("cosine") or {}).get("threshold"),
-                    "run_gate_pass": bool((rec.get("run_gate") or {}).get("pass")),
-                    "verdict": rec.get("verdict"),
-                }
-                if not entry["run_gate_pass"]:
-                    raise Refusal(f"{label}'s committed gate (ii) does not PASS ({path})")
-                cited.append(entry)
+            cited, records = cite_gate_records(self.args.gate_record, self.geoms)
             row["gate_ii"] = cited
+            row["context_constants"] = context_constants_match(records["pool1"], records["pool2"])
+            self.gate_records = records
             row["caps"] = {
                 "probe_cap_s": round(self.probe_cap_s, 3),
                 "train_cap_s": round(self.train_cap_s, 3),
@@ -593,7 +793,19 @@ class Exp62Campaign:
     def replay_row(self) -> dict[str, Any]:
         row = self.base_row("replay", "-", "-")
         try:
-            row.update(replay_prediction(self.geoms["pool1"], self.geoms["pool2"]))
+            g = getattr(self, "gate_records", None) or {}
+            row.update(
+                replay_prediction(self.geoms["pool1"], self.geoms["pool2"], gate1=g.get("pool1"), gate2=g.get("pool2"))
+            )
+            if not row["pool2_separates_internally"]:
+                # the "must" this number exists for, given a caller: without it the cross-pool gate
+                # is vacuous — a pool that cannot tell its own shore from its own water can match
+                # anything, and matching is what the NODE gate reads.
+                raise Refusal(
+                    f"pool 2 does not separate its OWN shore from its OWN water "
+                    f"({row['pool2_own_shore_water_cosine']} >= {row['threshold']}) — the cross-pool "
+                    "gate would be vacuous there"
+                )
             print(
                 f"replay on the BUILT geometry: cross-pool cos {row['cross_pool_cosine']} "
                 f"(threshold {row['threshold']}) -> predicted {'HIT' if row['predicted_cross_hit'] else 'MISS'}; "
@@ -609,10 +821,21 @@ class Exp62Campaign:
         read_pool = FROZEN["read_pool"][arm]
         row = self.base_row("row", arm, seed)
         row.update({"train_pool": FROZEN["train_pool"], "read_pool": read_pool})
-        home = self.workdir / f"{arm}_{seed}"
+        # the agent's home sits BESIDE the row's cwd, never on it: the row chdirs into
+        # `workdir/<arm>_<seed>` (the loop writes cwd-relative) and the home is cleared below
+        home = self.workdir / f"{arm}_{seed}" / "agent"
         agent_id = f"exp62_{arm}_{seed}"
         aut = pump = trial = None
         try:
+            # "One FRESH agent per row" is the design, and `build_bio_stack` defaults to
+            # `load_persisted=True` — so a home left by an earlier ATTEMPT at this (arm, seed) would
+            # be restored, fear and all. `--resume` exists to re-run refused rows, which makes that
+            # the common case, not an edge one: the rebuilt agent would carry the previous attempt's
+            # booked fear (possibly booked at the previous attempt's READ pool) into a row published
+            # as a clean cross-pool carry, and would turn the ablated arm into a false leak refusal.
+            # `check_no_positive_escape_link` cannot see it — it reads causal links, not fear.
+            # Exp 61 clears the home before every build; so does this.
+            shutil.rmtree(home, ignore_errors=True)
             aut, encoder, pump = build_aut(self.args, agent_id=agent_id, home=home)
             trial = WaterTrial(
                 aut=aut,
@@ -641,6 +864,7 @@ class Exp62Campaign:
             trial.check_gamerules()
             shore_pre, water_pre = trial.check_clusters_distinct()
             row["preflight_clusters"] = {"shore": shore_pre, "water": water_pre}
+            row["train_pool_state"] = _context_snapshot(trial)
             trial.resolve_tools()
             trial.rescue("ready")
             trial.deaths0 = trial.deaths()
@@ -655,7 +879,11 @@ class Exp62Campaign:
             previous = trial.use_geometry(self.geoms[read_pool])
             row["previous_geometry_pool_id"] = (previous or {}).get("pool_id")
 
-            # 4. the NODE gate at the read pool, loop OFF — THE RESULT
+            # 4. the NODE gate at the read pool, loop OFF — THE RESULT.
+            # The live snapshot is recorded on BOTH sides: when the gate misses, §Outcome has to
+            # name WHICH live thing differed, and light/time is the named suspect (A1). Without it
+            # the report can only say "the replay was wrong about something live".
+            row["live_state"] = {"read_pool": _context_snapshot(trial)}
             try:
                 fields = trial.live_g2(FROZEN["g2_arm"][arm], episode_clusters, water_pre)
                 g2_raised = None
@@ -724,12 +952,66 @@ class Exp62Campaign:
 # ─────────────────────────── wiring ───────────────────────────
 
 
+def cite_gate_records(
+    paths: list[str], geoms: dict[str, dict[str, Any]]
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    """Load, bind and GATE the two committed gate-(ii) records. Refuses; never scores.
+
+    Both subcommands go through this, because the replay row is written first and is exactly where
+    a stale record would do its damage (its synthetic prediction cannot see light or time at all).
+    """
+    if len(paths) != 2:
+        raise Refusal("pass --gate-record twice: pool 1's committed gate-(ii) record, then pool 2's")
+    cited, records = [], {}
+    for label, path in zip(("pool1", "pool2"), paths, strict=True):
+        rec = json.loads(Path(path).expanduser().read_text())
+        records[label] = rec
+        entry = {
+            "pool": label,
+            "record": str(path),
+            "cos_a4": (rec.get("cosine") or {}).get("a4_gained"),
+            "threshold": (rec.get("cosine") or {}).get("threshold"),
+            "run_gate_pass": bool((rec.get("run_gate") or {}).get("pass")),
+            "verdict": rec.get("verdict"),
+        }
+        if not entry["run_gate_pass"]:
+            raise Refusal(f"{label}'s committed gate (ii) does not PASS ({path})")
+        mismatch = gate_record_matches_pool(rec, geoms[label])
+        if mismatch:
+            raise Refusal(f"{label}: {mismatch} ({path})")
+        cited.append(entry)
+    # The prereg's light/time gate. A run_gate PASS is not it: pool 2's stale-light record passes
+    # its OWN gate and still puts the cross-pool contrast on the light axis.
+    ctx = context_constants_match(records["pool1"], records["pool2"])
+    if not ctx["match"]:
+        raise Refusal(
+            "the two pools' gate-(ii) records disagree on the full-weight constants — "
+            + "; ".join(ctx["mismatches"])
+            + ". The contrast would be a LIGHT/TIME contrast, not a pool contrast (prereg §Apparatus: "
+            "light and time GATED equal; a stale-light read at a freshly filled box is the known "
+            "failure — re-probe after a client reconnect and cite THAT record)"
+        )
+    return cited, records
+
+
+def _context_snapshot(trial: WaterTrial) -> dict[str, Any]:
+    """The full-weight constants as the BODY currently senses them, straight off the bridge."""
+    state = trial.aut.client.latest_state() or {}
+    return {k: state.get(k) for k in (*CONTEXT_SENSORS, "y_altitude", "distance_from_spawn", "is_in_water")}
+
+
 def load_geoms(pool1: str, pool2: str) -> dict[str, dict[str, Any]]:
     geoms: dict[str, dict[str, Any]] = {}
     for label, path in (("pool1", pool1), ("pool2", pool2)):
         rec = json.loads(Path(path).expanduser().read_text())
-        if "measured" not in rec:
+        measured = rec.get("measured")
+        if not isinstance(measured, dict):
             raise Refusal(f"{label}'s record ({path}) carries no `measured` block — run exp60_water_check on it first")
+        # a PARTIAL block is its own failure: the caps are derived from these two keys, and a bare
+        # KeyError three frames later is not the documented refusal
+        for key in ("t_pain_edge_min_s", "t_damage_onset_min_s"):
+            if measured.get(key) is None:
+                raise Refusal(f"{label}'s `measured` block ({path}) has no {key} — re-run exp60_water_check on it")
         geoms[label] = rec
     if geoms["pool1"].get("pool_id") == geoms["pool2"].get("pool_id"):
         raise Refusal(
@@ -799,6 +1081,11 @@ def cmd_replay(args: argparse.Namespace) -> int:
         print(f"[FAIL] {exc}")
         return 4
     camp = Exp62Campaign(args, geoms, provenance=provenance, out_path=out_path, campaign_id=args.campaign_id)
+    try:
+        _cited, camp.gate_records = cite_gate_records(args.gate_record, geoms)
+    except (Refusal, OSError, ValueError) as exc:
+        print(f"[FAIL] {exc}")
+        return 4
     return 0 if camp.replay_row().get("refusal") is None else 4
 
 
@@ -823,6 +1110,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     if camp.apparatus_citation().get("refusal") is not None:
         return 4  # nothing measured after this would be trustworthy
     done = existing_clean(out_path, campaign_id) if args.resume else set()
+    unknown_arms = set(args.only) - set(ARM_ORDER)
+    if unknown_arms:
+        print(f"[FAIL] --only names no such arm: {sorted(unknown_arms)} (arms are {list(ARM_ORDER)})")
+        return 2
     arms = [a for a in ARM_ORDER if not args.only or a in args.only]
     print(
         f"campaign {campaign_id}: workdir {camp.workdir}; probe cap {camp.probe_cap_s:.2f}s "
@@ -844,7 +1135,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 exit_code = 4
     finally:
         os.chdir(prev_cwd)
-        camp.rcon.close()
+        camp.close()
     print(f"\ncampaign {campaign_id} -> {out_path}")
     return exit_code
 
@@ -885,8 +1176,11 @@ def main(argv: list[str] | None = None) -> int:
     rp.add_argument("--campaign-id", required=True)
     rp.add_argument("--out", default="docs/experiments/data/exp62_rows.jsonl")
     _anchor_args(rp)
+    rp.add_argument(
+        "--gate-record", action="append", default=[], help="committed gate-(ii) record; pass TWICE, pool 1 first"
+    )
     _evidence_args(rp)
-    rp.set_defaults(func=cmd_replay, workdir=".", gate_record=[], rcon_host="", rcon_port=0, rcon_password="")
+    rp.set_defaults(func=cmd_replay, workdir=".", rcon_host="", rcon_port=0, rcon_password="")
 
     r = sub.add_parser("run", help="the live campaign (arms interleaved seed by seed)")
     r.add_argument("--campaign-id", default=None)
