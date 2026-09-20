@@ -599,7 +599,11 @@ class TestTwoPoolBuildOffline:
         pool2 = tmp_path / "exp62_pool2_water_classroom.json"
         self._build(monkeypatch, tmp_path, shore_y=95, anchor_file=pool2, pool_id="pool2")
         out = capsys.readouterr().out
-        assert "--anchor-file" in out and "exp62_pool2_water_apparatus.json" in out
+        # The builder must not hard-code a docs/experiments/data path (the provenance lint reads
+        # that as "this script writes gated records"); it names the FLAGS, and the check itself
+        # refuses a default --out while naming the path to use.
+        assert "--anchor-file" in out and str(pool2) in out
+        assert "--out" in out and "docs/experiments/data" not in out
 
     def test_a_failed_fill_or_verification_refuses_the_build(self, monkeypatch, tmp_path):
         """The fake must not only speak success — the builder's refusal branches are load-bearing."""

@@ -842,16 +842,14 @@ def _water_classroom(args: argparse.Namespace) -> int:
             + (
                 ""
                 if anchor_file == WATER_ANCHOR_FILE
-                else (
-                    f" \\\n    --anchor-file {anchor_file} "
-                    f"--out docs/experiments/data/exp62_{args.pool_id}_water_apparatus.json"
-                )
+                else (f" \\\n    --anchor-file {anchor_file} --out <this pool's OWN apparatus record>")
             )
             + (
                 ""
                 if anchor_file == WATER_ANCHOR_FILE
                 else "\n  (both flags are REQUIRED for a second pool: without them the check reads pool 1's "
-                "record, stamps THIS pool's timings into it, and overwrites Exp 60's committed apparatus.)"
+                "record, stamps THIS pool's timings into it, and overwrites Exp 60's committed apparatus. "
+                "Run the check without --out and it refuses, naming the path to use.)"
             )
         )
         return 0
