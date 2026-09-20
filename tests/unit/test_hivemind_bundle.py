@@ -1224,7 +1224,7 @@ class TestGate7TypedBundles:
     yet" — D43 barrier 3. Gate 7 does not make cross-body sharing WORK; it
     makes its absence LOUD, which is this codebase's rule for a silent no-op.
 
-    The design note is `docs/plans/d43_merge_correctness.md` §5a, including why
+    The design note is `docs/plans/archive/d43_merge_correctness.md` §5a, including why
     the capability key is emitted alongside from day one.
     """
 

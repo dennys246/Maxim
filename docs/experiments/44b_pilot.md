@@ -181,7 +181,7 @@ confirmatory run must start after the prereg (and any amendment) is on `main`.
 ## What must be settled before the freeze
 
 1. **Name-copying vs learned content** — F1 makes this the central open question. Design:
-   [../plans/annotation_context_and_provenance.md](../plans/annotation_context_and_provenance.md).
+   [../plans/annotation_context_and_provenance.md](../plans/deferred/annotation_context_and_provenance.md).
 2. **Determinism of temp-0 re-query** (#496) — the method's core assumption. **First
    measurement 2026-08-24 (§S4): 0.000 flips on 11 identical-prompt pairs** across
    two arms; one seed per arm, so the freeze should still budget a determinism

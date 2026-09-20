@@ -103,7 +103,7 @@ initially mis-filed as D51** (corrected 2026-09-03: `pattern_complete_or_separat
 consults `LSHIndex`; the cost lands on the exact `_substrate_nodes` scan, which has no index
 of any kind, and production shares ONE EC across channels so per-encode cost scales with the
 TOTAL store. Measurement + frozen decision rule: `scripts/ec_scan_cost.py`,
-[docs/plans/world_seam_1_1_4.md](../plans/world_seam_1_1_4.md) decision D4). Separately, if per-type channels ship for their own reasons,
+[docs/plans/archive/world_seam_1_1_4.md](../plans/archive/world_seam_1_1_4.md) decision D4). Separately, if per-type channels ship for their own reasons,
 `recommend_action` sums `cluster_reward_bias` additively across the active channel set, so
 the term's range grows with channel count (±2 today, ±5 at G=5) while `min_confidence`
 stays 0.3 — every added channel is a selection-dynamics recalibration and nothing in CI
@@ -203,7 +203,7 @@ resource, plan as one.
    the prerequisite is the `_substrate_nodes` scan itself — `LSHIndex` (D51) is not on
    this path and fixing it would not help. Measured at A4's allocation rate by
    `scripts/ec_scan_cost.py` (frozen decision rule in its docstring; verdict recorded in
-   [docs/plans/world_seam_1_1_4.md](../plans/world_seam_1_1_4.md)).** MEASURED 2026-09-03,
+   [docs/plans/archive/world_seam_1_1_4.md](../plans/archive/world_seam_1_1_4.md)).** MEASURED 2026-09-03,
    verdict **index-prerequisite**: the Python scan crosses 5 ms at ≈238 nodes vs a projected
    8,375-node 4-hour-session store (p95 there ≈291 ms); the chosen remedy is a vectorized
    EXACT scan (p95 0.89 ms @ a 20k-node store), shipping with A4. Data:

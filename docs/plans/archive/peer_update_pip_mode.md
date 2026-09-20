@@ -6,7 +6,7 @@
 **Gates:** Nothing. Quality-of-life for non-dev deployments.
 **Depends on:** Plan 4 C3.5 (SHIPPED — `admin_core.py` + mesh-aware update verbs).
 **Blocks:** Nothing. Enables pip-only leader deployments without a git checkout.
-**Parent:** [reactive_peer_mesh_roadmap.md](../reactive_peer_mesh_roadmap.md) (feeds C8 cross-version compatibility story).
+**Parent:** [reactive_peer_mesh_roadmap.md](../deferred/reactive_peer_mesh_roadmap.md) (feeds C8 cross-version compatibility story).
 
 ## Goal
 

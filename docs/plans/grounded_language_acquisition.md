@@ -1,8 +1,37 @@
 # Grounded Language Acquisition + Substrate-Primary AUT (parallel-mode architecture)
 
+> **REVIVED 2026-09-19 as a PARALLEL LINE, with an entry condition (owner decision).** The
+> 2026-09-19 plans audit flagged this file: it declared itself the active umbrella while no roadmap
+> referenced it, and two files it names were never written (`src/maxim/language/binding_registry.py`,
+> `tests/integration/test_substrate_action_generation.py` — treat every unbuilt path below as a
+> proposal, not a description). The thesis it sketched was meanwhile validated by another route:
+> 1.2 and 1.3 earned substrate-primary action selection, a learned situation-fear, and its transfer
+> between agents, with no language model in the action path.
+>
+> **What changed in this plan's favour is DATA.** Phase 2's symbol-binding layer is structurally the
+> projection in [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md),
+> whose blocker was never the idea but the absence of paired cross-modal examples. The survival world
+> produces a pairing on every tick: a world sensor vector, and a text percept of the same moment
+> (`MinecraftPerceptSource` turns each bridge event into `[minecraft:<kind>] <text>`).
+>
+> **Entry condition — the paired-data audit, and nothing else starts before it.** ~50 lines over
+> committed survival-world runs, answering: how many (sensor vector, text percept) pairs exist per
+> run and per situation; how many DISTINCT texts, and how many are templated game strings rather
+> than language (a template is a label — grounding on labels is not grounding language, and this is
+> the risk the audit exists to measure); whether the pairs cover more than one situation; and what
+> the sensor side looks like at the moment the text arrives. The audit commits to nothing. If it
+> passes, this plan's Phase 1–2 and the projection plan revive TOGETHER, with a pre-registered
+> experiment and the usual four-lens review. If it fails, this file says so and goes to `archive/`.
+>
+> **It is a parallel line, not a rung of 1.4** ([roadmap_1_4.md](roadmap_1_4.md) §Parallel lines):
+> 1.4's ladder already carries a may-fail headline and an instrument rebuild, and a second research
+> line inside it would make a null in either hard to read. Same guardrail as intrinsic motivation:
+> it must not silently power E1–E3 — if any language path ever touches the survival rungs, it enters
+> as a declared arm or not at all.
+
 **Status:** ACTIVE — promoted from deferred 2026-05-09 after E4 validation surfaced the LLM-band-aid drift (60-70% of recent engineering effort spent on LLM-mitigation scaffolding, ~845 LOC of band-aid code, growing). The MVP for negative-instruction tool-failure hints failed validation (n=6 per arm, no benefit observed; default flipped OFF), making the architectural pivot urgent.
 **Begins:** Phase -1 + Phase 0 harness in 1.0 (parallel to docs work). Full Phase 0 validation, Phase 1, and Phase 2 in 1.1+. Substrate-primary AUT mode (the parallel-architecture work) interleaves with the language phases.
-**Companion plans:** [persona_convergence_crucible.md](deferred/persona_convergence_crucible.md) (Roy methodology — same long-horizon shape), [behavioral_convergence_practice.md](deferred/behavioral_convergence_practice.md), [memory_consolidation_practice.md](deferred/memory_consolidation_practice.md), [v1_refinement.md](archive/v1_refinement.md) (Phase 0 harness scope add)
+**Companion plans:** [persona_convergence_crucible.md](deferred/persona_convergence_crucible.md) (Roy methodology — same long-horizon shape), [behavioral_convergence_practice.md](deferred/behavioral_convergence_practice.md), [memory_consolidation_practice.md](archive/memory_consolidation_practice.md), [v1_refinement.md](archive/v1_refinement.md) (Phase 0 harness scope add)
 **Operating context:** Roy long-horizon simulations (sim-years of subjective experience) with persistent substrate across sessions, plus deliberately text-heavy curricular sims (mom-reading, teacher-student, dialogue). The substrate-primary AUT runs in **parallel mode** — the existing LLM-AUT path remains available so users can continue running D&D campaigns and other long-horizon LLM-driven sims while this work matures.
 
 ## Front-gate scope pressure (retroactive)
@@ -185,7 +214,7 @@ So: do the cheap thesis-tests first, then earn the right to the expensive build.
 **Gate / kill criterion:**
 - **Pass:** measurable EC cluster formation tied to repeating sensorimotor patterns; NAc reward_bias differentiates drive-resolution events from null events; cross-session re-activation > chance.
 - **Fail:** no detectable substrate structure after 50+ sessions of Roy-scale exposure. **Stops the program.** If bio-systems can't form concepts without linguistic supervision, the thesis is wrong and Phases 1-4 have nothing to ground in.
-- **Mixed:** clusters form but don't persist, or persist but don't generalize. Diagnostic, not fatal — feeds [memory_consolidation_practice.md](deferred/memory_consolidation_practice.md).
+- **Mixed:** clusters form but don't persist, or persist but don't generalize. Diagnostic, not fatal — feeds [memory_consolidation_practice.md](archive/memory_consolidation_practice.md).
 
 **What this DOESN'T test:** language. Phase 0 is intentionally pre-linguistic. Whether words can later bind to these clusters is Phase 2's question.
 
@@ -299,7 +328,7 @@ Pretrained tokenizers (BPE from GPT-2/3/4, SentencePiece, etc.) carry priors. Th
 ### Catastrophic forgetting across sessions
 
 Online learning + persistent weights = a known disaster mode. Mitigation across all phases:
-- **Replay-based consolidation:** hippocampal episodes are already replayed during sleep ([memory_consolidation_practice.md](deferred/memory_consolidation_practice.md)). Extend the replay path to feed the binding-layer (Phase 2) and language model (Phase 3) training batches. This is biologically motivated and operationally necessary.
+- **Replay-based consolidation:** hippocampal episodes are already replayed during sleep ([memory_consolidation_practice.md](archive/memory_consolidation_practice.md)). Extend the replay path to feed the binding-layer (Phase 2) and language model (Phase 3) training batches. This is biologically motivated and operationally necessary.
 - **Per-session checkpoints with rollback:** if a session destabilizes the model (loss spike, eval collapse), revert. The cost is one sim's worth of learning; the benefit is bounded blast radius.
 - **Importance-weighted updates:** linguistic events tied to high-valence outcomes weight more in the consolidation batch. This piggybacks on existing valence machinery.
 

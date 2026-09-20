@@ -16,7 +16,7 @@ server, or body — so standing this up does not touch the Exp 56 EARNED result.
 Exp 56's proven mechanics where they carry: the `fill.papermc.io/v3` download (the old
 `api.papermc.io/v2` returns 410 Gone) and `exp56.common.RconControl` for the world script.
 
-Version: Paper 1.20.4 (DECIDED 2026-09-13 — docs/plans/survival_world_1_3.md §"Minecraft
+Version: Paper 1.20.4 (DECIDED 2026-09-13 — docs/plans/archive/survival_world_1_3.md §"Minecraft
 version"; the 1.3 platform, ported off the 1.16.5 the break-3 smoke first ran on). mineflayer
 `^4.20.0` negotiates the protocol, so the bridge needs no version change. Design-relevant
 mechanic delta vs 1.16.5: since 1.18, hostile mobs spawn only at block-light 0 (not <=7), which

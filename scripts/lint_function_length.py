@@ -72,7 +72,7 @@ def check() -> int:
             failures.append(
                 f"{rel}::{name} grew to {span} lines (pin {pinned}). This function is a "
                 f"known god-function; add code by EXTRACTING, not growing it. See "
-                f"docs/plans/god_function_decomposition.md."
+                f"docs/plans/archive/god_function_decomposition.md."
             )
 
     if failures:

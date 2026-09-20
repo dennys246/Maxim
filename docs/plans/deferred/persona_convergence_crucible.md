@@ -4,8 +4,8 @@
 
 
 **Status:** living doc, ongoing practice
-**Begins:** post-1.0 (after [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md) and [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) ship)
-**Companion living docs:** [behavioral_convergence_practice.md](behavioral_convergence_practice.md) ("does the agent get better across sessions?"), [memory_consolidation_practice.md](memory_consolidation_practice.md) ("does sleep replay actually consolidate?")
+**Begins:** post-1.0 (after [persona_cleanup_and_mode_transition.md](../archive/persona_cleanup_and_mode_transition.md) and [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) ship)
+**Companion living docs:** [behavioral_convergence_practice.md](behavioral_convergence_practice.md) ("does the agent get better across sessions?"), [memory_consolidation_practice.md](../archive/memory_consolidation_practice.md) ("does sleep replay actually consolidate?")
 
 ## What this is
 
@@ -117,7 +117,7 @@ These are sketches. Each becomes a real plan only when the preceding Roy's itera
 **Hypothesis:** an agent who repeatedly experiences betrayal and exploitation in multi-agent encounters will develop substrate-grounded suspicion that expresses behaviorally on novel agents at test time, distinguishably from a prompt-injected adversarial agent.
 
 ### Why adversarial first
-- Narrative resonance: we just deleted the prompt-injection adversarial persona ([persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md)); reviving it through lived experience is the cleanest demonstration of the cleanup's purpose.
+- Narrative resonance: we just deleted the prompt-injection adversarial persona ([persona_cleanup_and_mode_transition.md](../archive/persona_cleanup_and_mode_transition.md)); reviving it through lived experience is the cleanest demonstration of the cleanup's purpose.
 - Loud at the gross-behavior level — easy to point at and characterize.
 - The deletion in the cleanup plan creates a clean Roy-1-B baseline (blank substrate + prompt-injected adversarial) that's directly comparable to Roy-1-A.
 
@@ -1040,8 +1040,8 @@ This section is updated whenever a Roy iteration concludes. The diff between the
 
 ## Cross-references
 
-- [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md) — the cleanup that creates the Roy-N-B baseline arm.
+- [persona_cleanup_and_mode_transition.md](../archive/persona_cleanup_and_mode_transition.md) — the cleanup that creates the Roy-N-B baseline arm.
 - [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) — the wires this doc depends on.
 - [behavioral_convergence_practice.md](behavioral_convergence_practice.md) — sister living doc for within-agent improvement.
-- [memory_consolidation_practice.md](memory_consolidation_practice.md) — sister living doc for sleep-replay consolidation.
+- [memory_consolidation_practice.md](../archive/memory_consolidation_practice.md) — sister living doc for sleep-replay consolidation.
 - [docs/experiments/protocols/](../experiments/protocols/) — reproduction runbooks for each Roy iteration land here.

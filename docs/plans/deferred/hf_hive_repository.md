@@ -15,7 +15,7 @@ launch-window work:
   trust decisions**, and is the right 1.2/1.3 launch companion.
 - **Phase 2 — public submissions + gauntlet + promotion to a "main stream"**: this IS the
   Queen-tier promotion pipeline that Slice D explicitly deferred with its blockers named
-  ([hivemind_p2p_scope.md](../hivemind_p2p_scope.md) §Slice D), plus a public front door
+  ([hivemind_p2p_scope.md](../archive/hivemind_p2p_scope.md) §Slice D), plus a public front door
   on top. It cannot ship honestly before those prerequisites land, and it re-opens
   decision point 4 (no project-hosted Oasis) deliberately. 1.3+ work.
 
@@ -49,7 +49,7 @@ The shipped 1.2 trust design already treats the distribution channel as untruste
 - Trust anchors are **ed25519 Queen signatures** (Slice A) verified by the consumer, plus
   the operator's `hive.json` Queen keys — never the host that served the bytes.
 - The receiver re-runs the full V1–V10 admission pipeline on every ingest
-  ([oasis_ingestion_contract.md](../oasis_ingestion_contract.md)) regardless of origin.
+  ([oasis_ingestion_contract.md](../archive/oasis_ingestion_contract.md)) regardless of origin.
 
 So hosting signed release bundles on HF (or any static host) adds **zero new trust
 surface** for consumers. HF is just a mirror; a tampered bundle fails
@@ -135,13 +135,13 @@ the main stream, ever.
 
 ## 6. Related
 
-- [hivemind_p2p_scope.md](../hivemind_p2p_scope.md) — Slice D block: the deferred
+- [hivemind_p2p_scope.md](../archive/hivemind_p2p_scope.md) — Slice D block: the deferred
   promotion pipeline + its four prerequisites; decision point 4.
-- [oasis_ingestion_contract.md](../oasis_ingestion_contract.md) — the receiver-side
+- [oasis_ingestion_contract.md](../archive/oasis_ingestion_contract.md) — the receiver-side
   V1–V10 pipeline every pulled bundle passes; §6/§7 schedule Gauntlet #3.
 - [sharing_threat_model.md](../sharing_threat_model.md) — the frozen receiver contract;
   Phase 2 owes it a repo-side addendum.
-- [coding_habits_oasis.md](../coding_habits_oasis.md) §4 — Gauntlet #3 design; the
+- [coding_habits_oasis.md](coding_habits_oasis.md) §4 — Gauntlet #3 design; the
   inherent bias class Queen promotion would exercise.
 - [minecraft_benchmark.md](../minecraft_benchmark.md) Part II — R1's cache-not-concept
   bound; the survival benchmark as a candidate future gauntlet bench.

@@ -18,7 +18,7 @@ capped at 3-way discrimination regardless of learning quality.
 | 2026-07-22 | Exp 46 creche, raw scalar | 2 clusters (graded orient 0.19 pre-fix) | [46_operant_orient_creche.md](../experiments/46_operant_orient_creche.md) |
 | 2026-07-22 | Exp 46 + Gaussian place code (experiment-side) | 6/6 distinct clusters, graded orient 0.19 → 0.82 | same |
 | 2026-08-11 | RSC pre-check, production path | **~3 nodes** — channel is RESOLUTION-bound, not frame-confused (refuted the predicted failure mode; re-sequenced the RSC plan) | `scripts/rsc_precheck.py`; [retrosplenial_spatial_frames.md](../plans/deferred/retrosplenial_spatial_frames.md) §2 |
-| 2026-08-12 | production, `MAXIM_PLACE_CODE_EXTEROCEPTION=1` | **7 nodes** (3 → 7) | [modality_resolution_and_alignment.md](../plans/modality_resolution_and_alignment.md) §7 (#499) |
+| 2026-08-12 | production, `MAXIM_PLACE_CODE_EXTEROCEPTION=1` | **7 nodes** (3 → 7) | [modality_resolution_and_alignment.md](../plans/deferred/modality_resolution_and_alignment.md) §7 (#499) |
 
 ## What raises the ceiling (mitigation lineage)
 

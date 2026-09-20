@@ -35,7 +35,7 @@ magnitude learning at 0.75.
    load-bearing: **never fabricate a direction** (Reachy uses the chip's
    `is_speech_detected`; a custom front-end would use a VAD or energy threshold). Where
    localization runs is your business — see
-   [perception pipeline placement](../plans/perception_pipeline_placement.md).
+   [perception pipeline placement](../plans/deferred/perception_pipeline_placement.md).
 2. **A yaw primitive that rotates the SENSING frame**: "turn the bearing sensor by
    ±delta about the vertical axis." Which joint implements it is your choice (Reachy:
    the *base*, because the head clamps at ±15-18°; a biped: torso or step-turn). Two
@@ -189,7 +189,7 @@ answer:
 The second consumer triggers the mechanical refactor — not before:
 
 > **The trigger is evaluated PER LAYER, not per robot** (added 2026-08-31,
-> [../plans/microduck_intent_layer.md](../plans/microduck_intent_layer.md) §2.6). Items 1 and 2
+> [../plans/microduck_intent_layer.md](../plans/deferred/microduck_intent_layer.md) §2.6). Items 1 and 2
 > below fire only for a robot that is genuinely a *consumer of the orient rig* — i.e. one with a
 > bearing source. A second robot with **no mic array** is not a second consumer of `OrientRig`,
 > and extracting the protocol against it would be abstracting from one example while claiming
@@ -251,8 +251,8 @@ tiny (a handful of numbers), and privacy-clean by construction.
 
 ## Pointers
 
-- Umbrella plan + rigor bar: [substrate_native_orienting.md](../plans/substrate_native_orienting.md)
-- Live runbook (this protocol's concrete instance): [reachy_orient_live.md](../plans/reachy_orient_live.md)
+- Umbrella plan + rigor bar: [substrate_native_orienting.md](../plans/deferred/substrate_native_orienting.md)
+- Live runbook (this protocol's concrete instance): [reachy_orient_live.md](../plans/deferred/reachy_orient_live.md)
 - Sensor deep-dive + measured response: [reachy_mini/audio_localization.md](reachy_mini/audio_localization.md)
 - Magnitude/bins/boundary line: [orient_magnitude_learning.md](../plans/deferred/orient_magnitude_learning.md)
 - Results: [Exp 45](../experiments/45_reachy_orient_live.md) · [45b](../experiments/45b_orient_magnitude.md) · [45c](../experiments/45c_flip_bins.md)

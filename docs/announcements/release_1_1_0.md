@@ -70,7 +70,7 @@ these experiments measure. Full ledgers: [limits](https://github.com/dennys246/M
 
 1.1.1: the Reachy-native nursery body and the loudness/onset salience design. 1.2: Oasis +
 Hivemind — peer substrate sharing, with this release's taught want as the case study
-([plan](https://github.com/dennys246/Maxim/blob/main/docs/plans/oasis_case_study_taught_orient.md)).
+([plan](https://github.com/dennys246/Maxim/blob/main/docs/plans/archive/oasis_case_study_taught_orient.md)).
 
 Artifacts attached to this release are the exact wheel and sdist uploaded to PyPI; the
 tag points at the commit that built them.

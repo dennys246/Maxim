@@ -319,6 +319,25 @@ would not have caught any of them. A release may cite a gating result when:
 - **(b)** its **INTERPRETATION** (write-up + ledger row) landed in a **separate, later** PR;
 - **(c)** that interpretation PR got a review pass from **a different reader**.
 
+**How (c) is actually done, and what it is worth (added 2026-09-19, the 1.3.0 release).** Give one
+reader the DATA and the interpretation — never your conclusion — and ask it to recompute every
+number from the raw rows and flag any claim it cannot source. For 1.3.0 both interpretations (R3's
+§Outcome, the Exp 56 re-baseline) had been written by the release author and merged unread; the
+pass took minutes and found **two wrong claims** before publication: a direction error on a
+cost-like DV (the R3 recount moved the carried-fear median *down* — which on time-to-air is FASTER,
+i.e. toward the claim, not against it; the same error was already merged in the prereg's honesty
+note and now carries an erratum) and "the receiver acts on its FIRST submersion" where the
+lifecycle submerges it once, loop-OFF, at the representation gate first. Everything else it
+recomputed matched. Fold its findings and its report into the release PR.
+
+**Two writing checks the same pass produced, for any release notes:**
+- **State a direction in claim terms.** On latency, pain-seconds, damage or error counts, "up" and
+  "down" invert their meaning relative to "supports" and "undercuts" — write "0.10 s faster, in the
+  claim's direction", not "down, against the claim".
+- **Notes are read on the Releases page**, where a relative link 404s and
+  `audit_release_tags.py --check-releases` fails the repo for it: use absolute
+  `https://github.com/...` links (four slipped into the 1.3.0 draft).
+
 (a) and (b) are mechanically checkable — two distinct merge commits, data strictly earlier.
 (c) is the same different-reader discipline the review rounds rest on and is not mechanized.
 

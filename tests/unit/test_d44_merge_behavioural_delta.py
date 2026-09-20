@@ -1,7 +1,7 @@
 """D44 — a merge must change BEHAVIOUR, between genuinely independent agents.
 
 This is 1.1.3's **ship gate**, and it is written to fail. Per
-`docs/plans/d43_merge_correctness.md` §6: *a D44 test that is green before D43
+`docs/plans/archive/d43_merge_correctness.md` §6: *a D44 test that is green before D43
 is fixed is by definition testing the wrong thing.* Re-keying does not exist on
 `main` — `nac_merge` folds `cluster_reward_bias` by exact key match, and
 `ec_merge` computes its right→left node alignment and **discards the id map** —

@@ -2,7 +2,7 @@
 
 Reviewer lens: does the per-type `world` channel-split respect how the real
 `_sensor_embed` → EC substrate actually works, or does it break the mechanism's
-semantics? Reads `docs/plans/l11_slice2_channel_split.md`,
+semantics? Reads `docs/plans/archive/l11_slice2_channel_split.md`,
 `docs/experiments/data/l11_geometry_2026-09-15.json`, `docs/agents/bio-memory.md`,
 `docs/limits/l11_sensor_dilution.md`, and the code
 (`similarity/encoder.py::_sensor_embed`, `::SensorEncoderConfig`,

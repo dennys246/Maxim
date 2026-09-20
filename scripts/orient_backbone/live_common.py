@@ -1,6 +1,6 @@
 """Shared glue for the Phase 1 live orient scripts (Steps 2-3).
 
-docs/plans/reachy_orient_live.md. Reuses the Step-1 hardware-verified
+docs/plans/deferred/reachy_orient_live.md. Reuses the Step-1 hardware-verified
 primitives from live_1_smoke.py (REST DoA read, host resolution, preflight)
 and adds the pieces Steps 2-3 share:
 

@@ -650,7 +650,7 @@ def _resolve_receiver_pair(session_dir: Path) -> tuple[Path, Path] | None:
 def _run_ingest(args: argparse.Namespace) -> int:
     """The 1.2 Oasis ingestion verb — V1–V10 validated merge into a receiver.
 
-    docs/plans/oasis_ingestion_contract.md is the design record; the
+    docs/plans/archive/oasis_ingestion_contract.md is the design record; the
     pipeline lives in :func:`maxim.hivemind.ingest.ingest_bundle`. Dry-run
     by default (the ``invalidate`` precedent); ``--apply`` writes with a
     pre-ingest backup (the ``merge-nac`` precedent). MUST NOT run against

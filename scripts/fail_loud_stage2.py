@@ -3,14 +3,14 @@
 
 WHY THIS EXISTS
 ---------------
-`docs/plans/measurement_path_fail_loud.md` Stage 1 (PR #487) replaced every
+`docs/plans/deferred/measurement_path_fail_loud.md` Stage 1 (PR #487) replaced every
 silent swallow in the measurement path with a zero-arg
 ``log_swallowed_exception()`` call, which emits a structured
 ``swallowed_exception`` event into the ``MAXIM_LOG_FILE`` JSONL. Stage 2 is the
 measurement: run the real paths, see which of those sites FIRE, and freeze the
 answer as a baseline.
 
-The baseline is not decoration. `docs/plans/god_function_decomposition.md`
+The baseline is not decoration. `docs/plans/archive/god_function_decomposition.md`
 states a per-PR behaviour gate — "zero new ``swallowed_exception`` firings vs
 the Stage-2 baseline" — and until this ran, that gate cited an artifact that
 did not exist. An extraction verified against a nonexistent baseline is the
@@ -325,7 +325,7 @@ def cmd_baseline(args: argparse.Namespace) -> int:
     payload = {
         "_format_version": "1.0",
         "artifact": "fail_loud_stage2_baseline",
-        "plan": "docs/plans/measurement_path_fail_loud.md",
+        "plan": "docs/plans/deferred/measurement_path_fail_loud.md",
         "generated_utc": args.generated_utc,
         "git_hash": _git_hash(REPO_ROOT),
         "working_tree_dirty_src_scripts": provenance["working_tree_dirty_src_scripts"],
@@ -435,7 +435,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     failed = bool(new_pairs) or (bool(grown) and args.strict_counts)
     if failed:
         print("\nFAIL: new swallowed_exception firings vs the Stage-2 baseline.", file=sys.stderr)
-        print("Per docs/plans/god_function_decomposition.md this blocks the PR.", file=sys.stderr)
+        print("Per docs/plans/archive/god_function_decomposition.md this blocks the PR.", file=sys.stderr)
         return 1
     print("\nOK: no new (file, exception-type) swallow firings vs baseline.")
     return 0

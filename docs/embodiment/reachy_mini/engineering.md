@@ -97,7 +97,7 @@ Facts that bit us, in order of pain:
 | DoA → azimuth | `src/maxim/embodiment/audio_localization.py` | convention unchanged across the pivot; feed it from `GET /api/state/doa` |
 | Smoke test | `scripts/orient_backbone/live_1_smoke.py` | era-aware; REST DoA; `enable_motors()` before wake |
 | Diagnostics | `scripts/check_reachy_connection.py`, `src/maxim/utils/reachy_diagnostics.py` (`maxim-diagnostics`) | WS-era probes (:8000 + status), zenoh-era checks retired |
-| Runbook | `docs/plans/reachy_orient_live.md` | Step 1 PASSED 2026-07-15 on the WS transport |
+| Runbook | `docs/plans/deferred/reachy_orient_live.md` | Step 1 PASSED 2026-07-15 on the WS transport |
 
 ## Robot-side facts (Wireless, June-2026 image)
 

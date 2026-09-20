@@ -1,6 +1,6 @@
 # L11 Slice 2 (channel-split) — ENVIRONMENT lens
 
-**Design review of `docs/plans/l11_slice2_channel_split.md` (2026-09-15).**
+**Design review of `docs/plans/archive/l11_slice2_channel_split.md` (2026-09-15).**
 Lens: is the thing the design must ultimately demonstrate REACHABLE and MEASURABLE in the
 live world, game-natively (D1), and is the sole build-authorizing gate (Q7 live re-encode)
 actually runnable? Read against the Slice-1 result

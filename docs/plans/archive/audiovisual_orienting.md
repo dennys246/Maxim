@@ -11,7 +11,7 @@ requires getting both tracks' foundations onto one base first.
 
 | | Audio (DoA) | Visual (substrate gaze) |
 |---|---|---|
-| Plan / record | [`perception_pipeline_placement.md`](../perception_pipeline_placement.md) | [`docs/experiments/43_gaze_operant_substrate.md`](../../experiments/43_gaze_operant_substrate.md) |
+| Plan / record | [`perception_pipeline_placement.md`](../deferred/perception_pipeline_placement.md) | [`docs/experiments/43_gaze_operant_substrate.md`](../../experiments/43_gaze_operant_substrate.md) |
 | Code | [`embodiment/audio_localization.py`](../../src/maxim/embodiment/audio_localization.py) | [`scripts/gaze_substrate/`](../../scripts/gaze_substrate/) |
 | State | commits 1–4 done (DoA front-end landed); commit 5 pending hardware | sim-validated (operant redirection, cross-session persistence, visual-category transfer to novel instances); P1 pending |
 | Maturity | perception **solved** (chip gives azimuth); motor/credit pending | motor loop **sim-validated**; perception (vision-encoder on real images) **unvalidated** |
@@ -134,7 +134,7 @@ Both tracks land on `main` via PRs, then Phase 0 happens in one branch/session o
 *(Resolved: motor-credit pain-vs-positive → Phase 0b experiment; action-path latency → substrate-primary, confirmed.)*
 
 ## Pointers
-- Audio: [`perception_pipeline_placement.md`](../perception_pipeline_placement.md), [`audio_localization.py`](../../src/maxim/embodiment/audio_localization.py)
+- Audio: [`perception_pipeline_placement.md`](../deferred/perception_pipeline_placement.md), [`audio_localization.py`](../../src/maxim/embodiment/audio_localization.py)
 - Visual: [`docs/experiments/43_gaze_operant_substrate.md`](../../experiments/43_gaze_operant_substrate.md), [`scripts/gaze_substrate/`](../../scripts/gaze_substrate/)
 - Binding (cancelled / gated): [`cross_modal_substrate_binding.md`](cross_modal_substrate_binding.md), [`jepa_cross_modal_alignment.md`](../deferred/jepa_cross_modal_alignment.md)
 - Drive-pain refinement: [`transition_based_drive_pain.md`](../deferred/transition_based_drive_pain.md)

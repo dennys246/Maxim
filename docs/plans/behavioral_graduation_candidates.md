@@ -19,7 +19,7 @@ Added 2026-05-27 per CLAUDE.md Principle 3.
 | CLAUDE.md two-tier invariant tagging (`[engineering]` vs `[behavioral]`) | **Provides the type signal** — and revealed the 5.6% behavioral ratio that triggered this discipline — but lacks lifecycle tracking. An invariant can be tagged `[behavioral]` and still silently regress without re-validation |
 | Regression-guard convention (Principle 5, paths/grep/structural-enforcement citations) | **Provides the format** — this doc's Earned entries use the same `Regression guard:` field so one grep audits both surfaces. But applies to engineering only; doesn't address experiment re-runs |
 | [behavioral_convergence_practice.md](deferred/behavioral_convergence_practice.md) | System-level "does the agent get better" living doc. Different scope: this one is mechanism-level "does this specific bio-claim hold" |
-| [memory_consolidation_practice.md](deferred/memory_consolidation_practice.md) | Same shape as the above — single-mechanism living doc. Not a meta-list across all behavioral claims |
+| [memory_consolidation_practice.md](archive/memory_consolidation_practice.md) | Same shape as the above — single-mechanism living doc. Not a meta-list across all behavioral claims |
 | Trigger-event-driven CI re-run of Roy iterations | Plausible 1.2+ structural enforcement, but adds infrastructure + cost the discipline can survive without. Cheaper to track manually as a living doc; CI hook is a future-proofing add |
 
 **Verdict:** yes-needs-own (small but real). The discipline is the **list itself** + the **lifecycle status states** + the **trigger-event re-run convention** — none of which fit inside CLAUDE.md's existing sections.

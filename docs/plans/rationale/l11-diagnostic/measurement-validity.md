@@ -1,7 +1,7 @@
 # L11 world-channel diagnostic — MEASUREMENT-VALIDITY / CONFOUNDING lens
 
 **Reviewer lens:** the ways this DIAGNOSTIC could return a WRONG or MISLEADING answer.
-**Target:** `docs/plans/l11_world_channel_diagnostic.md` (PLAN DRAFT 2026-09-14).
+**Target:** `docs/plans/archive/l11_world_channel_diagnostic.md` (PLAN DRAFT 2026-09-14).
 **Context read:** exp58 prereg §Outcome + Addenda 3/4/5, `cluster-dilution-blocks-situation-fear.md`,
 `docs/limits/l11_sensor_dilution.md`, `docs/agents/bio-memory.md`, `similarity/ec.py`.
 

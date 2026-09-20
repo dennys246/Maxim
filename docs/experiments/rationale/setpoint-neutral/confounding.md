@@ -4,7 +4,7 @@
 arise for a reason other than "set-point-aware neutral makes small off-rest moves rotate the
 embedding"? Right controls, a statistic matched to the baseline, no hand-built demo passing while the
 real thing fails (D43/D44).
-**Under review:** `docs/plans/setpoint_aware_neutral.md` (the L11 line's "B"), specifically its
+**Under review:** `docs/plans/deferred/setpoint_aware_neutral.md` (the L11 line's "B"), specifically its
 §Approach bullet "Diagnostic-first" (the offline replay) and open question 2.
 **Read-only except this file.** Every number below was recomputed in this session from the committed
 records through the production `_stable_basis` / `_sensor_embed`; the scripts are inline in the
@@ -51,7 +51,7 @@ hand-set one to three sensor values, embed through the production bases (`_stabl
 zero vector. They are semi-synthetic: a real base plus hand-set perturbations. I re-ran
 `l11_slice2_cosine_check.py`: 0.9766 / 0.9959 / 0.9913 / 0.9920 / 0.9911, matching the committed text.
 
-**What made the Slice-2 replay decisive** (`docs/plans/l11_slice2_channel_split.md` §status,
+**What made the Slice-2 replay decisive** (`docs/plans/archive/l11_slice2_channel_split.md` §status,
 `docs/experiments/rationale/l11-slice2/`): (1) the remedy had **zero free parameters** — channel
 membership was written in the plan before the number was computed; (2) the question was one number
 vs a fixed threshold; (3) a sanity anchor (reconstructed 0.9766 vs the probe's 0.9767) proved the
@@ -103,7 +103,7 @@ safe rest of four site sensors at `k = 8` passes (0.7947). Nothing in the plan f
 form, `k`, or threshold before the vectors are touched, and the `k`-curve is non-monotone (0.9593 →
 0.9900 → 0.9826 …), so a threshold crossing at one `k` is noise-shaped, not a signal.
 
-**Evidence.** `docs/plans/setpoint_aware_neutral.md` §Approach ("and/or … Exact form is the measured
+**Evidence.** `docs/plans/deferred/setpoint_aware_neutral.md` §Approach ("and/or … Exact form is the measured
 question"), §Build order step 2 ("NOMINATES"); the replay table above; the D43/D44 lesson in
 CLAUDE.md ("a measurement of a possibility, presented as proof it happened").
 

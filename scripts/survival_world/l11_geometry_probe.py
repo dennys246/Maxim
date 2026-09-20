@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """L11 world-channel diagnostic — SLICE 1: the live geometry probe.
 
-Step B of the L11 approach (docs/plans/l11_world_channel_diagnostic.md); Slice 1
+Step B of the L11 approach (docs/plans/archive/l11_world_channel_diagnostic.md); Slice 1
 of that plan. Motivated by Exp 58's block: safe and dark situations would not
 encode to distinct world clusters on the ~17-sensor `world` channel
 (docs/wiring/cluster-dilution-blocks-situation-fear.md).

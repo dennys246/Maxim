@@ -1,7 +1,7 @@
 """Guards for the 1.1.4 PR 1 vectorized substrate scan + A4 per-modality gain.
 
 The vectorized scan (`ec.py::_ModalityMatrix`) is the measured remedy for the
-scan-cost index-prerequisite verdict (`docs/plans/world_seam_1_1_4.md` §PR 0
+scan-cost index-prerequisite verdict (`docs/plans/archive/world_seam_1_1_4.md` §PR 0
 result). It must make the SAME DECISIONS as the per-node reference loop it
 replaced — kept verbatim as `EntorhinalCortex._scan_substrate_reference` for
 exactly this comparison. Decision equivalence, not bit equality: the BLAS

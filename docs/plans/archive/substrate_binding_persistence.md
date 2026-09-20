@@ -154,7 +154,7 @@ Two groups: A (reinforced) and B (not). Simulated time via SCN phase ticks (not 
 
 During an explicit sleep phase, replay top-N rewarded episodes with Hebbian link updates. Retrieval F1 improves on replayed probes without new input.
 
-**Deliberately not ambitious.** One strategy, one scheduling rule, one measurable improvement. Everything else goes to [memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md).
+**Deliberately not ambitious.** One strategy, one scheduling rule, one measurable improvement. Everything else goes to [memory_consolidation_practice.md](memory_consolidation_practice.md).
 
 **Scope:** ~350 LOC + ~100 metric extractor.
 

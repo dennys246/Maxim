@@ -22,7 +22,7 @@ Findings ranked. Rev 2 folds all BLOCKING and SHOULD-FIX findings and every NIT.
 
 **B1 — [Architecture] The gate-7 fold pre-decided a question the Oasis case study already decided
 the other way, leaving two active plans contradicting each other.**
-[oasis_case_study_taught_orient.md](../oasis_case_study_taught_orient.md) §1 had front-gated
+[oasis_case_study_taught_orient.md](../archive/oasis_case_study_taught_orient.md) §1 had front-gated
 exactly this choice, offered both options — (a) typed bundles `manifest.body_ref` +
 `manifest.affordance_namespace`, (b) body-agnostic keys on the SEM modulator/affordance — and
 picked (a) with a stated reason: *"(b) is the better long-term key but changes what every existing

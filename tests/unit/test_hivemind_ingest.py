@@ -7,7 +7,7 @@ one-to-one onto §4's attack rows — I (provenance forgery), J (replay /
 tombstone resurrection), K (tail-truncation eviction), L (payload free-text /
 prompt injection), M (numeric-field poisoning), N (domain stamping) — plus
 the two rows added by the 1.2 poison-resistance slice
-(docs/plans/coding_habits_oasis.md §4): positive-donor-erases-aversion
+(docs/plans/deferred/coding_habits_oasis.md §4): positive-donor-erases-aversion
 (clamped) and non-Queen-source-ships-inherent-class (refused). The V6/V7/V3
 structural duties get their own tests.
 

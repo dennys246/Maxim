@@ -423,7 +423,7 @@ handle.unsubscribe()
 
 **Stability:** ⛔ **REMOVED in 1.1** (deprecated in 0.9). The persona system was
 hard-deleted per
-[`docs/plans/deferred/persona_cleanup_and_mode_transition.md`](../plans/deferred/persona_cleanup_and_mode_transition.md)
+[`docs/plans/archive/persona_cleanup_and_mode_transition.md`](../plans/archive/persona_cleanup_and_mode_transition.md)
 Stages 3-5 (Option A):
 
 - `maxim.register_persona(...)` now **raises `RuntimeError`** — the promised

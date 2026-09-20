@@ -1060,7 +1060,7 @@ def generate_tools_for_entity(
 def derive_capability_map(entity: Entity) -> dict[str, str]:
     """Body-agnostic capability key for every affordance tool this body generates.
 
-    Gate 7 forward insurance (docs/plans/d43_merge_correctness.md §5a): maps each
+    Gate 7 forward insurance (docs/plans/archive/d43_merge_correctness.md §5a): maps each
     body-prefixed tool signature (``tool:<name>`` — the exact prefix
     ``runtime/tool_dispatch.py::build_tool_signature`` keys NAc biases on) to the
     body-agnostic ``<modulator>/<affordance>`` capability key. Derivation runs the

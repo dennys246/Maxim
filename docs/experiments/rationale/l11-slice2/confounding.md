@@ -2,7 +2,7 @@
 
 **Reviewer lens:** does the design isolate the claimed cause (per-type grouping restores the
 danger/safe contrast), or does it manufacture the result / tune the instrument so Exp 58 passes?
-**Reads:** `docs/plans/l11_slice2_channel_split.md` (under review), the Slice-1 diagnostic plan +
+**Reads:** `docs/plans/archive/l11_slice2_channel_split.md` (under review), the Slice-1 diagnostic plan +
 result (`docs/experiments/data/l11_geometry_2026-09-15.json`), the live-L11 wiring doc, and the
 L11 limits ledger (`docs/limits/l11_sensor_dilution.md`).
 
