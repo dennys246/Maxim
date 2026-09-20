@@ -1,0 +1,12 @@
+{
+  "n_states": 300,
+  "seed": 0,
+  "threshold": 0.85,
+  "gain": 3.0,
+  "band": 0.05,
+  "pairs": 44850,
+  "median": 0.23884319235027235,
+  "pct_above_threshold": 0.006688963210702341,
+  "pct_in_band": 0.0379041248606466,
+  "what_this_cannot_say": "shape only; not the world's support (see module docstring)"
+}
