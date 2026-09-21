@@ -4,7 +4,7 @@
 `scripts/exp56/README.md` (branch `exp62/decisions-taken` @ `d7ece4d9`; the `exp62_*` prereg
 edit in the same tree is out of scope) · **Purpose under review:** re-baselining the EARNED
 2026-09-06 four-arm campaign (Paper 1.16.5, ledger row
-`docs/plans/behavioral_graduation_candidates.md:194`) on Paper 1.20.4 per `roadmap_1_3.md:33-36`.
+`docs/plans/behavioral_graduation_candidates.md:194`) on Paper 1.20.4 per `archive/roadmap_1_3.md:33-36`.
 
 **Verdict: DO-NOT-SHIP as is** — two findings, one in the world geometry the port claims to
 preserve and one in the runbook's data path, would each make the re-baseline a *different
@@ -220,7 +220,7 @@ Verify the exact `version` response text on the rig before relying on a substrin
 | `README.md:28-29` | "generates the superflat world with the surface at y=63" | per D1 fix 3 (measured by `verify`) |
 | `README.md:63-64`, `:95`, `:98` | EARNED file names | per D2 (the `exp56_rebaseline_1204/` directory) |
 | `README.md:66-69` | "disclose the Phase-0 readings as an amendment entry in the prereg" | for the re-baseline: "as the Re-baseline record entry (not an amendment — see prereg §Re-baseline runs)" (S6) |
-| `setup_world.py:16` | cites `roadmap_1_4 T4` | `docs/plans/roadmap_1_4.md` exists only on the unmerged `plan/roadmap-1-4` branch (`git ls-files` at HEAD: absent) and no tracked plan defines a "T4" for Exp 56. Cite what is on `main`: `roadmap_1_3.md` §Phase 0 ("the Exp 56 shared-want fabric IS re-baselined on 1.20.4 … before any claim reuses it") and `survival_world_1_3.md` §"Minecraft version" (the trigger definition). Add the 1.4 cite when that plan merges. |
+| `setup_world.py:16` | cites `roadmap_1_4 T4` | `docs/plans/roadmap_1_4.md` exists only on the unmerged `plan/roadmap-1-4` branch (`git ls-files` at HEAD: absent) and no tracked plan defines a "T4" for Exp 56. Cite what is on `main`: `archive/roadmap_1_3.md` §Phase 0 ("the Exp 56 shared-want fabric IS re-baselined on 1.20.4 … before any claim reuses it") and `survival_world_1_3.md` §"Minecraft version" (the trigger definition). Add the 1.4 cite when that plan merges. |
 | `setup_world.py:17` | "ledger row at `9905d4d8`" | `9905d4d8` is the CAMPAIGN commit the ledger row cites, not the row's own commit — say "the campaign at `9905d4d8`". |
 | `setup_world.py:74-77` | "1.16+ takes JSON …; 1.19+ spells the level type `minecraft:flat`" | keep, but the JSON on 1.20.4 is untested here — the survival builder only proves `minecraft\:normal`. After D1's measured probe passes on the rig, replace "found by booting" history with the dated 1.20.4 boot. |
 | `setup_world.py:21-22` | "The RCON apparatus (`prepare`/`verify`) is version-agnostic." | true for the commands used (`gamerule`, `fill … hollow`, `forceload`, `setworldspawn`, `execute if block … run seed` all exist unchanged in 1.20.4); leave it, but `verify`'s gamerule check reads a substring of the response text, which is the kind of thing a version move changes — first `verify` on the rig is the test. |
@@ -258,7 +258,7 @@ governing document is the ledger row, so:
 2. **Ledger row** (`behavioral_graduation_candidates.md:194`) — a dated annotation in the
    row's established voice, appended after the two DISCHARGED entries:
    > **RE-BASELINED <date> ON PAPER 1.20.4 (trigger "Minecraft bridge protocol change", fired
-   > by the 1.3 platform move — the [roadmap_1_3](roadmap_1_3.md) Phase-0 obligation):** same
+   > by the 1.3 platform move — the [roadmap_1_3](archive/roadmap_1_3.md) Phase-0 obligation):** same
    > frozen protocol, constants and gates (prereg §Re-baseline runs RB-1); world re-stood by
    > `scripts/exp56/setup_world.py` at 1.20.4 with the surface held at y=63 (measured); Phase 0
    > re-run [56_phase0.json](../experiments/data/exp56_rebaseline_1204/56_phase0.json) all PASS;

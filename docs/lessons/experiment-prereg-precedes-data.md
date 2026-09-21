@@ -80,7 +80,7 @@ argument the 42b lesson forbids.
 ## Prevention set (ranked by enforcement bought per unit of work)
 
 Each rides existing infrastructure — no new mechanism. Tracked as roadmap 1.1.x item 16
-sub-items 7–9 ([roadmap_1_1_to_1_3.md](../plans/roadmap_1_1_to_1_3.md)); the two
+sub-items 7–9 ([archive/roadmap_1_1_to_1_3.md](../plans/archive/roadmap_1_1_to_1_3.md)); the two
 process rules live in the brief stub and the publication guide.
 
 1. **Harnesses REFUSE on a dirty tree, not just stamp it.** `scripts/_provenance.py`

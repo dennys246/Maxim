@@ -91,7 +91,7 @@ and 61 event rows (E 388 appears twice: the refused original and the superseding
   **SUPPORTED** for Exp 60, Exp 61 and R3.
 - "Not claimed" items: Exp 58 is BLOCKED at the instrument (exp58 prereg §Outcome 2026-09-14,
   NULL-WITH-CAUSE); Exp 62 is DRAFT v2.1 with no Outcome section, so "designed, not run" is correct; the
-  Phase 1b deferral and its trigger match `roadmap_1_3.md` line 52; extinction, scaling and hive-side promotion
+  Phase 1b deferral and its trigger match `archive/roadmap_1_3.md` line 52; extinction, scaling and hive-side promotion
   are listed in exp61 "does NOT claim". **All correctly described.**
 - 1.2.1 correction checked against the code. Non-test references to `make_pairing_announcer` are its
   definition, its re-export in `console/__init__.py` and a docstring in `utils/audio.py`: **zero callers**.
@@ -182,7 +182,7 @@ probe reading (only the operator's console saw it). Either commit the verify out
 passed its surface probe (which refuses unless grass is at y=63)". The second form is true by construction
 of `setup_world.py`'s refusal.
 
-**N2: "every rate identical" (ledger line 194, `roadmap_1_3.md:35`, `release_1_3_0.md:62`, `CHANGELOG.md:51`)
+**N2: "every rate identical" (ledger line 194, `archive/roadmap_1_3.md:35`, `release_1_3_0.md:62`, `CHANGELOG.md:51`)
 holds under the first-row-stands rule. The raw file's isolated rate is 0.2157.** The ledger and prereg
 disclose both verdicts, so this is not wrong. It is stronger, and more informative, to say "row-for-row
 identical: all 200 (arm, pair) first contacts reproduce the 1.16.5 campaign exactly", and to add that a

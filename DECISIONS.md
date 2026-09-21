@@ -60,7 +60,7 @@ Decision:
   "Shared perception" release (perception fabric + microduck + Exp 55 + breeding).
 - **"Shared perception" is DEFERRED on a PHYSICAL trigger, not a date:** it revives the day a
   second robot body exists (a real backend registered through `maxim.robots`, or the operator
-  records its arrival). Its plan stays intact (`docs/plans/roadmap_1_3_path.md`) and Stage A (the
+  records its arrival). Its plan stays intact (`docs/plans/deferred/second_body_staging.md`) and Stage A (the
   baseline measurement of the new body) runs unchanged on revival.
 - **The deferred JEPA plan is re-pointed, not revived.** It is a PROJECTION layer (384-dim sensor ↔
   768-dim language); the survival line may need a PREDICTOR (a latent forward model), which is a
@@ -237,7 +237,7 @@ Decision:
 - 1.1 remains under a mechanism freeze. Its remaining scope is correctness,
   stable-contract repair, verification, release truth, and completion of the
   already-started heartbeat—not Oasis, Hivemind, or another cognitive mechanism.
-- `docs/plans/roadmap_1_1_to_1_3.md` is the sole 1.1 scope authority. The July
+- `docs/plans/archive/roadmap_1_1_to_1_3.md` is the sole 1.1 scope authority. The July
   checklist is archived as a historical snapshot.
 - **Single agent-guidance source, ratified 2026-08-19 in the INVERSE direction of
   this entry's first draft:** `CLAUDE.md` stays the canonical core (CI-linted,

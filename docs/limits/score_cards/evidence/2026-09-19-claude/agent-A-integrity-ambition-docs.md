@@ -218,7 +218,7 @@ External state (verified):
 
 ## Independence
 
-- I did not read or open anything under `docs/limits/score_cards/`, `docs/plans/burndown_1_3.md`, the "Scorecard → roadmap reconciliation" section of `docs/plans/roadmap_1_1_to_1_3.md`, or `~/.claude/`. I did not use `git show` or `git log -p` on any of them.
+- I did not read or open anything under `docs/limits/score_cards/`, `docs/plans/burndown_1_3.md`, the "Scorecard → roadmap reconciliation" section of `docs/plans/archive/roadmap_1_1_to_1_3.md`, or `~/.claude/`. I did not use `git show` or `git log -p` on any of them.
 - My git log calls were limited to specific experiment prereg paths and specific commits.
 - One incidental contact: `docs/index.md`'s Quick Links line mentions "Repository scorecards … dual-assessor: Codex + Claude". It shows no grade, and I did not follow it.
 - No earlier letter grade was encountered.

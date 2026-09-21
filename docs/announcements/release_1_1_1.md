@@ -8,7 +8,7 @@ that had been invisible were found in the process.
 
 The 1.1.0 repository re-score ([score card](https://github.com/dennys246/Maxim/blob/main/docs/limits/score_cards/2026-08-27-claude.md))
 graded on one rule — **a grade moves only when the normal workflow enforces the improvement**.
-This release answers that rule for six of its axes (roadmap [item 16.1–16.9](https://github.com/dennys246/Maxim/blob/main/docs/plans/roadmap_1_1_to_1_3.md)).
+This release answers that rule for six of its axes (roadmap [item 16.1–16.9](https://github.com/dennys246/Maxim/blob/main/docs/plans/archive/roadmap_1_1_to_1_3.md)).
 
 ## Research integrity
 

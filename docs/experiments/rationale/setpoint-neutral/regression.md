@@ -236,7 +236,7 @@ cluster-distinct preflight (`exp58_survival_wants_prereg.md` §Outcome); (3) Sli
 rejected offline, every variant WORSE (`l11_slice2_channel_split.md`); (4) B. Each failure spawned a
 new follow-up plan, which is the rule's sharpened form verbatim. Meanwhile the same contingency
 (learned anticipatory avoidance from game-native pain) was EARNED by Exp 60 WITHOUT B, on a full-range
-cue, and `docs/plans/roadmap_1_3.md` has re-pointed the flagship to "water = drowning". The
+cue, and `docs/plans/archive/roadmap_1_3.md` has re-pointed the flagship to "water = drowning". The
 independent variable in Exp 58 was the classroom's contrast, not the encoder — the encoder was the
 messenger.
 Change to the plan: add a §Consumer that answers, with a name: *"Which want on the 1.3/1.4 roadmap

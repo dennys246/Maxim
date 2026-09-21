@@ -1271,7 +1271,7 @@ the announcement are built from this section and the rc section together — the
 carried the stable-API contract repairs (D17/D18/D2), the architecture-audit gate
 (D19), the healthy-hardware `_big` block, and the evidence-closure pass; this cut
 adds the behavioural result the headline rests on. Zero new mechanisms beyond the
-relief-sourced operant credit named below ([roadmap](docs/plans/roadmap_1_1_to_1_3.md)).
+relief-sourced operant credit named below ([roadmap](docs/plans/archive/roadmap_1_1_to_1_3.md)).
 
 ### Added
 
@@ -1338,7 +1338,7 @@ relief-sourced operant credit named below ([roadmap](docs/plans/roadmap_1_1_to_1
 **Release candidate, published quietly.** `1.1.0` final follows roadmap items 17
 (Exp 52 — caregiver-taught orienting through hunger relief) and 18 (loudness bench
 tests); the cut was reopened 2026-08-25 for exactly that reason
-([roadmap](docs/plans/roadmap_1_1_to_1_3.md)). Everything below is in the rc.
+([roadmap](docs/plans/archive/roadmap_1_1_to_1_3.md)). Everything below is in the rc.
 
 The substrate leaves the simulator. This section is everything recorded as
 unreleased since the 1.0.6 reconstruction. **Read the attribution carefully:**
@@ -1352,7 +1352,7 @@ D18 persistent tool registration, D2 NAc/EC paired invalidation), the
 architecture-audit regression gate (D19), the healthy-hardware `_big`
 delivered-shift block (H1 Part C follow-up), and the evidence-closure pass (S4
 records committed for every Earned row, Exp 44b non-stationarity recorded).
-Zero new mechanisms, by design ([roadmap](docs/plans/roadmap_1_1_to_1_3.md));
+Zero new mechanisms, by design ([roadmap](docs/plans/archive/roadmap_1_1_to_1_3.md));
 Oasis + Hivemind are 1.2.
 
 ### Upgrade note — one promised removal and two behaviour changes for code that already compiles

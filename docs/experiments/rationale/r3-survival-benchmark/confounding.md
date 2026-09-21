@@ -296,7 +296,7 @@ outcome a timing quantity and a slow afternoon would move it.
 ## What I verified
 
 - `docs/experiments/DESIGN_REVIEW.md`; the R3 draft; `minecraft_benchmark.md` §R1/§R2/§R3 + D1/D2;
-  `roadmap_1_3.md` §Phase 2–3 + discipline; Exp 60 prereg §Design (iii), §Outcome (incl. the
+  `archive/roadmap_1_3.md` §Phase 2–3 + discipline; Exp 60 prereg §Design (iii), §Outcome (incl. the
   positive-link caveat and the "innate reaction cannot fire in a US-free window" not-claimed line);
   Exp 61 prereg §Arms, §Lifecycle, §DVs/gates, §Not claimed, build step 4 (dry runs), and the
   ABSENCE of a §Outcome / verdict file (`ls docs/experiments/data/`, `git log`, CHANGELOG L27).

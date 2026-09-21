@@ -427,7 +427,7 @@ require both: the `NAc_CREDIT` event (the write happened) AND a subsequent `NAc_
 - **N-6** Cited files all exist (verified): `deferred/credit_on_progress_not_execution.md`,
   `deferred/transition_based_drive_pain.md`, `three_factor_credit_assignment.md`,
   `deferred/retrosplenial_spatial_frames.md`, `deferred/jepa_cross_modal_alignment.md`,
-  `docs/experiments/data/exp62_cross_pool_replay.py`, `roadmap_1_3_path.md`.
+  `docs/experiments/data/exp62_cross_pool_replay.py`, `deferred/second_body_staging.md`.
 
 ---
 

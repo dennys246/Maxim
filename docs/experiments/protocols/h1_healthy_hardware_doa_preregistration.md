@@ -1,7 +1,7 @@
 # H1 pre-registration — the first honest hardware measurement of the 1.0+ era
 
 **Status:** PRE-REGISTERED 2026-08-07, before any hardware contact.
-**Authority:** [roadmap_1_1_to_1_3.md](../../plans/roadmap_1_1_to_1_3.md) (1.1 item 6 + hardware note).
+**Authority:** [archive/roadmap_1_1_to_1_3.md](../../plans/archive/roadmap_1_1_to_1_3.md) (1.1 item 6 + hardware note).
 **This document must not be edited after the session starts** except to append results.
 
 ## Why this session is different

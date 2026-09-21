@@ -22,7 +22,7 @@
 > `docs/experiments/rationale/r3-survival-benchmark/`). All four returned DO-NOT-BUILD as drafted,
 > converging independently on the same two premises being false; v2 folds every DO-NOT-BUILD and
 > SHOULD-FIX below and records what was dismissed and why. Nothing is built; no live measurement
-> has been taken. This is the 1.3 Phase-3 rung (`docs/plans/roadmap_1_3.md` §Phase 3), an
+> has been taken. This is the 1.3 Phase-3 rung (`docs/plans/archive/roadmap_1_3.md` §Phase 3), an
 > INSTRUMENT plus a FROZEN BASELINE, never a graduated claim (`minecraft_benchmark.md` D2). The
 > owner decisions D1–D5 were TAKEN 2026-09-17 (recorded at the end, with the one design idea
 > considered and held out); the build order starts with a MEASURED pilot,

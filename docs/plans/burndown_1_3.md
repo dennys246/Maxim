@@ -2,7 +2,7 @@
 
 **Drafted 2026-09-10**, after 1.2.1 shipped, from a three-lens sweep (score cards, plans +
 deferred, self-identified debt + bugs ledger). This is the **incremental-improvement** track
-that runs *alongside* the survival-world 1.3 build ([roadmap_1_3.md](roadmap_1_3.md)) — not part
+that runs *alongside* the survival-world 1.3 build ([archive/roadmap_1_3.md](archive/roadmap_1_3.md)) — not part
 of it. It is optional quality work: no behavioral-graduation row is `Stale` or `Broken`, so
 nothing here gates a release.
 

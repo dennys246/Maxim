@@ -15,7 +15,7 @@ behavioral claim about habit transfer. That claim is **Exp 55**, and it is 1.3-l
 1.2's claim set stays exactly what the roadmap froze: the four-arm sharing benchmark and
 the dose–response ladder. Same shape as "Minecraft is the instrument, not a demo" — and
 deliberately so, because pulling the experiment forward is enthusiasm-flag #3
-([roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) §Enthusiasm-to-evidence flags) by its
+([archive/roadmap_1_1_to_1_3.md](archive/roadmap_1_1_to_1_3.md) §Enthusiasm-to-evidence flags) by its
 recorded definition.
 
 ## 0. Owner intent (recorded so the claim cannot drift)
@@ -50,7 +50,7 @@ the one-frozen-confirmatory-test rule
 representation before the arms" (a coding body is a new affordance namespace whose
 selection dynamics must be re-baselined, not assumed); enthusiasm-flag #3; and the
 microduck precedent — new body + new behavior class = experiment work on the next line,
-not a port ([roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md)).
+not a port ([archive/roadmap_1_1_to_1_3.md](archive/roadmap_1_1_to_1_3.md)).
 
 Front-gate answer (CLAUDE.md working principle 3): almost everything rides existing
 infrastructure — the tool registry, both sandboxes, three pain layers, the ToolPainBridge

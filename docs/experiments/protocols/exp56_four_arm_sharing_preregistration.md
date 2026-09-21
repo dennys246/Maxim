@@ -2,7 +2,7 @@
 
 **Status:** PRE-REGISTERED 2026-09-05, frozen at the merge commit of this file, before
 any harness run. The 1.2 headline claim
-([roadmap](../../plans/roadmap_1_1_to_1_3.md) §"The 1.2 benchmark"; design authority
+([roadmap](../../plans/archive/roadmap_1_1_to_1_3.md) §"The 1.2 benchmark"; design authority
 [minecraft_benchmark.md](../../plans/minecraft_benchmark.md) §"The 1.2 benchmark — four
 arms"). The four gate constants and the arm set below are carried VERBATIM from those
 frozen documents; this pre-registration operationalizes them and freezes everything
@@ -559,7 +559,7 @@ re-run trigger fired. It never re-types a frozen constant; if the apparatus cann
 the new platform (e.g. the surface height), that is a server-setup failure, recorded, not a design
 change.
 
-- **RB-1 — Paper 1.20.4 (planned 2026-09-18; roadmap_1_3.md Phase 0).** Triggers fired: "Minecraft
+- **RB-1 — Paper 1.20.4 (planned 2026-09-18; archive/roadmap_1_3.md Phase 0).** Triggers fired: "Minecraft
   bridge protocol change" (the 1.20.4 port + the R3 verbs) and the minor-version heartbeat. Port:
   `scripts/exp56/setup_world.py` targets 1.20.4 with a 128-layer flat stack (the 1.18+ world floor is
   y=−64) so the surface stays at y=63 — MEASURED by `verify`'s surface probe, never assumed; every row

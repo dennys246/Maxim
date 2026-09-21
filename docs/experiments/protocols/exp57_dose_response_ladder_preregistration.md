@@ -15,7 +15,7 @@ arms ([Exp 56](exp56_four_arm_sharing_preregistration.md), EARNED 2026-09-06 —
 write-up `../56_four_arm_sharing.md` lands with PR #648) asked *does a taught want
 transfer*; this asks *does pooling taught wants scale*, which is the claim Oasis actually
 rests on. Design authority: [minecraft_benchmark.md](../../plans/minecraft_benchmark.md)
-§"The dose–response ladder"; roadmap [§"The 1.2 benchmark"](../../plans/roadmap_1_1_to_1_3.md).
+§"The dose–response ladder"; roadmap [§"The 1.2 benchmark"](../../plans/archive/roadmap_1_1_to_1_3.md).
 The gate set and the arm/condition structure below are carried from those frozen
 documents; this pre-registration operationalizes the dependent measure they left open and
 freezes everything else.
