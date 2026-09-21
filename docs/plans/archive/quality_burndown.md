@@ -1,3 +1,7 @@
+> **ARCHIVED 2026-09-20 — MERGED into [roadmap_1_3_x.md](../roadmap_1_3_x.md) §1.3.1 "Carried in from the
+> quality burndown".** Every still-open item was re-verified and moved there with a named guard. This
+> file stays as the record of Batches 0–2 and the 2026-09-10 sweep.
+
 # Quality burndown — the ongoing incremental-improvement track
 
 > **Renamed 2026-09-20** from `quality_burndown.md`. The version in the name was wrong for the same
@@ -8,21 +12,21 @@
 > **Its "deferred to post-1.3" remainder has EXPIRED** — 1.3.0 published 2026-09-19, so Batches 0,
 > 3 and 4 below are live work, not deferred work.
 >
-> **Overlap, unresolved and stated rather than hidden:** [roadmap_1_3_x.md](roadmap_1_3_x.md) is the
+> **Overlap, unresolved and stated rather than hidden:** [roadmap_1_3_x.md](../roadmap_1_3_x.md) is the
 > current hardening line and covers the same territory (grade-lifting quality work), but as of
 > 2026-09-20 it names **none** of this file's items (N1, D32, D84, D49, fail-loud Stage 3, D19 —
 > only `mypy` appears in both) and neither document referenced the other. Someone should decide
 > whether to merge them or keep both with a stated split; until then, read both. Tracked in
-> [outstanding.md](outstanding.md).
+> [outstanding.md](../outstanding.md).
 >
-> **D84 is now [issue #796](https://github.com/dennys246/Maxim/issues/796)** — verified in source
-> 2026-09-20: `SUPERVISED` sandbox mode documents an approval gate and its callback returns `True`
-> unconditionally. A documented safety property the code does not provide, found only because this
-> file was re-read while asking why it still had a version in its name.
+> **D84 became [issue #796](https://github.com/dennys246/Maxim/issues/796)** and was fixed 2026-09-20:
+> `SUPERVISED` sandbox mode documented an approval gate while its callback returned `True`
+> unconditionally — found only because this file was re-read while asking why it still had a version
+> in its name. Approval now fails closed.
 
 **Drafted 2026-09-10**, after 1.2.1 shipped, from a three-lens sweep (score cards, plans +
 deferred, self-identified debt + bugs ledger). This is the **incremental-improvement** track
-that runs *alongside* the survival-world 1.3 build ([archive/roadmap_1_3.md](archive/roadmap_1_3.md)) — not part
+that runs *alongside* the survival-world 1.3 build ([archive/roadmap_1_3.md](roadmap_1_3.md)) — not part
 of it. It is optional quality work: no behavioral-graduation row is `Stale` or `Broken`, so
 nothing here gates a release.
 
@@ -45,8 +49,7 @@ Owner decision (2026-09-10): ship the high-value low-risk guards + claim-truth n
   Assessor action.
 - **Batch 1 remainder — D63** (wire `pr_merge_readiness`'s required-checks-present check into a
   merge gate/ruleset). Needs repo-settings, partly the owner's action.
-- **Batch 3 (small correctness):** N1 campaign params, D32 foundational preamble, D84
-  honest-refuse, D49 benchmark honesty, plus the D46/D50 code fixes.
+- **Batch 3 (small correctness):** N1 campaign params, D32 foundational preamble, D49 benchmark honesty, plus the D46/D50 code fixes.
 - **Batch 4 (opportunistic):** fail-loud Stage 3, god-function decomposition, mypy scope, D19,
   behavioral-suite thickening.
 
@@ -69,7 +72,7 @@ Owner decision (2026-09-10): ship the high-value low-risk guards + claim-truth n
 
 **SUPERSEDED 2026-09-19.** The Codex 1.1.0 card and both 1.2 cards were never produced, and would
 grade states nobody works on. Replaced by the v1.3.0 re-score at the tag: the Claude card
-[2026-09-19-claude.md](../limits/score_cards/2026-09-19-claude.md) (three blind evidence agents,
+[2026-09-19-claude.md](../../limits/score_cards/2026-09-19-claude.md) (three blind evidence agents,
 grades unadjusted) and its Codex twin graded blind to it. The remaining batches aim at those grades.
 
 Re-score at the 1.2 cut, both assessors; produce the Codex 1.1.0 card blind to the Claude one.
@@ -100,7 +103,7 @@ Sizes: all **S** except Tier-3 (**M**, judgement per row).
 
 - **N1** — `api.campaign()` threads-or-rejects `npc_model`/`interactive`/`prompt_handler` (pairs with the done N2) — `src/maxim/api.py::campaign`, `tests/unit/test_api_core.py` — **S/M**
 - **D32** — load the foundational preamble from `CONSTITUTION.md` as package data + a drift guard (pip users currently get an empty preamble) — `src/maxim/agents/llm_context.py::_load_foundational_context` — **S/M**
-- **D84** — SUPERVISED sandbox honestly *refuses* when no approval callback is wired instead of silently auto-approving — `src/maxim/tools/sandbox.py::ExecuteSandboxScriptTool.execute` — **S**
+- ~~**D84**~~ **DONE 2026-09-20 ([#796](https://github.com/dennys246/Maxim/issues/796))** — SUPERVISED sandbox honestly *refuses* when no approval callback is wired instead of silently auto-approving. The fail-open was one layer lower than named here too: `SandboxExecutor.execute` ran any script whose approval was required when no callback existed, so the fix sits there. Guard: `tests/unit/test_sandbox_approval_fails_closed.py`. Found alongside it: [#800](https://github.com/dennys246/Maxim/issues/800) (the `.py` wrapper never runs) — **S**
 - **D49** — benchmark honesty: apply-or-delete `weight`, fix the running half-mean, drop-or-ship the missing tier2/tier3 suite files — `simulation/benchmark.py` — **M**
 
 ## Batch 4 — larger, now-unblocked engineering *(opportunistic; competes with the survival build)*
@@ -114,7 +117,7 @@ Sizes: all **S** except Tier-3 (**M**, judgement per row).
 ## Explicitly OUT of scope
 
 - **Hardware/research-gated** (owed, not tractable-software): Exp 54 B/C, Exp 50, Exp 44b at-power, D30/D31/D87, place-code default-ON. *One pullable slice:* the **L8 record-stamping** fix (stamp model/endpoint/n_ctx/quantization on every run record) is Exp 44b's prerequisite and is cheap on its own.
-- **Deferred plans whose trigger 1.2 just fired — NEW-MECHANISM, not debt**, and each its own decision: **HF hive Phase 1** ([deferred/hf_hive_repository.md](deferred/hf_hive_repository.md), the launch companion) and the **reactive-peer-mesh C10 event-slice** ([reactive_peer_mesh_roadmap.md](deferred/reactive_peer_mesh_roadmap.md) §5).
+- **Deferred plans whose trigger 1.2 just fired — NEW-MECHANISM, not debt**, and each its own decision: **HF hive Phase 1** ([deferred/hf_hive_repository.md](../deferred/hf_hive_repository.md), the launch companion) and the **reactive-peer-mesh C10 event-slice** ([reactive_peer_mesh_roadmap.md](../deferred/reactive_peer_mesh_roadmap.md) §5).
 - **DORMANT-for-a-reason:** D51 (LSHIndex — "needs a design decision, not a patch"), D45 (SpatialMemoryBridge — mark Dormant), D9 producers (mechanism dormant).
 
 ## Recommended pull

@@ -20,11 +20,11 @@ divergence rule warns against: a null then confounds mechanism with refactor.
 
 ---
 
-> **Related, and NOT yet reconciled:** [quality_burndown.md](quality_burndown.md) is the standing
-> incremental-improvement track and covers the same territory. As of 2026-09-20 it names items this
-> file does not (N1, D32, D84 → [#796](https://github.com/dennys246/Maxim/issues/796), D49,
-> fail-loud Stage 3, D19; only `mypy` appears in both), and neither document referenced the other.
-> Read both until someone merges them or states the split.
+> **The quality burndown is merged in (2026-09-20).** `quality_burndown.md` was a second,
+> mutually-unaware list over this same territory; its live remainder now lives in §1.3.1 "Carried in
+> from the quality burndown" below, each item re-verified against `docs/bugs/README.md` that day and
+> given the guard this line's rule requires. The old file is archived at
+> [archive/quality_burndown.md](archive/quality_burndown.md) as the record of Batches 0–2.
 
 ## 1.3.1 — the defects and the enforcement gaps
 
@@ -72,6 +72,28 @@ Grouped by the axis each item lifts; the "to reach" conditions come from the car
   invocation is incomplete (needs `--session`, `--modality`, a tag value, `--apply`); the ledger's
   Exp 60 freeze hash names the wrong PR merge; the Exp 56 row calls amendments 3–4 pre-confirmatory
   while their headers say POST-DATA.
+
+### Carried in from the quality burndown (merged 2026-09-20)
+
+Re-verified against [docs/bugs/README.md](../bugs/README.md) on the merge date; anything already
+closed was dropped rather than copied (**D19 was FIXED** — the architecture-audit gate exists — and
+the burndown still listed it; **D84 → #796** is fixed by PR #804). Same rule as every item above:
+it ships with its guard or it does not ship.
+
+| item | guard that makes it count |
+|---|---|
+| **D40 remainder (was N1)** — thread `prompt_handler` through `start_simulation_mode` (the consumer, `bootstrap.build_tool_registry(prompt_handler=…)`, already exists; only the passthrough is missing). `npc_model` stays a loud `NotImplementedError` until party-mode NPC agents exist — that half is a mechanism, not a defect. | extend `tests/unit/test_api_expansion.py::TestCampaignParametersAreThreadedOrRejected`: a passed handler is the one the run's prompts reach |
+| **D32** — load the foundational preamble from `CONSTITUTION.md` as package data (pip users get an empty preamble today) | a drift test: packaged copy == repo-root `CONSTITUTION.md`, and a wheel-install test that the preamble is non-empty |
+| **D49** — benchmark honesty: apply-or-delete `weight`, fix the running half-mean, drop-or-ship the missing tier2/tier3 suite files (`simulation/benchmark.py`) | a unit test per promise: a weighted suite's aggregate moves with `weight` (or the key is rejected), and every suite file the format names loads |
+| **D46 + D50** — delete the dead percept-transport reference (`simulation/sources.py`); warn on the inert `party_mode` / `choice_resolution` keys in `load_campaign` and drop the dead schema field | a test that loading a campaign carrying either key WARNS once |
+| **D63** — a PR against a non-`main` base runs no required checks | a ruleset/branch-protection change (owner action) + `scripts/pr_merge_readiness.py` reporting it; the guard is the gate existing |
+| **Fail-loud Stage 3** — narrow the measurement-path swallows; green-lit since Stage 2 measured **zero** firings ([deferred/measurement_path_fail_loud.md](deferred/measurement_path_fail_loud.md)). Must not land mid-walk on a branch a graduation run reads from. | `scripts/lint_no_silent_swallows.py`'s zero-total set grows to cover each narrowed file |
+| **Sandbox defects #800 / #801 / #802** (found 2026-09-20 beside #796: Python scripts never run; raw-prefix containment; path executed instead of approved content) — latent, no in-repo caller wires the sandbox | each issue's own red gate |
+| **L8 record-stamping** (stamp model / endpoint / n_ctx / quantization on every run record) — Exp 44b's prerequisite; status **not re-verified** on the merge date, check before starting | a test that a run record without those fields is refused by its writer |
+
+Already covered above, so not duplicated: `mypy` scope (the ratchet in this section), god-function
+decomposition (§1.3.2). Behavioral-suite thickening for Exp 52/53b/56 has no nameable guard as
+stated and is left out by this line's rule, not forgotten.
 
 ### Not in 1.3.1
 

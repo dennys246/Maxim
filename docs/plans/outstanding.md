@@ -34,15 +34,12 @@ direction nobody is looking.
 | O6 | **`world_channel_weighting.md`'s provenance gap** | Unlike `setpoint-neutral`, its four lens reports are not preserved verbatim under `docs/experiments/rationale/`. Every load-bearing finding was re-verified before folding, but the reports' reasoning lives only in a session transcript. Stated in the file, so it is disclosed rather than hidden. | Write the four reports to `docs/experiments/rationale/world-channel-weighting/`, or accept the file as a decision record that is never cited as evidence. |
 | O7 | **Rig housekeeping (big-mac-mini)** | `~/RMSrv/scripts/Maxim` carries a pile of uncommitted experiment output — cradle runs, Exp 38/42/52 leftovers, `cohort0_artifacts/`, `pair0_artifacts/`, and a file named `2c9f1579`. Some may be evidence nobody committed; some is certainly scratch. It does not affect provenance (`DIRTY_SCOPE` is `src`+`scripts`), but it makes `git status` unreadable on the box where experiments run. | Triage: commit what is evidence, delete what is scratch, gitignore what recurs. |
 
-| O8 | **Two overlapping, mutually-unaware hardening plans** | [quality_burndown.md](quality_burndown.md) (the standing track) and [roadmap_1_3_x.md](roadmap_1_3_x.md) (the 1.3.x line) cover the same territory. As of 2026-09-20 the 1.3.x line names **none** of the burndown's items — N1, D32, D84, D49, fail-loud Stage 3, D19; only `mypy` is in both — and neither document referenced the other. The burndown's remainder was deferred "to post-1.3", which **expired** when 1.3.0 published. Surfacing it produced [#796](https://github.com/dennys246/Maxim/issues/796) (see below), which had been sitting unread. | Decide: merge them, or keep both with a stated split. Cross-links added 2026-09-20 so the overlap is at least visible. |
 | O9 | **`CLAUDE.md` diet — partially done, 11973 → 11460** | First pass 2026-09-20 moved two entries (the Reachy motion pair, the harness-provenance lesson) into briefs the routing table already makes mandatory. ~540 tokens of headroom now. The remaining bulk is genuinely cross-cutting: `atomic_write_json`, `stable_hash_32`, `_format_version` and CC3 all read as persistence-subsystem rules but apply to ANY code that persists, so demoting them to `persistence-config.md` would hide them from someone editing `decisions/`. | **The rule the first pass produced:** move an entry only where the owning brief ALREADY carries its substance, so the move is a de-duplication and the stub is a pointer to something real. The four-lens design-review lesson failed that test — the brief has zero coverage, so relocating it would let anyone who skips the brief skip the gate. Further cuts need either brief-enrichment first, or a decision to accept that CLAUDE.md is near its useful size. |
 | O10 | **`CLAUDE.md` is near its 12k ceiling regardless** | `lint_claude_md_invariants.py` holds the ceiling, so the next invariant anyone adds fails CI. A diet pass is owed — but it is a judgment call about **what must stay always-loaded**, not a mechanical move: a rule demoted to a satellite doc stops being in context by default, and a guard nobody loads is a guard nobody follows. | A stated principle FIRST (e.g. "a rule stays only if violating it would be invisible without the rule in context"), then apply it. A session opener, not a closer. |
 
-### Verified defects found while auditing this list
+### Verified defects without a register row
 
-- **[#796](https://github.com/dennys246/Maxim/issues/796) — `SUPERVISED` sandbox mode does not supervise.** A
-  documented safety property the code does not provide, found only because O8's doc was re-read while asking why
-  it still had a version in its name. The issue is authoritative.
+- **[#800](https://github.com/dennys246/Maxim/issues/800)** — sandbox Python scripts have never run (the fix is not a reorder).
 
 ## Where a thing goes — issue, plan, or here
 
@@ -80,6 +77,10 @@ it did *not* read. Maintained references (plans, briefs, lessons) do get relinke
 
 ## Closed — recorded so they are not re-audited
 
+- **O8 — two overlapping hardening plans**, closed 2026-09-20: owner decision to MERGE.
+  `quality_burndown.md` → [archive/](archive/quality_burndown.md); its re-verified remainder is in
+  [roadmap_1_3_x.md](roadmap_1_3_x.md) §1.3.1 "Carried in from the quality burndown", each item with a
+  named guard. Re-verification dropped D19 (already FIXED) rather than copying it forward.
 - **Items 16.1–16.10** (the 1.1.x release-governance block), verified 2026-09-20: 16.1/16.5/16.6
   shipped in #571, 16.2–16.4 in #570, 16.7–16.9 in #569, and **16.10** as
   `scripts/lint_unreleased_on_src_change.py` — in the CI lint job, with a unit test, and it blocked
