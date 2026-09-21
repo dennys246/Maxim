@@ -140,6 +140,13 @@ The R3 process layer carries unchanged. Instrument increments enter WITH their c
 before it (a per-step ledger with no experiment is the harness analogue of a function with no caller
 — the D43 family, one level up). Each is a two-lens code-reviewed PR run offline before the rig.
 
+**Shipped already, consumed by Rung B's entry condition (2026-09-20):** the EC match MARGIN
+(`PatternResult.best_similarity`, `SensorEncoder.last_encode_margin`, issue #786). The EC computed
+how close every pattern decision came and discarded it — a separation reported `similarity=0.0`, so
+a near miss and a far one were indistinguishable in every record. Read-only: no consumer decides on
+it, nothing re-keys. It is the instrument the SHAPE/SUPPORT question above reads, and every Exp 62
+row now carries `node_gate.read_margin` beside the node id.
+
 **E1's instrument (T1):**
 
 - **(1a) Per-need provenance on the selection side.** `NAc.recommend_action` already iterates the
@@ -305,7 +312,38 @@ infrastructure the review located, and the full four-lens review.
   TemporalEvents (dormant on both ends) and `embodiment/cerebellum.py` (write live, read dormant).
   Only if neither can carry "how far pain is" does a new plan (`latent_forward_model.md`) open — and
   that is where the §JEPA predictive idea and the §Pressure candidate input would live.
-- **Keying / generalization (R1's home).** If Exp 62 says pools never share a cluster: a substrate
+- **Keying / generalization (R1's home) — and Exp 62 §Rung B, whose entry condition is stated here
+  because the branch below cannot reach it.** The tree Phase 1 writes ("never share → keying; share
+  but no transfer → the write channel; transfer → the wall is further out") arms this mechanism only
+  on the FAILURE branches. The dry run points at **transfer**, so on the plain reading a successful
+  rung A closes the door and the measured context wall — a lit pond at 0.588, a NIGHT POOL at 0.799,
+  both under the 0.85 threshold — is left with no owner. That matters: it means Exp 60/61's EARNED
+  drowning fear **misses at night** for representational reasons, and the frozen-day protocol is
+  what hides it. An entry condition that can only fire when an experiment FAILS is a trapdoor, not
+  a gate. So Rung B gets its own trigger, independent of rung A's outcome, in two ordered parts:
+
+  - **SHAPE (free, offline, done 2026-09-20).** `docs/experiments/data/world_channel_landscape.py`
+    sweeps the REAL declared roster across its REAL declared ranges through the shipped
+    `_sensor_embed`. Measured: displacing k sensors from rest, cosine crosses 0.85 **gradually** at
+    every k (per-step drops 0.03–0.07, against a ±0.05 band), with 10.3 % of the grid sitting inside
+    that band. **The function has a middle.** Two traps it caught in its own first draft are recorded
+    in the file: uniform sampling over the declared box makes every state maximally unlike every
+    other (median cos 0.24) and answers the wrong question; and anchoring the perturbation at the
+    range midpoint rather than each sensor's own rest produced the all-silent ZERO vector at f=0,
+    which read as a finding until the f=0 ≡ 1.0 identity caught it.
+  - **SUPPORT (rig, only if shape is continuous — it is).** A trace with `doDaylightCycle` **on**,
+    so `time_of_day` actually varies. Shape says the landscape has a middle; support says whether the
+    world ever visits it, and a graded read is worth building only where both hold. The one committed
+    open-world trace cannot answer this: `light_level` 0.0 in 1193/1193 and `time_of_day` pinned in
+    1193/1193.
+
+  **Recorded limit, so nobody re-measures this in the wrong place:** the water classroom cannot
+  answer a generalization question at any n. Its `live_contributors` is `["is_in_water"]` — ONE
+  binary discriminator — so its situation space is two points and its shape is a cliff BY
+  CONSTRUCTION. Measuring there and reporting a body property is the apparatus-for-body confound the
+  2026-09-20 four-lens round was about.
+
+  If Exp 62 says pools never share a cluster: a substrate
   rule for feature-invariant keys or cluster merging on the world channel, constrained by
   `docs/wiring/cosine-separation-is-directional.md`. Fires Exp 53b/56/60 triggers and the
   retrosplenial §5 registry — the variant body shields none of that.
