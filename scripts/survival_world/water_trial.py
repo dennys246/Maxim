@@ -210,6 +210,79 @@ def fingerprint_drift(live: dict[str, Any], frozen: dict[str, Any]) -> list[str]
     return sorted(k for k in set(live) | set(frozen) if norm(live.get(k)) != norm(frozen.get(k)))
 
 
+# The world channel's ENCODING IDENTITY on the shipped `bodies/minecraft_player` body (issue #783).
+# `w = (2|v−0.5|)^gain_exponent` with `v = (c−lo)/(hi−lo)`: the encoder config IS the equation and a
+# declared range IS the weight of a constant sensor, so either moving re-keys every `world` node.
+# Measured offline 2026-09-20 (build_minecraft_aut + `_read_world_ranges`), never typed; the three
+# ranges Exp 60's fingerprint carries match. Kept OUT of the experiments' FROZEN blocks on purpose:
+# R3 stamps `sha256(FROZEN60)` into its gauntlet and `validate_gauntlet` refuses on any change, so
+# widening a closed experiment's block would unfreeze a closed record. A variant body passes its
+# own identity to `WaterTrial(encoding=...)`; omitting it checks against this one and refuses.
+APPARATUS_ENCODING: dict[str, Any] = {
+    "encoder_config": {
+        "embedding_dim": 384,
+        "min_delta": 0.05,
+        "pattern_threshold": 0.85,
+        "gain_exponent": 3.0,
+        "gain_modalities": ["world"],
+    },
+    "world_ranges": {
+        "distance_from_spawn": {"lo": -128.0, "hi": 128.0},
+        "food": {"lo": 0.0, "hi": 40.0},
+        "health": {"lo": 0.0, "hi": 40.0},
+        "hostile_count": {"lo": -32.0, "hi": 32.0},
+        "is_in_water": {"lo": -1.0, "hi": 1.0},
+        "is_raining": {"lo": -1.0, "hi": 1.0},
+        "light_level": {"lo": 0.0, "hi": 15.0},
+        "look_pitch": {"lo": -1.5708, "hi": 1.5708},
+        "nearest_hostile_dist": {"lo": 0.0, "hi": 128.0},
+        "nearest_player_dist": {"lo": 0.0, "hi": 128.0},
+        "on_ground": {"lo": -1.0, "hi": 3.0},
+        "oxygen": {"lo": 0.0, "hi": 40.0},
+        "saturation": {"lo": 0.0, "hi": 20.0},
+        "speed": {"lo": -1.0, "hi": 1.0},
+        "time_of_day": {"lo": 0.0, "hi": 1.0},
+        "xp_level": {"lo": -50.0, "hi": 50.0},
+        "y_altitude": {"lo": 0.0, "hi": 128.0},
+    },
+}
+
+
+def encoder_config_identity(config: Any) -> dict[str, Any]:
+    """EVERY field of a `SensorEncoderConfig`, by `dataclasses.fields` (pure).
+
+    Enumerated, not listed: a field added to the config later appears here and drifts against a
+    frozen identity that lacks it — it cannot join the equation unguarded.
+    """
+    import dataclasses
+
+    out: dict[str, Any] = {}
+    for f in dataclasses.fields(config):
+        v = getattr(config, f.name)
+        out[f.name] = sorted(v) if isinstance(v, (set, frozenset)) else v
+    return out
+
+
+def encoding_identity(config: Any, world_ranges: dict[str, Any]) -> dict[str, Any]:
+    """The encoding equation + the full declared world roster (pure). Ranges are `{lo, hi}`, not
+    `[lo, hi]`: `fingerprint_drift` sorts scalar lists, which would hide a reversed range."""
+    return {
+        "encoder_config": encoder_config_identity(config),
+        "world_ranges": {k: {"lo": float(v[0]), "hi": float(v[1])} for k, v in sorted(world_ranges.items())},
+    }
+
+
+def encoding_drift(live: dict[str, Any], frozen: dict[str, Any]) -> list[str]:
+    """Dotted paths where a live encoding identity differs from the frozen one (pure; empty = same)."""
+    drift = [
+        f"{sec}.{k}"
+        for sec in ("encoder_config", "world_ranges")
+        for k in fingerprint_drift(live.get(sec) or {}, frozen.get(sec) or {})
+    ]
+    drift += [k for k in fingerprint_drift(live, frozen) if k not in ("encoder_config", "world_ranges")]
+    return drift
+
+
 def median_interval_s(reset_times: list[float]) -> float | None:
     """Median gap between consecutive snapshot arrivals (pure). None below two arrivals."""
     if len(reset_times) < 2:
@@ -243,7 +316,10 @@ class WaterTrial:
         agent_id: str,
         encoder: Any,
         settle_guard: dict[str, float] | None = None,
+        encoding: dict[str, Any] | None = None,
     ) -> None:
+        # The frozen encoding identity `check_fingerprint` holds the live one to (issue #783).
+        self.encoding: dict[str, Any] = APPARATUS_ENCODING if encoding is None else encoding
         # Sensors that must read an exact value on EVERY rescue settle (Exp 61: `is_raining` 0,
         # `nearest_player_dist` 64 — rain breaks cluster completion, a spectator costs the margin);
         # an ABSENT key refuses, never defaults to the passing value (environment lens S4).
@@ -563,9 +639,24 @@ class WaterTrial:
             time.sleep(0.01)
         return median_interval_s(arrivals)
 
+    def live_encoding(self) -> dict[str, Any]:
+        """The encoding identity of the encoder this trial BOOKS and READS through (training's
+        `propose_via_substrate` and the NODE-gate encodes), over the body's full declared roster."""
+        from maxim.runtime.agent_loop import _read_world_ranges
+
+        return encoding_identity(self.encoder.config, _read_world_ranges(self.aut.executor))
+
+    @staticmethod
+    def loop_encoder_config() -> dict[str, Any]:
+        """The PROBE loop's encoder config. `run_agent_loop` builds its own `_loop_sensor_encoder`
+        with no config argument and exposes no handle to it, so the class default IS its live
+        config — held to the same frozen identity, so a changed source default refuses too."""
+        from maxim.similarity.encoder import SensorEncoderConfig
+
+        return encoder_config_identity(SensorEncoderConfig())
+
     def live_fingerprint(self) -> dict[str, Any]:
         from maxim.runtime.agent_loop import _read_world_ranges
-        from maxim.similarity.encoder import SensorEncoderConfig
 
         cfg = self.aut.bio.nac.config
         oxy = self.aut.executor.embodiment.root.drive_specs.get("oxygen")
@@ -575,7 +666,7 @@ class WaterTrial:
             "max_cluster_fear": cfg.max_cluster_fear,
             "cluster_fear_threshold": cfg.cluster_fear_threshold,
             "cluster_fear_failure_modes": sorted(cfg.cluster_fear_failure_modes),
-            "encoder_pattern_threshold": float(SensorEncoderConfig().pattern_threshold),
+            "encoder_pattern_threshold": float(self.encoder.config.pattern_threshold),
             "substrate_explore_bonus_weight": float(getattr(cfg, "substrate_explore_bonus_weight", 0.0)),
             "oxygen_drive": None
             if oxy is None
@@ -592,11 +683,21 @@ class WaterTrial:
         drift = fingerprint_drift(live_fp, self.frozen["fingerprint"])
         if drift:
             raise Refusal(f"config fingerprint drift on {drift}: live={live_fp}", partial={"fingerprint_live": live_fp})
+        live_enc = self.live_encoding()
+        enc_drift = encoding_drift(live_enc, self.encoding) + [
+            f"loop.encoder_config.{k}"
+            for k in fingerprint_drift(self.loop_encoder_config(), self.encoding.get("encoder_config") or {})
+        ]
+        if enc_drift:
+            raise Refusal(
+                f"encoding identity drift on {enc_drift} (issue #783): every world cluster id would re-key",
+                partial={"fingerprint_live": live_fp, "encoding_live": live_enc},
+            )
         if oxy is None or usable_oxygen_max >= oxy.set_point - oxy.comfort_band:
             raise Refusal("usable_oxygen_max does not sit below the oxygen comfort band (band-edge trap)")
         if "drive:oxygen" not in cfg.cluster_fear_failure_modes:
             raise Refusal("drive:oxygen not in the fear allowlist")
-        return live_fp
+        return {**live_fp, "encoding": live_enc}
 
     def check_bridge(self) -> float:
         """Roster + freshness: returns the measured snapshot cadence (s)."""
