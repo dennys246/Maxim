@@ -213,11 +213,18 @@ def fingerprint_drift(live: dict[str, Any], frozen: dict[str, Any]) -> list[str]
 # The world channel's ENCODING IDENTITY on the shipped `bodies/minecraft_player` body (issue #783).
 # `w = (2|v−0.5|)^gain_exponent` with `v = (c−lo)/(hi−lo)`: the encoder config IS the equation and a
 # declared range IS the weight of a constant sensor, so either moving re-keys every `world` node.
-# Measured offline 2026-09-20 (build_minecraft_aut + `_read_world_ranges`), never typed; the three
-# ranges Exp 60's fingerprint carries match. Kept OUT of the experiments' FROZEN blocks on purpose:
-# R3 stamps `sha256(FROZEN60)` into its gauntlet and `validate_gauntlet` refuses on any change, so
-# widening a closed experiment's block would unfreeze a closed record. A variant body passes its
-# own identity to `WaterTrial(encoding=...)`; omitting it checks against this one and refuses.
+# Transcribed 2026-09-20 from an offline read (build_minecraft_aut + `_read_world_ranges`) of the
+# shipped body; `test_water_trial_encoding.py` binds it to the committed Exp 60 / Exp 62 geometry
+# records' provenance and to Exp 60's frozen ranges, so the constant cannot drift from what those
+# campaigns ran under without a red test.
+# Kept OUT of the experiments' FROZEN blocks on purpose: `exp60_run.FROZEN` is the literal apparatus
+# Exp 60 froze, and Exp 61/62 carry it as literal copies checked by `frozen_matches` — widening it
+# would edit what three closed experiments DECLARED and make them claim guarding they never ran
+# under. (R3's gauntlet also pins `sha256(FROZEN60)`.)
+# RE-RUN TRIGGER: an edit to this constant is a change to the world-channel geometry — it fires the
+# Exp 60/61/62 "Re-run on" triggers exactly as the encoder/range change it mirrors would. A VARIANT
+# body's identity belongs in its own experiment's FROZEN block and prereg, passed as
+# `WaterTrial(encoding=...)` — never a second module constant here; omitting it refuses.
 APPARATUS_ENCODING: dict[str, Any] = {
     "encoder_config": {
         "embedding_dim": 384,
@@ -263,12 +270,42 @@ def encoder_config_identity(config: Any) -> dict[str, Any]:
     return out
 
 
-def encoding_identity(config: Any, world_ranges: dict[str, Any]) -> dict[str, Any]:
+UNRANGED = "unranged"  # a declared world sensor with no usable range (encoded via the legacy map)
+
+
+def declared_world_roster(executor: Any) -> list[str]:
+    """Every `modality: world` sensor the body DECLARES, range or not (sorted).
+
+    `_read_world_ranges` skips a world sensor with a missing/malformed range (it re-folds through
+    the legacy map) while `_read_world_states` still encodes it — so the ranges alone cannot see a
+    range-less sensor joining the vector. Same walk as `agent_loop._read_declared_modality_ranges`.
+    """
+    from maxim.embodiment.sensory_streams import WORLD_TAG
+
+    root = getattr(getattr(executor, "embodiment", None), "root", None)
+    if root is None:
+        return []
+    walk = getattr(root, "walk", None)
+    names: set[str] = set()
+    for ent in walk() if callable(walk) else (root,):
+        for name, sensor in (getattr(ent, "sensors", {}) or {}).items():
+            if (getattr(sensor, "reading_schema", {}) or {}).get("modality") == WORLD_TAG:
+                names.add(name)
+    return sorted(names)
+
+
+def encoding_identity(config: Any, world_ranges: dict[str, Any], roster: "list[str] | None" = None) -> dict[str, Any]:
     """The encoding equation + the full declared world roster (pure). Ranges are `{lo, hi}`, not
-    `[lo, hi]`: `fingerprint_drift` sorts scalar lists, which would hide a reversed range."""
+    `[lo, hi]`: `fingerprint_drift` sorts scalar lists, which would hide a reversed range. A roster
+    sensor with no usable range enters as `UNRANGED` — present in the vector, absent from the ranges.
+    Never `None`: `fingerprint_drift` compares `.get(k)`, so a None value equals an absent key."""
+    names = sorted(set(world_ranges) | set(roster or ()))
     return {
         "encoder_config": encoder_config_identity(config),
-        "world_ranges": {k: {"lo": float(v[0]), "hi": float(v[1])} for k, v in sorted(world_ranges.items())},
+        "world_ranges": {
+            k: ({"lo": float(world_ranges[k][0]), "hi": float(world_ranges[k][1])} if k in world_ranges else UNRANGED)
+            for k in names
+        },
     }
 
 
@@ -644,7 +681,8 @@ class WaterTrial:
         `propose_via_substrate` and the NODE-gate encodes), over the body's full declared roster."""
         from maxim.runtime.agent_loop import _read_world_ranges
 
-        return encoding_identity(self.encoder.config, _read_world_ranges(self.aut.executor))
+        ex = self.aut.executor
+        return encoding_identity(self.encoder.config, _read_world_ranges(ex), declared_world_roster(ex))
 
     @staticmethod
     def loop_encoder_config() -> dict[str, Any]:

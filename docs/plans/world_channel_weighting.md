@@ -192,8 +192,10 @@ Three real defects, none of them this note's proposal:
    correction to the finding as worded above: the fresh-default read was not quite a tautology,
    since it was compared to a frozen *literal* and so did catch a changed source default. What it
    missed was a non-default config on the encoder actually in use, and everything past
-   `pattern_threshold`. The identity is kept out of the experiments' FROZEN blocks because R3's
-   gauntlet pins `sha256(FROZEN60)`, and widening a closed block would unfreeze a closed record.
+   `pattern_threshold`. The identity is kept out of the experiments' FROZEN blocks because
+   `exp60_run.FROZEN` is the literal apparatus Exp 60 froze and Exp 61/62 carry as checked copies:
+   widening it would edit what three closed experiments declared. The constant is bound by test to
+   the committed Exp 60/62 geometry records, and an edit to it is a named Exp 60 re-run trigger.
 2. **`place_code` is INVERTED by the A4 gain** — and place coding is the one bio-faithful answer for
    a rest-less cyclic variable like `time_of_day` (head-direction/time cells). Measured through the
    shipped `similarity/place_code.py` and the shipped gain law: at value 0.0 the two *nearly-off*

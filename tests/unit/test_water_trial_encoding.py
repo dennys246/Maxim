@@ -34,7 +34,7 @@ def trial(tmp_path: Path):
     aut = build_minecraft_aut(
         agent_id="enc_fp", bridge_port=srv.port, persistence_dir=str(tmp_path), entity_ref="bodies/minecraft_player"
     )
-    return WT.WaterTrial(
+    trial = WT.WaterTrial(
         aut=aut,
         rcon=None,
         username="maxim",
@@ -46,6 +46,10 @@ def trial(tmp_path: Path):
         agent_id="enc_fp",
         encoder=make_fresh_encoder(aut),
     )
+    try:
+        yield trial
+    finally:
+        srv.close()
 
 
 def _refusal(trial) -> str:
@@ -71,6 +75,22 @@ def test_frozen_encoding_agrees_with_exp60s_three_ranges() -> None:
         WT.APPARATUS_ENCODING["encoder_config"]["pattern_threshold"]
         == FROZEN60["fingerprint"]["encoder_pattern_threshold"]
     )
+
+
+@pytest.mark.parametrize(
+    "record", ["exp60_geometry_2026-09-15b.json", "exp62_pool2_geometry.json", "exp62_pool2_geometry_reconnect.json"]
+)
+def test_frozen_encoding_agrees_with_the_committed_geometry_records(record: str) -> None:
+    """Bind the constant to what the closed campaigns' geometry records say they ran under, so an
+    edit to the constant alone (or with a matching src edit) cannot pass green."""
+    import json
+
+    prov = json.loads((SCRIPTS_DIR.parent / "docs/experiments/data" / record).read_text())["provenance"]
+    cfg = WT.APPARATUS_ENCODING["encoder_config"]
+    assert cfg["gain_exponent"] == prov["gain_exponent"]
+    assert cfg["pattern_threshold"] == prov["pattern_threshold"]
+    assert len(WT.APPARATUS_ENCODING["world_ranges"]) == prov["world_sensor_count"]
+    assert ("world" in cfg["gain_modalities"]) is prov["gain_modality"]
 
 
 # ── live mutations: each passed the pre-#783 guard ──
@@ -119,6 +139,23 @@ def test_rerange_of_a_high_mass_sensor_refuses(trial, monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(al, "_read_world_ranges", reranged)
     assert f"world_ranges.{sensor}" in _refusal(trial)
+
+
+def test_a_rangeless_world_sensor_joining_the_vector_refuses(trial) -> None:
+    """An 18th `modality: world` sensor with no `range:` is encoded (legacy map) but skipped by
+    `_read_world_ranges` — the ranges alone would still show the same 17 keys."""
+    from types import SimpleNamespace
+
+    root = trial.aut.executor.embodiment.root
+    ent = next(
+        e
+        for e in root.walk()
+        for s in (getattr(e, "sensors", {}) or {}).values()
+        if (getattr(s, "reading_schema", {}) or {}).get("modality") == "world"
+    )
+    # Both walkers are duck-typed on `reading_schema`: a declaration with no `range:` is all it takes.
+    ent.sensors["zz_new_world_sensor"] = SimpleNamespace(reading_schema={"modality": "world"})
+    assert "world_ranges.zz_new_world_sensor" in _refusal(trial)
 
 
 # ── pure ──
