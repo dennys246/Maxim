@@ -477,7 +477,7 @@ E1 prereg → four-lens → freeze             →   E1 pilot → campaign
 
 ## Parallel lines — outside the ladder, with their own entry conditions
 
-Neither is a rung; neither may silently power E1–E3. A line touching a survival rung enters as a
+None is a rung; none may silently power E1–E3. A line touching a survival rung enters as a
 declared arm or not at all (1.3's D1 posture, applied to research lines).
 
 - **Intrinsic motivation** (`archive/roadmap_1_3.md` Phase 6): `success × novelty` vs learning-progress, with
@@ -493,6 +493,15 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   both go to `archive/` with the measurement recorded.
   **Why parallel and not a rung:** 1.4's ladder already carries a may-fail headline (E3) and an
   instrument rebuild; a second research line inside it would make a null in either unreadable.
+  *(2026-09-21: audit ran; disposition REDESIGN THE SOURCE; exploratory re-audit #810.)*
+- **Memory strength and forgetting** ([memory_strength_and_forgetting.md](memory_strength_and_forgetting.md),
+  opened 2026-09-21): a hippocampal forgetting model — storage strength from existing signals
+  (salience, novelty, |RPE|, pain, drive pressure, relief, valence), retrievability on an experience
+  clock, honest activation, sleep with floors, a byte budget in `maxim config`. **Entry condition:
+  its Phase 0** (input-integrity defects #813–#817 and the ledger's decay/eviction triggers). Opt-in,
+  defaults pinned; fear and cluster-bias decay out of round one. **Ties to the theme:** its
+  retroactive tagging is the same look-back as R4's delayed credit and the language line's binding —
+  `PerceptTraceBuffer`, which has no production caller; whichever line wires it first owns it.
 
 ## What is NOT in 1.4
 
