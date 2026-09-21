@@ -52,6 +52,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Tool output reaches the LLM framed as data, not instructions (#823).** A fetched page or search
+  snippet was pasted raw into the follow-up prompt between "Results from X:" and the prompt's own
+  "=== Instructions ===", so a page carrying its own instructions block was indistinguishable from
+  the prompt's. Every `ActionFollowup` producer (the loop's result paths, the batched-exploration
+  path, `LoopController`'s human-confirmed path) converges on one consumer,
+  `runtime/agent_loop.py::_followup_synthetic_input`, which wraps the result in
+  `utils/content_safety.py::frame_tool_output`: `<<TOOL_OUTPUT id=<per-call random> …>> …
+  <</TOOL_OUTPUT id=…>>` (content cannot forge an id it never saw; it is also NFKC-normalised,
+  stripped of zero-width characters and has any "tool output" lookalike defanged). The follow-up
+  prompts state the rule above the frame. `result_summary` stays **raw**, because NAc's outcome
+  signature is its first 50 characters (framing it would have merged every outcome of a tool into
+  one causal link). Also: a page can no longer switch the prompt into batched mode (keyed on the
+  tool name only), and the user query is quoted so it cannot shift the follow-up parse. Framing
+  strips control characters: `\x1e` is the router's system/user split delimiter, so one such byte
+  in a page used to move page text into the **system** role. The router's planning-mode check now
+  reads only the prompt's own text (`content_safety.outside_tool_output`), so a framed page cannot
+  flip it. On the human-approved path, `internet_search` results now render as the same numbered
+  list as the main path instead of a dict repr — which changes that path's NAc outcome signature
+  to match the main path's.
+  `run_agentic_loop` pin 3484 → 3453. Known gaps (#835): the follow-up still travels as a
+  synthetic *user* input in `cli_inputs`, and the short outcome previews (context pool, reasoning
+  carryover, recent outcomes: 50–100 chars) still carry raw text.
 - **The persisted internet policy and the access toggle now reach the live tools (#822).** Both
   runtimes (`cli.py`, `embodied_runtime/agentic_runtime.py`) built a bare
   `InternetAccessPolicy(enabled=...)`, so `util/internet_policy.json` never applied and

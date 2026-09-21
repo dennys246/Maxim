@@ -26,7 +26,7 @@ _REPO = Path(__file__).resolve().parent.parent
 # (relative path, function name) -> max allowed inclusive line span.
 # Ratchet-DOWN only: never raise a number here to make a growing function pass.
 _BASELINES: dict[tuple[str, str], int] = {
-    ("src/maxim/runtime/agent_loop.py", "run_agentic_loop"): 3484,
+    ("src/maxim/runtime/agent_loop.py", "run_agentic_loop"): 3453,
     ("src/maxim/simulation/orchestrator.py", "start_simulation_mode"): 3324,
     ("src/maxim/cli.py", "_main_impl"): 1743,
 }

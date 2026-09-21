@@ -1850,6 +1850,56 @@ def _substrate_tick_due(aut_mode: str, ctrl: Any, llm_submit_interval: float) ->
     )
 
 
+def _followup_result_text(tool_name: str, output: Any, result: Any, limit: int) -> str | None:
+    """The RAW text a tool result contributes (the follow-up AND ``result_summary``).
+
+    Deliberately unframed: ``result_summary`` feeds ``record_outcome``, whose NAc outcome signature
+    is its first 50 characters -- a frame header there would collapse every outcome of a tool into
+    one causal link (#823 review). Framing happens in ``_followup_synthetic_input``.
+    """
+    if output is not None:
+        if tool_name == "internet_search" and isinstance(output, list):
+            parts = []
+            for i, item in enumerate(output[:10], 1):  # Limit to 10 results
+                if isinstance(item, dict):
+                    parts.append(
+                        f"[{i}] {item.get('title', '')}\n    URL: {item.get('url', '')}\n    {item.get('snippet', '')}"
+                    )
+            text = "\n\n".join(parts)[:limit]
+        else:
+            text = str(output)[:limit]
+        # For empty results, include metadata message if available
+        if not output and hasattr(result, "metadata"):
+            msg = result.metadata.get("message", "")
+            if msg:
+                text = f"[No results: {msg}]"
+        return text
+    # When output is None but the tool returned an error, include the error text so follow-up
+    # re-thinks can see WHY it failed.
+    error_msg = getattr(result, "error", None) if result else None
+    if error_msg:
+        return f"[ERROR: {str(error_msg)[:limit]}]"
+    return None
+
+
+def _followup_synthetic_input(followup: Any) -> str:
+    """The follow-up input the LLM receives, with the tool result FRAMED as data (#823).
+
+    The single consumer every ``ActionFollowup`` producer converges on (the loop's result paths,
+    the batched-exploration path, and ``LoopController``'s human-confirmed path), so no producer
+    can bypass the frame. ``batched_exploration`` may contain fetched pages, so it is framed as
+    external. The query is quoted so it cannot shift the parser's ``']: `` split.
+    """
+    from maxim.modes.definitions import NETWORK_TOOLS
+    from maxim.utils.content_safety import frame_tool_output
+
+    tool = followup.tool
+    external = tool in NETWORK_TOOLS or tool == "batched_exploration"
+    result = frame_tool_output(tool, followup.result or "", external=external)
+    query = str(followup.original_query or "").replace("'", "\u2019")
+    return f"[ACTION_FOLLOWUP type={followup.followup_type} tool={tool} mode={followup.mode} query='{query}']: {result}"
+
+
 def _loop_is_idle(*wake_sources: object) -> bool:
     """True when NO wake source holds — the loop sleeps ``idle_sleep_s`` and continues.
 
@@ -3874,35 +3924,7 @@ def run_agentic_loop(
                     # Store more result for tools that need processing (up to 3000 chars)
                     needs_processing = followup_type in ("process", "respond", "engage")
                     result_limit = 3000 if needs_processing else 100
-                    # Handle empty lists/dicts as valid output (use 'is not None' check)
-                    if output is not None:
-                        # Format search results in a more LLM-friendly way
-                        if tool_name == "internet_search" and isinstance(output, list):
-                            formatted_parts = []
-                            for i, item in enumerate(output[:10], 1):  # Limit to 10 results
-                                if isinstance(item, dict):
-                                    title = item.get("title", "")
-                                    url = item.get("url", "")
-                                    snippet = item.get("snippet", "")
-                                    formatted_parts.append(f"[{i}] {title}\n    URL: {url}\n    {snippet}")
-                            result_str = "\n\n".join(formatted_parts)[:result_limit]
-                        else:
-                            result_str = str(output)[:result_limit]
-                        # For empty results, include metadata message if available
-                        if not output and hasattr(result, "metadata"):
-                            msg = result.metadata.get("message", "")
-                            if msg:
-                                result_str = f"[No results: {msg}]"
-                    else:
-                        # When output is None but tool returned an error,
-                        # include the error text so followup re-thinks can
-                        # see WHY the tool failed (e.g. "use send_message
-                        # instead of respond").
-                        error_msg = getattr(result, "error", None) if result else None
-                        if error_msg:
-                            result_str = f"[ERROR: {str(error_msg)[:result_limit]}]"
-                        else:
-                            result_str = None
+                    result_str = _followup_result_text(tool_name, output, result, result_limit)
 
                     _rec_outcome(
                         agent_id=_loop_agent_id,
@@ -4217,7 +4239,7 @@ def run_agentic_loop(
                         )
 
                         # Record outcome so LLM sees the result
-                        result_str = str(output)[:3000] if output is not None else None
+                        result_str = _followup_result_text(tool_name, output, None, 3000)
                         _rec_outcome(
                             agent_id=_loop_agent_id,
                             tool_name=tool_name,
@@ -4649,10 +4671,7 @@ def run_agentic_loop(
 
                             # Create a synthetic input with followup metadata
                             # Format: [ACTION_FOLLOWUP type=X tool=Y query='Z']: result
-                            synthetic_input = (
-                                f"[ACTION_FOLLOWUP type={followup_type} tool={followup_tool} "
-                                f"mode={followup_mode} query='{followup_query}']: {followup_result}"
-                            )
+                            synthetic_input = _followup_synthetic_input(ctrl.pending_action_followup)
                             if context.cli_inputs:
                                 context.cli_inputs.append(synthetic_input)
                             else:
