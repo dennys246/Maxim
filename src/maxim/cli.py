@@ -1813,14 +1813,10 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 # Check if internet access is enabled (default: True unless --no-internet)
                 internet_enabled = not bool(getattr(args, "no_internet", False))
 
-                # Create internet policy getter for tool registry
-                def get_internet_policy():
-                    from maxim.utils.internet_access import InternetAccessPolicy
+                # The persisted policy + runtime toggle, capped by --no-internet (#822).
+                from maxim.utils.internet_access import live_internet_policy_getter
 
-                    return InternetAccessPolicy(enabled=internet_enabled)
-
-                # Only pass policy getter if internet is enabled
-                internet_policy_getter = get_internet_policy if internet_enabled else None
+                internet_policy_getter = live_internet_policy_getter(internet_enabled)
 
                 # Build comms stack if enabled (--comms flag or MAXIM_COMMS_ENABLED env)
                 comms_enabled = bool(getattr(args, "comms", False)) or os.environ.get(

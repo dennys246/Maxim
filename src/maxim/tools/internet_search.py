@@ -629,7 +629,11 @@ class InternetAccessTool(Tool):
 
     def execute(self, **kwargs: Any) -> ToolResult:
         """Execute the toggle."""
-        enabled = bool(kwargs.get("enabled", False))
+        if "enabled" not in kwargs:
+            # No silent default: a missing argument must not turn internet off for every later
+            # session (the persisted toggle now reaches the live tools, #822).
+            return ToolResult(success=False, error="internet_access_toggle requires an explicit 'enabled' true/false")
+        enabled = bool(kwargs["enabled"])
         reason = str(kwargs.get("reason", "")).strip()
 
         if not self._set_internet_access:

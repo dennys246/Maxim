@@ -460,14 +460,10 @@ class AgenticRuntimeMixin:
         exploration_policy_dict = getattr(self, "_exploration_policy", {}) or {}
         allow_internet = exploration_policy_dict.get("allow_internet", True)
 
-        # Create internet policy getter for tool registry
-        def get_internet_policy():
-            from maxim.utils.internet_access import InternetAccessPolicy
+        # The persisted policy + runtime toggle, capped by the exploration policy (#822).
+        from maxim.utils.internet_access import live_internet_policy_getter
 
-            return InternetAccessPolicy(enabled=allow_internet)
-
-        # Only pass policy getter if internet is allowed
-        internet_policy_getter = get_internet_policy if allow_internet else None
+        internet_policy_getter = live_internet_policy_getter(allow_internet)
 
         # Build comms stack if enabled (MAXIM_COMMS_ENABLED env)
         gateway = None

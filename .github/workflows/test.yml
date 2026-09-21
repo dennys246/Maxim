@@ -470,6 +470,12 @@ jobs:
             echo "ERROR: raw urllib.request.urlopen outside utils/http.py"
             exit 1
           fi
+          # #822: runtimes get their internet policy from utils/internet_access.py::live_internet_policy_getter;
+          # a bare InternetAccessPolicy(enabled=...) elsewhere bypasses the persisted policy and toggle.
+          if grep -rn "InternetAccessPolicy(enabled=" src/maxim/ | grep -v "utils/internet_access.py"; then
+            echo "ERROR: bare InternetAccessPolicy(enabled=...) outside utils/internet_access.py (use live_internet_policy_getter)"
+            exit 1
+          fi
           if grep -rnE "from maxim\.mesh\.(peer_registry|peer_info|peer_channel|task_delegation|knowledge|clock|agent_identity|admission)" src/maxim/ tests/; then
             echo "ERROR: import from deleted mesh modules"
             exit 1

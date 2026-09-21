@@ -15,7 +15,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -174,6 +174,16 @@ def set_internet_access(enabled: bool, source: str = "tool", path: Path | str | 
 # ─────────────────────────────────────────────────────────────────────────────
 # Internet Access Policy
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+def _domain_set(value: Any, field_name: str) -> set[str]:
+    """A domain list from JSON: a list of strings, or ``ValueError``.
+
+    ``set("evil.com")`` would silently become a set of single characters and block nothing.
+    """
+    if not isinstance(value, list) or not all(isinstance(d, str) for d in value):
+        raise ValueError(f"{field_name} must be a list of domain strings, got {type(value).__name__}")
+    return set(value)
 
 
 @dataclass
@@ -349,10 +359,10 @@ class InternetAccessPolicy:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
+        # No "enabled": the persisted access toggle owns it (see load_internet_policy).
         return {
-            "enabled": self.enabled,
-            "allow_domains": list(self.allow_domains),
-            "block_domains": list(self.block_domains),
+            "allow_domains": sorted(self.allow_domains),
+            "block_domains": sorted(self.block_domains),
             "require_robots_ok": self.require_robots_ok,
             "block_paywalled": self.block_paywalled,
             "allow_paywalled_with_credentials": self.allow_paywalled_with_credentials,
@@ -367,11 +377,15 @@ class InternetAccessPolicy:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> InternetAccessPolicy:
-        """Deserialize from dictionary."""
+        """Deserialize from dictionary. Raises ``ValueError`` on an ill-typed domain list.
+
+        ``enabled`` is not read from the policy file on the live path: the persisted access
+        toggle owns it (``load_internet_policy`` overrides it).
+        """
         return cls(
             enabled=bool(data.get("enabled", False)),
-            allow_domains=set(data.get("allow_domains", [])),
-            block_domains=set(data.get("block_domains", [])),
+            allow_domains=_domain_set(data.get("allow_domains", []), "allow_domains"),
+            block_domains=_domain_set(data.get("block_domains", []), "block_domains"),
             require_robots_ok=bool(data.get("require_robots_ok", True)),
             block_paywalled=bool(data.get("block_paywalled", True)),
             allow_paywalled_with_credentials=bool(data.get("allow_paywalled_with_credentials", False)),
@@ -400,24 +414,27 @@ def _default_policy_path() -> Path:
 _cached_policy: InternetAccessPolicy | None = None
 _cached_policy_mtime: float = 0.0
 _cached_policy_enabled: bool | None = None  # Track access state too
+_cached_policy_path: Path | None = None  # The cache is only valid for the file it was read from
 _cached_policy_lock = threading.Lock()
 
 
-def load_internet_policy(path: Path | str | None = None) -> InternetAccessPolicy:
+def load_internet_policy(
+    path: Path | str | None = None, *, access_path: Path | str | None = None
+) -> InternetAccessPolicy:
     """Load internet access policy from file (cached with mtime validation).
 
-    The policy is cached and only reloaded if the file has been modified
-    or the internet access enabled state has changed.
+    The policy is cached and only reloaded if the file has been modified,
+    the internet access enabled state has changed, or a different file is asked for.
     """
-    global _cached_policy, _cached_policy_mtime, _cached_policy_enabled
+    global _cached_policy, _cached_policy_mtime, _cached_policy_enabled, _cached_policy_path
     path = Path(path) if path else _default_policy_path()
 
     # First load the access state to get enabled flag
-    access_state = load_internet_access()
+    access_state = load_internet_access(access_path)
 
     # Check cache validity
     with _cached_policy_lock:
-        if _cached_policy is not None:
+        if _cached_policy is not None and _cached_policy_path == path:
             try:
                 current_mtime = path.stat().st_mtime if path.exists() else 0.0
                 # Cache hit if file unchanged AND enabled state unchanged
@@ -433,17 +450,23 @@ def load_internet_policy(path: Path | str | None = None) -> InternetAccessPolicy
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            from maxim.utils.format_version import check_format_version
+
+            check_format_version(data, "internet_policy", log=logger)
             policy = InternetAccessPolicy.from_dict(data)
             # Override enabled from access state
             policy.enabled = access_state.enabled
-        except Exception as e:
-            logger.warning(f"Failed to load internet policy: {e}")
-            policy = InternetAccessPolicy(enabled=access_state.enabled)
+        except (OSError, ValueError, TypeError) as e:
+            # FAIL CLOSED: the file exists, so it may carry a block list; silently falling back to
+            # an unrestricted default would drop that control (#822 review).
+            logger.error("Internet policy %s is unreadable (%s); internet access DISABLED until it is fixed.", path, e)
+            policy = InternetAccessPolicy(enabled=False)
 
     # Update cache
     with _cached_policy_lock:
         _cached_policy = policy
         _cached_policy_enabled = access_state.enabled
+        _cached_policy_path = path
         try:
             _cached_policy_mtime = path.stat().st_mtime if path.exists() else 0.0
         except OSError:
@@ -458,12 +481,52 @@ def save_internet_policy(policy: InternetAccessPolicy, path: Path | str | None =
 
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(policy.to_dict(), f, indent=2)
+        from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
+
+        atomic_write_json(str(path), with_format_version(policy.to_dict()))
         return True
     except Exception as e:
         logger.error(f"Failed to save internet policy: {e}")
         return False
+
+
+def live_internet_policy_getter(
+    launch_enabled: bool,
+    *,
+    policy_path: Path | str | None = None,
+    access_path: Path | str | None = None,
+) -> Callable[[], InternetAccessPolicy] | None:
+    """The ONE internet-policy getter every runtime hands its tool registry (#822).
+
+    ``launch_enabled`` is the launch-time cap (``--no-internet``, an exploration policy's
+    ``allow_internet``): when False there is no getter and no internet tools are registered.
+    Otherwise every call returns the persisted policy -- its domain allow/block lists, byte and
+    rate limits from ``util/internet_policy.json`` -- with ``enabled`` taken from the persisted
+    access state, so the ``internet_access_toggle`` tool takes effect on the next request.
+    (Before this, both runtimes built a bare ``InternetAccessPolicy(enabled=...)``, so neither the
+    policy file nor the toggle ever applied.) Tools call the getter per request; the loader caches
+    on the file's mtime.
+    """
+    if not launch_enabled:
+        return None
+    initial = load_internet_policy(policy_path, access_path=access_path)
+    if not initial.enabled or initial.allow_domains or initial.block_domains:
+        # WARNING, not INFO: a persisted "off" (the agent's toggle tool is its only writer) or a
+        # domain list silently changes what every later session can reach (#822 review).
+        logger.warning(
+            "Internet policy in effect: %s (toggle: %s; policy: %s). To reset, delete those files.",
+            initial.summary(),
+            Path(access_path) if access_path else _default_internet_access_path(),
+            Path(policy_path) if policy_path else _default_policy_path(),
+        )
+    else:
+        logger.info("Internet policy in effect: %s", initial.summary())
+
+    def get() -> InternetAccessPolicy:
+        return load_internet_policy(policy_path, access_path=access_path)
+
+    return get
 
 
 # ─────────────────────────────────────────────────────────────────────────────
