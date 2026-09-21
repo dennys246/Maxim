@@ -221,7 +221,17 @@ rung's prereg freezes):**
 
 ## Phase 1 — Exp 62, cross-context transfer by the body (runs FIRST, concurrently)
 
-Prereg v2 on main; owner decisions D1–D4 pending; its instrument is `WaterTrial` per pool plus the
+**EARNED 2026-09-20 — PHASE 1 IS CLOSED.** Campaign `exp62-rungA-1` at one hash, 27 rows, ZERO
+refusals, 46.9 min: NODE 12/12, CROSS 12/12, SAME 12/12, ABLATED 0/3 with zero executor calls, REPLAY
+agrees; Fisher p 0.0022; cross-arm Wilson **[0.758, 1.000]** — the interval is the statistic, since
+both fear arms sit at the ceiling by design. Prereg v3 (the freeze) + §Outcome; data #790, ledger row
+#791. **Which branch of the keying tree below fired: TRANSFER** — so the keying mechanism does NOT
+enter, and the wall is further out. That is why Rung B's entry condition was made independent of this
+rung (Phase 5). Bound, and it is load-bearing: the apparatus has ONE discriminating world sensor, so
+what transferred is invariance to the two LOW-GAIN place absolutes, not to a changed situation; a
+night pool still reads 0.799, so the fear misses at night and the frozen day hides it.
+
+Prereg v3 on main; owner decisions D1–D4 taken; its instrument is `WaterTrial` per pool plus the
 committed replay. **It needs nothing from Phase 0** and does not wait for it (schedule below). It
 names the keying gap: pools never share a cluster → within-modality keying (R1's home); share but no
 transfer → the write channel (Wire-4's key); transfer → the wall is further out. **Slot:** it closes
