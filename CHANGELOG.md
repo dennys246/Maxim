@@ -52,6 +52,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The fetch byte cap now bounds the download — and memory — not just what is kept (#825).**
+  `http_fetch` applied `max_fetch_bytes` after `response.content` had already read the whole body,
+  so a multi-GB response was downloaded in full first (measured on `main`: a 50 MiB body pulled all
+  800 chunks to keep 1 MB). `utils/http.py::fetch_url` gains an opt-in `max_bytes=`: the body is
+  streamed and reading stops at the cap, with `Response.truncated` reporting it; without it every
+  existing caller reads the full body exactly as before. On the capped path only gzip/deflate are
+  advertised and they are inflated with a **bounded** decompressor (a 200 KB gzip bomb used to peak
+  at ~800 MB of memory to yield 1 KB; now under 20 MB), and any other encoding is refused. The cap
+  is validated up front. `http_fetch` passes the policy's cap — the model may ask for less, never
+  more (it could previously override it without limit) — reports `truncated`, and refuses non-text
+  Content-Types (JavaScript, YAML, TOML, NDJSON and `+json`/`+xml` count as text). robots.txt and
+  both DuckDuckGo fetches, whose hosts are untrusted, are capped too.
 - **Tool output reaches the LLM framed as data, not instructions (#823).** A fetched page or search
   snippet was pasted raw into the follow-up prompt between "Results from X:" and the prompt's own
   "=== Instructions ===", so a page carrying its own instructions block was indistinguishable from

@@ -225,6 +225,7 @@ def _search_duckduckgo(
             method="GET",
             headers={"User-Agent": "Maxim/1.0 (Research Assistant; +https://github.com/maxim)"},
             timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=timeout_s, total_s=timeout_s + 2.0),
+            max_bytes=2_000_000,  # untrusted remote; bounds the download (#825)
         )
         data = response.json()
 
@@ -335,6 +336,7 @@ def _search_duckduckgo_lite(
                 method="GET",
                 headers=headers,
                 timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=timeout_s, total_s=timeout_s + 2.0),
+                max_bytes=2_000_000,  # untrusted remote; bounds the download (#825)
             )
             html = maxim_resp.content.decode("utf-8", errors="ignore")
 

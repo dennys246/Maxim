@@ -68,6 +68,7 @@ def _fetch_robots_txt(domain: str, timeout_s: float = 5.0) -> set[str]:
             method="GET",
             headers={"User-Agent": "Maxim/1.0 (Research Assistant)"},
             timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=timeout_s, total_s=timeout_s + 1.0),
+            max_bytes=512_000,  # the robots.txt host is chosen by the model's URL (#825)
         )
         content = resp.text
 
@@ -205,6 +206,29 @@ def extract_title(html: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+_TEXTUAL_TYPES = (
+    "text/",
+    "application/xhtml",
+    "application/xml",
+    "application/json",
+    "application/rss",
+    "application/atom",
+    "application/javascript",
+    "application/x-javascript",
+    "application/ecmascript",
+    "application/yaml",
+    "application/x-yaml",
+    "application/toml",
+    "application/x-ndjson",
+)
+
+
+def _is_textual(content_type: str) -> bool:
+    """Whether a Content-Type is text the fetch tool can meaningfully decode (#825)."""
+    media = content_type.split(";")[0].strip().lower()
+    return media.startswith(_TEXTUAL_TYPES) or media.endswith(("+xml", "+json"))
+
+
 class HttpFetchTool(Tool):
     """Tool for fetching content from URLs.
 
@@ -300,7 +324,12 @@ class HttpFetchTool(Tool):
                     metadata={"policy_blocked": True, "url": url},
                 )
 
-            max_bytes = max_bytes_override or policy.max_fetch_bytes
+            # The model may ask for LESS than the policy cap, never more (#825 review).
+            try:
+                requested = int(max_bytes_override) if max_bytes_override else 0
+            except (TypeError, ValueError):
+                requested = 0
+            max_bytes = min(requested, policy.max_fetch_bytes) if requested > 0 else policy.max_fetch_bytes
             timeout_s = policy.request_timeout_s
             check_robots = policy.require_robots_ok
             block_paywalled = policy.block_paywalled
@@ -352,16 +381,24 @@ class HttpFetchTool(Tool):
                     "Accept-Language": "en-US,en;q=0.5",
                 },
                 timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=timeout_s, total_s=timeout_s + 2.0),
+                # Streamed and capped (#825): the body beyond max_bytes is never downloaded.
+                max_bytes=max_bytes,
             )
 
             # Check content type
             content_type = response.headers.get("Content-Type", "") or response.headers.get("content-type", "")
+            if content_type and not _is_textual(content_type):
+                # A binary body decoded as text is noise for the LLM. (The capped body has already
+                # been read by now; refusing here keeps it out of the prompt, not off the wire.)
+                return ToolResult(
+                    success=False,
+                    error=f"Content-Type {content_type.split(';')[0].strip()} is not text",
+                    metadata={"unsupported_content_type": True, "url": url},
+                )
 
-            # Read content with size limit
             content = response.content
-            if len(content) > max_bytes:
-                logger.warning(f"Content truncated at {max_bytes} bytes")
-                content = content[:max_bytes]
+            if response.truncated:
+                logger.warning("Content truncated at %d bytes (the rest was not downloaded)", max_bytes)
 
             # Final URL — httpx auto-follows redirects; httpx.Response stores it
             # but our wrapper doesn't expose it yet. Use the requested URL as a
@@ -428,6 +465,7 @@ class HttpFetchTool(Tool):
                 metadata={
                     "citation": citation,
                     "content_hash": hashlib.sha256(content).hexdigest()[:16],
+                    "truncated": response.truncated,
                 },
             )
 
