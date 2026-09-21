@@ -52,6 +52,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The agent can no longer switch itself into a code-executing mode (#821).** `ModeSwitchTool`
+  applied any valid mode with no approval, so the model — or injected text it read — could request
+  `singularity`, the one mode with `can_execute_code=True` plus full tools and network. The tool now
+  refuses a self-granted switch into any mode whose definition can execute code (derived from
+  `ModeDefinition.can_execute_code`, not a hand-kept list; the current mode is resolved through the
+  mode registry, so a legacy current name such as `live` is handled), in every setting, and records
+  it as `rejected` in the autonomy audit log without counting toward the mode-switch rate limit. The
+  CLI's `requested_mode` consumer refuses such a mode too, so a future writer that bypasses the tool
+  is still gated. Honest scope: in the CLI runtime the old escalation most likely ended in a failed
+  re-exec (`--mode` does not accept `singularity`), and there is currently **no** path — launch or
+  in-session — into `singularity` for the agent under test; an in-session, time-boxed human approval
+  needs an approval surface that does not exist (`AutonomyController.approve_autonomy_request` has no
+  caller). De-escalation and passive → active are unchanged; note `active` is not code-free when
+  unattended, since non-interactive runs auto-answer "yes" to confirmations.
 - **`SUPERVISED` sandbox execution now supervises: approval FAILS CLOSED.** `ExecuteSandboxScriptTool`
   documented SUPERVISED as "requires approval for first run of each script" but installed a callback
   that returned `True` unconditionally, overwriting any approver a caller had wired, and
