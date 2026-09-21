@@ -130,3 +130,12 @@ def test_real_registry_wiring_never_sets_requested_mode_to_singularity() -> None
     result = registry.get("mode_switch").execute(mode="singularity")
     assert result.success is False
     assert maxim.requested_mode is None
+
+
+def test_cli_seam_refuses_a_code_executing_mode() -> None:
+    from maxim.cli import _runtime_mode_switch_allowed
+
+    assert _runtime_mode_switch_allowed("singularity") is False
+    assert _runtime_mode_switch_allowed("active") is True
+    assert _runtime_mode_switch_allowed("live") is True
+    assert _runtime_mode_switch_allowed("no-such-mode") is False
