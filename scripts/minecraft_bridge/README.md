@@ -34,3 +34,21 @@ a time by design.
 | `--username` | `maxim` | bot username (offline mode) |
 | `--state_interval_ms` | `500` | snapshot cadence (per-Maxim-tick buffering, plan Q7) |
 | `--system_messages` | off | forward the game's system messages (cause-naming death messages, advancements, server lines) as `system` events. Off keeps survival-rung percepts unchanged; turn it on only for language-line captures or a declared arm |
+
+An unknown flag makes the bridge exit with code 2 and list the flags it knows. At startup it prints
+`bridge settings: {...}`, the values it actually runs with. **Check that line after every restart.**
+A bridge started from an older checkout used to ignore a newer flag silently. That is how the first
+`--system_messages` capture came back with no `system` events.
+
+## Event notes
+
+- **A `damage` text can report the health from before the hit.** Mineflayer fires `entityHurt`
+  before the health update lands, so `took damage (health N)` can carry the pre-hit value, one
+  snapshot behind the `health` sensor. Measured: 56/142 events on the L11 trace and 22/39 on the
+  1.20.4 capture match the previous snapshot rather than the paired one
+  (`docs/experiments/paired_data_audit_2026-09-20.md`, finding 3). Left unchanged on purpose: the
+  text is a survival-rung percept, and changing it mid-ladder would change E1–E3's inputs.
+- **A death message describes the preceding second, not the moment it arrives.** By the time a
+  `system` death message (with `--system_messages`) is read, the body has often already respawned.
+  Bind it to the situation before it, not the snapshot it arrives with
+  (`docs/experiments/paired_data_audit_reaudit_2026-09-21.md`).
