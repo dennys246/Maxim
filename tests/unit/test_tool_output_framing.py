@@ -160,3 +160,13 @@ def test_the_loop_builds_its_follow_up_only_through_the_consumer() -> None:
     assert source.count("[ACTION_FOLLOWUP type={") == 1
     assert "[ACTION_FOLLOWUP type={" in inspect.getsource(agent_loop._followup_synthetic_input)
     assert "_followup_synthetic_input(ctrl.pending_action_followup)" in inspect.getsource(agent_loop.run_agentic_loop)
+
+
+def test_every_control_character_except_tab_and_newline_is_stripped() -> None:
+    """Pins the whole C0/C1 table (not just the \\x1e delimiter), and that printable text survives."""
+    every = "".join(chr(c) for c in range(0x00, 0xA0))
+    framed = frame_tool_output("http_fetch", every, external=True)
+    body = framed.split(">>\n", 1)[1].rsplit("\n<</TOOL_OUTPUT", 1)[0]
+    controls = {c for c in body if ord(c) < 0x20 or 0x7F <= ord(c) < 0xA0}
+    assert controls <= {"\t", "\n"}
+    assert "".join(chr(c) for c in range(0x21, 0x7F) if chr(c) not in "_") in body.replace("_", "")
