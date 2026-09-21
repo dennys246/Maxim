@@ -148,6 +148,69 @@ about something live, and that is the finding.
 **Budget.** 27 trainings × ≈ 3 min + 27 probes + two apparatus checks ≈ 2 h, after the two-pool
 plumbing PR.
 
+## Outcome (2026-09-20) — rung A EARNED, campaign `exp62-rungA-1`
+
+**The shipped `minecraft_player` body carries a learned drowning-fear from pool 1 to pool 2** — a
+pool at a different altitude (floor y 90 v 35) and a different spawn distance (62.13 v 70.04),
+same sealed-shell class, same frozen day. No mechanism change, no new sensor, no ingest. This is the
+1.3 §World topology thesis ("portability comes from the body") measured, and it closes the line
+Exp 60 and Exp 61 both left under §Not claimed.
+
+27 rows, **zero refusals**, one code hash.
+
+| arm | n | first-contact | Wilson 95 % | NODE gate | t_first_air median (95 % CI) |
+|---|---|---|---|---|---|
+| 1 **cross** (train pool 1, read pool 2) | 12 | **12/12** | [0.758, 1.000] | **12/12** | 3.238 s [2.876, 3.327] |
+| 2 **same** (train pool 1, read pool 1) | 12 | **12/12** | [0.758, 1.000] | 12/12 | 3.070 s [3.037, 3.155] |
+| 3 **cross, fear-ablated** | 3 | **0/3** | [0.000, 0.561] | n/a — ablation check | — |
+
+All five frozen gates PASS: NODE 12/12 (≥ 11/12), CROSS 1.0 (≥ 0.70), SAME 1.0 (≥ 0.70),
+ANTI-VACUITY (0/3 surfaces, **zero** executor calls, ablation held 3/3), REPLAY (the committed
+offline prediction — cross-pool cosine 0.9992, HIT — and the live NODE outcome agree). Fisher exact
+one-sided, cross v ablated: **p = 0.0022**.
+
+**The interval is the number, not p.** Both fear arms sit at the ceiling by design, so the
+informative statement is the Wilson lower bound: **≥ 0.758** for the cross arm, not "100 %". The two
+arms' latency intervals OVERLAP — the cross arm is nominally 0.17 s slower and there is no evidence
+it is actually slower.
+
+### What was measured along the way
+
+- **Arm 3 is a clean VALENCE ablation, not a representation ablation.** The ablated agents' pool-2
+  readings resolve to the SAME node as their training, with fear 0.0 and need 0.0. So the arm-1/arm-3
+  contrast is the fear alone, with the representation held identical — stronger than the prereg
+  claimed for it.
+- **The apparatus ran ≈ 25 % under its cap** (median 3.24 s against 4.29 s) and the SAME-arm drift
+  gate held across two hours.
+- **The match margin (#786) has ZERO variance**: every cross row read 0.999209493831443, identical
+  to 15 decimal places across 12 independent agents. `world` is frozen-centroid, so the first
+  embedding to reach a node is the prototype forever; with a deterministic apparatus every agent's
+  pool-1 prototype and pool-2 probe are the same vectors. A useful determinism check — and a
+  confirmation that this campaign contributes **nothing** to the shape-of-the-landscape question
+  (zero variance is zero information), which is why that is measured offline instead.
+
+### What this does NOT say
+
+- **It is bounded to the sealed-shell, frozen-day apparatus class**, exactly as pre-registered. It is
+  not "fears water anywhere".
+- **The context wall is untouched and still stands.** A lit surface pond reads 0.588 and a NIGHT POOL
+  reads 0.799 against the 0.85 threshold — so the earned drowning fear **misses at night**, for
+  representational reasons, and the frozen-day protocol is what hides it. Rung B owns that, and its
+  entry condition no longer depends on this rung failing (`docs/plans/roadmap_1_4.md` Phase 5).
+- **This is not a general generalization result.** The apparatus has ONE discriminating world sensor
+  (`live_contributors: ["is_in_water"]`, a binary flip), so its situation space is two points. What
+  transferred is invariance to the two low-gain place absolutes, which is what "portability comes
+  from the body" predicts — not invariance to a changed situation.
+- **Nothing about a pressure sensor.** It was refused for this rung at the design review and is not
+  implicated either way.
+
+### Provenance
+
+Prereg v3 (the freeze, #787) was on `main` before the first data timestamp; the harness (#780) plus
+its two follow-ups (#781, #782) and the margin (#788) were merged first; the campaign ran at one code
+hash with a clean tree, `--write-experiment-results`. Records: `docs/experiments/data/exp62_rows.jsonl`
+and `docs/experiments/data/exp62_verdict.json`.
+
 ## Rung B (design, not built here) — the context wall and what crossing it takes
 
 The measured wall is lighting and time, not place: the same fear at a lit surface pond (0.588) or a
