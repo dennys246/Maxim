@@ -327,7 +327,7 @@ _FRAME_TOKEN = re.compile(r"tool[\W_]*output", re.IGNORECASE)
 _ZERO_WIDTH = re.compile("[\u200b-\u200f\u2060\ufeff]")
 # C0/C1 controls except \t and \n: \x1e is the prompt SEGMENT delimiter the router splits the system
 # message on, so one such byte in a page would move page text into the system role (#823 round 2).
-_CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+_CONTROL_DELETE = dict.fromkeys([*range(0x00, 0x09), *range(0x0B, 0x20), *range(0x7F, 0xA0)])
 _FRAMED_REGION = re.compile(r"<<TOOL_OUTPUT id=([0-9a-f]+) .*?<</TOOL_OUTPUT id=\1>>", re.DOTALL)
 _TOOL_NAME_SAFE = re.compile(r"[^\w-]")
 
@@ -353,7 +353,7 @@ def frame_tool_output(tool_name: str, text: str, *, external: bool, nonce: str |
 
     frame_id = nonce or secrets.token_hex(4)
     name = _TOOL_NAME_SAFE.sub("_", tool_name or "tool")
-    body = _CONTROL.sub("", _ZERO_WIDTH.sub("", unicodedata.normalize("NFKC", text)))
+    body = _ZERO_WIDTH.sub("", unicodedata.normalize("NFKC", text)).translate(_CONTROL_DELETE)
     body = _FRAME_TOKEN.sub("t-o", body)
     source = "external, untrusted" if external else "tool"
     return (
