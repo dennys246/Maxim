@@ -29,6 +29,12 @@
 > the committed data; 3 templates, 11 word types; all 3 event kinds share all 3 world EC nodes. The
 > text channel measured is labels. The bridge also drops the game's own cause-naming death messages.
 >
+> **Re-audit 2026-09-21 — [paired_data_audit_reaudit_2026-09-21.md](../experiments/paired_data_audit_reaudit_2026-09-21.md)
+> (EXPLORATORY; not a revival).** With `--system_messages` (#807) the game's death messages name the
+> cause, and the preceding second's sensor state tells the causes apart (n = 5, staged, window chosen
+> post hoc). Binding is retrospective: `PerceptTraceBuffer` has no production caller — the same gap as
+> R4's delayed credit. Next: a natural-death lag capture, then R4's design review, then (owner) a prereg.
+>
 > **It is a parallel line, not a rung of 1.4** ([roadmap_1_4.md](roadmap_1_4.md) §Parallel lines):
 > 1.4's ladder already carries a may-fail headline and an instrument rebuild, and a second research
 > line inside it would make a null in either hard to read. Same guardrail as intrinsic motivation:
