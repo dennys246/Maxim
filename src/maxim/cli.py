@@ -2289,7 +2289,16 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         if requested == "shutdown":
             logger.info("Shutdown requested.")
             break
-        if requested in ("sleep", "live", "agentic", "passive", "active", "singularity"):
+        from maxim.tools.mode_switch import executes_code
+
+        if executes_code(requested):
+            # #821 backstop: a code-executing mode is never entered through a runtime request,
+            # whoever wrote requested_mode. (The agent's own tool refuses it first.)
+            logger.warning(
+                "Refusing runtime switch into %r: a code-executing mode cannot be entered at runtime.", requested
+            )
+            break
+        if requested in ("sleep", "live", "agentic", "passive", "active"):
             logger.info("Switching mode: %s -> %s", mode, requested)
             delay_s = 0.0
             try:
