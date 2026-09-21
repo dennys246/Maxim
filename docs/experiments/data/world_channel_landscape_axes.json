@@ -1,0 +1,108 @@
+{
+  "threshold": 0.85,
+  "gain": 3.0,
+  "axes": [
+    {
+      "sensor": "distance_from_spawn",
+      "min_cos": 0.7602,
+      "at_value": -128.0,
+      "crosses": true
+    },
+    {
+      "sensor": "food",
+      "min_cos": 0.7657,
+      "at_value": 0.0,
+      "crosses": true
+    },
+    {
+      "sensor": "health",
+      "min_cos": 0.7584,
+      "at_value": 0.0,
+      "crosses": true
+    },
+    {
+      "sensor": "hostile_count",
+      "min_cos": 0.7682,
+      "at_value": 32.0,
+      "crosses": true
+    },
+    {
+      "sensor": "is_in_water",
+      "min_cos": 0.781,
+      "at_value": -1.0,
+      "crosses": true
+    },
+    {
+      "sensor": "is_raining",
+      "min_cos": 0.7589,
+      "at_value": 1.0,
+      "crosses": true
+    },
+    {
+      "sensor": "light_level",
+      "min_cos": 0.3057,
+      "at_value": 15.0,
+      "crosses": true
+    },
+    {
+      "sensor": "look_pitch",
+      "min_cos": 0.7491,
+      "at_value": 1.5708,
+      "crosses": true
+    },
+    {
+      "sensor": "nearest_hostile_dist",
+      "min_cos": 0.7675,
+      "at_value": 128.0,
+      "crosses": true
+    },
+    {
+      "sensor": "nearest_player_dist",
+      "min_cos": 0.7731,
+      "at_value": 0.0,
+      "crosses": true
+    },
+    {
+      "sensor": "on_ground",
+      "min_cos": 0.7569,
+      "at_value": 3.0,
+      "crosses": true
+    },
+    {
+      "sensor": "oxygen",
+      "min_cos": 0.7548,
+      "at_value": 40.0,
+      "crosses": true
+    },
+    {
+      "sensor": "saturation",
+      "min_cos": 0.7598,
+      "at_value": 0.0,
+      "crosses": true
+    },
+    {
+      "sensor": "speed",
+      "min_cos": 0.7731,
+      "at_value": -1.0,
+      "crosses": true
+    },
+    {
+      "sensor": "time_of_day",
+      "min_cos": 0.6411,
+      "at_value": 1.0,
+      "crosses": true
+    },
+    {
+      "sensor": "xp_level",
+      "min_cos": 0.751,
+      "at_value": -50.0,
+      "crosses": true
+    },
+    {
+      "sensor": "y_altitude",
+      "min_cos": 0.7754,
+      "at_value": 128.0,
+      "crosses": true
+    }
+  ]
+}

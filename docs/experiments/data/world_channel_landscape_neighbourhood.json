@@ -1,0 +1,66 @@
+{
+  "threshold": 0.85,
+  "gain": 3.0,
+  "ks": [
+    1,
+    2,
+    3,
+    5,
+    8,
+    17
+  ],
+  "repeats": 25,
+  "band": 0.05,
+  "pct_grid_in_band": 10.317460317460316,
+  "crossings": [
+    {
+      "k": 1,
+      "between": [
+        0.9,
+        0.95
+      ],
+      "step_drop": 0.04202415572883356
+    },
+    {
+      "k": 2,
+      "between": [
+        0.8,
+        0.85
+      ],
+      "step_drop": 0.0476369557418681
+    },
+    {
+      "k": 3,
+      "between": [
+        0.75,
+        0.8
+      ],
+      "step_drop": 0.04557787572295868
+    },
+    {
+      "k": 5,
+      "between": [
+        0.7,
+        0.75
+      ],
+      "step_drop": 0.048134807342121166
+    },
+    {
+      "k": 8,
+      "between": [
+        0.65,
+        0.7
+      ],
+      "step_drop": 0.07177058493614319
+    },
+    {
+      "k": 17,
+      "between": [
+        0.2,
+        0.25
+      ],
+      "step_drop": 0.030948162103230037
+    }
+  ],
+  "what_this_cannot_say": "shape only; not the world's support (see module docstring)"
+}
