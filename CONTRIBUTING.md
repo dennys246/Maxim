@@ -179,6 +179,27 @@ By contributing, you agree that your contributions will be licensed under the Ap
 
 **Exception:** The `[yolo]` extra uses AGPL-3.0 licensed code (ultralytics). Contributions to YOLO-related code are licensed under AGPL-3.0.
 
+## Issues — what belongs in one
+
+This repository is docs-driven: plans, briefs and pre-registrations carry the reasoning, and
+`docs/plans/outstanding.md` is the standing index of what is owed. Issues are used for **one thing**:
+
+> a **discrete defect**, actionable **now**, with a definite done state.
+
+Everything else has a better home — work gated on a trigger is a plan under `docs/plans/deferred/`
+with its revive condition stated; reasoning, measurements and rejected designs go in the owning doc.
+
+Two rules that follow:
+
+- **Reference the issue from the PR that fixes it** (`Closes #N`). That is the point of using issues
+  here at all: the tracker closes itself. A register entry needs someone to remember to delete it,
+  and the one nobody remembers is how a doc ends up claiming a gap that was enforced in CI weeks ago.
+- **Do not bulk-backfill issues from existing docs.** Most owed work is trigger-gated, and an open
+  issue nobody can act on is noise. File one when an audit *verifies* a live defect.
+
+`docs/plans/outstanding.md` indexes open issues with one line each and links out; it never restates
+them, because two descriptions of one defect drift.
+
 ## Questions?
 
 Open an issue at https://github.com/dennys246/Maxim/issues
