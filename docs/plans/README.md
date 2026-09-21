@@ -137,6 +137,8 @@ on a second body arriving and now live in [deferred/](deferred/).*
 
 Design work preserved in [deferred/](deferred/). Each has an explicit "revive when" condition (full rationale in the banner at the top of each doc).
 
+- [deferred/behavior_tiers.md](deferred/behavior_tiers.md) — which automatic behaviours stay code (invariants, innate priors) and which should become learned. The declare-your-tier **rule** is active; the migrations are deferred per item: source trust (M1) revives with the language line's L4 prereg, curiosity (M3) with intrinsic motivation's trigger or L5, learned reflex gain (M4) when a rung names a fixed gain as the limit. All wait for memory-strength Phase 2.
+
 **Deferred 2026-09-18 (owner):**
 
 **Moved down from the root in the 2026-09-19 plans audit** (each file now carries its revive trigger at the top):
@@ -395,3 +397,9 @@ not load-bearing instructions.
 - **`rationale/` is not a plan either.** It holds design-review lens reports (one subdir per experiment or plan) that preregs and roadmaps cite as evidence — it stays put, like `reviews/`.
 - **A plan whose work ships moves in the same PR as the release transaction.** Every one of the 10 root plans archived on 2026-09-19 was "shipped but never moved", which is how the root came to describe work finished three releases earlier.
 - **Merge before multiplying.** If two plans overlap by more than a phase, merge them.
+- **Automatic behaviours declare their tier** (adopted 2026-09-21). A PR that adds or changes an
+  automatic behaviour says in its body whether it is an **invariant** (never learned: safety,
+  anything an adversary could exploit), an **innate prior** (coded default, learnable gain) or
+  **learned** (substrate, persisted, shareable). If the honest tier is prior or learned but the PR
+  hard-codes it anyway, the PR files the "make it learned" follow-up with a revive trigger. Tier map,
+  prerequisite and the deferred migrations: [deferred/behavior_tiers.md](deferred/behavior_tiers.md).
