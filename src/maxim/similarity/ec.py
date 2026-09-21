@@ -1482,6 +1482,16 @@ class EntorhinalCortex:
 
         return stats
 
+    def __bool__(self) -> bool:
+        """A store that EXISTS is truthy even when EMPTY (#839).
+
+        Defining ``__len__`` alone makes an empty store falsy, so ``if store:`` / ``if not store:``
+        silently skipped it until something else wrote its first entry (e.g. MemoryAgent dropped
+        every capture into an empty hippocampus). Presence is ``is not None``; emptiness is
+        ``len(store) == 0``.
+        """
+        return True
+
     def __len__(self) -> int:
         """Number of registered signatures."""
         return len(self._signatures)
