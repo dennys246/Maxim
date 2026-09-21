@@ -23,6 +23,12 @@
 > passes, this plan's Phase 1–2 and the projection plan revive TOGETHER, with a pre-registered
 > experiment and the usual four-lens review. If it fails, this file says so and goes to `archive/`.
 >
+> **Audit RAN 2026-09-20 — [paired_data_audit_2026-09-20.md](../experiments/paired_data_audit_2026-09-20.md)
+> ([script](../../scripts/paired_data_audit.py)); disposition: REDESIGN THE DATA SOURCE (owner,
+> recorded as a post-null change of source — not a pass; the record lists the steps).** One paired trace in
+> the committed data; 3 templates, 11 word types; all 3 event kinds share all 3 world EC nodes. The
+> text channel measured is labels. The bridge also drops the game's own cause-naming death messages.
+>
 > **It is a parallel line, not a rung of 1.4** ([roadmap_1_4.md](roadmap_1_4.md) §Parallel lines):
 > 1.4's ladder already carries a may-fail headline and an instrument rebuild, and a second research
 > line inside it would make a null in either hard to read. Same guardrail as intrinsic motivation:
