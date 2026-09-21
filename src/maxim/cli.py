@@ -562,6 +562,25 @@ def _dispatch_hivemind_cli(raw_argv: list[str]) -> int | None:
     return None
 
 
+_RUNTIME_SWITCHABLE_MODES = ("sleep", "live", "agentic", "passive", "active")
+
+
+def _runtime_mode_switch_allowed(requested: str) -> bool:
+    """Whether a runtime ``requested_mode`` may be re-exec'd into.
+
+    #821 backstop at the seam every runtime mode request passes through: a code-executing mode is
+    refused whoever wrote ``requested_mode`` (the agent's ``ModeSwitchTool`` refuses it first).
+    """
+    from maxim.tools.mode_switch import executes_code
+
+    if executes_code(requested):
+        logging.getLogger(__name__).warning(
+            "Refusing runtime switch into %r: a code-executing mode cannot be entered at runtime.", requested
+        )
+        return False
+    return requested in _RUNTIME_SWITCHABLE_MODES
+
+
 def _main_impl(argv: Sequence[str] | None = None) -> int:
     """Original ``main`` body.  Wrapped by :func:`main` for typed-error surfacing."""
     # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
@@ -2289,7 +2308,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         if requested == "shutdown":
             logger.info("Shutdown requested.")
             break
-        if requested in ("sleep", "live", "agentic", "passive", "active", "singularity"):
+        if _runtime_mode_switch_allowed(requested):
             logger.info("Switching mode: %s -> %s", mode, requested)
             delay_s = 0.0
             try:

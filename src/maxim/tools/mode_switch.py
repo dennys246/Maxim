@@ -22,6 +22,41 @@ logger = logging.getLogger(__name__)
 VALID_MODES = frozenset({"passive", "active", "singularity"})
 
 
+def _resolve_mode(name: str):
+    """The mode definition for a name, including legacy names ("live" -> active), or None."""
+    from maxim.modes.definitions import get_mode
+
+    return get_mode(name)
+
+
+def _self_grantable(target: str, current: str) -> bool:
+    """Whether the agent may switch itself from ``current`` into ``target`` (#821).
+
+    A mode that can execute code (today: singularity, the only one with ``can_execute_code``
+    plus full tools and network) is never self-granted -- whether or not a human is present --
+    so injected text the model reads cannot talk it into one. Derived from the mode definition
+    rather than a hand-kept list, so a future code-executing mode is covered automatically.
+    There is no in-session human approval yet: ``AutonomyController.approve_autonomy_request``
+    has no caller, and the generic confirmation prompt auto-answers "yes" when non-interactive.
+    """
+    if not executes_code(target):
+        return True
+    current_def = _resolve_mode(current)
+    target_def = _resolve_mode(target)
+    return current_def is not None and target_def is not None and current_def.name == target_def.name
+
+
+def executes_code(mode: str) -> bool:
+    """Whether ``mode`` (legacy names included) is a code-executing mode.
+
+    The one predicate both gates use: ``ModeSwitchTool`` (the agent's tool) and the CLI's
+    ``requested_mode`` consumer (the seam every runtime mode request passes through), so a future
+    writer of ``requested_mode`` that bypasses the tool is still refused.
+    """
+    definition = _resolve_mode(mode)
+    return definition is not None and bool(definition.can_execute_code)
+
+
 class ModeSwitchTool(Tool):
     """Tool for switching between operational modes.
 
@@ -50,7 +85,7 @@ class ModeSwitchTool(Tool):
 
     def execute(self, **kwargs: Any) -> ToolResult:
         """Execute the mode switch."""
-        target_mode = kwargs.get("mode", "").lower().strip()
+        target_mode = str(kwargs.get("mode") or "").lower().strip()
         reason = kwargs.get("reason", "")
 
         # Validate target mode
@@ -76,6 +111,23 @@ class ModeSwitchTool(Tool):
                 success=True,
                 output=f"Already in {target_mode} mode",
                 metadata={"mode": target_mode, "was_change": False},
+            )
+
+        # Refuse a self-granted escalation into a code-executing mode (#821).
+        if not _self_grantable(target_mode, current_mode):
+            logger.warning("Refused self-escalation: %s -> %s (%s)", current_mode, target_mode, reason)
+            if self._autonomy_controller:
+                self._autonomy_controller.log_action(
+                    action_type="rejected",
+                    action={"tool_name": "mode_switch", "params": kwargs},
+                    reasoning=f"Refused: the agent cannot switch itself into {target_mode} mode",
+                    mode=current_mode,
+                    confidence=1.0,
+                )
+            return ToolResult(
+                success=False,
+                error=f"Switching to {target_mode} mode cannot be done by the agent.",
+                metadata={"target_mode": target_mode, "previous_mode": current_mode, "type": "refused"},
             )
 
         # Log the switch
