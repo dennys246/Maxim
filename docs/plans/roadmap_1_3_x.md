@@ -109,7 +109,7 @@ records the new ceiling either way.
              ([roadmap_1_4.md](roadmap_1_4.md))
 ```
 
-Exp 62 does not depend on either patch release and can run on the rig in parallel
+Exp 62 RAN and is EARNED (2026-09-20) — it never depended on either patch release, and its result is the 1.3.1-line content this file's §1.3.1 ships alongside. Any further rung likewise runs on the rig in parallel
 (`docs/experiments/exp62_pressure_interoception_prereg.md`, decisions D1–D4 taken).
 
 ## Cadence
