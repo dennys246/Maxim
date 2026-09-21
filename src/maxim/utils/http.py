@@ -38,6 +38,7 @@ import logging
 import os
 import threading
 import time
+import zlib
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -556,6 +557,8 @@ class Response:
     elapsed_ms: float
     endpoint: str
     request_id: str
+    # True when ``fetch_url(max_bytes=...)`` stopped reading at the cap: ``content`` is a prefix.
+    truncated: bool = False
 
     def json(self) -> Any:
         return _json.loads(self.content)
@@ -826,6 +829,47 @@ def post(endpoint_name: str, path: str = "", **kwargs: Any) -> Response:
 # ─────────────────────────── Ad-hoc URL fetch ───────────────────────────
 
 
+def _read_capped(resp: httpx.Response, max_bytes: int, chunk_size: int = 1 << 16) -> tuple[bytes, bool]:
+    """Read at most ``max_bytes`` of DECODED body from a streaming response; ``(body, truncated)``.
+
+    Stops pulling the moment the cap is passed (#825). A compressed body is decoded here, with the
+    decompressor's own output bounded, rather than by ``iter_bytes`` -- which inflates a whole wire
+    chunk before any cap can be checked, so a small gzip "bomb" could still take hundreds of MB
+    (#825 review). ``fetch_url`` only advertises gzip/deflate on this path; any other encoding is
+    refused rather than inflated unbounded.
+    """
+    encoding = resp.headers.get("content-encoding", "").strip().lower()
+    chunks: list[bytes] = []
+    total = 0
+    if encoding in ("", "identity"):
+        for chunk in resp.iter_raw(chunk_size=chunk_size):
+            remaining = max_bytes - total
+            if len(chunk) > remaining:
+                if remaining:
+                    chunks.append(chunk[:remaining])
+                return b"".join(chunks), True
+            chunks.append(chunk)
+            total += len(chunk)
+        return b"".join(chunks), False
+    if encoding not in ("gzip", "x-gzip", "deflate"):
+        raise httpx.DecodingError(f"refusing unbounded decode of Content-Encoding {encoding!r}")
+    # MAX_WBITS | 32 auto-detects a gzip or zlib header.
+    inflater = zlib.decompressobj(zlib.MAX_WBITS | 32)
+    try:
+        for raw in resp.iter_raw(chunk_size=chunk_size):
+            pending = raw
+            while pending:
+                out = inflater.decompress(pending, max_bytes - total + 1)  # bounded OUTPUT per call
+                pending = inflater.unconsumed_tail
+                chunks.append(out)
+                total += len(out)
+                if total > max_bytes:
+                    return b"".join(chunks)[:max_bytes], True
+    except zlib.error as e:
+        raise httpx.DecodingError(f"invalid {encoding} body: {e}") from e
+    return b"".join(chunks), False
+
+
 def fetch_url(
     url: str,
     *,
@@ -835,6 +879,7 @@ def fetch_url(
     content: bytes | None = None,
     json: Any = None,
     timeout: TimeoutPolicy | float | None = None,
+    max_bytes: int | None = None,
 ) -> Response:
     """One-off fetch of a full URL via the shared ``_external`` endpoint.
 
@@ -842,24 +887,47 @@ def fetch_url(
     and peer-cli remote admin calls where the URL isn't known at
     registration time. Does NOT propagate X-Maxim-* headers (external
     endpoint).
+
+    ``max_bytes`` (#825): when set, the body is STREAMED and reading stops at the cap -- the rest
+    is never downloaded -- and ``Response.truncated`` says so. When ``None`` (the default, every
+    pre-existing caller) the whole body is read, exactly as before.
     """
+    if max_bytes is not None and (not isinstance(max_bytes, int) or max_bytes < 0):
+        raise ValueError(f"max_bytes must be a non-negative int, got {max_bytes!r}")
     _ensure_external_endpoint()
     ep = _registry.get(_EXTERNAL_ENDPOINT)
     client = _registry.get_client(_EXTERNAL_ENDPOINT)
+    if max_bytes is not None:
+        # Only encodings _read_capped can inflate with a bounded output (a caller may override).
+        headers = {"Accept-Encoding": "gzip, deflate", **(headers or {})}
     final_headers = _build_headers(ep, context, headers)
     used_ctx = context or current_context() or new_request_context()
     timeout_obj = _resolve_timeout(ep, timeout)
 
     t0 = time.monotonic()
+    truncated = False
     try:
-        resp = client.request(
-            method.upper(),
-            url,
-            headers=final_headers,
-            json=json,
-            content=content,
-            timeout=timeout_obj,
-        )
+        if max_bytes is None:
+            resp = client.request(
+                method.upper(),
+                url,
+                headers=final_headers,
+                json=json,
+                content=content,
+                timeout=timeout_obj,
+            )
+            body = resp.content
+        else:
+            # Read inside the stream context: the body is only valid while it is open.
+            with client.stream(
+                method.upper(),
+                url,
+                headers=final_headers,
+                json=json,
+                content=content,
+                timeout=timeout_obj,
+            ) as resp:
+                body, truncated = _read_capped(resp, max_bytes)
     except httpx.HTTPError as e:
         elapsed_ms = (time.monotonic() - t0) * 1000
         _metrics.record_request(_EXTERNAL_ENDPOINT, "error", elapsed_ms)
@@ -899,10 +967,11 @@ def fetch_url(
     response = Response(
         status=resp.status_code,
         headers=dict(resp.headers),
-        content=resp.content,
+        content=body,
         elapsed_ms=elapsed_ms,
         endpoint=_EXTERNAL_ENDPOINT,
         request_id=used_ctx.request_id,
+        truncated=truncated,
     )
     err = _classify_status(_EXTERNAL_ENDPOINT, resp.status_code, resp.headers)
     if err is not None:
