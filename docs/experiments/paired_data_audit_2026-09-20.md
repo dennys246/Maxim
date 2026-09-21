@@ -66,5 +66,12 @@ idea — the corpus is whatever six `event(...)` call sites emit. Two honest dis
   a held-out TEST set only, since it carries no sensor side and cannot supply training pairs. Any of
   these is a new data design and goes through the four-lens review before a harness is built.
 
+**Disposition (owner, 2026-09-20): REDESIGN THE DATA SOURCE — recorded as a post-null change of
+source, not a pass.** Next, in order: (i) an opt-in bridge channel forwarding the game's system
+messages (default OFF, so survival-rung agents see byte-identical percepts — the 1.4 guardrail);
+(ii) one fresh capture on Paper 1.20.4 with it on; (iii) re-run this script unchanged on that trace.
+Neither plan revives on (iii) alone: a revival still needs a prereg and the four-lens review. If the
+game's own messages also read as labels that name no situation, the archive disposition applies.
+
 Not a disposition either way: the one-hit lag in `damage` texts (finding 3) is a property of the
 bridge worth fixing or documenting whatever happens to this line.

@@ -24,7 +24,8 @@
 > experiment and the usual four-lens review. If it fails, this file says so and goes to `archive/`.
 >
 > **Audit RAN 2026-09-20 — [paired_data_audit_2026-09-20.md](../experiments/paired_data_audit_2026-09-20.md)
-> ([script](../../scripts/paired_data_audit.py)); disposition PENDING (owner).** One paired trace in
+> ([script](../../scripts/paired_data_audit.py)); disposition: REDESIGN THE DATA SOURCE (owner,
+> recorded as a post-null change of source — not a pass; the record lists the steps).** One paired trace in
 > the committed data; 3 templates, 11 word types; all 3 event kinds share all 3 world EC nodes. The
 > text channel measured is labels. The bridge also drops the game's own cause-naming death messages.
 >
