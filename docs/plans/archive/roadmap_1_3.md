@@ -120,9 +120,9 @@ undeclared default). Full design: [intrinsic_motivation_1_3.md](deferred/intrins
 
 ## Not in 1.3 (moved / parallel)
 
-- **Perception fabric + microduck + Exp 55 + breeding → DEFERRED 2026-09-18 on a physical trigger** (a second body exists; sequencing preserved unchanged in [roadmap_1_3_path.md](roadmap_1_3_path.md); 1.4 is [roadmap_1_4.md](roadmap_1_4.md)), formerly the **"shared perception"**
+- **Perception fabric + microduck + Exp 55 + breeding → DEFERRED 2026-09-18 on a physical trigger** (a second body exists; sequencing preserved unchanged in [deferred/second_body_staging.md](deferred/second_body_staging.md); 1.4 is [roadmap_1_4.md](roadmap_1_4.md)), formerly the **"shared perception"**
   release: richer video/audio (cochlear front-end, vision encoder, binding) **plus sharing at the
   perception layer**. The **DN-canonical *orienting* reflex stays here** — it is perception-coupled
   (fed by the cochlear/DoA front-end, moves a robot head; Minecraft has neither), and is distinct
   from 1.3's survival reflex (Phase 1b). Caveat: sharing perception *representations* inherits R1's
-  transfer bound (harder than sharing wants). Sequencing: [roadmap_1_3_path.md](roadmap_1_3_path.md).
+  transfer bound (harder than sharing wants). Sequencing: [deferred/second_body_staging.md](deferred/second_body_staging.md).

@@ -6,7 +6,7 @@
 ([reviews/microduck_intent_layer_two_lens_review.md](reviews/microduck_intent_layer_two_lens_review.md)).
 Zero code. Written from **design constraints supplied by the operator on 2026-08-31**, which close
 the "unknown SDK" and "unknown kinematics" hedges that
-[roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) §"The microduck" was forced to carry when the duck
+[archive/roadmap_1_1_to_1_3.md](archive/roadmap_1_1_to_1_3.md) §"The microduck" was forced to carry when the duck
 was slotted to 1.3 on 2026-08-30 — but **not** the sensing one, which is still the decisive
 unknown (§1.1).
 
@@ -798,7 +798,7 @@ against the 1.3 fabric."
    pre-registration" (§1.1). It no longer selects anything: The operator has
    decided the duck's value is locomotion, so the duck is a new behaviour class either way and
    nothing downstream waits on this. Folded into Stage A's instrument-characterisation pass
-   ([roadmap_1_3_path.md](roadmap_1_3_path.md) §Stage A) rather than gating it.
+   ([second_body_staging.md](second_body_staging.md) §Stage A) rather than gating it.
 
    **Answered from vendor documentation the same day (§1.1): mics present, direction absent.**
    Audio lives in `mediad`'s telepresence pipeline (WebRTC track, "mic + speaker"), with no
@@ -851,7 +851,7 @@ against the 1.3 fabric."
     that is exactly the distinction the duck needs.** `StreamCapability.AUDIO_INPUT` and
     `RobotCapabilities.has_audio()` exist, so the roadmap's rule ("does this body have audio?"
     belongs in `StreamCapability` as a query, not in a roadmap as an assumption —
-    [roadmap_1_3_path.md](roadmap_1_3_path.md) §Stage B) has a socket. But for a presence-only
+    [second_body_staging.md](second_body_staging.md) §Stage B) has a socket. But for a presence-only
     mic, `has_audio()` returns True while the orient line remains impossible, so the capability
     would be actively misleading rather than merely incomplete. Answering §8 item 1 today would
     leave nowhere truthful to record the answer.

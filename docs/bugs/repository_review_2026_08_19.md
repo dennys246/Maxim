@@ -192,5 +192,5 @@ These are important but do not need standalone defect IDs yet:
 - the local workspace has a large stale-branch/worktree footprint, increasing
   provenance risk but requiring deliberate cleanup to preserve WIP.
 
-These are assigned in the [1.1→1.3 roadmap](../plans/roadmap_1_1_to_1_3.md) and
+These are assigned in the [1.1→1.3 roadmap](../plans/archive/roadmap_1_1_to_1_3.md) and
 [scorecards](../limits/score_cards/) rather than expanded into speculative bugs.

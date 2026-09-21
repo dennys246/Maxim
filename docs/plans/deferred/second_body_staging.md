@@ -1,8 +1,13 @@
-# The 1.3 path — baseline, engines, fabric
+# Second-body staging — duck baseline, engine seam, perception fabric
+
+> **Renamed 2026-09-20** from `second_body_staging.md`. The old name was wrong twice: 1.3 shipped, and
+> nothing here is 1.3 work — this is the staging that unlocks when a SECOND BODY exists (Stage B is
+> "driven by N=2"). A release-numbered name on deferred, release-independent work is how its status
+> went stale; the revive trigger below, not a version, is what governs it.
 
 **Status:** DRAFT 2026-09-01, written immediately after 1.1.2 published. **DEFERRED 2026-09-18 (owner) — revive trigger: a second body physically exists (a real backend registered through `maxim.robots`, or the operator records the body's arrival here); Stage A runs unchanged on revival. NOT the 1.4 plan — 1.4 is [roadmap_1_4.md](roadmap_1_4.md).** (Rescoped 2026-09-09: it was the 1.4 sequencing plan) — the perception fabric + microduck moved from 1.3 to 1.4
-when the survival world became 1.3 ("Oasis-2"; see [roadmap_1_3.md](roadmap_1_3.md) and the
-rescope note in [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md)). The staging below (duck baseline
+when the survival world became 1.3 ("Oasis-2"; see [archive/roadmap_1_3.md](archive/roadmap_1_3.md) and the
+rescope note in [archive/roadmap_1_1_to_1_3.md](archive/roadmap_1_1_to_1_3.md)). The staging below (duck baseline
 → engine seam → fabric) is unchanged; only its release slot moved. It does not restate the
 designs it orders; each stage names the plan that owns it.
 
@@ -136,7 +141,7 @@ designed against that. Running Stage C first would design against an assumption.
 - **Re-deciding anything 1.1.3 owns.** The two-lens review withdrew both of rev 1's headline
   recommendations precisely because they converted a 1.3 exploration into decisions binding
   1.1.3. That correction holds. Gate 7 and the bias-key namespace belong to
-  [1.1.3](roadmap_1_1_to_1_3.md); the duck is an INPUT to them, not a decision about them.
+  [1.1.3](archive/roadmap_1_1_to_1_3.md); the duck is an INPUT to them, not a decision about them.
 - **A schedule change.** The duck stays in 1.3 (`deferred/microduck_intent_layer.md` §7).
 
 ## Prerequisites worth doing regardless

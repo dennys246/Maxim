@@ -529,7 +529,7 @@ that **a sensor cannot declare its own modality**: the YAML schema accepts `unit
 than in the body. Adding a `modality:` field to the sensor schema and deriving channels from it
 would: recover discrimination by grouping; remove the hardcoded `("azimuth",)` that 1.1.4 has to
 generalise anyway; and make "does this body have audio?" a property of the body — which is where
-[roadmap_1_3_path.md](roadmap_1_3_path.md) §Stage B already says it belongs.
+[deferred/second_body_staging.md](deferred/second_body_staging.md) §Stage B already says it belongs.
 
 **Cost, and it is the known one:** `recommend_action` sums `cluster_reward_bias` additively
 across the active channel set, so the term's range grows with channel count (±2 today, ±5 at

@@ -20,6 +20,12 @@ divergence rule warns against: a null then confounds mechanism with refactor.
 
 ---
 
+> **Related, and NOT yet reconciled:** [quality_burndown.md](quality_burndown.md) is the standing
+> incremental-improvement track and covers the same territory. As of 2026-09-20 it names items this
+> file does not (N1, D32, D84 → [#796](https://github.com/dennys246/Maxim/issues/796), D49,
+> fail-loud Stage 3, D19; only `mypy` appears in both), and neither document referenced the other.
+> Read both until someone merges them or states the split.
+
 ## 1.3.1 — the defects and the enforcement gaps
 
 Grouped by the axis each item lifts; the "to reach" conditions come from the card.

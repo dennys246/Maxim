@@ -3,7 +3,7 @@
 > **SUPERSEDED 2026-08-19.** Preserved as the 2026-07-23 planning snapshot.
 > Its Exp 44/Oasis critical path is no longer authoritative. The live release
 > cut and gate order are in
-> [roadmap_1_1_to_1_3.md](../roadmap_1_1_to_1_3.md#11-cut-line--reconciled-2026-08-19).
+> [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md#11-cut-line--reconciled-2026-08-19).
 
 **Created:** 2026-07-23. A tracked artifact so "what's left before 1.1" is a list, not a
 synthesis. 1.1 theme (from [README.md](../README.md)): **embodiment grounding + substrate-primary

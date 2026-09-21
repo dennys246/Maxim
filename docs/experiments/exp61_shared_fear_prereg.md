@@ -17,7 +17,7 @@
 > reviewed); v2.1 reconciles this text with the harness AS BUILT (the two code reviews' design
 > findings: the dangling arm's donor policy, apparatus checks once per pair, the settle guard,
 > Fisher's exact test, the anti-vacuity row, the frozen constants the harness carries).**
-> This is the 1.3 Phase-2 headline (`docs/plans/roadmap_1_3.md` §Phase 2) with its want re-pointed
+> This is the 1.3 Phase-2 headline (`docs/plans/archive/roadmap_1_3.md` §Phase 2) with its want re-pointed
 > from "dark = danger" (Exp 58, BLOCKED at the instrument) to "water = drowning" (Exp 60, EARNED
 > 2026-09-16): *agent A learns the hard way → exports its substrate → agent B ingests it → B leaves
 > the water on its first loop-live submersion, never having felt the air-hunger pain.*
@@ -487,7 +487,7 @@ on 0/72 windows. The discount's magnitude is not distinguished by this DV (0.75 
 another pool, positive-want transfer, or the hive-side promotion of the exchange — see §What this
 experiment does NOT claim, unchanged.
 
-**What this earns:** the 1.3 Phase-2 headline (`docs/plans/roadmap_1_3.md` §Phase 2) — a
+**What this earns:** the 1.3 Phase-2 headline (`docs/plans/archive/roadmap_1_3.md` §Phase 2) — a
 survival want learned the hard way by one agent, exported through the shipped signed-bundle path,
 lands on an independent agent and drives its FIRST loop-live submersion, never having felt the
 air-hunger pain. Ledger row: `docs/plans/behavioral_graduation_candidates.md` (Tier 1, beside Exp 60).

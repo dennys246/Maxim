@@ -1,8 +1,28 @@
-# 1.3 quality burndown — chipping at the 1.1/1.2 weak areas
+# Quality burndown — the ongoing incremental-improvement track
+
+> **Renamed 2026-09-20** from `quality_burndown.md`. The version in the name was wrong for the same
+> reason it was wrong on `second_body_staging.md`: this is not 1.3 work. It is a standing track that
+> runs alongside whatever release is current, and a release-numbered name on release-independent
+> work is how its status goes stale — nobody reads a doc called `_1_3` as live once 1.3 ships.
+>
+> **Its "deferred to post-1.3" remainder has EXPIRED** — 1.3.0 published 2026-09-19, so Batches 0,
+> 3 and 4 below are live work, not deferred work.
+>
+> **Overlap, unresolved and stated rather than hidden:** [roadmap_1_3_x.md](roadmap_1_3_x.md) is the
+> current hardening line and covers the same territory (grade-lifting quality work), but as of
+> 2026-09-20 it names **none** of this file's items (N1, D32, D84, D49, fail-loud Stage 3, D19 —
+> only `mypy` appears in both) and neither document referenced the other. Someone should decide
+> whether to merge them or keep both with a stated split; until then, read both. Tracked in
+> [outstanding.md](outstanding.md).
+>
+> **D84 is now [issue #796](https://github.com/dennys246/Maxim/issues/796)** — verified in source
+> 2026-09-20: `SUPERVISED` sandbox mode documents an approval gate and its callback returns `True`
+> unconditionally. A documented safety property the code does not provide, found only because this
+> file was re-read while asking why it still had a version in its name.
 
 **Drafted 2026-09-10**, after 1.2.1 shipped, from a three-lens sweep (score cards, plans +
 deferred, self-identified debt + bugs ledger). This is the **incremental-improvement** track
-that runs *alongside* the survival-world 1.3 build ([roadmap_1_3.md](roadmap_1_3.md)) — not part
+that runs *alongside* the survival-world 1.3 build ([archive/roadmap_1_3.md](archive/roadmap_1_3.md)) — not part
 of it. It is optional quality work: no behavioral-graduation row is `Stale` or `Broken`, so
 nothing here gates a release.
 
