@@ -45,6 +45,26 @@ const FLEE_Z = args.flee_z !== undefined ? parseFloat(args.flee_z) : null;
 // The paired-data audit (docs/experiments/paired_data_audit_2026-09-20.md) found these dropped.
 const SYSTEM_MESSAGES = args.system_messages === true || args.system_messages === "1";
 
+// Fail loud on a flag this bridge does not read: a misspelled flag, or a flag passed to a bridge
+// started from an older checkout, used to be silently ignored — and a stale bridge then looked
+// exactly like a live one until the data came back empty (2026-09-21, `--system_messages`).
+const KNOWN_FLAGS = new Set([
+  "mc_host", "mc_port", "bridge_port", "username", "state_interval_ms", "flee_x", "flee_z", "system_messages",
+]);
+const unknownFlags = process.argv.slice(2).filter((a) => !KNOWN_FLAGS.has(a.replace(/^--/, "").split("=")[0]));
+if (unknownFlags.length) {
+  console.error(`unknown flag(s): ${unknownFlags.join(" ")}\nknown: --${[...KNOWN_FLAGS].join(" --")}`);
+  process.exit(2);
+}
+// Echo the EFFECTIVE settings, so the operator can see what this process actually runs with.
+console.log(
+  "bridge settings: " +
+    JSON.stringify({
+      mc_host: MC_HOST, mc_port: MC_PORT, bridge_port: BRIDGE_PORT, username: USERNAME,
+      state_interval_ms: STATE_INTERVAL_MS, flee_x: FLEE_X, flee_z: FLEE_Z, system_messages: SYSTEM_MESSAGES,
+    })
+);
+
 const bot = mineflayer.createBot({ host: MC_HOST, port: MC_PORT, username: USERNAME });
 bot.loadPlugin(pathfinder);
 
