@@ -27,8 +27,8 @@ direction nobody is looking.
 
 | # | Item | Why it is owed | What would close it |
 |---|---|---|---|
-| O1 | **`WaterTrial.live_fingerprint` does not read the live encoder** ([#783](https://github.com/dennys246/Maxim/issues/783)) | It reads `SensorEncoderConfig().pattern_threshold` — a *freshly default-constructed* config — so the encoder leg is a tautology against a source default git already guards. It omits `gain_exponent`/`gain_modalities` (the encoding equation) entirely and covers 3 of 17 sensor ranges, excluding `light_level` and `time_of_day`. Every frozen apparatus depends on it. | Read `self.encoder.config`; add the two gain keys to the live fingerprint AND `FROZEN["exp60"]["fingerprint"]` in the same commit; widen `sensor_ranges`. Red gate: mutate a live config and assert `check_fingerprint` raises — passes today. |
-| O2 | **The A4 gain inverts a place code** ([#784](https://github.com/dennys246/Maxim/issues/784)) | Measured: at a between-centre value the two most informative cells draw weight 0.0006 each and the population totals 0.0012 — a near-zero vector `encode_sensors` returns as `None`. Latent only because the one place-coded sensor (azimuth) is on the ungained audio channel. Place coding is the correct encoding for a rest-less cyclic variable like `time_of_day`, so it is a trap waiting for whoever reaches for it. | A declared `place_coded: true` that excludes those cells from the gain (or gain on the source scalar). Do not build until a rung needs a place-coded world sensor. Red gate: a between-centre reading must not encode to `None`. |
+| O1 | **`live_fingerprint` does not read the live encoder** | Every frozen apparatus depends on it, and its encoder leg is a tautology against a source default. | **[#783](https://github.com/dennys246/Maxim/issues/783)** — authoritative for the detail and the red gate. |
+| O2 | **The A4 gain inverts a place code** | Latent (the one place-coded sensor is on the ungained audio channel), and a trap for whoever first place-codes a world sensor. | **[#784](https://github.com/dennys246/Maxim/issues/784)** — authoritative for the measurements and the options. |
 | O3 | **SUPPORT for Rung B's entry condition** | `world_channel_landscape.py` established the similarity landscape has a MIDDLE (shape). Nothing establishes the world ever visits it. The only committed open-world trace has `light_level` 0.0 in 1193/1193 and `time_of_day` pinned in 1193/1193. A graded read is worth building only where continuous shape AND real support overlap. | A trace with `doDaylightCycle` **on**, analysed the way `l11_real_trace_remeasure.py` analyses its own. Only run it if a rung wants Rung B. |
 | O4 | **Reviewed-diff vs merged-diff comparison** | CLAUDE.md's review-round discipline says a round covers the diff as it existed when it ran, and names this comparison as mechanically checkable and tracked follow-up. Today it is author attention. It is the guard for the 2026-07-29 incident where a PR was squash-merged with only its first commit, shipping a design its own review had refuted, with green CI. | A check that compares a merge commit's diff against the last-reviewed diff, or refuses a squash-merge on a branch that gained commits after its review. |
 | O5 | **Archive the 1.1–1.3 roadmaps** | Their stated reason for staying — the open-item ledger — is gone (§Closed). `roadmap_1_1_to_1_3.md` and `roadmap_1_3.md` are historical records of shipped releases with ~43 inbound references that would need rewriting to `archive/`. `roadmap_1_3_path.md` is misnamed: it is the 1.4 sequencing plan, not a 1.3 doc. | Rewrite inbound links, move both to `archive/`, rename `roadmap_1_3_path.md` to what it is. Mechanical but not trivial; its own task. |
@@ -40,7 +40,33 @@ direction nobody is looking.
 
 ### Verified defects found while auditing this list
 
-- **[#796](https://github.com/dennys246/Maxim/issues/796) — `SUPERVISED` sandbox mode does not supervise.** `ExecuteSandboxScriptTool` documents `SUPERVISED` as "Requires approval for first run of each script"; the callback it installs returns `True` unconditionally, logging at INFO. A documented safety property the code does not provide. Sandbox-confined, so a defect rather than an incident — but it was found only because O8's doc was re-read while asking why it still had a version in its name.
+- **[#796](https://github.com/dennys246/Maxim/issues/796) — `SUPERVISED` sandbox mode does not supervise.** A
+  documented safety property the code does not provide, found only because O8's doc was re-read while asking why
+  it still had a version in its name. The issue is authoritative.
+
+## Where a thing goes — issue, plan, or here
+
+Adopted 2026-09-20, after this register was created and immediately duplicated three GitHub issues
+in prose. Two descriptions of one defect drift, and the one nobody reads rots in whichever direction
+nobody is looking — which is the 16.10 story in §Closed, reproduced on day one.
+
+| the work is… | it lives in |
+|---|---|
+| a discrete defect, actionable **now**, with a definite done state | a **GitHub issue** |
+| gated on a trigger (a second body exists; a rung names the mechanism) | a **deferred plan**, `deferred/` |
+| reasoning, measurements, or why something was rejected | a **doc** (plan, brief, `docs/wiring/`) |
+| "what is owed" at a glance | **here**, as an INDEX — one line and a link, never a second description |
+
+**Why issues for defects specifically, in a repo that is otherwise docs-driven:** `Closes #N` in a
+PR body closes the issue *mechanically*. A register entry needs someone to remember to delete it.
+This repo's standing principle is to push invariants into mechanisms rather than convention, and a
+tracker that closes itself is that principle applied to its own bookkeeping — the 16.10 failure
+(a doc claiming a gap that had been enforced in CI for weeks) is structurally impossible for an
+issue closed by the PR that fixed it.
+
+**Do NOT bulk-backfill issues from existing docs.** Most owed work is trigger-gated, and an open
+issue that cannot be worked is noise — the same rot in a different place. File an issue when an
+audit VERIFIES a live defect, which is where #783, #784 and #796 came from.
 
 ## Editing rule — frozen records are not relinked
 
