@@ -47,14 +47,16 @@ def test_supervised_without_an_approver_refuses(sandbox) -> None:
 
 def test_no_autonomy_controller_refuses_too(sandbox) -> None:
     executor, script, marker = sandbox
-    assert not _tool(executor, None).execute(script_path=script).success
+    res = _tool(executor, None).execute(script_path=script)
+    assert not res.success
+    assert "no approval_callback" in (res.error or "")
     assert not marker.exists()
 
 
 def test_executor_required_approval_without_callback_is_blocked(sandbox) -> None:
     executor, script, marker = sandbox
     result = executor.execute(script_path=script, require_approval=True)
-    assert result.status == ExecutionStatus.BLOCKED
+    assert result.status == ExecutionStatus.APPROVAL_UNAVAILABLE, "a missing approver is not a denial"
     assert not marker.exists()
 
 
@@ -64,7 +66,37 @@ def test_executor_required_approval_without_callback_is_blocked(sandbox) -> None
 def test_supervised_denial_blocks(sandbox) -> None:
     executor, script, marker = sandbox
     executor.approval_callback = lambda path, content, h: False
-    assert not _tool(executor, AutonomyLevel.SUPERVISED).execute(script_path=script).success
+    res = _tool(executor, AutonomyLevel.SUPERVISED).execute(script_path=script)
+    assert not res.success
+    assert res.error == "Script execution not approved"
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize("answer", ["no", {"approved": False}, object()], ids=["str", "dict", "object"])
+def test_a_truthy_non_true_answer_is_not_approval(sandbox, answer) -> None:
+    """Only a literal True approves — a response object must not read as a yes."""
+    executor, script, marker = sandbox
+    executor.approval_callback = lambda path, content, h: answer
+    res = _tool(executor, AutonomyLevel.SUPERVISED).execute(script_path=script)
+    assert res.error == "Script execution not approved"
+    assert not marker.exists()
+
+
+def test_an_async_approver_that_denies_does_not_run(sandbox) -> None:
+    """A sync call to an async approver returns a (truthy) coroutine, never its answer."""
+    executor, script, marker = sandbox
+
+    async def deny(path: str, content: str, h: str) -> bool:
+        return False
+
+    def call(path: str, content: str, h: str):
+        coro = deny(path, content, h)
+        coro.close()  # never awaited by the executor; close to avoid a RuntimeWarning
+        return coro
+
+    executor.approval_callback = call
+    res = _tool(executor, AutonomyLevel.SUPERVISED).execute(script_path=script)
+    assert res.error == "Script execution not approved"
     assert not marker.exists()
 
 

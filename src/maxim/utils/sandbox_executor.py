@@ -39,6 +39,9 @@ class ExecutionStatus(Enum):
     RESOURCE_LIMIT = "resource_limit"
     PERMISSION_DENIED = "permission_denied"
     BLOCKED = "blocked"
+    # Approval was required and no approver is wired: a MISCONFIGURATION, distinct from an
+    # approver's "no" (BLOCKED). Fails closed either way (#796).
+    APPROVAL_UNAVAILABLE = "approval_unavailable"
 
 
 @dataclass
@@ -407,7 +410,9 @@ class SandboxExecutor:
     approval_callback: Callable[[str, str, str], bool] | None = None
 
     # Track approved scripts by path AND content hash to prevent TOCTOU attacks
-    # Key: script_path, Value: content_hash
+    # Key: script_path, Value: content_hash. Approval is per CONTENT and lives for this
+    # executor's lifetime, shared by every tool on it: clearing `approval_callback` later
+    # does NOT revoke an approved hash — create a new executor to start from nothing.
     _approved_hashes: dict[str, str] = field(default_factory=dict, repr=False)
 
     # Prefix for temporary wrapper scripts (for identification during cleanup)
@@ -471,7 +476,7 @@ class SandboxExecutor:
             working_dir: Working directory (default: sandbox/workspace)
             require_approval: Whether a first run (or changed content) needs
                 ``approval_callback``'s yes. With no callback wired the run is
-                REFUSED (``BLOCKED``) — approval fails closed.
+                REFUSED (``APPROVAL_UNAVAILABLE``) — approval fails closed.
 
         Returns:
             ExecutionResult with status, output, etc.
@@ -534,7 +539,7 @@ class SandboxExecutor:
         # never an implicit yes — a gate that nobody can answer must not read as a gate that passed.
         if require_approval and self.approval_callback is None:
             return ExecutionResult(
-                status=ExecutionStatus.BLOCKED,
+                status=ExecutionStatus.APPROVAL_UNAVAILABLE,
                 error=(
                     "Script execution requires approval but no approval_callback is wired on the "
                     "SandboxExecutor — refusing (approval fails closed)"
@@ -543,7 +548,9 @@ class SandboxExecutor:
         if require_approval and self.approval_callback is not None:
             try:
                 approved = self.approval_callback(script_path, script_content, content_hash)
-                if not approved:
+                # Only a literal True approves: a coroutine from an async approver, a Mock or
+                # a response object is truthy and must not read as a yes (fails closed).
+                if approved is not True:
                     return ExecutionResult(
                         status=ExecutionStatus.BLOCKED,
                         error="Script execution not approved",

@@ -50,8 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   documented SUPERVISED as "requires approval for first run of each script" but installed a callback
   that returned `True` unconditionally, overwriting any approver a caller had wired, and
   `SandboxExecutor.execute` itself ran a script whose approval was required whenever no callback
-  existed. Now a required approval with no `SandboxExecutor.approval_callback` is `BLOCKED` with an
-  error naming the missing wiring, the tool never installs an approver of its own, and a caller's
+  existed. Now a required approval with no `SandboxExecutor.approval_callback` returns the new
+  `ExecutionStatus.APPROVAL_UNAVAILABLE` (a misconfiguration, distinct from an approver's `BLOCKED`), only
+  a literal `True` approves (a coroutine from an unawaited async approver no longer reads as yes), the tool never installs an approver of its own, and a caller's
   approver is honoured (asked once per content hash, again when the content changes). **Behaviour
   change:** a caller running SUPERVISED, or with no autonomy controller, and no approver wired now
   gets a refusal where it used to get an execution. No in-repo caller wires the sandbox tools today.

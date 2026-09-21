@@ -15,10 +15,10 @@
 > whether to merge them or keep both with a stated split; until then, read both. Tracked in
 > [outstanding.md](outstanding.md).
 >
-> **D84 is now [issue #796](https://github.com/dennys246/Maxim/issues/796)** — verified in source
-> 2026-09-20: `SUPERVISED` sandbox mode documents an approval gate and its callback returns `True`
-> unconditionally. A documented safety property the code does not provide, found only because this
-> file was re-read while asking why it still had a version in its name.
+> **D84 became [issue #796](https://github.com/dennys246/Maxim/issues/796)** and was fixed 2026-09-20:
+> `SUPERVISED` sandbox mode documented an approval gate while its callback returned `True`
+> unconditionally — found only because this file was re-read while asking why it still had a version
+> in its name. Approval now fails closed.
 
 **Drafted 2026-09-10**, after 1.2.1 shipped, from a three-lens sweep (score cards, plans +
 deferred, self-identified debt + bugs ledger). This is the **incremental-improvement** track
@@ -45,8 +45,7 @@ Owner decision (2026-09-10): ship the high-value low-risk guards + claim-truth n
   Assessor action.
 - **Batch 1 remainder — D63** (wire `pr_merge_readiness`'s required-checks-present check into a
   merge gate/ruleset). Needs repo-settings, partly the owner's action.
-- **Batch 3 (small correctness):** N1 campaign params, D32 foundational preamble, D84
-  honest-refuse, D49 benchmark honesty, plus the D46/D50 code fixes.
+- **Batch 3 (small correctness):** N1 campaign params, D32 foundational preamble, D49 benchmark honesty, plus the D46/D50 code fixes.
 - **Batch 4 (opportunistic):** fail-loud Stage 3, god-function decomposition, mypy scope, D19,
   behavioral-suite thickening.
 
