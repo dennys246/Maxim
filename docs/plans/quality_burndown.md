@@ -100,7 +100,7 @@ Sizes: all **S** except Tier-3 (**M**, judgement per row).
 
 - **N1** — `api.campaign()` threads-or-rejects `npc_model`/`interactive`/`prompt_handler` (pairs with the done N2) — `src/maxim/api.py::campaign`, `tests/unit/test_api_core.py` — **S/M**
 - **D32** — load the foundational preamble from `CONSTITUTION.md` as package data + a drift guard (pip users currently get an empty preamble) — `src/maxim/agents/llm_context.py::_load_foundational_context` — **S/M**
-- **D84** — SUPERVISED sandbox honestly *refuses* when no approval callback is wired instead of silently auto-approving — `src/maxim/tools/sandbox.py::ExecuteSandboxScriptTool.execute` — **S**
+- ~~**D84**~~ **DONE 2026-09-20 ([#796](https://github.com/dennys246/Maxim/issues/796))** — SUPERVISED sandbox honestly *refuses* when no approval callback is wired instead of silently auto-approving. The fail-open was one layer lower than named here too: `SandboxExecutor.execute` ran any script whose approval was required when no callback existed, so the fix sits there. Guard: `tests/unit/test_sandbox_approval_fails_closed.py`. Found alongside it: [#800](https://github.com/dennys246/Maxim/issues/800) (the `.py` wrapper never runs) — **S**
 - **D49** — benchmark honesty: apply-or-delete `weight`, fix the running half-mean, drop-or-ship the missing tier2/tier3 suite files — `simulation/benchmark.py` — **M**
 
 ## Batch 4 — larger, now-unblocked engineering *(opportunistic; competes with the survival build)*

@@ -322,8 +322,13 @@ class ExecuteSandboxScriptTool(Tool):
 
     Respects autonomy levels:
     - PLANNING: Proposes execution, doesn't run
-    - SUPERVISED: Requires approval for first run of each script
+    - SUPERVISED: Requires approval for the first run of each script (and again whenever its
+      content changes), from the executor's ``approval_callback``. With no callback wired the
+      run is REFUSED — approval fails closed (#796). No autonomy controller behaves the same.
     - AUTONOMOUS: Executes freely within sandbox constraints
+
+    The approver is the caller's to wire (a CLI prompt, an API hook) on
+    ``SandboxExecutor.approval_callback``; this tool never approves on anyone's behalf.
     """
 
     name = "execute_sandbox_script"
@@ -343,9 +348,6 @@ class ExecuteSandboxScriptTool(Tool):
         super().__init__()
         self._executor = executor
         self._autonomy = autonomy_controller
-        # Track approvals by (path, content_hash) to prevent TOCTOU attacks
-        # Key: script_path, Value: approved content_hash
-        self._approved_scripts: dict[str, str] = {}
 
     def execute(self, **kwargs: Any) -> ToolResult:
         from maxim.agents.autonomy import AutonomyLevel
@@ -380,26 +382,13 @@ class ExecuteSandboxScriptTool(Tool):
                 )
 
             elif level == AutonomyLevel.SUPERVISED:
-                # Let the executor handle hash-based approval tracking
-                # We don't skip approval here - the executor will check if
-                # the exact content was previously approved via _approved_hashes
+                # The executor asks its approval_callback (content-hash keyed, so an approved
+                # script re-runs unasked until it changes) and REFUSES when none is wired.
                 require_approval = True
 
             elif level == AutonomyLevel.AUTONOMOUS:
                 # In AUTONOMOUS mode, execute freely
                 require_approval = False
-
-        # Set up approval callback for SUPERVISED mode
-        # Now includes content_hash for TOCTOU protection
-        def approval_callback(path: str, content: str, content_hash: str) -> bool:
-            # For now, auto-approve in SUPERVISED if within sandbox
-            # In real usage, this would prompt the user with content preview
-            logger.info(f"Auto-approving script in SUPERVISED mode: {path} (content hash: {content_hash[:16]}...)")
-            self._approved_scripts[path] = content_hash
-            return True
-
-        if require_approval:
-            self._executor.approval_callback = approval_callback
 
         # Execute
         result = self._executor.execute(

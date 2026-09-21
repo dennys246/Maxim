@@ -41,9 +41,10 @@ direction nobody is looking.
 
 ### Verified defects found while auditing this list
 
-- **[#796](https://github.com/dennys246/Maxim/issues/796) — `SUPERVISED` sandbox mode does not supervise.** A
-  documented safety property the code does not provide, found only because O8's doc was re-read while asking why
-  it still had a version in its name. The issue is authoritative.
+- **[#800](https://github.com/dennys246/Maxim/issues/800) — sandbox Python scripts have never run.** The
+  restricted wrapper blocks its own `import os`, and the obvious reorder would leak `os` and the unrestricted
+  originals into the script's namespace. Found while writing #796's guard tests (#796 itself is fixed: SUPERVISED
+  now fails closed). The issue is authoritative.
 
 ## Where a thing goes — issue, plan, or here
 

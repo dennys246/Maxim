@@ -469,7 +469,9 @@ class SandboxExecutor:
             args: Command-line arguments
             env: Environment variables (merged with restricted set)
             working_dir: Working directory (default: sandbox/workspace)
-            require_approval: Whether to require approval callback
+            require_approval: Whether a first run (or changed content) needs
+                ``approval_callback``'s yes. With no callback wired the run is
+                REFUSED (``BLOCKED``) — approval fails closed.
 
         Returns:
             ExecutionResult with status, output, etc.
@@ -528,8 +530,17 @@ class SandboxExecutor:
                 )
                 require_approval = True
 
-        # Request approval if callback provided
-        if require_approval and self.approval_callback:
+        # Approval FAILS CLOSED (#796): required approval with no approver wired is a refusal,
+        # never an implicit yes — a gate that nobody can answer must not read as a gate that passed.
+        if require_approval and self.approval_callback is None:
+            return ExecutionResult(
+                status=ExecutionStatus.BLOCKED,
+                error=(
+                    "Script execution requires approval but no approval_callback is wired on the "
+                    "SandboxExecutor — refusing (approval fails closed)"
+                ),
+            )
+        if require_approval and self.approval_callback is not None:
             try:
                 approved = self.approval_callback(script_path, script_content, content_hash)
                 if not approved:
