@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Minecraft bridge: opt-in `--system_messages` channel.** Forwards the game's own system messages
+  (death messages that name a cause, advancements, server lines) as a new `system` event kind. The
+  paired-data audit (`docs/experiments/paired_data_audit_2026-09-20.md`) found the bridge dropped
+  them. Default OFF, so survival-rung percepts are unchanged; the `minecraft.py` protocol docstring
+  lists the new kind. It feeds the language-line capture; it is not a survival-rung input.
+
 - **The EC now carries the match MARGIN.** `PatternResult.best_similarity` reports the best
   *comparable* similarity a pattern decision saw — whatever the threshold did with it — on both the
   completion and the separation branch. Previously a separation reported `similarity=0.0` and the

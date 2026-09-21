@@ -33,3 +33,4 @@ a time by design.
 | `--bridge_port` | `25567` | TCP port the Python `MinecraftClient` dials |
 | `--username` | `maxim` | bot username (offline mode) |
 | `--state_interval_ms` | `500` | snapshot cadence (per-Maxim-tick buffering, plan Q7) |
+| `--system_messages` | off | forward the game's system messages (cause-naming death messages, advancements, server lines) as `system` events. Off keeps survival-rung percepts unchanged; turn it on only for language-line captures or a declared arm |

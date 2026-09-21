@@ -25,8 +25,10 @@ not packaged) and owns the game connection; this module owns:
 Wire protocol (frozen here; the bridge process implements the other side):
 
   JS -> PY  {"type": "state", "data": {<sensor>: <float>, ...}}
-  JS -> PY  {"type": "event", "kind": "chat|damage|death|block|spawn|info",
+  JS -> PY  {"type": "event", "kind": "chat|damage|death|block|spawn|info|system",
              "text": "<human-readable game event>"}
+            ("system" = the game's own system messages; the bridge emits it
+            only when started with --system_messages, default off)
   PY -> JS  {"type": "action", "id": <int>, "name": "<affordance>",
              "params": {...}}
   JS -> PY  {"type": "action_result", "id": <int>, "ok": <bool>,

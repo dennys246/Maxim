@@ -8,8 +8,8 @@
  *
  *   JS -> PY  {"type":"state","data":{health,food,light_level,y_altitude,
  *              nearest_hostile_dist,time_of_day}}
- *   JS -> PY  {"type":"event","kind":"chat|damage|death|block|spawn|info",
- *              "text":"..."}
+ *   JS -> PY  {"type":"event","kind":"chat|damage|death|block|spawn|info|system",
+ *              "text":"..."}   (system: only with --system_messages)
  *   PY -> JS  {"type":"action","id":N,"name":"move_to|turn|mine_block|
  *              place_block|eat|attack_nearest","params":{...}}
  *   JS -> PY  {"type":"action_result","id":N,"ok":bool,"detail":"...",
@@ -39,6 +39,11 @@ const USERNAME = args.username || "maxim";
 const STATE_INTERVAL_MS = parseInt(args.state_interval_ms || "500", 10);
 const FLEE_X = args.flee_x !== undefined ? parseFloat(args.flee_x) : null;
 const FLEE_Z = args.flee_z !== undefined ? parseFloat(args.flee_z) : null;
+// Opt-in (default OFF): forward the game's own system messages — death messages that name a cause,
+// advancements, server lines — as `system` events. OFF keeps survival-rung percepts byte-identical
+// (roadmap_1_4 §Parallel lines: a language path touches E1–E3 as a declared arm or not at all).
+// The paired-data audit (docs/experiments/paired_data_audit_2026-09-20.md) found these dropped.
+const SYSTEM_MESSAGES = args.system_messages === true || args.system_messages === "1";
 
 const bot = mineflayer.createBot({ host: MC_HOST, port: MC_PORT, username: USERNAME });
 bot.loadPlugin(pathfinder);
@@ -159,6 +164,13 @@ bot.on("entitySpawn", (entity) => {
     event("spawn", `a ${entity.name} appeared nearby`);
   }
 });
+// `messagestr` fires for every chat packet; position "chat" is player chat (already the `chat`
+// event above) and "game_info" is the action bar (per-tick noise). Only "system" is new text.
+if (SYSTEM_MESSAGES) {
+  bot.on("messagestr", (text, position) => {
+    if (position === "system" && text) event("system", text);
+  });
+}
 bot.on("kicked", (reason) => event("info", `kicked: ${reason}`));
 bot.on("error", (err) => event("info", `bot error: ${err.message}`));
 
