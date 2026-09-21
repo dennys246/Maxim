@@ -1,7 +1,7 @@
 # Exp 52 — Nurture: caregiver-taught orienting through hunger relief (pre-registration)
 
 **Status:** PRE-REGISTERED 2026-08-25, frozen before any run. Roadmap 1.1 item 17 — the
-gate on `1.1.0` final ([roadmap](../../plans/roadmap_1_1_to_1_3.md)).
+gate on `1.1.0` final ([roadmap](../../plans/archive/roadmap_1_1_to_1_3.md)).
 **Lineage:** Exp 46 (scripted mother, PASS) → Exp 48 (embodied mother, PARTIAL:
 apparatus-v2 re-earned the mother effect but the instrument phase-locks and the
 reward was credited by fiat) → this. Exp 48's own sanctioned next step is the randomised

@@ -216,7 +216,7 @@ and `docs/experiments/data/exp62_verdict.json`.
 The measured wall is lighting and time, not place: the same fear at a lit surface pond (0.588) or a
 night pool (0.799) is a cache miss for every body. That is a genuinely different situation to a
 feature-first body, and crossing it is graded cue similarity: a similarity-weighted or hierarchical
-read at the cluster boundary (Phase 4, `roadmap_1_3.md`; R1's designed remedy), or a decision about
+read at the cluster boundary (Phase 4, `archive/roadmap_1_3.md`; R1's designed remedy), or a decision about
 WHICH constants belong in the world channel (`light_level` and `time_of_day` carry `rest: null` by
 design — the roster the rest lint prints every run). Rung B's prereg is written after rung A lands,
 with its own front-gate: whether a generalization channel is a new mechanism (it is) and what

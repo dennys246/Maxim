@@ -463,7 +463,7 @@ cut 2026-08-26 and the Claude re-score is issued at the `v1.1.0` commit as
 reconciliation; its independence disclosure records where the two diverge). The Codex
 1.1.0 card is still owed. The 08-19 findings were reconciled against post-1.1.0 `main`
 on 2026-08-27 and placed in the roadmap
-([§Scorecard → roadmap reconciliation](../plans/roadmap_1_1_to_1_3.md#scorecard--roadmap-reconciliation-2026-08-27):
+([§Scorecard → roadmap reconciliation](../plans/archive/roadmap_1_1_to_1_3.md#scorecard--roadmap-reconciliation-2026-08-27):
 1.1.x item 16 + 1.2 gate 8); item 16's effect becomes visible as a delta at the 1.2 cut.
 
 ---

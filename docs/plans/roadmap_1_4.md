@@ -6,7 +6,7 @@
 rung *as sketched* and none attacked the thesis or the ladder's order. v2 folds all of them
 (§Review record at the end lists what changed and what was dismissed). **Owner decisions taken
 2026-09-18:** (1) the "Shared perception" 1.4 (perception fabric + microduck + Exp 55 + breeding,
-sequenced in [roadmap_1_3_path.md](roadmap_1_3_path.md)) is **DEFERRED on a physical trigger** — it
+sequenced in [deferred/second_body_staging.md](deferred/second_body_staging.md)) is **DEFERRED on a physical trigger** — it
 revives the day a second body exists (a real backend registered through `maxim.robots`, or the
 operator records the body's arrival), Stage A unchanged, the plan intact; (2) 1.4 continues the
 survival line on the rig that already runs it: **generalization + anticipation**; (3) the deferred
@@ -361,7 +361,7 @@ infrastructure the review located, and the full four-lens review.
   verbatim and fires at E2's DESIGN, not its null; audit it when E2's plan opens.
 - **Intrinsic motivation (1.3 Phase 6)** stays a parallel line, NOT in this ladder; its guardrail
   restated: it must not silently power E1–E3 (a declared ablation arm or its own line, never an
-  undeclared default). Disposition recorded in roadmap_1_3.md Phase 6.
+  undeclared default). Disposition recorded in archive/roadmap_1_3.md Phase 6.
 
 ## JEPA — re-pointed, not revived
 
@@ -480,7 +480,7 @@ E1 prereg → four-lens → freeze             →   E1 pilot → campaign
 Neither is a rung; neither may silently power E1–E3. A line touching a survival rung enters as a
 declared arm or not at all (1.3's D1 posture, applied to research lines).
 
-- **Intrinsic motivation** (`roadmap_1_3.md` Phase 6): `success × novelty` vs learning-progress, with
+- **Intrinsic motivation** (`archive/roadmap_1_3.md` Phase 6): `success × novelty` vs learning-progress, with
   the mining classroom as its testbed. Unscheduled.
 - **Grounded language + the cross-modal projection** ([grounded_language_acquisition.md](grounded_language_acquisition.md),
   revived 2026-09-19 as a parallel line; [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md)
@@ -499,7 +499,7 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
 - **Shared perception** — deferred on a physical trigger (a second body); Stage A unchanged on
   revival; plan intact.
 - **The survival reflex tier (1.3 Phase 1b)** — deferred on its trigger, now recorded in
-  roadmap_1_3.md: the measured onset-to-death window of a hostile against this loop's ≈ 1 s reaction;
+  archive/roadmap_1_3.md: the measured onset-to-death window of a hostile against this loop's ≈ 1 s reaction;
   longer than a second ⇒ never built.
 - **Intrinsic motivation (1.3 Phase 6)** — a parallel line, not this ladder (§Phase 5).
 - **Hostile classrooms, crafting, farming, shelter** — behind R4's routing audit and E3.
@@ -525,10 +525,10 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
 ## Record edits made with this plan (so the plans audit reads one story)
 
 [README.md](README.md) (1.4 row → this plan; a "deferred on trigger" row for Shared perception;
-§Deferred entry with the trigger), [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) (both 1.4 rows;
-a dated line in the rescope note), [roadmap_1_3.md](roadmap_1_3.md) (Phase 1b deferral + trigger;
+§Deferred entry with the trigger), [archive/roadmap_1_1_to_1_3.md](archive/roadmap_1_1_to_1_3.md) (both 1.4 rows;
+a dated line in the rescope note), [archive/roadmap_1_3.md](archive/roadmap_1_3.md) (Phase 1b deferral + trigger;
 Phases 4–5 → here; Phase 6 disposition; §Not in 1.3 → deferred on a physical trigger),
-[roadmap_1_3_path.md](roadmap_1_3_path.md) (banner: DEFERRED on a physical trigger, not the 1.4
+[deferred/second_body_staging.md](deferred/second_body_staging.md) (banner: DEFERRED on a physical trigger, not the 1.4
 plan), [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) (re-pointed;
 the survival-world audit is a different audit), CLAUDE.md §Active initiatives. DECISIONS.md records
 owed with the 1.3.0 transaction: (a) the 1.4 re-point + physical-trigger deferral; (b) the
@@ -548,6 +548,6 @@ consumers (scope); the Cerebellum and the timed predictor were omitted from the 
 front-gate (bio-faithful, scope); Exp 62 should not wait for Phase 0 (scope). **Dismissed, with
 reason:** "regen off is a cleaner E1 cost line" (environment NIT) — declined: D5 froze regeneration on
 for the whole survival line and the R3 baseline is regen-on; a regen-off cell is a separate,
-declared apparatus if a rung ever needs a lethal floor. "Move roadmap_1_3_path.md into deferred/"
+declared apparatus if a rung ever needs a lethal floor. "Move deferred/second_body_staging.md into deferred/"
 (scope SF-7 option) — declined for the link cascade; the banner carries the deferral and README
 §Deferred lists it. Nothing else was dismissed.

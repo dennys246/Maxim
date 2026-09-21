@@ -25,7 +25,7 @@ runs; if the audit passes, this projection plan revives WITH it. The audit is no
 > **This is a hypothesis to test, not a commitment.** It raises the bar rather than lowering
 > it: the paired data must be *collected* under this repo's evidence standard, and it inherits
 > the 1.3 perception-fabric risk. Revisit when the duck's sensor suite is known. See
-> [roadmap_1_1_to_1_3.md](../roadmap_1_1_to_1_3.md) §"The microduck — 1.3, and possibly JEPA's
+> [archive/roadmap_1_1_to_1_3.md](../roadmap_1_1_to_1_3.md) §"The microduck — 1.3, and possibly JEPA's
 > paired-data source".
 
 ---

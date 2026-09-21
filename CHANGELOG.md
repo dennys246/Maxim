@@ -113,7 +113,7 @@ sample-rate check on hardware is still owed. The 1.2.1 section below is left as 
   `start_simulation_mode` / `_main_impl` at their current spans (3488 / 3324 / 1747) and fails
   CI if any grows; a real extraction lowers the pin (ratchet-down only, like the atomic-io
   ratchet). Fails loud if a pinned function is renamed/moved rather than silently passing. First
-  item of the 1.3 quality burndown ([docs/plans/burndown_1_3.md](docs/plans/burndown_1_3.md)).
+  item of the 1.3 quality burndown ([docs/plans/quality_burndown.md](docs/plans/quality_burndown.md)).
   Guard: `tests/unit/test_lint_function_length.py`.
 - **Orphan-module ratchet in CI (`scripts/lint_orphan_modules.py`).** Mechanizes CLAUDE.md's
   dead-code lesson ("15 dead modules ~8,500 LOC shipping in the wheel; no automated test
@@ -122,14 +122,14 @@ sample-rate check on hardware is still owed. The 1.2.1 section below is left as 
   live one); the grandfathered set is **empty** (zero orphans today — the 8 that looked orphaned
   in a src-only scan each turned out to have a dedicated test), so any NEW orphan fails CI.
   Ratchet-down only; `__main__` is allow-listed. Second guard of the 1.3 quality burndown
-  ([docs/plans/burndown_1_3.md](docs/plans/burndown_1_3.md) Batch 1). Guard:
+  ([docs/plans/quality_burndown.md](docs/plans/quality_burndown.md) Batch 1). Guard:
   `tests/unit/test_lint_orphan_modules.py`.
 - **`[Unreleased]`-on-src-change lint in CI (`scripts/lint_unreleased_on_src_change.py`).** The
   owed half of the versioning policy (CLAUDE.md §Versioning / roadmap item 16.10): `lint_version_sync`
   enforces "main ahead of PyPI"; this enforces the pair — a diff touching `src/maxim/**/*.py` must
   grow `CHANGELOG`'s `## [Unreleased]` section, with release transactions (a new `## [X.Y.Z]` header)
   exempt. Diff-scoped against the merge-base with origin/main; docs/tests/scripts-only diffs don't
-  trigger it. Third guard of the 1.3 quality burndown ([docs/plans/burndown_1_3.md](docs/plans/burndown_1_3.md)
+  trigger it. Third guard of the 1.3 quality burndown ([docs/plans/quality_burndown.md](docs/plans/quality_burndown.md)
   Batch 1). Guard: `tests/unit/test_lint_unreleased_on_src_change.py`.
 - **Break-3 survival apparatus + live loop-closure smoke (1.3 survival loop, R2 break 3).** Dev
   tooling under `scripts/survival_world/`: `setup_world.py` stands up a Paper 1.16.5 survival
@@ -1271,7 +1271,7 @@ the announcement are built from this section and the rc section together — the
 carried the stable-API contract repairs (D17/D18/D2), the architecture-audit gate
 (D19), the healthy-hardware `_big` block, and the evidence-closure pass; this cut
 adds the behavioural result the headline rests on. Zero new mechanisms beyond the
-relief-sourced operant credit named below ([roadmap](docs/plans/roadmap_1_1_to_1_3.md)).
+relief-sourced operant credit named below ([roadmap](docs/plans/archive/roadmap_1_1_to_1_3.md)).
 
 ### Added
 
@@ -1338,7 +1338,7 @@ relief-sourced operant credit named below ([roadmap](docs/plans/roadmap_1_1_to_1
 **Release candidate, published quietly.** `1.1.0` final follows roadmap items 17
 (Exp 52 — caregiver-taught orienting through hunger relief) and 18 (loudness bench
 tests); the cut was reopened 2026-08-25 for exactly that reason
-([roadmap](docs/plans/roadmap_1_1_to_1_3.md)). Everything below is in the rc.
+([roadmap](docs/plans/archive/roadmap_1_1_to_1_3.md)). Everything below is in the rc.
 
 The substrate leaves the simulator. This section is everything recorded as
 unreleased since the 1.0.6 reconstruction. **Read the attribution carefully:**
@@ -1352,7 +1352,7 @@ D18 persistent tool registration, D2 NAc/EC paired invalidation), the
 architecture-audit regression gate (D19), the healthy-hardware `_big`
 delivered-shift block (H1 Part C follow-up), and the evidence-closure pass (S4
 records committed for every Earned row, Exp 44b non-stationarity recorded).
-Zero new mechanisms, by design ([roadmap](docs/plans/roadmap_1_1_to_1_3.md));
+Zero new mechanisms, by design ([roadmap](docs/plans/archive/roadmap_1_1_to_1_3.md));
 Oasis + Hivemind are 1.2.
 
 ### Upgrade note — one promised removal and two behaviour changes for code that already compiles

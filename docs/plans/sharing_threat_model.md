@@ -251,7 +251,7 @@ adapter's pre-merge review round, 2026-09-05):
 ## 6. Citations
 
 Costing and merge mechanics: [d43_merge_correctness.md](archive/d43_merge_correctness.md);
-gate-7 record: [roadmap_1_1_to_1_3.md](roadmap_1_1_to_1_3.md) §Gates +
+gate-7 record: [archive/roadmap_1_1_to_1_3.md](archive/roadmap_1_1_to_1_3.md) §Gates +
 [oasis_case_study_taught_orient.md](archive/oasis_case_study_taught_orient.md) §1; D8 count
 provenance: the gate-3 D8 pre-registration
 (`docs/experiments/protocols/d8_read_mutation_preregistration.md`, lands with the

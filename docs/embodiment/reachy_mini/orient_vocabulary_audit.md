@@ -1,7 +1,7 @@
 # Orient-vocabulary audit — every path that commands orientation
 
 **Date:** 2026-08-07 (1.1 cut-line item 8; see
-[roadmap_1_1_to_1_3.md](../../plans/roadmap_1_1_to_1_3.md)).
+[archive/roadmap_1_1_to_1_3.md](../../plans/archive/roadmap_1_1_to_1_3.md)).
 **Trigger:** the hardware note — motors 2+3 were destroyed when Maxim commanded
 a pose beyond the platform's physical capability. The breakage spanned
 essentially the entire 1.0+ era. Two of the paths below bypassed
