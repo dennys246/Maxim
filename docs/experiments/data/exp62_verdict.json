@@ -1,0 +1,173 @@
+{
+  "_format_version": "1.0",
+  "kind": "exp62_verdict",
+  "campaign_id": "exp62-rungA-1",
+  "what_this_is": "rung A: does the shipped body carry the fear across pools \u2014 bounded to this apparatus class",
+  "refused": [],
+  "n_clean": {
+    "cross": 12,
+    "same": 12,
+    "cross_ablated": 3
+  },
+  "rates": {
+    "cross": {
+      "n": 12,
+      "successes": 12,
+      "rate": 1.0,
+      "wilson95": [
+        0.7575059904469021,
+        1.0
+      ],
+      "node_gate": {
+        "hits": 12,
+        "n": 12,
+        "rate": 1.0,
+        "wilson95": [
+          0.7575059904469021,
+          1.0
+        ],
+        "not_applicable": false
+      },
+      "ablation_held": 0,
+      "decision_dv_rate": 1.0,
+      "behavioural_dv_rate": 1.0,
+      "not_decisive": 0,
+      "executor_calls": 24,
+      "escape_calls": 12,
+      "t_first_air_s": [
+        2.315,
+        2.332,
+        2.756,
+        2.996,
+        3.008,
+        3.226,
+        3.249,
+        3.271,
+        3.318,
+        3.335,
+        3.384,
+        3.41
+      ],
+      "t_first_air_median": 3.2375,
+      "t_first_air_median_ci95": [
+        2.876,
+        3.327
+      ]
+    },
+    "same": {
+      "n": 12,
+      "successes": 12,
+      "rate": 1.0,
+      "wilson95": [
+        0.7575059904469021,
+        1.0
+      ],
+      "node_gate": {
+        "hits": 12,
+        "n": 12,
+        "rate": 1.0,
+        "wilson95": [
+          0.7575059904469021,
+          1.0
+        ],
+        "not_applicable": false
+      },
+      "ablation_held": 0,
+      "decision_dv_rate": 1.0,
+      "behavioural_dv_rate": 1.0,
+      "not_decisive": 0,
+      "executor_calls": 24,
+      "escape_calls": 12,
+      "t_first_air_s": [
+        2.649,
+        2.868,
+        3.009,
+        3.044,
+        3.065,
+        3.067,
+        3.072,
+        3.094,
+        3.12,
+        3.191,
+        3.2,
+        3.327
+      ],
+      "t_first_air_median": 3.0695,
+      "t_first_air_median_ci95": [
+        3.037,
+        3.155
+      ]
+    },
+    "cross_ablated": {
+      "n": 3,
+      "successes": 0,
+      "rate": 0.0,
+      "wilson95": [
+        0.0,
+        0.5614970356393196
+      ],
+      "node_gate": {
+        "hits": 0,
+        "n": 0,
+        "rate": null,
+        "wilson95": null,
+        "not_applicable": true
+      },
+      "ablation_held": 3,
+      "decision_dv_rate": 0.0,
+      "behavioural_dv_rate": 0.0,
+      "not_decisive": 0,
+      "executor_calls": 0,
+      "escape_calls": 0,
+      "t_first_air_s": [],
+      "t_first_air_median": null,
+      "t_first_air_median_ci95": null
+    }
+  },
+  "replay": {
+    "rule": "the committed replay's prediction and the live NODE outcome agree",
+    "measured": {
+      "predicted_cross_hit": true,
+      "cross_pool_cosine": 0.9992,
+      "live_node_hit": true,
+      "live_node_rate": 1.0
+    },
+    "pass": true,
+    "note": null
+  },
+  "fisher_cross_vs_ablated": {
+    "p_one_sided": 0.002197802197802198,
+    "observed_diff": 1.0,
+    "k": [
+      12,
+      0
+    ],
+    "n": [
+      12,
+      3
+    ],
+    "test": "fisher-exact-one-sided (hypergeometric; = exact permutation on binaries)"
+  },
+  "checks": {
+    "NODE": true,
+    "CROSS": true,
+    "SAME": true,
+    "ANTI_VACUITY": true,
+    "REPLAY": true
+  },
+  "gates": {
+    "node_min": 0.9166666666666666,
+    "cross_min": 0.7,
+    "same_min": 0.7
+  },
+  "verdict": "EARNED",
+  "incomplete_cause": null,
+  "data": "docs/experiments/data/exp62_rows.jsonl",
+  "provenance": {
+    "executed_maxim_file": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "acf568b876b8",
+    "working_tree_dirty_src_scripts": false,
+    "python": "/Users/dennys/RMSrv/scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/src"
+  }
+}
