@@ -44,6 +44,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   paths in comments and docstrings (60 lines, path strings only). No behavioural change, no API change —
   recorded here because the versioning policy asks a `src/`-touching change to declare itself.
 
+### Fixed
+
+- **`SUPERVISED` sandbox execution now supervises: approval FAILS CLOSED.** `ExecuteSandboxScriptTool`
+  documented SUPERVISED as "requires approval for first run of each script" but installed a callback
+  that returned `True` unconditionally, overwriting any approver a caller had wired, and
+  `SandboxExecutor.execute` itself ran a script whose approval was required whenever no callback
+  existed. Now a required approval with no `SandboxExecutor.approval_callback` returns the new
+  `ExecutionStatus.APPROVAL_UNAVAILABLE` (a misconfiguration, distinct from an approver's `BLOCKED`), only
+  a literal `True` approves (a coroutine from an unawaited async approver no longer reads as yes), the tool never installs an approver of its own, and a caller's
+  approver is honoured (asked once per content hash, again when the content changes). **Behaviour
+  change:** a caller running SUPERVISED, or with no autonomy controller, and no approver wired now
+  gets a refusal where it used to get an execution. No in-repo caller wires the sandbox tools today.
+  (#796)
+
 ## [1.3.0] - 2026-09-19 — "Oasis-2"
 
 The survival world. 1.2 shared a want a teacher put there; 1.3 moves the learning signal to the

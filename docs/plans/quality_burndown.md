@@ -15,10 +15,10 @@
 > whether to merge them or keep both with a stated split; until then, read both. Tracked in
 > [outstanding.md](outstanding.md).
 >
-> **D84 is now [issue #796](https://github.com/dennys246/Maxim/issues/796)** — verified in source
-> 2026-09-20: `SUPERVISED` sandbox mode documents an approval gate and its callback returns `True`
-> unconditionally. A documented safety property the code does not provide, found only because this
-> file was re-read while asking why it still had a version in its name.
+> **D84 became [issue #796](https://github.com/dennys246/Maxim/issues/796)** and was fixed 2026-09-20:
+> `SUPERVISED` sandbox mode documented an approval gate while its callback returned `True`
+> unconditionally — found only because this file was re-read while asking why it still had a version
+> in its name. Approval now fails closed.
 
 **Drafted 2026-09-10**, after 1.2.1 shipped, from a three-lens sweep (score cards, plans +
 deferred, self-identified debt + bugs ledger). This is the **incremental-improvement** track
@@ -45,8 +45,7 @@ Owner decision (2026-09-10): ship the high-value low-risk guards + claim-truth n
   Assessor action.
 - **Batch 1 remainder — D63** (wire `pr_merge_readiness`'s required-checks-present check into a
   merge gate/ruleset). Needs repo-settings, partly the owner's action.
-- **Batch 3 (small correctness):** N1 campaign params, D32 foundational preamble, D84
-  honest-refuse, D49 benchmark honesty, plus the D46/D50 code fixes.
+- **Batch 3 (small correctness):** N1 campaign params, D32 foundational preamble, D49 benchmark honesty, plus the D46/D50 code fixes.
 - **Batch 4 (opportunistic):** fail-loud Stage 3, god-function decomposition, mypy scope, D19,
   behavioral-suite thickening.
 
@@ -100,7 +99,7 @@ Sizes: all **S** except Tier-3 (**M**, judgement per row).
 
 - **N1** — `api.campaign()` threads-or-rejects `npc_model`/`interactive`/`prompt_handler` (pairs with the done N2) — `src/maxim/api.py::campaign`, `tests/unit/test_api_core.py` — **S/M**
 - **D32** — load the foundational preamble from `CONSTITUTION.md` as package data + a drift guard (pip users currently get an empty preamble) — `src/maxim/agents/llm_context.py::_load_foundational_context` — **S/M**
-- **D84** — SUPERVISED sandbox honestly *refuses* when no approval callback is wired instead of silently auto-approving — `src/maxim/tools/sandbox.py::ExecuteSandboxScriptTool.execute` — **S**
+- ~~**D84**~~ **DONE 2026-09-20 ([#796](https://github.com/dennys246/Maxim/issues/796))** — SUPERVISED sandbox honestly *refuses* when no approval callback is wired instead of silently auto-approving. The fail-open was one layer lower than named here too: `SandboxExecutor.execute` ran any script whose approval was required when no callback existed, so the fix sits there. Guard: `tests/unit/test_sandbox_approval_fails_closed.py`. Found alongside it: [#800](https://github.com/dennys246/Maxim/issues/800) (the `.py` wrapper never runs) — **S**
 - **D49** — benchmark honesty: apply-or-delete `weight`, fix the running half-mean, drop-or-ship the missing tier2/tier3 suite files — `simulation/benchmark.py` — **M**
 
 ## Batch 4 — larger, now-unblocked engineering *(opportunistic; competes with the survival build)*
