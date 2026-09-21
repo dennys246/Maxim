@@ -7,9 +7,11 @@ around structured MemoryRecord subclasses, builds associations via similarity,
 and provides structured context for goal proposal.
 
 Memory lifecycle: FORMING → SHORT_TERM → LONG_TERM → consolidated out.
-FORMING entries are created at percept time and filled incrementally through
-the pipeline (Decision → Action → Outcome). Pattern completion can attach
-predicted outcomes during FORMING.
+FORMING entries are created at percept time. Filling them through the pipeline
+(Decision → Action → Outcome) is DORMANT (#817): no production path links a
+formation to what follows it, so entries stay FORMING and the pool is bounded to
+the newest ``_MAX_FORMING``. Pattern completion can attach predicted outcomes
+during FORMING.
 
 Active-reference context (recent percepts, outcomes, speech, etc.) is owned
 by ExecAgent via WorkingMemorySet — MemoryAgent writes to it via dependency
@@ -129,7 +131,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
         self._recent_ids: deque[str] = deque(maxlen=max_short_term)  # Bounded window
 
         # Staged formation pool (keyed by run_id)
-        self._forming_pool: dict[str, WorkingMemoryEntry] = {}
+        self._forming_pool: dict[str, WorkingMemoryEntry] = {}  # insertion-ordered, newest last
 
         # Pattern completion hook (set by ATL/MemoryHub wiring)
         self._pattern_completion_fn: Callable[[EpisodicMemory], list[PredictedOutcome]] | None = None
@@ -280,6 +282,9 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 log_swallowed_exception(e, operation="pattern_completion")
 
         self._forming_pool[run_id] = entry
+        # Re-apply the bound AFTER inserting (#817): the flush above runs before this entry exists.
+        while len(self._forming_pool) > self._MAX_FORMING:
+            del self._forming_pool[next(iter(self._forming_pool))]
 
         # Record pattern completion predictions (P3a)
         if self._collector and self._collector.verbosity >= 1:
@@ -334,8 +339,17 @@ class MemoryAgent(Agent, AgentOutputMixin):
 
         return entry
 
+    # Newest forming entries kept (#817). Staged formation is Dormant, so this is the only bound.
+    _MAX_FORMING = 32
+
     def _update_forming_decision(self, run_id: str, decision: Decision) -> None:
-        """Fill in the decision on a FORMING episodic memory."""
+        """Fill in the decision on a FORMING episodic memory.
+
+        Dormant since 2026-09-21 (#817): no production caller -- a formation's percept run_id is
+        not linked to the decision, action or outcome that follows it. Kept wired, not extended;
+        revives with the memory-strength plan's Phase 1-2, which owns linking an episode to its
+        outcome.
+        """
         from maxim.agents.bus import MemoryTier
 
         entry = self._forming_pool.get(run_id)
@@ -363,7 +377,13 @@ class MemoryAgent(Agent, AgentOutputMixin):
             )
 
     def _update_forming_action(self, run_id: str, action: Action) -> None:
-        """Fill in the action on a FORMING episodic memory."""
+        """Fill in the action on a FORMING episodic memory.
+
+        Dormant since 2026-09-21 (#817): no production caller -- a formation's percept run_id is
+        not linked to the decision, action or outcome that follows it. Kept wired, not extended;
+        revives with the memory-strength plan's Phase 1-2, which owns linking an episode to its
+        outcome.
+        """
         from maxim.agents.bus import MemoryTier
 
         entry = self._forming_pool.get(run_id)
@@ -380,6 +400,12 @@ class MemoryAgent(Agent, AgentOutputMixin):
         _flush_completed_from_pool().  The old WORKING tier was removed
         in 0.8 — outcome-triggered promotion now lands directly at
         SHORT_TERM (F6).
+
+
+        Dormant since 2026-09-21 (#817): no production caller -- a formation's percept run_id is
+        not linked to the decision, action or outcome that follows it. Kept wired, not extended;
+        revives with the memory-strength plan's Phase 1-2, which owns linking an episode to its
+        outcome.
         """
         from maxim.agents.bus import MemoryTier
 
@@ -446,6 +472,11 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 to_remove.append(run_id)
         for run_id in to_remove:
             del self._forming_pool[run_id]
+        # Bounded (#817): nothing in production completes a formation (the stage transitions are
+        # Dormant), so FORMING entries never leave on their own. Keep only the newest -- "forming"
+        # means recent -- so the pool, and the recall boost it feeds, cannot grow without bound.
+        while len(self._forming_pool) > self._MAX_FORMING:
+            del self._forming_pool[next(iter(self._forming_pool))]
 
     def _compute_prediction_confidence(self, predictions: list[PredictedOutcome]) -> float:
         """Compute confidence from success rate, action consistency, and sample size."""
@@ -679,14 +710,19 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 "cli_input": percept.cli_input,
             }
         elif isinstance(content, dict):
-            observation = content
+            observation = dict(content)
+        # capture_from_loop reads salience/novelty from the OBSERVATION (the contract bio_integration
+        # uses); passing them in `state` stored every MemoryAgent capture at 0.5/0.5 (#813).
+        observation["salience"] = salience
+        observation["novelty"] = float(percept.novelty) if percept is not None else 0.5
 
+        tool_name = content.get("tool_name", "") if isinstance(content, dict) else ""
         memory_id = self._hippocampus.capture_from_loop(
             observation=observation,
-            state={"salience": salience, "novelty": 0.5, "source": source},
+            state={"source": source},
             intent={},
             decision={},
-            action=content.get("tool_name", "") if isinstance(content, dict) else {},
+            action={"tool": tool_name} if tool_name else {},  # a mapping, not a bare name (#815)
             result=content if isinstance(content, dict) and "success" in content else {},
         )
 

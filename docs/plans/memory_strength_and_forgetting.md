@@ -4,8 +4,7 @@
 > silently power E1–E3 ([roadmap_1_4.md](roadmap_1_4.md) §Parallel lines). Every behavioural change
 > ships **opt-in, with today's defaults pinned byte-identical**, and every mechanism enters as
 > `[engineering]` until an experiment earns it. **Entry condition: Phase 0** — the input-integrity
-> defects fixed and the ledger's decay/eviction triggers added — before any phase changes what is
-> kept or forgotten.
+> defects fixed — before any phase changes what is kept or forgotten.
 
 **Owns (proposed):** `src/maxim/memory/strategies.py` (a new strength strategy), the activation and
 sleep paths in `memory/hippocampus*.py` and `memory/atl.py`, a `memory.*` block in the config
@@ -182,8 +181,12 @@ and the once-a-year fact still survive by tag and by links, not by use.
   [#815](https://github.com/dennys246/Maxim/issues/815) failed tool results crash,
   [#816](https://github.com/dennys246/Maxim/issues/816) compressed-concept crash (crash half),
   [#817](https://github.com/dennys246/Maxim/issues/817) staged formation never completes (wire or Dormant).
-- Add **decay / eviction / cap** to the `Re-run on:` triggers of ledger rows 183, 188, 192–198
-  (no row names them today; a forgetting change would fire only through generic categories).
+- ~~Add decay / eviction / cap to the ledger rows' `Re-run on:` triggers~~ — **dropped
+  2026-09-21:** the ledger's own discipline fixes a row's triggers at graduation ("not
+  retroactively"), and the change is already covered — a forgetting change fires those rows through
+  the existing generic **bio-system refactor / substrate-pipeline change** triggers. What protects
+  the earned rows is §Guardrails (opt-in, pinned defaults, fingerprints, built-object asserts), not
+  new trigger text.
 - Correct `docs/agents/bio-memory.md`'s clock claim (done in this plan's PR).
 - Each fix PR states which ledger rows it re-ran or discharged (each issue lists its candidates).
 

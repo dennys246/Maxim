@@ -88,8 +88,7 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
 - [memory_strength_and_forgetting.md](memory_strength_and_forgetting.md) — **a 1.4 PARALLEL LINE
   opened 2026-09-21**: a hippocampal forgetting model (storage strength from existing signals,
   retrievability on an experience clock, honest activation, sleep with floors, a `maxim config`
-  byte budget). Opt-in with defaults pinned. **Entry condition: its Phase 0** (defects #813–#817 +
-  the ledger's decay/eviction triggers).
+  byte budget). Opt-in with defaults pinned. **Entry condition: its Phase 0** (defects #813–#817).
 - [grounded_language_acquisition.md](grounded_language_acquisition.md) — **a PARALLEL LINE as of
   2026-09-19** (`roadmap_1_4.md` §Parallel lines), not the active umbrella it used to call itself:
   its thesis was validated by another route in 1.2/1.3, and its Phase 2 is structurally the deferred

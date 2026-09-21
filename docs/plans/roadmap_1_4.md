@@ -499,7 +499,7 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   (salience, novelty, RPE, pain, relevance-gated drive pressure, relief, failure; noisy-OR over
   baseline deviations), retrievability on an experience
   clock, honest activation, sleep with floors, a byte budget in `maxim config`. **Entry condition:
-  its Phase 0** (input-integrity defects #813–#817 and the ledger's decay/eviction triggers). Opt-in,
+  its Phase 0** (input-integrity defects #813–#817). Opt-in,
   defaults pinned — the survival harnesses already run `sleep()`, so every sleep change is behind
   the strategy selection and in their fingerprints; fear and cluster-bias decay out of round one. **Ties to the theme:** its
   retroactive tagging is the same look-back as R4's delayed credit and the language line's binding —
