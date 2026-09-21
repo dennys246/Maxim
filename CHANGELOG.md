@@ -52,6 +52,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The persisted internet policy and the access toggle now reach the live tools (#822).** Both
+  runtimes (`cli.py`, `embodied_runtime/agentic_runtime.py`) built a bare
+  `InternetAccessPolicy(enabled=...)`, so `util/internet_policy.json` never applied and
+  `internet_access_toggle` wrote a file nothing read. Both now use one getter,
+  `utils/internet_access.py::live_internet_policy_getter`: the launch-time cap (`--no-internet`, an
+  exploration policy's `allow_internet`) still decides whether internet tools exist; within it,
+  every request reads the persisted toggle and policy. **Scope:** page fetches honour the domain
+  lists and limits; search honours the toggle only (its result filtering is follow-up work).
+  Hardened on the now-live path: a present-but-unreadable policy file, or an ill-typed domain list
+  (a string used to become a set of characters), now **fails closed** with an ERROR; a disabled or
+  restricted policy is logged at WARNING with the files to delete to reset it; the toggle tool
+  requires an explicit `enabled` instead of defaulting to off; the policy cache is keyed by file;
+  `save_internet_policy` is atomic with `_format_version` and no longer writes the `enabled` field
+  the toggle owns. A CI grep now forbids a bare `InternetAccessPolicy(enabled=...)` outside
+  `utils/internet_access.py`. **Behaviour change:** a toggle previously left off, or a hand-written
+  policy file, now takes effect.
 - **The agent can no longer switch itself into a code-executing mode (#821).** `ModeSwitchTool`
   applied any valid mode with no approval, so the model — or injected text it read — could request
   `singularity`, the one mode with `can_execute_code=True` plus full tools and network. The tool now

@@ -28,7 +28,7 @@ _REPO = Path(__file__).resolve().parent.parent
 _BASELINES: dict[tuple[str, str], int] = {
     ("src/maxim/runtime/agent_loop.py", "run_agentic_loop"): 3484,
     ("src/maxim/simulation/orchestrator.py", "start_simulation_mode"): 3324,
-    ("src/maxim/cli.py", "_main_impl"): 1747,
+    ("src/maxim/cli.py", "_main_impl"): 1743,
 }
 
 

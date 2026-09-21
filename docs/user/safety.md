@@ -151,6 +151,16 @@ Internet access is **enabled by default**. To disable it:
 maxim --no-internet
 ```
 
+Within that launch-time switch, two persisted files shape access, and every request reads them:
+
+- `~/.maxim/util/internet_access.json` — the on/off toggle. The agent's `internet_access_toggle`
+  tool writes it, and it applies to every later session. If it is off, Maxim logs a WARNING at
+  startup naming the file; delete the file to reset.
+- `~/.maxim/util/internet_policy.json` — domain `allow_domains` / `block_domains` lists and fetch
+  limits (`max_fetch_bytes`, `request_timeout_s`, …). Page fetches honour them; search results do
+  not filter by them yet. A file that exists but cannot be read, or has an ill-typed domain list,
+  **disables internet access** until it is fixed (fail closed), with an ERROR in the log.
+
 When internet access is enabled, the following safeguards apply:
 
 - All HTTP fetches are logged with timestamps and URLs.
@@ -183,7 +193,7 @@ The safety stack, from outermost to innermost:
 2. **FearAgent** -- Reviews every tool call for danger patterns.
 3. **FearGatedExecutor** -- Optional executor wrapper that gates every tool call via FearAgent; active when `with_fear_gate=True`.
 4. **Filesystem policy** -- Restricts which paths can be read, written, or executed.
-5. **Internet policy** -- Internet access is on by default; disable with `--no-internet`.
+5. **Internet policy** -- Internet access is on by default; disable with `--no-internet`. A persisted toggle and domain policy apply within that (see Internet Access above).
 6. **Predictive harm detection** -- Blocks unsafe movements before they reach hardware.
 7. **Pain detection** -- Monitors the robot during movement and intervenes in real time.
 8. **Workspace bounds** -- Limits the robot to regions it has safely explored.
