@@ -501,7 +501,9 @@ class TestEncoderNAcEligibility:
     def test_reward_overrides_fire_on_empty_nac(self):
         """Regression: NAc.__len__ returns 0 for fresh NAc, which made
         `if self._nac` falsy and silently suppressed reward-bias threshold
-        overrides. Must use `is not None` to check wiring.
+        overrides. First fixed at this call site with `is not None`; since #839
+        the footgun is removed at the type (an empty NAc is truthy), and this
+        test keeps checking that the overrides fire on an empty NAc.
         """
         from maxim.decisions.nac import NAc
         from maxim.similarity.encoder import LinguisticEncoder
@@ -510,7 +512,7 @@ class TestEncoderNAcEligibility:
         atl = ATL()
         nac = NAc()
         assert len(nac) == 0
-        assert bool(nac) is False  # ← the footgun
+        assert bool(nac) is True  # the footgun is gone at the type (#839); emptiness is len()
         encoder = LinguisticEncoder(ec=ec, atl=atl, nac=nac)
 
         # Encode one percept and credit its node.

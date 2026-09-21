@@ -52,6 +52,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An empty memory store is no longer falsy (#839).** `Hippocampus`, `ATL`, `AngularGyrus`, `EC`,
+  `NAc` and `SCN` defined `__len__` but no `__bool__`, so an empty store was falsy and every
+  `if store:` / `if not store:` (21 sites across memory, planning, bridges, comms and retrieval, plus
+  the SCN/AngularGyrus sites) skipped it until something else wrote its first entry — e.g.
+  `MemoryAgent` dropped every capture into an empty hippocampus (verified on `main`: the first
+  capture returned `None` and stored nothing), and `ConceptExtractor` skipped SCN registration while
+  the SCN was empty. Now `MemoryLayer` (covering Hippocampus, ATL, AngularGyrus), `EC`, `NAc` and
+  `SCN` define `__bool__` returning `True`: presence is `is not None`, emptiness is `len(store) == 0`.
+  Note NAc's `len` counts only causal links, so an NAc holding biases or fear but no links (Exp 61/62
+  receivers) was falsy too. **Measured survival-path impact: none** — an offline Minecraft water trial
+  (ScriptedWaterBridge, the live loop ticking, then the shore/water cluster check) gives identical
+  hippocampus / EC / ATL / NAc counts on `origin/main` and on this change. Found alongside and filed
+  separately: the FearCircuitBridge never reported to NAc (#840) and a dead planner recall (#841), so
+  this fix changes nothing through either.
 - **The fetch byte cap now bounds the download — and memory — not just what is kept (#825).**
   `http_fetch` applied `max_fetch_bytes` after `response.content` had already read the whole body,
   so a multi-GB response was downloaded in full first (measured on `main`: a 50 MiB body pulled all
