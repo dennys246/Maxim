@@ -1948,7 +1948,11 @@ Return JSON exactly like:
         # payload BEFORE splitting — the planning banner / instructions are in
         # the cacheable (stable) segment, so detecting on the dynamic remainder
         # alone would miss it.
-        is_planning_mode = "PLANNING MODE" in tool_prompt and "APPROVAL" in tool_prompt
+        from maxim.utils.content_safety import outside_tool_output
+
+        # Decided on the prompt's own text only: a framed page must not flip the system prompt (#823).
+        _prompt_own_text = outside_tool_output(tool_prompt)
+        is_planning_mode = "PLANNING MODE" in _prompt_own_text and "APPROVAL" in _prompt_own_text
 
         # Prompt-caching split (prompt_caching_for_cloud_backends.md Phase 1):
         # PromptBuilder emits ``<stable_prefix>\x1e<dynamic_remainder>``. Route

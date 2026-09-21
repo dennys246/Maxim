@@ -1827,6 +1827,12 @@ class PromptBuilder:
                 original_query = ""
                 result = followup_input
 
+        # State the frame rule ABOVE the (framed) tool output, in every follow-up template (#823).
+        from maxim.utils.content_safety import TOOL_OUTPUT_RULE
+
+        if "<<TOOL_OUTPUT id=" in result:  # only where there IS a frame (not the legacy branches)
+            result = f"{TOOL_OUTPUT_RULE}\n{result}"
+
         if followup_type == "process":
             return self._build_process_prompt(tool_name, original_query, result)
         elif followup_type == "respond":
@@ -1837,7 +1843,7 @@ class PromptBuilder:
             return self._build_respond_prompt(tool_name, original_query, result)
 
     def _build_process_prompt(self, tool_name: str, query: str, result: str) -> str:
-        is_batched = tool_name == "batched_exploration" or "BATCHED EXPLORATION RESULTS" in result
+        is_batched = tool_name == "batched_exploration"  # never keyed on result text (#823: a page could forge it)
 
         if is_batched:
             prompt = f"""You completed batched exploration. Now analyze ALL results and make your final action.

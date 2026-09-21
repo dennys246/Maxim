@@ -163,6 +163,9 @@ Within that launch-time switch, two persisted files shape access, and every requ
 
 When internet access is enabled, the following safeguards apply:
 
+- Text from tools — fetched pages, search snippets — reaches the model inside a marked
+  `<<TOOL_OUTPUT …>>` block that the prompt tells it to treat as data, never as instructions.
+
 - All HTTP fetches are logged with timestamps and URLs.
 - Search queries are recorded.
 - FearAgent reviews URLs before any fetch is executed, blocking known-dangerous or suspicious destinations.
