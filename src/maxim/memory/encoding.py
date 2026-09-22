@@ -13,8 +13,13 @@ all-``None`` declaration, so a site that has nothing still says so out loud.
 
 ``site`` names which capture site produced the trace (``ENCODING_SITES``, closed): one failing tool
 call can produce several traces (the loop's, a reflection's, a pain capture's), and Phase 2c must
-count one event once. Drive pressure and relief arrive in Phase 2b-ii, per drive -- their shape is
-not fixed here, so no scalar is persisted that would have to be broken later.
+count one event once.
+
+``drive_pressure`` and ``drive_relief`` are PER DRIVE (Phase 2b-ii), each a sorted tuple of
+``(drive, value)`` -- a mapping would be mutable inside a frozen record. Pressure is what the body
+was pushing for when the action was taken; relief is how much of what each drive COULD give the
+action actually gave. Their keys are also what Phase 2c gates on: a starving stretch must tag the
+traces whose actions touched hunger, not everything that happened while hungry.
 
 CC3: frozen and persisted on the episode, path (a) with REQUIRED fields by design -- the required
 fields are the ``TypeError`` that makes a forgotten signal loud. Forward-compat lives in the loader:
@@ -30,6 +35,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 _SIGNALS = ("salience", "novelty", "surprise", "pain")
+_PER_DRIVE = ("drive_pressure", "drive_relief")
 
 # Which capture site produced a trace. Closed: a typo cannot open a silent new bucket.
 ENCODING_SITES: frozenset[str] = frozenset(
@@ -62,6 +68,8 @@ class EncodingSignals:
     novelty: float | None  # 1 - familiarity, when measured against a reference set
     surprise: float | None  # |RPE| of the captured invocation's outcome (``ToolOutput.rpe``)
     pain: float | None  # NOCICEPTIVE pain intensity carried by this capture
+    drive_pressure: tuple[tuple[str, float], ...] | None  # what the body was pushing for, BEFORE
+    drive_relief: tuple[tuple[str, float], ...] | None  # how much of each drive's possible relief it gave
     extra: dict[str, Any] = field(default_factory=dict, compare=False, hash=False)
 
     def __post_init__(self) -> None:
@@ -76,7 +84,24 @@ class EncodingSignals:
             if not math.isfinite(value) or not 0.0 <= value <= 1.0:
                 raise ValueError(f"encoding signal {name!r} must be in [0, 1], got {value!r}")
             object.__setattr__(self, name, float(value))
-        collisions = set(self.extra) & {"site", *_SIGNALS}
+        for name in _PER_DRIVE:
+            pairs = getattr(self, name)
+            if pairs is None:
+                continue
+            if not isinstance(pairs, tuple) or any(not isinstance(p, tuple) or len(p) != 2 for p in pairs):
+                raise TypeError(f"{name!r} must be a tuple of (drive, value) pairs or None, got {pairs!r}")
+            drives = [str(d) for d, _ in pairs]
+            if drives != sorted(drives) or len(set(drives)) != len(drives):
+                raise ValueError(f"{name!r} must name each drive once, sorted: {drives}")
+            checked: list[tuple[str, float]] = []
+            for drive, value in pairs:
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    raise TypeError(f"{name}[{drive!r}] must be a float, got {value!r}")
+                if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+                    raise ValueError(f"{name}[{drive!r}] must be in [0, 1], got {value!r}")
+                checked.append((str(drive), float(value)))
+            object.__setattr__(self, name, tuple(checked))
+        collisions = set(self.extra) & {"site", *_SIGNALS, *_PER_DRIVE}
         if collisions:
             raise ValueError(f"extra keys collide with declared fields: {sorted(collisions)}")
         try:
@@ -88,19 +113,32 @@ class EncodingSignals:
     @classmethod
     def unmeasured(cls, site: str) -> EncodingSignals:
         """The explicit declaration that this capture site measured no importance signal."""
-        return cls(site=site, salience=None, novelty=None, surprise=None, pain=None)
+        return cls(
+            site=site, salience=None, novelty=None, surprise=None, pain=None, drive_pressure=None, drive_relief=None
+        )
 
     def measured(self) -> tuple[str, ...]:
         """Names of the signals this capture actually measured."""
-        return tuple(name for name in _SIGNALS if getattr(self, name) is not None)
+        return tuple(name for name in (*_SIGNALS, *_PER_DRIVE) if getattr(self, name) is not None)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"site": self.site, **{name: getattr(self, name) for name in _SIGNALS}, **self.extra}
+        per_drive = {
+            name: (dict(getattr(self, name)) if getattr(self, name) is not None else None) for name in _PER_DRIVE
+        }
+        return {
+            "site": self.site,
+            **{name: getattr(self, name) for name in _SIGNALS},
+            **per_drive,
+            **self.extra,
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EncodingSignals:
         known = {name: data.get(name) for name in _SIGNALS}
-        extra = {k: v for k, v in data.items() if k not in _SIGNALS and k != "site"}
+        for name in _PER_DRIVE:
+            raw = data.get(name)
+            known[name] = tuple(sorted((str(k), v) for k, v in raw.items())) if isinstance(raw, dict) else raw
+        extra = {k: v for k, v in data.items() if k not in _SIGNALS and k not in _PER_DRIVE and k != "site"}
         # A record without its site is malformed, not "api": a guess would misattribute the trace.
         return cls(site=data["site"] if "site" in data else "", **known, extra=extra)
 

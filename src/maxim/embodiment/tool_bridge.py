@@ -239,6 +239,35 @@ def _drive_potential_diff(
     return total
 
 
+def _drive_progress_by_drive(
+    body: Entity,
+    effect: dict[str, float],
+    pre_values: dict[str, float],
+) -> dict[str, float]:
+    """The same per-drive terms ``_drive_potential_diff`` sums, kept instead of summed.
+
+    A RECORD for the memory-strength line (Phase 2b-ii): which drives an action moved and by how
+    much, in raw sensor units, signed. ``_drive_potential_diff`` stays exactly as it is -- it is the
+    motor-credit signal and carries its own experiment re-run triggers -- and this returns the terms
+    beside it, so the two can never disagree (a test asserts ``sum(dict) == scalar``).
+    """
+    from maxim.embodiment.sem import drive_comfort_progress
+
+    drive_specs = getattr(body, "drive_specs", {}) or {}
+    metrics = getattr(body, "vital_metrics", {}) or {}
+    progress: dict[str, float] = {}
+    for name in effect:
+        spec = drive_specs.get(name)
+        if spec is None:
+            continue
+        before = pre_values.get(name)
+        after = metrics.get(name)
+        if before is None or after is None:
+            continue
+        progress[name] = drive_comfort_progress(spec, before, after)
+    return progress
+
+
 # ---------------------------------------------------------------------------
 # Name resolution
 # ---------------------------------------------------------------------------
@@ -594,6 +623,7 @@ class ModulatorAffordanceTool(Tool):
         # fall through to the flat +1 tool-success floor. A real motor-bound
         # turn in a silent room would otherwise mint direction-blind +1s
         # into the cluster surface (the probe-3 floor-drowning failure).
+        _progress_by_drive: dict[str, float] = {}
         drive_credit_withheld = False
         if _self_effect and _live_owned:
             _body_for_drives = getattr(self._embodiment, "root", None)
@@ -617,6 +647,8 @@ class ModulatorAffordanceTool(Tool):
                     _self_effect,
                     pre_values,
                 )
+                # Record-only (memory-strength Phase 2b-ii); the credit scalar above is unchanged.
+                _progress_by_drive.update(_drive_progress_by_drive(self._embodiment.root, _self_effect, pre_values))
 
         # Phase 2 MEASURED relief credit (sem_motor_binding.md): a motor
         # backend that really actuated reports measured before/after pairs
@@ -667,7 +699,9 @@ class ModulatorAffordanceTool(Tool):
                     _before, _after = float(_pair[0]), float(_pair[1])
                 except (TypeError, ValueError, IndexError):
                     continue
-                _measured_total += drive_comfort_progress(_spec, _before, _after)
+                _sensor_progress = drive_comfort_progress(_spec, _before, _after)
+                _measured_total += _sensor_progress
+                _progress_by_drive[_sensor] = _progress_by_drive.get(_sensor, 0.0) + _sensor_progress
                 accounted_sensors.add(_sensor)
                 _measured_any = True
                 if _sensor in _intero_sensor_set:
@@ -885,6 +919,16 @@ class ModulatorAffordanceTool(Tool):
         # or collateral harm". The consumer (runtime/tool_dispatch.py) takes the
         # SIGN (±1); a present 0.0 (no net progress) falls back to the tool-success
         # signal. See docs/user/tool_side_effects.md.
+        if _progress_by_drive:
+            # Record-only, for the memory-strength encoding record: WHICH drives this action moved
+            # and by how much (raw signed units), even when the credit scalar is withheld by the
+            # collateral-harm gate. No consumer of the credit path reads this key.
+            if side_effects is None:
+                side_effects = {}
+            side_effects["drive_progress_by_drive"] = dict(_progress_by_drive)
+            # Whose drives these are: a tool can act on another entity, and drive names collide
+            # across bodies, so the record names its producer and the consumer checks it.
+            side_effects["drive_progress_body"] = getattr(self._embodiment.root, "full_path", None)
         if drive_potential_diff is not None:
             if side_effects is None:
                 side_effects = {}

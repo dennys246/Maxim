@@ -52,10 +52,19 @@ def capture_episodic_memory(
     # What this trace is encoded WITH (memory-strength Phase 2b), built before any fold or queue so
     # a bad value fails here, loudly. Only the outcome's surprise is MEASURED on this path: the
     # observation's salience/novelty are defaults or per-source constants today (Phase 2S makes
-    # them real), and drive pressure / relief wait for Phase 2b-ii's per-drive normalisation.
+    # them real). Drive pressure and relief ride on the executor's stamp, per drive.
     # ``rpe`` is in [0, 1] by construction (the Rescorla-Wagner value is bounded at every producer),
     # so a value outside it is a broken invariant and fails here, loudly.
-    encoding = EncodingSignals(site="loop", salience=None, novelty=None, surprise=rpe, pain=None)
+    # Per-drive pressure (read BEFORE the action) and relief ride on the same stamp (Phase 2b-ii).
+    encoding = EncodingSignals(
+        site="loop",
+        salience=None,
+        novelty=None,
+        surprise=rpe,
+        pain=None,
+        drive_pressure=result.drive_pressure_before if isinstance(result, ToolOutput) else None,
+        drive_relief=result.drive_relief if isinstance(result, ToolOutput) else None,
+    )
     if rpe is not None and rpe > 0.0 and isinstance(observation, dict):
         current_salience = observation.get("salience", 0.5)
         observation["salience"] = min(1.0, current_salience + rpe * 0.5)

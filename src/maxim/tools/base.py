@@ -90,6 +90,12 @@ class ToolOutput:
     # Surprise (|RPE|) of THIS invocation's outcome, stamped by the executor from the tool-pain
     # bridge; None when no causal link attributed it. Tools never set it (#847).
     rpe: float | None = None
+    # The body around THIS invocation, stamped by the executor (memory-strength Phase 2b-ii):
+    # per-drive pressure read BEFORE the action (after it, an ``eat`` would see its own hunger
+    # already relieved) and per-drive relief the action produced, each a sorted tuple of
+    # ``(drive, value in [0, 1])``. ``None`` = no body attached. Tools never set either.
+    drive_pressure_before: tuple[tuple[str, float], ...] | None = None
+    drive_relief: tuple[tuple[str, float], ...] | None = None
 
 
 # Backward-compat alias — existing tools that import ToolResult keep working.

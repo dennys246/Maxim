@@ -363,11 +363,37 @@ def _pain_encoding(signal: PainSignal) -> Any:
     source = str((signal.context or {}).get("source", ""))
     if source.startswith("drive:") and source not in _TISSUE_DAMAGE_DRIVES:
         extra = {"drive_pain": intensity, "drive": source.removeprefix("drive:")}
-        return EncodingSignals(site="pain_bus", salience=None, novelty=None, surprise=None, pain=None, extra=extra)
+        return EncodingSignals(
+            site="pain_bus",
+            salience=None,
+            novelty=None,
+            surprise=None,
+            pain=None,
+            drive_pressure=None,
+            drive_relief=None,
+            extra=extra,
+        )
     if signal.pain_type in NOCICEPTIVE_PAIN_TYPES:
-        return EncodingSignals(site="pain_bus", salience=None, novelty=None, surprise=None, pain=intensity)
+        return EncodingSignals(
+            site="pain_bus",
+            salience=None,
+            novelty=None,
+            surprise=None,
+            pain=intensity,
+            drive_pressure=None,
+            drive_relief=None,
+        )
     extra = {"anticipated_pain": intensity} if signal.pain_type is PainType.ANTICIPATED else {}
-    return EncodingSignals(site="pain_bus", salience=None, novelty=None, surprise=None, pain=None, extra=extra)
+    return EncodingSignals(
+        site="pain_bus",
+        salience=None,
+        novelty=None,
+        surprise=None,
+        pain=None,
+        drive_pressure=None,
+        drive_relief=None,
+        extra=extra,
+    )
 
 
 def create_pain_memory_subscriber(

@@ -669,7 +669,15 @@ class ToolPainBridge:
         from maxim.memory.encoding import EncodingSignals
 
         # Built before the try: a surprise outside [0, 1] is a broken invariant, loud here.
-        encoding = EncodingSignals(site="reflexion", salience=None, novelty=None, surprise=surprise, pain=None)
+        encoding = EncodingSignals(
+            site="reflexion",
+            salience=None,
+            novelty=None,
+            surprise=surprise,
+            pain=None,
+            drive_pressure=None,
+            drive_relief=None,
+        )
         try:
             from maxim.memory.types import (
                 Action as MemAction,

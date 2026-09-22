@@ -27,15 +27,21 @@ def _hippo() -> Hippocampus:
 
 
 def _only(site: str = "api", **measured: float) -> EncodingSignals:
-    return EncodingSignals(site=site, **{name: measured.get(name) for name in _SIGNALS})
+    per_drive = {name: measured.get(name) for name in ("drive_pressure", "drive_relief")}
+    return EncodingSignals(site=site, **{name: measured.get(name) for name in _SIGNALS}, **per_drive)
 
 
 # ── the type ─────────────────────────────────────────────────────────────────
 
 
 def test_the_type_declares_exactly_the_decided_fields():
-    # drive pressure and relief arrive in 2b-ii, per drive: no scalar shape is persisted early
-    assert {f.name for f in dataclasses.fields(EncodingSignals)} == {"site", *_SIGNALS, "extra"}
+    assert {f.name for f in dataclasses.fields(EncodingSignals)} == {
+        "site",
+        *_SIGNALS,
+        "drive_pressure",
+        "drive_relief",
+        "extra",
+    }
 
 
 def test_every_field_is_required():
@@ -79,9 +85,27 @@ def test_round_trip_keeps_unknown_keys_and_refuses_bad_extras():
     with pytest.raises(ValueError, match="site"):
         EncodingSignals.from_dict({"pain": 0.5})  # a missing SITE is malformed, never guessed
     with pytest.raises(ValueError, match="collide"):
-        EncodingSignals(site="api", salience=None, novelty=None, surprise=None, pain=None, extra={"pain": 1})
+        EncodingSignals(
+            site="api",
+            salience=None,
+            novelty=None,
+            surprise=None,
+            pain=None,
+            drive_pressure=None,
+            drive_relief=None,
+            extra={"pain": 1},
+        )
     with pytest.raises(ValueError, match="JSON"):
-        EncodingSignals(site="api", salience=None, novelty=None, surprise=None, pain=None, extra={"x": object()})
+        EncodingSignals(
+            site="api",
+            salience=None,
+            novelty=None,
+            surprise=None,
+            pain=None,
+            drive_pressure=None,
+            drive_relief=None,
+            extra={"x": object()},
+        )
 
 
 # ── the Hippocampus requires it at every door ───────────────────────────────
@@ -258,7 +282,16 @@ def test_drive_pain_is_a_drive_not_injury_except_health():
 
 def test_an_extra_survives_the_hippocampus_round_trip(tmp_path, complete_memory_args):
     extra = {"drive_pain": 0.7, "drive": "oxygen"}
-    signals = EncodingSignals(site="pain_bus", salience=None, novelty=None, surprise=None, pain=None, extra=extra)
+    signals = EncodingSignals(
+        site="pain_bus",
+        salience=None,
+        novelty=None,
+        surprise=None,
+        pain=None,
+        drive_pressure=None,
+        drive_relief=None,
+        extra=extra,
+    )
     hippo = _hippo()
     mid = hippo.capture(**{**complete_memory_args, "encoding": signals})
     path = str(tmp_path / "h.json")

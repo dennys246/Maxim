@@ -78,6 +78,8 @@ def _percept_encoding(percept: Any) -> EncodingSignals:
         novelty=min(1.0, max(0.0, float(percept.novelty))),
         surprise=None,
         pain=None,
+        drive_pressure=None,
+        drive_relief=None,
     )
 
 
