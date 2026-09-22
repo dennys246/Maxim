@@ -647,6 +647,8 @@ class Cerebellum:
                     novelty=min(1.0, max(0.0, float(novelty))),
                     surprise=_unit(rpe_magnitude),
                     pain=_unit(pain_intensity),
+                    drive_pressure=None,  # the engram path has no body snapshot
+                    drive_relief=None,
                 ),
                 perception=Perception(
                     observations={

@@ -25,6 +25,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Memory: per-drive pressure and relief on the encoding record (memory-strength Phase 2b-ii).**
+  `EncodingSignals` gains two required fields, `drive_pressure` and `drive_relief`, each a sorted tuple of
+  `(drive, value in [0, 1])` or `None` (no body). Pressure is what the body was pushing for **before**
+  the action — read afterwards, an `eat` would show its own hunger already relieved — and relief is how
+  much of what each drive *could* give the action actually gave. Per drive rather than one scalar,
+  because Phase 2c gates drive importance by relevance: a starving stretch must tag the traces whose
+  actions touched hunger, not everything that happened while hungry.
+  - `embodiment/sem.py` gains `drive_span`, `relief_fraction_from_progress` and `drive_pressure`: one drive's
+    largest possible movement as the denominator (owner decision — so `1.0` always means "the most
+    this drive can give"): the declared range for a homeostatic drive, its deprivation-to-satisfaction
+    BAND for an entropic one (a body's range is widened for the encoder's neutral, which put `1.0` out
+    of reach and put relief on a different scale from pressure — caught in review), relief as its positive fraction, and pressure covering **every** drive kind
+    and both directions, `0.0` inside the comfort band being a measurement rather than an absence.
+    The existing `drive_comfort_progress`, `_drive_potential_diff` and `corrective_need_intensity` are
+    untouched: they are credit and perception signals with their own experiment re-run triggers.
+  - Both relief producers emit a new **record-only** side effect, `drive_progress_by_drive` (raw signed
+    per drive, emitted even when the collateral-harm gate withholds the credit scalar; a test pins
+    `sum(dict) == scalar`). It is read at the executor, not by `read_learning_side_effects` — that
+    parser is the credit path.
+  - The executor stamps `ToolOutput.drive_pressure_before` and `ToolOutput.drive_relief` on each
+    invocation, as it already does for surprise, and is their only writer.
+  - **No behaviour change:** no credit path, encoder input or body range moves; nothing reads the
+    record until Phase 2c.
+
 - **Memory: every trace records what it was encoded with (memory-strength Phase 2b-i).** A new
   frozen `memory/encoding.py::EncodingSignals` holds the importance signals present at a capture —
   salience, novelty, surprise, nociceptive pain — plus a required `site` from a closed set (`loop`,
@@ -1519,7 +1543,7 @@ relief-sourced operant credit named below ([roadmap](docs/plans/archive/roadmap_
   Write-up `docs/experiments/52_nurture.md`; raw records under `docs/experiments/data/52_*`.
 
 - **Exp 52 (Nurture) harness — relief-sourced operant credit.** `cradle_mother.reactive_mother_tick`
-  gains `credit="relief"|"constant"`: under `relief` (the new default) the mother's operant
+  gains `credit="relief"|"constant"`: under `drive_relief` (the new default) the mother's operant
   credit is the SIGN of the drive relief her feed actually produced in the infant
   (`_drive_potential_diff` over the drives the feed touched; zero relief → no credit),
   instead of the constant `feed_reward` credited by fiat (`constant`, kept for the A/B).
@@ -1528,7 +1552,7 @@ relief-sourced operant credit named below ([roadmap](docs/plans/archive/roadmap_
   `analyze_cradle_mother.py` (HUNGER-NECESSARY + the L2 seed-spread apparatus check), and
   the scripted Phase-A harness `scripts/orient_substrate/9_hunger_relief_orient.py`.
   `MAXIM_CRADLE_MOTHER_CREDIT` selects the mode in the runner (S6 toggle; conftest scrub
-  in the same commit). **The default is now `relief`:** to reproduce Exp 48's v2 rows pass
+  in the same commit). **The default is now `drive_relief`:** to reproduce Exp 48's v2 rows pass
   `--credit constant`; committed Exp 48 rows carry no `credit` stamp and are constant-credit. Pre-registration: `docs/experiments/protocols/exp52_nurture_preregistration.md`.
 
 ## [1.1.0rc1] - 2026-08-25 — "Sensorimotor" (release candidate)

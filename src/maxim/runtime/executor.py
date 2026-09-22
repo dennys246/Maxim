@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import logging
 import threading
 import time
 import uuid
@@ -72,6 +73,9 @@ TOOL_ALIASES: dict[str, str] = {
 # (dict.get) are atomic under CPython's GIL, but multi-key mutations
 # (update, pop in a loop) need serialization against concurrent readers.
 _TOOL_ALIASES_LOCK = threading.RLock()
+
+
+_log = logging.getLogger(__name__)
 
 
 class Executor:
@@ -259,7 +263,7 @@ class Executor:
             error_msg += f" Available tools: {', '.join(sorted(self.registry.list()))}."
             result = ToolOutput(success=False, error=error_msg)
             self._report_failure(tool_name, invocation_id, result, params)
-            return self._stamp_rpe(result, invocation_id)
+            return self._stamp_invocation(result, invocation_id, None)
 
         try:
             tool = self.registry.get(tool_name)
@@ -284,8 +288,9 @@ class Executor:
                 )
             result = ToolOutput(success=False, error=error_msg)
             self._report_failure(tool_name, invocation_id, result, params)
-            return self._stamp_rpe(result, invocation_id)
+            return self._stamp_invocation(result, invocation_id, None)
 
+        pressure_before = self._drive_pressure_snapshot()
         try:
             result = tool.run(**params)
         except Exception as e:
@@ -293,7 +298,7 @@ class Executor:
                 self._running = None
             result = ToolOutput(success=False, error=f"Tool {tool_name!r} execution failed: {e}")
             self._report_failure(tool_name, invocation_id, result, params)
-            return self._stamp_rpe(result, invocation_id)
+            return self._stamp_invocation(result, invocation_id, pressure_before)
 
         with self._lock:
             self._running = None
@@ -367,7 +372,7 @@ class Executor:
         else:
             self._report_failure(tool_name, invocation_id, result, params)
 
-        return self._stamp_rpe(result, invocation_id)
+        return self._stamp_invocation(result, invocation_id, pressure_before)
 
     def _report_failure(
         self,
@@ -461,22 +466,112 @@ class Executor:
                 self._entity_map.transfer_to_scene(entity)
                 _log.info("Entity released: %s", entity_released)
 
-    def _stamp_rpe(self, result: ToolOutput, invocation_id: str) -> ToolOutput:
-        """Attach THIS invocation's surprise (|RPE|) to its output (#847).
+    def _drive_pressure_snapshot(self) -> tuple[tuple[str, float], ...] | None:
+        """How hard each of the body's drives is pushing RIGHT NOW, before the action runs.
+
+        The memory-strength encoding record (Phase 2b-ii) needs the pressure the action was taken
+        UNDER: read afterwards, an ``eat`` would show its own hunger already relieved. ``None`` when
+        no body is attached, and a drive whose value or range cannot be read is simply absent.
+        """
+        embodiment = self.embodiment
+        if embodiment is None or getattr(embodiment, "root", None) is None:
+            return None
+        from maxim.embodiment.sem import drive_pressure
+        from maxim.runtime.agent_loop import _read_drive_ranges
+
+        # A body-read glitch must never take down the action: this runs OUTSIDE tool.run's guard,
+        # and the executor's contract is that a bad invocation is a failed ToolOutput, not a raise.
+        try:
+            ranges = _read_drive_ranges(self)
+            pressures: dict[str, float] = {}
+            for entity in embodiment.root.walk():
+                metrics = getattr(entity, "vital_metrics", {}) or {}
+                for name, spec in (getattr(entity, "drive_specs", {}) or {}).items():
+                    value = metrics.get(name)
+                    if value is None:
+                        continue
+                    try:
+                        reading = float(value)
+                    except (TypeError, ValueError):
+                        continue  # a non-numeric sensor value: skip the drive, never the action
+                    lo, hi = ranges.get(name, (float("nan"), float("nan")))
+                    measured = drive_pressure(spec, reading, lo, hi)
+                    if measured is not None:
+                        pressures[name] = measured
+        except Exception as e:  # noqa: BLE001 - a record must not cost the action
+            _log.debug("drive-pressure snapshot failed: %s", e)
+            return None
+        return tuple(sorted(pressures.items())) if pressures else None
+
+    def _drive_relief(self, result: ToolOutput) -> tuple[tuple[str, float], ...] | None:
+        """Per-drive relief this invocation produced, as a fraction of what each drive could give.
+
+        Reads the record-only ``drive_progress_by_drive`` side effect (raw signed units, emitted by
+        both relief producers) and normalises it here, where the body's declared ranges are in
+        reach. Deliberately NOT read through ``read_learning_side_effects``: that parser is the
+        credit path, and this is a record. A drive the action moved AWAY from comfort records 0.0 —
+        it touched that drive, and harm is the pain channel's to carry.
+        """
+        side_effects = result.side_effects or {}
+        progress = side_effects.get("drive_progress_by_drive")
+        if not isinstance(progress, dict) or not progress:
+            return None
+        embodiment = self.embodiment
+        root = getattr(embodiment, "root", None) if embodiment is not None else None
+        if root is None:
+            return None
+        # Whose body produced it? A tool can act on ANOTHER entity (simulation/tools.py's actor
+        # invocation copies that tool's side effects verbatim), and drive names collide across
+        # bodies, so an unlabelled or foreign record is not this agent's to normalise.
+        producer = side_effects.get("drive_progress_body")
+        if producer is not None and producer != getattr(root, "full_path", None):
+            _log.debug("drive progress from %r is not this body's; not recorded", producer)
+            return None
+        from maxim.embodiment.sem import relief_fraction_from_progress
+        from maxim.runtime.agent_loop import _read_drive_ranges
+
+        try:
+            specs: dict[str, Any] = {}
+            for entity in root.walk():
+                specs.update(getattr(entity, "drive_specs", {}) or {})
+            ranges = _read_drive_ranges(self)
+            relief: dict[str, float] = {}
+            for name, raw in progress.items():
+                spec = specs.get(name)
+                if spec is None:
+                    continue
+                lo, hi = ranges.get(name, (float("nan"), float("nan")))
+                try:
+                    fraction = relief_fraction_from_progress(spec, float(raw), lo, hi)
+                except (TypeError, ValueError):
+                    continue
+                if fraction is not None:
+                    relief[name] = fraction
+        except Exception as e:  # noqa: BLE001 - a record must not cost the action
+            _log.debug("drive-relief normalisation failed: %s", e)
+            return None
+        return tuple(sorted(relief.items())) if relief else None
+
+    def _stamp_invocation(
+        self,
+        result: ToolOutput,
+        invocation_id: str,
+        pressure_before: tuple[tuple[str, float], ...] | None,
+    ) -> ToolOutput:
+        """Attach what THIS invocation carried: its surprise and the body around it.
 
         The Rescorla-Wagner error NAc computed for this invocation's outcome travels on the
-        ToolOutput, so a capture reads the surprise of the action it captures. It replaced
-        ``get_last_rpe``, a read of a slot nothing reset, which gave a capture an earlier tool's
-        surprise whenever this one produced none.
+        ToolOutput (#847), so a capture reads the surprise of the action it captures rather than an
+        earlier tool's; the drive pressure it acted under and the relief it produced ride along the
+        same way (memory-strength Phase 2b-ii). The executor is the only writer of all three.
         """
         if not isinstance(result, ToolOutput):
             return result
-        # ALWAYS the bridge's value or None: the executor is the only writer, so a tool that set
-        # ``rpe`` on its own output cannot inflate its capture's salience.
         rpe = self._tool_pain_bridge.pop_invocation_rpe(invocation_id) if self._tool_pain_bridge is not None else None
-        if result.rpe == rpe:
+        relief = self._drive_relief(result)
+        if (result.rpe, result.drive_pressure_before, result.drive_relief) == (rpe, pressure_before, relief):
             return result
-        return dataclasses.replace(result, rpe=rpe)
+        return dataclasses.replace(result, rpe=rpe, drive_pressure_before=pressure_before, drive_relief=relief)
 
     def tool_usage_stats(self) -> dict[str, Any]:
         """Get tool usage statistics for experiment analysis."""

@@ -13,6 +13,7 @@ the registered SEM graph.
 
 from __future__ import annotations
 
+import math
 import operator
 import time
 from collections.abc import Iterator
@@ -334,6 +335,79 @@ def drive_comfort_progress(spec: DriveSpec, before: float, after: float) -> floa
     if isinstance(spec, EntropicDriveSpec):
         return (before - after) if spec.drift_direction == "up" else (after - before)
     return 0.0
+
+
+def drive_span(spec: DriveSpec, lo: float, hi: float) -> float | None:
+    """The largest movement this drive allows -- the denominator for a relief fraction.
+
+    memory-strength Phase 2b-ii (owner decision 2026-09-22): ``1.0`` means "the biggest relief this
+    drive can give".
+
+    - **Homeostatic**: the farthest the value can sit from its set point, from the declared range
+      (the half-span on every shipped body, whose set points are range midpoints). ``None`` without
+      a usable range.
+    - **Entropic**: its OWN deprivation-to-satisfaction band -- not the declared range. A body's
+      range is deliberately wider than the world's observable span (``minecraft_player`` declares
+      health ``[0, 40]`` for 20 max hp so the encoder's neutral lands at the midpoint), and
+      inheriting that here made a full satisfaction of a starving drive read 0.25 while ``1.0`` was
+      unreachable (found in the Phase 2b-ii review). The band is also exactly the scale
+      ``drive_pressure`` uses, so pressure 1.0 -> 0.0 and relief 1.0 describe one event.
+    """
+    if isinstance(spec, HomeostaticDriveSpec):
+        if not (math.isfinite(lo) and math.isfinite(hi)) or hi <= lo:
+            return None
+        span = max(hi - spec.set_point, spec.set_point - lo)
+    else:
+        span = abs(spec.deprivation_threshold - spec.satisfaction_threshold)
+    return span if span > 0 else None
+
+
+def relief_fraction_from_progress(spec: DriveSpec, progress: float, lo: float, hi: float) -> float | None:
+    """How much of the relief this drive COULD give, a raw signed progress actually gave: ``[0, 1]``.
+
+    Positive part only -- movement away from comfort is harm, which the pain channel carries --
+    over ``drive_span``; ``None`` when the drive has no usable denominator. The producers
+    (``tool_bridge``) difference before/after themselves and emit the per-drive terms, so the
+    executor normalises through HERE: one definition of "the most this drive can give".
+    ``drive_comfort_progress`` itself is untouched -- it is a credit signal with its own experiment
+    triggers, and this is a record.
+    """
+    span = drive_span(spec, lo, hi)
+    if span is None or not math.isfinite(progress):
+        return None
+    return max(0.0, min(1.0, progress / span))
+
+
+def drive_pressure(spec: DriveSpec, value: float, lo: float, hi: float) -> float | None:
+    """How hard this drive is pushing right now, in ``[0, 1]`` (memory-strength Phase 2b-ii).
+
+    ``0.0`` inside the comfort band is a MEASUREMENT ("this drive is not pushing"); ``None`` means
+    the drive could not be read at all. Unlike ``corrective_need_intensity`` -- which answers a
+    different question (which corrective affordance to pick), is raw-unit and returns ``None`` for
+    entropic "up" drives and above-set-point deficits -- this covers every drive kind and both
+    directions, and is normalised by the drive's own declared range. That function is left exactly
+    as it is: it feeds the interoception channel the survival experiments' fingerprints cover.
+
+    - Homeostatic: deviation past the comfort band, over the widest deviation the range allows.
+    - Entropic: from the satisfaction threshold toward the deprivation threshold, either direction.
+    """
+    if not math.isfinite(value):
+        return None
+    if isinstance(spec, HomeostaticDriveSpec):
+        span = drive_span(spec, lo, hi)
+        if span is None:
+            return None
+        deviation = abs(value - spec.set_point) - spec.comfort_band
+        headroom = span - spec.comfort_band
+        if headroom <= 0:
+            return 1.0 if deviation > 0 else 0.0
+        return max(0.0, min(1.0, deviation / headroom))
+    if isinstance(spec, EntropicDriveSpec):
+        span = spec.deprivation_threshold - spec.satisfaction_threshold  # signed by drift direction
+        if span == 0:  # a degenerate spec: satisfied is deprived, so only equality reads as comfort
+            return 0.0 if value == spec.satisfaction_threshold else 1.0
+        return max(0.0, min(1.0, (value - spec.satisfaction_threshold) / span))
+    return None
 
 
 # ---------------------------------------------------------------------------

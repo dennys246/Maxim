@@ -337,15 +337,25 @@ typo, frozen into experiment fingerprints — never an env var or a literal.
 *Phase 2b slicing (2026-09-22, from a capture-site map):* **2b-i** — the typed `EncodingSignals`
 recorded on every trace, required at every capture door, write-only (SHIPPED with this note): four
 signals (salience, novelty, surprise, nociceptive pain) plus a required closed `site`, frozen.
-Review folds: **no `drive_pressure`/`relief` fields yet** (their per-drive shape is 2b-ii's to
+Review folds: **no `drive_pressure`/`drive_relief` fields yet** (their per-drive shape is 2b-ii's to
 decide, so no scalar was persisted to break later), **no hippocampus-size denominator** (novelty's
 reference-set size is recorded by the novelty producer beside its value, in 2b-iii), and **the
 Rescorla-Wagner value is bounded to [0, 1] at every producer** (`causal_link.py::bound_predicted_value`
 in `from_dict`, hivemind ingest and merge — ingest used to accept [-1, 1], so one imported link could
 make |RPE| reach 2; no recorded bundle held such a value, checked over 713 files).
-**2b-ii** — per-drive relief (a new `tool_bridge` side-effect key, normalised by each drive's
-declared half-span) and drive pressure at the loop capture, and removing the pain-bus double count
-(`+0.2` salience, `success=False`) on the strength path only. **2b-iii = Phase 2S's salience/novelty
+**2b-ii** (SHIPPED) — per-drive relief and drive pressure on the record: `EncodingSignals.relief`
+and `.drive_pressure` as sorted `(drive, value)` tuples, from a new record-only
+`drive_progress_by_drive` side-effect key normalised at the executor, which stamps both onto the
+invocation's `ToolOutput` (pressure read BEFORE the action). Normaliser (owner decision
+2026-09-22, revised from the half-span): each drive's own largest possible movement —
+`max(hi − set_point, set_point − lo)` for homeostatic, and for entropic its own deprivation-to-satisfaction band (NOT the declared range, which is widened for the encoder's neutral — using it made a full satisfaction read 0.25 and put 1.0 out of reach) — so `1.0` means
+"the most this drive can give" and no clamp is needed. New `sem.py` helpers (`drive_span`,
+`relief_fraction_from_progress`, `drive_pressure`) sit BESIDE the credit/perception ones, which are
+untouched (their Exp 52 / 58 / 60 / 62 triggers). **Removing the pain-bus double count (`+0.2`
+salience, `success=False`) moved to 2c** — it belongs on the strength path, and that switch does not
+exist until then. **Known gap for 2c:** on `minecraft_player` only `eat` declares a `self_effect`,
+so `escape_water`/`flee`/`attack` produce no measured relief at all (the R4 delayed-credit class) —
+relevance for those actions needs another source than the relief keys. **2b-iii = Phase 2S's salience/novelty
 producers** (EC novelty surfaced from `PatternResult.best_similarity`; a survival salience from
 drive, sensor change and pain). Found while mapping: a MemoryAgent tool-failure capture duplicates
 the loop's capture of the same action, and a reflection duplicates the loop's surprise — the Phase
