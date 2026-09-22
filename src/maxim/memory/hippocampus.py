@@ -25,6 +25,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal, overload
 from uuid import uuid4
 
@@ -792,18 +793,31 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         )
 
         # Build action
+        # Shapes are checked, not guessed (#815): a non-mapping `action` used to reach `.get` and
+        # raise AttributeError deep in the capture, so failed tool results were never stored.
+        if action and not isinstance(action, Mapping):
+            raise TypeError(
+                f"capture_from_loop: action must be a mapping like {{'tool': ...}}, got {type(action).__name__}"
+            )
         act = Action(
             tool_name=action.get("tool", "") if action else "",
             tool_params=action.get("params", {}) if action else {},
         )
 
-        # Build outcome
+        # Build outcome. `result` is a ToolResult-like object OR a mapping with success/error keys
+        # (#814: a dict result used to read as success, storing goal failures as successes).
         success = True
         error = None
-        if hasattr(result, "success"):
-            success = bool(result.success)
-        if hasattr(result, "error"):
-            error = str(result.error) if result.error else None
+        if isinstance(result, Mapping):
+            if "success" in result:
+                success = bool(result["success"])
+            if result.get("error"):
+                error = str(result["error"])
+        else:
+            if hasattr(result, "success"):
+                success = bool(result.success)
+            if hasattr(result, "error"):
+                error = str(result.error) if result.error else None
 
         out = Outcome(
             success=success,

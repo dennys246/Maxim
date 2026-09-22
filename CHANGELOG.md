@@ -52,6 +52,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Memory Phase 0: the capture inputs the strength model will read are stored correctly
+  (#813–#817).** The entry condition of the memory-strength parallel line
+  (`docs/plans/memory_strength_and_forgetting.md`). Verified on `main` before the fix:
+  - **#813** `MemoryAgent` passed salience/novelty in `state`, but `Hippocampus.capture_from_loop`
+    reads them from the observation — a 0.9-salience capture was stored as 0.5, and novelty was
+    hard-coded 0.5. Both now go where the contract reads them (the shape `bio_integration` already
+    uses), with the percept's real novelty.
+  - **#814** a dict result was read as success (`hasattr(dict, "success")` is False), storing goal
+    failures as successes. `capture_from_loop` now reads `success`/`error` from a mapping result.
+  - **#815** `action` was passed as a bare tool name, so `.get` raised and failed tool results were
+    never stored. `MemoryAgent` passes `{"tool": name}`, and `capture_from_loop` now REJECTS a
+    non-mapping `action` with a `TypeError` instead of failing deep inside.
+  - **#816** reinforcing a compressed ATL concept (`CompressedSemantic` has no `reinforce`) raised
+    and aborted that episode's concept extraction; it is now skipped. The design half — reversible
+    compression — stays with the plan's Phase 3.
+  - **#817** staged memory formation never completes in production (its three stage methods have no
+    caller), so the forming pool grew without bound. The stage methods are marked **Dormant** (the
+    link from a formation to its outcome belongs to the plan's Phase 1–2) and the pool keeps only the
+    newest 32 entries (re-applied after each insertion).
+  **Measured survival-path impact: none** — the offline Minecraft water trial gives identical
+  hippocampus / EC / ATL / NAc counts on `origin/main` and with this change.
+  Also: the plan no longer asks to add decay/eviction triggers to the ledger's `Re-run on:` rows —
+  the ledger fixes those at graduation, and a forgetting change already fires them through the
+  generic bio-system-refactor trigger.
 - **An empty memory store is no longer falsy (#839).** `Hippocampus`, `ATL`, `AngularGyrus`, `EC`,
   `NAc` and `SCN` defined `__len__` but no `__bool__`, so an empty store was falsy and every
   `if store:` / `if not store:` (21 sites across memory, planning, bridges, comms and retrieval, plus
