@@ -1,6 +1,8 @@
 # SCN decay anchoring — wall-clock-tying the five NAc decay functions
 
 > **DEFERRED (2026-07-15 plans audit):** DRAFT, never implemented (no SCN decay-clock surface in src; grep hits are comments). Phase A prereq (tau split) shipped; Phases 0–4 unstarted. Self-scoped as off the substrate→action critical path — addresses hardware portability of decay timescales. **Revive when:** a second hardware baseline joins Roy benchmarking (making hardware-dependent decay timescales load-bearing), or decay_consolidation_calibration is greenlit (it requires this as a hard prereq).
+>
+> **Revive path amended 2026-09-21 ([memory_strength_and_forgetting.md](../memory_strength_and_forgetting.md) §Open questions 1):** the repo now has one clock policy. The experience clock governs everything that strengthens or forgets; wall time is used only at named sites where downtime should count (today only `NAc.load()` decay-on-load). This plan's real problem, per-tick decay whose rate depends on the loop's tick rate, is solved by **scaling NAc per-tick decay by `dt` on the memory line's experience clock**, not by wall-clock SCN callbacks: the SCN bins by time of day, which is the wrong clock for decay. Two stale claims in the body below: NAc decay runs only on **active** cycles (`_loop_bio_tick_maintenance` sits after the idle gate), so there is no idle-tick decay at 4 Hz; and when revived, the migration must re-run Exp 56–62, whose fingerprints include today's per-cycle rate.
 
 
 **Target version:** **1.0 nice-to-have / 1.1 acceptable** (resolved 2026-05-27 — see "1.0 scope decision" below; supersedes Open Question §1).

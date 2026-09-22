@@ -88,7 +88,10 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
 - [memory_strength_and_forgetting.md](memory_strength_and_forgetting.md) — **a 1.4 PARALLEL LINE
   opened 2026-09-21**: a hippocampal forgetting model (storage strength from existing signals,
   retrievability on an experience clock, honest activation, sleep with floors, a `maxim config`
-  byte budget). Opt-in with defaults pinned. **Entry condition: its Phase 0** (defects #813–#817).
+  byte budget). Opt-in with defaults pinned. Phases 0 (#844) and 1 (honest activation, #846)
+  SHIPPED; **Phase 2 decisions resolved 2026-09-21** (validated in the LLM sim worlds first); **Phase
+  2S, the survival gate (#848)**: survival percepts score salience 0 and pattern completion cannot
+  cue sensor concepts, so nothing there ever uses a memory yet.
 - [grounded_language_acquisition.md](grounded_language_acquisition.md) — **a PARALLEL LINE as of
   2026-09-19** (`roadmap_1_4.md` §Parallel lines), not the active umbrella it used to call itself:
   its thesis was validated by another route in 1.2/1.3, and its Phase 2 is structurally the deferred
@@ -136,7 +139,8 @@ on a second body arriving and now live in [deferred/](deferred/).*
 
 Design work preserved in [deferred/](deferred/). Each has an explicit "revive when" condition (full rationale in the banner at the top of each doc).
 
-- [deferred/behavior_tiers.md](deferred/behavior_tiers.md) — which automatic behaviours stay code (invariants, innate priors) and which should become learned. The declare-your-tier **rule** is active; the migrations are deferred per item: source trust (M1) revives with the language line's L4 prereg, curiosity (M3) with intrinsic motivation's trigger or L5, learned reflex gain (M4) when a rung names a fixed gain as the limit. All wait for memory-strength Phase 2.
+- [deferred/behavior_tiers.md](deferred/behavior_tiers.md) — which automatic behaviours stay code (invariants, innate priors) and which should become learned. The declare-your-tier **rule** is active; the migrations are deferred per item: source trust (M1) revives with the language line's L4 prereg, curiosity (M3) with intrinsic motivation's trigger or L5, learned reflex gain (M4) when a rung names a fixed gain as the limit, adaptive pain (M6) on its own plan's trigger. All wait for memory-strength Phase 2.
+- [deferred/adaptive_nociception.md](deferred/adaptive_nociception.md) — pain habituation (harmless, repeated) and sensitisation (damaging, repeated), adapted **upstream in the pain producer**, never inside a consumer. Deferred 2026-09-21 out of the memory line's scope. **Revive when:** a world produces chronic pain that does no damage, or repeated pain measurably over-tags.
 
 **Deferred 2026-09-18 (owner):**
 

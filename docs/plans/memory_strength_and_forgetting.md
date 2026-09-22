@@ -15,7 +15,8 @@ sleep paths in `memory/hippocampus*.py` and `memory/atl.py`, a `memory.*` block 
 (would later *calibrate* this plan's constants); [deferred/scn_decay_anchoring.md](deferred/scn_decay_anchoring.md)
 (wall-clock anchoring of NAc decay — a tension with this plan's experience clock, §Open questions);
 [archive/memory_consolidation_practice.md](archive/memory_consolidation_practice.md) (the dormant
-replay module's revive trigger).
+replay module's revive trigger); [deferred/adaptive_nociception.md](deferred/adaptive_nociception.md)
+(pain habituation/sensitisation, upstream of the tag — deferred with a trigger).
 
 ## Why this plan exists
 
@@ -89,7 +90,7 @@ capture site nobody wired then raises `TypeError` instead of silently storing ta
 |---|---|---|
 | Salience | percept salience (after [#813](https://github.com/dennys246/Maxim/issues/813)) | every capture site |
 | Novelty | `EpisodicMemory.novelty`; EC text novelty `runtime/gating.py::TextSalienceScorer._compute_novelty` | loop capture (text percepts) |
-| Surprise | RPE via `executor.get_last_rpe` | loop capture. **Counted once:** `capture_episodic_memory` already folds *positive* RPE into salience — read it from one place (raw, with that fold removed on the strength path). Negative RPE (omission) is a distinct channel; whether it tags is a Phase 2 decision. The slot is sticky, never reset per tick — reset it or read it with a tick stamp. |
+| Surprise | \|RPE\| via `executor.get_last_rpe` | loop capture. **Already unsigned** (corrected 2026-09-21): `CausalLink.update_prediction_rw` stores `abs(error)`, so worse-than-expected outcomes already raise salience — there is no separate "negative RPE" to decide. **Counted once:** `capture_episodic_memory` folds `|RPE|·0.5` into salience; the strength path reads salience from *before* that fold. The slot is sticky and never reset ([#847](https://github.com/dennys246/Maxim/issues/847)) — bind the value to its invocation first. |
 | Pain | `PainBus` intensity | **pain-bus capture only** (`record_pain_intensity` is Dormant, no producer) |
 | Relief | `tool_dispatch.read_learning_side_effects(result).drive_potential_diff` | loop capture |
 | Drive pressure | `HomeostaticDriveSpec` / `EntropicDriveSpec` state via `executor.embodiment` | only with a body attached — and **gated by relevance**: deprivation improves encoding of *drive-relevant* items (a hungry animal learns where food is), so pressure tags only traces whose nodes link to that drive's relief. Ungated, a starving stretch would tag everything. |
@@ -117,9 +118,16 @@ and pain captures are synchronous — so the drowning can be stored before the m
 it. Record **memory ids** in `Hippocampus._process_capture` with the loop's enqueue tick, make the
 buffer per-agent, and resolve retro-tags lazily (or `flush()` before tagging).
 
-**Retrieval (spacing effect, the right way round):** `S ← S · (1 + a · (1 − R) · S^(−w))`, then
-`R = 1`. The gain is largest when the trace was fading, and the `S^(−w)` factor (FSRS's) saturates it
-so many spaced retrievals cannot compound `S` without bound. Only **honest activations** count (Phase 1).
+**Retrieval (spacing effect, the right way round):** `S ← S · (1 + a · w_src · (1 − R) · S^(−w))`,
+then `R = 1`. The gain is largest when the trace was fading, and the `S^(−w)` factor (FSRS's)
+saturates it so many spaced retrievals cannot compound `S` without bound. Only **honest activations**
+count (Phase 1), and only **credited** ones update `S` or reset `R` (below).
+*Corrected 2026-09-21 (Phase 2 design dive):* the gain does **not** discount massed exposure across
+consecutive ticks. Within one tick `Δt = 0` so the gain is exactly 0, but `1 − e^(−x) ≤ x`, so a
+trace rendered every tick out-earns one spaced retrieval over the same span (measured: 100 renders
+one tick apart → `S = 31.7`; one render after 100 ticks → `S = 13.2`, with `S₀ = 10, a = 1, w = 0.5`).
+Hence a **credited-retrieval gap `g`**: an activation within `g` of the last *credited* one is
+recorded but updates nothing.
 
 **Sleep:**
 1. **Replay** the top-N traces by `tag · (1 − R)`, with a recency term (biological replay favours
@@ -223,14 +231,112 @@ Consumers that retrieve and never deliver are #845 (the replan site is wired but
 **Phase 2 — the strength model.** `S`, `R`, the typed `EncodingSignals` at all seven capture sites,
 the look-back through `PerceptTraceBuffer` (its first production caller, per §The model's wiring
 requirements), the retrieval update, the persisted experience clock with its advanced-clock assert.
-No immortality floor under the new strategy. Decisions owed before code: the forward capture window,
-whether negative RPE tags, and per-signal baselines; and **the retrieval update hooks
-`MemoryLayer.activate` EVENTS, not Phase 1's `activation_count`** — that count is a massed,
-un-deduplicated lifetime tally (deliberation re-renders the same top 3 every cycle), and `(1 − R)`
-cannot be rebuilt from an aggregate, so Phase 1's counts are diagnostics, never a seed for `S`.
-Before the Phase 2 prereg, check a survival run's saved records for non-zero `activation_count`:
-the survival world has no LLM in its action path, so `prediction` is its only plausible source — if
-pattern completion does not fire there, the retrieval term is identically zero on the benchmark.
+No immortality floor under the new strategy. **Validated in the LLM sim worlds** (route A, owner
+decision 2026-09-21), where enrichment and the memory tools are live; survival-world validation waits
+on Phase 2S below.
+
+*Decisions — RESOLVED 2026-09-21* (owner, after a five-lens design dive: survival check, capture
+window, negative RPE, per-signal baselines, experience clock; lens reports in the PR that recorded
+this). Every constant below is a `maxim config` default under `memory.*` — validated, raising on a
+typo, frozen into experiment fingerprints — never an env var or a literal.
+
+1. **The experience clock.** Integer `experience_ms`, owned by the Hippocampus, advanced by the
+   **nominal** period `1/target_hz` of each **active** loop tick — no wall-clock read, so it is
+   deterministic, hardware-independent, and an idle or powered-off agent forgets nothing. (Loop rates
+   span 2–30 Hz across runtimes, so a window counted in ticks would mean 1.5 s on the robot and 22 s at
+   2 Hz.) One advance, beside the NAc call in `agent_loop.py::_loop_bio_tick_maintenance`, which takes
+   the clock as a **required keyword** (forgetting it is a `TypeError`); a public
+   `advance_experience_clock(...)` for the scripted harnesses that bypass the loop
+   (`WaterTrial.train`, `exp58_run.py`, `exp58_offline_gates.py`, `exp53_cross_context_readout.py` —
+   never inside `propose_via_substrate`, which the loop also calls). Per-agent (one per Hippocampus);
+   persisted in `hippocampus.json` (`"experience_clock": {"ms": N, "unit": "nominal_active_ms"}`, a
+   missing key loads as 0 with one warning); restored on `--resume-sim`; handed to ATL/AG by
+   `MemoryHub` as a **required constructor argument** under the strength strategy. The
+   advanced-clock assert lives in `MemoryHub.on_session_end` and `on_session_end_lightweight`:
+   strength strategy + clock delta 0 + captures or activations this session → skip the strength
+   sleep, still persist, raise a typed `ExperienceClockStalled`; mirrored in the survival smoke verdict.
+   *Open check:* whether the loop can go idle while the body's sensors keep changing (the clock would
+   stall through a drowning) — measure before Phase 5.
+2. **Looking back (retroactive tagging).** A decaying weight on the experience clock,
+   `τ = 10 s` with a **30 s** cutoff by default (`memory.capture.tau_s`, `memory.capture.cutoff_s`;
+   owner: decay must not be too heavy — at `τ = 5 s` the weight at drowning-damage onset, ≈16.2 s
+   (`r3_survival_benchmark_prereg.md`: first damage 16.15–16.25 s), would be 0.04; at 10 s it is 0.20). The window is **dynamic**: configurable now; learning it from the
+   cause→outcome lags a world actually produces is a later option, and any adaptive width is **frozen
+   during a campaign** (it must not fit itself to outcomes it helped create). **Forward window: 0** —
+   in the survival world what follows a death is the respawn, so a forward window would tag spawn
+   snapshots; it becomes a pre-registered arm, gated by relatedness and reset at episode boundaries.
+   **Weight by relatedness**, not time alone (Dunsmoor et al. 2015: the retroactive boost is selective
+   to related items): scale each tag by similarity to the strong event (EC cluster / cosine), so one
+   pain does not tag whatever sat in the preceding 30 s. **Shares the look-back primitive and the
+   clock with NAc eligibility, never its constants or its effect** — a tag never feeds NAc credit
+   (NAc's 0.9-per-active-cycle decay sits inside the Exp 60–62 fingerprints). Resolve lazily or
+   `flush()` before tagging (async captures; a full queue drops its oldest).
+3. **Surprise: one unsigned `|RPE|` channel, baseline 0** — the code is already unsigned (table
+   above). Positive-only or a signed channel would need a signed field on `CausalLink`, which is
+   persisted and hivemind-carried (a CC3/wire change), and is the weaker reading of the literature
+   (unsigned PE enhances episodic memory — Rouhani, Norman & Niv 2018; the signed results are
+   task-dependent — Ergo et al. 2020). Prerequisite: [#847](https://github.com/dennys246/Maxim/issues/847)
+   (the sticky slot). Guard: a stale RPE from an earlier invocation is never read.
+4. **Baselines: fixed, except novelty.** Every `EncodingSignals` field is `float | None` with **no
+   default** (a missing one is a `TypeError`); `None` maps to 0 and is recorded on the trace — absent
+   is never a signal. Salience: baseline 0.5, positive deviation `(s − 0.5)/0.5`, read before the RPE
+   fold. Novelty: the store *is* its adaptive baseline (EC familiarity), so it gets no second one;
+   hard-coded novelty constants (0.6 pain bus, 0.8 reflexion, 0.3 `Hippocampus.store_observation`) are not
+   measurements and map to `None`; weight novelty by store confidence `n/(n + n₀)` so an empty store
+   does not saturate its first traces. Pain: `x = intensity`, **fixed** in this plan — adaptation is
+   upstream in the pain producer, deferred ([deferred/adaptive_nociception.md](deferred/adaptive_nociception.md)).
+   Drive pressure: `embodiment/sem.py::corrective_need_intensity`, relevance-gated — graded against
+   the set point for homeostatic drives (below it only) and against the satisfaction/deprivation
+   thresholds for entropic "down" drives; it returns `None` for entropic "up" drives and
+   above-set-point deficits, a gap Phase 2 must close or declare. Relief: positive part only, **per drive**, normalised by that drive's declared
+   range half-span (it is summed raw units today). Failure: through `|RPE|` of the outcome, not a flat
+   bit. **Remove two double counts:** the pain-bus subscriber's `+0.2` salience and its hard-coded
+   `success=False` both re-encode pain.
+5. **The retrieval update hooks `activate` EVENTS**, inside `MemoryLayer.activate` via
+   `strategy.on_activation(record, now, source)` (a no-op on `AccessBasedStrategy` /
+   `ImportanceBasedStrategy`, so defaults stay byte-identical) — never an observer that can go
+   unregistered, and never Phase 1's massed `activation_count`. `clock.now()` is read once, before any
+   lock; the update runs under the record's `_touch_lock`; lock order stays store → record (Phase 3's
+   sleep takes the write lock then `_touch_lock`; activate only `_touch_lock`). Defaults:
+   **credited gap `g` = 2 s** of experience; **source weights** `tool` 1.0, `replan`/`planner` 0.8,
+   `enrichment` 0.5, `prediction` 0.5 (the testing effect: effortful recall > re-exposure; internal
+   reactivation, often unconsumed, at the low end); **only credited retrievals reset `R`**;
+   `S` and `last_retrieval_ms` serialize atomically with the counters; **Hippocampus only** in Phase 2
+   (ATL gets `S` when its compression/eviction path moves onto the strategy). The strict red gate
+   `tests/unit/test_memory_activation.py::test_phase2_strength_strategy_reads_activation` would
+   **never** flip under this design (it greps `strategies.py` for `activation_count`, which the event
+   hook deliberately never reads), so this phase's PR **rewrites** it into a behavioural gate — the
+   strength strategy's score moves with credited `activate` events — rather than leaving a
+   permanently yellow marker.
+6. **Owner of the looking-back primitive** (§Shared primitive): **this line**, as its first production
+   caller; R4 and the language line consume it. *(Proposed; confirm at the Phase 2 kickoff.)*
+
+**Phase 2S — the survival gate** ([#848](https://github.com/dennys246/Maxim/issues/848); owner:
+"the gate definitely needs to activate memory"). Measured offline on main 4a0362e2 (a scratchpad
+ScriptedWaterBridge run, monkeypatched counters, no source edits — not a committed artifact; the
+numbers are in #848): in 14.75 s of survival loop time **nothing ever used a memory** — 22 percepts, **all at salience 0.0**, so MemoryAgent's
+FORMING gate never opened and pattern completion never ran; and when called by hand it returned 0
+predictions, because `PatternCompleter._find_matching_concepts` cues by object/goal **name** while
+survival concepts are sensor and action strings. Two root fixes, no band-aids (no lowered gate, no
+fake `cli_input`):
+- **Salience is always computed.** `PerceptionAgent._compute_salience` scores camera detections
+  only and returns 0.0 without them; the loop's observation producers set neither salience nor
+  novelty, so `Hippocampus.capture_from_loop` falls back to 0.5/0.5 — the floor under the saved
+  loop captures (a read-only scan of 38,465 pre-#813 captures, 2026-09-21: novelty 0.5 on all of them,
+  salience 0.5 on 77 %). Every percept gets a
+  salience from what the body actually senses — sensor change and surprise, drive pressure, pain —
+  so a boring moment honestly scores low and a drowning high. A small nonzero **exploration floor**
+  (like `attention/salience_map.py`'s 0.1) is allowed only as a **named innate prior** that the tag
+  subtracts as baseline, never as a stand-in for a missing measurement.
+- **A substrate-native cue for pattern completion:** cue by the percept's EC cluster / substrate
+  node ids, not by name. *Front-gate:* it rides existing infrastructure — percepts carry
+  `Percept.substrate_node_id` (set only when the substrate path is active — confirm it is set on the
+  survival path before building) and ATL concepts already carry `memory_refs['hippocampus']` (16 of 46 in the measured run)
+  — so it is a new lookup in `PatternCompleter`, not a new mechanism.
+Salience changes what MemoryAgent forms and what captures carry, so this phase ships **opt-in** like
+the rest and states its ledger rows (Exp 60–62 capture through the loop). **Revive-for-survival
+trigger for Phase 2's validation:** Phase 2S merged and a survival run's saved records show non-zero
+`activation_count` from `prediction`.
 
 **Phase 3 — sleep.** Opt-in `sleep()` in the generic sim loop too (the survival harnesses already
 run it), all of it behind the strategy selection; replay updates `S` directly and does NOT go
@@ -277,19 +383,22 @@ time of day).
 
 ## Open questions
 
-1. **Experience clock vs [scn_decay_anchoring](deferred/scn_decay_anchoring.md).** That plan ties
-   NAc decay to wall-clock for hardware portability; this one moves memory forgetting *off* the
-   wall clock so downtime is not disuse. They govern different stores, but the repo should have one
-   stated clock policy. Proposed: experience time for forgetting, wall time only where the design
-   explicitly wants downtime to count (NAc decay-on-load, documented).
+1. ~~Experience clock vs [scn_decay_anchoring](deferred/scn_decay_anchoring.md).~~ **Resolved
+   2026-09-21:** one clock policy — the experience clock governs everything that strengthens or
+   forgets a memory trace; wall time only at named sites where downtime is meant to count (today only
+   `NAc.load()` decay-on-load). The SCN bins by time of day, the wrong clock for this; that plan's
+   revive path is amended to scale NAc per-tick decay by `dt` on the experience clock instead. NAc
+   stays out of round one. Documented asymmetry: a robot switched off for a month loses NAc biases
+   but not memories.
 2. **Where honest activation is counted for the LLM path** — does text the LLM *read* in a prompt
    count as retrieval? (Proposed: yes for the injected concepts; not for their neighbours.)
-3. **Tag normalization** — per-signal scales for pain, drive pressure and |RPE| before the max; a
-   Phase 2 calibration question (and the natural first consumer of the deferred calibration plan).
+3. ~~Tag normalization~~ — **resolved 2026-09-21**: Phase 2 decision 4 (fixed baselines, per-drive
+   relief normalisation, novelty's store baseline). Calibrating the constants remains the deferred
+   calibration plan's first consumer.
 4. **ATL vs Hippocampus parity** — the bio review's answer: concepts carry their own `S`, raised
    slowly by replay of the episodes that cite them (§Sleep step 1).
-5. **Owner of the looking-back primitive** — this line, R4, or the language line. Decide before
-   Phase 2.
+5. **Owner of the looking-back primitive** — proposed: this line (Phase 2 decision 6); confirm at
+   the Phase 2 kickoff.
 6. **Interference and reconsolidation are missing.** Forgetting here is decay; biologically much of it
    is interference (retroactive interference; retrieval-induced forgetting of close competitors), and a
    retrieval carrying a prediction error makes a trace labile and updatable (reconsolidation — the way
