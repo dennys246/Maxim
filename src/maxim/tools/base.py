@@ -84,6 +84,9 @@ class ToolOutput:
     error_kind: ToolErrorKind | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     side_effects: dict[str, Any] | None = None
+    # Surprise (|RPE|) of THIS invocation's outcome, stamped by the executor from the tool-pain
+    # bridge; None when no causal link attributed it. Tools never set it (#847).
+    rpe: float | None = None
 
 
 # Backward-compat alias — existing tools that import ToolResult keep working.

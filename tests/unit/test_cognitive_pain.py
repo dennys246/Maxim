@@ -712,8 +712,9 @@ class TestToolPainBridgeRPEOnSuccess:
         bridge.record_tool_start("search", "inv-b")
         rpe = bridge.record_tool_complete("search", "inv-b", success=True)
         assert isinstance(rpe, float)
-        # RPE should also be stored on the bridge
-        assert bridge._last_rpe == rpe
+        # ...and recorded for THAT invocation, read once
+        assert bridge.pop_invocation_rpe("inv-b") == rpe
+        assert bridge.pop_invocation_rpe("inv-b") is None
 
     def test_returns_zero_when_no_pending(self) -> None:
         from maxim.bridges.tool_pain_bridge import ToolPainBridge
@@ -732,7 +733,7 @@ class TestToolPainBridgeRPEOnSuccess:
 
 
 class TestToolPainBridgeRPEOnPain:
-    """_on_pain should update _last_rpe from NAc links."""
+    """_on_pain records the failing invocation's RPE from NAc links."""
 
     def test_last_rpe_updated_on_pain(self) -> None:
         from maxim.bridges.tool_pain_bridge import ToolPainBridge
@@ -759,26 +760,36 @@ class TestToolPainBridgeRPEOnPain:
         )
         bridge._on_pain(signal)
 
-        # RPE should be non-zero (surprising negative after positive history)
-        assert bridge._last_rpe > 0.0
+        # RPE should be non-zero (surprising negative after positive history), keyed to inv-2
+        assert (bridge.pop_invocation_rpe("inv-2") or 0.0) > 0.0
 
 
 # ---------------------------------------------------------------------------
-# 19. Executor get_last_rpe
+# 19. Executor stamps each invocation's RPE on its output (#847)
 # ---------------------------------------------------------------------------
 
 
-class TestExecutorGetLastRPE:
-    """Executor.get_last_rpe should reflect the bridge's most recent RPE."""
+class TestExecutorStampsInvocationRPE:
+    """Each ToolOutput carries its OWN invocation's surprise -- never an earlier tool's."""
 
-    def test_returns_zero_without_bridge(self) -> None:
+    def test_no_bridge_no_stamp(self) -> None:
         from maxim.runtime.executor import Executor
+        from maxim.tools.base import Tool, ToolOutput
         from maxim.tools.registry import ToolRegistry
 
-        executor = Executor(tool_registry=ToolRegistry())
-        assert executor.get_last_rpe() == 0.0
+        class OkTool(Tool):
+            name = "ok"
+            description = "Always succeeds"
+            input_schema: dict[str, Any] = {}
 
-    def test_returns_rpe_after_tool_execution(self) -> None:
+            def execute(self, **kwargs: Any) -> ToolOutput:
+                return ToolOutput(success=True, output="ok")
+
+        registry = ToolRegistry()
+        registry.register(OkTool())
+        assert Executor(tool_registry=registry).execute({"tool_name": "ok", "params": {}}).rpe is None
+
+    def test_stamps_rpe_after_tool_execution(self) -> None:
         from maxim.bridges.tool_pain_bridge import ToolPainBridge
         from maxim.decisions.nac import NAc
         from maxim.runtime.executor import Executor
@@ -805,10 +816,6 @@ class TestExecutorGetLastRPE:
             tool_pain_bridge=bridge,
         )
 
-        # First call establishes the link
         executor.execute({"tool_name": "ok", "params": {}})
-        # Second call updates RPE
-        executor.execute({"tool_name": "ok", "params": {}})
-        rpe = executor.get_last_rpe()
-        assert isinstance(rpe, float)
-        assert rpe >= 0.0
+        out = executor.execute({"tool_name": "ok", "params": {}})
+        assert out.rpe is not None and out.rpe >= 0.0

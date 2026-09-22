@@ -415,5 +415,6 @@ class TestReflectionEndToEnd:
 
         # For a first-time event, NAc RPE = |0 - 0.5| = 0.5 > 0.3
         # so a reflection should be generated and stored
-        assert bridge._last_rpe > 0.3, f"Expected RPE > 0.3 but got {bridge._last_rpe}"
+        rpe = bridge.pop_invocation_rpe("inv-1")
+        assert rpe is not None and rpe > 0.3, f"Expected RPE > 0.3 for inv-1 but got {rpe}"
         assert hippocampus._stats["memories_captured"] == initial_count + 1

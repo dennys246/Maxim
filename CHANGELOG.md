@@ -67,6 +67,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A capture no longer inherits an earlier tool's surprise (#847).** The tool-pain bridge kept one
+  `_last_rpe` slot that nothing reset, and `capture_episodic_memory` read it on every capture. Any
+  action with no surprise of its own — for example a repeat failure inside the pain detector's
+  cooldown, which never reaches the bridge — had the previous tool's `|RPE|` folded into its
+  salience. On `main` two back-to-back failures captured 0.75 and 0.75; now 0.75 and 0.5. The
+  surprise is now bound to its invocation: the bridge records it per `invocation_id`, the executor
+  stamps it on that invocation's `ToolOutput.rpe`, and the capture reads the stamp.
+  `Executor.get_last_rpe` and the bridge's `_last_rpe` are removed. World-driven embodiment pain
+  belongs to no invocation, so its surprise no longer leaks into the next action's capture (the
+  pain-memory subscriber still captures the pain itself). Captured salience changes only where it
+  was stale.
+
 - **Memory Phase 0: the capture inputs the strength model will read are stored correctly
   (#813–#817).** The entry condition of the memory-strength parallel line
   (`docs/plans/memory_strength_and_forgetting.md`). Verified on `main` before the fix:

@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 from unittest.mock import MagicMock
+
+from maxim.tools.base import ToolOutput
 from maxim.runtime.bio_integration import (
     capture_episodic_memory,
     record_plan_outcome,
@@ -24,7 +26,7 @@ class TestCaptureEpisodicMemory:
 
     def test_basic_capture(self):
         hippo = MagicMock()
-        executor = MagicMock(spec=[])  # No get_last_rpe
+        executor = MagicMock(spec=[])
         obs = {"source": "test", "salience": 0.5}
         capture_episodic_memory(
             hippocampus=hippo,
@@ -41,7 +43,7 @@ class TestCaptureEpisodicMemory:
     def test_rpe_salience_boost(self):
         hippo = MagicMock()
         executor = MagicMock()
-        executor.get_last_rpe.return_value = 0.6
+        rpe_result = ToolOutput(success=True, rpe=0.6)
         obs = {"source": "test", "salience": 0.5}
         capture_episodic_memory(
             hippocampus=hippo,
@@ -50,7 +52,7 @@ class TestCaptureEpisodicMemory:
             state=MagicMock(),
             intent={"goal": "test"},
             action={"tool_name": "look", "params": {}},
-            result=MagicMock(),
+            result=rpe_result,
             run_id="run-1",
         )
         # Salience should be boosted: 0.5 + 0.6*0.5 = 0.8
@@ -59,7 +61,7 @@ class TestCaptureEpisodicMemory:
     def test_rpe_salience_capped_at_1(self):
         hippo = MagicMock()
         executor = MagicMock()
-        executor.get_last_rpe.return_value = 1.5
+        rpe_result = ToolOutput(success=True, rpe=1.5)
         obs = {"source": "test", "salience": 0.9}
         capture_episodic_memory(
             hippocampus=hippo,
@@ -68,7 +70,7 @@ class TestCaptureEpisodicMemory:
             state=MagicMock(),
             intent={"goal": "test"},
             action={"tool_name": "look", "params": {}},
-            result=MagicMock(),
+            result=rpe_result,
             run_id="run-1",
         )
         assert obs["salience"] <= 1.0
@@ -76,7 +78,7 @@ class TestCaptureEpisodicMemory:
     def test_no_rpe_no_boost(self):
         hippo = MagicMock()
         executor = MagicMock()
-        executor.get_last_rpe.return_value = 0.0
+        rpe_result = ToolOutput(success=True, rpe=0.0)
         obs = {"source": "test", "salience": 0.5}
         capture_episodic_memory(
             hippocampus=hippo,
@@ -85,7 +87,21 @@ class TestCaptureEpisodicMemory:
             state=MagicMock(),
             intent={"goal": "test"},
             action={"tool_name": "look", "params": {}},
-            result=MagicMock(),
+            result=rpe_result,
+            run_id="run-1",
+        )
+        assert obs["salience"] == 0.5
+
+    def test_a_result_that_is_not_a_tool_output_gets_no_boost(self):
+        obs = {"source": "test", "salience": 0.5}
+        capture_episodic_memory(
+            hippocampus=MagicMock(),
+            executor=MagicMock(),
+            observation=obs,
+            state=MagicMock(),
+            intent={"goal": "test"},
+            action={"tool_name": "look", "params": {}},
+            result=MagicMock(),  # no stamped surprise -> none inferred
             run_id="run-1",
         )
         assert obs["salience"] == 0.5

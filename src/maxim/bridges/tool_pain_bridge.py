@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 from maxim.decisions.causal_link import Valence
@@ -79,13 +80,35 @@ class ToolPainBridge:
         self._lock = threading.Lock()
         self._pending_tools: dict[tuple[str, str], str] = {}
         self._pending_contexts: dict[tuple[str, str], dict[str, Any]] = {}  # (tool, inv_id) → context
-        self._last_rpe: float = 0.0
+        # Surprise per INVOCATION (#847): the executor stamps it onto that invocation's ToolOutput,
+        # so a capture reads the surprise of the action it is capturing. It replaced a single
+        # ``_last_rpe`` slot that nothing ever reset, which let a capture read an EARLIER tool's
+        # surprise into its salience. Bounded: entries the executor never collects age out.
+        self._rpe_by_invocation: OrderedDict[str, float] = OrderedDict()
         self._last_reflection_time: dict[str, float] = {}
         # Subscribe to pain signals via bus (preferred) or detector (legacy)
         if pain_bus is not None:
             pain_bus.subscribe(self._on_pain)
         elif pain_detector is not None:
             pain_detector.add_pain_callback(self._on_pain)
+
+    _RPE_BY_INVOCATION_MAX = 256
+
+    def _note_invocation_rpe(self, invocation_id: str, rpe: float) -> None:
+        """Record the surprise of one invocation's outcome, for the executor to collect."""
+        if not invocation_id:
+            return
+        with self._lock:
+            self._rpe_by_invocation[invocation_id] = rpe
+            self._rpe_by_invocation.move_to_end(invocation_id)
+            while len(self._rpe_by_invocation) > self._RPE_BY_INVOCATION_MAX:
+                self._rpe_by_invocation.popitem(last=False)
+
+    def pop_invocation_rpe(self, invocation_id: str) -> float | None:
+        """The surprise of THIS invocation's outcome, or None if none was computed (no causal link
+        attributed it). Popped: each invocation's surprise is read once, by its own capture."""
+        with self._lock:
+            return self._rpe_by_invocation.pop(invocation_id, None)
 
     def _emit_temporal_event(
         self,
@@ -194,7 +217,7 @@ class ToolPainBridge:
                 outcome_valence=valence,
             )
             rpe = max((lnk.last_rpe or 0.0 for lnk in links), default=0.0) if links else 0.0
-            self._last_rpe = rpe
+            self._note_invocation_rpe(invocation_id, rpe)
             self._create_causal_edges(links)
 
             # Update learned tool index keyword weights. A NEUTRAL outcome
@@ -323,7 +346,7 @@ class ToolPainBridge:
             context=outcome_context,
         )
         rpe = max((lnk.last_rpe or 0.0 for lnk in links), default=0.0) if links else 0.0
-        self._last_rpe = rpe
+        self._note_invocation_rpe(invocation_id, rpe)
         self._create_causal_edges(links)
 
         # Parity with record_tool_complete's tool-index update, on the
@@ -399,7 +422,7 @@ class ToolPainBridge:
                 context=signal.context,
             )
             rpe = max((lnk.last_rpe or 0.0 for lnk in links), default=0.0) if links else 0.0
-            self._last_rpe = rpe
+            self._note_invocation_rpe(invocation_id, rpe)
             self._create_causal_edges(links)
 
             # Reflexion: generate and store verbal self-critique for surprising failures
@@ -519,8 +542,8 @@ class ToolPainBridge:
             },
         )
 
-        rpe = max((lnk.last_rpe or 0.0 for lnk in links), default=0.0) if links else 0.0
-        self._last_rpe = rpe
+        # World-driven embodiment pain belongs to no tool invocation, so its surprise is not
+        # stamped on any action's capture (the pain-memory subscriber captures the pain itself).
         self._create_causal_edges(links)
 
         # Register temporal context with SCN
