@@ -90,7 +90,7 @@ capture site nobody wired then raises `TypeError` instead of silently storing ta
 |---|---|---|
 | Salience | percept salience (after [#813](https://github.com/dennys246/Maxim/issues/813)) | every capture site |
 | Novelty | `EpisodicMemory.novelty`; EC text novelty `runtime/gating.py::TextSalienceScorer._compute_novelty` | loop capture (text percepts) |
-| Surprise | \|RPE\| via `executor.get_last_rpe` | loop capture. **Already unsigned** (corrected 2026-09-21): `CausalLink.update_prediction_rw` stores `abs(error)`, so worse-than-expected outcomes already raise salience — there is no separate "negative RPE" to decide. **Counted once:** `capture_episodic_memory` folds `|RPE|·0.5` into salience; the strength path reads salience from *before* that fold. The slot is sticky and never reset ([#847](https://github.com/dennys246/Maxim/issues/847)) — bind the value to its invocation first. |
+| Surprise | \|RPE\| of the captured invocation, `ToolOutput.rpe` (stamped by the executor) | loop capture. **Already unsigned** (corrected 2026-09-21): `CausalLink.update_prediction_rw` stores `abs(error)`, so worse-than-expected outcomes already raise salience — there is no separate "negative RPE" to decide. **Counted once:** `capture_episodic_memory` folds `|RPE|·0.5` into salience; the strength path reads salience from *before* that fold. Bound to its invocation since [#847](https://github.com/dennys246/Maxim/issues/847) (it used to be a never-reset slot, so a capture could read an earlier tool's surprise); NAc's own sticky `last_rpe` (goal staging) is [#850](https://github.com/dennys246/Maxim/issues/850). |
 | Pain | `PainBus` intensity | **pain-bus capture only** (`record_pain_intensity` is Dormant, no producer) |
 | Relief | `tool_dispatch.read_learning_side_effects(result).drive_potential_diff` | loop capture |
 | Drive pressure | `HomeostaticDriveSpec` / `EntropicDriveSpec` state via `executor.embodiment` | only with a body attached — and **gated by relevance**: deprivation improves encoding of *drive-relevant* items (a hungry animal learns where food is), so pressure tags only traces whose nodes link to that drive's relief. Ungated, a starving stretch would tag everything. |
@@ -275,8 +275,9 @@ typo, frozen into experiment fingerprints — never an env var or a literal.
    above). Positive-only or a signed channel would need a signed field on `CausalLink`, which is
    persisted and hivemind-carried (a CC3/wire change), and is the weaker reading of the literature
    (unsigned PE enhances episodic memory — Rouhani, Norman & Niv 2018; the signed results are
-   task-dependent — Ergo et al. 2020). Prerequisite: [#847](https://github.com/dennys246/Maxim/issues/847)
-   (the sticky slot). Guard: a stale RPE from an earlier invocation is never read.
+   task-dependent — Ergo et al. 2020). Prerequisite [#847](https://github.com/dennys246/Maxim/issues/847)
+   (the sticky slot) is satisfied: the guard that a stale RPE is never read is
+   `tests/unit/test_rpe_per_invocation.py`.
 4. **Baselines: fixed, except novelty.** Every `EncodingSignals` field is `float | None` with **no
    default** (a missing one is a `TypeError`); `None` maps to 0 and is recorded on the trace — absent
    is never a signal. Salience: baseline 0.5, positive deviation `(s − 0.5)/0.5`, read before the RPE
