@@ -105,6 +105,19 @@ class CompositePerceptSource:
             if impls:
                 self._injectors[method] = impls[0]
 
+        # A composite is turn-based iff exactly one child is (its turns are the world's turns; a
+        # live sensor channel beside it is not a turn). Exposed only then, so the experience-clock
+        # driver's duck-typed probe sees a real-time world otherwise. Two turn sources are ambiguous.
+        turn_sources = [c for c in self._children if callable(getattr(c, "experience_turns", None))]
+        if len(turn_sources) > 1:
+            raise CompositeRoutingError(
+                f"{len(turn_sources)} children are turn-based worlds; the composite cannot say whose "
+                "turns are the world's"
+            )
+        if turn_sources:
+            self.experience_turns = turn_sources[0].experience_turns
+            self.experience_us_per_turn = turn_sources[0].experience_us_per_turn
+
     # ------------------------------------------------------------------ core
 
     @property

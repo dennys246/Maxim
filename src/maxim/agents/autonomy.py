@@ -428,6 +428,10 @@ class AutonomyController:
         self._level_history: list[tuple[float, AutonomyLevel, str]] = [(time.time(), initial_level, "initialization")]
         self._autonomous_until: float | None = None
         self._paused = False
+        # Monotonic paused time, so the experience clock (memory-strength Phase 2) never counts a
+        # pause as lived time: the open pause's start, plus every closed pause's length.
+        self._paused_since: float | None = None
+        self._paused_total_s = 0.0
         self._lock = threading.Lock()
 
         self.safety_constraints = safety_constraints or SafetyConstraints()
@@ -455,6 +459,21 @@ class AutonomyController:
         with self._lock:
             return self._paused
 
+    def paused_seconds_total(self) -> float:
+        """Monotonic seconds this controller has spent paused, the open pause included."""
+        with self._lock:
+            open_s = time.monotonic() - self._paused_since if self._paused_since is not None else 0.0
+            return self._paused_total_s + open_s
+
+    def _set_paused(self, paused: bool) -> None:
+        """Caller holds ``self._lock``. The one writer of ``_paused``, so paused time is exact."""
+        if paused and self._paused_since is None:
+            self._paused_since = time.monotonic()
+        elif not paused and self._paused_since is not None:
+            self._paused_total_s += time.monotonic() - self._paused_since
+            self._paused_since = None
+        self._paused = paused
+
     def escalate(self, reason: str) -> None:
         """Move to more restrictive level."""
         with self._lock:
@@ -467,13 +486,13 @@ class AutonomyController:
         """Immediately drop to PLANNING and pause execution."""
         with self._lock:
             self._transition_to(AutonomyLevel.PLANNING, f"EMERGENCY: {reason}")
-            self._paused = True
+            self._set_paused(True)
             self._autonomous_until = None
 
     def resume(self) -> None:
         """Resume from paused state."""
         with self._lock:
-            self._paused = False
+            self._set_paused(False)
             logger.info("Autonomy controller resumed")
 
     def request_autonomy(
@@ -723,7 +742,8 @@ class AutonomyController:
             safety_constraints=safety_constraints,
             supervision_policy=supervision_policy,
         )
-        controller._paused = data.get("paused", False)
+        with controller._lock:
+            controller._set_paused(bool(data.get("paused", False)))
         controller._autonomous_until = data.get("autonomous_until")
 
         # Restore history

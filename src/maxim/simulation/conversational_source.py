@@ -47,6 +47,11 @@ class ConversationalSource:
         self._lock = threading.Lock()
         self._finished = threading.Event()
         self._step: int = 0
+        # World TURNS: a conversation is a turn-based world, so the agent's experience clock
+        # advances per turn, not by wall time (mostly LLM latency here). A turn is a new user or
+        # narrator message (``inject_cli``) or an explicit ``mark_turn()`` -- never a pain or sensor
+        # injection inside a turn, and not tied to delivery (a turn may carry no percept at all).
+        self._turns: int = 0
         self._transcript_path = transcript_path
         self._transcript_percepts: list[dict[str, Any]] = []
 
@@ -70,6 +75,7 @@ class ConversationalSource:
         )
         percept.cli_input = text
         self._inject(percept, {"source": "cli", "cli_input": text, "salience": salience})
+        self.mark_turn()  # a new user/narrator message IS the world's next turn
 
     def inject_pain(
         self,
@@ -195,6 +201,21 @@ class ConversationalSource:
             if self._queue:
                 return self._queue.popleft()
         return None
+
+    # Turn-based world (``runtime/experience_time.py``): how much experience one delivered turn is
+    # worth. A calibration constant (memory-strength Phase 5), not a measurement.
+    experience_us_per_turn: int = 5_000_000
+
+    def experience_turns(self) -> int:
+        """Monotonic count of world turns so far (the experience clock's source)."""
+        with self._lock:
+            return self._turns
+
+    def mark_turn(self) -> None:
+        """Count a world turn that injected no text (e.g. substrate-primary, where the bridge
+        never injects the message but the world still moved on)."""
+        with self._lock:
+            self._turns += 1
 
     def advance_step(self) -> None:
         """No-op — steps are managed by inject()."""

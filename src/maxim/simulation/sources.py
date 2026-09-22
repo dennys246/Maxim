@@ -42,6 +42,12 @@ some integrations benefit:
 - ``advance_step() -> None`` — called once per loop tick after
   ``next_percept()``; lets scripted sources advance an internal clock.
   Live sources (hardware, CLI, Minecraft) typically do not implement it.
+- ``experience_turns() -> int`` plus ``experience_us_per_turn: int`` —
+  declares a **turn-based** world (memory-strength Phase 2 decision 1):
+  the agent's experience clock advances by the new turns times the
+  quantum, instead of by elapsed world time. A turn is the world moving
+  on (a new message), not a delivered percept. Absent means a real-time
+  world (the default). See ``runtime/experience_time.py``.
 
 These extensions are optional and additive; new ones may be introduced
 post-1.0 with the same duck-typed-with-default pattern. Adapters that

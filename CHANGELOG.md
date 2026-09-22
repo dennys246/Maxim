@@ -25,6 +25,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Memory: the experience clock (memory-strength Phase 2a).** Each agent's Hippocampus now owns
+  an `ExperienceClock` (`memory/experience_clock.py`, integer microseconds, reads no clock itself),
+  advanced by its **world's** time once per live loop pass (after the pause check, before the idle
+  gate) by `runtime/experience_time.py::ExperienceClockDriver`. In a **real-time world** (survival
+  via the loop, robot, CLI) that is elapsed monotonic time minus the autonomy controller's paused
+  time (`AutonomyController.paused_seconds_total`, new): idle passes and long blocking passes
+  count, and system sleep never does. In a **turn-based world** (text sims, `ConversationalSource`)
+  it is a fixed 5 s per world turn (a new message, or the bridge's `mark_turn()` in substrate-primary
+  mode), never per delivered percept or per injected pain, so LLM latency is never experience. A
+  percept source declares turn-based with the new optional `experience_turns()` /
+  `experience_us_per_turn` members; a step-based `ScenarioSource` does not yet (a known gap with a
+  trigger in the plan). The
+  clock persists in `hippocampus.json` (`"experience_clock": {"us": N, "unit": "world_experience_us"}`)
+  and is restored in place on load and on `--resume-sim`. A snapshot written before it loads at 0
+  with one warning; a malformed record warns and restarts at 0 instead of failing the load, which
+  would have cost every stored memory. **No behaviour change:** nothing reads the clock until the
+  Phase 2c strength strategy. Two strict red gates hold the owed work: the stalled-clock assert
+  (Phase 2c) and the four scripted survival harnesses that bypass the loop (Phase 2S).
+
 - **Memory: honest activation (memory-strength plan Phase 1).** Every memory record now counts
   USES (`activation_count`, `activation_sources`), separately from the access tracking that drives
   retention today. LLM paths count at the consumer's render cap; pattern completion counts at

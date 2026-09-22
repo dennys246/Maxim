@@ -201,6 +201,10 @@ class SimulationBridge:
                 except Exception as e:
                     logger.debug("percept_anxiety_hook failed: %s", e)
             self.percept_source.inject_cli(text, salience=salience, novelty=novelty)
+        else:
+            # No text reaches a substrate-primary AUT, but the world still took a turn: count it,
+            # or its experience clock would never move (memory-strength Phase 2 decision 1).
+            self.percept_source.mark_turn()
         self._turn_count += 1
         # Open a new substrate action-budget window (the turn boundary the
         # substrate-primary AUT otherwise never sees — no percept is

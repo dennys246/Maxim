@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
 from maxim.agents.bus import DependencyGraph, EdgeType
 from maxim.agents.modality import SubstrateModality
+from maxim.memory.experience_clock import ExperienceClock
 from maxim.memory.episode import (
     BoundaryRule,
     CaptureEvent,
@@ -328,6 +329,11 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
 
         # Primary storage: memory_id -> EpisodicMemory or CompressedMemory
         self._memories: dict[str, EpisodicMemory | CompressedMemory] = {}
+
+        # This agent's experience time (memory-strength Phase 2 decision 1): advanced by its WORLD's
+        # time once per live loop pass (runtime/experience_time.py), persisted with this store and
+        # restored in place on load, so references hold.
+        self.experience_clock = ExperienceClock()
 
         # Hash index: context_key -> set of memory_ids
         # e.g., "goal:find cup" -> {"mem_123", "mem_456"}
