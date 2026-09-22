@@ -202,14 +202,39 @@ write at the end of the call. Hard sites beyond the obvious: ATL spreading activ
 neighbours, excludes seeds), `_remove_refs_for`, the session-start bridges, and the touches in
 `math/angular_gyrus.py` and `concept_grounder.py`.
 
+*As built (amended 2026-09-21, Phase 1 PR):* three departures, each deliberate.
+**(a) New counters, old ones untouched.** Honest activation is a separate `activation_count` /
+`activation_sources` on every record; `touch()`/`access_count` are NOT changed, because they drive
+today's `AccessBasedStrategy` and the immortality floor, and moving them changes default retention
+before Phase 5. So the hard sites above still inflate `access_count` — that is not fixed but made
+moot: the Phase 2 strategy never reads `access_count`. Phase 5's default flip owns retiring it.
+**(b) No opt-in**, because the counters are write-only: nothing reads them until Phase 2 (a strict
+red gate on `memory/strategies.py` says so). **(c) No queue.** `MemoryLayer.activate` is called
+after the read returns and outside every store lock (never inside `for r in store:` — `RWLock` is
+writer-priority and not re-entrant), taking the read lock once and then per-record locks.
+*Counting rule — two criteria:* the LLM paths count at the consumer's **render cap** (enrichment,
+the memory/concept tools, the replan prompt, the adaptive planner's decomposition prompt); pattern
+completion counts at **completion** (CA3 reactivation, whether or not a consumer reads the
+prediction), completed episodes only, never the cue concepts. `tools/discovery.py`'s `[DANGEROUS]`
+tag is not a use: it renders an NAc verdict keyed by the concept, not the concept's content.
+Consumers that retrieve and never deliver are #845 (the replan site is wired but dead until
+#845(1); the adaptive planner is live only in `embodied_runtime/agentic_runtime.py`).
+
 **Phase 2 — the strength model.** `S`, `R`, the typed `EncodingSignals` at all seven capture sites,
 the look-back through `PerceptTraceBuffer` (its first production caller, per §The model's wiring
 requirements), the retrieval update, the persisted experience clock with its advanced-clock assert.
 No immortality floor under the new strategy. Decisions owed before code: the forward capture window,
-whether negative RPE tags, and per-signal baselines.
+whether negative RPE tags, and per-signal baselines; and **the retrieval update hooks
+`MemoryLayer.activate` EVENTS, not Phase 1's `activation_count`** — that count is a massed,
+un-deduplicated lifetime tally (deliberation re-renders the same top 3 every cycle), and `(1 − R)`
+cannot be rebuilt from an aggregate, so Phase 1's counts are diagnostics, never a seed for `S`.
+Before the Phase 2 prereg, check a survival run's saved records for non-zero `activation_count`:
+the survival world has no LLM in its action path, so `prediction` is its only plausible source — if
+pattern completion does not fire there, the retrieval term is identically zero on the benchmark.
 
 **Phase 3 — sleep.** Opt-in `sleep()` in the generic sim loop too (the survival harnesses already
-run it), all of it behind the strategy selection;
+run it), all of it behind the strategy selection; replay updates `S` directly and does NOT go
+through `MemoryLayer.activate` (or gets its own `replay` source), so it is never double-counted;
 prioritized replay via `sleep_replay.py`; the homeostatic downscale; the forgetting rule with floors;
 reversible compress-to-gist ([#816](https://github.com/dennys246/Maxim/issues/816) design half);
 a persisted consolidation-candidate queue; promotion pressure moved onto the experience clock with

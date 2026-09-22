@@ -22,6 +22,19 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+# Where an honest activation came from (memory-strength plan Phase 1). Closed on purpose:
+# ``MemoryLayer.activate`` rejects anything else, so a typo cannot open a silent new bucket.
+ACTIVATION_SOURCES: frozenset[str] = frozenset(
+    {
+        "enrichment",  # rendered into the LLM's thought response (BioEnrichmentPipeline)
+        "tool",  # returned to the LLM by a memory/concept query tool
+        "replan",  # rendered into the replan prompt after a failure
+        "prediction",  # pattern completion: a past episode used to predict an outcome
+        "planner",  # read by a planner as a strategy or reflection
+    }
+)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Pattern completion contracts
 # ─────────────────────────────────────────────────────────────────────────────
@@ -307,6 +320,16 @@ class MemoryRecord(ABC):
     last_scored_at: float = 0.0  # wall-clock timestamp of last scoring
     access_contexts: deque[str] = field(default_factory=lambda: deque(maxlen=10), repr=False, compare=False)
 
+    # Honest activation (memory-strength plan Phase 1): counts only USE -- content that reached a
+    # prompt, a prediction or a decision -- never bookkeeping reads. Separate from access_count on
+    # purpose: nothing in the default retention path reads these, so recording them changes no
+    # behaviour. A MASSED, un-deduplicated lifetime tally (deliberation re-renders the same top 3
+    # every cycle): NOT a strength or importance signal. Do not rank, promote or protect on it --
+    # that rebuilds access_count's use-based immortality. Phase 2 hooks MemoryLayer.activate
+    # EVENTS; this count stays a diagnostic.
+    activation_count: int = 0
+    activation_sources: dict[str, int] = field(default_factory=dict, repr=False, compare=False)
+
     # Thread-safe access tracking
     _touch_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
@@ -315,6 +338,35 @@ class MemoryRecord(ABC):
         with self._touch_lock:
             self.accessed_at = time.time()
             self.access_count += 1
+
+    def activate(self, source: str) -> None:
+        """Record one honest activation (this record was USED). Thread-safe.
+
+        ``source`` must be in ``ACTIVATION_SOURCES`` -- checked here, in the type, so no path can
+        open a bucket by typo. Uses the record's own lock, like ``touch()``. The WHEN of an
+        activation (a tick on the experience clock) arrives with that clock in Phase 2.
+        """
+        if source not in ACTIVATION_SOURCES:
+            raise ValueError(f"unknown activation source {source!r}; expected one of {sorted(ACTIVATION_SOURCES)}")
+        with self._touch_lock:
+            self.activation_count += 1
+            self.activation_sources[source] = self.activation_sources.get(source, 0) + 1
+
+    def _activation_fields(self) -> dict[str, Any]:
+        """The activation state, for every subclass's ``to_dict`` (one definition, not seven)."""
+        with self._touch_lock:  # count and sources move together; a save must not split them
+            return {
+                "activation_count": self.activation_count,
+                "activation_sources": dict(self.activation_sources),
+            }
+
+    @staticmethod
+    def _activation_kwargs(data: dict[str, Any]) -> dict[str, Any]:
+        """Constructor kwargs from a persisted dict; files written before Phase 1 load as zero."""
+        return {
+            "activation_count": int(data.get("activation_count", 0)),
+            "activation_sources": dict(data.get("activation_sources", {})),
+        }
 
     @abstractmethod
     def keywords(self) -> set[str]:
@@ -411,6 +463,7 @@ class CompressedMemory(CompressedRecord):
     def from_episodic(cls, memory: "EpisodicMemory", edge_count: int = 0) -> "CompressedMemory":
         """Compress a full EpisodicMemory to lightweight form."""
         return cls(
+            **MemoryRecord._activation_kwargs(memory._activation_fields()),
             id=memory.id,
             timestamp=memory.timestamp,
             run_id=memory.run_id,
@@ -432,6 +485,7 @@ class CompressedMemory(CompressedRecord):
     def to_dict(self) -> dict[str, Any]:
         """Serialize for storage."""
         return {
+            **self._activation_fields(),
             "id": self.id,
             "timestamp": self.timestamp,
             "run_id": self.run_id,
@@ -458,6 +512,7 @@ class CompressedMemory(CompressedRecord):
     def from_dict(cls, data: dict[str, Any]) -> "CompressedMemory":
         """Deserialize from storage."""
         return cls(
+            **MemoryRecord._activation_kwargs(data),
             id=data["id"],
             timestamp=data["timestamp"],
             run_id=data.get("run_id", ""),
@@ -545,6 +600,7 @@ class EpisodicMemory(MemoryRecord):
     def to_dict(self) -> dict[str, Any]:
         """Serialize for storage."""
         return {
+            **self._activation_fields(),
             "id": self.id,
             "timestamp": self.timestamp,
             "run_id": self.run_id,
@@ -568,6 +624,7 @@ class EpisodicMemory(MemoryRecord):
     def from_dict(cls, data: dict[str, Any]) -> EpisodicMemory:
         """Deserialize from storage."""
         return cls(
+            **MemoryRecord._activation_kwargs(data),
             id=data["id"],
             timestamp=data["timestamp"],
             run_id=data.get("run_id", ""),

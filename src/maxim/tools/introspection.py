@@ -11,6 +11,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from maxim.memory.layer import activate_after_use
 from maxim.tools.base import Tool, ToolResult
 
 
@@ -101,6 +102,8 @@ class MemoryRecallTool(Tool):
                 pass  # Expansion is best-effort
 
         results = [_format_episodic_memory(m) for m in memories[:limit]]
+        # What goes back to the LLM is a use (memory-strength Phase 1); the recall itself is not.
+        activate_after_use(self._hippocampus, (m.id for m in memories[:limit]), source="tool")
         return ToolResult(
             success=True,
             output={
@@ -517,6 +520,7 @@ class ConceptQueryTool(Tool):
         except Exception as e:
             return ToolResult(success=False, error=f"Concept query failed: {e}")
 
+        activate_after_use(self._atl, (c.id for c in concepts), source="tool")
         return ToolResult(success=True, output={"count": len(results), "concepts": results})
 
 

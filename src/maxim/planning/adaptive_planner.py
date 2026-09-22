@@ -479,6 +479,15 @@ class AdaptivePlanner(Planner):
 
         prompt = _build_decomposition_prompt(goal_dict, pctx, replan_ctx=replan_ctx)
         sub_actions = self._llm.generate_structured(prompt, schema="decomposition")
+        # The decomposition prompt is the ONLY place the planner renders its memories (three of
+        # each, ``PlanningContext.to_llm_section``); gathering them is a bookkeeping read.
+        from maxim.memory.layer import activate_after_use
+
+        activate_after_use(
+            self._hippocampus,
+            (m.id for m in pctx.reflections[:3] + pctx.successful_strategies[:3]),
+            source="planner",
+        )
         if not sub_actions:
             return None
 

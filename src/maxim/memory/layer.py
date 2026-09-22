@@ -16,7 +16,10 @@ memory layers.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator
+
+from maxim.memory.types import ACTIVATION_SOURCES
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.agents.bus import DependencyGraph
@@ -138,6 +141,29 @@ class MemoryLayer(ABC):
         """Return layer statistics."""
         ...
 
+    def activate(self, record_ids: Iterable[str], *, source: str) -> int:
+        """Record that these records were USED (memory-strength plan Phase 1). Returns how many.
+
+        The one activation path for every store. Call it at a CONSUMPTION point -- content that
+        reached a prompt, a prediction or a decision -- never for a bookkeeping read (echo
+        filters, bulk loads, deletion callbacks, neighbour lookups); those use ``recall_by_ids``
+        and stay uncounted. Unknown ids are skipped, like ``recall_by_ids``.
+
+        **Never call it while holding ANY lock of this store, or inside ``for r in store:``**
+        (``Hippocampus.__iter__`` holds the read lock for the whole loop). It re-enters the store
+        through ``recall_by_ids``, and the store's ``RWLock`` is writer-priority and not
+        re-entrant: a second read blocks behind any waiting writer (the capture worker), which is
+        waiting on the first read -- a deadlock. Call it after the read has returned. It takes the
+        store read lock once, releases it, then the per-record locks, so it never upgrades.
+        Consumers should go through ``activate_after_use``, which cannot cost them their content.
+        """
+        if source not in ACTIVATION_SOURCES:
+            raise ValueError(f"unknown activation source {source!r}; expected one of {sorted(ACTIVATION_SOURCES)}")
+        records = self.recall_by_ids(list(dict.fromkeys(record_ids)))
+        for record in records:
+            record.activate(source)
+        return len(records)
+
     def __bool__(self) -> bool:
         """A store that EXISTS is truthy even when EMPTY (#839).
 
@@ -159,4 +185,22 @@ class MemoryLayer(ABC):
         ...
 
 
-__all__ = ["MemoryLayer"]
+def activate_after_use(store: MemoryLayer | None, record_ids: Iterable[str], *, source: str) -> None:
+    """Count a use at a consumption point without ever costing the consumer its content.
+
+    Call it AFTER the consumer's content is built. A wrong ``source`` is a programming error and
+    raises; a store-side failure is logged and swallowed, so counting can never remove what the
+    consumer already received. ``record_ids`` may be a generator: it is consumed inside the guard,
+    so a malformed record cannot abort the caller's own loop either.
+    """
+    if source not in ACTIVATION_SOURCES:
+        raise ValueError(f"unknown activation source {source!r}; expected one of {sorted(ACTIVATION_SOURCES)}")
+    if store is None:
+        return
+    try:
+        store.activate(record_ids, source=source)
+    except Exception as e:
+        log_swallowed_exception(e, operation="memory_activate", context={"source": source})
+
+
+__all__ = ["MemoryLayer", "activate_after_use"]

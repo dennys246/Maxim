@@ -148,6 +148,11 @@ class PatternCompleter:
                 if pred.source_episode_id in concept_episode_ids:
                     pred.math_context = layer_context
 
+        # The episodes completed into predictions were reactivated (memory-strength Phase 1); the
+        # cue concepts that led to them were not -- seeds are excluded, as in spreading activation.
+        from maxim.memory.layer import activate_after_use
+
+        activate_after_use(hippocampus, (p.source_episode_id for p in predictions), source="prediction")
         return predictions
 
     def _find_matching_concepts(self, episodic: EpisodicMemory) -> list[Concept]:

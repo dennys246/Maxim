@@ -112,6 +112,7 @@ def _build_replan_context(
     if hippocampus is not None:
         try:
             prior_episodes = hippocampus.recall(goal=goal_str, limit=10)
+            rendered: list[Any] = []
             for ep in prior_episodes:
                 ep_actions = _extract_episode_actions(ep)
                 if ep_actions:
@@ -124,8 +125,14 @@ def _build_replan_context(
                     else:
                         summary = ""
                     prior_attempt_summaries.append(summary or "prior attempt")
+                    rendered.append(ep)
         except Exception:
             logger.debug("B4 prior-attempt retrieval failed", exc_info=True)
+        else:
+            from maxim.memory.layer import activate_after_use
+
+            # Only episodes that reach the replan prompt count as used (memory-strength Phase 1).
+            activate_after_use(hippocampus, (ep.id for ep in rendered), source="replan")
 
     return ReplanContext(
         failed_phase=stub_phase,

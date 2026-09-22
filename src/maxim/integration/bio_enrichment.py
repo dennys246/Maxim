@@ -67,6 +67,7 @@ class ConceptLink:
     concept: str
     category: str
     activation: float  # 0 to 1
+    concept_id: str = ""  # ATL record id, so rendering it can count as a use (honest activation)
 
 
 @dataclass(frozen=True, slots=True)
@@ -324,7 +325,27 @@ class BioEnrichmentPipeline:
         if not lines:
             return ""
 
-        return "\n".join(lines)
+        text = "\n".join(lines)
+        self._activate_rendered(result)
+        return text
+
+    def _activate_rendered(self, result: EnrichmentResult) -> None:
+        """Count what the formatter just put in front of the LLM -- and only that (Phase 1).
+
+        The render caps are the consumption boundary: ``_query_hippocampus`` may surface more
+        episodes than the three rendered, and those were not used. Every ``enrich`` caller renders
+        through this formatter, so this is the pipeline's one activation point.
+        """
+        from maxim.memory.layer import activate_after_use
+
+        if result.memories:
+            activate_after_use(self._hippocampus, (m.memory_id for m in result.memories[:3]), source="enrichment")
+        if result.concepts:
+            # _query_atl dedups by NAME, so a shared name counts its first concept only -- which is
+            # the one rendered.
+            ids = [c.concept_id for c in result.concepts[:5] if c.concept_id]
+            if ids:
+                activate_after_use(self._atl, ids, source="enrichment")
 
     @staticmethod
     def _log_enrichment_contributions(
@@ -793,6 +814,7 @@ class BioEnrichmentPipeline:
                             concept=name,
                             category=category,
                             activation=0.7,
+                            concept_id=getattr(concept, "id", ""),
                         )
                     )
             # Deduplicate
