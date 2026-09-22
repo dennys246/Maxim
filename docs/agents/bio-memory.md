@@ -152,6 +152,7 @@ operation; rename inconsistent legacy names during the next change to that syste
 - `MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT` = temporal-phase fallback credit weight (default 0.3x) = `decisions/nac.py` / `NACConfig`
 - `MAXIM_PLACE_CODE_EXTEROCEPTION` = audio channel emits Gaussian population code over azimuth instead of raw scalar (default OFF; see gotcha above) = `runtime/agent_loop.py::_read_exteroceptive_states` (x-ref embodiment)
 - `MAXIM_HIPPO_TRACE` = per-operation Hippocampus trace events = `memory/hippo_tracer.py`
+- `MAXIM_MEMORY_STRATEGY` = retention model: `access_based` (default, today's) | `importance_based` | `composite` (`strength` lands with the strategy in Phase 2c-3). Prefer `maxim config set memory.strategy <name>`; an unknown name RAISES at every door (config section, writer, `config.json` parse, env, store) — only a MISSING value falls back = `runtime/config_loader.py::resolve_memory_strategy`, the ONE resolver every store is built from (`bio_stack`, `agent_factory`, `create`, `load`, `session`, `api`, foundry; guarded by an AST test that no bare `Hippocampus()`/`ATL()` is built outside `memory/`)
 - `MAXIM_ATL_TRACE` = per-operation ATL trace events = `memory/atl_tracer.py`
 - `MAXIM_NAC_TRACE` = per-operation NAc trace events = `decisions/nac_tracer.py`
 

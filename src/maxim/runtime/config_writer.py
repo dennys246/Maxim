@@ -6,6 +6,16 @@ CI grep allow-lists this file + its test file as the only callers of
 ``mesh_setup.py`` discipline that ``write_mesh_config`` is the only
 sanctioned writer for ``mesh.yml``.
 
+The IM2 caller gate in ``.github/workflows/test.yml`` enumerates the
+sanctioned callers of ``write_config`` / ``mutate_config`` /
+``set_field``: the operator-explicit config verbs (``config_cli``,
+``peer/cli``) plus, test-side, each suite that exercises a real
+``config set`` → ``load_config`` round trip. Test files are listed
+individually rather than by a ``tests/`` wildcard so a new test-side
+writer stays visible in review; a section whose round trip is only
+simulated by hand-writing JSON would not catch the failure these
+tests exist for (a value the writer emits and the loader drops).
+
 Concurrency safety (I-5 fold from the pre-implementation two-lens
 review):
 

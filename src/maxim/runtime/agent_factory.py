@@ -32,6 +32,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from maxim.runtime.config_loader import resolve_memory_strategy
+
 from maxim.agents.permissions import AgentPermissions
 
 log = logging.getLogger(__name__)
@@ -813,6 +815,7 @@ class AgentFactory:
             hippo = Hippocampus(
                 HippocampusConfig(
                     persistence_path=str(hippo_path),
+                    memory_strategy=resolve_memory_strategy(),
                 )
             )
             if auto_load and hippo_path.exists():
@@ -873,7 +876,7 @@ class AgentFactory:
             from maxim.memory.atl import ATL, ATLConfig
 
             atl_path = agent_dir / "atl.json"
-            atl = ATL(ATLConfig(persistence_path=str(atl_path)))
+            atl = ATL(ATLConfig(persistence_path=str(atl_path), memory_strategy=resolve_memory_strategy()))
             if auto_load and atl_path.exists():
                 try:
                     atl.load(str(atl_path))

@@ -68,6 +68,9 @@ def hippocampus(*, persistence_path: str | None = None, **config_kw: Any) -> "Hi
     """
     from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 
+    from maxim.runtime.config_loader import resolve_memory_strategy
+
+    config_kw.setdefault("memory_strategy", resolve_memory_strategy())
     config = HippocampusConfig(persistence_path=persistence_path, **config_kw)
     return Hippocampus(config)
 
@@ -105,6 +108,9 @@ def atl(*, persistence_path: str | None = None, **config_kw: Any) -> "ATL":
     """
     from maxim.memory.atl import ATL, ATLConfig
 
+    from maxim.runtime.config_loader import resolve_memory_strategy
+
+    config_kw.setdefault("memory_strategy", resolve_memory_strategy())
     config = ATLConfig(persistence_path=persistence_path, **config_kw)
     return ATL(config)
 

@@ -66,6 +66,11 @@ required-field breaking changes (loader migration required)."""
 _VALID_ROLES: frozenset[str] = frozenset({"leader", "peer", "solo"})
 _VALID_BACKENDS: frozenset[str] = frozenset({"llama_cpp", "pytorch"})
 _VALID_REDACTION_POLICIES: frozenset[str] = frozenset({"standard", "relaxed", "strict"})
+# Retention models (memory-strength plan). ``access_based`` is today's default and stays it until
+# the plan's Phase 5 earns the flip. ``strength`` (the Bjork model) joins this set in Phase 2c-3,
+# with the strategy itself -- a name accepted here but unimplemented in the store would be taken
+# and then crash at the first consolidation.
+_VALID_MEMORY_STRATEGIES: frozenset[str] = frozenset({"access_based", "importance_based", "composite"})
 _VALID_TIER_NAMES: frozenset[str] = frozenset({"large", "medium", "small"})
 
 # C-2 fold: canonical truthy/falsy sets. Match the existing
@@ -261,6 +266,35 @@ class CloudConfigSection:
 
 
 @dataclass(frozen=True)
+class MemoryConfigSection:
+    """How memory decides what to keep (memory-strength plan).
+
+    SHAPE-FROZEN at 1.0 (CC3) — path (b), like the other config sections: the shape is the schema
+    contract, and a new knob is an optional field with a default.
+
+    ``strategy`` selects the retention model. ``access_based`` is today's — recency + access count
+    + out-degree — and stays the default until the plan's Phase 5 earns the flip;
+    ``importance_based`` and ``composite`` are the existing salience-weighted and blended ones.
+    ``strength`` -- the Bjork storage/retrieval model the memory-strength line builds -- is NOT a
+    valid name yet: it is added here in Phase 2c-3, together with the strategy itself. Accepting it
+    earlier would take the setting and then crash at the first consolidation, far from the command
+    that set it. An unknown name RAISES at both doors (here and in
+    ``config_writer``): ``memory.strategy=strenght`` must never quietly run ``access_based``,
+    which is exactly the silent fallback the plan set out to close.
+    """
+
+    strategy: Literal["access_based", "importance_based", "composite"] = "access_based"
+
+    def __post_init__(self) -> None:
+        # config_writer only coerces str values, so a Python-API caller with a non-str (or a typo)
+        # would slip past it; this is the second door.
+        if self.strategy not in _VALID_MEMORY_STRATEGIES:
+            raise ConfigurationError(
+                f"config: memory.strategy: expected one of {sorted(_VALID_MEMORY_STRATEGIES)}, got {self.strategy!r}"
+            )
+
+
+@dataclass(frozen=True)
 class ProxyConfigSection:
     """Leader-proxy admission control.
 
@@ -428,6 +462,7 @@ class MaximConfig:
     sim: SimConfigSection = field(default_factory=SimConfigSection)
     console: ConsoleConfigSection = field(default_factory=ConsoleConfigSection)
     tools: ToolsConfigSection = field(default_factory=ToolsConfigSection)
+    memory: MemoryConfigSection = field(default_factory=MemoryConfigSection)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -467,6 +502,7 @@ _FIELD_TO_ENV: dict[str, str] = {
     "cloud.fallback_model": "MAXIM_CLOUD_FALLBACK_MODEL",
     "cloud.session_budget_usd": "MAXIM_CLOUD_SESSION_BUDGET",
     "cloud.redaction_policy": "MAXIM_LLM_REDACTION_POLICY",
+    "memory.strategy": "MAXIM_MEMORY_STRATEGY",
     "proxy.max_concurrent": "MAXIM_PROXY_MAX_CONCURRENT",
     "proxy.rate_limit_rpm": "MAXIM_PROXY_RATE_LIMIT_RPM",
     "auto_spawn.llm_server": "MAXIM_AUTO_SPAWN_LLM_SERVER",
@@ -763,6 +799,8 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
         return _coerce_enum(raw, field_path, _VALID_BACKENDS)
     if field_path == "cloud.redaction_policy":
         return _coerce_enum(raw, field_path, _VALID_REDACTION_POLICIES)
+    if field_path == "memory.strategy":
+        return _coerce_enum(raw, field_path, _VALID_MEMORY_STRATEGIES)
     # Comma-separated name lists. Order kept, duplicates dropped, blanks
     # skipped. An all-blank ``tools.allow`` (``"  ,  "``) collapses to UNSET
     # (None) here, explicitly: ``_env_is_set`` only strips whitespace, so
@@ -828,6 +866,18 @@ def _builtin_default(field_path: str) -> Any:
 # ─────────────────────────────────────────────────────────────────────────────
 # Precedence chain (CR3 + C-1 + I-4 folds)
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+def resolve_memory_strategy(config: MaximConfig | None = None) -> str:
+    """The ONE place a retention model is resolved: ``memory.strategy`` through the normal chain.
+
+    Every store's config is built from this (``bio_stack``, ``agent_factory``, ``create``), so a
+    run cannot end up with one memory system on a different model from another because a builder
+    forgot to thread it. ``memory/`` may not import ``runtime/`` (LAYER_RULES), so the value is
+    passed INTO ``HippocampusConfig`` / ``ATLConfig``; the stores never resolve it themselves.
+    """
+    value, _source = resolve_setting("memory.strategy", config=config)
+    return str(value)
 
 
 def resolve_setting(
@@ -1345,6 +1395,8 @@ def _coerce_json_field(raw: Any, field_path: str, expected_type: Any) -> Any:
             return _coerce_enum(raw, field_path, _VALID_BACKENDS)
         if field_path == "cloud.redaction_policy":
             return _coerce_enum(raw, field_path, _VALID_REDACTION_POLICIES)
+        if field_path == "memory.strategy":
+            return _coerce_enum(raw, field_path, _VALID_MEMORY_STRATEGIES)
         if field_path == "console.agent_id":
             return coerce_agent_id(raw, field_path)
         return raw
@@ -1478,6 +1530,7 @@ def _parse_config_dict(data: dict[str, Any]) -> MaximConfig:
         data.get("console"), "console", ConsoleConfigSection, tolerate_unknown=is_future_minor
     )
     tools = _parse_typed_section(data.get("tools"), "tools", ToolsConfigSection, tolerate_unknown=is_future_minor)
+    memory = _parse_typed_section(data.get("memory"), "memory", MemoryConfigSection, tolerate_unknown=is_future_minor)
 
     return MaximConfig(
         _format_version=version,
@@ -1491,6 +1544,7 @@ def _parse_config_dict(data: dict[str, Any]) -> MaximConfig:
         sim=sim,
         console=console,
         tools=tools,
+        memory=memory,
     )
 
 

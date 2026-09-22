@@ -58,6 +58,10 @@ class ATLConfig:
     retention_threshold: float = 0.2  # Lower than hippocampus — concepts more stable
     compression_threshold: float = 0.4
     max_age_without_access: float = 30 * 86400  # 30 days (slower decay)
+    # Which retention model this store uses; resolved once by the runtime (memory-strength Phase
+    # 2c) and passed in, since memory/ may not read runtime config. Concepts previously hard-coded
+    # access-based scoring, so the default keeps that byte-identical.
+    memory_strategy: str = "access_based"
     name_similarity_threshold: float = 0.8  # For deduplication
 
 
@@ -649,13 +653,28 @@ class ATL(MemoryLayer):
         """
         from maxim.memory.strategies import (
             AccessBasedStrategy,
+            CompositeStrategy,
+            ImportanceBasedStrategy,
             TemporalAwareStrategy,
         )
 
-        base = AccessBasedStrategy(
+        # The configured model, HONOURED here (it used to be hard-coded access-based; validating a
+        # name and then ignoring it would be the silent no-op this phase exists to close).
+        name = self.config.memory_strategy
+        access = AccessBasedStrategy(
             max_age_without_access=self.config.max_age_without_access,
             compression_age=7 * 86400,
         )
+        if name == "access_based":
+            base = access
+        elif name == "importance_based":
+            base = ImportanceBasedStrategy(compression_age=7 * 86400)
+        elif name == "composite":
+            base = CompositeStrategy([(access, 0.6), (ImportanceBasedStrategy(compression_age=7 * 86400), 0.4)])
+        else:
+            raise ValueError(
+                f"unknown memory strategy {name!r}; expected one of 'access_based', 'importance_based', 'composite'"
+            )
 
         if self._scn is not None:
             strategy = TemporalAwareStrategy(self._scn, base_strategy=base)

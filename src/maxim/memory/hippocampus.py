@@ -2037,10 +2037,12 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 ]
             )
         else:
-            # Default to access-based
-            base_strategy = AccessBasedStrategy(
-                max_age_without_access=self.config.max_age_without_access,
-                compression_age=self.config.compression_age,
+            # No silent fallback: a typo ("strenght") used to quietly run access_based, which is
+            # exactly the hole the memory-strength plan's config contract closes. A MISSING value
+            # still falls back — that is the dataclass default, not this branch.
+            raise ValueError(
+                f"unknown memory strategy {strategy_name!r}; expected one of "
+                "'access_based', 'importance_based', 'composite'"
             )
 
         # Wrap with TemporalAwareStrategy if SCN is connected

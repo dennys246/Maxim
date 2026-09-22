@@ -564,7 +564,7 @@ def run_gauntlet(
         from maxim.embodiment.body import Embodiment
         from maxim.embodiment.spec import _parse_entity, normalize_llm_entity_spec
         from maxim.embodiment.tool_bridge import generate_tools_for_entity
-        from maxim.memory.hippocampus import Hippocampus
+        from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
         from maxim.proprioception.pain_bus import build_pain_bus
         from maxim.runtime.bootstrap import build_executor
         from maxim.tools.registry import ToolRegistry
@@ -572,7 +572,9 @@ def run_gauntlet(
         # Fresh bio-stack per candidate — uses build_pain_bus to auto-subscribe
         # hippocampus + NAc learners (per CLAUDE.md invariant).
         nac = NAc(NACConfig(temporal_window_seconds=60.0))
-        hippocampus = Hippocampus()
+        from maxim.runtime.config_loader import resolve_memory_strategy
+
+        hippocampus = Hippocampus(HippocampusConfig(memory_strategy=resolve_memory_strategy()))
         pain_bus = build_pain_bus(hippocampus=hippocampus, nac=nac)
 
         # Parse entity, create embodiment, generate tools, then build executor.
