@@ -1710,6 +1710,40 @@ def _loop_step_callback(ctrl: Any, *, step_num: int) -> None:
         logger.debug("on_step callback failed", exc_info=True)
 
 
+def _loop_bio_handles(memory_hub: Any, hippocampus: Any, sim: Any, autonomy_controller: Any) -> tuple[Any, Any]:
+    """The loop's bio handles, bound once before the loop: ``(nac, experience_clock_driver)``.
+
+    The clock is the Hippocampus's the loop CAPTURES into (the ``hippocampus`` argument), falling
+    back to the hub's, so a caller that passes a Hippocampus without a hub still gets a clock that
+    moves. The driver reads the world's kind from the percept source (real-time vs turn-based; see
+    ``runtime/experience_time.py``) and subtracts the autonomy controller's paused time. With no
+    Hippocampus there is no clock and the driver is inert.
+    """
+    from maxim.runtime.experience_time import ExperienceClockDriver
+
+    nac = getattr(memory_hub, "nac", None) if memory_hub is not None else None
+    hub_hippocampus = getattr(memory_hub, "hippocampus", None) if memory_hub is not None else None
+    owner = hippocampus if hippocampus is not None else hub_hippocampus
+    if hippocampus is not None and hub_hippocampus is not None and hub_hippocampus is not hippocampus:
+        logger.warning("agent loop: hippocampus argument is not the hub's; the experience clock follows the argument")
+    clock = getattr(owner, "experience_clock", None)
+    return nac, ExperienceClockDriver(
+        clock,
+        percept_source=getattr(sim, "percept_source", None),
+        paused_seconds=getattr(autonomy_controller, "paused_seconds_total", None),
+    )
+
+
+def _loop_live_tick(executor: Any, aut_mode: str, experience_driver: Any) -> None:
+    """Per LIVE pass (after the pause check, before the idle gate): the world's time advances.
+
+    The body's drive drift and the agent's experience clock (memory-strength Phase 2 decision 1)
+    both run here, so an idle agent still lives through the world's time and a paused one does not.
+    """
+    tick_embodiment_drift(executor, aut_mode)
+    experience_driver.on_live_pass()
+
+
 def _loop_bio_tick_maintenance(nac: Any) -> None:
     """Section 8.5 — BIO-SYSTEM PER-TICK MAINTENANCE.
 
@@ -2157,7 +2191,7 @@ def run_agentic_loop(
             ctrl.dn_enabled = False
 
     # Extract NAc reference for causal learning (passed to _record_outcome)
-    _loop_nac = getattr(memory_hub, "nac", None) if memory_hub is not None else None
+    _loop_nac, _loop_xclock = _loop_bio_handles(memory_hub, hippocampus, sim, autonomy_controller)
 
     # P4 multi-agent attribution: per-agent stash key.  Producer
     # (MemoryHub.on_percept_received) writes substrate nodes keyed by
@@ -2304,7 +2338,7 @@ def run_agentic_loop(
         # on no stimulus) so a *sitting* robot still gets cold/hungry, and
         # AFTER the pause check so an operator-paused agent stays frozen.
         # No-op on substrate-primary (it ticks itself) and when unembodied.
-        tick_embodiment_drift(executor, aut_mode)
+        _loop_live_tick(executor, aut_mode, _loop_xclock)
 
         # Expire a temporary agent display escalation back to the user's
         # floor (DisplayModeTool's documented auto-revert). Also the
