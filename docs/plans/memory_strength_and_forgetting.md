@@ -240,24 +240,46 @@ window, negative RPE, per-signal baselines, experience clock; lens reports in th
 this). Every constant below is a `maxim config` default under `memory.*` — validated, raising on a
 typo, frozen into experiment fingerprints — never an env var or a literal.
 
-1. **The experience clock.** Integer `experience_ms`, owned by the Hippocampus, advanced by the
-   **nominal** period `1/target_hz` of each **active** loop tick — no wall-clock read, so it is
-   deterministic, hardware-independent, and an idle or powered-off agent forgets nothing. (Loop rates
-   span 2–30 Hz across runtimes, so a window counted in ticks would mean 1.5 s on the robot and 22 s at
-   2 Hz.) One advance, beside the NAc call in `agent_loop.py::_loop_bio_tick_maintenance`, which takes
-   the clock as a **required keyword** (forgetting it is a `TypeError`); a public
-   `advance_experience_clock(...)` for the scripted harnesses that bypass the loop
-   (`WaterTrial.train`, `exp58_run.py`, `exp58_offline_gates.py`, `exp53_cross_context_readout.py` —
-   never inside `propose_via_substrate`, which the loop also calls). Per-agent (one per Hippocampus);
-   persisted in `hippocampus.json` (`"experience_clock": {"ms": N, "unit": "nominal_active_ms"}`, a
-   missing key loads as 0 with one warning); restored on `--resume-sim`; handed to ATL/AG by
-   `MemoryHub` as a **required constructor argument** under the strength strategy. The
-   advanced-clock assert lives in `MemoryHub.on_session_end` and `on_session_end_lightweight`:
-   strength strategy + clock delta 0 + captures or activations this session → skip the strength
-   sleep, still persist, raise a typed `ExperienceClockStalled`; mirrored in the survival smoke verdict.
-   *Open check:* whether the loop can go idle while the body's sensors keep changing (the clock would
-   stall through a drowning) — measure before Phase 5.
-2. **Looking back (retroactive tagging).** A decaying weight on the experience clock,
+1. **The experience clock — WORLD time, per world** (revised 2026-09-22 at the Phase 2a review;
+   owner decision). The first cut advanced by the loop's nominal period on every *active* pass, and
+   both review lenses showed that "active" is the idle gate's scheduling predicate, not lived time:
+   the survival harness counted 250 ms per decision where a 30 Hz robot on the same cadence counts
+   33 ms (7.5× apart for the same lived time), and on LLM paths the loop stays awake up to 120 s after
+   a submit, so a slow LLM produced *more* experience. So the clock advances by what the agent's
+   **world** did, decided once per **live** loop pass (after the pause check, before the idle gate —
+   the slot `tick_embodiment_drift` uses, so a resting agent still lives and a paused one does not)
+   by `runtime/experience_time.py::ExperienceClockDriver`:
+   - **Real-time worlds** (survival via the loop — the scripted survival harnesses are 2S — robot,
+     CLI; the default): elapsed monotonic time between live passes **minus the autonomy controller's
+     paused time** (`AutonomyController.paused_seconds_total`). Idle passes count — the world keeps
+     happening — and so does a long in-pass block (a multi-cycle deliberation, a robot motion). A
+     suspended machine never counts (`time.monotonic` excludes system sleep on macOS and Linux); a
+     5-minute per-pass cap is only a stall bound. This is the unit decision 2's constants are
+     measured in.
+   - **Turn-based worlds** (text sims): a fixed quantum per world **turn**, so LLM latency is never
+     experience. The percept source declares it with the duck-typed `experience_turns()` +
+     `experience_us_per_turn` (`ConversationalSource`: 5 s per turn — a calibration constant for
+     Phase 5, not a measurement). A turn is the world moving on — `inject_cli`, or the bridge's
+     `mark_turn()` in substrate-primary mode, where no text is injected — never a pain or sensor
+     event inside a turn, and not tied to delivery. A composite is turn-based through its single
+     turn source. **Known gap:** a step-based `ScenarioSource` (fixture sims, `--sim <yaml>`) is a
+     loop-iteration world with no declared step length, so it runs as real-time. *Trigger:* a
+     Phase 5 prereg or any forgetting measurement that uses a step-based scenario — declare
+     `experience_turns` on it (a step length in the scenario YAML) first.
+   Stored as integer **microseconds**, persisted in `hippocampus.json` as
+   `"experience_clock": {"us": N, "unit": "world_experience_us"}`; a missing key loads as 0 with one
+   warning, and a *malformed* record warns and restarts the clock at 0 rather than failing the load
+   (a failed load would send `load_with_recovery` down its empty-store path and cost every memory).
+   Per-agent (one per Hippocampus; the loop follows the Hippocampus it captures into); restored in
+   place, so references survive `--resume-sim`; handed to ATL/AG by `MemoryHub` as a **required
+   constructor argument** under the strength strategy (Phase 2c). **Owed, held by strict red gates**
+   in `tests/unit/test_experience_clock.py`: the stalled-clock assert
+   (`ExperienceClockStalled` from `MemoryHub.on_session_end` and `on_session_end_lightweight` when the
+   strength strategy is on, the clock did not move and the session captured or activated anything;
+   Phase 2c, mirrored in the survival smoke verdict), and the scripted harnesses that call
+   `propose_via_substrate` without the loop (`WaterTrial.train`, `exp58_run.py`,
+   `exp58_offline_gates.py`, `exp53_cross_context_readout.py`) each running a driver — **moved to
+   Phase 2S**, since they are the survival path. 2. **Looking back (retroactive tagging).** A decaying weight on the experience clock,
    `τ = 10 s` with a **30 s** cutoff by default (`memory.capture.tau_s`, `memory.capture.cutoff_s`;
    owner: decay must not be too heavy — at `τ = 5 s` the weight at drowning-damage onset, ≈16.2 s
    (`r3_survival_benchmark_prereg.md`: first damage 16.15–16.25 s), would be 0.04; at 10 s it is 0.20). The window is **dynamic**: configurable now; learning it from the
@@ -334,7 +356,8 @@ fake `cli_input`):
   `Percept.substrate_node_id` (set only when the substrate path is active — confirm it is set on the
   survival path before building) and ATL concepts already carry `memory_refs['hippocampus']` (16 of 46 in the measured run)
   — so it is a new lookup in `PatternCompleter`, not a new mechanism.
-Salience changes what MemoryAgent forms and what captures carry, so this phase ships **opt-in** like
+**Also in 2S:** the four scripted survival harnesses advance the experience clock (decision 1's
+owed item). Salience changes what MemoryAgent forms and what captures carry, so this phase ships **opt-in** like
 the rest and states its ledger rows (Exp 60–62 capture through the loop). **Revive-for-survival
 trigger for Phase 2's validation:** Phase 2S merged and a survival run's saved records show non-zero
 `activation_count` from `prediction`.

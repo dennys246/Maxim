@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 if TYPE_CHECKING:
     pass
 
+from maxim.memory.experience_clock import ExperienceClock
 from maxim.agents.bus import DependencyGraph, EdgeType
 from maxim.memory.types import (
     CompressedMemory,
@@ -20,6 +21,19 @@ from maxim.memory.types import (
 from maxim.utils.atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
+
+
+_missing_clock_warned = False
+
+
+def _warn_missing_experience_clock_once() -> None:
+    global _missing_clock_warned
+    if not _missing_clock_warned:
+        _missing_clock_warned = True
+        logger.warning(
+            "hippocampus snapshot has no experience_clock (written before memory-strength Phase 2); "
+            "starting its experience time at 0"
+        )
 
 
 class PersistenceMixin:
@@ -94,6 +108,7 @@ class PersistenceMixin:
                 "episodes": episodes_data,
                 "next_episode_ordinal": next_episode_ordinal,
                 "node_modality": node_modality_data,
+                "experience_clock": self.experience_clock.to_dict(),
             }
 
     def load_state(self, state: dict[str, Any]) -> None:
@@ -156,6 +171,21 @@ class PersistenceMixin:
 
         temp_stats = state.get("stats", {})
 
+        # Experience clock (memory-strength Phase 2). Files written before it existed load at 0 --
+        # with ONE warning per process, since every pre-clock file would otherwise repeat it.
+        # A corrupt clock record must never cost the memories: failing this load would send
+        # ``load_with_recovery`` down its empty-store path. Warn loudly and restart the clock at 0.
+        raw_clock = state.get("experience_clock")
+        if raw_clock is None:
+            temp_clock = ExperienceClock()
+            _warn_missing_experience_clock_once()
+        else:
+            try:
+                temp_clock = ExperienceClock.from_dict(raw_clock)
+            except ValueError as e:
+                logger.warning("hippocampus snapshot has a bad experience_clock (%s); restarting it at 0", e)
+                temp_clock = ExperienceClock()
+
         if "compressed_count" in state:
             temp_compressed_count = state["compressed_count"]
 
@@ -170,6 +200,7 @@ class PersistenceMixin:
             self._context_index = temp_context_index
             self._memory_contexts = temp_memory_contexts
             self._stats = temp_stats
+            self.experience_clock.restore(temp_clock)
             self._graph = temp_graph
             if graph_data:
                 self._restore_graph(graph_data)
