@@ -160,6 +160,23 @@ def _isolate_maxim_role_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_memory_strategy_env():
+    """Scrub ``MAXIM_MEMORY_STRATEGY`` across every test (memory-strength Phase 2c).
+
+    It selects the RETENTION MODEL, so a leaked value would silently put every later test's
+    Hippocampus and ATL on a different model from the one under test — and the plan's whole
+    guarantee is that today's default is byte-identical until Phase 5 flips it.
+    """
+    saved = os.environ.pop("MAXIM_MEMORY_STRATEGY", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_MEMORY_STRATEGY", None)
+        if saved is not None:
+            os.environ["MAXIM_MEMORY_STRATEGY"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_auto_download_env():
     """Scrub ``MAXIM_AUTO_DOWNLOAD_MODELS`` across every test.
 

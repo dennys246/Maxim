@@ -28,6 +28,8 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+
+from maxim.runtime.config_loader import resolve_memory_strategy
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
@@ -218,6 +220,7 @@ def build_bio_stack(
     hippocampus = Hippocampus(
         config=HippocampusConfig(
             persistence_path=str(p / "hippocampus.json") if p is not None else None,
+            memory_strategy=resolve_memory_strategy(),
         )
     )
     # Cross-session restore (nac_cross_session_persistence.md): the save
@@ -386,6 +389,7 @@ def build_bio_stack(
         atl = ATL(
             config=ATLConfig(
                 persistence_path=str(p / "atl.json") if p is not None else None,
+                memory_strategy=resolve_memory_strategy(),
             )
         )
     except Exception:

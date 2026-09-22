@@ -219,6 +219,7 @@ class ImportanceBasedStrategy(MemoryStrategy):
         degree: int = 0,
     ) -> float:
         """Score based on importance and outcomes."""
+        from maxim.memory.semantic_types import CompressedSemantic, SemanticMemory
         from maxim.memory.types import CompressedMemory, EpisodicMemory
 
         age = now - record.created_at
@@ -239,6 +240,16 @@ class ImportanceBasedStrategy(MemoryStrategy):
             success_score = 1.0 if record.success else 0.3
             novelty_score = record.novelty
             had_user_input = record.had_user_input
+        elif isinstance(record, (SemanticMemory, CompressedSemantic)):
+            # A concept's importance is how well the world has supported it, not an outcome it
+            # never had: confidence carries the success/novelty weights, and a concept met again
+            # and again takes the place of the interaction bonus. Without this branch every
+            # concept scored by AGE alone (they all fell to the constant ``else``), so the ATL
+            # could not tell a heavily-reinforced concept from an untouched one — found when
+            # Phase 2c-1 let the ATL honour this strategy for the first time.
+            success_score = record.confidence
+            novelty_score = record.confidence
+            had_user_input = getattr(record, "reinforcement_count", 1) >= 3
         else:
             success_score = 0.5
             novelty_score = 0.5

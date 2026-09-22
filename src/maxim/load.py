@@ -52,9 +52,13 @@ def hippocampus(path: str) -> "Hippocampus":
     if not _Path(path).expanduser().exists():
         raise FileNotFoundError(f"Hippocampus file not found: {path}")
 
-    from maxim.memory.hippocampus import Hippocampus
+    # The retention model is runtime POLICY, not persisted state: a loaded store scores by the
+    # CURRENT ``memory.strategy``, not whatever was set when the file was written (contrast
+    # ``load.nac``, which deliberately skips decay-on-load so a resumed run is not double-decayed).
+    from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+    from maxim.runtime.config_loader import resolve_memory_strategy
 
-    h = Hippocampus()
+    h = Hippocampus(HippocampusConfig(memory_strategy=resolve_memory_strategy()))
     h.load(path)
     return h
 
@@ -113,9 +117,11 @@ def atl(path: str) -> "ATL":
     if not _Path(path).expanduser().exists():
         raise FileNotFoundError(f"ATL file not found: {path}")
 
-    from maxim.memory.atl import ATL
+    # As in ``load.hippocampus``: the model is current policy, never restored from the file.
+    from maxim.memory.atl import ATL, ATLConfig
+    from maxim.runtime.config_loader import resolve_memory_strategy
 
-    a = ATL()
+    a = ATL(ATLConfig(memory_strategy=resolve_memory_strategy()))
     a.load(path)
     return a
 

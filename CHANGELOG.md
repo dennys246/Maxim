@@ -25,6 +25,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`maxim config set memory.strategy <name>` — the retention model is now selectable, and a typo
+  can never quietly keep the old one (memory-strength Phase 2c-1).** A new `memory` config section
+  (`MemoryConfigSection`, `MAXIM_MEMORY_STRATEGY`) picks between `access_based` (today's, and the
+  default until the plan's Phase 5 earns a flip), `importance_based` and `composite`. (`strength`,
+  the Bjork model this phase builds, becomes a valid name in 2c-3 together with the strategy
+  itself — accepting it earlier would take the setting and then crash at the first consolidation.)
+  An unknown name **raises** at every door — the config section, `config_writer`, `config.json`,
+  the env resolver and the store itself — closing the silent fallback where `memory.strategy=strenght`
+  scored exactly like `access_based`. Only a *missing* value falls back, which is the dataclass
+  default. `runtime/config_loader.py::resolve_memory_strategy` is the ONE resolver and every store
+  is built from it — `bio_stack`, `agent_factory`, `create`, `load`, `session`, `api` and the
+  foundry — so a run cannot end up with the ATL on a different model from the Hippocampus because
+  one path was missed; the ATL previously hard-coded access-based scoring and now honours the
+  configured model — and `ImportanceBasedStrategy` gained a semantic branch, since every concept
+  previously scored by age alone through its constant fallback. **No behaviour change on the
+  default path.** One caveat, not introduced here but newly reachable: a `config.json` written by
+  this build carries a `memory` section while `_format_version` stays `"1.0"`, so **downgrading**
+  to a build that predates the section makes it refuse the file until the section is removed by
+  hand (the same is true of `console`, `tools` and `sim`) — tracked as its own issue.
+
 - **Memory: per-drive pressure and relief on the encoding record (memory-strength Phase 2b-ii).**
   `EncodingSignals` gains two required fields, `drive_pressure` and `drive_relief`, each a sorted tuple of
   `(drive, value in [0, 1])` or `None` (no body). Pressure is what the body was pushing for **before**

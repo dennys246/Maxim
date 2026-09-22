@@ -36,6 +36,7 @@ This mirrors `kubeconfig`, `gh`, `npm`, and `pyproject.toml`. Mismatches between
 | `llm.profile` | string | none | `MAXIM_LLM_PROFILE` |
 | `llm.n_ctx` | int ≥ 256 | 8192 | `MAXIM_LLM_N_CTX` |
 | `llm.backend` | llama_cpp / pytorch | llama_cpp | `MAXIM_LLM_BACKEND` |
+| `memory.strategy` | access_based / importance_based / composite | access_based | `MAXIM_MEMORY_STRATEGY` |
 | `llm.auto_download` | bool | false | `MAXIM_AUTO_DOWNLOAD_MODELS` |
 | `llm.max_response_tokens` | int ≥ 1 \| null | null (the mode's own reserve; 512 in the agent loop) | `MAXIM_LLM_MAX_RESPONSE_TOKENS` |
 | `llm.deliberation_max_cycles` | int ≥ 1 \| null | null (3 in sim, 2 live) | `MAXIM_LLM_DELIBERATION_MAX_CYCLES` |

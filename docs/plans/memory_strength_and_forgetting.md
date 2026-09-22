@@ -361,6 +361,34 @@ drive, sensor change and pain). Found while mapping: a MemoryAgent tool-failure 
 the loop's capture of the same action, and a reflection duplicates the loop's surprise — the Phase
 2c tag must count one event once.
 
+*Phase 2c slicing (2026-09-22, from a design map):* **2c-1** — the `memory.*` config section, the
+one resolver threaded through every store builder, an unknown name raising at every door, the ATL
+honouring the configured model instead of hard-coding access-based (SHIPPED with this note;
+behaviour-neutral on the default path). `strength` is deliberately NOT a valid name until 2c-3
+ships the strategy. Review caught two blockers worth remembering: the section was declared but
+never PARSED (the `console` bug again — a value written by `maxim config set` was dropped at load
+and erased by the next write), now guarded by an AST test that every declared section is read by
+the parse walk; and a name accepted by config but unimplemented in the store crashes at the first
+consolidation, far from the command that set it. Round 2 caught a third: the fold's own import
+landed in a `TYPE_CHECKING` block, so `maxim.load.hippocampus()` raised at runtime while ruff and
+mypy stayed green — only the FULL suite catches that shape, never a keyword-filtered slice. Also
+folded: `ImportanceBasedStrategy` gained a semantic branch (every concept scored by age alone
+through its constant fallback, so the newly-honoured ATL knob had no signal), and the
+config-format downgrade hazard is filed as [#856](https://github.com/dennys246/Maxim/issues/856). **2c-2** — `S` + the encoding tag on the record (noisy-OR over the
+recorded signals' baseline deviations) and `ExperienceClockStalled` WITH its two `MemoryHub`
+callers. **2c-3** — the `StrengthStrategy` itself: `R = exp(−Δt/S)` on the experience clock, the
+credited-gap retrieval update through `strategy.on_activation`, floors under `R` and no immortality
+floor; both red gates flip (the activation gate REWRITTEN as a behavioural one, never just
+unmarked), the byte-identical-default guard lands, and one real sim loop shows `S` move on a saved
+record. Two departures recorded here rather than silently: **(a)** the per-source retrieval weights
+ship as a frozen default in `memory/`, not config — the config surface is flat dotted paths with
+string coercion, and a JSON-map coercer for one map would be worse than a named constant;
+**(b)** drive-pressure relevance **fails closed** — pressure contributes 0 when a trace's
+`drive_relief` keys are empty, which on `minecraft_player` is every action but `eat`
+(`escape_water`/`flee`/`attack` declare no `self_effect`). *Trigger for the second relevance
+source:* Phase 2S / R4, when delayed credit gives those actions a drive link. A proximity heuristic
+would be a band-aid.
+
 **Phase 2S — the survival gate** ([#848](https://github.com/dennys246/Maxim/issues/848); owner:
 "the gate definitely needs to activate memory"). Measured offline on main 4a0362e2 (a scratchpad
 ScriptedWaterBridge run, monkeypatched counters, no source edits — not a committed artifact; the
