@@ -326,7 +326,7 @@ class TestPhase4RPEBoostsSalience:
         assert boosted == pytest.approx(0.9)
 
     def test_executor_rpe_available_for_boost(self) -> None:
-        """Executor.get_last_rpe should return RPE from bridge."""
+        """The bridge's RPE for an invocation is what the executor stamps (#847)."""
         from maxim.bridges.tool_pain_bridge import ToolPainBridge
         from maxim.decisions.nac import NAc
         from maxim.proprioception.pain import PainDetector
@@ -362,7 +362,7 @@ class TestPhase4NoBoostOnZeroRPE:
         assert boosted == pytest.approx(base_salience)
 
     def test_bridge_rpe_zero_without_history(self) -> None:
-        """Fresh bridge should have zero RPE."""
+        """Fresh bridge has no surprise recorded for any invocation."""
         from maxim.bridges.tool_pain_bridge import ToolPainBridge
         from maxim.proprioception.pain import PainDetector
 
@@ -371,9 +371,9 @@ class TestPhase4NoBoostOnZeroRPE:
         detector = PainDetector()
         bridge = ToolPainBridge(nac=nac, pain_detector=detector)
 
-        assert bridge._last_rpe == 0.0
+        assert bridge.pop_invocation_rpe("inv-x") is None
 
-        # Complete without a matching pending event
+        # Complete without a matching pending event: nothing attributed, nothing recorded
         rpe = bridge.record_tool_complete("unknown", "inv-x", success=True)
         assert rpe == 0.0
-        assert bridge._last_rpe == 0.0
+        assert bridge.pop_invocation_rpe("inv-x") is None

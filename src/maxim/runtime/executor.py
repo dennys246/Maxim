@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import threading
 import time
 import uuid
@@ -258,7 +259,7 @@ class Executor:
             error_msg += f" Available tools: {', '.join(sorted(self.registry.list()))}."
             result = ToolOutput(success=False, error=error_msg)
             self._report_failure(tool_name, invocation_id, result, params)
-            return result
+            return self._stamp_rpe(result, invocation_id)
 
         try:
             tool = self.registry.get(tool_name)
@@ -283,7 +284,7 @@ class Executor:
                 )
             result = ToolOutput(success=False, error=error_msg)
             self._report_failure(tool_name, invocation_id, result, params)
-            return result
+            return self._stamp_rpe(result, invocation_id)
 
         try:
             result = tool.run(**params)
@@ -292,7 +293,7 @@ class Executor:
                 self._running = None
             result = ToolOutput(success=False, error=f"Tool {tool_name!r} execution failed: {e}")
             self._report_failure(tool_name, invocation_id, result, params)
-            return result
+            return self._stamp_rpe(result, invocation_id)
 
         with self._lock:
             self._running = None
@@ -366,7 +367,7 @@ class Executor:
         else:
             self._report_failure(tool_name, invocation_id, result, params)
 
-        return result
+        return self._stamp_rpe(result, invocation_id)
 
     def _report_failure(
         self,
@@ -460,16 +461,22 @@ class Executor:
                 self._entity_map.transfer_to_scene(entity)
                 _log.info("Entity released: %s", entity_released)
 
-    def get_last_rpe(self) -> float:
-        """Get RPE magnitude from the most recent tool execution.
+    def _stamp_rpe(self, result: ToolOutput, invocation_id: str) -> ToolOutput:
+        """Attach THIS invocation's surprise (|RPE|) to its output (#847).
 
-        Returns the Rescorla-Wagner prediction error from NAc, which
-        reflects how surprising the tool outcome was.  High RPE signals
-        that hippocampus should boost salience for this memory.
+        The Rescorla-Wagner error NAc computed for this invocation's outcome travels on the
+        ToolOutput, so a capture reads the surprise of the action it captures. It replaced
+        ``get_last_rpe``, a read of a slot nothing reset, which gave a capture an earlier tool's
+        surprise whenever this one produced none.
         """
-        if self._tool_pain_bridge is not None:
-            return self._tool_pain_bridge._last_rpe
-        return 0.0
+        if not isinstance(result, ToolOutput):
+            return result
+        # ALWAYS the bridge's value or None: the executor is the only writer, so a tool that set
+        # ``rpe`` on its own output cannot inflate its capture's salience.
+        rpe = self._tool_pain_bridge.pop_invocation_rpe(invocation_id) if self._tool_pain_bridge is not None else None
+        if result.rpe == rpe:
+            return result
+        return dataclasses.replace(result, rpe=rpe)
 
     def tool_usage_stats(self) -> dict[str, Any]:
         """Get tool usage statistics for experiment analysis."""

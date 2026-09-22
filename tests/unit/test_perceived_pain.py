@@ -66,8 +66,8 @@ class _Executor:
         self.calls.append(action)
         return self._result
 
-    def get_last_rpe(self) -> float:
-        return 0.25
+    def tool_usage_stats(self) -> dict:
+        return {"sentinel": 0.25}
 
 
 # ─── Path extraction ────────────────────────────────────────────────────
@@ -350,7 +350,7 @@ class TestPainInterceptorExecutor:
 
     def test_delegates_unknown_attrs(self):
         exe = PainInterceptorExecutor(_Executor(), pain_bus=_Bus())
-        assert exe.get_last_rpe() == 0.25
+        assert exe.tool_usage_stats() == {"sentinel": 0.25}
 
     def test_bash_rm_rf_fires_delete(self):
         bus = _Bus()
@@ -405,7 +405,7 @@ class TestAnticipatoryPainExecutor:
 
     def test_delegates_unknown_attrs(self):
         exe = AnticipatoryPainExecutor(_Executor(), assessor=None)
-        assert exe.get_last_rpe() == 0.25
+        assert exe.tool_usage_stats() == {"sentinel": 0.25}
 
 
 # ─── Two-layer integration ──────────────────────────────────────────────

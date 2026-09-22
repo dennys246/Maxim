@@ -89,7 +89,7 @@ class PainInterceptorExecutor:
     def __getattr__(self, name: str) -> Any:
         """Delegate unknown attributes to the inner executor.
 
-        Keeps ``_tool_pain_bridge``, ``get_last_rpe``, etc. reachable
+        Keeps ``_tool_pain_bridge``, ``tool_usage_stats``, etc. reachable
         when this wrapper sits in the middle of an executor stack.
         """
         return getattr(self._inner, name)

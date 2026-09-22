@@ -34,7 +34,7 @@ def capture_episodic_memory(
 
     Args:
         hippocampus: Hippocampus instance (must not be None).
-        executor: Tool executor (checked for get_last_rpe).
+        executor: Tool executor (unused for surprise since #847; kept for the call shape).
         observation: Current observation dict.
         state: Agent state object.
         intent: Intent dict (e.g. {"goal": "...", "source": "..."}).
@@ -42,12 +42,15 @@ def capture_episodic_memory(
         result: Tool execution result.
         run_id: Current run identifier.
     """
-    # Boost salience for surprising outcomes (high RPE)
-    if hasattr(executor, "get_last_rpe"):
-        rpe = executor.get_last_rpe()
-        if rpe > 0.0 and isinstance(observation, dict):
-            current_salience = observation.get("salience", 0.5)
-            observation["salience"] = min(1.0, current_salience + rpe * 0.5)
+    # Boost salience for a surprising outcome -- THIS action's (#847): the executor stamps the
+    # invocation's |RPE| onto its ToolOutput. It used to read the executor's last-RPE slot, which
+    # nothing reset, so an action with no surprise of its own inherited an earlier tool's.
+    from maxim.tools.base import ToolOutput
+
+    rpe = result.rpe if isinstance(result, ToolOutput) else None
+    if rpe is not None and rpe > 0.0 and isinstance(observation, dict):
+        current_salience = observation.get("salience", 0.5)
+        observation["salience"] = min(1.0, current_salience + rpe * 0.5)
     try:
         hippocampus.capture_from_loop_async(
             observation=observation if isinstance(observation, dict) else {},
