@@ -217,6 +217,7 @@ class SemanticMemory(MemoryRecord):
     def to_dict(self) -> dict[str, Any]:
         """Serialize for JSON persistence."""
         return {
+            **self._activation_fields(),
             "id": self.id,
             "timestamp": self.timestamp,
             "created_at": self.created_at,
@@ -251,6 +252,7 @@ class SemanticMemory(MemoryRecord):
             provenance = ConceptProvenance.EPISODIC_CONSOLIDATION
 
         return cls(
+            **MemoryRecord._activation_kwargs(data),
             id=data["id"],
             timestamp=data["timestamp"],
             created_at=data.get("created_at", data["timestamp"]),
@@ -343,6 +345,7 @@ class Concept(SemanticMemory):
             memory_refs[layer] = {mid: None for mid in ids}
 
         return cls(
+            **MemoryRecord._activation_kwargs(data),
             id=data["id"],
             timestamp=data["timestamp"],
             created_at=data.get("created_at", data["timestamp"]),
@@ -412,6 +415,7 @@ class CompressedSemantic(CompressedRecord):
     ) -> CompressedSemantic:
         """Compress a full SemanticMemory to lightweight form."""
         return cls(
+            **MemoryRecord._activation_kwargs(memory._activation_fields()),
             id=memory.id,
             timestamp=memory.timestamp,
             created_at=memory.created_at,
@@ -430,6 +434,7 @@ class CompressedSemantic(CompressedRecord):
     def to_dict(self) -> dict[str, Any]:
         """Serialize for storage."""
         return {
+            **self._activation_fields(),
             "id": self.id,
             "timestamp": self.timestamp,
             "created_at": self.created_at,
@@ -459,6 +464,7 @@ class CompressedSemantic(CompressedRecord):
             provenance = ConceptProvenance.EPISODIC_CONSOLIDATION
 
         return cls(
+            **MemoryRecord._activation_kwargs(data),
             id=data["id"],
             timestamp=data.get("timestamp", data.get("created_at", 0.0)),
             created_at=data.get("created_at", 0.0),

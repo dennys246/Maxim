@@ -16,7 +16,9 @@ memory layers.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator
+
+from maxim.memory.types import ACTIVATION_SOURCES
 
 if TYPE_CHECKING:
     from maxim.agents.bus import DependencyGraph
@@ -137,6 +139,23 @@ class MemoryLayer(ABC):
     def stats(self) -> dict[str, Any]:
         """Return layer statistics."""
         ...
+
+    def activate(self, record_ids: Iterable[str], *, source: str) -> int:
+        """Record that these records were USED (memory-strength plan Phase 1). Returns how many.
+
+        The one activation path for every store. Call it at a CONSUMPTION point -- content that
+        reached a prompt, a prediction or a decision -- never for a bookkeeping read (echo
+        filters, bulk loads, deletion callbacks, neighbour lookups); those use ``recall_by_ids``
+        and stay uncounted. Built on ``recall_by_ids``, whose read lock is released before any
+        record lock is taken, so a caller holding a store read lock can never deadlock here by
+        upgrading. Unknown ids are skipped, like ``recall_by_ids``.
+        """
+        if source not in ACTIVATION_SOURCES:
+            raise ValueError(f"unknown activation source {source!r}; expected one of {sorted(ACTIVATION_SOURCES)}")
+        records = self.recall_by_ids(list(dict.fromkeys(record_ids)))
+        for record in records:
+            record.activate(source)
+        return len(records)
 
     def __bool__(self) -> bool:
         """A store that EXISTS is truthy even when EMPTY (#839).

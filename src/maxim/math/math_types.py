@@ -75,6 +75,7 @@ class MathMemory(MemoryRecord):
     def to_dict(self) -> dict[str, Any]:
         """Serialize for JSON persistence."""
         return {
+            **self._activation_fields(),
             "id": self.id,
             "timestamp": self.timestamp,
             "created_at": self.created_at,
@@ -104,6 +105,7 @@ class MathMemory(MemoryRecord):
             category = MathCategory.FACT
 
         return cls(
+            **MemoryRecord._activation_kwargs(data),
             id=data["id"],
             timestamp=data["timestamp"],
             created_at=data.get("created_at", data["timestamp"]),
@@ -164,6 +166,7 @@ class CompressedMathMemory(CompressedRecord):
     def from_math_record(cls, record: MathMemory, edge_count: int = 0) -> CompressedMathMemory:
         """Compress a full MathMemory to lightweight form."""
         return cls(
+            **MemoryRecord._activation_kwargs(record._activation_fields()),
             id=record.id,
             timestamp=record.timestamp,
             created_at=record.created_at,
@@ -181,6 +184,7 @@ class CompressedMathMemory(CompressedRecord):
     def to_dict(self) -> dict[str, Any]:
         """Serialize for JSON persistence."""
         return {
+            **self._activation_fields(),
             "id": self.id,
             "timestamp": self.timestamp,
             "created_at": self.created_at,
@@ -206,6 +210,7 @@ class CompressedMathMemory(CompressedRecord):
             category = MathCategory.FACT
 
         return cls(
+            **MemoryRecord._activation_kwargs(data),
             id=data["id"],
             timestamp=data.get("timestamp", data.get("created_at", 0.0)),
             created_at=data.get("created_at", 0.0),
