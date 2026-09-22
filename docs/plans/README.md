@@ -132,6 +132,13 @@ on a second body arriving and now live in [deferred/](deferred/).*
   standards every pre-registration declares against (S4 shipped; S2 canaries = item 2).
 - [glossary.md](glossary.md) — decoder for the coded IDs. (Owes 1.1's one admitted
   mechanism — relief-sourced operant credit — and Exp 52/53/54 entries.)
+- [config_extensibility.md](config_extensibility.md) — **drafted 2026-09-22, not scheduled**:
+  which config restrictions are the typo check (keep) and which merely require a fork (relax).
+  Validation moves from a hard-coded frozenset to built-ins ∪ a registry, riding the existing
+  `maxim.robots` entry-point pattern; plus an `extensions.*` namespace for third-party settings.
+  Phase 1 sequences behind memory-strength 2c-3; Phase 2 depends on the #856 format-version
+  decision. Distinct from [deferred/bio_system_plugin_plan.md](deferred/bio_system_plugin_plan.md)
+  (settings and one ABC, not bio-systems).
 - [../limits/score_cards/](../limits/score_cards/) — repository scorecards.
 
 ## Deferred (revive on trigger)
