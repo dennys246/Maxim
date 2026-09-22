@@ -690,6 +690,7 @@ jobs:
             | grep -vE "^tests/unit/test_lane_routing_via_config\.py:" \
             | grep -vE "^tests/unit/test_doctor_resolved_config\.py:" \
             | grep -vE "^tests/unit/test_role_unification\.py:" \
+            | grep -vE "^tests/unit/test_memory_strategy_config\.py:" \
             || true)
           if [ -n "$CONFIG_WRITER_MATCHES" ]; then
             echo "ERROR: new caller of config_writer.write_config / mutate_config / set_field detected (config_unification.md IM2)"
