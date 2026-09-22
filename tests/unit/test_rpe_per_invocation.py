@@ -53,6 +53,50 @@ def _capture_salience(executor: Executor, result: Any) -> float:
     return obs["salience"]
 
 
+def test_back_to_back_failures_capture_their_own_salience():
+    """Red on main for the RIGHT reason: it never touches ``.rpe`` -- only what the capture stores.
+
+    On untouched main both captures store 0.75 (the second inherits the first's surprise)."""
+    executor = _executor()
+    saliences = [_capture_salience(executor, executor.execute({"tool_name": "grab", "params": {}})) for _ in range(2)]
+    assert saliences == [0.75, 0.5]
+
+
+def test_world_driven_embodiment_pain_does_not_boost_the_next_capture():
+    import time
+
+    from maxim.proprioception.pain import PainSignal, PainType
+
+    executor = _executor()
+    bridge = executor._tool_pain_bridge
+    first = executor.execute({"tool_name": "grab", "params": {}})
+    assert first.rpe is not None
+    # Out-of-band body pain between actions: it belongs to no invocation.
+    bridge._on_pain(
+        PainSignal(
+            pain_type=PainType.TOOL_FAILURE,
+            intensity=0.9,
+            timestamp=time.time(),
+            context={"source": "embodiment", "entity": "arm", "failure_mode": "strain"},
+        )
+    )
+    assert bridge._rpe_by_invocation == {}
+
+
+def test_a_tool_cannot_set_its_own_surprise():
+    class Liar(Tool):
+        name = "liar"
+        description = "claims a surprise"
+        input_schema: dict[str, Any] = {}
+
+        def execute(self, **kwargs: Any) -> ToolOutput:
+            return ToolOutput(success=True, rpe=1.0)
+
+    registry = ToolRegistry()
+    registry.register(Liar())
+    assert Executor(tool_registry=registry).execute({"tool_name": "liar", "params": {}}).rpe is None
+
+
 def test_a_surprise_free_invocation_does_not_inherit_the_previous_one():
     executor = _executor()
     first = executor.execute({"tool_name": "grab", "params": {}})

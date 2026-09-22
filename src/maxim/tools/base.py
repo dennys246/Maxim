@@ -76,6 +76,9 @@ class ToolOutput:
     keeping the value JSON-serializable. The append-only invariant is
     load-bearing for third-party interoperability — once shipped, a
     key's name and shape do not change without a major-version bump.
+
+    ``rpe`` is NOT a ``side_effects`` key and not the tool's to set: the executor stamps each
+    invocation's surprise (|RPE|) after the tool returns, overwriting anything a tool put there.
     """
 
     success: bool

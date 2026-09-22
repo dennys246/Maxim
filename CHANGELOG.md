@@ -67,17 +67,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **A capture no longer inherits an earlier tool's surprise (#847).** The tool-pain bridge kept one
-  `_last_rpe` slot that nothing reset, and `capture_episodic_memory` read it on every capture. Any
-  action with no surprise of its own — for example a repeat failure inside the pain detector's
-  cooldown, which never reaches the bridge — had the previous tool's `|RPE|` folded into its
-  salience. On `main` two back-to-back failures captured 0.75 and 0.75; now 0.75 and 0.5. The
+- **A capture no longer inherits an earlier tool's surprise (#847, the bridge half).** The
+  tool-pain bridge kept one `_last_rpe` slot that nothing reset, and `capture_episodic_memory` read
+  it on every capture, so an action with no surprise of its own had the previous surprise folded into
+  its salience. Measured outside pytest on untouched `origin/main`: two back-to-back failures inside
+  the pain detector's cooldown captured salience 0.75 and 0.75; with the fix, 0.75 and 0.5. The
   surprise is now bound to its invocation: the bridge records it per `invocation_id`, the executor
-  stamps it on that invocation's `ToolOutput.rpe`, and the capture reads the stamp.
-  `Executor.get_last_rpe` and the bridge's `_last_rpe` are removed. World-driven embodiment pain
-  belongs to no invocation, so its surprise no longer leaks into the next action's capture (the
-  pain-memory subscriber still captures the pain itself). Captured salience changes only where it
-  was stale.
+  (the only writer) stamps it on that invocation's `ToolOutput.rpe`, and the capture reads the
+  stamp. `Executor.get_last_rpe` and the bridge's `_last_rpe` are removed. **Behaviour change,
+  beyond the stale cases:** world-driven embodiment pain belongs to no invocation, so its surprise
+  no longer boosts the *next* action's capture, even when it arrived between that action and its
+  capture. The pain itself still reaches salience through `observe_episode`'s pain spike and the
+  pain-memory subscriber. No NAc write path changed. The NAc's own sticky `last_rpe` is #850.
 
 - **Memory Phase 0: the capture inputs the strength model will read are stored correctly
   (#813–#817).** The entry condition of the memory-strength parallel line

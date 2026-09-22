@@ -469,10 +469,12 @@ class Executor:
         ``get_last_rpe``, a read of a slot nothing reset, which gave a capture an earlier tool's
         surprise whenever this one produced none.
         """
-        if self._tool_pain_bridge is None:
+        if not isinstance(result, ToolOutput):
             return result
-        rpe = self._tool_pain_bridge.pop_invocation_rpe(invocation_id)
-        if rpe is None or not isinstance(result, ToolOutput):
+        # ALWAYS the bridge's value or None: the executor is the only writer, so a tool that set
+        # ``rpe`` on its own output cannot inflate its capture's salience.
+        rpe = self._tool_pain_bridge.pop_invocation_rpe(invocation_id) if self._tool_pain_bridge is not None else None
+        if result.rpe == rpe:
             return result
         return dataclasses.replace(result, rpe=rpe)
 
