@@ -53,6 +53,7 @@ this module's.
 
 from __future__ import annotations
 
+from maxim.decisions.causal_link import bound_predicted_value
 import copy
 import re
 from dataclasses import dataclass
@@ -202,6 +203,8 @@ def _merge_link_pair(
         merged_pv = (n_l * pv_l + n_r * pv_r) / total_n
     else:
         merged_pv = (pv_l + pv_r) / 2.0
+    # Inputs are trusted-local and may predate the [0, 1] bound; the merge never emits outside it.
+    merged_pv = bound_predicted_value(merged_pv, where="merge")
 
     # Confidence: cap at the higher of the two — consensus across
     # multiple observers is at least as confident as the more confident

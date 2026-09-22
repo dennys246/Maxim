@@ -354,7 +354,7 @@ class TestReflectionStorage:
         bridge = _make_bridge(hippocampus=hippocampus)
 
         initial_count = hippocampus._stats.get("memories_captured", 0)
-        bridge._store_reflection("tool failed due to X", {"tool_name": "grab", "params": {}})
+        bridge._store_reflection("tool failed due to X", {"tool_name": "grab", "params": {}}, surprise=0.5)
 
         # Verify a memory was captured
         assert hippocampus._stats["memories_captured"] == initial_count + 1
@@ -374,12 +374,12 @@ class TestReflectionStorage:
     def test_no_store_without_hippocampus(self):
         bridge = _make_bridge(hippocampus=None)
         # Should not raise
-        bridge._store_reflection("reflection text", {"tool_name": "t"})
+        bridge._store_reflection("reflection text", {"tool_name": "t"}, surprise=0.5)
 
     def test_no_store_with_empty_reflection(self):
         hippocampus = MagicMock()
         bridge = _make_bridge(hippocampus=hippocampus)
-        bridge._store_reflection("", {"tool_name": "t"})
+        bridge._store_reflection("", {"tool_name": "t"}, surprise=0.5)
         hippocampus.capture.assert_not_called()
 
 

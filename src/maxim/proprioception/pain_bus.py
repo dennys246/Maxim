@@ -328,6 +328,48 @@ def _reaction_to_pain_signal(reaction: "Reaction") -> PainSignal:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+# memory-strength Phase 2b (owner decision 2026-09-22) — INNATE PRIOR: which PainBus signals are
+# nociception, i.e. what a memory records as ``pain``. Body damage only: motor strain and
+# thrashing, a movement that failed, damage signalled by the world, a safety violation. NOT a tool
+# failure (a lifetime frustration count whose surprise already reaches the loop capture), NOT an
+# anticipated pain (a prediction -- recorded as measured it would let fear strengthen the memory of
+# its own anticipation), NOT resource exhaustion or cognitive overload (drive / load, not injury).
+# A PainType alone cannot draw the drive line: the body publishes every DRIVE breach as
+# EXTERNAL_SIGNAL with ``source="drive:<name>"`` (air hunger is ``drive:oxygen``). Those are drives,
+# kept as ``extra["drive_pain"]`` -- except ``drive:health``, whose loss IS tissue damage.
+NOCICEPTIVE_PAIN_TYPES: frozenset[PainType] = frozenset(
+    {
+        PainType.EXCESSIVE_VELOCITY,
+        PainType.DIRECTION_THRASHING,
+        PainType.SUSTAINED_STRAIN,
+        PainType.EXCESSIVE_ACCELERATION,
+        PainType.MOVEMENT_FAILURE,
+        PainType.EXTERNAL_SIGNAL,
+        PainType.SAFETY_VIOLATION,
+    }
+)
+
+
+# The one drive whose breach is injury rather than deprivation.
+_TISSUE_DAMAGE_DRIVES: frozenset[str] = frozenset({"drive:health"})
+
+
+def _pain_encoding(signal: PainSignal) -> Any:
+    """What a pain capture was encoded with: nociceptive pain as ``pain``; anticipated pain kept
+    only as a labelled extra; every other pain type measured nothing this record calls pain."""
+    from maxim.memory.encoding import EncodingSignals
+
+    intensity = min(1.0, max(0.0, float(signal.intensity)))
+    source = str((signal.context or {}).get("source", ""))
+    if source.startswith("drive:") and source not in _TISSUE_DAMAGE_DRIVES:
+        extra = {"drive_pain": intensity, "drive": source.removeprefix("drive:")}
+        return EncodingSignals(site="pain_bus", salience=None, novelty=None, surprise=None, pain=None, extra=extra)
+    if signal.pain_type in NOCICEPTIVE_PAIN_TYPES:
+        return EncodingSignals(site="pain_bus", salience=None, novelty=None, surprise=None, pain=intensity)
+    extra = {"anticipated_pain": intensity} if signal.pain_type is PainType.ANTICIPATED else {}
+    return EncodingSignals(site="pain_bus", salience=None, novelty=None, surprise=None, pain=None, extra=extra)
+
+
 def create_pain_memory_subscriber(
     hippocampus: Hippocampus,
     intensity_threshold: float = 0.4,
@@ -349,6 +391,11 @@ def create_pain_memory_subscriber(
             return
 
         hippocampus.capture(
+            # memory-strength Phase 2b: record the pain only if it is NOCICEPTION (see
+            # NOCICEPTIVE_PAIN_TYPES). The perception salience (+0.2) and novelty (0.6) below are
+            # constants that re-encode it, so they are not recorded as signals; removing that double
+            # count on the strength path is Phase 2b-ii.
+            encoding=_pain_encoding(signal),
             perception=Perception(
                 observations={
                     "pain_type": signal.pain_type.value,

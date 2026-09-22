@@ -61,7 +61,7 @@ class TestCaptureEpisodicMemory:
     def test_rpe_salience_capped_at_1(self):
         hippo = MagicMock()
         executor = MagicMock()
-        rpe_result = ToolOutput(success=True, rpe=1.5)
+        rpe_result = ToolOutput(success=True, rpe=1.0)  # |R - V| <= 1: V is bounded at every producer
         obs = {"source": "test", "salience": 0.9}
         capture_episodic_memory(
             hippocampus=hippo,

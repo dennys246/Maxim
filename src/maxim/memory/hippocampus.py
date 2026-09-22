@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
 from maxim.agents.bus import DependencyGraph, EdgeType
 from maxim.agents.modality import SubstrateModality
+from maxim.memory.encoding import EncodingSignals, require_encoding
 from maxim.memory.experience_clock import ExperienceClock
 from maxim.memory.episode import (
     BoundaryRule,
@@ -292,6 +293,7 @@ class _CaptureRequest:
     result: Any
     run_id: str
     queued_at: float
+    encoding: EncodingSignals
 
 
 class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLayer):
@@ -318,6 +320,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             decision=Decision(intent={"goal": "pick up cup"}),
             action=Action(tool_name="grasp"),
             outcome=Outcome(success=True),
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
         # Query memories
@@ -515,7 +518,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
     def graph(self) -> DependencyGraph:
         return self._graph
 
-    def store(self, record: "EpisodicMemory", **kwargs: Any) -> str:
+    def store(self, record: "EpisodicMemory", **kwargs: Any) -> str:  # ``encoding=`` required, as capture()
         """MemoryLayer protocol: store a pre-built EpisodicMemory."""
         return self.capture(record=record, **kwargs)
 
@@ -541,10 +544,16 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         outcome: Outcome | None = None,
         run_id: str = "",
         *,
+        encoding: EncodingSignals,
         record: EpisodicMemory | None = None,
         state_snapshot: dict[str, Any] | None = None,
     ) -> str:
         """Capture a complete agentic loop as an episodic memory.
+
+        ``encoding`` is REQUIRED (memory-strength Phase 2b): the importance signals present at this
+        capture, each measured or ``None``. A site with none passes
+        ``EncodingSignals.unmeasured(site)`` -- explicitly, so no path stores a trace without saying what
+        it was encoded with.
 
         Supports two paths:
         1. Individual args (existing API): perception, context, etc.
@@ -573,6 +582,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             record=record,
             state_snapshot=state_snapshot,
         )
+        memory.encoding = require_encoding(encoding)
 
         with self._rwlock.write():
             self._insert_and_index_locked(memory_id, memory)
@@ -747,7 +757,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             salience=0.5,
             novelty=0.3,
         )
-        return self.capture(perception=perception)
+        # Those two are constants, not measurements: the trace records that nothing was measured.
+        return self.capture(perception=perception, encoding=EncodingSignals.unmeasured("observation"))
 
     def capture_from_loop(
         self,
@@ -759,6 +770,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         result: Any,
         evaluations: list[dict[str, Any]] | None = None,
         run_id: str = "",
+        *,
+        encoding: EncodingSignals,
     ) -> str:
         """Convenience method to capture from agent_loop outputs.
 
@@ -844,6 +857,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             outcome=out,
             run_id=run_id,
             state_snapshot=state_snapshot,
+            encoding=encoding,
         )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -876,14 +890,17 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         if self._capture_worker_thread is not None and self._capture_worker_thread.is_alive():
             self._capture_worker_thread.join(timeout=2.0)
 
-    def capture_from_loop_async(self, **kwargs: Any) -> None:
+    def capture_from_loop_async(self, *, encoding: EncodingSignals, **kwargs: Any) -> None:
         """Non-blocking capture: queue for background processing.
 
         Snapshots mutable data immediately to avoid closure issues.
         If the queue is full, drops the oldest capture (logged warning).
 
-        Accepts the same kwargs as capture_from_loop().
+        Accepts the same kwargs as capture_from_loop(); ``encoding`` is REQUIRED and checked HERE, on
+        the caller's thread -- the worker only logs a failure, so a bad capture must fail before it
+        is queued.
         """
+        require_encoding(encoding)
         # Snapshot state NOW to avoid stale references
         state = kwargs.get("state")
         state_snapshot = None
@@ -904,6 +921,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             result=kwargs.get("result"),
             run_id=kwargs.get("run_id", ""),
             queued_at=time.time(),
+            encoding=encoding,
         )
         try:
             self._capture_queue.put(request, timeout=0.1)
@@ -971,6 +989,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             action=request.action,
             result=request.result,
             run_id=request.run_id,
+            encoding=request.encoding,
         )
 
     def get(self, memory_id: str) -> EpisodicMemory | CompressedMemory | None:

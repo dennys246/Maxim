@@ -21,6 +21,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
+from maxim.memory.encoding import EncodingSignals
+
 
 # Where an honest activation came from (memory-strength plan Phase 1). Closed on purpose:
 # ``MemoryLayer.activate`` rejects anything else, so a typo cannot open a silent new bucket.
@@ -33,6 +35,32 @@ ACTIVATION_SOURCES: frozenset[str] = frozenset(
         "planner",  # read by a planner as a strategy or reflection
     }
 )
+
+
+def _encoding_fields(record: Any) -> dict[str, Any]:
+    """The capture-time encoding record, for episodic ``to_dict`` (memory-strength Phase 2b).
+
+    ``encoding: None`` means "captured before encoding was recorded" -- distinct from a capture that
+    recorded ``EncodingSignals.unmeasured(site)``.
+    """
+    return {"encoding": record.encoding.to_dict() if record.encoding is not None else None}
+
+
+def _encoding_kwargs(data: dict[str, Any]) -> dict[str, Any]:
+    """Load one trace's encoding. A malformed record warns and loads as "not recorded" -- one bad
+    trace must never fail the whole store's load (``load_state`` parses every record first)."""
+    raw = data.get("encoding")
+    if raw is None:
+        return {"encoding": None}
+    try:
+        return {"encoding": EncodingSignals.from_dict(raw)}
+    except (TypeError, ValueError, AttributeError) as e:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "memory %s has a malformed encoding record (%s); loading it as not recorded", data.get("id"), e
+        )
+        return {"encoding": None}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -409,6 +437,8 @@ class CompressedRecord(MemoryRecord):
     """
 
     edge_count: int = 0
+    # Carried from the full episode (memory-strength Phase 2b); see EpisodicMemory.encoding.
+    encoding: EncodingSignals | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass
@@ -480,6 +510,7 @@ class CompressedMemory(CompressedRecord):
             novelty=memory.perception.novelty,
             salience=memory.perception.salience,
             edge_count=edge_count,
+            encoding=memory.encoding,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -505,6 +536,7 @@ class CompressedMemory(CompressedRecord):
             "novelty": self.novelty,
             "salience": self.salience,
             "edge_count": self.edge_count,
+            **_encoding_fields(self),
             "_compressed": True,  # Marker for deserialization
         }
 
@@ -532,6 +564,7 @@ class CompressedMemory(CompressedRecord):
             novelty=data.get("novelty", 0.5),
             salience=data.get("salience", 0.5),
             edge_count=data.get("edge_count", 0),
+            **_encoding_kwargs(data),
         )
 
 
@@ -559,6 +592,11 @@ class EpisodicMemory(MemoryRecord):
     # contribution_source, witness_count, tenant_id, deidentification_model.
     # Adding this pre-publication avoids migration for persisted memories.
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    # What this trace was encoded WITH (memory-strength Phase 2b): the importance signals present at
+    # capture and the site that captured it. Write-only until the Phase 2c strength strategy reads
+    # it. None = captured before encoding was recorded.
+    encoding: EncodingSignals | None = field(default=None, repr=False, compare=False)
 
     @property
     def duration_ms(self) -> float:
@@ -618,6 +656,7 @@ class EpisodicMemory(MemoryRecord):
             "action": self.action.to_dict(),
             "outcome": self.outcome.to_dict(),
             "metadata": self.metadata,
+            **_encoding_fields(self),
         }
 
     @classmethod
@@ -642,6 +681,7 @@ class EpisodicMemory(MemoryRecord):
             action=Action.from_dict(data.get("action", {})),
             outcome=Outcome.from_dict(data.get("outcome", {})),
             metadata=data.get("metadata", {}),
+            **_encoding_kwargs(data),
         )
 
 

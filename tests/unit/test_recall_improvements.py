@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from maxim.memory.encoding import EncodingSignals
 import time
 import uuid
 
@@ -62,6 +63,7 @@ def _make_memory(
         "decision": Decision(intent={"goal": goal}),
         "action": Action(tool_name=tool),
         "outcome": Outcome(success=success),
+        "encoding": EncodingSignals.unmeasured("api"),
     }
 
 

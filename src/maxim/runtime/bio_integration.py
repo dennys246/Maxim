@@ -45,9 +45,17 @@ def capture_episodic_memory(
     # Boost salience for a surprising outcome -- THIS action's (#847): the executor stamps the
     # invocation's |RPE| onto its ToolOutput. It used to read the executor's last-RPE slot, which
     # nothing reset, so an action with no surprise of its own inherited an earlier tool's.
+    from maxim.memory.encoding import EncodingContractError, EncodingSignals
     from maxim.tools.base import ToolOutput
 
     rpe = result.rpe if isinstance(result, ToolOutput) else None
+    # What this trace is encoded WITH (memory-strength Phase 2b), built before any fold or queue so
+    # a bad value fails here, loudly. Only the outcome's surprise is MEASURED on this path: the
+    # observation's salience/novelty are defaults or per-source constants today (Phase 2S makes
+    # them real), and drive pressure / relief wait for Phase 2b-ii's per-drive normalisation.
+    # ``rpe`` is in [0, 1] by construction (the Rescorla-Wagner value is bounded at every producer),
+    # so a value outside it is a broken invariant and fails here, loudly.
+    encoding = EncodingSignals(site="loop", salience=None, novelty=None, surprise=rpe, pain=None)
     if rpe is not None and rpe > 0.0 and isinstance(observation, dict):
         current_salience = observation.get("salience", 0.5)
         observation["salience"] = min(1.0, current_salience + rpe * 0.5)
@@ -63,7 +71,10 @@ def capture_episodic_memory(
             },
             result=result,
             run_id=run_id or "",
+            encoding=encoding,
         )
+    except EncodingContractError:
+        raise  # a capture-contract break is never a runtime hiccup
     except Exception as e:
         logger.debug("Hippocampus capture failed: %s", e)
 

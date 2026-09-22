@@ -596,6 +596,10 @@ class Cerebellum:
     ) -> str | None:
         """Capture a contextual engram in Hippocampus linked to a motor program.
 
+        Dormant since 2026-09-22: no production caller (only tests/unit/test_motor_engrams.py).
+        Kept wired per the dormancy rule; a caller needs an experiment that earns it. Its encoding
+        signals are real measurements (memory-strength Phase 2b), so they are recorded.
+
         Only fires on significant outcomes (pain > 0.3, RPE > 0.3, or
         novelty > 0.7). Routine successes don't need episodic context.
 
@@ -627,9 +631,23 @@ class Cerebellum:
         states_snapshot = snapshot_entity_states(entity_states)
 
         try:
+            from maxim.memory.encoding import EncodingContractError, EncodingSignals
             from maxim.memory.types import Action, Context, Outcome, Perception
 
+            # The defaults are 0.0 ("not supplied"), so a 0.0 here reads as unmeasured.
+            def _unit(x: float) -> float | None:
+                return min(1.0, max(0.0, float(x))) if x else None
+
             memory_id = hippocampus.capture(
+                encoding=EncodingSignals(
+                    site="engram",
+                    salience=None,  # compute_engram_salience re-encodes pain and RPE
+                    # 1 - program confidence: novelty when confidence is familiarity (ForwardModel,
+                    # observation count); unreliability when it is a success rate (motor.py).
+                    novelty=min(1.0, max(0.0, float(novelty))),
+                    surprise=_unit(rpe_magnitude),
+                    pain=_unit(pain_intensity),
+                ),
                 perception=Perception(
                     observations={
                         "motor_program": program.name,
@@ -654,6 +672,8 @@ class Cerebellum:
                     result={"valence": outcome_valence, "pain_step": pain_step},
                 ),
             )
+        except EncodingContractError:
+            raise
         except (ImportError, Exception) as e:
             log.debug("Engram formation failed: %s", e)
             return None

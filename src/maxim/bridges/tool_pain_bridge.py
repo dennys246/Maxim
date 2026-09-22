@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from maxim.decisions.causal_link import Valence
 from maxim.decisions.nac import NAc
 from maxim.proprioception.pain import PainDetector, PainSignal, PainType
+from maxim.memory.encoding import EncodingContractError
 from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
@@ -367,7 +368,7 @@ class ToolPainBridge:
             error_str = f"embodiment:{outcome_context['failure_mode']}"
             reflection = self._generate_reflection(links, action_dict, error_str, outcome_context)
             if reflection:
-                self._store_reflection(reflection, action_dict)
+                self._store_reflection(reflection, action_dict, surprise=rpe)
 
         # Register temporal context with SCN (mirror record_tool_complete path).
         if self._scn is not None:
@@ -431,7 +432,7 @@ class ToolPainBridge:
                 error_str = signal.context.get("error", str(signal.pain_type.value))
                 reflection = self._generate_reflection(links, action_dict, error_str, signal.context)
                 if reflection:
-                    self._store_reflection(reflection, action_dict)
+                    self._store_reflection(reflection, action_dict, surprise=rpe)
 
             # Register temporal context with SCN
             if self._scn is not None:
@@ -655,10 +656,20 @@ class ToolPainBridge:
             logger.debug("LLM reflection generation failed: %s", e)
             return None
 
-    def _store_reflection(self, reflection: str, action: dict[str, Any]) -> None:
-        """Store reflection as high-salience episodic memory in hippocampus."""
+    def _store_reflection(self, reflection: str, action: dict[str, Any], *, surprise: float) -> None:
+        """Store reflection as high-salience episodic memory in hippocampus.
+
+        ``surprise`` is the |RPE| of the failure being reflected on -- the same invocation's value
+        the executor stamps on its ToolOutput -- and is the one signal this capture MEASURED
+        (memory-strength Phase 2b). The loop's capture of the same action records it too: two
+        traces from one event, which the Phase 2c strategy must not count twice.
+        """
         if self._hippocampus is None or not reflection:
             return
+        from maxim.memory.encoding import EncodingSignals
+
+        # Built before the try: a surprise outside [0, 1] is a broken invariant, loud here.
+        encoding = EncodingSignals(site="reflexion", salience=None, novelty=None, surprise=surprise, pain=None)
         try:
             from maxim.memory.types import (
                 Action as MemAction,
@@ -669,6 +680,8 @@ class ToolPainBridge:
             )
 
             self._hippocampus.capture(
+                # 0.9 / 0.8 below are constants for every reflection, not measurements.
+                encoding=encoding,
                 perception=MemPerception(
                     salience=0.9,
                     novelty=0.8,
@@ -689,6 +702,8 @@ class ToolPainBridge:
                     result={"reflection": reflection},
                 ),
             )
+        except EncodingContractError:
+            raise  # a capture-contract break, not a runtime hiccup
         except Exception as e:
             logger.debug("Failed to store reflection: %s", e)
 

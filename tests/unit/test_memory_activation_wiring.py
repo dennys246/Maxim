@@ -7,6 +7,7 @@ site counts is its render cap, not its retrieval limit: surfaced-but-unshown is 
 
 from __future__ import annotations
 
+from maxim.memory.encoding import EncodingSignals
 import time
 from dataclasses import dataclass
 from uuid import uuid4
@@ -41,7 +42,7 @@ def _episode(hippo, *, goal="get water", success=True, reflection=None, metadata
         outcome=Outcome(success=success, result=result),
         metadata=metadata or {},
     )
-    hippo.capture(record=ep)
+    hippo.capture(record=ep, encoding=EncodingSignals.unmeasured("api"))
     return ep
 
 

@@ -25,6 +25,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Memory: every trace records what it was encoded with (memory-strength Phase 2b-i).** A new
+  frozen `memory/encoding.py::EncodingSignals` holds the importance signals present at a capture —
+  salience, novelty, surprise, nociceptive pain — plus a required `site` from a closed set (`loop`,
+  `memory_agent`, `pain_bus`, `reflexion`, `engram`, `observation`, `api`), so one event's several
+  traces can be told apart. Each signal is **required** and either a measurement in `[0, 1]` or
+  `None`; a constant a path stamps on every capture is recorded as `None`, and
+  `EncodingSignals.unmeasured(site)` is the explicit all-`None` declaration. `Hippocampus.capture`,
+  `capture_from_loop`, `capture_from_loop_async` (checked on the caller's thread, before queueing) and
+  `store` all require `encoding=`; a break raises the dedicated `EncodingContractError`, the one error
+  the capture paths no longer swallow. The record rides on `EpisodicMemory.encoding`, persists in
+  `hippocampus.json`, survives compression, and a pre-2b or malformed record loads as "not recorded"
+  (a malformed one with a warning — it never fails the store's load). **What each site records:** the
+  loop capture its outcome's surprise (`ToolOutput.rpe`); the pain subscriber the intensity of
+  **nociceptive** pain only (`NOCICEPTIVE_PAIN_TYPES`, an innate prior: body damage, not tool-failure
+  frustration, not a drive breach such as air hunger (`extra["drive_pain"]`; health loss is still
+  damage), and anticipated pain only as `extra["anticipated_pain"]`); a reflection the surprise of
+  the failure it reflects on; `MemoryAgent` salience/novelty only for real camera detections;
+  `store_observation` nothing. `Cerebellum.form_engram` (no production caller) is marked Dormant.
+  **No retention change:** nothing reads the record until Phase 2c; perception and every default path
+  are untouched.
+
 - **Memory: the experience clock (memory-strength Phase 2a).** Each agent's Hippocampus now owns
   an `ExperienceClock` (`memory/experience_clock.py`, integer microseconds, reads no clock itself),
   advanced by its **world's** time once per live loop pass (after the pause check, before the idle
@@ -85,6 +106,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recorded here because the versioning policy asks a `src/`-touching change to declare itself.
 
 ### Fixed
+
+- **A causal link's Rescorla-Wagner value is bounded to `[0, 1]` at every producer.** Hivemind ingest
+  accepted `predicted_value` in `[-1, 1]` and the merge and `CausalLink.from_dict` passed it through,
+  so an agent that imported one such link could compute a surprise (`|R - V|`) of up to 2 — harmless
+  while it only nudged salience, loud once captures record surprise. `causal_link.py::bound_predicted_value`
+  now bounds it in `from_dict`, hivemind ingest (counted in the ingest notes) and the merge, warning
+  whenever it actually has to. No recorded experiment bundle held an out-of-range value (checked
+  across 713 files), so no earned result moves.
 
 - **A capture no longer inherits an earlier tool's surprise (#847, the bridge half).** The
   tool-pain bridge kept one `_last_rpe` slot that nothing reset, and `capture_episodic_memory` read

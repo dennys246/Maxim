@@ -28,6 +28,7 @@ contributors (``inherent_trusted_sources``), refused loudly from anyone else.
 
 from __future__ import annotations
 
+from maxim.decisions.causal_link import bound_predicted_value
 import copy
 import hashlib
 import json
@@ -465,6 +466,7 @@ def _validate_nac_payload(
 
     counts_capped = 0
     confidence_capped = 0
+    predicted_values_bounded = 0
     deltas_truncated = 0
     timestamps_clamped = 0
 
@@ -496,9 +498,12 @@ def _validate_nac_payload(
             if not isinstance(link.get("context_factors", {}) or {}, dict):
                 raise IngestRefused(duty="V2", reason=f"{where}.context_factors is not an object")
             _sweep_and_stamp_provenance(link, contributor_id=contributor_id, where=where)
-            link["predicted_value"] = _require_in_range(
-                link.get("predicted_value", 0.5), -1.0, 1.0, where=f"{where}.predicted_value"
-            )
+            # Refuse garbage, then bound a stray-but-plausible value into the Rescorla-Wagner range
+            # [0, 1] -- anything below 0 would make a surprise above 1 on the next update.
+            raw_pv = _require_in_range(link.get("predicted_value", 0.5), -1.0, 1.0, where=f"{where}.predicted_value")
+            link["predicted_value"] = bound_predicted_value(raw_pv, where=f"{where}.predicted_value")
+            if link["predicted_value"] != raw_pv:
+                predicted_values_bounded += 1
             conf = _require_in_range(link.get("confidence", 0.5), 0.0, 1.0, where=f"{where}.confidence")
             if conf > CAP_FOREIGN_CONFIDENCE:
                 conf = CAP_FOREIGN_CONFIDENCE
@@ -661,6 +666,8 @@ def _validate_nac_payload(
         notes.append(f"{counts_capped} foreign counts capped at {MAX_FOREIGN_COUNT} (row B)")
     if confidence_capped:
         notes.append(f"{confidence_capped} confidence values capped at {CAP_FOREIGN_CONFIDENCE} (row M)")
+    if predicted_values_bounded:
+        notes.append(f"{predicted_values_bounded} predicted_value values bounded to [0, 1]")
     if deltas_truncated:
         notes.append(f"{deltas_truncated} observed_deltas lists truncated to {MAX_FOREIGN_DELTAS} (row K)")
     if timestamps_clamped:

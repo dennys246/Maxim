@@ -11,11 +11,31 @@ error magnitude ``|R - V|``. NOT implemented: temporal-difference bootstrapping
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field
 import threading
 from enum import Enum
 from typing import Any
+
+
+_log = logging.getLogger(__name__)
+
+
+def bound_predicted_value(value: float, *, where: str) -> float:
+    """The Rescorla-Wagner value ``V`` lives in ``[0, 1]`` (``R`` is 0 / 0.5 / 1), so ``|R - V|``
+    -- the surprise a capture records -- never exceeds 1. The one place a value is brought back
+    into range, loudly: hivemind used to accept ``[-1, 1]``, which let one imported link make a
+    surprise of up to 2 (found by the memory-strength Phase 2b review).
+    """
+    if value is None:  # an explicit null in a persisted link: the neutral prior, said out loud
+        _log.warning("causal link predicted_value is null at %s; using the neutral prior 0.5", where)
+        return 0.5
+    v = float(value)
+    bounded = min(1.0, max(0.0, v))
+    if bounded != v:
+        _log.warning("causal link predicted_value %r at %s bounded to %r (must be in [0, 1])", v, where, bounded)
+    return bounded
 
 
 class Valence(Enum):
@@ -405,7 +425,7 @@ class CausalLink:
             outcome_signature=data["outcome_signature"],
             outcome_valence=Valence(data["outcome_valence"]),
             temporal_delta=TemporalDelta.from_dict(data["temporal_delta"]),
-            predicted_value=data.get("predicted_value", 0.5),
+            predicted_value=bound_predicted_value(data.get("predicted_value", 0.5), where=f"link {data['id']}"),
             prediction_history=data.get("prediction_history", []),
             observation_count=data.get("observation_count", 0),
             confidence=data.get("confidence", 0.5),
