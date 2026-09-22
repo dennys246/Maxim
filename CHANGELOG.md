@@ -25,6 +25,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Memory: honest activation (memory-strength plan Phase 1).** Every memory record now counts
+  USES (`activation_count`, `activation_sources`), separately from the access tracking that drives
+  retention today. LLM paths count at the consumer's render cap; pattern completion counts at
+  completion. **Live today:** the bio-enrichment thought response (3 episodes, 5 concepts), the
+  `memory_recall`/`concept_query` tools and pattern-completion predictions. **Wired but not live:**
+  the adaptive planner's decomposition prompt (robot runtime only) and the replan prompt (dead
+  until #845). Bookkeeping reads never count. One path, `MemoryLayer.activate(ids, source=...)`,
+  serves the Hippocampus, the ATL and the Angular Gyrus; consumers call it through
+  `activate_after_use`, so counting can never cost them content; the source vocabulary is closed
+  and checked in the record type. The fields persist on every record type and survive compression;
+  files written before this load as never-activated. The count is a massed tally, not a strength
+  signal. **No behaviour change:** nothing reads it until Phase 2's strength strategy (a strict red
+  gate on `memory/strategies.py`), and `access_count`/`touch()` are untouched. The plan's Phase 1
+  text is amended to what was built. Consumers that never deliver today are filed as #845.
+
 - **Minecraft bridge: opt-in `--system_messages` channel.** Forwards the game's own system messages
   (death messages that name a cause, advancements, server lines) as a new `system` event kind. The
   paired-data audit (`docs/experiments/paired_data_audit_2026-09-20.md`) found the bridge dropped

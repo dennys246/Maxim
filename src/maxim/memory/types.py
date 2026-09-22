@@ -26,11 +26,11 @@ from typing import Any
 # ``MemoryLayer.activate`` rejects anything else, so a typo cannot open a silent new bucket.
 ACTIVATION_SOURCES: frozenset[str] = frozenset(
     {
-        "prompt",  # content injected into an LLM prompt
-        "prediction",  # pattern completion / a predicted outcome read by a decision
-        "cue_recall",  # retrieved on a cue and handed to a consumer
-        "spreading",  # reached by spreading activation (not the seeds that started it)
-        "decision",  # read by a planner or a non-LLM decision step
+        "enrichment",  # rendered into the LLM's thought response (BioEnrichmentPipeline)
+        "tool",  # returned to the LLM by a memory/concept query tool
+        "replan",  # rendered into the replan prompt after a failure
+        "prediction",  # pattern completion: a past episode used to predict an outcome
+        "planner",  # read by a planner as a strategy or reflection
     }
 )
 
@@ -323,7 +323,10 @@ class MemoryRecord(ABC):
     # Honest activation (memory-strength plan Phase 1): counts only USE -- content that reached a
     # prompt, a prediction or a decision -- never bookkeeping reads. Separate from access_count on
     # purpose: nothing in the default retention path reads these, so recording them changes no
-    # behaviour until the Phase 2 strength strategy consumes them.
+    # behaviour. A MASSED, un-deduplicated lifetime tally (deliberation re-renders the same top 3
+    # every cycle): NOT a strength or importance signal. Do not rank, promote or protect on it --
+    # that rebuilds access_count's use-based immortality. Phase 2 hooks MemoryLayer.activate
+    # EVENTS; this count stays a diagnostic.
     activation_count: int = 0
     activation_sources: dict[str, int] = field(default_factory=dict, repr=False, compare=False)
 
@@ -339,20 +342,23 @@ class MemoryRecord(ABC):
     def activate(self, source: str) -> None:
         """Record one honest activation (this record was USED). Thread-safe.
 
-        Uses the record's own lock, like ``touch()``, so a store never has to upgrade a read lock
-        it holds: callers look records up, release the store lock, then activate. The WHEN of an
+        ``source`` must be in ``ACTIVATION_SOURCES`` -- checked here, in the type, so no path can
+        open a bucket by typo. Uses the record's own lock, like ``touch()``. The WHEN of an
         activation (a tick on the experience clock) arrives with that clock in Phase 2.
         """
+        if source not in ACTIVATION_SOURCES:
+            raise ValueError(f"unknown activation source {source!r}; expected one of {sorted(ACTIVATION_SOURCES)}")
         with self._touch_lock:
             self.activation_count += 1
             self.activation_sources[source] = self.activation_sources.get(source, 0) + 1
 
     def _activation_fields(self) -> dict[str, Any]:
         """The activation state, for every subclass's ``to_dict`` (one definition, not seven)."""
-        return {
-            "activation_count": self.activation_count,
-            "activation_sources": dict(self.activation_sources),
-        }
+        with self._touch_lock:  # count and sources move together; a save must not split them
+            return {
+                "activation_count": self.activation_count,
+                "activation_sources": dict(self.activation_sources),
+            }
 
     @staticmethod
     def _activation_kwargs(data: dict[str, Any]) -> dict[str, Any]:
