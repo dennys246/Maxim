@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from maxim.memory.encoding import EncodingSignals
 from tests.substrate.persistence_harness import run_round_trip, _compare_results
 
 
@@ -37,7 +38,7 @@ class TestHippocampusRoundTrip:
                 timestamp=time.time(),
                 perception=Perception(cli_input=f"test input {i}"),
             )
-            h.store(ep)
+            h.store(ep, encoding=EncodingSignals.unmeasured("api"))
 
         result = persistence_round_trip(
             state={"hippocampus": h},
@@ -158,7 +159,10 @@ class TestCombinedRoundTrip:
         from maxim.memory.types import EpisodicMemory, Perception
 
         h = Hippocampus(config=HippocampusConfig())
-        h.store(EpisodicMemory(id="ep_1", timestamp=time.time(), perception=Perception(cli_input="hello")))
+        h.store(
+            EpisodicMemory(id="ep_1", timestamp=time.time(), perception=Perception(cli_input="hello")),
+            encoding=EncodingSignals.unmeasured("api"),
+        )
 
         n = NAc()
         n.observe(

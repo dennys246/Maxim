@@ -26,6 +26,8 @@ import time
 from collections import deque
 from typing import Any, Callable
 
+from maxim.memory.encoding import EncodingSignals
+
 from maxim.agents.base import Agent
 from maxim.agents.bus import (
     AgentBus,
@@ -52,6 +54,31 @@ from maxim.memory.association_index import AssociationIndex
 from maxim.memory.text import normalize_tokens
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import get_abstraction_buffer
+
+
+def _percept_encoding(percept: Any) -> EncodingSignals:
+    """What a MemoryAgent capture was encoded with (memory-strength Phase 2b).
+
+    Salience and novelty count as MEASURED only for a percept made of camera detections:
+    PerceptionAgent derives salience from detection confidence and size, and novelty from new track
+    ids. Anything else it stamps -- 0.9 for typed input or the wake word, 0.0 with no detections --
+    and every non-percept capture (tool results, goals) is a constant, recorded as ``None``.
+    """
+    measured = (
+        percept is not None
+        and bool(getattr(percept, "detections", None))
+        and not getattr(percept, "cli_input", None)
+        and not getattr(percept, "has_maxim_keyword", False)
+    )
+    if not measured:
+        return EncodingSignals.unmeasured("memory_agent")
+    return EncodingSignals(
+        site="memory_agent",
+        salience=min(1.0, max(0.0, float(percept.salience))),
+        novelty=min(1.0, max(0.0, float(percept.novelty))),
+        surprise=None,
+        pain=None,
+    )
 
 
 class MemoryAgent(Agent, AgentOutputMixin):
@@ -724,6 +751,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
             decision={},
             action={"tool": tool_name} if tool_name else {},  # a mapping, not a bare name (#815)
             result=content if isinstance(content, dict) and "success" in content else {},
+            encoding=_percept_encoding(percept),
         )
 
         if memory_id:

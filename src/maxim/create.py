@@ -178,7 +178,13 @@ def agent(
     Example::
 
         agent = maxim.create.agent("scout", personality="cautious")
-        agent.hippocampus.capture(perception="dark cave ahead")
+        from maxim.memory.encoding import EncodingSignals
+        from maxim.memory.types import Perception
+
+        agent.hippocampus.capture(
+            perception=Perception(observations={"text": "dark cave ahead"}),
+            encoding=EncodingSignals.unmeasured("api"),  # say what you measured, or that you measured nothing
+        )
         agent.shutdown()
     """
     if tool_whitelist is not None:

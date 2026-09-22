@@ -12,6 +12,7 @@ Target Performance:
 
 from __future__ import annotations
 
+from maxim.memory.encoding import EncodingSignals
 import gc
 import sys
 import time
@@ -146,6 +147,7 @@ def test_benchmark_hippocampus_capture() -> None:
             decision=decision,
             action=action,
             outcome=outcome,
+            encoding=EncodingSignals.unmeasured("api"),
         )
         counter[0] += 1
         return memory_id
@@ -198,6 +200,7 @@ def test_benchmark_hippocampus_recall() -> None:
             decision=decision,
             action=action,
             outcome=outcome,
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
     def recall_operation():
@@ -241,6 +244,7 @@ def test_benchmark_hippocampus_sleep() -> None:
             decision=decision,
             action=action,
             outcome=outcome,
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
     def sleep_operation():
@@ -560,6 +564,7 @@ def measure_memory_footprint() -> dict[str, float]:
             decision=decision,
             action=action,
             outcome=outcome,
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
     current, peak = tracemalloc.get_traced_memory()

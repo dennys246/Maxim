@@ -13,6 +13,7 @@ Tests cover:
 
 from __future__ import annotations
 
+from maxim.memory.encoding import EncodingSignals
 import time
 
 import pytest
@@ -74,6 +75,7 @@ def _make_memory_args(goal="test goal", tool="test_tool", success=True):
         "decision": Decision(intent={"goal": goal}, confidence=0.5),
         "action": Action(tool_name=tool),
         "outcome": Outcome(success=success),
+        "encoding": EncodingSignals.unmeasured("api"),
     }
 
 
@@ -329,7 +331,7 @@ class TestHippocampusCapacityEviction:
             action=Action(),
             outcome=Outcome(),
         )
-        tiny_hippocampus.capture(record=lt_memory)
+        tiny_hippocampus.capture(record=lt_memory, encoding=EncodingSignals.unmeasured("api"))
         assert len(tiny_hippocampus) == 5
 
         # Trigger eviction — the long-term memory should survive

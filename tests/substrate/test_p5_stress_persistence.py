@@ -15,6 +15,7 @@ Stages:
 
 from __future__ import annotations
 
+from maxim.memory.encoding import EncodingSignals
 import threading
 import time
 from collections import deque
@@ -454,7 +455,7 @@ class TestP5Stage4FieldFidelity:
                 long_term=i % 5 == 0,
                 consolidated_at=time.time() if i % 5 == 0 else None,
             )
-            h.store(mem)
+            h.store(mem, encoding=EncodingSignals.unmeasured("api"))
 
         # Snapshot original values
         originals = {}
@@ -503,7 +504,7 @@ class TestP5Stage4FieldFidelity:
 
         # Create memory with exactly 10 access contexts
         mem = _make_memory(0, access_contexts=[f"ctx_{i}" for i in range(10)])
-        h.store(mem)
+        h.store(mem, encoding=EncodingSignals.unmeasured("api"))
         h.save()
 
         h2 = _fresh_hippocampus(hippo_path)
@@ -536,7 +537,7 @@ class TestP5Stage4FieldFidelity:
         )
 
         for m in [forming, short_term, long_term]:
-            h.store(m)
+            h.store(m, encoding=EncodingSignals.unmeasured("api"))
 
         h.save()
         h2 = _fresh_hippocampus(hippo_path)
@@ -742,7 +743,7 @@ class TestP5Stage5BioSystemRoundTrip:
                 promotion_pressure=i * 0.03,
                 access_contexts=[f"combined_ctx_{j}" for j in range(min(i % 11, 10))],
             )
-            h.store(mem)
+            h.store(mem, encoding=EncodingSignals.unmeasured("api"))
 
         # Populate NAc
         nac = NAc()
@@ -841,7 +842,7 @@ class TestP5Stage6ConcurrentAccess:
                         promotion_pressure=i * 0.01,
                         access_contexts=[f"t{thread_id}_ctx_{i % 5}"],
                     )
-                    h.store(mem)
+                    h.store(mem, encoding=EncodingSignals.unmeasured("api"))
             except Exception as e:
                 errors.append(f"writer-{thread_id}: {e}")
 
@@ -1001,7 +1002,7 @@ class TestP5Stage6ConcurrentAccess:
                         promotion_pressure=i * 0.01,
                         access_contexts=[f"agent{agent_id}_ctx"],
                     )
-                    h.store(mem)
+                    h.store(mem, encoding=EncodingSignals.unmeasured("api"))
                     nac.record_event("tool", f"a{agent_id}_tool_{i % 10}")
                     nac.record_outcome("tool", f"a{agent_id}_tool_{i % 10}", Valence.POSITIVE)
 

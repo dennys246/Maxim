@@ -469,6 +469,20 @@ class TestRowMNumericPoisoning:
         [merged_link] = report.nac["links"]["tool:probe"]
         assert merged_link["confidence"] == CAP_FOREIGN_CONFIDENCE
 
+    def test_a_negative_predicted_value_is_bounded_into_the_rescorla_wagner_range(
+        self, tmp_path: Path, journal: IngestionJournal
+    ) -> None:
+        # [-1, 0) used to pass ingest, and |R - V| then reached 2 on the receiver's next update
+        # (memory-strength Phase 2b review). Bounded to 0.0 -- the most-negative meaning -- and noted.
+        bundle = _write_bundle(
+            tmp_path / "b.zip",
+            nac_state=_nac_state(links={"tool:probe": [_link(predicted_value=-0.8)]}),
+        )
+        report = _ingest(bundle, journal)
+        [merged_link] = report.nac["links"]["tool:probe"]
+        assert merged_link["predicted_value"] == 0.0
+        assert "bounded to [0, 1]" in " ".join(report.notes)
+
     def test_far_future_last_observed_clamped(self, tmp_path: Path, journal: IngestionJournal) -> None:
         import time as _time
 

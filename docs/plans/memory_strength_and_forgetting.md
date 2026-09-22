@@ -306,7 +306,7 @@ typo, frozen into experiment fingerprints — never an env var or a literal.
    fold. Novelty: the store *is* its adaptive baseline (EC familiarity), so it gets no second one;
    hard-coded novelty constants (0.6 pain bus, 0.8 reflexion, 0.3 `Hippocampus.store_observation`) are not
    measurements and map to `None`; weight novelty by store confidence `n/(n + n₀)` so an empty store
-   does not saturate its first traces. Pain: `x = intensity`, **fixed** in this plan — adaptation is
+   does not saturate its first traces. Pain: `x = intensity` for **nociceptive** pain only — body damage (motor strain/thrashing, movement failure, external/world damage, safety violation); NOT tool-failure pain (a lifetime frustration count whose surprise already reaches the loop capture), NOT anticipated pain (a prediction, kept only as `extra["anticipated_pain"]` so fear cannot strengthen the memory of its own anticipation), NOT resource exhaustion or cognitive overload (drive/load), and NOT a drive breach the body publishes as external pain (`source="drive:<name>"` — air hunger, hunger; kept as `extra["drive_pain"]`) except `drive:health`, whose loss is tissue damage. An **innate prior**, owner decision 2026-09-22 (`proprioception/pain_bus.py::NOCICEPTIVE_PAIN_TYPES`). Intensity is **fixed** in this plan — adaptation is
    upstream in the pain producer, deferred ([deferred/adaptive_nociception.md](deferred/adaptive_nociception.md)).
    Drive pressure: `embodiment/sem.py::corrective_need_intensity`, relevance-gated — graded against
    the set point for homeostatic drives (below it only) and against the satisfaction/deprivation
@@ -333,6 +333,23 @@ typo, frozen into experiment fingerprints — never an env var or a literal.
    permanently yellow marker.
 6. **Owner of the looking-back primitive** (§Shared primitive): **this line**, as its first production
    caller; R4 and the language line consume it. *(Proposed; confirm at the Phase 2 kickoff.)*
+
+*Phase 2b slicing (2026-09-22, from a capture-site map):* **2b-i** — the typed `EncodingSignals`
+recorded on every trace, required at every capture door, write-only (SHIPPED with this note): four
+signals (salience, novelty, surprise, nociceptive pain) plus a required closed `site`, frozen.
+Review folds: **no `drive_pressure`/`relief` fields yet** (their per-drive shape is 2b-ii's to
+decide, so no scalar was persisted to break later), **no hippocampus-size denominator** (novelty's
+reference-set size is recorded by the novelty producer beside its value, in 2b-iii), and **the
+Rescorla-Wagner value is bounded to [0, 1] at every producer** (`causal_link.py::bound_predicted_value`
+in `from_dict`, hivemind ingest and merge — ingest used to accept [-1, 1], so one imported link could
+make |RPE| reach 2; no recorded bundle held such a value, checked over 713 files).
+**2b-ii** — per-drive relief (a new `tool_bridge` side-effect key, normalised by each drive's
+declared half-span) and drive pressure at the loop capture, and removing the pain-bus double count
+(`+0.2` salience, `success=False`) on the strength path only. **2b-iii = Phase 2S's salience/novelty
+producers** (EC novelty surfaced from `PatternResult.best_similarity`; a survival salience from
+drive, sensor change and pain). Found while mapping: a MemoryAgent tool-failure capture duplicates
+the loop's capture of the same action, and a reflection duplicates the loop's surprise — the Phase
+2c tag must count one event once.
 
 **Phase 2S — the survival gate** ([#848](https://github.com/dennys246/Maxim/issues/848); owner:
 "the gate definitely needs to activate memory"). Measured offline on main 4a0362e2 (a scratchpad

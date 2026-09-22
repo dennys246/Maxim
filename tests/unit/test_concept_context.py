@@ -11,6 +11,7 @@ Tests cover:
 
 from __future__ import annotations
 
+from maxim.memory.encoding import EncodingSignals
 import time
 from uuid import uuid4
 
@@ -121,7 +122,7 @@ def _make_episode(
         action=Action(),
         outcome=Outcome(success=success),
     )
-    hippocampus.capture(record=ep)
+    hippocampus.capture(record=ep, encoding=EncodingSignals.unmeasured("api"))
     return ep
 
 

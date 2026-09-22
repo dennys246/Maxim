@@ -9,6 +9,7 @@ Tests the complete memory integration including:
 
 from __future__ import annotations
 
+from maxim.memory.encoding import EncodingSignals
 import sys
 import time
 
@@ -199,6 +200,7 @@ class TestHippocampusIntegration:
             decision=sample_decision,
             action=sample_action,
             outcome=sample_outcome,
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
         assert memory_id is not None
@@ -220,6 +222,7 @@ class TestHippocampusIntegration:
             decision=sample_decision,
             action=sample_action,
             outcome=sample_outcome,
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
         memories = memory_hub.hippocampus.recall(goal="find mug")
@@ -242,6 +245,7 @@ class TestHippocampusIntegration:
             decision=sample_decision,
             action=sample_action,
             outcome=sample_outcome,
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
         successful = memory_hub.hippocampus.recall(success=True)
@@ -268,6 +272,7 @@ class TestHippocampusIntegration:
             decision=sample_decision,
             action=sample_action,
             outcome=sample_outcome,
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
         # SCN should have registered this memory's temporal signature
@@ -456,6 +461,7 @@ class TestSleepConsolidation:
             decision=sample_decision,
             action=sample_action,
             outcome=sample_outcome,
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
         # Run sleep
@@ -486,6 +492,7 @@ class TestSleepConsolidation:
             decision=sample_decision,
             action=sample_action,
             outcome=sample_outcome,
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
         sig = TemporalSignature.now()
@@ -552,6 +559,7 @@ class TestPerformance:
                 decision=sample_decision,
                 action=sample_action,
                 outcome=sample_outcome,
+                encoding=EncodingSignals.unmeasured("api"),
             )
         elapsed = time.perf_counter() - start
 
@@ -580,6 +588,7 @@ class TestPerformance:
                 decision=sample_decision,
                 action=sample_action,
                 outcome=sample_outcome,
+                encoding=EncodingSignals.unmeasured("api"),
             )
 
         start = time.perf_counter()

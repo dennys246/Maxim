@@ -5,6 +5,7 @@ This module provides reusable fixtures for testing core components.
 
 from __future__ import annotations
 
+from maxim.memory.encoding import EncodingSignals
 import atexit
 import os
 import shutil
@@ -1040,6 +1041,7 @@ def complete_memory_args(sample_perception, sample_context, sample_decision, sam
         "decision": sample_decision,
         "action": sample_action,
         "outcome": sample_outcome,
+        "encoding": EncodingSignals.unmeasured("api"),
     }
 
 
@@ -1248,6 +1250,7 @@ def create_memory_batch(hippocampus, count: int, **overrides) -> list[str]:
             decision=decision,
             action=action,
             outcome=outcome,
+            encoding=EncodingSignals.unmeasured("api"),
         )
         ids.append(memory_id)
 

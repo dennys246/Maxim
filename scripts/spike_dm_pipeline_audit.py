@@ -164,6 +164,7 @@ def _init_biosystems() -> dict[str, Any]:
 
 def _inject_test_stimuli(systems: dict[str, Any]) -> None:
     """Simulate a series of agent loop actions to exercise the pipeline."""
+    from maxim.memory.encoding import EncodingSignals
     from maxim.memory.types import Perception, Context, Decision, Action, Outcome
     from maxim.decisions.causal_link import Valence
     from maxim.proprioception.pain import PainSignal, PainType
@@ -175,6 +176,7 @@ def _inject_test_stimuli(systems: dict[str, Any]) -> None:
 
     # --- Stimulus 1: Tool action with positive outcome ---
     hippo.capture(
+        encoding=EncodingSignals.unmeasured("api"),
         perception=Perception(
             observations={"cli_input": "search for the key"},
             cli_input="search for the key",
@@ -200,6 +202,7 @@ def _inject_test_stimuli(systems: dict[str, Any]) -> None:
 
     # --- Stimulus 2: Same tool, same context (NAc confidence should increase) ---
     hippo.capture(
+        encoding=EncodingSignals.unmeasured("api"),
         perception=Perception(
             observations={"cli_input": "search for the gem"},
             cli_input="search for the gem",
@@ -224,6 +227,7 @@ def _inject_test_stimuli(systems: dict[str, Any]) -> None:
 
     # --- Stimulus 3: Tool failure (NAc learns negative outcome) ---
     hippo.capture(
+        encoding=EncodingSignals.unmeasured("api"),
         perception=Perception(
             observations={"cli_input": "pick the lock"},
             cli_input="pick the lock",
@@ -278,6 +282,7 @@ def _inject_test_stimuli(systems: dict[str, Any]) -> None:
 
     # --- Stimulus 7: Low-salience idle percept (should NOT be captured if < 0.55) ---
     hippo.capture(
+        encoding=EncodingSignals.unmeasured("api"),
         perception=Perception(
             observations={},
             salience=0.3,

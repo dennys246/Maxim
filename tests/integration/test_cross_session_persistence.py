@@ -96,7 +96,8 @@ bio.nac.update_cluster_reward("rt_agent", "cluster_1", "tool:warm", 1.0)
 # Episodic memory + EC signature (the NAc min_similarity=0.5 gate rides
 # on EC signature matching surviving the process boundary).
 mem = make_episode()
-bio.hippocampus.store(mem)
+from maxim.memory.encoding import EncodingSignals
+bio.hippocampus.store(mem, encoding=EncodingSignals.unmeasured("api"))
 bio.ec.register(mem.id, memory=mem)
 
 results = bio.memory_hub.on_session_end()

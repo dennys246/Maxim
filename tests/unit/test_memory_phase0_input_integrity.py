@@ -15,6 +15,7 @@ recipe cannot pass:
 
 from __future__ import annotations
 
+from maxim.memory.encoding import EncodingSignals
 import pytest
 
 from maxim.agents.bus import AgentBus, ToolResult
@@ -50,7 +51,13 @@ def test_capture_from_loop_rejects_a_non_mapping_action_loudly() -> None:
     hippocampus = Hippocampus.empty()
     with pytest.raises(TypeError, match="action must be a mapping"):
         hippocampus.capture_from_loop(
-            observation={}, state=None, intent={}, decision={}, action="http_fetch", result={}
+            observation={},
+            state=None,
+            intent={},
+            decision={},
+            action="http_fetch",
+            result={},
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
 
@@ -63,6 +70,7 @@ def test_capture_from_loop_reads_success_from_a_mapping_result() -> None:
         decision={},
         action={"tool": "t"},
         result={"success": False, "error": "nope"},
+        encoding=EncodingSignals.unmeasured("api"),
     )
     memory = hippocampus.get(mid)
     assert memory.outcome.success is False and memory.outcome.error == "nope"

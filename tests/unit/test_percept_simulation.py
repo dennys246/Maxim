@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from maxim.memory.encoding import EncodingSignals
 import time
 from pathlib import Path
 
@@ -222,6 +223,7 @@ class TestValidation:
             ),
             decision=Decision(intent={"goal": "pain_response"}, reasoning="Pain detected"),
             outcome=Outcome(success=False, result={"pain_type": "external_signal"}),
+            encoding=EncodingSignals.unmeasured("api"),
         )
         exp = Expectation(type="memory_formed", memory_contains="pain")
         results = validate_expectations([exp], RecordingSink(), hippocampus=hippo)
@@ -414,6 +416,7 @@ class TestHippocampusSearch:
         hippo.capture(
             perception=Perception(observations={"detected": "red_cup"}, salience=0.5),
             outcome=Outcome(success=True),
+            encoding=EncodingSignals.unmeasured("api"),
         )
         results = hippo.search_by_content("red_cup")
         assert len(results) == 1
@@ -423,6 +426,7 @@ class TestHippocampusSearch:
         hippo.capture(
             decision=Decision(reasoning="Avoiding the hot stove"),
             outcome=Outcome(success=True),
+            encoding=EncodingSignals.unmeasured("api"),
         )
         results = hippo.search_by_content("hot stove")
         assert len(results) == 1
@@ -432,6 +436,7 @@ class TestHippocampusSearch:
         hippo.capture(
             perception=Perception(observations={"detected": "blue_ball"}),
             outcome=Outcome(success=True),
+            encoding=EncodingSignals.unmeasured("api"),
         )
         results = hippo.search_by_content("xyz_nonexistent")
         assert len(results) == 0

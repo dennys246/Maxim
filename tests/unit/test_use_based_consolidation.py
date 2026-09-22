@@ -13,6 +13,7 @@ Tests the promotion_pressure → SHORT_TERM → LONG_TERM path:
 
 from __future__ import annotations
 
+from maxim.memory.encoding import EncodingSignals
 import threading
 import time
 
@@ -61,6 +62,7 @@ def _capture(hip: Hippocampus, goal: str = "find cup", tool: str = "look") -> st
         decision=Decision(intent={"goal": goal}),
         action=Action(tool_name=tool),
         outcome=Outcome(success=True, result="found it"),
+        encoding=EncodingSignals.unmeasured("api"),
     )
 
 
@@ -327,6 +329,7 @@ class TestPromotionPressure:
             decision=Decision(intent={"goal": "find cup"}),
             action=Action(tool_name="look"),
             outcome=Outcome(success=True, result="found"),
+            encoding=EncodingSignals.unmeasured("api"),
         )
         mem = hip.get(mem_id)
         assert mem.long_term is True

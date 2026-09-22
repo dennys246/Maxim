@@ -10,6 +10,7 @@ Covers:
 
 from __future__ import annotations
 
+from maxim.memory.encoding import EncodingSignals
 import threading
 import time
 import warnings
@@ -241,6 +242,7 @@ class TestHippocampusCapture:
                 result=None,
                 evaluations={},
                 run_id="test",
+                encoding=EncodingSignals.unmeasured("api"),
             )
         # Should not have raised — items may be dropped but no crash
         assert hippo._capture_queue.qsize() <= 2
@@ -263,6 +265,7 @@ class TestHippocampusCapture:
                 result=None,
                 evaluations={},
                 run_id="test",
+                encoding=EncodingSignals.unmeasured("api"),
             )
         elapsed = time.time() - start
         # Should complete quickly (< 2s even with 3 items on queue of size 1)

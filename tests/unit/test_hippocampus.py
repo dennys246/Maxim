@@ -6,6 +6,7 @@ and sleep consolidation.
 
 from __future__ import annotations
 
+from maxim.memory.encoding import EncodingSignals
 import threading
 import time
 
@@ -82,6 +83,7 @@ class TestHippocampusImmediatePromotion:
             decision=Decision(intent={"goal": "respond"}, reasoning="urgent", confidence=1.0),
             action=Action(tool_name="alert", tool_params={}),
             outcome=Outcome(success=True, result={}),
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
         memory = hippocampus.get(memory_id)
@@ -126,6 +128,7 @@ class TestHippocampusRecall:
             decision=Decision(intent={}, reasoning="", confidence=0.5),
             action=Action(tool_name="look", tool_params={}),
             outcome=Outcome(success=True, result={}),
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
         # Memory B: goal=find, success=False
@@ -135,6 +138,7 @@ class TestHippocampusRecall:
             decision=Decision(intent={}, reasoning="", confidence=0.5),
             action=Action(tool_name="look", tool_params={}),
             outcome=Outcome(success=False, result={}),
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
         # Memory C: goal=grasp, success=True
@@ -144,6 +148,7 @@ class TestHippocampusRecall:
             decision=Decision(intent={}, reasoning="", confidence=0.5),
             action=Action(tool_name="grasp", tool_params={}),
             outcome=Outcome(success=True, result={}),
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
         # Query: goal=find AND success=True -> only Memory A
@@ -164,6 +169,7 @@ class TestHippocampusRecall:
                 decision=Decision(intent={}, reasoning="", confidence=0.5),
                 action=Action(tool_name="test", tool_params={}),
                 outcome=Outcome(success=True, result={}),
+                encoding=EncodingSignals.unmeasured("api"),
             )
             ids.append(memory_id)
             time.sleep(0.01)  # Ensure distinct timestamps
@@ -238,6 +244,7 @@ class TestHippocampusSimilarRecall:
             decision=Decision(intent={}, reasoning="", confidence=0.5),
             action=Action(tool_name="look", tool_params={}),
             outcome=Outcome(success=True, result={}),
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
         # Memory with plate
@@ -249,6 +256,7 @@ class TestHippocampusSimilarRecall:
             decision=Decision(intent={}, reasoning="", confidence=0.5),
             action=Action(tool_name="look", tool_params={}),
             outcome=Outcome(success=True, result={}),
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
         # Query with mug perception
@@ -414,6 +422,7 @@ class TestAsyncCapture:
                 action={"tool": "focus_interests", "params": {}},
                 result=None,
                 run_id="test-1",
+                encoding=EncodingSignals.unmeasured("api"),
             )
             flushed = hipp.flush(timeout=5.0)
             assert flushed is True
@@ -435,6 +444,7 @@ class TestAsyncCapture:
                     action={"tool": "focus_interests", "params": {}},
                     result=None,
                     run_id=f"run-{i}",
+                    encoding=EncodingSignals.unmeasured("api"),
                 )
             flushed = hipp.flush(timeout=5.0)
             assert flushed is True
@@ -461,6 +471,7 @@ class TestAsyncCapture:
                 action={"tool": "test"},
                 result=None,
                 run_id="snap-test",
+                encoding=EncodingSignals.unmeasured("api"),
             )
 
             # Mutate state after queueing
@@ -497,6 +508,7 @@ class TestAsyncCapture:
                 action={"tool": "test"},
                 result=None,
                 run_id=f"run-{i}",
+                encoding=EncodingSignals.unmeasured("api"),
             )
 
         # Queue should have 3 items (2 dropped)
@@ -528,6 +540,7 @@ class TestAsyncCapture:
                 action={"tool": "test"},
                 result=None,
                 run_id=f"run-{i}",
+                encoding=EncodingSignals.unmeasured("api"),
             )
         # flush should timeout since no worker is draining
         result = hipp.flush(timeout=0.1)
@@ -547,6 +560,7 @@ class TestAsyncCapture:
                     action={"tool": "test"},
                     result=None,
                     run_id=f"run-{i}",
+                    encoding=EncodingSignals.unmeasured("api"),
                 )
             hipp.stop_capture_worker()
             assert len(hipp) == 5
@@ -584,6 +598,7 @@ class TestRecallLockSplit:
             decision=Decision(intent={}, reasoning="", confidence=0.5),
             action=Action(tool_name="look", tool_params={}),
             outcome=Outcome(success=True, result={}),
+            encoding=EncodingSignals.unmeasured("api"),
         )
 
         queries_before = hippocampus._stats.get("queries", 0)
@@ -617,6 +632,7 @@ class TestRecallLockSplit:
                 decision=Decision(intent={}, reasoning="", confidence=0.5),
                 action=Action(tool_name="look", tool_params={}),
                 outcome=Outcome(success=True, result={}),
+                encoding=EncodingSignals.unmeasured("api"),
             )
 
         query = Perception(
