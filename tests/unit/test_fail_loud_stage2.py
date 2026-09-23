@@ -192,33 +192,17 @@ def test_repo_inventory_is_nonempty(stage2):
 # and reports "no new firings" is the vacuous-guard shape check_slow_lane.py
 # was written for in the very same PR.
 
-# The FLOOR this synthetic baseline asserts against the LIVE `src/` scan: de-instrumenting the
-# measurement path must fail here. It is a floor, not an equality — the check fires only when the
-# live count falls BELOW it — so new instrumented sites need no edit and removals need a
-# deliberate one, which is the point.
-#
-# The CONSTANT moved 50 -> 49 on 2026-09-23 (#864), but the live count moved 52 -> 49: it had
-# drifted up two sites since this number was chosen, and `pain_bus.py` then went from 5
-# instrumented sites to 2. Stating only "50 -> 49" alongside "-3" does not reconcile, and a reader
-# checking the arithmetic concludes one of the numbers is wrong (review round).
-# There is now ZERO slack: the next legitimate removal anywhere in `src/maxim/` fails this test
-# rather than the de-instrumentation case it is for. That is deliberate — a floor with unexamined
-# slack is what let 52 drift past 50 unnoticed — but it means the next remover must read this note.
-# when its three interactive-mode gates stopped being wrapped in `try/except Exception`. Those
-# guards caught nothing reachable and could silently disable a contamination gate, so the swallows
-# were REMOVED rather than de-instrumented — the failure mode this floor exists to catch is the
-# opposite one, an instrumented swallow quietly rewritten to `logger.debug()` (see
-# `test_check_fails_when_instrumentation_was_deleted`).
-#
-# The frozen artifact at docs/experiments/data/fail_loud_stage2/baseline.json still reads 50. It
-# is a gated record stamped at its own git_hash and is deliberately NOT edited here; its count is
-# historical, true when it was taken.
-BASELINE_FLOOR = {"instrumented_site_count": 49, "fired_pairs": []}
+# A synthetic baseline for exercising `check`. Its `instrumented_site_count` is informational only
+# since the de-instrumentation guard moved into `lint_no_silent_swallows.py` check 3 (CI, per file):
+# a COUNT cannot tell a deleted swallow from a de-instrumented one, so gating on it made every
+# swallow burn-down fail and forced re-baselining past the guard. See
+# `test_check_does_not_gate_on_the_instrumented_site_count` below.
+SYNTHETIC_BASELINE = {"instrumented_site_count": 0, "fired_pairs": []}  # the count no longer gates; 0 says so
 
 
 def _baseline(tmp_path: Path, payload: dict | None = None) -> Path:
     path = tmp_path / "baseline.json"
-    path.write_text(json.dumps(payload if payload is not None else BASELINE_FLOOR), encoding="utf-8")
+    path.write_text(json.dumps(payload if payload is not None else SYNTHETIC_BASELINE), encoding="utf-8")
     return path
 
 
@@ -249,12 +233,18 @@ def test_check_accepts_a_real_sized_capture(stage2, tmp_path):
     assert rc == 0
 
 
-def test_check_fails_when_instrumentation_was_deleted(stage2, tmp_path):
-    """Rewriting log_swallowed_exception() into logger.debug() passes the
-    swallow lint and would silently de-instrument the measurement path."""
+def test_check_does_not_gate_on_the_instrumented_site_count(stage2, tmp_path, capsys):
+    """A fall in the COUNT is no longer a failure here — deleting a swallow is the point of #863.
+
+    The de-instrumentation case this used to guard (a `log_swallowed_exception()` quietly rewritten
+    to `logger.debug(...)`) is now caught per site by `lint_no_silent_swallows.py` check 3, in CI;
+    its tests live in `test_lint_no_silent_swallows.py`. The count is still PRINTED, as the
+    denominator for reading the firing comparison.
+    """
     baseline = _baseline(tmp_path, {"instrumented_site_count": 9999, "fired_pairs": []})
     rc = stage2.main(["check", "--capture", f"m={_bulk_capture(tmp_path, 'ok.jsonl')}", "--baseline", str(baseline)])
-    assert rc == 1
+    assert rc == 0
+    assert "9999 in the baseline" in capsys.readouterr().out
 
 
 def test_gzip_is_detected_by_magic_not_suffix(stage2, tmp_path):

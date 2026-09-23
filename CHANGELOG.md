@@ -231,14 +231,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Telemetry can no longer raise into the code it observes
   ([#863](https://github.com/dennys246/Maxim/issues/863), step 1).** Every `sim_*` emitter is now
   contractually non-raising: a bad argument or a failing terminal render is contained inside the
-  emitter and REPORTED through `log_swallowed_exception` with the emitter named, never dropped.
-  Before this, 31 of the 33 emitters leaked an exception to their caller, which is why 95 call
+  emitter and reported as a structured `swallowed_exception` event — WARNING the first time each
+  emitter fails, DEBUG after — through a new `site=` form of `log_swallowed_exception` that keeps
+  the Stage-1 semantics while naming the emitter rather than the shared wrapper. Before this, all
+  33 emitters could raise into their caller with a live sim (31 with none), which is why 95 call
   sites wrapped them in `try/except Exception` — and why most of those wraps also swallowed the
   caller's own logic, the shape behind #861. Only `Exception` is contained;
   `KeyboardInterrupt`/`SystemExit` still propagate. Five call sites whose `try` guarded nothing but
   an emit of inert arguments lost their now-redundant silent swallow. The remaining 88 wrap real
   caller logic — mostly argument construction, which runs before any emitter and which no
   containment can reach — so each is its own small decision, tracked on #863.
+
+- **De-instrumenting a swallow is now caught in CI; deleting one no longer trips anything.** The
+  fail-loud Stage-2 guard compared a COUNT of instrumented sites to a frozen number, which cannot
+  tell a deleted swallow from one quietly rewritten to stop reporting — so it failed every swallow
+  burn-down and could only be re-baselined past. `scripts/lint_no_silent_swallows.py` gains check
+  3 (per measurement-path file, swallows without a Stage-1 report may not rise) and check 4
+  (repo-wide, Stage-1 reports may disappear only together with their handlers, which keeps the old
+  guard's reach over all of `src/` and also catches a function de-instrumented while being moved).
+  Both compare per enclosing function, so a burn-down deleting one silent swallow cannot mask a
+  de-instrumentation elsewhere in the same file; masking inside a single function is the stated
+  remaining blind spot.
+  A report means the Stage-1 form only: the explicit `(e, operation=...)` form emits no event and
+  is now counted as what it is. One predicate defines this for both the lint and the Stage-2
+  inventory, so the two can no longer disagree.
 
 - **A pain-learning guard that failed toward the thing it guarded against
   ([#864](https://github.com/dennys246/Maxim/issues/864)).** Three PainBus learning subscribers

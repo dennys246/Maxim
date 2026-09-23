@@ -1,10 +1,14 @@
-"""The telemetry emitters never raise into their caller (#863, step 1).
+"""The telemetry emitters never raise into their caller, and REPORT what they contain (#863, step 1).
 
-Before this contract 31 of the 33 ``sim_*`` emitters leaked an exception on a bad argument or a
-failing render, so 99 call sites wrapped them defensively — and 60 of those wraps also enclosed the
-caller's own logic, which is how ``NAc.predict`` silently lost every prediction from the sim log
-(#861). The guarantee now lives in ONE place, the emitters themselves, so call sites can drop their
-``try`` and let their own mistakes surface.
+Before this contract every ``sim_*`` emitter could raise into its caller — all 33 with a live sim, 31
+with none (measured on origin/main) — so 95 call sites wrapped them defensively, and most of those
+wraps also enclosed the caller's own logic, which is how ``NAc.predict`` silently lost every
+prediction from the sim log (#861). The guarantee now lives in ONE place, the emitters themselves.
+
+Review round: the first cut contained failures through the explicit ``log_swallowed_exception(e,
+operation=...)`` form, a DEBUG line with no event. That made the contract QUIETER than having none,
+and the test that should have caught it monkeypatched the reporter away. The report arms below use
+the REAL function and read the real record.
 
 Emitters are DISCOVERED, never listed: a new ``sim_*`` added without the contract fails here, not in
 a caller months later.
@@ -68,33 +72,83 @@ def test_every_emitter_carries_the_contract(name):
     )
 
 
+@pytest.fixture
+def live_sim(monkeypatch):
+    """A LIVE sim at debug tier. Without it `sim_log` returns before touching any argument, and the
+    hostile arms for `sim_log`/`sim_debug` passed with containment deleted (review round)."""
+    monkeypatch.setattr(sl, "_sim_active", True)
+    monkeypatch.setattr(sl, "_debug_mode", True)
+    monkeypatch.setattr(sl, "_log_records", [])  # module-global: do not leak records across tests
+
+
 @pytest.mark.parametrize("name", _emitters())
-def test_hostile_arguments_never_escape_an_emitter(name, monkeypatch):
-    """The behavioural half. Before the contract, 31 of these raised."""
+def test_hostile_arguments_never_escape_an_emitter(name, monkeypatch, live_sim):
+    """The behavioural half. On origin/main all 33 of these raise with a live sim."""
     reported: list[str] = []
-    monkeypatch.setattr(sl, "log_swallowed_exception", lambda e=None, **kw: reported.append(kw.get("operation")))
+    monkeypatch.setattr(sl, "log_swallowed_exception", lambda *a, **kw: reported.append(kw.get("site")))
     _hostile_call(getattr(sl, name))  # must not raise
+    # A SITE, not just a call: reverting to the explicit form records `None` here, which a bare
+    # `assert reported` accepted (review round 2).
+    assert reported and all(s and s.startswith("sim_logger.py:") for s in reported), (name, reported)
 
 
-def test_a_contained_failure_is_REPORTED_not_dropped(monkeypatch):
-    """Containment that loses the failure would just move the silence one frame down."""
-    reported: list[str] = []
-    monkeypatch.setattr(sl, "log_swallowed_exception", lambda e=None, **kw: reported.append(kw.get("operation")))
-    _hostile_call(sl.sim_nac_predict)
-    assert reported == ["sim_emit:sim_nac_predict"], reported
+@pytest.fixture
+def fresh_dedup(monkeypatch):
+    import maxim.utils.logging as ulog
+
+    monkeypatch.setattr(ulog, "_swallow_seen", set())
+
+
+def _swallow_records(caplog):
+    return [r for r in caplog.records if getattr(r, "event", None) == "swallowed_exception"]
+
+
+def test_a_contained_failure_is_a_real_stage1_report(caplog, fresh_dedup, live_sim):
+    """Through the REAL reporter: a WARNING carrying the structured event the Stage-2 gate counts,
+    with the emitter named. The explicit form this replaced produced a DEBUG line with none of that
+    — the JSONL record was `{"e": "log"}` and nothing else."""
+    import logging
+
+    with caplog.at_level(logging.DEBUG, logger="maxim"):
+        _hostile_call(sl.sim_nac_predict)
+    [rec] = _swallow_records(caplog)
+    assert rec.levelno == logging.WARNING, "a contained emitter failure was not surfaced"
+    assert rec.data["site"].startswith("sim_logger.py:sim_nac_predict:"), rec.data
+    assert rec.data["exc_type"] == "RuntimeError"
+
+
+def test_each_emitter_gets_its_own_first_warning(caplog, fresh_dedup, live_sim):
+    """One wrapper frame for 33 emitters would share one dedup key: the first failure anywhere WARNs
+    and every later one, from any other emitter, is silent. The supplied site prevents that."""
+    import logging
+
+    with caplog.at_level(logging.DEBUG, logger="maxim"):
+        _hostile_call(sl.sim_nac_predict)
+        _hostile_call(sl.sim_pain)
+        _hostile_call(sl.sim_pain)  # same emitter again: THIS one may drop to DEBUG
+    warns = [r.data["site"].split(":")[1] for r in _swallow_records(caplog) if r.levelno == logging.WARNING]
+    assert warns == ["sim_nac_predict", "sim_pain"], warns
 
 
 def test_a_failing_terminal_render_never_escapes_sim_log(monkeypatch):
     """The other leak: sim_log's own render path, exercised with a live sim and a broken display."""
 
+    calls: list[str] = []
+
     class _BrokenDisplay:
         def log(self, *args, **kwargs):
+            calls.append("log")
             raise OSError("terminal went away")
 
     monkeypatch.setattr(sl, "_sim_active", True)
+    monkeypatch.setattr(sl, "_debug_mode", True)  # past the tier gate, or the display is never reached
+    monkeypatch.setattr(sl, "_log_records", [])
     monkeypatch.setattr(sl, "_active_display", _BrokenDisplay())
-    monkeypatch.setattr(sl, "log_swallowed_exception", lambda e=None, **kw: None)
+    monkeypatch.setattr(sl, "log_swallowed_exception", lambda *a, **kw: None)
     sl.sim_log("NAc", "a perfectly ordinary event")  # must not raise
+    # The first version of this test returned at the display-tier gate and never reached the broken
+    # display, so it passed with containment deleted (review round).
+    assert calls == ["log"], "the render path was never exercised"
 
 
 def test_containment_does_not_swallow_success(monkeypatch):

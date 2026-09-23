@@ -25,39 +25,50 @@ import sys
 import threading
 import time
 from contextlib import contextmanager
-from typing import Any, Callable, Generator
+from typing import Any, Callable, Generator, ParamSpec, TypeVar
 from maxim.utils.logging import log_swallowed_exception
 
 logger = logging.getLogger(__name__)
 
 
-def _contained(fn: Callable[..., Any]) -> Callable[..., Any]:
-    """Make an emitter contractually NON-RAISING (#863).
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
-    Instrumentation must never cost its caller anything. Before this contract 31 of the 33
-    ``sim_*`` emitters leaked an exception to their caller on a bad argument or a failing render,
-    so 99 call sites wrapped them in ``try/except Exception`` — and 60 of those wraps also enclosed
-    the CALLER's own logic, swallowing its bugs along with the logger's. That is how
-    ``NAc.predict`` lost every prediction from the sim log for months (#861): a guard aimed at the
-    telemetry subsystem caught the method's own ``AttributeError``.
 
-    With the guarantee HERE, a call site no longer needs a ``try`` at all, and removing one makes
-    caller-side mistakes loud again — the second half of #863. The containment is the same
-    principle as ``memory/layer.py::activate_after_use``: a use of the logger can never cost you
-    what you already have.
+def _contained(fn: Callable[_P, _R]) -> Callable[_P, _R | None]:
+    """Make an emitter contractually NON-RAISING, and REPORT what it contains (#863).
 
-    Failures are REPORTED, never silently dropped: ``log_swallowed_exception`` names the emitter.
-    Only ``Exception`` is contained — ``KeyboardInterrupt``/``SystemExit`` still propagate.
-    ``test_sim_emitter_contract.py`` discovers every public emitter and holds each to this, so a
-    new emitter added without the decorator fails there rather than in a caller months later.
+    Instrumentation must never cost its caller anything. Before this contract every ``sim_*``
+    emitter could raise into its caller on a bad argument or a failing render, so 95 call sites
+    wrapped them in ``try/except Exception`` — and most of those wraps also enclosed the caller's
+    own logic, swallowing its bugs along with the logger's. That is how ``NAc.predict`` lost every
+    prediction from the sim log for months (#861).
+
+    **It reports through the Stage-1 path with a SUPPLIED site**, one per emitter:
+    ``swallowed_exception`` event, WARNING the first time each emitter fails, DEBUG after. The
+    first cut used the explicit form (``log_swallowed_exception(e, operation=...)``), which is a
+    DEBUG line with no event — its JSONL record is ``{"e": "log"}`` and nothing else. That made the
+    contract QUIETER than no contract: a caller with no ``try`` used to get a traceback and got an
+    invisible line instead (both review lenses, measured). The site is ``sim_logger.py:<emitter>:
+    <line>`` rather than this wrapper's frame, because one frame for 33 emitters would share one
+    dedup key — the first failure anywhere would WARN and every later one would be silent.
+
+    This is NOT the deleted ``@resilient``. That was a general swallowing decorator; this is private
+    to the telemetry module, applied only to functions whose whole job is to emit, never to code
+    that writes state, and every failure it contains is reported. Keep it that way.
+
+    Argument construction happens in the CALLER, before this wrapper runs, so no containment here
+    can reach it. That is why the call sites need reading one by one rather than sweeping (#863).
+    Only ``Exception`` is contained; ``KeyboardInterrupt``/``SystemExit`` propagate.
     """
+    site = f"sim_logger.py:{fn.__name__}:{fn.__code__.co_firstlineno}"
 
     @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R | None:
         try:
             return fn(*args, **kwargs)
-        except Exception as e:
-            log_swallowed_exception(e, operation=f"sim_emit:{fn.__name__}")
+        except Exception:
+            log_swallowed_exception(site=site)
             return None
 
     wrapper.__maxim_contained__ = True  # type: ignore[attr-defined]
