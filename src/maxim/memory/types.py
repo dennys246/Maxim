@@ -14,6 +14,7 @@ completion predictions (ATL graph chaining → MemoryAgent).
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -22,6 +23,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from maxim.memory.encoding import EncodingSignals
+
+# S must stay strictly positive: R = exp(-dt/S) divides by it.
+_MIN_STORAGE_STRENGTH = 1e-9
 
 
 # Where an honest activation came from (memory-strength plan Phase 1). Closed on purpose:
@@ -44,6 +48,57 @@ def _encoding_fields(record: Any) -> dict[str, Any]:
     recorded ``EncodingSignals.unmeasured(site)``.
     """
     return {"encoding": record.encoding.to_dict() if record.encoding is not None else None}
+
+
+def _strength_fields(record: Any) -> dict[str, Any]:
+    """The capture-time strength stamp, for episodic ``to_dict`` (memory-strength Phase 2c).
+
+    Deliberately NOT on ``MemoryRecord``: a field the base declares but only some subclasses
+    serialize is a silent drop waiting to happen (stamp ``S`` on a concept, save, lose it). ``S``
+    lives exactly where ``encoding`` lives until ATL's path earns it, and moves to the base WITH its
+    serialization in the same commit.
+    """
+    return {"storage_strength": record.storage_strength, "encoding_tag": record.encoding_tag}
+
+
+def _strength_number(value: Any, *, name: str, low: float, high: float, record_id: Any) -> float | None:
+    """One persisted strength number, or ``None`` with a warning if disk cannot be trusted for it.
+
+    As strict as ``_encoding_kwargs``, and for a sharper reason: a negative ``storage_strength``
+    makes ``R = exp(-dt/S)`` exceed 1, a trace that gets MORE retrievable as it ages, and NaN
+    poisons every comparison it touches. Unstamped is a state the strategy handles; nonsense is not.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        number = None
+    else:
+        number = float(value) if low <= float(value) <= high else None
+    if number is None:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "memory %s has an out-of-range %s (%r); loading it as never stamped", record_id, name, value
+        )
+    return number
+
+
+def _strength_kwargs(data: dict[str, Any]) -> dict[str, Any]:
+    """Load one trace's strength stamp. Absent (every file written before Phase 2c) = never stamped,
+    which the strategy reads as "encode it now", NOT as a zero-strength trace."""
+    record_id = data.get("id")
+    return {
+        "storage_strength": _strength_number(
+            data.get("storage_strength"),
+            name="storage_strength",
+            low=_MIN_STORAGE_STRENGTH,
+            high=math.inf,
+            record_id=record_id,
+        ),
+        "encoding_tag": _strength_number(
+            data.get("encoding_tag"), name="encoding_tag", low=0.0, high=1.0, record_id=record_id
+        ),
+    }
 
 
 def _encoding_kwargs(data: dict[str, Any]) -> dict[str, Any]:
@@ -455,6 +510,14 @@ class CompressedMemory(CompressedRecord):
     access_count, long_term, consolidated_at, edge_count, touch().
     """
 
+    # Carried from the full episode (Phase 2c): compression must not reset how well-learned a trace
+    # is. HERE and not on CompressedRecord: its other subclasses (CompressedSemantic,
+    # CompressedMathMemory) do not serialize these, and a base field only some subclasses persist is
+    # the silent drop _strength_fields' own docstring argues against. ATL's forms get S with their
+    # serialization, in the same commit.
+    storage_strength: float | None = field(default=None, repr=False, compare=False)
+    encoding_tag: float | None = field(default=None, repr=False, compare=False)
+
     run_id: str = ""
 
     # Essential decision data (for queries)
@@ -511,6 +574,8 @@ class CompressedMemory(CompressedRecord):
             salience=memory.perception.salience,
             edge_count=edge_count,
             encoding=memory.encoding,
+            storage_strength=memory.storage_strength,
+            encoding_tag=memory.encoding_tag,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -537,6 +602,7 @@ class CompressedMemory(CompressedRecord):
             "salience": self.salience,
             "edge_count": self.edge_count,
             **_encoding_fields(self),
+            **_strength_fields(self),
             "_compressed": True,  # Marker for deserialization
         }
 
@@ -565,6 +631,7 @@ class CompressedMemory(CompressedRecord):
             salience=data.get("salience", 0.5),
             edge_count=data.get("edge_count", 0),
             **_encoding_kwargs(data),
+            **_strength_kwargs(data),
         )
 
 
@@ -597,6 +664,12 @@ class EpisodicMemory(MemoryRecord):
     # capture and the site that captured it. Write-only until the Phase 2c strength strategy reads
     # it. None = captured before encoding was recorded.
     encoding: EncodingSignals | None = field(default=None, repr=False, compare=False)
+
+    # How well-learned this trace is (memory-strength Phase 2c): S0 = s_base * (1 + k * tag) at
+    # capture, and the tag it was computed from, kept so a survivor can say why it survived. Both
+    # write-only until the Phase 2c-3 strength strategy reads them; None = never stamped.
+    storage_strength: float | None = field(default=None, repr=False, compare=False)
+    encoding_tag: float | None = field(default=None, repr=False, compare=False)
 
     @property
     def duration_ms(self) -> float:
@@ -657,6 +730,7 @@ class EpisodicMemory(MemoryRecord):
             "outcome": self.outcome.to_dict(),
             "metadata": self.metadata,
             **_encoding_fields(self),
+            **_strength_fields(self),
         }
 
     @classmethod
@@ -682,6 +756,7 @@ class EpisodicMemory(MemoryRecord):
             outcome=Outcome.from_dict(data.get("outcome", {})),
             metadata=data.get("metadata", {}),
             **_encoding_kwargs(data),
+            **_strength_kwargs(data),
         )
 
 

@@ -25,6 +25,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Every new memory now records how strongly it encoded (memory-strength Phase 2c-2).** Two fields
+  land on each episode at capture: `encoding_tag`, a noisy-OR (`1 - prod(1 - x)`) over each
+  importance signal's deviation from **its own baseline**, and `storage_strength`
+  (`S0 = s_base * (1 + k * tag)`, in seconds of experience). Deviation, not raw value: the 0.5
+  salience every capture carries by default would otherwise put a floor of 0.5 under every tag.
+  Noisy-OR, not max or sum: coincident signals add — which is what separate neuromodulator channels
+  do — while a crowd of weak ones cannot manufacture importance. Novelty is weighted by
+  `n / (n + 50)` over the store's size at capture, so an empty store, which calls everything novel,
+  does not encode its first traces at maximum strength; drive pressure is **relevance-gated and
+  fails closed**, counting only for drives the action actually relieved, so a starving stretch tags
+  what touched hunger rather than everything that happened while hungry.
+  **Write-only:** nothing reads either field until the Phase 2c-3 strength strategy, and a guard
+  test asserts `memory/strategies.py` still names neither, so default retention is unchanged.
+  The stamp is taken once, at capture, and carried through compression — never recomputed, because
+  novelty's weight depends on the store as it was, so re-tuning changes what encodes next rather
+  than rewriting what already happened. Files written before this phase load as `None`
+  ("never stamped"), which the strategy will read as "encode it now", not as a worthless trace.
+
 - **`maxim config set memory.strategy <name>` — the retention model is now selectable, and a typo
   can never quietly keep the old one (memory-strength Phase 2c-1).** A new `memory` config section
   (`MemoryConfigSection`, `MAXIM_MEMORY_STRATEGY`) picks between `access_based` (today's, and the

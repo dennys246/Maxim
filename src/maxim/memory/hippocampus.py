@@ -36,7 +36,14 @@ if TYPE_CHECKING:
 
 from maxim.agents.bus import DependencyGraph, EdgeType
 from maxim.agents.modality import SubstrateModality
-from maxim.memory.encoding import EncodingSignals, require_encoding
+from maxim.memory.encoding import (
+    K_DEFAULT,
+    S_BASE_DEFAULT,
+    EncodingSignals,
+    encoding_tag,
+    initial_storage_strength,
+    require_encoding,
+)
 from maxim.memory.experience_clock import ExperienceClock
 from maxim.memory.episode import (
     BoundaryRule,
@@ -204,6 +211,22 @@ class HippocampusConfig:
 
     # Memory strategy to use: "access_based", "importance_based", "composite"
     memory_strategy: str = "access_based"
+
+    # Encoding strength (memory-strength Phase 2c-2): S0 = s_base * (1 + k * tag), in SECONDS of
+    # experience. Knobs live here, on the object that uses them, rather than in ``memory.*`` config:
+    # a config key nothing reads is the defect 2c-1's review caught. Phase 2c-3 -- which introduces
+    # the strategy that READS S -- adds the config keys and threads them here.
+    strength_s_base: float = S_BASE_DEFAULT
+    strength_k: float = K_DEFAULT
+
+    def __post_init__(self) -> None:
+        """Reject an unusable strength knob HERE, where the operator set it.
+
+        Unvalidated, a bad value raises inside ``capture()`` instead -- and on the async capture
+        worker that is caught by its broad "Async capture failed" handler, so the memory is lost
+        rather than the mistake reported. Validating at construction makes stamping unable to fail.
+        """
+        initial_storage_strength(0.0, s_base=self.strength_s_base, k=self.strength_k)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Long-Term Memory Consolidation
@@ -583,12 +606,31 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             state_snapshot=state_snapshot,
         )
         memory.encoding = require_encoding(encoding)
+        self._stamp_encoding_strength(memory)
 
         with self._rwlock.write():
             self._insert_and_index_locked(memory_id, memory)
 
         self._emit_capture_telemetry(memory_id, memory)
         return memory_id
+
+    def _stamp_encoding_strength(self, memory: "EpisodicMemory") -> None:
+        """Record how strongly this trace encoded, from the signals it was captured with.
+
+        Stamped at capture, never recomputed: novelty is weighted by how many traces the store held
+        when this one formed, so the same signals in a bigger store are a different tag. Re-tuning
+        ``strength_s_base`` / ``strength_k`` therefore changes what encodes NEXT, not what already
+        happened -- the record is history, not a view.
+
+        Write-only until the Phase 2c-3 strength strategy reads it.
+        """
+        if memory.encoding is None:  # store()/capture() require encoding, so this is belt not braces
+            return
+        tag = encoding_tag(memory.encoding, store_size=len(self._memories))
+        memory.encoding_tag = tag
+        memory.storage_strength = initial_storage_strength(
+            tag, s_base=self.config.strength_s_base, k=self.config.strength_k
+        )
 
     def _build_capture_record(
         self,
