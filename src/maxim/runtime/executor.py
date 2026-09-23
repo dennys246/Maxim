@@ -237,15 +237,25 @@ class Executor:
 
         # Suppress NAc causal learning during interactive mode — human-directed
         # tool calls would corrupt the causal model with patterns that depend
-        # on human presence rather than environmental facts. See plans/README.md
-        # "Interactive NAc attribution" for the longer-term fix.
-        _suppress_nac = False
-        try:
-            from maxim.simulation.sim_logger import get_interactive_mode, InteractiveMode
+        # on human presence rather than environmental facts. Rationale and the AUTO caveat live
+        # on ``proprioception/pain_bus.py::_human_is_driving``; the longer-term single-home fix is
+        # #864. (The old pointer to plans/README.md "Interactive NAc attribution" never resolved.)
+        # Unguarded on purpose (#864, review round -- both lenses). This was a bare
+        # `except Exception: pass` that left `_suppress_nac = False` on any failure, so a fault
+        # here booked human-directed tool calls into NAc's direct-attribution map. It guards the
+        # PRIMARY path: `build_pain_bus`'s docstring records that tool-invoked pain reaches NAc
+        # through `ToolPainBridge` REGARDLESS of the bus subscriptions, so the three gates in
+        # `proprioception/pain_bus.py` cover only out-of-band pain and this one covers the rest.
+        # Nothing here can raise (`maxim.simulation` is in-tree; `get_interactive_mode` returns a
+        # module global), which is exactly why catching was never protection -- only concealment.
+        #
+        # Deliberately a second copy of `pain_bus.py::_human_is_driving`'s one-line predicate
+        # rather than an import of it: `runtime` reaching into `proprioception` for a `simulation`
+        # fact would buy one source of truth with a worse edge. Giving the predicate a single home
+        # is #864's open layering half.
+        from maxim.simulation.sim_logger import InteractiveMode, get_interactive_mode
 
-            _suppress_nac = get_interactive_mode() == InteractiveMode.ON
-        except Exception:
-            pass
+        _suppress_nac = get_interactive_mode() == InteractiveMode.ON
 
         if self._tool_pain_bridge is not None and not _suppress_nac:
             self._tool_pain_bridge.record_tool_start(tool_name, invocation_id, context={"params": params})

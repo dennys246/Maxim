@@ -1420,3 +1420,96 @@ class TestNAcRewardBiasDisabledEnv:
             assert _read_nac_reward_bias_disabled_env() is expected
         finally:
             os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None)
+
+
+class TestPredictTelemetry:
+    """`predict` must actually EMIT what it predicted (#861).
+
+    The defect this pins: the payload read `result.outcome_signature`, a field
+    `OutcomePrediction` does not have, so every call raised `AttributeError` inside the
+    logging guard. Predictions were correct; the sim log lost all of them, and the only
+    evidence was a swallowed-exception WARNING. A measurement that silently stops
+    measuring looks exactly like a system with nothing to report.
+    """
+
+    def _trained(self, nac, valence_positive):
+        for _ in range(3):
+            nac.observe(
+                event_type="tool",
+                event_signature="reliable_tool",
+                outcome_type="result",
+                outcome_signature="success",
+                outcome_valence=valence_positive,
+                delta_seconds=1.0,
+            )
+        return nac
+
+    def test_a_prediction_reaches_the_sim_log_with_its_outcome(self, nac, valence_positive, monkeypatch):
+        import maxim.simulation.sim_logger as sim_logger
+
+        seen: list[tuple[str, list]] = []
+        monkeypatch.setattr(
+            sim_logger, "sim_nac_predict", lambda event, outcomes, **kw: seen.append((event, list(outcomes)))
+        )
+
+        self._trained(nac, valence_positive)
+        prediction = nac.predict("tool", "reliable_tool")
+
+        assert prediction is not None
+        assert seen, "predict() emitted no telemetry at all"
+        event, outcomes = seen[-1]
+        assert event == "reliable_tool"
+        assert outcomes, "the prediction was reported with an EMPTY outcome list"
+        assert outcomes[0][0] == prediction.predicted_outcome
+        assert outcomes[0][1] == prediction.confidence
+
+    def test_an_unknown_event_reports_no_outcomes_rather_than_nothing(self, nac, monkeypatch):
+        import maxim.simulation.sim_logger as sim_logger
+
+        seen: list[tuple[str, list]] = []
+        monkeypatch.setattr(
+            sim_logger, "sim_nac_predict", lambda event, outcomes, **kw: seen.append((event, list(outcomes)))
+        )
+        assert nac.predict("tool", "never_seen_before") is None
+        assert seen and seen[-1] == ("never_seen_before", [])
+
+    def test_the_payload_is_built_outside_the_logging_guard(self):
+        """The structural half of #861, which nothing else pins (review round, Executor #2).
+
+        Moving the payload back under the `try` — keeping the corrected field name — passes every
+        other test in this class, so the suite would pin the rename and silently lose the reason
+        the rename was safe. Then the next wrong field name is swallowed again.
+        """
+        import ast
+        import inspect
+
+        from maxim.decisions.nac import NAc
+
+        tree = ast.parse(inspect.cleandoc(inspect.getsource(NAc.predict)))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Try):
+                continue
+            # The payload may be READ inside the guard (`outcomes=outcomes` is the whole point);
+            # what must not happen is BUILDING it there, where a bad field read gets swallowed.
+            branches = [*node.body, *node.orelse, *node.finalbody, *(s for h in node.handlers for s in h.body)]
+            built = [
+                t.id
+                for stmt in branches
+                for n in ast.walk(stmt)
+                if isinstance(n, ast.Assign)
+                for t in n.targets
+                if isinstance(t, ast.Name)
+            ]
+            assert "outcomes" not in built, "the telemetry payload is BUILT inside the logging guard again"
+
+    def test_a_failing_sink_cannot_cost_the_caller_its_prediction(self, nac, valence_positive, monkeypatch):
+        """The guard that remains is the one that earns its place: it protects against the LOGGER,
+        which really can fail, and no longer against this method's own payload."""
+        import maxim.simulation.sim_logger as sim_logger
+
+        def _boom(**kwargs):
+            raise RuntimeError("sink down")
+
+        monkeypatch.setattr(sim_logger, "sim_nac_predict", _boom)
+        self._trained(nac, valence_positive)
+        assert nac.predict("tool", "reliable_tool") is not None  # logging cannot cost the result

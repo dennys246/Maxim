@@ -78,7 +78,9 @@ branch: **the swallows are dead defensive weight, safe to narrow — Stage 3 is 
 
 Two things the artifact records rather than smooths over: (a) the instrumented-site count is
 **50**, not the 48 of the Stage-1 note — recompute with `fail_loud_stage2.py inventory`, never
-from prose; (b) per-site coverage is NOT proven — a zero over two modes is a comparison
+from prose (and as of 2026-09-23 / #864 the live count is **49**, after three deliberate removals
+in `proprioception/pain_bus.py`; the artifact's 50 is historical, which is exactly why the
+instruction is to recompute); (b) per-site coverage is NOT proven — a zero over two modes is a comparison
 baseline, not proof that all 50 sites are unreachable.
 
 **The grep in the original instruction does not work as written.** "Grep the JSONL for

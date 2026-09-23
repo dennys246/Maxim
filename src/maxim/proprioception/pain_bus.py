@@ -458,6 +458,45 @@ def create_pain_memory_subscriber(
     return _on_pain
 
 
+def _human_is_driving() -> bool:
+    """True while a human is issuing the actions (interactive mode), so pain must not TEACH.
+
+    Human-directed actions corrupt the Pavlovian and situation-fear maps: the agent did not
+    choose them, so crediting their outcomes to its own policy is attribution of someone else's
+    behaviour. Every learning subscriber below consults this; ``create_pain_memory_subscriber``
+    deliberately does not, because REMEMBERING what happened stays correct either way.
+
+    **Not guarded, on purpose (#864).** This used to be three copies of the same
+    ``try: ... except Exception: log_swallowed_exception()``, which protected against nothing --
+    ``maxim.simulation`` is in-tree and ``get_interactive_mode`` returns a module global, so
+    neither can fail -- while catching anything that went wrong and then FALLING THROUGH to learn
+    anyway. A contamination guard that fails toward the contamination reads as protection and is
+    worse than none. If this ever does raise, that is a real fault and it should be loud.
+
+    Containment lives one layer up, not here: ``PainBus.publish`` and
+    ``_bridge_reaction_to_pain_subs`` already wrap every subscriber call and log a named WARNING,
+    so a raise here skips THIS subscriber's learning and leaves memory capture and the other
+    subscribers intact. Loud and fail-CLOSED, never a crash in pain delivery.
+
+    Reads ``InteractiveMode.ON`` only. ``AUTO`` is the module default and does NOT count as
+    driving, even for a DM campaign, which does prompt a human under ``AUTO`` -- the CLI resolves
+    ``AUTO`` early but the ``pymaxim`` API path does not. That is existing behaviour this helper
+    inherited, not a decision made here; the name is about the intent, not a proof.
+
+    Layering: this is the one place ``proprioception`` reads ``simulation`` state for BEHAVIOUR
+    rather than telemetry, and ``runtime/executor.py`` carries a second copy of the same predicate
+    for the tool-invoked path. Giving it ONE home as an injected dependency is #864's open half.
+    It is NOT blocked on #866 -- a ``Callable[[], bool]`` names nothing about where
+    ``InteractiveMode`` lives. What it does need: the gate is DYNAMIC (``api.py`` and
+    ``console/handle.py`` both flip and restore interactive mode around a scope), so it must be a
+    late-bound callable and never a ``bool`` captured at ``build_pain_bus`` time -- which would be
+    a silent correctness bug in exactly the sessions the gate exists for.
+    """
+    from maxim.simulation.sim_logger import InteractiveMode, get_interactive_mode
+
+    return get_interactive_mode() == InteractiveMode.ON
+
+
 def create_percept_valence_subscriber(
     nac: Any,
     intensity_threshold: float = 0.3,
@@ -520,13 +559,8 @@ def create_percept_valence_subscriber(
         # avoid contaminating the Pavlovian map with human-directed
         # action context. See plans/README.md "Interactive NAc
         # attribution".
-        try:
-            from maxim.simulation.sim_logger import InteractiveMode, get_interactive_mode
-
-            if get_interactive_mode() == InteractiveMode.ON:
-                return
-        except Exception:
-            log_swallowed_exception()
+        if _human_is_driving():
+            return
 
         context = signal.context or {}
         agent_id = str(context.get("agent_id") or "")
@@ -603,16 +637,11 @@ def create_pain_nac_subscriber(
         if signal.intensity < intensity_threshold:
             return
 
-        # Suppress NAc causal learning during interactive mode — human-
-        # directed actions would corrupt the causal model. See
-        # plans/README.md "Interactive NAc attribution".
-        try:
-            from maxim.simulation.sim_logger import get_interactive_mode, InteractiveMode
-
-            if get_interactive_mode() == InteractiveMode.ON:
-                return
-        except Exception:
-            log_swallowed_exception()
+        # Suppress NAc causal learning while a human is driving — human-directed actions would
+        # corrupt the causal model. Rationale and the AUTO caveat: ``_human_is_driving`` above.
+        # (The old pointer to plans/README.md "Interactive NAc attribution" never resolved.)
+        if _human_is_driving():
+            return
 
         context = dict(signal.context or {})
         source = context.get("source", "unknown")
@@ -664,13 +693,8 @@ def create_pain_cluster_fear_subscriber(
     def _on_pain(signal: PainSignal) -> None:
         if signal.intensity < intensity_threshold:
             return
-        try:
-            from maxim.simulation.sim_logger import InteractiveMode, get_interactive_mode
-
-            if get_interactive_mode() == InteractiveMode.ON:
-                return
-        except Exception:
-            log_swallowed_exception()
+        if _human_is_driving():
+            return
 
         context = signal.context or {}
         agent_id = str(context.get("agent_id") or "")
