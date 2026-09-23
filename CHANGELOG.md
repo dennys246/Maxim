@@ -228,6 +228,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A pain-learning guard that failed toward the thing it guarded against
+  ([#864](https://github.com/dennys246/Maxim/issues/864)).** Three PainBus learning subscribers
+  skip learning while a human is driving the actions, so human-directed pain does not corrupt the
+  Pavlovian and situation-fear maps. Each spelled that gate as `try: ...if ON: return / except
+  Exception: log_swallowed_exception()` — and on any failure the handler swallowed, execution fell
+  **through**, and the subscriber learned anyway. The guard protected against nothing real
+  (`maxim.simulation` is in-tree; `get_interactive_mode` returns a module global, so neither can
+  fail) while being able to disable itself silently. The three now go through one unguarded
+  `_human_is_driving()` helper: if it ever does fail it fails **closed** — `PainBus.publish` is
+  the containment layer and already catches per subscriber, so a fault skips that subscriber's
+  learning and logs a named WARNING while memory capture and the other subscribers continue. This
+  sits on
+  `create_pain_cluster_fear_subscriber` — Wire 4, behind the earned Exp 60/61/62 rows — so a
+  silent lapse would have booked fear from human-directed pain onto world clusters. Remembering
+  pain is deliberately still ungated; only learning from it is.
+
+  The review round found a **fourth** copy of the same gate — `runtime/executor.py`, guarding the
+  path that matters most, since tool-invoked pain reaches NAc through `ToolPainBridge` *regardless*
+  of the bus subscriptions — with a bare `except Exception: pass` and no instrumentation at all.
+  It is fixed here too, so all four now fail closed. The predicate is deliberately duplicated
+  rather than shared: `runtime` reaching into `proprioception` for a `simulation` fact would buy
+  one source of truth with a worse edge. Giving it a single home is the open layering half of
+  [#864](https://github.com/dennys246/Maxim/issues/864).
+
+- **Every NAc prediction was missing from the sim log
+  ([#861](https://github.com/dennys246/Maxim/issues/861)).** `NAc.predict` built its telemetry from
+  `result.outcome_signature`, a field `OutcomePrediction` does not have (it is `predicted_outcome`),
+  so every call that **had a prediction to report** raised `AttributeError` — inside the logging
+  guard, which swallowed it. Calls that found no links still logged their empty result, so the loss
+  read as an agent that simply never predicted. Predictions themselves were always correct; only
+  their record vanished, which is the worse failure for anything that analyses NAc behaviour from a
+  log, since no predictions and no *record* of predictions look identical. It had been silent since
+  PR #487. The payload is now built **outside** the guard, so a mistake in this
+  method is loud while a genuinely failing sink still cannot cost the caller its prediction — the
+  same principle as `memory/layer.py::activate_after_use`.
+
 - **A causal link's Rescorla-Wagner value is bounded to `[0, 1]` at every producer.** Hivemind ingest
   accepted `predicted_value` in `[-1, 1]` and the merge and `CausalLink.from_dict` passed it through,
   so an agent that imported one such link could compute a surprise (`|R - V|`) of up to 2 — harmless

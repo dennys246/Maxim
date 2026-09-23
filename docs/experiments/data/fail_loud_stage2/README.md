@@ -100,6 +100,22 @@ functions directly.
 
 ## Using the gate
 
+> **2026-09-23 (#864) — `check` against this artifact now exits 1 on a clean tree, and that exit is
+> NOT a de-instrumentation regression.** Three instrumented sites were deliberately REMOVED from
+> `proprioception/pain_bus.py` (5 → 2): the swallows themselves were deleted, not rewritten into
+> something uninstrumented, which is the opposite of what this gate watches for. The live count is
+> now **49**; `baseline.json` reads **50** and is historical — it is a gated record stamped at its
+> own `git_hash` and is deliberately not edited, so `cmd_check` compares a frozen 50 against a live
+> 49 and fails. **Re-baseline from fresh captures before using `check` as a per-PR gate.**
+>
+> The live count had also drifted UP to 52 before this removal, so the artifact's 50 had two sites
+> of slack that nothing was tracking.
+>
+> Worth recording against note (b) below: #861 found that `decisions/nac.py::predict` — a site that
+> fires on *every* prediction with a learned link — had been raising and being swallowed since PR
+> #487, and never appeared in these captures. That is this artifact's "per-site coverage is NOT
+> proven" caveat demonstrated with a concrete case, not a hypothetical.
+
 ```bash
 export PYTHONPATH="$PWD/src"
 

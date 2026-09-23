@@ -22,6 +22,8 @@ from __future__ import annotations
 import time
 from unittest.mock import MagicMock
 
+import pytest
+
 from maxim.decisions.causal_link import Valence
 from maxim.decisions.nac import NAc, NACConfig
 from maxim.proprioception.pain import PainSignal, PainType
@@ -775,3 +777,128 @@ def test_no_pain_reaction_is_built_without_agent_id() -> None:
     )
     still_open = {o.split(":")[0] for o in offenders}
     assert still_open <= grandfathered, f"allowlist is stale, drop the fixed entries: {grandfathered - still_open}"
+
+
+class TestInteractiveLearningGate:
+    """Human-directed pain must not TEACH, and the gate must not fail open (#864).
+
+    The defect: the gate was three copies of `try: ...ON: return / except Exception:
+    log_swallowed_exception()`. On any failure the handler swallowed and execution fell
+    THROUGH to the learning code — a contamination guard failing toward the contamination
+    it exists to prevent. It sits on `create_pain_cluster_fear_subscriber`, which is Wire 4
+    behind the earned Exp 60/61/62 rows.
+    """
+
+    @staticmethod
+    def _signal():
+        return PainSignal(
+            pain_type=PainType.EXTERNAL_SIGNAL,
+            intensity=0.9,
+            timestamp=time.time(),
+            context={
+                "agent_id": "a1",
+                "entity": "water",
+                "entity_type": "liquid",
+                "failure_mode": "drive:health",
+                "sensor_readings": {},
+            },
+        )
+
+    @staticmethod
+    def _factories():
+        from maxim.proprioception.pain_bus import (
+            create_pain_cluster_fear_subscriber,
+            create_pain_nac_subscriber,
+            create_percept_valence_subscriber,
+        )
+
+        return (create_pain_nac_subscriber, create_percept_valence_subscriber, create_pain_cluster_fear_subscriber)
+
+    @pytest.mark.parametrize("idx", [0, 1, 2])
+    def test_every_learning_subscriber_consults_the_gate(self, idx, monkeypatch):
+        import maxim.proprioception.pain_bus as pb
+
+        calls: list[bool] = []
+        monkeypatch.setattr(pb, "_human_is_driving", lambda: calls.append(True) or True)
+        nac = MagicMock()
+        self._factories()[idx](nac)(self._signal())
+        assert calls, "this subscriber never asked whether a human was driving"
+
+    @pytest.mark.parametrize("idx", [0, 1, 2])
+    def test_a_raising_gate_does_not_silently_permit_learning(self, idx, monkeypatch):
+        """The fail-open arm. With the old swallow this passed the signal straight through to
+        NAc; now the fault is loud. Prove it non-vacuous by restoring the try/except."""
+        import maxim.proprioception.pain_bus as pb
+
+        def _boom():
+            raise RuntimeError("cannot determine interactive mode")
+
+        monkeypatch.setattr(pb, "_human_is_driving", _boom)
+        nac = MagicMock()
+        with pytest.raises(RuntimeError):
+            self._factories()[idx](nac)(self._signal())
+        assert not nac.mock_calls, f"a broken gate still let learning through: {nac.mock_calls}"
+
+    @pytest.mark.parametrize("idx", [0, 1, 2])
+    def test_a_broken_interactive_read_does_not_permit_learning(self, idx, monkeypatch):
+        """The VERSION-INDEPENDENT red gate (review round, Architecture #3).
+
+        The arm above patches `_human_is_driving`, which did not exist before this fix — so it
+        pins the shape of the refactor, not the behaviour of the bug. This one patches the
+        underlying reader, so it runs against the defective code as well: with the old
+        `try/except Exception` the swallow fires and all three subscribers learn anyway, which is
+        the Wire-4 contamination the fix is about.
+        """
+        import maxim.simulation.sim_logger as sim_logger
+
+        def _boom():
+            raise RuntimeError("cannot read interactive mode")
+
+        monkeypatch.setattr(sim_logger, "get_interactive_mode", _boom)
+        nac = MagicMock()
+        with pytest.raises(RuntimeError):
+            self._factories()[idx](nac)(self._signal())
+        assert not nac.mock_calls, f"a broken interactive read still let learning through: {nac.mock_calls}"
+
+    @pytest.mark.parametrize("idx", [0, 1, 2])
+    def test_learning_is_suppressed_while_a_human_drives(self, idx, monkeypatch):
+        import maxim.proprioception.pain_bus as pb
+
+        monkeypatch.setattr(pb, "_human_is_driving", lambda: True)
+        nac = MagicMock()
+        self._factories()[idx](nac)(self._signal())
+        assert not nac.mock_calls, f"human-directed pain reached NAc: {nac.mock_calls}"
+
+    def test_remembering_is_not_gated_only_learning_is(self, monkeypatch):
+        """Pain memory capture stays correct whoever drove the action."""
+        import maxim.proprioception.pain_bus as pb
+
+        monkeypatch.setattr(pb, "_human_is_driving", lambda: True)
+        hippo = MagicMock()
+        pb.create_pain_memory_subscriber(hippo)(self._signal())
+        assert hippo.method_calls, "interactive mode silenced pain MEMORY, not just learning"
+
+    def test_the_gate_reads_interactive_mode_and_is_not_swallowed(self):
+        """No try/except may wrap the gate call sites again — the swallow is the whole defect."""
+        import ast
+        import inspect
+
+        import maxim.proprioception.pain_bus as pb
+
+        src = inspect.getsource(pb)
+        assert "_human_is_driving" in src
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Try):
+                continue
+            # EVERY branch, not just `body`: a gate re-homed into `else:`/`finally:`/a handler is
+            # just as swallowed (review round, Executor NIT-8).
+            branches = [*node.body, *node.orelse, *node.finalbody, *(s for h in node.handlers for s in h.body)]
+            if "_human_is_driving" in ast.dump(ast.Module(body=branches, type_ignores=[])):
+                raise AssertionError("the interactive gate is inside a try block again")
+
+        # ...and the helper itself must stay unguarded. A `try` moved INSIDE it contains no call
+        # site, so the scan above would never see it — and if it returns False on failure the
+        # fail-open defect is back, in the one place nobody would look (Architecture #3).
+        [fn] = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_human_is_driving"]
+        assert not any(isinstance(n, ast.Try) for n in ast.walk(fn)), "_human_is_driving swallows again"

@@ -192,12 +192,33 @@ def test_repo_inventory_is_nonempty(stage2):
 # and reports "no new firings" is the vacuous-guard shape check_slow_lane.py
 # was written for in the very same PR.
 
-BASELINE_50 = {"instrumented_site_count": 50, "fired_pairs": []}
+# The FLOOR this synthetic baseline asserts against the LIVE `src/` scan: de-instrumenting the
+# measurement path must fail here. It is a floor, not an equality — the check fires only when the
+# live count falls BELOW it — so new instrumented sites need no edit and removals need a
+# deliberate one, which is the point.
+#
+# The CONSTANT moved 50 -> 49 on 2026-09-23 (#864), but the live count moved 52 -> 49: it had
+# drifted up two sites since this number was chosen, and `pain_bus.py` then went from 5
+# instrumented sites to 2. Stating only "50 -> 49" alongside "-3" does not reconcile, and a reader
+# checking the arithmetic concludes one of the numbers is wrong (review round).
+# There is now ZERO slack: the next legitimate removal anywhere in `src/maxim/` fails this test
+# rather than the de-instrumentation case it is for. That is deliberate — a floor with unexamined
+# slack is what let 52 drift past 50 unnoticed — but it means the next remover must read this note.
+# when its three interactive-mode gates stopped being wrapped in `try/except Exception`. Those
+# guards caught nothing reachable and could silently disable a contamination gate, so the swallows
+# were REMOVED rather than de-instrumented — the failure mode this floor exists to catch is the
+# opposite one, an instrumented swallow quietly rewritten to `logger.debug()` (see
+# `test_check_fails_when_instrumentation_was_deleted`).
+#
+# The frozen artifact at docs/experiments/data/fail_loud_stage2/baseline.json still reads 50. It
+# is a gated record stamped at its own git_hash and is deliberately NOT edited here; its count is
+# historical, true when it was taken.
+BASELINE_FLOOR = {"instrumented_site_count": 49, "fired_pairs": []}
 
 
 def _baseline(tmp_path: Path, payload: dict | None = None) -> Path:
     path = tmp_path / "baseline.json"
-    path.write_text(json.dumps(payload if payload is not None else BASELINE_50), encoding="utf-8")
+    path.write_text(json.dumps(payload if payload is not None else BASELINE_FLOOR), encoding="utf-8")
     return path
 
 

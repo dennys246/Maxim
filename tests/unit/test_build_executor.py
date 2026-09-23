@@ -551,3 +551,73 @@ class TestD79GenerationCollaborators:
         executor = self._build()
         assert calls, "build_executor's initial generation must route through Executor.generate_entity_tools"
         assert "rusty_sword_slash" in set(executor.registry.list())
+
+
+class TestInteractiveAttributionGate:
+    """The executor's interactive gate must not fail open (#864, review round).
+
+    This guards the PRIMARY contamination path. `build_pain_bus`'s own docstring records that
+    tool-invoked pain reaches NAc through `ToolPainBridge` *regardless* of the bus subscriptions,
+    so the three gates in `proprioception/pain_bus.py` cover only out-of-band pain and this one
+    covers the rest. It used to be a bare `except Exception: pass` that left `_suppress_nac` False
+    on any failure — the same fail-toward-contamination shape, on the bigger door, uninstrumented.
+    """
+
+    def _executor(self):
+        from maxim.runtime.bootstrap import build_executor
+        from maxim.tools.registry import ToolRegistry
+
+        executor = build_executor(ToolRegistry(), pain_bus=None, permissions=None, pain_detector=None, nac=MagicMock())
+        executor._tool_pain_bridge = MagicMock()
+        return executor
+
+    def test_a_broken_interactive_read_does_not_attribute_to_nac(self, monkeypatch):
+        """Version-independent: patches the reader, not the fix's own shape, so it runs against
+        the defective code too. With the old bare `except Exception: pass` this passed straight
+        through and `record_tool_start` fired on a human-directed call."""
+        import maxim.simulation.sim_logger as sim_logger
+
+        def _boom():
+            raise RuntimeError("cannot read interactive mode")
+
+        monkeypatch.setattr(sim_logger, "get_interactive_mode", _boom)
+        executor = self._executor()
+        with pytest.raises(RuntimeError):
+            executor.execute({"tool_name": "nope", "params": {}})
+        assert not executor._tool_pain_bridge.mock_calls, (
+            f"a broken gate attributed a tool call to NAc: {executor._tool_pain_bridge.mock_calls}"
+        )
+
+    def test_a_human_driven_tool_call_is_not_attributed(self, monkeypatch):
+        import maxim.simulation.sim_logger as sim_logger
+
+        monkeypatch.setattr(sim_logger, "get_interactive_mode", lambda: sim_logger.InteractiveMode.ON)
+        executor = self._executor()
+        executor.execute({"tool_name": "nope", "params": {}})
+        # `record_tool_start` specifically: the gate suppresses ATTRIBUTION, not every interaction
+        # with the bridge (an ungated `pop_invocation_rpe` follows on the same call).
+        assert not executor._tool_pain_bridge.record_tool_start.called
+
+    def test_an_agent_driven_tool_call_IS_attributed(self, monkeypatch):
+        """The anti-vacuity arm: without it, a gate stuck permanently on would pass both above."""
+        import maxim.simulation.sim_logger as sim_logger
+
+        monkeypatch.setattr(sim_logger, "get_interactive_mode", lambda: sim_logger.InteractiveMode.OFF)
+        executor = self._executor()
+        executor.execute({"tool_name": "nope", "params": {}})
+        assert executor._tool_pain_bridge.record_tool_start.called, "the gate suppressed agent-driven attribution"
+
+    def test_the_gate_is_not_swallowed(self):
+        import ast
+        import inspect
+        import textwrap
+
+        from maxim.runtime.executor import Executor
+
+        tree = ast.parse(textwrap.dedent(inspect.getsource(Executor.execute)))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Try):
+                continue
+            branches = [*node.body, *node.orelse, *node.finalbody, *(s for h in node.handlers for s in h.body)]
+            dumped = ast.dump(ast.Module(body=branches, type_ignores=[]))
+            assert "get_interactive_mode" not in dumped, "the interactive gate is inside a try block again"

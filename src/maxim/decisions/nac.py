@@ -1506,14 +1506,19 @@ class NAc:
         """
         with self._lock:
             result = self._predict_impl(event_type, event_signature, context)
-        # Log prediction outside lock to avoid import-under-lock
+        # Log prediction outside lock to avoid import-under-lock.
+        #
+        # The payload is built OUTSIDE the guard on purpose (#861). It used to sit inside, reading
+        # a field ``OutcomePrediction`` does not have -- so every prediction raised an
+        # ``AttributeError`` here, the guard swallowed it, and the sim log lost every NAc
+        # prediction while the predictions themselves were fine. A guard meant for the logging
+        # subsystem was catching this method's own bug. Same principle as
+        # ``memory/layer.py::activate_after_use``: build the content first, then hand it to a call
+        # that cannot cost you what you already have.
+        outcomes = [(result.predicted_outcome, result.confidence)] if result is not None else []
         try:
             from maxim.simulation.sim_logger import sim_nac_predict
 
-            if result is not None:
-                outcomes = [(result.outcome_signature, result.confidence)]
-            else:
-                outcomes = []
             sim_nac_predict(event=event_signature, outcomes=outcomes)
         except Exception:
             log_swallowed_exception()
