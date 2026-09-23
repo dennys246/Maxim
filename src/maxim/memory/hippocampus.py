@@ -626,8 +626,10 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         """
         if memory.encoding is None:  # store()/capture() require encoding, so this is belt not braces
             return
-        tag = encoding_tag(memory.encoding, store_size=len(self._memories))
+        reference_size = len(self._memories)
+        tag = encoding_tag(memory.encoding, novelty_reference_size=reference_size)
         memory.encoding_tag = tag
+        memory.novelty_reference_size = reference_size
         memory.storage_strength = initial_storage_strength(
             tag, s_base=self.config.strength_s_base, k=self.config.strength_k
         )

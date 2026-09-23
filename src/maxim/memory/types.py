@@ -58,7 +58,11 @@ def _strength_fields(record: Any) -> dict[str, Any]:
     lives exactly where ``encoding`` lives until ATL's path earns it, and moves to the base WITH its
     serialization in the same commit.
     """
-    return {"storage_strength": record.storage_strength, "encoding_tag": record.encoding_tag}
+    return {
+        "storage_strength": record.storage_strength,
+        "encoding_tag": record.encoding_tag,
+        "novelty_reference_size": record.novelty_reference_size,
+    }
 
 
 def _strength_number(value: Any, *, name: str, low: float, high: float, record_id: Any) -> float | None:
@@ -97,6 +101,11 @@ def _strength_kwargs(data: dict[str, Any]) -> dict[str, Any]:
         ),
         "encoding_tag": _strength_number(
             data.get("encoding_tag"), name="encoding_tag", low=0.0, high=1.0, record_id=record_id
+        ),
+        "novelty_reference_size": (
+            int(size)
+            if isinstance(size := data.get("novelty_reference_size"), int) and not isinstance(size, bool) and size >= 0
+            else None
         ),
     }
 
@@ -517,6 +526,11 @@ class CompressedMemory(CompressedRecord):
     # serialization, in the same commit.
     storage_strength: float | None = field(default=None, repr=False, compare=False)
     encoding_tag: float | None = field(default=None, repr=False, compare=False)
+    # What novelty was judged against when this tag was computed. Recorded so a trace can say which
+    # reference set it used: the Hippocampus' own trace count today, the novelty producer's set once
+    # 2b-iii records it (where 2b-i's review put it). Without this the store would hold tags of two
+    # provenances with nothing marking which is which.
+    novelty_reference_size: int | None = field(default=None, repr=False, compare=False)
 
     run_id: str = ""
 
@@ -576,6 +590,7 @@ class CompressedMemory(CompressedRecord):
             encoding=memory.encoding,
             storage_strength=memory.storage_strength,
             encoding_tag=memory.encoding_tag,
+            novelty_reference_size=memory.novelty_reference_size,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -670,6 +685,11 @@ class EpisodicMemory(MemoryRecord):
     # write-only until the Phase 2c-3 strength strategy reads them; None = never stamped.
     storage_strength: float | None = field(default=None, repr=False, compare=False)
     encoding_tag: float | None = field(default=None, repr=False, compare=False)
+    # What novelty was judged against when this tag was computed. Recorded so a trace can say which
+    # reference set it used: the Hippocampus' own trace count today, the novelty producer's set once
+    # 2b-iii records it (where 2b-i's review put it). Without this the store would hold tags of two
+    # provenances with nothing marking which is which.
+    novelty_reference_size: int | None = field(default=None, repr=False, compare=False)
 
     @property
     def duration_ms(self) -> float:

@@ -41,44 +41,44 @@ def _signals(**kw) -> EncodingSignals:
 
 
 def test_unmeasured_capture_tags_zero():
-    assert encoding_tag(EncodingSignals.unmeasured("loop"), store_size=1000) == 0.0
+    assert encoding_tag(EncodingSignals.unmeasured("loop"), novelty_reference_size=1000) == 0.0
 
 
 def test_default_salience_is_not_importance():
     """The 0.5 default that every capture carries must not put a floor under the tag."""
-    assert encoding_tag(_signals(salience=SALIENCE_BASELINE), store_size=1000) == 0.0
+    assert encoding_tag(_signals(salience=SALIENCE_BASELINE), novelty_reference_size=1000) == 0.0
 
 
 def test_salience_deviation_is_positive_part_only():
-    assert encoding_tag(_signals(salience=1.0), store_size=1000) == pytest.approx(1.0)
-    assert encoding_tag(_signals(salience=0.75), store_size=1000) == pytest.approx(0.5)
+    assert encoding_tag(_signals(salience=1.0), novelty_reference_size=1000) == pytest.approx(1.0)
+    assert encoding_tag(_signals(salience=0.75), novelty_reference_size=1000) == pytest.approx(0.5)
     # Below baseline is the ABSENCE of evidence, not evidence against.
-    assert encoding_tag(_signals(salience=0.0), store_size=1000) == 0.0
+    assert encoding_tag(_signals(salience=0.0), novelty_reference_size=1000) == 0.0
 
 
 def test_surprise_and_pain_are_their_own_deviation():
-    assert encoding_tag(_signals(surprise=0.4), store_size=1000) == pytest.approx(0.4)
-    assert encoding_tag(_signals(pain=0.7), store_size=1000) == pytest.approx(0.7)
+    assert encoding_tag(_signals(surprise=0.4), novelty_reference_size=1000) == pytest.approx(0.4)
+    assert encoding_tag(_signals(pain=0.7), novelty_reference_size=1000) == pytest.approx(0.7)
 
 
 def test_noisy_or_saturates_rather_than_summing():
     """Coincident signals add, but a crowd of weak ones cannot manufacture importance."""
-    tag = encoding_tag(_signals(surprise=0.5, pain=0.5), store_size=1000)
+    tag = encoding_tag(_signals(surprise=0.5, pain=0.5), novelty_reference_size=1000)
     assert tag == pytest.approx(0.75)  # 1 - 0.5*0.5, not 1.0
     many = encoding_tag(
         _signals(salience=0.6, novelty=1.0, surprise=0.2, pain=0.2),
-        store_size=10_000,
+        novelty_reference_size=10_000,
     )
     assert many < 1.0
 
 
 def test_novelty_is_weighted_by_how_much_the_store_knows():
     """An empty store calls everything novel; its first traces must not all encode at maximum."""
-    empty = encoding_tag(_signals(novelty=1.0), store_size=0)
+    empty = encoding_tag(_signals(novelty=1.0), novelty_reference_size=0)
     assert empty == 0.0
-    at_n0 = encoding_tag(_signals(novelty=1.0), store_size=int(NOVELTY_CONFIDENCE_N0))
+    at_n0 = encoding_tag(_signals(novelty=1.0), novelty_reference_size=int(NOVELTY_CONFIDENCE_N0))
     assert at_n0 == pytest.approx(0.5)
-    experienced = encoding_tag(_signals(novelty=1.0), store_size=100_000)
+    experienced = encoding_tag(_signals(novelty=1.0), novelty_reference_size=100_000)
     assert experienced > 0.99
     assert empty < at_n0 < experienced
 
@@ -87,17 +87,17 @@ def test_drive_pressure_counts_only_for_drives_the_action_relieved():
     """Relevance gating: a starving stretch tags what touched hunger, not everything."""
     relieved = _signals(drive_pressure=(("hunger", 0.8),), drive_relief=(("hunger", 0.5),))
     unrelated = _signals(drive_pressure=(("hunger", 0.8),), drive_relief=(("curiosity", 0.5),))
-    assert encoding_tag(relieved, store_size=1000) == pytest.approx(1 - 0.5 * 0.2)
+    assert encoding_tag(relieved, novelty_reference_size=1000) == pytest.approx(1 - 0.5 * 0.2)
     # curiosity's own relief still counts; hunger's PRESSURE does not.
-    assert encoding_tag(unrelated, store_size=1000) == pytest.approx(0.5)
+    assert encoding_tag(unrelated, novelty_reference_size=1000) == pytest.approx(0.5)
 
 
 def test_drive_pressure_fails_closed_when_nothing_measured_relief():
     """The R4 gap: on minecraft_player every action but `eat` declares no self_effect."""
     no_relief = _signals(drive_pressure=(("air", 1.0),), drive_relief=())
-    assert encoding_tag(no_relief, store_size=1000) == 0.0
+    assert encoding_tag(no_relief, novelty_reference_size=1000) == 0.0
     unmeasured_relief = _signals(drive_pressure=(("air", 1.0),), drive_relief=None)
-    assert encoding_tag(unmeasured_relief, store_size=1000) == 0.0
+    assert encoding_tag(unmeasured_relief, novelty_reference_size=1000) == 0.0
 
 
 def test_tag_is_always_a_probability():
@@ -105,7 +105,7 @@ def test_tag_is_always_a_probability():
         _signals(salience=1.0, novelty=1.0, surprise=1.0, pain=1.0),
         _signals(drive_relief=(("a", 1.0), ("b", 1.0)), drive_pressure=(("a", 1.0), ("b", 1.0))),
     ):
-        assert 0.0 <= encoding_tag(signals, store_size=10_000) <= 1.0
+        assert 0.0 <= encoding_tag(signals, novelty_reference_size=10_000) <= 1.0
 
 
 # ── S0 ───────────────────────────────────────────────────────────────────────
@@ -261,7 +261,7 @@ def test_pressure_counts_when_an_aversive_action_relieved_nothing():
     """Drowning: air pressure 1.0 with air relief 0.0 recorded. The executor writes 0.0 for a drive
     the action moved away from comfort, so relevance is the KEY's presence, not a positive value."""
     drowning = _signals(drive_pressure=(("air", 1.0),), drive_relief=(("air", 0.0),))
-    assert encoding_tag(drowning, store_size=1000) == pytest.approx(1.0)
+    assert encoding_tag(drowning, novelty_reference_size=1000) == pytest.approx(1.0)
 
 
 @pytest.mark.parametrize(
@@ -284,3 +284,69 @@ def test_nonsense_on_disk_loads_as_never_stamped(field_name, bad):
     raw = memory.to_dict()
     raw[field_name] = bad
     assert getattr(EpisodicMemory.from_dict(raw), field_name) is None
+
+
+def test_the_tag_does_not_scale_with_how_many_drives_a_body_has():
+    """Per-drive deviations made relief 0.3 tag 0.657 on a 3-drive body and 0.942 on an 8-drive one,
+    so tags were not comparable across bodies -- which is what cross-body transfer rests on."""
+    tags = []
+    for n in (1, 3, 8):
+        drives = tuple((f"d{i}", 0.3) for i in range(n))
+        tags.append(encoding_tag(_signals(drive_relief=drives), novelty_reference_size=1000))
+    assert tags == [pytest.approx(0.3)] * 3
+
+
+def test_relief_is_weighted_by_how_badly_the_body_wanted_each_drive():
+    """Relieving a drive the body was desperate for beats topping up a satisfied one."""
+    desperate = _signals(
+        drive_relief=(("air", 1.0), ("curiosity", 0.0)),
+        drive_pressure=(("air", 1.0), ("curiosity", 0.0)),
+    )
+    # air carries all the weight: the relief channel reads 1.0, not the plain mean 0.5.
+    assert encoding_tag(desperate, novelty_reference_size=1000) == pytest.approx(1.0)
+
+    satisfied = _signals(
+        drive_relief=(("air", 0.0), ("curiosity", 1.0)),
+        drive_pressure=(("air", 1.0), ("curiosity", 0.0)),
+    )
+    # the relief that happened was of a drive nothing wanted; pressure's max still counts once.
+    assert encoding_tag(satisfied, novelty_reference_size=1000) == pytest.approx(1.0 - 1.0 * 0.0)
+
+
+def test_with_no_pressure_measured_the_weights_carry_no_information():
+    """Falls back to the plain mean rather than inventing a ranking."""
+    signals = _signals(drive_relief=(("a", 0.2), ("b", 0.8)))
+    assert encoding_tag(signals, novelty_reference_size=1000) == pytest.approx(0.5)
+
+
+def test_pressure_is_counted_once_per_action_not_once_per_drive():
+    one = _signals(drive_relief=(("a", 0.0),), drive_pressure=(("a", 0.6),))
+    many = _signals(
+        drive_relief=(("a", 0.0), ("b", 0.0), ("c", 0.0)),
+        drive_pressure=(("a", 0.6), ("b", 0.6), ("c", 0.6)),
+    )
+    assert encoding_tag(one, novelty_reference_size=1000) == pytest.approx(0.6)
+    assert encoding_tag(many, novelty_reference_size=1000) == pytest.approx(0.6)
+
+
+def test_the_reference_set_novelty_was_judged_against_is_recorded():
+    """So a trace can say WHICH denominator it used when 2b-iii moves it to the producer."""
+    hippo = Hippocampus(HippocampusConfig())
+    first = hippo.get(_capture(hippo, _signals(novelty=1.0)))
+    assert first.novelty_reference_size == 0
+    for _ in range(5):
+        _capture(hippo, EncodingSignals.unmeasured("loop"))
+    later = hippo.get(_capture(hippo, _signals(novelty=1.0)))
+    assert later.novelty_reference_size == 6
+
+
+def test_the_recorded_reference_size_survives_persistence(tmp_path):
+    hippo = Hippocampus(HippocampusConfig())
+    for _ in range(3):
+        _capture(hippo, EncodingSignals.unmeasured("loop"))
+    mid = _capture(hippo, _signals(novelty=1.0))
+    path = tmp_path / "h.json"
+    hippo.save(str(path))
+    restored = Hippocampus(HippocampusConfig())
+    restored.load(str(path))
+    assert restored.get(mid).novelty_reference_size == 3

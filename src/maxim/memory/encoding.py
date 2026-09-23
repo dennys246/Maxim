@@ -188,13 +188,15 @@ def _noisy_or(deviations: list[float]) -> float:
     return 1.0 - product
 
 
-def encoding_tag(signals: EncodingSignals, *, store_size: int) -> float:
+def encoding_tag(signals: EncodingSignals, *, novelty_reference_size: int) -> float:
     """How strongly this capture's signals argue the trace matters, in [0, 1].
 
-    ``store_size`` is the number of traces the store held when this capture formed -- it weights
-    novelty only, and it is why the tag is STAMPED on the record rather than recomputed later: the
-    same signals in a bigger store would score differently, and a survivor must be able to say what
-    it was actually encoded with.
+    ``novelty_reference_size`` is how big the set was that novelty was judged against -- it weights
+    novelty only, and it is why the tag is STAMPED and the size RECORDED: the same signals judged
+    against a bigger reference set score differently, and a survivor must be able to say what it was
+    actually encoded with. Today the Hippocampus passes its own trace count, standing in for the
+    real reference set; when the novelty producer records its own (plan 2b-iii, where 2b-i's review
+    put it), it supplies this instead and the recorded size says which a trace used.
 
     Drive PRESSURE is relevance-gated and **fails closed**: pressure counts only for drives this
     action actually relieved, so a starving stretch tags the traces that touched hunger rather than
@@ -210,23 +212,36 @@ def encoding_tag(signals: EncodingSignals, *, store_size: int) -> float:
         deviations.append(max(0.0, (signals.salience - SALIENCE_BASELINE) / (1.0 - SALIENCE_BASELINE)))
 
     if signals.novelty is not None:
-        confidence = max(0, store_size) / (max(0, store_size) + NOVELTY_CONFIDENCE_N0)
-        deviations.append(signals.novelty * confidence)
+        size = max(0, novelty_reference_size)
+        deviations.append(signals.novelty * (size / (size + NOVELTY_CONFIDENCE_N0)))
 
     for name in ("surprise", "pain"):  # baseline 0: the value IS the deviation
         value = getattr(signals, name)
         if value is not None:
             deviations.append(value)
 
-    relief = dict(signals.drive_relief or ())
-    for value in relief.values():
-        deviations.append(value)
     # Relevance is the PRESENCE of a relief key, not a positive one: the executor records 0.0 for a
     # drive the action moved AWAY from comfort, and drowning (air pressure 1.0, air relief 0.0) is
     # exactly the case that must encode strongly. Gating on value > 0 would drop it.
-    for drive, value in signals.drive_pressure or ():
-        if drive in relief:
-            deviations.append(value)
+    relief = dict(signals.drive_relief or ())
+    pressure = {d: v for d, v in (signals.drive_pressure or ()) if d in relief}
+    if relief:
+        # ONE deviation per channel, not one per drive. Per-drive deviations made the tag scale with
+        # how many drives a body HAS (relief 0.3 on three drives tagged 0.657; on eight, 0.942), so
+        # tags were not comparable across bodies -- which is what cross-body transfer claims rest on.
+        #
+        # Relief is weighted by each drive's own pressure: relieving a drive the body was desperate
+        # for matters more than topping up one already near its set point. With no pressure measured
+        # (or all of it zero) the weights carry no information, so the plain mean is the honest
+        # summary. Pressure then contributes its MAX, so it is counted once per action rather than
+        # once per drive -- it already shapes the relief channel as a weight.
+        total_weight = sum(pressure.get(d, 0.0) for d in relief)
+        if total_weight > 0.0:
+            deviations.append(sum(v * pressure.get(d, 0.0) for d, v in relief.items()) / total_weight)
+        else:
+            deviations.append(sum(relief.values()) / len(relief))
+    if pressure:
+        deviations.append(max(pressure.values()))
 
     return _noisy_or(deviations)
 
