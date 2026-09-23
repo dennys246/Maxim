@@ -150,4 +150,117 @@ def require_encoding(encoding: Any) -> EncodingSignals:
     return encoding
 
 
+# ── the encoding tag (memory-strength Phase 2c-2) ────────────────────────────
+#
+# Each signal contributes its deviation from ITS OWN baseline, normalised to [0, 1]; the raw value
+# would put a floor under every tag (the 0.5 salience default is not importance). Baselines, per the
+# plan's decision 4: salience 0.5 (positive deviation only), everything else 0 -- absent is never a
+# signal, so ``None`` contributes nothing at all rather than a zero that dilutes.
+SALIENCE_BASELINE = 0.5
+
+# Novelty is weighted by how much the store's familiarity judgement is worth yet: an empty store
+# calls everything novel, so its first traces would all encode at maximum strength. n / (n + n0)
+# with n0 = 50 traces -- a named innate prior, not a measurement.
+NOVELTY_CONFIDENCE_N0 = 50.0
+
+
+# S is carried in the EXPERIENCE CLOCK'S OWN UNIT -- integer microseconds of world experience
+# (``experience_clock.UNIT``). Deliberately not seconds: ``R = exp(-dt / S)`` compares S directly
+# against a clock delta, and a seconds-vs-microseconds seam there forgets everything in 10
+# microseconds while every test still passes. Same unit on both sides means no conversion exists to
+# get wrong.
+S_UNIT = "world_experience_us"
+
+# An UNVALIDATED PLACEHOLDER, named so it can be found and calibrated. Provenance, so 2c-3 cannot
+# mistake it for a measurement: the plan's worked example is ``S0 = 10`` in TICKS, and this reads
+# that as 10 seconds of experience. That is almost certainly too fast -- R3's first drowning damage
+# lands at ~16 s, by which point such a trace is at R = 0.2 -- and Phase 5 is what earns the real
+# value. Nothing reads S until the Phase 2c-3 strategy, so no behaviour depends on it yet.
+S_BASE_DEFAULT = 10_000_000.0  # microseconds of experience for a trace whose signals said nothing
+K_DEFAULT = 1.0  # a fully-tagged trace encodes (1 + k) times as strong
+
+
+def _noisy_or(deviations: list[float]) -> float:
+    """``1 - prod(1 - x)``: saturating, so no crowd of weak signals manufactures importance."""
+    product = 1.0
+    for x in deviations:
+        product *= 1.0 - x
+    return 1.0 - product
+
+
+def encoding_tag(signals: EncodingSignals, *, novelty_reference_size: int) -> float:
+    """How strongly this capture's signals argue the trace matters, in [0, 1].
+
+    ``novelty_reference_size`` is how big the set was that novelty was judged against -- it weights
+    novelty only, and it is why the tag is STAMPED and the size RECORDED: the same signals judged
+    against a bigger reference set score differently, and a survivor must be able to say what it was
+    actually encoded with. Today the Hippocampus passes its own trace count, standing in for the
+    real reference set; when the novelty producer records its own (plan 2b-iii, where 2b-i's review
+    put it), it supplies this instead and the recorded size says which a trace used.
+
+    Drive PRESSURE is relevance-gated and **fails closed**: pressure counts only for drives this
+    action actually relieved, so a starving stretch tags the traces that touched hunger rather than
+    everything that happened while hungry. When nothing measured relief, no pressure counts (on
+    ``minecraft_player`` today that is every action but ``eat`` -- the R4 delayed-credit gap; a
+    proximity heuristic here would be a band-aid).
+    """
+    deviations: list[float] = []
+
+    if signals.salience is not None:
+        # Positive deviation only: a below-baseline salience is not evidence AGAINST importance,
+        # it is the absence of evidence for it.
+        deviations.append(max(0.0, (signals.salience - SALIENCE_BASELINE) / (1.0 - SALIENCE_BASELINE)))
+
+    if signals.novelty is not None:
+        size = max(0, novelty_reference_size)
+        deviations.append(signals.novelty * (size / (size + NOVELTY_CONFIDENCE_N0)))
+
+    for name in ("surprise", "pain"):  # baseline 0: the value IS the deviation
+        value = getattr(signals, name)
+        if value is not None:
+            deviations.append(value)
+
+    # Relevance is the PRESENCE of a relief key, not a positive one: the executor records 0.0 for a
+    # drive the action moved AWAY from comfort, and drowning (air pressure 1.0, air relief 0.0) is
+    # exactly the case that must encode strongly. Gating on value > 0 would drop it.
+    relief = dict(signals.drive_relief or ())
+    pressure = {d: v for d, v in (signals.drive_pressure or ()) if d in relief}
+    if relief:
+        # ONE deviation per channel, not one per drive. Per-drive deviations made the tag scale with
+        # how many drives a body HAS (relief 0.3 on three drives tagged 0.657; on eight, 0.942), so
+        # tags were not comparable across bodies -- which is what cross-body transfer claims rest on.
+        #
+        # Relief is weighted by each drive's own pressure: relieving a drive the body was desperate
+        # for matters more than topping up one already near its set point. With no pressure measured
+        # (or all of it zero) the weights carry no information, so the plain mean is the honest
+        # summary. Pressure then contributes its MAX, so it is counted once per action rather than
+        # once per drive -- it already shapes the relief channel as a weight.
+        total_weight = sum(pressure.get(d, 0.0) for d in relief)
+        if total_weight > 0.0:
+            deviations.append(sum(v * pressure.get(d, 0.0) for d, v in relief.items()) / total_weight)
+        else:
+            deviations.append(sum(relief.values()) / len(relief))
+    if pressure:
+        deviations.append(max(pressure.values()))
+
+    return _noisy_or(deviations)
+
+
+def initial_storage_strength(tag: float, *, s_base: float, k: float) -> float:
+    """``S0 = s_base * (1 + k * tag)`` -- the plan's encoding equation, in :data:`S_UNIT`.
+
+    Separate from :func:`encoding_tag` because the tag is a property of what was sensed (stable)
+    while ``s_base``/``k`` are tuning (``HippocampusConfig.strength_s_base`` / ``strength_k``; they
+    are NOT config keys -- 2c-3, which reads S, is what adds those). Both land on the record: the
+    tag so a trace can explain itself, ``S`` so re-tuning never rewrites what already happened.
+    """
+    if not 0.0 <= tag <= 1.0:
+        raise ValueError(f"tag must be in [0, 1], got {tag!r}")
+    if not math.isfinite(s_base) or s_base <= 0.0:
+        raise ValueError(f"s_base must be finite and positive, got {s_base!r}")
+    if not math.isfinite(k) or k < 0.0:
+        raise ValueError(f"k must be finite and non-negative, got {k!r}")
+    return s_base * (1.0 + k * tag)
+
+
 __all__ = ["ENCODING_SITES", "EncodingContractError", "EncodingSignals", "require_encoding"]
