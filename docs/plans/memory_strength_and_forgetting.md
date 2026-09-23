@@ -511,10 +511,34 @@ were vacuous for a reason the mutation sweep could not reach, because the test f
 was byte-identical to `S_BASE_DEFAULT`, so nothing checked that the configured base reaches the
 SCORER as opposed to the stamp (Executor #4, #5, #9).
 
-**NOT done, and owed:** the slicing paragraph ends 2c-3 with "one real sim loop shows `S` move on a
-saved record", and §Guardrails requires the opt-in path to run in a real (non-test) loop before the
-phase is called done. **That has not been run.** It is also the check that would have caught the
-swallowed-exception defect first, which is an argument for it rather than against it.
+**The real-loop demonstration: DONE 2026-09-23**, on the rig (big-mac-mini), session
+`~/.maxim/sim_reports/20260923_095303`, branch worktree asserted as the imported `maxim` before
+launch (harness-provenance rule). `qwen2.5-32b-instruct`, `n_ctx` 16384 via `maxim config` with both
+readings agreeing; `MAXIM_MEMORY_STRATEGY=strength` passed as an ENV VAR rather than written to the
+rig's `config.json`, because that file is what Exp 58/60/61/62 read and leaving `strength` in it is
+the exact contamination (f) above adds a fingerprint guard against.
+
+What the saved `aut_hippocampus.json` shows, on 4 turns / 485.6 s of wall time:
+- **The experience clock reads 20 s, not 485 s** — 4 world turns x the 5 s `ConversationalSource`
+  quantum. Decision 1's turn-based branch, confirmed in a real loop: LLM latency is not experience.
+- **142/142 records stamped** with `S`, `encoding_tag` and `retrievability_anchor_us`; anchors fall
+  exactly on the turn boundaries (5/10/15/20 s), never between them.
+- **9 records' `S` ROSE above their capture stamp**, 10,000,000 -> 11,967,347 µs, each with one
+  credited `enrichment` activation. That matches the model to the digit: with `S0 = s_base` the
+  saturating factor is 1.0, `R = exp(-5/10) = 0.6065`, so the gain is
+  `1 + 1.0*0.5*(1 - 0.6065)*1.0 = 1.19673` and `S = 11,967,347`. The composition ran end to end —
+  capture -> stamp -> activate -> on_activation -> credited update -> save.
+- **`ExperienceClockStalled` never fired** (0 occurrences), which is the correct verdict: the loop
+  drove the clock. The assert was live on this path, so the run exercised it as well as `S`.
+
+*Two things the run surfaced, neither owned by this phase:* every credited activation came from
+`enrichment` and none from `prediction`, which is the known Phase 2S gap (#848 — salience 0.0 keeps
+MemoryAgent's FORMING gate shut, so pattern completion never runs); and `decisions/nac.py::predict`
+raises `AttributeError: 'OutcomePrediction' object has no attribute 'outcome_signature'` on every
+call (the field is `predicted_outcome`). The NAc one is PRE-EXISTING on main, untouched by this
+diff, and confined to the `sim_nac_predict` telemetry block AFTER `_predict_impl` inside a
+swallowing `try` — so predictions themselves are correct and only their sim-log line is lost. Filed
+separately rather than fixed here.
 
 *Owed by Phase 3 (unchanged by this phase):* replay, the homeostatic downscale, the unlinked/uncited
 conjunction in the forgetting rule, and ATL parity. **Phase 3's downscale must RE-ANCHOR**
