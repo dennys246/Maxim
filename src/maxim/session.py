@@ -369,9 +369,9 @@ def _build_session_observer(session_dir: Path) -> Any:
         try:
             from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 
-            from maxim.runtime.config_loader import resolve_memory_strategy
+            from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs
 
-            hippocampus = Hippocampus(HippocampusConfig(memory_strategy=resolve_memory_strategy()))
+            hippocampus = Hippocampus(HippocampusConfig(**resolve_hippocampus_memory_kwargs()))
             hippocampus.load(str(hippo_path))
         except Exception as exc:
             logger.warning("Could not load hippocampus from %s: %s", hippo_path, exc)

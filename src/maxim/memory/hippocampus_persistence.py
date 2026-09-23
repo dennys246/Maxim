@@ -36,6 +36,33 @@ def _warn_missing_experience_clock_once() -> None:
         )
 
 
+def _anchor_traces_that_predate_the_clock(memories: dict, now_us: int) -> int:
+    """Give every trace without a retrievability anchor the clock's current time (2c-3).
+
+    A trace written before the anchor existed has no experience time to decay FROM, and
+    ``R = exp(-dt/S)`` with no ``dt`` is ``R = 1`` -- forever. That is the immortality the
+    memory-strength plan exists to remove, so the honest reading is the one that costs nothing and
+    hides nothing: such a trace starts living now. It is a ONE-TIME migration, since the anchor is
+    stamped at every capture and persisted with the trace; a trace already anchored is untouched.
+
+    Runs on every load, under the caller's write lock, whatever the configured strategy -- the
+    field is inert unless a model reads it, and a migration that only some runs performed would
+    leave the store holding two kinds of trace with nothing marking which.
+    """
+    anchored = 0
+    for record in memories.values():
+        # The sentinel, not ``None``: a record type that does not carry the field at all must be
+        # SKIPPED, not given one. Both types this store holds carry it -- but an AttributeError
+        # raised in here would fail the load, and a failed load sends ``load_with_recovery`` down
+        # its empty-store path and costs every memory.
+        if getattr(record, "retrievability_anchor_us", "not-a-strength-record") is None:
+            record.retrievability_anchor_us = now_us
+            anchored += 1
+    if anchored:
+        logger.info("anchored %d pre-Phase-2c-3 trace(s) at experience time %d", anchored, now_us)
+    return anchored
+
+
 class PersistenceMixin:
     """Persistence methods for Hippocampus.
 
@@ -201,6 +228,7 @@ class PersistenceMixin:
             self._memory_contexts = temp_memory_contexts
             self._stats = temp_stats
             self.experience_clock.restore(temp_clock)
+            _anchor_traces_that_predate_the_clock(self._memories, self.experience_clock.now_us())
             self._graph = temp_graph
             if graph_data:
                 self._restore_graph(graph_data)

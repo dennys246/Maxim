@@ -68,9 +68,10 @@ def hippocampus(*, persistence_path: str | None = None, **config_kw: Any) -> "Hi
     """
     from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 
-    from maxim.runtime.config_loader import resolve_memory_strategy
+    from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs
 
-    config_kw.setdefault("memory_strategy", resolve_memory_strategy())
+    for key, value in resolve_hippocampus_memory_kwargs().items():
+        config_kw.setdefault(key, value)
     config = HippocampusConfig(persistence_path=persistence_path, **config_kw)
     return Hippocampus(config)
 

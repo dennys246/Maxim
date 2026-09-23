@@ -1182,9 +1182,9 @@ def _build_observer(home_dir: str) -> Any:
     try:
         from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 
-        from maxim.runtime.config_loader import resolve_memory_strategy
+        from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs
 
-        hippocampus = Hippocampus(HippocampusConfig(memory_strategy=resolve_memory_strategy()))
+        hippocampus = Hippocampus(HippocampusConfig(**resolve_hippocampus_memory_kwargs()))
         hippo_file = os.path.join(memory_path, "hippocampus.json")
         if os.path.isfile(hippo_file):
             hippocampus.load(hippo_file)
@@ -1297,11 +1297,11 @@ def _load_agent_home_state(agent_home: str) -> tuple[Any, Any]:
     hippocampus = None
     try:
         from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
-        from maxim.runtime.config_loader import resolve_memory_strategy
+        from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs
 
         hippo_file = os.path.join(agent_home, "hippocampus.json")
         if os.path.isfile(hippo_file):
-            hippocampus = Hippocampus(HippocampusConfig(memory_strategy=resolve_memory_strategy()))
+            hippocampus = Hippocampus(HippocampusConfig(**resolve_hippocampus_memory_kwargs()))
             hippocampus.load(hippo_file)
     except Exception as e:
         logger.warning("Could not load agent-home hippocampus for recall: %s", e)

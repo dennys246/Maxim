@@ -161,19 +161,23 @@ def _isolate_maxim_role_env():
 
 @pytest.fixture(autouse=True)
 def _isolate_maxim_memory_strategy_env():
-    """Scrub ``MAXIM_MEMORY_STRATEGY`` across every test (memory-strength Phase 2c).
+    """Scrub the ``MAXIM_MEMORY_*`` vars across every test (memory-strength Phase 2c).
 
-    It selects the RETENTION MODEL, so a leaked value would silently put every later test's
-    Hippocampus and ATL on a different model from the one under test — and the plan's whole
-    guarantee is that today's default is byte-identical until Phase 5 flips it.
+    ``MAXIM_MEMORY_STRATEGY`` selects the RETENTION MODEL, so a leaked value would silently put
+    every later test's Hippocampus and ATL on a different model from the one under test — and the
+    plan's whole guarantee is that today's default is byte-identical until Phase 5 flips it.
+    ``MAXIM_MEMORY_S_BASE`` / ``MAXIM_MEMORY_K`` (2c-3) tune that model's encoding equation, and a
+    leaked one changes every later capture's stamped ``S`` without changing anything visible.
     """
-    saved = os.environ.pop("MAXIM_MEMORY_STRATEGY", None)
+    names = ("MAXIM_MEMORY_STRATEGY", "MAXIM_MEMORY_S_BASE", "MAXIM_MEMORY_K")
+    saved = {name: os.environ.pop(name, None) for name in names}
     try:
         yield
     finally:
-        os.environ.pop("MAXIM_MEMORY_STRATEGY", None)
-        if saved is not None:
-            os.environ["MAXIM_MEMORY_STRATEGY"] = saved
+        for name, value in saved.items():
+            os.environ.pop(name, None)
+            if value is not None:
+                os.environ[name] = value
 
 
 @pytest.fixture(autouse=True)

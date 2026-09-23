@@ -160,6 +160,12 @@ FROZEN: dict[str, Any] = {
             "max_cluster_fear": 1.0,
             "cluster_fear_threshold": 0.5,
             "cluster_fear_failure_modes": ["drive:health", "drive:oxygen"],
+            # Which RETENTION MODEL the run used (memory-strength plan §Guardrails). A new key
+            # with a stated default, so a recorded row from before 2c-3 reads as "access_based" --
+            # which it was, since no other name changed retention behaviour then. ~/.maxim is
+            # shared across worktrees, so a stray `maxim config set memory.strategy strength`
+            # would otherwise silently reconfigure a campaign with nothing in the record saying so.
+            "memory_strategy": "access_based",
             "encoder_pattern_threshold": 0.85,
             "substrate_explore_bonus_weight": 0.0,
             "oxygen_drive": {"set_point": 20.0, "comfort_band": 6.0},

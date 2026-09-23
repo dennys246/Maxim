@@ -56,9 +56,9 @@ def hippocampus(path: str) -> "Hippocampus":
     # CURRENT ``memory.strategy``, not whatever was set when the file was written (contrast
     # ``load.nac``, which deliberately skips decay-on-load so a resumed run is not double-decayed).
     from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
-    from maxim.runtime.config_loader import resolve_memory_strategy
+    from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs
 
-    h = Hippocampus(HippocampusConfig(memory_strategy=resolve_memory_strategy()))
+    h = Hippocampus(HippocampusConfig(**resolve_hippocampus_memory_kwargs()))
     h.load(path)
     return h
 

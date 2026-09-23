@@ -29,7 +29,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from maxim.runtime.config_loader import resolve_memory_strategy
+from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs, resolve_memory_strategy
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
@@ -220,7 +220,7 @@ def build_bio_stack(
     hippocampus = Hippocampus(
         config=HippocampusConfig(
             persistence_path=str(p / "hippocampus.json") if p is not None else None,
-            memory_strategy=resolve_memory_strategy(),
+            **resolve_hippocampus_memory_kwargs(),
         )
     )
     # Cross-session restore (nac_cross_session_persistence.md): the save

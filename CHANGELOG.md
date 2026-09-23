@@ -25,10 +25,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Storage strength is finally READ: `maxim config set memory.strategy strength` (memory-strength
+  Phase 2c-3).** `StrengthStrategy` scores a trace by its retrievability, `R = exp(-dt/S)`, where
+  `dt` is measured on the **experience clock** and never on the wall clock — a robot switched off
+  for a month does not wake with its memory wiped, while an agent that lived through a month
+  forgets. `S` is the storage strength stamped at capture in 2c-2, carried in the clock's own
+  microseconds, so no unit conversion exists anywhere on this path to get wrong.
+  **Retrieval strengthens, and spacing is the right way round:** each *credited* activation raises
+  `S` by `1 + a · w_src · (1 − R) · (S/s_base)^−w` and resets `R` to 1, hooked to `activate`
+  **events** through the new `MemoryStrategy.on_activation` — never to Phase 1's massed
+  `activation_count`, which can say "used a lot" but never "used after a gap". An activation within
+  2 s of experience of the last credited one is still counted and credits nothing, so a trace
+  re-rendered every deliberation cycle earns exactly what its gaps allow: measured with
+  `s_base = 10 s`, 100 renders 0.1 s apart buy precisely what 5 gap-spaced ones do (both reach
+  `S = 18.09 s`), while spreading those same 5 out reaches `S = 51.92 s` — **2.87×**.
+  Effortful recall is worth more than re-exposure (`tool` 1.0, `replan`/`planner` 0.8,
+  `enrichment`/`prediction` 0.5). **Protection is a floor, never immortality:** a strongly tagged
+  trace keeps a minimum retrievability, and that floor itself fades on the same clock ten times
+  more slowly than `R` — so one-shot fear outlives its neighbours by a wide margin and still,
+  eventually, becomes forgettable, unlike `access_count >= 10`'s floor, which never lifted.
+  A trace held up by its tag keeps its detail; one simply fading is compressed to gist.
+  **Read the default before flipping the switch:** `s_base` defaults to 10 **seconds** of
+  experience, so an untagged trace is *removed* after roughly 12 s of run experience at the next
+  `sleep()` — and under this model the encoding tag is the only protection there is, because the
+  schema-link, ATL-citation and user-interaction floors `access_based` provides arrive with Phase
+  3's forgetting rule. It is a placeholder whose provenance is the plan's worked example in ticks,
+  which is why the model is opt-in and why Phase 5 has to earn it before any default flips.
+  `memory.s_base` and `memory.k` ship **with** this reader, never before it — an unset knob is
+  omitted rather than written into the schema, so the equation's own default stays the single
+  source of truth — and every Hippocampus builder takes them through one bundle
+  (`resolve_hippocampus_memory_kwargs`), so a builder cannot thread the strategy and silently drop
+  the tuning. **Nothing changes unless the strategy is selected:** on `access_based`,
+  `importance_based` and `composite` the hook is a no-op, retention scores identically with or
+  without the stamp, and no default model asks anything of the clock.
+
+- **A stalled experience clock is now loud (`ExperienceClockStalled`).** Both `MemoryHub` session-end
+  paths raise it when a retention model that runs on experience time saw captures or activations
+  while the clock never moved — a failure that is otherwise silent and indistinguishable from a
+  run whose memories all deserved to be kept, since `dt = 0` leaves every trace at `R = 1` forever.
+  Gated on a **capability the strategy declares** (`requires_experience_clock`), not on a
+  comparison against the name `"strength"`: a third-party model running on experience time gets the
+  same assert, where a name check would have been a second source of truth it could never satisfy.
+  It **logs at ERROR before raising** and both sim session-end paths name the type ahead of their
+  broad handler, re-emitting their telemetry from the exception: every caller catches broad
+  `Exception`, so a raise alone would have been the silent failure wearing a type. "Did the clock
+  advance" is asked of what DROVE it, never of what it reads — a `--resume-sim` restores a clock
+  reading hours, and comparing the reading made the guard inert on exactly the resumed harnesses it
+  exists for. It fires last, after every save, so the diagnostic never costs the session its
+  memories. An idle session, or one on a default model, stays silent.
+
+  The frozen-apparatus fingerprints of the survival campaigns now record which retention model ran
+  (`memory_strategy`, a new key defaulting to `access_based` for old rows, read off the built
+  store), so a stray `maxim config set` cannot silently reconfigure a campaign — `~/.maxim/` is
+  shared across worktrees.
+
 - **Every new memory now records how strongly it encoded (memory-strength Phase 2c-2).** Two fields
   land on each episode at capture: `encoding_tag`, a noisy-OR (`1 - prod(1 - x)`) over each
   importance signal's deviation from **its own baseline**, and `storage_strength`
-  (`S0 = s_base * (1 + k * tag)`, in seconds of experience). Deviation, not raw value: the 0.5
+  (`S0 = s_base * (1 + k * tag)`, in the experience clock's own microseconds). Deviation, not raw
+  value: the 0.5
   salience every capture carries by default would otherwise put a floor of 0.5 under every tag.
   Noisy-OR, not max or sum: coincident signals add — which is what separate neuromodulator channels
   do — while a crowd of weak ones cannot manufacture importance. Novelty is weighted by
@@ -40,9 +95,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that happened while hungry. The two per-drive channels each contribute **one** deviation — relief
   as a pressure-weighted mean, pressure as its max — so the tag does not scale with how many drives
   a body has and tags stay comparable across bodies.
-  **Write-only:** nothing reads either field until the Phase 2c-3 strength strategy, and a guard
-  test asserts `memory/strategies.py` still names neither, so default retention is unchanged.
-  The stamp is taken once, at capture, and carried through compression — never recomputed, because
+  **Read by the 2c-3 strength strategy and by nothing else** — on the three default retention
+  models the stamp changes nothing, which is now pinned behaviourally rather than by the grep this
+  phase shipped with. The stamp is taken once, at capture, and carried through compression — never recomputed, because
   novelty's weight depends on the store as it was, so re-tuning changes what encodes next rather
   than rewriting what already happened. Files written before this phase load as `None`
   ("never stamped"), which the strategy will read as "encode it now", not as a worthless trace.
@@ -51,7 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   can never quietly keep the old one (memory-strength Phase 2c-1).** A new `memory` config section
   (`MemoryConfigSection`, `MAXIM_MEMORY_STRATEGY`) picks between `access_based` (today's, and the
   default until the plan's Phase 5 earns a flip), `importance_based` and `composite`. (`strength`,
-  the Bjork model this phase builds, becomes a valid name in 2c-3 together with the strategy
+  the Bjork model this phase builds, became a valid name in 2c-3 together with the strategy
   itself — accepting it earlier would take the setting and then crash at the first consolidation.)
   An unknown name **raises** at every door — the config section, `config_writer`, `config.json`,
   the env resolver and the store itself — closing the silent fallback where `memory.strategy=strenght`

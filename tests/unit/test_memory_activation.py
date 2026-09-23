@@ -193,22 +193,41 @@ def test_activate_after_use_raises_on_a_bad_source_and_swallows_a_store_failure(
     activate_after_use(None, ["x"], source="tool")  # no store wired -> no-op
 
 
-def _strategy_reads_activation() -> bool:
-    from pathlib import Path
+def test_the_strength_strategys_score_moves_with_credited_activations():
+    """Phase 2c-3 FLIPPED this gate (it was the strict red xfail Phase 1 landed).
 
-    import maxim
+    Rewritten behaviourally rather than unmarked, and the rewrite is the point. The old gate
+    grepped ``memory/strategies.py`` for ``activation_count`` -- which the shipped design
+    deliberately never reads, so that gate could only ever have gone green by accident. What Phase
+    2 promised is this: retention responds to USE. So use a trace, through the real store, and
+    watch its score move.
 
-    text = (Path(maxim.__file__).resolve().parent / "memory" / "strategies.py").read_text()
-    # The bare names, so getattr / dict / attribute access all match.
-    return "activation_count" in text or "activation_sources" in text
+    The massed count is explicitly NOT the mechanism, and the second arm says so: a second
+    activation inside the credited gap raises ``activation_count`` and moves the score by nothing.
+    """
+    from maxim.memory.encoding import EncodingSignals
+    from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 
+    hippo = Hippocampus(HippocampusConfig(persistence_path=None, memory_strategy="strength"))
+    mid = hippo.capture(encoding=EncodingSignals.unmeasured("loop"))
+    strategy = hippo.activation_strategy()
+    [record] = hippo.recall_by_ids([mid])
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Phase 1 records honest activation; the retention strategies (memory/strategies.py, the "
-    "plan's owned file) read none of it until Phase 2 -- and Phase 2 hooks MemoryLayer.activate "
-    "EVENTS, since this massed count cannot seed S. Flips to XPASS when a strategy names the "
-    "fields: then replace this with a behavioural test that the strategy's score moves with use.",
-)
-def test_phase2_strength_strategy_reads_activation():
-    assert _strategy_reads_activation()
+    hippo.experience_clock.advance(30_000_000)  # 30 s of experience: the trace has faded
+    faded = strategy.score_for_retention(record, 0.0)
+    assert faded < 0.2
+
+    hippo.activate([mid], source="tool")
+    assert strategy.score_for_retention(record, 0.0) > faded
+
+    hippo.experience_clock.advance(30_000_000)
+    hippo.activate([mid], source="tool")  # credited again: a real gap since the last one
+    credited = (strategy.score_for_retention(record, 0.0), record.storage_strength)
+
+    counted_before = record.activation_count
+    for _ in range(5):
+        hippo.activate([mid], source="tool")  # massed: all inside the credited gap
+    assert record.activation_count == counted_before + 5
+    assert (strategy.score_for_retention(record, 0.0), record.storage_strength) == credited, (
+        "the massed count moved retention -- that rebuilds access_count's immortality"
+    )

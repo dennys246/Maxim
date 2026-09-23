@@ -36,12 +36,16 @@ This mirrors `kubeconfig`, `gh`, `npm`, and `pyproject.toml`. Mismatches between
 | `llm.profile` | string | none | `MAXIM_LLM_PROFILE` |
 | `llm.n_ctx` | int ≥ 256 | 8192 | `MAXIM_LLM_N_CTX` |
 | `llm.backend` | llama_cpp / pytorch | llama_cpp | `MAXIM_LLM_BACKEND` |
-| `memory.strategy` | access_based / importance_based / composite | access_based | `MAXIM_MEMORY_STRATEGY` |
+| `memory.strategy` | access_based / importance_based / composite / strength | access_based | `MAXIM_MEMORY_STRATEGY` |
+| `memory.s_base` | float > 0 \| null | null (10 s of experience) | `MAXIM_MEMORY_S_BASE` |
+| `memory.k` | float ≥ 0 \| null | null (1.0) | `MAXIM_MEMORY_K` |
 | `llm.auto_download` | bool | false | `MAXIM_AUTO_DOWNLOAD_MODELS` |
 | `llm.max_response_tokens` | int ≥ 1 \| null | null (the mode's own reserve; 512 in the agent loop) | `MAXIM_LLM_MAX_RESPONSE_TOKENS` |
 | `llm.deliberation_max_cycles` | int ≥ 1 \| null | null (3 in sim, 2 live) | `MAXIM_LLM_DELIBERATION_MAX_CYCLES` |
 
 `llm.max_response_tokens` is the agent loop's per-call `max_tokens` and the prompt budgeter's response reserve in one field (a value at or above `llm.n_ctx` collapses the prompt budget and logs a WARNING); it does not touch the router's direct completion calls, which read the legacy `MAXIM_LLM_MAX_TOKENS`. `llm.deliberation_max_cycles` caps the PFC deliberation cycles per turn (`1` = one LLM call per turn). Both are read when an agent loop starts, so `maxim serve` needs a restart to pick up a change — the same holds for `tools.allow` / `tools.deny`.
+
+`memory.strategy` picks how memories are kept or forgotten. `access_based` is the default and is what every released version has done. **`strength` is experimental and opt-in**: it forgets on EXPERIENCE rather than wall-clock time (a machine switched off for a month wakes with its memories intact), and how long a memory lasts depends on how strongly it encoded — pain, surprise, novelty and relief at the moment it formed. Its constants are uncalibrated placeholders: at the default `memory.s_base` an unremarkable memory is dropped after about 12 seconds of lived experience, so raise `memory.s_base` (in **microseconds** of experience) before using it for anything you want to keep. `memory.k` scales how much a strong encoding extends that. Both apply to the Hippocampus only; concepts in the ATL keep access-based scoring for now. An unknown strategy name is refused rather than quietly replaced with the default.
 | `lanes.<tier>.remote_url` | string \| null | null | `MAXIM_LANE_<TIER>_REMOTE_URL` |
 | `lanes.<tier>.remote_model` | string \| null | null | `MAXIM_LANE_<TIER>_REMOTE_MODEL` |
 | `lanes.<tier>.remote_api_key_ref` | path or `keyring:<service>:<account>` | null | `MAXIM_LANE_<TIER>_REMOTE_API_KEY` |

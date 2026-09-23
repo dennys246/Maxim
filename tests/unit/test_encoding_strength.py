@@ -1,13 +1,14 @@
 """The encoding tag and the storage-strength stamp (memory-strength Phase 2c-2).
 
-Write-only by design: nothing reads ``storage_strength`` until the Phase 2c-3 strategy, so these
-tests pin the VALUES and the persistence, and one arm pins that retention did not start reading
-them (the byte-identical-default promise the plan makes).
+These tests pin the stamp's VALUES and its persistence. ``StrengthStrategy``, which reads the
+stamp, is ``test_memory_strength_strategy.py``; the last section here is the other half of that
+split -- the promise that the stamp changes NOTHING on the three default retention models.
 """
 
 from __future__ import annotations
 
 import math
+import time
 
 import pytest
 
@@ -215,18 +216,68 @@ def test_novelty_weighting_makes_the_same_signals_encode_differently_in_a_fuller
     assert first.encoding_tag == pytest.approx(0.0)  # an empty store's judgement is worth nothing
 
 
-# ── the promise that nothing reads it yet ────────────────────────────────────
+# ── the promise that NOTHING changes unless memory.strategy=strength is set ──
+#
+# 2c-2 held this with a grep (``strategies.py`` named neither field). 2c-3 is the phase that
+# READS them, so the grep had to go -- and the promise it stood for did not. What replaces it is
+# the behaviour itself, on all three default models: the strength stamp is on every record either
+# way, and on the default path it changes nothing about what is kept, compressed or credited.
+
+_DEFAULT_STRATEGIES = ("access_based", "importance_based", "composite")
 
 
-def test_retention_scoring_still_ignores_strength():
-    """Byte-identical default retention: 2c-2 records, 2c-3 is what reads."""
-    import inspect
+@pytest.mark.parametrize("strategy", _DEFAULT_STRATEGIES)
+def test_the_default_path_never_credits_a_retrieval(strategy):
+    from maxim.memory.encoding import EncodingSignals
 
-    from maxim.memory import strategies
+    hippo = Hippocampus(HippocampusConfig(persistence_path=None, memory_strategy=strategy))
+    mid = hippo.capture(encoding=EncodingSignals.unmeasured("loop"))
+    [record] = hippo.recall_by_ids([mid])
+    before = (record.storage_strength, record.retrievability_anchor_us)
 
-    source = inspect.getsource(strategies)
-    assert "storage_strength" not in source
-    assert "encoding_tag" not in source
+    hippo.experience_clock.advance(10_000_000)
+    hippo.activate([mid], source="tool")
+
+    assert record.activation_count == 1  # Phase 1's counting is unaffected
+    assert (record.storage_strength, record.retrievability_anchor_us) == before
+
+
+@pytest.mark.parametrize("strategy", _DEFAULT_STRATEGIES)
+def test_what_the_default_path_keeps_does_not_depend_on_the_stamp(strategy):
+    """Two stores, identical but for the strength stamp: the same traces must survive.
+
+    Scored through the real strategy on a spread of ages, rather than by running sleep() once --
+    a single threshold can agree by luck where a curve cannot.
+    """
+    from maxim.memory.types import EpisodicMemory
+
+    hippo = Hippocampus(HippocampusConfig(persistence_path=None, memory_strategy=strategy))
+    scorer = hippo._get_memory_strategy()
+    now = time.time()
+
+    for age_days, degree, accesses in ((0, 0, 1), (2, 3, 4), (9, 12, 40)):
+        created = now - age_days * 86400
+        plain = EpisodicMemory(id="p", timestamp=created, created_at=created, accessed_at=created)
+        plain.access_count = accesses
+        stamped = EpisodicMemory(
+            id="s",
+            timestamp=created,
+            created_at=created,
+            accessed_at=created,
+            storage_strength=1e12,  # absurdly well-learned
+            encoding_tag=1.0,  # maximally tagged
+            retrievability_anchor_us=0,
+        )
+        stamped.access_count = accesses
+        assert scorer.score_for_retention(stamped, now, degree) == scorer.score_for_retention(plain, now, degree)
+        assert scorer.should_compress(stamped, now, degree) == scorer.should_compress(plain, now, degree)
+
+
+@pytest.mark.parametrize("strategy", _DEFAULT_STRATEGIES)
+def test_no_default_model_asks_anything_of_the_experience_clock(strategy):
+    """The stalled-clock assert must stay invisible on every path but the opt-in one."""
+    hippo = Hippocampus(HippocampusConfig(persistence_path=None, memory_strategy=strategy))
+    assert hippo.requires_experience_clock is False
 
 
 @pytest.mark.parametrize("bad", [0.0, -1.0, math.inf, math.nan])

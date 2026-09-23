@@ -28,6 +28,8 @@ from typing import Any
 
 import yaml
 
+from maxim.memory.experience_clock import ExperienceClockStalled
+
 logger = logging.getLogger(__name__)
 
 
@@ -317,6 +319,11 @@ def run_interactive_sim(
                 display_status("Consolidating memories...")
                 session_stats = memory_hub.on_session_end()
                 sim_log("PIPELINE", f"Session ended: {session_stats}")
+            except ExperienceClockStalled as e:
+                # See the twin handler in runtime/bio_integration.py: a stalled clock means this
+                # run's memory model did nothing, which the broad branch below would bury at DEBUG.
+                logger.error("MemoryHub session ended on a stalled experience clock: %s", e)
+                sim_log("PIPELINE", f"Session ended on a STALLED experience clock: {e.results}")
             except Exception as e:
                 logger.debug("Failed to end MemoryHub session: %s", e)
 

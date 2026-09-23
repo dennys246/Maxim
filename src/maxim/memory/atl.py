@@ -47,6 +47,10 @@ from maxim.utils.atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
+# One line per process when `memory.strategy=strength` reaches the ATL, which keeps access-based
+# scoring by design (plan decision 5). Module-level so a per-consolidation rebuild cannot repeat it.
+_WARNED_STRENGTH_ON_ATL = False
+
 
 @dataclass
 class ATLConfig:
@@ -671,9 +675,26 @@ class ATL(MemoryLayer):
             base = ImportanceBasedStrategy(compression_age=7 * 86400)
         elif name == "composite":
             base = CompositeStrategy([(access, 0.6), (ImportanceBasedStrategy(compression_age=7 * 86400), 0.4)])
+        elif name == "strength":
+            # Phase 2's strength model is the HIPPOCAMPUS' (plan decision 5): concepts carry no
+            # storage strength, and the ATL's own compression/eviction path moves onto the model
+            # when it earns it. Named here on purpose rather than left to fall through: a valid
+            # config name that crashes a store at its first consolidation is the exact defect
+            # 2c-1's review caught, and silence would be the band-aid version of the same bug.
+            # Said out loud once per process too, so an operator who selected one model does not
+            # have to read this comment to learn the two stores are on different ones.
+            global _WARNED_STRENGTH_ON_ATL
+            if not _WARNED_STRENGTH_ON_ATL:
+                _WARNED_STRENGTH_ON_ATL = True
+                logger.info(
+                    "memory.strategy=strength applies to the Hippocampus only; the ATL keeps "
+                    "access-based scoring until its own path earns the model (plan decision 5)"
+                )
+            base = access
         else:
             raise ValueError(
-                f"unknown memory strategy {name!r}; expected one of 'access_based', 'importance_based', 'composite'"
+                f"unknown memory strategy {name!r}; expected one of 'access_based', "
+                "'importance_based', 'composite', 'strength'"
             )
 
         if self._scn is not None:
