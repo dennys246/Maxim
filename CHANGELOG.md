@@ -228,6 +228,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Telemetry can no longer raise into the code it observes
+  ([#863](https://github.com/dennys246/Maxim/issues/863), step 1).** Every `sim_*` emitter is now
+  contractually non-raising: a bad argument or a failing terminal render is contained inside the
+  emitter and REPORTED through `log_swallowed_exception` with the emitter named, never dropped.
+  Before this, 31 of the 33 emitters leaked an exception to their caller, which is why 95 call
+  sites wrapped them in `try/except Exception` — and why most of those wraps also swallowed the
+  caller's own logic, the shape behind #861. Only `Exception` is contained;
+  `KeyboardInterrupt`/`SystemExit` still propagate. Five call sites whose `try` guarded nothing but
+  an emit of inert arguments lost their now-redundant silent swallow. The remaining 88 wrap real
+  caller logic — mostly argument construction, which runs before any emitter and which no
+  containment can reach — so each is its own small decision, tracked on #863.
+
 - **A pain-learning guard that failed toward the thing it guarded against
   ([#864](https://github.com/dennys246/Maxim/issues/864)).** Three PainBus learning subscribers
   skip learning while a human is driving the actions, so human-directed pain does not corrupt the

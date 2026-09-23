@@ -190,12 +190,9 @@ class SimulationAdapter:
 
     def log(self, category: str, msg: str, data: dict | None = None) -> None:
         """Log a simulation event via sim_logger."""
-        try:
-            from maxim.simulation.sim_logger import sim_log
+        from maxim.simulation.sim_logger import sim_log
 
-            sim_log(category, msg, data)
-        except Exception:
-            pass
+        sim_log(category, msg, data)
 
     def should_skip_fallback_proposal(self, proposal: Any) -> bool:
         """In sim mode, skip fallback proposals — wait for real LLM.
