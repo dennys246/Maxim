@@ -26,7 +26,7 @@ import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal, overload
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Literal, overload
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -212,10 +212,11 @@ class HippocampusConfig:
     # Memory strategy to use: "access_based", "importance_based", "composite"
     memory_strategy: str = "access_based"
 
-    # Encoding strength (memory-strength Phase 2c-2): S0 = s_base * (1 + k * tag), in SECONDS of
-    # experience. Knobs live here, on the object that uses them, rather than in ``memory.*`` config:
-    # a config key nothing reads is the defect 2c-1's review caught. Phase 2c-3 -- which introduces
-    # the strategy that READS S -- adds the config keys and threads them here.
+    # Encoding strength (memory-strength Phase 2c-2): S0 = s_base * (1 + k * tag), in the
+    # experience clock's own MICROSECONDS -- the unit R = exp(-dt/S) compares S against, so no
+    # conversion exists on this path. Settable since 2c-3 as ``memory.s_base`` / ``memory.k``,
+    # which is when the code that READS S landed: a config key nothing reads is the defect 2c-1's
+    # review caught, so the keys ship with their reader, never before it.
     strength_s_base: float = S_BASE_DEFAULT
     strength_k: float = K_DEFAULT
 
@@ -379,6 +380,14 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             "memories_captured": 0,
             "queries": 0,
         }
+
+        # In-process tallies of MEMORY WORK, for the stalled-clock assert (memory-strength 2c-3).
+        # Not ``_stats``: that dict is persisted and restored, so it cannot answer "did anything
+        # happen since this session opened" after a load. These start at 0 for this object's life
+        # and only ever rise, so any snapshot pair reads as a difference.
+        self._work_lock = threading.Lock()
+        self._captures_this_process = 0
+        self._activations_this_process = 0
 
         # Deletion callbacks for subsystem cleanup
         self._on_memory_deleted: list[Callable[[str], None]] = []
@@ -614,6 +623,24 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         self._emit_capture_telemetry(memory_id, memory)
         return memory_id
 
+    def activate(self, record_ids: "Iterable[str]", *, source: str) -> int:
+        """``MemoryLayer.activate``, plus this store's own tally of activations (2c-3).
+
+        The tally is what lets ``MemoryHub`` tell "the clock did not move because nothing happened"
+        (fine) from "the clock did not move although memories were used" (the silent no-op that
+        leaves a strength model keeping everything forever).
+        """
+        counted = super().activate(record_ids, source=source)
+        if counted:
+            with self._work_lock:
+                self._activations_this_process += counted
+        return counted
+
+    def session_work(self) -> tuple[int, int]:
+        """``(captures, activations)`` since this object was constructed. Monotonic; never loaded."""
+        with self._work_lock:
+            return (self._captures_this_process, self._activations_this_process)
+
     def _stamp_encoding_strength(self, memory: "EpisodicMemory") -> None:
         """Record how strongly this trace encoded, from the signals it was captured with.
 
@@ -622,7 +649,10 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         ``strength_s_base`` / ``strength_k`` therefore changes what encodes NEXT, not what already
         happened -- the record is history, not a view.
 
-        Write-only until the Phase 2c-3 strength strategy reads it.
+        The ANCHOR is stamped here too (2c-3): the experience time ``R = exp(-dt/S)`` decays from.
+        Stamped on EVERY capture, whatever the configured strategy, for the same reason ``S`` is --
+        a trace that was alive before the strategy was selected must still be able to say when it
+        formed, and a field only some runs stamp is one no later run can trust.
         """
         if memory.encoding is None:  # store()/capture() require encoding, so this is belt not braces
             return
@@ -633,6 +663,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         memory.storage_strength = initial_storage_strength(
             tag, s_base=self.config.strength_s_base, k=self.config.strength_k
         )
+        memory.retrievability_anchor_us = self.experience_clock.now_us()
 
     def _build_capture_record(
         self,
@@ -700,6 +731,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
 
         # Update stats
         self._stats["memories_captured"] += 1
+        with self._work_lock:
+            self._captures_this_process += 1
         if memory.outcome.success:
             self._stats["successful"] = self._stats.get("successful", 0) + 1
         else:
@@ -2043,11 +2076,50 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         If SCN is connected, wraps the base strategy with TemporalAwareStrategy
         for temporal-context-aware memory consolidation.
         """
+        from maxim.memory.strategies import TemporalAwareStrategy
+
+        base_strategy = self._build_base_strategy()
+
+        # Wrap with TemporalAwareStrategy if SCN is connected
+        if self._scn is not None:
+            strategy = TemporalAwareStrategy(
+                scn=self._scn,
+                base_strategy=base_strategy,
+            )
+            # Pre-compute bin populations for efficient lookups
+            strategy.prepare()
+            return strategy
+
+        return base_strategy
+
+    def activation_strategy(self) -> "MemoryStrategy":
+        """The model that sees this store's activation EVENTS (memory-strength Phase 2c-3).
+
+        The BASE model, not the SCN-wrapped one: retrieval strengthening belongs to the retention
+        model, while the temporal wrapper only boosts scores -- and ``TemporalAwareStrategy.prepare``
+        snapshots every SCN bin population, which would be real work on a path that runs at every
+        memory use. Built per call rather than cached, so a test or an operator that changes
+        ``config.memory_strategy`` is never served a stale model.
+        """
+        return self._build_base_strategy()
+
+    @property
+    def requires_experience_clock(self) -> bool:
+        """Whether this store's retention model reads :attr:`experience_clock`.
+
+        The CAPABILITY ``MemoryHub`` gates its stalled-clock assert on. Deliberately not a
+        comparison against the name ``"strength"``: that would be a second source of truth, and a
+        third-party strategy running on experience time could never satisfy it.
+        """
+        return self._build_base_strategy().requires_experience_clock
+
+    def _build_base_strategy(self) -> "MemoryStrategy":
+        """The configured retention model, with no SCN wrapper and no side effects."""
         from maxim.memory.strategies import (
             AccessBasedStrategy,
             CompositeStrategy,
             ImportanceBasedStrategy,
-            TemporalAwareStrategy,
+            StrengthStrategy,
         )
 
         strategy_name = self.config.memory_strategy
@@ -2080,24 +2152,18 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                     ),
                 ]
             )
+        elif strategy_name == "strength":
+            # The clock is this store's own, passed by reference: ``load`` restores it IN PLACE, so
+            # a strategy built before a load still reads the restored time.
+            base_strategy = StrengthStrategy(self.experience_clock, s_base=self.config.strength_s_base)
         else:
             # No silent fallback: a typo ("strenght") used to quietly run access_based, which is
             # exactly the hole the memory-strength plan's config contract closes. A MISSING value
             # still falls back — that is the dataclass default, not this branch.
             raise ValueError(
                 f"unknown memory strategy {strategy_name!r}; expected one of "
-                "'access_based', 'importance_based', 'composite'"
+                "'access_based', 'importance_based', 'composite', 'strength'"
             )
-
-        # Wrap with TemporalAwareStrategy if SCN is connected
-        if self._scn is not None:
-            strategy = TemporalAwareStrategy(
-                scn=self._scn,
-                base_strategy=base_strategy,
-            )
-            # Pre-compute bin populations for efficient lookups
-            strategy.prepare()
-            return strategy
 
         return base_strategy
 

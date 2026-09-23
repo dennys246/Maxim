@@ -412,13 +412,70 @@ them. **(e) Relevance is the PRESENCE of a relief key, not a positive value** �
 `0.0` for a drive an action moved AWAY from comfort, so gating on `> 0` dropped exactly the drowning
 case (air pressure 1.0, air relief 0.0) that must encode strongest.
 
-*Owed by 2c-3, carried from 2c-2:* **`ExperienceClockStalled` ships as a capability the STRATEGY
+*2c-3 as built (2026-09-22 — the phase where `S` is first READ):* `StrengthStrategy` in
+`memory/strategies.py`, selectable as `memory.strategy=strength`, with `memory.s_base` /
+`memory.k` landing beside it. Five things worth not re-deriving, three of them departures from
+the text above.
+
+**(a) The saturation factor is taken RELATIVE to `s_base`.** The plan writes the retrieval update's
+saturating term as `S^(−w)`, which is not dimensionless — with `S` in the clock's microseconds
+`S^(−0.5)` is ~3 × 10⁻⁴ and every retrieval gain silently rounds to nothing, the same class of
+seam decision (a) of 2c-2 exists to prevent. Shipped as `(S/s_base)^(−w)`: 1.0 at the base
+strength, and the property the plan's worked example was *about* — the gain shrinks as a trace
+grows well-learned — is preserved. Its absolute numbers (`S₀ = 10` in ticks) do not carry over;
+Phase 5 calibrates. Measured on the shipped model with `s_base = 10 s`: 100 renders 0.1 s apart
+earn **exactly** what 5 gap-spaced retrievals earn, and spreading those same 5 out doubles `S`.
+
+**(b) Protection is a floor that FADES, and the fade is a view, never a rewrite.** `score =
+max(R, w·tag·exp(−dt/(S·F)))` with `w = 0.5`, `F = 10` — so a maximally tagged trace stays
+retrievable roughly five time-constants longer than a boring one and then becomes forgettable,
+which is what "a floor, not immortality" has to mean in code. The stamped `tag` is never modified:
+the fading-affect bias is computed from the same `dt` as `R`, so re-tuning changes what happens
+next rather than rewriting what already happened (the rule `_stamp_encoding_strength` set in 2c-2).
+`degree` is accepted and unused — schema linkage enters through Phase 3's *conjunction* in the
+forgetting rule, not as a score term — and `should_compress` keeps a tag-held trace WHOLE, since
+gist is what survives ordinary fading and detail is most of what a tagged trace meant.
+
+**(c) `R` needs an anchor, so traces carry one.** `retrievability_anchor_us` on `EpisodicMemory` /
+`CompressedMemory` is the experience time `R` decays from: stamped at capture beside `S`,
+whatever the configured strategy, and reset by each credited retrieval — which is what "then
+`R = 1`" is, concretely. One field, not two: the last-credited time and the decay origin are the
+same instant. A trace loaded without one is re-anchored at the clock's current value at load,
+because no anchor means no `dt` means `R = 1` forever — the immortality this plan exists to
+remove — and `dt` is clamped at 0 so a clock restarted by a corrupt record can never make a trace
+*more* retrievable than when it was stored.
+
+**(d) `ExperienceClockStalled` is gated on `MemoryStrategy.requires_experience_clock`**, the owed
+item from 2c-2, and it fires LAST on both `MemoryHub` session-end paths, after every save, carrying
+the session's `results` — a diagnostic must not cost the session its memories (the
+`activate_after_use` principle). An honestly empty session stays silent: nothing happened, so
+nothing should have aged, and an assert that fires on every idle shutdown is one nobody reads.
+"Did anything happen" is answered by in-process tallies on the Hippocampus (`session_work()`), not
+by `_stats`, which is persisted and so cannot distinguish this session from every previous one.
+
+**(e) The ATL names `strength` explicitly and keeps today's model under it.** Phase 2's strength
+model is the hippocampal one (decision 5), and concepts carry no `S` — but letting a *valid* config
+name fall through to the store's raise is precisely the defect 2c-1's review caught, one layer
+down. Named branch, documented, tested.
+
+*Found while building, fixed here:* `memory.s_base = nan` passed the env door — `nan < 0` is
+`False`, so every `min_val` range check admits it, and a NaN `S` poisons every comparison it
+touches. Both doors now test `math.isfinite` / `not value > 0` rather than `value <= 0`.
+
+*Owed by Phase 3 (unchanged by this phase):* replay, the homeostatic downscale, the unlinked/uncited
+conjunction in the forgetting rule, and ATL parity. *Still red and correctly so:*
+`test_phase2s_bypass_harnesses_advance_the_clock` — the scripted survival harnesses are Phase 2S.
+
+*Owed by 2c-3, carried from 2c-2 (DISCHARGED 2026-09-22 except where noted):* **`ExperienceClockStalled` ships as a capability the STRATEGY
 declares** (e.g. `MemoryStrategy.requires_experience_clock`), never a string comparison against the
 name `"strength"` in `MemoryHub` — that would be a second source of truth no third-party strategy
 could satisfy, and it is the same concern [config_extensibility.md](config_extensibility.md) exists
 for. Its strict red gate in `tests/unit/test_experience_clock.py` stays red until then, which is the
-honest state. Also owed: the plan's "the 2c tag must count one event once" (the MemoryAgent /
-reflexion duplicates) is recorded on each trace as `site` but nothing consumes it yet.
+honest state. **Done:** shipped exactly that way; both red gates were REWRITTEN behaviourally
+rather than unmarked (the activation one could never have flipped as written — it grepped for
+`activation_count`, which the event hook deliberately never reads). Also owed, **still owed**: the
+plan's "the 2c tag must count one event once" (the MemoryAgent / reflexion duplicates) is recorded
+on each trace as `site` but nothing consumes it yet.
 
 **Phase 2S — the survival gate** ([#848](https://github.com/dennys246/Maxim/issues/848); owner:
 "the gate definitely needs to activate memory"). Measured offline on main 4a0362e2 (a scratchpad

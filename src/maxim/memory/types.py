@@ -20,7 +20,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from maxim.memory.encoding import EncodingSignals
 
@@ -57,12 +57,40 @@ def _strength_fields(record: Any) -> dict[str, Any]:
     serialize is a silent drop waiting to happen (stamp ``S`` on a concept, save, lose it). ``S``
     lives exactly where ``encoding`` lives until ATL's path earns it, and moves to the base WITH its
     serialization in the same commit.
+
+    Read under the record's own lock (2c-3): ``S`` and its anchor are updated together by a credited
+    retrieval, and a save that caught the new ``S`` with the old anchor would reload a trace whose
+    ``R = exp(-dt/S)`` never happened.
     """
-    return {
-        "storage_strength": record.storage_strength,
-        "encoding_tag": record.encoding_tag,
-        "novelty_reference_size": record.novelty_reference_size,
-    }
+    with record._touch_lock:
+        return {
+            "storage_strength": record.storage_strength,
+            "encoding_tag": record.encoding_tag,
+            "novelty_reference_size": record.novelty_reference_size,
+            "retrievability_anchor_us": record.retrievability_anchor_us,
+        }
+
+
+def update_strength_atomically(
+    record: Any,
+    compute: "Callable[[float | None, int | None], tuple[float, int] | None]",
+) -> bool:
+    """Read-modify-write a trace's ``(S, anchor)`` under its OWN lock (memory-strength Phase 2c-3).
+
+    The strength model lives in ``memory/strategies.py``; the ATOMICITY lives here, with the fields.
+    ``compute`` is handed the current ``(storage_strength, retrievability_anchor_us)`` and returns
+    the new pair, or ``None`` to leave the record untouched (an uncredited activation). It runs
+    inside the lock, so it must take no other lock and must not call back into the store.
+
+    Returns whether the record was changed. Lock order is store -> record, the same order
+    ``MemoryLayer.activate`` and sleep already take, so this adds no new edge to the lock graph.
+    """
+    with record._touch_lock:
+        result = compute(record.storage_strength, record.retrievability_anchor_us)
+        if result is None:
+            return False
+        record.storage_strength, record.retrievability_anchor_us = result
+        return True
 
 
 def _strength_number(value: Any, *, name: str, low: float, high: float, record_id: Any) -> float | None:
@@ -103,6 +131,26 @@ def _reference_size(value: Any, *, record_id: Any) -> int | None:
     return None
 
 
+def _anchor_us(value: Any, *, record_id: Any) -> int | None:
+    """The experience time ``R`` decays from, or ``None`` with a warning if disk cannot be trusted.
+
+    Loud like its siblings, and for the same reason as ``storage_strength``: a negative or
+    non-integer anchor makes ``dt = now - anchor`` nonsense, and a trace whose ``R`` is wrong is a
+    trace forgotten (or kept) for a reason that never happened. Integer microseconds, matching
+    ``experience_clock.UNIT`` exactly -- there is no conversion anywhere on this path.
+    """
+    if value is None:
+        return None
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return int(value)
+    import logging
+
+    logging.getLogger(__name__).warning(
+        "memory %s has an unusable retrievability_anchor_us (%r); loading it as never anchored", record_id, value
+    )
+    return None
+
+
 def _strength_kwargs(data: dict[str, Any]) -> dict[str, Any]:
     """Load one trace's strength stamp. Absent (every file written before Phase 2c) = never stamped,
     which the strategy reads as "encode it now", NOT as a zero-strength trace."""
@@ -119,6 +167,7 @@ def _strength_kwargs(data: dict[str, Any]) -> dict[str, Any]:
             data.get("encoding_tag"), name="encoding_tag", low=0.0, high=1.0, record_id=record_id
         ),
         "novelty_reference_size": _reference_size(data.get("novelty_reference_size"), record_id=record_id),
+        "retrievability_anchor_us": _anchor_us(data.get("retrievability_anchor_us"), record_id=record_id),
     }
 
 
@@ -543,6 +592,12 @@ class CompressedMemory(CompressedRecord):
     # 2b-iii records it (where 2b-i's review put it). Without this the store would hold tags of two
     # provenances with nothing marking which is which.
     novelty_reference_size: int | None = field(default=None, repr=False, compare=False)
+    # The experience time R decays FROM (memory-strength Phase 2c-3), in the experience clock's own
+    # integer microseconds -- ``experience_clock.UNIT``, the same unit S is carried in, so no
+    # conversion exists on this path to get wrong. Stamped at capture and reset by each CREDITED
+    # retrieval (that is what "R = 1" means); ``None`` = a trace that predates the anchor, which the
+    # store re-anchors at load rather than leaving immortal.
+    retrievability_anchor_us: int | None = field(default=None, repr=False, compare=False)
 
     run_id: str = ""
 
@@ -603,6 +658,7 @@ class CompressedMemory(CompressedRecord):
             storage_strength=memory.storage_strength,
             encoding_tag=memory.encoding_tag,
             novelty_reference_size=memory.novelty_reference_size,
+            retrievability_anchor_us=memory.retrievability_anchor_us,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -693,8 +749,9 @@ class EpisodicMemory(MemoryRecord):
     encoding: EncodingSignals | None = field(default=None, repr=False, compare=False)
 
     # How well-learned this trace is (memory-strength Phase 2c): S0 = s_base * (1 + k * tag) at
-    # capture, and the tag it was computed from, kept so a survivor can say why it survived. Both
-    # write-only until the Phase 2c-3 strength strategy reads them; None = never stamped.
+    # capture, and the tag it was computed from, kept so a survivor can say why it survived. Read by
+    # ``StrengthStrategy`` (Phase 2c-3) and by nothing else -- the default retention path does not
+    # name them. None = never stamped.
     storage_strength: float | None = field(default=None, repr=False, compare=False)
     encoding_tag: float | None = field(default=None, repr=False, compare=False)
     # What novelty was judged against when this tag was computed. Recorded so a trace can say which
@@ -702,6 +759,12 @@ class EpisodicMemory(MemoryRecord):
     # 2b-iii records it (where 2b-i's review put it). Without this the store would hold tags of two
     # provenances with nothing marking which is which.
     novelty_reference_size: int | None = field(default=None, repr=False, compare=False)
+    # The experience time R decays FROM (memory-strength Phase 2c-3), in the experience clock's own
+    # integer microseconds -- ``experience_clock.UNIT``, the same unit S is carried in, so no
+    # conversion exists on this path to get wrong. Stamped at capture and reset by each CREDITED
+    # retrieval (that is what "R = 1" means); ``None`` = a trace that predates the anchor, which the
+    # store re-anchors at load rather than leaving immortal.
+    retrievability_anchor_us: int | None = field(default=None, repr=False, compare=False)
 
     @property
     def duration_ms(self) -> float:

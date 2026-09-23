@@ -27,6 +27,7 @@ from maxim.memory.strategies import (
     CompositeStrategy,
     ImportanceBasedStrategy,
     MemoryStrategy,
+    StrengthStrategy,
     TemporalAwareStrategy,
 )
 
@@ -97,6 +98,7 @@ __all__ = [
     "CompositeStrategy",
     "ImportanceBasedStrategy",
     "MemoryStrategy",
+    "StrengthStrategy",
     "TemporalAwareStrategy",
     # Store protocols and file backends
     "CausalStore",

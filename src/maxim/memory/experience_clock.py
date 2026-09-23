@@ -63,4 +63,29 @@ class ExperienceClock:
             self._us = us
 
 
-__all__ = ["ExperienceClock", "UNIT"]
+class ExperienceClockStalled(RuntimeError):
+    """A session used memory on an experience-time retention model, and the clock never moved.
+
+    Raised by ``MemoryHub`` at session end (memory-strength Phase 2c-3). The failure it names is a
+    SILENT one: with ``dt`` stuck at 0 every trace scores ``R = 1``, nothing is ever forgotten, and
+    the run looks exactly like a run whose memories all deserved to be kept. The usual cause is a
+    path that captures or activates without going through the agent loop -- a scripted harness --
+    so nothing calls ``ExperienceClockDriver.on_live_pass``.
+
+    Explicit keyword-only ``__init__`` (CC3 spirit for typed exceptions: no ``**kwargs``), and it
+    carries the session's own ``results`` so a caller that wanted them is not also robbed of them.
+    """
+
+    def __init__(self, *, captures: int, activations: int, results: dict[str, Any] | None = None) -> None:
+        super().__init__(
+            f"the experience clock did not advance, but this session captured {captures} "
+            f"and activated {activations} memories on a retention model that runs on experience "
+            f"time: with dt = 0 every trace stays at R = 1 and nothing is ever forgotten. "
+            f"Something must advance the clock (runtime/experience_time.py::ExperienceClockDriver)."
+        )
+        self.captures = captures
+        self.activations = activations
+        self.results = results
+
+
+__all__ = ["ExperienceClock", "ExperienceClockStalled", "UNIT"]

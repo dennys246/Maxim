@@ -145,6 +145,11 @@ class MemoryHub:
     # and warning on the second makes the guard fire on every clean shutdown.
     _session_ever_started: bool = False
     _session_start_time: float = 0.0
+    # What the experience clock read, and how much memory work this Hippocampus had done, when the
+    # session opened (memory-strength Phase 2c-3). Both session-end paths compare against these to
+    # raise ``ExperienceClockStalled``; see ``_assert_experience_advanced``.
+    _session_experience_us: int = 0
+    _session_work_at_start: tuple[int, int] = (0, 0)
     # Guards the _session_active transitions. Post-merge review round
     # (2026-07-26, Exec #4 / Arch #1 cross-confirmed): the unlocked
     # check-then-act let a console shutdown-hook stop() and the campaign
@@ -633,6 +638,8 @@ class MemoryHub:
             self._session_active = True
             self._session_ever_started = True
             self._session_start_time = time.time()
+            self._session_experience_us = self.hippocampus.experience_clock.now_us()
+            self._session_work_at_start = self.hippocampus.session_work()
 
         results = {}
 
@@ -764,6 +771,31 @@ class MemoryHub:
         if self._concept_extractor is None:
             return False
         return self._concept_extractor.restart_worker()
+
+    def _assert_experience_advanced(self, results: dict[str, Any]) -> None:
+        """Raise ``ExperienceClockStalled`` if a strength-model session did work on a frozen clock.
+
+        Gated on the CAPABILITY the strategy declares (``requires_experience_clock``), never on the
+        strategy's NAME: a name comparison would be a second source of truth that no third-party
+        model running on experience time could satisfy, which is the concern
+        ``docs/plans/config_extensibility.md`` exists for.
+
+        Called LAST on both session-end paths, after every save. A diagnostic must not cost the
+        session its memories -- the same principle as ``activate_after_use`` -- so the work is done
+        and persisted first, and the exception carries ``results`` so a caller that wanted them
+        still has them.
+        """
+        if not self.hippocampus.requires_experience_clock:
+            return
+        if self.hippocampus.experience_clock.now_us() > self._session_experience_us:
+            return
+        captures, activations = self.hippocampus.session_work()
+        did = (captures - self._session_work_at_start[0], activations - self._session_work_at_start[1])
+        if not any(did):
+            return  # an honestly empty session: nothing happened, so nothing should have aged
+        from maxim.memory.experience_clock import ExperienceClockStalled
+
+        raise ExperienceClockStalled(captures=did[0], activations=did[1], results=results)
 
     def on_session_end(self) -> dict[str, int]:
         """End session and consolidate learning.
@@ -934,6 +966,7 @@ class MemoryHub:
         results["session_duration_seconds"] = session_duration
 
         logger.info("Session ended after %.1fs: %s", session_duration, results)
+        self._assert_experience_advanced(results)
         return results
 
     def on_session_end_lightweight(self) -> dict[str, Any]:
@@ -1046,6 +1079,7 @@ class MemoryHub:
         results["session_duration_seconds"] = session_duration
 
         logger.info("Session ended (lightweight) after %.1fs: %s", session_duration, results)
+        self._assert_experience_advanced(results)
         return results
 
     def sleep(self) -> dict[str, int]:

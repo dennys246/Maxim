@@ -18,9 +18,9 @@ from maxim.runtime.config_loader import (
     resolve_memory_strategy,
 )
 
-# `strength` is NOT valid until 2c-3 ships the strategy: accepting it earlier would take the
-# setting and then crash at the first consolidation.
-_VALID = ("access_based", "importance_based", "composite")
+# `strength` became valid in 2c-3, WITH the strategy that implements it: accepting the name any
+# earlier would have taken the setting and then crashed at the first consolidation.
+_VALID = ("access_based", "importance_based", "composite", "strength")
 
 
 def test_todays_model_is_the_default():
@@ -141,33 +141,150 @@ def test_a_missing_value_still_falls_back_to_the_default():
 
 def test_every_builder_threads_the_one_resolver(monkeypatch, tmp_path):
     """A builder that forgot the resolver would leave that store on the old model (the
-    shared-builder silent no-op): each one is checked on the BUILT object."""
+    shared-builder silent no-op): each one is checked on the BUILT object.
+
+    The strength KNOBS are checked on the same objects, and that is the whole reason
+    ``resolve_hippocampus_memory_kwargs`` is a bundle rather than three resolvers: a builder that
+    threaded the strategy and forgot ``memory.s_base`` would run the operator's chosen model on
+    default tuning, silently.
+    """
     monkeypatch.setenv("MAXIM_MEMORY_STRATEGY", "composite")
+    monkeypatch.setenv("MAXIM_MEMORY_S_BASE", "1234.0")
+    monkeypatch.setenv("MAXIM_MEMORY_K", "3.5")
 
     import maxim.create as create_api
     from maxim.runtime.bio_stack import build_bio_stack
 
-    assert create_api.hippocampus().config.memory_strategy == "composite"
-    assert create_api.atl().config.memory_strategy == "composite"
+    def check(hippo):
+        assert hippo.config.memory_strategy == "composite"
+        assert (hippo.config.strength_s_base, hippo.config.strength_k) == (1234.0, 3.5)
+
+    check(create_api.hippocampus())
+    assert create_api.atl().config.memory_strategy == "composite"  # ATL takes only the strategy
 
     bio = build_bio_stack(agent_id="test-agent", persistence_dir=str(tmp_path / "bio"))
-    assert bio.hippocampus.config.memory_strategy == "composite"
+    check(bio.hippocampus)
     # NOT `or bio.atl is None`: build_bio_stack swallows ATL construction failures, so a dropped
     # kwarg would make that arm pass vacuously.
     assert bio.atl is not None and bio.atl.config.memory_strategy == "composite"
 
+    import maxim.load as load_api
+
+    saved = tmp_path / "saved.json"
+    create_api.hippocampus(persistence_path=str(saved)).save()
+    check(load_api.hippocampus(str(saved)))
+
 
 def test_the_agent_factory_threads_it_too(monkeypatch, tmp_path):
     monkeypatch.setenv("MAXIM_MEMORY_STRATEGY", "composite")
+    monkeypatch.setenv("MAXIM_MEMORY_S_BASE", "1234.0")
     from maxim.runtime.agent_factory import AgentConfig, AgentFactory
 
     instance = AgentFactory(base_data_dir=tmp_path).create_agent(AgentConfig(agent_id="probe"))
     try:
         assert instance.hippocampus.config.memory_strategy == "composite"
+        assert instance.hippocampus.config.strength_s_base == 1234.0
         if getattr(instance, "atl", None) is not None:
             assert instance.atl.config.memory_strategy == "composite"
     finally:
         instance.shutdown()  # the factory starts a worker thread
+
+
+# ── the strength knobs (2c-3: the keys ship WITH the code that reads them) ────
+
+
+def test_an_unset_knob_leaves_the_models_own_default_as_the_single_source():
+    """`None` is not written into the schema as a number: the equation's default lives in
+    ``memory/encoding.py`` alone, where it cannot drift out of step with the equation."""
+    from maxim.memory.encoding import K_DEFAULT, S_BASE_DEFAULT
+    from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs
+
+    assert MaximConfig().memory.s_base is None
+    assert MaximConfig().memory.k is None
+    assert resolve_hippocampus_memory_kwargs() == {"memory_strategy": "access_based"}
+    assert HippocampusConfig().strength_s_base == S_BASE_DEFAULT
+    assert HippocampusConfig().strength_k == K_DEFAULT
+
+
+def test_a_set_knob_reaches_the_stamp_through_the_resolver(monkeypatch):
+    from maxim.memory.encoding import EncodingSignals
+    from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs
+
+    monkeypatch.setenv("MAXIM_MEMORY_S_BASE", "2000.0")
+    monkeypatch.setenv("MAXIM_MEMORY_K", "0.0")
+    hippo = Hippocampus(HippocampusConfig(persistence_path=None, **resolve_hippocampus_memory_kwargs()))
+    memory = hippo.get(hippo.capture(encoding=EncodingSignals.unmeasured("loop")))
+    assert memory.storage_strength == pytest.approx(2000.0)
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "banana"])
+def test_an_unusable_s_base_raises_where_it_was_set(value, monkeypatch, tmp_path):
+    """S divides dt: a zero would be a ZeroDivisionError at the first score, far from the command
+    that set it, and on the async capture worker whose broad handler LOSES the memory."""
+    from maxim.runtime import config_writer
+    from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs
+
+    monkeypatch.setenv("MAXIM_MEMORY_S_BASE", value)
+    with pytest.raises(ConfigurationError):
+        resolve_hippocampus_memory_kwargs()
+
+    monkeypatch.delenv("MAXIM_MEMORY_S_BASE")
+    monkeypatch.setattr(config_writer, "config_path", lambda: tmp_path / "config.json")
+    with pytest.raises(ConfigurationError):
+        config_writer.set_field("memory.s_base", value)
+
+
+def test_an_unusable_knob_raises_at_the_config_door_too():
+    """config_writer only coerces STRINGS, so a Python-API caller would slip past it."""
+    with pytest.raises(ConfigurationError, match="memory.s_base"):
+        MemoryConfigSection(s_base=0.0)
+    with pytest.raises(ConfigurationError, match="memory.k"):
+        MemoryConfigSection(k=-1.0)
+
+
+def test_the_knobs_survive_a_write_then_load(tmp_path, monkeypatch):
+    import json
+
+    from maxim.runtime import config_writer
+    from maxim.runtime.config_loader import load_config
+
+    path = tmp_path / "config.json"
+    monkeypatch.setattr(config_writer, "config_path", lambda: path)
+    config_writer.set_field("memory.strategy", "strength")
+    config_writer.set_field("memory.s_base", "5e6")
+    assert json.loads(path.read_text())["memory"] == {"strategy": "strength", "s_base": 5e6, "k": None}
+    loaded = load_config(path)
+    assert (loaded.memory.strategy, loaded.memory.s_base) == ("strength", 5e6)
+
+
+def test_a_nonsense_knob_in_the_config_file_raises_rather_than_defaulting(tmp_path):
+    import json
+
+    from maxim.runtime.config_loader import load_config
+
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"_format_version": "1.0", "memory": {"s_base": -3.0}}))
+    with pytest.raises(ConfigurationError, match="memory.s_base"):
+        load_config(path)
+
+
+# ── the name that landed with its strategy ───────────────────────────────────
+
+
+def test_the_strength_name_reaches_a_working_model_in_every_store():
+    """2c-1's review: a name accepted by config and unimplemented in the store crashes at the
+    first consolidation, far from the command that set it. Both stores answer for it."""
+    from maxim.memory.strategies import AccessBasedStrategy, StrengthStrategy
+
+    hippo = Hippocampus(HippocampusConfig(persistence_path=None, memory_strategy="strength"))
+    assert isinstance(hippo._get_memory_strategy(), StrengthStrategy)
+    hippo.sleep()  # the consolidation that 2c-1's review said must not crash
+
+    # The ATL keeps today's model under this name ON PURPOSE (plan decision 5: Phase 2's strength
+    # model is the hippocampal one). Named, not fallen through: silence would be the band-aid.
+    atl = ATL(ATLConfig(persistence_path=None, memory_strategy="strength"))
+    assert isinstance(atl._get_memory_strategy(), AccessBasedStrategy)
+    atl.consolidate()
 
 
 def test_the_atl_honours_the_name_rather_than_validating_and_ignoring_it():

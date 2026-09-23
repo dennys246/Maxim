@@ -671,9 +671,17 @@ class ATL(MemoryLayer):
             base = ImportanceBasedStrategy(compression_age=7 * 86400)
         elif name == "composite":
             base = CompositeStrategy([(access, 0.6), (ImportanceBasedStrategy(compression_age=7 * 86400), 0.4)])
+        elif name == "strength":
+            # Phase 2's strength model is the HIPPOCAMPUS' (plan decision 5): concepts carry no
+            # storage strength, and the ATL's own compression/eviction path moves onto the model
+            # when it earns it. Named here on purpose rather than left to fall through: a valid
+            # config name that crashes a store at its first consolidation is the exact defect
+            # 2c-1's review caught, and silence would be the band-aid version of the same bug.
+            base = access
         else:
             raise ValueError(
-                f"unknown memory strategy {name!r}; expected one of 'access_based', 'importance_based', 'composite'"
+                f"unknown memory strategy {name!r}; expected one of 'access_based', "
+                "'importance_based', 'composite', 'strength'"
             )
 
         if self._scn is not None:

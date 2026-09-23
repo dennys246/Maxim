@@ -291,14 +291,33 @@ def test_run_agentic_loop_advances_the_clock_on_every_live_pass():
 # ── owed work, held by strict red gates ──────────────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Phase 2c: the stalled-clock assert (plan §Phase 2 decision 1) — MemoryHub.on_session_end and "
-    "on_session_end_lightweight raise ExperienceClockStalled when the strength strategy is on, the clock "
-    "did not move and the session captured or activated anything. Flips when it lands.",
-)
-def test_phase2c_stalled_clock_assert_exists():
-    from maxim.memory.experience_clock import ExperienceClockStalled  # noqa: F401
+def test_a_session_that_used_memory_on_a_frozen_clock_is_loud():
+    """Phase 2c-3 FLIPPED this gate (it was the strict red xfail Phase 2a landed).
+
+    Rewritten as the BEHAVIOUR rather than unmarked: the old gate only imported the exception name,
+    which a stub would have satisfied. The failure it guards is silent -- with dt frozen at 0 every
+    trace sits at R = 1 and nothing is ever forgotten -- so what has to be pinned is that a real
+    session end raises. The negative arms (default strategy, advanced clock, idle session) live in
+    ``test_memory_strength_strategy.py``, beside the rest of the model.
+    """
+    from maxim.decisions.nac import NAc
+    from maxim.integration.memory_hub import MemoryHub
+    from maxim.memory.encoding import EncodingSignals
+    from maxim.memory.experience_clock import ExperienceClockStalled
+    from maxim.similarity.ec import EntorhinalCortex
+    from maxim.time.scn import SCN
+
+    hub = MemoryHub(
+        hippocampus=Hippocampus(HippocampusConfig(persistence_path=None, memory_strategy="strength")),
+        scn=SCN(),
+        nac=NAc(),
+        ec=EntorhinalCortex(),
+        _allow_raw=True,
+    )
+    hub.on_session_start()
+    hub.hippocampus.capture(encoding=EncodingSignals.unmeasured("loop"))
+    with pytest.raises(ExperienceClockStalled):
+        hub.on_session_end_lightweight()
 
 
 _BYPASS_HARNESSES = [

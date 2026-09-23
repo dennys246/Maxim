@@ -23,6 +23,7 @@ from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.agents.bus import DependencyGraph
+    from maxim.memory.strategies import MemoryStrategy
     from maxim.memory.types import CompressedRecord, MemoryRecord
     from maxim.models.bio_context import RetrievalContext
 
@@ -156,13 +157,37 @@ class MemoryLayer(ABC):
         waiting on the first read -- a deadlock. Call it after the read has returned. It takes the
         store read lock once, releases it, then the per-record locks, so it never upgrades.
         Consumers should go through ``activate_after_use``, which cannot cost them their content.
+
+        Since Phase 2c-3 this is also where the retention model sees the activation as an EVENT,
+        through ``strategy.on_activation`` -- the seam the strength model's spacing effect needs,
+        and one the massed ``activation_count`` could never provide. The default strategies define
+        that hook as a no-op, so nothing here changes unless ``memory.strategy`` selects a model
+        that implements it.
         """
         if source not in ACTIVATION_SOURCES:
             raise ValueError(f"unknown activation source {source!r}; expected one of {sorted(ACTIVATION_SOURCES)}")
         records = self.recall_by_ids(list(dict.fromkeys(record_ids)))
+        if not records:
+            return 0  # nothing to credit, so do not build a strategy to credit it with
+        strategy = self.activation_strategy()
+        # ONE read of the strategy's clock for the whole call, taken before any record lock: every
+        # record in one use is credited against the same instant, and the read never happens under
+        # a lock (plan decision 5).
+        now = strategy.activation_now() if strategy is not None else 0.0
         for record in records:
             record.activate(source)
+            if strategy is not None:
+                strategy.on_activation(record, now, source)
         return len(records)
+
+    def activation_strategy(self) -> "MemoryStrategy | None":
+        """The retention model that should see this store's activation EVENTS, if any.
+
+        ``None`` by default: a layer without a retention model counts uses and does nothing else.
+        The Hippocampus returns its configured model; the ATL does not, because Phase 2's strength
+        model is the hippocampal one (plan decision 5) -- concepts get ``S`` with their own path.
+        """
+        return None
 
     def __bool__(self) -> bool:
         """A store that EXISTS is truthy even when EMPTY (#839).

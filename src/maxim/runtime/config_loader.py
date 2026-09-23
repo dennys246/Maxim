@@ -42,6 +42,7 @@ import re
 
 import json
 import logging
+import math
 import os
 import platform
 import threading
@@ -70,7 +71,7 @@ _VALID_REDACTION_POLICIES: frozenset[str] = frozenset({"standard", "relaxed", "s
 # the plan's Phase 5 earns the flip. ``strength`` (the Bjork model) joins this set in Phase 2c-3,
 # with the strategy itself -- a name accepted here but unimplemented in the store would be taken
 # and then crash at the first consolidation.
-_VALID_MEMORY_STRATEGIES: frozenset[str] = frozenset({"access_based", "importance_based", "composite"})
+_VALID_MEMORY_STRATEGIES: frozenset[str] = frozenset({"access_based", "importance_based", "composite", "strength"})
 _VALID_TIER_NAMES: frozenset[str] = frozenset({"large", "medium", "small"})
 
 # C-2 fold: canonical truthy/falsy sets. Match the existing
@@ -275,15 +276,25 @@ class MemoryConfigSection:
     ``strategy`` selects the retention model. ``access_based`` is today's — recency + access count
     + out-degree — and stays the default until the plan's Phase 5 earns the flip;
     ``importance_based`` and ``composite`` are the existing salience-weighted and blended ones.
-    ``strength`` -- the Bjork storage/retrieval model the memory-strength line builds -- is NOT a
-    valid name yet: it is added here in Phase 2c-3, together with the strategy itself. Accepting it
-    earlier would take the setting and then crash at the first consolidation, far from the command
+    ``strength`` -- the Bjork storage/retrieval model, ``R = exp(-dt/S)`` on the experience clock --
+    landed in Phase 2c-3, TOGETHER with the strategy that implements it: accepting the name earlier
+    would have taken the setting and then crashed at the first consolidation, far from the command
     that set it. An unknown name RAISES at both doors (here and in
     ``config_writer``): ``memory.strategy=strenght`` must never quietly run ``access_based``,
     which is exactly the silent fallback the plan set out to close.
+
+    ``s_base`` and ``k`` tune that model's encoding equation, ``S0 = s_base * (1 + k * tag)``.
+    ``s_base`` is in the experience clock's own MICROSECONDS -- the unit ``R = exp(-dt/S)`` compares
+    against, so there is no conversion anywhere on the path to get wrong. Both default to ``None``
+    meaning "whatever the model's own default is" (``memory/encoding.py``), so the defaults live in
+    ONE place rather than being copied into the schema where they would drift. They ship in 2c-3
+    because that is the phase whose code READS them: a config key nothing reads is the defect
+    2c-1's review caught, and it is not fixed by adding the key earlier.
     """
 
-    strategy: Literal["access_based", "importance_based", "composite"] = "access_based"
+    strategy: Literal["access_based", "importance_based", "composite", "strength"] = "access_based"
+    s_base: float | None = None
+    k: float | None = None
 
     def __post_init__(self) -> None:
         # config_writer only coerces str values, so a Python-API caller with a non-str (or a typo)
@@ -292,6 +303,13 @@ class MemoryConfigSection:
             raise ConfigurationError(
                 f"config: memory.strategy: expected one of {sorted(_VALID_MEMORY_STRATEGIES)}, got {self.strategy!r}"
             )
+        # An unusable knob is refused HERE, where the operator set it. Unvalidated it would raise
+        # inside a capture instead -- and on the async capture worker, whose broad handler turns
+        # that into a LOST memory and no report of the real mistake.
+        if self.s_base is not None and (not math.isfinite(self.s_base) or self.s_base <= 0.0):
+            raise ConfigurationError(f"config: memory.s_base: must be finite and positive, got {self.s_base!r}")
+        if self.k is not None and (not math.isfinite(self.k) or self.k < 0.0):
+            raise ConfigurationError(f"config: memory.k: must be finite and non-negative, got {self.k!r}")
 
 
 @dataclass(frozen=True)
@@ -503,6 +521,8 @@ _FIELD_TO_ENV: dict[str, str] = {
     "cloud.session_budget_usd": "MAXIM_CLOUD_SESSION_BUDGET",
     "cloud.redaction_policy": "MAXIM_LLM_REDACTION_POLICY",
     "memory.strategy": "MAXIM_MEMORY_STRATEGY",
+    "memory.s_base": "MAXIM_MEMORY_S_BASE",
+    "memory.k": "MAXIM_MEMORY_K",
     "proxy.max_concurrent": "MAXIM_PROXY_MAX_CONCURRENT",
     "proxy.rate_limit_rpm": "MAXIM_PROXY_RATE_LIMIT_RPM",
     "auto_spawn.llm_server": "MAXIM_AUTO_SPAWN_LLM_SERVER",
@@ -767,6 +787,21 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
         return _coerce_float(raw, field_path, min_val=0.0)
     if field_path == "data.budget_gb":
         return _coerce_float(raw, field_path, min_val=0.0)
+    if field_path == "memory.s_base":
+        # Strictly positive and FINITE: S = 0 divides by zero in R = exp(-dt/S) at the first score,
+        # and a NaN poisons every comparison it touches while passing any ``< 0`` range check
+        # (``nan < 0`` is False -- which is exactly how it got through the first version of this
+        # branch). RAISES rather than clamping: a base strength is a modelling decision, not a
+        # lever magnitude, and silently rounding one up would be a measurement nobody made.
+        value = _coerce_float(raw, field_path, min_val=0.0)
+        if not math.isfinite(value) or value <= 0.0:
+            raise ConfigurationError(f"config: {field_path}: must be finite and positive, got {value}")
+        return value
+    if field_path == "memory.k":
+        value = _coerce_float(raw, field_path, min_val=0.0)
+        if not math.isfinite(value):
+            raise ConfigurationError(f"config: {field_path}: must be finite, got {value}")
+        return value
     if field_path == "sim.aut_turn_timeout_s":
         # Tuning knob (narrator pacing vs reasoning-model thinking time):
         # CLAMP out-of-range to [5, 1800] rather than raise. A too-large
@@ -875,9 +910,32 @@ def resolve_memory_strategy(config: MaximConfig | None = None) -> str:
     run cannot end up with one memory system on a different model from another because a builder
     forgot to thread it. ``memory/`` may not import ``runtime/`` (LAYER_RULES), so the value is
     passed INTO ``HippocampusConfig`` / ``ATLConfig``; the stores never resolve it themselves.
+
+    The ATL takes only this. A Hippocampus takes the strength knobs too, so its builders call
+    :func:`resolve_hippocampus_memory_kwargs` instead -- see that function for why.
     """
     value, _source = resolve_setting("memory.strategy", config=config)
     return str(value)
+
+
+def resolve_hippocampus_memory_kwargs(config: MaximConfig | None = None) -> dict[str, Any]:
+    """Every ``memory.*`` setting a ``HippocampusConfig`` takes, as ONE splat (2c-3).
+
+    Deliberately a bundle rather than three resolvers: with one call per setting, a builder that
+    threaded the strategy and forgot the knobs would silently run the strength model on default
+    tuning while the operator's ``memory.s_base`` sat in ``config.json`` doing nothing -- the
+    shared-builder silent no-op, in the shape the plan has already been bitten by twice.
+
+    An UNSET knob is omitted, not passed as ``None``: the model's own default
+    (``memory/encoding.py``) then stays the single source of truth for what "unset" means, and no
+    number is copied into the config schema where it could drift out of step with the equation.
+    """
+    kwargs: dict[str, Any] = {"memory_strategy": resolve_memory_strategy(config=config)}
+    for field_path, kwarg in (("memory.s_base", "strength_s_base"), ("memory.k", "strength_k")):
+        value, _source = resolve_setting(field_path, config=config)
+        if value is not None:
+            kwargs[kwarg] = float(value)
+    return kwargs
 
 
 def resolve_setting(
@@ -1435,6 +1493,12 @@ def _range_check_float(value: float, field_path: str) -> float:
     """Apply per-field range constraints to a JSON-parsed float."""
     if field_path in {"cloud.session_budget_usd", "data.budget_gb"} and value < 0:
         raise ConfigurationError(f"config.json: {field_path}={value} below minimum 0.0")
+    # ``not (value > 0)`` rather than ``value <= 0``, so a NaN is refused too: every comparison
+    # with NaN is False, so the obvious spelling lets it straight through.
+    if field_path == "memory.s_base" and not value > 0:
+        raise ConfigurationError(f"config.json: {field_path}={value} must be finite and positive (S divides dt)")
+    if field_path == "memory.k" and not value >= 0:
+        raise ConfigurationError(f"config.json: {field_path}={value} must be finite and non-negative")
     return value
 
 

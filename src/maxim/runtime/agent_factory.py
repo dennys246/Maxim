@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from maxim.runtime.config_loader import resolve_memory_strategy
+from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs, resolve_memory_strategy
 
 from maxim.agents.permissions import AgentPermissions
 
@@ -815,7 +815,7 @@ class AgentFactory:
             hippo = Hippocampus(
                 HippocampusConfig(
                     persistence_path=str(hippo_path),
-                    memory_strategy=resolve_memory_strategy(),
+                    **resolve_hippocampus_memory_kwargs(),
                 )
             )
             if auto_load and hippo_path.exists():
