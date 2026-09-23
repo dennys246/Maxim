@@ -389,6 +389,37 @@ string coercion, and a JSON-map coercer for one map would be worse than a named 
 source:* Phase 2S / R4, when delayed credit gives those actions a drive link. A proximity heuristic
 would be a band-aid.
 
+*2c-2a as built (2026-09-22, PR #859 — the `S` half only; `ExperienceClockStalled` NOT included):*
+`encoding_tag` + `storage_strength` are stamped at capture and persisted on `EpisodicMemory` and
+`CompressedMemory`, write-only (a guard test plus a reviewer grep over `src/` + `scripts/` confirm
+zero readers). Five decisions worth not re-deriving. **(a) `S` is carried in the experience clock's
+OWN unit (microseconds), not seconds** — `R = exp(-dt/S)` compares S directly against a clock delta,
+and a seconds-vs-µs seam there forgets everything in 10 µs while every test still passes; same unit
+on both sides means no conversion exists to get wrong. `S_BASE_DEFAULT` is an unvalidated
+placeholder whose provenance is the plan's worked example in TICKS — Phase 5 earns the real value.
+**(b) The two per-drive channels each contribute ONE deviation** — relief as a mean weighted by each
+drive's own pressure, pressure as its max. Per-drive deviations made the tag scale with how many
+drives a body HAS (relief 0.3 tagged 0.657 on three drives, 0.942 on eight), so tags were not
+comparable across bodies, which is what cross-body transfer claims rest on. Weighting by pressure
+rather than by novelty/salience is deliberate: those are separate channels already in the noisy-OR.
+**(c) `novelty_reference_size` is recorded beside the tag** — the `n/(n+50)` weight divides by the
+Hippocampus' trace count today, but 2b-i's review put novelty's reference set with the PRODUCER
+(2b-iii) and tags are permanent, so without the record the store would hold two provenances with
+nothing marking which. The keyword is named for what it means, so 2b-iii supplies the producer's set
+without a rename. **(d) The knobs live on `HippocampusConfig`, not in `memory.*` config** — a config
+key nothing reads is the defect 2c-1's review caught; 2c-3 adds the keys WITH the code that reads
+them. **(e) Relevance is the PRESENCE of a relief key, not a positive value** — the executor records
+`0.0` for a drive an action moved AWAY from comfort, so gating on `> 0` dropped exactly the drowning
+case (air pressure 1.0, air relief 0.0) that must encode strongest.
+
+*Owed by 2c-3, carried from 2c-2:* **`ExperienceClockStalled` ships as a capability the STRATEGY
+declares** (e.g. `MemoryStrategy.requires_experience_clock`), never a string comparison against the
+name `"strength"` in `MemoryHub` — that would be a second source of truth no third-party strategy
+could satisfy, and it is the same concern [config_extensibility.md](config_extensibility.md) exists
+for. Its strict red gate in `tests/unit/test_experience_clock.py` stays red until then, which is the
+honest state. Also owed: the plan's "the 2c tag must count one event once" (the MemoryAgent /
+reflexion duplicates) is recorded on each trace as `site` but nothing consumes it yet.
+
 **Phase 2S — the survival gate** ([#848](https://github.com/dennys246/Maxim/issues/848); owner:
 "the gate definitely needs to activate memory"). Measured offline on main 4a0362e2 (a scratchpad
 ScriptedWaterBridge run, monkeypatched counters, no source edits — not a committed artifact; the
