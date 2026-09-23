@@ -414,8 +414,9 @@ case (air pressure 1.0, air relief 0.0) that must encode strongest.
 
 *2c-3 as built (2026-09-22 — the phase where `S` is first READ):* `StrengthStrategy` in
 `memory/strategies.py`, selectable as `memory.strategy=strength`, with `memory.s_base` /
-`memory.k` landing beside it. Five things worth not re-deriving, three of them departures from
-the text above.
+`memory.k` landing beside it. Six things worth not re-deriving, three of them departures from
+the text above. The two-lens review round's findings are folded in place below, tagged where they
+land.
 
 **(a) The saturation factor is taken RELATIVE to `s_base`.** The plan writes the retrieval update's
 saturating term as `S^(−w)`, which is not dimensionless — with `S` in the clock's microseconds
@@ -424,7 +425,17 @@ seam decision (a) of 2c-2 exists to prevent. Shipped as `(S/s_base)^(−w)`: 1.0
 strength, and the property the plan's worked example was *about* — the gain shrinks as a trace
 grows well-learned — is preserved. Its absolute numbers (`S₀ = 10` in ticks) do not carry over;
 Phase 5 calibrates. Measured on the shipped model with `s_base = 10 s`: 100 renders 0.1 s apart
-earn **exactly** what 5 gap-spaced retrievals earn, and spreading those same 5 out doubles `S`.
+earn **exactly** what 5 gap-spaced retrievals earn (both land on `S = 18.09 s`), and spreading
+those same 5 out gives `S = 51.92 s` — **2.87×**, not the "doubles" this note first claimed
+(Architecture N6: state the number you actually measured). `a`, `w`, `g`, the floor weight and the
+fade multiplier stay named constants rather than config keys, unlike `s_base`/`k`: Phase 5
+calibrates them jointly, and a knob nothing has measured is worse than a constant that says so.
+**`s_base` is a LIVE model parameter, not only the encoding base** — raising `memory.s_base`
+between runs changes the retrieval dynamics of traces already stamped, so 2c-2's rule "re-tuning
+changes what encodes NEXT, not what already happened" holds for the stamp and NOT for the model
+(Architecture #4). `k` has no such reach. The factor is clamped at 1.0 so that reach is bounded:
+unclamped, one retrieval after a raised base could multiply `S` by ~11× where this module
+documents `1 + a·w` (Executor #7).
 
 **(b) Protection is a floor that FADES, and the fade is a view, never a rewrite.** `score =
 max(R, w·tag·exp(−dt/(S·F)))` with `w = 0.5`, `F = 10` — so a maximally tagged trace stays
@@ -435,6 +446,16 @@ next rather than rewriting what already happened (the rule `_stamp_encoding_stre
 `degree` is accepted and unused — schema linkage enters through Phase 3's *conjunction* in the
 forgetting rule, not as a score term — and `should_compress` keeps a tag-held trace WHOLE, since
 gist is what survives ordinary fading and detail is most of what a tagged trace meant.
+
+**(b-bis) What forgetting actually consists of under `strength` TODAY** (Executor #6 +
+Architecture #6). §Protection lists five floors under `R`; 2c-3 ships one, the tag. Because
+`degree` is ignored, the schema-link, ATL-citation and successful-user-interaction floors
+`AccessBasedStrategy` provides are absent — this model will delete a well-linked, ATL-cited,
+untagged episode that `access_based` keeps. And with `S_BASE_DEFAULT` at 10 s of experience, an
+untagged trace falls below `retention_threshold` after **~12 s of run experience**. Both follow
+from the phase boundary rather than from a bug (the conjunction is Phase 3's, the constant is
+Phase 5's) — but the model is **not campaign-ready**, and the honest form of that sentence is a
+number rather than a deferral.
 
 **(c) `R` needs an anchor, so traces carry one.** `retrievability_anchor_us` on `EpisodicMemory` /
 `CompressedMemory` is the experience time `R` decays from: stamped at capture beside `S`,
@@ -452,18 +473,57 @@ the session's `results` — a diagnostic must not cost the session its memories 
 nothing should have aged, and an assert that fires on every idle shutdown is one nobody reads.
 "Did anything happen" is answered by in-process tallies on the Hippocampus (`session_work()`), not
 by `_stats`, which is persisted and so cannot distinguish this session from every previous one.
+**Two defects here were caught by the review round, both the same shape as this plan's own
+lessons.** (i) *Cross-confirmed by both lenses:* every production session-end caller catches broad
+`Exception` and the two sim paths logged it at DEBUG, so the mechanism shipped with no audience —
+`feedback_a_fix_ships_with_a_caller` applied to a diagnostic. It now LOGS at ERROR before raising,
+and `bio_integration` + `interactive` name the type ahead of their broad handler and re-emit their
+telemetry from `exc.results`, which until then had zero non-test readers. (ii) *Executor #2:* the
+first cut asked "did the clock advance" of `now_us()`, which `--resume-sim` restores to a far
+larger value — so the guard passed trivially on exactly the resumed harnesses it was written for.
+`ExperienceClock.advanced_us()` now counts what DROVE the clock and is untouched by `restore()`.
+Every stalled-clock test had started its clock at 0, which is precisely why none could see it.
 
 **(e) The ATL names `strength` explicitly and keeps today's model under it.** Phase 2's strength
 model is the hippocampal one (decision 5), and concepts carry no `S` — but letting a *valid* config
 name fall through to the store's raise is precisely the defect 2c-1's review caught, one layer
-down. Named branch, documented, tested.
+down. Named branch, documented, tested, and since the review round it says so once per process at
+INFO rather than only in a source comment (Architecture N4).
+
+**(f) The frozen-apparatus fingerprints now record the retention model** (Architecture #3).
+§Guardrails asked for this at 2c-1 and it was missed there; 2c-3 is what makes it bite, because
+`~/.maxim/` is shared across worktrees and a stray `maxim config set memory.strategy strength`
+would otherwise silently reconfigure a campaign with nothing in the record saying so.
+`memory_strategy` is a new key with the stated default `access_based` for old rows, read off the
+BUILT store in `water_trial.live_fingerprint()` (Exp 60/61/62) and `exp58_run`'s inline reader.
+`fingerprint_drift` compares the key UNION, so the live and frozen halves had to land in the same
+commit or every run would refuse.
 
 *Found while building, fixed here:* `memory.s_base = nan` passed the env door — `nan < 0` is
 `False`, so every `min_val` range check admits it, and a NaN `S` poisons every comparison it
 touches. Both doors now test `math.isfinite` / `not value > 0` rather than `value <= 0`.
 
+*Found by the review round, fixed here:* the two `ExperienceClockStalled` defects in (d); a torn
+`(S, anchor)` pair could be PERSISTED by compression, because `CompressedMemory.from_episodic`
+copied the four strength fields with unlocked reads while `_strength_fields` had just been given
+the record's lock — it now goes through that same reader (Executor #3); and two of my own guards
+were vacuous for a reason the mutation sweep could not reach, because the test fixture's `s_base`
+was byte-identical to `S_BASE_DEFAULT`, so nothing checked that the configured base reaches the
+SCORER as opposed to the stamp (Executor #4, #5, #9).
+
+**NOT done, and owed:** the slicing paragraph ends 2c-3 with "one real sim loop shows `S` move on a
+saved record", and §Guardrails requires the opt-in path to run in a real (non-test) loop before the
+phase is called done. **That has not been run.** It is also the check that would have caught the
+swallowed-exception defect first, which is an argument for it rather than against it.
+
 *Owed by Phase 3 (unchanged by this phase):* replay, the homeostatic downscale, the unlinked/uncited
-conjunction in the forgetting rule, and ATL parity. *Still red and correctly so:*
+conjunction in the forgetting rule, and ATL parity. **Phase 3's downscale must RE-ANCHOR**
+(Architecture #5): `R` and the protection floor both use the *current* `S` as the time constant for
+an interval already elapsed, which is correct while only retrievals change `S` (they re-anchor), and
+retroactive the moment `S ← λ^Δt · S` does not. Measured: `S` 10 s → 5 s after 100 s elapsed drops
+the floor from 0.184 to 0.068 — a trace protected a moment earlier becomes forgettable for a reason
+that never happened. Any non-retrieval change to `S` must pick the anchor that preserves `R`
+(`anchor' = now − S'·ln(1/R)`). *Still red and correctly so:*
 `test_phase2s_bypass_harnesses_advance_the_clock` — the scripted survival harnesses are Phase 2S.
 
 *Owed by 2c-3, carried from 2c-2 (DISCHARGED 2026-09-22 except where noted):* **`ExperienceClockStalled` ships as a capability the STRATEGY

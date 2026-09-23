@@ -145,10 +145,10 @@ class MemoryHub:
     # and warning on the second makes the guard fire on every clean shutdown.
     _session_ever_started: bool = False
     _session_start_time: float = 0.0
-    # What the experience clock read, and how much memory work this Hippocampus had done, when the
-    # session opened (memory-strength Phase 2c-3). Both session-end paths compare against these to
-    # raise ``ExperienceClockStalled``; see ``_assert_experience_advanced``.
-    _session_experience_us: int = 0
+    # How much experience had been DRIVEN, and how much memory work this Hippocampus had done, when
+    # the session opened (memory-strength Phase 2c-3). Both session-end paths compare against these
+    # to raise ``ExperienceClockStalled``; see ``_assert_experience_advanced``.
+    _session_advanced_us: int = 0
     _session_work_at_start: tuple[int, int] = (0, 0)
     # Guards the _session_active transitions. Post-merge review round
     # (2026-07-26, Exec #4 / Arch #1 cross-confirmed): the unlocked
@@ -631,6 +631,11 @@ class MemoryHub:
             Dict with counts of restored items per bridge, or
             ``{"already_active": 1}`` when a session was already open.
         """
+        # Read BEFORE the flag is latched (review round, Executor #8: fail fast before mutation).
+        # A stand-in hippocampus missing these would otherwise leave the session half-open --
+        # flagged active, with the ATL/EC/ConceptExtractor restores below never run.
+        advanced_at_start = self.hippocampus.experience_clock.advanced_us()
+        work_at_start = self.hippocampus.session_work()
         with self._session_flag_lock:
             if self._session_active:
                 logger.debug("Session already active; on_session_start is a no-op")
@@ -638,8 +643,8 @@ class MemoryHub:
             self._session_active = True
             self._session_ever_started = True
             self._session_start_time = time.time()
-            self._session_experience_us = self.hippocampus.experience_clock.now_us()
-            self._session_work_at_start = self.hippocampus.session_work()
+            self._session_advanced_us = advanced_at_start
+            self._session_work_at_start = work_at_start
 
         results = {}
 
@@ -784,10 +789,19 @@ class MemoryHub:
         session its memories -- the same principle as ``activate_after_use`` -- so the work is done
         and persisted first, and the exception carries ``results`` so a caller that wanted them
         still has them.
+
+        It LOGS at ERROR before raising, because every production session-end caller catches broad
+        ``Exception`` and two of them log it at DEBUG (review round, cross-confirmed by both
+        lenses): an exception nobody can hear is not a loud failure, it is the silent one wearing a
+        type. The log survives every handler; the raise is for callers that want to act.
+
+        "Did the clock advance" is asked of ``advanced_us``, never of ``now_us``: a ``--resume-sim``
+        restores a clock reading hours, and a ``now_us`` comparison would see that jump and pass --
+        inertly, on exactly the resumed harnesses this assert exists for (Executor #2).
         """
         if not self.hippocampus.requires_experience_clock:
             return
-        if self.hippocampus.experience_clock.now_us() > self._session_experience_us:
+        if self.hippocampus.experience_clock.advanced_us() > self._session_advanced_us:
             return
         captures, activations = self.hippocampus.session_work()
         did = (captures - self._session_work_at_start[0], activations - self._session_work_at_start[1])
@@ -795,6 +809,14 @@ class MemoryHub:
             return  # an honestly empty session: nothing happened, so nothing should have aged
         from maxim.memory.experience_clock import ExperienceClockStalled
 
+        logger.error(
+            "experience clock stalled: this session captured %d and activated %d memories on a "
+            "retention model that runs on experience time, and nothing advanced the clock. Every "
+            "trace stays at R = 1 and nothing will ever be forgotten. Something must drive it "
+            "(runtime/experience_time.py::ExperienceClockDriver).",
+            did[0],
+            did[1],
+        )
         raise ExperienceClockStalled(captures=did[0], activations=did[1], results=results)
 
     def on_session_end(self) -> dict[str, int]:

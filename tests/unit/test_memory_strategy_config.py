@@ -12,15 +12,17 @@ import pytest
 from maxim.memory.atl import ATL, ATLConfig
 from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 from maxim.runtime.config_loader import (
+    _VALID_MEMORY_STRATEGIES,
     ConfigurationError,
     MaximConfig,
     MemoryConfigSection,
     resolve_memory_strategy,
 )
 
-# `strength` became valid in 2c-3, WITH the strategy that implements it: accepting the name any
-# earlier would have taken the setting and then crashed at the first consolidation.
-_VALID = ("access_based", "importance_based", "composite", "strength")
+# DERIVED, not a second copy: a name added to the config set and to no store would otherwise leave
+# both stores untested -- which is the 2c-1 defect's exact shape, one layer up (review round,
+# Architecture N3). `strength` became valid in 2c-3, WITH the strategy that implements it.
+_VALID = tuple(sorted(_VALID_MEMORY_STRATEGIES))
 
 
 def test_todays_model_is_the_default():
@@ -33,6 +35,22 @@ def test_todays_model_is_the_default():
 @pytest.mark.parametrize("name", _VALID)
 def test_every_valid_name_is_accepted(name):
     assert MemoryConfigSection(strategy=name).strategy == name
+
+
+@pytest.mark.parametrize("name", _VALID)
+def test_every_valid_name_builds_a_working_model_in_BOTH_stores(name):
+    """A name config accepts and a store cannot build crashes at the first consolidation, far from
+    the command that set it. Parametrized over the config's OWN set, so a new name cannot be added
+    without answering for both stores."""
+    from maxim.memory.strategies import MemoryStrategy
+
+    hippo = Hippocampus(HippocampusConfig(persistence_path=None, memory_strategy=name))
+    assert isinstance(hippo._get_memory_strategy(), MemoryStrategy)
+    hippo.sleep()
+
+    atl = ATL(ATLConfig(persistence_path=None, memory_strategy=name))
+    assert isinstance(atl._get_memory_strategy(), MemoryStrategy)
+    atl.consolidate()
 
 
 def test_every_declared_section_is_actually_parsed():

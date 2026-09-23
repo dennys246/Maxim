@@ -704,6 +704,8 @@ class WaterTrial:
             "max_cluster_fear": cfg.max_cluster_fear,
             "cluster_fear_threshold": cfg.cluster_fear_threshold,
             "cluster_fear_failure_modes": sorted(cfg.cluster_fear_failure_modes),
+            # Read off the BUILT store, like every other row here -- not off config.json.
+            "memory_strategy": str(self.aut.bio.hippocampus.config.memory_strategy),
             "encoder_pattern_threshold": float(self.encoder.config.pattern_threshold),
             "substrate_explore_bonus_weight": float(getattr(cfg, "substrate_explore_bonus_weight", 0.0)),
             "oxygen_drive": None

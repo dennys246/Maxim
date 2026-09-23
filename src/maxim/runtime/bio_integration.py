@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal
 
+from maxim.memory.experience_clock import ExperienceClockStalled
 from maxim.utils.structured_logging import log_agentic
 
 logger = logging.getLogger(__name__)
@@ -208,6 +209,14 @@ def end_bio_session(
                 session_stats,
                 level="INFO",
             )
+        except ExperienceClockStalled as e:
+            # Named BEFORE the broad handler (memory-strength 2c-3 review round, cross-confirmed):
+            # this is the one session-end failure that means the run's memory model silently did
+            # nothing, and the generic branch below logs at DEBUG, where nobody sees it. The
+            # session's own stats ride on the exception precisely so the diagnostic does not also
+            # cost us the telemetry line.
+            logger.error("MemoryHub session ended on a stalled experience clock: %s", e)
+            log_agentic("memory_hub", "session_end", e.results or {}, level="INFO")
         except Exception as e:
             logger.debug("Failed to end MemoryHub session: %s", e)
 

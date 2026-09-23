@@ -44,8 +44,11 @@ RETRIEVAL_SATURATION = 0.5  # w (FSRS's exponent)
 CREDITED_GAP_US = 2_000_000  # 2 s of experience
 
 # How much each kind of use is worth (the testing effect: effortful recall beats re-exposure;
-# internal reactivation, often unconsumed, sits at the low end). Keys are ``ACTIVATION_SOURCES``;
-# a source missing here credits nothing, which is a louder failure than crediting it by accident.
+# internal reactivation, often unconsumed, sits at the low end). This is a second copy of
+# ``types.ACTIVATION_SOURCES``, held equal by a test rather than by a comment: a source missing
+# here credits SILENTLY nothing, so a sixth activation source would quietly never strengthen
+# anything (review round, Architecture N2 -- the earlier comment called that "louder", which it
+# is not).
 RETRIEVAL_SOURCE_WEIGHTS: "Mapping[str, float]" = {
     "tool": 1.0,
     "replan": 0.8,
@@ -689,6 +692,9 @@ class StrengthStrategy(MemoryStrategy):
     def score_for_retention(self, record: MemoryRecord, now: float, degree: int = 0) -> float:
         """Retrievability, floored by what the trace was encoded with. ``now`` is IGNORED."""
         retrievability, floor = self._retrievability_and_floor(record, self.clock.now_us())
+        # ``min(1.0, ...)`` is unreachable while the dt clamp holds (R <= 1, floor <= 0.5). Kept as
+        # the belt, and remembered as a lesson: it is exactly what HID the clamp's absence when the
+        # clamp was deleted to test it, which is why that guard asserts raw retrievability instead.
         return min(1.0, max(retrievability, floor))
 
     def should_compress(self, record: MemoryRecord, now: float, degree: int = 0) -> bool:
@@ -697,6 +703,11 @@ class StrengthStrategy(MemoryStrategy):
         A trace still scoring on its own retrievability is one the agent is simply losing, and gist
         is what survives that. A trace scoring on its protection floor is being KEPT for what it
         meant -- and detail is most of what "it meant" is made of.
+
+        It answers "fading rather than tag-held", so it is only meaningful for a record the caller
+        has already placed in the compression band -- a fresh untagged trace answers ``True`` here
+        (R = 1, floor = 0) and is saved only by its score. A ``CompositeStrategy`` containing this
+        model VOTES on the raw answer, so it would read that as a near-constant yes.
         """
         from maxim.memory.types import CompressedMemory
 
@@ -731,9 +742,19 @@ class StrengthStrategy(MemoryStrategy):
             if anchor is not None and now_us - anchor < self.credited_gap_us:
                 return None  # massed: recorded by the counters, credited by nothing
             current = self.s_base if strength is None else float(strength)
-            dt = 0.0 if anchor is None else float(max(0, now_us - anchor))
+            # No clamp needed: the gap check above already returned for every anchor at or ahead of
+            # ``now_us``, so a credited update always has ``now_us - anchor >= credited_gap_us >= 0``.
+            # (The clamp in ``_retrievability_and_floor`` is the live one -- scoring has no such
+            # guard in front of it.)
+            dt = 0.0 if anchor is None else float(now_us - anchor)
             retrievability = math.exp(-dt / current)
-            saturating = (current / self.s_base) ** -self.saturation
+            # ``min(1.0, ...)``: within one tuning ``S >= s_base`` always holds (S0 = s_base *
+            # (1 + k*tag) with tag in [0,1], k >= 0, and the update only raises S), so the clamp is
+            # a no-op on the intended path. It bites after an operator RAISES ``memory.s_base``:
+            # an already-stamped trace then has S < s_base, the factor exceeds 1, and a single
+            # retrieval could multiply S by ~11x where this module documents a bound of 1 + a*w
+            # (review round, Executor #7). It also forecloses a 0.0 ** -w underflow.
+            saturating = min(1.0, (current / self.s_base) ** -self.saturation)
             return current * (1.0 + self.gain * weight * (1.0 - retrievability) * saturating), now_us
 
         from maxim.memory.types import update_strength_atomically

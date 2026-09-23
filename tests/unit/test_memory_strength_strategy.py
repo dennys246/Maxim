@@ -22,6 +22,7 @@ from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 from maxim.memory.strategies import (
     CREDITED_GAP_US,
     PROTECTION_FLOOR_WEIGHT,
+    RETRIEVAL_SOURCE_WEIGHTS,
     TAG_FADE_MULTIPLIER,
     AccessBasedStrategy,
     CompositeStrategy,
@@ -102,9 +103,12 @@ def test_a_restarted_clock_never_makes_a_trace_more_retrievable():
     assert strategy.retrievability(trace) == 1.0
     assert strategy.score_for_retention(trace, 0.0) == 1.0
 
-    before = trace.storage_strength
-    strategy.on_activation(trace, strategy.activation_now(), "tool")
-    assert trace.storage_strength >= before, "a retrieval WEAKENED the trace it credited"
+    # The gap check refuses a negative elapsed time before the update runs, so it is the gap check
+    # -- not a clamp inside it -- that stops a backwards clock from crediting anything. Asserted as
+    # the refusal, because the earlier spelling ("S did not go down") held by equality whatever the
+    # update said, and so could not see what it claimed to (review round, Executor #9).
+    assert strategy.on_activation(trace, strategy.activation_now(), "tool") is False
+    assert trace.storage_strength == 10 * SECOND
 
 
 def test_the_strategy_refuses_to_exist_without_a_clock():
@@ -211,6 +215,14 @@ def test_effortful_recall_is_worth_more_than_re_exposure():
 
     assert gain("tool") > gain("replan") > gain("enrichment")
     assert gain("enrichment") == pytest.approx(gain("prediction"))
+
+
+def test_every_activation_source_has_a_declared_weight():
+    """The weights map duplicates the closed source vocabulary. A source added there and forgotten
+    here would credit nothing and say nothing, so the equality is pinned rather than commented."""
+    from maxim.memory.types import ACTIVATION_SOURCES
+
+    assert set(RETRIEVAL_SOURCE_WEIGHTS) == set(ACTIVATION_SOURCES)
 
 
 def test_a_source_with_no_declared_weight_credits_nothing():
@@ -330,7 +342,10 @@ def test_a_blend_of_timeless_models_needs_no_clock():
 def _hippo(**kw) -> Hippocampus:
     kw.setdefault("persistence_path", None)
     kw.setdefault("memory_strategy", "strength")
-    kw.setdefault("strength_s_base", 10 * SECOND)
+    # NOT ``10 * SECOND``: that is byte-identical to ``S_BASE_DEFAULT``, so every arm below passed
+    # with the ``s_base=`` argument dropped from the strategy construction entirely (review round,
+    # Executor #4 -- a vacuous fixture rather than a vacuous test).
+    kw.setdefault("strength_s_base", 7 * SECOND)
     return Hippocampus(HippocampusConfig(**kw))
 
 
@@ -497,6 +512,141 @@ def test_the_assert_never_fires_for_a_model_that_does_not_run_on_experience(stra
     hub.on_session_start()
     hub.hippocampus.capture(encoding=EncodingSignals.unmeasured("loop"))
     assert hub.on_session_end_lightweight()["lightweight"] is True
+
+
+def test_the_configured_s_base_reaches_the_SCORER_not_only_the_stamp():
+    """Two different things read ``memory.s_base``: the capture stamp and the model.
+
+    Only the stamp was covered, and the fixture's value happened to equal ``S_BASE_DEFAULT``, so
+    the strategy could have been built with no ``s_base`` at all (review round, Executor #4). The
+    consequence if it regresses: traces stamped at the operator's base, scored against 10 s.
+    """
+    hippo = _hippo(strength_s_base=3 * SECOND)
+    assert hippo.activation_strategy().s_base == 3 * SECOND
+    memory = hippo.get(hippo.capture(encoding=EncodingSignals.unmeasured("loop")))
+    assert memory.storage_strength == pytest.approx(3 * SECOND)  # tag 0, so S0 == s_base
+
+
+def test_a_resumed_session_is_still_watched():
+    """The hole this closes: ``load`` RESTORES the clock, so a snapshot-and-compare on ``now_us``
+    sees the restored jump and concludes the clock is healthy -- on exactly the resumed harnesses
+    the assert exists for (review round, Executor #2, reproduced before the fix).
+
+    Every other stalled-clock arm starts the clock at 0, which is why none of them could see it.
+    """
+    # A previous run's file, written by a DIFFERENT store -- the shape a resume actually has.
+    previous = _hippo()
+    previous.experience_clock.advance(4 * SECOND)
+    state = previous.dump()
+
+    hub = _hub("strength")  # fresh process: nothing has driven this clock
+    assert hub.hippocampus.experience_clock.advanced_us() == 0
+    hub.on_session_start()
+    hub.hippocampus.load_state(state)  # --resume-sim: the clock comes back reading 4 s
+    assert hub.hippocampus.experience_clock.now_us() == 4 * SECOND
+    hub.hippocampus.capture(encoding=EncodingSignals.unmeasured("loop"))
+    with pytest.raises(ExperienceClockStalled):
+        hub.on_session_end_lightweight()
+
+
+def test_the_snapshot_is_taken_from_the_session_not_assumed_to_be_zero():
+    """A clock already carrying experience when the session opens: still stalled if nothing drives
+    it DURING the session. Pins the snapshot itself, which a clock starting at 0 cannot."""
+    hub = _hub("strength")
+    hub.hippocampus.experience_clock.advance(9 * SECOND)
+    hub.on_session_start()
+    hub.hippocampus.capture(encoding=EncodingSignals.unmeasured("loop"))
+    with pytest.raises(ExperienceClockStalled):
+        hub.on_session_end_lightweight()
+
+
+def test_a_load_is_not_experience_but_a_real_advance_still_is():
+    clock = ExperienceClock()
+    clock.advance(5)
+    restored = ExperienceClock(9_000)
+    clock.restore(restored)
+    assert clock.now_us() == 9_000
+    assert clock.advanced_us() == 5, "a load counted as experience"
+    clock.advance(3)
+    assert clock.advanced_us() == 8
+
+
+def test_a_raised_s_base_cannot_buy_a_trace_more_than_one_retrieval_is_worth():
+    """An operator raising ``memory.s_base`` leaves already-stamped traces with ``S < s_base``, so
+    the saturating factor exceeds 1 and a single retrieval multiplies ``S`` by far more than the
+    documented ``1 + a*w`` bound -- ~11x at a 100-fold raise (review round, Executor #7)."""
+    clock = ExperienceClock()
+    retuned = _strategy(clock, s_base=1000 * SECOND)  # the operator's new, much slower base
+    legacy = _trace(strength=10 * SECOND)  # stamped under the old one
+    clock.advance(500 * SECOND)
+    retuned.on_activation(legacy, retuned.activation_now(), "tool")
+
+    bound = 10 * SECOND * (1.0 + retuned.gain * 1.0)  # a * w_src at their maximum
+    assert legacy.storage_strength <= bound, "one retrieval bought more than the documented bound"
+
+
+def test_compression_reads_the_strength_pair_through_the_LOCKED_reader():
+    """``from_episodic`` runs under the store's write lock while ``activate`` deliberately holds no
+    store lock, so a credited retrieval can be mid-write on the very record being compressed. Four
+    separate unlocked attribute reads could freeze a NEW ``S`` beside an OLD anchor into the
+    compressed record that REPLACES the episode -- persisted, unlike a torn save, which the next
+    save corrects (review round, Executor #3).
+
+    Structural, deliberately: the window is two adjacent ``STORE_ATTR`` instructions inside
+    ``update_strength_atomically``, which no scheduler can be asked to land in reliably. What is
+    checkable is that there is exactly ONE reader of the pair and that compression uses it.
+    """
+    import ast
+    import inspect
+
+    from maxim.memory.types import CompressedMemory, _strength_fields
+
+    source = inspect.getsource(CompressedMemory.from_episodic)
+    tree = ast.parse(inspect.cleandoc(source))
+    starred = {
+        node.value.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.keyword) and node.arg is None and isinstance(node.value, ast.Call)
+        for _ in [0]
+        if isinstance(node.value.func, ast.Name)
+    }
+    assert "_strength_fields" in starred, "compression does not read the pair through the locked reader"
+    assert "_touch_lock" in inspect.getsource(_strength_fields), "the one reader stopped taking the lock"
+
+
+def test_the_stall_is_logged_before_it_is_raised(caplog):
+    """Every production session-end caller catches broad ``Exception``, and two log it at DEBUG --
+    so an exception alone is the silent failure wearing a type (review round, cross-confirmed)."""
+    import logging
+
+    hub = _hub("strength")
+    hub.on_session_start()
+    hub.hippocampus.capture(encoding=EncodingSignals.unmeasured("loop"))
+    with caplog.at_level(logging.ERROR), pytest.raises(ExperienceClockStalled):
+        hub.on_session_end_lightweight()
+    assert any("stalled" in r.getMessage() and r.levelno >= logging.ERROR for r in caplog.records)
+
+
+@pytest.mark.parametrize("module", ["maxim.runtime.bio_integration", "maxim.simulation.interactive"])
+def test_the_two_sim_paths_name_the_exception_before_their_broad_handler(module):
+    """A typed handler, ahead of the ``except Exception`` that would bury it -- and it uses
+    ``exc.results``, so the diagnostic does not also cost the run its session telemetry."""
+    import ast
+    import importlib
+    import inspect
+
+    tree = ast.parse(inspect.getsource(importlib.import_module(module)))
+    named = [
+        h
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Try)
+        for h in node.handlers
+        if isinstance(h.type, ast.Name) and h.type.id == "ExperienceClockStalled"
+    ]
+    assert named, f"{module} does not name ExperienceClockStalled"
+    for handler in named:
+        body = ast.dump(ast.Module(body=handler.body, type_ignores=[]))
+        assert "results" in body, "the handler ignores exc.results"
 
 
 def test_the_gate_reads_a_capability_not_a_strategy_name():

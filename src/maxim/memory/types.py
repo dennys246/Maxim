@@ -84,6 +84,14 @@ def update_strength_atomically(
 
     Returns whether the record was changed. Lock order is store -> record, the same order
     ``MemoryLayer.activate`` and sleep already take, so this adds no new edge to the lock graph.
+
+    **Whatever changes ``S`` must choose the anchor deliberately** -- which is why the pair is
+    returned together rather than ``S`` alone. A retrieval re-anchors to now, and that is what
+    makes ``R = 1``. Anything else that changes ``S`` (Phase 3's homeostatic downscale) must pick
+    the anchor that PRESERVES ``R``, ``anchor' = now - S'*ln(1/R)``: both ``R`` and the protection
+    floor use the current ``S`` as the time constant for an interval that has already elapsed, so
+    halving ``S`` without re-anchoring retroactively deflates an interval the trace never lived
+    through (measured: a floor of 0.184 becomes 0.068). Review round, Architecture #5.
     """
     with record._touch_lock:
         result = compute(record.storage_strength, record.retrievability_anchor_us)
@@ -655,10 +663,12 @@ class CompressedMemory(CompressedRecord):
             salience=memory.perception.salience,
             edge_count=edge_count,
             encoding=memory.encoding,
-            storage_strength=memory.storage_strength,
-            encoding_tag=memory.encoding_tag,
-            novelty_reference_size=memory.novelty_reference_size,
-            retrievability_anchor_us=memory.retrievability_anchor_us,
+            # Through the locked reader, like ``_activation_fields`` above: four unlocked reads
+            # could catch a credited retrieval mid-write and freeze a NEW S beside an OLD anchor
+            # into the compressed record that replaces this episode -- a torn pair that is then
+            # persisted, unlike a torn save, which the next save corrects (review round, Executor
+            # #3). ``_strength_fields``' keys are exactly these constructor kwargs.
+            **_strength_fields(memory),
         )
 
     def to_dict(self) -> dict[str, Any]:

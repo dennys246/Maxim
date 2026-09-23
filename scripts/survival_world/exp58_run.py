@@ -79,6 +79,12 @@ FROZEN = {
         "max_cluster_fear": 1.0,
         "cluster_fear_threshold": 0.5,
         "cluster_fear_failure_modes": ["drive:health"],
+        # Which RETENTION MODEL the run used (memory-strength plan §Guardrails). A new key
+        # with a stated default, so a recorded row from before 2c-3 reads as "access_based" --
+        # which it was, since no other name changed retention behaviour then. ~/.maxim is
+        # shared across worktrees, so a stray `maxim config set memory.strategy strength`
+        # would otherwise silently reconfigure a campaign with nothing in the record saying so.
+        "memory_strategy": "access_based",
         "encoder_pattern_threshold": 0.85,
         "substrate_explore_bonus_weight": 0.0,
     },
@@ -250,6 +256,7 @@ def main(argv: list[str] | None = None) -> int:
                     "max_cluster_fear": cfg.max_cluster_fear,
                     "cluster_fear_threshold": cfg.cluster_fear_threshold,
                     "cluster_fear_failure_modes": sorted(cfg.cluster_fear_failure_modes),
+                    "memory_strategy": str(aut.bio.hippocampus.config.memory_strategy),
                     "encoder_pattern_threshold": float(SensorEncoderConfig().pattern_threshold),
                     "substrate_explore_bonus_weight": float(getattr(cfg, "substrate_explore_bonus_weight", 0.0)),
                 }

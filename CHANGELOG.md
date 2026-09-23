@@ -36,14 +36,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **events** through the new `MemoryStrategy.on_activation` — never to Phase 1's massed
   `activation_count`, which can say "used a lot" but never "used after a gap". An activation within
   2 s of experience of the last credited one is still counted and credits nothing, so a trace
-  re-rendered every deliberation cycle earns exactly what its gaps allow: measured, 100 renders
-  0.1 s apart buy precisely what 5 gap-spaced ones do, while spreading those same 5 out doubles `S`.
+  re-rendered every deliberation cycle earns exactly what its gaps allow: measured with
+  `s_base = 10 s`, 100 renders 0.1 s apart buy precisely what 5 gap-spaced ones do (both reach
+  `S = 18.09 s`), while spreading those same 5 out reaches `S = 51.92 s` — **2.87×**.
   Effortful recall is worth more than re-exposure (`tool` 1.0, `replan`/`planner` 0.8,
   `enrichment`/`prediction` 0.5). **Protection is a floor, never immortality:** a strongly tagged
   trace keeps a minimum retrievability, and that floor itself fades on the same clock ten times
   more slowly than `R` — so one-shot fear outlives its neighbours by a wide margin and still,
   eventually, becomes forgettable, unlike `access_count >= 10`'s floor, which never lifted.
   A trace held up by its tag keeps its detail; one simply fading is compressed to gist.
+  **Read the default before flipping the switch:** `s_base` defaults to 10 **seconds** of
+  experience, so an untagged trace is *removed* after roughly 12 s of run experience at the next
+  `sleep()` — and under this model the encoding tag is the only protection there is, because the
+  schema-link, ATL-citation and user-interaction floors `access_based` provides arrive with Phase
+  3's forgetting rule. It is a placeholder whose provenance is the plan's worked example in ticks,
+  which is why the model is opt-in and why Phase 5 has to earn it before any default flips.
   `memory.s_base` and `memory.k` ship **with** this reader, never before it — an unset knob is
   omitted rather than written into the schema, so the equation's own default stays the single
   source of truth — and every Hippocampus builder takes them through one bundle
@@ -59,8 +66,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Gated on a **capability the strategy declares** (`requires_experience_clock`), not on a
   comparison against the name `"strength"`: a third-party model running on experience time gets the
   same assert, where a name check would have been a second source of truth it could never satisfy.
-  It fires last, after every save, so the diagnostic never costs the session its memories, and it
-  carries the session's own results. An idle session, or one on a default model, stays silent.
+  It **logs at ERROR before raising** and both sim session-end paths name the type ahead of their
+  broad handler, re-emitting their telemetry from the exception: every caller catches broad
+  `Exception`, so a raise alone would have been the silent failure wearing a type. "Did the clock
+  advance" is asked of what DROVE it, never of what it reads — a `--resume-sim` restores a clock
+  reading hours, and comparing the reading made the guard inert on exactly the resumed harnesses it
+  exists for. It fires last, after every save, so the diagnostic never costs the session its
+  memories. An idle session, or one on a default model, stays silent.
+
+  The frozen-apparatus fingerprints of the survival campaigns now record which retention model ran
+  (`memory_strategy`, a new key defaulting to `access_based` for old rows, read off the built
+  store), so a stray `maxim config set` cannot silently reconfigure a campaign — `~/.maxim/` is
+  shared across worktrees.
 
 - **Every new memory now records how strongly it encoded (memory-strength Phase 2c-2).** Two fields
   land on each episode at capture: `encoding_tag`, a noisy-OR (`1 - prod(1 - x)`) over each

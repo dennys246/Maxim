@@ -27,11 +27,26 @@ class ExperienceClock:
         if us < 0:
             raise ValueError(f"experience clock cannot start negative, got {us!r}")
         self._us = int(us)
+        # How much experience this OBJECT has been driven through, as opposed to what time it
+        # reads. ``restore`` deliberately does not touch it -- see ``advanced_us``.
+        self._advanced_us = 0
         self._lock = threading.Lock()
 
     def now_us(self) -> int:
         with self._lock:
             return self._us
+
+    def advanced_us(self) -> int:
+        """Total experience this object has been ADVANCED by, ignoring what a load set the time to.
+
+        The honest answer to "did anything drive this clock", which ``now_us`` cannot give: a
+        ``--resume-sim`` restores a clock reading hours, so a snapshot-and-compare on ``now_us``
+        around a session sees a jump and concludes the clock is healthy even when nothing drove it
+        for the whole run (review round, Executor #2 -- it made the stalled-clock assert inert on
+        exactly the resumed harnesses it was written for).
+        """
+        with self._lock:
+            return self._advanced_us
 
     def advance(self, dt_us: int) -> int:
         """Advance by ``dt_us`` (>= 0) and return the new time. Experience never runs backwards."""
@@ -39,6 +54,7 @@ class ExperienceClock:
             raise ValueError(f"experience clock cannot run backwards, got dt_us={dt_us!r}")
         with self._lock:
             self._us += int(dt_us)
+            self._advanced_us += int(dt_us)
             return self._us
 
     def to_dict(self) -> dict[str, Any]:
@@ -57,7 +73,12 @@ class ExperienceClock:
         return cls(us)
 
     def restore(self, other: ExperienceClock) -> None:
-        """Adopt another clock's time in place, so holders of this object keep a live reference."""
+        """Adopt another clock's time in place, so holders of this object keep a live reference.
+
+        Sets the TIME, never the driven total: a load is not experience. ``advanced_us`` therefore
+        keeps answering "has anything driven this clock since it was constructed", which is what
+        the stalled-clock assert needs and what ``now_us`` cannot say across a resume.
+        """
         us = other.now_us()
         with self._lock:
             self._us = us
