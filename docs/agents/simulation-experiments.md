@@ -68,6 +68,27 @@ Core retains the three session-killing bullets (`--interactive false` from scrip
 
 ## 5. Live gotchas / known gaps
 
+- **[engineering] A timing test's failure message is written for a QUIET box — read contention
+  first.** 2026-09-22, a full-suite run on big-mac-mini while a sim was live: `test_water_trial_smoke`
+  and `test_r3_pilot` failed with `bridge state cadence 0.1539s > 0.15s — restart the bridge with
+  --state_interval_ms=100`, and `test_leader_proxy`'s keepalive failed `assert 1 >= 2`. All three
+  measure real wall-clock cadence, all three missed by milliseconds, and all three passed 162/162 on
+  a quiet box minutes later. The message sends you to change bridge CONFIG; the cause was a second
+  consumer of the machine. This is the co-location rule (§4) firing from the TEST side rather than
+  the harness side, and it was only caught because the orchestrator's spinner happened to interleave
+  into the pytest output. **Before acting on any failure message that names a configuration fix,
+  check what else is running** (`ps aux | grep -i maxim`); `pkill -f "maxim.*sim"` does NOT match
+  every sim process, so match on `maxim` and verify. The same shape one layer over: the OpenAPI
+  snapshot tests say "run `maxim serve --dump-openapi`", which on a box whose FastAPI differs from
+  CI's would commit the WRONG schema and break everyone — a snapshot message assumes the canonical
+  environment. Regression guard: process invariant — no automated test; the mechanically checkable
+  form (assert the box is quiet before a cadence assertion) is tracked follow-up work.
+- **Known-failing on big-mac-mini, none of them main's fault** (verified 2026-09-22 against green CI
+  at `82864566`): 3 `test_vision_engine` (no `[vision]` extra), 2 OpenAPI snapshot (FastAPI/Pydantic
+  drift from CI), 4 `test_profile_metadata` for `r1-distill-qwen-32b` (the rig holds
+  `DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf` in `~/.maxim/models/LLM/`; its synthesized profile has
+  no `arch`, and CI has no such model). Expect 11 failures there on a clean tree; a 12th is news.
+
 - **Operating the live rig (big-mac-mini) — operator facts learned 2026-09-19 during the Exp 56
   re-baseline.** Repo at `~/RMSrv/scripts/Maxim`; `ssh`/`scp` to it work non-interactively, so
   verify state there rather than asking for pastes. **tmux `minecraft` IS the survival Paper
