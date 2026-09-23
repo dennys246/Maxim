@@ -87,6 +87,22 @@ def _strength_number(value: Any, *, name: str, low: float, high: float, record_i
     return number
 
 
+def _reference_size(value: Any, *, record_id: Any) -> int | None:
+    """The set novelty was judged against. Loud like its siblings: a trace that silently loses this
+    is indistinguishable from one tagged under the other provenance, which is what it exists to
+    prevent. A count, so a float or a numeric string is a writer bug, not a value to coerce."""
+    if value is None:
+        return None
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return int(value)
+    import logging
+
+    logging.getLogger(__name__).warning(
+        "memory %s has an unusable novelty_reference_size (%r); loading it as not recorded", record_id, value
+    )
+    return None
+
+
 def _strength_kwargs(data: dict[str, Any]) -> dict[str, Any]:
     """Load one trace's strength stamp. Absent (every file written before Phase 2c) = never stamped,
     which the strategy reads as "encode it now", NOT as a zero-strength trace."""
@@ -102,11 +118,7 @@ def _strength_kwargs(data: dict[str, Any]) -> dict[str, Any]:
         "encoding_tag": _strength_number(
             data.get("encoding_tag"), name="encoding_tag", low=0.0, high=1.0, record_id=record_id
         ),
-        "novelty_reference_size": (
-            int(size)
-            if isinstance(size := data.get("novelty_reference_size"), int) and not isinstance(size, bool) and size >= 0
-            else None
-        ),
+        "novelty_reference_size": _reference_size(data.get("novelty_reference_size"), record_id=record_id),
     }
 
 

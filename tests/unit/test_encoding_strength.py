@@ -273,6 +273,9 @@ def test_pressure_counts_when_an_aversive_action_relieved_nothing():
         ("encoding_tag", 2.0),
         ("encoding_tag", -0.5),
         ("encoding_tag", float("inf")),
+        ("novelty_reference_size", -3),
+        ("novelty_reference_size", 3.5),
+        ("novelty_reference_size", "50"),
     ],
 )
 def test_nonsense_on_disk_loads_as_never_stamped(field_name, bad):
@@ -297,20 +300,22 @@ def test_the_tag_does_not_scale_with_how_many_drives_a_body_has():
 
 
 def test_relief_is_weighted_by_how_badly_the_body_wanted_each_drive():
-    """Relieving a drive the body was desperate for beats topping up a satisfied one."""
-    desperate = _signals(
-        drive_relief=(("air", 1.0), ("curiosity", 0.0)),
-        drive_pressure=(("air", 1.0), ("curiosity", 0.0)),
-    )
-    # air carries all the weight: the relief channel reads 1.0, not the plain mean 0.5.
-    assert encoding_tag(desperate, novelty_reference_size=1000) == pytest.approx(1.0)
+    """Relieving a drive the body was desperate for beats topping up a satisfied one.
 
-    satisfied = _signals(
-        drive_relief=(("air", 0.0), ("curiosity", 1.0)),
-        drive_pressure=(("air", 1.0), ("curiosity", 0.0)),
-    )
-    # the relief that happened was of a drive nothing wanted; pressure's max still counts once.
-    assert encoding_tag(satisfied, novelty_reference_size=1000) == pytest.approx(1.0 - 1.0 * 0.0)
+    Every pressure here is BELOW 1.0 on purpose: a pressure of 1.0 saturates the noisy-OR through
+    its own max deviation, and then this test passes with the weighting deleted entirely (it did --
+    the fold's first version of this test was vacuous, proven by deleting the block).
+    """
+    relief = (("a", 0.8), ("b", 0.0))
+    pressure = (("a", 0.4), ("b", 0.0))
+    weighted = encoding_tag(_signals(drive_relief=relief, drive_pressure=pressure), novelty_reference_size=1000)
+
+    # What the SAME relief would tag with no pressure to weight it: the plain mean, 0.4.
+    unweighted = encoding_tag(_signals(drive_relief=relief), novelty_reference_size=1000)
+
+    assert weighted == pytest.approx(0.88)  # noisy-OR(relief 0.8, pressure max 0.4)
+    assert unweighted == pytest.approx(0.4)
+    assert weighted > unweighted, "the weighting made no difference -- this test cannot see it"
 
 
 def test_with_no_pressure_measured_the_weights_carry_no_information():
