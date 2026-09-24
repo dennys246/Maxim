@@ -173,7 +173,12 @@ def test_donor_sequence_over_the_scripted_bridge_passes_the_staged_sanity(tmp_pa
         trial.resolve_tools()
         trial.rescue("donor-ready")
         trial.deaths0 = trial.deaths()
+        clock = aut.bio.hippocampus.experience_clock
+        lived_before = clock.advanced_us()
         training, episode_clusters = trial.train()
+        # Phase 2S (#848): propose-only training bypasses the loop's live pass, so the harness
+        # drives the experience clock itself — the world's time is lived through on this path too.
+        assert clock.advanced_us() > lived_before, "propose-only training did not advance the experience clock"
         assert training["usable_episodes"] >= FAST["K_usable_episodes"], training
         g2 = trial.live_g2("fear", episode_clusters, water_pre)
         assert trial.calls == [], "propose-only training must never reach the executor"

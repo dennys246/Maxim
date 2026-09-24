@@ -320,11 +320,15 @@ def test_a_session_that_used_memory_on_a_frozen_clock_is_loud():
         hub.on_session_end_lightweight()
 
 
+# The scripted harnesses that call propose_via_substrate WITHOUT the loop, and so must advance
+# the experience clock themselves. ``orient_backbone/exp53_cross_context_readout.py`` was listed
+# here and is NOT one: its LoadedAgent loads only a persisted NAc + EC (no Hippocampus, so no
+# experience clock and no captures to age). A driver there would satisfy the text check below and
+# do nothing (#848 audit, 2026-09-24).
 _BYPASS_HARNESSES = [
     "scripts/survival_world/water_trial.py",
     "scripts/survival_world/exp58_run.py",
     "scripts/survival_world/exp58_offline_gates.py",
-    "scripts/orient_backbone/exp53_cross_context_readout.py",
 ]
 
 
@@ -333,11 +337,9 @@ def test_the_bypass_harness_list_names_real_files():
     assert all((root / p).is_file() for p in _BYPASS_HARNESSES)  # so the gate below can never pass vacuously
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Phase 2S (#848): the scripted harnesses that call propose_via_substrate without the loop "
-    "must advance the experience clock themselves (an ExperienceClockDriver per run). Flips when all do.",
-)
 def test_phase2s_bypass_harnesses_advance_the_clock():
+    """Phase 2S (#848): each scripted harness that calls propose_via_substrate without the loop
+    drives an ExperienceClockDriver itself. Textual, so the water trial's is also pinned
+    BEHAVIOURALLY in tests/unit/test_water_trial_smoke.py (training advances the clock)."""
     root = Path(__file__).resolve().parents[2]
     assert all("ExperienceClockDriver" in (root / p).read_text() for p in _BYPASS_HARNESSES)
