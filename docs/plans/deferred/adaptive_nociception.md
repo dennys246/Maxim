@@ -55,6 +55,10 @@ sensitization and pre-emption scale the damage `damage_component` inflicts. Its 
 recorded in [reflex_layering.md](reflex_layering.md). That plan's step 3a hands felt-pain
 adaptation to this plan rather than building a second one, so reviving either should read both.
 
+## Where this lands
+
+[nociception_layer.md](nociception_layer.md) is the producer-side layer this plan's gain would live in (its step 5), after pain carries a kind and consumers declare which kinds they take.
+
 ## Links
 
 - [memory_strength_and_forgetting.md](../memory_strength_and_forgetting.md), Phase 2 decision 4
