@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from pathlib import Path
 import time
 from collections.abc import Sequence
 
@@ -579,6 +580,76 @@ def _runtime_mode_switch_allowed(requested: str) -> bool:
         )
         return False
     return requested in _RUNTIME_SWITCHABLE_MODES
+
+
+def _is_dm_campaign_yaml(path: Path) -> bool:
+    """True when *path* parses to a mapping with ``campaign`` + ``encounters`` keys.
+
+    Only this PROBE tolerates failure: an unreadable or non-YAML file is simply
+    not a DM campaign. Loading and running a file that IS one is not guarded —
+    a broken campaign must fail, not be re-run as a plain scenario.
+    """
+    import yaml
+
+    try:
+        with open(path) as f:
+            raw = yaml.safe_load(f)
+    # ValueError covers UnicodeDecodeError and PyYAML's constructor errors
+    # (e.g. an impossible date); RecursionError is pathological nesting.
+    except (OSError, ValueError, RecursionError, yaml.YAMLError):
+        return False
+    return isinstance(raw, dict) and "campaign" in raw and "encounters" in raw
+
+
+def _resolve_interactive_mode(args, *, is_dm: bool, is_tty: bool) -> str:
+    """``"on"``/``"off"`` for the sim display's interactive mode.
+
+    *args* must have been through ``normalize_args`` (an ``AttributeError``
+    otherwise, not a silent fall-back to auto-detection). An explicit
+    ``--interactive`` in ANY spelling (``--interactive false``,
+    ``--interactive=false``, an abbreviation) wins; ``normalize_args`` records
+    whether one was given, because by then ``args.interactive`` is already a
+    bool and cannot tell "unset" from ``true``. Unset → ON for DM campaigns
+    (the user makes choices) or a TTY, OFF otherwise.
+    """
+    if args.interactive_explicit:
+        return "on" if args.interactive else "off"
+    return "on" if (is_dm or is_tty) else "off"
+
+
+def _maybe_run_dm_campaign(yaml_path: Path, args, *, debug: bool, entity_ref: str | None) -> None:
+    """Run *yaml_path* as a DM campaign and exit, or return if it is not one.
+
+    Failures while loading or running a real campaign propagate: they used to
+    be swallowed by the auto-detect ``try``, and the file was then re-run as
+    a scenario — hiding the DM failure behind an unrelated second run.
+    """
+    if not (yaml_path.exists() and _is_dm_campaign_yaml(yaml_path)):
+        return
+    from maxim.embodiment.component_registry import ComponentRegistry
+    from maxim.simulation.dm_schema import load_campaign, validate_campaign
+    from maxim.simulation.orchestrator import start_simulation_mode
+
+    registry = ComponentRegistry(campaign_dir=str(yaml_path.parent))
+    dm_campaign = load_campaign(yaml_path, registry=registry)
+    errors = validate_campaign(dm_campaign)
+    if errors:
+        print(f"Campaign validation failed ({len(errors)} errors):")
+        for e in errors:
+            print(f"  - {e}")
+        sys.exit(1)
+
+    result = start_simulation_mode(
+        goal=f"dm:{dm_campaign.name}",
+        mode="dm",
+        debug=debug,
+        no_sim_env=bool(getattr(args, "no_sim_env", False)),
+        sandbox_backend=getattr(args, "sandbox_backend", "auto"),
+        dm_campaign=dm_campaign,
+        max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
+        entity_ref=entity_ref,
+    )
+    sys.exit(_simulation_result_exit_code(result))
 
 
 def _main_impl(argv: Sequence[str] | None = None) -> int:
@@ -1178,26 +1249,14 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
             # --interactive on the command line, default to ON for DM
             # campaigns (where the user makes choices) and OFF for
             # generative sims (where the orchestrator drives input).
-            _interactive_explicit = "--interactive" in (raw_argv or [])
-            if _interactive_explicit:
-                _interactive_str = str(getattr(args, "interactive", "true")).strip().lower()
-                _set_interactive_mode_early("on" if _interactive_str not in ("false", "0", "no", "off") else "off")
-            else:
-                _wants_dm_early = bool(getattr(args, "dm", False))
-                _is_dm_yaml_early = False
-                if _is_yaml:
-                    try:
-                        import yaml as _yaml_probe
-
-                        with open(Path(_sim_val).resolve()) as _f:
-                            _probe = _yaml_probe.safe_load(_f)
-                        _is_dm_yaml_early = isinstance(_probe, dict) and "campaign" in _probe and "encounters" in _probe
-                    except Exception:
-                        _is_dm_yaml_early = False
-                # CLI with TTY → interactive ON (human at a terminal).
-                # API, CI, piped → interactive OFF (no TTY).
-                _is_tty = sys.stdout.isatty()
-                _set_interactive_mode_early("on" if (_wants_dm_early or _is_dm_yaml_early or _is_tty) else "off")
+            _set_interactive_mode_early(
+                _resolve_interactive_mode(
+                    args,
+                    is_dm=bool(getattr(args, "dm", False))
+                    or (_is_yaml and _is_dm_campaign_yaml(Path(_sim_val).resolve())),
+                    is_tty=sys.stdout.isatty(),
+                )
+            )
             _show_channels_early = getattr(args, "show_channels", None)
             if _show_channels_early:
                 _set_show_channels_early(_show_channels_early)
@@ -1512,42 +1571,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         # Also triggered by --dm flag with a goal string (future: generative DM).
         _wants_dm = getattr(args, "dm", False)
         if _is_yaml:
-            _yaml_path = Path(sim_path).resolve()
-            if _yaml_path.exists():
-                try:
-                    import yaml as _yaml
-
-                    with open(_yaml_path) as _yf:
-                        _raw = _yaml.safe_load(_yf)
-                    if isinstance(_raw, dict) and "campaign" in _raw and "encounters" in _raw:
-                        from maxim.simulation.dm_schema import load_campaign, validate_campaign
-                        from maxim.simulation.orchestrator import start_simulation_mode
-
-                        from maxim.embodiment.component_registry import ComponentRegistry
-
-                        _registry = ComponentRegistry(campaign_dir=str(Path(_yaml_path).parent))
-                        dm_campaign = load_campaign(_yaml_path, registry=_registry)
-                        errors = validate_campaign(dm_campaign)
-                        if errors:
-                            print(f"Campaign validation failed ({len(errors)} errors):")
-                            for e in errors:
-                                print(f"  - {e}")
-                            sys.exit(1)
-
-                        debug = bool(_debug_raw)
-                        result = start_simulation_mode(
-                            goal=f"dm:{dm_campaign.name}",
-                            mode="dm",
-                            debug=debug,
-                            no_sim_env=bool(getattr(args, "no_sim_env", False)),
-                            sandbox_backend=getattr(args, "sandbox_backend", "auto"),
-                            dm_campaign=dm_campaign,
-                            max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
-                            entity_ref=_sim_entity_ref,
-                        )
-                        sys.exit(_simulation_result_exit_code(result))
-                except Exception:
-                    pass  # Not a DM campaign — fall through to normal YAML handling
+            _maybe_run_dm_campaign(Path(sim_path).resolve(), args, debug=bool(_debug_raw), entity_ref=_sim_entity_ref)
 
         # --dm flag with a goal string = generative narrative campaign
         if _wants_dm and _is_goal_string:

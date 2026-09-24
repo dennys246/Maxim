@@ -45,6 +45,8 @@ only. No back-channel through either typed surface.
 
 from __future__ import annotations
 
+import math
+import numbers
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -189,6 +191,25 @@ class ReactionContext:
 # ---------------------------------------------------------------------------
 
 
+def require_unit_intensity(value: object, *, owner: str, source: object = None) -> None:
+    """Reject an evaluative intensity that is not a finite real in [0, 1].
+
+    The one rule for BOTH carriers of pain intensity — ``Reaction`` and
+    ``proprioception.pain.PainSignal`` — called from each ``__post_init__``.
+    Reward distribution feeds intensity to NAc unclamped
+    (``bio_stack._distribute_reward_from_reaction``: ``reward = -intensity``)
+    and pain subscribers use it as significance; until 2026-09-23 it was a
+    comment, so a scenario ``intensity: 5`` became a reward of -5 and
+    ``"high"`` was published as-is. Checking at construction means no producer
+    (several are untrusted: hand-written scenarios, entity YAML, LLM tools)
+    can hand a bad value to any subscriber.
+    """
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise TypeError(f"{owner}.intensity must be a real number, got {type(value).__name__} {value!r}")
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        raise ValueError(f"{owner}.intensity must be finite and in [0, 1], got {value!r} (source={source!r})")
+
+
 @dataclass(frozen=True)
 class Reaction:
     """A typed evaluative signal that drives learning.
@@ -198,6 +219,8 @@ class Reaction:
     needs only a Literal entry + documentation (the bus dispatches
     per-kind by string; no dispatch-table changes), but the Literal entry
     is mandatory: membership there is the only contract surface.
+
+    ``intensity`` is validated at construction (``require_unit_intensity``).
 
     SHAPE-FROZEN at 1.0 (CC3). Every field is load-bearing for the
     typed-evaluative-signal contract; an ``extra`` dict would dilute
@@ -214,6 +237,9 @@ class Reaction:
     timestamp: float
     context: ReactionContext
     source: str  # e.g. "cerebellum:motor_failure", "pain_detector:velocity"
+
+    def __post_init__(self) -> None:
+        require_unit_intensity(self.intensity, owner="Reaction", source=self.source)
 
     def to_dict(self) -> dict[str, Any]:
         return {

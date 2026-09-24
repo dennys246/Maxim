@@ -38,6 +38,7 @@ from typing import Any
 from maxim.decisions.causal_link import Valence
 from maxim.proprioception.pain import PainSignal, PainType
 from maxim.reactions.types import Reaction, ReactionContext, TraceSnapshot
+from maxim.utils.logging import log_swallowed_exception
 
 logger = logging.getLogger(__name__)
 
@@ -361,8 +362,8 @@ class PerceivedPainAssessor:
                     ),
                 )
                 self._pain_bus.reaction_bus.publish(reaction)
-            except Exception as e:
-                logger.debug("ReactionBus publish failed: %s", e)
+            except Exception:
+                log_swallowed_exception()
 
         # Sim-visibility trace.
         try:
@@ -496,8 +497,8 @@ class PerceivedPainAssessor:
                     ),
                 )
                 self._pain_bus.reaction_bus.publish(reaction)
-            except Exception as e:
-                logger.debug("ReactionBus publish failed: %s", e)
+            except Exception:
+                log_swallowed_exception()
 
         # Sim-visibility trace: [PAIN] line in sim output.
         try:

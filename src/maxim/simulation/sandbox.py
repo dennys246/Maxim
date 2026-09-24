@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from maxim.utils.logging import log_swallowed_exception
+
 if TYPE_CHECKING:
     from maxim.agents.autonomy import AutonomyLevel
     from maxim.simulation.container_runner import ContainerHandle, ContainerRunner
@@ -547,8 +549,8 @@ class PainTriggerLayer:
                             context={"entity_path": path, "operation": operation},
                         )
                     )
-            except Exception as e:
-                logger.debug("Failed to fire pain signal: %s", e)
+            except Exception:
+                log_swallowed_exception()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

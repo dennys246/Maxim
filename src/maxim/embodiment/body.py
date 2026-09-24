@@ -415,8 +415,8 @@ class Embodiment:
                 },
             )
             self._pain_bus.publish(signal)
-        except Exception as exc:
-            log.debug("Drive pain publish failed for %s: %s", drive_name, exc)
+        except Exception:
+            log_swallowed_exception()
 
         # Emit TemporalEvent for SCN oscillator learning. DORMANT (D9): no production
         # path passes a distributor, so this is a no-op outside tests.

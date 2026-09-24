@@ -563,6 +563,47 @@ class TestPipelineIntegration:
         assert result is not None
         assert result.reflexes_fired == ()
 
+    def test_a_failure_after_evaluate_cannot_erase_fired_reflexes(self, monkeypatch, caplog):
+        """evaluate() RUNS body tools, so once it returns the firings are fact.
+
+        The whole block sat under one ``except Exception: return ()``, so a
+        failure after evaluate() reported "no reflexes fired" for reflexes that
+        had (#863 review round). Propagating instead is no better: every
+        enrich() caller swallows quietly, which would drop the whole enrichment
+        and still hide the firing. The names must come back, and the telemetry
+        failure must be reported.
+        """
+        from maxim.embodiment.reflex import ReflexFiring
+
+        firing = ReflexFiring(
+            reflex_name="attack_flinch",
+            tool="damage_component",
+            params={},
+            effective_intensity=None,  # the telemetry's ``:.2f`` raises on this
+            raw_intensity=0.5,
+            habituation_factor=1.0,
+            sensitization_factor=1.0,
+            preemption_factor=1.0,
+        )
+        pipeline = BioEnrichmentPipeline(reflex_registry=ReflexRegistry((_attack_reflex(),), clock=_Clock()))
+        monkeypatch.setattr(pipeline._reflex_registry, "evaluate", lambda *_a, **_kw: [firing])
+        with caplog.at_level("WARNING"):
+            assert pipeline._evaluate_reflexes("The dragon attacks you", (), latent_out=[]) == ("attack_flinch",)
+        assert any(
+            "swallowed" in r.getMessage().lower() or "_evaluate_reflexes" in r.getMessage() for r in caplog.records
+        )
+
+    def test_an_evaluate_failure_is_contained_and_reported(self, monkeypatch, caplog):
+        pipeline = BioEnrichmentPipeline(reflex_registry=ReflexRegistry((_attack_reflex(),), clock=_Clock()))
+
+        def _boom(*_a, **_kw):
+            raise RuntimeError("evaluate failed")
+
+        monkeypatch.setattr(pipeline._reflex_registry, "evaluate", _boom)
+        with caplog.at_level("WARNING"):
+            assert pipeline._evaluate_reflexes("The dragon attacks you", ()) == ()
+        assert any("bio_enrichment" in r.getMessage() or "_evaluate_reflexes" in r.getMessage() for r in caplog.records)
+
     def test_reflexes_fired_is_empty_when_no_match(self):
         clock = _Clock()
         reg = ReflexRegistry((_attack_reflex(),), clock=clock)

@@ -8,10 +8,12 @@ and evaluate simulation progress.
 from __future__ import annotations
 
 import logging
+import math
 import time
 from typing import TYPE_CHECKING, Any
 
 from maxim.tools.base import Tool, ToolOutput
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.simulation.introspection import Observer
@@ -397,6 +399,25 @@ class GenerateScenarioTool(Tool):
             return ToolOutput(success=False, error=f"Scenario generation failed: {e}")
 
 
+def _unit_interval_arg(kwargs: dict[str, Any], key: str, default: float) -> tuple[float, str | None]:
+    """Read a model-supplied argument that must be a finite number in [0, 1].
+
+    These tools are an LLM boundary. An out-of-range value used to be taken
+    as-is: a negative damage ``amount`` HEALED the component, and an
+    ``inject_pain`` intensity of 7 reported success and then killed the AUT
+    when the pain type rejected it. Returns ``(value, None)``, or ``(nan,
+    message)`` so the tool can fail with an error the model can retry on.
+    """
+    raw = kwargs.get(key, default)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return math.nan, f"{key} must be a number from 0.0 to 1.0, got {raw!r}"
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        return math.nan, f"{key} must be from 0.0 to 1.0, got {raw!r}"
+    return value, None
+
+
 class DamageComponentTool(Tool):
     """Apply SEM damage to a specific body component (modulator).
 
@@ -436,7 +457,9 @@ class DamageComponentTool(Tool):
 
     def execute(self, **kwargs: Any) -> ToolOutput:
         component_name = kwargs.get("component", "torso")
-        amount = float(kwargs.get("amount", 0.1))
+        amount, error = _unit_interval_arg(kwargs, "amount", 0.1)
+        if error is not None:
+            return ToolOutput(success=False, error=error)
         source = kwargs.get("source", "unknown")
         damage_type = kwargs.get("damage_type", "") or None
 
@@ -503,7 +526,7 @@ class DamageComponentTool(Tool):
                 )
                 pain_bus.publish(signal)
             except Exception:
-                pass
+                log_swallowed_exception()
 
         # Evaluate threshold-based failure modes (cascading)
         failures = self._embodiment.evaluate_failures()
@@ -860,8 +883,8 @@ class InjectPainTool(Tool):
 
     name = "inject_pain"
     description = (
-        "Send a pain signal to the agent under test. Tests pain detection, "
-        "movement inhibition, and harm prediction responses."
+        "Send a pain signal to the agent under test, with intensity from 0.0 to 1.0. "
+        "Tests pain detection, movement inhibition, and harm prediction responses."
     )
     input_schema = {
         "pain_type": (str, "external_signal"),
@@ -874,7 +897,9 @@ class InjectPainTool(Tool):
 
     def execute(self, **kwargs: Any) -> ToolOutput:
         pain_type = kwargs.get("pain_type", "external_signal")
-        intensity = float(kwargs.get("intensity", 0.5))
+        intensity, error = _unit_interval_arg(kwargs, "intensity", 0.5)
+        if error is not None:
+            return ToolOutput(success=False, error=error)
         self._bridge.inject_pain(pain_type=pain_type, intensity=intensity)
         return ToolOutput(
             success=True,

@@ -81,6 +81,9 @@ def normalize_args(args: argparse.Namespace) -> None:
         raise SystemExit(f"Invalid --audio value: {args.audio!r} (expected True/False)")
 
     _raw_interactive = getattr(args, "interactive", None)
+    # Recorded BEFORE coercion: afterwards args.interactive is a bool and
+    # "unset" (auto) is indistinguishable from an explicit true.
+    args.interactive_explicit = _raw_interactive is not None
     if _raw_interactive is None:
         # None means "auto" — leave the resolved boolean to downstream
         # display config (sim path) and default to True for live runs.

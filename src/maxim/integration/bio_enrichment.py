@@ -22,6 +22,8 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from maxim.utils.logging import log_swallowed_exception
+
 if TYPE_CHECKING:
     from maxim.decisions.nac import NAc
     from maxim.embodiment.component_index import ComponentIndex
@@ -401,35 +403,41 @@ class BioEnrichmentPipeline:
         if self._reflex_registry is None:
             return ()
 
+        # evaluate() RUNS body tools (damage_component), so once it returns,
+        # the firings are fact. The names are computed first and returned
+        # whatever happens after: every enrich() caller swallows an exception
+        # quietly, so letting a later failure propagate would drop the whole
+        # enrichment AND still hide the firing. Only telemetry follows, and it
+        # is contained and reported (Stage-1) — it can never erase the result.
         try:
             firings = self._reflex_registry.evaluate(
                 text,
                 predictions=predictions,
                 execute_tool=self._dispatch_reflex_tool,
             )
-            if firings:
-                names = tuple(f.reflex_name for f in firings)
-
-                # Surface latent motor programs from ALL body modulators.
-                # Whole-body response: an attack to torso also surfaces
-                # dodge (legs) and block (arms).
-                if latent_out is not None:
-                    self._collect_latent_affordances(latent_out)
-
-                try:
-                    from maxim.simulation.sim_logger import sim_enrichment
-
-                    details = [f"{f.reflex_name}({f.tool}, intensity={f.effective_intensity:.2f})" for f in firings]
-                    sim_enrichment("reflex", f"{len(firings)} reflex(es): {', '.join(details)}")
-                    if latent_out:
-                        sim_enrichment("latent", f"{len(latent_out)} motor program(s): {', '.join(latent_out[:5])}")
-                except ImportError:
-                    pass
-                return names
+        except Exception:
+            log_swallowed_exception()
             return ()
-        except Exception as e:
-            log.debug("Reflex evaluation failed: %s", e)
+        if not firings:
             return ()
+        names = tuple(f.reflex_name for f in firings)
+
+        # Surface latent motor programs from ALL body modulators.
+        # Whole-body response: an attack to torso also surfaces
+        # dodge (legs) and block (arms). Contains its own failures.
+        if latent_out is not None:
+            self._collect_latent_affordances(latent_out)
+
+        try:
+            from maxim.simulation.sim_logger import sim_enrichment
+
+            details = [f"{f.reflex_name}({f.tool}, intensity={f.effective_intensity:.2f})" for f in firings]
+            sim_enrichment("reflex", f"{len(firings)} reflex(es): {', '.join(details)}")
+            if latent_out:
+                sim_enrichment("latent", f"{len(latent_out)} motor program(s): {', '.join(latent_out[:5])}")
+        except Exception:
+            log_swallowed_exception()
+        return names
 
     def _collect_latent_affordances(self, out: list[str]) -> None:
         """Collect integrity-gated latent affordances from all body modulators.
