@@ -140,6 +140,13 @@ def test_water_trial_ticks_acts_and_the_staging_close_persists_fear(tmp_path: Pa
         ].situation
         water_concept = aut.bio.atl.get(water_c)
         assert water_concept is not None and escapes[-1].id in water_concept.memory_refs.get("hippocampus", {})
+        # Phase 2S-c: the same trace records a MEASURED pain (the bus was watched: a number, never
+        # None) and the novelty of the situation it was chosen in (from the EC margins its proposal
+        # carried), while salience stays unmeasured -- the tag scores pain and drive pressure itself.
+        enc = escapes[-1].encoding
+        assert enc.pain is not None and 0.0 <= enc.pain <= 1.0, enc
+        assert enc.novelty is not None and 0.0 <= enc.novelty <= 1.0, enc
+        assert enc.salience is None, enc
         # the loop's own session pair closed the hub; the trial re-opened it after every loop run, so
         # the staging close persists the fear booked AFTER those loops (the S1 trap, guarded)
         stage = tmp_path / "stage"

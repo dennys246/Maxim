@@ -49,6 +49,7 @@ def _capture_salience(executor: Executor, result: Any) -> float:
         action={"tool_name": "grab", "params": {}},
         result=result,
         run_id="run-1",
+        novelty=None,
         situation=None,
     )
     return obs["salience"]

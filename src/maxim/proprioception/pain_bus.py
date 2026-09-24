@@ -64,7 +64,8 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
-from maxim.proprioception.pain import PainSignal, PainType
+from maxim.proprioception.pain import NOCICEPTIVE_PAIN_TYPES as NOCICEPTIVE_PAIN_TYPES  # re-export
+from maxim.proprioception.pain import PainKind, PainSignal, PainType
 from maxim.reactions.bus import ReactionBus
 from maxim.reactions.compat import pain_signal_to_reaction
 from maxim.utils.logging import log_swallowed_exception
@@ -337,21 +338,8 @@ def _reaction_to_pain_signal(reaction: "Reaction") -> PainSignal:
 # A PainType alone cannot draw the drive line: the body publishes every DRIVE breach as
 # EXTERNAL_SIGNAL with ``source="drive:<name>"`` (air hunger is ``drive:oxygen``). Those are drives,
 # kept as ``extra["drive_pain"]`` -- except ``drive:health``, whose loss IS tissue damage.
-NOCICEPTIVE_PAIN_TYPES: frozenset[PainType] = frozenset(
-    {
-        PainType.EXCESSIVE_VELOCITY,
-        PainType.DIRECTION_THRASHING,
-        PainType.SUSTAINED_STRAIN,
-        PainType.EXCESSIVE_ACCELERATION,
-        PainType.MOVEMENT_FAILURE,
-        PainType.EXTERNAL_SIGNAL,
-        PainType.SAFETY_VIOLATION,
-    }
-)
-
-
-# The one drive whose breach is injury rather than deprivation.
-_TISSUE_DAMAGE_DRIVES: frozenset[str] = frozenset({"drive:health"})
+# The nociception rule lives on the type (``proprioception/pain.py::classify_pain`` /
+# ``PainSignal.kind``); ``NOCICEPTIVE_PAIN_TYPES`` is re-exported for callers that imported it here.
 
 
 def _pain_encoding(signal: PainSignal) -> Any:
@@ -361,7 +349,8 @@ def _pain_encoding(signal: PainSignal) -> Any:
 
     intensity = min(1.0, max(0.0, float(signal.intensity)))
     source = str((signal.context or {}).get("source", ""))
-    if source.startswith("drive:") and source not in _TISSUE_DAMAGE_DRIVES:
+    kind = signal.kind
+    if kind is PainKind.DRIVE:
         extra = {"drive_pain": intensity, "drive": source.removeprefix("drive:")}
         return EncodingSignals(
             site="pain_bus",
@@ -373,7 +362,7 @@ def _pain_encoding(signal: PainSignal) -> Any:
             drive_relief=None,
             extra=extra,
         )
-    if signal.pain_type in NOCICEPTIVE_PAIN_TYPES:
+    if kind is PainKind.NOCICEPTIVE:
         return EncodingSignals(
             site="pain_bus",
             salience=None,
@@ -383,7 +372,7 @@ def _pain_encoding(signal: PainSignal) -> Any:
             drive_pressure=None,
             drive_relief=None,
         )
-    extra = {"anticipated_pain": intensity} if signal.pain_type is PainType.ANTICIPATED else {}
+    extra = {"anticipated_pain": intensity} if kind is PainKind.ANTICIPATORY else {}
     return EncodingSignals(
         site="pain_bus",
         salience=None,

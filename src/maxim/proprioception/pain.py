@@ -87,6 +87,110 @@ class PainConfig:
     movement_failure_timeout: float = 2.0  # seconds after command to check
 
 
+class PainKind(str, Enum):
+    """What a pain signal IS, decided once, on the type (memory-strength Phase 2S-c, owner rule).
+
+    Before this every consumer re-derived it from ``pain_type`` + ``context["source"]`` -- and a
+    consumer that did not (the 2S-c bridge's first draft) recorded air hunger, fear and tool
+    frustration as pain. Only ``NOCICEPTIVE`` is pain in the memory / encoding sense:
+
+    - ``NOCICEPTIVE`` -- tissue damage / physical harm (the motion detectors, a world hit via
+      ``EXTERNAL_SIGNAL``, a safety violation, and the one injury drive, ``drive:health``).
+    - ``DRIVE`` -- a homeostatic breach (``drive:<name>`` other than health: air hunger, hunger,
+      cold). Its standing weight is drive pressure, not pain.
+    - ``ANTICIPATORY`` -- predicted pain (fear). Never pain: fear must not strengthen the memory of
+      its own anticipation.
+    - ``FRUSTRATION`` -- a tool failing, timing out, taking bad input, or cognitive overload.
+    - ``EXHAUSTION`` -- an energy budget running out.
+
+    Scope: this answers "is it pain?" for memory encoding and per-invocation capture. It is NOT the
+    authority on what the cluster-fear system learns to fear -- that stays the hivemind wire-boundary
+    allowlist ``DEFAULT_CLUSTER_FEAR_FAILURE_MODES`` (which deliberately includes ``drive:oxygen``).
+    Consumers not yet migrated still re-derive their own rule (migration: the deferred nociception-layer
+    plan, ``docs/plans/deferred/nociception_layer.md``, PR #878).
+    """
+
+    NOCICEPTIVE = "nociceptive"
+    DRIVE = "drive"
+    ANTICIPATORY = "anticipatory"
+    FRUSTRATION = "frustration"
+    EXHAUSTION = "exhaustion"
+
+
+#: Pain types that are physical harm -- the ``NOCICEPTIVE`` kind (unless the source is a drive).
+NOCICEPTIVE_PAIN_TYPES: frozenset[PainType] = frozenset(
+    {
+        PainType.EXCESSIVE_VELOCITY,
+        PainType.DIRECTION_THRASHING,
+        PainType.SUSTAINED_STRAIN,
+        PainType.EXCESSIVE_ACCELERATION,
+        PainType.MOVEMENT_FAILURE,
+        PainType.EXTERNAL_SIGNAL,
+        PainType.SAFETY_VIOLATION,
+    }
+)
+
+#: The one drive whose breach is injury rather than deprivation.
+TISSUE_DAMAGE_DRIVES: frozenset[str] = frozenset({"drive:health"})
+
+_FRUSTRATION_PAIN_TYPES: frozenset[PainType] = frozenset(
+    {
+        PainType.TOOL_FAILURE,
+        PainType.TOOL_TIMEOUT,
+        PainType.TOOL_INVALID_INPUT,
+        PainType.TOOL_SUSTAINED,
+        PainType.COGNITIVE_OVERLOAD,
+    }
+)
+
+
+def classify_pain(pain_type: PainType, source: str) -> PainKind:
+    """The one rule. A ``drive:<name>`` source wins over the type (the body publishes drive
+    breaches as ``EXTERNAL_SIGNAL``), except the tissue-damage drive; then the type decides."""
+    if source.startswith("drive:") and source not in TISSUE_DAMAGE_DRIVES:
+        return PainKind.DRIVE
+    if pain_type is PainType.ANTICIPATED:
+        return PainKind.ANTICIPATORY
+    if pain_type in _FRUSTRATION_PAIN_TYPES:
+        return PainKind.FRUSTRATION
+    if pain_type is PainType.RESOURCE_EXHAUSTION:
+        return PainKind.EXHAUSTION
+    if pain_type in NOCICEPTIVE_PAIN_TYPES:
+        return PainKind.NOCICEPTIVE
+    raise ValueError(f"PainType {pain_type!r} has no PainKind -- add it to classify_pain")
+
+
+def drive_failure_sensor(failure_name: str) -> str | None:
+    """Sensor name for a drive-spec failure (``drive:<sensor>:discomfort`` /
+    ``drive:<sensor>:deprived``), else ``None`` for a standard failure_mode.
+
+    The sensor is everything between the ``drive:`` prefix and the final ``:<band>`` -- so
+    qualified sub-sensors like ``arms.thermal`` survive. A name with no band (``drive:x``) is not a
+    well-formed drive failure and parses as a standard one. The ONE parser: the embodiment
+    bridge's delta filter and :func:`failure_pain_kind` must agree on what a drive failure is.
+    """
+    if not failure_name.startswith("drive:"):
+        return None
+    body = failure_name[len("drive:") :]
+    idx = body.rfind(":")
+    if idx <= 0:
+        return None
+    return body[:idx]
+
+
+def failure_pain_kind(failure_name: str) -> PainKind:
+    """The kind of an embodiment FailureEvent's pain, from its name: ``drive:<sensor>:<band>`` is a
+    homeostatic breach (``DRIVE``) unless the sensor is health; every other failure mode (a broken
+    component, a joint limit, a malformed drive name) is physical harm -- fail safe, since the
+    delta filter already treats a malformed drive name as a standard failure. (A band-less
+    ``drive:<name>`` in a PainSignal's ``context["source"]`` is well-formed there and goes through
+    :func:`classify_pain` instead -- different producers, different grammars.)"""
+    sensor = drive_failure_sensor(failure_name)
+    if sensor is None or f"drive:{sensor}" in TISSUE_DAMAGE_DRIVES:
+        return PainKind.NOCICEPTIVE
+    return PainKind.DRIVE
+
+
 @dataclass
 class PainSignal:
     """A detected pain event."""
@@ -98,6 +202,17 @@ class PainSignal:
     translation_velocity: float = 0.0
     direction_reversals: int = 0
     context: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def kind(self) -> PainKind:
+        """What this signal IS (see ``PainKind``) -- read this; never re-derive it from the type."""
+        return classify_pain(self.pain_type, str((self.context or {}).get("source", "")))
+
+    @property
+    def nociceptive_intensity(self) -> float | None:
+        """The intensity when this signal is physical harm, else ``None`` -- the only pain the
+        memory / encoding layer records as ``pain``."""
+        return float(self.intensity) if self.kind is PainKind.NOCICEPTIVE else None
 
     def __post_init__(self) -> None:
         # Checked HERE, not only on the Reaction it later becomes:

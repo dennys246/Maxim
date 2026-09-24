@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 import functools
 import itertools
 import logging
@@ -1594,6 +1595,67 @@ def propose_via_substrate(
         # produced a cluster.
         cluster_id=cluster_id,
         clusters=clusters or None,
+        cluster_margins=_situation_margins(sensor_encoder, agent_id, clusters),
+    )
+
+
+def _situation_margins(sensor_encoder: Any, agent_id: str, clusters: dict[str, str] | None) -> dict[str, float] | None:
+    """The EC match margin each situation cluster was just encoded with (memory-strength Phase 2S-c).
+
+    Read IMMEDIATELY after the encodes that produced ``clusters`` -- ``last_encode_margin`` is the
+    encoder's most recent encode per (agent, modality), so a later tick would read a different one.
+    A modality whose encode ran no scan (the min-delta gate) has no margin and is left out.
+    """
+    reader = getattr(sensor_encoder, "last_encode_margin", None)
+    if not clusters or not callable(reader):
+        return None
+    margins: dict[str, float] = {}
+    for modality in clusters:
+        margin = reader(agent_id=agent_id, modality=modality)
+        if isinstance(margin, (int, float)) and not isinstance(margin, bool) and math.isfinite(margin):
+            margins[modality] = float(margin)
+    return margins or None
+
+
+def situation_novelty(margins: dict[str, float] | None) -> float | None:
+    """How unfamiliar a situation was, in ``[0, 1]``: ``1 - best similarity`` of its clusters' encodes.
+
+    Per modality ``1 - best_similarity`` (clamped), and the situation's novelty is its MOST novel
+    modality. Dynamic range, stated: sensor completions sit at or above the 0.85 threshold, so a
+    familiar situation reads ~0.0-0.15 and a separation reads higher -- a coarse, near-binary signal,
+    not a graded one. ``-1.0`` ("nothing comparable": a fresh EC or a new modality) is NOT scored as
+    maximal novelty: the tag weights novelty by a reference-set size that is still the Hippocampus's
+    trace count, which would give an empty comparison full confidence -- so it is left unmeasured
+    until the producer supplies its own reference set. ``None`` when no margin remains.
+    """
+    measured = [min(1.0, max(0.0, 1.0 - m)) for m in (margins or {}).values() if m >= 0.0]
+    return max(measured) if measured else None
+
+
+def _attach_live_situation(proposal: Any, *, aut_mode: str, sensor_encoder: Any, agent_id: str, executor: Any) -> Any:
+    """In llm-primary the LLM chose the action, so ``propose_via_substrate`` never ran and no
+    substrate cluster was captured: encode the current interoception (+audio) state HERE -- the
+    PRE-action drive state, the correct credit key -- so the real drive-relief outcome reinforces the
+    cluster-reward substrate via record_outcome (drive_relief_only, no tool-success floor), and the
+    capture records where it happened and how novel that was (Phase 1 of
+    substrate_learns_from_experience.md; Phase 2S-b/c). No-op in substrate-primary (clusters already
+    captured) and when unembodied.
+    """
+    if (
+        aut_mode == "substrate-primary"
+        or sensor_encoder is None
+        or getattr(proposal, "clusters", None) is not None
+        or getattr(executor, "embodiment", None) is None
+    ):
+        return proposal
+    live = _encode_current_clusters(sensor_encoder, agent_id, executor)
+    if not live:
+        return proposal
+    return dataclasses.replace(
+        proposal,
+        cluster_id=live.get(INTEROCEPTION_TAG),
+        clusters=live,
+        cluster_margins=_situation_margins(sensor_encoder, agent_id, live),
     )
 
 
@@ -1746,16 +1808,19 @@ def _loop_capture_action(
     run_id: str | None,
     agent_id: str,
     *,
-    situation: "dict[str, str] | None",
+    proposal: Any,
 ) -> None:
     """Capture one executed action to the Hippocampus and close its episode step (both loop paths).
 
-    ``situation`` (REQUIRED, memory-strength Phase 2S-b) is the substrate clusters the action was
-    CHOSEN in: the executed proposal's ``clusters`` -- ``propose_via_substrate``'s in
-    substrate-primary (encoded when the proposal was made, the tick before execution), or the
-    outcome-time encode made before execution in llm-primary. It is the same key ``_rec_outcome``
-    credits. The agent-fallback path has no proposal and passes ``None``: re-encoding at capture would
-    read the POST-action state (the wrong key) and write the EC.
+    ``proposal`` (REQUIRED; ``None`` on the agent-fallback path, which has none) carries WHERE the
+    action was chosen and how unfamiliar that was:
+
+    - the situation (memory-strength Phase 2S-b) is its ``clusters`` -- ``propose_via_substrate``'s
+      in substrate-primary (encoded when the proposal was made, the tick before execution), or the
+      outcome-time encode made before execution in llm-primary. It is the same key ``_rec_outcome``
+      credits. Re-encoding at capture would read the POST-action state (the wrong key) and write the EC.
+    - the novelty (Phase 2S-c) is ``situation_novelty`` of its ``cluster_margins``, recorded with
+      those clusters at encode time.
     """
     if hippocampus is None:
         return
@@ -1772,7 +1837,8 @@ def _loop_capture_action(
         },
         result=result,
         run_id=run_id or "",
-        situation=situation,
+        situation=getattr(proposal, "clusters", None),
+        novelty=situation_novelty(getattr(proposal, "cluster_margins", None)),
     )
     _bio_integration.observe_episode(
         hippocampus=hippocampus,
@@ -3587,7 +3653,7 @@ def run_agentic_loop(
                                         result,
                                         run_id,
                                         _loop_agent_id,
-                                        situation=None,  # no proposal here
+                                        proposal=None,  # the agent-fallback path has none
                                     )
 
                                 except Exception as e:
@@ -3648,26 +3714,13 @@ def run_agentic_loop(
             action = ctrl.pending_proposal.action
             confidence = ctrl.pending_proposal.confidence
 
-            # Phase 1 (substrate_learns_from_experience.md): in llm-primary the LLM
-            # chose the action, so propose_via_substrate never ran and no substrate
-            # cluster was captured. Encode the current interoception (+audio) state
-            # HERE — from the PRE-action drive state, the correct credit key — so the
-            # real drive-relief outcome reinforces the cluster-reward substrate via
-            # record_outcome (drive_relief_only → no tool-success floor). No-op in
-            # substrate-primary (clusters already captured) and when unembodied.
-            if (
-                aut_mode != "substrate-primary"
-                and _loop_sensor_encoder is not None
-                and getattr(ctrl.pending_proposal, "clusters", None) is None
-                and getattr(executor, "embodiment", None) is not None
-            ):
-                _live_clusters = _encode_current_clusters(_loop_sensor_encoder, _loop_agent_id, executor)
-                if _live_clusters:
-                    ctrl.pending_proposal = dataclasses.replace(
-                        ctrl.pending_proposal,
-                        cluster_id=_live_clusters.get(INTEROCEPTION_TAG),
-                        clusters=_live_clusters,
-                    )
+            ctrl.pending_proposal = _attach_live_situation(
+                ctrl.pending_proposal,
+                aut_mode=aut_mode,
+                sensor_encoder=_loop_sensor_encoder,
+                agent_id=_loop_agent_id,
+                executor=executor,
+            )
 
             # ── Consecutive same-tool cap (respond loop prevention) ──────
             # Content-aware: only counts consecutive calls with the SAME
@@ -4106,7 +4159,7 @@ def run_agentic_loop(
                         result,
                         run_id,
                         _loop_agent_id,
-                        situation=getattr(ctrl.pending_proposal, "clusters", None),
+                        proposal=ctrl.pending_proposal,
                     )
 
                     # Handle failure

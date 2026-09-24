@@ -37,6 +37,7 @@ class TestCaptureEpisodicMemory:
             action={"tool_name": "look", "params": {}},
             result=MagicMock(),
             run_id="run-1",
+            novelty=None,
             situation=None,
         )
         hippo.capture_from_loop_async.assert_called_once()
@@ -55,6 +56,7 @@ class TestCaptureEpisodicMemory:
             action={"tool_name": "look", "params": {}},
             result=rpe_result,
             run_id="run-1",
+            novelty=None,
             situation=None,
         )
         # Salience should be boosted: 0.5 + 0.6*0.5 = 0.8
@@ -74,6 +76,7 @@ class TestCaptureEpisodicMemory:
             action={"tool_name": "look", "params": {}},
             result=rpe_result,
             run_id="run-1",
+            novelty=None,
             situation=None,
         )
         assert obs["salience"] <= 1.0
@@ -92,6 +95,7 @@ class TestCaptureEpisodicMemory:
             action={"tool_name": "look", "params": {}},
             result=rpe_result,
             run_id="run-1",
+            novelty=None,
             situation=None,
         )
         assert obs["salience"] == 0.5
@@ -107,6 +111,7 @@ class TestCaptureEpisodicMemory:
             action={"tool_name": "look", "params": {}},
             result=MagicMock(),  # no stamped surprise -> none inferred
             run_id="run-1",
+            novelty=None,
             situation=None,
         )
         assert obs["salience"] == 0.5
@@ -125,6 +130,7 @@ class TestCaptureEpisodicMemory:
             action={"tool_name": "look", "params": {}},
             result=MagicMock(),
             run_id="run-1",
+            novelty=None,
             situation=None,
         )
 
@@ -141,6 +147,7 @@ class TestCaptureEpisodicMemory:
             action={"tool_name": "look", "params": {}},
             result=MagicMock(),
             run_id="run-1",
+            novelty=None,
             situation=None,
         )
         call_kwargs = hippo.capture_from_loop_async.call_args[1]
