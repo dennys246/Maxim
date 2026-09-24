@@ -119,11 +119,21 @@ def main(argv: list[str] | None = None) -> int:
     pump = MinecraftSyncPump(aut, interval_s=0.05)
     pump.start()
 
+    # These ticks bypass the loop's live pass, which is what advances the experience clock
+    # (memory-strength Phase 2S, #848): drive it once per tick here.
+    from maxim.runtime.experience_time import ExperienceClockDriver
+
+    clock_driver = ExperienceClockDriver(aut.bio.hippocampus.experience_clock, percept_source=None)
+
     def _tick() -> object:
         """ONE production tick: propose_via_substrate does encode → note →
         evaluate_failures (pain) → threat read → recommend. The whole Wire-4
         composition, through its real caller (W-2's requirement)."""
-        return propose_via_substrate(nac=aut.bio.nac, agent_id=AGENT_ID, executor=aut.executor, sensor_encoder=encoder)
+        proposal = propose_via_substrate(
+            nac=aut.bio.nac, agent_id=AGENT_ID, executor=aut.executor, sensor_encoder=encoder
+        )
+        clock_driver.on_live_pass()
+        return proposal
 
     def _stage(state: dict, key: str, value: float) -> bool:
         bridge.set_state(state)
