@@ -26,6 +26,7 @@ from maxim.embodiment.sem import (
     Modulator,
     Sensor,
 )
+from maxim.proprioception.pain import drive_failure_sensor
 from maxim.tools.base import Tool, ToolOutput
 from maxim.tools.registry import ToolRegistry
 from maxim.utils.logging import log_swallowed_exception
@@ -325,20 +326,8 @@ class SensorReadTool(Tool):
         }
 
 
-def _drive_failure_sensor(failure_name: str) -> str | None:
-    """Sensor name for a drive-spec failure (``drive:<sensor>:discomfort`` /
-    ``drive:<sensor>:deprived``), else ``None`` for a standard failure_mode.
-
-    The sensor is everything between the ``drive:`` prefix and the final
-    ``:<suffix>`` — so qualified sub-sensors like ``arms.thermal`` survive.
-    """
-    if not failure_name.startswith("drive:"):
-        return None
-    body = failure_name[len("drive:") :]
-    idx = body.rfind(":")
-    if idx <= 0:
-        return None
-    return body[:idx]
+# The one drive-failure parser lives with the pain taxonomy (memory-strength Phase 2S-c).
+_drive_failure_sensor = drive_failure_sensor
 
 
 def _intrinsically_harmful_sensors(root: Entity, *effect_dicts: dict[str, float] | None) -> set[str]:

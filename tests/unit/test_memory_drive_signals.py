@@ -237,6 +237,7 @@ def test_the_loop_capture_records_both_per_drive_signals():
         action={"tool_name": "eat"},
         result=stamped,
         run_id="r",
+        novelty=None,
         situation=None,
     )
     encoding = hippo.capture_from_loop_async.call_args.kwargs["encoding"]
@@ -370,6 +371,7 @@ def test_the_whole_path_from_the_world_to_the_trace(complete_memory_args):
         action={"tool_name": tool.name},
         result=result,
         run_id="r",
+        novelty=None,
         situation=None,
     )
     hippo._process_capture(hippo._capture_queue.get_nowait())

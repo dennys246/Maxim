@@ -27,12 +27,17 @@ def capture_episodic_memory(
     result: Any,
     run_id: str,
     situation: "dict[str, str] | None",
+    novelty: float | None,
 ) -> None:
     """Capture an episodic memory to hippocampus with RPE salience boost.
 
     ``situation`` (REQUIRED, memory-strength Phase 2S-b): the loop's substrate clusters for this
     action, ``{modality: EC cluster id}``, or ``None`` when the path computed none. Recorded on the
     trace; ConceptExtractor links the clusters' ATL concepts (same ids) to it.
+
+    ``novelty`` (REQUIRED, Phase 2S-c): how unfamiliar that situation was, in ``[0, 1]``
+    (``agent_loop.situation_novelty`` of the proposal's EC match margins), or ``None`` when no
+    margin was recorded.
 
     This is the standard per-action hippocampus capture pattern used
     in both the agent fallback path (Section 3) and the LLM execution
@@ -56,18 +61,20 @@ def capture_episodic_memory(
 
     rpe = result.rpe if isinstance(result, ToolOutput) else None
     # What this trace is encoded WITH (memory-strength Phase 2b), built before any fold or queue so
-    # a bad value fails here, loudly. Only the outcome's surprise is MEASURED on this path: the
-    # observation's salience/novelty are defaults or per-source constants today (Phase 2S makes
-    # them real). Drive pressure and relief ride on the executor's stamp, per drive.
+    # a bad value fails here, loudly. MEASURED on this path: the outcome's surprise, the action's
+    # pain (the executor's stamp, Phase 2S-c), and the situation's novelty (from the EC margins the
+    # proposal carried, Phase 2S-c). Salience stays unmeasured ON PURPOSE: the tag already scores
+    # pain and drive pressure on their own, so a salience built from them would count them twice.
+    # Drive pressure and relief ride on the executor's stamp, per drive.
     # ``rpe`` is in [0, 1] by construction (the Rescorla-Wagner value is bounded at every producer),
     # so a value outside it is a broken invariant and fails here, loudly.
     # Per-drive pressure (read BEFORE the action) and relief ride on the same stamp (Phase 2b-ii).
     encoding = EncodingSignals(
         site="loop",
         salience=None,
-        novelty=None,
+        novelty=novelty,
         surprise=rpe,
-        pain=None,
+        pain=result.pain if isinstance(result, ToolOutput) else None,
         drive_pressure=result.drive_pressure_before if isinstance(result, ToolOutput) else None,
         drive_relief=result.drive_relief if isinstance(result, ToolOutput) else None,
     )

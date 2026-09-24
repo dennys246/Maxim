@@ -209,7 +209,9 @@ def test_the_loop_capture_records_the_outcomes_surprise():
     from maxim.tools.base import ToolOutput
 
     hippo = MagicMock()
-    common = dict(situation=None, executor=None, state=None, intent={}, action={"tool_name": "grab"}, run_id="r")
+    common = dict(
+        novelty=None, situation=None, executor=None, state=None, intent={}, action={"tool_name": "grab"}, run_id="r"
+    )
     capture_episodic_memory(
         hippocampus=hippo, observation={"salience": 0.5}, result=ToolOutput(success=False, rpe=0.4), **common
     )
@@ -222,7 +224,15 @@ def test_only_a_capture_contract_break_escapes_the_loop_capture():
     from maxim.runtime.bio_integration import capture_episodic_memory
 
     common = dict(
-        situation=None, executor=None, observation={}, state=None, intent={}, action={}, result=None, run_id=""
+        novelty=None,
+        situation=None,
+        executor=None,
+        observation={},
+        state=None,
+        intent={},
+        action={},
+        result=None,
+        run_id="",
     )
     hippo = MagicMock()
     hippo.capture_from_loop_async.side_effect = EncodingContractError("encoding missing")

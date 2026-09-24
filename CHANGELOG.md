@@ -25,6 +25,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A survival memory records how much it hurt and how new the situation was (memory-strength
+  Phase 2S-c, [#848](https://github.com/dennys246/Maxim/issues/848)).** Each loop capture now
+  measures its pain — physical harm only: the harm the action itself caused, or else the peak harm
+  the body felt while it ran, read by the tool-pain bridge and stamped on the tool's output by the
+  executor — and the novelty of the situation it was chosen in, from how closely the body's state
+  matched a known substrate cluster. What counts as pain is now decided once, on the pain signal
+  itself (`PainSignal.kind`): air hunger and other drive breaches, anticipated pain, a tool
+  failing and energy exhaustion are not pain (air hunger still weighs through drive pressure). The
+  PainBus encoding and the new capture read it; other consumers still apply their own rules, and
+  the cluster-fear allowlist stays the authority on what is feared (migration is the deferred
+  nociception-layer plan). Before this, pain and novelty were unmeasured on survival captures, so a
+  harmful moment and a harmless one, or a new situation and a familiar one, recorded the same. Salience
+  stays unmeasured there on purpose: the strength tag already scores pain and drive pressure
+  separately. The llm-primary situation encode moved out of `run_agentic_loop` into
+  `_attach_live_situation` (the function shrank by 13 lines). Recording only: nothing selects
+  actions from these values.
+
 - **A survival memory records the situation it happened in (memory-strength Phase 2S-b,
   [#848](https://github.com/dennys246/Maxim/issues/848)).** Each loop capture now stores the loop's
   substrate clusters for the action (`EpisodicMemory.situation`, `{modality: EC cluster id}`), and

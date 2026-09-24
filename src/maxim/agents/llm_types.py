@@ -264,6 +264,14 @@ class LLMProposal:
     # ONLY). ``None`` for LLM-primary proposals and pre-seam producers —
     # consumers fold ``cluster_id`` in as the interoception entry.
     clusters: dict[str, str] | None = None
+    # The EC match margin each of those clusters was encoded with, ``{modality_tag: best comparable
+    # similarity}`` (memory-strength Phase 2S-c): read right after each encode, because the
+    # encoder's per-(agent, modality) stash is overwritten by the next tick's encode long before the
+    # capture. ``-1.0`` = nothing comparable; a modality is absent when its encode ran no scan
+    # (the min-delta gate) -- so an UNCHANGED, i.e. familiar, tick records no novelty rather than a
+    # low one (harmless to the tag: None and ~0.05 contribute about the same). The capture turns it
+    # into the trace's novelty. ``None`` = not recorded.
+    cluster_margins: dict[str, float] | None = None
 
     def get_all_actions(self) -> list[dict[str, Any]]:
         """Get the primary action followed by any next_actions."""
