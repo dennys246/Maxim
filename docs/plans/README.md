@@ -99,6 +99,7 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
   the tick-by-tick (sensor vector, text percept) pairing carry language or templated labels? Passes →
   it and the projection plan revive together; fails → both archive. Evidence now: Exp 42 (safe-vs-harm), Exp 52
   (the want is learned), Exp 53b (it reads out on a body). Phases 1–3 are the 1.2+ arc.
+- [grounded_word_binding_demo.md](grounded_word_binding_demo.md) — **PROPOSED 2026-09-24, plan only.** The grounded-language line's concrete path and the language↔Oasis contract: a substrate-primary agent binds heard words to world situations from experience (Exp A, raw), then a fresh agent pulls the bindings from the Oasis (Exp B) — receptive binding only; web text enters only as a held-out test set with the projection. Parallel line, not a 1.4 rung.
 - [maxim_hivemind.md](maxim_hivemind.md) — **1.2 = Oasis + Hivemind.** B5 shareability
   SHIPPED (#305–#311); the Oasis ingestion contract, the re-keyed merge (gate 6) and the
   bundle action namespace (gate 7) are the 1.2 work.

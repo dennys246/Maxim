@@ -2,6 +2,7 @@
 
 **Status:** ACTIVE design. Shareability foundation shipped in 1.0; Oasis and the
 P2P protocol are gated 1.2 work. Removed from the 1.1 cut on 2026-08-19 so release
+**First consumer of the reserved ATL payload (2026-09-24):** the word-binding slice in [grounded_word_binding_demo.md](grounded_word_binding_demo.md) §The contract between the two sides — `NAMES` relations + both endpoint EC nodes.
 correctness is completed before distributed state is introduced.
 **Supersedes:** [archive/mother_maxim_plan.md](archive/mother_maxim_plan.md) (2,224 lines, designed pre-substrate-primary pivot — wrong architecture for the post-pivot world).
 **Companion plans:** [grounded_language_acquisition.md](grounded_language_acquisition.md) (substrate-primary AUT mode — the cognition layer the Hivemind shares), [v1_refinement.md](archive/v1_refinement.md) §B5 (the 1.0 shareability infrastructure that enables this).
