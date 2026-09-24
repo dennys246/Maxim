@@ -25,6 +25,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A survival memory records the situation it happened in (memory-strength Phase 2S-b,
+  [#848](https://github.com/dennys246/Maxim/issues/848)).** Each loop capture now stores the loop's
+  substrate clusters for the action (`EpisodicMemory.situation`, `{modality: EC cluster id}`), and
+  because those cluster ids are also ATL concept ids, the concept extractor links the situation's
+  concepts to the memory. Before this, a survival memory was reachable only through the goal and
+  tool names it happened to mention — survival percepts carry no text — so nothing could find "what
+  happened last time I was in this water". The capture entry points take the situation as a
+  required argument, so no loop path can silently leave it out, and a malformed one fails as a
+  capture-contract error rather than silently dropping the memory. Recording and linking change no
+  action selection; the retrieval that uses them is the next phase. One stated side effect: the new
+  links raise those sensor concepts' ATL retention centrality. The two duplicated capture blocks in
+  the agent loop became one helper (`_loop_capture_action`), shrinking `run_agentic_loop` by 24
+  lines.
+
 - **Storage strength is finally READ: `maxim config set memory.strategy strength` (memory-strength
   Phase 2c-3).** `StrengthStrategy` scores a trace by its retrievability, `R = exp(-dt/S)`, where
   `dt` is measured on the **experience clock** and never on the wall clock — a robot switched off

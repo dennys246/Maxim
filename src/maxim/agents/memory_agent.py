@@ -754,6 +754,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
             action={"tool": tool_name} if tool_name else {},  # a mapping, not a bare name (#815)
             result=content if isinstance(content, dict) and "success" in content else {},
             encoding=_percept_encoding(percept),
+            situation=None,  # a percept formation, not a loop action: no substrate clusters here
         )
 
         if memory_id:

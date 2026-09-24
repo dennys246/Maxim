@@ -1734,6 +1734,56 @@ def _loop_bio_handles(memory_hub: Any, hippocampus: Any, sim: Any, autonomy_cont
     )
 
 
+def _loop_capture_action(
+    hippocampus: Any,
+    executor: Any,
+    observation: Any,
+    state: Any,
+    intent: dict[str, Any],
+    action: dict[str, Any],
+    confidence: Any,
+    result: Any,
+    run_id: str | None,
+    agent_id: str,
+    *,
+    situation: "dict[str, str] | None",
+) -> None:
+    """Capture one executed action to the Hippocampus and close its episode step (both loop paths).
+
+    ``situation`` (REQUIRED, memory-strength Phase 2S-b) is the substrate clusters the action was
+    CHOSEN in: the executed proposal's ``clusters`` -- ``propose_via_substrate``'s in
+    substrate-primary (encoded when the proposal was made, the tick before execution), or the
+    outcome-time encode made before execution in llm-primary. It is the same key ``_rec_outcome``
+    credits. The agent-fallback path has no proposal and passes ``None``: re-encoding at capture would
+    read the POST-action state (the wrong key) and write the EC.
+    """
+    if hippocampus is None:
+        return
+    _capture_episodic(
+        hippocampus=hippocampus,
+        executor=executor,
+        observation=observation,
+        state=state,
+        intent=intent,
+        action={
+            "tool_name": action.get("tool_name"),
+            "params": action.get("params", {}),
+            "confidence": confidence,
+        },
+        result=result,
+        run_id=run_id or "",
+        situation=situation,
+    )
+    _bio_integration.observe_episode(
+        hippocampus=hippocampus,
+        agent_id=agent_id,
+        channel="text",
+        activated_nodes=(),
+        after_tool_execution=True,
+        salience_spike=_bio_integration.consume_pain_intensity(agent_id=agent_id),
+    )
+
+
 def _loop_live_tick(executor: Any, aut_mode: str, experience_driver: Any) -> None:
     """Per LIVE pass (after the pause check, before the idle gate): the world's time advances.
 
@@ -3526,32 +3576,19 @@ def run_agentic_loop(
                                     except Exception as e:
                                         log_swallowed_exception(e, operation="memory.store_raw")
 
-                                    # Capture episodic memory to Hippocampus (async)
-                                    if hippocampus is not None:
-                                        _capture_episodic(
-                                            hippocampus=hippocampus,
-                                            executor=executor,
-                                            observation=observation,
-                                            state=state,
-                                            intent=intent,
-                                            action={
-                                                "tool_name": action["tool_name"],
-                                                "params": action.get("params", {}),
-                                                "confidence": confidence,
-                                            },
-                                            result=result,
-                                            run_id=run_id or "",
-                                        )
-                                        _bio_integration.observe_episode(
-                                            hippocampus=hippocampus,
-                                            agent_id=_loop_agent_id,
-                                            channel="text",
-                                            activated_nodes=(),
-                                            after_tool_execution=True,
-                                            salience_spike=_bio_integration.consume_pain_intensity(
-                                                agent_id=_loop_agent_id
-                                            ),
-                                        )
+                                    _loop_capture_action(
+                                        hippocampus,
+                                        executor,
+                                        observation,
+                                        state,
+                                        intent,
+                                        action,
+                                        confidence,
+                                        result,
+                                        run_id,
+                                        _loop_agent_id,
+                                        situation=None,  # no proposal here
+                                    )
 
                                 except Exception as e:
                                     log_agentic(
@@ -4058,30 +4095,19 @@ def run_agentic_loop(
                     except Exception as e:
                         log_swallowed_exception(e, operation="memory.store_raw")
 
-                    # Capture episodic memory to Hippocampus (async)
-                    if hippocampus is not None:
-                        _capture_episodic(
-                            hippocampus=hippocampus,
-                            executor=executor,
-                            observation=observation,
-                            state=state,
-                            intent={"goal": ctrl.pending_proposal.reasoning, "source": "llm_worker"},
-                            action={
-                                "tool_name": action.get("tool_name"),
-                                "params": action.get("params", {}),
-                                "confidence": confidence,
-                            },
-                            result=result,
-                            run_id=run_id or "",
-                        )
-                        _bio_integration.observe_episode(
-                            hippocampus=hippocampus,
-                            agent_id=_loop_agent_id,
-                            channel="text",
-                            activated_nodes=(),
-                            after_tool_execution=True,
-                            salience_spike=_bio_integration.consume_pain_intensity(agent_id=_loop_agent_id),
-                        )
+                    _loop_capture_action(
+                        hippocampus,
+                        executor,
+                        observation,
+                        state,
+                        {"goal": ctrl.pending_proposal.reasoning, "source": "llm_worker"},
+                        action,
+                        confidence,
+                        result,
+                        run_id,
+                        _loop_agent_id,
+                        situation=getattr(ctrl.pending_proposal, "clusters", None),
+                    )
 
                     # Handle failure
                     if success is False:

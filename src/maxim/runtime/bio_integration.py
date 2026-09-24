@@ -26,8 +26,13 @@ def capture_episodic_memory(
     action: dict[str, Any],
     result: Any,
     run_id: str,
+    situation: "dict[str, str] | None",
 ) -> None:
     """Capture an episodic memory to hippocampus with RPE salience boost.
+
+    ``situation`` (REQUIRED, memory-strength Phase 2S-b): the loop's substrate clusters for this
+    action, ``{modality: EC cluster id}``, or ``None`` when the path computed none. Recorded on the
+    trace; ConceptExtractor links the clusters' ATL concepts (same ids) to it.
 
     This is the standard per-action hippocampus capture pattern used
     in both the agent fallback path (Section 3) and the LLM execution
@@ -82,6 +87,7 @@ def capture_episodic_memory(
             result=result,
             run_id=run_id or "",
             encoding=encoding,
+            situation=situation,
         )
     except EncodingContractError:
         raise  # a capture-contract break is never a runtime hiccup

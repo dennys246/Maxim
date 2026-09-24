@@ -106,6 +106,8 @@ class ConceptExtractor:
 
         # Reverse index for O(1) cleanup on memory deletion
         self._reverse_index: dict[str, set[str]] = defaultdict(set)
+        # Modalities whose situation cluster was missing from the ATL: warn once each (Phase 2S-b).
+        self._warned_unlinked_situation: set[str] = set()
 
         # Queue-based async extraction
         self._queue: queue.Queue[tuple[str, EpisodicMemory]] = queue.Queue(
@@ -214,6 +216,9 @@ class ConceptExtractor:
                 concept_ids.append((skill_cid, f"skill:{skill_name}", "skill_execution"))
                 self._reverse_index[memory_id].add(skill_cid)
 
+        # The situation the trace happened in (memory-strength Phase 2S-b, #848).
+        self._link_situation(memory_id, record)
+
         # Log concept extraction activity (P3d — Tier 2)
         if self._collector and self._collector.verbosity >= 1:
             from maxim.provenance.types import PipelineStage, ProvenanceRef
@@ -308,6 +313,65 @@ class ConceptExtractor:
             )
 
         return concept_id
+
+    def _link_situation(self, memory_id: str, record: EpisodicMemory) -> None:
+        """Link the trace to the ATL concepts of the situation it happened in (Phase 2S-b).
+
+        ``record.situation`` is the loop's substrate clusters, ``{modality: EC cluster id}``. Those
+        ids ARE ATL concept ids -- ``SensorEncoder`` registers each cluster in the ATL when it
+        encodes -- so this links the EXISTING concepts and never creates one: a cluster missing
+        from the ATL is a wiring gap to surface, not a concept to invent. This is the
+        substrate-native cue survival memory lacked (survival percepts carry no text, so
+        name-keyed extraction never reached the situation).
+
+        No inline relationships are formed for situation concepts (they stay out of the
+        co-occurrence set), and they are not registered with the SCN (``_register_concept`` does
+        that for name-keyed concepts): the link is for retrieval only.
+
+        The refs are a DERIVED index; the durable key is ``EpisodicMemory.situation``. Two ATL
+        behaviours lose refs: a COMPRESSED concept (``CompressedSemantic``) has no ``memory_refs``,
+        so consolidation drops every link on it and new ones cannot form (warned below); and
+        ``Concept.MAX_REFS_PER_LAYER`` evicts in insertion order, which after a reload is sorted
+        uuid order, not age. A retrieval built on these links (2S-d) must be able to fall back to,
+        or rebuild from, the records' own ``situation``. The added refs also count toward the ATL's
+        retention centrality (``ref_count`` in consolidation / eviction scoring).
+        """
+        from maxim.memory.cross_layer import CrossLayerEdgeType
+
+        situation = getattr(record, "situation", None)
+        if not situation:
+            return
+        for modality, cluster_id in situation.items():
+            concept = self._atl.get(cluster_id)
+            if not isinstance(concept, Concept):
+                if modality not in self._warned_unlinked_situation:
+                    self._warned_unlinked_situation.add(modality)
+                    if concept is None:
+                        logger.warning(
+                            "ConceptExtractor: situation cluster %s (%s) is not an ATL concept; the trace "
+                            "cannot be cued by it (was the SensorEncoder built without the ATL?)",
+                            cluster_id,
+                            modality,
+                        )
+                    else:
+                        logger.warning(
+                            "ConceptExtractor: situation cluster %s (%s) is a compressed ATL concept, which "
+                            "holds no memory refs; the trace cannot be cued by it until #816 makes "
+                            "compression reversible",
+                            cluster_id,
+                            modality,
+                        )
+                continue
+            concept.add_ref("hippocampus", memory_id)
+            self._reverse_index[memory_id].add(cluster_id)
+            self._cross_layer.add_edge(
+                source_layer="hippocampus",
+                source_id=memory_id,
+                target_layer="atl",
+                target_id=cluster_id,
+                edge_type=CrossLayerEdgeType.INSTANCE_OF,
+                weight=1.0,
+            )
 
     # ------------------------------------------------------------------
     # Inline relationships

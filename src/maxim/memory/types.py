@@ -179,6 +179,27 @@ def _strength_kwargs(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _situation_kwargs(data: dict[str, Any]) -> dict[str, Any]:
+    """Load one trace's situation (memory-strength Phase 2S-b). Absent (every file written before
+    2S-b) or ``None`` = "no situation recorded"; a malformed value warns and loads as not recorded --
+    one bad trace must never fail the whole store's load."""
+    raw = data.get("situation")
+    if raw is None:
+        return {"situation": None}
+    if (
+        isinstance(raw, dict)
+        and raw
+        and all(isinstance(k, str) and k and isinstance(v, str) and v for k, v in raw.items())
+    ):
+        return {"situation": dict(raw)}
+    import logging
+
+    logging.getLogger(__name__).warning(
+        "memory %s has a malformed situation (%r); loading it as not recorded", data.get("id"), raw
+    )
+    return {"situation": None}
+
+
 def _encoding_kwargs(data: dict[str, Any]) -> dict[str, Any]:
     """Load one trace's encoding. A malformed record warns and loads as "not recorded" -- one bad
     trace must never fail the whole store's load (``load_state`` parses every record first)."""
@@ -775,6 +796,14 @@ class EpisodicMemory(MemoryRecord):
     # retrieval (that is what "R = 1" means); ``None`` = a trace that predates the anchor, which the
     # store re-anchors at load rather than leaving immortal.
     retrievability_anchor_us: int | None = field(default=None, repr=False, compare=False)
+    # The situation this trace happened in (memory-strength Phase 2S-b, #848): the loop's substrate
+    # clusters at capture, ``{modality: EC cluster id}`` (interoception / audio / world). The EC node
+    # ids ARE ATL concept ids, so ConceptExtractor links those concepts to the trace -- the
+    # substrate-native cue that pattern completion needs, since survival percepts carry no text.
+    # ``None`` = no situation recorded (a non-loop capture, a loop path that computes none, or a file
+    # written before 2S-b). Episodic only: compression drops it, as it drops the concept refs. Not
+    # EC's ``SituationSignature`` (a text signature keyed by memory id) -- this is substrate clusters.
+    situation: dict[str, str] | None = field(default=None, repr=False, compare=False)
 
     @property
     def duration_ms(self) -> float:
@@ -834,6 +863,7 @@ class EpisodicMemory(MemoryRecord):
             "action": self.action.to_dict(),
             "outcome": self.outcome.to_dict(),
             "metadata": self.metadata,
+            "situation": dict(self.situation) if self.situation is not None else None,
             **_encoding_fields(self),
             **_strength_fields(self),
         }
@@ -860,6 +890,7 @@ class EpisodicMemory(MemoryRecord):
             action=Action.from_dict(data.get("action", {})),
             outcome=Outcome.from_dict(data.get("outcome", {})),
             metadata=data.get("metadata", {}),
+            **_situation_kwargs(data),
             **_encoding_kwargs(data),
             **_strength_kwargs(data),
         )

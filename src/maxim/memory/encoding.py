@@ -59,6 +59,15 @@ class EncodingContractError(TypeError):
     """
 
 
+class SituationContractError(EncodingContractError):
+    """A loop capture's ``situation`` was not ``None`` or ``{modality: EC cluster id}`` (Phase 2S-b).
+
+    A subclass of the capture-contract error on purpose: the capture paths that swallow ordinary
+    failures already re-raise ``EncodingContractError``, so a malformed situation escapes them too
+    instead of dropping the whole trace at DEBUG.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class EncodingSignals:
     """The importance signals present when one trace was captured (all required; ``None`` = none)."""
