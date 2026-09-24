@@ -57,6 +57,7 @@ def test_capture_from_loop_rejects_a_non_mapping_action_loudly() -> None:
             decision={},
             action="http_fetch",
             result={},
+            situation=None,
             encoding=EncodingSignals.unmeasured("api"),
         )
 
@@ -70,6 +71,7 @@ def test_capture_from_loop_reads_success_from_a_mapping_result() -> None:
         decision={},
         action={"tool": "t"},
         result={"success": False, "error": "nope"},
+        situation=None,
         encoding=EncodingSignals.unmeasured("api"),
     )
     memory = hippocampus.get(mid)

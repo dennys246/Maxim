@@ -121,16 +121,18 @@ def test_capture_requires_the_encoding(complete_memory_args):
 
 def test_capture_from_loop_requires_the_encoding():
     with pytest.raises(TypeError, match="encoding"):
-        _hippo().capture_from_loop({}, None, {}, {}, {}, None)
+        _hippo().capture_from_loop({}, None, {}, {}, {}, None, situation=None)
 
 
 def test_the_async_path_fails_on_the_callers_thread_not_in_the_worker():
     hippo = _hippo()
     with pytest.raises(TypeError, match="encoding"):
-        hippo.capture_from_loop_async(observation={}, state=None, intent={}, decision={}, action={}, result=None)
+        hippo.capture_from_loop_async(
+            observation={}, state=None, intent={}, decision={}, action={}, result=None, situation=None
+        )
     with pytest.raises(EncodingContractError):
         hippo.capture_from_loop_async(
-            observation={}, state=None, intent={}, decision={}, action={}, result=None, encoding=None
+            observation={}, state=None, intent={}, decision={}, action={}, result=None, situation=None, encoding=None
         )
     assert hippo._capture_queue.qsize() == 0  # nothing was queued
 
@@ -138,7 +140,14 @@ def test_the_async_path_fails_on_the_callers_thread_not_in_the_worker():
 def test_the_async_path_carries_the_encoding_to_the_trace():
     hippo = _hippo()
     hippo.capture_from_loop_async(
-        observation={}, state=None, intent={}, decision={}, action={}, result=None, encoding=_only("loop", surprise=0.3)
+        observation={},
+        state=None,
+        intent={},
+        decision={},
+        action={},
+        result=None,
+        situation=None,
+        encoding=_only("loop", surprise=0.3),
     )
     hippo._process_capture(hippo._capture_queue.get_nowait())
     [trace] = list(hippo)
@@ -200,7 +209,7 @@ def test_the_loop_capture_records_the_outcomes_surprise():
     from maxim.tools.base import ToolOutput
 
     hippo = MagicMock()
-    common = dict(executor=None, state=None, intent={}, action={"tool_name": "grab"}, run_id="r")
+    common = dict(situation=None, executor=None, state=None, intent={}, action={"tool_name": "grab"}, run_id="r")
     capture_episodic_memory(
         hippocampus=hippo, observation={"salience": 0.5}, result=ToolOutput(success=False, rpe=0.4), **common
     )
@@ -212,7 +221,9 @@ def test_the_loop_capture_records_the_outcomes_surprise():
 def test_only_a_capture_contract_break_escapes_the_loop_capture():
     from maxim.runtime.bio_integration import capture_episodic_memory
 
-    common = dict(executor=None, observation={}, state=None, intent={}, action={}, result=None, run_id="")
+    common = dict(
+        situation=None, executor=None, observation={}, state=None, intent={}, action={}, result=None, run_id=""
+    )
     hippo = MagicMock()
     hippo.capture_from_loop_async.side_effect = EncodingContractError("encoding missing")
     with pytest.raises(EncodingContractError):

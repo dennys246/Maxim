@@ -422,6 +422,7 @@ class TestAsyncCapture:
                 action={"tool": "focus_interests", "params": {}},
                 result=None,
                 run_id="test-1",
+                situation=None,
                 encoding=EncodingSignals.unmeasured("api"),
             )
             flushed = hipp.flush(timeout=5.0)
@@ -444,6 +445,7 @@ class TestAsyncCapture:
                     action={"tool": "focus_interests", "params": {}},
                     result=None,
                     run_id=f"run-{i}",
+                    situation=None,
                     encoding=EncodingSignals.unmeasured("api"),
                 )
             flushed = hipp.flush(timeout=5.0)
@@ -471,6 +473,7 @@ class TestAsyncCapture:
                 action={"tool": "test"},
                 result=None,
                 run_id="snap-test",
+                situation=None,
                 encoding=EncodingSignals.unmeasured("api"),
             )
 
@@ -508,6 +511,7 @@ class TestAsyncCapture:
                 action={"tool": "test"},
                 result=None,
                 run_id=f"run-{i}",
+                situation=None,
                 encoding=EncodingSignals.unmeasured("api"),
             )
 
@@ -540,6 +544,7 @@ class TestAsyncCapture:
                 action={"tool": "test"},
                 result=None,
                 run_id=f"run-{i}",
+                situation=None,
                 encoding=EncodingSignals.unmeasured("api"),
             )
         # flush should timeout since no worker is draining
@@ -560,6 +565,7 @@ class TestAsyncCapture:
                     action={"tool": "test"},
                     result=None,
                     run_id=f"run-{i}",
+                    situation=None,
                     encoding=EncodingSignals.unmeasured("api"),
                 )
             hipp.stop_capture_worker()

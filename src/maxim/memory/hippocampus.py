@@ -43,6 +43,7 @@ from maxim.memory.encoding import (
     encoding_tag,
     initial_storage_strength,
     require_encoding,
+    SituationContractError,
 )
 from maxim.memory.experience_clock import ExperienceClock
 from maxim.memory.episode import (
@@ -305,6 +306,29 @@ class _SnapshotState:
         return dict(self.data)
 
 
+def _require_situation(situation: Any) -> dict[str, str] | None:
+    """The loop capture's situation, validated (memory-strength Phase 2S-b).
+
+    ``None``, or an empty mapping (the loop computed no clusters this pass), is "no situation". A
+    non-empty mapping must be ``{modality: EC cluster id}`` with non-empty string keys and values;
+    anything else is a caller bug and raises ``SituationContractError`` HERE, on the caller's thread --
+    the async worker only logs a failure, and the loop's capture swallows everything but the capture
+    contract, so a bad situation must fail as a contract break before it is queued.
+    """
+    if situation is None:
+        return None
+    if not isinstance(situation, Mapping):
+        raise SituationContractError(
+            f"situation must be a mapping of modality -> cluster id, got {type(situation).__name__}"
+        )
+    if not situation:
+        return None
+    for key, value in situation.items():
+        if not (isinstance(key, str) and key and isinstance(value, str) and value):
+            raise SituationContractError(f"situation entries must be non-empty strings, got {key!r}: {value!r}")
+    return dict(situation)
+
+
 @dataclass
 class _CaptureRequest:
     """Immutable snapshot of capture data, queued for background processing."""
@@ -318,6 +342,7 @@ class _CaptureRequest:
     run_id: str
     queued_at: float
     encoding: EncodingSignals
+    situation: dict[str, str] | None
 
 
 class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLayer):
@@ -579,6 +604,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         encoding: EncodingSignals,
         record: EpisodicMemory | None = None,
         state_snapshot: dict[str, Any] | None = None,
+        situation: "Mapping[str, str] | None" = None,
     ) -> str:
         """Capture a complete agentic loop as an episodic memory.
 
@@ -600,6 +626,9 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             run_id: Optional run identifier.
             record: Pre-built EpisodicMemory (overrides individual args).
             state_snapshot: Optional full state to store in StateStore.
+            situation: The loop's substrate clusters at capture, ``{modality: EC cluster id}``
+                (Phase 2S-b). Set BEFORE the insert, because the insert notifies ConceptExtractor,
+                which links the situation's concepts to this trace.
 
         Returns:
             The memory_id of the captured memory.
@@ -615,6 +644,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             state_snapshot=state_snapshot,
         )
         memory.encoding = require_encoding(encoding)
+        # A pre-built record keeps its own situation unless one is passed; either is validated.
+        memory.situation = _require_situation(situation if situation is not None else memory.situation)
         self._stamp_encoding_strength(memory)
 
         with self._rwlock.write():
@@ -849,8 +880,13 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         run_id: str = "",
         *,
         encoding: EncodingSignals,
+        situation: "Mapping[str, str] | None",
     ) -> str:
         """Convenience method to capture from agent_loop outputs.
+
+        ``situation`` is REQUIRED (memory-strength Phase 2S-b): the loop's substrate clusters at this
+        capture, or ``None`` when the path computed none -- stated explicitly, so no loop path
+        silently records a trace without saying where it happened.
 
         Converts the raw loop data into structured EpisodicMemory components.
         """
@@ -935,6 +971,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             run_id=run_id,
             state_snapshot=state_snapshot,
             encoding=encoding,
+            situation=situation,
         )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -967,17 +1004,20 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         if self._capture_worker_thread is not None and self._capture_worker_thread.is_alive():
             self._capture_worker_thread.join(timeout=2.0)
 
-    def capture_from_loop_async(self, *, encoding: EncodingSignals, **kwargs: Any) -> None:
+    def capture_from_loop_async(
+        self, *, encoding: EncodingSignals, situation: "Mapping[str, str] | None", **kwargs: Any
+    ) -> None:
         """Non-blocking capture: queue for background processing.
 
         Snapshots mutable data immediately to avoid closure issues.
         If the queue is full, drops the oldest capture (logged warning).
 
-        Accepts the same kwargs as capture_from_loop(); ``encoding`` is REQUIRED and checked HERE, on
-        the caller's thread -- the worker only logs a failure, so a bad capture must fail before it
-        is queued.
+        Accepts the same kwargs as capture_from_loop(); ``encoding`` and ``situation`` are REQUIRED and
+        checked HERE, on the caller's thread -- the worker only logs a failure, so a bad capture must
+        fail before it is queued.
         """
         require_encoding(encoding)
+        situation = _require_situation(situation)
         # Snapshot state NOW to avoid stale references
         state = kwargs.get("state")
         state_snapshot = None
@@ -999,6 +1039,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             run_id=kwargs.get("run_id", ""),
             queued_at=time.time(),
             encoding=encoding,
+            situation=situation,
         )
         try:
             self._capture_queue.put(request, timeout=0.1)
@@ -1067,6 +1108,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             result=request.result,
             run_id=request.run_id,
             encoding=request.encoding,
+            situation=request.situation,
         )
 
     def get(self, memory_id: str) -> EpisodicMemory | CompressedMemory | None:

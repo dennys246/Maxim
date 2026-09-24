@@ -126,6 +126,20 @@ def test_water_trial_ticks_acts_and_the_staging_close_persists_fear(tmp_path: Pa
         pl1 = trial.placement("fear")
         assert pl1["escape_water_calls"] >= 1, pl1["calls"]
         assert pl1["surfaced"] and pl1["latency_s"] is not None and pl1["latency_s"] < 3.0, pl1
+        # Phase 2S-b (#848): the loop's capture of that escape records the situation it happened in
+        # -- the PRE-action clusters, so the water cluster -- and the water cluster's ATL concept
+        # (same id as the EC node) links back to the trace: the substrate-native cue survival memory
+        # lacked. Through the real loop, not a hand-composed capture.
+        hub = aut.bio.memory_hub
+        aut.bio.hippocampus.flush()
+        hub._concept_extractor.flush()
+        escapes = [m for m in aut.bio.hippocampus if str(m.action.tool_name).endswith("escape_water")]
+        assert escapes, "the executed escape was not captured"
+        assert escapes[-1].situation is not None and escapes[-1].situation.get("world") == water_c, escapes[
+            -1
+        ].situation
+        water_concept = aut.bio.atl.get(water_c)
+        assert water_concept is not None and escapes[-1].id in water_concept.memory_refs.get("hippocampus", {})
         # the loop's own session pair closed the hub; the trial re-opened it after every loop run, so
         # the staging close persists the fear booked AFTER those loops (the S1 trap, guarded)
         stage = tmp_path / "stage"

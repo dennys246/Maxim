@@ -242,6 +242,7 @@ class TestHippocampusCapture:
                 result=None,
                 evaluations={},
                 run_id="test",
+                situation=None,
                 encoding=EncodingSignals.unmeasured("api"),
             )
         # Should not have raised — items may be dropped but no crash
@@ -265,6 +266,7 @@ class TestHippocampusCapture:
                 result=None,
                 evaluations={},
                 run_id="test",
+                situation=None,
                 encoding=EncodingSignals.unmeasured("api"),
             )
         elapsed = time.time() - start
