@@ -494,6 +494,7 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   **Why parallel and not a rung:** 1.4's ladder already carries a may-fail headline (E3) and an
   instrument rebuild; a second research line inside it would make a null in either unreadable.
   *(2026-09-21: audit ran; disposition REDESIGN THE SOURCE; exploratory re-audit #810.)*
+  *(2026-09-24: the concrete path — receptive word binding, then the Oasis boost — is [grounded_word_binding_demo.md](grounded_word_binding_demo.md); still a parallel line, not a rung.)*
 - **Memory strength and forgetting** ([memory_strength_and_forgetting.md](memory_strength_and_forgetting.md),
   opened 2026-09-21): a hippocampal forgetting model — storage strength from existing signals
   (salience, novelty, RPE, pain, relevance-gated drive pressure, relief, failure; noisy-OR over

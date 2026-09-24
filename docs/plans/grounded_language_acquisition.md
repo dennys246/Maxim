@@ -23,6 +23,10 @@
 > passes, this plan's Phase 1–2 and the projection plan revive TOGETHER, with a pre-registered
 > experiment and the usual four-lens review. If it fails, this file says so and goes to `archive/`.
 >
+> **Concrete near path (2026-09-24): [grounded_word_binding_demo.md](grounded_word_binding_demo.md)** —
+> receptive word-to-world binding on the substrate-primary path (Stages 0–5), with the Oasis boost as a
+> separate declared experiment; the raw-substrate rule below holds for its headline.
+>
 > **Audit RAN 2026-09-20 — [paired_data_audit_2026-09-20.md](../experiments/paired_data_audit_2026-09-20.md)
 > ([script](../../scripts/paired_data_audit.py)); disposition: REDESIGN THE DATA SOURCE (owner,
 > recorded as a post-null change of source — not a pass; the record lists the steps).** One paired trace in
