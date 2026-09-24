@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable
 
+from maxim.reactions.types import require_unit_intensity
+
 
 if TYPE_CHECKING:
     from maxim.agents.bus import ToolErrorKind
@@ -96,6 +98,12 @@ class PainSignal:
     translation_velocity: float = 0.0
     direction_reversals: int = 0
     context: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # Checked HERE, not only on the Reaction it later becomes:
+        # PainBus.publish hands the signal to its direct subscribers
+        # (tool-pain bridge, hippocampus) BEFORE converting it.
+        require_unit_intensity(self.intensity, owner="PainSignal", source=self.pain_type)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""

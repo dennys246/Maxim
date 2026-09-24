@@ -54,6 +54,7 @@ from maxim.proprioception.perceived_pain import (
     _path_matches_prior,
     extract_paths_from_params,
 )
+from maxim.utils.logging import log_swallowed_exception
 
 logger = logging.getLogger(__name__)
 
@@ -161,8 +162,8 @@ class PainInterceptorExecutor:
         if self._pain_bus is not None:
             try:
                 self._pain_bus.reaction_bus.publish(reaction)
-            except Exception as e:
-                logger.debug("ReactionBus publish failed: %s", e)
+            except Exception:
+                log_swallowed_exception()
 
         # Sim-visibility trace.
         try:
@@ -212,8 +213,8 @@ class AnticipatoryPainExecutor:
         if self._assessor is not None:
             try:
                 self._assessor.assess(action)
-            except Exception as e:
-                logger.debug("Perceived-pain assessment failed: %s", e)
+            except Exception:
+                log_swallowed_exception()
         return self._inner.execute(action)
 
     @property

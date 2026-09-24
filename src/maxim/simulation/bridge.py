@@ -19,6 +19,7 @@ from maxim.simulation.conversational_source import ConversationalSource
 from maxim.simulation.response_policy import ResponsePolicy, auto_approve
 from maxim.simulation.sinks import ActionRecord, RecordingSink
 from maxim.simulation.spinner import Spinner
+from maxim.utils.logging import log_swallowed_exception
 
 logger = logging.getLogger(__name__)
 
@@ -198,8 +199,8 @@ class SimulationBridge:
             if self.percept_anxiety_hook is not None:
                 try:
                     self.percept_anxiety_hook(text)
-                except Exception as e:
-                    logger.debug("percept_anxiety_hook failed: %s", e)
+                except Exception:
+                    log_swallowed_exception()
             self.percept_source.inject_cli(text, salience=salience, novelty=novelty)
         else:
             # No text reaches a substrate-primary AUT, but the world still took a turn: count it,

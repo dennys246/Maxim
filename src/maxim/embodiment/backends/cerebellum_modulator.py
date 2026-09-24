@@ -21,6 +21,7 @@ from maxim.embodiment.sem import (
     Entity,
     ModulatorResult,
 )
+from maxim.utils.logging import log_swallowed_exception
 
 log = logging.getLogger(__name__)
 
@@ -214,8 +215,8 @@ class CerebellumModulator:
                 ),
             )
             self._reaction_bus.publish(reaction)
-        except Exception as e:
-            log.debug("CerebellumModulator: failed to emit reaction: %s", e)
+        except Exception:
+            log_swallowed_exception()
 
     def _emit_success_reaction(self, affordance: str, intensity: float) -> None:
         """Emit a Reaction(kind="reward") when Cerebellum confidently predicts.
@@ -244,8 +245,8 @@ class CerebellumModulator:
                 ),
             )
             self._reaction_bus.publish(reaction)
-        except Exception as e:
-            log.debug("CerebellumModulator: failed to emit success reaction: %s", e)
+        except Exception:
+            log_swallowed_exception()
 
     def _apply_predictions(self, predicted: dict[str, float]) -> None:
         """Apply Cerebellum predictions to entity sensors/vital_metrics."""

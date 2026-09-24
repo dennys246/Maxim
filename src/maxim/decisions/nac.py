@@ -1260,12 +1260,15 @@ class NAc:
                     memory_ids=[memory_id] if memory_id else [],
                 )
                 # Bootstrap RPE on first observation so callers
-                # can gauge surprise even for novel events.
-                self._note_rpe(getattr(new_link, "last_rpe", 0.0))
+                # can gauge surprise even for novel events. Noted AFTER the
+                # update: before it, ``last_rpe`` is None, ``_note_rpe``
+                # ignores None, and NAc.last_rpe kept the PREVIOUS outcome's
+                # surprise on exactly the most novel events (#850).
                 new_link.update_prediction_rw(
                     outcome_valence,
                     learning_rate=self.config.base_learning_rate,
                 )
+                self._note_rpe(new_link.last_rpe)
                 event_links.append(new_link)
                 updated_links.append(new_link)
 
@@ -1431,6 +1434,7 @@ class NAc:
                 outcome_valence,
                 learning_rate=self.config.base_learning_rate,
             )
+            self._note_rpe(new_link.last_rpe)
             event_links.append(new_link)
             self._outcome_index.setdefault(outcome_signature, set()).add(link_id)
             self._total_observations += 1

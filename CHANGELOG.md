@@ -228,6 +228,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Pain intensity is validated where it is carried.** Intensity was documented as `[0, 1]` on
+  both of its carriers, `Reaction` and `PainSignal`, and checked on neither. Reward distribution
+  feeds it to NAc unclamped (`reward = -intensity`) and pain subscribers use it as significance,
+  so a scenario `intensity: 5` became a reward of -5 and a non-numeric value was published as-is.
+  Both types now reject a non-real, non-finite or out-of-range intensity at construction through
+  one shared rule (`reactions.types.require_unit_intensity`). `PainSignal` needs its own check
+  because `PainBus` hands a signal to its direct subscribers before converting it. No shipped YAML
+  is out of range and the physical pain detectors all clamp. Around the untrusted producers:
+  - The two LLM-facing pain tools reject an out-of-range argument with a retryable tool error.
+    `damage_component` with a negative `amount` used to HEAL the component, and `inject_pain` with
+    an intensity of 7 reported success and then ended the run.
+  - The LLM scenario generator coerces a generated intensity into range with a warning, so bad
+    model output does not end a run.
+  - `SimulationAdapter` no longer wraps the pain publish in `except Exception: pass`.
+  - Ten handlers on the pain-delivery paths that swallowed failures silently or at DEBUG now report
+    them as structured `swallowed_exception` events (the damage tool, the sandbox, the cerebellum,
+    drive pain, perceived pain and the pain interceptor, and the bridge's anxiety hook), so a rejected
+    intensity on those paths is recorded rather than lost.
+
+- **A reflex that fired can no longer be reported as not having fired.**
+  `BioEnrichmentPipeline._evaluate_reflexes` held reflex evaluation — which runs body tools such as
+  `damage_component` — and everything after it under one `except Exception: return ()`, so a
+  failure after evaluation reported "no reflexes fired" for reflexes that had. The fired names are
+  now computed straight after evaluation and always returned; only the telemetry after it is
+  contained, and both it and an evaluation failure are reported as structured
+  `swallowed_exception` events instead of DEBUG lines.
+
+- **`--interactive=false` is honoured.** Whether the flag was given was decided by looking for the
+  literal token `--interactive` in argv, so the `=` spelling and argparse abbreviations fell through
+  to TTY auto-detection and a terminal user got interactive mode anyway. `normalize_args` now
+  records whether the flag was given before coercing it.
+
+- **A DM campaign that fails to load or run now fails.** The DM auto-detect `try` also covered
+  loading and running the campaign, so a real failure was swallowed and the same YAML was then run
+  again as a plain scenario — an unrelated second run hiding the first one's error. Only the
+  "is this a DM campaign?" probe tolerates failure now, and only read and parse errors.
+
+- **`NAc.last_rpe` reports a first-time link's own surprise**
+  ([#850](https://github.com/dennys246/Maxim/issues/850), partial). Both new-link paths noted the
+  prediction error before computing it: the link's `last_rpe` was still `None`, which the note
+  ignores, so on exactly the most novel outcomes `NAc.last_rpe` kept the previous outcome's value.
+  `observe()`'s new-link path did not note it at all. The staging heuristic reads this value. #850's
+  larger question — binding staging to the goal's own invocations rather than to the latest NAc
+  update — stays open.
+
 - **Telemetry can no longer raise into the code it observes
   ([#863](https://github.com/dennys246/Maxim/issues/863), step 1).** Every `sim_*` emitter is now
   contractually non-raising: a bad argument or a failing terminal render is contained inside the

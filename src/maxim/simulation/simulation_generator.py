@@ -204,6 +204,25 @@ def generate_scenario(
     return yaml_str
 
 
+def _pain_intensity(raw: object, *, step: object) -> float:
+    """A generated pain intensity as a float in [0, 1].
+
+    The LLM writes this field, and ``SimulationAdapter`` publishes it onto the
+    ReactionBus unguarded, so it is validated HERE, at the boundary where
+    untrusted JSON becomes a scenario. A non-numeric value falls back to 0.5
+    with a warning rather than failing the whole generated scenario.
+    """
+    try:
+        value = float(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        logger.warning("Generated pain percept at step %s has non-numeric intensity %r; using 0.5", step, raw)
+        return 0.5
+    if value != value:  # NaN
+        logger.warning("Generated pain percept at step %s has NaN intensity; using 0.5", step)
+        return 0.5
+    return min(1.0, max(0.0, value))
+
+
 def _clean_percepts(percepts: list[dict]) -> list[dict]:
     """Validate and clean percept definitions."""
     valid_sources = {"cli", "transcript", "vision", "proprioception", "comms", "idle"}
@@ -230,7 +249,7 @@ def _clean_percepts(percepts: list[dict]) -> list[dict]:
         if p["source"] == "proprioception":
             p.setdefault("content", "pain_signal")
             p["metadata"].setdefault("pain_type", "external_signal")
-            p["metadata"].setdefault("intensity", 0.5)
+            p["metadata"]["intensity"] = _pain_intensity(p["metadata"].get("intensity", 0.5), step=p["at"])
 
         cleaned.append(p)
 

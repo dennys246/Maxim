@@ -225,3 +225,46 @@ class TestNAcExposesRealRPE:
         # failed on its own comment.)
         code = "\n".join(ln.split("#", 1)[0] for ln in src.splitlines())
         assert "last_predicted_valence" not in code
+
+    # A first-time link is the most surprising outcome an agent can have, and
+    # both new-link paths noted its RPE BEFORE computing it: ``last_rpe`` was
+    # still None, ``_note_rpe`` ignores None, so NAc.last_rpe kept the PREVIOUS
+    # outcome's surprise (#850). Each test first leaves a known, DIFFERENT value
+    # behind, so a stale read cannot pass by coincidence.
+
+    def _stale_value(self, nac):
+        from maxim.decisions.causal_link import Valence
+
+        for _ in range(4):
+            self._observe(nac, Valence.POSITIVE)
+        return nac.last_rpe
+
+    def test_a_first_time_link_via_observe_updates_last_rpe(self):
+        from maxim.decisions.causal_link import Valence
+
+        nac = self._nac()
+        stale = self._stale_value(nac)
+        link = nac.observe(
+            event_type="tool",
+            event_signature="tool:novel",
+            outcome_type="result",
+            outcome_signature="o:novel",
+            outcome_valence=Valence.NEGATIVE,
+            delta_seconds=0.1,
+            context={"agent_id": "a"},
+        )
+        assert link.observation_count == 1  # really the new-link path
+        assert link.last_rpe is not None and link.last_rpe != pytest.approx(stale)
+        assert nac.last_rpe == pytest.approx(link.last_rpe)
+
+    def test_a_first_time_link_via_record_outcome_updates_last_rpe(self):
+        from maxim.decisions.causal_link import Valence
+
+        nac = self._nac()
+        stale = self._stale_value(nac)
+        nac.record_event("tool", "tool:novel", context={"agent_id": "a"})
+        links = nac.record_outcome("tool", "tool:novel", Valence.NEGATIVE, context={"agent_id": "a"})
+        new = [lnk for lnk in links if lnk.observation_count == 1]
+        assert new, "expected record_outcome to create a first-time link"
+        assert new[-1].last_rpe is not None and new[-1].last_rpe != pytest.approx(stale)
+        assert nac.last_rpe == pytest.approx(new[-1].last_rpe)

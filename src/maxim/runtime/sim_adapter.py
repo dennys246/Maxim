@@ -106,27 +106,30 @@ class SimulationAdapter:
             # Route pain percepts through ReactionBus (Phase 2a: emit
             # Reaction directly instead of the old route_pain_percept detour).
             if sim_percept.source == "proprioception" and sim_percept.content == "pain_signal":
-                try:
-                    _pb = self.pain_bus
-                    if _pb is None:
-                        _pb = getattr(default_network, "pain_bus", None) if default_network else None
-                    if _pb is not None:
-                        from maxim.decisions.causal_link import Valence
-                        from maxim.reactions.types import WORLD_AGENT_ID, Reaction, ReactionContext
+                # Unguarded on purpose (was ``except Exception: pass``). ``Reaction``
+                # validates ``intensity`` itself, so a malformed pain percept raises
+                # here rather than reaching NAc as a reward; ``publish`` contains
+                # subscriber errors itself. LLM-generated scenarios are coerced at
+                # their own boundary (``_clean_percepts``) so bad model output
+                # does not end a run.
+                _pb = self.pain_bus
+                if _pb is None:
+                    _pb = getattr(default_network, "pain_bus", None) if default_network else None
+                if _pb is not None:
+                    from maxim.decisions.causal_link import Valence
+                    from maxim.reactions.types import WORLD_AGENT_ID, Reaction, ReactionContext
 
-                        meta = sim_percept.metadata or {}
-                        reaction = Reaction(
-                            kind="pain",
-                            intensity=meta.get("intensity", 0.5),
-                            valence=Valence.NEGATIVE,
-                            timestamp=sim_percept.timestamp,
-                            source=f"sim_adapter:{meta.get('pain_type', 'external_signal')}",
-                            context=ReactionContext(agent_id=WORLD_AGENT_ID),
-                        )
-                        bus = getattr(_pb, "reaction_bus", _pb)
-                        bus.publish(reaction)
-                except Exception:
-                    pass
+                    meta = sim_percept.metadata or {}
+                    reaction = Reaction(
+                        kind="pain",
+                        intensity=meta.get("intensity", 0.5),
+                        valence=Valence.NEGATIVE,
+                        timestamp=sim_percept.timestamp,
+                        source=f"sim_adapter:{meta.get('pain_type', 'external_signal')}",
+                        context=ReactionContext(agent_id=WORLD_AGENT_ID),
+                    )
+                    bus = getattr(_pb, "reaction_bus", _pb)
+                    bus.publish(reaction)
 
             # Convert percept to observation dict. A non-textual sensor percept
             # (proprioception, or a SOUND/DoA percept whose ``content`` is just
