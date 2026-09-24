@@ -278,8 +278,9 @@ typo, frozen into experiment fingerprints — never an env var or a literal.
    strength strategy is on, the clock did not move and the session captured or activated anything;
    Phase 2c, mirrored in the survival smoke verdict), and the scripted harnesses that call
    `propose_via_substrate` without the loop (`WaterTrial.train`, `exp58_run.py`,
-   `exp58_offline_gates.py`, `exp53_cross_context_readout.py`) each running a driver — **moved to
-   Phase 2S**, since they are the survival path. 2. **Looking back (retroactive tagging).** A decaying weight on the experience clock,
+   `exp58_offline_gates.py`) each running a driver — **moved to Phase 2S** (shipped as 2S-a,
+   2026-09-24; `exp53_cross_context_readout.py`, listed here first, has no Hippocampus), since they
+   are the survival path. 2. **Looking back (retroactive tagging).** A decaying weight on the experience clock,
    `τ = 10 s` with a **30 s** cutoff by default (`memory.capture.tau_s`, `memory.capture.cutoff_s`;
    owner: decay must not be too heavy — at `τ = 5 s` the weight at drowning-damage onset, ≈16.2 s
    (`r3_survival_benchmark_prereg.md`: first damage 16.15–16.25 s), would be 0.04; at 10 s it is 0.20). The window is **dynamic**: configurable now; learning it from the
@@ -547,8 +548,9 @@ an interval already elapsed, which is correct while only retrievals change `S` (
 retroactive the moment `S ← λ^Δt · S` does not. Measured: `S` 10 s → 5 s after 100 s elapsed drops
 the floor from 0.184 to 0.068 — a trace protected a moment earlier becomes forgettable for a reason
 that never happened. Any non-retrieval change to `S` must pick the anchor that preserves `R`
-(`anchor' = now − S'·ln(1/R)`). *Still red and correctly so:*
-`test_phase2s_bypass_harnesses_advance_the_clock` — the scripted survival harnesses are Phase 2S.
+(`anchor' = now − S'·ln(1/R)`). *Was red and correctly so until 2S-a (2026-09-24), now a plain
+test:* `test_phase2s_bypass_harnesses_advance_the_clock` — the scripted survival harnesses are
+Phase 2S.
 
 *Owed by 2c-3, carried from 2c-2 (DISCHARGED 2026-09-22 except where noted):* **`ExperienceClockStalled` ships as a capability the STRATEGY
 declares** (e.g. `MemoryStrategy.requires_experience_clock`), never a string comparison against the
@@ -561,7 +563,9 @@ rather than unmarked (the activation one could never have flipped as written —
 plan's "the 2c tag must count one event once" (the MemoryAgent / reflexion duplicates) is recorded
 on each trace as `site` but nothing consumes it yet.
 
-**Phase 2S — the survival gate** ([#848](https://github.com/dennys246/Maxim/issues/848); owner:
+**Phase 2S — the survival gate** ([#848](https://github.com/dennys246/Maxim/issues/848); **the two
+percept-side fixes below are SUPERSEDED by the 2026-09-24 amendment after this section: survival
+percepts carry no body state, so both fixes move to the loop capture**; owner:
 "the gate definitely needs to activate memory"). Measured offline on main 4a0362e2 (a scratchpad
 ScriptedWaterBridge run, monkeypatched counters, no source edits — not a committed artifact; the
 numbers are in #848): in 14.75 s of survival loop time **nothing ever used a memory** — 22 percepts, **all at salience 0.0**, so MemoryAgent's
@@ -588,6 +592,70 @@ owed item). Salience changes what MemoryAgent forms and what captures carry, so 
 the rest and states its ledger rows (Exp 60–62 capture through the loop). **Revive-for-survival
 trigger for Phase 2's validation:** Phase 2S merged and a survival run's saved records show non-zero
 `activation_count` from `prediction`.
+
+*Phase 2S amended 2026-09-24 (owner), after the premise check this section asked for.* A read-only
+offline probe (a scripted water classroom running the full loop on `main` @ `df46321a`, counters
+monkeypatched, no source edits) found that the two fixes above sit on the wrong path:
+
+| | measured |
+|---|---|
+| percepts | 16, all `source="idle"`, all salience 0.0. The loop's observation carries `active_goal` / `mode` / `maxim_runtime` and **no body state**, so `PerceptionAgent` has nothing to score. |
+| `Percept.substrate_node_id` | 0 of 16. It is set only by the LINGUISTIC encoder, from percept text, and survival percepts have none. |
+| memory formations / pattern completions | 0 / 0 |
+| loop captures | 2, **one per executed action**. On the trace (`EncodingSignals`), `salience` / `novelty` / `pain` are unmeasured (`None`) on both; only `surprise` is measured (0.5 on the escape) |
+| situation clusters | encoded every tick (`propose_via_substrate`, `{modality: cluster_id}`), and **their EC node ids ARE ATL concept ids** (`sensors:food=…`, `sensors:distance_from_spawn=…`) |
+| records linked to their situation | **none.** The ATL `memory_refs` come only from goal/tool text (`drive:threat(1.00`, `minecraft_player_flee`). No record stores a cluster id: `observations` is `{}`, or carries only the RPE-boosted `salience` (0.75 on the escape). |
+
+So survival memories form at the **loop capture**, and the body lives on the loop's **cluster**
+path. Both fixes move there, where the inputs exist (`ctrl.pending_proposal.clusters`,
+`SensorEncoder.last_encode_margin`) — **except pain**, see 2S-c:
+
+- **2S-a: the scripted harnesses drive the experience clock.** SHIPPED with this amendment.
+  `water_trial.py`, `exp58_run.py` and `exp58_offline_gates.py` each run an `ExperienceClockDriver`
+  per bypass run and advance it once per propose pass. `orient_backbone/exp53_cross_context_readout.py`
+  was dropped from the list: its readout agent loads only an NAc and an EC, with **no Hippocampus**,
+  so no clock and no captures (a driver there would satisfy a text check and do nothing). Guards:
+  the former strict red gate, now a plain test; and `test_water_trial_smoke.py`'s donor sequence
+  asserts that propose-only training advances the clock (red with the driver's calls removed).
+- **2S-b: a capture records its situation.** The record stores its `{modality: cluster_id}`, and
+  those clusters' ATL concepts (same ids) gain `memory_refs['hippocampus']` to it. This is the
+  missing link, and it rides existing stores (no new mechanism).
+- **2S-c: survival encoding signals at the loop capture** (the 2b-iii producers): `novelty` from the
+  EC match margin, `pain` measured for the action, and `salience` from drive pressure, sensor change
+  and pain. They are written onto the trace and read only by the opt-in `strength` strategy, as in
+  Phase 2b. **Pain's source is 2S-c's design decision, and it is NOT
+  `bio_integration.consume_pain_intensity`:** that pops a stash filled only by
+  `record_pain_intensity`, which is **Dormant since 2026-05-26** with zero callers, so it returns
+  `None` in production. It is also destructive and already consumed once at the loop's
+  `observe_episode`. The live candidates are the embodiment pain channels
+  (`docs/agents/embodiment.md` §2): the action's own failures (`ToolOutput.side_effects
+  ["embodiment_failures"]`, channel 1) and the PainBus publishes in the action's window
+  (channel 2).
+- **2S-d: substrate-native pattern completion.** On a situation change, cue by the current cluster
+  ids → the shared-id ATL concepts → their linked records → `MemoryLayer.activate(source="prediction")`.
+  Any EC lookup goes through `EntorhinalCortex.pattern_complete_readonly` (it takes an embedding),
+  never the encode path.
+- **2S-e: a behavioural consumer (owner 2026-09-24: in scope).** Completion alone is bookkeeping,
+  because the survival action path has no LLM to read a prediction. The consumer changes survival
+  action selection, so per roadmap 1.4 Phase 5 it enters with its own plan section, a written
+  front-gate answer and a four-lens design review, as a **declared opt-in arm** (never a silent
+  default: Exp 60–62 run through this path). Candidates, and the front-gate reading of each:
+  - **(A) episodic control:** recall this cluster's past outcomes as an action prior. It duplicates
+    the NAc's fear store on the same cluster keys (`cluster_fear_alpha` 0.5, cap 1.0: it saturates
+    in two writes). Its positive half also overlaps Phase 5's planned cluster-keyed relief store
+    (R4: "relief never writes a world cluster").
+  - **(B) generalization by pattern completion:** in a situation the NAc has not keyed, complete to
+    the most similar past situation and carry over what happened there. It fills R1's measured gap
+    (the fear misses in the night pool at 0.799, under the 0.85 threshold), and it is gated by Rung
+    B's SUPPORT trace (`outstanding.md` O3). It is a **second candidate for roadmap 1.4 Phase 5's
+    "Keying / generalization" slot**, beside a substrate keying rule (feature-invariant keys or
+    cluster merging), so its front-gate answer compares the two. It **cannot be validated in the
+    water classroom**: that has one binary discriminator, so its situation space is two points
+    (roadmap §Recorded limit). It needs Exp 62's pools, or an open-world trace.
+  - **(C) sequence recall:** multi-step credit. It overlaps the R4 routing audit, which comes first.
+
+  **(B) CHOSEN (owner, 2026-09-24).** Owed before 2S-e is built: its plan section (the front-gate
+  answer against the substrate keying rule, and the validation world), then the four-lens design review.
 
 **Phase 3 — sleep.** Opt-in `sleep()` in the generic sim loop too (the survival harnesses already
 run it), all of it behind the strategy selection; replay updates `S` directly and does NOT go

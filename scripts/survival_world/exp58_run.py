@@ -398,6 +398,11 @@ def main(argv: list[str] | None = None) -> int:
 
                 # ── Training (propose-only conditioning in the pit) ──
                 _stop_motion()  # a residual flee goal would walk the bot out (finding 1)
+                # Propose-only training bypasses the loop's live pass, which is what advances the
+                # experience clock (memory-strength Phase 2S, #848): drive it once per propose pass.
+                from maxim.runtime.experience_time import ExperienceClockDriver
+
+                clock_driver = ExperienceClockDriver(aut.bio.hippocampus.experience_clock, percept_source=None)
                 usable = 0
                 attempts = 0
                 episode_clusters: list[str] = []
@@ -413,6 +418,7 @@ def main(argv: list[str] | None = None) -> int:
                         propose_via_substrate(
                             nac=aut.bio.nac, agent_id=agent_id, executor=aut.executor, sensor_encoder=encoder
                         )
+                        clock_driver.on_live_pass()
                         pubs_after = aut.bio.pain_bus.get_stats().get("total_published", 0)
                         hp = read_vital(aut, "health")
                         noted = aut.bio.nac.active_clusters(agent_id).get("world")
@@ -438,6 +444,7 @@ def main(argv: list[str] | None = None) -> int:
                         propose_via_substrate(
                             nac=aut.bio.nac, agent_id=agent_id, executor=aut.executor, sensor_encoder=encoder
                         )
+                        clock_driver.on_live_pass()
                         time.sleep(0.25)
                     if _deaths() - deaths0 > FROZEN["death_cap"]:
                         raise Refusal(f"death cap exceeded ({_deaths() - deaths0})")

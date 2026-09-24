@@ -1007,7 +1007,12 @@ class WaterTrial:
     def train(self) -> tuple[dict[str, Any], list[str]]:
         """K yoked, propose-only conditioning episodes at the pool floor (no execution)."""
         from maxim.runtime.agent_loop import propose_via_substrate
+        from maxim.runtime.experience_time import ExperienceClockDriver
 
+        # Propose-only training bypasses the loop, whose live pass is what advances the experience
+        # clock (memory-strength Phase 2S, #848): drive it here, once per propose pass, so the
+        # world's time is lived through on this path too.
+        clock_driver = ExperienceClockDriver(self.aut.bio.hippocampus.experience_clock, percept_source=None)
         fz = self.frozen
         usable = 0
         attempts = 0
@@ -1025,6 +1030,7 @@ class WaterTrial:
                     executor=self.aut.executor,
                     sensor_encoder=self.encoder,
                 )
+                clock_driver.on_live_pass()
                 new = [
                     s
                     for s in self.signals[n_before:]
@@ -1055,6 +1061,7 @@ class WaterTrial:
                     executor=self.aut.executor,
                     sensor_encoder=self.encoder,
                 )
+                clock_driver.on_live_pass()
                 time.sleep(0.25)
             self.check_death_cap()
         training = {
