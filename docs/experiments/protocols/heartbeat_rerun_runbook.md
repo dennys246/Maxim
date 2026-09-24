@@ -118,6 +118,17 @@ maxim --sim "You are an adventurer in a dark cave. A dragon attacks you repeated
 **Gate:** reflexes fire on keyword match; habituation/sensitization
 trajectories present. Validation greps live in
 [09_percept_reflex_poc.md](../09_percept_reflex_poc.md) §Validation checks.
+**Since #870 / #871 (2026-09-24):**
+- **Firing outcomes.** Each `sim_enrichment` reflex line reads `N/M reflex(es) acted` with a
+  per-firing outcome (`acted` / `failed` / `suppressed`). Only `acted` firings emit `sim_reflex`.
+  So check that the firings **acted**, not just that they appear.
+- **Sensor reflexes** now move the real sub-sensor by a delta: startle moves `head.awareness`, and
+  `environment_cold` moves `stamina`. Read these from the `sim_sensor` events, not `SEM_SENSOR`.
+- **Checking H4/H5.** Compare each logged intensity with raw × 1/(1+0.3·n) × (1 + 0.5·(1 − integrity)).
+- **H2.** H2 needs a narration containing an `impact_brace` keyword ("slam", "fall", "crash",
+  "impact"). The simulation-goal text goes to the orchestrator only, so it never reaches the
+  agent's bio-enrichment and cannot fire a reflex.
+- **Worked record:** [rerun_exp09_2026-09-24](../data/rerun_exp09_2026-09-24/README.md).
 **Scope caveat (from the row):** narrative keyword reflexes only — no halo to
 audio/orienting reflexes.
 

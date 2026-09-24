@@ -1,0 +1,479 @@
+{
+  "version": "1.0",
+  "links": {
+    "tool:sense_tools": [
+      {
+        "id": "a2f0b68d4e0c0aa6",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "defend against dragon attack"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0007259845733642578
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790265344.0675478,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "81f2f3142436dd68",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to find a way to protect myself from the dragon's claws and fire breath."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Your capabilities by category:\n- Head (base_humano",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790265344.0680199,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "76b5f563d7aa0e42",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to find a way to protect myself from the dragon's claws and fire breath."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to find a way to protect myself from the dragon's claws and fire breath.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790265344.068265,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "71f8470882a11743",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "protect from dragon"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0004649162292480469,
+            0.0002460479736328125,
+            0.0002498626708984375
+          ]
+        },
+        "predicted_value": 0.6819720000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001
+        ],
+        "observation_count": 3,
+        "confidence": 0.6395448267190432,
+        "last_observed": 1790265533.5337641,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.3697999999999999,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "9c265d62bb33c15f",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to find a way to protect myself from the dragon's attacks. Sensing my tools may reveal new po"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 1 capabilities:\n- base_humanoid_pick_up: Pic",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790265408.239159,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "596b9f2e298efbc0",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to find a way to protect myself from the dragon's attacks. Sensing my tools may reveal new possibilities."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to find a way to protect myself from the dragon's attacks. Sensing my tools may reveal new possibilities.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790265408.2393758,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "844457c56b7a0cb7",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand my options for protecting myself against the dragon's attacks."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 1 capabilities:\n- base_humanoid_pick_up: Pic",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790265484.0695412,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "beb3b1faadb84c9f",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to understand my options for protecting myself against the dragon's attacks."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to understand my options for protecting myself against the dragon's attacks.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790265484.069681,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "f58b48a7fb35a579",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to find a tool or ability to defend against the dragon's attacks."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 1 capabilities:\n- base_humanoid_pick_up: Pic",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790265533.534073,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "c8b006617468e87c",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to find a tool or ability to defend against the dragon's attacks."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to find a tool or ability to defend against the dragon's attacks.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790265533.5342138,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:causal_links": [
+      {
+        "id": "85e2a056871ceb01",
+        "event_type": "tool",
+        "event_signature": "tool:causal_links",
+        "event_context": {
+          "params": {
+            "event": "sense_tools"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:causal_links:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0002090930938720703
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790265377.8135161,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "4c3f253059d760f0",
+        "event_type": "tool",
+        "event_signature": "tool:causal_links",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I've been attacked by a dragon and need to find ways to protect myself. I've already used sense_tool"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'count': 0, 'links': []}",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790265377.816063,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "3786745eb45c7145",
+        "event_type": "tool",
+        "event_signature": "tool:causal_links",
+        "event_context": {
+          "goal": "I've been attacked by a dragon and need to find ways to protect myself. I've already used sense_tools to discover my capabilities. Now, I want to understand the causal links between this action and pa"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I've been attacked by a dragon and need to find ways to protect myself. I've already used sense_tools to discover my capabilities. Now, I want to understand the causal links between this action and pa:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790265377.8166442,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ]
+  },
+  "outcome_index": {
+    "tool:sense_tools:positive": [
+      "a2f0b68d4e0c0aa6",
+      "71f8470882a11743"
+    ],
+    "success:Your capabilities by category:\n- Head (base_humano": [
+      "81f2f3142436dd68"
+    ],
+    "plan:I need to find a way to protect myself from the dragon's claws and fire breath.:success": [
+      "76b5f563d7aa0e42"
+    ],
+    "tool:causal_links:positive": [
+      "85e2a056871ceb01"
+    ],
+    "success:{'count': 0, 'links': []}": [
+      "4c3f253059d760f0"
+    ],
+    "plan:I've been attacked by a dragon and need to find ways to protect myself. I've already used sense_tools to discover my capabilities. Now, I want to understand the causal links between this action and pa:success": [
+      "3786745eb45c7145"
+    ],
+    "success:Found 1 capabilities:\n- base_humanoid_pick_up: Pic": [
+      "9c265d62bb33c15f",
+      "f58b48a7fb35a579",
+      "844457c56b7a0cb7"
+    ],
+    "plan:I need to find a way to protect myself from the dragon's attacks. Sensing my tools may reveal new possibilities.:success": [
+      "596b9f2e298efbc0"
+    ],
+    "plan:I need to understand my options for protecting myself against the dragon's attacks.:success": [
+      "beb3b1faadb84c9f"
+    ],
+    "plan:I need to find a tool or ability to defend against the dragon's attacks.:success": [
+      "c8b006617468e87c"
+    ]
+  },
+  "priors": {},
+  "total_observations": 15,
+  "reward_bias": {},
+  "goal_reward_bias": {
+    "You are an adventurer in a dark cave. A dragon attacks you repeatedly with claws and fire breath. The dragon roars deafeningly. It slams you against the wall. A freezing wind blows through the cave.": 0.08735727917438633
+  },
+  "cluster_reward_bias": {},
+  "cluster_reward_source": {},
+  "inherent_bias_keys": [],
+  "percept_valences": {
+    "sim_aut\u001fbody\u001freflex_attack": -0.03795549768855348,
+    "sim_aut\u001fbody\u001freflex_fire": -0.04073890085238081
+  },
+  "cluster_fear": {},
+  "event_outcome_welford": {},
+  "saved_at": 1790265559.630902,
+  "_format_version": "1.4"
+}
