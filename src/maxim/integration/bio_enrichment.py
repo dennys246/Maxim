@@ -87,7 +87,7 @@ class EnrichmentResult:
     recent_context: tuple[str, ...] = ()  # WMS summaries (recent actions/outcomes)
     valence: float = 0.0  # overall approach/avoid signal (-1 to +1)
     novel: bool = True  # whether the novelty gate fired
-    reflexes_fired: tuple[str, ...] = ()  # names of reflexes that fired this tick
+    reflexes_fired: tuple[str, ...] = ()  # names of reflexes whose response ACTED this tick
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +398,10 @@ class BioEnrichmentPipeline:
         modulators that pass integrity gating.  These are appended to
         ``latent_out`` for merging into the affordances tuple.
 
-        Returns tuple of reflex names that fired.
+        Returns the names of reflexes whose response ACTED (the tool ran and
+        did not report failure). Triggered-but-failed and suppressed reflexes
+        are reported in telemetry, not returned, and do not surface latent
+        motor programs — a reflex that did not act offers no evasive options.
         """
         if self._reflex_registry is None:
             return ()
@@ -420,19 +423,21 @@ class BioEnrichmentPipeline:
             return ()
         if not firings:
             return ()
-        names = tuple(f.reflex_name for f in firings)
+        names = tuple(f.reflex_name for f in firings if f.acted)
 
-        # Surface latent motor programs from ALL body modulators.
-        # Whole-body response: an attack to torso also surfaces
-        # dodge (legs) and block (arms). Contains its own failures.
-        if latent_out is not None:
+        # Surface latent motor programs from ALL body modulators — only when
+        # the body actually responded. Whole-body response: an attack to torso
+        # also surfaces dodge (legs) and block (arms). Contains its own failures.
+        if names and latent_out is not None:
             self._collect_latent_affordances(latent_out)
 
         try:
             from maxim.simulation.sim_logger import sim_enrichment
 
-            details = [f"{f.reflex_name}({f.tool}, intensity={f.effective_intensity:.2f})" for f in firings]
-            sim_enrichment("reflex", f"{len(firings)} reflex(es): {', '.join(details)}")
+            details = [
+                f"{f.reflex_name}({f.tool}, intensity={f.effective_intensity:.2f}, {f.outcome})" for f in firings
+            ]
+            sim_enrichment("reflex", f"{len(names)}/{len(firings)} reflex(es) acted: {', '.join(details)}")
             if latent_out:
                 sim_enrichment("latent", f"{len(latent_out)} motor program(s): {', '.join(latent_out[:5])}")
         except Exception:
@@ -483,8 +488,10 @@ class BioEnrichmentPipeline:
             tool = getattr(self, "_reflex_sensor_tool", None)
             if tool is not None:
                 return tool.execute(**params)
-        log.debug("Reflex tool '%s' not wired — skipping dispatch", tool_name)
-        return None
+        # A wiring fault, not a body state: raise so ReflexRegistry.evaluate
+        # records the firing as ``failed`` and reports it (Stage-1). This used
+        # to return None at DEBUG, which counted as the body having responded.
+        raise RuntimeError(f"reflex tool {tool_name!r} is not wired on this BioEnrichmentPipeline")
 
     # -- Private query methods -------------------------------------------------
 

@@ -43,7 +43,7 @@ reflexes:
       tool: set_entity_sensor
       params:
         sensor: arms.thermal
-        value: -0.1
+        delta: -0.1
         source: reflex_cold_contact
     base_intensity: 0.05
     cooldown_s: 5.0

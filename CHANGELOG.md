@@ -228,6 +228,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A reflex is reported as having fired only if its response actually ran**
+  ([#870](https://github.com/dennys246/Maxim/issues/870)). `ReflexRegistry.evaluate` judged a
+  dispatch only by whether it raised: a tool that returned `success=False`, or a reflex tool that was
+  never wired (returned `None` at DEBUG), counted as the body having responded — consuming cooldown
+  and habituation, logging a `sim_reflex`, and surfacing dodge/block/brace to the agent for a
+  response that never happened. The dispatcher contract is now typed (`-> ToolOutput`): only a
+  successful `ToolOutput` is a response, and anything else is a failure. `ReflexFiring` carries a
+  required `outcome` — `acted`, `failed`, `suppressed` or `dry_run` — and only `acted` reflexes are
+  returned by name, emit `sim_reflex`, or surface latent motor programs. Failures are reported (a
+  returned failure warns once per reflex; a raise is a structured `swallowed_exception` event), an
+  unwired reflex tool raises, and a reflex that pre-emption or habituation drove below threshold is
+  recorded as `suppressed` instead of dropped. Nothing changes for a reflex that acts. The deeper
+  finding — the narrative reflex path scales the damage inflicted rather than the felt pain or the
+  response — is recorded as a deferred plan (`docs/plans/deferred/reflex_layering.md`).
+
+- **Sensor reflexes change their sensor by their delta instead of writing an absolute value**
+  ([#871](https://github.com/dennys246/Maxim/issues/871)). The reflex YAML declared
+  `set_entity_sensor` params as deltas, but the tool SETS the value, clamped to `[0, 1]`, so the
+  intensity-scaled delta — always negative — wrote `0`. `environment_cold` zeroed the body's
+  `stamina` at any intensity. `startle` targeted a bare `awareness`, which is not a root sensor on
+  any shipped body (it is the `head` modulator's sub-sensor), so it wrote an orphan root key and never
+  touched the head's awareness. Sensor reflexes now declare `delta:` (startle targets
+  `head.awareness`), `ReflexSpec` rejects one that declares an absolute `value`, and
+  `set_entity_sensor` gained a `delta` mode that goes through the canonical sensor-delta path
+  (`embodiment/tool_bridge.py::_apply_sensor_deltas`): qualified sub-sensors resolve to their
+  modulator, the sensor's declared range applies, and a missing sensor is a failed call rather than a
+  silent success. A test fires every shipped reflex through the real tools against the real
+  `base_humanoid` and `infant_humanoid` bodies and requires each to move its sensor by exactly its
+  delta. The LLM-facing `value` mode is unchanged. This changes what the narrative sensor reflexes
+  do; behavioural-graduation row 9 (Exp 09) is re-run after merge.
+
 - **Pain intensity is validated where it is carried.** Intensity was documented as `[0, 1]` on
   both of its carriers, `Reaction` and `PainSignal`, and checked on neither. Reward distribution
   feeds it to NAc unclamped (`reward = -intensity`) and pain subscribers use it as significance,
