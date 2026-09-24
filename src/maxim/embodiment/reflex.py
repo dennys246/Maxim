@@ -33,6 +33,24 @@ Key invariants:
 
 - **Clock injection for deterministic testing.**
   ``ReflexRegistry(clock=...)`` avoids ``time.monotonic()`` in tests.
+
+- **A firing records what came of it** (``ReflexFiring.outcome``, 2026-09-24).
+  ``evaluate`` returns every TRIGGERED reflex that got past its cooldown:
+  ``acted`` (the dispatcher returned a successful ``ToolOutput``), ``failed``
+  (it raised, returned ``success=False``, or returned anything that is not a
+  ``ToolOutput`` — reported, never DEBUG-only), ``suppressed`` (pre-emption
+  and/or habituation drove it below threshold; read ``preemption_factor`` to
+  tell the fully-anticipated case from plain habituation) or ``dry_run`` (no
+  dispatcher). Only ``acted`` and ``dry_run`` consume cooldown and
+  habituation, and only they emit ``sim_reflex``. Consumers that mean "the
+  body responded" must filter on ``acted``. Failure reports dedup differently
+  by design: a raise is a Stage-1 ``swallowed_exception`` (WARNING once per
+  call site), a returned failure WARNs once per reflex name.
+
+  Known layering debt (docs/plans/deferred/reflex_layering.md): the shipped
+  responses are ``damage_component``, so habituation, sensitization and
+  pre-emption scale the damage the world inflicts, not the felt pain or the
+  body's response.
 """
 
 from __future__ import annotations
@@ -42,7 +60,10 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Literal
+
+from maxim.tools.base import ToolOutput
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.integration.bio_enrichment import CausalPrediction
@@ -81,10 +102,37 @@ class ReflexSpec:
     cooldown_s: float = 2.0  # min seconds between firings
     suppressible: bool = True  # pre-emption can reduce intensity
 
+    def __post_init__(self) -> None:
+        # NOTE: ``load_archetype_reflexes`` catches a ValueError from ANY spec
+        # and returns (), so one invalid reflex disables its whole archetype
+        # with a single WARNING. ``load_reflex_specs`` raises. Tests read the
+        # shipped files through ``load_reflex_specs``.
+        # A sensor reflex's response is a DELTA scaled by intensity. It used
+        # to declare ``value``, which set_entity_sensor SETS (clamped to
+        # [0, 1]): every shipped sensor reflex wrote a negative "delta" as an
+        # absolute value and zeroed its sensor at any intensity (#871).
+        if self.response.tool == "set_entity_sensor":
+            if "value" in self.response.params:
+                raise ValueError(
+                    f"Reflex {self.name!r}: a set_entity_sensor reflex must declare 'delta' "
+                    "(scaled by intensity), not an absolute 'value'"
+                )
+            if "delta" not in self.response.params:
+                raise ValueError(f"Reflex {self.name!r}: a set_entity_sensor reflex must declare 'delta'")
+
+
+ReflexOutcome = Literal["acted", "failed", "suppressed", "dry_run"]
+
 
 @dataclass(frozen=True, slots=True)
 class ReflexFiring:
-    """Record of a single reflex firing."""
+    """Record of one TRIGGERED reflex and what came of it.
+
+    ``outcome`` is REQUIRED so a new construction site cannot silently claim
+    the body responded: ``acted`` / ``failed`` / ``suppressed`` / ``dry_run``
+    (see the module docstring). ``error`` carries the failure text for
+    ``failed``. Runtime-only — never persisted or sent over a wire.
+    """
 
     reflex_name: str
     tool: str
@@ -94,6 +142,13 @@ class ReflexFiring:
     habituation_factor: float
     sensitization_factor: float
     preemption_factor: float
+    outcome: ReflexOutcome
+    error: str | None = None
+
+    @property
+    def acted(self) -> bool:
+        """True only when the response tool actually ran successfully."""
+        return self.outcome == "acted"
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +194,10 @@ class ReflexRegistry:
         # Habituation: (reflex_name, context_hash) → exposure count
         self._exposure_counts: dict[tuple[str, str], int] = defaultdict(int)
 
+        # Reflexes whose tool has RETURNED a failure: warn once each, then DEBUG
+        # (failed dispatch keeps no cooldown, so it retries every percept).
+        self._warned_returned_failure: set[str] = set()
+
     @property
     def reflexes(self) -> tuple[ReflexSpec, ...]:
         return tuple(self._reflexes)
@@ -154,6 +213,7 @@ class ReflexRegistry:
         """
         self._last_fired.clear()
         self._exposure_counts.clear()
+        self._warned_returned_failure.clear()
 
     def evaluate(
         self,
@@ -161,7 +221,7 @@ class ReflexRegistry:
         *,
         predictions: tuple[CausalPrediction, ...] = (),
         context_key: str = "",
-        execute_tool: Callable[..., Any] | None = None,
+        execute_tool: Callable[..., ToolOutput] | None = None,
     ) -> tuple[ReflexFiring, ...]:
         """Evaluate all reflexes against percept text.
 
@@ -173,11 +233,13 @@ class ReflexRegistry:
                 Different contexts (different attacker, new environment)
                 reset habituation.  Empty string = single global context.
             execute_tool: Callable to dispatch tool invocations.  Signature:
-                ``execute_tool(tool_name, **params) -> Any``.
+                ``execute_tool(tool_name, **params) -> ToolOutput``. Anything
+                other than a successful ``ToolOutput`` is a failed response.
                 If None, reflexes are evaluated but NOT executed (dry run).
 
         Returns:
-            Tuple of ReflexFiring records for all reflexes that fired.
+            One ReflexFiring per TRIGGERED reflex past its cooldown, each
+            carrying its ``outcome`` (acted / failed / suppressed / dry_run).
         """
         if not text:
             return ()
@@ -220,30 +282,64 @@ class ReflexRegistry:
             effective = max(0.0, min(1.0, effective))
 
             if effective < 0.01:
-                continue  # suppressed to nothing
+                # Suppressed to nothing — when by pre-emption, the fully
+                # anticipated case. Recorded, not dropped; consumes neither
+                # cooldown nor habituation (unchanged behaviour).
+                firings.append(
+                    ReflexFiring(
+                        reflex_name=spec.name,
+                        tool=spec.response.tool,
+                        params=dict(spec.response.params),
+                        effective_intensity=round(effective, 4),
+                        raw_intensity=round(raw_intensity, 4),
+                        habituation_factor=round(habituation_factor, 4),
+                        sensitization_factor=round(sensitization_factor, 4),
+                        preemption_factor=round(preemption_factor, 4),
+                        outcome="suppressed",
+                    )
+                )
+                continue
 
             # 8. Build tool params with intensity
             params = dict(spec.response.params)
             if spec.response.tool == "damage_component":
                 params["amount"] = round(effective, 3)
             elif spec.response.tool == "set_entity_sensor":
-                # Scale the value adjustment by intensity ratio
-                if "value" in params and spec.base_intensity > 0:
-                    params["value"] = round(float(params["value"]) * effective / spec.base_intensity, 3)
+                # Scale the sensor DELTA by intensity ratio (ReflexSpec
+                # guarantees a sensor reflex declares ``delta``, #871).
+                if spec.base_intensity > 0:
+                    params["delta"] = round(float(params["delta"]) * effective / spec.base_intensity, 3)
 
-            # 9. Execute tool (if dispatcher provided)
-            dispatch_ok = True
+            # 9. Execute tool (if dispatcher provided). The body responded ONLY
+            # if the dispatcher returned a successful ToolOutput. The return
+            # value used to be ignored, so a tool that reported failure — or a
+            # dispatcher that returned None for an unwired tool — counted as
+            # the body having responded.
+            outcome: ReflexOutcome = "dry_run"
+            error: str | None = None
             if execute_tool is not None:
                 try:
-                    execute_tool(spec.response.tool, **params)
+                    result = execute_tool(spec.response.tool, **params)
                 except Exception as e:
-                    log.debug("Reflex %s tool dispatch failed: %s", spec.name, e)
-                    dispatch_ok = False
+                    log_swallowed_exception()
+                    outcome, error = "failed", f"{type(e).__name__}: {e}"
+                else:
+                    if not isinstance(result, ToolOutput):
+                        outcome = "failed"
+                        error = f"dispatcher returned {type(result).__name__}, not a ToolOutput"
+                        self._report_returned_failure(spec.name, spec.response.tool, error)
+                    elif not result.success:
+                        outcome = "failed"
+                        error = str(result.error or "tool reported failure")
+                        self._report_returned_failure(spec.name, spec.response.tool, error)
+                    else:
+                        outcome = "acted"
 
-            # 10. Update state — only on successful dispatch (or dry run).
-            # Failed dispatch should not consume cooldown or increment
-            # habituation, so the reflex can retry next tick.
-            if dispatch_ok:
+            # 10. Update state — only when the body responded (or dry run).
+            # A failed dispatch consumes neither cooldown nor habituation, so
+            # the reflex can retry next tick.
+            responded = outcome in ("acted", "dry_run")
+            if responded:
                 self._last_fired[spec.name] = now
                 self._exposure_counts[habit_key] += 1
 
@@ -257,26 +353,30 @@ class ReflexRegistry:
                     habituation_factor=round(habituation_factor, 4),
                     sensitization_factor=round(sensitization_factor, 4),
                     preemption_factor=round(preemption_factor, 4),
+                    outcome=outcome,
+                    error=error,
                 )
             )
 
             # Surface the reflex firing.  Embodiment runs are otherwise
             # opaque about pre-deliberative responses (thermal withdrawal,
-            # pain wince, startle).  Skip dry-run failures.
-            if dispatch_ok:
-                try:
-                    from maxim.simulation.sim_logger import sim_reflex
+            # pain wince, startle).  Only a response that happened.
+            if responded:
+                from maxim.simulation.sim_logger import sim_reflex
 
-                    sim_reflex(
-                        spec.name,
-                        spec.response.tool,
-                        round(effective, 3),
-                        raw_intensity=round(raw_intensity, 3),
-                    )
-                except Exception:
-                    pass
+                sim_reflex(
+                    spec.name,
+                    spec.response.tool,
+                    round(effective, 3),
+                    raw_intensity=round(raw_intensity, 3),
+                )
 
         return tuple(firings)
+
+    def _report_returned_failure(self, reflex_name: str, tool: str, error: str) -> None:
+        level = logging.DEBUG if reflex_name in self._warned_returned_failure else logging.WARNING
+        self._warned_returned_failure.add(reflex_name)
+        log.log(level, "Reflex %s: %s reported failure (%s); the body did not respond", reflex_name, tool, error)
 
     @staticmethod
     def _match_keywords(lower_text: str, keywords: tuple[str, ...]) -> str | None:

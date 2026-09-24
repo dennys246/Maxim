@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from maxim.embodiment.reflex import (
+    ReflexFiring,
     ReflexRegistry,
     ReflexResponse,
     ReflexSpec,
@@ -68,7 +69,7 @@ def _startle_reflex() -> ReflexSpec:
         detect_keywords=("explosion", "roar", "deafening"),
         response=ReflexResponse(
             tool="set_entity_sensor",
-            params={"sensor": "awareness", "value": -0.1, "source": "reflex_startle"},
+            params={"sensor": "awareness", "delta": -0.1, "source": "reflex_startle"},
         ),
         base_intensity=0.10,
         cooldown_s=5.0,
@@ -82,12 +83,19 @@ def _cold_reflex() -> ReflexSpec:
         detect_keywords=("freezing", "blizzard"),
         response=ReflexResponse(
             tool="set_entity_sensor",
-            params={"sensor": "stamina", "value": -0.05, "source": "reflex_cold"},
+            params={"sensor": "stamina", "delta": -0.05, "source": "reflex_cold"},
         ),
         base_intensity=0.05,
         cooldown_s=10.0,
         suppressible=False,  # can't learn to not feel cold
     )
+
+
+def _ok(tool_name: str = "", **params):
+    """A dispatcher that succeeds (the contract: return a ToolOutput)."""
+    from maxim.tools.base import ToolOutput
+
+    return ToolOutput(success=True, output={})
 
 
 class _Clock:
@@ -101,6 +109,26 @@ class _Clock:
 
     def advance(self, dt: float) -> None:
         self._t += dt
+
+
+class _OkTool:
+    """A wired reflex tool that succeeds, so a pipeline's reflexes ACT."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def execute(self, **params):
+        from maxim.tools.base import ToolOutput
+
+        self.calls.append(params)
+        return ToolOutput(success=True, output={})
+
+
+def _wired(pipeline: BioEnrichmentPipeline) -> BioEnrichmentPipeline:
+    """Wire both reflex tools, as the orchestrator does in production."""
+    pipeline._reflex_damage_tool = _OkTool()
+    pipeline._reflex_sensor_tool = _OkTool()
+    return pipeline
 
 
 # ---------------------------------------------------------------------------
@@ -214,14 +242,15 @@ class TestIntensityScaling:
             detect_keywords=("test",),
             response=ReflexResponse(
                 tool="set_entity_sensor",
-                params={"sensor": "stamina", "value": -0.1},
+                params={"sensor": "stamina", "delta": -0.1},
             ),
             base_intensity=0.0,
         )
         reg = ReflexRegistry((spec,), clock=clock)
         # Should not raise — the value scaling is guarded
         firings = reg.evaluate("this is a test")
-        assert len(firings) == 0  # effective intensity = 0.0 * ... < 0.01 threshold
+        # effective intensity = 0.0 * ... < 0.01 threshold: recorded as suppressed
+        assert [f.outcome for f in firings] == ["suppressed"]
 
 
 # ---------------------------------------------------------------------------
@@ -367,9 +396,12 @@ class TestPreemption:
         reg = ReflexRegistry((_attack_reflex(),), clock=clock)
 
         predictions = (CausalPrediction(event="attack", outcome="damage", confidence=1.0, valence="negative"),)
-        firings = reg.evaluate("dragon attacks", predictions=predictions)
-        # effective = 0.15 * 1.0 * 1.0 * (1 - 1.0) = 0.0 → below threshold
-        assert firings == ()
+        calls: list[str] = []
+        firings = reg.evaluate("dragon attacks", predictions=predictions, execute_tool=lambda t, **_: calls.append(t))
+        # effective = 0.15 * 1.0 * 1.0 * (1 - 1.0) = 0.0 → below threshold.
+        # The fully ANTICIPATED case is recorded, not dropped, and nothing runs.
+        assert [(f.outcome, f.preemption_factor) for f in firings] == [("suppressed", 1.0)]
+        assert calls == []
 
 
 # ---------------------------------------------------------------------------
@@ -386,6 +418,7 @@ class TestToolDispatch:
 
         def capture(tool_name: str, **params):
             tool_calls.append((tool_name, params))
+            return _ok()
 
         reg.evaluate("dragon attacks", execute_tool=capture)
         assert len(tool_calls) == 1
@@ -401,6 +434,7 @@ class TestToolDispatch:
 
         def capture(tool_name: str, **params):
             tool_calls.append((tool_name, params))
+            return _ok()
 
         reg.evaluate("a deafening explosion rocks the cave", execute_tool=capture)
         assert len(tool_calls) == 1
@@ -423,7 +457,7 @@ class TestToolDispatch:
             raise RuntimeError("Tool failed")
 
         firings = reg.evaluate("dragon attacks", execute_tool=failing_tool)
-        assert len(firings) == 1  # failure logged but reflex still recorded
+        assert [f.outcome for f in firings] == ["failed"]  # recorded, as failed
 
     def test_failed_dispatch_does_not_consume_cooldown(self):
         """When tool dispatch fails, cooldown should NOT be consumed
@@ -438,6 +472,7 @@ class TestToolDispatch:
             call_count += 1
             if call_count == 1:
                 raise RuntimeError("First call fails")
+            return _ok()
 
         # First call: dispatch fails
         f1 = reg.evaluate("dragon attacks", execute_tool=failing_then_ok)
@@ -448,6 +483,316 @@ class TestToolDispatch:
         f2 = reg.evaluate("dragon attacks again", execute_tool=failing_then_ok)
         assert len(f2) == 1
         assert call_count == 2
+
+
+class TestDispatchOutcome:
+    """A firing records whether the body actually responded.
+
+    ``evaluate`` used to read only whether the dispatcher RAISED: a tool that
+    RETURNED ``success=False`` (or a pipeline whose reflex tools were never
+    wired) counted as the body having responded — it consumed cooldown and
+    habituation, logged a ``sim_reflex``, and surfaced dodge/block/brace to
+    the agent for a response that never happened.
+    """
+
+    def _failing_output(self, tool_name: str, **params):
+        from maxim.tools.base import ToolOutput
+
+        return ToolOutput(success=False, error="No embodiment configured")
+
+    def test_a_returned_failure_is_failed_not_acted(self, caplog):
+        reg = ReflexRegistry((_attack_reflex(),), clock=_Clock())
+        with caplog.at_level("WARNING"):
+            [f] = reg.evaluate("dragon attacks", execute_tool=self._failing_output)
+        assert (f.outcome, f.acted, f.error) == ("failed", False, "No embodiment configured")
+        assert any("did not respond" in r.getMessage() for r in caplog.records if r.levelname == "WARNING")
+
+    def test_a_returned_failure_consumes_neither_cooldown_nor_habituation(self):
+        reg = ReflexRegistry((_attack_reflex(),), clock=_Clock())
+        reg.evaluate("dragon attacks", execute_tool=self._failing_output)
+        # Same instant: a consumed cooldown would block this; unconsumed
+        # habituation leaves the factor at 1.0.
+        [again] = reg.evaluate("dragon attacks", execute_tool=_ok)
+        assert again.outcome == "acted"
+        assert again.habituation_factor == 1.0
+
+    def test_a_returned_failure_warns_once_then_debug(self, caplog):
+        reg = ReflexRegistry((_attack_reflex(),), clock=_Clock())
+        with caplog.at_level("DEBUG"):
+            for _ in range(3):
+                reg.evaluate("dragon attacks", execute_tool=self._failing_output)
+        warnings = [r for r in caplog.records if "did not respond" in r.getMessage() and r.levelname == "WARNING"]
+        assert len(warnings) == 1
+
+    def test_a_raised_failure_is_failed_and_reported(self, caplog):
+        reg = ReflexRegistry((_attack_reflex(),), clock=_Clock())
+
+        def _boom(tool_name, **params):
+            raise RuntimeError("Tool failed")
+
+        with caplog.at_level("WARNING"):
+            [f] = reg.evaluate("dragon attacks", execute_tool=_boom)
+        assert f.outcome == "failed" and "RuntimeError" in f.error
+        assert any(r.levelname == "WARNING" and "swallowed" in r.getMessage().lower() for r in caplog.records)
+
+    def test_success_is_acted_and_consumes_cooldown(self):
+        reg = ReflexRegistry((_attack_reflex(),), clock=_Clock())
+        [f] = reg.evaluate("dragon attacks", execute_tool=_ok)
+        assert f.outcome == "acted" and f.acted
+        assert reg.evaluate("dragon attacks", execute_tool=_ok) == ()  # in cooldown
+
+    def test_outcome_is_required_on_construction(self):
+        with pytest.raises(TypeError):
+            ReflexFiring(
+                reflex_name="x",
+                tool="damage_component",
+                params={},
+                effective_intensity=0.1,
+                raw_intensity=0.1,
+                habituation_factor=1.0,
+                sensitization_factor=1.0,
+                preemption_factor=0.0,
+            )
+
+    def test_an_unwired_pipeline_reports_its_reflex_as_failed_not_fired(self, caplog):
+        """A pipeline whose reflex tools were never wired used to report the
+        reflex as fired and surface latent motor programs."""
+        pipeline = BioEnrichmentPipeline(reflex_registry=ReflexRegistry((_attack_reflex(),), clock=_Clock()))
+        # A body WITH latent programs, so "none surfaced" is a real assertion.
+        pipeline._entity_root = TestLatentAffordances()._make_entity_with_latent()
+        latent: list[str] = []
+        with caplog.at_level("WARNING"):
+            names = pipeline._evaluate_reflexes("The dragon attacks you", (), latent_out=latent)
+        assert names == ()
+        assert latent == []
+        assert any(r.levelname == "WARNING" and "swallowed" in r.getMessage().lower() for r in caplog.records)
+
+    def test_a_wired_pipeline_reports_the_reflex_that_acted(self):
+        pipeline = _wired(BioEnrichmentPipeline(reflex_registry=ReflexRegistry((_attack_reflex(),), clock=_Clock())))
+        pipeline._entity_root = TestLatentAffordances()._make_entity_with_latent()
+        latent: list[str] = []
+        assert pipeline._evaluate_reflexes("The dragon attacks you", (), latent_out=latent) == ("attack_flinch",)
+        assert len(pipeline._reflex_damage_tool.calls) == 1
+        assert latent  # the control: a body that responded DOES surface them
+
+
+class TestDispatchContract:
+    """The dispatcher contract is typed: only a successful ToolOutput is a response."""
+
+    @pytest.mark.parametrize("returned", [None, {"success": True}, "ok"])
+    def test_anything_but_a_tooloutput_is_failed(self, returned):
+        reg = ReflexRegistry((_attack_reflex(),), clock=_Clock())
+        [f] = reg.evaluate("dragon attacks", execute_tool=lambda t, **_: returned)
+        assert f.outcome == "failed" and "not a ToolOutput" in f.error
+
+    def test_a_real_tool_failure_through_the_pipeline_is_failed(self):
+        """The production failure: a real DamageComponentTool with no body."""
+        from maxim.simulation.tools import DamageComponentTool
+
+        pipeline = BioEnrichmentPipeline(reflex_registry=ReflexRegistry((_attack_reflex(),), clock=_Clock()))
+        pipeline._reflex_damage_tool = DamageComponentTool(embodiment=None, entity_map=None)
+        pipeline._entity_root = TestLatentAffordances()._make_entity_with_latent()
+        latent: list[str] = []
+        assert pipeline._evaluate_reflexes("The dragon attacks you", (), latent_out=latent) == ()
+        assert latent == []
+        [f] = pipeline._reflex_registry.evaluate("dragon attacks", execute_tool=pipeline._dispatch_reflex_tool)
+        assert (f.outcome, f.error) == ("failed", "No embodiment configured")
+
+    def test_sim_reflex_is_emitted_only_when_the_body_responded(self, monkeypatch):
+        import maxim.simulation.sim_logger as sim_logger
+        from maxim.integration.bio_enrichment import CausalPrediction
+
+        emitted: list[str] = []
+        monkeypatch.setattr(sim_logger, "sim_reflex", lambda name, *a, **kw: emitted.append(name))
+
+        def _fail(t, **_):
+            raise RuntimeError("x")
+
+        ReflexRegistry((_attack_reflex(),), clock=_Clock()).evaluate("dragon attacks", execute_tool=_fail)
+        pre = (CausalPrediction(event="attack", outcome="damage", confidence=1.0, valence="negative"),)
+        ReflexRegistry((_attack_reflex(),), clock=_Clock()).evaluate(
+            "dragon attacks", predictions=pre, execute_tool=_ok
+        )
+        assert emitted == []  # failed and suppressed emit nothing
+        ReflexRegistry((_attack_reflex(),), clock=_Clock()).evaluate("dragon attacks", execute_tool=_ok)
+        assert emitted == ["attack_flinch"]
+
+    def test_reset_state_rearms_the_returned_failure_warning(self, caplog):
+        from maxim.tools.base import ToolOutput
+
+        reg = ReflexRegistry((_attack_reflex(),), clock=_Clock())
+        fail = lambda t, **_: ToolOutput(success=False, error="down")  # noqa: E731
+        reg.evaluate("dragon attacks", execute_tool=fail)
+        reg.reset_state()
+        caplog.clear()  # only the post-reset call may satisfy the assertion
+        with caplog.at_level("WARNING"):
+            reg.evaluate("dragon attacks", execute_tool=fail)
+        assert any("did not respond" in r.getMessage() for r in caplog.records if r.levelname == "WARNING")
+
+
+class TestSensorReflexDelta:
+    """#871: sensor reflexes declared deltas that set_entity_sensor SET, zeroing the sensor."""
+
+    def test_a_sensor_reflex_must_declare_delta_not_value(self):
+        with pytest.raises(ValueError, match="delta"):
+            ReflexSpec(
+                name="bad",
+                detect_keywords=("x",),
+                response=ReflexResponse(tool="set_entity_sensor", params={"sensor": "awareness", "value": -0.1}),
+            )
+
+    @pytest.mark.parametrize("archetype", ["humanoid", "infant", "quadruped"])
+    def test_shipped_reflex_files_load_in_full(self, archetype):
+        """Read each file DIRECTLY: ``load_archetype_reflexes`` swallows a bad
+        spec and returns (), which made the first version of this test vacuous."""
+        from maxim.utils.paths import bundled_data
+
+        specs = load_reflex_specs(bundled_data() / "reflexes" / f"{archetype}.yaml")
+        assert specs
+        for spec in specs:
+            if spec.response.tool == "set_entity_sensor":
+                assert "delta" in spec.response.params, spec.name
+
+    @pytest.mark.parametrize(
+        ("archetype", "body_ref"),
+        [
+            ("humanoid", "bodies/base_humanoid"),  # the Exp 09 body
+            ("humanoid", "bodies/infant_humanoid"),
+            ("infant", "bodies/infant_humanoid"),
+        ],
+    )
+    def test_every_shipped_reflex_acts_on_a_real_body(self, archetype, body_ref):
+        """Fire every reflex through the REAL tools against the REAL body.
+
+        A synthetic body let ``startle`` target a bare ``awareness`` that no
+        shipped body has (it is the ``head`` modulator's sub-sensor): the old
+        path wrote an orphan root key, and the first #871 fix would have made
+        every startle fail. Only a real body can catch that.
+        """
+        from maxim.embodiment.component_registry import ComponentRegistry
+        from maxim.simulation.tools import DamageComponentTool, SetEntitySensorTool
+
+        root = ComponentRegistry().instantiate(body_ref)
+        emb = _SensorEmbodiment(root)
+        tools = {
+            "damage_component": DamageComponentTool(embodiment=emb, entity_map=None),
+            "set_entity_sensor": SetEntitySensorTool(embodiment=emb, entity_map=None),
+        }
+        specs = load_archetype_reflexes(archetype)
+        assert specs
+        from maxim.simulation.tools import _sensor_slot
+
+        for spec in specs:
+            reg = ReflexRegistry((spec,), clock=_Clock())
+            text = f"it {spec.detect_keywords[0]} here"
+            sensor = spec.response.params.get("sensor")
+            if sensor is not None:
+                metrics, key = _sensor_slot(root, sensor)
+                before = metrics[key]
+            outputs: list = []
+
+            def _dispatch(t, **p):
+                outputs.append(tools[t].execute(**p))
+                return outputs[-1]
+
+            [f] = reg.evaluate(text, execute_tool=_dispatch)
+            assert f.outcome == "acted", (spec.name, f.error)
+            if spec.response.tool == "damage_component":
+                # DamageComponentTool falls back to root ``health`` (and still
+                # succeeds) when the part is missing — "acted" alone would pass
+                # for a reflex aimed at a part the body does not have.
+                assert outputs[-1].output["fallback_to_entity"] is False, spec.name
+            if sensor is not None:
+                # Moved by exactly the DELTA — not set to an absolute value. The
+                # shipped bodies start these sensors healthy and the deltas are
+                # small, so no range clamp applies here.
+                assert metrics[key] - before == pytest.approx(f.params["delta"]), (spec.name, before, metrics[key])
+
+    def test_a_startle_lowers_head_awareness_by_its_delta_on_the_real_body(self):
+        from maxim.embodiment.component_registry import ComponentRegistry
+        from maxim.simulation.tools import SetEntitySensorTool
+
+        root = ComponentRegistry().instantiate("bodies/base_humanoid")
+        before = root.modulators["head"].vital_metrics["awareness"]
+        [startle] = [s for s in load_archetype_reflexes("humanoid") if s.name == "startle"]
+        pipeline = BioEnrichmentPipeline(reflex_registry=ReflexRegistry((startle,), clock=_Clock()))
+        pipeline._reflex_sensor_tool = SetEntitySensorTool(embodiment=_SensorEmbodiment(root), entity_map=None)
+        assert pipeline._evaluate_reflexes("a deafening explosion", ()) == ("startle",)
+        after = root.modulators["head"].vital_metrics["awareness"]
+        assert 0.0 < after < before  # lowered, not zeroed
+        assert "awareness" not in root.vital_metrics  # no orphan root key
+
+    def test_intensity_now_scales_the_sensor_change(self):
+        from maxim.simulation.tools import SetEntitySensorTool
+
+        body = _SensorBody({"awareness": 0.8})
+        tool = SetEntitySensorTool(embodiment=_SensorEmbodiment(body), entity_map=None)
+        reg = ReflexRegistry((_startle_reflex(),), clock=_Clock())
+        [f] = reg.evaluate("a deafening explosion", execute_tool=lambda t, **p: tool.execute(**p))
+        # effective == base here, so the delta is exactly the declared -0.1
+        assert f.params["delta"] == pytest.approx(-0.1)
+
+
+class _SensorBody:
+    name = "body"
+    full_path = "body"
+
+    def __init__(self, metrics: dict) -> None:
+        self.vital_metrics = dict(metrics)
+        self.sensors: dict = {}
+        self.modulators: dict = {}
+
+
+class _SensorEmbodiment:
+    def __init__(self, root) -> None:
+        self.root = root
+
+    def evaluate_failures(self):
+        return []
+
+
+class TestSetEntitySensorDelta:
+    def _tool(self, body):
+        from maxim.simulation.tools import SetEntitySensorTool
+
+        return SetEntitySensorTool(embodiment=_SensorEmbodiment(body), entity_map=None)
+
+    def test_delta_adjusts_a_root_sensor(self):
+        body = _SensorBody({"stamina": 0.5})
+        out = self._tool(body).execute(sensor="stamina", delta=-0.2)
+        assert out.success and body.vital_metrics["stamina"] == pytest.approx(0.3)
+
+    def test_delta_reaches_a_qualified_sub_sensor_within_its_declared_range(self):
+        """``arms.thermal`` used to become an orphan key on the ROOT."""
+
+        class _Arms:
+            vital_metrics = {"thermal": 0.5}
+            _sensors = {"thermal": {"range": [-1.0, 1.0]}}
+
+        body = _SensorBody({})
+        body.modulators["arms"] = _Arms()
+        out = self._tool(body).execute(sensor="arms.thermal", delta=-0.8)
+        assert out.success
+        assert body.modulators["arms"].vital_metrics["thermal"] == pytest.approx(-0.3)  # range, not [0, 1]
+        assert "arms.thermal" not in body.vital_metrics
+
+    def test_a_missing_sensor_is_a_failed_call_not_a_silent_no_op(self):
+        out = self._tool(_SensorBody({})).execute(sensor="awareness", delta=-0.1)
+        assert out.success is False and "not found" in out.error
+
+    @pytest.mark.parametrize("bad", [float("nan"), "lots"])
+    def test_a_bad_delta_is_rejected(self, bad):
+        out = self._tool(_SensorBody({"stamina": 0.5})).execute(sensor="stamina", delta=bad)
+        assert out.success is False
+
+    def test_value_and_delta_together_are_rejected(self):
+        out = self._tool(_SensorBody({"stamina": 0.5})).execute(sensor="stamina", value=0.3, delta=-0.1)
+        assert out.success is False
+
+    def test_value_still_sets(self):
+        body = _SensorBody({"health": 0.2})
+        assert self._tool(body).execute(sensor="health", value=0.9).success
+        assert body.vital_metrics["health"] == pytest.approx(0.9)
 
 
 # ---------------------------------------------------------------------------
@@ -550,7 +895,7 @@ class TestPipelineIntegration:
         clock = _Clock()
         reg = ReflexRegistry((_attack_reflex(),), clock=clock)
 
-        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        pipeline = _wired(BioEnrichmentPipeline(reflex_registry=reg))
         result = pipeline.enrich("The dragon attacks you violently", bypass_gate=True)
 
         assert result is not None
@@ -584,8 +929,9 @@ class TestPipelineIntegration:
             habituation_factor=1.0,
             sensitization_factor=1.0,
             preemption_factor=1.0,
+            outcome="acted",
         )
-        pipeline = BioEnrichmentPipeline(reflex_registry=ReflexRegistry((_attack_reflex(),), clock=_Clock()))
+        pipeline = _wired(BioEnrichmentPipeline(reflex_registry=ReflexRegistry((_attack_reflex(),), clock=_Clock())))
         monkeypatch.setattr(pipeline._reflex_registry, "evaluate", lambda *_a, **_kw: [firing])
         with caplog.at_level("WARNING"):
             assert pipeline._evaluate_reflexes("The dragon attacks you", (), latent_out=[]) == ("attack_flinch",)
@@ -594,7 +940,7 @@ class TestPipelineIntegration:
         )
 
     def test_an_evaluate_failure_is_contained_and_reported(self, monkeypatch, caplog):
-        pipeline = BioEnrichmentPipeline(reflex_registry=ReflexRegistry((_attack_reflex(),), clock=_Clock()))
+        pipeline = _wired(BioEnrichmentPipeline(reflex_registry=ReflexRegistry((_attack_reflex(),), clock=_Clock())))
 
         def _boom(*_a, **_kw):
             raise RuntimeError("evaluate failed")
@@ -608,7 +954,7 @@ class TestPipelineIntegration:
         clock = _Clock()
         reg = ReflexRegistry((_attack_reflex(),), clock=clock)
 
-        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        pipeline = _wired(BioEnrichmentPipeline(reflex_registry=reg))
         result = pipeline.enrich("The dragon looks at you", bypass_gate=True)
 
         assert result is not None
@@ -714,7 +1060,7 @@ class TestLatentAffordances:
         reg = ReflexRegistry((_attack_reflex(),), clock=clock)
         entity = self._make_entity_with_latent()
 
-        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        pipeline = _wired(BioEnrichmentPipeline(reflex_registry=reg))
         pipeline._entity_root = entity
 
         result = pipeline.enrich("The dragon attacks you", bypass_gate=True)
@@ -733,7 +1079,7 @@ class TestLatentAffordances:
         reg = ReflexRegistry((_attack_reflex(),), clock=clock)
         entity = self._make_entity_with_latent()
 
-        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        pipeline = _wired(BioEnrichmentPipeline(reflex_registry=reg))
         pipeline._entity_root = entity
 
         result = pipeline.enrich("The weather is pleasant today", bypass_gate=True)
@@ -750,7 +1096,7 @@ class TestLatentAffordances:
         # Legs at 0.1 integrity — below dodge (0.2) and roll (0.3) thresholds
         entity = self._make_entity_with_latent(legs_integrity=0.1)
 
-        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        pipeline = _wired(BioEnrichmentPipeline(reflex_registry=reg))
         pipeline._entity_root = entity
 
         result = pipeline.enrich("The dragon attacks you", bypass_gate=True)
@@ -767,7 +1113,7 @@ class TestLatentAffordances:
         reg = ReflexRegistry((_attack_reflex(),), clock=clock)
         entity = self._make_entity_with_latent(legs_integrity=0.25)
 
-        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        pipeline = _wired(BioEnrichmentPipeline(reflex_registry=reg))
         pipeline._entity_root = entity
 
         result = pipeline.enrich("The dragon attacks you", bypass_gate=True)
@@ -782,7 +1128,7 @@ class TestLatentAffordances:
         clock = _Clock()
         reg = ReflexRegistry((_attack_reflex(),), clock=clock)
 
-        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        pipeline = _wired(BioEnrichmentPipeline(reflex_registry=reg))
         # No _entity_root set
 
         result = pipeline.enrich("The dragon attacks you", bypass_gate=True)
@@ -798,7 +1144,7 @@ class TestLatentAffordances:
         reg = ReflexRegistry((_attack_reflex(),), clock=clock)
         entity = self._make_entity_with_latent()
 
-        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        pipeline = _wired(BioEnrichmentPipeline(reflex_registry=reg))
         pipeline._entity_root = entity
 
         result = pipeline.enrich("The dragon attacks you", bypass_gate=True)
@@ -816,7 +1162,7 @@ class TestLatentAffordances:
         reg = ReflexRegistry((_attack_reflex(), _fire_reflex()), clock=clock)
         entity = self._make_entity_with_latent()
 
-        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        pipeline = _wired(BioEnrichmentPipeline(reflex_registry=reg))
         pipeline._entity_root = entity
 
         result = pipeline.enrich("The dragon attacks with fire", bypass_gate=True)

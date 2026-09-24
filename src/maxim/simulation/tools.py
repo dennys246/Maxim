@@ -801,7 +801,14 @@ class OrchestratorActorTool(Tool):
 
 
 class SetEntitySensorTool(Tool):
-    """Set an AUT body sensor to a specific value.
+    """Set an AUT body sensor to a specific value, or adjust it by a delta.
+
+    ``value`` SETS the sensor (the LLM-facing use). ``delta`` ADJUSTS it through
+    ``embodiment/tool_bridge.py::_apply_sensor_deltas`` — the one path shared
+    by ``self_effect``/``target_effect`` — which resolves qualified modulator
+    sub-sensors (``arms.thermal``) and clamps to the sensor's declared range.
+    Sensor reflexes use ``delta`` (#871: they used to pass a negative "delta"
+    as ``value`` and zero the sensor).
 
     General-purpose complement to DamageComponentTool. Use for:
     - Healing: set health back toward 1.0
@@ -816,13 +823,15 @@ class SetEntitySensorTool(Tool):
 
     name = "set_entity_sensor"
     description = (
-        "Set an agent body sensor to a specific value. Use for healing, "
-        "feeding (reduce hunger), resting (restore stamina), environmental "
-        "changes (visibility), or any non-combat sensor modification."
+        "Set an agent body sensor to a specific value, or adjust it by a delta "
+        "(pass exactly one of value / delta). Use for healing, feeding (reduce "
+        "hunger), resting (restore stamina), environmental changes (visibility), "
+        "or any non-combat sensor modification."
     )
     input_schema = {
         "sensor": (str, "health"),
         "value": (float, 1.0),
+        "delta": (float, None),  # adjust instead of set; exclusive with value
         "source": (str, ""),  # e.g., "healing_potion", "food", "rest"
     }
 
@@ -833,8 +842,10 @@ class SetEntitySensorTool(Tool):
 
     def execute(self, **kwargs: Any) -> ToolOutput:
         sensor = kwargs.get("sensor", "health")
-        value = float(kwargs.get("value", 1.0))
         source = kwargs.get("source", "unknown")
+        delta_raw = kwargs.get("delta")
+        if delta_raw is not None and kwargs.get("value") is not None:
+            return ToolOutput(success=False, error="pass exactly one of value / delta, not both")
 
         if self._embodiment is None:
             return ToolOutput(success=False, error="No embodiment configured")
@@ -842,6 +853,11 @@ class SetEntitySensorTool(Tool):
         root = self._embodiment.root
         if root is None:
             return ToolOutput(success=False, error="No root entity")
+
+        if delta_raw is not None:
+            return self._adjust(root, sensor, delta_raw, source)
+
+        value = float(kwargs.get("value", 1.0))
 
         old_val = root.vital_metrics.get(sensor, 0.0)
         new_val = max(0.0, min(1.0, value))
@@ -872,6 +888,52 @@ class SetEntitySensorTool(Tool):
                 "direction": "increased" if new_val > old_val else "decreased" if new_val < old_val else "unchanged",
             },
         )
+
+    def _adjust(self, root: Any, sensor: str, delta_raw: Any, source: str) -> ToolOutput:
+        """Apply ``delta`` through the canonical sensor-delta path (#871)."""
+        from maxim.embodiment.tool_bridge import _apply_sensor_deltas
+
+        try:
+            delta = float(delta_raw)
+        except (TypeError, ValueError):
+            return ToolOutput(success=False, error=f"delta must be a number, got {delta_raw!r}")
+        if not math.isfinite(delta):
+            return ToolOutput(success=False, error=f"delta must be finite, got {delta_raw!r}")
+
+        metrics, key = _sensor_slot(root, sensor)
+        if metrics is None or key not in metrics:
+            # _apply_sensor_deltas only WARNS on a missing sensor and applies
+            # nothing; returning success would report a response that did not
+            # happen (the #870 shape). Fail the call instead.
+            return ToolOutput(success=False, error=f"sensor {sensor!r} not found on body {root.name}")
+        old_val = metrics[key]
+        _apply_sensor_deltas(root, {sensor: delta}, delta_kind="set_entity_sensor")
+        new_val = metrics[key]
+        self._embodiment.evaluate_failures()
+        return ToolOutput(
+            success=True,
+            output={
+                "sensor": sensor,
+                "old_value": round(old_val, 2),
+                "new_value": round(new_val, 2),
+                "delta": delta,
+                "source": source,
+                "direction": "increased" if new_val > old_val else "decreased" if new_val < old_val else "unchanged",
+            },
+        )
+
+
+def _sensor_slot(root: Any, sensor: str) -> tuple[dict[str, float] | None, str]:
+    """The metrics dict and key a (possibly qualified) sensor name lives in.
+
+    Mirrors ``_apply_sensor_deltas``'s resolution: ``"arms.thermal"`` is the
+    ``thermal`` sub-sensor of the ``arms`` modulator; a bare name is on the root.
+    """
+    if "." in sensor:
+        mod_name, sub_name = sensor.split(".", 1)
+        mod = root.modulators.get(mod_name)
+        return (getattr(mod, "vital_metrics", None) if mod is not None else None), sub_name
+    return root.vital_metrics, sensor
 
 
 class InjectPainTool(Tool):

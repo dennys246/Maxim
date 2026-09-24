@@ -48,6 +48,13 @@ two reasons:
 - Adapt a copy of pain inside one consumer, such as memory, NAc or a reflex. Only the producer adapts.
 - Change any default before an experiment earns it (two-tier rule: it enters as `[engineering]`).
 
+## A current violation of the rule above (found 2026-09-24)
+
+The narrative reflex path adapts the **stimulus itself**: `embodiment/reflex.py` habituation,
+sensitization and pre-emption scale the damage `damage_component` inflicts. Its re-layering is
+recorded in [reflex_layering.md](reflex_layering.md). That plan's step 3a hands felt-pain
+adaptation to this plan rather than building a second one, so reviving either should read both.
+
 ## Links
 
 - [memory_strength_and_forgetting.md](../memory_strength_and_forgetting.md), Phase 2 decision 4

@@ -117,8 +117,8 @@ reflexes:
     response:
       tool: set_entity_sensor
       params:
-        sensor: awareness
-        value: -0.1
+        sensor: head.awareness
+        delta: -0.1
         source: reflex_startle
     base_intensity: 0.10
     intensity_scale:
@@ -139,7 +139,7 @@ reflexes:
       tool: set_entity_sensor
       params:
         sensor: stamina
-        value: -0.05
+        delta: -0.05
         source: reflex_cold
     base_intensity: 0.05
     cooldown_s: 10.0
