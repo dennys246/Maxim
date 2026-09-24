@@ -1,0 +1,134 @@
+{
+  "session_id": "20260924_095451",
+  "timestamp": "2026-09-24 09:59:19",
+  "goal": "You are an adventurer in a dark cave. A dragon attacks you repeatedly with claws and fire breath. The dragon roars deafeningly. It slams you against the wall. A freezing wind blows through the cave.",
+  "mode": "generative",
+  "language_model": "/Users/dennys/.maxim/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+  "language_provider": "lane-large",
+  "language_backend_class": "_MaximPeerBackend",
+  "language_endpoint": "http://127.0.0.1:8100/v1",
+  "aut_model": "",
+  "aut_provider": "",
+  "aut_backend_class": "",
+  "aut_endpoint": "",
+  "duration_s": 268.4,
+  "turns": 5,
+  "finish_reason": "planning_failed",
+  "total_actions": 6,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "sense_tools": 4,
+    "causal_links": 1,
+    "_llm_unavailable": 1
+  },
+  "tool_success_rates": {
+    "sense_tools": 1.0,
+    "causal_links": 1.0,
+    "_llm_unavailable": 0.0
+  },
+  "response_texts": [],
+  "aut_memories_formed": 153,
+  "aut_causal_links": 13,
+  "aut_nac_summary": {
+    "total_links": 13,
+    "top_links": [
+      {
+        "event": "tool:sense_tools",
+        "outcome": "tool:sense_tools:positive",
+        "confidence": 0.64,
+        "observations": 3
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "tool:sense_tools:positive",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "success:Your capabilities by category:\n- Head (base_humano",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "plan:I need to find a way to protect myself from the dragon's claws and fire breath.:success",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "success:Found 1 capabilities:\n- base_humanoid_pick_up: Pic",
+        "confidence": 0.475,
+        "observations": 1
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 62927,
+  "total_output_tokens": 2211,
+  "lane_breakdown": {
+    "large": {
+      "lane": "large",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    },
+    "small": {
+      "lane": "small",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    }
+  },
+  "latency_p50_ms": 0.0,
+  "latency_p99_ms": 0.0,
+  "pain_events_count": 0,
+  "fear_blocks_count": 0,
+  "learn_events_count": 21,
+  "provider_failures": {},
+  "llm_summary": "During the simulation, you interacted with the environment using sense_tools for a total of 5 turns. However, the mission failed due to planning_failed. The robot successfully used sense_tools four times out of five attempts and learned thirteen causal links. The top causal link was between 'tool:sense_tools' and 'success:Your capabilities by category'.",
+  "llm_issues_found": [
+    "The mission did not succeed as intended despite the successful use of tools."
+  ],
+  "llm_recommendations": [
+    "Investigate why planning failed, possibly due to insufficient or inappropriate tool usage. Consider expanding the robot's repertoire of tools and strategies for handling unexpected situations. Enhance the AI's ability to adapt to new environments and learn from past experiences."
+  ],
+  "llm_finish_status": "planning_failed",
+  "llm_finish_reason": "planning failures=4 (limit 3), transport failures=0 (limit 3); last=unregistered_tool_proposed \u2014 see bugs ledger D13",
+  "llm_finish_summary": "PLANNING LIVENESS EXHAUSTED [planning_failed] (bugs ledger D13): planning failures=4 (limit 3), transport failures=0 (limit 3); last=unregistered_tool_proposed \u2014 see bugs ledger D13",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/Users/dennys/.maxim/sim_reports/20260924_095451/bio_telemetry.jsonl",
+  "apparatus": {
+    "substrate_actions_per_turn": null
+  },
+  "_format_version": "1.0"
+}
