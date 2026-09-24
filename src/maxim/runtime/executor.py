@@ -573,15 +573,26 @@ class Executor:
         The Rescorla-Wagner error NAc computed for this invocation's outcome travels on the
         ToolOutput (#847), so a capture reads the surprise of the action it captures rather than an
         earlier tool's; the drive pressure it acted under and the relief it produced ride along the
-        same way (memory-strength Phase 2b-ii). The executor is the only writer of all three.
+        same way (memory-strength Phase 2b-ii), and so does its pain (Phase 2S-c). The executor is
+        the only writer of all four.
         """
         if not isinstance(result, ToolOutput):
             return result
-        rpe = self._tool_pain_bridge.pop_invocation_rpe(invocation_id) if self._tool_pain_bridge is not None else None
+        bridge = self._tool_pain_bridge
+        rpe = bridge.pop_invocation_rpe(invocation_id) if bridge is not None else None
+        # Popped on EVERY path, like the surprise, so no invocation's pain outlives it (2S-c).
+        pain = bridge.pop_invocation_pain(invocation_id) if bridge is not None else None
         relief = self._drive_relief(result)
-        if (result.rpe, result.drive_pressure_before, result.drive_relief) == (rpe, pressure_before, relief):
+        if (result.rpe, result.drive_pressure_before, result.drive_relief, result.pain) == (
+            rpe,
+            pressure_before,
+            relief,
+            pain,
+        ):
             return result
-        return dataclasses.replace(result, rpe=rpe, drive_pressure_before=pressure_before, drive_relief=relief)
+        return dataclasses.replace(
+            result, rpe=rpe, drive_pressure_before=pressure_before, drive_relief=relief, pain=pain
+        )
 
     def tool_usage_stats(self) -> dict[str, Any]:
         """Get tool usage statistics for experiment analysis."""

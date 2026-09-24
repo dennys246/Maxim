@@ -100,6 +100,7 @@ def test_a_malformed_situation_escapes_the_loops_capture_instead_of_dropping_the
             action={"tool_name": "t"},
             result=None,
             run_id="r",
+            novelty=None,
             situation={"world": 3},
         )
 

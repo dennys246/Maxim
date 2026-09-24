@@ -8,13 +8,14 @@ limits at peak hours, resource exhaustion during batch windows).
 from __future__ import annotations
 
 import logging
+import math
 import threading
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 from maxim.decisions.causal_link import Valence
 from maxim.decisions.nac import NAc
-from maxim.proprioception.pain import PainDetector, PainSignal, PainType
+from maxim.proprioception.pain import PainDetector, PainKind, PainSignal, PainType, failure_pain_kind
 from maxim.memory.encoding import EncodingContractError
 from maxim.utils.logging import log_swallowed_exception
 
@@ -86,6 +87,13 @@ class ToolPainBridge:
         # ``_last_rpe`` slot that nothing ever reset, which let a capture read an EARLIER tool's
         # surprise into its salience. Bounded: entries the executor never collects age out.
         self._rpe_by_invocation: OrderedDict[str, float] = OrderedDict()
+        # Pain per INVOCATION (memory-strength Phase 2S-c), collected by the executor like the
+        # surprise: ``[caused, felt]`` -- the pain THIS action caused (its own delta-attributed
+        # ``embodiment_failures``) and the peak pain the body felt while it ran (any bus signal
+        # while it was pending). ``felt`` starts at 0.0 when this bridge observes a pain source
+        # (watched, nothing yet) and None when it observes none (not measured).
+        self._pain_by_invocation: OrderedDict[str, list[float | None]] = OrderedDict()
+        self._observes_pain = pain_bus is not None or pain_detector is not None
         self._last_reflection_time: dict[str, float] = {}
         # Subscribe to pain signals via bus (preferred) or detector (legacy)
         if pain_bus is not None:
@@ -110,6 +118,67 @@ class ToolPainBridge:
         attributed it). Popped: each invocation's surprise is read once, by its own capture."""
         with self._lock:
             return self._rpe_by_invocation.pop(invocation_id, None)
+
+    def pop_invocation_pain(self, invocation_id: str) -> float | None:
+        """The pain of THIS invocation, for its capture's encoding (memory-strength Phase 2S-c).
+
+        The pain the action CAUSED (its delta-attributed embodiment failures) when it caused any;
+        otherwise the peak pain the body FELT while it ran (every pain signal published while it was
+        pending) -- ``0.0`` when a pain source was watched and nothing fired, ``None`` when this
+        bridge watches no pain source or never saw the invocation start. Popped, once, like the
+        surprise. Continuous distress is NOT here: a latched drive breach publishes on entry and
+        re-injury, not every tick -- its standing weight is the drive pressure the executor stamps.
+        """
+        with self._lock:
+            entry = self._pain_by_invocation.pop(invocation_id, None)
+        if entry is None:
+            return None
+        caused, felt = entry
+        return caused if caused is not None else felt
+
+    def _note_felt_pain(self, signal: PainSignal) -> None:
+        """Raise the FELT pain of every pending invocation to this signal's NOCICEPTIVE intensity.
+
+        Only physical harm is pain (``PainSignal.kind``, the owner's rule): air hunger (a drive),
+        fear (anticipatory) and a tool failing (frustration) all reach this bridge on the same bus
+        and are NOT recorded as pain -- the first draft recorded them, measured at 0.7 / 0.5 / 0.3.
+        ``PainSignal`` validates intensity into ``[0, 1]`` at construction. Executions are serialized
+        per bridge (see ``_on_embodiment_pain``), so this is normally the one running action.
+        """
+        intensity = signal.nociceptive_intensity
+        if intensity is None:
+            return
+        with self._lock:
+            for _tool, invocation_id in self._pending_tools:
+                entry = self._pain_by_invocation.get(invocation_id)
+                if entry is not None and entry[1] is not None:
+                    entry[1] = max(entry[1], float(intensity))
+
+    def _note_caused_pain(self, invocation_id: str, failures: list[dict[str, Any]]) -> None:
+        """Record the pain THIS action caused: the peak of its delta-attributed NOCICEPTIVE failures.
+
+        A ``drive:<sensor>:<band>`` failure is a homeostatic breach, not pain (``failure_pain_kind``),
+        unless the sensor is health -- otherwise a caused drive discomfort would both count as pain
+        and, because caused pain takes precedence, mask real harm felt in the same action. A failure
+        whose ``pain`` is not a finite number in ``[0, 1]`` is skipped (a malformed body spec must not
+        become a capture-contract break downstream).
+        """
+        values = [
+            float(f["pain"])
+            for f in failures
+            if isinstance(f, dict)
+            and failure_pain_kind(str(f.get("name", ""))) is PainKind.NOCICEPTIVE
+            and isinstance(f.get("pain"), (int, float))
+            and not isinstance(f.get("pain"), bool)
+            and math.isfinite(float(f["pain"]))
+            and 0.0 <= float(f["pain"]) <= 1.0
+        ]
+        if not values or not invocation_id:
+            return
+        with self._lock:
+            entry = self._pain_by_invocation.get(invocation_id)
+            if entry is not None:
+                entry[0] = max(values) if entry[0] is None else max(entry[0], *values)
 
     def _emit_temporal_event(
         self,
@@ -171,6 +240,11 @@ class ToolPainBridge:
             self._pending_tools[(tool_name, invocation_id)] = event_signature
             if context:
                 self._pending_contexts[(tool_name, invocation_id)] = context
+            if invocation_id:
+                self._pain_by_invocation[invocation_id] = [None, 0.0 if self._observes_pain else None]
+                self._pain_by_invocation.move_to_end(invocation_id)
+                while len(self._pain_by_invocation) > self._RPE_BY_INVOCATION_MAX:
+                    self._pain_by_invocation.popitem(last=False)
         return event_signature
 
     def record_tool_complete(
@@ -325,6 +399,7 @@ class ToolPainBridge:
                 "the caller (runtime/executor.py) is responsible for gating on this."
             )
 
+        self._note_caused_pain(invocation_id, failures)  # memory-strength Phase 2S-c
         with self._lock:
             event_signature = self._pending_tools.pop((tool_name, invocation_id), None)
             tool_context = self._pending_contexts.pop((tool_name, invocation_id), None)
@@ -399,6 +474,10 @@ class ToolPainBridge:
 
     def _on_pain(self, signal: PainSignal) -> None:
         """Handle pain signals from tool failures and embodiment failures."""
+        # Record-only (2S-c): notes felt NOCICEPTIVE pain for the pending invocations' captures. The
+        # reward/pain-NAc paths below are unchanged and still see every signal, whatever its kind --
+        # provided every PainType is classified (classify_pain raises otherwise; test-pinned).
+        self._note_felt_pain(signal)
         # Embodiment-sourced failures (SEM entities)
         if signal.context.get("source") == "embodiment":
             self._on_embodiment_pain(signal)

@@ -620,17 +620,34 @@ path. Both fixes move there, where the inputs exist (`ctrl.pending_proposal.clus
 - **2S-b: a capture records its situation.** The record stores its `{modality: cluster_id}`, and
   those clusters' ATL concepts (same ids) gain `memory_refs['hippocampus']` to it. This is the
   missing link, and it rides existing stores (no new mechanism).
-- **2S-c: survival encoding signals at the loop capture** (the 2b-iii producers): `novelty` from the
-  EC match margin, `pain` measured for the action, and `salience` from drive pressure, sensor change
-  and pain. They are written onto the trace and read only by the opt-in `strength` strategy, as in
-  Phase 2b. **Pain's source is 2S-c's design decision, and it is NOT
-  `bio_integration.consume_pain_intensity`:** that pops a stash filled only by
-  `record_pain_intensity`, which is **Dormant since 2026-05-26** with zero callers, so it returns
-  `None` in production. It is also destructive and already consumed once at the loop's
-  `observe_episode`. The live candidates are the embodiment pain channels
-  (`docs/agents/embodiment.md` §2): the action's own failures (`ToolOutput.side_effects
-  ["embodiment_failures"]`, channel 1) and the PainBus publishes in the action's window
-  (channel 2).
+- **2S-c: survival encoding signals at the loop capture.** SHIPPED 2026-09-24:
+  - **Pain** (owner: the action's own failures first, felt pain as the fallback) — **nociception
+    only**, per decision 4: the `ToolPainBridge`, which already hears every PainBus signal and tracks
+    the running invocation, keeps per invocation the NOCICEPTIVE pain the action CAUSED (its
+    delta-attributed `embodiment_failures`, `drive:*` excluded except health) and the peak
+    NOCICEPTIVE pain FELT while it ran. What counts is decided ONCE, on the type:
+    `PainSignal.kind` (`proprioception/pain.py::classify_pain`, `PainKind`), which `_pain_encoding`
+    now reads too — the first draft skipped it and both review lenses measured air hunger 0.7, fear
+    0.5 and tool frustration 0.3+ recorded as pain. `pop_invocation_pain` hands caused, else felt, to the executor,
+    which stamps `ToolOutput.pain` beside `rpe`. `0.0` = watched, nothing fired; `None` = no pain
+    source. NOT the dormant `consume_pain_intensity` stash. A latched drive breach publishes on entry
+    and re-injury only, so standing distress is carried by drive pressure, not pain.
+  - **Novelty**: `1 − best similarity` of each situation cluster's encode, the most novel modality.
+    Coarse by construction (sensor completions sit at or above 0.85, so familiar reads ~0–0.15);
+    `-1` (nothing comparable) is left UNMEASURED, because the tag would weight it by the Hippocampus
+    count and give an empty comparison full confidence. The margins are read right after each encode
+    and carried on the proposal (`LLMProposal.cluster_margins`), because the encoder's stash is
+    overwritten by the next tick.
+  - **Salience: deliberately NOT measured on this path (a departure from this plan's wording).**
+    The plan said "salience from drive pressure, sensor change and pain", but `encoding_tag` already
+    scores pain and relevance-gated drive pressure as their own deviations, so a salience built from
+    them would count them twice. A distinct attention signal (sensor change alone) is a follow-up
+    with its own design, not part of 2S-c.
+  - **Recorded `None`s:** an unchanged tick (the encoder's min-delta gate runs no scan) records no
+    novelty; interactive mode suppresses `record_tool_start`, so its captures record pain `None`.
+  - **Known simplification:** novelty is still weighted by the Hippocampus's own trace count
+    (`novelty_reference_size`), not the EC's comparable-node count. The tag's docstring anticipates
+    the producer supplying its own set; that is owed and not done here.
 - **2S-d: substrate-native pattern completion.** On a situation change, cue by the current cluster
   ids → the shared-id ATL concepts → their linked records → `MemoryLayer.activate(source="prediction")`.
   Any EC lookup goes through `EntorhinalCortex.pattern_complete_readonly` (it takes an embedding),

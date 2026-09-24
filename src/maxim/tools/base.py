@@ -96,6 +96,10 @@ class ToolOutput:
     # ``(drive, value in [0, 1])``. ``None`` = no body attached. Tools never set either.
     drive_pressure_before: tuple[tuple[str, float], ...] | None = None
     drive_relief: tuple[tuple[str, float], ...] | None = None
+    # The pain of THIS invocation, stamped by the executor from the tool-pain bridge
+    # (memory-strength Phase 2S-c): what the action caused, else the peak felt while it ran; 0.0
+    # when a pain source was watched and nothing fired; None when none was watched. Tools never set it.
+    pain: float | None = None
 
 
 # Backward-compat alias — existing tools that import ToolResult keep working.
