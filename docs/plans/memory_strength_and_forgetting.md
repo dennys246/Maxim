@@ -654,7 +654,8 @@ path. Both fixes move there, where the inputs exist (`ctrl.pending_proposal.clus
     (roadmap §Recorded limit). It needs Exp 62's pools, or an open-world trace.
   - **(C) sequence recall:** multi-step credit. It overlaps the R4 routing audit, which comes first.
 
-  (B) is the recommendation. The choice and its review are owed before 2S-e is built.
+  **(B) CHOSEN (owner, 2026-09-24).** Owed before 2S-e is built: its plan section (the front-gate
+  answer against the substrate keying rule, and the validation world), then the four-lens design review.
 
 **Phase 3 — sleep.** Opt-in `sleep()` in the generic sim loop too (the survival harnesses already
 run it), all of it behind the strategy selection; replay updates `S` directly and does NOT go
