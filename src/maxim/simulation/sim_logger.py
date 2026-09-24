@@ -19,15 +19,61 @@ from __future__ import annotations
 
 import contextvars
 import enum
+import functools
 import logging
 import sys
 import threading
 import time
 from contextlib import contextmanager
-from typing import Any, Callable, Generator
+from typing import Any, Callable, Generator, ParamSpec, TypeVar
 from maxim.utils.logging import log_swallowed_exception
 
 logger = logging.getLogger(__name__)
+
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def _contained(fn: Callable[_P, _R]) -> Callable[_P, _R | None]:
+    """Make an emitter contractually NON-RAISING, and REPORT what it contains (#863).
+
+    Instrumentation must never cost its caller anything. Before this contract every ``sim_*``
+    emitter could raise into its caller on a bad argument or a failing render, so 95 call sites
+    wrapped them in ``try/except Exception`` — and most of those wraps also enclosed the caller's
+    own logic, swallowing its bugs along with the logger's. That is how ``NAc.predict`` lost every
+    prediction from the sim log for months (#861).
+
+    **It reports through the Stage-1 path with a SUPPLIED site**, one per emitter:
+    ``swallowed_exception`` event, WARNING the first time each emitter fails, DEBUG after. The
+    first cut used the explicit form (``log_swallowed_exception(e, operation=...)``), which is a
+    DEBUG line with no event — its JSONL record is ``{"e": "log"}`` and nothing else. That made the
+    contract QUIETER than no contract: a caller with no ``try`` used to get a traceback and got an
+    invisible line instead (both review lenses, measured). The site is ``sim_logger.py:<emitter>:
+    <line>`` rather than this wrapper's frame, because one frame for 33 emitters would share one
+    dedup key — the first failure anywhere would WARN and every later one would be silent.
+
+    This is NOT the deleted ``@resilient``. That was a general swallowing decorator; this is private
+    to the telemetry module, applied only to functions whose whole job is to emit, never to code
+    that writes state, and every failure it contains is reported. Keep it that way.
+
+    Argument construction happens in the CALLER, before this wrapper runs, so no containment here
+    can reach it. That is why the call sites need reading one by one rather than sweeping (#863).
+    Only ``Exception`` is contained; ``KeyboardInterrupt``/``SystemExit`` propagate.
+    """
+    site = f"sim_logger.py:{fn.__name__}:{fn.__code__.co_firstlineno}"
+
+    @functools.wraps(fn)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R | None:
+        try:
+            return fn(*args, **kwargs)
+        except Exception:
+            log_swallowed_exception(site=site)
+            return None
+
+    wrapper.__maxim_contained__ = True  # type: ignore[attr-defined]
+    return wrapper
+
 
 # Dedicated bridge logger for sim_log → MAXIM_LOG_FILE unification. Configured
 # at module import: never propagates to the root logger (which would double-
@@ -894,6 +940,7 @@ def get_sim_records() -> list[dict[str, Any]]:
     return list(_log_records)
 
 
+@_contained
 def sim_log(
     subsystem: str,
     message: str,
@@ -1073,16 +1120,19 @@ def sim_log(
         print(line, flush=True)
 
 
+@_contained
 def sim_percept(source: str, summary: str, *, agent_id: str | None = None, **kwargs: Any) -> None:
     """Log an incoming percept."""
     sim_log("PERCEPT", f"👁️ [{source}] {summary}", kwargs if kwargs else None, agent_id=agent_id)
 
 
+@_contained
 def sim_memory(action: str, *, agent_id: str | None = None, **kwargs: Any) -> None:
     """Log a hippocampus/memory event."""
     sim_log("HIPPOCAMPUS", f"💾 {action}", kwargs if kwargs else None, agent_id=agent_id)
 
 
+@_contained
 def sim_debug(subsystem: str, action: str, *, agent_id: str | None = None, **kwargs: Any) -> None:
     """Log an event that only appears in debug mode (--debug).
 
@@ -1091,6 +1141,7 @@ def sim_debug(subsystem: str, action: str, *, agent_id: str | None = None, **kwa
     sim_log(subsystem, action, kwargs if kwargs else None, agent_id=agent_id, _force_debug=True)
 
 
+@_contained
 def sim_reaction(kind: str, intensity: float, source: str, *, agent_id: str | None = None, **kwargs: Any) -> None:
     """Log a Reaction from the ReactionBus.
 
@@ -1114,11 +1165,13 @@ def sim_reaction(kind: str, intensity: float, source: str, *, agent_id: str | No
     )
 
 
+@_contained
 def sim_pain(pain_type: str, intensity: float, *, agent_id: str | None = None, **kwargs: Any) -> None:
     """Log a pain signal."""
     sim_log("PAIN", f"🔴 {pain_type} (intensity={intensity:.2f})", kwargs if kwargs else None, agent_id=agent_id)
 
 
+@_contained
 def sim_fear(tool: str, allowed: bool, reason: str = "", *, agent_id: str | None = None) -> None:
     """Log a FearAgent review."""
     if allowed:
@@ -1127,6 +1180,7 @@ def sim_fear(tool: str, allowed: bool, reason: str = "", *, agent_id: str | None
         sim_log("BLOCKED", f"🚫 BLOCKED: {tool} — {reason}", agent_id=agent_id)
 
 
+@_contained
 def sim_action(
     tool: str,
     success: bool,
@@ -1159,6 +1213,7 @@ def sim_action(
     )
 
 
+@_contained
 def sim_result(scenario_name: str, passed: bool, met: int, failed: int) -> None:
     """Log final scenario result."""
     status = "PASS" if passed else "FAIL"
@@ -1167,6 +1222,7 @@ def sim_result(scenario_name: str, passed: bool, met: int, failed: int) -> None:
     sim_log(subsystem, f"{icon} {status}: {scenario_name} ({met} passed, {failed} failed)")
 
 
+@_contained
 def sim_nac(event: str, outcome: str, rpe: float, confidence: float, *, agent_id: str | None = None) -> None:
     """Log a NAc causal learning observation."""
     icon = "📈" if rpe >= 0 else "📉"
@@ -1175,11 +1231,13 @@ def sim_nac(event: str, outcome: str, rpe: float, confidence: float, *, agent_id
     )
 
 
+@_contained
 def sim_scn(memory_id: str, phase: str, significance: float, *, agent_id: str | None = None) -> None:
     """Log an SCN temporal bin registration."""
     sim_log("SCN", f"🕐 Registered {memory_id[:8]} in {phase} (significance={significance:.2f})", agent_id=agent_id)
 
 
+@_contained
 def sim_cerebellum(
     entity: str, affordance: str, confidence: float, error: float | None = None, *, agent_id: str | None = None
 ) -> None:
@@ -1195,6 +1253,7 @@ def sim_cerebellum(
         sim_log("CEREBELLUM", f"📊 New model: {entity}.{affordance} (conf={confidence:.2f})", agent_id=agent_id)
 
 
+@_contained
 def sim_sensory(
     modality: str, entity: str, acuity: float, dropped: bool = False, *, agent_id: str | None = None
 ) -> None:
@@ -1205,6 +1264,7 @@ def sim_sensory(
         sim_log("SENSORY", f"📡 Modulated {modality} from {entity} (acuity={acuity:.2f})", agent_id=agent_id)
 
 
+@_contained
 def sim_body_state(entity_count: int, active_failures: int, *, agent_id: str | None = None) -> None:
     """Log body state injection into prompt."""
     icon = "🔥" if active_failures > 0 else "🫀"
@@ -1220,6 +1280,7 @@ def sim_body_state(entity_count: int, active_failures: int, *, agent_id: str | N
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+@_contained
 def sim_learn(
     headline: str,
     detail: str = "",
@@ -1247,6 +1308,7 @@ def sim_learn(
     sim_log("LEARN", msg, data, agent_id=agent_id)
 
 
+@_contained
 def sim_drive(
     name: str,
     value: float,
@@ -1277,6 +1339,7 @@ def sim_drive(
     )
 
 
+@_contained
 def sim_reflex(
     reflex_name: str,
     tool: str,
@@ -1313,6 +1376,7 @@ def sim_reflex(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+@_contained
 def sim_nac_learn(
     event: str,
     outcome: str,
@@ -1337,6 +1401,7 @@ def sim_nac_learn(
     )
 
 
+@_contained
 def sim_nac_predict(
     event: str,
     outcomes: list[tuple[str, float]],
@@ -1361,6 +1426,7 @@ def sim_nac_predict(
     )
 
 
+@_contained
 def sim_cerebellum_train(
     entity: str,
     affordance: str,
@@ -1379,6 +1445,7 @@ def sim_cerebellum_train(
     )
 
 
+@_contained
 def sim_cerebellum_predict(
     entity: str,
     affordance: str,
@@ -1404,6 +1471,7 @@ def sim_cerebellum_predict(
         )
 
 
+@_contained
 def sim_hippocampus_episode(
     action: str,
     episode_id: str = "",
@@ -1430,6 +1498,7 @@ def sim_hippocampus_episode(
     )
 
 
+@_contained
 def sim_ec_pattern(
     action: str,
     concept: str,
@@ -1448,6 +1517,7 @@ def sim_ec_pattern(
     )
 
 
+@_contained
 def sim_imagination(
     phase: str,
     phrase: str,
@@ -1476,6 +1546,7 @@ def sim_imagination(
     )
 
 
+@_contained
 def sim_discovery(
     query: str,
     matched: int,
@@ -1493,6 +1564,7 @@ def sim_discovery(
     )
 
 
+@_contained
 def sim_enrichment(
     system: str,
     summary: str,
@@ -1522,6 +1594,7 @@ def sim_enrichment(
     )
 
 
+@_contained
 def sim_gate(
     gate_name: str,
     passed: bool,
@@ -1553,6 +1626,7 @@ _SENSOR_SIGNIFICANT_DRIFT_PCT = 15.0
 _sensor_last_logged: dict[tuple[str, str], float] = {}
 
 
+@_contained
 def sim_sensor(
     entity: str,
     sensor: str,
@@ -1596,6 +1670,7 @@ def sim_sensor(
         )
 
 
+@_contained
 def sim_thought(
     passed: bool,
     reason: str,
@@ -1625,6 +1700,7 @@ def sim_thought(
         )
 
 
+@_contained
 def sim_pre_deliberation(
     gate_passed: bool,
     score: float,
@@ -1673,6 +1749,7 @@ def sim_pre_deliberation(
         )
 
 
+@_contained
 def sim_contemplation(
     gate_passed: bool,
     refined: bool,
@@ -1708,6 +1785,7 @@ def sim_contemplation(
         )
 
 
+@_contained
 def sim_deliberation_update(
     reasoning: str,
     cycle: int,
@@ -1769,6 +1847,7 @@ def sim_deliberation_update(
     )
 
 
+@_contained
 def sim_deliberation_end(
     cycle: int,
     max_cycles: int,

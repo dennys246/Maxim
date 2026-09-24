@@ -72,6 +72,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _provenance import preflight_gated_record_or_exit  # noqa: E402
+from lint_no_silent_swallows import is_stage1_report  # noqa: E402  (THE definition of a Stage-1 report)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src" / "maxim"
@@ -123,9 +124,10 @@ def inventory_sites(src_root: Path = SRC_ROOT) -> list[dict[str, object]]:
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            func = node.func
-            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
-            if name != HELPER or node.args or node.keywords:
+            # One definition, shared with the CI lint's checks 3 and 4. This used to test "zero-arg"
+            # here while the lint accepted any form — two definitions of "instrumented" that
+            # disagreed, so a de-instrumentation could pass one and not the other.
+            if not is_stage1_report(node):
                 continue
             try:
                 rel = str(path.relative_to(REPO_ROOT))
@@ -289,7 +291,7 @@ def cmd_inventory(args: argparse.Namespace) -> int:
         print(json.dumps(sites, indent=2))
         return 0
     per_file = Counter(s["file"] for s in sites)
-    print(f"Stage-1 instrumented (zero-arg) swallow sites: {len(sites)} in {len(per_file)} files")
+    print(f"Stage-1 instrumented swallow sites: {len(sites)} in {len(per_file)} files")
     for file, count in sorted(per_file.items(), key=lambda kv: (-kv[1], kv[0])):
         print(f"  {count:3d}  {file}")
     return 0
@@ -395,27 +397,23 @@ def cmd_check(args: argparse.Namespace) -> int:
             print(f"  {problem}", file=sys.stderr)
         return 2
 
-    # Deleting instrumentation must not read as "fewer firings, therefore
-    # green". Rewriting `except Exception: log_swallowed_exception()` into a
-    # plain `logger.debug(...)` passes lint_no_silent_swallows (it is
-    # handled-and-logged, and that ratchet only blocks counts going UP) and
-    # would silently de-instrument the measurement path.
+    # De-instrumentation — a site that keeps swallowing but stops emitting `swallowed_exception`,
+    # so fewer firings would read as an improvement — is guarded by
+    # `scripts/lint_no_silent_swallows.py` check 3, in CI, per measurement-path file.
+    #
+    # This used to FAIL here when the instrumented-site COUNT fell below the baseline's. A count
+    # cannot tell a swallow that was DELETED from one that was de-instrumented, so every swallow
+    # burn-down (#863) failed this gate and had to be re-baselined past it — a guard that fires on
+    # the fix it exists to protect gets clicked through, and then protects nothing. The count is
+    # still printed: it is the denominator for reading the firing comparison below.
     baseline_sites = int(baseline.get("instrumented_site_count", 0))
     current_sites = len(inventory_sites())
-    print(f"instrumented sites: baseline {baseline_sites}, now {current_sites}")
-    if not baseline_sites:
-        print(
-            "WARNING: baseline carries no instrumented_site_count — the de-instrumentation "
-            "check cannot run against it. Re-generate the baseline with the current tool."
-        )
-    if baseline_sites and current_sites < baseline_sites:
-        print(
-            f"FAIL: instrumented swallow sites fell {baseline_sites} -> {current_sites}. "
-            "The measurement path lost instrumentation; a lower firing count is not "
-            "evidence of anything. Re-baseline deliberately if the removal is intended.",
-            file=sys.stderr,
-        )
-        return 1
+    # Labelled with the baseline's own commit, so "50 then, 49 now" reads as history, not a regression.
+    print(
+        f"instrumented sites: {current_sites} now; {baseline_sites} in the baseline taken at "
+        f"{str(baseline.get('git_hash') or 'an unrecorded commit')[:12]} (informational — "
+        "de-instrumentation is gated by lint_no_silent_swallows.py checks 3 and 4)"
+    )
 
     cand_pairs = _pair_counts([f for mode in by_mode.values() for f in mode])
 

@@ -100,16 +100,37 @@ functions directly.
 
 ## Using the gate
 
-> **2026-09-23 (#864) — `check` against this artifact now exits 1 on a clean tree, and that exit is
-> NOT a de-instrumentation regression.** Three instrumented sites were deliberately REMOVED from
-> `proprioception/pain_bus.py` (5 → 2): the swallows themselves were deleted, not rewritten into
-> something uninstrumented, which is the opposite of what this gate watches for. The live count is
-> now **49**; `baseline.json` reads **50** and is historical — it is a gated record stamped at its
-> own `git_hash` and is deliberately not edited, so `cmd_check` compares a frozen 50 against a live
-> 49 and fails. **Re-baseline from fresh captures before using `check` as a per-PR gate.**
+> **2026-09-23 — `check` no longer gates on `instrumented_site_count`.** The de-instrumentation
+> guard moved to `scripts/lint_no_silent_swallows.py` **checks 3 and 4**, in CI. A COUNT of
+> instrumented sites cannot tell a swallow that was DELETED from one that was de-instrumented, so
+> the old comparison failed every swallow burn-down (#863) — it first fired when #864 deleted three
+> `pain_bus.py` sites (live 52 → 49 vs this artifact's frozen 50) — and could only be satisfied by
+> re-baselining past it. (It did run in CI, through a pytest floor over all of `src/`.)
 >
-> The live count had also drifted UP to 52 before this removal, so the artifact's 50 had two sites
-> of slack that nothing was tracking.
+> - **Check 3**, per listed measurement-path file: broad swallows with no *Stage-1* report may not
+>   rise. A report means `log_swallowed_exception()` or its `site=` form ONLY — the explicit
+>   `(e, operation=...)` form is a DEBUG line with no `swallowed_exception` event, invisible to this
+>   gate, so rewriting a site into it IS de-instrumentation (the first cut accepted it; review round).
+> - **Check 4**, repo-wide: Stage-1 reports may disappear only together with their handlers. This
+>   keeps the old gate's reach over all of `src/` without its deletion confound, and catches a
+>   handler de-instrumented while being MOVED into an unlisted module, which check 3 cannot see.
+>
+> Both compare **per enclosing function** (review round 2): per-file counts let a burn-down that
+> deletes one silent swallow mask a de-instrumentation elsewhere in the same file. Masking inside a
+> single function remains a stated blind spot. The inventory counts `sim_logger.py`'s `@_contained`
+> as ONE site (its `site=` call) although it reports for 33 emitters under their own names, so
+> firing sites do not match inventory entries one-to-one there; the count is informational.
+>
+> Both are exercised through the lint's real `main()` in `tests/unit/test_lint_no_silent_swallows.py`
+> on synthetic git histories (deletion passes; de-instrumentation, the explicit-form rewrite, a
+> moved-and-de-instrumented function and a de-instrumentation masked by a burn-down each fail; a
+> pure rename passes), and the de-instrumentation
+> case was additionally reproduced on real `decisions/nac.py` in a scratch clone.
+>
+> `baseline.json`'s `instrumented_site_count` (50) is kept as the historical record it is — the
+> denominator at its own `git_hash` — and `check` still prints it beside the live count for reading
+> the firing comparison. It is no longer compared. The firing comparison (new `(file, exception)`
+> pairs) is unchanged and still wants a fresh capture before it is used as a per-PR gate.
 >
 > Worth recording against note (b) below: #861 found that `decisions/nac.py::predict` — a site that
 > fires on *every* prediction with a learned link — had been raising and being swallowed since PR
@@ -126,8 +147,8 @@ python scripts/fail_loud_stage2.py check \
   --capture generative=/tmp/new_generative.jsonl
 ```
 
-`check` exits 1 on a new `(file, exception-type)` pair or when instrumentation has been
-deleted, and 2 when the baseline is missing or the captures cannot support a verdict (empty,
+`check` exits 1 on a new `(file, exception-type)` pair (de-instrumentation is the CI lint's job
+now — see the note above), and 2 when the baseline is missing or the captures cannot support a verdict (empty,
 unparsable, or below `--min-lines`). A gate must not pass by citing an artifact that is not
 there, nor by reading a capture that measured nothing.
 

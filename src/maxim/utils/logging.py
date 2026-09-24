@@ -320,6 +320,7 @@ def log_swallowed_exception(
     context: dict[str, object] | None = None,
     logger: Optional[logging.Logger] = None,
     level: int | None = None,
+    site: str | None = None,
 ) -> None:
     """Log an exception that is intentionally swallowed. NEVER raises.
 
@@ -334,7 +335,15 @@ def log_swallowed_exception(
         except Exception:
             log_swallowed_exception()   # was: pass
 
-    **Legacy explicit form** — unchanged semantics (DEBUG default, no dedup)::
+    **Supplied-site form (Stage 1, #863)** — as the zero-arg form, but the site is given rather
+    than read from the frame. For code that contains failures on behalf of OTHER functions (a
+    decorator), where the frame is always its own::
+
+        except Exception:
+            log_swallowed_exception(site=f"sim_logger.py:{fn.__name__}:{lineno}")
+
+    **Legacy explicit form** — unchanged semantics (DEBUG default, no dedup, and NO structured
+    event: the JSONL line is content-free, so the Stage-2 gate cannot see it)::
 
         except SomeError as e:
             log_swallowed_exception(e, operation="risky_operation", context={"input": x})
@@ -343,6 +352,11 @@ def log_swallowed_exception(
         exc: The exception being swallowed (default: current ``sys.exc_info``).
         operation: Brief description of what was attempted (default: caller site).
         context: Optional dict of relevant context values.
+        site: Stage-1 site key (``file:function:line``) supplied by the caller; takes the
+            Stage-1 branch (structured event, WARNING-first per site). See the supplied-site form.
+            It WINS over ``operation`` if both are passed. Must be a STATIC code location: each
+            distinct value is a permanent dedup key, so a per-call string would warn every time
+            and grow the seen-set without bound.
         logger: Logger to use (defaults to "maxim").
         level: Log level. Default: DEBUG for the explicit form; for the
             zero-arg form, WARNING on a site's first fire then DEBUG.
@@ -351,7 +365,17 @@ def log_swallowed_exception(
         if logger is None:
             logger = logging.getLogger("maxim")
 
-        stage1_form = exc is None and operation is None
+        # ``site=`` is the Stage-1 form with the site SUPPLIED instead of read from the caller's
+        # frame (#863). A decorator that contains failures for many functions calls this from ONE
+        # frame, so the frame-derived site would collapse every function into one dedup key: the
+        # first failure anywhere would WARN and every later one, from any function, would drop to
+        # DEBUG. With ``site=`` each contained function keeps its own key, and still gets the
+        # structured ``swallowed_exception`` event the Stage-2 gate counts. The explicit form
+        # (``exc=``/``operation=``) remains a plain DEBUG line with NO event — it is not a report
+        # anything downstream can see, and the lint's check 3 does not count it as one.
+        stage1_form = site is not None or (exc is None and operation is None)
+        if site is not None:
+            operation = site
         if exc is None:
             exc = sys.exc_info()[1]
         if operation is None:

@@ -563,16 +563,13 @@ class ImaginationTrigger:
                 entity_name,
                 ref,
             )
-            try:
-                from maxim.simulation.sim_logger import sim_log
+            from maxim.simulation.sim_logger import sim_log
 
-                sim_log(
-                    "SEM_TRACE",
-                    f"Scene entity '{entity_name}' instantiated from {ref} "
-                    f"(observe-only — use sense/sense_presence to observe)",
-                )
-            except Exception:
-                pass
+            sim_log(
+                "SEM_TRACE",
+                f"Scene entity '{entity_name}' instantiated from {ref} "
+                f"(observe-only — use sense/sense_presence to observe)",
+            )
         except Exception as e:
             log.debug("Imagination: failed to instantiate '%s' from '%s': %s", entity_name, ref, e)
 
@@ -706,23 +703,17 @@ class ImaginationTrigger:
         # 5. Check DN arousal gate — only imagine during low arousal
         if not self._is_arousal_allowed():
             log.debug("Imagination: arousal gate blocked design for '%s'", phrase)
-            try:
-                from maxim.simulation.sim_logger import sim_imagination
+            from maxim.simulation.sim_logger import sim_imagination
 
-                sim_imagination("gate_rejected", phrase, result="arousal too high")
-            except Exception:
-                pass
+            sim_imagination("gate_rejected", phrase, result="arousal too high")
             return None
 
         # 6. Check energy budget
         if not self._is_energy_available():
             log.debug("Imagination: energy gate blocked design for '%s'", phrase)
-            try:
-                from maxim.simulation.sim_logger import sim_imagination
+            from maxim.simulation.sim_logger import sim_imagination
 
-                sim_imagination("gate_rejected", phrase, result="energy critical")
-            except Exception:
-                pass
+            sim_imagination("gate_rejected", phrase, result="energy critical")
             return None
 
         # 7. Design the entity
@@ -808,12 +799,9 @@ class ImaginationTrigger:
             self._imagined_refs.add(ref)
 
         log.info("Imagination: designed new entity '%s' from phrase '%s'", ref, phrase)
-        try:
-            from maxim.simulation.sim_logger import sim_imagination
+        from maxim.simulation.sim_logger import sim_imagination
 
-            sim_imagination("design", phrase, result=ref)
-        except Exception:
-            pass
+        sim_imagination("design", phrase, result=ref)
         return result
 
     def _is_arousal_allowed(self) -> bool:

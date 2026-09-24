@@ -78,9 +78,13 @@ branch: **the swallows are dead defensive weight, safe to narrow — Stage 3 is 
 
 Two things the artifact records rather than smooths over: (a) the instrumented-site count is
 **50**, not the 48 of the Stage-1 note — recompute with `fail_loud_stage2.py inventory`, never
-from prose (and as of 2026-09-23 / #864 the live count is **49**, after three deliberate removals
-in `proprioception/pain_bus.py`; the artifact's 50 is historical, which is exactly why the
-instruction is to recompute); (b) per-site coverage is NOT proven — a zero over two modes is a comparison
+from prose (the live count has moved since — deliberate removals in #864, a `site=` report added
+in #863 — and the artifact's 50 is historical, which is exactly why the instruction is to
+recompute). **The count no longer gates anything:** de-instrumentation is caught by
+`lint_no_silent_swallows.py` checks 3 (per listed file) and 4 (repo-wide, survives extraction) in
+CI, which — unlike a count — tell a deleted swallow (free) from a de-instrumented one (fails). Both
+count only the Stage-1 forms as reports, per §Policy item 2: the explicit `(e, operation=...)` form
+emits no event and does not count; (b) per-site coverage is NOT proven — a zero over two modes is a comparison
 baseline, not proof that all 50 sites are unreachable.
 
 **The grep in the original instruction does not work as written.** "Grep the JSONL for

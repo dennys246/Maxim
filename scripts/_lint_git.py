@@ -140,6 +140,7 @@ def count_ratchet(
     hits: Callable[[str], list],
     *,
     exclude: frozenset[str] = frozenset(),
+    include: frozenset[str] | None = None,
     what: str = "count",
     advice: str = "",
 ) -> list[str]:
@@ -148,10 +149,17 @@ def count_ratchet(
     Per-file and count-based, so moving code within a file is free and a new file is
     grandfathered at zero. ``exclude`` holds repo-relative paths the caller checks
     another way (e.g. the canonical writer itself).
+
+    ``include`` restricts the check to files whose NEW or OLD path is listed. Use it rather than
+    passing each file as its own ``scope``: a single-file pathspec holds only one side of a rename,
+    so ``-M`` cannot pair them and a pure move reads as a file whose every site is new — the
+    ratchet then fires on the move it is supposed to allow.
     """
     out: list[str] = []
     for rel, rel_at_base in changed_files(repo_root, base, scope):
         if rel in exclude or rel_at_base in exclude:
+            continue
+        if include is not None and rel not in include and rel_at_base not in include:
             continue
         path = repo_root / rel
         new = len(hits(path.read_text(errors="replace"))) if path.exists() else 0
