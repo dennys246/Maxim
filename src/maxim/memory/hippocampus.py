@@ -19,6 +19,7 @@ fields, or sharp-wave ripple dynamics.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import queue
 import threading
@@ -38,6 +39,10 @@ from maxim.agents.bus import DependencyGraph, EdgeType
 from maxim.agents.modality import SubstrateModality
 from maxim.memory.encoding import (
     K_DEFAULT,
+    RETRO_CUTOFF_US_DEFAULT,
+    RETRO_TAG_MODALITIES,
+    RETRO_TAG_THRESHOLD,
+    RETRO_TAU_US_DEFAULT,
     S_BASE_DEFAULT,
     EncodingSignals,
     encoding_tag,
@@ -220,6 +225,10 @@ class HippocampusConfig:
     # review caught, so the keys ship with their reader, never before it.
     strength_s_base: float = S_BASE_DEFAULT
     strength_k: float = K_DEFAULT
+    # Retroactive tagging's window (2d-2), experience MICROSECONDS (``memory.retro_tau_us`` /
+    # ``memory.retro_cutoff_us``).
+    retro_tau_us: int = RETRO_TAU_US_DEFAULT
+    retro_cutoff_us: int = RETRO_CUTOFF_US_DEFAULT
 
     def __post_init__(self) -> None:
         """Reject an unusable strength knob HERE, where the operator set it.
@@ -229,6 +238,10 @@ class HippocampusConfig:
         rather than the mistake reported. Validating at construction makes stamping unable to fail.
         """
         initial_storage_strength(0.0, s_base=self.strength_s_base, k=self.strength_k)
+        for name in ("retro_tau_us", "retro_cutoff_us"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"HippocampusConfig.{name} must be a positive int (µs), got {value!r}")
 
     # ─────────────────────────────────────────────────────────────────────────
     # Long-Term Memory Consolidation
@@ -698,6 +711,63 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             seq = self._capture_seq_next
             self._capture_seq_next += 1
             return seq
+
+    def _resolve_retro_tags_locked(self) -> int:
+        """Retroactive tagging (memory-strength 2d-2; docs/plans/memory_2d2_retroactive_tagging.md).
+
+        Every trace whose ``encoding_tag`` is STRICTLY above
+        ``RETRO_TAG_THRESHOLD`` reaches back over the related traces encoded before it, within
+        ``retro_cutoff_us``, and raises their ``retro_tag`` to
+        ``max(retro_tag, tag_e * exp(-dt / retro_tau_us) * rel)`` -- a backward eligibility window read
+        at consolidation. Relatedness is the fraction of the event's world/audio clusters the earlier
+        trace shares (situation-only: no situation, no tag). Only episodic traces that recorded when
+        they happened (2d-1: both ``encoded_at_us`` and ``capture_seq``, so the order is total) take part. The caller holds the store's write lock; each record update
+        takes that record's ``_touch_lock`` (store -> record, the existing order). Stamped whatever
+        the strategy; only ``StrengthStrategy`` reads ``retro_tag``. Returns the number of tag raises (a trace raised by two events counts twice).
+
+        Every strong event is re-resolved at every sleep -- idempotent, because a tag only ever rises
+        to the max. There is deliberately no "resolved up to" watermark: an async capture reserves its
+        ``capture_seq`` when it is QUEUED and lands when the worker stores it, possibly after a sleep
+        that already saw a later seq, so a watermark would skip a late strong event forever (and leave
+        a late lead-in untagged by an event already resolved).
+
+        One action writes several traces (loop, reflection, pain); only the loop capture carries a
+        situation, so under situation-only relatedness they never tag each other. A new site that
+        stamps a situation on a secondary trace must revisit that.
+        """
+        from maxim.memory.types import EpisodicMemory
+
+        timed = sorted(
+            (
+                m
+                for m in self._memories.values()
+                if isinstance(m, EpisodicMemory) and m.encoded_at_us is not None and m.capture_seq is not None
+            ),
+            key=lambda m: (m.encoded_at_us, m.capture_seq),
+        )
+        tau = float(self.config.retro_tau_us)
+        cutoff = self.config.retro_cutoff_us
+        raised = 0
+        for idx, event in enumerate(timed):
+            if (event.encoding_tag or 0.0) <= RETRO_TAG_THRESHOLD:
+                continue
+            cue = {m: c for m, c in (event.situation or {}).items() if m in RETRO_TAG_MODALITIES}
+            if not cue:
+                continue
+            for j in range(idx - 1, -1, -1):  # strictly before, by (encoded_at_us, capture_seq)
+                earlier = timed[j]
+                dt = event.encoded_at_us - earlier.encoded_at_us
+                if dt > cutoff:
+                    break
+                shared = sum(1 for m, c in cue.items() if (earlier.situation or {}).get(m) == c)
+                if not shared:
+                    continue
+                r = event.encoding_tag * math.exp(-dt / tau) * (shared / len(cue))
+                with earlier._touch_lock:
+                    if earlier.retro_tag is None or r > earlier.retro_tag:
+                        earlier.retro_tag = r  # <= 1: tag_e, the decay and rel are each in [0, 1]
+                        raised += 1
+        return raised
 
     def _resume_capture_seq(self) -> None:
         """After a load: continue the sequence past every saved trace, so order survives a restart."""

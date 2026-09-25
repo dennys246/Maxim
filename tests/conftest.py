@@ -223,7 +223,13 @@ def _isolate_maxim_memory_strategy_env():
     ``MAXIM_MEMORY_S_BASE`` / ``MAXIM_MEMORY_K`` (2c-3) tune that model's encoding equation, and a
     leaked one changes every later capture's stamped ``S`` without changing anything visible.
     """
-    names = ("MAXIM_MEMORY_STRATEGY", "MAXIM_MEMORY_S_BASE", "MAXIM_MEMORY_K")
+    names = (
+        "MAXIM_MEMORY_STRATEGY",
+        "MAXIM_MEMORY_S_BASE",
+        "MAXIM_MEMORY_K",
+        "MAXIM_MEMORY_RETRO_TAU_US",
+        "MAXIM_MEMORY_RETRO_CUTOFF_US",
+    )
     saved = {name: os.environ.pop(name, None) for name in names}
     try:
         yield

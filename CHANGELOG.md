@@ -25,13 +25,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A strong moment protects the memories just before it in the same situation (memory-strength
+  Phase 2d-2).** When a memory is encoded strongly (pain, relief, a large surprise), the memories
+  encoded in the seconds before it that share its world or audio situation become harder to forget
+  (the approach from a different situation is not covered): at each consolidation they get a
+  `retro_tag` that the strength model's protection floor reads beside the memory's own tag. It is
+  opt-in: only `memory.strategy=strength` reads it, and retention under the default strategy is
+  unchanged. With today's uncalibrated constants it protects roughly the 5 s before the event. New
+  config keys `memory.retro_tau_us` / `memory.retro_cutoff_us` (env `MAXIM_MEMORY_RETRO_TAU_US` /
+  `MAXIM_MEMORY_RETRO_CUTOFF_US`), in experience microseconds. Memories without a situation (e.g. the
+  LLM sims without the substrate path) are never tagged. No current experiment run reads it (they
+  pin the default strategy). Limits and their triggers: `docs/plans/deferred/retro_tagging_extensions.md`.
+
 - **Every memory records when it happened (memory-strength Phase 2d-1).** Traces now carry
   `encoded_at_us` — the experience time of the moment, fixed for life — and `capture_seq`, which
   orders captures that land in the same loop pass. The async loop path stamps both when the capture
   is queued, so a lagging capture worker no longer shifts a memory's moment; every other door stamps
   them at capture. The retrievability anchor starts from the same moment. Both persist and survive
   compression; older files load them as not recorded. Recording only: the look-back that reads them
-  (retroactive tagging, 2d-2) is designed next.
+  (retroactive tagging, 2d-2) follows.
 
 - **A survival memory records how much it hurt and how new the situation was (memory-strength
   Phase 2S-c, [#848](https://github.com/dennys246/Maxim/issues/848)).** Each loop capture now

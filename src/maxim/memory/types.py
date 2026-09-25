@@ -70,6 +70,7 @@ def _strength_fields(record: Any) -> dict[str, Any]:
             "retrievability_anchor_us": record.retrievability_anchor_us,
             "encoded_at_us": record.encoded_at_us,
             "capture_seq": record.capture_seq,
+            "retro_tag": record.retro_tag,
         }
 
 
@@ -196,6 +197,7 @@ def _strength_kwargs(data: dict[str, Any]) -> dict[str, Any]:
         "retrievability_anchor_us": _anchor_us(data.get("retrievability_anchor_us"), record_id=record_id),
         "encoded_at_us": _count_or_us(data.get("encoded_at_us"), name="encoded_at_us", record_id=record_id),
         "capture_seq": _count_or_us(data.get("capture_seq"), name="capture_seq", record_id=record_id),
+        "retro_tag": _strength_number(data.get("retro_tag"), name="retro_tag", low=0.0, high=1.0, record_id=record_id),
     }
 
 
@@ -654,6 +656,10 @@ class CompressedMemory(CompressedRecord):
     # counter, resumed past the saved maximum on load). ``None`` = captured before 2d-1.
     encoded_at_us: int | None = field(default=None, repr=False, compare=False)
     capture_seq: int | None = field(default=None, repr=False, compare=False)
+    # Retroactive protection (memory-strength 2d-2): raised when a STRONG, related trace was encoded
+    # within the window after this one. Beside ``encoding_tag``, never rewriting it (2c-3(b)); the
+    # strength floor reads ``max(encoding_tag, retro_tag)``. ``None`` = never tagged.
+    retro_tag: float | None = field(default=None, repr=False, compare=False)
 
     run_id: str = ""
 
@@ -830,6 +836,10 @@ class EpisodicMemory(MemoryRecord):
     # counter, resumed past the saved maximum on load). ``None`` = captured before 2d-1.
     encoded_at_us: int | None = field(default=None, repr=False, compare=False)
     capture_seq: int | None = field(default=None, repr=False, compare=False)
+    # Retroactive protection (memory-strength 2d-2): raised when a STRONG, related trace was encoded
+    # within the window after this one. Beside ``encoding_tag``, never rewriting it (2c-3(b)); the
+    # strength floor reads ``max(encoding_tag, retro_tag)``. ``None`` = never tagged.
+    retro_tag: float | None = field(default=None, repr=False, compare=False)
     # The situation this trace happened in (memory-strength Phase 2S-b, #848): the loop's substrate
     # clusters at capture, ``{modality: EC cluster id}`` (interoception / audio / world). The EC node
     # ids ARE ATL concept ids, so ConceptExtractor links those concepts to the trace -- the

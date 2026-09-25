@@ -683,7 +683,8 @@ class StrengthStrategy(MemoryStrategy):
         # make a trace MORE retrievable than when it was stored. Experience does not run backwards.
         dt = 0.0 if anchor is None else float(max(0, now_us - anchor))
         retrievability = math.exp(-dt / strength)
-        tag = record.encoding_tag or 0.0
+        # 2d-2: a retro tag protects like the stamped tag; neither is ever rewritten by the other.
+        tag = max(record.encoding_tag or 0.0, getattr(record, "retro_tag", None) or 0.0)
         floor = self.protection_floor_weight * tag * math.exp(-dt / (strength * self.tag_fade_multiplier))
         return retrievability, floor
 

@@ -295,6 +295,9 @@ class MemoryConfigSection:
     strategy: Literal["access_based", "importance_based", "composite", "strength"] = "access_based"
     s_base: float | None = None
     k: float | None = None
+    # Retroactive tagging's window (2d-2), in experience MICROSECONDS; None = the model's default.
+    retro_tau_us: int | None = None
+    retro_cutoff_us: int | None = None
 
     def __post_init__(self) -> None:
         # config_writer only coerces str values, so a Python-API caller with a non-str (or a typo)
@@ -310,6 +313,10 @@ class MemoryConfigSection:
             raise ConfigurationError(f"config: memory.s_base: must be finite and positive, got {self.s_base!r}")
         if self.k is not None and (not math.isfinite(self.k) or self.k < 0.0):
             raise ConfigurationError(f"config: memory.k: must be finite and non-negative, got {self.k!r}")
+        for name in ("retro_tau_us", "retro_cutoff_us"):
+            value = getattr(self, name)
+            if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value <= 0):
+                raise ConfigurationError(f"config: memory.{name}: must be a positive int (µs), got {value!r}")
 
 
 @dataclass(frozen=True)
@@ -523,6 +530,8 @@ _FIELD_TO_ENV: dict[str, str] = {
     "memory.strategy": "MAXIM_MEMORY_STRATEGY",
     "memory.s_base": "MAXIM_MEMORY_S_BASE",
     "memory.k": "MAXIM_MEMORY_K",
+    "memory.retro_tau_us": "MAXIM_MEMORY_RETRO_TAU_US",
+    "memory.retro_cutoff_us": "MAXIM_MEMORY_RETRO_CUTOFF_US",
     "proxy.max_concurrent": "MAXIM_PROXY_MAX_CONCURRENT",
     "proxy.rate_limit_rpm": "MAXIM_PROXY_RATE_LIMIT_RPM",
     "auto_spawn.llm_server": "MAXIM_AUTO_SPAWN_LLM_SERVER",
@@ -797,6 +806,8 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
         if not math.isfinite(value) or value <= 0.0:
             raise ConfigurationError(f"config: {field_path}: must be finite and positive, got {value}")
         return value
+    if field_path in ("memory.retro_tau_us", "memory.retro_cutoff_us"):
+        return _coerce_int(raw, field_path, min_val=1)
     if field_path == "memory.k":
         value = _coerce_float(raw, field_path, min_val=0.0)
         if not math.isfinite(value):
@@ -935,6 +946,10 @@ def resolve_hippocampus_memory_kwargs(config: MaximConfig | None = None) -> dict
         value, _source = resolve_setting(field_path, config=config)
         if value is not None:
             kwargs[kwarg] = float(value)
+    for field_path, kwarg in (("memory.retro_tau_us", "retro_tau_us"), ("memory.retro_cutoff_us", "retro_cutoff_us")):
+        value, _source = resolve_setting(field_path, config=config)
+        if value is not None:
+            kwargs[kwarg] = int(value)
     return kwargs
 
 

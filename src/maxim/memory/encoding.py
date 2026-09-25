@@ -188,6 +188,15 @@ S_UNIT = "world_experience_us"
 S_BASE_DEFAULT = 10_000_000.0  # microseconds of experience for a trace whose signals said nothing
 K_DEFAULT = 1.0  # a fully-tagged trace encodes (1 + k) times as strong
 
+# Retroactive tagging (memory-strength 2d-2, docs/plans/memory_2d2_retroactive_tagging.md). The window
+# is configurable (``memory.retro_tau_us`` / ``memory.retro_cutoff_us``, experience MICROSECONDS like
+# s_base -- no conversion on this path); the trigger is a named constant nothing has measured yet.
+RETRO_TAU_US_DEFAULT = 10_000_000  # decay constant of the backward window
+RETRO_CUTOFF_US_DEFAULT = 30_000_000  # nothing older than this is reached
+RETRO_TAG_THRESHOLD = 0.5  # an event tags only when its encoding_tag is STRICTLY above this
+# (a new causal link's first outcome carries a surprise of exactly 0.5 -- ">=" would fire on it)
+RETRO_TAG_MODALITIES = ("world", "audio")  # interoception excluded: the strong moment's is the extreme one
+
 
 def _noisy_or(deviations: list[float]) -> float:
     """``1 - prod(1 - x)``: saturating, so no crowd of weak signals manufactures importance."""
