@@ -724,6 +724,9 @@ class TestTemporalAnchorPruning:
 
     # #888: an anchor still YOUNG when its fast trace expires (any tick faster than ~7 s) was kept and
     # never visited again, so it drew a share of every later reward for the rest of the session.
+    # single_agent_only: pruning is per anchor key (agent-scoped by the key); the behaviour under test is the
+    # anchor's age, not agent attribution.
+    @pytest.mark.single_agent_only
     def test_an_anchor_young_at_expiry_is_pruned_once_it_ages_past_the_window(self, monkeypatch):
         from types import SimpleNamespace
 
@@ -747,6 +750,9 @@ class TestTemporalAnchorPruning:
         credited = dict(TemporalCreditDistributor(nac, SCN()).distribute("agent", 1.0))
         assert "node-old" not in credited and credited.get("tool:swim") == pytest.approx(1.0)
 
+    # single_agent_only: pruning is per anchor key (agent-scoped by the key); the behaviour under test is the
+    # anchor's age, not agent attribution.
+    @pytest.mark.single_agent_only
     def test_an_anchor_with_a_live_trace_is_never_pruned(self, monkeypatch):
         from types import SimpleNamespace
 
@@ -760,6 +766,9 @@ class TestTemporalAnchorPruning:
         nac.decay_eligibility(factor=0.9)  # trace still alive (0.9)
         assert ("agent", "node-live") in nac._temporal_anchors
 
+    # single_agent_only: the clear is scoped to one NAc instance, and production gives every agent its own
+    # (AgentFactory); the shared-instance mode is a tripwire, not a supported setup.
+    @pytest.mark.single_agent_only
     def test_session_end_clears_every_anchor(self):
         """Anchors are session-scoped; the distributor's session cleanup (BioStack.on_session_end) clears them."""
         from maxim.decisions.temporal_credit import TemporalCreditDistributor
