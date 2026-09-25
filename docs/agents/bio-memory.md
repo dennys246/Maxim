@@ -149,7 +149,7 @@ operation; rename inconsistent legacy names during the next change to that syste
 - `MAXIM_SUBSTRATE_PATH` = enable LinguisticEncoder → EC → ATL dual-write = `runtime/agent_loop.py` / encoder wiring
 - `MAXIM_CONCEPT_DECOMPOSITION` = enable noun-phrase decomposition before EC (needs spaCy) = `similarity/decomposer.py`
 - `MAXIM_NAC_MIN_CONFIDENCE` = override `propose_via_substrate` min_confidence (default 0.3; 0.0 bypasses cold-start gate) = `runtime/agent_loop.py`
-- `MAXIM_NAC_REWARD_BIAS_DISABLED` = Exp 37 ablation arm: no-op the three reward-bias surfaces (read once at NAc construction) = `decisions/nac.py` (x-ref simulation-experiments)
+- `MAXIM_NAC_REWARD_BIAS_DISABLED` = reward-bias ablation: the live write (`credit_node`), every read (`reward_bias`, `get_threshold_overrides`), `distribute_reward`, `decay_reward_biases` and `get_agent_tool_biases` all no-op (read once at NAc construction; the live write + reads were ungated until #889, so Exp 37's NAc-bias-off arm did not ablate). **Scope: `_reward_bias` only** — for `_cluster_reward_bias` it hides just the Wire-A prompt read (`get_agent_tool_biases`); cluster-bias writes and `recommend_action`'s cluster term are NOT gated = `decisions/nac.py` (x-ref simulation-experiments)
 - `MAXIM_EC_TRACE_ACTIVATIONS` = per-tick `sim_ec_activation` JSONL events = `similarity/ec.py`
 - `MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION` = Wire-A cluster-bias prompt annotation off (ablation) = producer in `runtime/agent_loop.py`
 - `MAXIM_DISABLE_VARIANCE_ANNOTATION` = Wire-1 variance-band annotation off (ablation) = producer in `runtime/agent_loop.py`
