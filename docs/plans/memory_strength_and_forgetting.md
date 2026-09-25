@@ -4,7 +4,8 @@
 > silently power E1–E3 ([roadmap_1_4.md](roadmap_1_4.md) §Parallel lines). Every behavioural change
 > ships **opt-in, with today's defaults pinned byte-identical**, and every mechanism enters as
 > `[engineering]` until an experiment earns it. **Entry condition: Phase 0** — the input-integrity
-> defects fixed — before any phase changes what is kept or forgotten.
+> defects fixed — before any phase changes what is kept or forgotten. **The look-back part of Phase 2
+> waits on R4's design review of `PerceptTraceBuffer`** (scheduled 2026-09-24; decision 6).
 
 **Owns (proposed):** `src/maxim/memory/strategies.py` (a new strength strategy), the activation and
 sleep paths in `memory/hippocampus*.py` and `memory/atl.py`, a `memory.*` block in the config
@@ -49,7 +50,8 @@ settable through `maxim config`, with O(N log N) eviction on every insert at the
 - every strength input is an **existing signal** (§The model);
 - retroactive tagging uses `memory/percept_trace_buffer.py::PerceptTraceBuffer`, which exists and is
   tested, has **zero production constructors**, and so far persists only an empty buffer
-  (non-empty snapshot round-trip is its own Stage 2) — this plan gives it a caller;
+  (non-empty snapshot round-trip is its own Stage 2) — this plan **consumes R4's reviewed design** of it
+  (decision 6, 2026-09-24; R4 owns the buffer, and no production code constructs it before that review);
 - sleep replay uses the Dormant `memory/sleep_replay.py` (P8 gate passed) rather than a new replay.
 
 The only genuinely new state is a per-trace storage strength and a persisted experience clock.
@@ -111,7 +113,8 @@ traces encoded just before it, weighted by distance. That is a backward-only eli
 (R4's mechanism), **not** synaptic tagging and capture, which works in both directions (weak-before-
 strong and strong-before-weak; Frey & Morris 1997, Moncada & Viola 2007) over a window of about an
 hour in rodents. Whether to add the **forward** window (traces encoded within `W` *after* a strong
-event are also captured) is a Phase 2 decision, with `W` on the experience clock. Wiring requirements:
+event are also captured) is a Phase 2 decision, with `W` on the experience clock. **This line's
+requirements, handed to R4's design review as input** (R4 owns the buffer — decision 6, 2026-09-24):
 `PerceptTraceBuffer` keys on `percept_id` and ticks every agent's entries together, while loop
 captures are async (the memory id is minted later on the worker; the queue drops its oldest when full)
 and pain captures are synchronous — so the drowning can be stored before the moments that preceded
@@ -229,8 +232,8 @@ Consumers that retrieve and never deliver are #845 (the replan site is wired but
 #845(1); the adaptive planner is live only in `embodied_runtime/agentic_runtime.py`).
 
 **Phase 2 — the strength model.** `S`, `R`, the typed `EncodingSignals` at all seven capture sites,
-the look-back through `PerceptTraceBuffer` (its first production caller, per §The model's wiring
-requirements), the retrieval update, the persisted experience clock with its advanced-clock assert.
+the look-back through `PerceptTraceBuffer` (as a consumer of R4's reviewed design — owner decision
+2026-09-24, decision 6), the retrieval update, the persisted experience clock with its advanced-clock assert.
 No immortality floor under the new strategy. **Validated in the LLM sim worlds** (route A, owner
 decision 2026-09-21), where enrichment and the memory tools are live; survival-world validation waits
 on Phase 2S below.
@@ -332,8 +335,12 @@ typo, frozen into experiment fingerprints — never an env var or a literal.
    hook deliberately never reads), so this phase's PR **rewrites** it into a behavioural gate — the
    strength strategy's score moves with credited `activate` events — rather than leaving a
    permanently yellow marker.
-6. **Owner of the looking-back primitive** (§Shared primitive): **this line**, as its first production
-   caller; R4 and the language line consume it. *(Proposed; confirm at the Phase 2 kickoff.)*
+6. **Owner of the looking-back primitive** (§Shared primitive): ~~this line, as its first production
+   caller~~ — **resolved 2026-09-24 (owner): R4 owns it**, and R4's design review of it is scheduled now,
+   ahead of R4's build ([roadmap_1_4.md](roadmap_1_4.md) §Phase 5). This line is a **consumer**, and it
+   may not construct `PerceptTraceBuffer` in production before that review lands (a CI check enforces
+   it). The review also fixes the buffer's clock (it decays per tick, not per second). Consequence: the
+   look-back part of Phase 2 waits on that review.
 
 *Phase 2b slicing (2026-09-22, from a capture-site map):* **2b-i** — the typed `EncodingSignals`
 recorded on every trace, required at every capture door, write-only (SHIPPED with this note): four
@@ -707,8 +714,9 @@ scheduled right after a minor-version heartbeat, when the affected rows are due 
 Three lines need the same thing — attach a signal to what was active *just before*:
 retroactive tagging here, R4's delayed credit, and the language line's binding of a death message
 to the second before it ([paired_data_audit_reaudit_2026-09-21.md](../experiments/paired_data_audit_reaudit_2026-09-21.md)).
-`PerceptTraceBuffer` is built for it and has no caller. **An owner must be named before Phase 2**
-(open question 5) — "whoever wires it first" leaves the review unowned; the others become consumers. The SCN is the wrong clock for it (it bins by
+`PerceptTraceBuffer` is built for it and has no caller. **Owner named 2026-09-24: R4** (open question 5,
+decision 6); its design review is scheduled now, and every line, this one included, consumes the reviewed
+design. The SCN is the wrong clock for it (it bins by
 time of day).
 
 ## Not in this plan (filed separately)
@@ -733,8 +741,7 @@ time of day).
    calibration plan's first consumer.
 4. **ATL vs Hippocampus parity** — the bio review's answer: concepts carry their own `S`, raised
    slowly by replay of the episodes that cite them (§Sleep step 1).
-5. **Owner of the looking-back primitive** — proposed: this line (Phase 2 decision 6); confirm at
-   the Phase 2 kickoff.
+5. ~~Owner of the looking-back primitive~~ — **resolved 2026-09-24: R4** (Phase 2 decision 6).
 6. **Interference and reconsolidation are missing.** Forgetting here is decay; biologically much of it
    is interference (retroactive interference; retrieval-induced forgetting of close competitors), and a
    retrieval carrying a prediction error makes a trace labile and updatable (reconsolidation — the way
