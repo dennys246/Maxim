@@ -29,6 +29,26 @@ def _is_private_ip(ip: str) -> bool:
     return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved or addr.is_multicast
 
 
+def is_loopback_url(url: str) -> bool:
+    """True only when ``url``'s host is ``localhost`` or a literal loopback IP -- fail-closed.
+
+    No DNS resolution: a name that merely resolves to 127.0.0.1 does not count, and a parse error
+    is ``False``. Used to decide whether a credential that belongs to THIS machine may be sent.
+    """
+    try:
+        host = urlparse(url).hostname
+    except ValueError:  # what urlparse raises on a malformed netloc (e.g. "http://[::1")
+        return False
+    if not host:
+        return False
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def validate_base_url(base_url: str, allow_local: bool) -> str | None:
     """Return ``base_url`` if safe to dispatch to, else ``None``.
 

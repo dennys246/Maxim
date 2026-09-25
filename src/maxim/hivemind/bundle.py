@@ -857,6 +857,30 @@ def verify_bundle_signature_parts(
         return False, f"unsupported signature_algorithm {algo!r} (this build verifies only {SIGNATURE_ALGORITHM!r})"
     if not isinstance(signer, str) or signer not in trusted_keys:
         return False, f"signer_identity {signer!r} is not among the receiver's trusted keys {sorted(trusted_keys)}"
+    # ``signer_identity`` is NOT in the signed payload (it is written after signing), so it is safe only
+    # because it selects WHICH key must verify: relabelling a bundle to another identity makes that
+    # identity's key fail. The one case where a relabel would still verify is one key registered under
+    # two identities -- then the signature cannot bind to either label, so it is refused outright.
+    # Compare DECODED key bytes: a 32-byte key has four valid base64 spellings (the last character
+    # carries two unused bits, which b64decode ignores), so a string comparison misses the alias.
+    import base64
+    import binascii
+
+    def _key_bytes(value: str) -> bytes | None:
+        try:
+            return base64.b64decode(value, validate=True)
+        except (binascii.Error, ValueError):
+            return None
+
+    signer_key = _key_bytes(trusted_keys[signer])
+    aliases = sorted(
+        i for i, k in trusted_keys.items() if i != signer and signer_key is not None and _key_bytes(k) == signer_key
+    )
+    if aliases:
+        return False, (
+            f"the key trusted for {signer!r} is also trusted as {aliases}: one key under two identities "
+            "cannot say which one signed (register each key once)"
+        )
     payload = bundle_signing_payload(manifest, slices)
     if not verify_payload(payload, str(sig), trusted_keys[signer]):
         return False, f"ed25519 signature does not verify for signer {signer!r} (tampered or wrong key)"

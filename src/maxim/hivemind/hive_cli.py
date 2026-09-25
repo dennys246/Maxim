@@ -151,6 +151,35 @@ def _resolve_oasis(registry: HiveRegistry, name: str) -> dict:
     return entry
 
 
+def _oasis_api_key(explicit: str | None, url: str) -> str | None:
+    """The bearer token to send to ``url``: the one given, else the local leader key ONLY for a
+    loopback Oasis (public_oasis Phase 0 item 5). The leader key also grants inference, so falling
+    back to it for a remote Oasis handed that credential to whoever runs the Oasis."""
+    if explicit:
+        return explicit
+    from maxim.tunnel.keys import read_key
+    from maxim.utils.net import is_loopback_url
+
+    return read_key() if is_loopback_url(url) else None
+
+
+def _no_key_hint(exc: Exception, explicit: str | None, url: str) -> str:
+    """The --api-key hint, only when it is the actual cause: a 401/403 from a REMOTE Oasis that was
+    sent no key because none was given (not on a timeout, a 500, or a loopback Oasis with no key)."""
+    from maxim.utils import http
+    from maxim.utils.net import is_loopback_url
+
+    if isinstance(exc, http.HTTPAuthError) and not explicit and not is_loopback_url(url):
+        return f" ({_NO_KEY_HINT})"
+    return ""
+
+
+_NO_KEY_HINT = (
+    "this Oasis is not on this machine, so the local leader key was not sent; "
+    "pass --api-key with a credential that Oasis issued"
+)
+
+
 def _run_pull(args: argparse.Namespace) -> int:
     import zipfile
 
@@ -158,7 +187,6 @@ def _run_pull(args: argparse.Namespace) -> int:
     from maxim.hivemind.bundle import read_bundle_manifest
     from maxim.hivemind.cli import run_substrate_subcommand
     from maxim.hivemind.store import is_valid_release_id
-    from maxim.tunnel.keys import read_key
     from maxim.utils import http
 
     _malformed = (zipfile.BadZipFile, KeyError, ValueError, OSError)
@@ -185,12 +213,14 @@ def _run_pull(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    api_key = args.api_key or read_key()
+    api_key = _oasis_api_key(args.api_key, url)
 
     try:
         releases = sc.list_releases(url, api_key=api_key)
     except (sc.SubstrateExchangeError, http.HTTPError) as exc:
-        print(f"error: could not list releases from {url}: {exc}", file=sys.stderr)
+        print(
+            f"error: could not list releases from {url}: {exc}{_no_key_hint(exc, args.api_key, url)}", file=sys.stderr
+        )
         return 2
 
     # Filter by domain / explicit release id.
@@ -335,7 +365,6 @@ def _build_ingest_argv(
 
 def _run_contribute(args: argparse.Namespace) -> int:
     from maxim.hivemind import substrate_client as sc
-    from maxim.tunnel.keys import read_key
     from maxim.utils import http
 
     registry = HiveRegistry(args.registry)
@@ -348,11 +377,12 @@ def _run_contribute(args: argparse.Namespace) -> int:
     if not bundle_path.is_file():
         print(f"error: bundle file not found: {bundle_path}", file=sys.stderr)
         return 2
-    api_key = args.api_key or read_key()
+    api_key = _oasis_api_key(args.api_key, oasis["url"])
     try:
         receipt = sc.contribute(oasis["url"], bundle_path, api_key=api_key)
     except (sc.SubstrateExchangeError, http.HTTPError) as exc:
-        print(f"error: contribution to {args.to_oasis!r} failed: {exc}", file=sys.stderr)
+        hint = _no_key_hint(exc, args.api_key, oasis["url"])
+        print(f"error: contribution to {args.to_oasis!r} failed: {exc}{hint}", file=sys.stderr)
         return 2
     print(
         f"contributed to {args.to_oasis} (experimental tier)\n"
@@ -417,7 +447,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p_pull.add_argument("--release", default=None, help="pull only this release id")
     p_pull.add_argument("--session", required=True, help="receiver session dir or id (a maxim.create.agent() home)")
     p_pull.add_argument("--receiver-body", required=True, help="the receiver's body_ref (gate-7 body check)")
-    p_pull.add_argument("--api-key", default=None, help="bearer token for the Oasis (default: local api_key)")
+    p_pull.add_argument(
+        "--api-key",
+        default=None,
+        help="bearer token for the Oasis (default: the local leader key, for a loopback Oasis only)",
+    )
     p_pull.add_argument(
         "--allow-unstamped-geometry",
         action="store_true",
@@ -429,7 +463,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p_con = sub.add_parser("contribute", help="push a bundle to an Oasis's experimental tier")
     p_con.add_argument("bundle")
     p_con.add_argument("--to", dest="to_oasis", required=True, help="registered Oasis name")
-    p_con.add_argument("--api-key", default=None, help="bearer token for the Oasis (default: local api_key)")
+    p_con.add_argument(
+        "--api-key",
+        default=None,
+        help="bearer token for the Oasis (default: the local leader key, for a loopback Oasis only)",
+    )
     p_con.set_defaults(func=_run_contribute)
 
     return parser

@@ -234,7 +234,7 @@ def _run_export(args: argparse.Namespace) -> int:
     )
     if signer is not None:
         print(
-            f"  signed:      ed25519 as {manifest.get('signer_identity')!r}\n"
+            f"  signed:      ed25519, claimed signer {manifest.get('signer_identity')!r} (unverified here)\n"
             f"  public key:  {public_key_path()} (share this so receivers can --trust-key)"
         )
     if body_ref is None:
