@@ -389,7 +389,8 @@ jobs:
           print("\n".join(extras["console"] + extras["sign"]))
           PY
           cat extras-reqs.txt
-          pip install -r extras-reqs.txt
+          # -c: pin the contract GENERATOR (see the file for why and how to move it)
+          pip install -r extras-reqs.txt -c .github/constraints/console.txt
 
       - name: mypy public API surface + hivemind
         # CLAUDE.md required check, promoted to CI (1.0 guard promotion).
