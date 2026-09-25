@@ -23,9 +23,13 @@
 > passes, this plan's Phase 1–2 and the projection plan revive TOGETHER, with a pre-registered
 > experiment and the usual four-lens review. If it fails, this file says so and goes to `archive/`.
 >
-> **Concrete near path (2026-09-24): [grounded_word_binding_demo.md](grounded_word_binding_demo.md)** —
-> word–situation association on the substrate-primary path (Track L, Exp A — run raw), social referencing
-> through the Oasis (Track S, Exp C), and transfer (Exp B); the raw-substrate rule below holds for Exp A.
+> **Concrete near path — DEFERRED 2026-09-24 behind a frozen offline gate:
+> [deferred/grounded_word_binding.md](deferred/grounded_word_binding.md)** (a heard word calls back its
+> situation; Exp A run raw, Exp B transfer). Its re-entry gate is L0's offline half: do blind-authored
+> phrasings of five situations cluster by situation through Maxim's own EC formation (criterion frozen in
+> its header)? Its social-referencing half, which needs no language, is now
+> [social_referencing.md](social_referencing.md). This file's own entry gate (the audit below) has not
+> passed.
 >
 > **Audit RAN 2026-09-20 — [paired_data_audit_2026-09-20.md](../experiments/paired_data_audit_2026-09-20.md)
 > ([script](../../scripts/paired_data_audit.py)); disposition: REDESIGN THE DATA SOURCE (owner,

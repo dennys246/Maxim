@@ -1,18 +1,55 @@
-# Grounded word binding and social referencing — the substrate-primary language demo, with the Oasis
+# Grounded word binding — a heard word calls back its situation (substrate-primary)
 
-> **PROPOSED 2026-09-24 (v3, six-lens reviewed) — plan only, no code; not a 1.4 rung.** The concrete
-> path for the [grounded-language line](grounded_language_acquisition.md) (a PARALLEL line per
-> [roadmap_1_4.md](roadmap_1_4.md) §Parallel lines), and the one contract the **language side** and
-> the **Oasis side** ([maxim_hivemind.md](maxim_hivemind.md), [public_oasis.md](public_oasis.md))
-> work to. v2 added the mid-session Oasis consult (**social referencing**) as a long-term capability
-> (owner). v3 folds a six-lens review (confounding, bio-fidelity, wiring, environment, architecture,
-> security — all ADOPT WITH CHANGES, 14 DO-NOT-BUILD findings, all folded; §Review record).
-> **This is a multi-release line, not a sprint**: two independent tracks and a join. Each experiment
-> enters through its own prereg and the four-lens design review
-> ([DESIGN_REVIEW.md](../experiments/DESIGN_REVIEW.md)) before its harness is built. Nothing here
-> powers E1–E3; a stage touching a survival rung enters as a declared arm or not at all.
+> **DEFERRED 2026-09-24 on a CONDITION, not a date (owner decision).** This plan sits behind an entry
+> gate that has **not passed**: the grounded-language line's paired-data audit returned *REDESIGN THE
+> DATA SOURCE — not a pass* (2026-09-20), and its re-audit was *EXPLORATORY; not a revival*
+> (2026-09-21) — see [grounded_language_acquisition.md](../grounded_language_acquisition.md). v1–v3 of
+> this file never said so; this header does. Renamed from `grounded_word_binding_demo.md` (nothing is
+> called "the demo" — owner decision 4). **Its social-referencing half ("Track S") was split out** to
+> [social_referencing.md](../social_referencing.md), which needs no language; the Track S, Exp C and
+> contract sections below are kept as the v3 record and are **superseded by that plan**.
+>
+> **Re-entry gate — frozen 2026-09-24, before any data (L0's offline half; no rig):**
+> - **Model pinned:** `paraphrase-mpnet-base-v2` (the `LinguisticEncoder` config default). **Threshold
+>   pinned now: 0.44** — `similarity/ec.py::ECConfig.pattern_complete_threshold`, the value text nodes
+>   form at today (no text-specific override). Purity is measured **through Maxim's own EC cluster
+>   formation** at 0.44 — what the agent would actually use. The threshold is **not** fitted to the
+>   gate's own data (that would be circular); the body's "fixed from" / "calibrated in L0" wording is
+>   superseded by this line.
+> - **Situations:** water, food, fire, cave, night — **all five blind-authored through the same process**
+>   (each phrasing written without seeing the other situations; uniform source, so writing style
+>   cannot separate them), **m ≥ 5 different phrasings each** (not one-word variants). The list is
+>   committed before the run.
+> - **Near misses:** cave vs night (both dark; the only within-five pair). **Declared distractor
+>   classes** fall and lava are scored for confusion with the five but do **not** count toward the
+>   pass.
+> - **PASS:** cluster purity ≥ 0.9 with no two of the five sharing a majority cluster, **AND**
+>   leave-one-phrasing-out nearest-centroid accuracy ≥ 0.8 (chance 0.2). A **word-overlap baseline** is
+>   reported beside it; a pass that plain word matching also achieves is flagged as vocabulary, not
+>   situations.
+> - **Secondary check (not part of the pass):** the game's own death messages (drowned / burned) —
+>   fixed templates, where a word-overlap flag is the expected result.
+> - **FAIL** otherwise → this plan goes to `archive/` with the measured null, as the parent plan
+>   specifies. **PASS** → candidate 1.5 headline, re-entering behind a prereg and the four-lens review.
+> - **Even a PASS licenses only "labels and their paraphrases bind" — never language.**
+>
+> **Owed at revival (found by a review of v3 whose reports are not in the repo; re-verified
+> 2026-09-24):** a stage that builds the recalled-situation input (design 1 names it; no stage owns
+> it); n, primary DVs, margins and a frozen prereg location for Exp A/B; text-channel weight (the
+> `semantic` extra: sentence-transformers, torch, spacy); `scripted_water.py` carries no event frames,
+> so chat needs adding before any teacher run; L1 adds a modality to the loop 1.3.2 is decomposing, so
+> it waits for 1.3.2. The look-back (`PerceptTraceBuffer`) is **owned by R4**, whose design review is
+> scheduled ([roadmap_1_4.md](../roadmap_1_4.md) Phase 5) and fixes its per-tick (not per-second)
+> decay. The relation formerly named `NAMES` is now `HEARD_WITH` (a co-occurrence, not "reference";
+> free to rename — not in src).
+>
+> **Near-term public material is NOT this plan:** a recorded clip of the EARNED Exp 61 result, plus
+> the offline water classroom (`scripted_water` with chat event frames) as a clearly labelled smoke
+> instrument, never evidence.
+>
+> *The body below is the v3 design, in the conditional: nothing in it is built.*
 
-## The demo, in one paragraph
+## The design, in one paragraph (v3; nothing built — its consult half is SUPERSEDED by [social_referencing.md](../social_referencing.md))
 
 A substrate-primary Maxim — no LLM anywhere in its action path — plays the survival world. What it
 hears (the game's messages, a teacher player's chat at chosen moments) is part of the situation it is
@@ -39,7 +76,7 @@ Not language understanding, not production, not learning from the internet.
 
 ## Biological basis — and its limit
 
-*Verified by the bio-fidelity lens against the sources (2026-09-24); corrections folded.*
+*Attribution corrected 2026-09-24: the citations were checked by the v2 bio-fidelity lens; the sentences about "v3's transport" and "v3's foreign layer" are v3's own design readings, which that lens never saw.*
 
 - **Social referencing on borderline risk.** Sorce, Emde, Campos & Klinnert 1985 (*Dev Psychol* 21):
   at an ambiguous visual-cliff drop, 12-month-olds looked to the mother and acted on her expression —
@@ -128,7 +165,7 @@ and it removes the blocking problems of a live merge: foreign want installed at 
 no discount), foreign fear that nothing can lower, lost provenance, the unlocked wholesale
 `load_state`, and a pure-Python merge too slow for a ≈1 s tick. Promotion from advice to own
 knowledge happens only through the agent's own experience confirming it — an owner question below.
-The **pre-boot** bundle ingest keeps today's merge path unchanged.
+The **pre-boot** bundle ingest keeps today's merge path unchanged. *(2026-09-24: this contradicted J1's "discounted and capped" below; unresolved here — J1 decides it at revival.)*
 
 **3. The agent reads a local, verified copy of the Oasis; the Oasis never sees a situation.** The
 Oasis side publishes signed releases, each with a **Queen-signed entry index**; the agent's runtime
@@ -142,9 +179,9 @@ on the sensed situation alone. So:
 - **Track L (language):** L0 → L1 → L2 → Exp A.
 - **Track S (social referencing):** S1 → S2 → Exp C.
 - **Join:** J1 (the ATL payload) → Exp B → J2 (heard text in the consult key + Search Oasis) → J3
-  (generalisation, after the demo).
+  (generalisation, after Exps A and B).
 
-**The lead-up demo is Exp A + Exp C + Exp B + J2.**
+*(v3 said "the lead-up demo is Exp A + Exp C + Exp B + J2"; superseded 2026-09-24 — nothing is called the demo, and Exp C moved to [social_referencing.md](../social_referencing.md).)*
 
 ## Front-gate: what is genuinely new
 
@@ -152,7 +189,7 @@ on the sensed situation alone. So:
    sit beside a percept without its own slot.
 2. **The foreign layer** — NAc state has no notion of source; a merge cannot be discounted, decayed
    or reverted per source.
-3. **The ATL payload** — the reserved slot, scoped to `NAMES` relations only.
+3. **The ATL payload** — the reserved slot, scoped to `HEARD_WITH` relations only.
 4. **The release mirror + entry index + per-entry journal** — releases are fetched whole and
    journalled per bundle today.
 
@@ -175,7 +212,7 @@ already computes; pre-boot transfer on bundle → ingest → merge.
 - **Encoder:** `LinguisticEncoder` warmed up at start; the run **refuses** the silent 384-d hash
   fallback.
 - **Separability, offline, before any prereg:** the teacher's strings differ by one word and may land
-  in one text cluster — measure it; the text formation threshold is fixed from that.
+  in one text cluster — measure it *(superseded: the threshold is pinned at 0.44 in the header, not fitted to this measurement)*.
 - **Situations** (readiness per the environment lens):
 
   | Word | Situation | Exercises | Ready? |
@@ -186,7 +223,7 @@ already computes; pre-boot transfer on bundle → ingest → merge.
   | `cave` | a never-seen place | novelty (2S-c) — the consult trigger | **Partly** — novel only if a high-gain sensor changes, and only once per agent |
   | `night` | night | Exp 62's known boundary (night pool 0.799) | **Partly** — no contrast inside the sealed shell |
 
-  Exp A runs in water only; the others are demo and Exp C material once their prerequisites land.
+  Exp A runs in water only; the others are Exp C material (now [social_referencing.md](../social_referencing.md)) once their prerequisites land.
   Salience stays unmeasured on the loop path (2S-c).
 - Re-run `scripts/paired_data_audit.py` unchanged. *Exit:* a lag distribution, a vocabulary count,
   the separability table — recorded.
@@ -202,12 +239,12 @@ not reach credit or fear.
 
 **L2 — binding (recording-only).** On each heard word from the declared source, the look-back finds
 the sensed situation(s) in the window and records the association **in the episodic trace**; sleep
-consolidation strengthens a `NAMES` relation in the ATL (text concept → world concept; weight,
-confidence, provenance) — **one-way, word → situation**. `NAMES` is registered as a **builtin**
+consolidation strengthens a `HEARD_WITH` relation in the ATL (text concept → world concept; weight,
+confidence, provenance) — **one-way, word → situation**. `HEARD_WITH` is registered as a **builtin**
 relation type (`Semantics.define` returns False silently for an unknown type and appends duplicate
 edges on repeat — both fixed with the registration, and consolidation must not prune a binding before
 it is saved). Text centroids drift and share their space with affordance names: the text formation
-threshold is its own, calibrated in L0. The look-back is `PerceptTraceBuffer`, **designed in R4's
+threshold is its own *(superseded: pinned at 0.44 in the header)*. The look-back is `PerceptTraceBuffer`, **designed in R4's
 design review** with three named consumers (R4 delayed credit — the hardest; word binding — ~1 s,
 text-triggered, several candidate situations; memory strength's retroactive tagging); R4 builds it,
 and if R4 slips this line builds it from R4's reviewed design, never its own. *Measured:* binding
@@ -231,12 +268,12 @@ not the behaviour).
   during phase 2 — shows the conditioning route is real and what it looks like) · **extinction arm**
   (after phase 2, extinguish the situation's fear, then test the word: retrieval-at-test predicts the
   word's effect drops with it; mediated conditioning predicts it stays — Rizley & Rescorla) ·
-  **ablation split by timing** (`NAMES` removed before phase 2 vs after phase 2: retrieval predicts
+  **ablation split by timing** (`HEARD_WITH` removed before phase 2 vs after phase 2: retrieval predicts
   both abolish it; mediated conditioning predicts only the early one does). Harmless pre-exposure to
   water matched across arms (latent inhibition).
 - *Claim if EARNED:* the Exp A sentence above.
 
-## Track S — social referencing
+## Track S — social referencing (SUPERSEDED by [social_referencing.md](../social_referencing.md))
 
 **S1 — the foreign layer, the mirror, and the security prerequisites.**
 - The foreign layer (decision 2) with its read path in selection and threat, its weight
@@ -284,20 +321,20 @@ follow-up's first form.
 
 ## The join
 
-**J1 — the ATL payload (pre-boot transfer).** `NAMES` relations **only** — never the concepts, which
+**J1 — the ATL payload (pre-boot transfer).** `HEARD_WITH` relations **only** — never the concepts, which
 store the raw heard text as name and definition (a privacy leak); the receiver rebuilds its own
 concepts. Both endpoints re-keyed **inside `substrate_merge`** through the aligned-EC id map (the D43
 seam rule — the fix belongs in the composition). A relation missing an endpoint is dropped with a
 count. The text merge threshold **equals the text formation threshold** (L0). Bundle schema version
 bumped and **every declared slice hashed**, so a 1.3.0 receiver neither drops an unsigned ATL slice
-silently nor reports a signed one as tampered. A threat-model amendment: a foreign `NAMES` relation
+silently nor reports a signed one as tampered. A threat-model amendment: a foreign `HEARD_WITH` relation
 can point a word at the receiver's own strongest fear — foreign relations enter the foreign layer on a
 live consult, and on a pre-boot ingest are discounted and capped. Contract §1's amendment (live
 consults admit to the foreign layer; the file ingest stays at-rest) is recorded as a **DECISIONS.md
 entry** (the contract doc is archived). Session-end save order and `SessionSnapshot` gaining an EC
 kind are fixed here. `_format_version`, CC3 and the hivemind mypy gate apply.
 
-**Exp B — transfer.** A donor that passed Exp A publishes; a fresh receiver takes its associations
+**Exp B — transfer** *(its live arm consults through [social_referencing.md](../social_referencing.md)'s foreign layer; that design governs)*. A donor that passed Exp A publishes; a fresh receiver takes its associations
 **pre-boot** (J1's merge) or **live** (a consult into the foreign layer), and hears the word without
 the experience. Arms modelled on Exp 56: taught · isolated (same budget) · dangling (associations
 without the world EC nodes — must fail) · **association-stripped** · **fear-stripped** (which part
@@ -305,29 +342,29 @@ carries it) · naive. Pre-boot vs live tested as **non-inferiority** with matche
 Transport: the real signed path; the harness **asserts** the signature verified (Exp 61's prereg said
 signed; its harness passed no `--sign`).
 
-**J2 — heard text in the consult key, and Search Oasis.** Heard text joins S2's key (text matched only
+**J2 — heard text in the consult key, and Search Oasis** *(the consult path it rides is specified in [social_referencing.md](../social_referencing.md); only the text key belongs here)*. Heard text joins S2's key (text matched only
 against text, at its calibrated threshold). **Search Oasis**: typed text is used as a consult key
 (text modality only) through the same path — explicit, capped, trusted signers only, logged,
 revertible — and stays a **query only**: it never becomes a percept, a binding or a memory.
 
-**J3 — generalisation (after the demo).** Unheard wordings — T2 paraphrase, T3 **web text** (held-out
+**J3 — generalisation (after Exps A and B).** Unheard wordings — T2 paraphrase, T3 **web text** (held-out
 TEST only: it has no sensor side, so it can never train an association), T4 invented words (must
 fail) — need the 384 ↔ 768 projection and their own prereg with the nearest-template baseline.
 
 **Not in this plan:** production (the substrate saying anything), a public contribution path
 (promotion stays WRITE-ONLY), any rung of E1–E3.
 
-## The contract between the two sides
+## The contract between the two sides (v3 record — its S1/S2 rows are SUPERSEDED by [social_referencing.md](../social_referencing.md), which owns the consult, the foreign layer and the mirror)
 
 | | Language side | Oasis side |
 |---|---|---|
 | L0–L2, Exp A | capture, timestamps, teacher, text in the situation, binding | — |
 | S1 | foreign layer; read path; learned-trust hook | release mirror + Queen-signed entry index + per-entry journal; anonymous/scoped read tier; `signer_identity` under the signature |
 | S2, Exp C | the trigger; waiting behaviour | throwaway-key test namespace for the corrupted Oasis |
-| J1, Exp B | `NAMES` shape (defined once, as a builtin ATL relation type) | ATL slice (`NAMES` only); re-key inside `substrate_merge`; schema bump + per-slice hashes; threat-model amendment |
+| J1, Exp B | `HEARD_WITH` shape (defined once, as a builtin ATL relation type) | ATL slice (`HEARD_WITH` only); re-key inside `substrate_merge`; schema bump + per-slice hashes; threat-model amendment |
 | J2 | text key; Search Oasis input handling | selector accepts a text-only key |
 
-**Shared, owned by neither alone:** the `NAMES` shape, the situation-key shape (`{modality: …}` with
+**Shared, owned by neither alone:** the `HEARD_WITH` shape, the situation-key shape (`{modality: …}` with
 embeddings), the look-back (R4), the claim sentences.
 
 ## Guards and disciplines
@@ -335,36 +372,34 @@ embeddings), the look-back (R4), the claim sentences.
 - **A template is a label.** If L0's vocabulary is still templates, claims say "a label".
 - **A fix ships with a caller:** each mechanism is exercised by the real loop; gates are strict red
   gates on the real composition.
-- **Prove each guard by deleting the mechanism:** remove `NAMES` → Exp A's effect collapses; disable
+- **Prove each guard by deleting the mechanism:** remove `HEARD_WITH` → Exp A's effect collapses; disable
   the gate → Exp C's gated arm equals yoked-random; empty the foreign layer → a consult changes
   nothing.
 - **Every arm runs with the text channel on** (so the channel itself is not the difference), except
   where an arm's point is its absence.
 - **Provenance:** harnesses assert the `maxim` they import is their own repo; gated data commits
   prereg-first on `main`.
-- **Rig:** big-mac-mini only, once quiet; the operator starts the Paper server and the model server.
+- **Rig:** big-mac-mini only, once quiet; the operator starts the Paper server (no model server: no LLM is in this loop).
   Budget: Exp A ≈3–7 h, Exp B ≈2–2.5 h, Exp C ≈3–5 h of rig time.
 
 ## Open questions for the owner
 
-1. **Promotion from advice to own knowledge:** does consulted advice ever become the agent's own — and
-   only when its own experience confirms it (the ant rule), or also through repetition across sources?
-2. **The waiting behaviour** during a consult: keep its own policy, or a declared cautious hold?
-3. **Situations beyond water and food:** worth building a fire sensor and a novelty-bearing place for
-   the demo, or keep the demo to water and food with the others as stated boundaries?
-4. **Order of work:** Track S can start before Track L (it needs no language); Track L's L1–L2 wait on
-   R4's look-back design. Start S first?
+*All four were answered 2026-09-24 (owner). Promotion (only if it demonstrably worked), the waiting
+behaviour (keep own policy, continuous caution) and the order of work (Track S first, as its own plan)
+are now in [social_referencing.md](../social_referencing.md). Situations: the L0 gate covers all five
+offline; the graded-drop cliff on a variant body is social_referencing's showcase, and there is no
+thermal sensor in Minecraft (survival-ladder D1).*
 
 ## Review record (2026-09-24)
 
 Six parallel lenses, all **ADOPT WITH CHANGES**; reviews in
-[reviews/grounded_word_binding_demo/](reviews/grounded_word_binding_demo/):
-[confounding](reviews/grounded_word_binding_demo/confounding.md) ·
-[bio-fidelity](reviews/grounded_word_binding_demo/bio_fidelity.md) ·
-[wiring](reviews/grounded_word_binding_demo/wiring.md) ·
-[environment](reviews/grounded_word_binding_demo/environment.md) ·
-[architecture](reviews/grounded_word_binding_demo/architecture.md) ·
-[security](reviews/grounded_word_binding_demo/security.md).
+[reviews/grounded_word_binding_demo/](../reviews/grounded_word_binding_demo/):
+[confounding](../reviews/grounded_word_binding_demo/confounding.md) ·
+[bio-fidelity](../reviews/grounded_word_binding_demo/bio_fidelity.md) ·
+[wiring](../reviews/grounded_word_binding_demo/wiring.md) ·
+[environment](../reviews/grounded_word_binding_demo/environment.md) ·
+[architecture](../reviews/grounded_word_binding_demo/architecture.md) ·
+[security](../reviews/grounded_word_binding_demo/security.md).
 Folded: Exp A's conditioning route was impossible by construction (confounding + wiring,
 cross-confirmed) → conditioned-word positive control; mediated conditioning (bio) → extinction arm +
 timing-split ablation; Exp C's dose confound (confounding) → yoked-random + content-null arms,
@@ -372,7 +407,7 @@ interaction by permutation, stale separated from inverted; the live merge could 
 experience wins" (security + wiring + architecture, cross-confirmed) → the foreign layer; server-cut
 slices broke Queen verification and V8 (architecture + security, cross-confirmed) → local mirror +
 entry index, no search endpoint; recalled clusters would corrupt learning (wiring) → three inputs,
-three roles; concepts ship raw heard text (architecture) → `NAMES` only; the leader key leaks on
+three roles; concepts ship raw heard text (architecture) → `HEARD_WITH` only; the leader key leaks on
 pulls, `signer_identity` is unsigned, and a corrupted test bundle would be a real Queen release
 (security) → S1 prerequisites and Exp C isolation; the teacher moves a world sensor and the lag
 capture cannot measure lag (environment) → out-of-range teacher, bridge timestamps; citation
@@ -382,9 +417,9 @@ plan became two tracks and a join (architecture) and is stated as a multi-releas
 
 ## Where this is referenced
 
-[grounded_language_acquisition.md](grounded_language_acquisition.md) (its concrete near path) ·
-[maxim_hivemind.md](maxim_hivemind.md) (the ATL payload, the foreign layer, the mirror) ·
-[public_oasis.md](public_oasis.md) (a read-only Oasis serves the mirror; not required) ·
-[roadmap_1_4.md](roadmap_1_4.md) §Parallel lines · R4 (owner of the look-back) ·
-records: [paired_data_audit_2026-09-20.md](../experiments/paired_data_audit_2026-09-20.md),
-[paired_data_audit_reaudit_2026-09-21.md](../experiments/paired_data_audit_reaudit_2026-09-21.md).
+[grounded_language_acquisition.md](../grounded_language_acquisition.md) (its concrete near path) ·
+[maxim_hivemind.md](../maxim_hivemind.md) (the ATL payload, the foreign layer, the mirror) ·
+[public_oasis.md](../public_oasis.md) (a read-only Oasis serves the mirror; not required) ·
+[roadmap_1_4.md](../roadmap_1_4.md) §Parallel lines · R4 (owner of the look-back) ·
+records: [paired_data_audit_2026-09-20.md](../../experiments/paired_data_audit_2026-09-20.md),
+[paired_data_audit_reaudit_2026-09-21.md](../../experiments/paired_data_audit_reaudit_2026-09-21.md).

@@ -91,7 +91,8 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
   byte budget). Opt-in with defaults pinned. Phases 0 (#844) and 1 (honest activation, #846)
   SHIPPED; **Phase 2 decisions resolved 2026-09-21** (validated in the LLM sim worlds first); **Phase
   2S, the survival gate (#848)**: survival percepts score salience 0 and pattern completion cannot
-  cue sensor concepts, so nothing there ever uses a memory yet.
+  cue sensor concepts, so nothing there ever uses a memory yet. **Phase 2's look-back waits on R4's
+  design review of `PerceptTraceBuffer`** (R4 owns it — decision 2026-09-24).
 - [grounded_language_acquisition.md](grounded_language_acquisition.md) — **a PARALLEL LINE as of
   2026-09-19** (`roadmap_1_4.md` §Parallel lines), not the active umbrella it used to call itself:
   its thesis was validated by another route in 1.2/1.3, and its Phase 2 is structurally the deferred
@@ -99,11 +100,11 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
   the tick-by-tick (sensor vector, text percept) pairing carry language or templated labels? Passes →
   it and the projection plan revive together; fails → both archive. Evidence now: Exp 42 (safe-vs-harm), Exp 52
   (the want is learned), Exp 53b (it reads out on a body). Phases 1–3 are the 1.2+ arc.
-- [grounded_word_binding_demo.md](grounded_word_binding_demo.md) — **PROPOSED 2026-09-24 (v3, six-lens reviewed), plan only; a multi-release line.** The grounded-language line's concrete path and the language↔Oasis contract. Track L: a heard word calls back its situation (Exp A, raw). Track S: social referencing — consult a verified local Oasis mirror when ignorant and hurting, held as advice in a foreign layer (Exp C: does the gate beat consulting less?). Join: transfer (Exp B), Search Oasis. Web text only as a held-out test set. Parallel line, not a 1.4 rung.
+- [social_referencing.md](social_referencing.md) — **PROPOSED 2026-09-24, plan only; a parallel line.** Consult a locally held, signature-verified Oasis mirror only when the agent is both ignorant and being hurt; hold the answer as advice in a foreign layer apart from its own experience; promote advice only when it demonstrably worked. Exp C (may-fail): does the gate limit a stale Oasis's harm beyond the same advice given at random? Depends on public_oasis Phase 0 (scheduled); src after 1.3.2; rig after E3. Split from the language line.
 - [maxim_hivemind.md](maxim_hivemind.md) — **1.2 = Oasis + Hivemind.** B5 shareability
   SHIPPED (#305–#311); the Oasis ingestion contract, the re-keyed merge (gate 6) and the
   bundle action namespace (gate 7) are the 1.2 work.
-- [public_oasis.md](public_oasis.md) — **PROPOSED 2026-09-19**, scoping only: a public Oasis on own
+- [public_oasis.md](public_oasis.md) — **PROPOSED 2026-09-19; Phase 0 SCHEDULED 2026-09-24** (social_referencing depends on it), scoping only: a public Oasis on own
   hardware at `oasis.pymaxim.bio`. Verdict **publish, do not accept** — Phase 1 (read-only release
   tier over a tunnel) rides entirely on shipped infrastructure and adds no trust decision; Phase 2
   (submissions) stays deferred because V1's operator allowlist IS the trust boundary and the
@@ -236,6 +237,10 @@ Deferred in the 2026-08-27 post-1.1.0 triage (banner + revive trigger at the top
 - [deferred/passive_sense_discovery.md](deferred/passive_sense_discovery.md) — Phase 0 never authorized; zero code. Revive when an experiment is blocked by the cost of `sense_tools`.
 - [deferred/sem_environmental_proximity_sensing.md](deferred/sem_environmental_proximity_sensing.md) — zero code; revive when a drive must be relieved by sensed ambient environment.
 - [deferred/tool_refinement_plan.md](deferred/tool_refinement_plan.md) — stalled living doc (missed the whole 2026-07/08 tool wave). Revive at the next tool-surface curation wave.
+
+Deferred 2026-09-24 — **on a frozen condition:**
+
+- [deferred/grounded_word_binding.md](deferred/grounded_word_binding.md) — DEFERRED 2026-09-24 on a condition (renamed from `grounded_word_binding_demo.md`): a heard word calls back its situation (substrate-primary). Revive when L0's offline gate passes — blind-authored phrasings of five situations cluster by situation through Maxim's own EC formation (criterion frozen in its header); pass → candidate 1.5 headline, fail → archive. Even a pass licenses only "labels and their paraphrases bind".
 
 Deferred in the 2026-07-15 audit — **partially shipped, remainder paused:**
 - [deferred/llm_timeout_scalability.md](deferred/llm_timeout_scalability.md) — Stages 1–3.5 SHIPPED (per-tier timeout, admission gate, TTFT keepalive; PRs #320/#321). Stage 4 adaptive throughput model unbuilt. Revive when a big-model soak yields the `(TTFT, tok/sec)` data it needs.

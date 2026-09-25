@@ -2,8 +2,8 @@
 
 **Status:** ACTIVE design. Shareability foundation shipped in 1.0; Oasis and the
 P2P protocol are gated 1.2 work. Removed from the 1.1 cut on 2026-08-19 so release
-**Consumer (2026-09-24):** [grounded_word_binding_demo.md](grounded_word_binding_demo.md) — the reserved ATL payload (`NAMES` relations only), a **foreign layer** for consulted advice (held apart from own state, never merged live), and a verified local **release mirror** with a Queen-signed entry index (§The contract between the two sides).
 correctness is completed before distributed state is introduced.
+**Consumers (2026-09-24):** [social_referencing.md](social_referencing.md) — a **foreign layer** for consulted advice (held apart from own state, never merged live) and a verified local **release mirror** with a Queen-signed entry index; and, deferred, [deferred/grounded_word_binding.md](deferred/grounded_word_binding.md) — the reserved ATL payload (`HEARD_WITH` relations only).
 **Supersedes:** [archive/mother_maxim_plan.md](archive/mother_maxim_plan.md) (2,224 lines, designed pre-substrate-primary pivot — wrong architecture for the post-pivot world).
 **Companion plans:** [grounded_language_acquisition.md](grounded_language_acquisition.md) (substrate-primary AUT mode — the cognition layer the Hivemind shares), [v1_refinement.md](archive/v1_refinement.md) §B5 (the 1.0 shareability infrastructure that enables this).
 **Operating context:** the substrate-primary pivot decided 2026-05-09 reframed Maxim's headline thesis from "LLM with bio-augmentation" toward "bio-substrate carries the cognition; LLM is one possible action selector among others." That reframing makes the substrate itself naturally shareable — which the old Mother Maxim plan didn't anticipate, because it was designed when memories (LLM dialogue + episode traces) were the unit of value rather than learned bio-substrate (NAc weights, EC concepts, reflexes).
