@@ -1443,6 +1443,66 @@ class TestNAcRewardBiasDisabledEnv:
         finally:
             os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None)
 
+    # #889: the switch must ablate the LIVE path, not only the three named surfaces. Production credit
+    # goes TemporalCreditDistributor.distribute -> NAc.credit_node, and selection reads reward_bias();
+    # before the fix both ignored the switch, and the (gated) decay left the bias at full value.
+    @staticmethod
+    def _nac_with_switch(on: bool, monkeypatch):
+        from maxim.decisions.nac import NAc, NACConfig
+
+        if on:
+            monkeypatch.setenv("MAXIM_NAC_REWARD_BIAS_DISABLED", "1")
+        else:
+            monkeypatch.delenv("MAXIM_NAC_REWARD_BIAS_DISABLED", raising=False)
+        return NAc(config=NACConfig())
+
+    @staticmethod
+    def _reward_through_the_distributor(nac):
+        from maxim.decisions.temporal_credit import TemporalCreditDistributor
+        from maxim.time.scn import SCN
+
+        nac.update_eligibility("agent-A", "tool:swim", 0.3)
+        TemporalCreditDistributor(nac, SCN()).distribute("agent-A", 1.0)
+
+    @staticmethod
+    def _bias_component(nac, monkeypatch) -> float:
+        """The reward-bias term recommend_action actually scored (read from its provenance event)."""
+        import maxim.decisions.nac as nac_mod
+
+        seen: dict = {}
+        monkeypatch.setattr(nac_mod, "_emit_recommend_action_event", lambda **kw: seen.update(kw))
+        nac.recommend_action(agent_id="agent-A", available_tools=["swim"], min_confidence=0.0)
+        if "score_components" in seen:
+            return seen["score_components"]["reward_bias"]
+        # Nothing scored at all: the event says so explicitly (not a missing emission).
+        assert seen.get("n_candidates") == 0, seen
+        return 0.0
+
+    @pytest.mark.parametrize("on", [False, True])
+    def test_the_live_credit_path_honours_the_switch(self, on, monkeypatch):
+        nac = self._nac_with_switch(on, monkeypatch)
+        self._reward_through_the_distributor(nac)
+        if on:
+            assert nac.reward_bias("agent-A", "tool:swim") == 0.0
+            assert nac.dump()["reward_bias"] == {}
+            assert self._bias_component(nac, monkeypatch) == 0.0
+        else:  # the control: the same sequence does write and is read
+            assert nac.reward_bias("agent-A", "tool:swim") > 0.0
+            assert self._bias_component(nac, monkeypatch) > 0.0
+
+    def test_a_resumed_bias_is_invisible_under_the_switch(self, monkeypatch):
+        """Exp 37's ablation arm resumed a prior session: its persisted biases must not be read."""
+        donor = self._nac_with_switch(False, monkeypatch)
+        self._reward_through_the_distributor(donor)
+        state = donor.dump()
+        assert state["reward_bias"]  # the prior session did learn a bias
+
+        nac = self._nac_with_switch(True, monkeypatch)
+        nac.load_state(state)
+        assert nac.reward_bias("agent-A", "tool:swim") == 0.0
+        assert nac.get_threshold_overrides("agent-A") == {}
+        assert self._bias_component(nac, monkeypatch) == 0.0
+
     @pytest.mark.parametrize(
         "raw_value,expected",
         [

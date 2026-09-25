@@ -63,6 +63,22 @@ The cradle scenario's primary metric on fire_pit, across all model fires:
 
 The pre-reg's secondary criterion: ≥1 of 3 ablations should shrink Arm B's delta toward Arm A.
 
+> **Correction 2026-09-25 — the NAc-bias-off column is NOT a valid ablation
+> ([#889](https://github.com/dennys246/Maxim/issues/889)).** `MAXIM_NAC_REWARD_BIAS_DISABLED` gated only
+> `distribute_reward` (no production caller since the 2026-04-24 `TemporalCreditDistributor`),
+> `decay_reward_biases` and `get_agent_tool_biases`. The live write (`NAc.credit_node`, via the
+> distributor `bio_stack` subscribes) and every read (`reward_bias()` — the prompt annotations in
+> `bio_enrichment` / `tools/discovery` — and `get_threshold_overrides`, the LinguisticEncoder's
+> recognition thresholds) ignored it. The arm (`B-nac-bias-off` in `scripts/benchmark_cross_session.py`)
+> resumed from Arm A, so Arm A's learned biases stayed readable, new credit kept accruing, and the skipped
+> tick decay held them (only the 7-day decay-on-load applied): it ran with the NAc reward bias **on**.
+> What it **did** gate was `get_agent_tool_biases` — the Wire-A cluster-bias prompt annotation
+> (`agent_loop` / `orchestrator`) — so the arm was in effect a **second Wire-A-annotation-off arm**,
+> reached by a different path; keep that in mind when its column and the Wire-A column disagree (e.g.
+> Qwen32B +0.03 vs +0.56). Its numbers are kept as recorded but **say nothing about whether NAc reward
+> bias mediates the delta**. Fixed in #889's PR; the Wire-A and Wire-1 columns are unaffected. The row's
+> headline claim was already pulled (PARTIAL — reframed), so no EARNED claim rested on this column.
+
 | Model | Wire-A off Δ shrink (SD) | Wire-1 off Δ shrink (SD) | NAc-bias off Δ shrink (SD) | Secondary verdict |
 |---|---|---|---|---|
 | Qwen2.5-14B-Instruct | −0.06 (overshoot) | −0.21 (overshoot) | −0.18 (overshoot) | **FAIL** (0/3) |

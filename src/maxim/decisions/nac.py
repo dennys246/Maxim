@@ -147,10 +147,19 @@ _NAC_FORMAT_VERSION: str = "1.4"
 
 
 # Exp 37 cross-session graduation ablation arm 3 env var.
-# When ``MAXIM_NAC_REWARD_BIAS_DISABLED`` is set to a truthy value,
-# the three named NAc reward-bias surfaces (``distribute_reward``,
-# ``decay_reward_biases``, ``get_agent_tool_biases``) early-exit as
-# no-ops. Tests whether bio-learning is load-bearing for the
+# When ``MAXIM_NAC_REWARD_BIAS_DISABLED`` is set to a truthy value, the
+# reward bias is ablated end to end: the live write (``credit_node``, which
+# ``TemporalCreditDistributor.distribute`` calls), every read
+# (``reward_bias``, ``get_threshold_overrides``), the legacy
+# ``distribute_reward``, ``decay_reward_biases`` and ``get_agent_tool_biases``
+# all no-op. Before #889 only the last three were gated — the live path wrote,
+# selection read, and the skipped decay kept the bias at full value.
+# Scope: ``_reward_bias`` only. For ``_cluster_reward_bias`` the switch hides
+# just the Wire-A prompt read (``get_agent_tool_biases``); its writes and
+# ``recommend_action``'s cluster term are NOT gated. Loaded biases are kept
+# (``dump``/hivemind export ship them unchanged) — the ablation hides, it does
+# not destroy donor state. Bookkeeping (``stats``, telemetry) still counts them,
+# and the uncalled ``memory/sleep_replay.py`` reads the dict directly. Tests whether bio-learning is load-bearing for the
 # cross-session behavioral delta vs LLM in-context recall doing the
 # work. See ``docs/experiments/37_cross_session_graduation.md``.
 #
@@ -685,10 +694,10 @@ class NAc:
                     )
         self.config = config
 
-        # Exp 37 cross-session graduation ablation arm 3: when
-        # ``MAXIM_NAC_REWARD_BIAS_DISABLED=1`` the three named reward-
-        # bias surfaces (``distribute_reward``, ``decay_reward_biases``,
-        # ``get_agent_tool_biases``) early-exit as no-ops. Read here
+        # Reward-bias ablation: when ``MAXIM_NAC_REWARD_BIAS_DISABLED=1`` the
+        # ``_reward_bias`` surface is ablated end to end (write, reads, decay —
+        # see the module-level note) and ``get_agent_tool_biases`` (the Wire-A
+        # prompt read of cluster bias) returns empty. Read here
         # ONCE at construction (existing env-var pattern in this
         # __init__); changes after construction are not picked up.
         # See ``docs/experiments/37_cross_session_graduation.md``.
@@ -696,9 +705,10 @@ class NAc:
         if self._reward_bias_disabled:
             logger.info(
                 "NAc constructed with MAXIM_NAC_REWARD_BIAS_DISABLED=1 - "
-                "distribute_reward / decay_reward_biases / "
-                "get_agent_tool_biases will return no-op "
-                "(Exp 37 ablation arm 3)"
+                "reward bias ablated (credit_node / reward_bias / "
+                "get_threshold_overrides / distribute_reward / decay_reward_biases "
+                "no-op) and get_agent_tool_biases returns empty; "
+                "_cluster_reward_bias writes and its recommend_action term are NOT gated"
             )
 
         # Thread safety: RLock for concurrent access from multi-agent party mode
@@ -2466,7 +2476,12 @@ class NAc:
 
         Returns a value in [0, max_reward_bias]. Positive means the node
         has been rewarded and EC should lower its threshold for this node.
+        Always 0.0 under ``MAXIM_NAC_REWARD_BIAS_DISABLED`` (#889): every reader —
+        ``recommend_action``, the prompt annotations — goes through here, so a
+        bias a resumed session carries in is invisible too.
         """
+        if self._reward_bias_disabled:
+            return 0.0
         return self._reward_bias.get((agent_id, node_id), 0.0)
 
     def get_temporal_anchors(self, agent_id: str) -> dict[str, tuple[float, Any]]:
@@ -2508,7 +2523,14 @@ class NAc:
             agent_id: Agent whose recognition should be modulated.
             node_id: ATL node to credit.
             reward: Reward magnitude. Positive = reinforce, negative = weaken.
+
+        A no-op under ``MAXIM_NAC_REWARD_BIAS_DISABLED`` (#889): this is the LIVE
+        write path (``TemporalCreditDistributor.distribute`` calls it), so gating
+        only ``distribute_reward`` — which has no production caller — ablated
+        nothing.
         """
+        if self._reward_bias_disabled:
+            return
         with self._lock:
             key = (agent_id, node_id)
             current = self._reward_bias.get(key, 0.0)
@@ -3567,6 +3589,8 @@ class NAc:
         # coupling test in tests/unit/test_ec_centroid_drift_fix.py
         # asserts both move together.
         base = 0.44 if base_threshold is None else base_threshold
+        if self._reward_bias_disabled:  # #889: the ablated bias widens nothing
+            return overrides
         with self._lock:
             for (aid, nid), bias in self._reward_bias.items():
                 if aid != agent_id or bias < 0.001:

@@ -284,6 +284,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (no positive Reaction emitter is wired). The Exp 60 ledger row (inherited by 61/62) gains this path as a
   Re-run on trigger, not fired for this fix, with the reasoning on the row.
 
+- **`MAXIM_NAC_REWARD_BIAS_DISABLED` now ablates the reward bias it names
+  ([#889](https://github.com/dennys246/Maxim/issues/889)).** It used to gate only `distribute_reward` —
+  which production stopped calling when `TemporalCreditDistributor` replaced it — plus the decay and
+  `get_agent_tool_biases`. The live write (`NAc.credit_node`) and the reads (`reward_bias()`, which
+  `recommend_action` and the prompt annotations use, and `get_threshold_overrides`) ignored it, and with
+  the decay skipped a bias stayed at full value. All three now honour it. Scope, stated: the switch
+  covers `_reward_bias`; for the cluster bias it still hides only the Wire-A prompt read. **Exp 37's NAc-bias-off arm
+  therefore did not ablate NAc reward bias** (it was in effect a second Wire-A-annotation-off arm); its column in `docs/experiments/37_cross_model_results.md`
+  carries a correction (the row's headline claim was already pulled).
+
 - **A reflex is reported as having fired only if its response actually ran**
   ([#870](https://github.com/dennys246/Maxim/issues/870)). `ReflexRegistry.evaluate` judged a
   dispatch only by whether it raised: a tool that returned `success=False`, or a reflex tool that was
