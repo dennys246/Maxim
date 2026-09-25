@@ -147,7 +147,7 @@ plan's join stage, not here — the v3 text said both, and this plan takes neith
 
 - **S0 — prerequisites, shared with [public_oasis.md](public_oasis.md) Phase 0** (no S1 code before
   these): the CI lane installing `cryptography` (and fastapi for `oasis serve`); pulls never send the
-  leader key; `signer_identity` covered by the signature; releases carry a Queen-signed entry index.
+  leader key; `signer_identity` guarded (resolved 2026-09-25 — [deferred/signed_signer_identity.md](deferred/signed_signer_identity.md)); releases carry a Queen-signed entry index.
   **Exp C-specific:** the corrupted test Oasis is built with a **throwaway signing key**, in a test-only
   namespace, in a temporary directory, never on a machine whose key a real receiver trusts — a bundle
   signed with the Queen key *is* a Queen release.
