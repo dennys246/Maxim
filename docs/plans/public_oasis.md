@@ -1,10 +1,10 @@
 # Public Oasis on own hardware (`oasis.pymaxim.bio`)
 
-**Status:** PROPOSED 2026-09-19 — scoping pass only, no code written, nothing deployed. Produced
+**Status:** PROPOSED 2026-09-19 (**Phase 0 SCHEDULED 2026-09-24** — [social_referencing.md](social_referencing.md) depends on it) — scoping pass only, no code written, nothing deployed. Produced
 from a read of the frozen [sharing_threat_model.md](sharing_threat_model.md), the shipped
 `src/maxim/hivemind/` receiver, and the Slice D deferral in
 [hivemind_p2p_scope.md](archive/hivemind_p2p_scope.md). **Recommendation: publish, do not accept.**
-**Consumer (2026-09-24):** [grounded_word_binding_demo.md](grounded_word_binding_demo.md) its release mirror may read signed releases from here, anonymously and read-only (never with the leader key); it does not require this plan (a private `oasis serve` suffices).
+**Consumer (2026-09-24):** [social_referencing.md](social_referencing.md) depends on this plan's **Phase 0**, which is **SCHEDULED** for that reason (owner, 2026-09-24); its release mirror may read signed releases from a Phase 1 Oasis anonymously and read-only (never with the leader key), but does not require Phase 1 (a private `oasis serve` suffices).
 Phase 1 is buildable now and adds no new trust decision; Phase 2 stays deferred behind conditions
 this document names. Merging this plan is not the decision — see §The decision record this needs.
 
@@ -111,7 +111,7 @@ scoping and no per-contributor credential. The Console's authorization-tier work
 
 ## Phases
 
-### Phase 0 — prerequisites (entry: the owner accepts this plan)
+### Phase 0 — prerequisites (SCHEDULED 2026-09-24: [social_referencing.md](social_referencing.md) S0 depends on it)
 
 Cheap, and all of it is owed regardless of whether Phase 1 ships.
 
@@ -130,6 +130,16 @@ Cheap, and all of it is owed regardless of whether Phase 1 ships.
    material before the first upload.
 4. **Licensing posture** for published bundles — trained state, not code. Pick before the first
    upload, not after (HF plan Q5).
+5. **Pulls never send the leader key** (added 2026-09-24, shared with social_referencing S0):
+   `hive_cli.py::_run_pull` defaults to `read_key()`, the leader key that also grants inference, so any
+   registered Oasis receives it. Reads become anonymous and rate-limited, or use a read-only scoped
+   credential.
+6. **`signer_identity` covered by the signature** (added 2026-09-24, shared with social_referencing
+   S0): today it can be relabelled without breaking verification.
+7. **Releases carry a Queen-signed entry index** (added 2026-09-24) — **owed by social_referencing
+   only**, not regardless of Phase 1 (a new release-format feature for its local selection and
+   per-entry journal, so a consumer verifies the Queen per entry without server-cut slices). It must
+   **land before item 2**, or the format freeze reopens at once.
 
 ### Phase 1 — publish only (entry: Phase 0 complete)
 
@@ -203,7 +213,8 @@ is a Phase 2 byproduct — not a reason to open submissions.
 
 ## Cost to the roadmap
 
-- **Phase 0 + 1:** days, not weeks, and item 1 is already 1.3.1 scope. Slips nothing if Phase 1
+- **Phase 0 + 1:** days, not weeks, and item 1 is already 1.3.1 scope (items 5–7, added 2026-09-24,
+  add perhaps a week: two hardening fixes and one release-format feature). Slips nothing if Phase 1
   waits for the crypto lane.
 - **Phase 2:** reopens Slice D plus a threat-model addendum, per-capability auth, a reviewer verb,
   revocation and a gauntlet that is *"partly a research question, not a feature."* That is a
