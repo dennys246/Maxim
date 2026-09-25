@@ -23,6 +23,7 @@ from maxim.decisions.nac import NAc, NACConfig
 from maxim.embodiment.component_registry import ComponentRegistry
 from maxim.proprioception.pain_bus import PainBus
 from maxim.runtime.agent_loop import (
+    NO_SITUATION_CUE,
     _read_drive_ranges,
     _read_drive_states,
     propose_via_substrate,
@@ -110,6 +111,7 @@ class TestCradleSubstratePrimary:
         _set_hunger(world["executor"], 0.8)
 
         proposal = propose_via_substrate(
+            situation_cue=NO_SITUATION_CUE,
             nac=world["nac"],
             agent_id="cradle_infant",
             executor=world["executor"],
@@ -169,6 +171,7 @@ class TestCradleSubstratePrimary:
             )
 
         proposal = propose_via_substrate(
+            situation_cue=NO_SITUATION_CUE,
             nac=world["nac"],
             agent_id="cradle_infant",
             executor=world["executor"],
@@ -193,6 +196,7 @@ class TestCradleSubstratePrimary:
         _set_hunger(world["executor"], 0.8)
 
         proposal = propose_via_substrate(
+            situation_cue=NO_SITUATION_CUE,
             nac=world["nac"],
             agent_id="cradle_infant",
             executor=world["executor"],
@@ -224,6 +228,7 @@ class TestCradleSubstratePrimary:
         # Leave hunger at the YAML default (0.0 — well below 0.5)
 
         proposal = propose_via_substrate(
+            situation_cue=NO_SITUATION_CUE,
             nac=world["nac"],
             agent_id="cradle_infant",
             executor=world["executor"],
@@ -252,6 +257,7 @@ class TestCradleSubstratePrimary:
         _set_hunger(world["executor"], 0.8)
 
         proposal = propose_via_substrate(
+            situation_cue=NO_SITUATION_CUE,
             nac=None,
             agent_id="cradle_infant",
             executor=world["executor"],
@@ -543,6 +549,7 @@ class TestG4ClusterRewardWire:
             )
 
         proposal = propose_via_substrate(
+            situation_cue=NO_SITUATION_CUE,
             nac=world["nac"],
             agent_id="cradle_infant",
             executor=world["executor"],
@@ -800,6 +807,7 @@ class TestSubstratePrimaryNoLLM:
         _set_hunger(world["executor"], 0.8)
 
         proposal = propose_via_substrate(
+            situation_cue=NO_SITUATION_CUE,
             nac=world["nac"],
             agent_id="cradle_infant",
             executor=world["executor"],

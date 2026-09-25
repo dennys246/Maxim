@@ -403,6 +403,8 @@ def main(argv: list[str] | None = None) -> int:
                 from maxim.runtime.experience_time import ExperienceClockDriver
 
                 clock_driver = ExperienceClockDriver(aut.bio.hippocampus.experience_clock, percept_source=None)
+                # Memory 2S-d: resolved ONCE, so a hub with no cue (no ATL) fails here, not mid-episode.
+                situation_cue = aut.bio.memory_hub.situation_cue
                 usable = 0
                 attempts = 0
                 episode_clusters: list[str] = []
@@ -416,7 +418,11 @@ def main(argv: list[str] | None = None) -> int:
                     while time.monotonic() < ep_end:
                         pubs_before = aut.bio.pain_bus.get_stats().get("total_published", 0)
                         propose_via_substrate(
-                            nac=aut.bio.nac, agent_id=agent_id, executor=aut.executor, sensor_encoder=encoder
+                            nac=aut.bio.nac,
+                            agent_id=agent_id,
+                            executor=aut.executor,
+                            situation_cue=situation_cue,
+                            sensor_encoder=encoder,
                         )
                         clock_driver.on_live_pass()
                         pubs_after = aut.bio.pain_bus.get_stats().get("total_published", 0)
@@ -442,7 +448,11 @@ def main(argv: list[str] | None = None) -> int:
                         raise Refusal("healed health never settled — latch cannot clear")
                     for _ in range(4):  # healthy ticks: latch observes recovery
                         propose_via_substrate(
-                            nac=aut.bio.nac, agent_id=agent_id, executor=aut.executor, sensor_encoder=encoder
+                            nac=aut.bio.nac,
+                            agent_id=agent_id,
+                            executor=aut.executor,
+                            situation_cue=situation_cue,
+                            sensor_encoder=encoder,
                         )
                         clock_driver.on_live_pass()
                         time.sleep(0.25)

@@ -683,6 +683,13 @@ path. Both fixes move there, where the inputs exist (`ctrl.pending_proposal.clus
   ids → the shared-id ATL concepts → their linked records → `MemoryLayer.activate(source="prediction")`.
   Any EC lookup goes through `EntorhinalCortex.pattern_complete_readonly` (it takes an embedding),
   never the encode path.
+  **BUILT 2026-09-25 as RECALL ONLY** ([memory_2s_d_situation_cue.md](memory_2s_d_situation_cue.md)):
+  owner amendment on review — no `activate` until 2S-e consumes the ids (an unconsumed cue must not
+  credit `S`), a memory qualifies only through a shared world/audio cluster, and it is tiered by place
+  (sound only where no place matches), then ordered by salience `max(encoding_tag, retro_tag)`, then
+  shared sound, then recency (interoception never ranks). No EC lookup was
+  needed (the ids are known on the tick). Lost links deferred:
+  [deferred/situation_cue_fallback.md](deferred/situation_cue_fallback.md).
 - **2S-e: a behavioural consumer (owner 2026-09-24: in scope).** Completion alone is bookkeeping,
   because the survival action path has no LLM to read a prediction. The consumer changes survival
   action selection, so per roadmap 1.4 Phase 5 it enters with its own plan section, a written
@@ -704,6 +711,15 @@ path. Both fixes move there, where the inputs exist (`ctrl.pending_proposal.clus
 
   **(B) CHOSEN (owner, 2026-09-24).** Owed before 2S-e is built: its plan section (the front-gate
   answer against the substrate keying rule, and the validation world), then the four-lens design review.
+  **Inherited from 2S-d (2026-09-25), owed in that plan section:** (i) the **outcome-gated credit**
+  — 2S-d recalls without `activate`, so crediting recalled memories (and how an outcome gates it)
+  is 2S-e's; (ii) the **ranking policy** its consumer needs (2S-d returns the highest shared-modality tier,
+  most salient first — `max(encoding_tag, retro_tag)` — then shared sound, then newest, capped at 20;
+  interoception never ranks); (iii) (B) completes to a neighbouring cluster, then recalls through the STATELESS
+  `PatternCompleter.recall_situation` (never `cue_situation`, which carries change detection);
+  (iv) the validation world must contain **loop captures** — the propose-only phases give 2S-b no
+  links, so the cue finds nothing there; (v) the lossy-refs fallback trigger
+  ([deferred/situation_cue_fallback.md](deferred/situation_cue_fallback.md)).
 
 **Phase 3 — sleep.** Opt-in `sleep()` in the generic sim loop too (the survival harnesses already
 run it), all of it behind the strategy selection; replay updates `S` directly and does NOT go

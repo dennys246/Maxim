@@ -25,7 +25,7 @@ import pytest
 from maxim.decisions.nac import NAc, NACConfig
 from maxim.embodiment.component_registry import ComponentRegistry
 from maxim.proprioception.pain_bus import PainBus
-from maxim.runtime.agent_loop import propose_via_substrate
+from maxim.runtime.agent_loop import NO_SITUATION_CUE, propose_via_substrate
 from maxim.runtime.bootstrap import build_executor
 from maxim.similarity.ec import ECConfig, EntorhinalCortex
 from maxim.similarity.encoder import SensorEncoder
@@ -221,6 +221,7 @@ class TestSubstrateTelemetry:
         )
 
         proposal = propose_via_substrate(
+            situation_cue=NO_SITUATION_CUE,
             nac=nac,
             agent_id="cradle_infant",
             executor=executor,
@@ -490,6 +491,7 @@ class TestSensorEncodingIntoEC:
         for i in range(9):
             executor.embodiment.root.vital_metrics["hunger"] = i * 0.1
             propose_via_substrate(
+                situation_cue=NO_SITUATION_CUE,
                 nac=nac,
                 agent_id="cradle_infant",
                 executor=executor,

@@ -653,13 +653,17 @@ class DryReadoutRig:
 
 def decide(agent: LoadedAgent, rig, sink: _ProvenanceSink) -> dict:
     """One production decision at the current pose: encode → recommend → provenance."""
-    from maxim.runtime.agent_loop import _encode_current_clusters, propose_via_substrate
+    from maxim.runtime.agent_loop import NO_SITUATION_CUE, _encode_current_clusters, propose_via_substrate
 
     clusters = _encode_current_clusters(agent.encoder, AGENT_ID, rig.executor)
     audio_cluster = clusters.get("audio")
     sink.last = None
     proposal = propose_via_substrate(
-        nac=agent.nac, agent_id=AGENT_ID, executor=rig.executor, sensor_encoder=agent.encoder
+        nac=agent.nac,
+        agent_id=AGENT_ID,
+        executor=rig.executor,
+        situation_cue=NO_SITUATION_CUE,  # an NAc and an EC only: no Hippocampus to recall from
+        sensor_encoder=agent.encoder,
     )
     prov = sink.take() or {}
     tool = proposal.action.get("tool_name") if proposal is not None else None

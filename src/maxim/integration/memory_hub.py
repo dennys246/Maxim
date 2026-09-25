@@ -26,6 +26,8 @@ from typing import TYPE_CHECKING, Any, Callable
 from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from maxim.agents.fear_agent import FearAgent
     from maxim.attention.attention_network import AttentionNetwork
     from maxim.bridges.escalation_bridge import EscalationLearningBridge
@@ -473,6 +475,29 @@ class MemoryHub:
             layers=layers,
         )
 
+    def _situation_cue_report(self) -> dict[str, int]:
+        """The 2S-d cue's counters for the session-end results (and so its INFO line): how many cues,
+        how many were situation CHANGES, how many changes found memories, and how many ids. Cumulative
+        for this hub's life. This is what makes "the cue fires and finds nothing" visible in a run."""
+        if self._pattern_completer is None:
+            return {}
+        return {f"situation_cue_{k}": v for k, v in self._pattern_completer.situation_cue_stats().items()}
+
+    @property
+    def situation_cue(self) -> "Callable[[str, Mapping[str, str] | None], tuple[str, ...]]":
+        """The 2S-d situation cue for ``propose_via_substrate(situation_cue=...)``.
+
+        Raises when there is no ``PatternCompleter`` (it needs the ATL): a hub whose ATL failed to
+        build would otherwise hand the survival path a cue that silently recalls nothing. A caller
+        with no memory at all passes ``NO_SITUATION_CUE`` explicitly instead.
+        """
+        if self._pattern_completer is None:
+            raise RuntimeError(
+                "MemoryHub has no PatternCompleter (no ATL), so it has no situation cue; pass "
+                "NO_SITUATION_CUE explicitly if this run deliberately has no episodic memory"
+            )
+        return self._pattern_completer.cue_situation
+
     def register_promotion_source(self, source: "PromotionSource") -> None:
         """Register an additional promotion source (e.g., StatisticianAgent)."""
         if self._promoter is not None:
@@ -645,6 +670,10 @@ class MemoryHub:
             self._session_start_time = time.time()
             self._session_advanced_us = advanced_at_start
             self._session_work_at_start = work_at_start
+
+        # 2S-d: a new session starts with no last situation, so its first cue is an entry.
+        if self._pattern_completer is not None:
+            self._pattern_completer.reset_situations()
 
         results = {}
 
@@ -986,6 +1015,7 @@ class MemoryHub:
         # (_session_active was cleared atomically at entry.)
         session_duration = time.time() - self._session_start_time
         results["session_duration_seconds"] = session_duration
+        results.update(self._situation_cue_report())
 
         logger.info("Session ended after %.1fs: %s", session_duration, results)
         self._assert_experience_advanced(results)
@@ -1099,6 +1129,7 @@ class MemoryHub:
         # (_session_active was cleared atomically at entry.)
         session_duration = time.time() - self._session_start_time
         results["session_duration_seconds"] = session_duration
+        results.update(self._situation_cue_report())
 
         logger.info("Session ended (lightweight) after %.1fs: %s", session_duration, results)
         self._assert_experience_advanced(results)

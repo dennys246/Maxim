@@ -21,7 +21,7 @@ import pytest
 
 from maxim.embodiment.body import Embodiment
 from maxim.embodiment.spec import _parse_entity
-from maxim.runtime.agent_loop import propose_via_substrate
+from maxim.runtime.agent_loop import NO_SITUATION_CUE, propose_via_substrate
 from maxim.similarity.ec import EntorhinalCortex
 from maxim.similarity.encoder import SensorEncoder
 
@@ -118,11 +118,15 @@ class TestDilutionRegression:
         nac = _ClusterRecordingNac()
 
         body.vital_metrics["azimuth"] = -0.7
-        propose_via_substrate(nac=nac, agent_id="infant", executor=executor, sensor_encoder=enc)
+        propose_via_substrate(
+            situation_cue=NO_SITUATION_CUE, nac=nac, agent_id="infant", executor=executor, sensor_encoder=enc
+        )
         left = _cluster_context(nac)
 
         body.vital_metrics["azimuth"] = 0.7
-        propose_via_substrate(nac=nac, agent_id="infant", executor=executor, sensor_encoder=enc)
+        propose_via_substrate(
+            situation_cue=NO_SITUATION_CUE, nac=nac, agent_id="infant", executor=executor, sensor_encoder=enc
+        )
         right = _cluster_context(nac)
 
         assert left, "left proposal produced no cluster context at all"
@@ -152,7 +156,9 @@ class TestDilutionRegression:
         executor = _StubExecutor(["b_warm_self"], embodiment=emb)
         enc = SensorEncoder(ec=EntorhinalCortex(), atl=None)
         nac = _ClusterRecordingNac()
-        propose_via_substrate(nac=nac, agent_id="b", executor=executor, sensor_encoder=enc)
+        propose_via_substrate(
+            situation_cue=NO_SITUATION_CUE, nac=nac, agent_id="b", executor=executor, sensor_encoder=enc
+        )
         assert nac.seen_clusters is not None
         assert set(nac.seen_clusters) == {"interoception"}
         assert nac.seen_cluster_id == nac.seen_clusters["interoception"]
@@ -584,7 +590,12 @@ class TestProposalClusters:
         # gate, so a cold substrate still returns a proposal to inspect.
         nac = NAc(NACConfig(substrate_explore_bonus_weight=0.5))
         proposal = propose_via_substrate(
-            nac=nac, agent_id="infant", executor=executor, sensor_encoder=enc, min_confidence=0.0
+            situation_cue=NO_SITUATION_CUE,
+            nac=nac,
+            agent_id="infant",
+            executor=executor,
+            sensor_encoder=enc,
+            min_confidence=0.0,
         )
         assert proposal is not None
         assert proposal.clusters is not None
@@ -654,6 +665,7 @@ class TestMultiDriveOrientLearnsEndToEnd:
             body.vital_metrics["azimuth"] = az
 
             proposal = propose_via_substrate(
+                situation_cue=NO_SITUATION_CUE,
                 nac=nac,
                 agent_id="infant",
                 executor=executor,
