@@ -116,6 +116,22 @@ def test_the_registry_refuses_a_key_verification_could_never_use(tmp_path, pubke
         HiveRegistry(tmp_path / "hive.json").add("o", "https://oasis.example", queen_keys={"q": pubkey})
 
 
+def test_hive_add_refuses_a_bad_key_with_exit_2_and_names_whitespace(tmp_path, capsys):
+    import base64
+
+    from maxim.hivemind.hive_cli import run_hive_subcommand
+
+    reg = str(tmp_path / "hive.json")
+    assert run_hive_subcommand(["--registry", reg, "add", "o", "https://o.example", "--queen-key", "q=PUB"]) == 2
+    assert "not valid base64" in capsys.readouterr().err
+    key_file_line = base64.b64encode(bytes(range(32))).decode() + "\n"  # as load_or_create_signer writes it
+    assert (
+        run_hive_subcommand(["--registry", reg, "add", "o", "https://o.example", "--queen-key", f"q={key_file_line}"])
+        == 2
+    )
+    assert "whitespace" in capsys.readouterr().err
+
+
 def test_the_registry_names_the_canonical_spelling_of_a_respelled_key(tmp_path):
     import base64
 

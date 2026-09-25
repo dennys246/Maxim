@@ -108,13 +108,19 @@ def _validate_add(name: str, url: str, queen_keys: dict[str, str]) -> None:
     # Every key must be one verification can use: the CANONICAL base64 of a raw 32-byte Ed25519 public
     # key. A key that does not decode, decodes to another length, or is one of the three non-canonical
     # spellings of a real key (the last character carries two unused bits) is refused HERE, where the
-    # operator is typing it, rather than stored and failing at the first pull. Canonical-only also makes
-    # a registry's stored string the key's identity.
+    # operator is typing it, rather than stored and failing at the first pull. This binds NEWLY added
+    # keys only: a legacy entry on disk is not re-checked (it still loads, and a non-canonical legacy key
+    # still verifies), and `substrate ingest --trust-key` never passes through here -- which is why the
+    # decoded-byte alias checks in `bundle.py` stay.
     import base64
     import binascii
 
     seen: dict[bytes, str] = {}
     for identity, pubkey in queen_keys.items():
+        if pubkey != pubkey.strip():
+            raise HiveRegistryError(
+                f"queen key for {identity!r} contains surrounding whitespace (a key file's trailing newline?); strip it"
+            )
         try:
             key = base64.b64decode(pubkey, validate=True)
         except (binascii.Error, ValueError):
