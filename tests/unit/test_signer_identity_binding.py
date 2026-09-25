@@ -83,16 +83,45 @@ def test_one_key_trusted_under_two_identities_is_refused(tmp_path, respell):
         assert ok is False and "one key under two identities" in reason
 
 
-@pytest.mark.parametrize("respell", [False, True])
-def test_the_registry_refuses_one_key_under_two_identities(tmp_path, respell):
-    """No crypto needed -- so this guard is tested on every lane, not only the extras lane."""
+@pytest.mark.parametrize(("respell", "why"), [(False, "register each key once"), (True, "non-canonical")])
+def test_the_registry_refuses_one_key_under_two_identities(tmp_path, respell, why):
+    """No crypto needed -- so this guard is tested on every lane, not only the extras lane. A
+    RE-SPELLED alias is now refused one step earlier, as a non-canonical key."""
     import base64
 
     from maxim.hivemind.registry import HiveRegistry, HiveRegistryError
 
     key = base64.b64encode(bytes(range(32))).decode()
     other = _respelled(key) if respell else key
-    with pytest.raises(HiveRegistryError, match="register each key once"):
+    with pytest.raises(HiveRegistryError, match=why):
         HiveRegistry(tmp_path / "hive.json").add(
             "o", "https://oasis.example", queen_keys={"queen-a": key, "queen-b": other}
         )
+
+
+@pytest.mark.parametrize(
+    ("pubkey", "why"),
+    [
+        ("PUB", "not valid base64"),
+        ("not base64!", "not valid base64"),
+        ("AAECAwQ=", "decodes to 5 bytes"),
+        ("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gIQ==", "decodes to 34 bytes"),
+    ],
+)
+def test_the_registry_refuses_a_key_verification_could_never_use(tmp_path, pubkey, why):
+    """Refused where the operator types it, not stored to fail at the first pull."""
+    from maxim.hivemind.registry import HiveRegistry, HiveRegistryError
+
+    with pytest.raises(HiveRegistryError, match=why):
+        HiveRegistry(tmp_path / "hive.json").add("o", "https://oasis.example", queen_keys={"q": pubkey})
+
+
+def test_the_registry_names_the_canonical_spelling_of_a_respelled_key(tmp_path):
+    import base64
+
+    from maxim.hivemind.registry import HiveRegistry, HiveRegistryError
+
+    key = base64.b64encode(bytes(range(32))).decode()
+    with pytest.raises(HiveRegistryError, match=key):
+        HiveRegistry(tmp_path / "hive.json").add("o", "https://oasis.example", queen_keys={"q": _respelled(key)})
+    assert HiveRegistry(tmp_path / "hive.json").add("o", "https://oasis.example", queen_keys={"q": key})
