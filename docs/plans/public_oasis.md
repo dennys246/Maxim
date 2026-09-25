@@ -121,7 +121,9 @@ Cheap, and all of it is owed regardless of whether Phase 1 ships.
    the mechanism works; it is simply unguarded. Signature verification is the only thing that raises
    the trust boundary above "the channel", so publishing bundles the world verifies while its guard
    never runs in CI is the vacuous-guard shape. **This is already 1.3.1's top item** — Phase 1 waits
-   for it rather than duplicating it.
+   for it rather than duplicating it. *(2026-09-25: built — the `unit-tests` job installs the `console`
+   + `sign` extras from `pyproject.toml` and runs with `--require-extras=console,sign`, which turns a skip
+   for a missing required extra into a failure: the positive control.)*
 2. **Public format-freeze pass.** Manifest fields, slice shapes and the §5 adapter constants become
    a public compatibility surface the moment a stranger downloads a bundle. A named gate, not a
    formality (HF plan §3).
