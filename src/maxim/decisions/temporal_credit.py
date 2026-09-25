@@ -313,7 +313,7 @@ class TemporalCreditDistributor:
         return self._last_valence_signal
 
     def cleanup_session(self) -> None:
-        """Unregister session-scoped events from SCN.
+        """Unregister session-scoped events from SCN and clear NAc's temporal anchors.
 
         Called from ``BioStack.on_session_end()``.  Idempotent — safe to
         call multiple times (second call is a no-op on empty list).
@@ -326,3 +326,6 @@ class TemporalCreditDistributor:
                     log_swallowed_exception()  # Best-effort cleanup
             self._session_event_ids.clear()
             self._deliberation_events.clear()
+        # Temporal anchors are session-scoped (never persisted): clear them with the session,
+        # or they carry into the next one (#888). Outside self._lock — NAc takes its own.
+        self._nac.clear_temporal_anchors()

@@ -722,6 +722,55 @@ class TestTemporalAnchorPruning:
         # With 0s window, anchor should be pruned
         assert ("agent", "node-a") not in nac._temporal_anchors
 
+    # #888: an anchor still YOUNG when its fast trace expires (any tick faster than ~7 s) was kept and
+    # never visited again, so it drew a share of every later reward for the rest of the session.
+    def test_an_anchor_young_at_expiry_is_pruned_once_it_ages_past_the_window(self, monkeypatch):
+        from types import SimpleNamespace
+
+        import maxim.decisions.nac as nac_mod
+        from maxim.decisions.temporal_credit import TemporalCreditDistributor
+        from maxim.time.scn import SCN
+        from maxim.time.temporal_signature import TemporalSignature
+
+        nac = self._make_nac(temporal_window_seconds=300.0)
+        nac.update_eligibility("agent", "node-old", 1.0, temporal_sig=TemporalSignature.now())
+        for _ in range(60):  # the fast trace expires at ~44 ticks, seconds after it was set
+            nac.decay_eligibility(factor=0.9)
+        assert ("agent", "node-old") in nac._temporal_anchors  # young: kept, as designed
+
+        later = nac_mod.time.time() + 400.0  # the session goes on past the window
+        monkeypatch.setattr(nac_mod, "time", SimpleNamespace(time=lambda: later))  # nac.py's clock only
+        nac.decay_eligibility(factor=0.9)
+        assert ("agent", "node-old") not in nac._temporal_anchors
+        # and a reward long after credits nothing to it (the reproduction in #888)
+        nac.update_eligibility("agent", "tool:swim", 0.3)
+        credited = dict(TemporalCreditDistributor(nac, SCN()).distribute("agent", 1.0))
+        assert "node-old" not in credited and credited.get("tool:swim") == pytest.approx(1.0)
+
+    def test_an_anchor_with_a_live_trace_is_never_pruned(self, monkeypatch):
+        from types import SimpleNamespace
+
+        import maxim.decisions.nac as nac_mod
+        from maxim.time.temporal_signature import TemporalSignature
+
+        nac = self._make_nac(temporal_window_seconds=300.0)
+        nac.update_eligibility("agent", "node-live", 1.0, temporal_sig=TemporalSignature.now())
+        later = nac_mod.time.time() + 400.0
+        monkeypatch.setattr(nac_mod, "time", SimpleNamespace(time=lambda: later))
+        nac.decay_eligibility(factor=0.9)  # trace still alive (0.9)
+        assert ("agent", "node-live") in nac._temporal_anchors
+
+    def test_session_end_clears_every_anchor(self):
+        """Anchors are session-scoped; the distributor's session cleanup (BioStack.on_session_end) clears them."""
+        from maxim.decisions.temporal_credit import TemporalCreditDistributor
+        from maxim.time.scn import SCN
+        from maxim.time.temporal_signature import TemporalSignature
+
+        nac = self._make_nac()
+        nac.update_eligibility("agent", "node-a", 1.0, temporal_sig=TemporalSignature.now())
+        TemporalCreditDistributor(nac, SCN()).cleanup_session()
+        assert nac._temporal_anchors == {}
+
 
 class TestGoalRewardBias:
     """Tests for _goal_reward_bias (bidirectional, for ThoughtGate)."""
