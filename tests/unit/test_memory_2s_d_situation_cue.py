@@ -307,3 +307,18 @@ def test_the_loop_sensor_encoder_is_built_only_with_an_ec(tmp_path):
     assert _build_loop_sensor_encoder(SimpleNamespace(ec=None), nac=None) is None
     hub = build_bio_stack(agent_id="a", persistence_dir=str(tmp_path / "bio")).memory_hub
     assert isinstance(_build_loop_sensor_encoder(hub, nac=None), SensorEncoder)
+
+
+def test_a_sensor_encoder_that_fails_to_build_is_reported_not_hidden(monkeypatch, caplog):
+    from types import SimpleNamespace
+
+    import maxim.similarity.encoder as encoder_module
+    from maxim.runtime.agent_loop import _build_loop_sensor_encoder
+
+    def broken(**_kw):
+        raise ValueError("encoder boom")
+
+    monkeypatch.setattr(encoder_module, "SensorEncoder", broken)
+    with caplog.at_level(logging.DEBUG):
+        assert _build_loop_sensor_encoder(SimpleNamespace(ec=object(), atl=None), nac=None) is None
+    assert any("encoder boom" in (r.getMessage() + str(r.exc_info)) for r in caplog.records)

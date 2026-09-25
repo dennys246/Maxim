@@ -1402,7 +1402,9 @@ def _build_loop_sensor_encoder(memory_hub: Any, nac: Any) -> Any | None:
 
         return SensorEncoder(ec=ec, atl=getattr(memory_hub, "atl", None), nac=nac)
     except Exception:
-        logger.debug("substrate-primary: SensorEncoder init failed", exc_info=True)
+        # Stage-1 (measurement path): without an encoder the substrate records no situation at all,
+        # so a failed build is reported, not left at DEBUG as it was when this lived inline.
+        log_swallowed_exception()
         return None
 
 
