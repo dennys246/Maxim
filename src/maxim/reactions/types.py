@@ -74,9 +74,10 @@ ReactionKind = Literal["pain", "fear", "hunger", "surprise", "fatigue", "satiati
 class TraceSnapshot:
     """A typed reference to a percept that was active when a reaction fired.
 
-    Populated from the ``PerceptTraceBuffer`` (F0.2) at emission time.
-    Before F0.2 lands, construct manually with ``activation_strength=1.0``
-    and ``decay_factor=1.0`` (full-strength, no decay information).
+    Constructed by hand at emission time with ``activation_strength=1.0``
+    and ``decay_factor=1.0`` (full-strength, no decay information). F0.2's
+    plan to populate it from ``PerceptTraceBuffer`` was never wired; that
+    buffer is Dormant (docs/plans/lookback_primitive.md).
 
     SHAPE-FROZEN at 1.0 (CC3). No ``extra`` escape hatch by design —
     ``TraceSnapshot`` is reachable from every Reaction via

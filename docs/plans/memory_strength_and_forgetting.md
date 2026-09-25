@@ -4,8 +4,9 @@
 > silently power E1–E3 ([roadmap_1_4.md](roadmap_1_4.md) §Parallel lines). Every behavioural change
 > ships **opt-in, with today's defaults pinned byte-identical**, and every mechanism enters as
 > `[engineering]` until an experiment earns it. **Entry condition: Phase 0** — the input-integrity
-> defects fixed — before any phase changes what is kept or forgotten. **The look-back part of Phase 2
-> waits on R4's design review of `PerceptTraceBuffer`** (scheduled 2026-09-24; decision 6).
+> defects fixed — before any phase changes what is kept or forgotten. **Phase 2's look-back is
+> unblocked (2026-09-24):** R4's review decided no new store — tagging looks back over the Hippocampus
+> record ([lookback_primitive.md](lookback_primitive.md); decision 6).
 
 **Owns (proposed):** `src/maxim/memory/strategies.py` (a new strength strategy), the activation and
 sleep paths in `memory/hippocampus*.py` and `memory/atl.py`, a `memory.*` block in the config
@@ -48,10 +49,9 @@ settable through `maxim config`, with O(N log N) eviction on every insert at the
 - the model is a `MemoryStrategy` subclass plus fields on existing records — no new bus, bridge or
   bio-system;
 - every strength input is an **existing signal** (§The model);
-- retroactive tagging uses `memory/percept_trace_buffer.py::PerceptTraceBuffer`, which exists and is
-  tested, has **zero production constructors**, and so far persists only an empty buffer
-  (non-empty snapshot round-trip is its own Stage 2) — this plan **consumes R4's reviewed design** of it
-  (decision 6, 2026-09-24; R4 owns the buffer, and no production code constructs it before that review);
+- retroactive tagging looks back over the **Hippocampus record itself**, by the experience time each
+  capture happened at (R4's look-back review, decision 6, 2026-09-24,
+  [lookback_primitive.md](lookback_primitive.md)); `PerceptTraceBuffer` is Dormant;
 - sleep replay uses the Dormant `memory/sleep_replay.py` (P8 gate passed) rather than a new replay.
 
 The only genuinely new state is a per-trace storage strength and a persisted experience clock.
@@ -113,13 +113,16 @@ traces encoded just before it, weighted by distance. That is a backward-only eli
 (R4's mechanism), **not** synaptic tagging and capture, which works in both directions (weak-before-
 strong and strong-before-weak; Frey & Morris 1997, Moncada & Viola 2007) over a window of about an
 hour in rodents. Whether to add the **forward** window (traces encoded within `W` *after* a strong
-event are also captured) is a Phase 2 decision, with `W` on the experience clock. **This line's
-requirements, handed to R4's design review as input** (R4 owns the buffer — decision 6, 2026-09-24):
-`PerceptTraceBuffer` keys on `percept_id` and ticks every agent's entries together, while loop
-captures are async (the memory id is minted later on the worker; the queue drops its oldest when full)
-and pain captures are synchronous — so the drowning can be stored before the moments that preceded
-it. Record **memory ids** in `Hippocampus._process_capture` with the loop's enqueue tick, make the
-buffer per-agent, and resolve retro-tags lazily (or `flush()` before tagging).
+event are also captured) is a Phase 2 decision, with `W` on the experience clock. **Wiring (decided by
+R4's look-back review, 2026-09-24):** loop captures are async (the memory is made later on the worker;
+the queue drops its oldest when full) and pain captures are synchronous — so the drowning can be stored
+before the moments that preceded it. Every capture therefore carries the **experience time at which it
+happened**, pushed into the signature so no door can miss it: `capture()` takes keyword-only
+`experience_us` (default `experience_clock.now_us()`) and `capture_seq` (default: a per-agent counter);
+only the async path passes them, stamped at enqueue on `_CaptureRequest` and threaded through
+`capture_from_loop`. Tagging windows over memories by `experience_us`, `capture_seq` ordering captures in
+one loop pass, resolving lazily (or `flush()` before tagging). A dropped or deduplicated capture was never
+a memory, so it has nothing to tag. ([lookback_primitive.md](lookback_primitive.md) D2.)
 
 **Retrieval (spacing effect, the right way round):** `S ← S · (1 + a · w_src · (1 − R) · S^(−w))`,
 then `R = 1`. The gain is largest when the trace was fading, and the `S^(−w)` factor (FSRS's)
@@ -232,8 +235,7 @@ Consumers that retrieve and never deliver are #845 (the replan site is wired but
 #845(1); the adaptive planner is live only in `embodied_runtime/agentic_runtime.py`).
 
 **Phase 2 — the strength model.** `S`, `R`, the typed `EncodingSignals` at all seven capture sites,
-the look-back through `PerceptTraceBuffer` (as a consumer of R4's reviewed design — owner decision
-2026-09-24, decision 6), the retrieval update, the persisted experience clock with its advanced-clock assert.
+the look-back over the Hippocampus record by enqueue-time experience µs (decision 6), the retrieval update, the persisted experience clock with its advanced-clock assert.
 No immortality floor under the new strategy. **Validated in the LLM sim worlds** (route A, owner
 decision 2026-09-21), where enrichment and the memory tools are live; survival-world validation waits
 on Phase 2S below.
@@ -293,8 +295,8 @@ typo, frozen into experiment fingerprints — never an env var or a literal.
    snapshots; it becomes a pre-registered arm, gated by relatedness and reset at episode boundaries.
    **Weight by relatedness**, not time alone (Dunsmoor et al. 2015: the retroactive boost is selective
    to related items): scale each tag by similarity to the strong event (EC cluster / cosine), so one
-   pain does not tag whatever sat in the preceding 30 s. **Shares the look-back primitive and the
-   clock with NAc eligibility, never its constants or its effect** — a tag never feeds NAc credit
+   pain does not tag whatever sat in the preceding 30 s. **Shares the experience
+   clock, never NAc eligibility's constants or its effect** — a tag never feeds NAc credit
    (NAc's 0.9-per-active-cycle decay sits inside the Exp 60–62 fingerprints). Resolve lazily or
    `flush()` before tagging (async captures; a full queue drops its oldest).
 3. **Surprise: one unsigned `|RPE|` channel, baseline 0** — the code is already unsigned (table
@@ -336,11 +338,10 @@ typo, frozen into experiment fingerprints — never an env var or a literal.
    strength strategy's score moves with credited `activate` events — rather than leaving a
    permanently yellow marker.
 6. **Owner of the looking-back primitive** (§Shared primitive): ~~this line, as its first production
-   caller~~ — **resolved 2026-09-24 (owner): R4 owns it**, and R4's design review of it is scheduled now,
-   ahead of R4's build ([roadmap_1_4.md](roadmap_1_4.md) §Phase 5). This line is a **consumer**, and it
-   may not construct `PerceptTraceBuffer` in production before that review lands (a CI check enforces
-   it). The review also fixes the buffer's clock (it decays per tick, not per second). Consequence: the
-   look-back part of Phase 2 waits on that review.
+   caller~~ — **resolved 2026-09-24 (owner): R4 owns the question, and its design review decided no new
+   store** ([lookback_primitive.md](lookback_primitive.md)). This line looks back over the Hippocampus
+   record by enqueue-time experience µs; `PerceptTraceBuffer` is Dormant (CI enforces it). Phase 2's
+   look-back is unblocked.
 
 *Phase 2b slicing (2026-09-22, from a capture-site map):* **2b-i** — the typed `EncodingSignals`
 recorded on every trace, required at every capture door, write-only (SHIPPED with this note): four
@@ -714,9 +715,10 @@ scheduled right after a minor-version heartbeat, when the affected rows are due 
 Three lines need the same thing — attach a signal to what was active *just before*:
 retroactive tagging here, R4's delayed credit, and the language line's binding of a death message
 to the second before it ([paired_data_audit_reaudit_2026-09-21.md](../experiments/paired_data_audit_reaudit_2026-09-21.md)).
-`PerceptTraceBuffer` is built for it and has no caller. **Owner named 2026-09-24: R4** (open question 5,
-decision 6); its design review is scheduled now, and every line, this one included, consumes the reviewed
-design. The SCN is the wrong clock for it (it bins by
+**Decided 2026-09-24 by R4's look-back review ([lookback_primitive.md](lookback_primitive.md)): no
+shared store.** Each consumer looks back over the record it already has — NAc's trace for R4's credit, the
+Hippocampus (by enqueue-time experience µs) for tagging, and binding decides at revival.
+`PerceptTraceBuffer` is Dormant. The SCN is the wrong clock for it (it bins by
 time of day).
 
 ## Not in this plan (filed separately)
@@ -741,7 +743,7 @@ time of day).
    calibration plan's first consumer.
 4. **ATL vs Hippocampus parity** — the bio review's answer: concepts carry their own `S`, raised
    slowly by replay of the episodes that cite them (§Sleep step 1).
-5. ~~Owner of the looking-back primitive~~ — **resolved 2026-09-24: R4** (Phase 2 decision 6).
+5. ~~Owner of the looking-back primitive~~ — **resolved 2026-09-24: R4, whose review decided no new store** (Phase 2 decision 6).
 6. **Interference and reconsolidation are missing.** Forgetting here is decay; biologically much of it
    is interference (retroactive interference; retrieval-induced forgetting of close competitors), and a
    retrieval carrying a prediction error makes a trace labile and updatable (reconsolidation — the way

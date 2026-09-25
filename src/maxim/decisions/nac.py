@@ -750,7 +750,8 @@ class NAc:
 
         # P2: Eligibility traces — nodes that were recently active and
         # should receive credit when a reward arrives. Maps
-        # (agent_id, node_id) → activation strength from PerceptTraceBuffer.
+        # (agent_id, node_id) → activation strength, written by the encoders and
+        # TemporalCreditDistributor.record_event (not by PerceptTraceBuffer, which is Dormant).
         self._eligibility: dict[tuple[str, str], float] = {}
 
         # SCN temporal anchors for eligibility credit (affordance transfer).
@@ -3350,7 +3351,8 @@ class NAc:
         Args:
             agent_id: Agent context.
             node_id: ATL node that was activated.
-            activation: Activation strength (typically from PerceptTraceBuffer).
+            activation: Activation strength (an encoder's match similarity, 1.0 for a new node,
+                or a TemporalCreditDistributor event weight).
             temporal_sig: Optional TemporalSignature for SCN-coupled credit.
         """
         with self._lock:

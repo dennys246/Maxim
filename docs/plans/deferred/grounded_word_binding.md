@@ -38,9 +38,10 @@
 > it); n, primary DVs, margins and a frozen prereg location for Exp A/B; text-channel weight (the
 > `semantic` extra: sentence-transformers, torch, spacy); `scripted_water.py` carries no event frames,
 > so chat needs adding before any teacher run; L1 adds a modality to the loop 1.3.2 is decomposing, so
-> it waits for 1.3.2. The look-back (`PerceptTraceBuffer`) is **owned by R4**, whose design review is
-> scheduled ([roadmap_1_4.md](../roadmap_1_4.md) Phase 5) and fixes its per-tick (not per-second)
-> decay. The relation formerly named `NAMES` is now `HEARD_WITH` (a co-occurrence, not "reference";
+> it waits for 1.3.2. The look-back: R4's review decided **no new store**
+> ([lookback_primitive.md](../lookback_primitive.md)) — binding decides its mechanism at revival, as
+> association in time with a two-sided (BTSP-like) kernel, plausibly over the Hippocampus record;
+> `PerceptTraceBuffer` is Dormant. The relation formerly named `NAMES` is now `HEARD_WITH` (a co-occurrence, not "reference";
 > free to rename — not in src).
 >
 > **Near-term public material is NOT this plan:** a recorded clip of the EARNED Exp 61 result, plus
@@ -127,7 +128,7 @@ release mirror) is engineering, and the plan says so.
 | Fear (`cluster_fear`) written by the pain→fear subscriber **only to the world cluster**; reward credit only to world/audio/interoception | **Shipped** — a text cluster can hold neither today |
 | Game text as a percept: player chat as `[minecraft:chat]` (always on); game system messages as `[minecraft:system]` behind `--system_messages` (#807) | **Shipped** — observed, never in the situation (`_SUBSTRATE_CHANNELS` excludes text) |
 | Text encoding (`LinguisticEncoder`, 768-d): lazy-loaded; **silently falls back to 384-d hashes** if the model is absent | **Capability** — `MemoryHub` with `MAXIM_SUBSTRATE_PATH=1` only |
-| Look-back (`memory/percept_trace_buffer.py::PerceptTraceBuffer`) | **Capability** — zero production constructors |
+| Look-back (`memory/percept_trace_buffer.py::PerceptTraceBuffer`) | **Dormant** (2026-09-24) — never constructed; R4's review decided no new store |
 | Cross-modal comparison 384 ↔ 768 | **Undefined** (`similarity/ec.py::_cosine_similarity` → 0.0) |
 | Familiarity: EC margin → novelty on `LLMProposal.cluster_margins` (2S-c) | **Shipped** (#879); this branch predates it — rebase before any stage PR |
 | "Do I know what to do here": per-cluster fear/want history; `recommend_action` → `None` below `min_confidence` | **Shipped**. Welford outcome variance is **per tool** (`nac.py::get_action_risk_profile`), not per situation |
@@ -194,7 +195,7 @@ on the sensed situation alone. So:
    journalled per bundle today.
 
 Everything else rides: binding on the episodic trace (2S-b's situation record) consolidated to an ATL
-relation; the look-back on `PerceptTraceBuffer` (owned by R4); the trigger on signals the loop
+relation; the look-back per R4's review ([lookback_primitive.md](../lookback_primitive.md): no new store); the trigger on signals the loop
 already computes; pre-boot transfer on bundle → ingest → merge.
 
 ## Track L — language
@@ -244,10 +245,9 @@ confidence, provenance) — **one-way, word → situation**. `HEARD_WITH` is reg
 relation type (`Semantics.define` returns False silently for an unknown type and appends duplicate
 edges on repeat — both fixed with the registration, and consolidation must not prune a binding before
 it is saved). Text centroids drift and share their space with affordance names: the text formation
-threshold is its own *(superseded: pinned at 0.44 in the header)*. The look-back is `PerceptTraceBuffer`, **designed in R4's
-design review** with three named consumers (R4 delayed credit — the hardest; word binding — ~1 s,
-text-triggered, several candidate situations; memory strength's retroactive tagging); R4 builds it,
-and if R4 slips this line builds it from R4's reviewed design, never its own. *Measured:* binding
+threshold is its own *(superseded: pinned at 0.44 in the header)*. The look-back *(superseded 2026-09-24: R4's review decided no new store —
+[lookback_primitive.md](../lookback_primitive.md); binding picks a two-sided kernel at revival, plausibly
+over the Hippocampus record; `PerceptTraceBuffer` is Dormant)*. *Measured:* binding
 accuracy on held-out pairings (T1) against the nearest-template baseline and a shuffled-binding
 control.
 

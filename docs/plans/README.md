@@ -91,8 +91,8 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
   byte budget). Opt-in with defaults pinned. Phases 0 (#844) and 1 (honest activation, #846)
   SHIPPED; **Phase 2 decisions resolved 2026-09-21** (validated in the LLM sim worlds first); **Phase
   2S, the survival gate (#848)**: survival percepts score salience 0 and pattern completion cannot
-  cue sensor concepts, so nothing there ever uses a memory yet. **Phase 2's look-back waits on R4's
-  design review of `PerceptTraceBuffer`** (R4 owns it — decision 2026-09-24).
+  cue sensor concepts, so nothing there ever uses a memory yet. **Phase 2's look-back is unblocked** —
+  R4's look-back review (2026-09-24) decided tagging looks back over the Hippocampus record.
 - [grounded_language_acquisition.md](grounded_language_acquisition.md) — **a PARALLEL LINE as of
   2026-09-19** (`roadmap_1_4.md` §Parallel lines), not the active umbrella it used to call itself:
   its thesis was validated by another route in 1.2/1.3, and its Phase 2 is structurally the deferred
@@ -118,6 +118,11 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
   `roadmap_1_4.md` Phase 5 as the map for credit ROUTING (it names the shipped eligibility
   trace and the Cerebellum). Design note, zero code. Its learnable-calibration half goes
   with the shared-perception deferral.
+- [lookback_primitive.md](lookback_primitive.md) — **DECIDED 2026-09-24:** R4's look-back design
+  review. No new store: R4's credit stays on `NAc._eligibility`, retroactive tagging looks back over
+  the Hippocampus record by enqueue-time experience µs, binding decides at revival;
+  `PerceptTraceBuffer` Dormant. Found #888 (anchors never expire) and #889 (the reward-bias ablation
+  switch does not ablate the live path).
 
 *The shared-perception designs (the fabric, the reflex runtime, the microduck) are deferred
 on a second body arriving and now live in [deferred/](deferred/).*

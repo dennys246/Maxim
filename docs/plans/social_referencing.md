@@ -135,9 +135,9 @@ rises or falls as percepts change. No new threading beyond the mirror refresh (d
   path exists — [public_oasis.md](public_oasis.md) Phase 2, deferred. Until then local-only costs
   nothing.
 
-**8. No look-back.** This plan uses no retrospective look-back; `PerceptTraceBuffer` is owned by R4
-([roadmap_1_4.md](roadmap_1_4.md) §Phase 5), and if a later stage needs it, it consumes R4's reviewed
-design.
+**8. No look-back.** This plan uses no retrospective look-back. If a later stage needs one, it follows
+R4's look-back review ([lookback_primitive.md](lookback_primitive.md)): look back over the record that
+already exists; `PerceptTraceBuffer` is Dormant.
 
 **9. The pre-boot ingest path is unchanged** by this plan (today's merge, incl. want's undiscounted
 mean). Whether pre-boot foreign material should also be discounted and capped belongs to the language
