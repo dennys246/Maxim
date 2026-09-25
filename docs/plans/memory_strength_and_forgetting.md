@@ -349,8 +349,13 @@ typo, frozen into experiment fingerprints — never an env var or a literal.
 moves; the anchor now starts from it) and `capture_seq` (orders captures sharing a loop pass's
 timestamp; per store, resumed past the saved maximum on load). `capture()` takes both keyword-only,
 defaulting to now / the next number; only the async loop path passes them, stamped at enqueue.
-Recording only (SHIPPED 2026-09-25). **2d-2** — the tagging rule itself, which decision 2 leaves
-partly open and which gets its own design note and review before code: (i) **which events tag** —
+Recording only (SHIPPED 2026-09-25). **2d-2** — the tagging rule itself, **DECIDED + BUILT
+2026-09-25** in [memory_2d2_retroactive_tagging.md](memory_2d2_retroactive_tagging.md) (answers: (i)
+the event's own `encoding_tag` strictly above 0.5; (ii) `retro_tag` beside the stamp, floor reads the
+max; (iii) shared world/audio situation clusters, no fallback; (iv) at `sleep()`; (v) both skipped;
+(vi) as below), with its limits deferred on triggers in
+[deferred/retro_tagging_extensions.md](deferred/retro_tagging_extensions.md). The questions as
+first posed: (i) **which events tag** —
 nociceptive pain above a floor, relief, `|RPE|`, or the encoding tag of the strong event's own
 trace; (ii) **what a tag changes** — a separate `retro_tag` beside the stamped `encoding_tag` (the
 2c-3(b) rule: the stamp is never rewritten) that the protection floor reads as `max(tag, retro_tag)`,

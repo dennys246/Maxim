@@ -89,6 +89,10 @@ class ConsolidationMixin:
         """Internal sleep implementation (lock must be held)."""
         from maxim.memory.types import CompressedMemory
 
+        # 2d-2: retroactive tagging resolves FIRST, at consolidation, while every capture is in the
+        # store -- before anything below scores (or removes) a trace it would have protected.
+        self._resolve_retro_tags_locked()
+
         if not self.config.enable_sleep_consolidation:
             return {
                 "compressed": 0,
@@ -558,6 +562,9 @@ class ConsolidationMixin:
 
         if self._scn is None:
             return self._sleep()
+        # 2d-2: every consolidation that can remove traces resolves retroactive tags first -- this
+        # path removes traces too, so it must not skip what ``_sleep`` does before scoring.
+        self._resolve_retro_tags_locked()
 
         now = time.time()
         results = {

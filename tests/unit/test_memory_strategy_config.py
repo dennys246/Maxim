@@ -169,6 +169,8 @@ def test_every_builder_threads_the_one_resolver(monkeypatch, tmp_path):
     monkeypatch.setenv("MAXIM_MEMORY_STRATEGY", "composite")
     monkeypatch.setenv("MAXIM_MEMORY_S_BASE", "1234.0")
     monkeypatch.setenv("MAXIM_MEMORY_K", "3.5")
+    monkeypatch.setenv("MAXIM_MEMORY_RETRO_TAU_US", "7000000")
+    monkeypatch.setenv("MAXIM_MEMORY_RETRO_CUTOFF_US", "20000000")
 
     import maxim.create as create_api
     from maxim.runtime.bio_stack import build_bio_stack
@@ -176,6 +178,7 @@ def test_every_builder_threads_the_one_resolver(monkeypatch, tmp_path):
     def check(hippo):
         assert hippo.config.memory_strategy == "composite"
         assert (hippo.config.strength_s_base, hippo.config.strength_k) == (1234.0, 3.5)
+        assert (hippo.config.retro_tau_us, hippo.config.retro_cutoff_us) == (7_000_000, 20_000_000)
 
     check(create_api.hippocampus())
     assert create_api.atl().config.memory_strategy == "composite"  # ATL takes only the strategy
@@ -196,12 +199,14 @@ def test_every_builder_threads_the_one_resolver(monkeypatch, tmp_path):
 def test_the_agent_factory_threads_it_too(monkeypatch, tmp_path):
     monkeypatch.setenv("MAXIM_MEMORY_STRATEGY", "composite")
     monkeypatch.setenv("MAXIM_MEMORY_S_BASE", "1234.0")
+    monkeypatch.setenv("MAXIM_MEMORY_RETRO_TAU_US", "7000000")
     from maxim.runtime.agent_factory import AgentConfig, AgentFactory
 
     instance = AgentFactory(base_data_dir=tmp_path).create_agent(AgentConfig(agent_id="probe"))
     try:
         assert instance.hippocampus.config.memory_strategy == "composite"
         assert instance.hippocampus.config.strength_s_base == 1234.0
+        assert instance.hippocampus.config.retro_tau_us == 7_000_000
         if getattr(instance, "atl", None) is not None:
             assert instance.atl.config.memory_strategy == "composite"
     finally:
@@ -270,7 +275,13 @@ def test_the_knobs_survive_a_write_then_load(tmp_path, monkeypatch):
     monkeypatch.setattr(config_writer, "config_path", lambda: path)
     config_writer.set_field("memory.strategy", "strength")
     config_writer.set_field("memory.s_base", "5e6")
-    assert json.loads(path.read_text())["memory"] == {"strategy": "strength", "s_base": 5e6, "k": None}
+    assert json.loads(path.read_text())["memory"] == {
+        "strategy": "strength",
+        "s_base": 5e6,
+        "k": None,
+        "retro_tau_us": None,
+        "retro_cutoff_us": None,
+    }
     loaded = load_config(path)
     assert (loaded.memory.strategy, loaded.memory.s_base) == ("strength", 5e6)
 
@@ -380,3 +391,34 @@ def test_todays_retention_is_untouched_by_the_section(complete_memory_args):
             compression_age=hippo.config.compression_age,
         ).score_for_retention(record, aged, 4)
     )
+
+
+@pytest.mark.parametrize("key", ["retro_tau_us", "retro_cutoff_us"])
+@pytest.mark.parametrize("value", ["0", "-5", "1.5", "banana"])
+def test_an_unusable_retro_window_raises_at_every_door(key, value, monkeypatch, tmp_path):
+    """2d-2's window keys are integer microseconds, like the experience clock: no seconds, no floats."""
+    from maxim.runtime import config_writer
+    from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs
+
+    env = f"MAXIM_MEMORY_{key.upper()}"
+    monkeypatch.setenv(env, value)
+    with pytest.raises(ConfigurationError):
+        resolve_hippocampus_memory_kwargs()
+    monkeypatch.delenv(env)
+    monkeypatch.setattr(config_writer, "config_path", lambda: tmp_path / "config.json")
+    with pytest.raises(ConfigurationError):
+        config_writer.set_field(f"memory.{key}", value)
+    with pytest.raises(ConfigurationError, match=f"memory.{key}"):
+        MemoryConfigSection(**{key: 0})
+
+
+def test_a_retro_window_set_in_the_file_survives_a_write_then_load(monkeypatch, tmp_path):
+    from maxim.runtime import config_writer
+    from maxim.runtime.config_loader import load_config, resolve_hippocampus_memory_kwargs
+
+    path = tmp_path / "config.json"
+    monkeypatch.setattr(config_writer, "config_path", lambda: path)
+    config_writer.set_field("memory.retro_tau_us", "4000000")
+    config_writer.set_field("llm.n_ctx", "4096")  # a later write must not erase it
+    kwargs = resolve_hippocampus_memory_kwargs(load_config(path))
+    assert kwargs["retro_tau_us"] == 4_000_000 and "retro_cutoff_us" not in kwargs
