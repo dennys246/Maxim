@@ -464,7 +464,7 @@ jobs:
           print(f'All {len(list(pathlib.Path(\"src/maxim\").rglob(\"*.py\")))} files parse OK')
           "
 
-      - name: CI grep invariants (urllib + dead mesh modules + Plan 3 no-retry-loop + deprecated probe shims)
+      - name: CI grep invariants (urllib + dead mesh modules + Plan 3 no-retry-loop + deprecated probe shims + PTB pre-review freeze)
         run: |
           if grep -rn "urllib.request.urlopen" src/maxim/ | grep -v "utils/http.py"; then
             echo "ERROR: raw urllib.request.urlopen outside utils/http.py"
@@ -474,6 +474,19 @@ jobs:
           # a bare InternetAccessPolicy(enabled=...) elsewhere bypasses the persisted policy and toggle.
           if grep -rn "InternetAccessPolicy(enabled=" src/maxim/ | grep -v "utils/internet_access.py"; then
             echo "ERROR: bare InternetAccessPolicy(enabled=...) outside utils/internet_access.py (use live_internet_policy_getter)"
+            exit 1
+          fi
+          # Look-back ownership (owner decision 2026-09-24): R4 owns PerceptTraceBuffer, and its design
+          # review (roadmap_1_4.md §Phase 5) fixes the buffer's clock — tick() decays per CALL, not per
+          # second. No production code may construct one before that review lands, so no line quietly
+          # becomes its first caller on the per-tick clock. EXPIRES when R4's design review lands:
+          # delete this check in the same PR that wires the reviewed design.
+          # Also catches an aliased import (`import PerceptTraceBuffer as PTB`). A spaced call
+          # (`PerceptTraceBuffer (...)`) is not matched on purpose: ruff format removes that space, and
+          # a whitespace-tolerant pattern false-positives on docstrings ("PerceptTraceBuffer (for ...)").
+          if grep -rnE "PerceptTraceBuffer\(|import PerceptTraceBuffer as " src/maxim/ scripts/ | grep -v "src/maxim/memory/percept_trace_buffer.py"; then
+            echo "ERROR: PerceptTraceBuffer constructed in production code before R4's look-back design review"
+            echo "       (docs/plans/roadmap_1_4.md §Phase 5; memory_strength_and_forgetting.md decision 6)."
             exit 1
           fi
           if grep -rnE "from maxim\.mesh\.(peer_registry|peer_info|peer_channel|task_delegation|knowledge|clock|agent_identity|admission)" src/maxim/ tests/; then
