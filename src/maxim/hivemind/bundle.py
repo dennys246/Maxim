@@ -520,6 +520,96 @@ def _redact_paths_in_provenance(value: Any) -> Any:
     return value
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# Provenance at export (2026-09-25, owner decision (c)).
+#
+# A receiver's ingest (V1, ``ingest._sweep_provenance_value``) accepts only the
+# manifest's own contributor or ``"local"`` as payload provenance. An exporter
+# that has ingested other contributors' material holds rows whose ``source`` is
+# a donor id or ``"_consensus"`` and whose ``contributors`` lists upstream ids --
+# shipped verbatim, the bundle both PUBLISHED those ids and was REFUSED by every
+# receiver. So export decides, explicitly:
+#
+# * default -- an agent contributes ONLY ITS OWN LEARNING: a link or EC node is
+#   exported only when its provenance is the exporter's alone (no source, ``"local"``, or its own
+#   ``contributor_id`` -- exactly what V1 accepts). A ``_consensus`` row
+#   (local and foreign votes merged) is dropped, since its own share cannot be
+#   separated. Cluster-keyed NAc rows naming a dropped node are dropped with it.
+# * ``reauthor=True`` -- RELEASE COMPOSITION (the Queen publishing merged
+#   contributions): every row is re-stamped ``source="local"``,
+#   ``contributors=[]``; the release's signature carries the provenance.
+#
+# Rows with no provenance fields (cluster fear / reward bias, Welford, priors)
+# cannot be filtered this way: a received fear folded into a local cluster
+# re-exports as the exporter's. Stated, not hidden.
+# ─────────────────────────────────────────────────────────────────────────
+
+_LOCAL_SOURCE = "local"  # the receiver's accepted self-reference (ingest._SELF_SOURCE)
+_CLUSTER_KEYED_NAC_FIELDS = ("cluster_reward_bias", "cluster_reward_source", "cluster_fear")
+
+
+def _is_own(entry: dict[str, Any], contributor_id: str) -> bool:
+    """True when a link/node's provenance is the exporter's alone -- exactly what a receiver's V1
+    sweep accepts: no source, ``"local"``, or the exporter's own ``contributor_id``."""
+    own = (_LOCAL_SOURCE, contributor_id)
+    if entry.get("source") not in (None, *own):
+        return False
+    return all(c in own for c in (entry.get("contributors") or []))
+
+
+def _cluster_of(key: Any) -> str | None:
+    """The cluster id of an ``agent␟cluster␟x`` NAc key, or None for another shape."""
+    parts = str(key).split(NAC_KEY_SEP)
+    return parts[1] if len(parts) == 3 else None
+
+
+def _reauthored(entry: dict[str, Any]) -> dict[str, Any]:
+    out = dict(entry)
+    out["source"] = _LOCAL_SOURCE
+    out["contributors"] = []
+    return out
+
+
+def provenance_for_export(
+    nac_state: dict[str, Any] | None,
+    ec_nodes: dict[str, dict[str, Any]] | None,
+    *,
+    contributor_id: str,
+    reauthor: bool,
+) -> tuple[dict[str, Any] | None, dict[str, dict[str, Any]] | None]:
+    """Apply the export provenance rule (see the section comment). Pure; returns fresh dicts."""
+    nodes_out: dict[str, dict[str, Any]] | None = None
+    dropped_nodes: set[str] = set()
+    if ec_nodes is not None:
+        nodes_out = {}
+        for nid, node in ec_nodes.items():
+            if reauthor:
+                nodes_out[nid] = _reauthored(node)
+            elif _is_own(node, contributor_id):
+                nodes_out[nid] = dict(node)
+            else:
+                dropped_nodes.add(nid)
+    nac_out: dict[str, Any] | None = None
+    if nac_state is not None:
+        nac_out = dict(nac_state)
+        links_out: dict[str, list[dict[str, Any]]] = {}
+        for sig, links in (nac_state.get("links", {}) or {}).items():
+            kept = [
+                _reauthored(link) if reauthor else dict(link)
+                for link in links
+                if reauthor or _is_own(link, contributor_id)
+            ]
+            if kept:
+                links_out[sig] = kept
+        nac_out["links"] = links_out
+        if dropped_nodes:
+            for field in _CLUSTER_KEYED_NAC_FIELDS:
+                rows = nac_state.get(field)
+                if isinstance(rows, dict):
+                    nac_out[field] = {k: v for k, v in rows.items() if _cluster_of(k) not in dropped_nodes}
+    return nac_out, nodes_out
+
+
 def _filter_ec_nodes_by_domain(
     nodes: dict[str, dict[str, Any]],
     *,
@@ -628,6 +718,7 @@ def compose_bundle(
     body_ref: str | None = None,
     affordance_namespace: str | None = None,
     capability_map: dict[str, str] | None = None,
+    reauthor: bool = False,
 ) -> dict[str, Any]:
     """Compose a substrate snapshot bundle.
 
@@ -708,6 +799,12 @@ def compose_bundle(
 
     # Snapshot the input pieces (NAc state + filtered EC nodes).
     bundle_contents: dict[str, str] = {}  # filename -> serialized JSON
+
+    # Provenance first (see "Provenance at export"): an agent ships only its own learning unless
+    # this is RELEASE composition (``reauthor=True``), which re-stamps every row as the author's.
+    nac_state, ec_substrate_nodes = provenance_for_export(
+        nac_state, ec_substrate_nodes, contributor_id=contributor_id, reauthor=reauthor
+    )
 
     if nac_state is not None:
         filtered_nac = dict(nac_state)
