@@ -3504,9 +3504,10 @@ class NAc:
     def decay_eligibility(self, factor: float = 0.9) -> None:
         """Decay all eligibility traces. Called on each tick.
 
-        Also prunes temporal anchors whose fast-decay trace has expired
-        AND whose temporal signature is older than ``temporal_window_seconds``.
-        This prevents ``_temporal_anchors`` from growing unboundedly.
+        Also prunes, on every call, each temporal anchor whose fast-decay trace
+        has expired AND whose temporal signature is older than
+        ``temporal_window_seconds`` (#888), so the anchor fallback reaches back
+        at most one window, and ``_temporal_anchors`` cannot grow unboundedly.
         """
         now = time.time()
         temporal_window = self.config.temporal_window_seconds
@@ -3520,14 +3521,27 @@ class NAc:
                     self._eligibility[key] = new_strength
             for key in to_remove:
                 del self._eligibility[key]
-                # Prune temporal anchor if the fast-decay trace expired
-                # AND the anchor is old enough (beyond temporal window)
-                anchor = self._temporal_anchors.get(key)
-                if anchor is not None:
-                    _, sig = anchor
-                    age = now - getattr(sig, "timestamp", 0.0)
-                    if age > temporal_window:
-                        del self._temporal_anchors[key]
+            # Prune every anchor whose fast trace has expired AND that is older than the
+            # temporal window — checked on EVERY call, on the anchor's own age (#888). The old
+            # check ran only on the call that deleted the trace, so an anchor still young at that
+            # moment (any tick faster than ~7 s at the defaults) was never visited again and drew
+            # a share of every later reward for the rest of the session.
+            stale = [
+                key
+                for key, (_, sig) in self._temporal_anchors.items()
+                if key not in self._eligibility and now - getattr(sig, "timestamp", 0.0) > temporal_window
+            ]
+            for key in stale:
+                del self._temporal_anchors[key]
+
+    def clear_temporal_anchors(self) -> int:
+        """Drop every temporal anchor; returns how many. Anchors are session-scoped (never
+        persisted), so session end clears them — called from
+        ``TemporalCreditDistributor.cleanup_session`` (``BioStack.on_session_end``). (#888)"""
+        with self._lock:
+            n = len(self._temporal_anchors)
+            self._temporal_anchors.clear()
+            return n
 
     def get_threshold_overrides(
         self,

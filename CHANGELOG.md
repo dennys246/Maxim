@@ -272,6 +272,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **NAc's temporal anchors now expire within a session
+  ([#888](https://github.com/dennys246/Maxim/issues/888)).** An anchor (the wall-clock fallback of the
+  eligibility trace) was pruned only on the tick its fast trace expired, and only if already older than
+  300 s — so at any tick rate faster than ~7 s it was never revisited, and every situation cluster the
+  agent had visited kept drawing a share of every reward for the rest of the session, diluting the fresh
+  `tool:*` credit (0.25 → 0.005 of the share at 200 stale anchors). Anchors are now pruned on their own
+  age every tick, and cleared when `BioStack.on_session_end` runs (the survival harness and experiment
+  paths; `--sim` does not call it, and anchors are never persisted). Behaviour-neutral for Exp 60–62:
+  anchors only split credit, and on those paths the credit route never produces a positive reward bias
+  (no positive Reaction emitter is wired). The Exp 60 ledger row (inherited by 61/62) gains this path as a
+  Re-run on trigger, not fired for this fix, with the reasoning on the row.
+
 - **`MAXIM_NAC_REWARD_BIAS_DISABLED` now ablates the reward bias it names
   ([#889](https://github.com/dennys246/Maxim/issues/889)).** It used to gate only `distribute_reward` —
   which production stopped calling when `TemporalCreditDistributor` replaced it — plus the decay and
@@ -281,7 +293,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   covers `_reward_bias`; for the cluster bias it still hides only the Wire-A prompt read. **Exp 37's NAc-bias-off arm
   therefore did not ablate NAc reward bias** (it was in effect a second Wire-A-annotation-off arm); its column in `docs/experiments/37_cross_model_results.md`
   carries a correction (the row's headline claim was already pulled).
-
 
 - **A reflex is reported as having fired only if its response actually ran**
   ([#870](https://github.com/dennys246/Maxim/issues/870)). `ReflexRegistry.evaluate` judged a
