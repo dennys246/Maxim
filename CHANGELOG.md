@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Every memory records when it happened (memory-strength Phase 2d-1).** Traces now carry
+  `encoded_at_us` — the experience time of the moment, fixed for life — and `capture_seq`, which
+  orders captures that land in the same loop pass. The async loop path stamps both when the capture
+  is queued, so a lagging capture worker no longer shifts a memory's moment; every other door stamps
+  them at capture. The retrievability anchor starts from the same moment. Both persist and survive
+  compression; older files load them as not recorded. Recording only: the look-back that reads them
+  (retroactive tagging, 2d-2) is designed next.
+
 - **A survival memory records how much it hurt and how new the situation was (memory-strength
   Phase 2S-c, [#848](https://github.com/dennys246/Maxim/issues/848)).** Each loop capture now
   measures its pain — physical harm only: the harm the action itself caused, or else the peak harm

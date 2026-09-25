@@ -343,6 +343,24 @@ typo, frozen into experiment fingerprints — never an env var or a literal.
    record by enqueue-time experience µs; `PerceptTraceBuffer` is Dormant (CI enforces it). Phase 2's
    look-back is unblocked.
 
+*Phase 2d slicing — the look-back (2026-09-25, after R4's review decided no new store,
+[lookback_primitive.md](lookback_primitive.md)):* **2d-1** — every trace records when it happened:
+`encoded_at_us` (experience µs, immutable — NOT the retrievability anchor, which a credited retrieval
+moves; the anchor now starts from it) and `capture_seq` (orders captures sharing a loop pass's
+timestamp; per store, resumed past the saved maximum on load). `capture()` takes both keyword-only,
+defaulting to now / the next number; only the async loop path passes them, stamped at enqueue.
+Recording only (SHIPPED 2026-09-25). **2d-2** — the tagging rule itself, which decision 2 leaves
+partly open and which gets its own design note and review before code: (i) **which events tag** —
+nociceptive pain above a floor, relief, `|RPE|`, or the encoding tag of the strong event's own
+trace; (ii) **what a tag changes** — a separate `retro_tag` beside the stamped `encoding_tag` (the
+2c-3(b) rule: the stamp is never rewritten) that the protection floor reads as `max(tag, retro_tag)`,
+vs raising `S`; (iii) **relatedness** — shared situation clusters (2S-b's `situation`, same EC ids)
+vs embedding cosine, and what an unrelated or situation-less trace gets; (iv) **when** — at the
+strong event's capture, lazily after `flush()` so earlier async captures are in the store; (v) **what
+is taggable** — pre-2d-1 traces (`encoded_at_us = None`) and `CompressedMemory` records; (vi) **the
+order key** — `(encoded_at_us, capture_seq)`, since the clock read and the sequence reservation are
+separate. Opt-in under `memory.strategy=strength`, like the rest.
+
 *Phase 2b slicing (2026-09-22, from a capture-site map):* **2b-i** — the typed `EncodingSignals`
 recorded on every trace, required at every capture door, write-only (SHIPPED with this note): four
 signals (salience, novelty, surprise, nociceptive pain) plus a required closed `site`, frozen.

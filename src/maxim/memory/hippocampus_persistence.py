@@ -229,6 +229,7 @@ class PersistenceMixin:
             self._stats = temp_stats
             self.experience_clock.restore(temp_clock)
             _anchor_traces_that_predate_the_clock(self._memories, self.experience_clock.now_us())
+            self._resume_capture_seq()
             self._graph = temp_graph
             if graph_data:
                 self._restore_graph(graph_data)
