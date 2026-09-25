@@ -1,0 +1,42 @@
+# Claim-discipline lens — grounded_word_binding_demo.md v3
+
+**Round:** v3 review, 2026-09-24. **Target:** `docs/plans/grounded_word_binding_demo.md` v3
+(`00f74b37`, merged via #881/#882). **Reviewer:** Claude subagent, read-only. The report below
+is verbatim. Corrections found during re-verification are recorded in [README.md](README.md),
+not edited into the report.
+
+---
+
+CLAIM-DISCIPLINE lens — `docs/plans/grounded_word_binding_demo.md` (v3). Read against CLAUDE.md §Working principles, `behavioral_graduation_candidates.md` (lifecycle + named PARTIAL rows), `exp61_shared_fear_prereg.md` §Outcome (calibration: a representation gate + "Honest limits" + "What this earns").
+
+1. **BLOCKER — no PARTIAL branch anywhere.** "PARTIAL" appears 0 times. Only Exp C has "**A genuine may-fail:** if gated does not beat yoked-random, that is the recorded result" — that is a *null*, not a half-pass. Unnamed half-passes: Exp A (word beats no-word/shuffled but the extinction arm's fear does not drop with the situation's, or the timing-split ablation abolishes both, or the novelty-matched unbound word also moves); Exp B (pre-boot passes, live fails non-inferiority; or both association-stripped and fear-stripped move); Exp C (interaction significant but damage-per-corrupted-entry equal to yoked ⇒ dose, not timing). Exp A's section names only "*Claim if EARNED:*"; Exp B names no claim line at all. Add, in the ceilings block, one pre-registered PARTIAL sentence per experiment — e.g. Exp B: *"PARTIAL if pre-boot passes and live does not reach the pre-registered non-inferiority margin: the claim is then 'pre-boot only'; live is recorded as not-yet-shown, never as 'and live'."*
+
+2. **BLOCKER — the non-inferiority margin is unstated.** "Pre-boot vs live tested as **non-inferiority**" with no margin and no n. Without a frozen margin, "pre-boot **and** live" in Exp B's ceiling is claimable on an underpowered equivalence. Freeze the margin and n in the ceilings block.
+
+3. **BLOCKER — the opening paragraph is in the present indicative for an unbuilt system.** "What it hears … **is** part of the situation it is in" is false today by the plan's own table (`_SUBSTRATE_CHANNELS` excludes text; "**Shipped** — observed, never in the situation"). The whole paragraph reads as a description of a working demo; the PROPOSED banner is outside it and will not travel into site copy. Fix: open with "*When every stage below has EARNED its claim, the demo will be:*" and keep the paragraph conditional throughout.
+
+4. **BLOCKER — Exp C's ceiling attributes the effect to a conjunct the design cannot isolate.** Ceiling: "*consulting gated on the agent's own **ignorance** limits the damage…*". S2's trigger is stakes **∧** (novelty ∨ no own policy ∨ own information failing). Yoked-random matches *frequency*; content-null separates *pause from answer*; no arm separates the stakes conjunct from the ignorance conjunct. The confounding review's SF-10 fix said the claim is about "*this frozen gate*"; v3 folded the arms and left the sentence. Replace: *"this frozen trigger — stakes ∧ (novelty ∨ no own policy ∨ own information failing) — limits <named DV> damage under a stale Oasis beyond what an equally frequent untriggered consult does."*
+
+5. **SHOULD-FIX — Exp A's ceiling claims a representation ("calls that situation back") the DV cannot reach.** The DV is the *choice* ("on land the agent's response is a no-op, so the DV is the choice"); nothing logs the recalled-situation slot. Exp 61 earned its transport claim only because a loop-OFF gate read the exact node id and value. Either add a recalled-slot read (the recall holds the water cluster id; `anticipatory_threat_need` from the recall, sensed = 0) as a frozen gate, or weaken to: *"changes what the agent chooses in the direction the situation's own fear predicts."*
+
+6. **SHOULD-FIX — "not through the word's own conditioning" is largely true by construction, and reads as measured.** Per the plan's own table, "a text cluster can hold neither today"; route (a) is closed by the write-path allowlist in every SP arm. The extinction arm and timing-split ablation are genuine discriminations; the allowlist is not. State both: *"in every SP arm the text cluster is structurally barred from holding fear (cite the writer `file::symbol`); what is *measured* is that the word's effect falls with the situation's fear (extinction) and disappears when `NAMES` is removed before or after phase 2."*
+
+7. **SHOULD-FIX — Exp A's ceiling says "a heard word"; the design has one word, one situation, n≈12.** "Exp A runs in water only." Bound it: *"the one trained token in the water situation"*. Also bind the existing guard to the sentence — "A template is a label. If L0's vocabulary is still templates, claims say 'a label'" must rewrite the ceiling, not sit in §Guards.
+
+8. **SHOULD-FIX — Exp B's ceiling is too vague to be falsifiable.** "*an association one agent learned works for another*" — "works" names no DV. Vague ceilings are where rounding-up happens. Replace: *"a receiver that never felt the pain hears the donor's token and chooses as the donor did, on first contact."*
+
+9. **SHOULD-FIX — demo components with no ceiling.** The block is titled "What each **stage** may claim, at most" but covers only A/B/C, while "**The lead-up demo is Exp A + Exp C + Exp B + J2**" and L2 carries a measurement ("binding accuracy on held-out pairings (T1)"). Search Oasis will be the most demoed and most quoted piece and has no ceiling. Add: *"J2: a typed string selects entries from the local mirror; nothing is understood, learned, or bound from it."* Same for L2.
+
+10. **SHOULD-FIX — the body's language leaves the "not understands, not refers" fence.** "What it **hears**" (it reads a chat string; there is a real audio modality, so "hears" also misdescribes the channel); "**teacher**" for a client speaking on a clock, "never on the agent's state" — i.e. not teaching; "**consults**", "holds that answer as **advice**", "a user can **ask** on its behalf" — all import intent and communication onto a cosine lookup in a signed file; "an **innate** prior" for a hard-coded threshold. Gloss each at first use ("consults — a local similarity lookup in its own verified copy") or use "receives / scripted speaker / lookup / weighted foreign entry / hard-coded prior".
+
+11. **SHOULD-FIX — `NAMES` is a claim shipped in a wire format.** The relation type will appear in the bundle schema, the CLI and every doc, asserting exactly the reference the ceiling disclaims (bio-fidelity S10: "'Refers' overclaims what sensory preconditioning shows"). Rename to `CO_OCCURRED_WITH` / `BOUND_TO` before J1 freezes the schema.
+
+12. **SHOULD-FIX — §"Biological basis — and its limit" does not cover the body's rhetoric.** The stated limit is only about *transport*: "No animal queries a remote store; the transport … is engineering." It does not cover the cognitive-equivalence reading of "it does what a toddler on a borderline slope does", of naming the capability "**social referencing**" (a construct defined by a social partner and affective appraisal), or of citing 12/18-month-old rates beside the design. Add: *"What is borrowed is the *when* — a threshold rule — never the *how*. The agent reads a file, not a face: no partner, no expression, no joint attention, no development. Infant findings say where the rule came from; they never describe what the agent is doing."* And rename the capability "the consult gate (after social referencing)".
+
+13. **NIT — title and framing exceed the ceilings.** "the substrate-primary **language** demo" and "**Grounded** word binding" ("grounded" is the symbol-grounding claim) sit above "Not language understanding, not production". Prefer "word–situation binding".
+
+14. **NIT — the opening paragraph claims a want result no stage tests.** "the fear **or want** the agent learned *there*" — Exp A is water/fear only; `food` is merely "Usable". Say "the fear".
+
+Riskiest sentence in the document for overclaim: "it does what a toddler on a borderline slope does: it **consults** — reads what others learned about situations like this one from its locally held, signature-verified copy of the Oasis".
+
+Verdict: ADOPT WITH CHANGES — the arms are sound, but three of the four claim ceilings say more than their designs measure and no experiment has a pre-registered PARTIAL sentence; do not open a prereg until findings 1–4 land.
