@@ -74,7 +74,7 @@ own `contributor_id` or `"local"` there, so export decides what material it can 
   foreign contributor list) is dropped, along with cluster-keyed NAc rows naming a dropped node, and
   the command prints how many rows it dropped.
 - **`maxim substrate export --release --sign`** composes a **release** from merged contributions: every
-  row is re-authored as yours (`source: "local"`, `contributors: []`), and the signature carries the
+  row is re-authored as yours (`source` and `contributors` = your `contributor_id`), and the signature carries the
   provenance. `--release` without `--sign` is refused.
 
 Rows with no provenance fields (cluster fear and reward bias, outcome statistics, priors) cannot be

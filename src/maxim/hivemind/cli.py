@@ -236,12 +236,12 @@ def _run_export(args: argparse.Namespace) -> int:
         return 2
 
     if reauthor:
-        print("provenance: RELEASE -- every row re-authored as yours; the signature carries it")
+        print("provenance: RELEASE -- every row re-authored as yours (your contributor id); the signature carries it")
     elif dropped_links or dropped_nodes:
         print(
             f"provenance: exported your own learning only -- dropped {dropped_links} link(s) and "
-            f"{dropped_nodes} EC node(s) received from other contributors (--release to publish them "
-            "as a signed release)"
+            f"{dropped_nodes} EC node(s) that carry other contributors' provenance (received, or your "
+            "own folded with theirs); --release --sign publishes them as a signed release"
         )
     n_slices = len(manifest.get("contents", {}))
     print(

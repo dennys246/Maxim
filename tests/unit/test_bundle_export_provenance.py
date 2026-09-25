@@ -13,10 +13,24 @@ import json
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from maxim.hivemind.bundle import compose_bundle
 from maxim.hivemind.ingest import IngestionJournal
 from maxim.hivemind.merge import NAC_KEY_SEP
+from maxim.utils.optional_deps import optional_dependency_available
 from tests.unit.test_hivemind_ingest import BODY, DONOR, _ingest, _link, _nac_state, _node
+
+_needs_crypto = pytest.mark.skipif(
+    not optional_dependency_available("cryptography"), reason="a release is signed: the [sign] extra"
+)
+
+
+def _signer():
+    from maxim.hivemind.signing import BundleSigner
+
+    return BundleSigner.generate(signer_identity=DONOR)
+
 
 UPSTREAM = ("alice-private-id", "bob-private-id")
 
@@ -56,6 +70,7 @@ def _export(tmp_path: Path, *, reauthor: bool) -> Path:
         body_ref=BODY,
         apply_identity_filter=False,
         reauthor=reauthor,
+        signer=_signer() if reauthor else None,
     )
     return out
 
@@ -76,17 +91,19 @@ def test_by_default_an_agent_exports_only_its_own_learning_and_the_bundle_is_adm
     _ingest(bundle, IngestionJournal(tmp_path / "j.json"))  # a receiver ADMITS it (raised before)
 
 
+@_needs_crypto
 def test_a_release_reauthors_every_row_and_is_admitted_without_leaking_upstream_ids(tmp_path):
     bundle = _export(tmp_path, reauthor=True)
     nac, ec, raw = _slices(bundle)
     assert set(nac["links"]) == {"tool:probe", "tool:mine", "tool:other", "tool:heard", "tool:joint"}
     assert set(ec["substrate_nodes"]) == {"n_own", "n_foreign"}
     rows = [link for links in nac["links"].values() for link in links] + list(ec["substrate_nodes"].values())
-    assert all(r["source"] == "local" and r["contributors"] == [] for r in rows)
+    assert all(r["source"] == DONOR and r["contributors"] == [DONOR] for r in rows)
     assert not any(u in raw for u in UPSTREAM) and "_consensus" not in raw
     _ingest(bundle, IngestionJournal(tmp_path / "j.json"))
 
 
+@_needs_crypto
 def test_a_purely_local_state_exports_unchanged_either_way(tmp_path):
     nac = _nac_state(links={"tool:probe": [_link()]})
     for reauthor in (False, True):
@@ -99,9 +116,10 @@ def test_a_purely_local_state_exports_unchanged_either_way(tmp_path):
             body_ref=BODY,
             apply_identity_filter=False,
             reauthor=reauthor,
+            signer=_signer() if reauthor else None,
         )
         shipped, ec, _ = _slices(out)
-        assert shipped["links"]["tool:probe"][0]["source"] == "local" and set(ec["substrate_nodes"]) == {"n1"}
+        assert shipped["links"]["tool:probe"][0]["source"] == DONOR and set(ec["substrate_nodes"]) == {"n1"}
 
 
 def test_the_cli_refuses_an_unsigned_release_and_reports_what_a_contribution_drops(tmp_path, capsys):
@@ -117,3 +135,54 @@ def test_the_cli_refuses_an_unsigned_release_and_reports_what_a_contribution_dro
     assert "must be signed" in capsys.readouterr().err
     assert run_substrate_subcommand([*base, str(tmp_path / "c.zip")]) == 0
     assert "dropped 3 link(s) and 1 EC node(s)" in capsys.readouterr().out
+
+
+def test_two_own_links_the_scrub_folds_still_ship_as_local_and_are_admitted(tmp_path):
+    """Review round: one own link stamped "local", one stamped with the exporter's own id, collide
+    after the signature scrub (both become ``tool:use``); unmerged-stamped, they fold to
+    "_consensus", which V1 refuses. Kept rows are re-stamped as the exporter's: the fold stays single."""
+    nac = _nac_state(
+        links={
+            "tool:use:open the red door": [_link("tool:use:open the red door")],
+            "tool:use:open the blue door": [_link("tool:use:open the blue door", source=DONOR, contributors=[DONOR])],
+        }
+    )
+    out = tmp_path / "b.zip"
+    compose_bundle(
+        nac_state=nac,
+        ec_substrate_nodes=None,
+        output_path=out,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+    )
+    with zipfile.ZipFile(out) as z:
+        shipped = json.loads(z.read("nac.json"))["links"]
+    assert [link["source"] for links in shipped.values() for link in links] == [DONOR]
+    _ingest(out, IngestionJournal(tmp_path / "j.json"))
+
+
+def test_a_release_must_be_signed_at_the_api_too(tmp_path):
+    with pytest.raises(ValueError, match="must be signed"):
+        compose_bundle(
+            nac_state=_nac_state(),
+            ec_substrate_nodes=None,
+            output_path=tmp_path / "r.zip",
+            contributor_id=DONOR,
+            body_ref=BODY,
+            reauthor=True,
+        )
+
+
+@pytest.mark.parametrize("contributors", [{"local": 1}, "local", 5])
+def test_a_malformed_contributor_list_is_never_shipped(tmp_path, contributors):
+    """V1 refuses a non-list contributors outright, which would refuse the whole bundle."""
+    from maxim.hivemind.bundle import provenance_for_export
+
+    nac, _ = provenance_for_export(
+        _nac_state(links={"tool:probe": [_link(contributors=contributors)]}),
+        None,
+        contributor_id=DONOR,
+        reauthor=False,
+    )
+    assert nac["links"] == {}

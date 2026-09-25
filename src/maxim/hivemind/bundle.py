@@ -532,16 +532,23 @@ def _redact_paths_in_provenance(value: Any) -> Any:
 #
 # * default -- an agent contributes ONLY ITS OWN LEARNING: a link or EC node is
 #   exported only when its provenance is the exporter's alone (no source, ``"local"``, or its own
-#   ``contributor_id`` -- exactly what V1 accepts). A ``_consensus`` row
+#   ``contributor_id`` -- exactly what V1 accepts), re-stamped as the exporter's ``contributor_id``. Note "own" is narrower than
+#   "learned here": a local row once FOLDED with foreign material is ``_consensus`` and is dropped,
+#   with the cluster rows on it. A ``_consensus`` row
 #   (local and foreign votes merged) is dropped, since its own share cannot be
 #   separated. Cluster-keyed NAc rows naming a dropped node are dropped with it.
 # * ``reauthor=True`` -- RELEASE COMPOSITION (the Queen publishing merged
-#   contributions): every row is re-stamped ``source="local"``,
-#   ``contributors=[]``; the release's signature carries the provenance.
+#   contributions): every row is re-stamped as the author's (``source`` = ``contributors`` = its
+#   ``contributor_id``); the release's signature carries the provenance.
 #
 # Rows with no provenance fields (cluster fear / reward bias, Welford, priors)
 # cannot be filtered this way: a received fear folded into a local cluster
-# re-exports as the exporter's. Stated, not hidden.
+# re-exports as the exporter's; with no EC slice (a NAc-only export) cluster rows
+# cannot be matched to dropped nodes at all; and a donor's AGENT id can survive in
+# the agent segment of welford / percept-valence / reward-bias keys. Stated, not
+# hidden. ``reauthor`` is Queen-intent by convention only: it can only claim
+# others' learning as the exporter's own (receivers stamp the manifest
+# contributor, and inherent trust keys on that id), never impersonate anyone.
 # ─────────────────────────────────────────────────────────────────────────
 
 _LOCAL_SOURCE = "local"  # the receiver's accepted self-reference (ingest._SELF_SOURCE)
@@ -551,10 +558,15 @@ _CLUSTER_KEYED_NAC_FIELDS = ("cluster_reward_bias", "cluster_reward_source", "cl
 def _is_own(entry: dict[str, Any], contributor_id: str) -> bool:
     """True when a link/node's provenance is the exporter's alone -- exactly what a receiver's V1
     sweep accepts: no source, ``"local"``, or the exporter's own ``contributor_id``."""
-    own = (_LOCAL_SOURCE, contributor_id)
-    if entry.get("source") not in (None, *own):
+    own = (None, _LOCAL_SOURCE, contributor_id)
+    if entry.get("source") not in own:
         return False
-    return all(c in own for c in (entry.get("contributors") or []))
+    contributors = entry.get("contributors")
+    if contributors is None:
+        return True
+    if not isinstance(contributors, (list, tuple)):  # V1 refuses a non-list outright: never ship one
+        return False
+    return all(c in own for c in contributors)
 
 
 def _cluster_of(key: Any) -> str | None:
@@ -563,10 +575,13 @@ def _cluster_of(key: Any) -> str | None:
     return parts[1] if len(parts) == 3 else None
 
 
-def _reauthored(entry: dict[str, Any]) -> dict[str, Any]:
+def _reauthored(entry: dict[str, Any], contributor_id: str) -> dict[str, Any]:
+    """Stamp a row as the EXPORTER's: its own ``contributor_id`` -- which V1 accepts, and which the
+    non-ingest ``substrate import`` + merge path attributes correctly (a ``"local"`` stamp would make
+    the IMPORTER read the row as its own). A single contributor, so a later fold stays single."""
     out = dict(entry)
-    out["source"] = _LOCAL_SOURCE
-    out["contributors"] = []
+    out["source"] = contributor_id
+    out["contributors"] = [contributor_id]
     return out
 
 
@@ -584,9 +599,9 @@ def provenance_for_export(
         nodes_out = {}
         for nid, node in ec_nodes.items():
             if reauthor:
-                nodes_out[nid] = _reauthored(node)
+                nodes_out[nid] = _reauthored(node, contributor_id)
             elif _is_own(node, contributor_id):
-                nodes_out[nid] = dict(node)
+                nodes_out[nid] = _reauthored(node, contributor_id)
             else:
                 dropped_nodes.add(nid)
     nac_out: dict[str, Any] | None = None
@@ -594,11 +609,10 @@ def provenance_for_export(
         nac_out = dict(nac_state)
         links_out: dict[str, list[dict[str, Any]]] = {}
         for sig, links in (nac_state.get("links", {}) or {}).items():
-            kept = [
-                _reauthored(link) if reauthor else dict(link)
-                for link in links
-                if reauthor or _is_own(link, contributor_id)
-            ]
+            # Kept rows are re-stamped as the exporter's in BOTH modes: two own links (one "local",
+            # one the own contributor id) that the signature scrub later folds would otherwise merge
+            # to "_consensus", which V1 refuses (review round).
+            kept = [_reauthored(link, contributor_id) for link in links if reauthor or _is_own(link, contributor_id)]
             if kept:
                 links_out[sig] = kept
         nac_out["links"] = links_out
@@ -801,7 +815,10 @@ def compose_bundle(
     bundle_contents: dict[str, str] = {}  # filename -> serialized JSON
 
     # Provenance first (see "Provenance at export"): an agent ships only its own learning unless
-    # this is RELEASE composition (``reauthor=True``), which re-stamps every row as the author's.
+    # this is RELEASE composition (``reauthor=True``), which re-stamps every row as the author's --
+    # and a release is SIGNED, enforced here, not only in the CLI.
+    if reauthor and signer is None and signature is None:
+        raise ValueError("reauthor=True composes a release, and a release must be signed: pass signer=")
     nac_state, ec_substrate_nodes = provenance_for_export(
         nac_state, ec_substrate_nodes, contributor_id=contributor_id, reauthor=reauthor
     )
