@@ -1,7 +1,15 @@
 """Shared tick-driven ring buffer for recent percept activations.
 
-Multiple consumers (NAc reward crediting, ReactionProducers, replay
-schedulers) read from this buffer.  No agent-layer imports.
+Dormant since 2026-09-24: R4's look-back design review
+(docs/plans/lookback_primitive.md) found no consumer that needs it. It was
+never constructed in production: NAc grew its own eligibility trace
+(``NAc._eligibility``) instead of reading this buffer (F0.2's unmet exit
+criterion), and retroactive tagging looks back over the Hippocampus record.
+Known limits, unfixed while Dormant: ``tick()`` decays per call, not per
+second (``tick_rate`` is unused); storage and eviction are shared across
+agents. The snapshot plumbing and tests stay; CI forbids a production
+construction. Revive only when two consumers need encode-by-encode
+activation history with different kernels. No agent-layer imports.
 """
 
 from __future__ import annotations
@@ -24,7 +32,7 @@ class TraceEntry:
     percept_id: str
     tick: int
     activation_strength: float  # starts at 1.0, decays with τ
-    registered_at: float  # wall-clock timestamp
+    registered_at: float  # time.monotonic() at record time (not wall-clock)
 
 
 class PerceptTraceBuffer:

@@ -315,14 +315,17 @@ infrastructure the review located, and the full four-lens review.
   selection surface does not read. Audit: route existing trace credit to the selection surface before
   any new rule. `three_factor_credit_assignment.md` is the R4 map (it names the trace and the
   Cerebellum); its learnable part goes with the fabric deferral.
-  **Scheduled now, ahead of R4's build (owner, 2026-09-24): R4's design review of the look-back
-  primitive, `PerceptTraceBuffer` — design only.** *An exception to this section's rule, stated: it
-  builds nothing, and two parallel lines are blocked on its clock decision.* R4 owns it; three lines consume it: R4's delayed
-  credit (the hardest requirement), memory strength's retroactive tagging, and the deferred language
-  line's binding. The review fixes its clock: `tick()` decays by `exp(-1/tau)` per call and never uses
-  the stored `tick_rate`, so today its window is in ticks, not seconds (`TraceEntry.registered_at` is
-  monotonic, so a seconds window is buildable). Until the review lands, no production code constructs
-  it — a CI check enforces this and names the review as its expiry.
+  **The look-back design review ran ahead of R4's build (owner, 2026-09-24; design only — a stated
+  exception to this section's rule) and DECIDED: no new look-back store**
+  ([lookback_primitive.md](lookback_primitive.md)). R4's credit stays on `NAc._eligibility`; retroactive
+  tagging looks back over the Hippocampus record by enqueue-time experience µs; word binding decides at
+  revival; `PerceptTraceBuffer` is Dormant (CI enforces it). Two live defects it found on this very path
+  are R4's first work: [#888](https://github.com/dennys246/Maxim/issues/888) (temporal anchors never
+  expire in-session and dilute every reward's credit) and [#889](https://github.com/dennys246/Maxim/issues/889)
+  (the reward-bias ablation switch does not ablate the live path). *Wording correction from that
+  review:* `_reward_bias` **is** read by selection for `tool:*` keys (a ≤0.20 nudge, cluster-blind); it
+  is the cluster-keyed credit that selection never sees. The path is live on the EARNED survival loop
+  but **unfingerprinted**.
 - **A cluster-keyed relief store (needed by E2).** New: a positive, world-keyed write from measured
   relief, beside the fear-only store. Front-gate against `credit_operant_reward` (teacher) and the
   trace. Enters BEFORE Phase 3.
@@ -512,8 +515,9 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   defaults pinned — the survival harnesses already run `sleep()`, so every sleep change is behind
   the strategy selection and in their fingerprints; fear and cluster-bias decay out of round one. **Ties to the theme:** its
   retroactive tagging is the same look-back as R4's delayed credit and the language line's binding —
-  `PerceptTraceBuffer`, which has no production caller. **Owner: R4 (decided 2026-09-24)**, whose design
-  review of it is scheduled now (§Phase 5); no line constructs it before that review lands (CI-guarded).
+  **Decided 2026-09-24 by R4's look-back review ([lookback_primitive.md](lookback_primitive.md)): no new
+  store** — tagging looks back over the Hippocampus record (enqueue-time experience µs at every capture
+  door); `PerceptTraceBuffer` is Dormant.
 - **Social referencing** ([social_referencing.md](social_referencing.md), PROPOSED 2026-09-24; split
   from the language line, needs no language): consult a locally held, verified Oasis mirror only when
   the agent is both ignorant and being hurt, holding the answer as advice apart from its own

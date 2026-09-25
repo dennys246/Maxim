@@ -3,6 +3,9 @@
 **Status:** DESIGN NOTE (2026-08-06). Zero code. Owner-initiated, arising from the
 [cross_modal_perception_fabric.md](deferred/cross_modal_perception_fabric.md) design pass.
 Mostly **names what already exists**; proposes exactly one small new learnable.
+**Look-back (2026-09-24):** R4's look-back design review ([lookback_primitive.md](lookback_primitive.md))
+decided no new store — the trace this note names (`NAc.update_eligibility` → `TemporalCreditDistributor`)
+stays R4's; two live defects on it are #888 and #889.
 **Target version:** 1.3 (the stance applies immediately and retroactively; the
 calibration learner is 1.3 work).
 **Owns (proposed):** the learning-rule stance, the per-learnable teacher-signal

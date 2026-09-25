@@ -6,13 +6,14 @@ interface.  Parallel bio-system queries (knowledge_context, causal_context,
 valence_context, motor_programs, body_state) are NOT part of this surface —
 they stay in MemoryAgent._run_parallel_memory_queries().
 
-PerceptTraceBuffer keeps its own internal ring buffer (NAc learning uses the
-live-decay activations).  WMS entries are point-in-time snapshots — different
-audiences, different semantics (F5).
+PerceptTraceBuffer (Dormant since 2026-09-24; never constructed in production)
+was meant to keep live-decay activations for NAc learning; NAc keeps its own
+eligibility trace instead. WMS entries are point-in-time snapshots (F5).
 
 Thread-safe: a threading.Lock serialises add(); queries snapshot the deque
-under the lock.  9 producers (MemoryAgent, PainBus, ReactionBus, PTB,
-Hippocampus.recall, ThinkTool, …) call add() from different threads (F3).
+under the lock.  Producers (MemoryAgent, PainBus, ReactionBus,
+Hippocampus.recall, ThinkTool, …) call add() from different threads (F3); the
+planned PTB producer was never wired.
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ class WorkingMemoryKind(str, Enum):
     OUTCOME = "outcome"
     REACTION = "reaction"
     PAIN = "pain"
-    ACTIVATION = "activation"  # PerceptTraceBuffer emission
+    ACTIVATION = "activation"  # planned PerceptTraceBuffer emission; never wired (the buffer is Dormant)
     THOUGHT = "thought"  # ThinkTool output
     RECALL = "recall"  # Hippocampus.recall() result
     CONVERSATION = "conversation"  # user/assistant turn

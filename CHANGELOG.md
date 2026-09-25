@@ -257,6 +257,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   paths in comments and docstrings (60 lines, path strings only). No behavioural change, no API change —
   recorded here because the versioning policy asks a `src/`-touching change to declare itself.
 
+### Changed
+
+- **`PerceptTraceBuffer` is Dormant (R4's look-back design review,
+  [docs/plans/lookback_primitive.md](docs/plans/lookback_primitive.md)).** It was never constructed in
+  production: NAc grew its own eligibility trace instead of reading it, and the review decided that no
+  new look-back store is needed — R4's credit stays on NAc's trace and memory-strength tagging looks
+  back over the Hippocampus record. The module docstring says so, the CI check that forbids a production
+  construction now enforces the dormancy, and comments in `nac.py`, `reactions/types.py` and
+  `agents/working_memory.py` that described a wiring that never existed are corrected. Comments and
+  docstrings only; no behaviour changes. Two live defects the review found are filed:
+  [#888](https://github.com/dennys246/Maxim/issues/888) and
+  [#889](https://github.com/dennys246/Maxim/issues/889).
+
 ### Fixed
 
 - **A reflex is reported as having fired only if its response actually ran**
