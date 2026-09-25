@@ -130,7 +130,7 @@ class OasisStore:
             )
         digest = hashlib.sha256(raw).hexdigest()
         atomic_write_bytes(str(self.releases_dir / f"{digest}.zip"), raw)
-        logger.info("oasis: published release %s (signer=%s)", digest[:12], manifest.get("signer_identity"))
+        logger.info("oasis: published release %s (claimed signer=%s)", digest[:12], manifest.get("signer_identity"))
         return digest
 
     def list_releases(self) -> list[dict[str, Any]]:

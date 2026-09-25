@@ -134,8 +134,12 @@ Cheap, and all of it is owed regardless of whether Phase 1 ships.
    `hive_cli.py::_run_pull` defaults to `read_key()`, the leader key that also grants inference, so any
    registered Oasis receives it. Reads become anonymous and rate-limited, or use a read-only scoped
    credential.
-6. **`signer_identity` covered by the signature** (added 2026-09-24, shared with social_referencing
-   S0): today it can be relabelled without breaking verification.
+6. ~~`signer_identity` covered by the signature~~ — **resolved 2026-09-25 (owner): not exploitable by
+   construction; guarded.** Verification uses the key trusted for the CLAIMED identity, so a relabel
+   fails; the one residual case (one key under two identities) is refused at verification and
+   registration; displays say "claimed signer". Binding the identity into the payload is deferred to
+   item 7's format change (scheme v2, v1 accepted with a warning) and v1 is dropped at the next major:
+   [deferred/signed_signer_identity.md](deferred/signed_signer_identity.md).
 7. **Releases carry a Queen-signed entry index** (added 2026-09-24) — **owed by social_referencing
    only**, not regardless of Phase 1 (a new release-format feature for its local selection and
    per-entry journal, so a consumer verifies the Queen per entry without server-cut slices). It must

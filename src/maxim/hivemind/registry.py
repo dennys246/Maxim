@@ -102,6 +102,25 @@ def _validate_add(name: str, url: str, queen_keys: dict[str, str]) -> None:
     for identity, pubkey in queen_keys.items():
         if not identity or not isinstance(identity, str) or not isinstance(pubkey, str) or not pubkey:
             raise HiveRegistryError(f"queen key must be IDENTITY=PUBKEY_B64, got {identity!r}={pubkey!r}")
+    # One key, one identity: verification refuses a key trusted under two labels (the signature cannot
+    # say which signed), so catch it here, where the operator is typing it. Compared as DECODED bytes
+    # when the key decodes: a 32-byte key has four valid base64 spellings (the last character carries
+    # two unused bits), so a string comparison misses the alias. A key that does not decode cannot
+    # alias a real one, and verification rejects it loudly.
+    import base64
+    import binascii
+
+    seen: dict[bytes | str, str] = {}
+    for identity, pubkey in queen_keys.items():
+        try:
+            key: bytes | str = base64.b64decode(pubkey, validate=True)
+        except (binascii.Error, ValueError):
+            key = pubkey
+        if key in seen:
+            raise HiveRegistryError(
+                f"queen key for {identity!r} is already registered as {seen[key]!r}; register each key once"
+            )
+        seen[key] = identity
 
 
 class HiveRegistry:
@@ -150,8 +169,8 @@ class HiveRegistry:
         """Add (or update, by name) an Oasis. Operator-explicit write only.
 
         Re-adding an existing name MERGES onto the existing entry: the trust
-        policy, any Queen keys not being replaced, and any field a future version
-        wrote are preserved. Silently resetting a trust grant (or the Queen keys
+        policy and any field a future version wrote are preserved; ``queen_keys``, when passed,
+        REPLACE the entry's keys wholesale (so an alias cannot be built across two calls). Silently resetting a trust grant (or the Queen keys
         that make Queen-only verification possible) because the operator
         corrected a URL would be a footgun — and dropping the keys while an
         ``allow_unsigned`` grant survives would silently degrade the posture from
