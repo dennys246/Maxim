@@ -7,7 +7,8 @@ existed when it ran — the merged plan was unreviewed. This round reviews v3 as
 
 **The plan has since been split and renamed** in a separate PR: Track S becomes
 `docs/plans/social_referencing.md`, and this plan is deferred behind a frozen re-entry gate and
-renamed `docs/plans/grounded_word_binding.md`. The reports below name the file as it was.
+moved to [`docs/plans/deferred/grounded_word_binding.md`](../../../deferred/grounded_word_binding.md). The
+reports below name the file as it was.
 
 ## The lenses
 
@@ -66,6 +67,6 @@ decomposition; and the claim-discipline findings in substance.
 The owner split the plan, deferred the language track on a condition rather than a date, kept
 E3 as 1.4's only may-fail headline, and stopped calling any plan "the demo". The decisions, the
 frozen L0 re-entry gate and the fixes these reports prompted are recorded in the plans
-themselves (`social_referencing.md`, `grounded_word_binding.md`, and the cross-references in
+themselves (`social_referencing.md`, `deferred/grounded_word_binding.md`, and the cross-references in
 `roadmap_1_4.md`, `grounded_language_acquisition.md`, `public_oasis.md`, `maxim_hivemind.md` and
 `memory_strength_and_forgetting.md`), not repeated here.
