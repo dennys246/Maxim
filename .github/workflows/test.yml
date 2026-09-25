@@ -377,6 +377,21 @@ jobs:
           pip install --no-deps -e .
           pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml || echo "Some optional deps unavailable on CI"
 
+      - name: Install the console + sign extras (the extras lane)
+        # roadmap 1.3.x "Test/CI truthfulness" / public_oasis Phase 0 item 1: without these the
+        # console, bundle-signing, hive-pull and Oasis-exchange tests skipped on EVERY lane, and the
+        # 1.2 and 1.3 headlines both travel the signed-bundle path. Read from pyproject so the lane
+        # installs exactly what the extras declare. NOT `|| echo`: a failed install must fail here.
+        run: |
+          python - <<'PY' > extras-reqs.txt
+          import tomllib
+          extras = tomllib.load(open("pyproject.toml", "rb"))["project"]["optional-dependencies"]
+          print("\n".join(extras["console"] + extras["sign"]))
+          PY
+          cat extras-reqs.txt
+          # -c: pin the contract GENERATOR (see the file for why and how to move it)
+          pip install -r extras-reqs.txt -c .github/constraints/console.txt
+
       - name: mypy public API surface + hivemind
         # CLAUDE.md required check, promoted to CI (1.0 guard promotion).
         # --follow-imports=silent scopes error reporting to the checked
@@ -397,6 +412,7 @@ jobs:
         run: >-
           python -m pytest tests/ -x -q -m "not slow" --tb=short
           --ignore=tests/integration/test_memory_hub.py
+          --require-extras=console,sign
 
       # The project's required-checks block is TWO commands, and the fast suite
       # above excludes this file. Without this step the MemoryHub gate is

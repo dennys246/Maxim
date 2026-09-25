@@ -121,7 +121,9 @@ Cheap, and all of it is owed regardless of whether Phase 1 ships.
    the mechanism works; it is simply unguarded. Signature verification is the only thing that raises
    the trust boundary above "the channel", so publishing bundles the world verifies while its guard
    never runs in CI is the vacuous-guard shape. **This is already 1.3.1's top item** — Phase 1 waits
-   for it rather than duplicating it.
+   for it rather than duplicating it. *(2026-09-25: built — the `unit-tests` job installs the `console`
+   + `sign` extras from `pyproject.toml` and runs with `--require-extras=console,sign`, which turns a skip
+   for a missing required extra into a failure: the positive control.)*
 2. **Public format-freeze pass.** Manifest fields, slice shapes and the §5 adapter constants become
    a public compatibility surface the moment a stranger downloads a bundle. A named gate, not a
    formality (HF plan §3).
@@ -133,7 +135,8 @@ Cheap, and all of it is owed regardless of whether Phase 1 ships.
 5. **Pulls never send the leader key** (added 2026-09-24, shared with social_referencing S0):
    `hive_cli.py::_run_pull` defaults to `read_key()`, the leader key that also grants inference, so any
    registered Oasis receives it. Reads become anonymous and rate-limited, or use a read-only scoped
-   credential.
+   credential. *(2026-09-25: the leak is closed — the leader key is sent only to a loopback Oasis; a remote
+   one needs an explicit `--api-key`. The anonymous/scoped read tier on the SERVER side is still owed.)*
 6. ~~`signer_identity` covered by the signature~~ — **resolved 2026-09-25 (owner): not exploitable by
    construction; guarded.** Verification uses the key trusted for the CLAIMED identity, so a relabel
    fails; the one residual case (one key under two identities) is refused at verification and

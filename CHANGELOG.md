@@ -285,8 +285,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the key trusted for the claimed identity — except when one key is trusted under two identities,
   where a relabel still verified — even with the two entries spelled as different base64 strings of
   the same key. Verification now refuses that case by comparing decoded keys, and `hive add` refuses
-  to register one key twice. `substrate export`'s summary and the Oasis store log now label the signer as claimed, not verified. Binding
-  the identity into the signature is deferred to the next release-format change.
+  to register one key twice. `substrate export`'s summary and the Oasis store log now label the
+  signer as claimed, not verified. Binding the identity into the signature is deferred to the next
+  release-format change.
+
+- **`maxim hive pull` and `hive contribute` no longer send the local leader key to a remote Oasis**
+  (public_oasis Phase 0 item 5). Both fell back to the leader key — which also grants inference —
+  for ANY registered Oasis, handing it to whoever runs it. The fallback now applies only to a
+  loopback Oasis (`localhost` or a loopback IP literal; no DNS, fail-closed); a remote or LAN Oasis
+  needs an explicit `--api-key`, and a 401/403 there says so.
 
 - **NAc's temporal anchors now expire within a session
   ([#888](https://github.com/dennys246/Maxim/issues/888)).** An anchor (the wall-clock fallback of the

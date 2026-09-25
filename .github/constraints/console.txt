@@ -1,0 +1,10 @@
+# The FastAPI that generated the committed OpenAPI contract (src/maxim/console/openapi.json) and its
+# fingerprint (contract_surface.json). The `console` extra stays a RANGE for users; CI pins the
+# GENERATOR, like ruff and mypy, so the cross-repo contract maxim-pulse builds its FacadeClient from
+# cannot move because pip resolved a newer FastAPI (0.141 adds `ctx`/`input` to its built-in
+# ValidationError schema -- caught by the extras lane, 2026-09-25).
+#
+# To move: bump both lines, run `maxim serve --dump-openapi`, bump CONSOLE_CONTRACT_VERSION and
+# refresh contract_surface.json (the fingerprint test says so), and let maxim-pulse regenerate.
+fastapi==0.127.0
+starlette==0.50.0
