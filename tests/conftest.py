@@ -70,6 +70,14 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     ``tests/substrate/conftest.py::publish_sweep_results`` (bugs ledger D25).
     """
     parser.addoption(
+        "--require-extras",
+        default="",
+        help=(
+            "Comma-separated optional extras (console, sign) this lane installs: a test that SKIPS "
+            "for one of them fails instead, so the lane cannot go quietly vacuous."
+        ),
+    )
+    parser.addoption(
         "--write-experiment-results",
         action="store_true",
         default=False,
@@ -79,6 +87,52 @@ def pytest_addoption(parser: pytest.Parser) -> None:
             "evidence, and an ordinary test run must not rewrite them."
         ),
     )
+
+
+# The skip reasons each optional extra's tests use (the reasons ARE the contract this lane reads).
+_EXTRA_SKIP_REASONS: dict[str, tuple[str, ...]] = {
+    "console": ("`console` extra", "console extra"),
+    "sign": ("[sign] extra",),
+}
+
+
+def required_extra_skip(reason: str, required: "set[str]") -> str | None:
+    """The required extra a skip reason names, or ``None``. Pure, so the lane's contract is unit-testable."""
+    for extra in sorted(required):
+        if any(marker in reason for marker in _EXTRA_SKIP_REASONS.get(extra, ())):
+            return extra
+    return None
+
+
+def _fail_required_extra_skip(config: pytest.Config, report: "pytest.TestReport | pytest.CollectReport") -> None:
+    """``--require-extras``: a skip for a missing REQUIRED extra is a failure, not a skip.
+
+    The positive control for the extras lane (roadmap 1.3.x "Test/CI truthfulness"): without it the
+    console and signed-bundle tests skipped on every lane, and a lane that installs the extras but
+    silently skips them again looks exactly like one that ran them."""
+    required = {e.strip() for e in (config.getoption("--require-extras") or "").split(",") if e.strip()}
+    if not required or not report.skipped:
+        return
+    longrepr = report.longrepr
+    reason = longrepr[2] if isinstance(longrepr, tuple) and len(longrepr) == 3 else str(longrepr)
+    extra = required_extra_skip(str(reason), required)
+    if extra is not None:
+        report.outcome = "failed"
+        report.longrepr = (
+            f"--require-extras: the '{extra}' extra is required on this lane, but a test skipped for it: {reason}"
+        )
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: "pytest.CallInfo[None]"):  # noqa: ANN201
+    outcome = yield
+    _fail_required_extra_skip(item.config, outcome.get_result())
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_make_collect_report(collector: pytest.Collector):  # noqa: ANN201
+    outcome = yield
+    _fail_required_extra_skip(collector.config, outcome.get_result())
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
