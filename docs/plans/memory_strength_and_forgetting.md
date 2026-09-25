@@ -700,8 +700,9 @@ path. Both fixes move there, where the inputs exist (`ctrl.pending_proposal.clus
     in two writes). Its positive half also overlaps Phase 5's planned cluster-keyed relief store
     (R4: "relief never writes a world cluster").
   - **(B) generalization by pattern completion:** in a situation the NAc has not keyed, complete to
-    the most similar past situation and carry over what happened there. It fills R1's measured gap
-    (the fear misses in the night pool at 0.799, under the 0.85 threshold), and it is gated by Rung
+    the most similar past situation and carry over what happened there. It was to fill R1's measured
+    gap (the fear misses in the night pool at 0.799 — **corrected 2026-09-25: the `time_of_day` wrap,
+    #899, not night**), and it is gated by Rung
     B's SUPPORT trace (`outstanding.md` O3). It is a **second candidate for roadmap 1.4 Phase 5's
     "Keying / generalization" slot**, beside a substrate keying rule (feature-invariant keys or
     cluster merging), so its front-gate answer compares the two. It **cannot be validated in the
@@ -709,7 +710,11 @@ path. Both fixes move there, where the inputs exist (`ctrl.pending_proposal.clus
     (roadmap §Recorded limit). It needs Exp 62's pools, or an open-world trace.
   - **(C) sequence recall:** multi-step credit. It overlaps the R4 routing audit, which comes first.
 
-  **(B) CHOSEN (owner, 2026-09-24).** Owed before 2S-e is built: its plan section (the front-gate
+  **(B) PARKED 2026-09-25 (owner)** — its measured gap is gone: the SUPPORT design review showed the
+  0.799 "night miss" is the `time_of_day` wrap (a keying defect, #899) and the fear place gives no
+  SUPPORT; the other measured wall (lit pond 0.588) is beyond any graded read. Revive on a MEASURED
+  generalization gap: [deferred/generalization_by_pattern_completion.md](deferred/generalization_by_pattern_completion.md).
+  (Was: **(B) CHOSEN (owner, 2026-09-24).**) Owed before 2S-e is built: its plan section (the front-gate
   answer against the substrate keying rule, and the validation world), then the four-lens design review.
   **Inherited from 2S-d (2026-09-25), owed in that plan section:** (i) the **outcome-gated credit**
   — 2S-d recalls without `activate`, so crediting recalled memories (and how an outcome gates it)
