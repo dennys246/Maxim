@@ -4,7 +4,7 @@
 from a read of the frozen [sharing_threat_model.md](sharing_threat_model.md), the shipped
 `src/maxim/hivemind/` receiver, and the Slice D deferral in
 [hivemind_p2p_scope.md](archive/hivemind_p2p_scope.md). **Recommendation: publish, do not accept.**
-**Consumer (2026-09-24):** [grounded_word_binding_demo.md](grounded_word_binding_demo.md) Stage 4 may pull a signed word-binding release read-only from here; it does not require this plan (a private `oasis serve` suffices).
+**Consumer (2026-09-24):** [grounded_word_binding_demo.md](grounded_word_binding_demo.md) its release mirror may read signed releases from here, anonymously and read-only (never with the leader key); it does not require this plan (a private `oasis serve` suffices).
 Phase 1 is buildable now and adds no new trust decision; Phase 2 stays deferred behind conditions
 this document names. Merging this plan is not the decision — see §The decision record this needs.
 

@@ -1,182 +1,390 @@
-# Grounded word binding — the substrate-primary language demo, with an Oasis boost
+# Grounded word binding and social referencing — the substrate-primary language demo, with the Oasis
 
-> **PROPOSED 2026-09-24 — plan only, no code; not a 1.4 rung.** The concrete path for the
-> [grounded-language line](grounded_language_acquisition.md) (a PARALLEL line per
-> [roadmap_1_4.md](roadmap_1_4.md) §Parallel lines), written so the **language side** and the
-> **Oasis side** ([maxim_hivemind.md](maxim_hivemind.md), [public_oasis.md](public_oasis.md)) work to
-> one contract. Each experiment below enters through its own prereg and the four-lens design review
+> **PROPOSED 2026-09-24 (v3, six-lens reviewed) — plan only, no code; not a 1.4 rung.** The concrete
+> path for the [grounded-language line](grounded_language_acquisition.md) (a PARALLEL line per
+> [roadmap_1_4.md](roadmap_1_4.md) §Parallel lines), and the one contract the **language side** and
+> the **Oasis side** ([maxim_hivemind.md](maxim_hivemind.md), [public_oasis.md](public_oasis.md))
+> work to. v2 added the mid-session Oasis consult (**social referencing**) as a long-term capability
+> (owner). v3 folds a six-lens review (confounding, bio-fidelity, wiring, environment, architecture,
+> security — all ADOPT WITH CHANGES, 14 DO-NOT-BUILD findings, all folded; §Review record).
+> **This is a multi-release line, not a sprint**: two independent tracks and a join. Each experiment
+> enters through its own prereg and the four-lens design review
 > ([DESIGN_REVIEW.md](../experiments/DESIGN_REVIEW.md)) before its harness is built. Nothing here
-> powers E1–E3; a stage that touches a survival rung enters as a declared arm or not at all.
+> powers E1–E3; a stage touching a survival rung enters as a declared arm or not at all.
 
 ## The demo, in one paragraph
 
-A substrate-primary Maxim — no LLM anywhere in its action path — plays the survival world. When
-something happens to it, the game says so in text (`[minecraft:system] … drowned`), and a teacher
-player can say a word in chat at the moment it applies. The agent binds each heard word to the world
-situation it named, from its own experience. Later, **hearing the word alone** — before its sensors
-see anything — reactivates that situation and the fear or want already attached to it, and the agent
-acts on it. Then a second, fresh agent **pulls those bindings from the Oasis** and responds to the
-same word without ever having had the experience. The bindings travel the same shipped bundle path
-that carried the taught want (Exp 56) and the drowning fear (Exp 61).
+A substrate-primary Maxim — no LLM anywhere in its action path — plays the survival world. What it
+hears (the game's messages, a teacher player's chat at chosen moments) is part of the situation it is
+in. It associates a heard word with the situation the word accompanied; later, **hearing the word
+alone** calls that situation back, and the fear or want the agent learned *there* shapes what it
+chooses — before its sensors see anything. When it is somewhere it does not know, or knows but has no
+idea what to do, **and it is being hurt or deprived**, it does what a toddler on a borderline slope
+does: it **consults** — reads what others learned about situations like this one from its locally
+held, signature-verified copy of the Oasis — and holds that answer **as advice, apart from its own
+experience**, weighted less the more it knows itself. A user can ask on its behalf ("Search Oasis")
+with typed text; that is the same consult with a text key.
 
-**What the demo may claim, at most:** *a word, bound from experience, reactivates the situation it
-named and changes what the agent does; and a word one agent learned works for another.* That is
-word-to-world binding (receptive, like a dog learning "walk") — **not** language understanding, not
-production, and not learning from the internet. Every public line about the demo stays inside that
-sentence, and names the rung reached (Stage 3 or Stage 4 below), never the program's endpoint.
+**What each stage may claim, at most** (every public line stays inside the sentence for the stage
+actually EARNED):
+- **Exp A:** *a heard word, associated with a situation, calls that situation back and changes what the
+  agent chooses — and the effect runs through the situation, not through the word's own conditioning*
+  (a stimulus–stimulus association with retrieval at test; not "understands", not "refers" in the
+  linguistic sense).
+- **Exp B:** *an association one agent learned works for another*, pre-boot and live.
+- **Exp C:** *consulting gated on the agent's own ignorance limits the damage a stale Oasis does,
+  beyond what consulting less often explains* — or, if not, that it does not.
 
-## What exists today (verified 2026-09-24)
+Not language understanding, not production, not learning from the internet.
+
+## Biological basis — and its limit
+
+*Verified by the bio-fidelity lens against the sources (2026-09-24); corrections folded.*
+
+- **Social referencing on borderline risk.** Sorce, Emde, Campos & Klinnert 1985 (*Dev Psychol* 21):
+  at an ambiguous visual-cliff drop, 12-month-olds looked to the mother and acted on her expression —
+  fear: 0/17 crossed; joy: 14/19. (Their unambiguous condition had **no drop at all**; deeper drops
+  were only piloted.) The properly measured gradient is **Tamis-LeMonda, Adolph et al. 2008** (*Dev
+  Psychol* 44:734–746): 18-month-olds on slopes ignored social advice on clearly safe and clearly
+  risky slopes and used it only on **borderline** ones. So: *consult on the borderline; a clear read
+  of either sign — including clear danger — does not consult.*
+- **Social learning strategies** (Laland 2004; Kendal et al. 2018). *Copy when uncertain / when own
+  information is unreliable or stale*: van Bergen, Coolen & Laland 2004. *Copy when learning alone is
+  costly*: Coolen, van Bergen, Day & Laland 2003 (sticklebacks) — the basis for the stakes condition.
+  *Copy when own information stops paying*: Grüter & Ratnieks 2011 (honeybees follow dances more once
+  their feeder fails). *Trust experienced private memory over the social cue*: Grüter, Czaczkes &
+  Ratnieks 2011 (*Lasius niger*).
+- **Rogers' paradox** (Rogers 1988) and **critical social learning** (Enquist, Eriksson & Ghirlanda
+  2007): indiscriminate copying gives a population no net gain and propagates stale information.
+  Enquist's critical learner *copies first and learns individually when copying fails*; this plan's
+  gate is the **reverse order** (own first, consult when own falls short) — the van Bergen / Laland
+  "copy when uncertain" rule. Exp C tests that gate's prediction, called here the **critical-learner
+  prediction** rather than "Rogers' paradox".
+- **Stigmergy** (Grassé 1959): a shared record written by many, read **locally**, on need, and
+  fading. v3's transport matches it more closely than v2's: the agent reads its *local* copy of the
+  Oasis; nothing about its situation leaves the machine.
+- **Source memory**: animals and people keep "what I experienced" distinct from "what I was told";
+  v3's foreign layer is that distinction, and it is what makes "own experience wins" enforceable.
+- **Uncertainty signals** (Yu & Dayan 2005): acetylcholine ~ expected, noradrenaline ~ unexpected
+  uncertainty. **Irreducible risk** (high outcome variance with plenty of experience) is not
+  something a consult can reduce, and is not a trigger.
+- **Binding is hippocampal first, cortical later**: a new word–situation association is formed
+  episodically and consolidated into the semantic hub (the ATL, hub-and-spoke) over sleep. v3 binds
+  in the episodic trace and consolidates to the ATL, not straight into the ATL.
+- **Sensory preconditioning** (Brogden 1939) with **post-conditioning extinction** (Rizley &
+  Rescorla 1972) separates retrieval at test from mediated conditioning — Exp A's design.
+- **Not used:** tree-to-tree warnings via mycorrhizal networks (contested; Karst et al. 2023).
+  *Physarum* habituation transferring on fusion (Vogel & Dussutour 2016) is a precedent for the
+  pre-boot bundle merge only.
+
+**The limit, stated:** biology supplies the *decision rule* for when to use social information, and
+the separation of told from experienced. No animal queries a remote store; the transport (a signed
+release mirror) is engineering, and the plan says so.
+
+## What exists today (verified 2026-09-24 against `main` @ eda35efb)
 
 | Piece | Status |
 |---|---|
-| Substrate-primary action selection: `agent_loop.py::propose_via_substrate` → `NAc.recommend_action` over `{modality: EC cluster}` | **Shipped**, production caller (Exp 42/56/60/61/62) |
-| World/interoception/audio situation encoding (`SensorEncoder`, 384-d) — cluster ids ARE ATL concept ids | **Shipped** |
-| Learned situation fear (Wire-4 `cluster_fear`) and want (`cluster_reward_bias`) keyed on world clusters | **Shipped**, EARNED (Exp 60/56) |
-| Game text as a percept: bridge `--system_messages` (#807, default OFF) → `MinecraftPerceptSource` → `[minecraft:system] <text>` | **Shipped** — observed, pooled, **never reaches action selection** |
-| Text encoding (`LinguisticEncoder`, 768-d, EC modality `"text"` + ATL activation) | **Capability** — only via `MemoryHub` with `MAXIM_SUBSTRATE_PATH=1`; the substrate-primary loop bypasses it |
-| Text clusters in action selection | **Absent** — `_SUBSTRATE_CHANNELS` is interoception/audio/world only |
-| Retrospective binding (`memory/percept_trace_buffer.py::PerceptTraceBuffer`) | **Capability** — zero production constructors (the same gap as R4 delayed credit) |
-| Cross-modal comparison 384 ↔ 768 | **Undefined** — `similarity/ec.py::_cosine` returns 0.0 across dims; the projection is [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) |
-| Substrate → text output | **Absent** — `recommend_action` returns `params: {}`; the bridge has no chat action |
-| Bundle export / ingest / merge (`substrate export|ingest`, `hive add|pull`, `oasis serve|publish`) | **Shipped**, CLI callers; bundle = manifest + **NAc + EC only** |
-| ATL in bundles | **Reserved** slot (`hivemind/bundle.py` docstring), never built |
-| Text-modality EC in bundles | Not excluded, never tested; merges at the generic 0.44 threshold (sensors use 0.85) |
-| Pull into a live agent | **Absent by design** — ingest targets an at-rest session/agent directory only |
-| Public Oasis | **PROPOSED** ([public_oasis.md](public_oasis.md)): publish-only, promotion still WRITE-ONLY |
-| Paired data | Audit 2026-09-20: labels (3 templates, 1 trace) → REDESIGN THE SOURCE. Re-audit 2026-09-21 (EXPLORATORY: staged deaths, n=5, post-hoc window): death messages name the cause; sensors ~1 s earlier separate the causes |
+| Substrate-primary selection: `agent_loop.py::propose_via_substrate` → `NAc.recommend_action` over `{modality: EC cluster}` — **one cluster per modality** | **Shipped**, production caller |
+| Situation encoding (`SensorEncoder`, 384-d) for interoception/audio/world; cluster ids are ATL concept ids | **Shipped** |
+| Fear (`cluster_fear`) written by the pain→fear subscriber **only to the world cluster**; reward credit only to world/audio/interoception | **Shipped** — a text cluster can hold neither today |
+| Game text as a percept: player chat as `[minecraft:chat]` (always on); game system messages as `[minecraft:system]` behind `--system_messages` (#807) | **Shipped** — observed, never in the situation (`_SUBSTRATE_CHANNELS` excludes text) |
+| Text encoding (`LinguisticEncoder`, 768-d): lazy-loaded; **silently falls back to 384-d hashes** if the model is absent | **Capability** — `MemoryHub` with `MAXIM_SUBSTRATE_PATH=1` only |
+| Look-back (`memory/percept_trace_buffer.py::PerceptTraceBuffer`) | **Capability** — zero production constructors |
+| Cross-modal comparison 384 ↔ 768 | **Undefined** (`similarity/ec.py::_cosine_similarity` → 0.0) |
+| Familiarity: EC margin → novelty on `LLMProposal.cluster_margins` (2S-c) | **Shipped** (#879); this branch predates it — rebase before any stage PR |
+| "Do I know what to do here": per-cluster fear/want history; `recommend_action` → `None` below `min_confidence` | **Shipped**. Welford outcome variance is **per tool** (`nac.py::get_action_risk_profile`), not per situation |
+| Stakes: drive pressure, pain just felt (2S-c) | **Shipped**; salience unmeasured on the loop path |
+| Bundle export/ingest/merge, `hive pull`, `oasis serve/publish` | **Shipped**; bundle = manifest + NAc + EC; ATL slot reserved; V8 dedup is per bundle digest |
+| Merge | `hivemind/merge.py::substrate_merge` re-keys the donor only; fear merges tighten-only (MIN); **want merges as a plain mean with no foreign discount**; merged values carry no per-source provenance |
+| Live state | `NAc.load_state` and `ATL.load_state` **replace wholesale, unlocked**; no live EC dump; **no ATL merge exists** |
+| Ingest into a live agent | Refused (`hivemind/cli.py::_run_ingest`, contract §1) |
+| `hive pull` credential | Sends the local leader key (`read_key()`) by default — which also grants inference |
+| Signing | `export --sign` signs with the machine's one key; `signer_identity` is not covered by the signature |
+| Paired data | 2026-09-20 audit: labels → REDESIGN THE SOURCE; 2026-09-21 re-audit EXPLORATORY; the capture script stamps events with its 0.5 s poll time, so it cannot measure a lag |
 
-## Front-gate: does this need new mechanisms?
+## The four design decisions the review forced
 
-Almost none — it rides on shipped infrastructure, and the one genuine addition is a slot the bundle
-format already reserved.
+**1. Three inputs, three roles.** The loop distinguishes what is **sensed**, what is **heard**, and
+what is **recalled**:
 
-- **The binding** rides on the **ATL** as a typed relationship (a new `RelationshipRegistry` type,
-  working name `NAMES`: text concept → world concept, with `weight` and `confidence`). This is also
-  the bio-faithful home: the ATL is the semantic hub where modality-specific spokes meet
-  (hub-and-spoke); binding a heard word to a sensed situation is exactly the hub's job. Because a
-  binding is a relation between two *ids*, it needs **no 384 ↔ 768 comparison** — the dimensional
-  mismatch blocks generalisation to unheard wordings (Stage 5), not binding of heard ones.
-- **The look-back** that pairs a message with the situation ~1 s before it rides on
-  `PerceptTraceBuffer` — which R4's delayed credit needs too. **One mechanism, two consumers**; its
-  design goes through R4's design review (the re-audit's next step 2), and whichever line wires it
-  first owns it.
-- **The cue** rides on the existing proposal: a heard, bound word contributes the bound world
-  cluster to what `recommend_action` / `anticipatory_threat_need` see — declared as its own
-  `heard` source on the proposal, never disguised as a sensed world cluster.
-- **The transfer** rides on bundle → ingest → merge. The addition is the reserved **ATL payload**,
-  scoped to a binding slice (below). That is a wire-format change: CC3/`_format_version`, and the
-  hivemind mypy gate, apply.
+| Input | Selection reads it | Credit / fear / want written to it | Memory situation key |
+|---|---|---|---|
+| sensed situation (world/interoception/audio) | yes | yes (as today) | yes |
+| heard text (the `text` modality) | yes — it is part of the situation considered, and the consult key | **no**, unless an experiment arm declares it (Exp A's conditioned-word control) | recorded as its own field, not merged into the key |
+| recalled situation (a word calling its situation back) | **yes, only** | **never** | never |
 
-## Stages
+Without this, a recalled world cluster would displace the sensed one (one cluster per modality) and
+fear, credit and the memory's situation key would be written to a situation the agent only
+imagined; and a text cluster would become the operant credit target on Minecraft (it sorts ahead of
+`world`).
 
-Each stage is independently useful and ends in a recorded result; a later stage never starts on an
-unrecorded earlier one.
+**2. Consulted material is advice, held apart — never merged into the agent's own state.** A
+**foreign layer**: entries tagged per consult (source, release, consult id, time) that selection and
+threat read *alongside* the agent's own state, weighted by `trust(source) × (1 − own confidence in
+this situation)` — so own experience wins in proportion to how much of it there is (the ant rule),
+decaying, never written by credit, revertible by consult id. This is the source-memory distinction,
+and it removes the blocking problems of a live merge: foreign want installed at full value (want has
+no discount), foreign fear that nothing can lower, lost provenance, the unlocked wholesale
+`load_state`, and a pure-Python merge too slow for a ≈1 s tick. Promotion from advice to own
+knowledge happens only through the agent's own experience confirming it — an owner question below.
+The **pre-boot** bundle ingest keeps today's merge path unchanged.
 
-**Stage 0 — the data source (language side; entry, already the line's next step).**
-A capture with **natural, unstaged** deaths (an agent or scripted wanderer, not console commands) to
-measure the lag between a situation and its message — the distribution fixes the look-back window.
-Plus a **teacher channel**: a scripted player that says a word in chat when a situation applies
-(e.g. `water`, `dark`, `food`) — game-native (players chat; D1 holds), and it escapes the
-three-template ceiling. Re-run `scripts/paired_data_audit.py` unchanged on both. *Exit:* a lag
-distribution and a vocabulary count, recorded, window fixed from data.
+**3. The agent reads a local, verified copy of the Oasis; the Oasis never sees a situation.** The
+Oasis side publishes signed releases, each with a **Queen-signed entry index**; the agent's runtime
+refreshes a local mirror in the background (off the loop thread) and verifies each release once. A
+consult is a **local selection** from verified releases by a pure `hivemind` selector — no search
+endpoint, no server-cut slices (which could not carry the contributor's signature and would defeat
+V8's dedup), nothing about the agent's situation sent anywhere. Admission is journalled **per entry**.
 
-**Stage 1 — text on the substrate path (language side; engineering, recording-only).**
-The substrate-primary loop encodes text percepts through the ONE text encoder (`LinguisticEncoder`
-→ EC `"text"` + ATL), not a second path. No influence on selection. *Guard:* a real-loop test in
-which a `[minecraft:system]` percept produces a text EC node and ATL concept on the substrate path.
+**4. Two tracks and a join.** Social referencing does not depend on the language work — it can run
+on the sensed situation alone. So:
+- **Track L (language):** L0 → L1 → L2 → Exp A.
+- **Track S (social referencing):** S1 → S2 → Exp C.
+- **Join:** J1 (the ATL payload) → Exp B → J2 (heard text in the consult key + Search Oasis) → J3
+  (generalisation, after the demo).
 
-**Stage 2 — binding (language side; recording-only).**
-On each text percept, the look-back finds the world situation(s) in the window and strengthens a
-`NAMES` relation (co-occurrence-weighted; a word heard across many situations binds weakly to each —
-the specificity is the measurement). *Measured, not acted on:* binding accuracy on held-out
-pairings (T1: held-out instances of heard words) against **the nearest-template baseline** and a
-**shuffled-binding** control. *Exit:* the accuracy table recorded, pass or fail.
+**The lead-up demo is Exp A + Exp C + Exp B + J2.**
 
-**Stage 3 — comprehension: Experiment A (language side; the first demo-able rung).**
-A bound word, heard, adds its bound world cluster(s) to the proposal as `heard`. Prediction: the
-fear/want keyed on that cluster fires **before** the sensors reach the situation — e.g. warned
-`water` at the shore, the agent turns away earlier than an unwarned one. **Run raw: no bundle
-ingested** (the line's standing rule — Phase -1/0 run with the Hivemind off; bootstrap is the
-convenience path, raw is the research path).
-Arms (minimum, fixed in the prereg): **cued** (word heard, binding learned) · **no-cue** · **cue
-with a shuffled binding** (the word points at the wrong situation) · **unbound word** (heard, never
-paired). The DV is the executed choice at a timepoint where the sensors do not yet discriminate —
-otherwise the sensors, not the word, drive it. *Claim if EARNED:* a word bound from experience
-changes behaviour. Ledger row in [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md).
+## Front-gate: what is genuinely new
 
-**Stage 4 — the Oasis boost: Experiment B (both sides).**
-A donor that passed Stage 3 exports its bindings; a fresh receiver pulls them **before boot** and
-hears the word without the pairing experience. Arms modelled on Exp 56: **taught** (bindings + both
-endpoint EC nodes) · **isolated** (learns by itself for the same budget) · **dangling** (bindings
-without the world EC nodes — must fail, as Exp 56's dangling arm did) · **naive** (nothing).
-Transport: the real CLI path (`oasis publish` → `hive add` → `hive pull --apply`, **signed** — Exp
-61's prereg said "signed" and its harness passed no `--sign`; this one must, and must assert it).
-*Claim if EARNED:* a word one agent learned works for another. Still receptive binding only.
+1. **The recalled-situation input** — the proposal holds one cluster per modality; a recall cannot
+   sit beside a percept without its own slot.
+2. **The foreign layer** — NAc state has no notion of source; a merge cannot be discounted, decayed
+   or reverted per source.
+3. **The ATL payload** — the reserved slot, scoped to `NAMES` relations only.
+4. **The release mirror + entry index + per-entry journal** — releases are fetched whole and
+   journalled per bundle today.
 
-**Stage 5 — generalisation: the projection (both plans revive together).**
-Words the agent never heard: T2 paraphrases, T3 **web text** (the only place web text enters — it
-has no sensor side, so it is a held-out TEST set, never training data), T4 invented words (must
-fail). Needs the 384 ↔ 768 projection ([deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md))
-and its own prereg with T1–T4 and the nearest-template baseline fixed in advance.
+Everything else rides: binding on the episodic trace (2S-b's situation record) consolidated to an ATL
+relation; the look-back on `PerceptTraceBuffer` (owned by R4); the trigger on signals the loop
+already computes; pre-boot transfer on bundle → ingest → merge.
 
-**Not in this plan:** production (the substrate saying anything — the grounded plan's Phases 1–3),
-live mid-session pulls, a public contribution path, and any rung of E1–E3.
+## Track L — language
+
+**L0 — the data source and the curated teacher.**
+- **Timestamps first:** the bridge stamps each event, the client keeps it, and the bridge runs at
+  100 ms, so the situation→message lag is measurable at all. Then a capture of **natural** deaths in
+  a **separate world** (a scripted wanderer dies almost only to mobs: good for the lag, useless for
+  water or fire examples).
+- **The teacher:** a second client that speaks through **player chat** (`[minecraft:chat]`, no flag
+  needed), never opped, parked **outside the server's tracking range** so `nearest_player_dist`
+  reads its rest value (64) — any row where it does not is refused. The harness schedules the
+  teacher's moments on the **clock**, never on the agent's state, and checks each word's arrival.
+  Text is **tagged by source** (teacher / system / other players); only the declared source binds.
+- **Encoder:** `LinguisticEncoder` warmed up at start; the run **refuses** the silent 384-d hash
+  fallback.
+- **Separability, offline, before any prereg:** the teacher's strings differ by one word and may land
+  in one text cluster — measure it; the text formation threshold is fixed from that.
+- **Situations** (readiness per the environment lens):
+
+  | Word | Situation | Exercises | Ready? |
+  |---|---|---|---|
+  | `water` | drowning | air-hunger drive + learned fear (EARNED, Exp 60/61) | **Yes** — Exp 60/61/62 apparatus; US-free cap 4.40 s, pain edge ≈5.2 s |
+  | `food` | food while hungry | learned want + relief | **Usable** |
+  | `fire` | fire / lava edge | nociceptive pain — 2S-c's pain | **No** — no fire sensor; burning persists after exit; `doFireTick` unguarded |
+  | `cave` | a never-seen place | novelty (2S-c) — the consult trigger | **Partly** — novel only if a high-gain sensor changes, and only once per agent |
+  | `night` | night | Exp 62's known boundary (night pool 0.799) | **Partly** — no contrast inside the sealed shell |
+
+  Exp A runs in water only; the others are demo and Exp C material once their prerequisites land.
+  Salience stays unmeasured on the loop path (2S-c).
+- Re-run `scripts/paired_data_audit.py` unchanged. *Exit:* a lag distribution, a vocabulary count,
+  the separability table — recorded.
+
+**L1 — heard text joins the situation (recording-only).** The ONE text encoder on the substrate path;
+a heard word joins the situation as the `text` modality with a stated persistence window (text is an
+event, the other channels are states) and a holder that carries it to the next substrate tick. Roles
+per decision 1. Novelty is reported **per modality** so text neither dominates the 2S-c novelty score
+nor silently vanishes from it. Opt-in and declared; Exp 60/61/62's ledger rows gain it as a
+**Re-run on** trigger. Depends on R4's look-back design (below). *Guard:* a real-loop test in which a
+heard `[minecraft:chat]` percept reaches the proposal's text slot on the substrate path — and does
+not reach credit or fear.
+
+**L2 — binding (recording-only).** On each heard word from the declared source, the look-back finds
+the sensed situation(s) in the window and records the association **in the episodic trace**; sleep
+consolidation strengthens a `NAMES` relation in the ATL (text concept → world concept; weight,
+confidence, provenance) — **one-way, word → situation**. `NAMES` is registered as a **builtin**
+relation type (`Semantics.define` returns False silently for an unknown type and appends duplicate
+edges on repeat — both fixed with the registration, and consolidation must not prune a binding before
+it is saved). Text centroids drift and share their space with affordance names: the text formation
+threshold is its own, calibrated in L0. The look-back is `PerceptTraceBuffer`, **designed in R4's
+design review** with three named consumers (R4 delayed credit — the hardest; word binding — ~1 s,
+text-triggered, several candidate situations; memory strength's retroactive tagging); R4 builds it,
+and if R4 slips this line builds it from R4's reviewed design, never its own. *Measured:* binding
+accuracy on held-out pairings (T1) against the nearest-template baseline and a shuffled-binding
+control.
+
+**Exp A — does the word work through its situation? (raw: no bundle, no consult).**
+Water only (the environment lens: on land the agent's response is a no-op, so the DV is the choice,
+not the behaviour).
+- **Phase 1, association:** the teacher's word during short submerged dips, each under the US-free
+  cap (4.40 s) — the water is still harmless to this agent.
+- **Phase 2, fear:** drowning fear is learned **without the word** — the word's persistence window
+  has closed before phase 2 starts, and the text slot is verified empty on every phase-2 tick.
+- **Phase 3, test:** the word alone, on a dry cell displaced from the flee anchor, at a moment where
+  an identity check confirms the sensors do not discriminate (`anticipatory_threat_need == 0` from
+  sensed input). Before testing, verify the text cluster holds **no fear of its own**.
+- **Arms** (minimum; the prereg fixes n — the confounding lens's floor: Fisher's exact at 12/24 for a
+  binary DV, ≥20 per cell for a continuous one): word (associated) · no word · shuffled association ·
+  unbound word **matched for novelty** (heard as often, never co-occurring with a situation) ·
+  **conditioned-word positive control** (the text cluster declared a fear target, the word present
+  during phase 2 — shows the conditioning route is real and what it looks like) · **extinction arm**
+  (after phase 2, extinguish the situation's fear, then test the word: retrieval-at-test predicts the
+  word's effect drops with it; mediated conditioning predicts it stays — Rizley & Rescorla) ·
+  **ablation split by timing** (`NAMES` removed before phase 2 vs after phase 2: retrieval predicts
+  both abolish it; mediated conditioning predicts only the early one does). Harmless pre-exposure to
+  water matched across arms (latent inhibition).
+- *Claim if EARNED:* the Exp A sentence above.
+
+## Track S — social referencing
+
+**S1 — the foreign layer, the mirror, and the security prerequisites.**
+- The foreign layer (decision 2) with its read path in selection and threat, its weight
+  `trust(source) × (1 − own confidence)`, decay, per-consult revert.
+- The release mirror (decision 3): background refresh off the loop thread; per-release signature
+  verification; the Queen-signed entry index; per-entry journal (so overlapping releases never
+  double-count).
+- **Security prerequisites, before any Track S code** (the security lens): pulls **never send the
+  leader key** to a non-loopback Oasis — the read tier is anonymous and rate-limited, or uses a
+  read-only scoped credential; `signer_identity` moves **under** the signature; releases reject
+  server-signed slices.
+
+**S2 — the consult trigger (an innate prior — declared tier).**
+Consult when **stakes** are high — **drive pressure or pain just felt** (not the agent's own
+anticipatory threat: a clear learned danger is a clear read, and clear reads do not consult) — **and**
+the agent is **unfamiliar** (novelty from the EC margin) **or has no idea what to do** (no own
+fear/want history for this situation, `recommend_action` below `min_confidence`) **or its own
+information is failing or stale** (recent negative outcomes here). **Not** a trigger: outcome
+variance on its own (irreducible risk; and today's Welford state is per tool). A per-situation
+refractory, **and a global consult budget**. The key is the **sensed situation** (world/sensors at
+the 0.85 threshold); heard text joins it at J2. The answer: only entries matching the situation,
+admitted into the foreign layer. **While waiting** — the mirror is local, so the wait is a local read,
+not a network round-trip — the agent keeps its own policy or takes a declared cautious hold (owner
+question). On a **first** exposure the consult can only fire at pain (≈5.2 s in water); the measured
+outcome is surfacing before damage (≈16 s). Thresholds start hard-coded and are **calibrated on
+separate seeds**; per the behaviour-tier rule, a follow-up with a trigger is filed for making them
+learned. **Learned trust** — whether a consult's advice paid off updates `trust(source)` — is that
+follow-up's first form.
+
+**Exp C — does the gate limit a stale Oasis's damage, beyond consulting less?**
+- **Arms:** gated · always · never · **yoked-random** (consults exactly as often as the gated arm, at
+  random moments — separates *when* from *how often*) · **content-null** (consults on the gated
+  schedule and receives an empty answer — separates the pause from the answer).
+- **Oasis conditions:** **clean** · **stale** (entries true in an earlier world, false in this one —
+  the critical-learner test) — plus, reported **separately**, **inverted** (valence flipped — a
+  deception test, not a Rogers test). Where the corruption sits (which situations) is pre-registered,
+  so the result is not decided by placement.
+- **Primary test:** the gate × Oasis-condition **interaction**, by permutation. Also reported: damage
+  **per corrupted entry admitted**.
+- **Isolation (prerequisite for the harness):** the corrupted Oasis is built with a **throwaway
+  signing key** in a test-only namespace, in a temporary directory, never on a machine whose key a
+  real receiver trusts — a corrupted bundle signed with the Queen key *is* a Queen release.
+- **A genuine may-fail:** if gated does not beat yoked-random, that is the recorded result. Night is
+  left out of gated arms until Exp 62's night boundary is understood.
+
+## The join
+
+**J1 — the ATL payload (pre-boot transfer).** `NAMES` relations **only** — never the concepts, which
+store the raw heard text as name and definition (a privacy leak); the receiver rebuilds its own
+concepts. Both endpoints re-keyed **inside `substrate_merge`** through the aligned-EC id map (the D43
+seam rule — the fix belongs in the composition). A relation missing an endpoint is dropped with a
+count. The text merge threshold **equals the text formation threshold** (L0). Bundle schema version
+bumped and **every declared slice hashed**, so a 1.3.0 receiver neither drops an unsigned ATL slice
+silently nor reports a signed one as tampered. A threat-model amendment: a foreign `NAMES` relation
+can point a word at the receiver's own strongest fear — foreign relations enter the foreign layer on a
+live consult, and on a pre-boot ingest are discounted and capped. Contract §1's amendment (live
+consults admit to the foreign layer; the file ingest stays at-rest) is recorded as a **DECISIONS.md
+entry** (the contract doc is archived). Session-end save order and `SessionSnapshot` gaining an EC
+kind are fixed here. `_format_version`, CC3 and the hivemind mypy gate apply.
+
+**Exp B — transfer.** A donor that passed Exp A publishes; a fresh receiver takes its associations
+**pre-boot** (J1's merge) or **live** (a consult into the foreign layer), and hears the word without
+the experience. Arms modelled on Exp 56: taught · isolated (same budget) · dangling (associations
+without the world EC nodes — must fail) · **association-stripped** · **fear-stripped** (which part
+carries it) · naive. Pre-boot vs live tested as **non-inferiority** with matched pre-ingest exposure.
+Transport: the real signed path; the harness **asserts** the signature verified (Exp 61's prereg said
+signed; its harness passed no `--sign`).
+
+**J2 — heard text in the consult key, and Search Oasis.** Heard text joins S2's key (text matched only
+against text, at its calibrated threshold). **Search Oasis**: typed text is used as a consult key
+(text modality only) through the same path — explicit, capped, trusted signers only, logged,
+revertible — and stays a **query only**: it never becomes a percept, a binding or a memory.
+
+**J3 — generalisation (after the demo).** Unheard wordings — T2 paraphrase, T3 **web text** (held-out
+TEST only: it has no sensor side, so it can never train an association), T4 invented words (must
+fail) — need the 384 ↔ 768 projection and their own prereg with the nearest-template baseline.
+
+**Not in this plan:** production (the substrate saying anything), a public contribution path
+(promotion stays WRITE-ONLY), any rung of E1–E3.
 
 ## The contract between the two sides
 
-**Language side delivers** (Stages 0–3): the capture + teacher channel; text on the substrate path;
-`NAMES` relations in the ATL with `weight`, `confidence`, provenance; the `heard` proposal source;
-Experiment A's prereg and record.
+| | Language side | Oasis side |
+|---|---|---|
+| L0–L2, Exp A | capture, timestamps, teacher, text in the situation, binding | — |
+| S1 | foreign layer; read path; learned-trust hook | release mirror + Queen-signed entry index + per-entry journal; anonymous/scoped read tier; `signer_identity` under the signature |
+| S2, Exp C | the trigger; waiting behaviour | throwaway-key test namespace for the corrupted Oasis |
+| J1, Exp B | `NAMES` shape (defined once, as a builtin ATL relation type) | ATL slice (`NAMES` only); re-key inside `substrate_merge`; schema bump + per-slice hashes; threat-model amendment |
+| J2 | text key; Search Oasis input handling | selector accepts a text-only key |
 
-**Oasis side delivers** (Stage 4):
-1. **The ATL binding slice in the bundle** — the reserved ATL payload, scoped to `NAMES` relations
-   plus the concepts at both ends. Export pulls the relation's **world** endpoint's EC node (already
-   exported) and its **text** endpoint's EC node (768-d, modality `"text"`, geometry-stamped).
-   `_format_version` + CC3 forward-compat on every new frozen type; hippocampus episodes still never
-   ship.
-2. **Ingest checks for it** (extending V1–V10): a relation whose endpoint node is absent is dropped
-   with a count (the dangling rule, as for cluster biases); weights clamped; foreign relations
-   discounted as foreign fear is (`FOREIGN_FEAR_DISCOUNT` precedent) — the discount value is the
-   prereg's to fix, not this plan's.
-3. **Merge re-keys both endpoints** through the aligned-EC id map (the D43 lesson: the merge must
-   hand back the map, or a merged relation reads out as nothing). **Text-modality merge threshold**
-   calibrated rather than inheriting the generic 0.44 — a text node merging with the wrong text node
-   silently rewires a word.
-4. **Transport** for the demo: a private `oasis serve` + signed `oasis publish` + `hive pull`. The
-   public Oasis (public_oasis.md Phase 1) is NOT a prerequisite; if it lands first, the demo may use
-   it read-only. Promotion stays WRITE-ONLY; nothing here needs `accept`.
+**Shared, owned by neither alone:** the `NAMES` shape, the situation-key shape (`{modality: …}` with
+embeddings), the look-back (R4), the claim sentences.
 
-**Shared, owned by neither alone:** the `NAMES` relation shape (defined once, in the ATL layer, and
-imported by the bundle code), the look-back mechanism (R4's design review), and the claim sentence
-above.
+## Guards and disciplines
 
-## Guards and disciplines that apply
-
-- **A template is a label.** If Stage 0's vocabulary is still templates, Stage 3 may run but its
-  claim is "a label bound from experience", and the record says so.
-- **A fix ships with a caller:** the `heard` source is wired into the real loop, and Stage 3's
-  guard is a strict red gate on the real composition, not a hand-composed sequence.
-- **Prove each guard by deleting the mechanism** (drop the `NAMES` relation → the cue arm must
-  collapse to no-cue).
-- **Provenance:** harnesses assert the `maxim` their sub-sims import is their own repo; gated data
-  commits prereg-first on `main`.
-- **Rig:** runs on big-mac-mini only once the box is quiet; the Paper server and the model server
-  are the operator's to start.
+- **A template is a label.** If L0's vocabulary is still templates, claims say "a label".
+- **A fix ships with a caller:** each mechanism is exercised by the real loop; gates are strict red
+  gates on the real composition.
+- **Prove each guard by deleting the mechanism:** remove `NAMES` → Exp A's effect collapses; disable
+  the gate → Exp C's gated arm equals yoked-random; empty the foreign layer → a consult changes
+  nothing.
+- **Every arm runs with the text channel on** (so the channel itself is not the difference), except
+  where an arm's point is its absence.
+- **Provenance:** harnesses assert the `maxim` they import is their own repo; gated data commits
+  prereg-first on `main`.
+- **Rig:** big-mac-mini only, once quiet; the operator starts the Paper server and the model server.
+  Budget: Exp A ≈3–7 h, Exp B ≈2–2.5 h, Exp C ≈3–5 h of rig time.
 
 ## Open questions for the owner
 
-1. **The teacher channel's vocabulary** — a handful of situation words the teacher says (and when),
-   or only the game's own messages? The first gives a richer vocabulary; the second is purer D1.
-2. **Where the demo stops for the 1.4 lead-up:** Stage 3 alone (raw), or Stage 3 + Stage 4 (the
-   Oasis boost)? Stage 4 depends on the ATL payload, the largest single piece of new work here.
-3. **Who wires `PerceptTraceBuffer` first** — this line (Stage 2) or R4. Whichever it is, its
-   design goes through R4's review so the second consumer does not fork it.
+1. **Promotion from advice to own knowledge:** does consulted advice ever become the agent's own — and
+   only when its own experience confirms it (the ant rule), or also through repetition across sources?
+2. **The waiting behaviour** during a consult: keep its own policy, or a declared cautious hold?
+3. **Situations beyond water and food:** worth building a fire sensor and a novelty-bearing place for
+   the demo, or keep the demo to water and food with the others as stated boundaries?
+4. **Order of work:** Track S can start before Track L (it needs no language); Track L's L1–L2 wait on
+   R4's look-back design. Start S first?
+
+## Review record (2026-09-24)
+
+Six parallel lenses, all **ADOPT WITH CHANGES**; reviews in
+[reviews/grounded_word_binding_demo/](reviews/grounded_word_binding_demo/):
+[confounding](reviews/grounded_word_binding_demo/confounding.md) ·
+[bio-fidelity](reviews/grounded_word_binding_demo/bio_fidelity.md) ·
+[wiring](reviews/grounded_word_binding_demo/wiring.md) ·
+[environment](reviews/grounded_word_binding_demo/environment.md) ·
+[architecture](reviews/grounded_word_binding_demo/architecture.md) ·
+[security](reviews/grounded_word_binding_demo/security.md).
+Folded: Exp A's conditioning route was impossible by construction (confounding + wiring,
+cross-confirmed) → conditioned-word positive control; mediated conditioning (bio) → extinction arm +
+timing-split ablation; Exp C's dose confound (confounding) → yoked-random + content-null arms,
+interaction by permutation, stale separated from inverted; the live merge could not keep "own
+experience wins" (security + wiring + architecture, cross-confirmed) → the foreign layer; server-cut
+slices broke Queen verification and V8 (architecture + security, cross-confirmed) → local mirror +
+entry index, no search endpoint; recalled clusters would corrupt learning (wiring) → three inputs,
+three roles; concepts ship raw heard text (architecture) → `NAMES` only; the leader key leaks on
+pulls, `signer_identity` is unsigned, and a corrupted test bundle would be a real Queen release
+(security) → S1 prerequisites and Exp C isolation; the teacher moves a world sensor and the lag
+capture cannot measure lag (environment) → out-of-range teacher, bridge timestamps; citation
+corrections (Sorce's unambiguous condition, Tamis-LeMonda/Adolph 2008, van Bergen 2004, Enquist's
+order) and trigger corrections (own anticipatory threat and variance-only are not triggers). The
+plan became two tracks and a join (architecture) and is stated as a multi-release line.
 
 ## Where this is referenced
 
 [grounded_language_acquisition.md](grounded_language_acquisition.md) (its concrete near path) ·
-[maxim_hivemind.md](maxim_hivemind.md) (the ATL payload's first consumer) ·
-[public_oasis.md](public_oasis.md) (Stage 4 may use it; does not require it) ·
-[roadmap_1_4.md](roadmap_1_4.md) §Parallel lines ·
+[maxim_hivemind.md](maxim_hivemind.md) (the ATL payload, the foreign layer, the mirror) ·
+[public_oasis.md](public_oasis.md) (a read-only Oasis serves the mirror; not required) ·
+[roadmap_1_4.md](roadmap_1_4.md) §Parallel lines · R4 (owner of the look-back) ·
 records: [paired_data_audit_2026-09-20.md](../experiments/paired_data_audit_2026-09-20.md),
 [paired_data_audit_reaudit_2026-09-21.md](../experiments/paired_data_audit_reaudit_2026-09-21.md).
