@@ -177,6 +177,37 @@ class TestWs:
 # ── every ROUTED surface is covered (default-open guard) ─────────────────────
 
 
+def _served_routes(app):
+    """Every route the app actually serves, as ``(path, kind)`` with kind ``"http"`` / ``"websocket"``.
+
+    FastAPI >= ~0.140 no longer copies an included router's routes into ``app.routes`` -- it leaves one
+    ``_IncludedRouter`` node -- so a plain walk of ``app.routes`` silently misses every ``/api/*`` route
+    and the coverage guard below goes vacuous (caught on the extras lane, FastAPI 0.141 / Starlette 1.7).
+    Use FastAPI's own flattening when it exists (``fastapi.routing.iter_route_contexts``, which yields
+    each route's EFFECTIVE path), and the direct walk on the older versions the ``console`` extra still
+    allows. Static ``Mount``s are skipped: the bundle is deliberately public.
+    """
+    import fastapi.routing as fr
+    from starlette.routing import Mount, Route, WebSocketRoute
+
+    out: list[tuple[str, str]] = []
+    if hasattr(fr, "iter_route_contexts"):
+        for ctx in fr.iter_route_contexts(app.routes):
+            route = ctx.route
+            if isinstance(route, Mount):
+                continue
+            out.append((ctx.path, "websocket" if isinstance(route, WebSocketRoute) else "http"))
+        return out
+    for route in app.routes:
+        if isinstance(route, Mount):
+            continue
+        if isinstance(route, WebSocketRoute):
+            out.append((route.path, "websocket"))
+        elif isinstance(route, Route):
+            out.append((route.path, "http"))
+    return out
+
+
 class TestRouteEnumeration:
     def test_every_routed_path_demands_auth_except_the_exempt_set(self, authed_app):
         # `_auth_required` is prefix-based, so a future top-level route
@@ -185,30 +216,18 @@ class TestRouteEnumeration:
         # turns that silent miss into a red test (review fold, executor
         # lens): every route FastAPI actually serves must satisfy the
         # predicate, except the deliberate exemptions.
-        from starlette.routing import Mount, Route, WebSocketRoute
-
         exempt = set(srv._AUTH_EXEMPT_PATHS) | {"/"}  # hello + the static/no-UI shell
-        uncovered = []
-        for route in authed_app.routes:
-            if isinstance(route, Mount):
-                continue  # the static bundle is deliberately public
-            if isinstance(route, WebSocketRoute):
-                if not srv._auth_required(route.path, "websocket"):
-                    uncovered.append(route.path)
-                continue
-            if isinstance(route, Route):
-                if route.path in exempt:
-                    continue
-                if not srv._auth_required(route.path, "http"):
-                    uncovered.append(route.path)
+        uncovered = [
+            path
+            for path, kind in _served_routes(authed_app)
+            if not (kind == "http" and path in exempt) and not srv._auth_required(path, kind)
+        ]
         assert uncovered == [], f"routes served without auth coverage: {uncovered}"
 
     def test_the_guard_itself_is_not_vacuous(self, authed_app):
         # The enumeration must actually SEE routes (an empty walk passes
         # anything) and must flag a hypothetical top-level route.
-        from starlette.routing import Route
-
-        paths = [r.path for r in authed_app.routes if isinstance(r, Route)]
+        paths = [path for path, kind in _served_routes(authed_app) if kind == "http"]
         assert "/api/identity" in paths and len(paths) > 5
         assert srv._auth_required("/metrics", "http") is False  # the miss the test exists to catch
 
