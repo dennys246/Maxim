@@ -135,7 +135,8 @@ Cheap, and all of it is owed regardless of whether Phase 1 ships.
 5. **Pulls never send the leader key** (added 2026-09-24, shared with social_referencing S0):
    `hive_cli.py::_run_pull` defaults to `read_key()`, the leader key that also grants inference, so any
    registered Oasis receives it. Reads become anonymous and rate-limited, or use a read-only scoped
-   credential.
+   credential. *(2026-09-25: the leak is closed — the leader key is sent only to a loopback Oasis; a remote
+   one needs an explicit `--api-key`. The anonymous/scoped read tier on the SERVER side is still owed.)*
 6. **`signer_identity` covered by the signature** (added 2026-09-24, shared with social_referencing
    S0): today it can be relabelled without breaking verification.
 7. **Releases carry a Queen-signed entry index** (added 2026-09-24) — **owed by social_referencing
