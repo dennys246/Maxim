@@ -457,6 +457,11 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   Exp 56 re-baseline on 1.20.4 is a 1.3.0 debt** (never run; Exp 61 reused the fabric without it):
   done before 1.3.0, or the row carries the dated scope annotation "1.16.5-pinned; the fabric was
   reused on 1.20.4 by Exp 61 — recorded, not re-earned" and 1.4.0 inherits nothing unstated.
+- **T4a — consumerless mechanisms walked.** Every mechanism that shipped wired but with no consumer
+  and a stated consumer trigger either has had its trigger fire (and a consumer entered through its
+  own review) or is marked `Dormant since <date>` in its docstring, with the dormancy noted in the
+  release PR. Today that is one entry: memory 2S-d's situation recall
+  ([memory_2s_d_situation_cue.md](memory_2s_d_situation_cue.md) §When the recall gets a consumer).
 - **T5 (conditional) — E2.** Ships in 1.4.0 only if its Phase 5 relief store entered through its own
   review AND its outcome is recorded by the time T1–T4 hold; else 1.4.x, and the CHANGELOG headline
   says so. Its instrument (1b, 3, 5) enters with it, not with T1.
