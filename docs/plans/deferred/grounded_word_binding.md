@@ -222,7 +222,7 @@ already computes; pre-boot transfer on bundle → ingest → merge.
   | `food` | food while hungry | learned want + relief | **Usable** |
   | `fire` | fire / lava edge | nociceptive pain — 2S-c's pain | **No** — no fire sensor; burning persists after exit; `doFireTick` unguarded |
   | `cave` | a never-seen place | novelty (2S-c) — the consult trigger | **Partly** — novel only if a high-gain sensor changes, and only once per agent |
-  | `night` | night | Exp 62's known boundary (night pool 0.799) | **Partly** — no contrast inside the sealed shell |
+  | `night` | night | Exp 62's "night pool 0.799" — corrected 2026-09-25: that is the `time_of_day` wrap before dawn (#899), midnight reads 0.903 | **Partly** — no contrast inside the sealed shell |
 
   Exp A runs in water only; the others are Exp C material (now [social_referencing.md](../social_referencing.md)) once their prerequisites land.
   Salience stays unmeasured on the loop path (2S-c).

@@ -197,6 +197,12 @@ it is actually slower.
   reads 0.799 against the 0.85 threshold — so the earned drowning fear **misses at night**, for
   representational reasons, and the frozen-day protocol is what hides it. Rung B owns that, and its
   entry condition no longer depends on this rung failing (`docs/plans/roadmap_1_4.md` Phase 5).
+  > **Correction, 2026-09-25 (interpretation only, post-data; no gate, number or verdict changes).**
+  > The "night pool" is `time_of_day` **0.99** — the minute before the clock wraps to 0 — and the
+  > body encodes that circular clock linearly. At the fear place, midnight (0.75) reads **0.903**,
+  > inside the key; 0.01 reads 0.995. The fear misses only at time ≈ 0.94–0.99: the wrap, not night
+  > ([#899](https://github.com/dennys246/Maxim/issues/899)). The lit-pond row (0.588) is unaffected and stands. Found by the Rung B SUPPORT design
+  > review (`docs/experiments/rationale/rungb-support/`).
 - **This is not a general generalization result.** The apparatus has ONE discriminating world sensor
   (`live_contributors: ["is_in_water"]`, a binary flip), so its situation space is two points. What
   transferred is invariance to the two low-gain place absolutes, which is what "portability comes
