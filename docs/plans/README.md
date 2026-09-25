@@ -124,10 +124,15 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
   `PerceptTraceBuffer` Dormant. Found #888 (anchors never expire) and #889 (the reward-bias ablation
   switch does not ablate the live path).
 - [memory_2d2_retroactive_tagging.md](memory_2d2_retroactive_tagging.md) — **DECIDED + BUILT
-  2026-09-25:** memory-strength 2d-2. A strong moment protects the related traces encoded in the
-  seconds before it (`retro_tag`, read only under `memory.strategy=strength`); reach ~5 s until Phase 5
+  2026-09-25:** memory-strength 2d-2. A strong moment protects the traces encoded in the seconds
+  before it IN THE SAME SITUATION (not the approach into it) (`retro_tag`, read only under `memory.strategy=strength`); reach ~5 s until Phase 5
   calibrates. Limits deferred on triggers:
   [deferred/retro_tagging_extensions.md](deferred/retro_tagging_extensions.md).
+- [memory_2s_d_situation_cue.md](memory_2s_d_situation_cue.md) — **DECIDED + BUILT 2026-09-25:**
+  memory-strength 2S-d. A situation change recalls the memories formed in that situation (through
+  the cluster concepts' refs, scored on each memory's own situation); recall only, no activation,
+  until 2S-e consumes it. Lost links deferred:
+  [deferred/situation_cue_fallback.md](deferred/situation_cue_fallback.md).
 
 *The shared-perception designs (the fabric, the reflex runtime, the microduck) are deferred
 on a second body arriving and now live in [deferred/](deferred/).*
@@ -163,6 +168,7 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
 - [deferred/reflex_layering.md](deferred/reflex_layering.md) — the narrative reflex path collapses stimulus, felt pain and response into one number (habituation/sensitization/pre-emption scale the DAMAGE inflicted); routes 2 (response habituation: `context_key`, recovery) and 3 (re-layering; bracing as a real anticipatory act). Deferred 2026-09-24; route 1 (firing outcomes) shipped. **Revive when:** anticipation is to be measured in the narrative world, adaptive nociception revives, a non-heartbeat row 9 re-run is scheduled, or a consumer starts acting on `ReflexFiring`. Pairs with adaptive nociception.
 - [deferred/nociception_layer.md](deferred/nociception_layer.md) — pain says what it is (`PainKind` on the type; step 1 in memory Phase 2S-c) and each consumer's rule is written in that vocabulary; ten consumers, several rules, and the right rule differs by consumer (memory excludes air hunger, fear needs it). Records F1 (anticipated pain paid out as negative reward — live on `--sim`, near-inert until R4), F1b, F2 (three NAc writers), F3 (lossy ReactionBus→PainBus rebuild). Four-lens reviewed. **Revive when:** adaptive nociception or reflex-layering route 3 revives, a post-2026-09-24 consumer re-derives meaning, **an R4 credit-routing PR opens**, the strength tag reads pain in a validation run, or F1/F2 is measured. Deferred 2026-09-24.
 - [deferred/retro_tagging_extensions.md](deferred/retro_tagging_extensions.md) — the four limits memory-strength 2d-2 ships with (no tagging in the LLM sims, ~5 s reach, eviction before sleep, `--sim`'s lightweight end), each with what would lift it and its revive trigger.
+- [deferred/situation_cue_fallback.md](deferred/situation_cue_fallback.md) — the 2S-d situation cue's lossy links (compressed / evicted / re-created concepts) and the llm-primary + hardware paths it does not cover, each with its revive trigger.
 
 **Deferred 2026-09-18 (owner):**
 

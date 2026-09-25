@@ -17,7 +17,9 @@ Wired into MemoryAgent via set_pattern_completion_fn(completer.complete).
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+import math
+import threading
+from typing import TYPE_CHECKING, Any
 
 from maxim.memory.semantic_types import Concept
 from maxim.memory.text import normalize_tokens
@@ -29,10 +31,21 @@ from maxim.memory.types import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from maxim.memory.atl import ATL
     from maxim.memory.layer import MemoryLayer
 
 logger = logging.getLogger(__name__)
+
+# 2S-d: a situation cue qualifies AND ranks a memory only by its shared EXTEROCEPTIVE clusters, in this
+# order (the place outranks the sound). Interoception plays no part: its cluster is broad (cosine
+# separates only a neutral->extreme swing: docs/wiring/cosine-separation-is-directional.md), so as a
+# qualifier it would recall the latest memories from anywhere, and as a ranker it would put safe past
+# visits (full air, matching the cue) above the drownings (extreme cluster, not matching) at the very
+# moment the drownings are the ones to recall -- the Exp 60 failure (owner decision (b), 2026-09-25).
+SITUATION_RANK_ORDER: tuple[str, ...] = ("world", "audio")
+SITUATION_QUALIFYING_MODALITIES: frozenset[str] = frozenset(SITUATION_RANK_ORDER)
 
 
 class PatternCompleter:
@@ -56,6 +69,124 @@ class PatternCompleter:
     ) -> None:
         self._atl = atl
         self._layers = layers
+        # 2S-d: the last situation cued per agent (in memory only; reset at each session start).
+        self._situation_lock = threading.Lock()
+        self._last_situation: dict[str, dict[str, str]] = {}
+        self._situation_stats = {"cues": 0, "changes": 0, "with_matches": 0, "matched": 0}
+
+    # ── 2S-d: the situation cue ───────────────────────────────────────────
+
+    def cue_situation(self, agent_id: str, situation: "Mapping[str, str] | None") -> tuple[str, ...]:
+        """Recall the memories formed in this situation, when the situation CHANGES (memory 2S-d).
+
+        ``situation`` is the tick's ``{modality: cluster_id}`` (the ids are ATL concept ids). On a
+        change from this agent's last cue, the concepts with those ids nominate the memories linked
+        to them (2S-b's ``memory_refs['hippocampus']``, a lossy index); each candidate is judged on
+        its OWN recorded ``situation``: it qualifies only through a shared world/audio cluster, and
+        the TIER is the highest-ranked modality in ``SITUATION_RANK_ORDER`` it shares (any same-place
+        memory; same-sound only when no place matches; interoception never ranks). Within the tier the
+        most SALIENT memories come first (``max(encoding_tag, retro_tag)``: pain, surprise, novelty,
+        drive, or a strong moment just after), then those also sharing a lower-ranked modality, then
+        the newest by experience time,
+        capped at ``MAX_EPISODES`` -- so a long run of uneventful visits cannot crowd out the one that
+        hurt. The same situation again returns ``()``.
+
+        **Recall only (owner decision, 2026-09-25):** nothing is activated -- no counter, no strength
+        credit. ``MemoryLayer.activate`` is for a CONSUMPTION point, and nothing consumes these ids
+        until 2S-e, where the outcome is known and can gate the credit. Every read here is a
+        non-touching bulk read. Returns the recalled record ids.
+        """
+        cue = {m: c for m, c in (situation or {}).items() if isinstance(m, str) and isinstance(c, str)}
+        with self._situation_lock:
+            self._situation_stats["cues"] += 1
+            previous = self._last_situation.get(agent_id)
+            if previous == cue:
+                return ()
+            self._last_situation[agent_id] = cue
+            self._situation_stats["changes"] += 1
+        try:
+            recalled = self.recall_situation(cue)
+        except Exception:
+            # A failed recall must not mark this situation as already cued: roll back, so the next
+            # tick in the same situation tries again instead of staying silent until it changes.
+            with self._situation_lock:
+                if self._last_situation.get(agent_id) == cue:
+                    if previous is None:
+                        self._last_situation.pop(agent_id, None)
+                    else:
+                        self._last_situation[agent_id] = previous
+            raise
+        with self._situation_lock:
+            if recalled:
+                self._situation_stats["with_matches"] += 1
+                self._situation_stats["matched"] += len(recalled)
+        return recalled
+
+    def recall_situation(self, cue: "Mapping[str, str]") -> tuple[str, ...]:
+        """The recall itself, with NO change detection and no state: the seam 2S-e calls with a cue it
+        completed to a neighbouring situation (going through ``cue_situation`` would overwrite the
+        agent's last situation and corrupt change detection). Same selection rule as ``cue_situation``.
+        """
+        cue = dict(cue)
+        hippocampus = self._layers.get("hippocampus")
+        qualifying = {m: c for m, c in cue.items() if m in SITUATION_QUALIFYING_MODALITIES}
+        if hippocampus is None or self._atl is None or not qualifying:
+            return ()
+        candidate_ids: set[str] = set()
+        for concept in self._atl.recall_by_ids(list(qualifying.values())):  # no touch
+            refs = getattr(concept, "memory_refs", None)
+            if refs:
+                # Copied before scoring, but NOT under the ATL lock: the extractor thread can resize
+                # this dict mid-copy ("dictionary changed size"). The caller's fail-soft wrapper
+                # absorbs that, and ``cue_situation`` rolls back, so the next tick retries.
+                candidate_ids.update(tuple(refs.get("hippocampus", {})))
+        if not candidate_ids:
+            return ()
+        # (tier, record, how many lower-ranked modalities it also shares). A CompressedMemory carries no
+        # ``situation``, so it never matches and never reaches the sort.
+        matched: list[tuple[int, Any, int]] = []
+        for record in hippocampus.recall_by_ids(list(candidate_ids)):  # no touch
+            own = getattr(record, "situation", None) or {}
+            hits = [m in qualifying and own.get(m) == qualifying[m] for m in SITUATION_RANK_ORDER]
+            if any(hits):
+                first = hits.index(True)  # the tier: the HIGHEST-ranked modality it shares
+                matched.append((first, record, sum(hits[first + 1 :])))
+        if not matched:
+            return ()
+        # Lower index = higher rank. Only the tier is exclusive: a same-place memory whose SOUND differs
+        # is still in the place tier (the drowning's hurt sound must not drop it below safe swims that
+        # share today's splash); the lower-ranked matches only order memories inside the tier.
+        best = min(first for first, _, _ in matched)
+        tier = [(r, extra) for first, r, extra in matched if first == best]
+
+        def salience(r: Any) -> float:
+            # The same measure the strength floor reads (2d-2): the stamped tag or a retro tag, whichever
+            # is higher -- the moments just before a drowning are retro-tagged, not uneventful.
+            values = [getattr(r, "encoding_tag", None), getattr(r, "retro_tag", None)]
+            finite = [float(v) for v in values if v is not None and math.isfinite(float(v))]
+            return max(finite, default=0.0)
+
+        def order(item: tuple[Any, int]) -> tuple[float, int, int, int]:
+            r, extra = item
+            at, seq = getattr(r, "encoded_at_us", None), getattr(r, "capture_seq", None)
+            return (salience(r), extra, -1 if at is None else at, -1 if seq is None else seq)
+
+        tier.sort(key=order, reverse=True)
+        return tuple(r.id for r, _ in tier[: self.MAX_EPISODES])
+
+    def reset_situations(self) -> None:
+        """Forget every agent's last situation, so the next cue is an ENTRY (a new session)."""
+        with self._situation_lock:
+            self._last_situation.clear()
+
+    def situation_cue_stats(self) -> dict[str, int]:
+        """``cues`` (calls), ``changes`` (situation changed), ``with_matches``, ``matched`` (ids).
+
+        Cumulative for this completer's life (repeated sessions add up). A recall that raised is rolled
+        back and retried, so its ``cues``/``changes`` count again on the retry.
+        """
+        with self._situation_lock:
+            return dict(self._situation_stats)
 
     def complete(self, episodic: EpisodicMemory) -> list[PredictedOutcome]:
         """Pattern completion function wired into MemoryAgent.

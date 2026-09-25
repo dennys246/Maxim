@@ -32,6 +32,7 @@ from maxim.runtime.bio_integration import (
 import maxim.runtime.bio_integration as _bio_integration
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from maxim.agents.autonomy import AutonomyController
     from maxim.agents.llm_worker import LLMWorker
 
@@ -1367,11 +1368,67 @@ def _resolve_min_confidence(explicit: float | None) -> float:
         return _DEFAULT_SUBSTRATE_MIN_CONFIDENCE
 
 
+class _NoSituationCue:
+    """The explicit opt-out for ``propose_via_substrate(situation_cue=...)`` (memory 2S-d)."""
+
+    def __repr__(self) -> str:
+        return "NO_SITUATION_CUE"
+
+
+# A caller with no episodic memory (e.g. the Exp 53 readout: an NAc and an EC, no Hippocampus) says
+# so with this, never with ``None`` -- ``None`` is what a hub with no ATL would hand over by accident.
+NO_SITUATION_CUE = _NoSituationCue()
+
+
+def _build_loop_sensor_encoder(memory_hub: Any, nac: Any) -> Any | None:
+    """The loop's Phase 0 sensor encoder, built once per loop when EC is reachable through the hub.
+
+    Without it, substrate-primary bypasses the LinguisticEncoder text path and EC node_count stays
+    at zero forever (which is what blocked the Phase 0 smoke run from being a measurement). See
+    docs/plans/grounded_language_acquisition.md Phase 0 + the SensorEncoder docstring in
+    similarity/encoder.py. Built in ALL modes (Phase 1, substrate_learns_from_experience.md), not
+    just substrate-primary: llm-primary / real-hardware actions also encode the current
+    interoception cluster at outcome time (section 4) so their real drive-relief outcomes reinforce
+    the cluster-reward substrate. Harmless when unused (an unembodied chat agent never calls
+    encode); cheap to construct.
+    """
+    if memory_hub is None:
+        return None
+    ec = getattr(memory_hub, "ec", None)
+    if ec is None:
+        return None
+    try:
+        from maxim.similarity.encoder import SensorEncoder
+
+        return SensorEncoder(ec=ec, atl=getattr(memory_hub, "atl", None), nac=nac)
+    except Exception:
+        logger.debug("substrate-primary: SensorEncoder init failed", exc_info=True)
+        return None
+
+
+def _resolve_situation_cue(memory_hub: Any) -> Any:
+    """The loop's memory 2S-d situation cue, resolved once per loop.
+
+    No hub = no episodic memory: the explicit opt-out, ``NO_SITUATION_CUE``. A hub WITHOUT a cue
+    (its ATL failed to build) is a degraded memory: said loudly here, once, and the loop runs on
+    with the opt-out (fail-soft, like the rest of the loop) -- where the survival harnesses, which
+    read ``MemoryHub.situation_cue`` directly, stop instead.
+    """
+    if memory_hub is None:
+        return NO_SITUATION_CUE
+    try:
+        return memory_hub.situation_cue
+    except RuntimeError as e:
+        logger.warning("memory 2S-d: no situation cue this run (%s)", e)
+        return NO_SITUATION_CUE
+
+
 def propose_via_substrate(
     *,
     nac: Any,
     agent_id: str,
     executor: Any,
+    situation_cue: "Callable[[str, dict[str, str] | None], Any] | _NoSituationCue",
     min_confidence: float | None = None,
     sensor_encoder: Any | None = None,
 ) -> LLMProposal | None:
@@ -1387,6 +1444,11 @@ def propose_via_substrate(
     LLM-proposed ones.
 
     Args:
+        situation_cue: REQUIRED (memory 2S-d): ``MemoryHub.situation_cue``, called with this tick's
+            clusters so a situation CHANGE recalls the memories formed in it, or ``NO_SITUATION_CUE``
+            for a caller with no episodic memory. Required because the survival harnesses call this
+            function directly, bypassing the loop -- an optional hook would silently never fire
+            there. Recall only until 2S-e consumes it; a failing cue never costs the tick.
         sensor_encoder: Optional :class:`SensorEncoder` (Phase 0 of
             grounded_language_acquisition.md). When wired, the current
             drive snapshot is hashed into the substrate via
@@ -1396,6 +1458,11 @@ def propose_via_substrate(
             text-only ``LinguisticEncoder`` path is the substrate's only
             front door, so substrate-primary mode never produces EC nodes.
     """
+    if situation_cue is None or not (situation_cue is NO_SITUATION_CUE or callable(situation_cue)):
+        raise TypeError(
+            "propose_via_substrate(situation_cue=...) takes MemoryHub.situation_cue or NO_SITUATION_CUE, "
+            f"got {situation_cue!r}"
+        )
     if nac is None or executor is None:
         return None
 
@@ -1529,6 +1596,13 @@ def propose_via_substrate(
         nac.note_active_clusters(agent_id, clusters or None)
     except Exception:
         logger.warning("note_active_clusters raised — pain this tick cannot key to a situation", exc_info=True)
+
+    # Memory 2S-d: a situation CHANGE recalls the memories formed in it (recall only until 2S-e).
+    if situation_cue is not NO_SITUATION_CUE:
+        try:
+            situation_cue(agent_id, clusters or None)
+        except Exception:
+            log_swallowed_exception()
 
     # Substrate-primary mode owns its own clock — without an LLM submit
     # path there's no other code that calls into the embodiment, so
@@ -2327,32 +2401,8 @@ def run_agentic_loop(
     # Bind the flag once so every outcome site inherits it (no per-call threading).
     _rec_outcome = functools.partial(_record_outcome, drive_relief_only=_drive_relief_only)
 
-    # Phase 0 sensor encoder — built once per loop when substrate-primary
-    # is active and EC is reachable through memory_hub. Without this,
-    # substrate-primary bypasses the LinguisticEncoder text path and EC
-    # node_count stays at zero forever (which is what blocked the Phase 0
-    # smoke run from being a measurement). See
-    # docs/plans/grounded_language_acquisition.md Phase 0 + the
-    # SensorEncoder docstring in similarity/encoder.py.
-    # Built in ALL modes (Phase 1, substrate_learns_from_experience.md), not just
-    # substrate-primary: llm-primary / real-hardware actions also encode the
-    # current interoception cluster at outcome time (section 4) so their real
-    # drive-relief outcomes reinforce the cluster-reward substrate. Harmless when
-    # unused (an unembodied chat agent never calls encode); cheap to construct.
-    _loop_sensor_encoder: Any | None = None
-    if memory_hub is not None:
-        _ec = getattr(memory_hub, "ec", None)
-        if _ec is not None:
-            try:
-                from maxim.similarity.encoder import SensorEncoder
-
-                _loop_sensor_encoder = SensorEncoder(
-                    ec=_ec,
-                    atl=getattr(memory_hub, "atl", None),
-                    nac=_loop_nac,
-                )
-            except Exception:
-                logger.debug("substrate-primary: SensorEncoder init failed", exc_info=True)
+    _loop_sensor_encoder = _build_loop_sensor_encoder(memory_hub, _loop_nac)
+    _loop_situation_cue = _resolve_situation_cue(memory_hub)
 
     # Initialize bio-system session (MemoryHub + hippocampus capture worker)
     memory_hub_enabled = _start_bio_session(memory_hub=memory_hub, hippocampus=hippocampus)
@@ -4453,6 +4503,7 @@ def run_agentic_loop(
                     nac=_loop_nac,
                     agent_id=_loop_agent_id,
                     executor=executor,
+                    situation_cue=_loop_situation_cue,
                     sensor_encoder=_loop_sensor_encoder,
                 )
             ctrl.last_llm_submit_time = now

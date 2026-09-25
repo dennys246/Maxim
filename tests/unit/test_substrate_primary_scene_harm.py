@@ -213,7 +213,7 @@ def test_introspection_names_cover_the_registered_tools():
 
 def test_propose_via_substrate_excludes_introspection_tools():
     """Embodied affordances reach recommend_action; introspection tools do not."""
-    from maxim.runtime.agent_loop import propose_via_substrate
+    from maxim.runtime.agent_loop import NO_SITUATION_CUE, propose_via_substrate
     from maxim.tools.introspection import INTROSPECTION_TOOL_NAMES
 
     names = [
@@ -225,7 +225,7 @@ def test_propose_via_substrate_excludes_introspection_tools():
         "sense_presence",  # sensing is NOT introspection — kept
     ]
     nac = _RecordingNac()
-    propose_via_substrate(nac=nac, agent_id="a", executor=_StubExecutor(names))
+    propose_via_substrate(situation_cue=NO_SITUATION_CUE, nac=nac, agent_id="a", executor=_StubExecutor(names))
     assert nac.seen_tools is not None, "recommend_action was not reached"
     assert not (set(nac.seen_tools) & INTROSPECTION_TOOL_NAMES)
     assert "warmth_beta_safe_warm_self" in nac.seen_tools
@@ -236,10 +236,15 @@ def test_propose_via_substrate_excludes_introspection_tools():
 def test_propose_via_substrate_idle_when_only_introspection():
     """If every candidate is an introspection tool, the substrate has no
     embodied action to propose → None (IDLE), not a meta-tool fidget."""
-    from maxim.runtime.agent_loop import propose_via_substrate
+    from maxim.runtime.agent_loop import NO_SITUATION_CUE, propose_via_substrate
 
     nac = _RecordingNac()
-    out = propose_via_substrate(nac=nac, agent_id="a", executor=_StubExecutor(["system_stats", "temporal_patterns"]))
+    out = propose_via_substrate(
+        situation_cue=NO_SITUATION_CUE,
+        nac=nac,
+        agent_id="a",
+        executor=_StubExecutor(["system_stats", "temporal_patterns"]),
+    )
     assert out is None
     # introspection-only → available_tools empties → recommend_action never sees them
     assert nac.seen_tools is None
@@ -251,7 +256,7 @@ def test_substrate_tool_whitelist_restricts_to_minimal_repertoire(monkeypatch):
     tools) so generic always-succeed tools (sense_presence) can't out-compete the
     orient turns — the mac-mini failure where the infant chose sense_presence
     (causal_pos 0.99) over turning."""
-    from maxim.runtime.agent_loop import propose_via_substrate
+    from maxim.runtime.agent_loop import NO_SITUATION_CUE, propose_via_substrate
 
     monkeypatch.setenv("MAXIM_SUBSTRATE_TOOL_WHITELIST", "turn_left,turn_right,listen")
     names = [
@@ -263,7 +268,7 @@ def test_substrate_tool_whitelist_restricts_to_minimal_repertoire(monkeypatch):
         "infant_operant_listen",
     ]
     nac = _RecordingNac()
-    propose_via_substrate(nac=nac, agent_id="a", executor=_StubExecutor(names))
+    propose_via_substrate(situation_cue=NO_SITUATION_CUE, nac=nac, agent_id="a", executor=_StubExecutor(names))
     assert nac.seen_tools is not None
     assert set(nac.seen_tools) == {
         "infant_operant_turn_left",
@@ -276,11 +281,16 @@ def test_substrate_tool_whitelist_restricts_to_minimal_repertoire(monkeypatch):
 
 def test_substrate_tool_whitelist_absent_keeps_all(monkeypatch):
     """No whitelist → existing behavior (sense_presence still competes)."""
-    from maxim.runtime.agent_loop import propose_via_substrate
+    from maxim.runtime.agent_loop import NO_SITUATION_CUE, propose_via_substrate
 
     monkeypatch.delenv("MAXIM_SUBSTRATE_TOOL_WHITELIST", raising=False)
     nac = _RecordingNac()
-    propose_via_substrate(nac=nac, agent_id="a", executor=_StubExecutor(["sense_presence", "infant_operant_turn_left"]))
+    propose_via_substrate(
+        situation_cue=NO_SITUATION_CUE,
+        nac=nac,
+        agent_id="a",
+        executor=_StubExecutor(["sense_presence", "infant_operant_turn_left"]),
+    )
     assert "sense_presence" in (nac.seen_tools or [])
 
 
@@ -468,7 +478,7 @@ class TestProposeViaSubstrateTick:
         import maxim.embodiment.body as body_mod
         from maxim.embodiment.body import Embodiment
         from maxim.embodiment.spec import _parse_entity
-        from maxim.runtime.agent_loop import propose_via_substrate
+        from maxim.runtime.agent_loop import NO_SITUATION_CUE, propose_via_substrate
 
         class _FakeTime:
             def __init__(self, start=1000.0):
@@ -508,7 +518,7 @@ class TestProposeViaSubstrateTick:
 
         fake.now += 5.0  # wall-clock time passes with no embodiment call
         nac = _DriveRecordingNac()
-        propose_via_substrate(nac=nac, agent_id="a", executor=executor)
+        propose_via_substrate(situation_cue=NO_SITUATION_CUE, nac=nac, agent_id="a", executor=executor)
 
         assert nac.seen_drives is not None, "recommend_action was not reached"
         # 0.5 (post-drift), not 0.0 (frozen) — proves the tick ran first.

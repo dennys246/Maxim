@@ -124,13 +124,19 @@ def main(argv: list[str] | None = None) -> int:
     from maxim.runtime.experience_time import ExperienceClockDriver
 
     clock_driver = ExperienceClockDriver(aut.bio.hippocampus.experience_clock, percept_source=None)
+    # Memory 2S-d: resolved ONCE, so a hub with no cue (no ATL) fails here, not mid-episode.
+    situation_cue = aut.bio.memory_hub.situation_cue
 
     def _tick() -> object:
         """ONE production tick: propose_via_substrate does encode → note →
         evaluate_failures (pain) → threat read → recommend. The whole Wire-4
         composition, through its real caller (W-2's requirement)."""
         proposal = propose_via_substrate(
-            nac=aut.bio.nac, agent_id=AGENT_ID, executor=aut.executor, sensor_encoder=encoder
+            nac=aut.bio.nac,
+            agent_id=AGENT_ID,
+            executor=aut.executor,
+            situation_cue=situation_cue,
+            sensor_encoder=encoder,
         )
         clock_driver.on_live_pass()
         return proposal

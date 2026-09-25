@@ -25,6 +25,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Situation recall wired, with no behavioural or retention effect yet (memory-strength Phase
+  2S-d).** Nothing consumes the recalled memories until 2S-e, and nothing is activated or
+  strengthened, so retention is unchanged under every strategy. In the substrate-primary survival
+  path, when the agent's situation clusters change, the memories linked to them are recalled and
+  ranked by shared place (sound only where no place matches), then how salient each was (so a
+  painful memory, or the moments just before one, is recalled before uneventful ones); a memory must share a world or audio cluster to be
+  recalled at all, and the body's internal state never ranks. What the cue did is reported in the MemoryHub session-end results
+  (`situation_cue_*`).
+  `propose_via_substrate` now takes a REQUIRED keyword-only `situation_cue=` (`MemoryHub.situation_cue`
+  or `NO_SITUATION_CUE`), so a caller cannot silently skip the cue. Scope: the harnesses' propose-only
+  phases capture no memories, so the cue finds nothing there today; llm-primary and hardware passes do
+  not cue (deferred with triggers in `docs/plans/deferred/situation_cue_fallback.md`).
+
 - **A strong moment protects the memories just before it in the same situation (memory-strength
   Phase 2d-2).** When a memory is encoded strongly (pain, relief, a large surprise), the memories
   encoded in the seconds before it that share its world or audio situation become harder to forget

@@ -1013,6 +1013,8 @@ class WaterTrial:
         # clock (memory-strength Phase 2S, #848): drive it here, once per propose pass, so the
         # world's time is lived through on this path too.
         clock_driver = ExperienceClockDriver(self.aut.bio.hippocampus.experience_clock, percept_source=None)
+        # Memory 2S-d: resolved ONCE, so a hub with no cue (no ATL) fails here, not mid-episode.
+        situation_cue = self.aut.bio.memory_hub.situation_cue
         fz = self.frozen
         usable = 0
         attempts = 0
@@ -1028,6 +1030,7 @@ class WaterTrial:
                     nac=self.aut.bio.nac,
                     agent_id=self.agent_id,
                     executor=self.aut.executor,
+                    situation_cue=situation_cue,
                     sensor_encoder=self.encoder,
                 )
                 clock_driver.on_live_pass()
@@ -1059,6 +1062,7 @@ class WaterTrial:
                     nac=self.aut.bio.nac,
                     agent_id=self.agent_id,
                     executor=self.aut.executor,
+                    situation_cue=situation_cue,
                     sensor_encoder=self.encoder,
                 )
                 clock_driver.on_live_pass()
