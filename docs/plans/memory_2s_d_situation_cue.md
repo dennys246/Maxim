@@ -103,6 +103,37 @@ is nothing to complete in embedding space (that is 2S-e's step, through `pattern
 - **Never fires:** llm-primary and real-hardware passes, which take their situation from
   `_attach_live_situation`, not `propose_via_substrate` (deferred file, trigger).
 
+## When the recall gets a consumer (trigger, 2026-09-25)
+
+2S-d ships a recall nobody reads. Its planned consumer, 2S-e (B) generalization, was PARKED on
+2026-09-25: the gap it was to fill (Exp 62's "night miss" at 0.799) turned out to be the
+`time_of_day` wrap, a keying defect ([#899](https://github.com/dennys246/Maxim/issues/899)), and the
+fear place gives no SUPPORT for a graded read
+([deferred/generalization_by_pattern_completion.md](deferred/generalization_by_pattern_completion.md)).
+So the recall waits for a consumer on a stated trigger, not on "when we get to it".
+
+**Build a consumer (revive 2S-e) when ANY of these fires:**
+1. **A measured generalization gap keying does not own.** The same danger is missed across two
+   states that genuinely differ in the world channel but sit within reach of a graded read: cosine in
+   roughly [0.75, 0.85) to a FEARED node, measured **at the place the fear was learned**, on a trace
+   that varies more than the clock (place, weather or mobs; e.g. an open-world trace with
+   `doDaylightCycle` on). A gap that is a clock wrap, or one below ~0.75 (like the lit pond's 0.588),
+   belongs to keying, not here. Measure it offline first when the varying state is deterministic
+   (corollary 3 of `docs/wiring/cosine-separation-is-directional.md`).
+2. **A rung needs carry-over the NAc does not store:** which action worked in a situation, relief, or
+   an outcome other than fear. That is the episodic route (recall through `recall_situation`, derive
+   from the recalled memories' outcomes), which the NAc's fear store cannot serve.
+3. **A world captures memories BEFORE the decision being scored.** 2S-b's links form only from loop
+   captures, so the cue recalls something only where loop-live experience precedes the test read.
+   That is a prerequisite for any consumer, and a trigger to check the session-end `situation_cue_*`
+   counts on the first such run (`with_matches` > 0 says the recall has something to hand over).
+
+**Otherwise, dormancy (CLAUDE.md, dormancy over deletion):** if none has fired by the **1.4 release
+transaction**, mark the situation route `Dormant since <date>: no consumer — 2S-e parked, trigger
+unfired` in `PatternCompleter`'s docstring. The wiring stays (the required `situation_cue=` seam and
+its callers); no feature builds on it and its tests stay regression-only, until a trigger above
+revives it. The 1.4 release checklist should carry this check.
+
 ## Guards
 
 All in `tests/unit/test_memory_2s_d_situation_cue.py`, each proven by deleting its mechanism:
