@@ -1,0 +1,38 @@
+# Demo-surface lens — grounded_word_binding_demo.md v3
+
+**Round:** v3 review, 2026-09-24. **Target:** `docs/plans/grounded_word_binding_demo.md` v3
+(`00f74b37`, merged via #881/#882). **Reviewer:** Claude subagent, read-only. The report below
+is verbatim. Corrections found during re-verification are recorded in [README.md](README.md),
+not edited into the report.
+
+---
+
+DEMO-SURFACE lens — `docs/plans/grounded_word_binding_demo.md` (v3). Re-verified against Maxim `main` @ eb09abc1.
+
+1. **The word "demo" names no artifact anywhere. (blocker)** Affects the title, §"The demo, in one paragraph", and line 147 "The lead-up demo is Exp A + Exp C + Exp B + J2". Every stage specifies a claim sentence, arms, and a statistical test; not one specifies something a viewer looks at. On a screen, that line is currently: a permutation p-value (Exp C), a non-inferiority interval (Exp B), an arm-by-arm choice table (Exp A), and a text box (J2). *Fix:* one table — stage / artifact (video, replay, chart, transcript, live session) / who operates it / where it runs.
+
+2. **Exp A's headline result is invisible by construction. (blocker)** Phase 3 tests "on a dry cell displaced from the flee anchor" at a moment where `anticipatory_threat_need == 0` from sensed input, and the plan itself says "on land the agent's response is a no-op, so the DV is the choice, not the behaviour". A viewer sees an agent standing still on dry land. The entire result lives in one log field. *Fix:* state that Exp A is a chart, not a watchable event, and promote **Exp B** (a receiver that escapes water it never drowned in, taught vs naive, side by side) as the watchable one.
+
+3. **The world does not ship; the substrate does. (blocker)** The wheel carries the bridge *client* (`src/maxim/simulation/minecraft.py`) but not the Mineflayer bridge (`scripts/minecraft_bridge/index.js` + Node + `node_modules`) and not Paper 1.20.4. L0, L1, L2, Exp A, Exp B and Exp C all need both. No visitor can `pip install pymaxim` and reach any stage. *Fix:* split every artifact into "recorded on the rig" vs "runnable by a visitor" and admit the second column is empty today.
+
+4. **`scripted_water.py` cannot host the teacher as written. (should-fix)** It emits only `{"type":"state"}` (line 230) and `action_result` (252) — no `event` frames at all, so no `[minecraft:chat]`, which is the channel the teacher speaks on and which is produced in the Node bridge (`index.js:175`). Its `nearest_player_dist` is frozen at 64.0, so the out-of-range-teacher rule is free offline. *Fix:* add `event` frames with `kind:"chat"` on a scripted clock (~40 LOC; the NDJSON protocol is frozen and the client already parses events). That is the smallest shippable world, and it covers L1, L2 and Exp A phase 1.
+
+5. **An offline world cannot carry a claim under the plan's own rules. (should-fix)** scripted_water's docstring: "Dev/smoke/guard-test instrument ONLY, never a confirmatory record (the campaigns run the live bridge)". So the runnable thing and the evidence thing are necessarily two different artifacts, and the plan never distinguishes them. *Fix:* one sentence in §Guards — the shippable world is an instrument; EARNED claims come from the live rig.
+
+6. **"Substrate-primary needs no weights" is false on Track L. (should-fix)** L0 says the run "refuses the silent 384-d hash fallback"; the real encoder is sentence-transformers `all-mpnet-base-v2` (`similarity/encoder.py:36`) behind the `semantic` extra = `sentence-transformers` + `torch` + `spacy` (pyproject 164–168). Track L therefore carries a multi-GB install plus a model download. *Fix:* say it in L0's encoder bullet; never pitch the language demo as weightless.
+
+7. **Pyodide is out — for two reasons, neither of them size. (should-fix)** The substrate-primary world path spawns real threads over a raw TCP socket: the bridge reader thread (`minecraft.py:150`), `MinecraftStateSync` (`minecraft_harness.py:298`), and scripted_water's own `threading` + `socket` server. A browser has neither. Second, single-ticking in a browser would force the 384-d hash embeddings that L1 explicitly refuses, plus torch is unavailable. (`runtime/agent_loop.py` itself spawns no threads, and `worker_pool` is opt-out, so the *selection* code is portable — the world feed and the encoder are not.) *Fix:* record "no browser path" as a decision with these two reasons so it is not re-proposed.
+
+8. **Decision 3 makes hosting almost free and the plan never banks it. (should-fix)** A consult is a local read of a verified mirror, so the only hosted thing is a static directory of signed releases plus a Queen-signed index — Cloudflare Pages/R2, no broker, no containers, no per-visitor cap, no admission control. *Fix:* one line in decision 3.
+
+9. **But the world is now the hosting problem, and it is worse than the model was. (should-fix)** A Paper JVM plus a Node bridge per visitor is heavier and far more stateful than sandbox.md's narrator; that plan's two-sessions-per-machine cap and 26–71 s turns were model-bound, and substrate-primary ticks at ≈1 s. *Fix:* state that a visitor-driven world is out of scope; the world-side artifact is recorded video or a replay.
+
+10. **Line 345 contradicts the premise. (should-fix)** "the operator starts the Paper server and **the model server**" against "no LLM anywhere in its action path". Either name which model server and why (the encoder is in-process, not a server) or delete it — a viewer who reads both lines concludes the demo is LLM-backed.
+
+11. **The one viewer-drivable surface is scheduled last. (should-fix)** J2's "Search Oasis" — typed text as a consult key, capped, logged, revertible, never a percept — is the only thing in the plan a visitor touches, and it sits behind Exp A and Exp B. It needs S1 + S2 + the text encoder, not the binding work. *Fix:* split J2 into J2a (typed-text consult only) and make it the first shippable surface after S1.
+
+12. **No time-to-see anywhere. (nit)** Rig budgets exist (A 3–7 h, B 2–2.5 h, C 3–5 h) but each experiment is behind its own prereg + four-lens design review, Track L is behind R4's look-back design, and L0 needs a fresh capture in a separate world. Realistically the lead-up demo is quarters out. *Fix:* one line naming the first visitor-visible milestone and its rough date.
+
+**The smallest honest demo.** Add `event`/chat frames to `scripted_water.py` and ship it plus a thin runner as a local `maxim` demo command: a deterministic offline water classroom where a teacher voice says one word during harmless dips, and the agent's chosen action and threat number are printed tick by tick beside the arm that never heard it — no Paper server, no Node, no weights if the association step is allowed to run on stated-as-such hash embeddings for the *instrument* only. Label it plainly as a smoke instrument, not evidence. Beside it, put one recorded clip from the live rig of an already-EARNED result (Exp 60/61) so the page has one thing that is real and one thing a visitor can run. That is two small PRs and no new experiment, and it overclaims nothing.
+
+**Verdict:** supersede — the sandbox plan's premise ("every demo-worthy path needs a language model") is dead now that substrate-primary selection ships, so P22 (llama-server spawner, slot pinning), P23 (proxy admission), the narrator decisions (11, 13), the token caps (P9/P10), P19 and the latency gate all go with it; what survives is its filesystem/process hygiene, the sandbox-mode attack surface and bearer/Host-Origin work, "take your agent home" export, and its honest-accounting page discipline — but neither plan currently ships anything a visitor can drive, so sandbox.md should be marked superseded-in-premise and closed rather than kept warm.
