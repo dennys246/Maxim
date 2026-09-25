@@ -280,6 +280,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`maxim hive pull` and `hive contribute` no longer send the local leader key to a remote Oasis**
+  (public_oasis Phase 0 item 5). Both fell back to the leader key — which also grants inference —
+  for ANY registered Oasis, handing it to whoever runs it. The fallback now applies only to a
+  loopback Oasis (`localhost` or a loopback IP literal; no DNS, fail-closed); a remote or LAN Oasis
+  needs an explicit `--api-key`, and a 401/403 there says so.
+
 - **NAc's temporal anchors now expire within a session
   ([#888](https://github.com/dennys246/Maxim/issues/888)).** An anchor (the wall-clock fallback of the
   eligibility trace) was pruned only on the tick its fast trace expired, and only if already older than

@@ -137,6 +137,47 @@ def test_hive_pull_dry_run_and_apply(tmp_path):
 
 
 @_needs_crypto
+def test_hive_pull_from_a_loopback_oasis_uses_the_leader_key_implicitly(tmp_path, monkeypatch):
+    """public_oasis Phase 0 item 5, the side that must keep working: with no --api-key, a pull from an
+    Oasis on THIS machine still authenticates with the local leader key, against a real server."""
+    from maxim.hivemind.signing import BundleSigner
+
+    monkeypatch.setattr("maxim.tunnel.keys.read_key", lambda *a, **k: _KEY)
+    signer = BundleSigner.generate(signer_identity="queen-a")
+    bundle = tmp_path / "rel.zip"
+    compose_bundle(
+        nac_state=None,
+        ec_substrate_nodes=_EC_NODES,
+        output_path=bundle,
+        contributor_id="oasis-alpha",
+        body_ref="minecraft_bench",
+        signer=signer,
+    )
+    store = OasisStore(tmp_path / "oasis")
+    store.publish_release(bundle)
+    server, base = _start(store)
+    try:
+        reg = str(tmp_path / "hive.json")
+        HiveRegistry(reg).add("alpha", base, queen_keys={"queen-a": signer.public_key_b64})
+        rc = run_hive_subcommand(
+            [
+                "--registry",
+                reg,
+                "pull",
+                "--from",
+                "alpha",
+                "--session",
+                str(_receiver_session(tmp_path)),
+                "--receiver-body",
+                "minecraft_bench",
+            ]
+        )
+        assert rc == 0  # authenticated without --api-key: the server requires _KEY
+    finally:
+        _stop(server)
+
+
+@_needs_crypto
 def test_hive_pull_untrusted_signer_refused(tmp_path):
     from maxim.hivemind.signing import BundleSigner
 
