@@ -68,6 +68,8 @@ def _strength_fields(record: Any) -> dict[str, Any]:
             "encoding_tag": record.encoding_tag,
             "novelty_reference_size": record.novelty_reference_size,
             "retrievability_anchor_us": record.retrievability_anchor_us,
+            "encoded_at_us": record.encoded_at_us,
+            "capture_seq": record.capture_seq,
         }
 
 
@@ -159,6 +161,22 @@ def _anchor_us(value: Any, *, record_id: Any) -> int | None:
     return None
 
 
+def _count_or_us(value: Any, *, name: str, record_id: Any) -> int | None:
+    """A non-negative integer field (an experience time in µs, or a sequence number), or ``None``
+    with a warning -- loud like its siblings: a trace that cannot say when it happened cannot be
+    looked back over, and a silently wrong one would be tagged for a moment it did not share."""
+    if value is None:
+        return None
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return int(value)
+    import logging
+
+    logging.getLogger(__name__).warning(
+        "memory %s has an unusable %s (%r); loading it as not recorded", record_id, name, value
+    )
+    return None
+
+
 def _strength_kwargs(data: dict[str, Any]) -> dict[str, Any]:
     """Load one trace's strength stamp. Absent (every file written before Phase 2c) = never stamped,
     which the strategy reads as "encode it now", NOT as a zero-strength trace."""
@@ -176,6 +194,8 @@ def _strength_kwargs(data: dict[str, Any]) -> dict[str, Any]:
         ),
         "novelty_reference_size": _reference_size(data.get("novelty_reference_size"), record_id=record_id),
         "retrievability_anchor_us": _anchor_us(data.get("retrievability_anchor_us"), record_id=record_id),
+        "encoded_at_us": _count_or_us(data.get("encoded_at_us"), name="encoded_at_us", record_id=record_id),
+        "capture_seq": _count_or_us(data.get("capture_seq"), name="capture_seq", record_id=record_id),
     }
 
 
@@ -627,6 +647,13 @@ class CompressedMemory(CompressedRecord):
     # retrieval (that is what "R = 1" means); ``None`` = a trace that predates the anchor, which the
     # store re-anchors at load rather than leaving immortal.
     retrievability_anchor_us: int | None = field(default=None, repr=False, compare=False)
+    # WHEN this trace happened, in experience µs (memory-strength Phase 2d-1) -- immutable, unlike the
+    # anchor above, which a credited retrieval moves. Stamped at the moment of capture: at ENQUEUE for
+    # the async loop path, not when the worker gets to it. The look-back (retroactive tagging) windows
+    # over it. ``capture_seq`` orders captures that share one loop pass's timestamp (a per-store
+    # counter, resumed past the saved maximum on load). ``None`` = captured before 2d-1.
+    encoded_at_us: int | None = field(default=None, repr=False, compare=False)
+    capture_seq: int | None = field(default=None, repr=False, compare=False)
 
     run_id: str = ""
 
@@ -796,6 +823,13 @@ class EpisodicMemory(MemoryRecord):
     # retrieval (that is what "R = 1" means); ``None`` = a trace that predates the anchor, which the
     # store re-anchors at load rather than leaving immortal.
     retrievability_anchor_us: int | None = field(default=None, repr=False, compare=False)
+    # WHEN this trace happened, in experience µs (memory-strength Phase 2d-1) -- immutable, unlike the
+    # anchor above, which a credited retrieval moves. Stamped at the moment of capture: at ENQUEUE for
+    # the async loop path, not when the worker gets to it. The look-back (retroactive tagging) windows
+    # over it. ``capture_seq`` orders captures that share one loop pass's timestamp (a per-store
+    # counter, resumed past the saved maximum on load). ``None`` = captured before 2d-1.
+    encoded_at_us: int | None = field(default=None, repr=False, compare=False)
+    capture_seq: int | None = field(default=None, repr=False, compare=False)
     # The situation this trace happened in (memory-strength Phase 2S-b, #848): the loop's substrate
     # clusters at capture, ``{modality: EC cluster id}`` (interoception / audio / world). The EC node
     # ids ARE ATL concept ids, so ConceptExtractor links those concepts to the trace -- the

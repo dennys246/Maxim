@@ -343,6 +343,9 @@ class _CaptureRequest:
     queued_at: float
     encoding: EncodingSignals
     situation: dict[str, str] | None
+    # When the moment happened (Phase 2d-1), stamped at enqueue so the worker's lag is not the trace's.
+    experience_us: int
+    capture_seq: int
 
 
 class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLayer):
@@ -412,6 +415,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # and only ever rise, so any snapshot pair reads as a difference.
         self._work_lock = threading.Lock()
         self._captures_this_process = 0
+        self._capture_seq_next = 0  # Phase 2d-1; guarded by _work_lock; resumed past the saved max on load
         self._activations_this_process = 0
 
         # Deletion callbacks for subsystem cleanup
@@ -605,6 +609,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         record: EpisodicMemory | None = None,
         state_snapshot: dict[str, Any] | None = None,
         situation: "Mapping[str, str] | None" = None,
+        experience_us: int | None = None,
+        capture_seq: int | None = None,
     ) -> str:
         """Capture a complete agentic loop as an episodic memory.
 
@@ -629,10 +635,22 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             situation: The loop's substrate clusters at capture, ``{modality: EC cluster id}``
                 (Phase 2S-b). Set BEFORE the insert, because the insert notifies ConceptExtractor,
                 which links the situation's concepts to this trace.
+            experience_us: When the moment happened, in experience µs (Phase 2d-1). Defaults to
+                now -- right for every door that captures on the moment's own thread; only the async
+                loop path passes it (stamped at enqueue).
+            capture_seq: This capture's place in the store's sequence; defaults to the next one.
+                Passed with ``experience_us`` by the async path, reserved at enqueue.
 
         Returns:
             The memory_id of the captured memory.
         """
+        # Fail before any mutation (2d-1): a seconds float here is the seconds-vs-µs seam the strength
+        # model exists to keep out, and the loader would refuse on reload what this door had accepted.
+        for _name, _value in (("experience_us", experience_us), ("capture_seq", capture_seq)):
+            if _value is not None and (not isinstance(_value, int) or isinstance(_value, bool) or _value < 0):
+                raise ValueError(
+                    f"capture(): {_name} must be a non-negative int (experience µs / a sequence number), got {_value!r}"
+                )
         memory_id, memory = self._build_capture_record(
             perception=perception,
             context=context,
@@ -646,7 +664,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         memory.encoding = require_encoding(encoding)
         # A pre-built record keeps its own situation unless one is passed; either is validated.
         memory.situation = _require_situation(situation if situation is not None else memory.situation)
-        self._stamp_encoding_strength(memory)
+        self._stamp_encoding_strength(memory, experience_us=experience_us, capture_seq=capture_seq)
 
         with self._rwlock.write():
             self._insert_and_index_locked(memory_id, memory)
@@ -672,7 +690,24 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         with self._work_lock:
             return (self._captures_this_process, self._activations_this_process)
 
-    def _stamp_encoding_strength(self, memory: "EpisodicMemory") -> None:
+    def next_capture_seq(self) -> int:
+        """Reserve the next capture sequence number (Phase 2d-1). Monotonic per store, across loads --
+        ordered, not contiguous: a capture the full queue drops has already taken its number. The clock
+        read and this reservation are separate, so order traces by ``(encoded_at_us, capture_seq)``."""
+        with self._work_lock:
+            seq = self._capture_seq_next
+            self._capture_seq_next += 1
+            return seq
+
+    def _resume_capture_seq(self) -> None:
+        """After a load: continue the sequence past every saved trace, so order survives a restart."""
+        saved = [s for m in self._memories.values() if (s := getattr(m, "capture_seq", None)) is not None]
+        with self._work_lock:
+            self._capture_seq_next = max(self._capture_seq_next, max(saved) + 1 if saved else 0)
+
+    def _stamp_encoding_strength(
+        self, memory: "EpisodicMemory", *, experience_us: int | None = None, capture_seq: int | None = None
+    ) -> None:
         """Record how strongly this trace encoded, from the signals it was captured with.
 
         Stamped at capture, never recomputed: novelty is weighted by how many traces the store held
@@ -694,7 +729,11 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         memory.storage_strength = initial_storage_strength(
             tag, s_base=self.config.strength_s_base, k=self.config.strength_k
         )
-        memory.retrievability_anchor_us = self.experience_clock.now_us()
+        # 2d-1: when it HAPPENED (enqueue time on the async path), fixed; R decays from the same moment.
+        encoded = self.experience_clock.now_us() if experience_us is None else experience_us
+        memory.encoded_at_us = encoded
+        memory.capture_seq = self.next_capture_seq() if capture_seq is None else capture_seq
+        memory.retrievability_anchor_us = encoded
 
     def _build_capture_record(
         self,
@@ -881,6 +920,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         *,
         encoding: EncodingSignals,
         situation: "Mapping[str, str] | None",
+        experience_us: int | None = None,
+        capture_seq: int | None = None,
     ) -> str:
         """Convenience method to capture from agent_loop outputs.
 
@@ -972,6 +1013,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             state_snapshot=state_snapshot,
             encoding=encoding,
             situation=situation,
+            experience_us=experience_us,
+            capture_seq=capture_seq,
         )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1040,6 +1083,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             queued_at=time.time(),
             encoding=encoding,
             situation=situation,
+            experience_us=self.experience_clock.now_us(),
+            capture_seq=self.next_capture_seq(),
         )
         try:
             self._capture_queue.put(request, timeout=0.1)
@@ -1109,6 +1154,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             run_id=request.run_id,
             encoding=request.encoding,
             situation=request.situation,
+            experience_us=request.experience_us,
+            capture_seq=request.capture_seq,
         )
 
     def get(self, memory_id: str) -> EpisodicMemory | CompressedMemory | None:
