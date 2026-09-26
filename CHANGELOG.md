@@ -377,6 +377,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Merging substrate no longer destroys the receiver's own causal links, and ingested links are now
+  usable** (#913). `nac_merge` paired links by outcome alone, so a receiver's links that differ only in
+  context (two separate links to NAc) overwrote each other on every `maxim substrate ingest`, even from
+  an empty donor — one real state went from 607 links to 443. Links now pair on NAc's own identity
+  (outcome and context): every receiver link survives, and a donor link folds into its match or is
+  added under the id NAc itself gives it. Separately, a link ingested from an unsigned bundle kept the
+  donor's agent id, so the receiver's predictions could not use it; when you ingest with
+  `--receiver-agent-id` it is now re-keyed to you, like the situation rows. Links already stored by an
+  earlier ingest are not migrated.
+
 - **Ingest folds donor situations that align onto one of yours instead of letting the last one win**
   (#914). When several donor clusters align onto one receiver cluster, their rows now fold with the
   merge layer's semantics — reward bias mean, fear min (the most aversive wins), credit source common

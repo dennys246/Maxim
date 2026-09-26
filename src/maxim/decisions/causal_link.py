@@ -11,6 +11,7 @@ error magnitude ``|R - V|``. NOT implemented: temporal-difference bootstrapping
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from dataclasses import dataclass, field
@@ -20,6 +21,20 @@ from typing import Any
 
 
 _log = logging.getLogger(__name__)
+
+
+def hash_link_context(context: dict[str, Any]) -> str:
+    """The context component of a link's identity (NAc's ``_hash_context``)."""
+    sorted_items = sorted(context.items())
+    return hashlib.sha256(str(sorted_items).encode()).hexdigest()[:8]
+
+
+def causal_link_id(event_signature: str, outcome_signature: str, context_hash: str) -> str:
+    """A link's id: its event signature, outcome signature and context hash (NAc's
+    ``_generate_link_id``). One definition, shared with the hivemind merge (#913), so a merged link's id
+    is the id NAc itself would give it."""
+    combined = f"{event_signature}:{outcome_signature}:{context_hash}"
+    return hashlib.sha256(combined.encode()).hexdigest()[:16]
 
 
 def bound_predicted_value(value: float, *, where: str) -> float:

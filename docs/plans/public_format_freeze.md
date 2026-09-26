@@ -49,7 +49,10 @@ the projection.
 
 **The agent token.** In a signed release every agent-keyed field (the cluster-keyed rows,
 `inherent_bias_keys`, `percept_valences`, the Welford rows, `reward_bias`, link `event_context`) names
-the agent as the token `_agent`; a receiver re-keys it to itself at ingest.
+the agent as the token `_agent`. At ingest a receiver re-keys the situation rows (with their
+`inherent_bias_keys`) and the links to itself; the other agent-keyed rows (`percept_valences`, the Welford rows, `reward_bias`) cannot land on
+a receiver situation and are dropped (`keep_agent_rows`), not re-keyed. *(Corrected 2026-09-26, #913:
+the frozen text said every field is re-keyed. A documentation error, not a format change.)*
 
 **The slice shapes**: `nac.json`, its links and `ec.json` nodes carry only the allowlisted fields
 (#915; `bundle.py::_BUNDLE_NAC_FIELDS`, `_BUNDLE_LINK_FIELDS`, `_BUNDLE_EC_NODE_FIELDS`, and

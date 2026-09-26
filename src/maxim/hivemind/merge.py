@@ -53,8 +53,9 @@ this module's.
 
 from __future__ import annotations
 
-from maxim.decisions.causal_link import bound_predicted_value
+from maxim.decisions.causal_link import bound_predicted_value, causal_link_id, hash_link_context
 import copy
+import json
 import re
 from dataclasses import dataclass
 from collections.abc import Callable
@@ -180,17 +181,17 @@ def _merge_link_pair(
     left_source: str,
     right_source: str,
 ) -> dict[str, Any]:
-    """Aggregate two CausalLink dicts that share ``(event_sig, outcome_sig)``.
+    """Aggregate two CausalLink dicts that share ``(event_sig, outcome_sig, event_context)``.
 
     Caller must pre-check both links share both signatures — this
     function does not re-validate.
 
-    Per design rule #2 (valence-distinct stay separate) this function
-    is ONLY called when both sides agree on ``outcome_valence``, since
-    valence is part of how ``outcome_signature`` is constructed via
-    ``NAc._generate_link_id`` (the link-key embeds valence). If a
-    future change decouples the two, the caller (``_merge_link_lists``)
-    must skip pairs with different valences.
+    Per design rule #2 (valence-distinct stay separate) the caller pairs
+    only links of one identity -- the same ``outcome_signature`` and
+    ``event_context`` (``_link_identity``). Valence is not itself part of
+    NAc's link id: it stays separate only where the outcome signature
+    carries it (a bundle's ``{type}:{valence}``, NAc's valenced outcome
+    types). A pair that shares a signature but not a valence keeps left's.
     """
     n_l = int(left.get("observation_count", 0))
     n_r = int(right.get("observation_count", 0))
@@ -272,6 +273,16 @@ def _merge_link_pair(
     }
 
 
+def _link_identity(link: dict[str, Any]) -> tuple[str, str]:
+    """The identity NAc gives a link within one event signature: its outcome signature (which embeds
+    valence) AND its event context -- ``NAc._generate_link_id`` hashes both, so two links differing
+    only in context are two links, never one. The context is compared canonically (sorted JSON)."""
+    return (
+        str(link["outcome_signature"]),
+        json.dumps(link.get("event_context") or {}, sort_keys=True, default=str),
+    )
+
+
 def _merge_link_lists(
     left_links: list[dict[str, Any]],
     right_links: list[dict[str, Any]],
@@ -281,31 +292,37 @@ def _merge_link_lists(
 ) -> list[dict[str, Any]]:
     """Merge two lists of CausalLink dicts that share the same ``event_signature``.
 
-    Links are paired by ``outcome_signature`` (which already embeds
-    valence — see CausalLink class docstring). Pairs are aggregated;
-    unique links are preserved as-is per design rule #2 (valence-
-    distinct stay separate, but the same valence pair just hasn't
-    been observed by both contributors yet).
-    """
-    by_outcome: dict[str, tuple[dict[str, Any] | None, dict[str, Any] | None]] = {}
-    for ld in left_links:
-        by_outcome[ld["outcome_signature"]] = (ld, None)
-    for rd in right_links:
-        outcome_sig = rd["outcome_signature"]
-        ld_existing = by_outcome.get(outcome_sig, (None, None))[0]
-        by_outcome[outcome_sig] = (ld_existing, rd)
+    Links pair on NAc's own identity -- outcome signature (valence-embedding, design rule #2) AND
+    event context (:func:`_link_identity`, #913). Pairing on the outcome alone let a receiver's
+    context-distinct links overwrite each other on every merge, even with an empty donor.
 
+    Every left link is kept, in order: an empty right side is the identity. A right link folds into
+    the first link already holding its identity (left first, then an earlier right link); otherwise it
+    is appended under the id NAc itself gives that identity (``causal_link_id``) -- a bundle's link id
+    is derived WITHOUT the context, so two appended donor links in different contexts would otherwise
+    share one id, which NAc treats as unique. A duplicate identity WITHIN the left list is passed
+    through untouched -- the merge never drops or renames a receiver's link.
+    """
     merged: list[dict[str, Any]] = []
-    # Distinct names from the earlier loops' `ld`/`rd` (those are plain
-    # dicts; these are Optional halves of the pair) — mypy-clean under the
-    # gate-8 hivemind strictness, no behavior change.
-    for left_half, right_half in by_outcome.values():
-        if left_half is None and right_half is not None:
-            merged.append(copy.deepcopy(right_half))
-        elif right_half is None and left_half is not None:
-            merged.append(copy.deepcopy(left_half))
-        elif left_half is not None and right_half is not None:
-            merged.append(_merge_link_pair(left_half, right_half, left_source=left_source, right_source=right_source))
+    # identity -> (position in ``merged``, the source label of the link held there)
+    held: dict[tuple[str, str], tuple[int, str]] = {}
+    for ld in left_links:
+        held.setdefault(_link_identity(ld), (len(merged), left_source))
+        merged.append(copy.deepcopy(ld))
+    for rd in right_links:
+        identity = _link_identity(rd)
+        if identity in held:
+            pos, held_source = held[identity]
+            merged[pos] = _merge_link_pair(merged[pos], rd, left_source=held_source, right_source=right_source)
+        else:
+            held[identity] = (len(merged), right_source)
+            appended = copy.deepcopy(rd)
+            appended["id"] = causal_link_id(
+                str(rd["event_signature"]),
+                str(rd["outcome_signature"]),
+                hash_link_context(dict(rd.get("event_context") or {})),
+            )
+            merged.append(appended)
     return merged
 
 
@@ -1119,11 +1136,10 @@ def rekey_nac_state(
     # land on one key: folded with each field's merge semantics, never last-write-wins (#914).
     out.update(fold_cluster_rows(nac_state, rekey, fields=_CLUSTER_ROW_FIELDS))
 
-    # A released link names its agent as the token in ``event_context.agent_id`` (release format v2), and
-    # ``NAc.predict`` matches a stored link's event context against the query context -- so a token left
-    # there would make every released link dead for prediction. Re-keyed with the composite keys. Only
-    # the TOKEN: an unsigned bundle's real donor id is left as it always was (re-keying it too would
-    # change what the Exp 56/61 transfers predict -- a behaviour change on its own trigger).
+    # ``NAc.predict`` matches a stored link's ``event_context`` against the query context, whose
+    # ``agent_id`` is the reader's own -- so a link left under any other agent id (the release token, or
+    # an unsigned bundle's real donor id) is unusable (agent-id-only context) or down-weighted. Re-keyed as the composite keys
+    # are: every agent id to the receiver's (#913; before, only the release token was).
     if to_agent_id is not None and isinstance(nac_state.get("links"), dict):
         out["links"] = {
             sig: [_rekey_link_agent(link, to_agent_id) for link in bucket] if isinstance(bucket, list) else bucket
@@ -1133,12 +1149,10 @@ def rekey_nac_state(
 
 
 def _rekey_link_agent(link: Any, to_agent_id: str) -> Any:
-    from maxim.hivemind.entry_index import AGENT_TOKEN  # noqa: PLC0415 -- entry_index imports this module
-
     if not isinstance(link, dict):
         return link
     context = link.get("event_context")
-    if not isinstance(context, dict) or context.get("agent_id") != AGENT_TOKEN:
+    if not isinstance(context, dict) or context.get("agent_id") in (None, to_agent_id):
         return link
     return {**link, "event_context": {**context, "agent_id": to_agent_id}}
 

@@ -22,7 +22,6 @@ not the algorithm.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import math
@@ -38,6 +37,8 @@ from maxim.decisions.causal_link import (
     TemporalDelta,
     Valence,
     _VALENCE_TO_REWARD,
+    causal_link_id,
+    hash_link_context,
 )
 from maxim.utils.logging import log_swallowed_exception
 
@@ -959,13 +960,11 @@ class NAc:
 
     def _generate_link_id(self, event_sig: str, outcome_sig: str, context_hash: str) -> str:
         """Generate unique ID for a causal link."""
-        combined = f"{event_sig}:{outcome_sig}:{context_hash}"
-        return hashlib.sha256(combined.encode()).hexdigest()[:16]
+        return causal_link_id(event_sig, outcome_sig, context_hash)
 
     def _hash_context(self, context: dict[str, Any]) -> str:
         """Create a hashable representation of context."""
-        sorted_items = sorted(context.items())
-        return hashlib.sha256(str(sorted_items).encode()).hexdigest()[:8]
+        return hash_link_context(context)
 
     def _context_similarity(self, ctx1: dict[str, Any], ctx2: dict[str, Any]) -> float:
         """How well does ctx1 appear inside ctx2? (0.0-1.0)
