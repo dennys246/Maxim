@@ -304,8 +304,34 @@ def test_refuse_v1_without_require_signed_is_an_error_not_a_no_op(tmp_path, caps
 
 
 def test_an_uncomputable_payload_identity_is_reported_not_silent(tmp_path):
-    """A duplicate-key manifest: ingest's manifest reader admits it, the strict identity parse does not --
-    so dedup falls back to the ZIP bytes, and the report says so."""
+    """An extra declared slice that is not UTF-8: ingest never reads it (only nac/ec), the v1-framed identity
+    must decode every declared slice -- so dedup falls back to the ZIP bytes, and the report says so."""
+    from maxim.hivemind.bundle import compose_bundle
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+    from tests.unit.test_hivemind_ingest import _node
+
+    src = tmp_path / "u.zip"
+    compose_bundle(
+        nac_state=None,
+        ec_substrate_nodes={"n1": _node()},
+        output_path=src,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+    )
+    members = read_members(src)
+    manifest = json.loads(members["manifest.json"])
+    manifest["contents"]["extra"] = {"file": "extra.bin"}
+    members["manifest.json"] = json.dumps(manifest).encode()
+    members["extra.bin"] = b"\xff\xfe not utf-8"
+    report = _admit_unverified(write_members(tmp_path / "extra.zip", members), _journal(tmp_path))
+    assert "payload_digest" not in report.journal_entry
+    assert any("payload identity could not be computed" in n for n in report.notes)
+
+
+def test_a_duplicate_key_manifest_is_refused_on_the_unverified_path_too(tmp_path):
+    """Two readers of one manifest must never see two documents: the unsigned path parses as strictly as
+    the verifier (before release format v2's freeze, it let the LAST duplicate win)."""
     from maxim.hivemind.bundle import compose_bundle
     from tests.unit._signed_bundle_helpers import read_members, write_members
     from tests.unit.test_hivemind_ingest import _node
@@ -322,9 +348,8 @@ def test_an_uncomputable_payload_identity_is_reported_not_silent(tmp_path):
     members = read_members(src)
     text = members["manifest.json"].decode()
     members["manifest.json"] = text.replace('"kind"', '"kind": "substrate_bundle", "kind"', 1).encode()
-    report = _admit_unverified(write_members(tmp_path / "dup.zip", members), _journal(tmp_path))
-    assert "payload_digest" not in report.journal_entry
-    assert any("payload identity could not be computed" in n for n in report.notes)
+    with pytest.raises(ValueError, match="duplicate key"):
+        _admit_unverified(write_members(tmp_path / "dup.zip", members), _journal(tmp_path))
 
 
 @pytest.mark.parametrize("repackage", ["strip-signature", "add-readme"])

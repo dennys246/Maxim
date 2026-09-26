@@ -20,28 +20,16 @@ are reserved for 1.1 (Phase B5 spec mentions them; this 1.0 ship
 includes only NAc + EC because that's what PRs A/B/C give us merge
 math for).
 
-Manifest signature slot
------------------------
+Manifest signature
+------------------
 
-The ``signature``, ``signature_algorithm``, and ``signer_identity``
-fields are reserved (per the 2026-05-30 design decision: "Reserve
-signature field in manifest, no verification yet" + the CC13 auth
-format-freeze, which added ``signer_identity``). At 1.0 they are always
-``None`` — the slots exist so 1.1+ verification can land WITHOUT bumping
-the bundle's ``_format_version`` and breaking 1.0 bundles. Callers that
-want signing build their own ZIP with a populated ``signature`` field
-and a custom verifier; this module does NOT validate.
-
-The recognized ``signature_algorithm`` vocabulary (``ed25519``,
-``ed25519-pgp``, ``webauthn``, ``pkcs7``, reserved ``hsm:*`` / ``kms:*``
-/ ``vendor:*`` prefixes, ...) is published in
-``docs/user/hivemind_bundle_format.md`` so the 1.2 P2P protocol's
-heterogeneous producers and consumers share a string vocabulary. The
-registry is documentation-only at 1.0 (no validator), consistent with
-the no-verification-yet decision. ``signer_identity`` is the reserved
-"who claims to have signed this" string, parallel to ``contributor_id``,
-so 1.1+ can bind a verified identity to the claimed contributor without
-retrofitting the manifest shape.
+A signed bundle is a RELEASE (release format v2, bundle schema 3): a detached ``signature.json`` member
+signs every other member's raw bytes, so the manifest's ``signer_identity``, ``release_sequence``,
+``license`` and ``entry_index`` are all inside the signature (see :func:`verify_bundle_zip` and
+``docs/user/hivemind_bundle_format.md``). An unsigned bundle (schema 2) carries no signature fields.
+A legacy v1 bundle (schema <= 2) carries ``signature`` / ``signature_algorithm`` / ``signer_identity``
+in the manifest and still verifies, until 2.0. The recognized ``signature_algorithm`` vocabulary is
+published in ``docs/user/hivemind_bundle_format.md``; only ``ed25519`` has a validator.
 
 Format version contract
 -----------------------
@@ -80,14 +68,21 @@ import zlib
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 from maxim.hivemind.identity import (
     IDENTITY_DOMAIN_MARKER,
     filter_identity_bearing_links,
     is_identity_bearing,
 )
-from maxim.hivemind.merge import NAC_KEY_SEP, NODE_ID_CHARSET, _merge_link_pair, _merge_welford, _validate_source
+from maxim.hivemind.merge import (
+    NAC_KEY_SEP,
+    NODE_ID_CHARSET,
+    _merge_link_pair,
+    _merge_welford,
+    _validate_source,
+    is_public_identity,
+)
 from maxim.hivemind.entry_index import EntryIndexError, build_index, normalize_agent_segment, verify_index
 from maxim.utils.optional_deps import OptionalDependencyError
 from maxim.hivemind.signing import (
@@ -194,6 +189,11 @@ def _v2_to_v3_signed_releases(manifest: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _is_schema_int(value: Any) -> TypeGuard[int]:
+    """A schema version is a plain JSON integer: ``True`` (an ``int`` in Python) and ``3.0`` are not."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def migrate_bundle_envelope(manifest: dict[str, Any], *, target_version: int | None = None) -> dict[str, Any]:
     """Upgrade a bundle manifest through the migration chain.
 
@@ -207,7 +207,7 @@ def migrate_bundle_envelope(manifest: dict[str, Any], *, target_version: int | N
     if not isinstance(manifest, dict):
         raise ValueError(f"bundle manifest must be dict, got {type(manifest).__name__}")
     version = manifest.get("schema_version")
-    if not isinstance(version, int):
+    if not _is_schema_int(version):
         # Defer the validation error to extract_bundle's existing branch;
         # passing through unchanged keeps a single point of error reporting.
         return copy.deepcopy(manifest)
@@ -303,6 +303,58 @@ def _utc_now_iso() -> str:
 # producer adds next.
 _BUNDLE_EVENT_CONTEXT_ALLOWLIST: frozenset[str] = frozenset({"agent_id"})
 
+#: The ``nac.json`` top-level fields a bundle may carry (public format 1). Everything else -- ``saved_at``,
+#: a persisted ``_format_version``, a field a future producer adds -- is dropped at export and on receipt.
+_BUNDLE_NAC_FIELDS: frozenset[str] = frozenset(
+    {
+        "version",
+        "links",
+        "outcome_index",
+        "priors",
+        "total_observations",
+        "reward_bias",
+        "goal_reward_bias",
+        "cluster_reward_bias",
+        "cluster_reward_source",
+        "inherent_bias_keys",
+        "percept_valences",
+        "event_outcome_welford",
+        "cluster_fear",
+    }
+)
+
+#: The causal-link fields a bundle may carry (``CausalLink.to_dict``'s shape).
+_BUNDLE_LINK_FIELDS: frozenset[str] = frozenset(
+    {
+        "id",
+        "event_type",
+        "event_signature",
+        "event_context",
+        "outcome_type",
+        "outcome_signature",
+        "outcome_valence",
+        "temporal_delta",
+        "predicted_value",
+        "prediction_history",
+        "observation_count",
+        "confidence",
+        "last_observed",
+        "memory_ids",
+        "context_factors",
+        "last_rpe",
+        "percept_refs",
+        "imagined",
+        "source",
+        "domain",
+        "contributors",
+    }
+)
+
+#: The EC-node fields a bundle may carry (``EC.save``'s node shape plus export provenance).
+_BUNDLE_EC_NODE_FIELDS: frozenset[str] = frozenset(
+    {"embedding", "modality", "count", "member_count", "geometry", "domain", "source", "contributors"}
+)
+
 # Identifier-shaped token: single short token, no whitespace. Gates the
 # ``tool:use:<action>`` tail (``tool:use:dodge`` / ``tool:use:open`` are
 # the documented transfer vocabulary; a sentence-shaped action is
@@ -321,24 +373,54 @@ _NAC_KEY_SEP = NAC_KEY_SEP
 
 
 def _scrub_event_signature(sig: str) -> str:
-    """Truncate ``tool:use:<free text>`` signatures to ``tool:use``.
+    """Scrub an event signature: ``tool:use:<free text>`` truncates to ``tool:use``; any other
+    non-identifier segment ships as ``redacted``.
 
     Identifier-shaped action tails are kept — they are the cross-entity
-    transfer vocabulary the bundle exists to ship. Everything else in
-    the signature space is template-generated (``tool:<name>``,
-    ``drive:<sensor>``, ``conversation:<channel>``) and passes through.
+    transfer vocabulary the bundle exists to ship. The rest of the signature
+    space is template-shaped (``tool:<name>``, ``drive:<sensor>``,
+    ``conversation:<channel>``), but its segments can still carry model output.
     """
     if sig.startswith(_USE_SIG_PREFIX):
         action = sig[len(_USE_SIG_PREFIX) :]
         if not _IDENTIFIER_TOKEN.match(action):
             return "tool:use"
-    return sig
+        return sig
+    # Every other signature is ``prefix:segment[:...]`` template vocabulary -- but a tool NAME is itself
+    # model output when the LLM hallucinates one (a real state shipped ``tool:ps aux``). Any segment that
+    # is not identifier-shaped ships as ``redacted``; the scrub's collision fold merges what now coincides.
+    return ":".join(part if _is_signature_segment(part) else _REDACTED_TYPE for part in sig.split(":"))
+
+
+#: A ``name=<number>`` signature segment -- motor templates write them (``look_at:dy=<n>:dp=<n>``,
+#: ``move:dx=..:dy=..:dz=..``); they are vocabulary, not text.
+_PARAM_SEGMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,31}=-?\d{1,12}(\.\d{1,12})?$")
+
+
+def _is_signature_segment(part: str) -> bool:
+    return bool(_IDENTIFIER_TOKEN.match(part) or _PARAM_SEGMENT.match(part))
+
+
+#: What a non-identifier ``event_type`` / ``outcome_type`` becomes in a bundle.
+_REDACTED_TYPE = "redacted"
+
+
+def _scrub_type_field(value: Any) -> str:
+    text = str(value)
+    return text if _IDENTIFIER_TOKEN.match(text) else _REDACTED_TYPE
 
 
 def _scrub_link_for_bundle(link: dict[str, Any]) -> dict[str, Any]:
-    """Return a copy of one CausalLink dict scrubbed for bundle export."""
-    scrubbed = dict(link)
-    scrubbed["event_context"] = {k: v for k, v in link["event_context"].items() if k in _BUNDLE_EVENT_CONTEXT_ALLOWLIST}
+    """Return a copy of one CausalLink dict scrubbed for bundle export (and, re-run, on receipt)."""
+    scrubbed = {k: v for k, v in link.items() if k in _BUNDLE_LINK_FIELDS}
+    scrubbed["event_context"] = {
+        k: v
+        for k, v in link["event_context"].items()
+        if k in _BUNDLE_EVENT_CONTEXT_ALLOWLIST and isinstance(v, str) and _IDENTIFIER_TOKEN.match(v)
+    }
+    scrubbed["imagined"] = link.get("imagined") is True
+    domain = link.get("domain")
+    scrubbed["domain"] = domain if isinstance(domain, str) and _IDENTIFIER_TOKEN.match(domain) else None
     # Canonical valence-preserving form built from STRUCTURED fields.
     # The review round refuted the first-token-of-outcome_signature
     # draft twice over: (a) only one of the four outcome_signature
@@ -350,11 +432,28 @@ def _scrub_link_for_bundle(link: dict[str, Any]) -> dict[str, Any]:
     # pairs by outcome_signature, silently clobbering all but one link.
     # ``{outcome_type}:{valence}`` is equally free-text-free, unique per
     # valence class, and merge-safe by construction.
-    scrubbed["outcome_signature"] = f"{link['outcome_type']}:{link['outcome_valence']}"
+    # The link's type fields are template vocabulary from every producer but one (the sim introspection
+    # tool takes ``event_type`` from a tool parameter -- free text). Identifier-shaped values ship; any
+    # other is replaced, and the scrub's collision fold merges links that now share a signature.
+    scrubbed["event_type"] = _scrub_type_field(link["event_type"])
+    scrubbed["outcome_type"] = _scrub_type_field(link["outcome_type"])
+    scrubbed["outcome_signature"] = f"{scrubbed['outcome_type']}:{link['outcome_valence']}"
+    # ``context_factors`` is a free-form ``{name: weight}`` map with no production writer: its KEYS are
+    # unconstrained text, so it never ships (an allowlist of none, like event_context's).
+    scrubbed["context_factors"] = {}
     scrubbed["event_signature"] = _scrub_event_signature(link["event_signature"])
     scrubbed["memory_ids"] = []
     scrubbed["percept_refs"] = []
+    # The link id NAc minted hashes the PRE-scrub event context (the LLM goal, tool params, the agent id)
+    # and outcome text -- anyone holding a guess could confirm it, and it links one contributor's
+    # releases. Re-derived from the scrubbed signatures only; unique within a bundle, because links
+    # sharing both are folded into one.
+    scrubbed["id"] = _bundle_link_id(scrubbed["event_signature"], scrubbed["outcome_signature"])
     return scrubbed
+
+
+def _bundle_link_id(event_signature: str, outcome_signature: str) -> str:
+    return hashlib.sha256(f"{event_signature}{_NAC_KEY_SEP}{outcome_signature}".encode()).hexdigest()[:16]
 
 
 def scrub_cluster_fear_for_bundle(fear: Any) -> dict[str, float]:
@@ -499,11 +598,21 @@ def scrub_nac_state_for_bundle(nac_state: dict[str, Any]) -> dict[str, Any]:
     # the re-key. Markers whose entry did not survive the scrub are dropped
     # (a marker naming an absent bias is the dangling-half shape).
     if "inherent_bias_keys" in nac_state:
+        marked = {str(k) for k in nac_state.get("inherent_bias_keys", []) or []}
+        # A scrubbed key keeps the inherent marker only when EVERY source key that folded into it was
+        # inherent: a learned value averaged into an inherent one must not become decay-exempt (the
+        # safety floor would be diluted by a learned bias it never admitted).
+        sources_by_new_key: dict[str, list[str]] = {}
+        for key in nac_state.get("cluster_reward_bias", {}) or {}:
+            aid, cid, tsig = key.split(_NAC_KEY_SEP, 2)
+            sources_by_new_key.setdefault(_NAC_KEY_SEP.join((aid, cid, _scrub_event_signature(tsig))), []).append(key)
         scrubbed_inherent: set[str] = set()
-        for key in nac_state.get("inherent_bias_keys", []) or []:
-            aid, cid, tsig = str(key).split(_NAC_KEY_SEP, 2)
+        for key in marked:
+            aid, cid, tsig = key.split(_NAC_KEY_SEP, 2)
             new_key = _NAC_KEY_SEP.join((aid, cid, _scrub_event_signature(tsig)))
-            if new_key in scrubbed["cluster_reward_bias"]:
+            if new_key in scrubbed["cluster_reward_bias"] and all(
+                source in marked for source in sources_by_new_key.get(new_key, [])
+            ):
                 scrubbed_inherent.add(new_key)
         scrubbed["inherent_bias_keys"] = sorted(scrubbed_inherent)
 
@@ -521,7 +630,9 @@ def scrub_nac_state_for_bundle(nac_state: dict[str, Any]) -> dict[str, Any]:
                 merged_source[new_key] = src
         scrubbed["cluster_reward_source"] = merged_source
 
-    return scrubbed
+    # ALLOWLIST the top level (like event_context): a field a future producer adds -- or ``saved_at``,
+    # a wall-clock timestamp the receiver discards anyway -- never ships by default.
+    return {k: v for k, v in scrubbed.items() if k in _BUNDLE_NAC_FIELDS}
 
 
 # Absolute filesystem path (POSIX, home-relative, or Windows drive) —
@@ -531,6 +642,12 @@ def scrub_nac_state_for_bundle(nac_state: dict[str, Any]) -> dict[str, Any]:
 _ABS_PATH_PATTERN = re.compile(r"^(/|~[/\\]|[A-Za-z]:[\\/])")
 
 _REDACTED_PATH_MARKER = "[REDACTED_PATH]"
+
+
+#: A provenance string that may ship: token-shaped (a model id like ``org/model-name``, a sensor name, a
+#: normalization mode). Anything else -- free text, a note, a hostname sentence -- ships as the marker.
+_PROVENANCE_TOKEN = re.compile(r"^[A-Za-z0-9_.:/@+-]{1,128}$")
+_REDACTED_TEXT_MARKER = "[REDACTED]"
 
 
 def _redact_paths_in_provenance(value: Any) -> Any:
@@ -545,9 +662,16 @@ def _redact_paths_in_provenance(value: Any) -> Any:
     honest-unknown contract.
     """
     if isinstance(value, str):
-        return _REDACTED_PATH_MARKER if _ABS_PATH_PATTERN.match(value) else value
+        if _ABS_PATH_PATTERN.match(value):
+            return _REDACTED_PATH_MARKER
+        return value if _PROVENANCE_TOKEN.match(value) else _REDACTED_TEXT_MARKER
     if isinstance(value, dict):
-        return {k: _redact_paths_in_provenance(v) for k, v in value.items()}
+        # Keys too: a free-text key would ship as-is.
+        return {
+            k: _redact_paths_in_provenance(v)
+            for k, v in value.items()
+            if isinstance(k, str) and _PROVENANCE_TOKEN.match(k)
+        }
     if isinstance(value, list):
         return [_redact_paths_in_provenance(v) for v in value]
     return value
@@ -836,6 +960,12 @@ def compose_bundle(
     # reviewer flagged: PR B's _validate_source also rejects empty
     # strings and non-string types, which the inline check missed.
     _validate_source(contributor_id, label="contributor_id")
+    if not is_public_identity(contributor_id):
+        raise ValueError(f"contributor_id {contributor_id!r} is not a public identity ([A-Za-z0-9_.@:-], 1-128 chars)")
+    if release is not None and not is_public_identity(release.signer.signer_identity):
+        raise ValueError(
+            f"signer_identity {release.signer.signer_identity!r} is not a public identity ([A-Za-z0-9_.@:-], 1-128 chars)"
+        )
 
     # Snapshot the input pieces (NAc state + filtered EC nodes).
     bundle_contents: dict[str, str] = {}  # filename -> serialized JSON
@@ -897,7 +1027,10 @@ def compose_bundle(
 
     observed_embedding_dims: dict[str, list[int]] = {}
     if ec_substrate_nodes is not None:
-        ec_nodes_filtered = _filter_ec_nodes_by_domain(ec_substrate_nodes, domain=domain)
+        ec_nodes_filtered = {
+            node_id: {k: v for k, v in node.items() if k in _BUNDLE_EC_NODE_FIELDS}
+            for node_id, node in _filter_ec_nodes_by_domain(ec_substrate_nodes, domain=domain).items()
+        }
         bundle_contents["ec.json"] = json.dumps(
             {"substrate_nodes": ec_nodes_filtered},
             indent=2,
@@ -1026,7 +1159,7 @@ def verify_bundle_signature_parts(
         return False, f"unsupported signature_algorithm {algo!r} (this build verifies only {SIGNATURE_ALGORITHM!r})"
     if not isinstance(signer, str) or signer not in trusted_keys:
         return False, f"signer_identity {signer!r} is not among the receiver's trusted keys {sorted(trusted_keys)}"
-    # ``signer_identity`` is NOT in the signed payload (it is written after signing), so it is safe only
+    # (v1 only) ``signer_identity`` is NOT in a v1 signed payload (it is written after signing), so it is safe only
     # because it selects WHICH key must verify: relabelling a bundle to another identity makes that
     # identity's key fail. The one case where a relabel would still verify is one key registered under
     # two identities -- then the signature cannot bind to either label, so it is refused outright.
@@ -1159,8 +1292,19 @@ def _strict_json(raw: bytes, what: str) -> Any:
     def no_constants(name: str) -> Any:
         raise ValueError(f"{what}: non-finite number {name}")
 
+    def finite_float(text: str) -> float:
+        value = float(text)
+        if value != value or value in (float("inf"), float("-inf")):  # 1e999 overflows to inf
+            raise ValueError(f"{what}: non-finite number {text}")
+        return value
+
     try:
-        return json.loads(raw.decode("utf-8"), object_pairs_hook=no_duplicates, parse_constant=no_constants)
+        return json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=no_duplicates,
+            parse_constant=no_constants,
+            parse_float=finite_float,
+        )
     except RecursionError as exc:
         raise ValueError(f"{what}: nests too deeply to parse") from exc
 
@@ -1313,7 +1457,7 @@ def _verify_v2(
         return BundleVerification(False, f"unknown signature_scheme {scheme!r} (refused, never read as v1)")
     if sig_doc.get("signature_algorithm") != SIGNATURE_ALGORITHM:
         return BundleVerification(False, f"unsupported signature_algorithm {sig_doc.get('signature_algorithm')!r}")
-    if raw.get("schema_version") != 3:
+    if not (_is_schema_int(raw.get("schema_version")) and raw.get("schema_version") == 3):
         return BundleVerification(False, f"a v2 signature on a schema {raw.get('schema_version')!r} manifest")
     if SIGNATURE_MEMBER in files.values():
         return BundleVerification(False, f"the manifest declares {SIGNATURE_MEMBER} as a slice")
@@ -1324,6 +1468,10 @@ def _verify_v2(
         extra, missing = sorted(set(names) - expected), sorted(expected - set(names))
         return BundleVerification(False, f"release members differ from its manifest: extra {extra}, missing {missing}")
     signer = raw.get("signer_identity")
+    # Public format 1: a release's identities follow the public grammar (legacy schema <= 2 stays lenient).
+    for label, value in (("signer_identity", signer), ("contributor_id", raw.get("contributor_id"))):
+        if not is_public_identity(value):
+            return BundleVerification(False, f"{label} {value!r} is not a public identity", scheme=2)
     key, reason = _trusted_signer(signer, trusted_keys)
     if key is None:
         return BundleVerification(False, reason, scheme=2)
@@ -1427,7 +1575,7 @@ def content_payload_digest(
         # Every declared slice. (Ingest refuses a manifest declaring signature.json or manifest.json as one;
         # the v2 framing would skip a declared signature.json structurally, the v1 framing hashes it.)
         files = sorted({f for f in _declared_slice_files(raw).values() if f in names})
-        if raw.get("schema_version") == 3:
+        if _is_schema_int(raw.get("schema_version")) and raw.get("schema_version") == 3:
             members = {"manifest.json": manifest_bytes, **{f: read(f) for f in files}}
             return hashlib.sha256(bundle_signing_payload_v2(members)).hexdigest()
         slices = {f: read(f).decode("utf-8") for f in files}
@@ -1445,8 +1593,8 @@ def bundle_signature_scheme(bundle_path: str | Path) -> int | None:
         if SIGNATURE_MEMBER in zf.namelist():
             return SIGNATURE_SCHEME_V2
         try:
-            raw = json.loads(
-                bounded_member_read(zf, "manifest.json", max_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES).decode("utf-8")
+            raw = _strict_json(
+                bounded_member_read(zf, "manifest.json", max_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES), "manifest.json"
             )
         except (KeyError, ValueError, UnicodeDecodeError, RecursionError):
             return None
@@ -1563,12 +1711,11 @@ def _manifest_from_zip(zf: zipfile.ZipFile, source_label: str) -> dict[str, Any]
         raise ValueError(f"bundle {source_label} missing manifest.json")
     # Bounded on ACTUAL bytes: this runs before any trust check on the network-facing paths (the
     # Oasis /contribute handler, hive pull, inspect). MemberReadError is a ValueError.
-    try:
-        manifest = json.loads(
-            bounded_member_read(zf, "manifest.json", max_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES).decode("utf-8")
-        )
-    except RecursionError as exc:
-        raise ValueError(f"bundle {source_label}: manifest.json nests too deeply to parse") from exc
+    # STRICT, like the verifier (duplicate keys and non-finite numbers refused): two readers of one
+    # manifest must never see two different documents.
+    manifest = _strict_json(
+        bounded_member_read(zf, "manifest.json", max_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES), "manifest.json"
+    )
     if not isinstance(manifest, dict):
         raise ValueError(f"manifest.json must be a JSON object, got {type(manifest).__name__}")
     try:
@@ -1581,11 +1728,22 @@ def _manifest_from_zip(zf: zipfile.ZipFile, source_label: str) -> dict[str, Any]
     if manifest.get("kind") != BUNDLE_KIND:
         raise ValueError(f"manifest kind {manifest.get('kind')!r} != {BUNDLE_KIND!r}")
     schema_v = manifest.get("schema_version")
-    if not isinstance(schema_v, int) or schema_v > BUNDLE_SCHEMA_VERSION:
+    if not _is_schema_int(schema_v) or schema_v > BUNDLE_SCHEMA_VERSION:
         raise ValueError(
             f"manifest schema_version {schema_v!r} unsupported (this build supports up to {BUNDLE_SCHEMA_VERSION})"
         )
     return manifest
+
+
+def stored_schema_version(bundle_path: str | Path) -> Any:
+    """The manifest's ``schema_version`` AS STORED, before the envelope migration -- what a listing reports
+    (an unsigned bundle is schema 2 on the wire; the migrated view would say 3). Strict and bounded, like
+    every manifest read; raises the same ``ValueError`` / ``BadZipFile``."""
+    with zipfile.ZipFile(bundle_path, "r") as zf:
+        raw = _strict_json(
+            bounded_member_read(zf, "manifest.json", max_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES), "manifest.json"
+        )
+    return raw.get("schema_version") if isinstance(raw, dict) else None
 
 
 def read_bundle_manifest(bundle_path: str | Path) -> dict[str, Any]:
@@ -1633,6 +1791,7 @@ __all__ = [
     "isolated_bundle_migrations",
     "migrate_bundle_envelope",
     "read_bundle_manifest",
+    "stored_schema_version",
     "register_bundle_migration",
     "verify_bundle_zip",
     "scrub_nac_state_for_bundle",

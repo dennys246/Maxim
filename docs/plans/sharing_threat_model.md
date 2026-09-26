@@ -226,6 +226,70 @@ adapter's pre-merge review round, 2026-09-05):
   key the operator trusts" for the Queen tier, while the tier's DEFAULT policy
   (`trusted_sources`/`require_signed` wiring) remains Slice D. Guard:
   `tests/unit/test_hivemind_signing.py`; impl `hivemind/signing.py` + `bundle.py::verify_bundle_signature`.
+- **Release format v2 (2026-09-26, recording 2026-09-25; public_oasis item 7, #905–#907; design
+  [oasis_entry_index_v2.md](oasis_entry_index_v2.md)).** These amendments were owed when the three PRs
+  landed and are recorded here by the public format-freeze pass (item 2):
+  - **`signature` duty, scheme v2.** A detached `signature.json` member signs every other member's raw
+    bytes (`maxim-bundle-v2`); `signer_identity`, `release_sequence`, `license` and `entry_index` are
+    signed. Legacy v1 (schema ≤ 2) verifies against the manifest AS STORED, before the envelope
+    migration, and only when the receiver accepts v1 (`accept_v1`, required on the verifier; a newly
+    added Oasis refuses v1); v1 on schema 3 and unknown schemes are refused. The duty now runs FIRST —
+    after V6 and before V1/gate 7/V8 — so an unverifiable bundle is refused as such, not on a later duty.
+  - **V6/V7 (members).** A release is EXACTLY its manifest, declared slices and `signature.json`,
+    checked before any slice is decompressed; every read is bounded on actual bytes (manifest and
+    signature member included); names `[A-Za-z0-9._-]`, no duplicates; a manifest may not declare
+    `manifest.json` or `signature.json` as a slice (refused on every path, signed or not). Hostile
+    shapes (lying headers, bad CRC, encrypted members, deep nesting) are refusals, never tracebacks.
+  - **Entry index (new check inside `signature`).** The verifier recomputes every situation entry's
+    digest (RFC 8785 projection, index version 1) and refuses an index that does not cover all
+    situation state, or disagrees with it.
+  - **`rekey` (new duty) + V2.** A release ships ONE agent's NAc rows under the agent token `_agent`;
+    ingest REFUSES a token-keyed bundle without `receiver_agent_id` (the rows would read 0.0). Non-
+    situation agent-keyed rows (percept valences, outcome stats, node-keyed reward bias) filed under
+    an agent the receiver is not are dropped and counted — they were never readable by it.
+  - **V8 (dedup) and two new ordering duties, `equivocation` and `downgrade`.** V8 matches the ZIP
+    sha256 OR the payload identity (the signed-payload digest when verified, else a hash of exactly
+    what ingest reads). From the journal of verified admissions, keyed by public key: a second payload
+    for an admitted `(key, sequence)` is refused, and a v1 bundle from a key whose v2 release was
+    admitted is refused (this also refuses an older v1 lineage arriving late — owner-accepted). Neither
+    is waivable by `force_digest`. A lower sequence is never refused: releases are additive.
+  Guards: `tests/unit/test_release_format_v2.py`, `test_release_receiver_state.py`,
+  `test_release_producer_store.py`.
+- **Pre-freeze fixes (2026-09-26, public_oasis item 2 — the format-freeze pass's code extraction).**
+  - **V2 (numbers).** A number field must hold a JSON number: a numeric string or a bool is refused, not
+    coerced (it survived into merged state where the value was kept verbatim).
+  - **V2 (`cluster_reward_source`).** Now validated: triple keys (cluster id charset-checked) and a string
+    value; a malformed key or a non-string is a refusal, no longer a crash. The vocabulary is OPEN: a
+    source outside `NAc.CREDIT_SOURCES` is dropped with a note (as NAc drops it), so a newer producer's
+    source is not a format break for older receivers.
+  - **Manifest parsing.** Every reader parses the manifest STRICTLY (duplicate keys and non-finite
+    numbers refused — including an overflowing literal like `1e999`), as the verifier does — the
+    unsigned path let the last duplicate win — and `schema_version` must be a plain JSON integer (`true`
+    and `3.0` are refused).
+  - **V1 (identity grammar).** `contributor_id` and `signer_identity` follow the public identity grammar
+    `[A-Za-z0-9_.@:-]{1,128}` (no reserved `_` prefix), enforced where identities are created or admitted
+    as new: `BundleSigner` (the type), compose, a schema-3 release's verification, and the Oasis
+    `/contribute` door (which also bounds `domain` / `body_ref` to short printable strings). Legacy
+    schema ≤ 2 bundles are read leniently.
+  - **V4 (the scrub is an ALLOWLIST, compose-side and re-run on receipt).** `nac.json`'s top level, each
+    link and each EC node carry only listed fields (`saved_at`, unknown fields and a future producer's
+    additions never ship); `encoder_provenance.recorded` keeps only token-shaped keys and strings (free
+    text ships as `[REDACTED]`); a link's `id` is re-derived from its scrubbed signatures (the id NAc
+    minted hashes the pre-scrub goal, tool params and agent id — a guess-confirmation oracle);
+    `context_factors` never ships; a non-identifier `event_type` / `outcome_type` / link `domain` ships
+    as `redacted` / `None`; `imagined` is a bool.
+  - **`rekey` (links).** Links are agent-scoped (`NAc.predict` matches a link's event context), so the
+    own-rows rule, the token check and the re-key cover them: a release ships only its exporter's links
+    (and those naming no agent) under the agent token; a release whose links name any other agent is
+    refused (links-only releases included); ingest re-keys the token to `receiver_agent_id`. An unsigned
+    bundle's identifier-shaped donor agent id is left as before (re-keying it would change what the
+    Exp 56/61 transfers predict); a non-identifier one is dropped by the scrub.
+  - **V4 (event signatures).** A signature segment ships when it is an identifier or a `name=<number>`
+    motor parameter (`look_at:dy=<n>:dp=<n>`); any other segment ships as `redacted`
+    (`tool:use:<free text>` still truncates to `tool:use`) — a hallucinated tool name is model output.
+    When scrubbed keys collide, the result keeps the inherent (safety-floor) marker only if EVERY
+    colliding key was inherent — a learned value never becomes decay-exempt by folding.
+  Guard: `tests/unit/test_pre_freeze_fixes.py` (each proven by deletion).
 
 **Out of scope BY DECLARATION** (so absence is a decision, not an oversight):
 

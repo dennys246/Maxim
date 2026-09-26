@@ -107,6 +107,15 @@ they cannot verify.
   digest.
 - **A newly added Oasis refuses v1** (`hive add` writes `accept_v1: false`); `maxim hive trust <name>
   --accept-v1` takes its legacy v1 lineages. Entries registered before this change keep accepting v1.
+- **Identities.** `contributor_id` and `signer_identity` follow `[A-Za-z0-9_.@:-]{1,128}` with no
+  leading `_` (reserved for sentinels); a release breaking it does not verify.
+- **What a bundle carries.** Only allowlisted fields, at every level: a link has no episode or percept
+  references, no `context_factors`, identifier-shaped types and domain only, an id derived from its
+  scrubbed signatures, and — in a release — the agent token as `event_context.agent_id` (re-keyed to
+  your agent at ingest). Treat `contributor_id` as public: it is shown in every listing.
+- **The Oasis listing** reports each bundle's schema version AS STORED: 3 for a signed release, 2 for
+  an unsigned or legacy-v1 bundle, 1 for the oldest. A client must not read "schema 3" as "signed" — use
+  `signature_scheme`.
 - **Legacy v1** (schema ≤ 2, the signature in the manifest) still verifies until 2.0, against the
   manifest as stored. An unsigned bundle carries no signature fields at all.
 

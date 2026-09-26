@@ -2449,7 +2449,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         if not self._check_auth():
             return
-        stripped = self.path.rstrip("/").split("?")[0]
+        # Query first, then the trailing slash -- the order do_GET uses, so one path means one route
+        # (reversed, "/v1/substrate/contribute/?x" fell through to the LLM proxy).
+        stripped = self.path.split("?")[0].rstrip("/")
         if stripped == "/v1/admin/update":
             self._handle_admin_update()
             return
