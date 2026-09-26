@@ -1,5 +1,40 @@
 # pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19)
 
+## Engram pages — 2026-09-25 (not a release refresh; engine truth = `docs/wiring/engram-formation.md`)
+
+**Framing rule.** An engram is scored on four counts — forms, stays specific, is recalled from a
+partial cue, changes behaviour — and the site states each family's score, not its design. The one
+family that is an engram on all four counts **without the LLM** is the situation engram (an EC
+sensor cluster carrying NAc fear or want; Exp 45/52/53b/56/60/61/62 rung A EARNED). Episodic and
+semantic traces change behaviour only as LLM prompt text. Motor engrams are designed and have **no
+production caller**. Bio-inspired, never "Maxim has engrams like a brain". Fix plan and issues:
+`docs/plans/engram_formation.md` (#908–#911, #899, #848).
+
+### Findings (route → claim before → truth source → fix)
+
+- `/systems/cerebellum/` §Motor programs and engrams → program executor with pain gates + 10 % gate
+  tightening; engrams "decay after roughly two days"; "context modulates motor execution" → #909
+  (no `ProgramExecutor`/`execute_program` in `src/`; no engram decay code; `form_engram` /
+  `query_engrams` / `cerebellum_modulator_factory` have no production caller) → rewrite as "designed,
+  not wired": the forward model trains live on real readings; nothing reads its predictions; state
+  not persisted until #908 lands. Say "Dormant", link the plan's E7.
+- `/systems/cerebellum/` persistence / "live Cerebellum backing every SEM tool" (if present) → #908,
+  #909 → remove.
+- `/embodiment/sem-protocol/` "engram similarity", "the engram system learn[s]" → #909 → name what
+  actually learns (NAc, forward model) and drop the engram clause.
+- `/memory/overview/`, `/systems/hippocampus/` "engram co-allocation" → an analogy, keep it as one,
+  but link the new page so the analogy is not read as a claim.
+- **New page** `/memory/engrams/` → the five families with the four-count table, the situation
+  engram's EARNED evidence and its two limits (cosine separates only neutral→extreme swings; the
+  `time_of_day` wrap, #899 — the drowning fear misses in the last ~5 % of the day), and the honest
+  "prompt text only" for episodic/semantic.
+
+### Acceptance checks — engram pages
+
+No "engram" sentence on the site describes a mechanism without its caller status; every EARNED
+number quoted matches its ledger row; `/systems/cerebellum/` contains no program-executor or
+two-day-decay claim; `pnpm build` clean; links resolve.
+
 ## 1.3.0 refresh — 2026-09-19 ("Oasis-2"; PyPI `upload_time` 2026-09-19T20:24Z, tag `v1.3.0` @ `ad541dd7`)
 
 **Framing rule, applied.** 1.3 moves the LEARNING SIGNAL from a teacher to the world — the game's
