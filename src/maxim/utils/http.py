@@ -524,6 +524,27 @@ def close_all() -> None:
 # ─────────────────────────── Public-only connections (#824) ─────────────
 
 
+# IPv6 forms that carry an IPv4 address in their low 32 bits, which is what they dial: NAT64
+# (RFC 6052), IPv4-translated (RFC 2765) and the deprecated IPv4-compatible range.
+_EMBEDS_IPV4 = tuple(ipaddress.ip_network(n) for n in ("64:ff9b::/96", "::ffff:0:0:0/96", "::/96"))
+
+
+def _is_public_address(address: str) -> bool:
+    """Globally routable -- judged explicitly rather than by ``is_global`` alone, which calls
+    multicast, site-local and NAT64-around-10.x addresses global (and varies across Python versions).
+    An IPv6 answer that embeds an IPv4 address is judged by that IPv4 address."""
+    ip = ipaddress.ip_address(address.split("%", 1)[0])
+    if isinstance(ip, ipaddress.IPv6Address):
+        embedded = ip.ipv4_mapped or ip.sixtofour
+        if embedded is None and any(ip in net for net in _EMBEDS_IPV4):
+            embedded = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+        if embedded is not None:
+            return _is_public_address(str(embedded))
+        if ip.is_site_local:
+            return False
+    return ip.is_global and not (ip.is_multicast or ip.is_reserved or ip.is_unspecified)
+
+
 class NonPublicAddressRefused(httpcore.ConnectError):
     """A public-only connection whose host resolved to a non-global address."""
 
@@ -542,10 +563,21 @@ class _PublicOnlyBackend(httpcore.SyncBackend):
             infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
         except socket.gaierror as exc:
             raise httpcore.ConnectError(f"could not resolve {host!r}: {exc}") from exc
-        addresses = [str(info[4][0]) for info in infos]
-        if not addresses or not all(ipaddress.ip_address(a.split("%", 1)[0]).is_global for a in addresses):
+        addresses = list(dict.fromkeys(str(info[4][0]) for info in infos))
+        if not addresses or not all(_is_public_address(a) for a in addresses):
             raise NonPublicAddressRefused(f"refused: {host!r} resolves to a non-public address")
-        return super().connect_tcp(addresses[0], port, timeout, local_address, socket_options)
+        # Every address is vetted, so try each in turn, as the stock backend's create_connection does
+        # (a dual-stack answer with no IPv6 route -- an immediate ConnectError -- still reaches IPv4).
+        # A connect TIMEOUT is not retried per address: it propagates, so one fetch waits at most one
+        # connect timeout.
+        last: Exception | None = None
+        for address in addresses:
+            try:
+                return super().connect_tcp(address, port, timeout, local_address, socket_options)
+            except httpcore.ConnectError as exc:
+                last = exc
+        assert last is not None
+        raise last
 
 
 def _public_only_transport(limits: httpx.Limits) -> httpx.HTTPTransport:
@@ -750,10 +782,13 @@ def _classify_httpx_error(endpoint: str, exc: BaseException) -> HTTPError:
                 "increase max_pool_connections or reduce concurrency"
             ),
         )
-    if isinstance(exc, httpx.ConnectError) and "resolves to a non-public address" in str(exc):
+    if isinstance(exc, httpx.ConnectError) and isinstance(exc.__cause__, NonPublicAddressRefused):
         return HTTPConnectionError(
             endpoint,
-            fix_hint=f"{exc} -- a public-only fetch never connects to a private or internal address",
+            fix_hint=(
+                f"{exc} -- a public-only fetch never connects to a private or internal address "
+                "(and does not use HTTP(S)_PROXY, which would connect on its behalf unchecked)"
+            ),
         )
     if isinstance(exc, httpx.ConnectError):
         return HTTPConnectionError(

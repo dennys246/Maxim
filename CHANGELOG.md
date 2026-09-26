@@ -383,8 +383,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (DNS rebinding) reached internal services. Fetches whose URL the model chooses (the page and its
   robots.txt) now go through a public-only client (`fetch_url(public_only=True)`) that resolves once,
   at connect time, refuses unless every address is globally routable, and dials the address it
-  checked; TLS and the Host header still use the hostname. Follows `block_private_ips`. Backend base
-  URLs and downloads have the same shape and are tracked in #921.
+  checked (every vetted address in turn; an IPv6 answer that embeds an IPv4 address is judged by it);
+  TLS and the Host header still use the hostname. Follows `block_private_ips`. **These fetches no
+  longer use `HTTP(S)_PROXY`** — a proxy would connect on their behalf, unchecked; behind a mandatory
+  proxy, `http_fetch` now fails with that reason. Backend base URLs and downloads have the same shape
+  and are tracked in #921.
 - **A spoken "maxim singularity" no longer switches to a code-executing mode** (#828). Any audio in
   the room — a video, the robot's own speech — could set it. Phrase requests for a mode that can
   execute code are refused (the same test the agent's mode tool applies, #821); "maxim passive" and

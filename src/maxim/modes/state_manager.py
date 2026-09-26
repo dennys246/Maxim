@@ -14,7 +14,7 @@ from maxim.modes.definitions import (
     MaximState,
     OperationalMode,
     ProcessingState,
-    get_mode,
+    executes_code,
 )
 
 logger = logging.getLogger(__name__)
@@ -228,7 +228,7 @@ class StateManager:
     # The phrase entry points: ``maxim passive|active|singularity`` spoken, or typed at the CLI, lands
     # here (utils/response_config.py). A phrase is heard from ANY audio in the room -- a video, the
     # robot's own TTS -- so it is not human authority for a mode that executes code (#828, owner
-    # decision 2026-09-26): such a mode is refused, the same predicate ``ModeSwitchTool`` uses (#821).
+    # decision 2026-09-26): such a mode is refused by ``executes_code``, the predicate every mode gate uses (#821).
     def request_mode_passive(self) -> bool:
         return self._request_mode_by_phrase("passive")
 
@@ -239,8 +239,7 @@ class StateManager:
         return self._request_mode_by_phrase("singularity")
 
     def _request_mode_by_phrase(self, mode: str) -> bool:
-        definition = get_mode(mode)
-        if definition is not None and definition.can_execute_code:
+        if executes_code(mode):
             self._log.warning(
                 "Refused a phrase request for '%s': a spoken or typed phrase cannot enter a code-executing "
                 "mode (#828). Start maxim in that mode deliberately instead.",

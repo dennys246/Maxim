@@ -124,3 +124,51 @@ def test_the_public_only_client_really_uses_the_vetting_backend():
     _http._ensure_external_endpoint()
     client = _http._registry.get_client(_http._EXTERNAL_PUBLIC_ENDPOINT)
     assert isinstance(client._transport._pool._network_backend, _http._PublicOnlyBackend)
+
+
+# ── review folds ──
+
+
+@pytest.mark.parametrize(
+    ("address", "public"),
+    [
+        ("93.184.216.34", True),
+        ("2606:4700::1111", True),
+        ("64:ff9b::5db8:d822", True),  # NAT64 around a public IPv4
+        ("2002:5db8:d822::", True),  # 6to4 around a public IPv4
+        ("64:ff9b::a00:1", False),  # NAT64 around 10.0.0.1 -- is_global says True
+        ("64:ff9b::a9fe:a9fe", False),  # NAT64 around the cloud metadata address
+        ("::ffff:0:7f00:1", False),  # IPv4-translated loopback -- is_global says True
+        ("::127.0.0.1", False),  # IPv4-compatible loopback -- is_global says True
+        ("2002:a00:1::", False),  # 6to4 around 10.0.0.1
+        ("fec0::1", False),  # site-local -- is_global says True
+        ("224.0.0.1", False),  # multicast -- is_global says True
+        ("ff02::1", False),
+        ("::", False),
+    ],
+)
+def test_public_means_globally_routable_whatever_the_form(address, public) -> None:
+    assert _http._is_public_address(address) is public
+
+
+def test_every_vetted_address_is_tried_in_turn(monkeypatch):
+    """A dual-stack answer whose first address has no route still reaches the second, as before."""
+    _resolver(monkeypatch, [["2606:4700::1111", PUBLIC]])
+    dialled = []
+
+    def connect(self, host, port, *args, **kwargs):
+        dialled.append(host)
+        raise httpcore.ConnectError(f"no route to {host}")
+
+    monkeypatch.setattr(httpcore.SyncBackend, "connect_tcp", connect)
+    with pytest.raises(_http.HTTPConnectionError):
+        _http.fetch_url(f"http://{HOST}:8080/x", public_only=True)
+    assert dialled == ["2606:4700::1111", PUBLIC]
+
+
+def test_the_refusal_is_classified_by_its_type_not_its_wording(monkeypatch, internal_server):
+    port, _ = internal_server
+    _resolver(monkeypatch, [["127.0.0.1"]])
+    with pytest.raises(_http.HTTPConnectionError) as info:
+        _http.fetch_url(f"http://{HOST}:{port}/secret", public_only=True)
+    assert "never connects to a private or internal address" in str(info.value.fix_hint)

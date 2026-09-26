@@ -629,14 +629,15 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         self._state_manager.request_wake()
 
     # Operational mode switch methods (called by phrase responses)
-    def request_mode_passive(self) -> None:
-        self._state_manager.request_mode_passive()
+    def request_mode_passive(self) -> bool:
+        return self._state_manager.request_mode_passive()
 
-    def request_mode_active(self) -> None:
-        self._state_manager.request_mode_active()
+    def request_mode_active(self) -> bool:
+        return self._state_manager.request_mode_active()
 
-    def request_mode_singularity(self) -> None:
-        self._state_manager.request_mode_singularity()
+    def request_mode_singularity(self) -> bool:
+        """False: a phrase cannot enter a code-executing mode (#828)."""
+        return self._state_manager.request_mode_singularity()
 
     def update_interests(
         self,

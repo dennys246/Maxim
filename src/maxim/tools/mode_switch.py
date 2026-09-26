@@ -10,6 +10,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
+from maxim.modes.definitions import executes_code  # the one predicate; re-exported for callers
 from maxim.tools.base import Tool, ToolResult
 
 if TYPE_CHECKING:
@@ -44,17 +45,6 @@ def _self_grantable(target: str, current: str) -> bool:
     current_def = _resolve_mode(current)
     target_def = _resolve_mode(target)
     return current_def is not None and target_def is not None and current_def.name == target_def.name
-
-
-def executes_code(mode: str) -> bool:
-    """Whether ``mode`` (legacy names included) is a code-executing mode.
-
-    The one predicate both gates use: ``ModeSwitchTool`` (the agent's tool) and the CLI's
-    ``requested_mode`` consumer (the seam every runtime mode request passes through), so a future
-    writer of ``requested_mode`` that bypasses the tool is still refused.
-    """
-    definition = _resolve_mode(mode)
-    return definition is not None and bool(definition.can_execute_code)
 
 
 class ModeSwitchTool(Tool):
