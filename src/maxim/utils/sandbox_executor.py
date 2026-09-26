@@ -64,33 +64,33 @@ class ResourceLimits:
     max_file_size_bytes: int = 10 * 1024 * 1024  # 10 MB
     max_open_files: int = 64
 
-    # Process limits
-    max_processes: int = 4  # Prevent fork bombs
+    # No process-count limit: RLIMIT_NPROC counts EVERY process of the user, not the sandbox's own, so
+    # any small value makes each fork in a sandboxed script fail (a desktop or CI user always has more
+    # than a handful) -- and no value expresses "this sandbox may have N processes". Runaway forking is
+    # bounded by the CPU-time limit, the wall-clock timeout and, for real isolation, the container.
 
     def apply_to_subprocess(self) -> None:
-        """Apply resource limits to current process (call in subprocess)."""
-        try:
-            # CPU time limit
-            resource.setrlimit(resource.RLIMIT_CPU, (self.cpu_time_seconds, self.cpu_time_seconds + 5))
+        """Apply resource limits to the current process (called in the subprocess before exec).
 
-            # Memory limit (address space)
-            resource.setrlimit(resource.RLIMIT_AS, (self.memory_bytes, self.memory_bytes))
-
-            # Stack size
-            resource.setrlimit(resource.RLIMIT_STACK, (self.stack_bytes, self.stack_bytes))
-
-            # File size limit
-            resource.setrlimit(resource.RLIMIT_FSIZE, (self.max_file_size_bytes, self.max_file_size_bytes))
-
-            # Open files limit
-            resource.setrlimit(resource.RLIMIT_NOFILE, (self.max_open_files, self.max_open_files))
-
-            # Process limit (prevent fork bombs)
-            resource.setrlimit(resource.RLIMIT_NPROC, (self.max_processes, self.max_processes))
-
-        except (ValueError, resource.error) as e:
-            # Some limits may not be available on all platforms
-            logger.warning(f"Could not set some resource limits: {e}")
+        Each limit is applied INDEPENDENTLY: one the platform does not support (macOS rejects
+        RLIMIT_AS) must not silently skip the rest, as a single try block once did -- leaving a macOS
+        sandbox with a CPU limit and nothing else. Unsupported limits are reported by name.
+        """
+        limits = (
+            ("cpu", resource.RLIMIT_CPU, (self.cpu_time_seconds, self.cpu_time_seconds + 5)),
+            ("address space", resource.RLIMIT_AS, (self.memory_bytes, self.memory_bytes)),
+            ("stack", resource.RLIMIT_STACK, (self.stack_bytes, self.stack_bytes)),
+            ("file size", resource.RLIMIT_FSIZE, (self.max_file_size_bytes, self.max_file_size_bytes)),
+            ("open files", resource.RLIMIT_NOFILE, (self.max_open_files, self.max_open_files)),
+        )
+        unsupported = []
+        for name, which, value in limits:
+            try:
+                resource.setrlimit(which, value)
+            except (ValueError, OSError):  # resource.error is OSError
+                unsupported.append(name)
+        if unsupported:
+            logger.warning("Sandbox resource limits not supported on this platform: %s", ", ".join(unsupported))
 
 
 @dataclass

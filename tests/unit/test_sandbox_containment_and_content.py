@@ -249,3 +249,26 @@ def test_a_script_does_not_read_the_hosts_stdin(executor) -> None:
         os.close(saved)
         os.close(read_end)
     assert result.stdout.strip() == "got:"
+
+
+# ── #920 CI: the resource limits themselves ──
+
+
+def test_a_sandboxed_script_can_run_external_commands(executor) -> None:
+    """RLIMIT_NPROC is per-USER on Linux: a small value made every fork fail for a user who already has
+    more processes (CI's first run of this PR). An external command and a command substitution both fork."""
+    script = _script(executor, "fork.sh", '/bin/echo external\necho "$(echo nested)"\n')
+    result = executor.execute(script_path=script, require_approval=False)
+    assert result.status == ExecutionStatus.SUCCESS, result.stderr
+    assert result.stdout.split() == ["external", "nested"]
+
+
+def test_every_supported_limit_is_applied_even_when_one_is_not(executor) -> None:
+    """macOS rejects RLIMIT_AS; a single try block once skipped every limit after it. Read back in the
+    child: the open-files and CPU limits are in force on every platform."""
+    script = _script(executor, "limits.sh", "ulimit -n\nulimit -t\n")
+    result = executor.execute(script_path=script, require_approval=False)
+    assert result.status == ExecutionStatus.SUCCESS, result.stderr
+    open_files, cpu = result.stdout.split()
+    assert int(open_files) == executor.resource_limits.max_open_files
+    assert int(cpu) == executor.resource_limits.cpu_time_seconds

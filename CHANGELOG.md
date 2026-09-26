@@ -738,6 +738,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     sandbox, scripts no longer inherit the host's stdin, and a script over 120 KiB is refused before
     approval (its content now travels verbatim as one interpreter argument, which Linux caps at 128
     KiB).
+  - **The resource limits are applied, and no longer break forking.** They were set in one block, so
+    the first limit a platform rejects (macOS: address space) silently skipped every later one — a
+    macOS sandbox ran with a CPU limit and nothing else. Each limit is now applied on its own. And the
+    process-count limit is gone: `RLIMIT_NPROC` counts every process of the USER, so on Linux its
+    value of 4 made each external command in a sandboxed shell script fail; runaway forking is
+    bounded by the CPU and wall-clock limits and the container.
   - The docstrings now say what these are: defense-in-depth. The Python import hook is a denylist
     that `io.open`, `pathlib` or a traceback frame walks around in one line, and approval covers the
     top-level script, not modules it imports from the workspace; the boundary is the resource limits
