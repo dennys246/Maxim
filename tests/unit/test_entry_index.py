@@ -88,7 +88,7 @@ def test_a_digest_ignores_provenance_but_not_content():
     ec2["n1"]["source"], ec2["n1"]["contributors"] = "other-exporter", ["other-exporter"]
     assert digest(entries(nac, ec2)["n1"]) == base  # same entry, another exporter
     nac2 = copy.deepcopy(nac)
-    nac2["cluster_fear"][f"agent{S}n1{S}drive:oxygen"] = -0.6
+    nac2["cluster_fear"][f"_agent{S}n1{S}drive:oxygen"] = -0.6
     assert digest(entries(nac2, ec)["n1"]) != base
 
 
@@ -123,11 +123,11 @@ def test_malformed_situation_state_cannot_be_indexed():
 
     nac, ec = _normalized()
     bad = copy.deepcopy(nac)
-    bad["cluster_reward_source"]["agent-only-two"] = "relief"  # not a triple
+    bad["cluster_reward_source"]["_agent-only-two"] = "relief"  # not a triple
     with pytest.raises(EntryIndexError, match="not agent"):
         build_index(bad, ec)
     dangling = copy.deepcopy(nac)
-    dangling["inherent_bias_keys"] = [f"agent{S}n1{S}tool:ghost"]
+    dangling["inherent_bias_keys"] = [f"_agent{S}n1{S}tool:ghost"]
     with pytest.raises(EntryIndexError, match="dangling"):
         build_index(dangling, ec)
 

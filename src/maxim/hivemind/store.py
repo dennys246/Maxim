@@ -39,7 +39,8 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from maxim.hivemind.bundle import read_bundle_manifest, read_bundle_manifest_bytes
+from maxim.hivemind.bundle import bundle_signature_scheme, read_bundle_manifest, read_bundle_manifest_bytes
+from maxim.hivemind.signing import SIGNATURE_ALGORITHM, SIGNATURE_SCHEME_V2
 from maxim.utils.atomic_io import atomic_write_bytes, atomic_write_json
 from maxim.utils.format_version import check_format_version, with_format_version
 
@@ -61,9 +62,10 @@ _SUMMARY_KEYS = (
     "body_ref",
     "created_at",
     "schema_version",
-    "signature_algorithm",
     "signer_identity",
     "affordance_namespace",
+    "release_sequence",
+    "license",
 )
 
 
@@ -123,7 +125,7 @@ class OasisStore:
             manifest = read_bundle_manifest(bundle_path)  # validates kind/schema/format-version
         except _MALFORMED_BUNDLE as exc:
             raise OasisStoreError(f"not a valid substrate bundle: {exc}") from exc
-        if not manifest.get("signature") or not manifest.get("signature_algorithm"):
+        if bundle_signature_scheme(bundle_path) is None:
             raise OasisStoreError(
                 "release bundles must be signed (compose with --sign); "
                 "unsigned bundles may only enter the experimental tier"
@@ -156,6 +158,13 @@ class OasisStore:
                 logger.warning("oasis: skipping unreadable release %s: %s", release_id, exc)
                 continue
             summary = {"id": release_id, **{k: manifest.get(k) for k in _SUMMARY_KEYS}}
+            # Ordering / display only, never trust: the scheme a bundle CLAIMS and its algorithm (a v2
+            # release keeps both in its detached signature member, a v1 bundle in the manifest).
+            scheme = bundle_signature_scheme(path)
+            summary["signature_scheme"] = scheme
+            summary["signature_algorithm"] = (
+                SIGNATURE_ALGORITHM if scheme == SIGNATURE_SCHEME_V2 else manifest.get("signature_algorithm")
+            )
             out.append(summary)
         out.sort(key=lambda s: s.get("created_at") or "", reverse=True)
         return out

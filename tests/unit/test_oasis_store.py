@@ -17,6 +17,7 @@ import json
 
 import pytest
 
+from maxim.hivemind.signing import SignedRelease
 from maxim.hivemind import oasis_endpoints as ep
 from maxim.hivemind.bundle import compose_bundle
 from maxim.hivemind.store import OasisStore, OasisStoreError
@@ -51,7 +52,7 @@ def _signed_bundle(path, *, signer_identity="queen-alpha", contributor_id="oasis
         output_path=path,
         contributor_id=contributor_id,
         body_ref="minecraft_bench",
-        signer=signer,
+        release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0"),
     )
     return path
 

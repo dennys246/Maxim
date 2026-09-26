@@ -14,6 +14,7 @@ import time
 
 import pytest
 
+from maxim.hivemind.signing import SignedRelease
 from maxim.hivemind import substrate_client as sc  # noqa: F401  (ensures module import path)
 from maxim.hivemind.bundle import compose_bundle
 from maxim.hivemind.hive_cli import run_hive_subcommand
@@ -83,7 +84,7 @@ def test_hive_pull_dry_run_and_apply(tmp_path):
         output_path=bundle,
         contributor_id="oasis-alpha",
         body_ref="minecraft_bench",
-        signer=signer,
+        release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0"),
     )
     store = OasisStore(tmp_path / "oasis")
     store.publish_release(bundle)
@@ -151,7 +152,7 @@ def test_hive_pull_from_a_loopback_oasis_uses_the_leader_key_implicitly(tmp_path
         output_path=bundle,
         contributor_id="oasis-alpha",
         body_ref="minecraft_bench",
-        signer=signer,
+        release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0"),
     )
     store = OasisStore(tmp_path / "oasis")
     store.publish_release(bundle)
@@ -190,7 +191,7 @@ def test_hive_pull_untrusted_signer_refused(tmp_path):
         output_path=bundle,
         contributor_id="oasis-alpha",
         body_ref="minecraft_bench",
-        signer=signer,
+        release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0"),
     )
     store = OasisStore(tmp_path / "oasis")
     store.publish_release(bundle)

@@ -13,6 +13,7 @@ from maxim.hivemind.hive_cli import run_hive_subcommand
 from maxim.hivemind.registry import HiveRegistry, HiveRegistryError
 from maxim.hivemind.store import OasisStore
 from maxim.hivemind.bundle import compose_bundle
+from maxim.hivemind.signing import SignedRelease
 from maxim.utils.optional_deps import optional_dependency_available
 
 _HAS_CRYPTO = optional_dependency_available("cryptography")
@@ -422,7 +423,11 @@ class TestOasisCli:
             output_path=out,
             contributor_id="oasis-alpha",
             body_ref="minecraft_bench",
-            signer=BundleSigner.generate(signer_identity="queen-a"),
+            release=SignedRelease(
+                signer=BundleSigner.generate(signer_identity="queen-a"),
+                release_sequence=1,
+                license="CDLA-Permissive-2.0",
+            ),
         )
         root = str(tmp_path / "store")
         assert run_oasis_subcommand(["publish", str(out), "--root", root]) == 0

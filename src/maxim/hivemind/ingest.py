@@ -40,11 +40,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from maxim.hivemind.entry_index import AGENT_TOKEN, agent_ids
+from maxim.hivemind.signing import SIGNATURE_MEMBER
 from maxim.hivemind.bundle import (
     assert_bundle_body_compatible,
     read_bundle_manifest,
     scrub_nac_state_for_bundle,
-    verify_bundle_signature_parts,
+    verify_bundle_zip,
 )
 from maxim.hivemind.identity import filter_identity_bearing_links, is_identity_bearing
 from maxim.hivemind.merge import (
@@ -945,23 +947,31 @@ def ingest_bundle(
                 duty="V3",
                 reason=f"manifest declares slices absent from the archive: {sorted(missing)} (measured-class mismatch)",
             )
-        undeclared = sorted(namelist - set(declared_files.values()) - {"manifest.json"})
+        undeclared = sorted(namelist - set(declared_files.values()) - {"manifest.json", SIGNATURE_MEMBER})
         if undeclared:
             notes.append(f"undeclared ZIP members ignored, never read: {undeclared} (V7)")
 
         donor_nac: dict[str, Any] | None = None
         donor_ec: dict[str, dict[str, Any]] | None = None
-        raw_slices: dict[str, str] = {}  # filename -> raw content, for signature verification
         if "nac" in declared_files:
             raw = _bounded_zip_read(zf, declared_files["nac"])
-            raw_slices[declared_files["nac"]] = raw if isinstance(raw, str) else raw.decode("utf-8")
             parsed = _loads_strict(raw, slice_name=declared_files["nac"])
             if not isinstance(parsed, dict):
                 raise IngestRefused(duty="V2", reason="nac.json is not a JSON object")
             donor_nac = parsed
+            # A v2 release ships its NAc keys under a fixed agent token (entry_index.AGENT_TOKEN), so
+            # re-keying to the receiver's own agent id is MANDATORY: without it the rows stay keyed to
+            # the token, NAc reads filter by agent id, and every value would silently read 0.0.
+            if receiver_agent_id is None and AGENT_TOKEN in agent_ids(donor_nac):
+                raise IngestRefused(
+                    duty="V2",
+                    reason=(
+                        f"the bundle's NAc rows are keyed to the agent token {AGENT_TOKEN!r} (a v2 release); "
+                        "pass receiver_agent_id (--receiver-agent-id) so they re-key to your agent"
+                    ),
+                )
         if "ec" in declared_files:
             raw = _bounded_zip_read(zf, declared_files["ec"])
-            raw_slices[declared_files["ec"]] = raw if isinstance(raw, str) else raw.decode("utf-8")
             parsed = _loads_strict(raw, slice_name=declared_files["ec"])
             if not isinstance(parsed, dict) or not isinstance(parsed.get("substrate_nodes"), dict):
                 raise IngestRefused(duty="V2", reason="ec.json is not an object with substrate_nodes")
@@ -977,12 +987,12 @@ def ingest_bundle(
         # load cannot carry a surviving signature (migration changes the signed
         # bytes) — a non-issue at schema_version 2, the only shipped version.
         if require_signed:
-            verified, reason = verify_bundle_signature_parts(
-                manifest, raw_slices, trusted_keys=dict(trusted_keys or {})
-            )
-            if not verified:
-                raise IngestRefused(duty="signature", reason=f"require_signed: {reason}")
-            notes.append(f"signature verified ({reason})")
+            # Verified against the manifest AS STORED (verify_bundle_zip reads it raw): the envelope
+            # migration rewrites schema_version, which a v1 signature covers.
+            verification = verify_bundle_zip(zf, trusted_keys=dict(trusted_keys or {}))
+            if not verification.ok:
+                raise IngestRefused(duty="signature", reason=f"require_signed: {verification.reason}")
+            notes.append(f"signature verified ({verification.reason})")
 
     # 7. The payload admission pass (V2 / V9 / V3 / V1 sweep + stamping).
     if donor_nac is not None:

@@ -121,8 +121,9 @@ def test_compose_writes_zip_with_manifest(tmp_path: Path) -> None:
 
 def test_compose_manifest_carries_required_fields(tmp_path: Path) -> None:
     """Manifest has kind, schema_version, _format_version, contributor_id,
-    domain, signature, signature_algorithm, contents, created_at,
-    identity_filter_applied, identity_threshold.
+    domain, license, contents, created_at, identity_filter_applied,
+    identity_threshold. A v3 manifest carries no signature slots: a signed
+    release's signature is the detached ``signature.json`` member.
     """
     output = tmp_path / "bundle.zip"
     manifest = compose_bundle(
@@ -137,35 +138,15 @@ def test_compose_manifest_carries_required_fields(tmp_path: Path) -> None:
     assert manifest["_format_version"] == "1.0"
     assert manifest["contributor_id"] == "oasis-A"
     assert manifest["domain"] == "combat"
-    assert manifest["signature"] is None
-    assert manifest["signature_algorithm"] is None
-    assert manifest["signer_identity"] is None
+    assert "signature" not in manifest and "signature_algorithm" not in manifest
+    assert "signer_identity" not in manifest  # only a signed release names its signer
+    assert manifest["license"] is None
     assert "created_at" in manifest
     assert "contents" in manifest
     assert manifest["identity_filter_applied"] is True
 
 
-def test_compose_signature_slot_preserved(tmp_path: Path) -> None:
-    """Callers that want to attach signatures populate the slot; the
-    composer does NOT compute or verify, but the slot round-trips.
-    """
-    output = tmp_path / "bundle.zip"
-    manifest = compose_bundle(
-        nac_state=_empty_nac_state(),
-        ec_substrate_nodes={},
-        output_path=output,
-        contributor_id="oasis-A",
-        signature="deadbeef",
-        signature_algorithm="ed25519",
-    )
-    assert manifest["signature"] == "deadbeef"
-    assert manifest["signature_algorithm"] == "ed25519"
-
-
-def test_compose_signer_identity_defaults_null(tmp_path: Path) -> None:
-    """CC13: the reserved ``signer_identity`` slot is ``None`` at 1.0 when
-    the caller does not populate it.
-    """
+def test_an_unsigned_bundle_names_no_signer(tmp_path: Path) -> None:
     output = tmp_path / "bundle.zip"
     manifest = compose_bundle(
         nac_state=_empty_nac_state(),
@@ -173,23 +154,23 @@ def test_compose_signer_identity_defaults_null(tmp_path: Path) -> None:
         output_path=output,
         contributor_id="oasis-A",
     )
-    assert manifest["signer_identity"] is None
+    assert manifest.get("signer_identity") is None
 
 
-def test_compose_signer_identity_slot_round_trips(tmp_path: Path) -> None:
-    """CC13: a caller-populated ``signer_identity`` survives compose →
-    extract → read_bundle_manifest unchanged. The composer does NOT
-    validate it (no verification at 1.0).
-    """
+def test_a_release_signer_identity_round_trips(tmp_path: Path) -> None:
+    """A release's ``signer_identity`` (now inside the signature) survives compose → extract →
+    read_bundle_manifest unchanged, and the detached signature member does not break extract."""
+    pytest.importorskip("cryptography")
+    from maxim.hivemind.signing import BundleSigner
+    from tests.unit._signed_bundle_helpers import release
+
     output = tmp_path / "bundle.zip"
     compose_bundle(
         nac_state=_empty_nac_state(),
         ec_substrate_nodes={},
         output_path=output,
         contributor_id="oasis-A",
-        signature="deadbeef",
-        signature_algorithm="ed25519",
-        signer_identity="did:key:z6Mk-example",
+        release=release(BundleSigner.generate(signer_identity="did:key:z6Mk-example")),
     )
     extracted = extract_bundle(output, tmp_path / "out")
     assert extracted["signer_identity"] == "did:key:z6Mk-example"
@@ -1259,7 +1240,7 @@ class TestGate7TypedBundles:
         assert_bundle_body_compatible({"body_ref": None}, receiver_body="reachy_mini", allow_unverified=True)
 
     def test_v1_bundles_migrate_and_then_refuse(self):
-        """End to end: a v1 manifest upgrades to v2, is stamped with an UNKNOWN
+        """End to end: a v1 manifest upgrades (through v2 to v3), is stamped with an UNKNOWN
         body, and is then refused by default rather than silently accepted."""
         from maxim.hivemind.bundle import (
             BUNDLE_SCHEMA_VERSION,
@@ -1269,7 +1250,7 @@ class TestGate7TypedBundles:
         )
 
         migrated = migrate_bundle_envelope({"schema_version": 1, "kind": "maxim.substrate.bundle"})
-        assert migrated["schema_version"] == BUNDLE_SCHEMA_VERSION == 2
+        assert migrated["schema_version"] == BUNDLE_SCHEMA_VERSION == 3
         assert migrated["body_ref"] is None
         assert migrated["affordance_namespace"] is None
         assert migrated["capability_map"] == {}
@@ -1294,7 +1275,7 @@ class TestGate7TypedBundles:
             capability_map={"tool:reachy_mini_turn_left": "orient/turn_left"},
         )
         m = read_bundle_manifest(out)
-        assert m["schema_version"] == 2
+        assert m["schema_version"] == 3
         assert m["body_ref"] == "reachy_mini"
         assert m["affordance_namespace"] == "reachy_mini.v1"
         assert m["capability_map"]["tool:reachy_mini_turn_left"] == "orient/turn_left"

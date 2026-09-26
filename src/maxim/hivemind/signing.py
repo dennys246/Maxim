@@ -33,8 +33,10 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import struct
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -184,6 +186,48 @@ class BundleSigner:
         )
 
         return self._private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
+
+
+#: The largest release_sequence a verifier accepts (a JSON number every parser holds exactly).
+MAX_RELEASE_SEQUENCE = 2**53 - 1
+
+#: An SPDX license id (or expression) as the manifest carries it -- displayed, so charset-capped.
+_LICENSE = re.compile(r"^[A-Za-z0-9.+\-() ]{1,64}$")
+
+
+def validate_release_sequence(value: object) -> int:
+    """An int (never a bool) in ``1..MAX_RELEASE_SEQUENCE``; ``ValueError`` otherwise."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= MAX_RELEASE_SEQUENCE:
+        raise ValueError(f"release_sequence must be an int in 1..{MAX_RELEASE_SEQUENCE}, got {value!r}")
+    return value
+
+
+def validate_license(value: object) -> str:
+    """An SPDX-shaped license string; ``ValueError`` otherwise."""
+    if not isinstance(value, str) or not _LICENSE.match(value):
+        raise ValueError(f"license must be an SPDX id (charset-capped, <= 64 chars), got {value!r}")
+    return value
+
+
+@dataclass(frozen=True)
+class SignedRelease:
+    """Everything a SIGNED bundle needs, as one value (docs/plans/oasis_entry_index_v2.md).
+
+    A signed bundle is a release artifact: it carries its signer, its place in that signer's sequence
+    and its license, all inside the signature. Passing them as one frozen value means none can be
+    forgotten -- a missing field is a ``TypeError`` at construction, not a runtime default. Runtime-
+    ephemeral (passed into ``compose_bundle``, never persisted), so outside the CC3 roster.
+    """
+
+    signer: BundleSigner
+    release_sequence: int
+    license: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.signer, BundleSigner):
+            raise TypeError(f"signer must be a BundleSigner, got {type(self.signer).__name__}")
+        validate_release_sequence(self.release_sequence)
+        validate_license(self.license)
 
 
 def verify_payload(payload: bytes, signature_b64: str, public_key_b64: str) -> bool:

@@ -26,10 +26,12 @@ _needs_crypto = pytest.mark.skipif(
 )
 
 
-def _signer():
-    from maxim.hivemind.signing import BundleSigner
+def _release():
+    from maxim.hivemind.signing import BundleSigner, SignedRelease
 
-    return BundleSigner.generate(signer_identity=DONOR)
+    return SignedRelease(
+        signer=BundleSigner.generate(signer_identity=DONOR), release_sequence=1, license="CDLA-Permissive-2.0"
+    )
 
 
 UPSTREAM = ("alice-private-id", "bob-private-id")
@@ -70,7 +72,7 @@ def _export(tmp_path: Path, *, reauthor: bool) -> Path:
         body_ref=BODY,
         apply_identity_filter=False,
         reauthor=reauthor,
-        signer=_signer() if reauthor else None,
+        release=_release() if reauthor else None,
     )
     return out
 
@@ -100,7 +102,7 @@ def test_a_release_reauthors_every_row_and_is_admitted_without_leaking_upstream_
     rows = [link for links in nac["links"].values() for link in links] + list(ec["substrate_nodes"].values())
     assert all(r["source"] == DONOR and r["contributors"] == [DONOR] for r in rows)
     assert not any(u in raw for u in UPSTREAM) and "_consensus" not in raw
-    _ingest(bundle, IngestionJournal(tmp_path / "j.json"))
+    _ingest(bundle, IngestionJournal(tmp_path / "j.json"), receiver_agent_id="receiver")
 
 
 @_needs_crypto
@@ -116,7 +118,7 @@ def test_a_purely_local_state_exports_unchanged_either_way(tmp_path):
             body_ref=BODY,
             apply_identity_filter=False,
             reauthor=reauthor,
-            signer=_signer() if reauthor else None,
+            release=_release() if reauthor else None,
         )
         shipped, ec, _ = _slices(out)
         assert shipped["links"]["tool:probe"][0]["source"] == DONOR and set(ec["substrate_nodes"]) == {"n1"}

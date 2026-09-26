@@ -207,11 +207,22 @@ def _run_export(args: argparse.Namespace) -> int:
     )
     dropped_nodes = len(ec_substrate_nodes or {}) - len(_kept_ec or {})
     try:
-        signer = None
+        release = None
         if getattr(args, "sign", False):
-            from maxim.hivemind.signing import load_or_create_signer, public_key_path
+            from maxim.hivemind.signing import SignedRelease, load_or_create_signer, public_key_path
 
-            signer = load_or_create_signer(signer_identity=args.signer_id or args.contributor_id)
+            if getattr(args, "release_sequence", None) is None or not getattr(args, "license", None):
+                print(
+                    "error: --sign produces a v2 release, which carries its --release-sequence N (strictly "
+                    "increasing per signer) and its --license SPDX-ID (published bundles: CDLA-Permissive-2.0)",
+                    file=sys.stderr,
+                )
+                return 2
+            release = SignedRelease(
+                signer=load_or_create_signer(signer_identity=args.signer_id or args.contributor_id),
+                release_sequence=args.release_sequence,
+                license=args.license,
+            )
 
         manifest = compose_bundle(
             nac_state=nac_state,
@@ -221,7 +232,8 @@ def _run_export(args: argparse.Namespace) -> int:
             domain=args.domain,
             apply_identity_filter=not args.no_identity_filter,
             identity_threshold=args.identity_threshold,
-            signer=signer,
+            release=release,
+            license=None if release is not None else getattr(args, "license", None),
             encoder_provenance=ec_encoder_provenance,
             body_ref=body_ref,
             affordance_namespace=args.affordance_namespace,
@@ -257,9 +269,11 @@ def _run_export(args: argparse.Namespace) -> int:
             else ""
         )
     )
-    if signer is not None:
+    if release is not None:
         print(
-            f"  signed:      ed25519, claimed signer {manifest.get('signer_identity')!r} (unverified here)\n"
+            f"  signed:      v2 release {manifest.get('release_sequence')} ({manifest.get('license')}), "
+            f"claimed signer {manifest.get('signer_identity')!r} (unverified here), "
+            f"{len((manifest.get('entry_index') or {}).get('entries', []))} indexed entries\n"
             f"  public key:  {public_key_path()} (share this so receivers can --trust-key)"
         )
     if body_ref is None:
@@ -843,6 +857,36 @@ def _run_inspect(args: argparse.Namespace) -> int:
         return 2
 
     print(json.dumps(manifest, indent=2, sort_keys=True))
+    if getattr(args, "entries", False):
+        return _print_entries(bundle_path, manifest)
+    return 0
+
+
+def _print_entries(bundle_path: Path, manifest: dict) -> int:
+    """Project every entry of ANY bundle (unsigned gated evidence included) and print its digest, so a
+    published release's entries can be checked against the bundle it was built from
+    (docs/plans/oasis_entry_index_v2.md). For a v2 release, also says whether its signed index agrees."""
+    import zipfile
+
+    from maxim.hivemind.entry_index import EntryIndexError, build_index
+
+    contents = manifest.get("contents") or {}
+    try:
+        with zipfile.ZipFile(bundle_path) as zf:
+            nac = json.loads(zf.read(contents["nac"]["file"])) if "nac" in contents else None
+            ec = json.loads(zf.read(contents["ec"]["file"])) if "ec" in contents else None
+        index = build_index(nac, (ec or {}).get("substrate_nodes"))
+    except (EntryIndexError, KeyError, ValueError) as exc:
+        print(f"error: cannot project entries: {exc}", file=sys.stderr)
+        return 2
+    print(f"entries: {len(index['entries'])}")
+    for entry in index["entries"]:
+        print(f"  entry {entry['id']} {entry['modality']} {entry['digest']}")
+    signed = manifest.get("entry_index")
+    if signed is not None:
+        agrees = signed.get("entries") == index["entries"]
+        print(f"signed index: {'matches the slices' if agrees else 'DIFFERS from the slices'}")
+        return 0 if agrees else 1
     return 0
 
 
@@ -935,7 +979,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Compose a RELEASE from merged contributions: re-author every link/node as yours "
-            "(source=local, no contributor list) instead of exporting only your own learning. "
+            "(stamped with your contributor id) instead of exporting only your own learning. "
             "Requires --sign: the release's signature carries the provenance."
         ),
     )
@@ -943,6 +987,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--signer-id",
         default=None,
         help="signer_identity written to the manifest (defaults to --contributor-id).",
+    )
+    p_export.add_argument(
+        "--release-sequence",
+        type=int,
+        default=None,
+        help="With --sign: this release's place in the signer's sequence (strictly increasing, >= 1).",
+    )
+    p_export.add_argument(
+        "--license",
+        default=None,
+        help="SPDX license id the bundle is published under (required with --sign; e.g. CDLA-Permissive-2.0).",
     )
     p_export.set_defaults(func=_run_export)
 
@@ -1085,6 +1140,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_inspect = sub.add_parser("inspect", help="Print the bundle manifest without extracting")
     p_inspect.add_argument("input", help="Path to the .zip bundle")
+    p_inspect.add_argument(
+        "--entries",
+        action="store_true",
+        help="project and print every entry's digest (any bundle; a v2 release is checked against its index)",
+    )
     p_inspect.set_defaults(func=_run_inspect)
 
     p_keygen = sub.add_parser(

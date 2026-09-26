@@ -64,6 +64,28 @@ but dims alone cannot distinguish a 384-dim fallback from a real 384-dim model.
 - **`ed25519` validated since 1.2; the rest documentation-only.** `hivemind/signing.py` + `hivemind/bundle.py::verify_bundle_signature` implement and verify `ed25519`; every other listed algorithm and reserved prefix still has no validator and is refused as unverifiable when `--require-signed` is set (unknown → refuse, above). Through 1.1 no code path read, wrote, or validated these fields beyond round-tripping the manifest.
 - **`signer_identity` vs `contributor_id`.** `contributor_id` is the free-form, producer-controlled provenance string (per-link / per-node, set at compose time). `signer_identity` is reserved for the *cryptographically attested* identity a 1.1+ verifier checks against a trust anchor. They are intentionally separate so a verified signer can be required to match the claimed contributor. Like `contributor_id`, `signer_identity` shares the reserved `_*` namespace discipline used across the Hivemind layer (see [`hivemind/merge.py`](../../src/maxim/hivemind/merge.py) `_validate_source`): a 1.1+ implementer must NOT reuse an existing sentinel such as `_consensus` (which already means "aggregated across contributors" in merge provenance) or `_identity` to express a multi-signer or attested-identity concept — pick a fresh, distinct value.
 
+## Release format v2 (bundle schema 3)
+
+A **signed** bundle is a release (`maxim substrate export --sign --release-sequence N --license SPDX`):
+
+- **`signature.json`** (a ZIP member): `{"signature_scheme": 2, "signature_algorithm": "ed25519",
+  "signature": "<base64>"}`. It signs the raw, uncompressed bytes of **every other member**, ordered by
+  UTF-8 name, each framed with an 8-byte big-endian length, after the domain tag `maxim-bundle-v2`. So
+  the manifest is signed as bytes: nothing is written after signing, and a member added later fails.
+- **Signed manifest fields:** `signer_identity`, `release_sequence` (an int, 1 ≤ n ≤ 2^53−1, strictly
+  increasing per signer), `license` (an SPDX id; published bundles use `CDLA-Permissive-2.0`), and
+  `entry_index` (`{"version": 1, "entries": [{"id", "modality", "digest"}, ...]}`).
+- **An entry** is one situation cluster: its EC node (if the bundle has one) plus the NAc rows keyed by
+  its id (`cluster_fear`, `cluster_reward_bias`, `cluster_reward_source`) and the inherent markers on
+  them. Its digest is `sha256` of the RFC 8785 (JCS) serialization of that projection; `source` /
+  `contributors` are left out, so the same entry from two exporters has one digest. `maxim substrate
+  inspect --entries <bundle>` prints every entry's digest for any bundle.
+- **Member names** are `[A-Za-z0-9._-]`, no duplicates; a manifest may not declare `signature.json` as a
+  slice. NAc keys ship with the agent segment `_agent`; ingest re-keys them to `--receiver-agent-id`,
+  which it therefore requires for a release.
+- **Legacy v1** (schema ≤ 2, the signature in the manifest) still verifies until 2.0, against the
+  manifest as stored. An unsigned bundle carries no signature fields at all.
+
 ## Provenance at export
 
 A bundle's links and EC nodes carry `source` / `contributors`. A receiver accepts only the manifest's

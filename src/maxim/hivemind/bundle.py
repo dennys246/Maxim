@@ -69,6 +69,7 @@ from __future__ import annotations
 import contextlib
 import copy
 import datetime as _dt
+import hashlib
 import io
 import json
 import logging
@@ -76,6 +77,7 @@ import os
 import re
 import zipfile
 from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -85,19 +87,30 @@ from maxim.hivemind.identity import (
     is_identity_bearing,
 )
 from maxim.hivemind.merge import NAC_KEY_SEP, NODE_ID_CHARSET, _merge_link_pair, _merge_welford, _validate_source
-from maxim.hivemind.signing import SIGNATURE_ALGORITHM, bundle_signing_payload, verify_payload
+from maxim.hivemind.entry_index import EntryIndexError, build_index, normalize_agent_segment, verify_index
+from maxim.hivemind.signing import (
+    SIGNATURE_ALGORITHM,
+    SIGNATURE_MEMBER,
+    SIGNATURE_SCHEME_V2,
+    SignedRelease,
+    bundle_signing_payload,
+    bundle_signing_payload_v2,
+    validate_license,
+    validate_release_sequence,
+    verify_payload,
+)
 from maxim.utils.atomic_io import atomic_write_text
 from maxim.utils.format_version import FORMAT_VERSION, check_format_version
 
 if TYPE_CHECKING:
-    from maxim.hivemind.signing import BundleSigner
+    pass
 
 logger = logging.getLogger(__name__)
 
 # Schema version for the bundle envelope itself. Separate from the
 # bio-system payload ``_format_version`` — bumping this would require
 # a migration registered alongside the bump.
-BUNDLE_SCHEMA_VERSION: int = 2
+BUNDLE_SCHEMA_VERSION: int = 3
 
 # Bundle-level kind marker for the manifest.
 BUNDLE_KIND: str = "substrate_bundle"
@@ -158,6 +171,19 @@ def _v1_to_v2_typed_bundle(manifest: dict[str, Any]) -> dict[str, Any]:
     out.setdefault("affordance_namespace", None)
     out.setdefault("capability_map", {})
     out["schema_version"] = 2
+    return out
+
+
+@register_bundle_migration(2)
+def _v2_to_v3_signed_releases(manifest: dict[str, Any]) -> dict[str, Any]:
+    """v2 → v3: the release format v2 (docs/plans/oasis_entry_index_v2.md) — a v2 manifest gains nothing.
+
+    A v2 manifest's signature fields (if any) are a v1 signature over the manifest AS STORED: verify
+    before migrating (``verify_bundle_zip`` reads the raw manifest), because this migration rewrites
+    ``schema_version``, which that signature covers.
+    """
+    out = dict(manifest)
+    out["schema_version"] = 3
     return out
 
 
@@ -723,10 +749,8 @@ def compose_bundle(
     domain: str | None = None,
     apply_identity_filter: bool = True,
     identity_threshold: int = _DEFAULT_BUNDLE_IDENTITY_THRESHOLD,
-    signature: str | None = None,
-    signature_algorithm: str | None = None,
-    signer_identity: str | None = None,
-    signer: BundleSigner | None = None,
+    release: SignedRelease | None = None,
+    license: str | None = None,
     encoder_provenance: dict[str, Any] | None = None,
     body_ref: str | None = None,
     affordance_namespace: str | None = None,
@@ -768,19 +792,14 @@ def compose_bundle(
         :func:`maxim.hivemind.identity.is_identity_bearing` when
         filtering. Default 2 — bundle-stricter than the heuristic's
         default of 1, per PR C's game-substrate fold.
-    signature, signature_algorithm
-        Reserved slots — populate at the caller's discretion. This
-        module does NOT compute signatures and does NOT validate
-        them at extract time. Default ``None`` / ``None``. Recognized
-        ``signature_algorithm`` values are published in
-        ``docs/user/hivemind_bundle_format.md`` (the 1.2 P2P verifier
-        vocabulary); the registry is documentation-only at 1.0.
-    signer_identity
-        Reserved slot (CC13 auth format-freeze) — the "who claims to
-        have signed this" string, parallel to ``contributor_id``.
-        Always ``None`` at 1.0; reserved so 1.1+ bundle verification
-        can bind a verified identity to ``contributor_id`` without
-        retrofitting the manifest shape. NOT validated here.
+    release
+        A :class:`~maxim.hivemind.signing.SignedRelease` makes this a SIGNED v2 release
+        (docs/plans/oasis_entry_index_v2.md): the NAc agent segment is normalized, the manifest
+        carries ``signer_identity`` / ``release_sequence`` / ``license`` / ``entry_index``, and a
+        detached ``signature.json`` signs every other member's raw bytes. ``None`` = unsigned.
+    license
+        An unsigned bundle's license (SPDX id), or ``None`` (the default: signing is where terms are
+        required). A release carries its own, so passing both is refused.
     encoder_provenance
         Encode-time encoder stamps from the source EC payload
         (``ec.json``'s ``encoder_provenance`` key — recorded by the
@@ -816,14 +835,22 @@ def compose_bundle(
     # Provenance first (see "Provenance at export"): an agent ships only its own learning unless
     # this is RELEASE composition (``reauthor=True``), which re-stamps every row as the author's --
     # and a release is SIGNED, enforced here, not only in the CLI.
-    if reauthor and signer is None and signature is None:
-        raise ValueError("reauthor=True composes a release, and a release must be signed: pass signer=")
+    if reauthor and release is None:
+        raise ValueError("reauthor=True composes a release, and a release must be signed: pass release=")
+    if release is not None and license is not None:
+        raise ValueError("a release carries its license in release=; do not also pass license=")
+    if license is not None:
+        validate_license(license)
     nac_state, ec_substrate_nodes = provenance_for_export(
         nac_state, ec_substrate_nodes, contributor_id=contributor_id, reauthor=reauthor
     )
 
     if nac_state is not None:
         filtered_nac = dict(nac_state)
+        if release is not None:
+            # A release ships one agent's learning under a fixed agent token (the receiver re-keys it):
+            # local agent ids never ship, and two rows can never collapse onto one key.
+            filtered_nac = normalize_agent_segment(filtered_nac)
         if apply_identity_filter:
             filtered_links = filter_identity_bearing_links(
                 filtered_nac.get("links", {}) or {},
@@ -887,9 +914,7 @@ def compose_bundle(
             "observed_embedding_dims": observed_embedding_dims,
             "recorded": _redact_paths_in_provenance(encoder_provenance),
         },
-        "signature": signature,
-        "signature_algorithm": signature_algorithm,
-        "signer_identity": signer_identity,
+        "license": release.license if release is not None else license,
         # Gate 7 (typed bundles). `body_ref` is the body this substrate was
         # learned on; a receiver checks IT via `assert_bundle_body_compatible`
         # and REFUSES a mismatch, converting a silent cross-body miss (D43
@@ -908,19 +933,29 @@ def compose_bundle(
         "capability_map": dict(capability_map or {}),
     }
 
-    # Slice A (1.2 P2P): compute an ed25519 signature over the sig-excluded
-    # manifest + the raw slice bytes, then populate the reserved slots. Done
-    # AFTER the manifest is otherwise final so the signed payload is stable;
-    # `bundle_signing_payload` drops the three signature fields either way.
-    if signer is not None:
-        if signature is not None or signature_algorithm is not None:
-            raise ValueError("pass EITHER signer (to compute a signature) OR an explicit signature, not both")
-        payload = bundle_signing_payload(manifest, bundle_contents)
-        manifest["signature"] = signer.sign_payload(payload)
-        manifest["signature_algorithm"] = SIGNATURE_ALGORITHM
-        manifest["signer_identity"] = signer.signer_identity
+    # Release format v2: the identity, the sequence and the entry index are MANIFEST fields, so the
+    # detached signature over the raw member bytes covers them (no field is written after signing).
+    if release is not None:
+        manifest["signer_identity"] = release.signer.signer_identity
+        manifest["release_sequence"] = release.release_sequence
+        manifest["entry_index"] = build_index(
+            json.loads(bundle_contents["nac.json"]) if "nac.json" in bundle_contents else None,
+            json.loads(bundle_contents["ec.json"])["substrate_nodes"] if "ec.json" in bundle_contents else None,
+        )
 
     manifest_json = json.dumps(manifest, indent=2, sort_keys=True, default=str)
+    members: dict[str, bytes] = {"manifest.json": manifest_json.encode("utf-8")}
+    members.update({name: content.encode("utf-8") for name, content in bundle_contents.items()})
+    if release is not None:
+        members[SIGNATURE_MEMBER] = json.dumps(
+            {
+                "signature_scheme": SIGNATURE_SCHEME_V2,
+                "signature_algorithm": SIGNATURE_ALGORITHM,
+                "signature": release.signer.sign_payload(bundle_signing_payload_v2(members)),
+            },
+            indent=2,
+            sort_keys=True,
+        ).encode("utf-8")
 
     # Atomic write via tmp + os.replace. Zip writing is single-shot;
     # if any step raises we tear down the tmp file.
@@ -930,9 +965,8 @@ def compose_bundle(
 
     try:
         with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("manifest.json", manifest_json)
-            for filename, content in bundle_contents.items():
-                zf.writestr(filename, content)
+            for name, data in members.items():
+                zf.writestr(name, data)
         os.replace(tmp_path, output_path)
     except Exception:
         if tmp_path.exists():
@@ -1000,6 +1034,238 @@ def verify_bundle_signature_parts(
     return True, f"verified ed25519 signature from {signer!r}"
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# Release format v2 verification (docs/plans/oasis_entry_index_v2.md)
+# ─────────────────────────────────────────────────────────────────────────
+
+#: A v2 bundle member name: plain ASCII, no paths, no case games, no cp437/UTF-8 name divergence.
+_MEMBER_NAME = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+#: The index cap a verifier applies by default (the ingest V6 node cap).
+_DEFAULT_MAX_ENTRIES = 50_000
+
+_V1_DEPRECATION_WARNED = False
+
+
+@dataclass(frozen=True)
+class BundleVerification:
+    """The outcome of :func:`verify_bundle_zip`. Runtime-ephemeral (returned, never persisted as-is).
+
+    ``payload_digest`` is the signed payload's sha256 -- a release's identity for dedup and
+    equivocation (stable across re-zips); ``signer_key`` the hex of the decoded public key that
+    verified it; ``entry_digests`` the recomputed ``{entry id: digest}`` of a v2 release.
+    """
+
+    ok: bool
+    reason: str
+    scheme: int | None = None
+    payload_digest: str | None = None
+    signer_identity: str | None = None
+    signer_key: str | None = None
+    release_sequence: int | None = None
+    license: str | None = None
+    entry_digests: dict[str, str] = field(default_factory=dict)
+
+
+def _strict_json(raw: bytes, what: str) -> Any:
+    """Parse JSON refusing duplicate keys and non-finite numbers (two parsers must never disagree)."""
+
+    def no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for k, v in pairs:
+            if k in out:
+                raise ValueError(f"{what}: duplicate key {k!r}")
+            out[k] = v
+        return out
+
+    def no_constants(name: str) -> Any:
+        raise ValueError(f"{what}: non-finite number {name}")
+
+    return json.loads(raw.decode("utf-8"), object_pairs_hook=no_duplicates, parse_constant=no_constants)
+
+
+def _key_bytes(value: Any) -> bytes | None:
+    import base64
+    import binascii
+
+    try:
+        return base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError, TypeError):
+        return None
+
+
+def _declared_slice_files(manifest: Mapping[str, Any]) -> dict[str, str]:
+    contents = manifest.get("contents") or {}
+    if not isinstance(contents, Mapping):
+        return {}
+    return {
+        name: meta["file"]
+        for name, meta in contents.items()
+        if isinstance(meta, Mapping) and isinstance(meta.get("file"), str)
+    }
+
+
+def verify_bundle_zip(
+    zf: zipfile.ZipFile,
+    *,
+    trusted_keys: Mapping[str, str],
+    accept_v1: bool = True,
+    max_entries: int = _DEFAULT_MAX_ENTRIES,
+) -> BundleVerification:
+    """Verify an open bundle ZIP -- reading the manifest AS STORED, before any envelope migration.
+
+    Scheme v2 (a ``signature.json`` member): the detached signature over every other member's raw
+    bytes, the signed ``signer_identity`` / ``release_sequence`` / ``license``, and the entry index
+    against the slices. Scheme v1 (signature fields in a schema <= 2 manifest): verified as before,
+    only when ``accept_v1``, with a deprecation warning. Never raises on bad input -- every failure
+    is ``ok=False`` with a reason.
+    """
+    infos = zf.infolist()
+    names = [i.filename for i in infos]
+    if len(names) != len(set(names)):
+        return BundleVerification(False, "duplicate ZIP member names (a reader could see different bytes)")
+    bad = [n for n in names if not _MEMBER_NAME.match(n)]
+    if bad:
+        return BundleVerification(False, f"malformed member name(s) {bad[:3]}")
+    if "manifest.json" not in names:
+        return BundleVerification(False, "no manifest.json")
+    try:
+        raw = _strict_json(zf.read("manifest.json"), "manifest.json")
+    except (ValueError, UnicodeDecodeError) as exc:
+        return BundleVerification(False, f"manifest.json is not strict JSON: {exc}")
+    if not isinstance(raw, dict):
+        return BundleVerification(False, "manifest.json is not an object")
+    files = _declared_slice_files(raw)
+
+    if SIGNATURE_MEMBER in names:
+        return _verify_v2(zf, names, raw, files, trusted_keys=trusted_keys, max_entries=max_entries)
+    if raw.get("signature"):
+        return _verify_v1(zf, names, raw, files, trusted_keys=trusted_keys, accept_v1=accept_v1)
+    return BundleVerification(False, "bundle carries no signature")
+
+
+def _trusted_signer(signer: Any, trusted_keys: Mapping[str, str]) -> tuple[str | None, str]:
+    """``(key, "")`` for a trusted, un-aliased signer; ``(None, reason)`` otherwise."""
+    if not isinstance(signer, str) or signer not in trusted_keys:
+        return None, f"signer_identity {signer!r} is not among the receiver's trusted keys {sorted(trusted_keys)}"
+    signer_key = _key_bytes(trusted_keys[signer])
+    aliases = sorted(
+        i for i, k in trusted_keys.items() if i != signer and signer_key is not None and _key_bytes(k) == signer_key
+    )
+    if aliases:
+        return None, (
+            f"the key trusted for {signer!r} is also trusted as {aliases}: one key under two identities "
+            "cannot say which one signed (register each key once)"
+        )
+    return trusted_keys[signer], ""
+
+
+def _verify_v2(
+    zf: zipfile.ZipFile,
+    names: list[str],
+    raw: dict[str, Any],
+    files: dict[str, str],
+    *,
+    trusted_keys: Mapping[str, str],
+    max_entries: int,
+) -> BundleVerification:
+    try:
+        sig_doc = _strict_json(zf.read(SIGNATURE_MEMBER), SIGNATURE_MEMBER)
+    except (ValueError, UnicodeDecodeError) as exc:
+        return BundleVerification(False, f"{SIGNATURE_MEMBER} is not strict JSON: {exc}")
+    if not isinstance(sig_doc, dict):
+        return BundleVerification(False, f"{SIGNATURE_MEMBER} is not an object")
+    scheme = sig_doc.get("signature_scheme")
+    if isinstance(scheme, bool) or scheme != SIGNATURE_SCHEME_V2:
+        return BundleVerification(False, f"unknown signature_scheme {scheme!r} (refused, never read as v1)")
+    if sig_doc.get("signature_algorithm") != SIGNATURE_ALGORITHM:
+        return BundleVerification(False, f"unsupported signature_algorithm {sig_doc.get('signature_algorithm')!r}")
+    if raw.get("schema_version") != 3:
+        return BundleVerification(False, f"a v2 signature on a schema {raw.get('schema_version')!r} manifest")
+    if SIGNATURE_MEMBER in files.values():
+        return BundleVerification(False, f"the manifest declares {SIGNATURE_MEMBER} as a slice")
+    signer = raw.get("signer_identity")
+    key, reason = _trusted_signer(signer, trusted_keys)
+    if key is None:
+        return BundleVerification(False, reason, scheme=2)
+    payload = bundle_signing_payload_v2({n: zf.read(n) for n in names})
+    if not verify_payload(payload, str(sig_doc.get("signature")), key):
+        return BundleVerification(False, f"ed25519 signature does not verify for signer {signer!r}", scheme=2)
+    digest = hashlib.sha256(payload).hexdigest()
+    try:
+        sequence = validate_release_sequence(raw.get("release_sequence"))
+        license = validate_license(raw.get("license"))
+    except ValueError as exc:
+        return BundleVerification(False, f"signed manifest field invalid: {exc}", scheme=2, payload_digest=digest)
+    try:
+        nac = _strict_json(zf.read(files["nac"]), "nac.json") if "nac" in files else None
+        ec = _strict_json(zf.read(files["ec"]), "ec.json") if "ec" in files else None
+        nodes = ec.get("substrate_nodes") if isinstance(ec, Mapping) else None
+        entry_digests = verify_index(raw.get("entry_index"), nac, nodes, max_entries=max_entries)
+    except (EntryIndexError, ValueError, UnicodeDecodeError, KeyError) as exc:
+        return BundleVerification(False, f"entry index refused: {exc}", scheme=2, payload_digest=digest)
+    return BundleVerification(
+        True,
+        f"verified v2 release {sequence} from {signer!r}",
+        scheme=2,
+        payload_digest=digest,
+        signer_identity=signer,
+        signer_key=(_key_bytes(key) or b"").hex(),
+        release_sequence=sequence,
+        license=license,
+        entry_digests=entry_digests,
+    )
+
+
+def _verify_v1(
+    zf: zipfile.ZipFile,
+    names: list[str],
+    raw: dict[str, Any],
+    files: dict[str, str],
+    *,
+    trusted_keys: Mapping[str, str],
+    accept_v1: bool,
+) -> BundleVerification:
+    global _V1_DEPRECATION_WARNED
+    if not accept_v1:
+        return BundleVerification(False, "a v1 (legacy) signature, and this Oasis accepts v2 releases only", scheme=1)
+    version = raw.get("schema_version")
+    if isinstance(version, bool) or not isinstance(version, int) or version > 2:
+        return BundleVerification(False, f"a v1 signature on a schema {version!r} manifest (downgrade)", scheme=1)
+    slices = {f: zf.read(f).decode("utf-8") for f in files.values() if f in names}
+    ok, reason = verify_bundle_signature_parts(raw, slices, trusted_keys=trusted_keys)
+    if not ok:
+        return BundleVerification(False, reason, scheme=1)
+    if not _V1_DEPRECATION_WARNED:
+        _V1_DEPRECATION_WARNED = True
+        logger.warning("verified a v1 (legacy) bundle signature -- v1 is refused from 2.0; re-sign as a v2 release")
+    signer = raw.get("signer_identity")
+    if not isinstance(signer, str) or signer not in trusted_keys:  # verify_bundle_signature_parts checked it
+        return BundleVerification(False, f"v1 signer {signer!r} is not trusted", scheme=1)
+    return BundleVerification(
+        True,
+        reason,
+        scheme=1,
+        payload_digest=hashlib.sha256(bundle_signing_payload(raw, slices)).hexdigest(),
+        signer_identity=signer,
+        signer_key=(_key_bytes(trusted_keys[signer]) or b"").hex(),
+    )
+
+
+def bundle_signature_scheme(bundle_path: str | Path) -> int | None:
+    """Which signing scheme a bundle CLAIMS -- ``2`` (a ``signature.json`` member), ``1`` (signature
+    fields in the manifest), ``None`` (unsigned). A presence check for routing only; it verifies
+    nothing (``verify_bundle_zip`` does)."""
+    with zipfile.ZipFile(bundle_path, "r") as zf:
+        if SIGNATURE_MEMBER in zf.namelist():
+            return SIGNATURE_SCHEME_V2
+        try:
+            raw = json.loads(zf.read("manifest.json").decode("utf-8"))
+        except (KeyError, ValueError, UnicodeDecodeError):
+            return None
+    return 1 if isinstance(raw, dict) and raw.get("signature") and raw.get("signature_algorithm") else None
+
+
 def verify_bundle_signature(
     bundle_path: str | Path,
     *,
@@ -1011,16 +1277,9 @@ def verify_bundle_signature(
     reads the manifest and the RAW declared-slice bytes from the ZIP.
     Returns ``(verified, reason)``.
     """
-    manifest = read_bundle_manifest(bundle_path)
-    contents = manifest.get("contents", {}) or {}
-    slices: dict[str, str] = {}
     with zipfile.ZipFile(bundle_path, "r") as zf:
-        namelist = set(zf.namelist())
-        for meta in contents.values():
-            file_name = meta.get("file") if isinstance(meta, dict) else None
-            if isinstance(file_name, str) and file_name in namelist:
-                slices[file_name] = zf.read(file_name).decode("utf-8")
-    return verify_bundle_signature_parts(manifest, slices, trusted_keys=trusted_keys)
+        result = verify_bundle_zip(zf, trusted_keys=trusted_keys)
+    return result.ok, result.reason
 
 
 def _safe_join(output_dir: Path, name: str) -> Path:
@@ -1176,12 +1435,15 @@ __all__ = [
     "BUNDLE_SCHEMA_VERSION",
     "BundleBodyMismatch",
     "BundleBodyUnverifiable",
+    "BundleVerification",
     "assert_bundle_body_compatible",
+    "bundle_signature_scheme",
     "compose_bundle",
     "extract_bundle",
     "isolated_bundle_migrations",
     "migrate_bundle_envelope",
     "read_bundle_manifest",
     "register_bundle_migration",
+    "verify_bundle_zip",
     "scrub_nac_state_for_bundle",
 ]

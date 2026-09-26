@@ -25,8 +25,9 @@ from maxim.hivemind.merge import NAC_KEY_SEP, NODE_ID_CHARSET
 from maxim.utils.optional_deps import require_optional_dependency
 
 #: The agent segment every NAc composite key carries in a v2 bundle. A receiver re-keys it to its own
-#: agent id at ingest (``merge.rekey_nac_state(to_agent_id=...)``), which is therefore mandatory.
-AGENT_TOKEN = "agent"
+#: agent id at ingest (``merge.rekey_nac_state(to_agent_id=...)``), which is therefore mandatory. In the
+#: reserved ``_`` namespace, so it can never be mistaken for a real agent's id.
+AGENT_TOKEN = "_agent"
 
 #: The NAc fields whose rows belong to a situation cluster (the ``cluster`` is the key's middle part).
 CLUSTER_FIELDS: tuple[str, ...] = ("cluster_fear", "cluster_reward_bias", "cluster_reward_source")
@@ -51,7 +52,8 @@ class EntryIndexError(ValueError):
 # ── agent-segment normalization (export side) ──────────────────────────────────────────────────
 
 
-def _agent_ids(nac: Mapping[str, Any]) -> set[str]:
+def agent_ids(nac: Mapping[str, Any]) -> set[str]:
+    """Every agent id a NAc state's composite keys name (the first segment)."""
     ids: set[str] = set()
     for field in _TRIPLE_FIELDS:
         for key in (nac.get(field) or {}).keys():
@@ -76,7 +78,7 @@ def normalize_agent_segment(nac: Mapping[str, Any]) -> dict[str, Any]:
     Refuses (``EntryIndexError``) a state holding rows for more than one local agent id: normalizing
     them would collapse two agents' rows onto one key, and a digest must never cover two values.
     """
-    ids = _agent_ids(nac)
+    ids = agent_ids(nac)
     if len(ids - {AGENT_TOKEN}) > 1:
         raise EntryIndexError(
             f"the NAc state holds rows for {len(ids)} agent ids {sorted(ids)}; a signed bundle is one agent's "
@@ -240,7 +242,7 @@ def verify_index(
         claimed[eid] = item
     if ids != sorted(ids):
         raise EntryIndexError("entry_index entries are not sorted by id")
-    agents = _agent_ids(nac or {})
+    agents = agent_ids(nac or {})
     if agents - {AGENT_TOKEN}:
         raise EntryIndexError(f"agent segment(s) {sorted(agents - {AGENT_TOKEN})} are not the token {AGENT_TOKEN!r}")
     actual = entries(nac, ec_nodes)
@@ -266,6 +268,7 @@ __all__ = [
     "EC_NODE_FIELDS",
     "INDEX_VERSION",
     "EntryIndexError",
+    "agent_ids",
     "build_index",
     "digest",
     "entries",

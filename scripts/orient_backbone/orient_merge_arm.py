@@ -201,6 +201,8 @@ def main() -> int:
     ap.add_argument("--save-merged", default=None, help="write the merged NAc here (loadable by live_3_learn)")
     ap.add_argument("--bundle", default=None, help="export the merged NAc as a substrate bundle zip")
     ap.add_argument("--contributor-id", default=None, help="bundle manifest contributor (required with --bundle)")
+    ap.add_argument("--release-sequence", type=int, default=None, help="with --bundle: this release's sequence (>= 1)")
+    ap.add_argument("--license", default=None, help="with --bundle: SPDX license id (e.g. CDLA-Permissive-2.0)")
     ap.add_argument("--domain", default="robotics-orient", help="bundle substrate-domain tag")
     ap.add_argument(
         "--body-ref",
@@ -332,18 +334,22 @@ def main() -> int:
         if not passed:
             print("[bundle] REFUSED — gauntlet failed; a queen-mind bundle ships only gauntlet-passed substrate.")
             return 1
-        if not args.contributor_id:
-            print("[bundle] --contributor-id is required with --bundle")
+        if not args.contributor_id or args.release_sequence is None or not args.license:
+            print("[bundle] --contributor-id, --release-sequence and --license are required with --bundle")
             return 2
         from maxim.hivemind.bundle import compose_bundle
-        from maxim.hivemind.signing import load_or_create_signer
+        from maxim.hivemind.signing import SignedRelease, load_or_create_signer
 
         bundle_path = os.path.expanduser(args.bundle)
         # A queen-mind bundle is RELEASE composition from a merge: re-authored and signed (the merged
         # links are "_consensus", which a receiver's V1 sweep refuses in a plain export).
         manifest = compose_bundle(
             reauthor=True,
-            signer=load_or_create_signer(signer_identity=args.contributor_id),
+            release=SignedRelease(
+                signer=load_or_create_signer(signer_identity=args.contributor_id),
+                release_sequence=args.release_sequence,
+                license=args.license,
+            ),
             nac_state=merged,
             ec_substrate_nodes=None,  # orient NAcs carry no EC state
             output_path=bundle_path,
