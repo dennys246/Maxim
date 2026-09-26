@@ -564,3 +564,63 @@ def test_a_contribution_records_the_algorithm_it_claims_not_a_constant(tmp_path)
     store = OasisStore(tmp_path / "oasis")
     store.accept_contribution(write_members(tmp_path / "c.zip", members).read_bytes(), source="10.0.0.1")
     assert store.list_contributions()[0]["signature_algorithm"] == "pkcs7"
+
+
+# ── final re-read ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_motor_parameter_segments_are_vocabulary_not_text(tmp_path):
+    """look_at:dy=<n>:dp=<n> (Reachy's real links) must not collapse into one redacted link."""
+    from tests.unit.test_hivemind_ingest import _link, _nac_state
+
+    a, b = _link(), _link()
+    a["event_signature"], b["event_signature"] = "look_at:dy=10:dp=-5", "look_at:dy=20:dp=0.5"
+    b["id"] = "l2"
+    nac = _nac_state(links={"look_at:dy=10:dp=-5": [a], "look_at:dy=20:dp=0.5": [b]})
+    with zipfile.ZipFile(_compose(tmp_path, signed=False, nac=nac)) as zf:
+        links = json.loads(zf.read("nac.json"))["links"]
+    assert sorted(links) == ["look_at:dy=10:dp=-5", "look_at:dy=20:dp=0.5"]
+
+
+@_needs_sign
+def test_a_resigned_release_whose_links_name_another_agent_does_not_verify(tmp_path):
+    """verify_index's token check covers links (no keyed rows needed): a links-only release re-signed with a
+    real agent id in a link is refused at verification, not admitted."""
+    from maxim.hivemind.bundle import compose_bundle, verify_bundle_zip
+    from maxim.hivemind.signing import UNCOUNTED, BundleSigner, SignedRelease
+    from tests.unit._signed_bundle_helpers import read_members, resign_v2, write_members
+
+    signer = BundleSigner.generate(signer_identity="queen-a")
+    out = tmp_path / "l.zip"
+    compose_bundle(
+        nac_state=_links_only_nac(),
+        ec_substrate_nodes=None,
+        output_path=out,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+        release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0", counter=UNCOUNTED),
+    )
+    members = read_members(out)
+    nac = json.loads(members["nac.json"])
+    nac["links"]["tool:probe"][0]["event_context"] = {"agent_id": "bob-local"}
+    members["nac.json"] = json.dumps(nac, indent=2, sort_keys=True).encode()
+    with zipfile.ZipFile(write_members(tmp_path / "bob.zip", resign_v2(members, signer))) as zf:
+        result = verify_bundle_zip(zf, trusted_keys={"queen-a": signer.public_key_b64}, accept_v1=False)
+    assert not result.ok and "bob-local" in result.reason
+
+
+def test_a_learned_bias_folded_into_an_inherent_one_loses_the_marker(tmp_path):
+    """Two tsigs that scrub to one key: the result stays inherent only if EVERY source was inherent."""
+    from maxim.hivemind.bundle import scrub_nac_state_for_bundle
+
+    inherent_key = f"a{S}n1{S}tool:use:a free text one"
+    learned_key = f"a{S}n1{S}tool:use:another free text"
+    state = {
+        "links": {},
+        "cluster_reward_bias": {inherent_key: 0.8, learned_key: -0.4},
+        "inherent_bias_keys": [inherent_key],
+    }
+    assert scrub_nac_state_for_bundle(state)["inherent_bias_keys"] == []
+    state["inherent_bias_keys"] = [inherent_key, learned_key]
+    assert scrub_nac_state_for_bundle(state)["inherent_bias_keys"] == [f"a{S}n1{S}tool:use"]

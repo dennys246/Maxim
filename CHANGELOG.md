@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `event_context.agent_id` is `_agent`, re-keyed to your agent at ingest, and a release whose links name
   another agent is refused (links count as agent-scoped data: a release ships only the exporter's own
   links, links-only releases included). A non-identifier event-signature segment ships as `redacted`
-  (a hallucinated tool name is model output) — this content scrub is unconditional, so a
+  (a hallucinated tool name is model output; `name=<number>` motor parameters are kept) — this content scrub is unconditional, so a
   `--no-identity-filter` backup no longer keeps a free-text signature verbatim. `context_factors` never
   ships; free-text `event_type` / `outcome_type` /
   link `domain` ship as `redacted` / `None`. Every manifest reader parses strictly (duplicate keys, NaN

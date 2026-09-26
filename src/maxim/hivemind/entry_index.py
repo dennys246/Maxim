@@ -72,6 +72,14 @@ def _list_field(nac: Mapping[str, Any], field: str) -> list[Any]:
 # ── agent-segment normalization (export side) ──────────────────────────────────────────────────
 
 
+def _link_agent(link: Any) -> str | None:
+    """A link's ``event_context.agent_id`` as an agent id, or ``None`` -- ONE reading for every caller (a
+    non-string or empty value names no agent)."""
+    context = link.get("event_context") if isinstance(link, Mapping) else None
+    agent = context.get("agent_id") if isinstance(context, Mapping) else None
+    return agent if isinstance(agent, str) and agent else None
+
+
 def _links_by_agent(nac: Mapping[str, Any]) -> list[tuple[str, str | None]]:
     """``(event signature, agent id | None)`` per causal link, the id from ``event_context.agent_id``."""
     out: list[tuple[str, str | None]] = []
@@ -82,9 +90,7 @@ def _links_by_agent(nac: Mapping[str, Any]) -> list[tuple[str, str | None]]:
         if not isinstance(bucket, list):
             raise EntryIndexError(f"links[{sig!r}] is not a list")
         for link in bucket:
-            context = link.get("event_context") if isinstance(link, Mapping) else None
-            agent = context.get("agent_id") if isinstance(context, Mapping) else None
-            out.append((str(sig), agent if isinstance(agent, str) else None))
+            out.append((str(sig), _link_agent(link)))
     return out
 
 
@@ -218,8 +224,7 @@ def normalize_agent_segment(nac: Mapping[str, Any], *, own_agent_id: str | None 
                 continue
             own_links = []
             for link in bucket:
-                context = link.get("event_context") if isinstance(link, Mapping) else None
-                agent = context.get("agent_id") if isinstance(context, Mapping) else None
+                agent = _link_agent(link)
                 if agent is not None and agent != own:
                     dropped += 1
                     continue

@@ -284,8 +284,11 @@ adapter's pre-merge review round, 2026-09-05):
     refused (links-only releases included); ingest re-keys the token to `receiver_agent_id`. An unsigned
     bundle's identifier-shaped donor agent id is left as before (re-keying it would change what the
     Exp 56/61 transfers predict); a non-identifier one is dropped by the scrub.
-  - **V4 (event signatures).** Any non-identifier segment of an event signature ships as `redacted`
+  - **V4 (event signatures).** A signature segment ships when it is an identifier or a `name=<number>`
+    motor parameter (`look_at:dy=<n>:dp=<n>`); any other segment ships as `redacted`
     (`tool:use:<free text>` still truncates to `tool:use`) — a hallucinated tool name is model output.
+    When scrubbed keys collide, the result keeps the inherent (safety-floor) marker only if EVERY
+    colliding key was inherent — a learned value never becomes decay-exempt by folding.
   Guard: `tests/unit/test_pre_freeze_fixes.py` (each proven by deletion).
 
 **Out of scope BY DECLARATION** (so absence is a decision, not an oversight):

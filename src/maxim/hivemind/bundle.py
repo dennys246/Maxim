@@ -389,7 +389,16 @@ def _scrub_event_signature(sig: str) -> str:
     # Every other signature is ``prefix:segment[:...]`` template vocabulary -- but a tool NAME is itself
     # model output when the LLM hallucinates one (a real state shipped ``tool:ps aux``). Any segment that
     # is not identifier-shaped ships as ``redacted``; the scrub's collision fold merges what now coincides.
-    return ":".join(part if _IDENTIFIER_TOKEN.match(part) else _REDACTED_TYPE for part in sig.split(":"))
+    return ":".join(part if _is_signature_segment(part) else _REDACTED_TYPE for part in sig.split(":"))
+
+
+#: A ``name=<number>`` signature segment -- motor templates write them (``look_at:dy=<n>:dp=<n>``,
+#: ``move:dx=..:dy=..:dz=..``); they are vocabulary, not text.
+_PARAM_SEGMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,31}=-?\d{1,12}(\.\d{1,12})?$")
+
+
+def _is_signature_segment(part: str) -> bool:
+    return bool(_IDENTIFIER_TOKEN.match(part) or _PARAM_SEGMENT.match(part))
 
 
 #: What a non-identifier ``event_type`` / ``outcome_type`` becomes in a bundle.
@@ -589,11 +598,21 @@ def scrub_nac_state_for_bundle(nac_state: dict[str, Any]) -> dict[str, Any]:
     # the re-key. Markers whose entry did not survive the scrub are dropped
     # (a marker naming an absent bias is the dangling-half shape).
     if "inherent_bias_keys" in nac_state:
+        marked = {str(k) for k in nac_state.get("inherent_bias_keys", []) or []}
+        # A scrubbed key keeps the inherent marker only when EVERY source key that folded into it was
+        # inherent: a learned value averaged into an inherent one must not become decay-exempt (the
+        # safety floor would be diluted by a learned bias it never admitted).
+        sources_by_new_key: dict[str, list[str]] = {}
+        for key in nac_state.get("cluster_reward_bias", {}) or {}:
+            aid, cid, tsig = key.split(_NAC_KEY_SEP, 2)
+            sources_by_new_key.setdefault(_NAC_KEY_SEP.join((aid, cid, _scrub_event_signature(tsig))), []).append(key)
         scrubbed_inherent: set[str] = set()
-        for key in nac_state.get("inherent_bias_keys", []) or []:
-            aid, cid, tsig = str(key).split(_NAC_KEY_SEP, 2)
+        for key in marked:
+            aid, cid, tsig = key.split(_NAC_KEY_SEP, 2)
             new_key = _NAC_KEY_SEP.join((aid, cid, _scrub_event_signature(tsig)))
-            if new_key in scrubbed["cluster_reward_bias"]:
+            if new_key in scrubbed["cluster_reward_bias"] and all(
+                source in marked for source in sources_by_new_key.get(new_key, [])
+            ):
                 scrubbed_inherent.add(new_key)
         scrubbed["inherent_bias_keys"] = sorted(scrubbed_inherent)
 
