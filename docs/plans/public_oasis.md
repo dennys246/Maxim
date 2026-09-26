@@ -150,6 +150,8 @@ Cheap, and all of it is owed regardless of whether Phase 1 ships.
    *(2026-09-25: design DECIDED — [oasis_entry_index_v2.md](oasis_entry_index_v2.md), after a two-lens
    design review; it also carries signing scheme v2 and the license field, and records the owner's
    item-3/4 decisions: license `CDLA-Permissive-2.0`, public ids, the privacy-read exemplar.)*
+   *(2026-09-25: BUILDING — PR A, the format + verification, shipped; PR B receiver state and PR C
+   producer/store remain.)*
 
 ### Phase 1 — publish only (entry: Phase 0 complete)
 

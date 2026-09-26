@@ -22,14 +22,17 @@ from maxim.utils.optional_deps import optional_dependency_available
 from tests.unit.test_hivemind_ingest import BODY, DONOR, _ingest, _link, _nac_state, _node
 
 _needs_crypto = pytest.mark.skipif(
-    not optional_dependency_available("cryptography"), reason="a release is signed: the [sign] extra"
+    not (optional_dependency_available("cryptography") and optional_dependency_available("rfc8785")),
+    reason="a release is signed: the [sign] extra",
 )
 
 
-def _signer():
-    from maxim.hivemind.signing import BundleSigner
+def _release():
+    from maxim.hivemind.signing import BundleSigner, SignedRelease
 
-    return BundleSigner.generate(signer_identity=DONOR)
+    return SignedRelease(
+        signer=BundleSigner.generate(signer_identity=DONOR), release_sequence=1, license="CDLA-Permissive-2.0"
+    )
 
 
 UPSTREAM = ("alice-private-id", "bob-private-id")
@@ -70,7 +73,7 @@ def _export(tmp_path: Path, *, reauthor: bool) -> Path:
         body_ref=BODY,
         apply_identity_filter=False,
         reauthor=reauthor,
-        signer=_signer() if reauthor else None,
+        release=_release() if reauthor else None,
     )
     return out
 
@@ -100,7 +103,7 @@ def test_a_release_reauthors_every_row_and_is_admitted_without_leaking_upstream_
     rows = [link for links in nac["links"].values() for link in links] + list(ec["substrate_nodes"].values())
     assert all(r["source"] == DONOR and r["contributors"] == [DONOR] for r in rows)
     assert not any(u in raw for u in UPSTREAM) and "_consensus" not in raw
-    _ingest(bundle, IngestionJournal(tmp_path / "j.json"))
+    _ingest(bundle, IngestionJournal(tmp_path / "j.json"), receiver_agent_id="receiver")
 
 
 @_needs_crypto
@@ -116,7 +119,7 @@ def test_a_purely_local_state_exports_unchanged_either_way(tmp_path):
             body_ref=BODY,
             apply_identity_filter=False,
             reauthor=reauthor,
-            signer=_signer() if reauthor else None,
+            release=_release() if reauthor else None,
         )
         shipped, ec, _ = _slices(out)
         assert shipped["links"]["tool:probe"][0]["source"] == DONOR and set(ec["substrate_nodes"]) == {"n1"}
@@ -186,3 +189,45 @@ def test_a_malformed_contributor_list_is_never_shipped(tmp_path, contributors):
         reauthor=False,
     )
     assert nac["links"] == {}
+
+
+@_needs_crypto
+def test_a_signed_export_of_several_agents_needs_agent_id_and_ships_only_its_rows(tmp_path, capsys, monkeypatch):
+    """`export --sign --agent-id` end to end through the CLI (the signer is stubbed so no key is minted
+    under ~/.maxim): several agents' rows refuse without it; with it, only that agent's rows ship."""
+    import maxim.hivemind.signing as signing
+    from maxim.hivemind.cli import run_substrate_subcommand
+
+    monkeypatch.setattr(
+        signing, "load_or_create_signer", lambda **_: signing.BundleSigner.generate(signer_identity=DONOR)
+    )
+    nac = _nac_state(
+        links={"tool:probe": [_link("tool:probe")]},
+        cluster_fear={
+            NAC_KEY_SEP.join(("aut", "n1", "drive:oxygen")): -0.5,
+            NAC_KEY_SEP.join(("other", "n2", "drive:oxygen")): -0.7,
+        },
+    )
+    session = tmp_path / "session"
+    session.mkdir()
+    (session / "aut_nac.json").write_text(json.dumps(nac))
+    (session / "aut_ec.json").write_text(json.dumps({"substrate_nodes": {"n1": _node()}}))
+    base = ["export", "--session", str(session), "--contributor-id", DONOR, "--no-identity-filter", "--sign"]
+    base += ["--release-sequence", "1", "--license", "CDLA-Permissive-2.0"]
+    assert run_substrate_subcommand([*base, str(tmp_path / "a.zip")]) == 2
+    assert "name which one is yours" in capsys.readouterr().err
+    assert run_substrate_subcommand([*base, "--agent-id", "aut", str(tmp_path / "b.zip")]) == 0
+    with zipfile.ZipFile(tmp_path / "b.zip") as zf:
+        fear = json.loads(zf.read("nac.json"))["cluster_fear"]
+    assert list(fear) == [NAC_KEY_SEP.join(("_agent", "n1", "drive:oxygen"))]
+
+
+def test_agent_id_needs_a_release(tmp_path):
+    with pytest.raises(ValueError, match="needs release="):
+        compose_bundle(
+            nac_state=None,
+            ec_substrate_nodes=None,
+            output_path=tmp_path / "x.zip",
+            contributor_id=DONOR,
+            agent_id="aut",
+        )

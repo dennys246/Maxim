@@ -184,7 +184,7 @@ def _run_pull(args: argparse.Namespace) -> int:
     import zipfile
 
     from maxim.hivemind import substrate_client as sc
-    from maxim.hivemind.bundle import read_bundle_manifest
+    from maxim.hivemind.bundle import bundle_signature_scheme, read_bundle_manifest
     from maxim.hivemind.cli import run_substrate_subcommand
     from maxim.hivemind.store import is_valid_release_id
     from maxim.utils import http
@@ -271,7 +271,9 @@ def _run_pull(args: argparse.Namespace) -> int:
                 continue
             # `signer` is attacker bytes; an unhashable value would raise on the
             # `in` test, so type-check before using it as a key.
-            queen_verified = bool(manifest.get("signature")) and isinstance(signer, str) and signer in queen_keys
+            queen_verified = (
+                bundle_signature_scheme(dest) is not None and isinstance(signer, str) and signer in queen_keys
+            )
             if not queen_verified:
                 if not policy["allow_unsigned"]:
                     print(
@@ -311,6 +313,7 @@ def _run_pull(args: argparse.Namespace) -> int:
                 policy=policy,
                 allow_unstamped_geometry=args.allow_unstamped_geometry,
                 apply=args.apply,
+                receiver_agent_id=args.receiver_agent_id,
             )
             rc = run_substrate_subcommand(argv)
             rc_final = rc_final or rc
@@ -328,6 +331,7 @@ def _build_ingest_argv(
     policy: dict,
     allow_unstamped_geometry: bool = False,
     apply: bool = False,
+    receiver_agent_id: str | None = None,
 ) -> list[str]:
     """Compose the ``substrate ingest`` argv that enforces this pull's trust policy.
 
@@ -358,6 +362,8 @@ def _build_ingest_argv(
                 argv += ["--inherent-trust", source]
     if allow_unstamped_geometry:
         argv.append("--allow-unstamped-geometry")
+    if receiver_agent_id:
+        argv += ["--receiver-agent-id", receiver_agent_id]
     if apply:
         argv.append("--apply")
     return argv
@@ -456,6 +462,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--allow-unstamped-geometry",
         action="store_true",
         help="admit EC nodes without a geometry stamp (legacy archives; passed through to ingest)",
+    )
+    p_pull.add_argument(
+        "--receiver-agent-id",
+        default=None,
+        help="your agent's id: a v2 release's NAc rows arrive under an agent token and re-key to it (required for v2)",
     )
     p_pull.add_argument("--apply", action="store_true", help="write the merge (default: dry run)")
     p_pull.set_defaults(func=_run_pull)

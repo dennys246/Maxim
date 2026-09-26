@@ -2,6 +2,47 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-09-25 — Oasis release format v2: detached signature, entry index, ordering, license
+
+Decision (design: [docs/plans/oasis_entry_index_v2.md](docs/plans/oasis_entry_index_v2.md); public_oasis
+Phase 0 item 7, landing before the item-2 format freeze):
+
+- **Signing scheme v2 is a DETACHED signature over raw member bytes.** A `signature.json` ZIP member
+  signs every other member's uncompressed bytes under the domain tag `maxim-bundle-v2` — no canonical
+  JSON in what is signed. The manifest (bundle schema **3**) carries `signer_identity`,
+  `release_sequence`, `license` and `entry_index`, so all of them are inside the signature.
+- **Only a signed release is schema 3.** An unsigned bundle stays schema 2: it needs nothing schema 3
+  added, so 1.3.x peers and Oasis servers keep reading contributions, and they refuse only what they
+  cannot verify. The schema number says what a reader must understand.
+- **v1 is legacy.** A schema ≤ 2 bundle signed under v1 still verifies — the manifest is verified AS
+  STORED, before the envelope migration (which rewrites a field v1 signs). A v1 signature on a schema-3
+  manifest is refused as a downgrade; an unknown scheme is refused, never read as v1. The verifier
+  takes `accept_v1` as a REQUIRED keyword; the per-Oasis registry flag (new registrations refuse v1)
+  lands with the receiver-state change (item 7 PR B). v1 is removed at 2.0.
+- **An entry is one situation cluster**, and its digest is sha256 of the RFC 8785 (JCS) serialization of
+  its projection. The verifier refuses any situation state the signed index does not cover.
+- **Releases are additive, so the sequence ORDERS them; it does not gate them.** A `(signing key,
+  sequence)` pair binds to one signed payload (a second payload claiming it is equivocation); dedup
+  keys on the signed-payload digest. There is no "refuse below the highest seen" rule. The payload
+  covers `created_at`, so re-composing the same sequence is a NEW payload: the producer's counter
+  advances on every compose, not every publish (item 7 PR C).
+- **Every signed release carries a license** (SPDX); published bundles use `CDLA-Permissive-2.0`.
+- **A release ships one agent's learning, and a receiver keeps only rows it can read** (owner, on the
+  PR A review). NAc reads filter on the reader's agent id. The exporter keeps its own agent's rows
+  (`--agent-id` when several), drops the rest with a count, and ships them under a fixed token
+  (`_agent`), so local agent ids never ship and two agents' rows can never collapse onto one key. A
+  receiver MUST re-key the situation rows to its own agent id (ingest refuses a token-keyed bundle
+  without one) and drops the non-situation rows (percept valences, outcome stats, node-keyed bias)
+  filed under another agent, which the receiving agent could never read. Making those transfer is a behaviour change,
+  deferred on a trigger: [docs/plans/deferred/transfer_non_situation_nac_rows.md](docs/plans/deferred/transfer_non_situation_nac_rows.md).
+
+Why: the index is what lets social_referencing select and admit Queen material per entry without a
+server-cut slice. The detached raw-bytes signature ends the v1 canonicalization hazards and lets a
+non-Python verifier check a release. The two-lens design review and its re-read are in
+[docs/plans/reviews/oasis_entry_index_v2/](docs/plans/reviews/oasis_entry_index_v2/). The per-entry
+journal and supersession (reserved in the format) are social_referencing S1's, with its own amendment
+to the ingest contract §1.
+
 ## 2026-09-19 — Decision point 4 re-opened for PUBLICATION only: a project-hosted Oasis that publishes and never accepts
 
 Decision:

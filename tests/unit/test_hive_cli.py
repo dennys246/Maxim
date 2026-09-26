@@ -13,10 +13,13 @@ from maxim.hivemind.hive_cli import run_hive_subcommand
 from maxim.hivemind.registry import HiveRegistry, HiveRegistryError
 from maxim.hivemind.store import OasisStore
 from maxim.hivemind.bundle import compose_bundle
+from maxim.hivemind.signing import SignedRelease
 from maxim.utils.optional_deps import optional_dependency_available
 
-_HAS_CRYPTO = optional_dependency_available("cryptography")
-_needs_crypto = pytest.mark.skipif(not _HAS_CRYPTO, reason="signed bundles need the [sign] extra (cryptography)")
+_HAS_CRYPTO = optional_dependency_available("cryptography") and optional_dependency_available("rfc8785")
+_needs_crypto = pytest.mark.skipif(
+    not _HAS_CRYPTO, reason="signed bundles need the [sign] extra (cryptography + rfc8785)"
+)
 
 _EC_NODES = {"node-1": {"modality": "world", "embedding": [0.1, 0.2, 0.3], "domain": None}}
 
@@ -249,6 +252,18 @@ class TestIngestArgvConstruction:
         assert argv[argv.index("--trust") + 1] == "peer-7"
         assert "--inherent-trust" not in argv  # default: safety floor refused
 
+    def test_the_receiver_agent_id_reaches_ingest_through_the_parser(self):
+        """`hive pull --receiver-agent-id` is parsed AND forwarded -- a v2 release is refused at ingest without it."""
+        from maxim.hivemind.hive_cli import _build_parser
+
+        args = _build_parser().parse_args(
+            ["pull", "--from", "oasis-a", "--session", "/s", "--receiver-body", "b", "--receiver-agent-id", "aut"]
+        )
+        assert args.receiver_agent_id == "aut"
+        argv = self._argv(receiver_agent_id=args.receiver_agent_id)
+        assert argv[argv.index("--receiver-agent-id") + 1] == "aut"
+        assert "--receiver-agent-id" not in self._argv()
+
     def test_unverified_path_omits_signature_enforcement_entirely(self):
         argv = self._argv(queen_verified=False, policy=self._policy(allow_unsigned=True, inherent_trust=True))
         assert "--require-signed" not in argv
@@ -448,7 +463,11 @@ class TestOasisCli:
             output_path=out,
             contributor_id="oasis-alpha",
             body_ref="minecraft_bench",
-            signer=BundleSigner.generate(signer_identity="queen-a"),
+            release=SignedRelease(
+                signer=BundleSigner.generate(signer_identity="queen-a"),
+                release_sequence=1,
+                license="CDLA-Permissive-2.0",
+            ),
         )
         root = str(tmp_path / "store")
         assert run_oasis_subcommand(["publish", str(out), "--root", root]) == 0

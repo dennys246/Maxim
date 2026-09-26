@@ -96,6 +96,9 @@ console = [
 # passes --require-signed.
 sign = [
     "cryptography>=42,<47",
+    # RFC 8785 (JCS) for the v2 entry-index digests (docs/plans/oasis_entry_index_v2.md): the
+    # projection's number format must be the ECMAScript one, which Python's repr is not.
+    "rfc8785>=0.1.4,<0.2",
 ]
 # Training support (MotorCortex model training)
 training = [

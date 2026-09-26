@@ -33,8 +33,10 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import struct
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -82,6 +84,39 @@ def bundle_signing_payload(manifest: Mapping[str, object], slices: Mapping[str, 
     # regardless of part contents, so no two distinct (manifest, slices)
     # can ever collide onto the same signed bytes (defense-in-depth over a
     # separator, which would rely on the separator byte never appearing).
+    return b"".join(struct.pack(">Q", len(p)) + p for p in parts)
+
+
+# ─── Scheme v2 (docs/plans/oasis_entry_index_v2.md) ─────────────────────────────────────────────
+#
+# A DETACHED signature over the raw, uncompressed bytes of every ZIP member except the signature member
+# itself -- no canonical JSON anywhere in what is signed (the v1 hazards: `default=str` stringifying
+# numpy floats, NaN, duplicate keys read differently by two parsers). The domain tag differs from v1's
+# ``b"manifest"``, so neither scheme's signature can be replayed as the other's.
+
+#: The v2 domain-separation tag (first framed part of the v2 payload).
+BUNDLE_V2_TAG = b"maxim-bundle-v2"
+
+#: The detached-signature member of a v2 bundle.
+SIGNATURE_MEMBER = "signature.json"
+
+#: The one v2 scheme number this build implements.
+SIGNATURE_SCHEME_V2 = 2
+
+
+def bundle_signing_payload_v2(members: Mapping[str, bytes]) -> bytes:
+    """Return the bytes a scheme-v2 signature covers.
+
+    ``members`` maps each ZIP member name to its UNCOMPRESSED bytes; the signature member is excluded
+    here, so the caller may pass the whole archive. Members are ordered by their UTF-8 name bytes and
+    each part is framed with an 8-byte big-endian length prefix, exactly as v1 frames its parts.
+    Hashing uncompressed bytes keeps the payload -- and so the release's identity -- stable across
+    re-zips.
+    """
+    parts: list[bytes] = [BUNDLE_V2_TAG]
+    for name in sorted((n for n in members if n != SIGNATURE_MEMBER), key=lambda n: n.encode("utf-8")):
+        parts.append(name.encode("utf-8"))
+        parts.append(members[name])
     return b"".join(struct.pack(">Q", len(p)) + p for p in parts)
 
 
@@ -151,6 +186,48 @@ class BundleSigner:
         )
 
         return self._private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
+
+
+#: The largest release_sequence a verifier accepts (a JSON number every parser holds exactly).
+MAX_RELEASE_SEQUENCE = 2**53 - 1
+
+#: An SPDX license id (or expression) as the manifest carries it -- displayed, so charset-capped.
+_LICENSE = re.compile(r"^[A-Za-z0-9.+\-() ]{1,64}$")
+
+
+def validate_release_sequence(value: object) -> int:
+    """An int (never a bool) in ``1..MAX_RELEASE_SEQUENCE``; ``ValueError`` otherwise."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= MAX_RELEASE_SEQUENCE:
+        raise ValueError(f"release_sequence must be an int in 1..{MAX_RELEASE_SEQUENCE}, got {value!r}")
+    return value
+
+
+def validate_license(value: object) -> str:
+    """An SPDX-shaped license string; ``ValueError`` otherwise."""
+    if not isinstance(value, str) or not _LICENSE.match(value):
+        raise ValueError(f"license must be an SPDX id (charset-capped, <= 64 chars), got {value!r}")
+    return value
+
+
+@dataclass(frozen=True)
+class SignedRelease:
+    """Everything a SIGNED bundle needs, as one value (docs/plans/oasis_entry_index_v2.md).
+
+    A signed bundle is a release artifact: it carries its signer, its place in that signer's sequence
+    and its license, all inside the signature. Passing them as one frozen value means none can be
+    forgotten -- a missing field is a ``TypeError`` at construction, not a runtime default. Runtime-
+    ephemeral (passed into ``compose_bundle``, never persisted), so outside the CC3 roster.
+    """
+
+    signer: BundleSigner
+    release_sequence: int
+    license: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.signer, BundleSigner):
+            raise TypeError(f"signer must be a BundleSigner, got {type(self.signer).__name__}")
+        validate_release_sequence(self.release_sequence)
+        validate_license(self.license)
 
 
 def verify_payload(payload: bytes, signature_b64: str, public_key_b64: str) -> bool:

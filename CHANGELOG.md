@@ -25,6 +25,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Oasis release format v2: signed releases carry a signed entry index, their signer, their sequence
+  and their license** (bundle schema 3; public_oasis Phase 0 item 7,
+  `docs/plans/oasis_entry_index_v2.md`). `maxim substrate export --sign` now requires
+  `--release-sequence N` and `--license SPDX-ID` and writes a detached `signature.json` over every
+  member's raw bytes, so `signer_identity` is finally inside the signature. Each situation cluster is
+  an indexed entry with a JCS digest, and `maxim substrate inspect --entries` prints them for any
+  bundle. A release ships one agent's NAc rows (`--agent-id` when the state holds several) under the
+  agent token `_agent`, so a receiver must re-key: `maxim hive pull --receiver-agent-id` (ingest
+  refuses a release without one). Ingest now drops non-situation NAc rows (percept valences, outcome
+  stats, node-keyed reward bias) filed under another agent — they were never readable there
+  (`IngestReport.foreign_rows_dropped`). Only signed releases are schema 3; unsigned bundles stay
+  schema 2, readable by 1.3.x. Signature verification now runs before any trust duty, reads every
+  member bounded (a lying ZIP header is a refusal, not a crash) and takes `accept_v1` explicitly.
+  Legacy v1-signed bundles still verify, until 2.0. The `[sign]` extra gains `rfc8785`.
+
 - **Situation recall wired, with no behavioural or retention effect yet (memory-strength Phase
   2S-d).** Nothing consumes the recalled memories until 2S-e, and nothing is activated or
   strengthened, so retention is unchanged under every strategy. In the substrate-primary survival
