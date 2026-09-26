@@ -53,6 +53,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   signatures); `maxim hive trust --accept-v1 / --refuse-v1` toggles it and `hive pull` passes it to
   ingest as the new `substrate ingest --refuse-v1` (which requires `--require-signed`), naming the
   fix when it skips a v1 release. `hive pull` ingests releases in ascending sequence.
+- **Releases get their sequence from a per-key counter, and the Oasis verifies them at publish** (item
+  7, producer + store; item 7 is now built). `maxim substrate export --sign` no longer needs
+  `--release-sequence`: it takes the next number from the signing key's counter
+  (`~/.maxim/util/hive_release_sequence.json`, keyed by public key, committed under a lock inside the
+  compose, before the signed release reaches its output path; an explicit N may only move it forward).
+  `--key-file` (on `export`, `keygen`, and the orient merge script) keeps the Queen key apart from the
+  host's development key. `maxim oasis publish` now requires `--queen-key` and refuses anything that is
+  not a verified v2 release, or that equivocates against a held one (checked by key bytes, under a lock); releases are
+  id'd by their signed-payload digest, and `oasis serve` / `publish` migrate an existing store's ids
+  once (`oasis status` only reports pending ones) — so a `hive pull --release <old id>` pin needs the
+  new id. A key minted on the host starts at sequence 1 however it is first used; a copied or restored
+  key names its first `--release-sequence` on the host it is copied to. The counter is per host: sign
+  each key's releases from one host. `export --release` also warns about inputs that carried no
+  license, and its permissive list is attribution-free (CDLA-Permissive, CC0).
 
 - **Situation recall wired, with no behavioural or retention effect yet (memory-strength Phase
   2S-d).** Nothing consumes the recalled memories until 2S-e, and nothing is activated or

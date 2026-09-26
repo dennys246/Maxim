@@ -17,7 +17,7 @@ import json
 
 import pytest
 
-from maxim.hivemind.signing import SignedRelease
+from maxim.hivemind.signing import UNCOUNTED, SignedRelease
 from maxim.hivemind import oasis_endpoints as ep
 from maxim.hivemind.bundle import compose_bundle
 from maxim.hivemind.store import OasisStore, OasisStoreError
@@ -44,17 +44,33 @@ def _unsigned_bundle(path, *, contributor_id="oasis-alpha"):
     return path
 
 
-def _signed_bundle(path, *, signer_identity="queen-alpha", contributor_id="oasis-alpha"):
+_QUEENS: dict = {}
+
+
+def _queen(identity="queen-alpha"):
+    """One signer per identity for the module, so a test can publish with its key."""
     from maxim.hivemind.signing import BundleSigner
 
-    signer = BundleSigner.generate(signer_identity=signer_identity)
+    if identity not in _QUEENS:
+        _QUEENS[identity] = BundleSigner.generate(signer_identity=identity)
+    return _QUEENS[identity]
+
+
+def _queen_keys(identity="queen-alpha"):
+    return {identity: _queen(identity).public_key_b64}
+
+
+def _signed_bundle(path, *, signer_identity="queen-alpha", contributor_id="oasis-alpha", sequence=1):
+    signer = _queen(signer_identity)
     compose_bundle(
         nac_state=None,
         ec_substrate_nodes=_EC_NODES,
         output_path=path,
         contributor_id=contributor_id,
         body_ref="minecraft_bench",
-        release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0"),
+        release=SignedRelease(
+            signer=signer, release_sequence=sequence, license="CDLA-Permissive-2.0", counter=UNCOUNTED
+        ),
     )
     return path
 
@@ -64,7 +80,7 @@ class TestReleaseTier:
         store = OasisStore(tmp_path / "oasis")
         bundle = _unsigned_bundle(tmp_path / "b.zip")
         with pytest.raises(OasisStoreError, match="signed"):
-            store.publish_release(bundle)
+            store.publish_release(bundle, queen_keys={"queen-alpha": "not-consulted"})
         # nothing landed in the release tier
         assert store.list_releases() == []
 
@@ -72,7 +88,7 @@ class TestReleaseTier:
     def test_signed_release_publishes_lists_and_downloads(self, tmp_path):
         store = OasisStore(tmp_path / "oasis")
         bundle = _signed_bundle(tmp_path / "b.zip")
-        release_id = store.publish_release(bundle)
+        release_id = store.publish_release(bundle, queen_keys=_queen_keys())
         # listing surfaces a summary keyed by the content digest
         releases = store.list_releases()
         assert len(releases) == 1

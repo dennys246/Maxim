@@ -20,6 +20,8 @@ Role detection sits upstream of all three layers: it runs ONCE at process start 
 | `mesh.yml` | NO — operator-explicit setup verbs only | `peer/mesh_setup.py` → `peer/mesh_config.py::write_mesh_config`; CI grep allow-lists callers (see docs/agents/llm-routing.md) |
 | `peer.yml` | NEVER (read-only; the one-time migration reads it, never deletes it) | — |
 | `~/.maxim/util/*` | YES | `filelock.FileLock` around the full RMW + `atomic_write_text`; validate against `mesh.yml`'s node set at write time where applicable |
+
+`~/.maxim/util/hive_release_sequence.json` (item 7 PR C) is the release counter: `{"signers": {<public key hex>: {"last": N, "signer_identity": ...}}}`, `_format_version` 1.0, written by `signing.commit_release_sequence` / `register_fresh_key` under a `FileLock` + `atomic_write_json`. It is deliberately NOT role-scoped (`{name}.{role}.json`): the counter belongs to a signing KEY, and splitting one key's counter by role would invite re-using a sequence — the one thing a receiver refuses as equivocation.
 | Persisted JSON (bio/session) | YES | `atomic_write_json(path, with_format_version(payload))` |
 | Anything containing a secret (API keys, cluster keys, tokens) | — | `atomic_write_secret` — the function name is the "this contains secrets" signal; never pass `preserve_mode=True` to `atomic_write_text` directly |
 

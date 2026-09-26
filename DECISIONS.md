@@ -27,7 +27,10 @@ Phase 0 item 7, landing before the item-2 format freeze):
   sequence)` pair binds to one signed payload (a second payload claiming it is equivocation); dedup
   keys on the signed-payload digest. There is no "refuse below the highest seen" rule. The payload
   covers `created_at`, so re-composing the same sequence is a NEW payload: the producer's counter
-  advances on every compose, not every publish (item 7 PR C).
+  advances on every compose, not every publish (item 7 PR C). The counter is keyed by the signing
+  key's PUBLIC KEY (the Queen key and a development key never share one), and is committed with the
+  release; the Oasis store verifies each release at publish (`oasis publish --queen-key`), ids it by
+  its signed-payload digest and refuses equivocation with the same predicate receivers apply.
 - **Downgrade: once a key's v2 release is admitted, a v1 bundle from that key is refused** in that
   receiver session (owner, kept on the PR B review). v1 has no sequence, so this also refuses an OLDER
   v1 lineage that arrives later; recovery is a journal hand-edit. A `created_at` narrowing was rejected:

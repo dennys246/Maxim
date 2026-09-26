@@ -77,7 +77,7 @@ import os
 import re
 import zipfile
 import zlib
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -96,6 +96,7 @@ from maxim.hivemind.signing import (
     SIGNATURE_SCHEME_V2,
     SignedRelease,
     bundle_signing_payload,
+    commit_release_sequence,
     bundle_signing_payload_v2,
     validate_license,
     validate_release_sequence,
@@ -983,8 +984,13 @@ def compose_bundle(
         with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             for name, data in members.items():
                 zf.writestr(name, data)
+        if release is not None and isinstance(release.counter, Path):  # a counted release
+            # The producer's counter commit -- from this release's own fields -- between the signed bytes
+            # existing and their reaching the output path: a signed release at output_path always has
+            # its counter record.
+            commit_release_sequence(release.signer, release.release_sequence, path=release.counter)
         os.replace(tmp_path, output_path)
-    except Exception:
+    except BaseException:  # an interrupt must not leave a signed .tmp behind either
         if tmp_path.exists():
             try:
                 tmp_path.unlink()
@@ -1120,6 +1126,23 @@ class BundleVerification:
     release_sequence: int | None = None
     license: str | None = None
     entry_digests: dict[str, str] = field(default_factory=dict)
+
+
+def find_equivocation(
+    records: Iterable[Mapping[str, Any]], *, signer_key: str, release_sequence: int, payload_digest: str
+) -> Mapping[str, Any] | None:
+    """The record a release EQUIVOCATES against -- same signing key (hex) and sequence, a different
+    signed payload -- or ``None``. The one predicate the receiver's journal and the Oasis store both
+    apply (decision (b)): one ``(key, sequence)`` binds to one release. Keyed by public key, not
+    identity, so a rotated key starts clean."""
+    for record in records:
+        if (
+            record.get("signer_key") == signer_key
+            and record.get("release_sequence") == release_sequence
+            and record.get("payload_digest") != payload_digest
+        ):
+            return record
+    return None
 
 
 def _strict_json(raw: bytes, what: str) -> Any:
@@ -1606,6 +1629,7 @@ __all__ = [
     "compose_bundle",
     "content_payload_digest",
     "extract_bundle",
+    "find_equivocation",
     "isolated_bundle_migrations",
     "migrate_bundle_envelope",
     "read_bundle_manifest",

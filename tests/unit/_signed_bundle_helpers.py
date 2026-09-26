@@ -17,9 +17,9 @@ LICENSE = "CDLA-Permissive-2.0"
 
 
 def release(signer: Any, *, sequence: int = 1, license: str = LICENSE) -> Any:
-    from maxim.hivemind.signing import SignedRelease
+    from maxim.hivemind.signing import UNCOUNTED, SignedRelease
 
-    return SignedRelease(signer=signer, release_sequence=sequence, license=license)
+    return SignedRelease(signer=signer, release_sequence=sequence, license=license, counter=UNCOUNTED)
 
 
 def read_members(path: Path) -> dict[str, bytes]:

@@ -208,21 +208,39 @@ def _run_export(args: argparse.Namespace) -> int:
     dropped_nodes = len(ec_substrate_nodes or {}) - len(_kept_ec or {})
     try:
         release = None
+        key_file = getattr(args, "key_file", None)
         if getattr(args, "sign", False):
-            from maxim.hivemind.signing import SignedRelease, load_or_create_signer, public_key_path
+            from maxim.hivemind.signing import (
+                counted_release,
+                open_signer,
+                public_key_path,
+                validate_license,
+            )
 
-            if getattr(args, "release_sequence", None) is None or not getattr(args, "license", None):
+            if not getattr(args, "license", None):
                 print(
-                    "error: --sign produces a v2 release, which carries its --release-sequence N (strictly "
-                    "increasing per signer) and its --license SPDX-ID (published bundles: CDLA-Permissive-2.0)",
+                    "error: --sign produces a v2 release, which carries its --license SPDX-ID "
+                    "(published bundles: CDLA-Permissive-2.0)",
                     file=sys.stderr,
                 )
                 return 2
-            release = SignedRelease(
-                signer=load_or_create_signer(signer_identity=args.signer_id or args.contributor_id),
-                release_sequence=args.release_sequence,
+            validate_license(args.license)  # before a sequence number is reserved for this release
+            signer, _ = open_signer(signer_identity=args.signer_id or args.contributor_id, key_file=key_file)
+            # The sequence comes from the key's counter; compose_bundle commits it before the signed
+            # bundle reaches the output path.
+            release = counted_release(
+                signer,
                 license=args.license,
+                requested=getattr(args, "release_sequence", None),
             )
+            if reauthor:
+                _warn_on_input_licenses(session_dir)
+        elif key_file is not None or getattr(args, "release_sequence", None) is not None:
+            print(
+                "error: --key-file and --release-sequence choose how a release is signed; they need --sign",
+                file=sys.stderr,
+            )
+            return 2
 
         manifest = compose_bundle(
             nac_state=nac_state,
@@ -275,7 +293,7 @@ def _run_export(args: argparse.Namespace) -> int:
             f"  signed:      v2 release {manifest.get('release_sequence')} ({manifest.get('license')}), "
             f"claimed signer {manifest.get('signer_identity')!r} (unverified here), "
             f"{len((manifest.get('entry_index') or {}).get('entries', []))} indexed entries\n"
-            f"  public key:  {public_key_path()} (share this so receivers can --trust-key)"
+            f"  public key:  {public_key_path(key_file)} (share this so receivers can --trust-key)"
         )
     if body_ref is None:
         print(
@@ -284,6 +302,49 @@ def _run_export(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
     return 0
+
+
+#: Licenses a release may be composed from without a warning (decision (d): a warning, never a
+#: compatibility engine -- the operator judges). Deliberately ATTRIBUTION-FREE: a --release re-authors
+#: every row and strips per-row provenance, which is what CC-BY / MIT / Apache notices require be kept.
+_PERMISSIVE_LICENSES = frozenset({"CDLA-Permissive-1.0", "CDLA-Permissive-2.0", "CC0-1.0"})
+
+
+def _warn_on_input_licenses(session_dir: Path) -> None:
+    """A ``--release`` re-authors everything this session merged. Warn when an ingested input carried a
+    license outside :data:`_PERMISSIVE_LICENSES` (the journal records each verified release's), and when
+    inputs carried NO license at all (unsigned contributions) -- their terms are unknown."""
+    from maxim.hivemind.ingest import IngestionJournal
+
+    journal_path = session_dir / "substrate_ingest_journal.json"
+    if not journal_path.is_file():
+        return
+    try:
+        entries = IngestionJournal(journal_path).entries
+    except (ValueError, OSError) as exc:
+        print(f"warning: cannot read {journal_path} to check input licenses: {exc}", file=sys.stderr)
+        return
+    flagged = sorted(
+        {
+            f"{e.get('signer_identity')!r} release {e.get('release_sequence')} ({e.get('license')})"
+            for e in entries
+            if e.get("license") is not None and e.get("license") not in _PERMISSIVE_LICENSES
+        }
+    )
+    unlicensed = sum(1 for e in entries if e.get("license") is None)
+    if unlicensed:
+        print(
+            f"warning: this release re-authors material from {unlicensed} ingested input(s) with no recorded "
+            "license (unsigned contributions or legacy v1 releases) -- their terms are unknown",
+            file=sys.stderr,
+        )
+    if flagged:
+        print(
+            "warning: this release re-authors material from input releases under non-permissive licenses: "
+            + "; ".join(flagged)
+            + " -- check their terms allow redistribution under yours",
+            file=sys.stderr,
+        )
 
 
 def _run_import(args: argparse.Namespace) -> int:
@@ -930,7 +991,8 @@ def _run_keygen(args: argparse.Namespace) -> int:
     try:
         from maxim.hivemind.signing import load_or_create_signer, public_key_path, signing_key_path
 
-        signer = load_or_create_signer(signer_identity=args.signer_id)
+        key_file = getattr(args, "key_file", None)
+        signer = load_or_create_signer(signer_identity=args.signer_id, key_file=key_file)
     except OptionalDependencyError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -940,8 +1002,8 @@ def _run_keygen(args: argparse.Namespace) -> int:
     print(
         f"signer_identity: {signer.signer_identity}\n"
         f"public_key:      {signer.public_key_b64}\n"
-        f"private key:     {signing_key_path()} (0600; never share)\n"
-        f"public key file: {public_key_path()}\n"
+        f"private key:     {signing_key_path(key_file)} (0600; never share)\n"
+        f"public key file: {public_key_path(key_file)}\n"
         f"share as:        --trust-key {signer.signer_identity}={signer.public_key_b64}"
     )
     return 0
@@ -1027,12 +1089,24 @@ def _build_parser() -> argparse.ArgumentParser:
         "--release-sequence",
         type=int,
         default=None,
-        help="With --sign: this release's place in the signer's sequence (strictly increasing, >= 1).",
+        help=(
+            "With --sign: this release's place in the signing key's sequence. Default: the next number from "
+            "the key's counter (~/.maxim/util/hive_release_sequence.json); an explicit N may only move it "
+            "forward, and is required once for an existing key the counter has never seen."
+        ),
     )
     p_export.add_argument(
         "--license",
         default=None,
         help="SPDX license id the bundle is published under (required with --sign; e.g. CDLA-Permissive-2.0).",
+    )
+    p_export.add_argument(
+        "--key-file",
+        default=None,
+        help=(
+            "With --sign: the private key to sign with (minted there on first use; public key at <file>.pub). "
+            "Keep the Queen key in its own file, apart from this host's development key."
+        ),
     )
     p_export.add_argument(
         "--agent-id",
@@ -1206,6 +1280,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--signer-id",
         required=True,
         help="signer_identity to bind the key to (the label receivers --trust-key).",
+    )
+    p_keygen.add_argument(
+        "--key-file", default=None, help="a named key file (e.g. the Queen's), instead of this host's default key"
     )
     p_keygen.set_defaults(func=_run_keygen)
 

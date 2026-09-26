@@ -59,6 +59,7 @@ from maxim.hivemind.bundle import (
     assert_bundle_body_compatible,
     bounded_member_read,
     content_payload_digest,
+    find_equivocation,
     read_bundle_manifest_bytes,
     scrub_nac_state_for_bundle,
     verify_bundle_zip,
@@ -216,17 +217,12 @@ class IngestionJournal:
         return any(e.get("digest") == digest or e.get("payload_digest") == digest for e in self.entries)
 
     def equivocation(self, signer_key: str, release_sequence: int, payload_digest: str) -> dict[str, Any] | None:
-        """The admitted entry a release EQUIVOCATES against: same signing key and sequence, a different
-        signed payload. Keyed by public key (hex), not identity, so a rotated key starts clean and two
-        registry names for one key cannot split its history."""
-        for e in self.entries:
-            if (
-                e.get("signer_key") == signer_key
-                and e.get("release_sequence") == release_sequence
-                and e.get("payload_digest") != payload_digest
-            ):
-                return e
-        return None
+        """The admitted entry a release EQUIVOCATES against (``bundle.find_equivocation`` -- the one
+        predicate the Oasis store applies at publish too)."""
+        clash = find_equivocation(
+            self.entries, signer_key=signer_key, release_sequence=release_sequence, payload_digest=payload_digest
+        )
+        return dict(clash) if clash is not None else None
 
     def has_v2_from(self, signer_key: str) -> bool:
         """Has a v2 release from this signing key been admitted? (Then a v1 bundle from it is a downgrade.)"""

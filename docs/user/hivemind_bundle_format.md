@@ -66,8 +66,8 @@ but dims alone cannot distinguish a 384-dim fallback from a real 384-dim model.
 
 ## Release format v2 (bundle schema 3)
 
-A **signed** bundle is a release (`maxim substrate export --sign --release-sequence N --license SPDX
-[--agent-id ID]`). Only a release is schema 3: an **unsigned** bundle is written at schema 2, which it
+A **signed** bundle is a release (`maxim substrate export --sign --license SPDX [--key-file PATH]
+[--release-sequence N] [--agent-id ID]`). Only a release is schema 3: an **unsigned** bundle is written at schema 2, which it
 needs nothing beyond, so 1.3.x peers and Oasis servers keep reading contributions — and refuse a release
 they cannot verify.
 
@@ -100,6 +100,11 @@ they cannot verify.
   Releases are additive: a lower sequence is not refused, and `hive pull` ingests ascending. The
   downgrade rule is not: a v1 bundle has no sequence, so once a key's v2 release is admitted, a v1
   bundle from that key arriving later is refused in that session even if it is an older lineage.
+- **Producing and publishing.** A signing key's `release_sequence` comes from its counter
+  (`~/.maxim/util/hive_release_sequence.json`, keyed by the public key), committed with the release, so
+  a sequence is never re-used; keep the Queen key in its own `--key-file`. `maxim oasis publish
+  --queen-key` verifies a release before it enters the release tier and ids it by its signed-payload
+  digest.
 - **A newly added Oasis refuses v1** (`hive add` writes `accept_v1: false`); `maxim hive trust <name>
   --accept-v1` takes its legacy v1 lineages. Entries registered before this change keep accepting v1.
 - **Legacy v1** (schema ≤ 2, the signature in the manifest) still verifies until 2.0, against the

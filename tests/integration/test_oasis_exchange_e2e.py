@@ -17,7 +17,7 @@ import time
 
 import pytest
 
-from maxim.hivemind.signing import SignedRelease
+from maxim.hivemind.signing import UNCOUNTED, SignedRelease
 from maxim.hivemind import substrate_client as sc
 from maxim.hivemind.bundle import compose_bundle
 from maxim.hivemind.store import OasisStore
@@ -79,17 +79,26 @@ def _unsigned_bundle(path, *, contributor_id="oasis-alpha"):
     return path
 
 
-def _signed_bundle(path, *, signer_identity="queen-alpha"):
+_QUEENS: dict = {}
+
+
+def _queen(identity="queen-alpha"):
     from maxim.hivemind.signing import BundleSigner
 
-    signer = BundleSigner.generate(signer_identity=signer_identity)
+    if identity not in _QUEENS:
+        _QUEENS[identity] = BundleSigner.generate(signer_identity=identity)
+    return _QUEENS[identity]
+
+
+def _signed_bundle(path, *, signer_identity="queen-alpha"):
+    signer = _queen(signer_identity)
     compose_bundle(
         nac_state=None,
         ec_substrate_nodes=_EC_NODES,
         output_path=path,
         contributor_id="oasis-alpha",
         body_ref="minecraft_bench",
-        release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0"),
+        release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0", counter=UNCOUNTED),
     )
     return path
 
@@ -97,7 +106,9 @@ def _signed_bundle(path, *, signer_identity="queen-alpha"):
 @_needs_crypto
 def test_publish_then_pull_over_http(tmp_path):
     store = OasisStore(tmp_path / "oasis")
-    release_id = store.publish_release(_signed_bundle(tmp_path / "rel.zip"))
+    release_id = store.publish_release(
+        _signed_bundle(tmp_path / "rel.zip"), queen_keys={"queen-alpha": _queen().public_key_b64}
+    )
     server, base = _start(store)
     try:
         releases = sc.list_releases(base, api_key=_KEY)

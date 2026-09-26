@@ -46,8 +46,9 @@ compose:
 - `GET /v1/substrate/releases` and `/v1/substrate/bundle/<id>` are routed **before** the proxy's
   bearer check in `runtime/leader_proxy.py::LeaderProxyHandler.do_GET`, so the release tier is
   already a public read surface by design.
-- `hivemind/store.py::OasisStore.publish_release` refuses an unsigned bundle, so the release tier
-  cannot hold unsigned content.
+- `hivemind/store.py::OasisStore.publish_release` verifies each release against the Queen key(s) it is
+  given (a v2 release, its index and license; no equivocation against a held one), so the release tier
+  holds only verified Queen releases (item 7 PR C; it refused only unsigned bundles before).
 - Consumers verify against the Queen key, never the host that served the bytes
   (`hivemind/ingest.py::ingest_bundle` under `require_signed`), which is why the distribution
   channel is untrusted by construction.
@@ -150,13 +151,12 @@ Cheap, and all of it is owed regardless of whether Phase 1 ships.
    *(2026-09-25: design DECIDED — [oasis_entry_index_v2.md](oasis_entry_index_v2.md), after a two-lens
    design review; it also carries signing scheme v2 and the license field, and records the owner's
    item-3/4 decisions: license `CDLA-Permissive-2.0`, public ids, the privacy-read exemplar.)*
-   *(2026-09-25: BUILDING — PR A, the format + verification, and PR B, receiver state, shipped; PR C
-   producer/store remains.)*
+   *(2026-09-25: BUILT — PR A format + verification, PR B receiver state, PR C producer + store.)*
 
 ### Phase 1 — publish only (entry: Phase 0 complete)
 
 Serve the Queen release tier read-only at `oasis.pymaxim.bio`, from the rig, over a Cloudflare
-Tunnel. `maxim oasis serve` with a bearer key set, `maxim oasis publish` for each signed release.
+Tunnel. `maxim oasis serve` with a bearer key set, `maxim oasis publish --queen-key maxim-queen=<pubkey>` for each signed release.
 The GET routes are public by design; the POST route stays closed because the key is never shared.
 
 Exemplar content: the Exp 56 taught-want release and the 1.3.0 survival lineage — the bundles the
