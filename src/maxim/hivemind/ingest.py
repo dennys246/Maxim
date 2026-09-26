@@ -58,6 +58,7 @@ from maxim.hivemind.bundle import (
     MemberReadError,
     assert_bundle_body_compatible,
     bounded_member_read,
+    content_payload_digest,
     read_bundle_manifest_bytes,
     scrub_nac_state_for_bundle,
     verify_bundle_zip,
@@ -160,6 +161,20 @@ class IngestRefused(ValueError):
 # ─────────────────────────────────────────────────────────────────────────
 
 
+def _check_release_fields(entry: dict[str, Any], path: Path) -> None:
+    """Fail loud on a journal entry whose release-state fields have the wrong type: the ordering rules
+    compare them with ``==``, so ``True`` / ``1.0`` / ``"1"`` would silently match or miss (the same
+    no-guessing rule the registry applies to its trust fields)."""
+    for key in ("release_sequence", "signature_scheme"):
+        value = entry.get(key)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
+            raise ValueError(f"ingestion journal {path}: {key} {value!r} is not an integer")
+    for key in ("signer_key", "payload_digest"):
+        value = entry.get(key)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"ingestion journal {path}: {key} {value!r} is not a string")
+
+
 class IngestionJournal:
     """Per-receiver ingestion journal (threat model V5 + V8).
 
@@ -191,9 +206,31 @@ class IngestionJournal:
                 raise ValueError(f"ingestion journal {self.path} has malformed entries/tombstones")
             self.entries = [e for e in entries if isinstance(e, dict)]
             self.tombstones = [t for t in tombstones if isinstance(t, dict)]
+            for e in self.entries:
+                _check_release_fields(e, self.path)
 
     def has_digest(self, digest: str) -> bool:
-        return any(e.get("digest") == digest for e in self.entries)
+        """Was a bundle with this identity admitted? Matches the ZIP sha256 (``digest``, every entry)
+        OR the signed-payload digest (``payload_digest``, verified entries since release format v2) --
+        so a re-zipped release dedups, and a release admitted before the change is not admitted twice."""
+        return any(e.get("digest") == digest or e.get("payload_digest") == digest for e in self.entries)
+
+    def equivocation(self, signer_key: str, release_sequence: int, payload_digest: str) -> dict[str, Any] | None:
+        """The admitted entry a release EQUIVOCATES against: same signing key and sequence, a different
+        signed payload. Keyed by public key (hex), not identity, so a rotated key starts clean and two
+        registry names for one key cannot split its history."""
+        for e in self.entries:
+            if (
+                e.get("signer_key") == signer_key
+                and e.get("release_sequence") == release_sequence
+                and e.get("payload_digest") != payload_digest
+            ):
+                return e
+        return None
+
+    def has_v2_from(self, signer_key: str) -> bool:
+        """Has a v2 release from this signing key been admitted? (Then a v1 bundle from it is a downgrade.)"""
+        return any(e.get("signer_key") == signer_key and e.get("signature_scheme") == 2 for e in self.entries)
 
     def is_tombstoned(self, contributor_id: str) -> bool:
         return any(t.get("contributor_id") == contributor_id for t in self.tombstones)
@@ -877,8 +914,19 @@ def ingest_bundle(
     receiver changes on refusal.
 
     ``accept_v1`` (with ``require_signed``): whether a legacy v1 signature is still accepted. It
-    defaults to True until the per-Oasis registry flag lands (item 7 PR B); no production caller
-    passes it yet, so every ``--require-signed`` ingest and ``hive pull`` accepts v1 today.
+    defaults to True for direct callers (legacy v1-signed bundles such as the Exp 56/61-era releases
+    keep verifying; the harnesses themselves ingest unsigned bundles); ``hive pull``
+    passes the registry entry's decision (``--refuse-v1`` when ``accept_v1: false``, the default for
+    a newly added Oasis).
+
+    With ``require_signed``, two release-ordering rules are read from ``journal`` (what was ADMITTED,
+    keyed by the verified public key): a second payload for an admitted ``(key, sequence)`` is refused
+    (``equivocation``), and a v1 bundle from a key whose v2 release was admitted is refused
+    (``downgrade``). Dedup (V8) matches the ZIP sha256 or the signed-payload digest -- for an
+    unverified bundle, the digest its content implies. Limits: the rules read only VERIFIED entries, so
+    a release first admitted unverified (``allow_unsigned``, or no ``require_signed``) seeds neither
+    rule; the journal is per session and load-modify-save, so two concurrent ``--apply`` runs on one
+    session can each admit half of an equivocating pair.
 
     The file is read ONCE: the journal digest, the manifest and every verified member come from the
     same in-memory snapshot, so a file swapped mid-ingest cannot pair one bundle's trust decisions
@@ -956,12 +1004,58 @@ def ingest_bundle(
         # 5. V8 — journal gate: digest dedup + contributor tombstones.
         if journal.is_tombstoned(contributor_id):
             raise IngestRefused(duty="V8", reason=f"contributor {contributor_id!r} is tombstoned (distrusted)")
-        if journal.has_digest(digest) and not force_digest:
+        # Release ordering rules (release format v2, decision (b)) — derived from the journal of what was
+        # ADMITTED, keyed by the verified signing key. Neither is waivable by force_digest: a replay is an
+        # operator choice, a second payload under one (key, sequence) is not.
+        if verification is not None and verification.signer_key:
+            if verification.scheme == 2 and verification.release_sequence is not None:
+                clash = journal.equivocation(
+                    verification.signer_key, verification.release_sequence, str(verification.payload_digest)
+                )
+                if clash is not None:
+                    raise IngestRefused(
+                        duty="equivocation",
+                        reason=(
+                            f"signer {verification.signer_identity!r} already released sequence "
+                            f"{verification.release_sequence} as a different payload "
+                            f"({str(clash.get('payload_digest'))[:12]}…, not {str(verification.payload_digest)[:12]}…) "
+                            "— one sequence binds to one release"
+                        ),
+                    )
+            if verification.scheme == 1 and journal.has_v2_from(verification.signer_key):
+                raise IngestRefused(
+                    duty="downgrade",
+                    reason=(
+                        f"a v1 signature from signer {verification.signer_identity!r}, whose v2 releases this "
+                        "receiver has already admitted — a key that signs v2 does not go back to v1"
+                    ),
+                )
+        # Dedup on the ZIP bytes AND on the payload identity -- the VERIFIED payload digest when this
+        # ingest verified, otherwise ``content_payload_digest`` (a hash of exactly what ingest reads: the
+        # manifest + declared slices; no key, no authority). Equal whenever the bundle verifies, so a
+        # re-zipped, re-signed-away or README-padded copy of an admitted release -- on either path -- is
+        # the same release and is never merged twice.
+        payload_digest = (
+            verification.payload_digest
+            if verification is not None
+            else content_payload_digest(
+                zf, max_member_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES, max_total_bytes=MAX_TOTAL_UNCOMPRESSED_BYTES
+            )
+        )
+        if payload_digest is None:
+            notes.append(
+                "the bundle's payload identity could not be computed (a manifest that is not strict JSON, or a "
+                "declared slice that is unreadable or not UTF-8); dedup falls back to these exact ZIP bytes, so a "
+                "re-packaged copy would not be recognised"
+            )
+        seen = [d for d in (digest, payload_digest) if d]
+        if any(journal.has_digest(d) for d in seen) and not force_digest:
             raise IngestRefused(
                 duty="V8",
                 reason=(
-                    f"bundle digest {digest[:12]}… was already ingested; re-ingestion sums counts and "
-                    "re-walks the mean fold (row J). Pass force_digest for an eyes-open replay."
+                    f"bundle digest {digest[:12]}… was already ingested (as these bytes or as the same signed "
+                    "release); re-ingestion sums counts and re-walks the mean fold (row J). Pass force_digest "
+                    "for an eyes-open replay."
                 ),
             )
 
@@ -981,6 +1075,13 @@ def ingest_bundle(
             file_name = meta.get("file") if isinstance(meta, dict) else None
             if not isinstance(file_name, str) or not file_name:
                 raise IngestRefused(duty="V7", reason=f"manifest contents[{slice_name!r}] declares no file")
+            if file_name in ("manifest.json", SIGNATURE_MEMBER):
+                # The verifier refuses this for a signed release; the unverified path must too, or it
+                # would read the signature member (or the manifest) as a payload slice -- content no
+                # identity or signature covers as a slice.
+                raise IngestRefused(
+                    duty="V7", reason=f"manifest contents[{slice_name!r}] declares {file_name!r}, which is not a slice"
+                )
             declared_files[str(slice_name)] = file_name
 
         namelist = set(zf.namelist())
@@ -1158,6 +1259,23 @@ def ingest_bundle(
         "donor_nodes": len(donor_ec or {}),
         "notes": list(notes),
     }
+    if payload_digest:
+        # Dedup identity (see V8). ``payload_verified`` says whether a signature stood behind it; only
+        # verified entries carry the signer fields the ordering rules read, so an unverified entry can
+        # never cause (or be) an equivocation or downgrade refusal.
+        journal_entry["payload_digest"] = payload_digest
+        journal_entry["payload_verified"] = verification is not None
+    if verification is not None:
+        # The receiver-state record (release format v2): what the ordering rules above read back.
+        journal_entry.update(
+            {
+                "signature_scheme": verification.scheme,
+                "signer_key": verification.signer_key,
+                "signer_identity": verification.signer_identity,
+                "release_sequence": verification.release_sequence,
+                "license": verification.license,
+            }
+        )
 
     return IngestReport(
         manifest=manifest,

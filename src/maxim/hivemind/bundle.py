@@ -1375,6 +1375,44 @@ def _verify_v1(
     )
 
 
+def content_payload_digest(
+    zf: zipfile.ZipFile,
+    *,
+    max_member_bytes: int = MAX_ENTRY_UNCOMPRESSED_BYTES,
+    max_total_bytes: int = MAX_TOTAL_UNCOMPRESSED_BYTES,
+) -> str | None:
+    """A bundle's payload identity, computed over EXACTLY what ingest reads -- without verifying anything.
+
+    Ingest reads ``manifest.json`` and the declared slices, never ``signature.json`` or an undeclared
+    member, so the identity covers those and nothing else: a schema-3 manifest in the v2 framing
+    (``bundle_signing_payload_v2`` over the manifest + declared slices), a schema <= 2 manifest in the
+    v1 framing (the manifest minus its signature fields + the declared slices), signed or not. Whenever
+    the bundle verifies this equals :attr:`BundleVerification.payload_digest` (verification requires
+    exactly that member set), so a stripped signature, an added README or a re-zip leave it unchanged.
+    It needs no key and grants no authority: an identity for DEDUP only. ``None`` when the manifest is
+    not strict JSON or a declared slice cannot be read within the caps.
+    """
+    read = _CappedReader(zf, max_member_bytes=max_member_bytes, max_total_bytes=max_total_bytes)
+    try:
+        names = set(zf.namelist())
+        if "manifest.json" not in names:
+            return None
+        manifest_bytes = read("manifest.json")
+        raw = _strict_json(manifest_bytes, "manifest.json")
+        if not isinstance(raw, dict):
+            return None
+        # Every declared slice. (Ingest refuses a manifest declaring signature.json or manifest.json as one;
+        # the v2 framing would skip a declared signature.json structurally, the v1 framing hashes it.)
+        files = sorted({f for f in _declared_slice_files(raw).values() if f in names})
+        if raw.get("schema_version") == 3:
+            members = {"manifest.json": manifest_bytes, **{f: read(f) for f in files}}
+            return hashlib.sha256(bundle_signing_payload_v2(members)).hexdigest()
+        slices = {f: read(f).decode("utf-8") for f in files}
+        return hashlib.sha256(bundle_signing_payload(raw, slices)).hexdigest()
+    except (ValueError, UnicodeDecodeError):  # MemberReadError is a ValueError; _strict_json maps RecursionError
+        return None
+
+
 def bundle_signature_scheme(bundle_path: str | Path) -> int | None:
     """Which signing scheme a bundle CLAIMS -- ``2`` (a ``signature.json`` member), ``1`` (a
     ``signature`` in the manifest, the same test :func:`verify_bundle_zip` dispatches on), ``None``
@@ -1510,7 +1548,12 @@ def _manifest_from_zip(zf: zipfile.ZipFile, source_label: str) -> dict[str, Any]
         raise ValueError(f"bundle {source_label}: manifest.json nests too deeply to parse") from exc
     if not isinstance(manifest, dict):
         raise ValueError(f"manifest.json must be a JSON object, got {type(manifest).__name__}")
-    manifest = migrate_bundle_envelope(manifest)
+    try:
+        manifest = migrate_bundle_envelope(manifest)
+    except RecursionError as exc:  # deepcopy of a manifest nested a few hundred deep
+        raise ValueError(
+            f"bundle {source_label}: manifest.json nests too deeply to migrate (or the caller's stack is already deep)"
+        ) from exc
     check_format_version(manifest, "substrate_bundle", log=logger)
     if manifest.get("kind") != BUNDLE_KIND:
         raise ValueError(f"manifest kind {manifest.get('kind')!r} != {BUNDLE_KIND!r}")
@@ -1561,6 +1604,7 @@ __all__ = [
     "bounded_member_read",
     "bundle_signature_scheme",
     "compose_bundle",
+    "content_payload_digest",
     "extract_bundle",
     "isolated_bundle_migrations",
     "migrate_bundle_envelope",

@@ -16,9 +16,12 @@
 > `inspect --entries`, `--release-sequence` / `--license` / `--agent-id`, `hive pull
 > --receiver-agent-id`. Two owner decisions made on its code review changed this design, recorded
 > in the sections they touch: **own rows only** (§Agent segment) and **only signed releases are
-> schema 3** (§Envelope). Still to build: PR B — receiver state (§Receiver state, §Registry:
-> `accept_v1`); PR C — producer counter and store (§Producer, §Oasis store). The payload covers
-> `created_at`, so PR C's counter advances on every compose, not every publish.
+> schema 3** (§Envelope). **PR B — receiver state — shipped 2026-09-25:** the journal records each
+> verified release; ingest refuses equivocation and downgrade and dedups on the signed payload; the
+> registry's `accept_v1` reaches ingest as `--refuse-v1`; `hive pull` ingests in ascending sequence
+> (§Receiver state, §Registry: `accept_v1`). Still to build: PR C — producer counter and store
+> (§Producer, §Oasis store). The payload covers `created_at`, so PR C's counter advances on every
+> compose, not every publish.
 
 ## Why
 
@@ -175,7 +178,14 @@ a `(key, sequence)` already admitted → refuse) and **downgrade** (once a v2 re
 admitted, a v1 bundle from that key → refuse). Keyed by **public key**, so two mirrors and `hive
 remove`/`add` behave. Limits, stated: the journal is per receiver session directory
 (`substrate_ingest_journal.json`), not registry-wide; and a release that verified but was refused by a
-later gate (e.g. gate 7) is not journalled, so it does not seed either rule. `_run_pull`'s pre-screen
+later gate (e.g. gate 7) is not journalled, so it does not seed either rule. *Amended on PR B's review:* dedup
+also keys on a payload identity computed over exactly what ingest reads (`content_payload_digest`:
+manifest + declared slices, equal to the verified digest when the bundle verifies), so a release first
+admitted unverified, or re-packaged, is not merged twice; only verified
+entries carry signer fields, so unverified admissions seed neither ordering rule. The downgrade rule
+refuses every v1 bundle from a key once its v2 release is admitted — including an older lineage that
+arrives later, since v1 has no sequence (owner kept it; a `created_at` narrowing is backdatable by the
+key holder it guards against). An older maxim reading the new journal/registry fields ignores them. `_run_pull`'s pre-screen
 reads `signature.json`, not the manifest's `signature` field (empty in v3).
 
 ## Producer
@@ -199,8 +209,8 @@ reads `signature.json`, not the manifest's `signature` field (empty in v3).
 it already holds. A Queen release's id becomes its signed-payload digest (same `^[0-9a-f]{64}$` shape);
 releases already on disk are renamed once (a store migration), and `test_hive_pull_e2e.py`'s direct
 `{sha256(raw)}.zip` writes change with it. The experimental tier keeps ZIP-sha ids — one id shape, two
-meanings by tier, stated. Clients only shape-check ids, so none breaks. `list_releases` summaries add `signature_scheme`,
-`release_sequence`, `license`; clients use them for ordering only, never trust.
+meanings by tier, stated. Clients only shape-check ids, so none breaks. `list_releases` summaries carry `signature_scheme`,
+`release_sequence`, `license` (shipped in PR A); clients use them for ordering only, never trust.
 
 ## Reader (the Phase-1 caller)
 

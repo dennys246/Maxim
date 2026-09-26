@@ -17,8 +17,10 @@ Phase 0 item 7, landing before the item-2 format freeze):
 - **v1 is legacy.** A schema ≤ 2 bundle signed under v1 still verifies — the manifest is verified AS
   STORED, before the envelope migration (which rewrites a field v1 signs). A v1 signature on a schema-3
   manifest is refused as a downgrade; an unknown scheme is refused, never read as v1. The verifier
-  takes `accept_v1` as a REQUIRED keyword; the per-Oasis registry flag (new registrations refuse v1)
-  lands with the receiver-state change (item 7 PR B). v1 is removed at 2.0.
+  takes `accept_v1` as a REQUIRED keyword, and the per-Oasis registry flag decides it for `hive pull`:
+  a NEW registration writes `accept_v1: false` (a first-contact client has no v1 history, so it cannot
+  be downgraded), an existing entry without the field keeps accepting v1 (item 7 PR B). v1 is removed
+  at 2.0.
 - **An entry is one situation cluster**, and its digest is sha256 of the RFC 8785 (JCS) serialization of
   its projection. The verifier refuses any situation state the signed index does not cover.
 - **Releases are additive, so the sequence ORDERS them; it does not gate them.** A `(signing key,
@@ -26,6 +28,12 @@ Phase 0 item 7, landing before the item-2 format freeze):
   keys on the signed-payload digest. There is no "refuse below the highest seen" rule. The payload
   covers `created_at`, so re-composing the same sequence is a NEW payload: the producer's counter
   advances on every compose, not every publish (item 7 PR C).
+- **Downgrade: once a key's v2 release is admitted, a v1 bundle from that key is refused** in that
+  receiver session (owner, kept on the PR B review). v1 has no sequence, so this also refuses an OLDER
+  v1 lineage that arrives later; recovery is a journal hand-edit. A `created_at` narrowing was rejected:
+  the key holder the rule guards against signs that timestamp. It needs one key that signed both
+  formats — the Queen's own key never signed v1, and a new registry entry refuses v1 outright — so an
+  explicit waiver is added only if it ever bites.
 - **Every signed release carries a license** (SPDX); published bundles use `CDLA-Permissive-2.0`.
 - **A release ships one agent's learning, and a receiver keeps only rows it can read** (owner, on the
   PR A review). NAc reads filter on the reader's agent id. The exporter keeps its own agent's rows
