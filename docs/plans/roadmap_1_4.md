@@ -333,7 +333,10 @@ infrastructure the review located, and the full four-lens review.
   relief, beside the fear-only store. Front-gate against `credit_operant_reward` (teacher) and the
   trace. Enters BEFORE Phase 3.
 - **A graded predictor (anticipation).** Audit first: `anticipatory_pre_activate` + drive
-  TemporalEvents (dormant on both ends) and `embodiment/cerebellum.py` (write live, read dormant).
+  TemporalEvents (dormant on both ends) and `embodiment/cerebellum.py` (write live, read dormant —
+  and, until [#908](https://github.com/dennys246/Maxim/issues/908) lands, never SAVED: the audit must
+  not read a fresh-each-session forward model as "cannot learn"; motor engrams are its E7 disposition
+  in [engram_formation.md](engram_formation.md)).
   Only if neither can carry "how far pain is" does a new plan (`latent_forward_model.md`) open — and
   that is where the §JEPA predictive idea and the §Pressure candidate input would live.
 - **Keying / generalization (R1's home) — and Exp 62 §Rung B, whose entry condition is stated here
@@ -343,7 +346,11 @@ infrastructure the review located, and the full four-lens review.
   rung A closes the door and the measured context wall — a lit pond at 0.588, a NIGHT POOL at 0.799,
   both under the 0.85 threshold — is left with no owner. That matters: it means Exp 60/61's EARNED
   drowning fear **misses at night** for representational reasons, and the frozen-day protocol is
-  what hides it. **Corrected 2026-09-25:** the 0.799 row is time 0.99, just before the `time_of_day`
+  what hides it. *(Corrected 2026-09-25, [#899](https://github.com/dennys246/Maxim/issues/899): the
+  0.799 is the linear `time_of_day` **wrap** just before dawn, not night — the pool holds 0.903 at
+  midnight and crosses 0.85 only in the last ~5 % of the day. The fix — a circular encoding or
+  removal — is item E5 of [engram_formation.md](engram_formation.md) and lives HERE; it fires the
+  Exp 53b/56/60–62 re-run triggers, so it follows the offline replay → plan → four-lens path.)* **Corrected 2026-09-25:** the 0.799 row is time 0.99, just before the `time_of_day`
   wrap; midnight at the fear place reads 0.903 (inside the key), so the "night miss" is the wrap
   (#899, a keying defect), not night. The lit-pond wall (0.588) stands — and at 0.588 it is beyond any
   graded read, so it too is a keying question. An entry condition that can only fire when an
@@ -467,6 +474,11 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   says so. Its instrument (1b, 3, 5) enters with it, not with T1.
 - **T6 (conditional) — E3.** Same rule; a recorded failure ships as a failure; an unrun E3 is neither
   claimed nor a failure.
+- **T7 — engram integrity** ([engram_formation.md](engram_formation.md) E1–E4). #908, #909 and #910
+  closed; #911 closed with its committed offline measurement (plus a design entry in the plan if it
+  measured a collapse); the release PR re-verifies the "Changes behaviour" column of
+  [../wiring/engram-formation.md](../wiring/engram-formation.md) §1 by caller grep. Engineering only —
+  no behavioural claim, and no earned row's trigger fires.
 
 **Name and headline rule.** The release name is fixed at the transaction from the highest rung with a
 recorded EARNED ("Anticipation" only if E3 earns it; "Sequence credit" if E2/E3's credit arm does;
@@ -537,6 +549,19 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   **Decided 2026-09-24 by R4's look-back review ([lookback_primitive.md](lookback_primitive.md)): no new
   store** — tagging looks back over the Hippocampus record (enqueue-time experience µs at every capture
   door); `PerceptTraceBuffer` is Dormant.
+- **Engram integrity** ([engram_formation.md](engram_formation.md), opened 2026-09-25; state tracked
+  in [../wiring/engram-formation.md](../wiring/engram-formation.md)). A code audit of how every
+  engram family forms found the situation engram (EC sensor cluster + NAc fear/want) is the only one
+  that reaches behaviour without the LLM; episodic/semantic traces reach it only as prompt text, and
+  motor engrams have no production caller. **Four engineering items gate 1.4.0 (T7)**: the Cerebellum
+  is never saved ([#908](https://github.com/dennys246/Maxim/issues/908)), the motor-engram docs
+  overclaim and its read side is undeclared-dormant ([#909](https://github.com/dennys246/Maxim/issues/909)),
+  the `[DANGEROUS]` annotation is unreachable ([#910](https://github.com/dennys246/Maxim/issues/910)),
+  and reward widening is text-only with an unmeasured drift hazard
+  ([#911](https://github.com/dennys246/Maxim/issues/911) — an offline measurement, not a fix). None
+  touches a survival rung's path; all run off the rig. Its three larger items ride on owners that
+  already exist: the daily wrap (#899) on Phase 5 keying, the episodic readout (#848) on the memory
+  line's 2S-e, motor engrams on Phase 5's graded-predictor audit.
 - **Social referencing** ([social_referencing.md](social_referencing.md), PROPOSED 2026-09-24; split
   from the language line, needs no language): consult a locally held, verified Oasis mirror only when
   the agent is both ignorant and being hurt, holding the answer as advice apart from its own
@@ -583,6 +608,13 @@ plan), [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignm
 the survival-world audit is a different audit), CLAUDE.md §Active initiatives. DECISIONS.md records
 owed with the 1.3.0 transaction: (a) the 1.4 re-point + physical-trigger deferral; (b) the
 variant-body ledger rule; (c) the release-name-from-highest-EARNED rule.
+
+*2026-09-25 (engram integrity line):* §Parallel lines gains "Engram integrity"; §Release thresholds
+gains T7; §Phase 5 keying carries the #899 wrap correction and graded-predictor carries the #908
+caveat. Companion edits: [README.md](README.md) (§Active entry),
+[../wiring/README.md](../wiring/README.md), [../agents/bio-memory.md](../agents/bio-memory.md)
+(`save_cerebellum` invariant marked vacuous pending #908; widening scope pointer),
+[../agents/embodiment.md](../agents/embodiment.md) (Cerebellum gotcha).
 
 ## Review record (v1 → v2, 2026-09-18)
 

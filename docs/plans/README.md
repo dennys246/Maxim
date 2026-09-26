@@ -112,6 +112,14 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
   point 4 for publication only; the discovery-only website stance is preserved. Self-hosted sibling
   of [deferred/hf_hive_repository.md](deferred/hf_hive_repository.md).
 
+- [engram_formation.md](engram_formation.md) — **ACTIVE 2026-09-25, a 1.4 parallel line
+  ("Engram integrity", release threshold T7).** Fix list from a four-path audit of how engrams form:
+  E1 Cerebellum never saved (#908), E2 motor-engram docs overclaim + read side undeclared-dormant
+  (#909), E3 unreachable `[DANGEROUS]` annotation (#910), E4 text-only widening + drift measurement
+  (#911) gate 1.4.0; E5 the `time_of_day` wrap (#899, Phase 5 keying), E6 episodic readout (#848,
+  2S-e) and E7 motor-engram resurrection (Phase 5 graded predictor) ride on existing owners. State
+  page: [../wiring/engram-formation.md](../wiring/engram-formation.md).
+
 ### The R4 credit map
 
 - [three_factor_credit_assignment.md](three_factor_credit_assignment.md) — named by

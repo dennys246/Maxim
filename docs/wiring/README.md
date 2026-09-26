@@ -71,6 +71,13 @@ that generalizes belongs here.
   re-tagging an existing one orphans persisted nodes; the pathfinder is dead in water. (Exp 58 →
   Slice-2 reject → Exp 60, 2026-09-15; verified `docs/experiments/data/*_cosine_check.py`.)
 
+- [engram-formation.md](engram-formation.md) — **the living scorecard of how every engram family
+  forms** (situation cluster + fear/want, text recognition node, Hippocampus episode, ATL concept,
+  Cerebellum motor engram), each scored on forms / specific / recalled / changes behaviour. Only the
+  situation engram acts without the LLM; motor engrams have no production caller and the Cerebellum
+  is never saved. Gaps → [../plans/engram_formation.md](../plans/engram_formation.md) (#908–#911,
+  #899, #848). (Four-path audit, 2026-09-25.)
+
 - [experiment-catalog-candidates.md](experiment-catalog-candidates.md) — a prioritized **backlog** of
   11 reusable wiring lessons harvested from all 92 past experiments (catalog workflow, 2026-09-13);
   each becomes a full page as we next touch that subsystem. Highest-priority: the substrate→LLM
