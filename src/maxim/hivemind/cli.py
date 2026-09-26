@@ -211,11 +211,9 @@ def _run_export(args: argparse.Namespace) -> int:
         key_file = getattr(args, "key_file", None)
         if getattr(args, "sign", False):
             from maxim.hivemind.signing import (
-                SignedRelease,
+                counted_release,
                 open_signer,
                 public_key_path,
-                commit_release_sequence,
-                next_release_sequence,
                 validate_license,
             )
 
@@ -227,12 +225,14 @@ def _run_export(args: argparse.Namespace) -> int:
                 )
                 return 2
             validate_license(args.license)  # before a sequence number is reserved for this release
-            signer, fresh_key = open_signer(signer_identity=args.signer_id or args.contributor_id, key_file=key_file)
-            # The sequence comes from the key's counter; it is COMMITTED right after the compose below.
-            sequence = next_release_sequence(
-                signer, requested=getattr(args, "release_sequence", None), fresh_key=fresh_key
+            signer, _ = open_signer(signer_identity=args.signer_id or args.contributor_id, key_file=key_file)
+            # The sequence comes from the key's counter; compose_bundle commits it before the signed
+            # bundle reaches the output path.
+            release = counted_release(
+                signer,
+                license=args.license,
+                requested=getattr(args, "release_sequence", None),
             )
-            release = SignedRelease(signer=signer, release_sequence=sequence, license=args.license)
             if reauthor:
                 _warn_on_input_licenses(session_dir)
         elif key_file is not None or getattr(args, "release_sequence", None) is not None:
@@ -259,13 +259,6 @@ def _run_export(args: argparse.Namespace) -> int:
             reauthor=reauthor,
             agent_id=getattr(args, "agent_id", None),
         )
-        if release is not None:
-            try:
-                commit_release_sequence(release.signer, release.release_sequence)
-            except (ValueError, OSError):
-                # Never leave a signed release whose sequence the counter does not hold.
-                output_path.unlink(missing_ok=True)
-                raise
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -312,15 +305,15 @@ def _run_export(args: argparse.Namespace) -> int:
 
 
 #: Licenses a release may be composed from without a warning (decision (d): a warning, never a
-#: compatibility engine -- the operator judges).
-_PERMISSIVE_LICENSES = frozenset(
-    {"CDLA-Permissive-1.0", "CDLA-Permissive-2.0", "CC0-1.0", "CC-BY-4.0", "MIT", "Apache-2.0"}
-)
+#: compatibility engine -- the operator judges). Deliberately ATTRIBUTION-FREE: a --release re-authors
+#: every row and strips per-row provenance, which is what CC-BY / MIT / Apache notices require be kept.
+_PERMISSIVE_LICENSES = frozenset({"CDLA-Permissive-1.0", "CDLA-Permissive-2.0", "CC0-1.0"})
 
 
 def _warn_on_input_licenses(session_dir: Path) -> None:
-    """A ``--release`` re-authors everything this session merged. Warn when a VERIFIED release it
-    ingested carries a license outside :data:`_PERMISSIVE_LICENSES` (the journal records each one)."""
+    """A ``--release`` re-authors everything this session merged. Warn when an ingested input carried a
+    license outside :data:`_PERMISSIVE_LICENSES` (the journal records each verified release's), and when
+    inputs carried NO license at all (unsigned contributions) -- their terms are unknown."""
     from maxim.hivemind.ingest import IngestionJournal
 
     journal_path = session_dir / "substrate_ingest_journal.json"
@@ -335,9 +328,16 @@ def _warn_on_input_licenses(session_dir: Path) -> None:
         {
             f"{e.get('signer_identity')!r} release {e.get('release_sequence')} ({e.get('license')})"
             for e in entries
-            if e.get("signer_key") and e.get("license") not in _PERMISSIVE_LICENSES
+            if e.get("license") is not None and e.get("license") not in _PERMISSIVE_LICENSES
         }
     )
+    unlicensed = sum(1 for e in entries if e.get("license") is None)
+    if unlicensed:
+        print(
+            f"warning: this release re-authors material from {unlicensed} ingested input(s) that carried no "
+            "license (unsigned contributions) -- their terms are unknown",
+            file=sys.stderr,
+        )
     if flagged:
         print(
             "warning: this release re-authors material from input releases under non-permissive licenses: "

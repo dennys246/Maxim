@@ -495,7 +495,9 @@ class TestOasisCli:
             contributor_id="oasis-alpha",
             body_ref="minecraft_bench",
         )
-        rc = run_oasis_subcommand(["publish", str(out), "--root", str(tmp_path / "store"), "--queen-key", "q=x"])
+        rc = run_oasis_subcommand(
+            ["publish", str(out), "--root", str(tmp_path / "store"), "--queen-key", "q=" + "A" * 43 + "="]
+        )
         assert rc == 2
         assert "sign" in capsys.readouterr().err
 
@@ -505,7 +507,9 @@ class TestOasisCli:
     def test_publish_non_zip_rc2_not_traceback(self, tmp_path, capsys):
         junk = tmp_path / "notabundle.zip"
         junk.write_text("this is not a zip", encoding="utf-8")
-        rc = run_oasis_subcommand(["publish", str(junk), "--root", str(tmp_path / "store"), "--queen-key", "q=x"])
+        rc = run_oasis_subcommand(
+            ["publish", str(junk), "--root", str(tmp_path / "store"), "--queen-key", "q=" + "A" * 43 + "="]
+        )
         assert rc == 2
         assert "error:" in capsys.readouterr().err
 

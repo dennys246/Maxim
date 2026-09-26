@@ -195,26 +195,31 @@ reads `signature.json`, not the manifest's `signature` field (empty in v3).
   runtime default. (Runtime-ephemeral: passed in, never persisted.) `reauthor` stays as #903 left it.
 - `signing.py` gains a named key path (`--key-file`), so the Queen key and the host's development key
   are separate files, not one default.
-- The sequence counter lives in `~/.maxim/util/hive_release_sequence.json`, keyed by signer identity,
+- The sequence counter lives in `~/.maxim/util/hive_release_sequence.json`, keyed by signer identity
+  (amended below: by public key),
   written with `atomic_write_json` + `_format_version`. Signing **refuses** when a key exists but its
   counter entry does not (a restored key must not restart at 1) unless `--release-sequence N` is given;
   `--release-sequence` may only move the counter forward. The Queen key is kept separate from the
   host's development key (experiment bundles must never advance the Queen's sequence).
 - `maxim substrate export --sign` builds v2; `--license` is required with `--sign`.
 
-*Amended on PR C's build:* the counter is keyed by the signing key's PUBLIC KEY (hex), not the identity —
-the same key the receiver journal keys on, so the Queen key and a development key can never share a
-counter even under one identity. It is read (`next_release_sequence`) before the compose and COMMITTED
-(`commit_release_sequence`, under a `FileLock`, re-checking it still moves forward) right after it; a
-failed commit deletes the composed release. So a failed compose burns no number, and a signed release
-never exists without its counter record. `export --release` warns when the session's journal holds a
-verified input release under a license outside a small permissive set (decision (d); no compatibility
-engine).
+*Amended on PR C's build and its review:* the counter is keyed by the signing key's PUBLIC KEY (hex),
+not the identity — the same key the receiver journal keys on, so the Queen key and a development key can
+never share a counter even under one identity. A key minted on this host is registered in the counter at
+`0` the moment it is minted (so "has this key released before?" is counter state, not a per-process
+flag); a key the counter never saw (minted elsewhere, restored, copied) must name its first
+`--release-sequence`. The producer gets its release from `signing.counted_release`, whose commit
+(`commit_release_sequence`, under a `FileLock`, re-checking it still moves forward) runs INSIDE
+`compose_bundle`, between writing the signed `.tmp` and moving it onto the output path: a signed release
+at its output path always has its counter record, whatever crashes when; a failed compose burns no
+number. `export --release` warns when the session merged inputs under a license outside a deliberately
+attribution-free set (CDLA-Permissive-1.0/2.0, CC0-1.0 — a release strips per-row provenance) or under
+no license at all (decision (d); a warning, no compatibility engine).
 
 ## Oasis store
 
 `publish_release` **verifies** (the store is configured with the Queen public keys: `maxim oasis serve
---queen-key IDENTITY=PUBKEY`): signature, index, license present, and no equivocation against releases
+--queen-key IDENTITY=PUBKEY` — amended below: `oasis publish --queen-key`): signature, index, license present, and no equivocation against releases
 it already holds. A Queen release's id becomes its signed-payload digest (same `^[0-9a-f]{64}$` shape);
 releases already on disk are renamed once (a store migration), and `test_hive_pull_e2e.py`'s direct
 `{sha256(raw)}.zip` writes change with it. The experimental tier keeps ZIP-sha ids — one id shape, two
@@ -223,9 +228,11 @@ meanings by tier, stated. Clients only shape-check ids, so none breaks. `list_re
 PR C's build:* the Queen keys are given to `maxim oasis publish --queen-key IDENTITY=PUBKEY` (publishing is
 where verification happens; `serve` only serves what was published). The store takes v2 releases only (a
 v1 bundle has no index or license); a re-zipped copy of a held release is idempotent; the equivocation
-check is `bundle.find_equivocation`, the same predicate the receiver journal applies; the migration
-(`OasisStore.migrate_release_ids`, run by every `oasis` verb) renames by `content_payload_digest`, which
-needs no key.
+check is `bundle.find_equivocation`, the same predicate the receiver journal applies, over held releases
+verified by KEY BYTES under every given key (relabelling a key cannot hide its history), serialized with
+the write under a lock; a file at the id that does not verify is replaced on publish; the migration
+(`OasisStore.migrate_release_ids`, run by `serve`/`publish`; `status` only reports) renames by
+`content_payload_digest`, which needs no key, and never deletes a DIFFERENT file sharing an identity.
 
 ## Reader (the Phase-1 caller)
 

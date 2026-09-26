@@ -92,6 +92,33 @@ def _verify(raw: bytes, queen_keys: Mapping[str, str]) -> BundleVerification:
         return BundleVerification(False, f"not a ZIP archive: {exc}")
 
 
+def _claimed_signer(raw: bytes) -> str | None:
+    try:
+        manifest = read_bundle_manifest_bytes(raw)
+    except _MALFORMED_BUNDLE:
+        return None
+    signer = manifest.get("signer_identity")
+    return signer if isinstance(signer, str) and signer else None
+
+
+def _verify_by_key(raw: bytes, keys: list[str]) -> BundleVerification | None:
+    """The verification of ``raw`` under whichever of ``keys`` signed it -- the release's own claimed
+    identity bound to each key in turn, so the result depends on key bytes, not on a registry label."""
+    signer = _claimed_signer(raw)
+    if signer is None:
+        return None
+    for key in keys:
+        result = _verify(raw, {signer: key})
+        if result.ok:  # a v1 result carries no release_sequence, so it binds no sequence
+            return result
+    return None
+
+
+def _verifies_as(raw: bytes, release_id: str, queen_keys: Mapping[str, str]) -> bool:
+    held = _verify_by_key(raw, sorted(set(queen_keys.values())))
+    return held is not None and held.payload_digest == release_id
+
+
 def is_valid_release_id(release_id: str) -> bool:
     """True iff ``release_id`` is a bare sha256 hex digest (no separators, no ``..``).
 
@@ -136,12 +163,16 @@ class OasisStore:
         unverified publish) are the Queen keys this Oasis publishes under. The store refuses
         (``OasisStoreError``) anything that is not a v2 release verifying against one of them -- the
         signature, the signed entry index and the signed license (release format v2, decision (b)/(d))
-        -- and a release that EQUIVOCATES against one it already holds (same key and sequence, a
-        different payload; ``bundle.find_equivocation``, the predicate receivers apply too).
+        -- and a release that EQUIVOCATES against one it already holds (same signing KEY and sequence, a
+        different payload; ``bundle.find_equivocation``, the predicate receivers apply too). The check
+        compares key bytes, never labels: a held release counts under whichever of ``queen_keys`` signed
+        it, whatever identity it names.
 
         The release id is the release's signed-payload digest: a re-zipped copy of a held release is the
-        same release (the call is then idempotent). The experimental tier keeps ZIP-sha ids -- one id
-        shape, two meanings by tier.
+        same release (idempotent). A file already at that id that does NOT verify (planted, or left by a
+        pre-v2 store) is replaced by the verified bytes. Serialized with the id migration by a lock, so
+        two concurrent publishes cannot both pass the equivocation check. The experimental tier keeps
+        ZIP-sha ids -- one id shape, two meanings by tier.
         """
         if not queen_keys:
             raise OasisStoreError("publishing needs the Queen key(s) this Oasis publishes under (--queen-key)")
@@ -158,23 +189,30 @@ class OasisStore:
                 "(unsigned bundles may only enter the experimental tier)"
             )
         release_id = str(verification.payload_digest)
-        clash = find_equivocation(
-            self._held_release_records(queen_keys),
-            signer_key=str(verification.signer_key),
-            release_sequence=int(verification.release_sequence or 0),
-            payload_digest=release_id,
-        )
-        if clash is not None:
-            raise OasisStoreError(
-                f"signer {verification.signer_identity!r} already published sequence "
-                f"{verification.release_sequence} as release {str(clash.get('payload_digest'))[:12]}… -- one "
-                "sequence binds to one release (equivocation)"
-            )
         path = self.releases_dir / f"{release_id}.zip"
-        if path.is_file():
-            logger.info("oasis: release %s is already published (same signed payload)", release_id[:12])
-            return release_id
-        atomic_write_bytes(str(path), raw)
+        with self._release_lock():
+            clash = find_equivocation(
+                self._held_release_records(queen_keys),
+                signer_key=str(verification.signer_key),
+                release_sequence=int(verification.release_sequence or 0),
+                payload_digest=release_id,
+            )
+            if clash is not None:
+                raise OasisStoreError(
+                    f"signer key {str(verification.signer_key)[:12]}… already published sequence "
+                    f"{verification.release_sequence} as release {str(clash.get('payload_digest'))[:12]}… -- "
+                    "one sequence binds to one release (equivocation)"
+                )
+            if path.is_file():
+                held = path.read_bytes()
+                if _verifies_as(held, release_id, queen_keys):
+                    logger.info("oasis: release %s is already published (same signed payload)", release_id[:12])
+                    return release_id
+                logger.warning(
+                    "oasis: the file held as release %s does not verify; replacing it with the verified release",
+                    release_id[:12],
+                )
+            atomic_write_bytes(str(path), raw)
         logger.info(
             "oasis: published release %s (signer=%s, sequence %s, %s)",
             release_id[:12],
@@ -184,20 +222,29 @@ class OasisStore:
         )
         return release_id
 
+    def _release_lock(self) -> Any:
+        from filelock import FileLock
+
+        self.releases_dir.mkdir(parents=True, exist_ok=True)
+        return FileLock(str(self.releases_dir / ".release.lock"), timeout=30)
+
     def _held_release_records(self, queen_keys: Mapping[str, str]) -> list[dict[str, Any]]:
-        """``{signer_key, release_sequence, payload_digest}`` of each held release that VERIFIES as v2 against
-        ``queen_keys`` -- the only facts the equivocation check may compare (an unverifiable held file
-        cannot bind a sequence)."""
+        """``{signer_key, release_sequence, payload_digest}`` of each held release that VERIFIES as v2 under
+        one of ``queen_keys``' KEYS -- tried against every key, under the identity the release itself names,
+        so relabelling a key (``--queen-key other-name=SAME_KEY``) cannot hide its history. A held file
+        that verifies under none binds no sequence. O(held releases x keys) verifications per publish."""
         records: list[dict[str, Any]] = []
         if not self.releases_dir.is_dir():
             return records
+        keys = sorted(set(queen_keys.values()))
         for path in sorted(self.releases_dir.glob("*.zip")):
             try:
-                held = _verify(path.read_bytes(), queen_keys)
+                raw = path.read_bytes()
             except OSError as exc:
                 logger.warning("oasis: cannot read held release %s: %s", path.name, exc)
                 continue
-            if held.ok and held.scheme == SIGNATURE_SCHEME_V2:
+            held = _verify_by_key(raw, keys)
+            if held is not None:
                 records.append(
                     {
                         "signer_key": held.signer_key,
@@ -207,38 +254,73 @@ class OasisStore:
                 )
         return records
 
+    def pending_release_migrations(self) -> int:
+        """How many held releases :meth:`migrate_release_ids` would rename (read-only; for ``oasis status``)."""
+        pending = 0
+        if not self.releases_dir.is_dir():
+            return pending
+        for path in sorted(self.releases_dir.glob("*.zip")):
+            try:
+                with zipfile.ZipFile(path) as zf:
+                    identity = content_payload_digest(zf)
+            except (zipfile.BadZipFile, OSError):
+                continue
+            if identity is not None and identity != path.stem:
+                pending += 1
+        return pending
+
     def migrate_release_ids(self) -> int:
         """Rename releases stored under their ZIP sha256 to their payload identity; return how many moved.
 
         Release format v2 made a Queen release's id its signed-payload digest. A release published before
         that sits under its ZIP sha; ``content_payload_digest`` computes its payload identity with no key
-        (equal to the verified digest whenever it verifies), so the rename needs no trust decision. A file
-        whose identity cannot be computed keeps its name (warned). Idempotent; the oasis verbs run it
-        once each. Written through ``atomic_write_bytes`` then the old name is removed -- never a rename.
+        (equal to the verified digest whenever it verifies), so the rename needs no trust decision -- and
+        it makes NONE: when the target id already holds DIFFERENT bytes (two files, one identity -- e.g.
+        a genuine release and a copy with a forged signature member), both are left in place and the
+        collision is warned about; only a byte-identical duplicate is removed. A file whose identity
+        cannot be computed keeps its name. Idempotent; the oasis verbs run it once each, under the same
+        lock as publishing. Written through ``atomic_write_bytes`` then the old name removed -- never a
+        rename.
         """
         moved = 0
         if not self.releases_dir.is_dir():
             return moved
-        for path in sorted(self.releases_dir.glob("*.zip")):
-            if not _RELEASE_ID_RE.match(path.stem):
-                continue
-            try:
-                with zipfile.ZipFile(path) as zf:
-                    identity = content_payload_digest(zf)
-            except (zipfile.BadZipFile, OSError) as exc:
-                logger.warning("oasis: cannot migrate release %s: %s", path.name, exc)
-                continue
-            if identity is None:
-                logger.warning("oasis: release %s has no computable payload identity; left as is", path.name)
-                continue
-            if identity == path.stem:
-                continue
-            target = self.releases_dir / f"{identity}.zip"
-            if not target.is_file():
-                atomic_write_bytes(str(target), path.read_bytes())
-            path.unlink()
-            moved += 1
-            logger.info("oasis: migrated release id %s -> %s (payload identity)", path.stem[:12], identity[:12])
+        with self._release_lock():
+            for path in sorted(self.releases_dir.glob("*.zip")):
+                if not _RELEASE_ID_RE.match(path.stem):
+                    continue
+                try:
+                    raw = path.read_bytes()
+                    with zipfile.ZipFile(path) as zf:
+                        identity = content_payload_digest(zf)
+                except (zipfile.BadZipFile, OSError) as exc:
+                    logger.warning("oasis: cannot migrate release %s: %s", path.name, exc)
+                    continue
+                if identity is None:
+                    logger.warning("oasis: release %s has no computable payload identity; left as is", path.name)
+                    continue
+                if identity == path.stem:
+                    continue
+                target = self.releases_dir / f"{identity}.zip"
+                try:
+                    if target.is_file():
+                        if target.read_bytes() != raw:
+                            logger.warning(
+                                "oasis: releases %s and %s share payload identity %s but differ; both left in "
+                                "place (check which verifies)",
+                                path.name,
+                                target.name,
+                                identity[:12],
+                            )
+                            continue
+                    else:
+                        atomic_write_bytes(str(target), raw)
+                    path.unlink(missing_ok=True)
+                except OSError as exc:
+                    logger.warning("oasis: cannot migrate release %s: %s", path.name, exc)
+                    continue
+                moved += 1
+                logger.info("oasis: migrated release id %s -> %s (payload identity)", path.stem[:12], identity[:12])
         return moved
 
     def list_releases(self) -> list[dict[str, Any]]:

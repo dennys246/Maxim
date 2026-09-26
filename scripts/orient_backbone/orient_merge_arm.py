@@ -344,23 +344,18 @@ def main() -> int:
             print("[bundle] --contributor-id and --license are required with --bundle")
             return 2
         from maxim.hivemind.bundle import compose_bundle
-        from maxim.hivemind.signing import (
-            SignedRelease,
-            commit_release_sequence,
-            next_release_sequence,
-            open_signer,
-        )
+        from maxim.hivemind.signing import counted_release, open_signer
 
         # The same release counter `substrate export --sign` uses: a sequence is never re-used.
-        signer, fresh_key = open_signer(signer_identity=args.contributor_id, key_file=args.key_file)
-        sequence = next_release_sequence(signer, requested=args.release_sequence, fresh_key=fresh_key)
+        signer, _ = open_signer(signer_identity=args.contributor_id, key_file=args.key_file)
+        release = counted_release(signer, license=args.license, requested=args.release_sequence)
 
         bundle_path = os.path.expanduser(args.bundle)
         # A queen-mind bundle is RELEASE composition from a merge: re-authored and signed (the merged
         # links are "_consensus", which a receiver's V1 sweep refuses in a plain export).
         manifest = compose_bundle(
             reauthor=True,
-            release=SignedRelease(signer=signer, release_sequence=sequence, license=args.license),
+            release=release,
             nac_state=merged,
             ec_substrate_nodes=None,  # orient NAcs carry no EC state
             output_path=bundle_path,
@@ -368,11 +363,6 @@ def main() -> int:
             domain=args.domain,
             body_ref=args.body_ref,  # gate 7 — None ships honestly unverifiable
         )
-        try:
-            commit_release_sequence(signer, sequence)
-        except (ValueError, OSError):
-            os.remove(bundle_path)  # never leave a signed release the counter does not hold
-            raise
         if args.body_ref is None:
             print("[bundle] note: no --body-ref — body-checking receivers will REFUSE this bundle")
         print(f"[bundle] wrote {bundle_path}")

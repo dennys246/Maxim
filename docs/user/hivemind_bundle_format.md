@@ -66,8 +66,8 @@ but dims alone cannot distinguish a 384-dim fallback from a real 384-dim model.
 
 ## Release format v2 (bundle schema 3)
 
-A **signed** bundle is a release (`maxim substrate export --sign --release-sequence N --license SPDX
-[--agent-id ID]`). Only a release is schema 3: an **unsigned** bundle is written at schema 2, which it
+A **signed** bundle is a release (`maxim substrate export --sign --license SPDX [--key-file PATH]
+[--release-sequence N] [--agent-id ID]`). Only a release is schema 3: an **unsigned** bundle is written at schema 2, which it
 needs nothing beyond, so 1.3.x peers and Oasis servers keep reading contributions — and refuse a release
 they cannot verify.
 

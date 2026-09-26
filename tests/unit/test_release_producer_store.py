@@ -32,11 +32,12 @@ def _signer(identity="queen-a"):
 
 
 def test_a_fresh_key_counts_from_one_and_each_commit_moves_it_on(tmp_path):
-    from maxim.hivemind.signing import commit_release_sequence, next_release_sequence
+    from maxim.hivemind.signing import commit_release_sequence, next_release_sequence, register_fresh_key
 
     counter, signer = tmp_path / "seq.json", _signer()
+    register_fresh_key(signer, path=counter)  # what open_signer does when it mints a key
     for expected in (1, 2, 3):
-        seq = next_release_sequence(signer, requested=None, fresh_key=expected == 1, path=counter)
+        seq = next_release_sequence(signer, requested=None, path=counter)
         assert seq == expected
         commit_release_sequence(signer, seq, path=counter)
     data = json.loads(counter.read_text())
@@ -49,10 +50,10 @@ def test_an_existing_key_the_counter_never_saw_must_name_its_sequence(tmp_path):
 
     counter, signer = tmp_path / "seq.json", _signer()
     with pytest.raises(ReleaseSequenceError, match="no release counter"):
-        next_release_sequence(signer, requested=None, fresh_key=False, path=counter)
-    assert next_release_sequence(signer, requested=7, fresh_key=False, path=counter) == 7
+        next_release_sequence(signer, requested=None, path=counter)
+    assert next_release_sequence(signer, requested=7, path=counter) == 7
     commit_release_sequence(signer, 7, path=counter)
-    assert next_release_sequence(signer, requested=None, fresh_key=False, path=counter) == 8
+    assert next_release_sequence(signer, requested=None, path=counter) == 8
 
 
 @pytest.mark.parametrize("requested", [3, 2])
@@ -62,7 +63,7 @@ def test_an_explicit_sequence_may_only_move_forward(tmp_path, requested):
     counter, signer = tmp_path / "seq.json", _signer()
     commit_release_sequence(signer, 3, path=counter)
     with pytest.raises(ReleaseSequenceError, match="does not move forward"):
-        next_release_sequence(signer, requested=requested, fresh_key=False, path=counter)
+        next_release_sequence(signer, requested=requested, path=counter)
 
 
 def test_a_sequence_taken_meanwhile_is_refused_at_commit(tmp_path):
@@ -78,10 +79,13 @@ def test_the_counter_is_per_key_not_per_identity(tmp_path):
     """The Queen key and a development key under one identity never share (or advance) a counter."""
     from maxim.hivemind.signing import commit_release_sequence, next_release_sequence
 
+    from maxim.hivemind.signing import register_fresh_key
+
     counter = tmp_path / "seq.json"
     queen, dev = _signer("maxim-queen"), _signer("maxim-queen")
     commit_release_sequence(dev, 40, path=counter)
-    assert next_release_sequence(queen, requested=None, fresh_key=True, path=counter) == 1
+    register_fresh_key(queen, path=counter)
+    assert next_release_sequence(queen, requested=None, path=counter) == 1
 
 
 # ── the export CLI ─────────────────────────────────────────────────────────────────────────────
@@ -327,6 +331,217 @@ def test_two_concurrent_commits_of_one_sequence_cannot_both_succeed(tmp_path, mo
             outcomes.append("refused")
 
     threads = [threading.Thread(target=commit) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(outcomes) == ["ok", "refused"]
+
+
+# ── review round (PR C) ────────────────────────────────────────────────────────────────────────
+
+
+def test_an_interrupted_commit_leaves_no_signed_release_and_burns_nothing(tmp_path, monkeypatch):
+    """The commit runs inside compose_bundle, between the signed .tmp and the output path: an interrupt
+    there leaves neither the output nor the .tmp, and the counter never recorded the number."""
+    import maxim.hivemind.signing as signing
+
+    session, key = _session(tmp_path), tmp_path / "k"
+    real_commit = signing.commit_release_sequence
+
+    def interrupted(*_a, **_k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(signing, "commit_release_sequence", interrupted)
+    out = tmp_path / "a.zip"
+    with pytest.raises(KeyboardInterrupt):
+        _export(session, out, "--key-file", str(key))
+    assert not out.exists() and not list(tmp_path.glob("*.tmp"))
+    monkeypatch.setattr(signing, "commit_release_sequence", real_commit)
+    assert _export(session, tmp_path / "b.zip", "--key-file", str(key), "--release-sequence", "1") == 0
+    assert _manifest(tmp_path / "b.zip")["release_sequence"] == 1
+
+
+def test_keygen_then_export_starts_at_one(tmp_path):
+    from maxim.hivemind.cli import run_substrate_subcommand
+
+    key = tmp_path / "queen.key"
+    assert run_substrate_subcommand(["keygen", "--signer-id", DONOR, "--key-file", str(key)]) == 0
+    assert _export(_session(tmp_path), tmp_path / "a.zip", "--key-file", str(key)) == 0
+    assert _manifest(tmp_path / "a.zip")["release_sequence"] == 1
+
+
+def test_a_malformed_counter_entry_fails_loud(tmp_path):
+    from maxim.hivemind.signing import ReleaseSequenceError, _public_key_hex, next_release_sequence
+
+    signer, counter = _signer(), tmp_path / "seq.json"
+    counter.write_text(json.dumps({"_format_version": "1.0", "signers": {_public_key_hex(signer): 7}}))
+    with pytest.raises(ReleaseSequenceError, match="malformed entry"):
+        next_release_sequence(signer, requested=1, path=counter)
+
+
+def test_a_missing_or_stale_pub_file_is_rewritten_from_the_private_key(tmp_path):
+    from maxim.hivemind.signing import load_or_create_signer
+
+    key = tmp_path / "k"
+    signer = load_or_create_signer(signer_identity="q", key_file=key)
+    pub = tmp_path / "k.pub"
+    pub.unlink()
+    load_or_create_signer(signer_identity="q", key_file=key)
+    assert pub.read_text().strip() == signer.public_key_b64
+    pub.write_text("someone-else\n")
+    load_or_create_signer(signer_identity="q", key_file=key)
+    assert pub.read_text().strip() == signer.public_key_b64
+
+
+def test_relabelling_a_key_does_not_hide_its_published_sequences(tmp_path):
+    """The review's probe: key K published sequence 1 as "queen-a"; the same K registered as "queen-b"
+    must not publish a DIFFERENT sequence 1 -- equivocation compares key bytes, never labels."""
+    from maxim.hivemind.signing import BundleSigner
+    from maxim.hivemind.store import OasisStoreError
+
+    a = _signer("queen-a")
+    b = BundleSigner.from_private_pem(a.private_pem(), signer_identity="queen-b")  # the same key
+    store = _store(tmp_path)
+    store.publish_release(_release(tmp_path, a, sequence=1, fear=-0.5), queen_keys={"queen-a": a.public_key_b64})
+    with pytest.raises(OasisStoreError, match="equivocation"):
+        store.publish_release(_release(tmp_path, b, sequence=1, fear=-0.9), queen_keys={"queen-b": b.public_key_b64})
+
+
+def test_a_held_file_that_verifies_under_no_queen_key_binds_no_sequence(tmp_path):
+    other, queen, store = _signer("stranger"), _signer(), _store(tmp_path)
+    store.releases_dir.mkdir(parents=True)
+    planted = _release(tmp_path, other, sequence=1, fear=-0.9, name="planted.zip")
+    (store.releases_dir / ("f" * 64 + ".zip")).write_bytes(planted.read_bytes())
+    assert store.publish_release(_release(tmp_path, queen, sequence=1), queen_keys={"queen-a": queen.public_key_b64})
+
+
+def test_a_non_verifying_file_at_a_release_id_is_replaced_on_publish(tmp_path):
+    from maxim.hivemind.bundle import verify_bundle_zip
+    from maxim.hivemind.signing import SIGNATURE_MEMBER
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    signer, store = _signer(), _store(tmp_path)
+    keys = {"queen-a": signer.public_key_b64}
+    genuine = _release(tmp_path, signer)
+    members = read_members(genuine)
+    members[SIGNATURE_MEMBER] = b'{"signature_scheme": 2, "signature_algorithm": "ed25519", "signature": "AAAA"}'
+    forged = write_members(tmp_path / "forged.zip", members)
+    with zipfile.ZipFile(genuine) as zf:
+        release_id = verify_bundle_zip(zf, trusted_keys=keys, accept_v1=False).payload_digest
+    store.releases_dir.mkdir(parents=True)
+    (store.releases_dir / f"{release_id}.zip").write_bytes(forged.read_bytes())
+    assert store.publish_release(genuine, queen_keys=keys) == release_id
+    with zipfile.ZipFile(store.releases_dir / f"{release_id}.zip") as zf:
+        assert verify_bundle_zip(zf, trusted_keys=keys, accept_v1=False).ok
+
+
+def test_migration_never_deletes_a_different_file_sharing_an_identity(tmp_path):
+    """A genuine release and a copy with a forged signature member share a payload identity (the identity
+    ignores signature.json). The migration must not pick one and delete the other."""
+    import hashlib
+
+    from maxim.hivemind.signing import SIGNATURE_MEMBER
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    signer, store = _signer(), _store(tmp_path)
+    genuine = _release(tmp_path, signer)
+    members = read_members(genuine)
+    members[SIGNATURE_MEMBER] = b'{"signature_scheme": 2, "signature_algorithm": "ed25519", "signature": "AAAA"}'
+    forged = write_members(tmp_path / "forged.zip", members)
+    store.releases_dir.mkdir(parents=True)
+    for path in (genuine, forged):
+        raw = path.read_bytes()
+        (store.releases_dir / f"{hashlib.sha256(raw).hexdigest()}.zip").write_bytes(raw)
+    store.migrate_release_ids()
+    held = {p.read_bytes() for p in store.releases_dir.glob("*.zip")}
+    assert genuine.read_bytes() in held and forged.read_bytes() in held
+
+
+def test_writing_oasis_verbs_migrate_release_ids_and_status_only_reports(tmp_path, capsys):
+    import hashlib
+
+    from maxim.hivemind.oasis_cli import run_oasis_subcommand
+
+    signer, store = _signer(), _store(tmp_path)
+    store.releases_dir.mkdir(parents=True)
+    raw = _release(tmp_path, signer).read_bytes()
+    legacy = store.releases_dir / f"{hashlib.sha256(raw).hexdigest()}.zip"
+    legacy.write_bytes(raw)
+    assert run_oasis_subcommand(["status", "--root", str(store.root)]) == 0
+    assert "1 release id(s) pending migration" in capsys.readouterr().out and legacy.is_file()  # read-only
+    new = _release(tmp_path, signer, sequence=2, fear=-0.7)
+    key = f"queen-a={signer.public_key_b64}"
+    assert run_oasis_subcommand(["publish", str(new), "--root", str(store.root), "--queen-key", key]) == 0
+    assert "migrated 1 release id" in capsys.readouterr().out and not legacy.exists()
+
+
+def test_a_copied_key_the_counter_never_saw_must_name_its_sequence_through_the_cli(tmp_path, capsys):
+    """The headline counter rule at the real caller: a key file this host did not mint (restored/copied)."""
+    signer = _signer(DONOR)
+    key = tmp_path / "copied.key"
+    key.write_bytes(signer.private_pem())
+    session = _session(tmp_path)
+    assert _export(session, tmp_path / "a.zip", "--key-file", str(key)) == 2
+    assert "--release-sequence 1 if it never signed one" in capsys.readouterr().err
+    assert _export(session, tmp_path / "b.zip", "--key-file", str(key), "--release-sequence", "5") == 0
+    assert _export(session, tmp_path / "c.zip", "--key-file", str(key)) == 0
+    assert [_manifest(tmp_path / n)["release_sequence"] for n in ("b.zip", "c.zip")] == [5, 6]
+
+
+def test_a_release_warns_about_unlicensed_inputs(tmp_path, capsys):
+    entries = [{"digest": "a" * 64, "contributor_id": "peer"}]  # an unsigned contribution: no license
+    session = _session(tmp_path, journal_entries=entries)
+    assert _export(session, tmp_path / "r.zip", "--release", "--key-file", str(tmp_path / "k")) == 0
+    assert "1 ingested input(s) that carried no license" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        ([], "pass the Queen key(s)"),
+        (["--queen-key", "queen-a=x"], "not base64"),
+        (["--queen-key", "queen-a=AAAA"], "3 bytes"),
+    ],
+)
+def test_oasis_publish_names_what_is_wrong_with_its_keys(tmp_path, capsys, args, message):
+    from maxim.hivemind.oasis_cli import run_oasis_subcommand
+
+    out = _release(tmp_path, _signer())
+    assert run_oasis_subcommand(["publish", str(out), "--root", str(tmp_path / "s"), *args]) == 2
+    assert message in capsys.readouterr().err
+
+
+def test_two_concurrent_publishes_of_one_sequence_cannot_both_land(tmp_path, monkeypatch):
+    """publish_release checks equivocation and writes under one lock. A slowed held-release scan widens the
+    window -- without the lock both threads see no clash and both land."""
+    import threading
+    import time
+
+    from maxim.hivemind.store import OasisStore, OasisStoreError
+
+    real_scan = OasisStore._held_release_records
+
+    def slow_scan(self, keys):
+        records = real_scan(self, keys)
+        time.sleep(0.3)
+        return records
+
+    monkeypatch.setattr(OasisStore, "_held_release_records", slow_scan)
+    signer, store = _signer(), _store(tmp_path)
+    keys = {"queen-a": signer.public_key_b64}
+    bundles = [_release(tmp_path, signer, sequence=1, fear=f) for f in (-0.5, -0.9)]
+    store.releases_dir.mkdir(parents=True)
+    outcomes: list[str] = []
+
+    def publish(path):
+        try:
+            store.publish_release(path, queen_keys=keys)
+            outcomes.append("ok")
+        except OasisStoreError:
+            outcomes.append("refused")
+
+    threads = [threading.Thread(target=publish, args=(b,)) for b in bundles]
     for t in threads:
         t.start()
     for t in threads:

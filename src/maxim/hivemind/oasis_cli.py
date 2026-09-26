@@ -28,22 +28,49 @@ def _default_root() -> Path:
 _LOOPBACK = ("127.0.0.1", "::1", "localhost")
 
 
-def _open_store(args: argparse.Namespace) -> OasisStore:
-    """The store, with releases published before release format v2 moved to their payload-identity ids."""
+def _open_store(args: argparse.Namespace, *, migrate: bool = True) -> OasisStore:
+    """The store; for the WRITING verbs (serve, publish), releases published before release format v2 are
+    first moved to their payload-identity ids. ``status`` is read-only: it reports pending ones instead."""
     store = OasisStore(args.root or _default_root())
-    moved = store.migrate_release_ids()
+    if not migrate:
+        pending = store.pending_release_migrations()
+        if pending:
+            print(
+                f"{pending} release id(s) pending migration to payload identities (run `maxim oasis serve` or publish)"
+            )
+        return store
+    try:
+        moved = store.migrate_release_ids()
+    except OSError as exc:  # e.g. a store this user cannot write; the verb reports its own write failure
+        print(f"warning: could not migrate release ids in {store.releases_dir}: {exc}", file=sys.stderr)
+        return store
     if moved:
         print(f"migrated {moved} release id(s) to payload identities (release format v2)")
     return store
 
 
 def _parse_queen_keys(entries: list[str] | None) -> dict[str, str]:
-    keys: dict[str, str] = {}
-    for entry in entries or []:
-        identity, sep, pubkey = entry.partition("=")
-        if not sep or not identity or not pubkey:
-            raise ValueError(f"--queen-key must be IDENTITY=PUBKEY_B64, got {entry!r}")
-        keys[identity] = pubkey
+    """``--queen-key IDENTITY=PUBKEY_B64`` specs, each key checked to be a 32-byte ed25519 key -- so a
+    typo reads as a malformed key, not as a release that "does not verify"."""
+    import base64
+    import binascii
+
+    from maxim.hivemind.hive_cli import _parse_key_specs
+    from maxim.hivemind.registry import ED25519_PUBLIC_KEY_BYTES, HiveRegistryError
+
+    try:
+        keys = _parse_key_specs(entries, "--queen-key")
+    except HiveRegistryError as exc:
+        raise ValueError(str(exc)) from exc
+    for identity, pubkey in keys.items():
+        try:
+            raw = base64.b64decode(pubkey, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError(f"--queen-key {identity}: not base64 ({exc})") from exc
+        if len(raw) != ED25519_PUBLIC_KEY_BYTES:
+            raise ValueError(
+                f"--queen-key {identity}: {len(raw)} bytes, an ed25519 public key is {ED25519_PUBLIC_KEY_BYTES}"
+            )
     return keys
 
 
@@ -153,7 +180,7 @@ def _run_publish(args: argparse.Namespace) -> int:
 
 
 def _run_status(args: argparse.Namespace) -> int:
-    store = _open_store(args)
+    store = _open_store(args, migrate=False)
     try:
         releases = store.list_releases()
         contributions = store.list_contributions()

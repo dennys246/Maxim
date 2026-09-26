@@ -983,8 +983,12 @@ def compose_bundle(
         with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             for name, data in members.items():
                 zf.writestr(name, data)
+        if release is not None and release.commit is not None:
+            # The producer's counter commit, between the signed bytes existing and their reaching the
+            # output path: a signed release at output_path always has its counter record.
+            release.commit()
         os.replace(tmp_path, output_path)
-    except Exception:
+    except BaseException:  # an interrupt must not leave a signed .tmp behind either
         if tmp_path.exists():
             try:
                 tmp_path.unlink()

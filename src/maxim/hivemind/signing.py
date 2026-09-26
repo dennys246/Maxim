@@ -32,17 +32,20 @@ slice bytes is what makes tampering with ``nac.json`` fail verification.
 from __future__ import annotations
 
 import base64
+import logging
 import json
 import re
 import struct
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from maxim.tunnel.keys import key_file_path
 from maxim.utils.atomic_io import atomic_write_secret
 from maxim.utils.optional_deps import require_optional_dependency
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -222,6 +225,12 @@ class SignedRelease:
     signer: BundleSigner
     release_sequence: int
     license: str
+    #: Runs after the signed bundle is written to its temporary path and BEFORE it replaces the output
+    #: path (``compose_bundle``) -- the producer's release counter commit (:func:`counted_release`). So a
+    #: signed release at its output path always has its counter record, whatever crashes when: before
+    #: the commit only the temporary file exists; after it, a number is burned (receivers never refuse
+    #: a gap). ``None`` for a release whose sequence no counter owns (tests, hand-composed bundles).
+    commit: Callable[[], None] | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.signer, BundleSigner):
@@ -272,8 +281,8 @@ def public_key_path(key_file: str | Path | None = None) -> Path:
 def open_signer(*, signer_identity: str, key_file: str | Path | None = None) -> tuple[BundleSigner, bool]:
     """Load the signer at ``key_file`` (default: the host key), or mint + persist one on first use.
 
-    Returns ``(signer, created)`` -- ``created`` tells the release counter this key has never signed
-    anything (see :func:`reserve_release_sequence`).
+    Returns ``(signer, created)``. A minted key is registered in the release counter at once
+    (:func:`register_fresh_key`), so "has this key released before?" is counter STATE, never a flag.
 
     The private key is written through ``atomic_write_secret`` — 0600 from
     fd creation (the key never sits umask-wide, not even in the tmp
@@ -286,13 +295,27 @@ def open_signer(*, signer_identity: str, key_file: str | Path | None = None) -> 
     drift from the key. Keep one identity per key (or delete the key file to
     rotate) — the identity is not persisted beside the key.
     """
+    from maxim.utils.atomic_io import atomic_write_text
+
     path = signing_key_path(key_file)
+    pub_path = public_key_path(key_file)
     if path.is_file():
-        return BundleSigner.from_private_pem(path.read_bytes(), signer_identity=signer_identity), False
+        if path.stat().st_mode & 0o077:
+            logger.warning("signing key %s is readable by group/others; chmod 600 it", path)
+        signer = BundleSigner.from_private_pem(path.read_bytes(), signer_identity=signer_identity)
+        # The .pub is derived state: rewrite it when missing or not this key's (a crash between the two
+        # first-use writes, or two concurrent mints), so what an operator shares always matches.
+        current = pub_path.read_text().strip() if pub_path.is_file() else None
+        if current != signer.public_key_b64:
+            atomic_write_text(str(pub_path), signer.public_key_b64 + "\n")
+        return signer, False
     signer = BundleSigner.generate(signer_identity=signer_identity)
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_secret(str(path), signer.private_pem().decode("ascii"))
-    public_key_path(key_file).write_text(signer.public_key_b64 + "\n")
+    atomic_write_text(str(pub_path), signer.public_key_b64 + "\n")
+    # Known to the release counter from the moment it exists, with nothing released: its first release is
+    # 1 however it is first used (keygen, or an export that then fails), never refused as a restored key.
+    register_fresh_key(signer)
     return signer, True
 
 
@@ -326,7 +349,10 @@ def _read_counter(target: Path) -> dict[str, dict[str, object]]:
 
     if not target.is_file():
         return {}
-    data = json.loads(target.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ReleaseSequenceError(f"release counter {target} is not valid JSON: {exc}") from exc
     if not isinstance(data, dict) or not isinstance(data.get("signers", {}), dict):
         raise ReleaseSequenceError(f"release counter {target} is malformed")
     check_format_version(data, _SEQUENCE_FILE_TYPE)
@@ -335,6 +361,8 @@ def _read_counter(target: Path) -> dict[str, dict[str, object]]:
 
 def _last_released(signers: Mapping[str, object], key: str, target: Path) -> int | None:
     entry = signers.get(key)
+    if entry is not None and not isinstance(entry, dict):
+        raise ReleaseSequenceError(f"release counter {target}: key {key[:12]}… has a malformed entry {entry!r}")
     last = entry.get("last") if isinstance(entry, dict) else None
     if last is not None and (isinstance(last, bool) or not isinstance(last, int)):
         raise ReleaseSequenceError(f"release counter {target}: key {key[:12]}… has a non-integer last {last!r}")
@@ -345,7 +373,6 @@ def next_release_sequence(
     signer: BundleSigner,
     *,
     requested: int | None,
-    fresh_key: bool,
     path: str | Path | None = None,
 ) -> int:
     """The ``release_sequence`` this signing key's next release carries. Reads the counter; writes nothing
@@ -354,9 +381,10 @@ def next_release_sequence(
     Keyed by the signing key's public key (hex) -- the same key a receiver's journal keys its ordering
     rules on -- so the Queen key and a development key never share a counter, and experiment bundles can
     never advance the Queen's sequence. ``requested`` (``--release-sequence N``) may only move the counter
-    FORWARD. With none: the next number after the last one released; ``1`` for a key minted just now;
-    REFUSED for an existing key this counter has never seen (a restored key must not restart at 1 and
-    re-use a sequence it already released -- exactly what a receiver refuses as equivocation).
+    FORWARD. With none: the next number after the last one released (``1`` for a key minted on this host,
+    which :func:`open_signer` registers at ``0``); REFUSED for a key this counter has never seen -- one
+    minted elsewhere, restored or copied -- which must not restart at 1 and re-use a sequence it already
+    released (exactly what a receiver refuses as equivocation).
     """
     target = Path(path) if path is not None else release_sequence_path()
     key = _public_key_hex(signer)
@@ -371,12 +399,11 @@ def next_release_sequence(
         return sequence
     if last is not None:
         return validate_release_sequence(last + 1)
-    if fresh_key:
-        return 1
     raise ReleaseSequenceError(
-        f"this signing key ({signer.signer_identity!r}, {key[:12]}…) has no release counter here: it may have "
-        "released before (a restored or copied key). Pass --release-sequence N, above the last release it "
-        "published; the counter then continues from N."
+        f"this signing key ({signer.signer_identity!r}, {key[:12]}…) has no release counter on this host: it was "
+        "minted elsewhere, restored or copied, and may have released before. Pass --release-sequence N above "
+        "the last v2 release it published (--release-sequence 1 if it never signed one); the counter then "
+        "continues from N."
     )
 
 
@@ -407,3 +434,40 @@ def commit_release_sequence(signer: BundleSigner, sequence: int, *, path: str | 
             )
         signers[key] = {"last": sequence, "signer_identity": signer.signer_identity}
         atomic_write_json(str(target), with_format_version({"signers": signers}))
+
+
+def counted_release(
+    signer: BundleSigner,
+    *,
+    license: str,
+    requested: int | None,
+    path: str | Path | None = None,
+) -> SignedRelease:
+    """The :class:`SignedRelease` for this key's next release, its counter commit bound in: the one way a
+    producer (``substrate export --sign``, the orient merge script) gets a sequence. ``compose_bundle``
+    runs the commit between writing the signed bundle and moving it onto its output path."""
+    sequence = next_release_sequence(signer, requested=requested, path=path)
+    return SignedRelease(
+        signer=signer,
+        release_sequence=sequence,
+        license=license,
+        commit=lambda: commit_release_sequence(signer, sequence, path=path),
+    )
+
+
+def register_fresh_key(signer: BundleSigner, *, path: str | Path | None = None) -> None:
+    """Record a key minted just now (:func:`open_signer` calls it) with nothing released, so its first
+    release is 1 -- not refused as an unseen, possibly restored key. Does nothing if the counter knows it."""
+    from filelock import FileLock
+
+    from maxim.utils.atomic_io import atomic_write_json
+    from maxim.utils.format_version import with_format_version
+
+    target = Path(path) if path is not None else release_sequence_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(target) + ".lock", timeout=10):
+        signers = _read_counter(target)
+        key = _public_key_hex(signer)
+        if key not in signers:
+            signers[key] = {"last": 0, "signer_identity": signer.signer_identity}
+            atomic_write_json(str(target), with_format_version({"signers": signers}))
