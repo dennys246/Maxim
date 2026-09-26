@@ -214,7 +214,7 @@ flag); a key the counter never saw (minted elsewhere, restored, copied) must nam
 under a `FileLock`, re-checking it still moves forward) between writing the signed `.tmp` and moving it
 onto the output path -- so a `dataclasses.replace` of the sequence cannot desynchronise signed from
 recorded, and forgetting the counter is a `TypeError`: a signed release
-at its output path always has its counter record, whatever crashes when; a failed compose burns no
+at its output path always has its counter record, whatever crashes when; a compose that fails before the commit burns no
 number. The counter is PER HOST: a signing key must release from ONE host (a copy is refused only on the
 host it is copied TO; the minting host keeps counting from its own record). `export --release` warns when the session merged inputs under a license outside a deliberately
 attribution-free set (CDLA-Permissive-1.0/2.0, CC0-1.0 — a release strips per-row provenance) or under

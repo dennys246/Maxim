@@ -32,7 +32,13 @@ def _open_store(args: argparse.Namespace, *, migrate: bool = True) -> OasisStore
     """The store; for the WRITING verbs (serve, publish), releases published before release format v2 are
     first moved to their payload-identity ids. ``status`` is read-only: it reports pending ones instead."""
     store = OasisStore(args.root or _default_root())
-    pending = store.pending_release_migrations()
+    pending, collisions = store.release_migration_status()
+    for held, other in collisions:
+        print(
+            f"warning: releases {held} and {other} share one payload identity but differ -- keep the one that "
+            "verifies, remove the other (the migration never decides between them)",
+            file=sys.stderr,
+        )
     if not migrate:
         if pending:
             print(

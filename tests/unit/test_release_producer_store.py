@@ -654,4 +654,90 @@ def test_pending_migrations_ignore_non_release_files(tmp_path):
     store = _store(tmp_path)
     store.releases_dir.mkdir(parents=True)
     (store.releases_dir / "notes.zip").write_bytes(_release(tmp_path, _signer()).read_bytes())
-    assert store.pending_release_migrations() == 0
+    assert store.release_migration_status() == (0, [])
+
+
+def test_a_kept_collision_is_reported_by_every_verb(tmp_path, capsys):
+    """The migration never picks between two different files sharing an identity -- so the operator must be
+    TOLD, on every verb, until one is removed (the re-read's finding: a pending-only check went quiet)."""
+    import hashlib
+
+    from maxim.hivemind.oasis_cli import run_oasis_subcommand
+    from maxim.hivemind.signing import SIGNATURE_MEMBER
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    signer, store = _signer(), _store(tmp_path)
+    genuine = _release(tmp_path, signer)
+    members = read_members(genuine)
+    members[SIGNATURE_MEMBER] = b'{"signature_scheme": 2, "signature_algorithm": "ed25519", "signature": "AAAA"}'
+    forged = write_members(tmp_path / "forged.zip", members)
+    store.releases_dir.mkdir(parents=True)
+    with zipfile.ZipFile(genuine) as zf:
+        from maxim.hivemind.bundle import content_payload_digest
+
+        identity = content_payload_digest(zf)
+    (store.releases_dir / f"{identity}.zip").write_bytes(genuine.read_bytes())
+    raw = forged.read_bytes()
+    (store.releases_dir / f"{hashlib.sha256(raw).hexdigest()}.zip").write_bytes(raw)
+    assert run_oasis_subcommand(["status", "--root", str(store.root)]) == 0
+    assert "share one payload identity but differ" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(__import__("os").name == "nt" or __import__("os").geteuid() == 0, reason="POSIX, non-root")
+def test_a_read_only_store_with_nothing_to_migrate_stays_quiet(tmp_path, capsys):
+    from maxim.hivemind.oasis_cli import run_oasis_subcommand
+
+    signer, store = _signer(), _store(tmp_path)
+    store.releases_dir.mkdir(parents=True)
+    store.releases_dir.chmod(0o555)
+    try:
+        key = f"queen-a={signer.public_key_b64}"
+        run_oasis_subcommand(
+            ["publish", str(_release(tmp_path, signer)), "--root", str(store.root), "--queen-key", key]
+        )
+        assert "could not migrate" not in capsys.readouterr().err
+    finally:
+        store.releases_dir.chmod(0o755)
+
+
+def test_a_minted_key_is_registered_before_it_is_written(tmp_path, monkeypatch):
+    """If registration fails, no key file exists -- a written key the counter never saw would later be
+    refused as restored."""
+    import maxim.hivemind.signing as signing
+
+    def broken(*_a, **_k):
+        raise signing.ReleaseSequenceError("counter unavailable")
+
+    monkeypatch.setattr(signing, "register_fresh_key", broken)
+    key = tmp_path / "k"
+    with pytest.raises(signing.ReleaseSequenceError):
+        signing.open_signer(signer_identity="q", key_file=key)
+    assert not key.exists()
+
+
+@pytest.mark.skipif(__import__("os").name == "nt" or __import__("os").geteuid() == 0, reason="POSIX, non-root")
+def test_a_key_on_read_only_media_still_signs_without_its_pub(tmp_path):
+    from maxim.hivemind.signing import load_or_create_signer
+
+    media = tmp_path / "media"
+    media.mkdir()
+    key = media / "k"
+    signer = load_or_create_signer(signer_identity="q", key_file=key)
+    (media / "k.pub").unlink()
+    media.chmod(0o555)
+    try:
+        assert load_or_create_signer(signer_identity="q", key_file=key).public_key_b64 == signer.public_key_b64
+    finally:
+        media.chmod(0o755)
+
+
+def test_no_producer_opts_out_of_the_release_counter():
+    """UNCOUNTED is for tests and hand-composed evidence: no production code or script may use it."""
+    root = Path(__file__).resolve().parents[2]
+    offenders = [
+        str(p.relative_to(root))
+        for base in ("src", "scripts")
+        for p in (root / base).rglob("*.py")
+        if "UNCOUNTED" in p.read_text(encoding="utf-8") and p.name != "signing.py"
+    ]
+    assert offenders == []

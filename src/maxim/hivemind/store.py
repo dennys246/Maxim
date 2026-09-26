@@ -254,11 +254,15 @@ class OasisStore:
                 )
         return records
 
-    def pending_release_migrations(self) -> int:
-        """How many held releases :meth:`migrate_release_ids` would rename (read-only; for ``oasis status``)."""
+    def release_migration_status(self) -> tuple[int, list[tuple[str, str]]]:
+        """Read-only: ``(renames pending, identity collisions)`` in the release tier. A collision is two
+        DIFFERENT files sharing one payload identity (e.g. a genuine release and a copy with a forged
+        signature member) -- :meth:`migrate_release_ids` leaves both in place, so it stays reported here
+        until an operator removes the one that does not verify."""
         pending = 0
+        collisions: list[tuple[str, str]] = []
         if not self.releases_dir.is_dir():
-            return pending
+            return pending, collisions
         for path in sorted(self.releases_dir.glob("*.zip")):
             if not _RELEASE_ID_RE.match(path.stem):
                 continue
@@ -266,15 +270,16 @@ class OasisStore:
                 raw = path.read_bytes()
                 with zipfile.ZipFile(path) as zf:
                     identity = content_payload_digest(zf)
-                target = self.releases_dir / f"{identity}.zip"
                 if identity is None or identity == path.stem:
                     continue
+                target = self.releases_dir / f"{identity}.zip"
                 if target.is_file() and target.read_bytes() != raw:
-                    continue  # a collision the migration deliberately leaves in place
+                    collisions.append((path.name, target.name))
+                    continue
             except (zipfile.BadZipFile, OSError):
                 continue
             pending += 1
-        return pending
+        return pending, collisions
 
     def migrate_release_ids(self) -> int:
         """Rename releases stored under their ZIP sha256 to their payload identity; return how many moved.

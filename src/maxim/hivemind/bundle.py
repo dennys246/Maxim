@@ -984,7 +984,7 @@ def compose_bundle(
         with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             for name, data in members.items():
                 zf.writestr(name, data)
-        if release is not None and isinstance(release.counter, Path):  # not UNCOUNTED
+        if release is not None and isinstance(release.counter, Path):  # a counted release
             # The producer's counter commit -- from this release's own fields -- between the signed bytes
             # existing and their reaching the output path: a signed release at output_path always has
             # its counter record.
