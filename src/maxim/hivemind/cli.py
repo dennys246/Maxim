@@ -763,6 +763,7 @@ def _run_ingest(args: argparse.Namespace) -> int:
             force_digest=args.force_digest,
             require_signed=getattr(args, "require_signed", False),
             trusted_keys=trusted_keys,
+            accept_v1=not getattr(args, "refuse_v1", False),
         )
     except (IngestRefused, ValueError, OSError, _zipfile.BadZipFile) as exc:
         # IngestRefused and the gate-7 refusals subclass ValueError; every
@@ -1170,6 +1171,14 @@ def _build_parser() -> argparse.ArgumentParser:
         default=[],
         metavar="IDENTITY=PUBKEY_B64",
         help="Trust a signer: <signer_identity>=<base64 public key>. Repeatable.",
+    )
+    p_ingest.add_argument(
+        "--refuse-v1",
+        action="store_true",
+        help=(
+            "With --require-signed: accept v2 releases only, refusing a legacy v1 signature (hive pull "
+            "passes this for an Oasis whose registry entry says accept_v1: false)."
+        ),
     )
     p_ingest.set_defaults(func=_run_ingest)
 

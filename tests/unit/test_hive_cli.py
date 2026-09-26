@@ -118,16 +118,19 @@ class TestTrustPolicy:
         reg = HiveRegistry(tmp_path / "hive.json")
         entry = reg.add("alpha", "https://a.example", queen_keys={"q": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="})
         policy = trust_policy(entry)
-        assert policy == {"allow_unsigned": False, "inherent_trust": False, "trusted_sources": []}
+        # A NEW entry also refuses legacy v1 signatures (release format v2, decision (c)).
+        assert policy == {"allow_unsigned": False, "inherent_trust": False, "trusted_sources": [], "accept_v1": False}
 
     def test_policy_defaults_apply_to_legacy_entries(self):
-        """A registry file written before Slice D has no policy keys — defaults hold."""
+        """A registry file written before Slice D has no policy keys — defaults hold. An ABSENT
+        accept_v1 means True: a legacy entry keeps verifying the v1 lineages it already trusts."""
         from maxim.hivemind.registry import trust_policy
 
         assert trust_policy({"name": "old", "url": "https://o.example"}) == {
             "allow_unsigned": False,
             "inherent_trust": False,
             "trusted_sources": [],
+            "accept_v1": True,
         }
 
     def test_set_trust_roundtrips_and_persists(self, tmp_path):
@@ -226,7 +229,7 @@ class TestIngestArgvConstruction:
 
     @staticmethod
     def _policy(**over):
-        base = {"allow_unsigned": False, "inherent_trust": False, "trusted_sources": []}
+        base = {"allow_unsigned": False, "inherent_trust": False, "trusted_sources": [], "accept_v1": True}
         base.update(over)
         return base
 
@@ -299,6 +302,27 @@ class TestIngestArgvConstruction:
         assert "--apply" in argv and "--allow-unstamped-geometry" in argv
         assert "--apply" not in self._argv()
 
+    def test_refuse_v1_rides_the_queen_verified_path_when_the_entry_refuses_v1(self):
+        argv = self._argv(policy=self._policy(accept_v1=False))
+        assert "--refuse-v1" in argv
+        assert "--refuse-v1" not in self._argv()  # accept_v1: true (a legacy entry)
+        # the unverified path carries no signature enforcement at all
+        unverified = self._argv(queen_verified=False, policy=self._policy(accept_v1=False, allow_unsigned=True))
+        assert "--refuse-v1" not in unverified
+
+    def test_pull_ingests_in_ascending_listed_sequence(self):
+        """Ordering only: the listed sequence is unverified; absent / non-int ones sort first, stably."""
+        from maxim.hivemind.hive_cli import _listed_sequence
+
+        listing = [
+            {"id": "c", "release_sequence": 3},
+            {"id": "u"},
+            {"id": "a", "release_sequence": 1},
+            {"id": "t", "release_sequence": True},
+            {"id": "b", "release_sequence": 2},
+        ]
+        assert [r["id"] for r in sorted(listing, key=_listed_sequence)] == ["u", "t", "a", "b", "c"]
+
 
 class TestMalformedPolicyFailsLoud:
     def test_string_false_does_not_silently_opt_in(self):
@@ -330,6 +354,45 @@ class TestMalformedPolicyFailsLoud:
             encoding="utf-8",
         )
         assert run_hive_subcommand(["--registry", str(path), "list"]) == 2
+
+
+class TestAcceptV1Policy:
+    """decision (c): a NEW registry entry refuses legacy v1; an existing (absent) one keeps accepting."""
+
+    def test_add_writes_an_explicit_false_and_a_re_add_keeps_the_entry_s_value(self, tmp_path):
+        import json
+
+        path = tmp_path / "hive.json"
+        reg = HiveRegistry(path)
+        reg.add("alpha", "https://a.example")
+        assert json.loads(path.read_text())["oases"][0]["accept_v1"] is False  # explicit, on disk
+        reg.set_trust("alpha", accept_v1=True)
+        reg.add("alpha", "https://a2.example")  # a URL correction must not flip the policy back
+        from maxim.hivemind.registry import trust_policy
+
+        assert trust_policy(reg.get("alpha"))["accept_v1"] is True
+
+    def test_a_malformed_accept_v1_fails_loud(self):
+        from maxim.hivemind.registry import trust_policy
+
+        with pytest.raises(HiveRegistryError, match="accept_v1"):
+            trust_policy({"accept_v1": "false"})
+
+    def test_hive_trust_toggles_it_and_list_shows_it(self, tmp_path, capsys):
+        from maxim.hivemind.hive_cli import run_hive_subcommand
+        from maxim.hivemind.registry import trust_policy
+
+        reg_path = str(tmp_path / "hive.json")
+        HiveRegistry(reg_path).add("alpha", "https://a.example")
+        assert run_hive_subcommand(["--registry", reg_path, "trust", "alpha", "--accept-v1"]) == 0
+        assert trust_policy(HiveRegistry(reg_path).get("alpha"))["accept_v1"] is True
+        assert run_hive_subcommand(["--registry", reg_path, "trust", "alpha", "--refuse-v1"]) == 0
+        assert trust_policy(HiveRegistry(reg_path).get("alpha"))["accept_v1"] is False
+        capsys.readouterr()
+        assert run_hive_subcommand(["--registry", reg_path, "list"]) == 0
+        assert "v1 signatures: refused" in capsys.readouterr().out
+        with pytest.raises(SystemExit):
+            run_hive_subcommand(["--registry", reg_path, "trust", "alpha", "--accept-v1", "--refuse-v1"])
 
 
 class TestConflictingTrustFlags:

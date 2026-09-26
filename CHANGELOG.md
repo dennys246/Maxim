@@ -39,6 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema 2, readable by 1.3.x. Signature verification now runs before any trust duty, reads every
   member bounded (a lying ZIP header is a refusal, not a crash) and takes `accept_v1` explicitly.
   Legacy v1-signed bundles still verify, until 2.0. The `[sign]` extra gains `rfc8785`.
+- **A receiver remembers the releases it admitted** (item 7, receiver state). A verified ingest
+  journals the signer's public key, identity, scheme, release sequence, signed-payload digest and
+  license; ingest then refuses a second payload claiming an admitted `(key, sequence)`
+  (equivocation — not waivable by `--force-digest`) and a v1 bundle from a key whose v2 release was
+  admitted (downgrade), and dedups on the signed payload, so a re-zipped release is not merged twice.
+  `hive add` now writes `accept_v1: false` for a NEW Oasis (existing entries keep accepting legacy v1
+  signatures); `maxim hive trust --accept-v1 / --refuse-v1` toggles it and `hive pull` passes it to
+  ingest as the new `substrate ingest --refuse-v1`. `hive pull` ingests releases in ascending
+  sequence.
 
 - **Situation recall wired, with no behavioural or retention effect yet (memory-strength Phase
   2S-d).** Nothing consumes the recalled memories until 2S-e, and nothing is activated or

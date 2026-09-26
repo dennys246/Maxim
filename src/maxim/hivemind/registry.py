@@ -37,7 +37,7 @@ class HiveRegistryError(Exception):
     """A registry operation was refused (bad input, or a corrupt registry file)."""
 
 
-POLICY_FIELDS = ("allow_unsigned", "inherent_trust", "trusted_sources")
+POLICY_FIELDS = ("allow_unsigned", "inherent_trust", "trusted_sources", "accept_v1")
 
 
 def trust_policy(entry: dict[str, Any]) -> dict[str, Any]:
@@ -59,6 +59,10 @@ def trust_policy(entry: dict[str, Any]) -> dict[str, Any]:
     - ``inherent_trust`` (default False) — admit the decay-exempt inherent
       ("safety floor") bias class. Applied ONLY to Queen-verified releases and
       only for the contributor ids this policy already trusts.
+    - ``accept_v1`` (default True when ABSENT — a legacy entry keeps verifying the Exp 56/61
+      v1 lineages until 2.0) — accept a legacy v1 signature from this Oasis. ``add`` writes an
+      explicit ``False`` on a NEW entry (release format v2: a first-contact client has no v1 history
+      to keep, so it cannot be downgraded); ``hive trust --accept-v1`` turns it back on.
     - ``trusted_sources`` (default empty = any contributor the Queen signed) —
       an operator ``contributor_id`` allow-list. When non-empty it is passed to
       ingest as the V1 ``trusted_sources`` set, so the refusal is enforced by the
@@ -78,6 +82,13 @@ def trust_policy(entry: dict[str, Any]) -> dict[str, Any]:
                 "refusing to guess at a trust setting"
             )
         policy[field] = value
+    accept_v1 = entry.get("accept_v1", True)
+    if not isinstance(accept_v1, bool):
+        raise HiveRegistryError(
+            f"registry field 'accept_v1' must be a JSON boolean (true/false), got {accept_v1!r} — "
+            "refusing to guess at a trust setting"
+        )
+    policy["accept_v1"] = accept_v1
     sources = entry.get("trusted_sources", [])
     if sources is None:
         sources = []
@@ -207,6 +218,10 @@ class HiveRegistry:
         oases = self._load()
         existing = next((o for o in oases if o.get("name") == name), None)
         entry: dict[str, Any] = dict(existing or {})
+        if existing is None:
+            # A NEW entry refuses legacy v1 signatures (release format v2, decision (c)); a re-add keeps
+            # whatever the entry already says, like every other policy field.
+            entry["accept_v1"] = False
         entry.update({"name": name, "url": url})
         if keys:
             entry["queen_keys"] = keys
@@ -230,6 +245,7 @@ class HiveRegistry:
         allow_unsigned: bool | None = None,
         inherent_trust: bool | None = None,
         trusted_sources: list[str] | None = None,
+        accept_v1: bool | None = None,
     ) -> dict[str, Any]:
         """Set the consumer trust policy for a registered Oasis (operator-explicit).
 
@@ -244,6 +260,8 @@ class HiveRegistry:
             policy["allow_unsigned"] = bool(allow_unsigned)
         if inherent_trust is not None:
             policy["inherent_trust"] = bool(inherent_trust)
+        if accept_v1 is not None:
+            policy["accept_v1"] = bool(accept_v1)
         if trusted_sources is not None:
             for source in trusted_sources:
                 if not source or not isinstance(source, str):

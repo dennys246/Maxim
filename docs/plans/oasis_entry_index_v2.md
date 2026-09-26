@@ -16,9 +16,12 @@
 > `inspect --entries`, `--release-sequence` / `--license` / `--agent-id`, `hive pull
 > --receiver-agent-id`. Two owner decisions made on its code review changed this design, recorded
 > in the sections they touch: **own rows only** (§Agent segment) and **only signed releases are
-> schema 3** (§Envelope). Still to build: PR B — receiver state (§Receiver state, §Registry:
-> `accept_v1`); PR C — producer counter and store (§Producer, §Oasis store). The payload covers
-> `created_at`, so PR C's counter advances on every compose, not every publish.
+> schema 3** (§Envelope). **PR B — receiver state — shipped 2026-09-25:** the journal records each
+> verified release; ingest refuses equivocation and downgrade and dedups on the signed payload; the
+> registry's `accept_v1` reaches ingest as `--refuse-v1`; `hive pull` ingests in ascending sequence
+> (§Receiver state, §Registry: `accept_v1`). Still to build: PR C — producer counter and store
+> (§Producer, §Oasis store). The payload covers `created_at`, so PR C's counter advances on every
+> compose, not every publish.
 
 ## Why
 

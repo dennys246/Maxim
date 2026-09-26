@@ -91,6 +91,7 @@ def _run_list(args: argparse.Namespace) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 2
         verification = "unsigned-allowed" if policy["allow_unsigned"] else "queen-only"
+        legacy = "accepted" if policy["accept_v1"] else "refused"
         allow = ", ".join(policy["trusted_sources"]) or "(any Queen-signed)"
         # Reduce the key map to a COUNT before it can reach output. Nothing here
         # prints key material (and Queen keys are public verification anchors,
@@ -99,7 +100,8 @@ def _run_list(args: argparse.Namespace) -> int:
         n_anchors: int = len(o.get("queen_keys") or {})
         print(
             f"{o.get('name')}\t{o.get('url')}\tqueen_keys={n_anchors}\tdomains={domains}\n"
-            f"    trust: {verification}   inherent: {'yes' if policy['inherent_trust'] else 'no'}   sources: {allow}"
+            f"    trust: {verification}   inherent: {'yes' if policy['inherent_trust'] else 'no'}   "
+            f"v1 signatures: {legacy}   sources: {allow}"
         )
     return 0
 
@@ -115,16 +117,21 @@ def _run_trust(args: argparse.Namespace) -> int:
     allow_unsigned = True if args.allow_unsigned else (False if args.require_signed else None)
     inherent = True if args.inherent else (False if args.no_inherent else None)
     sources = list(args.trust_source) if args.trust_source else ([] if args.clear_trust_sources else None)
-    if allow_unsigned is None and inherent is None and sources is None:
+    accept_v1 = True if args.accept_v1 else (False if args.refuse_v1 else None)
+    if allow_unsigned is None and inherent is None and sources is None and accept_v1 is None:
         print(
             "error: nothing to set — pass --allow-unsigned/--require-signed, --inherent/--no-inherent, "
-            "--trust-source ID (repeatable), or --clear-trust-sources.",
+            "--accept-v1/--refuse-v1, --trust-source ID (repeatable), or --clear-trust-sources.",
             file=sys.stderr,
         )
         return 2
     try:
         entry = registry.set_trust(
-            args.name, allow_unsigned=allow_unsigned, inherent_trust=inherent, trusted_sources=sources
+            args.name,
+            allow_unsigned=allow_unsigned,
+            inherent_trust=inherent,
+            trusted_sources=sources,
+            accept_v1=accept_v1,
         )
         # Derive the printed policy from the POLICY FIELDS ONLY — never from the
         # whole entry, which also carries the Oasis's key map. Same house rule as
@@ -139,6 +146,7 @@ def _run_trust(args: argparse.Namespace) -> int:
         f"trust policy for {args.name}:\n"
         f"  signature: {verification}\n"
         f"  inherent:  {'admitted from Queen-verified releases' if policy['inherent_trust'] else 'refused'}\n"
+        f"  v1 signatures: {'accepted (legacy; removed at 2.0)' if policy['accept_v1'] else 'refused'}\n"
         f"  sources:   {', '.join(policy['trusted_sources']) or '(any contributor the Queen signed)'}"
     )
     return 0
@@ -231,6 +239,11 @@ def _run_pull(args: argparse.Namespace) -> int:
     if not releases:
         print("no matching releases to pull.")
         return 0
+    # Releases are ADDITIVE and ordered by their signed release_sequence (release format v2, decision
+    # (b)): ingest ascending, so the receiver's journal sees each signer's releases in order. The listed
+    # sequence is the server's UNVERIFIED summary -- it orders, never admits (ingest verifies the signed
+    # one). Releases without one (v1 / unsigned) keep their listed order, first.
+    releases = sorted(releases, key=_listed_sequence)
 
     rc_final = 0
     with tempfile.TemporaryDirectory(prefix="maxim-hive-pull-") as tmp:
@@ -320,6 +333,12 @@ def _run_pull(args: argparse.Namespace) -> int:
     return rc_final
 
 
+def _listed_sequence(release: dict) -> int:
+    """A listing's ``release_sequence`` for ORDERING only (0 when absent or not a plain int)."""
+    seq = release.get("release_sequence")
+    return seq if isinstance(seq, int) and not isinstance(seq, bool) else 0
+
+
 def _build_ingest_argv(
     bundle_path: Path,
     *,
@@ -360,6 +379,8 @@ def _build_ingest_argv(
         if policy["inherent_trust"]:
             for source in trusted:
                 argv += ["--inherent-trust", source]
+        if not policy["accept_v1"]:
+            argv.append("--refuse-v1")
     if allow_unstamped_geometry:
         argv.append("--allow-unstamped-geometry")
     if receiver_agent_id:
@@ -437,6 +458,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="admit the decay-exempt inherent (safety-floor) bias class from Queen-verified releases",
     )
     g_inh.add_argument("--no-inherent", action="store_true", help="refuse the inherent bias class (the default)")
+    g_v1 = p_trust.add_mutually_exclusive_group()
+    g_v1.add_argument(
+        "--accept-v1",
+        action="store_true",
+        help="accept legacy v1-signed releases from this Oasis (existing entries' default; removed at 2.0)",
+    )
+    g_v1.add_argument(
+        "--refuse-v1", action="store_true", help="accept v2 releases only (the default for a newly added Oasis)"
+    )
     g_src = p_trust.add_mutually_exclusive_group()
     g_src.add_argument(
         "--trust-source",
