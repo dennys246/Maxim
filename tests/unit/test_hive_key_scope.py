@@ -66,7 +66,12 @@ def test_hive_pull_sends_the_leader_key_only_to_this_machine(tmp_path, monkeypat
 
     monkeypatch.setattr(sc, "list_releases", _list_releases)
     reg = str(tmp_path / "hive.json")
-    assert run_hive_subcommand(["--registry", reg, "add", "o", url, "--queen-key", "q=PUB"]) == 0
+    assert (
+        run_hive_subcommand(
+            ["--registry", reg, "add", "o", url, "--queen-key", "q=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="]
+        )
+        == 0
+    )
     rc = run_hive_subcommand(
         ["--registry", reg, "pull", "--from", "o", "--session", str(tmp_path), "--receiver-body", "b"]
     )

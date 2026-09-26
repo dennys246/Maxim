@@ -305,6 +305,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`maxim hive add` refuses a queen key that verification could never use.** A key must now be
+  the canonical base64 of a raw 32-byte Ed25519 public key. One that is not base64 (e.g. a
+  placeholder), decodes to another length, or is one of the three non-canonical spellings of a real
+  key is refused where the operator types it (exit 2, naming the canonical spelling when there is
+  one), instead of being stored and failing at the first pull. This binds newly added keys only:
+  registries already on disk still load unchanged, and a key that is not base64 or has the wrong length
+  still fails at verification.
+
 - **A bundle signature can no longer verify under an aliased signer identity** (public_oasis Phase 0
   item 6). `signer_identity` is not part of the signed bytes, which is safe because verification uses
   the key trusted for the claimed identity — except when one key is trusted under two identities,
