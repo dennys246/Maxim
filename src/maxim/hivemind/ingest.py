@@ -336,6 +336,10 @@ def _loads_strict(raw: bytes, *, slice_name: str) -> Any:
 
 
 def _require_finite(value: Any, *, where: str) -> float:
+    # A JSON NUMBER only: ``float("0.5")`` and ``float(True)`` succeed, and where a caller keeps the
+    # original value (embedding elements, deltas) the string or bool would survive into merged state.
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise IngestRefused(duty="V2", reason=f"value at {where} is not a JSON number: {value!r}")
     try:
         out = float(value)
     except (TypeError, ValueError, OverflowError) as exc:
@@ -471,6 +475,14 @@ def _check_key_shape(key: str, parts_expected: int, *, where: str) -> list[str]:
     if any(not p for p in parts):
         raise IngestRefused(duty="V9", reason=f"empty key segment at {where}")
     return parts
+
+
+def _credit_source_vocabulary() -> frozenset[str]:
+    """The closed vocabulary a ``cluster_reward_source`` value comes from (``NAc._note_cluster_reward_source``
+    stores only these), so a foreign value outside it is refused, never stored as a new category."""
+    from maxim.decisions.nac import NAc  # noqa: PLC0415 -- decisions is heavy; resolved on first ingest
+
+    return frozenset({*NAc.CREDIT_SOURCES, "mixed"})
 
 
 def _validate_nac_payload(
@@ -645,6 +657,26 @@ def _validate_nac_payload(
                 fear_discounted += 1
             validated[str(key)] = bounded
         state[field_name] = validated
+    # cluster_reward_source rides the same triple keys (a bias's provenance -- NAc.CREDIT_SOURCES or "mixed").
+    # It carries no number, so the bound table above skips it -- validated here, so a malformed key is a
+    # refusal and never a crash in the receiver scrub's triple unpack.
+    credit_sources = _credit_source_vocabulary()
+    sources = state.get("cluster_reward_source", {}) or {}
+    if not isinstance(sources, dict):
+        raise IngestRefused(duty="V2", reason="nac.json cluster_reward_source is not an object")
+    if len(sources) > MAX_NODES_PER_SLICE:
+        raise IngestRefused(
+            duty="V6", reason=f"cluster_reward_source has {len(sources)} keys (cap {MAX_NODES_PER_SLICE})"
+        )
+    for key, value in sources.items():
+        parts = _check_key_shape(str(key), 3, where=f"cluster_reward_source[{key!r}]")
+        if not _NODE_ID_CHARSET.match(parts[1]):
+            raise IngestRefused(duty="V9", reason=f"cluster id {parts[1]!r} fails the identifier charset")
+        if value not in credit_sources:
+            raise IngestRefused(
+                duty="V2",
+                reason=f"cluster_reward_source[{key!r}] = {value!r} is not a credit source {sorted(credit_sources)}",
+            )
     if fear_discounted:
         notes.append(
             f"cluster_fear: {fear_discounted} entr{'y' if fear_discounted == 1 else 'ies'} discounted ×{FOREIGN_FEAR_DISCOUNT} (foreign fear is vicarious, prereg Exp 61 D1)"

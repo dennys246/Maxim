@@ -107,6 +107,11 @@ they cannot verify.
   digest.
 - **A newly added Oasis refuses v1** (`hive add` writes `accept_v1: false`); `maxim hive trust <name>
   --accept-v1` takes its legacy v1 lineages. Entries registered before this change keep accepting v1.
+- **Identities.** `contributor_id` and `signer_identity` follow `[A-Za-z0-9_.@:-]{1,128}` with no
+  leading `_` (reserved for sentinels); a release breaking it does not verify.
+- **What a link carries.** Causal links ship scrubbed: no episode or percept references, no
+  `context_factors`, identifier-shaped `event_type` / `outcome_type` only (others become `redacted`),
+  and in a release `event_context.agent_id` is the agent token.
 - **Legacy v1** (schema ≤ 2, the signature in the manifest) still verifies until 2.0, against the
   manifest as stored. An unsigned bundle carries no signature fields at all.
 

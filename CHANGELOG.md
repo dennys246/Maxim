@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Pre-freeze hardening of the bundle format** (public_oasis Phase 0 item 2, before the public format
+  freeze). A signed release no longer carries a local agent id inside its causal links
+  (`event_context.agent_id` ships as `_agent`); `context_factors` never ships; a free-text
+  `event_type` / `outcome_type` ships as `redacted`. Every manifest reader now parses strictly
+  (duplicate keys and NaN refused) and requires `schema_version` to be a JSON integer; ingest refuses
+  numeric strings and bools in number fields and validates `cluster_reward_source` (a malformed key was
+  a crash); `contributor_id` / `signer_identity` must match `[A-Za-z0-9_.@:-]{1,128}` (compose, and
+  verification of schema-3 releases). The Oasis listing reports each bundle's stored schema version, a
+  contributed v2 release records its signature algorithm, and `POST /v1/substrate/contribute/?…` now
+  routes to the store.
+
 - **Oasis release format v2: signed releases carry a signed entry index, their signer, their sequence
   and their license** (bundle schema 3; public_oasis Phase 0 item 7,
   `docs/plans/oasis_entry_index_v2.md`). `maxim substrate export --sign` now requires

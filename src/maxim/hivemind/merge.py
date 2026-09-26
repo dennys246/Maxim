@@ -617,6 +617,19 @@ NAC_KEY_SEP = "\x1f"
 #: this module and neither may import the other.
 NODE_ID_CHARSET = re.compile(r"^[A-Za-z0-9_.\-]{1,128}$")
 
+#: The grammar of a PUBLIC identity string -- a bundle's ``contributor_id`` and a release's
+#: ``signer_identity`` (public format 1). Short and printable, so an id never carries free text into a
+#: listing, a journal or a log; ``@`` and ``:`` admit host- and namespace-shaped ids. The reserved ``_``
+#: prefix is refused separately (:func:`_validate_source`).
+IDENTITY_CHARSET = re.compile(r"^[A-Za-z0-9_.@:\-]{1,128}$")
+
+
+def is_public_identity(value: object) -> bool:
+    return (
+        isinstance(value, str) and bool(IDENTITY_CHARSET.match(value)) and not value.startswith(_RESERVED_SOURCE_PREFIX)
+    )
+
+
 DEFAULT_FROZEN_CENTROID_MODALITIES: frozenset[str] = frozenset({"interoception", "audio", "world"})
 
 

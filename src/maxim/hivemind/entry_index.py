@@ -141,6 +141,15 @@ def keep_agent_rows(
     return out, dropped
 
 
+def _retoken_link(link: Any) -> Any:
+    if not isinstance(link, Mapping):
+        return link
+    context = link.get("event_context")
+    if not isinstance(context, Mapping) or "agent_id" not in context:
+        return link
+    return {**link, "event_context": {**context, "agent_id": AGENT_TOKEN}}
+
+
 def normalize_agent_segment(nac: Mapping[str, Any], *, own_agent_id: str | None = None) -> tuple[dict[str, Any], int]:
     """Keep ONE agent's rows and rewrite their agent segment to :data:`AGENT_TOKEN`. Pure.
 
@@ -177,6 +186,15 @@ def normalize_agent_segment(nac: Mapping[str, Any], *, own_agent_id: str | None 
             out[field] = sorted(_retoken(k, sep) for k in kept[field])
         else:
             out[field] = {_retoken(k, sep): v for k, v in kept[field].items()}
+    # A causal link names its agent in ``event_context.agent_id`` (read only while an outcome is recorded
+    # live; inert once stored). It ships under the token too -- "local agent ids never ship" covers the
+    # links, not just the composite keys.
+    links = kept.get("links")
+    if isinstance(links, Mapping):
+        out["links"] = {
+            sig: [_retoken_link(link) for link in bucket] if isinstance(bucket, list) else bucket
+            for sig, bucket in links.items()
+        }
     return out, dropped
 
 

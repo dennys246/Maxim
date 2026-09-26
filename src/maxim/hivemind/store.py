@@ -47,9 +47,10 @@ from maxim.hivemind.bundle import (
     find_equivocation,
     read_bundle_manifest,
     read_bundle_manifest_bytes,
+    stored_schema_version,
     verify_bundle_zip,
 )
-from maxim.hivemind.signing import SIGNATURE_ALGORITHM, SIGNATURE_SCHEME_V2
+from maxim.hivemind.signing import SIGNATURE_ALGORITHM, SIGNATURE_MEMBER, SIGNATURE_SCHEME_V2
 from maxim.utils.atomic_io import atomic_write_bytes, atomic_write_json
 from maxim.utils.format_version import check_format_version, with_format_version
 
@@ -90,6 +91,16 @@ def _verify(raw: bytes, queen_keys: Mapping[str, str]) -> BundleVerification:
             return verify_bundle_zip(zf, trusted_keys=dict(queen_keys), accept_v1=True)
     except zipfile.BadZipFile as exc:
         return BundleVerification(False, f"not a ZIP archive: {exc}")
+
+
+def _has_signature_member(raw: bytes) -> bool:
+    import io
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            return SIGNATURE_MEMBER in zf.namelist()
+    except zipfile.BadZipFile:
+        return False
 
 
 def _claimed_signer(raw: bytes) -> str | None:
@@ -354,10 +365,13 @@ class OasisStore:
                 continue
             try:
                 manifest = read_bundle_manifest(path)
+                stored_schema = stored_schema_version(path)
             except _MALFORMED_BUNDLE as exc:
                 logger.warning("oasis: skipping unreadable release %s: %s", release_id, exc)
                 continue
             summary = {"id": release_id, **{k: manifest.get(k) for k in _SUMMARY_KEYS}}
+            # The schema the bundle carries ON THE WIRE (2 unsigned, 3 release), not the migrated view.
+            summary["schema_version"] = stored_schema
             # Ordering / display only, never trust: the scheme a bundle CLAIMS and its algorithm (a v2
             # release keeps both in its detached signature member, a v1 bundle in the manifest).
             scheme = bundle_signature_scheme(path)
@@ -415,7 +429,10 @@ class OasisStore:
             "contributor_id": manifest.get("contributor_id"),
             "domain": manifest.get("domain"),
             "body_ref": manifest.get("body_ref"),
-            "signature_algorithm": manifest.get("signature_algorithm"),
+            # A v2 release keeps its algorithm in signature.json, not the manifest (the listing's rule).
+            "signature_algorithm": (
+                SIGNATURE_ALGORITHM if _has_signature_member(raw) else manifest.get("signature_algorithm")
+            ),
             "signer_identity": manifest.get("signer_identity"),
             "source": source,
             "received_at": time.time(),

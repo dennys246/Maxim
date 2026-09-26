@@ -141,6 +141,27 @@ def test_contribute_over_http_lands_in_experimental(tmp_path):
         _stop(server)
 
 
+def test_a_contribute_path_with_a_slash_and_query_still_routes_to_the_store(tmp_path):
+    """POST normalized "?" before the trailing "/" the reverse way from GET, so
+    /v1/substrate/contribute/?x fell through to the LLM proxy (the freeze pass's finding)."""
+    from maxim.utils import http
+
+    store = OasisStore(tmp_path / "oasis")
+    server, base = _start(store)
+    try:
+        raw = _unsigned_bundle(tmp_path / "c.zip", contributor_id="peer-7").read_bytes()
+        resp = http.fetch_url(
+            f"{base}/v1/substrate/contribute/?via=test",
+            method="POST",
+            headers={"Authorization": f"Bearer {_KEY}", "Content-Type": "application/zip"},
+            content=raw,
+        )
+        assert resp.status == 200, resp.content[:200]
+        assert len(store.list_contributions()) == 1
+    finally:
+        _stop(server)
+
+
 def test_fetch_unknown_release_raises(tmp_path):
     store = OasisStore(tmp_path / "oasis")
     server, base = _start(store)
