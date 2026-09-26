@@ -177,6 +177,27 @@ class TestStateManagerConvenienceMethods:
         manager.request_mode_passive()
         assert manager.operational_mode == "passive"
 
+    def test_a_phrase_cannot_enter_a_code_executing_mode(self):
+        """#828: "maxim singularity" heard from any audio must not switch to a code-executing mode. The gate
+        is in StateManager, so a phrase a user's config maps to this call is refused too."""
+        from maxim.modes.state_manager import StateManager
+
+        manager = StateManager()
+        manager.request_mode_active()
+        changes = []
+        manager.add_callback(lambda kind, old, new: changes.append((kind, old, new)))
+
+        assert manager.request_mode_singularity() is False
+        assert manager.operational_mode == "active"
+        assert changes == []
+
+    def test_a_deliberate_programmatic_switch_is_unaffected(self):
+        """The refusal is for the PHRASE path; a caller starting maxim in a mode still sets it."""
+        from maxim.modes.state_manager import StateManager
+
+        manager = StateManager()
+        assert manager.set_operational_mode("singularity") is True
+
 
 class TestStateManagerSerialization:
     """Test state serialization."""

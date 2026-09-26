@@ -33,8 +33,10 @@ This module is load-bearing for Plans 2, 3, and 4. Do not add
 
 from __future__ import annotations
 
+import ipaddress
 import json as _json
 import logging
+import socket
 import os
 import threading
 import time
@@ -44,6 +46,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping
 
+import httpcore
 import httpx
 
 from maxim.utils.structured_logging import log_structured
@@ -199,6 +202,9 @@ class HTTPEndpoint:
     # (the leader, peer-to-peer tunnels). Never for third-party APIs
     # like HuggingFace or web search. Propagates X-Maxim-* headers.
     internal: bool = False
+    # Connect only to globally-routable addresses, checked at CONNECT time on the address actually
+    # dialled (#824). For fetches whose URL the model chooses; see ``fetch_url(public_only=True)``.
+    public_only: bool = False
 
 
 # ─────────────────────────── RequestContext ─────────────────────────────
@@ -471,6 +477,8 @@ class _EndpointRegistry:
                     base_url=ep.base_url or "",
                     timeout=ep.timeouts.to_httpx(),
                     limits=limits,
+                    # A transport also switches off env proxies (a proxy would dial for us, unchecked).
+                    transport=_public_only_transport(limits) if ep.public_only else None,
                 )
             return self._clients[name]
 
@@ -513,12 +521,83 @@ def close_all() -> None:
     _registry.close_all()
 
 
+# ─────────────────────────── Public-only connections (#824) ─────────────
+
+
+# IPv6 forms that carry an IPv4 address in their low 32 bits, which is what they dial: NAT64
+# (RFC 6052), IPv4-translated (RFC 2765) and the deprecated IPv4-compatible range.
+_EMBEDS_IPV4 = tuple(ipaddress.ip_network(n) for n in ("64:ff9b::/96", "::ffff:0:0:0/96", "::/96"))
+
+
+def _is_public_address(address: str) -> bool:
+    """Globally routable -- judged explicitly rather than by ``is_global`` alone, which calls
+    multicast, site-local and NAT64-around-10.x addresses global (and varies across Python versions).
+    An IPv6 answer that embeds an IPv4 address is judged by that IPv4 address."""
+    ip = ipaddress.ip_address(address.split("%", 1)[0])
+    if isinstance(ip, ipaddress.IPv6Address):
+        embedded = ip.ipv4_mapped or ip.sixtofour
+        if embedded is None and any(ip in net for net in _EMBEDS_IPV4):
+            embedded = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+        if embedded is not None:
+            return _is_public_address(str(embedded))
+        if ip.is_site_local:
+            return False
+    return ip.is_global and not (ip.is_multicast or ip.is_reserved or ip.is_unspecified)
+
+
+class NonPublicAddressRefused(httpcore.ConnectError):
+    """A public-only connection whose host resolved to a non-global address."""
+
+
+class _PublicOnlyBackend(httpcore.SyncBackend):
+    """Resolve the host ONCE, at connect time, refuse unless EVERY address is globally routable, and
+    dial the address that was checked.
+
+    A check that resolves and a connect that resolves again can disagree: a rebinding host answers
+    public to the check and private to the connect (#824). Here the check and the dial share one
+    resolution, uncached. TLS SNI and the Host header come from the URL, not from this address, so
+    they are unchanged."""
+
+    def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):  # type: ignore[no-untyped-def]
+        try:
+            infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        except socket.gaierror as exc:
+            raise httpcore.ConnectError(f"could not resolve {host!r}: {exc}") from exc
+        addresses = list(dict.fromkeys(str(info[4][0]) for info in infos))
+        if not addresses or not all(_is_public_address(a) for a in addresses):
+            raise NonPublicAddressRefused(f"refused: {host!r} resolves to a non-public address")
+        # Every address is vetted, so try each in turn, as the stock backend's create_connection does
+        # (a dual-stack answer with no IPv6 route -- an immediate ConnectError -- still reaches IPv4).
+        # A connect TIMEOUT is not retried per address: it propagates, so one fetch waits at most one
+        # connect timeout.
+        last: Exception | None = None
+        for address in addresses:
+            try:
+                return super().connect_tcp(address, port, timeout, local_address, socket_options)
+            except httpcore.ConnectError as exc:
+                last = exc
+        assert last is not None
+        raise last
+
+
+def _public_only_transport(limits: httpx.Limits) -> httpx.HTTPTransport:
+    transport = httpx.HTTPTransport(limits=limits)
+    # httpx exposes no backend parameter; its connection pool takes one. Pinned by
+    # tests/unit/test_http_public_only.py, which fails if this stops being the pool's backend.
+    transport._pool._network_backend = _PublicOnlyBackend()  # noqa: SLF001
+    return transport
+
+
 # ─────────────────────────── External endpoint bootstrap ────────────────
 
 _EXTERNAL_ENDPOINT = "_external"
 """Reserved endpoint name for ad-hoc URL fetches (user tools, HF downloads,
 peer-cli remote admin calls). Headers are minimal and non-internal —
 no X-Maxim-* propagation."""
+
+_EXTERNAL_PUBLIC_ENDPOINT = "_external_public"
+"""``_external`` for URLs the MODEL chooses (http_fetch): connects to globally-routable addresses only
+(#824). ``_external`` itself stays unrestricted -- the leader proxy, peers and downloads reach LAN hosts."""
 
 _external_registered = False
 _external_lock = threading.Lock()
@@ -529,17 +608,19 @@ def _ensure_external_endpoint() -> None:
     with _external_lock:
         if _external_registered:
             return
-        register_endpoint(
-            HTTPEndpoint(
-                name=_EXTERNAL_ENDPOINT,
-                base_url=None,
-                default_headers={"User-Agent": DEFAULT_USER_AGENT},
-                auth_provider=None,
-                timeouts=TimeoutPolicy.long(),
-                max_pool_connections=DEFAULT_POOL_PER_ENDPOINT,
-                internal=False,
+        for name, public_only in ((_EXTERNAL_ENDPOINT, False), (_EXTERNAL_PUBLIC_ENDPOINT, True)):
+            register_endpoint(
+                HTTPEndpoint(
+                    name=name,
+                    base_url=None,
+                    default_headers={"User-Agent": DEFAULT_USER_AGENT},
+                    auth_provider=None,
+                    timeouts=TimeoutPolicy.long(),
+                    max_pool_connections=DEFAULT_POOL_PER_ENDPOINT,
+                    internal=False,
+                    public_only=public_only,
+                )
             )
-        )
         _external_registered = True
 
 
@@ -699,6 +780,14 @@ def _classify_httpx_error(endpoint: str, exc: BaseException) -> HTTPError:
             fix_hint=(
                 f"Connection pool exhausted for endpoint '{endpoint}' — "
                 "increase max_pool_connections or reduce concurrency"
+            ),
+        )
+    if isinstance(exc, httpx.ConnectError) and isinstance(exc.__cause__, NonPublicAddressRefused):
+        return HTTPConnectionError(
+            endpoint,
+            fix_hint=(
+                f"{exc} -- a public-only fetch never connects to a private or internal address "
+                "(and does not use HTTP(S)_PROXY, which would connect on its behalf unchecked)"
             ),
         )
     if isinstance(exc, httpx.ConnectError):
@@ -880,6 +969,7 @@ def fetch_url(
     json: Any = None,
     timeout: TimeoutPolicy | float | None = None,
     max_bytes: int | None = None,
+    public_only: bool = False,
 ) -> Response:
     """One-off fetch of a full URL via the shared ``_external`` endpoint.
 
@@ -891,12 +981,17 @@ def fetch_url(
     ``max_bytes`` (#825): when set, the body is STREAMED and reading stops at the cap -- the rest
     is never downloaded -- and ``Response.truncated`` says so. When ``None`` (the default, every
     pre-existing caller) the whole body is read, exactly as before.
+
+    ``public_only`` (#824): connect only to a globally-routable address, checked on the address
+    actually dialled (``_external_public``) -- for URLs the MODEL chooses. A policy pre-check that
+    resolves separately cannot stop a rebinding host; this can.
     """
     if max_bytes is not None and (not isinstance(max_bytes, int) or max_bytes < 0):
         raise ValueError(f"max_bytes must be a non-negative int, got {max_bytes!r}")
     _ensure_external_endpoint()
-    ep = _registry.get(_EXTERNAL_ENDPOINT)
-    client = _registry.get_client(_EXTERNAL_ENDPOINT)
+    endpoint_name = _EXTERNAL_PUBLIC_ENDPOINT if public_only else _EXTERNAL_ENDPOINT
+    ep = _registry.get(endpoint_name)
+    client = _registry.get_client(endpoint_name)
     if max_bytes is not None:
         # Only encodings _read_capped can inflate with a bounded output (a caller may override).
         headers = {"Accept-Encoding": "gzip, deflate", **(headers or {})}
@@ -930,13 +1025,13 @@ def fetch_url(
                 body, truncated = _read_capped(resp, max_bytes)
     except httpx.HTTPError as e:
         elapsed_ms = (time.monotonic() - t0) * 1000
-        _metrics.record_request(_EXTERNAL_ENDPOINT, "error", elapsed_ms)
+        _metrics.record_request(endpoint_name, "error", elapsed_ms)
         log_structured(
             logger,
             logging.WARNING,
             event="http_request_failed",
             data={
-                "endpoint": _EXTERNAL_ENDPOINT,
+                "endpoint": endpoint_name,
                 "url": _loggable_url(url),
                 "method": method.upper(),
                 "request_id": used_ctx.request_id,
@@ -944,10 +1039,10 @@ def fetch_url(
                 "latency_ms": round(elapsed_ms, 1),
             },
         )
-        raise _classify_httpx_error(_EXTERNAL_ENDPOINT, e) from e
+        raise _classify_httpx_error(endpoint_name, e) from e
 
     elapsed_ms = (time.monotonic() - t0) * 1000
-    _metrics.record_request(_EXTERNAL_ENDPOINT, resp.status_code, elapsed_ms)
+    _metrics.record_request(endpoint_name, resp.status_code, elapsed_ms)
 
     level = logging.INFO if _http_trace_enabled() else logging.DEBUG
     log_structured(
@@ -955,7 +1050,7 @@ def fetch_url(
         level,
         event="http_request",
         data={
-            "endpoint": _EXTERNAL_ENDPOINT,
+            "endpoint": endpoint_name,
             "url": _loggable_url(url),
             "method": method.upper(),
             "status": resp.status_code,
@@ -969,11 +1064,11 @@ def fetch_url(
         headers=dict(resp.headers),
         content=body,
         elapsed_ms=elapsed_ms,
-        endpoint=_EXTERNAL_ENDPOINT,
+        endpoint=endpoint_name,
         request_id=used_ctx.request_id,
         truncated=truncated,
     )
-    err = _classify_status(_EXTERNAL_ENDPOINT, resp.status_code, resp.headers)
+    err = _classify_status(endpoint_name, resp.status_code, resp.headers)
     if err is not None:
         err.response = response
         raise err

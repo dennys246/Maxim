@@ -213,9 +213,12 @@ def build_tool_registry(
                     return str(getattr(maxim, "mode", "observe"))
                 return "observe"
 
-            def set_mode(mode: str) -> None:
+            def set_mode(mode: str) -> bool:
+                """False when there is no runtime to apply a mode to (the tool then reports failure)."""
                 if maxim is not None and hasattr(maxim, "requested_mode"):
                     setattr(maxim, "requested_mode", mode)
+                    return True
+                return False
 
             registry.register(
                 ModeSwitchTool(
