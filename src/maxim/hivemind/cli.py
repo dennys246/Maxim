@@ -334,8 +334,8 @@ def _warn_on_input_licenses(session_dir: Path) -> None:
     unlicensed = sum(1 for e in entries if e.get("license") is None)
     if unlicensed:
         print(
-            f"warning: this release re-authors material from {unlicensed} ingested input(s) that carried no "
-            "license (unsigned contributions) -- their terms are unknown",
+            f"warning: this release re-authors material from {unlicensed} ingested input(s) with no recorded "
+            "license (unsigned contributions or legacy v1 releases) -- their terms are unknown",
             file=sys.stderr,
         )
     if flagged:

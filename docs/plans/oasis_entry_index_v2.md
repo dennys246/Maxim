@@ -191,7 +191,8 @@ reads `signature.json`, not the manifest's `signature` field (empty in v3).
 ## Producer
 
 - `compose_bundle(..., release: SignedRelease | None = None)`, where `SignedRelease` is a frozen value
-  `(signer, release_sequence, license)` — forgetting a field is a TypeError at construction, not a
+  `(signer, release_sequence, license, counter)` (`counter` added on PR C's review: the counter file, or
+  an explicit `UNCOUNTED`) — forgetting a field is a TypeError at construction, not a
   runtime default. (Runtime-ephemeral: passed in, never persisted.) `reauthor` stays as #903 left it.
 - `signing.py` gains a named key path (`--key-file`), so the Queen key and the host's development key
   are separate files, not one default.
@@ -208,11 +209,14 @@ not the identity — the same key the receiver journal keys on, so the Queen key
 never share a counter even under one identity. A key minted on this host is registered in the counter at
 `0` the moment it is minted (so "has this key released before?" is counter state, not a per-process
 flag); a key the counter never saw (minted elsewhere, restored, copied) must name its first
-`--release-sequence`. The producer gets its release from `signing.counted_release`, whose commit
-(`commit_release_sequence`, under a `FileLock`, re-checking it still moves forward) runs INSIDE
-`compose_bundle`, between writing the signed `.tmp` and moving it onto the output path: a signed release
+`--release-sequence`. The producer gets its release from `signing.counted_release`, which sets the value's required `counter`;
+`compose_bundle` commits the value's OWN `(signer, release_sequence)` to it (`commit_release_sequence`,
+under a `FileLock`, re-checking it still moves forward) between writing the signed `.tmp` and moving it
+onto the output path -- so a `dataclasses.replace` of the sequence cannot desynchronise signed from
+recorded, and forgetting the counter is a `TypeError`: a signed release
 at its output path always has its counter record, whatever crashes when; a failed compose burns no
-number. `export --release` warns when the session merged inputs under a license outside a deliberately
+number. The counter is PER HOST: a signing key must release from ONE host (a copy is refused only on the
+host it is copied TO; the minting host keeps counting from its own record). `export --release` warns when the session merged inputs under a license outside a deliberately
 attribution-free set (CDLA-Permissive-1.0/2.0, CC0-1.0 — a release strips per-row provenance) or under
 no license at all (decision (d); a warning, no compatibility engine).
 

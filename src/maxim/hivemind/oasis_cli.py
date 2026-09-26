@@ -32,12 +32,14 @@ def _open_store(args: argparse.Namespace, *, migrate: bool = True) -> OasisStore
     """The store; for the WRITING verbs (serve, publish), releases published before release format v2 are
     first moved to their payload-identity ids. ``status`` is read-only: it reports pending ones instead."""
     store = OasisStore(args.root or _default_root())
+    pending = store.pending_release_migrations()
     if not migrate:
-        pending = store.pending_release_migrations()
         if pending:
             print(
                 f"{pending} release id(s) pending migration to payload identities (run `maxim oasis serve` or publish)"
             )
+        return store
+    if not pending:  # nothing to move: no lock, no write (a read-only store stays quiet)
         return store
     try:
         moved = store.migrate_release_ids()

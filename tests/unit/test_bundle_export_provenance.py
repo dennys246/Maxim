@@ -28,10 +28,13 @@ _needs_crypto = pytest.mark.skipif(
 
 
 def _release():
-    from maxim.hivemind.signing import BundleSigner, SignedRelease
+    from maxim.hivemind.signing import UNCOUNTED, BundleSigner, SignedRelease
 
     return SignedRelease(
-        signer=BundleSigner.generate(signer_identity=DONOR), release_sequence=1, license="CDLA-Permissive-2.0"
+        signer=BundleSigner.generate(signer_identity=DONOR),
+        release_sequence=1,
+        license="CDLA-Permissive-2.0",
+        counter=UNCOUNTED,
     )
 
 

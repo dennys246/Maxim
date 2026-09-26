@@ -260,13 +260,20 @@ class OasisStore:
         if not self.releases_dir.is_dir():
             return pending
         for path in sorted(self.releases_dir.glob("*.zip")):
+            if not _RELEASE_ID_RE.match(path.stem):
+                continue
             try:
+                raw = path.read_bytes()
                 with zipfile.ZipFile(path) as zf:
                     identity = content_payload_digest(zf)
+                target = self.releases_dir / f"{identity}.zip"
+                if identity is None or identity == path.stem:
+                    continue
+                if target.is_file() and target.read_bytes() != raw:
+                    continue  # a collision the migration deliberately leaves in place
             except (zipfile.BadZipFile, OSError):
                 continue
-            if identity is not None and identity != path.stem:
-                pending += 1
+            pending += 1
         return pending
 
     def migrate_release_ids(self) -> int:

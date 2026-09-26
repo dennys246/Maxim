@@ -96,6 +96,7 @@ from maxim.hivemind.signing import (
     SIGNATURE_SCHEME_V2,
     SignedRelease,
     bundle_signing_payload,
+    commit_release_sequence,
     bundle_signing_payload_v2,
     validate_license,
     validate_release_sequence,
@@ -983,10 +984,11 @@ def compose_bundle(
         with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             for name, data in members.items():
                 zf.writestr(name, data)
-        if release is not None and release.commit is not None:
-            # The producer's counter commit, between the signed bytes existing and their reaching the
-            # output path: a signed release at output_path always has its counter record.
-            release.commit()
+        if release is not None and isinstance(release.counter, Path):  # not UNCOUNTED
+            # The producer's counter commit -- from this release's own fields -- between the signed bytes
+            # existing and their reaching the output path: a signed release at output_path always has
+            # its counter record.
+            commit_release_sequence(release.signer, release.release_sequence, path=release.counter)
         os.replace(tmp_path, output_path)
     except BaseException:  # an interrupt must not leave a signed .tmp behind either
         if tmp_path.exists():

@@ -17,7 +17,7 @@ import time
 
 import pytest
 
-from maxim.hivemind.signing import SignedRelease
+from maxim.hivemind.signing import UNCOUNTED, SignedRelease
 from maxim.hivemind import substrate_client as sc
 from maxim.hivemind.bundle import compose_bundle
 from maxim.hivemind.store import OasisStore
@@ -98,7 +98,7 @@ def _signed_bundle(path, *, signer_identity="queen-alpha"):
         output_path=path,
         contributor_id="oasis-alpha",
         body_ref="minecraft_bench",
-        release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0"),
+        release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0", counter=UNCOUNTED),
     )
     return path
 

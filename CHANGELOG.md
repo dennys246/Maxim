@@ -64,7 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   id'd by their signed-payload digest, and `oasis serve` / `publish` migrate an existing store's ids
   once (`oasis status` only reports pending ones) — so a `hive pull --release <old id>` pin needs the
   new id. A key minted on the host starts at sequence 1 however it is first used; a copied or restored
-  key names its first `--release-sequence`. `export --release` also warns about inputs that carried no
+  key names its first `--release-sequence` on the host it is copied to. The counter is per host: sign
+  each key's releases from one host. `export --release` also warns about inputs that carried no
   license, and its permissive list is attribution-free (CDLA-Permissive, CC0).
 
 - **Situation recall wired, with no behavioural or retention effect yet (memory-strength Phase

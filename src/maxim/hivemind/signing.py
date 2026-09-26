@@ -33,11 +33,12 @@ from __future__ import annotations
 
 import base64
 import logging
+import os
 import json
 import re
 import struct
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -212,6 +213,19 @@ def validate_license(value: object) -> str:
     return value
 
 
+class _Uncounted:
+    """The type of :data:`UNCOUNTED`."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "UNCOUNTED"
+
+
+#: A :class:`SignedRelease` whose sequence no release counter owns -- stated explicitly, never defaulted.
+UNCOUNTED = _Uncounted()
+
+
 @dataclass(frozen=True)
 class SignedRelease:
     """Everything a SIGNED bundle needs, as one value (docs/plans/oasis_entry_index_v2.md).
@@ -225,16 +239,20 @@ class SignedRelease:
     signer: BundleSigner
     release_sequence: int
     license: str
-    #: Runs after the signed bundle is written to its temporary path and BEFORE it replaces the output
-    #: path (``compose_bundle``) -- the producer's release counter commit (:func:`counted_release`). So a
-    #: signed release at its output path always has its counter record, whatever crashes when: before
-    #: the commit only the temporary file exists; after it, a number is burned (receivers never refuse
-    #: a gap). ``None`` for a release whose sequence no counter owns (tests, hand-composed bundles).
-    commit: Callable[[], None] | None = field(default=None, compare=False, repr=False)
+    #: The release counter this sequence is recorded in -- REQUIRED, so a producer cannot forget it: the
+    #: counter file's path (what :func:`counted_release` sets), or :data:`UNCOUNTED`, said out loud, for a
+    #: release no counter owns (tests, hand-composed evidence). ``compose_bundle`` commits
+    #: ``(signer, release_sequence)`` to it after writing the signed bundle to its temporary path and
+    #: BEFORE moving it onto the output path -- from THIS value's own fields, so a ``dataclasses.replace``
+    #: of the sequence cannot desynchronise what is signed from what is recorded. A signed release at its
+    #: output path therefore always has its counter record, whatever crashes when.
+    counter: Path | _Uncounted
 
     def __post_init__(self) -> None:
         if not isinstance(self.signer, BundleSigner):
             raise TypeError(f"signer must be a BundleSigner, got {type(self.signer).__name__}")
+        if not isinstance(self.counter, (Path, _Uncounted)):
+            raise TypeError(f"counter must be a Path or UNCOUNTED, got {self.counter!r}")
         validate_release_sequence(self.release_sequence)
         validate_license(self.license)
 
@@ -278,7 +296,9 @@ def public_key_path(key_file: str | Path | None = None) -> Path:
     return private.with_name(private.name + ".pub")
 
 
-def open_signer(*, signer_identity: str, key_file: str | Path | None = None) -> tuple[BundleSigner, bool]:
+def open_signer(
+    *, signer_identity: str, key_file: str | Path | None = None, counter_path: str | Path | None = None
+) -> tuple[BundleSigner, bool]:
     """Load the signer at ``key_file`` (default: the host key), or mint + persist one on first use.
 
     Returns ``(signer, created)``. A minted key is registered in the release counter at once
@@ -300,22 +320,27 @@ def open_signer(*, signer_identity: str, key_file: str | Path | None = None) -> 
     path = signing_key_path(key_file)
     pub_path = public_key_path(key_file)
     if path.is_file():
-        if path.stat().st_mode & 0o077:
+        if os.name != "nt" and path.stat().st_mode & 0o077:  # POSIX mode bits mean nothing on Windows
             logger.warning("signing key %s is readable by group/others; chmod 600 it", path)
         signer = BundleSigner.from_private_pem(path.read_bytes(), signer_identity=signer_identity)
         # The .pub is derived state: rewrite it when missing or not this key's (a crash between the two
         # first-use writes, or two concurrent mints), so what an operator shares always matches.
+        # Best-effort: a key on read-only media still signs.
         current = pub_path.read_text().strip() if pub_path.is_file() else None
         if current != signer.public_key_b64:
-            atomic_write_text(str(pub_path), signer.public_key_b64 + "\n")
+            try:
+                atomic_write_text(str(pub_path), signer.public_key_b64 + "\n")
+            except OSError as exc:
+                logger.warning("cannot rewrite %s from the private key: %s", pub_path, exc)
         return signer, False
     signer = BundleSigner.generate(signer_identity=signer_identity)
+    # Registered in the release counter BEFORE the key is written (a stray entry for a key that never got
+    # written is harmless; a written key the counter never saw would be refused as restored), with nothing
+    # released: its first release is 1 however it is first used -- keygen, or an export that then fails.
+    register_fresh_key(signer, path=counter_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_secret(str(path), signer.private_pem().decode("ascii"))
     atomic_write_text(str(pub_path), signer.public_key_b64 + "\n")
-    # Known to the release counter from the moment it exists, with nothing released: its first release is
-    # 1 however it is first used (keygen, or an export that then fails), never refused as a restored key.
-    register_fresh_key(signer)
     return signer, True
 
 
@@ -401,9 +426,9 @@ def next_release_sequence(
         return validate_release_sequence(last + 1)
     raise ReleaseSequenceError(
         f"this signing key ({signer.signer_identity!r}, {key[:12]}…) has no release counter on this host: it was "
-        "minted elsewhere, restored or copied, and may have released before. Pass --release-sequence N above "
-        "the last v2 release it published (--release-sequence 1 if it never signed one); the counter then "
-        "continues from N."
+        "minted before the counter existed, elsewhere, or restored/copied, and may have released before. Pass "
+        "--release-sequence N above the last v2 release it published (--release-sequence 1 if it never signed "
+        "one; v1 bundles carry no sequence); the counter then continues from N."
     )
 
 
@@ -445,13 +470,13 @@ def counted_release(
 ) -> SignedRelease:
     """The :class:`SignedRelease` for this key's next release, its counter commit bound in: the one way a
     producer (``substrate export --sign``, the orient merge script) gets a sequence. ``compose_bundle``
-    runs the commit between writing the signed bundle and moving it onto its output path."""
+    commits it between writing the signed bundle and moving it onto its output path."""
     sequence = next_release_sequence(signer, requested=requested, path=path)
     return SignedRelease(
         signer=signer,
         release_sequence=sequence,
         license=license,
-        commit=lambda: commit_release_sequence(signer, sequence, path=path),
+        counter=Path(path) if path is not None else release_sequence_path(),
     )
 
 

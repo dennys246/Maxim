@@ -13,7 +13,7 @@ from maxim.hivemind.hive_cli import run_hive_subcommand
 from maxim.hivemind.registry import HiveRegistry, HiveRegistryError
 from maxim.hivemind.store import OasisStore
 from maxim.hivemind.bundle import compose_bundle
-from maxim.hivemind.signing import SignedRelease
+from maxim.hivemind.signing import UNCOUNTED, SignedRelease
 from maxim.utils.optional_deps import optional_dependency_available
 
 _HAS_CRYPTO = optional_dependency_available("cryptography") and optional_dependency_available("rfc8785")
@@ -538,7 +538,7 @@ class TestOasisCli:
             output_path=out,
             contributor_id="oasis-alpha",
             body_ref="minecraft_bench",
-            release=SignedRelease(signer=queen, release_sequence=1, license="CDLA-Permissive-2.0"),
+            release=SignedRelease(signer=queen, release_sequence=1, license="CDLA-Permissive-2.0", counter=UNCOUNTED),
         )
         root = str(tmp_path / "store")
         key = f"queen-a={queen.public_key_b64}"

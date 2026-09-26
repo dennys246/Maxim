@@ -134,12 +134,13 @@ def test_export_sign_takes_its_sequence_from_the_named_key_s_counter(tmp_path):
 
 
 def test_a_failed_commit_leaves_no_signed_release_behind(tmp_path, monkeypatch, capsys):
+    import maxim.hivemind.bundle as bundle_mod
     import maxim.hivemind.signing as signing
 
     def taken(*_a, **_k):
         raise signing.ReleaseSequenceError("release sequence 1 was taken meanwhile")
 
-    monkeypatch.setattr(signing, "commit_release_sequence", taken)
+    monkeypatch.setattr(bundle_mod, "commit_release_sequence", taken)
     out = tmp_path / "a.zip"
     assert _export(_session(tmp_path), out, "--key-file", str(tmp_path / "k")) == 2
     assert not out.exists() and "taken meanwhile" in capsys.readouterr().err
@@ -344,20 +345,20 @@ def test_two_concurrent_commits_of_one_sequence_cannot_both_succeed(tmp_path, mo
 def test_an_interrupted_commit_leaves_no_signed_release_and_burns_nothing(tmp_path, monkeypatch):
     """The commit runs inside compose_bundle, between the signed .tmp and the output path: an interrupt
     there leaves neither the output nor the .tmp, and the counter never recorded the number."""
-    import maxim.hivemind.signing as signing
+    import maxim.hivemind.bundle as bundle_mod
 
     session, key = _session(tmp_path), tmp_path / "k"
-    real_commit = signing.commit_release_sequence
+    real_commit = bundle_mod.commit_release_sequence
 
     def interrupted(*_a, **_k):
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(signing, "commit_release_sequence", interrupted)
+    monkeypatch.setattr(bundle_mod, "commit_release_sequence", interrupted)
     out = tmp_path / "a.zip"
     with pytest.raises(KeyboardInterrupt):
         _export(session, out, "--key-file", str(key))
     assert not out.exists() and not list(tmp_path.glob("*.tmp"))
-    monkeypatch.setattr(signing, "commit_release_sequence", real_commit)
+    monkeypatch.setattr(bundle_mod, "commit_release_sequence", real_commit)
     assert _export(session, tmp_path / "b.zip", "--key-file", str(key), "--release-sequence", "1") == 0
     assert _manifest(tmp_path / "b.zip")["release_sequence"] == 1
 
@@ -493,7 +494,7 @@ def test_a_release_warns_about_unlicensed_inputs(tmp_path, capsys):
     entries = [{"digest": "a" * 64, "contributor_id": "peer"}]  # an unsigned contribution: no license
     session = _session(tmp_path, journal_entries=entries)
     assert _export(session, tmp_path / "r.zip", "--release", "--key-file", str(tmp_path / "k")) == 0
-    assert "1 ingested input(s) that carried no license" in capsys.readouterr().err
+    assert "1 ingested input(s) with no recorded license" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -547,3 +548,110 @@ def test_two_concurrent_publishes_of_one_sequence_cannot_both_land(tmp_path, mon
     for t in threads:
         t.join()
     assert sorted(outcomes) == ["ok", "refused"]
+
+
+# ── re-read round (PR C) ───────────────────────────────────────────────────────────────────────
+
+
+def test_a_signed_release_must_say_which_counter_owns_its_sequence():
+    """No default: forgetting the counter is a TypeError, never a silently uncounted release."""
+    from maxim.hivemind.signing import SignedRelease
+
+    with pytest.raises(TypeError):
+        SignedRelease(signer=_signer(), release_sequence=1, license="CDLA-Permissive-2.0")  # type: ignore[call-arg]
+    with pytest.raises(TypeError, match="counter"):
+        SignedRelease(signer=_signer(), release_sequence=1, license="CDLA-Permissive-2.0", counter="seq.json")
+
+
+def test_a_replaced_sequence_is_recorded_as_the_one_signed(tmp_path):
+    """The re-read's probe: dataclasses.replace(release, release_sequence=9) must commit 9 -- the commit
+    reads the value's own fields, so what is signed and what is recorded cannot diverge."""
+    import dataclasses
+
+    from maxim.hivemind.bundle import compose_bundle
+    from maxim.hivemind.signing import counted_release, next_release_sequence, register_fresh_key
+    from tests.unit.test_hivemind_ingest import _node
+
+    counter, signer = tmp_path / "seq.json", _signer()
+    register_fresh_key(signer, path=counter)
+    release = dataclasses.replace(
+        counted_release(signer, license="CDLA-Permissive-2.0", requested=None, path=counter), release_sequence=9
+    )
+    compose_bundle(
+        nac_state=None,
+        ec_substrate_nodes={"n1": _node()},
+        output_path=tmp_path / "r.zip",
+        contributor_id=DONOR,
+        body_ref=BODY,
+        release=release,
+    )
+    assert _manifest(tmp_path / "r.zip")["release_sequence"] == 9
+    assert next_release_sequence(signer, requested=None, path=counter) == 10
+
+
+def test_open_signer_registers_a_minted_key_in_the_counter_it_is_given(tmp_path):
+    from maxim.hivemind.signing import next_release_sequence, open_signer
+
+    counter = tmp_path / "seq.json"
+    signer, created = open_signer(signer_identity="q", key_file=tmp_path / "k", counter_path=counter)
+    assert created and next_release_sequence(signer, requested=None, path=counter) == 1
+
+
+@pytest.mark.skipif(__import__("os").name == "nt", reason="POSIX permission bits")
+def test_a_group_readable_key_warns(tmp_path, caplog):
+    import logging
+
+    from maxim.hivemind.signing import load_or_create_signer
+
+    key = tmp_path / "k"
+    load_or_create_signer(signer_identity="q", key_file=key)
+    key.chmod(0o644)
+    with caplog.at_level(logging.WARNING, logger="maxim.hivemind.signing"):
+        load_or_create_signer(signer_identity="q", key_file=key)
+    assert "readable by group/others" in caplog.text
+
+
+def test_a_corrupt_counter_file_is_named_in_the_error(tmp_path):
+    from maxim.hivemind.signing import ReleaseSequenceError, next_release_sequence
+
+    counter = tmp_path / "seq.json"
+    counter.write_text("{not json")
+    with pytest.raises(ReleaseSequenceError, match="seq.json is not valid JSON"):
+        next_release_sequence(_signer(), requested=1, path=counter)
+
+
+def test_attribution_licenses_warn_on_release(tmp_path, capsys):
+    """The permissive list is attribution-free: a release strips per-row provenance, which CC-BY keeps."""
+    entries = [
+        {"digest": "a" * 64, "signer_key": "ab", "signer_identity": "q", "release_sequence": 1, "license": "CC-BY-4.0"}
+    ]
+    session = _session(tmp_path, journal_entries=entries)
+    assert _export(session, tmp_path / "r.zip", "--release", "--key-file", str(tmp_path / "k")) == 0
+    assert "CC-BY-4.0" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(__import__("os").name == "nt" or __import__("os").geteuid() == 0, reason="POSIX, non-root")
+def test_a_store_that_cannot_be_written_warns_instead_of_crashing_the_verb(tmp_path, capsys):
+    import hashlib
+
+    from maxim.hivemind.oasis_cli import run_oasis_subcommand
+
+    signer, store = _signer(), _store(tmp_path)
+    store.releases_dir.mkdir(parents=True)
+    raw = _release(tmp_path, signer).read_bytes()
+    (store.releases_dir / f"{hashlib.sha256(raw).hexdigest()}.zip").write_bytes(raw)
+    store.releases_dir.chmod(0o555)
+    try:
+        other = _release(tmp_path, signer, sequence=2, fear=-0.7)
+        key = f"queen-a={signer.public_key_b64}"
+        run_oasis_subcommand(["publish", str(other), "--root", str(store.root), "--queen-key", key])
+        assert "could not migrate release ids" in capsys.readouterr().err
+    finally:
+        store.releases_dir.chmod(0o755)
+
+
+def test_pending_migrations_ignore_non_release_files(tmp_path):
+    store = _store(tmp_path)
+    store.releases_dir.mkdir(parents=True)
+    (store.releases_dir / "notes.zip").write_bytes(_release(tmp_path, _signer()).read_bytes())
+    assert store.pending_release_migrations() == 0
