@@ -127,7 +127,11 @@ Cheap, and all of it is owed regardless of whether Phase 1 ships.
    for a missing required extra into a failure: the positive control.)*
 2. **Public format-freeze pass.** Manifest fields, slice shapes and the §5 adapter constants become
    a public compatibility surface the moment a stranger downloads a bundle. A named gate, not a
-   formality (HF plan §3).
+   formality (HF plan §3). *(2026-09-26: IN PROGRESS. The pass found the format not yet freezable;
+   part 1, the pre-freeze hardening, shipped as #915 — allowlist scrub, link ids that are no guess
+   oracle, links as agent-scoped data, one strict manifest reader, the identity grammar, and §5
+   amendments. It surfaced #914 and #913, both scheduled into 1.3.1. Part 2, the freeze record and a
+   byte-for-byte fixture guard, follows #914.)*
 3. **Publication-privacy read.** Bundles are NAc+EC only and identity-scrubbed twice, but cluster,
    percept and goal keys carry sim-derived text. One human read of the actual exemplar's key
    material before the first upload.
