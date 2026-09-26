@@ -19,9 +19,9 @@
 > schema 3** (§Envelope). **PR B — receiver state — shipped 2026-09-25:** the journal records each
 > verified release; ingest refuses equivocation and downgrade and dedups on the signed payload; the
 > registry's `accept_v1` reaches ingest as `--refuse-v1`; `hive pull` ingests in ascending sequence
-> (§Receiver state, §Registry: `accept_v1`). Still to build: PR C — producer counter and store
-> (§Producer, §Oasis store). The payload covers `created_at`, so PR C's counter advances on every
-> compose, not every publish.
+> (§Receiver state, §Registry: `accept_v1`). **PR C — producer and store — shipped 2026-09-25, and
+> item 7 is BUILT:** a per-key release counter, named key files, and a store that verifies on publish
+> with payload-digest ids (§Producer, §Oasis store, each with its amendments).
 
 ## Why
 
@@ -202,6 +202,15 @@ reads `signature.json`, not the manifest's `signature` field (empty in v3).
   host's development key (experiment bundles must never advance the Queen's sequence).
 - `maxim substrate export --sign` builds v2; `--license` is required with `--sign`.
 
+*Amended on PR C's build:* the counter is keyed by the signing key's PUBLIC KEY (hex), not the identity —
+the same key the receiver journal keys on, so the Queen key and a development key can never share a
+counter even under one identity. It is read (`next_release_sequence`) before the compose and COMMITTED
+(`commit_release_sequence`, under a `FileLock`, re-checking it still moves forward) right after it; a
+failed commit deletes the composed release. So a failed compose burns no number, and a signed release
+never exists without its counter record. `export --release` warns when the session's journal holds a
+verified input release under a license outside a small permissive set (decision (d); no compatibility
+engine).
+
 ## Oasis store
 
 `publish_release` **verifies** (the store is configured with the Queen public keys: `maxim oasis serve
@@ -210,7 +219,13 @@ it already holds. A Queen release's id becomes its signed-payload digest (same `
 releases already on disk are renamed once (a store migration), and `test_hive_pull_e2e.py`'s direct
 `{sha256(raw)}.zip` writes change with it. The experimental tier keeps ZIP-sha ids — one id shape, two
 meanings by tier, stated. Clients only shape-check ids, so none breaks. `list_releases` summaries carry `signature_scheme`,
-`release_sequence`, `license` (shipped in PR A); clients use them for ordering only, never trust.
+`release_sequence`, `license` (shipped in PR A); clients use them for ordering only, never trust. *Amended on
+PR C's build:* the Queen keys are given to `maxim oasis publish --queen-key IDENTITY=PUBKEY` (publishing is
+where verification happens; `serve` only serves what was published). The store takes v2 releases only (a
+v1 bundle has no index or license); a re-zipped copy of a held release is idempotent; the equivocation
+check is `bundle.find_equivocation`, the same predicate the receiver journal applies; the migration
+(`OasisStore.migrate_release_ids`, run by every `oasis` verb) renames by `content_payload_digest`, which
+needs no key.
 
 ## Reader (the Phase-1 caller)
 

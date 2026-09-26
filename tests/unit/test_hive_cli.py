@@ -495,7 +495,7 @@ class TestOasisCli:
             contributor_id="oasis-alpha",
             body_ref="minecraft_bench",
         )
-        rc = run_oasis_subcommand(["publish", str(out), "--root", str(tmp_path / "store")])
+        rc = run_oasis_subcommand(["publish", str(out), "--root", str(tmp_path / "store"), "--queen-key", "q=x"])
         assert rc == 2
         assert "sign" in capsys.readouterr().err
 
@@ -505,7 +505,7 @@ class TestOasisCli:
     def test_publish_non_zip_rc2_not_traceback(self, tmp_path, capsys):
         junk = tmp_path / "notabundle.zip"
         junk.write_text("this is not a zip", encoding="utf-8")
-        rc = run_oasis_subcommand(["publish", str(junk), "--root", str(tmp_path / "store")])
+        rc = run_oasis_subcommand(["publish", str(junk), "--root", str(tmp_path / "store"), "--queen-key", "q=x"])
         assert rc == 2
         assert "error:" in capsys.readouterr().err
 
@@ -526,6 +526,7 @@ class TestOasisCli:
     def test_publish_signed_then_status(self, tmp_path, capsys):
         from maxim.hivemind.signing import BundleSigner
 
+        queen = BundleSigner.generate(signer_identity="queen-a")
         out = tmp_path / "b.zip"
         compose_bundle(
             nac_state=None,
@@ -533,14 +534,12 @@ class TestOasisCli:
             output_path=out,
             contributor_id="oasis-alpha",
             body_ref="minecraft_bench",
-            release=SignedRelease(
-                signer=BundleSigner.generate(signer_identity="queen-a"),
-                release_sequence=1,
-                license="CDLA-Permissive-2.0",
-            ),
+            release=SignedRelease(signer=queen, release_sequence=1, license="CDLA-Permissive-2.0"),
         )
         root = str(tmp_path / "store")
-        assert run_oasis_subcommand(["publish", str(out), "--root", root]) == 0
+        key = f"queen-a={queen.public_key_b64}"
+        assert run_oasis_subcommand(["publish", str(out), "--root", root]) == 2  # no --queen-key: refused
+        assert run_oasis_subcommand(["publish", str(out), "--root", root, "--queen-key", key]) == 0
         assert run_oasis_subcommand(["status", "--root", root]) == 0
         assert "releases (Queen tier):        1" in capsys.readouterr().out
         # the release is the content digest of the published bytes

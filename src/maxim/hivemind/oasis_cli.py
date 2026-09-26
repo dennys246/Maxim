@@ -28,13 +28,32 @@ def _default_root() -> Path:
 _LOOPBACK = ("127.0.0.1", "::1", "localhost")
 
 
+def _open_store(args: argparse.Namespace) -> OasisStore:
+    """The store, with releases published before release format v2 moved to their payload-identity ids."""
+    store = OasisStore(args.root or _default_root())
+    moved = store.migrate_release_ids()
+    if moved:
+        print(f"migrated {moved} release id(s) to payload identities (release format v2)")
+    return store
+
+
+def _parse_queen_keys(entries: list[str] | None) -> dict[str, str]:
+    keys: dict[str, str] = {}
+    for entry in entries or []:
+        identity, sep, pubkey = entry.partition("=")
+        if not sep or not identity or not pubkey:
+            raise ValueError(f"--queen-key must be IDENTITY=PUBKEY_B64, got {entry!r}")
+        keys[identity] = pubkey
+    return keys
+
+
 def _run_serve(args: argparse.Namespace) -> int:
     import threading
 
     from maxim.runtime.leader_proxy import DEFAULT_PROXY_PORT, start_leader_proxy
     from maxim.tunnel.keys import read_key
 
-    store = OasisStore(args.root or _default_root())
+    store = _open_store(args)
     api_key = read_key()
     # Fail closed: an unauthenticated `/v1/substrate/contribute` (a WRITE) on a
     # non-loopback interface is an open door to the LAN/internet. Refuse unless
@@ -100,17 +119,29 @@ def _run_serve(args: argparse.Namespace) -> int:
 
 
 def _run_publish(args: argparse.Namespace) -> int:
-    store = OasisStore(args.root or _default_root())
     bundle_path = Path(args.bundle).expanduser().resolve()
     if not bundle_path.is_file():
         print(f"error: bundle file not found: {bundle_path}", file=sys.stderr)
         return 2
     try:
-        release_id = store.publish_release(bundle_path)
-    except OasisStoreError as exc:
-        # The commonest case: an unsigned bundle. Point at the signing verb.
+        queen_keys = _parse_queen_keys(args.queen_key)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if not queen_keys:
         print(
-            f"error: {exc}\n  hint: sign it first with `maxim substrate export --sign` (or `keygen` to mint a key).",
+            "error: publishing verifies the release: pass the Queen key(s) it must verify against "
+            "(--queen-key IDENTITY=PUBKEY_B64; `maxim substrate keygen --signer-id ID --key-file F` prints one)",
+            file=sys.stderr,
+        )
+        return 2
+    store = _open_store(args)
+    try:
+        release_id = store.publish_release(bundle_path, queen_keys=queen_keys)
+    except OasisStoreError as exc:
+        print(
+            f"error: {exc}\n  hint: a release is `maxim substrate export --sign --license SPDX-ID "
+            "[--key-file QUEEN_KEY]`, signed by one of the --queen-key keys.",
             file=sys.stderr,
         )
         return 2
@@ -122,7 +153,7 @@ def _run_publish(args: argparse.Namespace) -> int:
 
 
 def _run_status(args: argparse.Namespace) -> int:
-    store = OasisStore(args.root or _default_root())
+    store = _open_store(args)
     try:
         releases = store.list_releases()
         contributions = store.list_contributions()
@@ -155,7 +186,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p_serve.set_defaults(func=_run_serve)
 
     p_pub = sub.add_parser("publish", help="add a SIGNED bundle to the release tier")
-    p_pub.add_argument("bundle", help="path to a signed bundle (maxim substrate export --sign)")
+    p_pub.add_argument("bundle", help="path to a signed v2 release (maxim substrate export --sign)")
+    p_pub.add_argument(
+        "--queen-key",
+        action="append",
+        metavar="IDENTITY=PUBKEY_B64",
+        help="a Queen key the release must verify against (repeatable; required)",
+    )
     p_pub.add_argument("--root", type=Path, default=None, help="store root (default: ~/.maxim/oasis)")
     p_pub.set_defaults(func=_run_publish)
 

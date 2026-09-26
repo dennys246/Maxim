@@ -199,7 +199,7 @@ def test_a_signed_export_of_several_agents_needs_agent_id_and_ships_only_its_row
     from maxim.hivemind.cli import run_substrate_subcommand
 
     monkeypatch.setattr(
-        signing, "load_or_create_signer", lambda **_: signing.BundleSigner.generate(signer_identity=DONOR)
+        signing, "open_signer", lambda **_: (signing.BundleSigner.generate(signer_identity=DONOR), True)
     )
     nac = _nac_state(
         links={"tool:probe": [_link("tool:probe")]},

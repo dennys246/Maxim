@@ -66,6 +66,19 @@ def _stop(server) -> None:
     server.server_close()
 
 
+def _place_legacy_release(store, bundle):
+    """A v1-signed release already on an Oasis from before release format v2 (the store publishes v2 only
+    now): placed under its payload identity, as `OasisStore.migrate_release_ids` would leave it."""
+    import zipfile
+
+    from maxim.hivemind.bundle import content_payload_digest
+
+    with zipfile.ZipFile(bundle) as zf:
+        identity = content_payload_digest(zf)
+    store.releases_dir.mkdir(parents=True, exist_ok=True)
+    (store.releases_dir / f"{identity}.zip").write_bytes(bundle.read_bytes())
+
+
 def _receiver_session(tmp_path):
     sess = tmp_path / "receiver"
     sess.mkdir()
@@ -89,7 +102,7 @@ def test_hive_pull_dry_run_and_apply(tmp_path):
         release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0"),
     )
     store = OasisStore(tmp_path / "oasis")
-    store.publish_release(bundle)
+    store.publish_release(bundle, queen_keys={"queen-a": signer.public_key_b64})
     server, base = _start(store)
     try:
         reg = str(tmp_path / "hive.json")
@@ -158,7 +171,7 @@ def test_hive_pull_of_a_release_with_nac_rows_re_keys_them_to_the_receiver_agent
         release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0"),
     )
     store = OasisStore(tmp_path / "oasis")
-    store.publish_release(bundle)
+    store.publish_release(bundle, queen_keys={"queen-a": signer.public_key_b64})
     server, base = _start(store)
     try:
         reg = str(tmp_path / "hive.json")
@@ -195,7 +208,7 @@ def test_hive_pull_ingests_releases_in_ascending_sequence(tmp_path, monkeypatch)
             body_ref="minecraft_bench",
             release=SignedRelease(signer=signer, release_sequence=seq, license="CDLA-Permissive-2.0"),
         )
-        store.publish_release(bundle)
+        store.publish_release(bundle, queen_keys={"queen-a": signer.public_key_b64})
     assert [r["release_sequence"] for r in store.list_releases()] == [2, 1]  # the listing is newest first
     server, base = _start(store)
     try:
@@ -229,7 +242,7 @@ def test_a_newly_added_oasis_refuses_its_v1_releases_with_the_fix_and_still_take
         contributor_id="oasis-alpha",
         body_ref="minecraft_bench",
     )
-    store.publish_release(write_v1_bundle(unsigned, signer, out=tmp_path / "legacy.zip"))
+    _place_legacy_release(store, write_v1_bundle(unsigned, signer, out=tmp_path / "legacy.zip"))
     v2 = tmp_path / "rel.zip"
     compose_bundle(
         nac_state=None,
@@ -239,7 +252,7 @@ def test_a_newly_added_oasis_refuses_its_v1_releases_with_the_fix_and_still_take
         body_ref="minecraft_bench",
         release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0"),
     )
-    store.publish_release(v2)
+    store.publish_release(v2, queen_keys={"queen-a": signer.public_key_b64})
     server, base = _start(store)
     try:
         reg = str(tmp_path / "hive.json")
@@ -276,7 +289,7 @@ def test_hive_pull_from_a_loopback_oasis_uses_the_leader_key_implicitly(tmp_path
         release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0"),
     )
     store = OasisStore(tmp_path / "oasis")
-    store.publish_release(bundle)
+    store.publish_release(bundle, queen_keys={"queen-a": signer.public_key_b64})
     server, base = _start(store)
     try:
         reg = str(tmp_path / "hive.json")
@@ -315,7 +328,7 @@ def test_hive_pull_untrusted_signer_refused(tmp_path):
         release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0"),
     )
     store = OasisStore(tmp_path / "oasis")
-    store.publish_release(bundle)
+    store.publish_release(bundle, queen_keys={"queen-a": signer.public_key_b64})
     server, base = _start(store)
     try:
         reg = str(tmp_path / "hive.json")

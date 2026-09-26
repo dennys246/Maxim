@@ -201,7 +201,13 @@ def main() -> int:
     ap.add_argument("--save-merged", default=None, help="write the merged NAc here (loadable by live_3_learn)")
     ap.add_argument("--bundle", default=None, help="export the merged NAc as a substrate bundle zip")
     ap.add_argument("--contributor-id", default=None, help="bundle manifest contributor (required with --bundle)")
-    ap.add_argument("--release-sequence", type=int, default=None, help="with --bundle: this release's sequence (>= 1)")
+    ap.add_argument(
+        "--release-sequence",
+        type=int,
+        default=None,
+        help="with --bundle: this release's sequence (default: the signing key's counter; N may only move it forward)",
+    )
+    ap.add_argument("--key-file", default=None, help="with --bundle: the signing key file (default: this host's key)")
     ap.add_argument("--license", default=None, help="with --bundle: SPDX license id (e.g. CDLA-Permissive-2.0)")
     ap.add_argument("--domain", default="robotics-orient", help="bundle substrate-domain tag")
     ap.add_argument(
@@ -334,22 +340,27 @@ def main() -> int:
         if not passed:
             print("[bundle] REFUSED — gauntlet failed; a queen-mind bundle ships only gauntlet-passed substrate.")
             return 1
-        if not args.contributor_id or args.release_sequence is None or not args.license:
-            print("[bundle] --contributor-id, --release-sequence and --license are required with --bundle")
+        if not args.contributor_id or not args.license:
+            print("[bundle] --contributor-id and --license are required with --bundle")
             return 2
         from maxim.hivemind.bundle import compose_bundle
-        from maxim.hivemind.signing import SignedRelease, load_or_create_signer
+        from maxim.hivemind.signing import (
+            SignedRelease,
+            commit_release_sequence,
+            next_release_sequence,
+            open_signer,
+        )
+
+        # The same release counter `substrate export --sign` uses: a sequence is never re-used.
+        signer, fresh_key = open_signer(signer_identity=args.contributor_id, key_file=args.key_file)
+        sequence = next_release_sequence(signer, requested=args.release_sequence, fresh_key=fresh_key)
 
         bundle_path = os.path.expanduser(args.bundle)
         # A queen-mind bundle is RELEASE composition from a merge: re-authored and signed (the merged
         # links are "_consensus", which a receiver's V1 sweep refuses in a plain export).
         manifest = compose_bundle(
             reauthor=True,
-            release=SignedRelease(
-                signer=load_or_create_signer(signer_identity=args.contributor_id),
-                release_sequence=args.release_sequence,
-                license=args.license,
-            ),
+            release=SignedRelease(signer=signer, release_sequence=sequence, license=args.license),
             nac_state=merged,
             ec_substrate_nodes=None,  # orient NAcs carry no EC state
             output_path=bundle_path,
@@ -357,6 +368,11 @@ def main() -> int:
             domain=args.domain,
             body_ref=args.body_ref,  # gate 7 — None ships honestly unverifiable
         )
+        try:
+            commit_release_sequence(signer, sequence)
+        except (ValueError, OSError):
+            os.remove(bundle_path)  # never leave a signed release the counter does not hold
+            raise
         if args.body_ref is None:
             print("[bundle] note: no --body-ref — body-checking receivers will REFUSE this bundle")
         print(f"[bundle] wrote {bundle_path}")

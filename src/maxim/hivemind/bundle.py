@@ -77,7 +77,7 @@ import os
 import re
 import zipfile
 import zlib
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -1122,6 +1122,23 @@ class BundleVerification:
     entry_digests: dict[str, str] = field(default_factory=dict)
 
 
+def find_equivocation(
+    records: Iterable[Mapping[str, Any]], *, signer_key: str, release_sequence: int, payload_digest: str
+) -> Mapping[str, Any] | None:
+    """The record a release EQUIVOCATES against -- same signing key (hex) and sequence, a different
+    signed payload -- or ``None``. The one predicate the receiver's journal and the Oasis store both
+    apply (decision (b)): one ``(key, sequence)`` binds to one release. Keyed by public key, not
+    identity, so a rotated key starts clean."""
+    for record in records:
+        if (
+            record.get("signer_key") == signer_key
+            and record.get("release_sequence") == release_sequence
+            and record.get("payload_digest") != payload_digest
+        ):
+            return record
+    return None
+
+
 def _strict_json(raw: bytes, what: str) -> Any:
     """Parse JSON refusing duplicate keys and non-finite numbers (two parsers must never disagree)."""
 
@@ -1606,6 +1623,7 @@ __all__ = [
     "compose_bundle",
     "content_payload_digest",
     "extract_bundle",
+    "find_equivocation",
     "isolated_bundle_migrations",
     "migrate_bundle_envelope",
     "read_bundle_manifest",
