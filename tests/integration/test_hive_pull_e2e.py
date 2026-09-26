@@ -291,7 +291,7 @@ def test_unsigned_release_refused_by_default_admitted_under_opt_in(tmp_path):
     try:
         reg = str(tmp_path / "hive.json")
         # a registered Queen key exists, but the offered release is unsigned
-        HiveRegistry(reg).add("alpha", base, queen_keys={"queen-a": "PUBKEY"})
+        HiveRegistry(reg).add("alpha", base, queen_keys={"queen-a": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="})
         sess = _receiver_session(tmp_path)
         pull = [
             "--registry",

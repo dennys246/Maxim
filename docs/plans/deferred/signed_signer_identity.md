@@ -23,9 +23,9 @@ key check it and it fails. `hive pull`'s label pre-screen only routes the bundle
 (`--require-signed` plus every Queen key). The one residual case — one key trusted under two
 identities — is refused at verification and at registration (`tests/unit/test_signer_identity_binding.py`).
 The comparison is on DECODED key bytes (a 32-byte key has four valid base64 spellings). Displays
-(`substrate export`'s summary, the Oasis store log) say "claimed signer". Follow-up, not security:
-registration still accepts a malformed key (it fails loudly at verification instead) because test
-fixtures and open PRs use placeholder keys — tighten it in a fixture sweep.
+(`substrate export`'s summary, the Oasis store log) say "claimed signer". Follow-up, not security — DONE 2026-09-25: registration now refuses any queen key that is not the
+canonical base64 of a 32-byte Ed25519 key (`registry.py::_validate_add`), with the test fixtures'
+placeholder keys swept to a real canonical key.
 
 ## What binding costs, and why not now
 

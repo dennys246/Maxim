@@ -27,11 +27,16 @@ _EC_NODES = {"node-1": {"modality": "world", "embedding": [0.1, 0.2, 0.3], "doma
 class TestRegistry:
     def test_add_get_remove_roundtrip(self, tmp_path):
         reg = HiveRegistry(tmp_path / "hive.json")
-        reg.add("alpha", "https://a.example", queen_keys={"queen-a": "PUB"}, domains=("combat",))
+        reg.add(
+            "alpha",
+            "https://a.example",
+            queen_keys={"queen-a": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="},
+            domains=("combat",),
+        )
         entry = reg.get("alpha")
         assert entry is not None
         assert entry["url"] == "https://a.example"
-        assert entry["queen_keys"] == {"queen-a": "PUB"}
+        assert entry["queen_keys"] == {"queen-a": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="}
         assert entry["domains"] == ["combat"]
         assert reg.remove("alpha") is True
         assert reg.get("alpha") is None
@@ -60,7 +65,18 @@ class TestHiveCliArgs:
     def test_add_then_list_then_remove(self, tmp_path, capsys):
         reg = str(tmp_path / "hive.json")
         assert (
-            run_hive_subcommand(["--registry", reg, "add", "alpha", "https://a.example", "--queen-key", "q=PUB"]) == 0
+            run_hive_subcommand(
+                [
+                    "--registry",
+                    reg,
+                    "add",
+                    "alpha",
+                    "https://a.example",
+                    "--queen-key",
+                    "q=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+                ]
+            )
+            == 0
         )
         assert run_hive_subcommand(["--registry", reg, "list"]) == 0
         assert "alpha" in capsys.readouterr().out
@@ -100,7 +116,7 @@ class TestTrustPolicy:
         from maxim.hivemind.registry import trust_policy
 
         reg = HiveRegistry(tmp_path / "hive.json")
-        entry = reg.add("alpha", "https://a.example", queen_keys={"q": "PUB"})
+        entry = reg.add("alpha", "https://a.example", queen_keys={"q": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="})
         policy = trust_policy(entry)
         assert policy == {"allow_unsigned": False, "inherent_trust": False, "trusted_sources": []}
 
@@ -149,12 +165,12 @@ class TestTrustPolicy:
 
         path = tmp_path / "hive.json"
         reg = HiveRegistry(path)
-        reg.add("alpha", "https://a.example", queen_keys={"queen-a": "PUB"})
+        reg.add("alpha", "https://a.example", queen_keys={"queen-a": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="})
         reg.set_trust("alpha", allow_unsigned=True)
         reg.add("alpha", "https://moved.example")  # no --queen-key passed
         entry = reg.get("alpha")
         assert entry["url"] == "https://moved.example"
-        assert entry["queen_keys"] == {"queen-a": "PUB"}  # NOT wiped
+        assert entry["queen_keys"] == {"queen-a": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="}  # NOT wiped
         assert trust_policy(entry)["allow_unsigned"] is True
 
     def test_set_trust_unknown_oasis_raises(self, tmp_path):
@@ -223,7 +239,7 @@ class TestIngestArgvConstruction:
             receiver_body="body",
             contributor="peer-7",
             queen_verified=True,
-            queen_keys={"queen-a": "PUB"},
+            queen_keys={"queen-a": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="},
             policy=self._policy(),
         )
         defaults.update(kw)
@@ -232,7 +248,7 @@ class TestIngestArgvConstruction:
     def test_queen_verified_requires_signature_and_passes_keys(self):
         argv = self._argv()
         assert "--require-signed" in argv
-        assert "--trust-key" in argv and "queen-a=PUB" in argv
+        assert "--trust-key" in argv and "queen-a=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" in argv
         assert argv[argv.index("--trust") + 1] == "peer-7"
         assert "--inherent-trust" not in argv  # default: safety floor refused
 
@@ -364,7 +380,17 @@ class TestReleaseIdHardening:
         from maxim.hivemind import substrate_client as sc
 
         reg = str(tmp_path / "hive.json")
-        run_hive_subcommand(["--registry", reg, "add", "alpha", "https://a.example", "--queen-key", "q=PUB"])
+        run_hive_subcommand(
+            [
+                "--registry",
+                reg,
+                "add",
+                "alpha",
+                "https://a.example",
+                "--queen-key",
+                "q=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+            ]
+        )
         # A malicious/MITM Oasis returns a traversal id; pull must skip it before
         # ever building a path or fetching.
         monkeypatch.setattr(sc, "list_releases", lambda *a, **k: [{"id": "../../../evil", "domain": None}])
