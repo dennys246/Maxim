@@ -175,3 +175,20 @@ def test_admission_ignores_a_dangling_donor_marker_directly():
     from maxim.hivemind.merge import _admit_inherent_markers
 
     assert _admit_inherent_markers({}, {"cluster_reward_bias": {}, "inherent_bias_keys": [K]}) == []
+
+
+def test_a_dangling_receiver_marker_never_marks_a_donor_row_landing_on_its_key():
+    """The escalation ingest's pre-merge belt exists for, driven through substrate_merge alone."""
+    from maxim.hivemind.merge import substrate_merge
+
+    result = substrate_merge(
+        receiver_nac={"inherent_bias_keys": [K]},
+        receiver_ec=_ec("L"),
+        donor_nac={"cluster_reward_bias": {D: 0.4}},
+        donor_ec=_ec("R"),
+        receiver_source="recv",
+        donor_source="donor",
+        receiver_agent_id="me",
+    )
+    assert K in result.nac["cluster_reward_bias"]
+    assert K not in result.nac["inherent_bias_keys"]

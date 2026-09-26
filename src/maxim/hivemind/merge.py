@@ -1020,8 +1020,10 @@ def fold_cluster_rows(
     ``"mixed"``. ``transform`` returns the new key, or ``None`` to drop the row. An ``inherent_bias_keys``
     marker survives only when EVERY ``cluster_reward_bias`` row folding into its key was marked: a
     learned bias folded into an inherent one never becomes decay-exempt, and never dilutes the safety
-    floor while wearing its marker (across a merge's two sides ``substrate_merge`` admits markers
-    receiver-first instead: ``_admit_inherent_markers``). A
+    floor while wearing its marker. That holds WITHIN one side's fold only: across a merge's two sides
+    ``substrate_merge`` admits markers receiver-first instead (``_admit_inherent_markers``), so a
+    receiver's inherent value averaged with a donor's learned one KEEPS its marker -- the tighten-only
+    clamp restores a negative (aversive) floor, but a positive inherent value can move. A
     marker whose own bias row is absent is dropped (a dangling marker is never passed through).
     Weighting: donor cluster rows carry no per-row counts, so the mean is unweighted -- the only fold
     the data supports. Returns only the fields present in ``nac_state`` (a wrong-typed field RAISES:
