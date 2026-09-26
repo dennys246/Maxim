@@ -44,9 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   license; a `--require-signed` ingest then refuses a second payload claiming an admitted `(key, sequence)`
   (equivocation — not waivable by `--force-digest`) and a v1 bundle from a key whose v2 release was
   admitted (downgrade — every later v1 from that key in that session, older lineages included), and
-  every ingest dedups on the payload digest too (verified, or implied by the content when unverified),
-  so a re-zipped release is not merged twice. Direct ingests without `--require-signed` (the
-  experiment harnesses) get only the dedup.
+  every ingest also dedups on a payload identity computed over exactly what ingest reads (the manifest
+  and declared slices; equal to the verified digest when the bundle verifies), so a re-zipped,
+  signature-stripped or README-padded copy of an admitted bundle is not merged twice — signed or
+  unsigned. An ingest without `--require-signed` gets only that dedup. A manifest nested a few
+  hundred deep is now a refusal instead of a `RecursionError` in the envelope migration.
   `hive add` now writes `accept_v1: false` for a NEW Oasis (existing entries keep accepting legacy v1
   signatures); `maxim hive trust --accept-v1 / --refuse-v1` toggles it and `hive pull` passes it to
   ingest as the new `substrate ingest --refuse-v1` (which requires `--require-signed`), naming the

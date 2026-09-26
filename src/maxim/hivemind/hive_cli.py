@@ -91,11 +91,7 @@ def _run_list(args: argparse.Namespace) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 2
         verification = "unsigned-allowed" if policy["allow_unsigned"] else "queen-only"
-        legacy = (
-            "n/a (verification disabled)"
-            if policy["allow_unsigned"]
-            else ("accepted" if policy["accept_v1"] else "refused")
-        )
+        legacy = _v1_display(policy, short=True)
         allow = ", ".join(policy["trusted_sources"]) or "(any Queen-signed)"
         # Reduce the key map to a COUNT before it can reach output. Nothing here
         # prints key material (and Queen keys are public verification anchors,
@@ -110,10 +106,17 @@ def _run_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def _v1_display(policy: dict) -> str:
+def _v1_display(policy: dict, *, short: bool = False) -> str:
+    """What `hive pull` does with a legacy v1-signed release. A release signed by a registered Queen key
+    is ALWAYS verified (allow_unsigned only admits the others, unverified), so accept_v1 decides it
+    either way; under allow_unsigned an unsigned / non-Queen copy of the same content is admitted
+    unverified, and saying "refused" alone would overstate the guarantee."""
+    base = "accepted (legacy; removed at 2.0)" if policy["accept_v1"] else "refused"
+    if short:
+        base = "accepted" if policy["accept_v1"] else "refused"
     if policy["allow_unsigned"]:
-        return "n/a (verification disabled -- nothing is verified, so nothing is refused as v1)"
-    return "accepted (legacy; removed at 2.0)" if policy["accept_v1"] else "refused"
+        return f"{base} when Queen-signed (unsigned / non-Queen releases are admitted unverified)"
+    return base
 
 
 def _run_trust(args: argparse.Namespace) -> int:

@@ -914,7 +914,8 @@ def ingest_bundle(
     receiver changes on refusal.
 
     ``accept_v1`` (with ``require_signed``): whether a legacy v1 signature is still accepted. It
-    defaults to True for direct callers (the Exp 56/61 harnesses ingest v1 bundles); ``hive pull``
+    defaults to True for direct callers (legacy v1-signed bundles such as the Exp 56/61-era releases
+    keep verifying; the harnesses themselves ingest unsigned bundles); ``hive pull``
     passes the registry entry's decision (``--refuse-v1`` when ``accept_v1: false``, the default for
     a newly added Oasis).
 
@@ -1029,11 +1030,11 @@ def ingest_bundle(
                         "receiver has already admitted — a key that signs v2 does not go back to v1"
                     ),
                 )
-        # Dedup on the ZIP bytes AND on the signed payload (a re-zipped release is the same release). The
-        # payload digest is the VERIFIED one when this ingest verified, and otherwise the digest the
-        # content implies (``content_payload_digest``: a pure content hash, no key, no authority) -- so
-        # a release first admitted on an unverified path is still the same release when its verified
-        # or re-zipped copy arrives, and is never merged twice.
+        # Dedup on the ZIP bytes AND on the payload identity -- the VERIFIED payload digest when this
+        # ingest verified, otherwise ``content_payload_digest`` (a hash of exactly what ingest reads: the
+        # manifest + declared slices; no key, no authority). Equal whenever the bundle verifies, so a
+        # re-zipped, re-signed-away or README-padded copy of an admitted release -- on either path -- is
+        # the same release and is never merged twice.
         payload_digest = (
             verification.payload_digest
             if verification is not None
@@ -1041,6 +1042,12 @@ def ingest_bundle(
                 zf, max_member_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES, max_total_bytes=MAX_TOTAL_UNCOMPRESSED_BYTES
             )
         )
+        if payload_digest is None:
+            notes.append(
+                "the bundle's payload identity could not be computed (a manifest that is not strict JSON, or an "
+                "unreadable slice); dedup falls back to these exact ZIP bytes, so a re-packaged copy would not "
+                "be recognised"
+            )
         seen = [d for d in (digest, payload_digest) if d]
         if any(journal.has_digest(d) for d in seen) and not force_digest:
             raise IngestRefused(

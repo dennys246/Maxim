@@ -179,8 +179,9 @@ admitted, a v1 bundle from that key → refuse). Keyed by **public key**, so two
 remove`/`add` behave. Limits, stated: the journal is per receiver session directory
 (`substrate_ingest_journal.json`), not registry-wide; and a release that verified but was refused by a
 later gate (e.g. gate 7) is not journalled, so it does not seed either rule. *Amended on PR B's review:* dedup
-also keys on the payload digest an UNVERIFIED signed-looking bundle's content implies
-(`content_payload_digest`), so a release first admitted unverified is not merged twice; only verified
+also keys on a payload identity computed over exactly what ingest reads (`content_payload_digest`:
+manifest + declared slices, equal to the verified digest when the bundle verifies), so a release first
+admitted unverified, or re-packaged, is not merged twice; only verified
 entries carry signer fields, so unverified admissions seed neither ordering rule. The downgrade rule
 refuses every v1 bundle from a key once its v2 release is admitted — including an older lineage that
 arrives later, since v1 has no sequence (owner kept it; a `created_at` narrowing is backdatable by the

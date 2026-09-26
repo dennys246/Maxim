@@ -393,12 +393,13 @@ class TestAcceptV1Policy:
         assert "v1 signatures: refused" in capsys.readouterr().out
         with pytest.raises(SystemExit):
             run_hive_subcommand(["--registry", reg_path, "trust", "alpha", "--accept-v1", "--refuse-v1"])
-        # With verification disabled nothing is verified, so "refused" would be a false promise.
+        # allow_unsigned still verifies a Queen-signed release (and refuses it as v1) but admits the
+        # unsigned / non-Queen rest unverified -- the display must say both halves.
         capsys.readouterr()
         run_hive_subcommand(["--registry", reg_path, "trust", "alpha", "--allow-unsigned"])
-        assert "v1 signatures: n/a (verification disabled" in capsys.readouterr().out
+        assert "v1 signatures: refused when Queen-signed (unsigned / non-Queen" in capsys.readouterr().out
         assert run_hive_subcommand(["--registry", reg_path, "list"]) == 0
-        assert "v1 signatures: n/a (verification disabled)" in capsys.readouterr().out
+        assert "v1 signatures: refused when Queen-signed" in capsys.readouterr().out
 
 
 class TestConflictingTrustFlags:

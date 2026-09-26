@@ -212,7 +212,8 @@ def test_hive_pull_ingests_releases_in_ascending_sequence(tmp_path, monkeypatch)
 
 
 @_needs_crypto
-def test_a_newly_added_oasis_refuses_its_v1_releases_with_the_fix_and_still_takes_v2(tmp_path, capsys):
+@pytest.mark.parametrize("allow_unsigned", [False, True])
+def test_a_newly_added_oasis_refuses_its_v1_releases_with_the_fix_and_still_takes_v2(tmp_path, capsys, allow_unsigned):
     """A fresh `hive add` writes accept_v1: false. A legacy v1 release is skipped with the command that
     takes it; the v2 release in the same listing is still admitted (one refusal never aborts the pull)."""
     from maxim.hivemind.signing import BundleSigner
@@ -243,6 +244,8 @@ def test_a_newly_added_oasis_refuses_its_v1_releases_with_the_fix_and_still_take
     try:
         reg = str(tmp_path / "hive.json")
         HiveRegistry(reg).add("alpha", base, queen_keys={"queen-a": signer.public_key_b64})
+        if allow_unsigned:  # does NOT exempt a Queen-signed release from verification (or from accept_v1)
+            HiveRegistry(reg).set_trust("alpha", allow_unsigned=True)
         sess = _receiver_session(tmp_path)
         pull = ["--registry", reg, "pull", "--from", "alpha", "--session", str(sess)]
         pull += ["--receiver-body", "minecraft_bench", "--api-key", _KEY, "--apply"]

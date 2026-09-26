@@ -4,6 +4,7 @@ digest dedup, equivocation and downgrade refusals. Through the REAL compose and 
 
 from __future__ import annotations
 
+import json
 import zipfile
 from pathlib import Path
 
@@ -269,7 +270,13 @@ def test_the_content_digest_equals_the_verified_one(tmp_path):
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [("release_sequence", True), ("release_sequence", "1"), ("signature_scheme", 2.0), ("signer_key", 7)],
+    [
+        ("release_sequence", True),
+        ("release_sequence", "1"),
+        ("signature_scheme", 2.0),
+        ("signer_key", 7),
+        ("payload_digest", 7),
+    ],
 )
 def test_a_journal_with_a_mistyped_release_field_fails_loud(tmp_path, field, value):
     import json
@@ -294,3 +301,64 @@ def test_refuse_v1_without_require_signed_is_an_error_not_a_no_op(tmp_path, caps
     argv = ["ingest", str(_v1(tmp_path, _signer())), "--session", str(session), "--receiver-body", BODY]
     assert run_substrate_subcommand([*argv, "--trust", DONOR, "--refuse-v1"]) == 2
     assert "needs --require-signed" in capsys.readouterr().err
+
+
+def test_an_uncomputable_payload_identity_is_reported_not_silent(tmp_path):
+    """A duplicate-key manifest: ingest's manifest reader admits it, the strict identity parse does not --
+    so dedup falls back to the ZIP bytes, and the report says so."""
+    from maxim.hivemind.bundle import compose_bundle
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+    from tests.unit.test_hivemind_ingest import _node
+
+    src = tmp_path / "u.zip"
+    compose_bundle(
+        nac_state=None,
+        ec_substrate_nodes={"n1": _node()},
+        output_path=src,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+    )
+    members = read_members(src)
+    text = members["manifest.json"].decode()
+    members["manifest.json"] = text.replace('"kind"', '"kind": "substrate_bundle", "kind"', 1).encode()
+    report = _admit_unverified(write_members(tmp_path / "dup.zip", members), _journal(tmp_path))
+    assert "payload_digest" not in report.journal_entry
+    assert any("payload identity could not be computed" in n for n in report.notes)
+
+
+@pytest.mark.parametrize("repackage", ["strip-signature", "add-readme"])
+def test_a_repackaged_release_is_still_the_same_release(tmp_path, repackage):
+    """The identity covers exactly what ingest reads: stripping signature.json or adding an undeclared
+    member changes nothing ingest merges, so it must not change the identity either."""
+    from maxim.hivemind.ingest import IngestRefused
+    from maxim.hivemind.signing import SIGNATURE_MEMBER
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    signer, journal = _signer(), _journal(tmp_path)
+    original = _release(tmp_path, signer)
+    members = read_members(original)
+    if repackage == "strip-signature":
+        del members[SIGNATURE_MEMBER]
+    else:
+        members["README.md"] = b"not part of the release"
+    _admit_unverified(write_members(tmp_path / "repackaged.zip", members), journal)
+    with pytest.raises(IngestRefused) as exc:
+        _admit(original, journal, signer)
+    assert exc.value.duty == "V8"
+
+
+def test_a_manifest_nested_past_the_migration_is_a_refusal(tmp_path):
+    """~600 deep parses as JSON but blew up in the envelope migration's deepcopy (RecursionError)."""
+    from maxim.hivemind.ingest import IngestRefused
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    members = read_members(_release(tmp_path, _signer()))
+    manifest = json.loads(members["manifest.json"])
+    deep: object = []
+    for _ in range(600):
+        deep = [deep]
+    manifest["capability_map"] = {"x": deep}
+    members["manifest.json"] = json.dumps(manifest).encode()
+    with pytest.raises((IngestRefused, ValueError), match="nests too deeply"):
+        _admit_unverified(write_members(tmp_path / "deep.zip", members), _journal(tmp_path))
