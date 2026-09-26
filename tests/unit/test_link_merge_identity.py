@@ -138,3 +138,25 @@ def test_an_unsigned_bundles_link_is_readable_by_the_receiver_after_ingest():
     nac.load_state(result.nac)
     prediction = nac.predict("tool_execution", "tool:probe", context={"agent_id": "me"})
     assert prediction is not None, "an ingested link the receiver cannot read is lost learning"
+
+
+def test_the_merged_outcome_index_names_exactly_the_merged_links():
+    """Rebuilt from the merged links: a renamed donor link is findable by outcome, and no stale id stays."""
+    from maxim.decisions.nac import NAc
+    from maxim.hivemind.merge import nac_merge
+
+    receiver = _ctx_link("l1", {"agent_id": "me", "goal": "cold"})
+    donor = _ctx_link("d1", {"agent_id": "me"})
+    out = nac_merge(
+        left={"links": {"tool:probe": [receiver]}, "outcome_index": {"tool_result:positive": ["l1"]}},
+        left_source="local",
+        right={"links": {"tool:probe": [donor]}, "outcome_index": {"tool_result:positive": ["d1"]}},
+        right_source="peer",
+    )
+    link_ids = sorted(link["id"] for link in out["links"]["tool:probe"])
+    assert out["outcome_index"] == {"tool_result:positive": link_ids}
+    assert "d1" not in link_ids
+
+    nac = NAc()
+    nac.load_state(out)
+    assert len(nac.get_links_for_outcome("tool_result:positive")) == 2

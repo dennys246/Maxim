@@ -385,7 +385,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   added under the id NAc itself gives it. Separately, a link ingested from an unsigned bundle kept the
   donor's agent id, so the receiver's predictions could not use it; when you ingest with
   `--receiver-agent-id` it is now re-keyed to you, like the situation rows. Links already stored by an
-  earlier ingest are not migrated.
+  earlier ingest are not migrated. Every merge (ingest, `maxim substrate merge-nac`, `nac_merge_many`)
+  now gives a donor-only link that id and rebuilds the outcome index from the merged links.
 
 - **Ingest folds donor situations that align onto one of yours instead of letting the last one win**
   (#914). When several donor clusters align onto one receiver cluster, their rows now fold with the

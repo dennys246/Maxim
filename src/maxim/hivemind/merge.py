@@ -481,12 +481,15 @@ def nac_merge(
             right_source=right_source,
         )
 
-    # outcome_index — union of values per key. Sorted for determinism.
-    left_idx = left.get("outcome_index", {}) or {}
-    right_idx = right.get("outcome_index", {}) or {}
+    # outcome_index — REBUILT from the merged links (outcome signature -> link ids), never unioned
+    # from the two inputs: an appended donor link takes a new id (#913), and a union would keep its old
+    # id and never index the new one, so ``NAc.get_links_for_outcome`` could not find it. Sorted for
+    # determinism (the same shape the export scrub rebuilds).
     merged_outcome_index: dict[str, list[str]] = {}
-    for k in sorted(set(left_idx.keys()) | set(right_idx.keys())):
-        merged_outcome_index[k] = sorted(set(left_idx.get(k, [])) | set(right_idx.get(k, [])))
+    for bucket in merged_links.values():
+        for link in bucket:
+            merged_outcome_index.setdefault(str(link["outcome_signature"]), []).append(str(link["id"]))
+    merged_outcome_index = {k: sorted(set(v)) for k, v in sorted(merged_outcome_index.items())}
 
     # priors — shared keys: keep higher-confidence. Sorted for determinism.
     left_priors = left.get("priors", {}) or {}
