@@ -64,7 +64,7 @@ def _verify(path: Path, signer):
     from maxim.hivemind.bundle import verify_bundle_zip
 
     with zipfile.ZipFile(path) as zf:
-        return verify_bundle_zip(zf, trusted_keys={"queen-a": signer.public_key_b64})
+        return verify_bundle_zip(zf, trusted_keys={"queen-a": signer.public_key_b64}, accept_v1=True)
 
 
 def test_a_release_verifies_carries_its_fields_and_ships_no_local_agent_id(tmp_path):
@@ -206,3 +206,314 @@ def test_the_published_entries_match_the_gated_evidence_via_inspect(tmp_path, ca
     release_out = capsys.readouterr().out
     pick = lambda text: sorted(line for line in text.splitlines() if line.strip().startswith("entry "))  # noqa: E731
     assert pick(evidence) and pick(evidence) == pick(release_out)
+
+
+# ── review-round fold (security + architecture lenses) ─────────────────────────────────────────
+
+
+def _patch_member_header(path: Path, name: str, *, crc: int | None = None, usize: int | None = None) -> None:
+    """Rewrite one member's CRC and/or declared uncompressed size in BOTH its local and central headers
+    (the lying-header shape V6's bounded reader exists for)."""
+    import struct
+
+    data = bytearray(path.read_bytes())
+    eocd = data.rfind(b"PK\x05\x06")
+    count, _size, cd_offset = struct.unpack_from("<HII", data, eocd + 10)
+    pos = cd_offset
+    for _ in range(count):
+        n_len, x_len, c_len = struct.unpack_from("<HHH", data, pos + 28)
+        member = data[pos + 46 : pos + 46 + n_len].decode()
+        if member == name:
+            local = struct.unpack_from("<I", data, pos + 42)[0]
+            if crc is not None:
+                struct.pack_into("<I", data, pos + 16, crc)
+                struct.pack_into("<I", data, local + 14, crc)
+            if usize is not None:
+                struct.pack_into("<I", data, pos + 24, usize)
+                struct.pack_into("<I", data, local + 22, usize)
+        pos += 46 + n_len + x_len + c_len
+    path.write_bytes(bytes(data))
+
+
+def _ingest_signed(path: Path, signer, tmp_path: Path, **kw):
+    from maxim.hivemind.ingest import IngestionJournal, ingest_bundle
+
+    return ingest_bundle(
+        path,
+        journal=IngestionJournal(tmp_path / f"j-{path.stem}.json"),
+        receiver_nac=None,
+        receiver_ec_nodes=None,
+        trusted_sources=frozenset({DONOR}),
+        receiver_body=BODY,
+        require_signed=True,
+        trusted_keys={"queen-a": signer.public_key_b64},
+        receiver_agent_id="receiver",
+        **kw,
+    )
+
+
+def test_a_lying_signature_header_is_refused_without_inflating_it(tmp_path):
+    """signature.json is read before any trust check -- so it is read BOUNDED (a 4 MB stream that
+    declares 100 bytes is refused as a lying header, never inflated, never a BadZipFile traceback)."""
+    from maxim.hivemind.ingest import IngestRefused
+    from maxim.hivemind.signing import SIGNATURE_MEMBER
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    signer = _signer()
+    members = read_members(_compose(tmp_path, signer))
+    members[SIGNATURE_MEMBER] = b"{" + b" " * (4 * 1024 * 1024) + b"}"
+    path = write_members(tmp_path / "bomb.zip", members)
+    _patch_member_header(path, SIGNATURE_MEMBER, usize=100)
+    result = _verify(path, signer)
+    assert not result.ok and "corrupt or lies about its size" in result.reason
+    with pytest.raises(IngestRefused, match="corrupt or lies about its size"):
+        _ingest_signed(path, signer, tmp_path)
+
+
+def test_a_corrupt_member_is_a_refusal_not_a_crash(tmp_path):
+    from maxim.hivemind.ingest import IngestRefused
+
+    signer = _signer()
+    path = _compose(tmp_path, signer)
+    _patch_member_header(path, "nac.json", crc=0)
+    assert not _verify(path, signer).ok
+    with pytest.raises(IngestRefused):
+        _ingest_signed(path, signer, tmp_path)
+
+
+def test_an_undeclared_member_is_refused_before_it_is_decompressed(tmp_path):
+    """The member is corrupt: had the verifier read it, the reason would say so. It says the member
+    set differs -- the release is refused on its shape, before any undeclared byte is inflated (V7)."""
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    signer = _signer()
+    members = read_members(_compose(tmp_path, signer))
+    members["extra.json"] = b"{}"
+    path = write_members(tmp_path / "extra.zip", members)
+    _patch_member_header(path, "extra.json", crc=0)
+    result = _verify(path, signer)
+    assert not result.ok and "members differ" in result.reason and "extra.json" in result.reason
+
+
+def test_a_v2_signature_on_a_schema_2_manifest_is_refused(tmp_path):
+    from tests.unit._signed_bundle_helpers import resign_manifest_v2
+
+    signer = _signer()
+    path = resign_manifest_v2(
+        _compose(tmp_path, signer), signer, lambda m: m.__setitem__("schema_version", 2), out=tmp_path / "s2.zip"
+    )
+    result = _verify(path, signer)
+    assert not result.ok and "schema 2 manifest" in result.reason
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("release_sequence", 0),
+        ("release_sequence", True),
+        ("release_sequence", "1"),
+        ("release_sequence", 2**53),
+        ("license", "<script>"),
+        ("license", None),
+    ],
+)
+def test_a_signed_but_invalid_release_field_is_refused(tmp_path, field, value):
+    """Validly signed -- the SIGNER wrote the bad value -- and still refused."""
+    from tests.unit._signed_bundle_helpers import resign_manifest_v2
+
+    signer = _signer()
+    path = resign_manifest_v2(
+        _compose(tmp_path, signer), signer, lambda m: m.__setitem__(field, value), out=tmp_path / "f.zip"
+    )
+    result = _verify(path, signer)
+    assert not result.ok and "signed manifest field invalid" in result.reason
+
+
+def test_a_resigned_malformed_member_name_is_still_refused(tmp_path):
+    from tests.unit._signed_bundle_helpers import read_members, resign_v2, write_members
+
+    signer = _signer()
+    members = read_members(_compose(tmp_path, signer))
+    members["../evil.json"] = b"{}"
+    result = _verify(write_members(tmp_path / "n.zip", resign_v2(members, signer)), signer)
+    assert not result.ok and "malformed member name" in result.reason
+
+
+def test_a_resigned_duplicate_key_manifest_is_still_refused(tmp_path):
+    """Two parsers must never disagree: a validly signed manifest with a duplicate key is refused."""
+    from tests.unit._signed_bundle_helpers import read_members, resign_v2, write_members
+
+    signer = _signer()
+    members = read_members(_compose(tmp_path, signer))
+    text = members["manifest.json"].decode()
+    members["manifest.json"] = text.replace('"kind"', '"kind": "x", "kind"', 1).encode()
+    result = _verify(write_members(tmp_path / "dup.zip", resign_v2(members, signer)), signer)
+    assert not result.ok and "duplicate key" in result.reason
+
+
+@pytest.mark.parametrize(
+    ("member", "edit"),
+    [
+        ("ec.json", lambda d: d.__setitem__("substrate_nodes", ["n1"])),
+        ("nac.json", lambda d: d.__setitem__("cluster_fear", [1])),
+        ("nac.json", lambda d: d.__setitem__("inherent_bias_keys", {"a": 1})),
+    ],
+)
+def test_a_signed_slice_of_the_wrong_shape_is_refused_not_a_crash(tmp_path, member, edit):
+    from tests.unit._signed_bundle_helpers import read_members, resign_v2, write_members
+
+    signer = _signer()
+    members = read_members(_compose(tmp_path, signer))
+    doc = json.loads(members[member])
+    edit(doc)
+    members[member] = json.dumps(doc).encode()
+    result = _verify(write_members(tmp_path / "shape.zip", resign_v2(members, signer)), signer)
+    assert not result.ok and "entry index refused" in result.reason
+
+
+def test_a_hostile_unsigned_nac_is_refused_before_the_token_check(tmp_path):
+    """No receiver id, unsigned: the token check reads the agent segments -- of a well-formed NAc only."""
+    from maxim.hivemind.bundle import compose_bundle
+    from maxim.hivemind.ingest import IngestionJournal, IngestRefused, ingest_bundle
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    path = tmp_path / "u.zip"
+    compose_bundle(
+        nac_state=_nac(),
+        ec_substrate_nodes=_ec(),
+        output_path=path,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+    )
+    members = read_members(path)
+    nac = json.loads(members["nac.json"])
+    nac["cluster_fear"] = [1]
+    members["nac.json"] = json.dumps(nac).encode()
+    write_members(path, members)
+    with pytest.raises(IngestRefused, match="not an object"):
+        ingest_bundle(
+            path,
+            journal=IngestionJournal(tmp_path / "j.json"),
+            receiver_nac=None,
+            receiver_ec_nodes=None,
+            trusted_sources=frozenset({DONOR}),
+            receiver_body=BODY,
+        )
+
+
+def test_a_v1_bundle_ingests_signed_and_is_refused_when_v1_is_not_accepted(tmp_path):
+    """The headline v1 rule at the INGEST site: verified as stored, before the envelope migration."""
+    from maxim.hivemind.bundle import compose_bundle
+    from maxim.hivemind.ingest import IngestRefused
+    from tests.unit._signed_bundle_helpers import write_v1_bundle
+
+    signer = _signer()
+    unsigned = tmp_path / "unsigned.zip"
+    compose_bundle(
+        nac_state=None,
+        ec_substrate_nodes=_ec(),
+        output_path=unsigned,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+    )
+    v1 = write_v1_bundle(unsigned, signer, out=tmp_path / "v1.zip")
+    report = _ingest_signed(v1, signer, tmp_path, accept_v1=True)
+    assert report.verification is not None and report.verification.scheme == 1
+    with pytest.raises(IngestRefused, match="v2 releases only"):
+        _ingest_signed(v1, signer, tmp_path, accept_v1=False)
+
+
+def test_the_ingest_report_carries_the_verification(tmp_path):
+    signer = _signer()
+    report = _ingest_signed(_compose(tmp_path, signer), signer, tmp_path)
+    v = report.verification
+    assert v is not None and v.ok and v.scheme == 2 and v.release_sequence == 1 and v.payload_digest
+    assert set(v.entry_digests) == {"n1", "orient"}
+
+
+def test_verification_runs_before_the_trust_duties(tmp_path):
+    """A forged release from an UNTRUSTED contributor is refused as unsigned, not on V1."""
+    from maxim.hivemind.ingest import IngestionJournal, IngestRefused, ingest_bundle
+
+    signer, impostor = _signer(), _signer()
+    path = _compose(tmp_path, impostor)
+    with pytest.raises(IngestRefused) as exc:
+        ingest_bundle(
+            path,
+            journal=IngestionJournal(tmp_path / "j.json"),
+            receiver_nac=None,
+            receiver_ec_nodes=None,
+            trusted_sources=frozenset(),  # V1 would refuse too -- the signature must refuse FIRST
+            receiver_body=BODY,
+            require_signed=True,
+            trusted_keys={"queen-a": signer.public_key_b64},
+            accept_v1=True,
+        )
+    assert exc.value.duty == "signature"
+
+
+def test_a_missing_rfc8785_is_a_refusal_with_a_fix_hint(tmp_path, monkeypatch):
+    import maxim.hivemind.entry_index as entry_index
+    from maxim.utils.optional_deps import OptionalDependencyError
+
+    signer = _signer()
+    path = _compose(tmp_path, signer)
+
+    def missing(_value):
+        raise OptionalDependencyError("rfc8785", extra="sign")
+
+    monkeypatch.setattr(entry_index, "jcs", missing)
+    result = _verify(path, signer)
+    assert not result.ok and "cannot check the entry index" in result.reason and "sign" in result.reason
+
+
+def test_the_total_decompressed_bytes_are_capped(tmp_path):
+    from maxim.hivemind.bundle import verify_bundle_zip
+
+    signer = _signer()
+    path = _compose(tmp_path, signer)
+    with zipfile.ZipFile(path) as zf:
+        biggest = max(i.file_size for i in zf.infolist())
+        result = verify_bundle_zip(
+            zf, trusted_keys={"queen-a": signer.public_key_b64}, accept_v1=True, max_total_bytes=biggest + 1
+        )
+    assert not result.ok and "in total" in result.reason
+
+
+def test_only_a_signed_release_is_schema_3(tmp_path):
+    """A 1.3.x reader refuses schema > 2: unsigned contributions stay readable by it, and a signed v2
+    release -- which it cannot verify -- is the only bundle it refuses."""
+    from maxim.hivemind.bundle import compose_bundle
+    from tests.unit._signed_bundle_helpers import read_members
+
+    unsigned = tmp_path / "u.zip"
+    compose_bundle(
+        nac_state=_nac(),
+        ec_substrate_nodes=_ec(),
+        output_path=unsigned,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+    )
+    u = json.loads(read_members(unsigned)["manifest.json"])
+    r = json.loads(read_members(_compose(tmp_path, _signer()))["manifest.json"])
+    assert (u["schema_version"], r["schema_version"]) == (2, 3)
+    assert "signature" not in u and "entry_index" not in u
+
+
+def test_ingest_drops_non_situation_rows_it_can_never_read(tmp_path):
+    """Situation rows re-key to the receiver; percept valences / outcome stats / node-keyed reward bias
+    cannot, so rows under the token are dropped (counted) instead of stored as unreadable clutter."""
+    from tests.unit.test_hivemind_ingest import _nac_state
+
+    nac = _nac_state(
+        cluster_fear={f"donor_agent{S}n1{S}drive:oxygen": -0.5},
+        percept_valences={f"donor_agent{S}zombie{S}drive:health": -0.4},
+    )
+    signer = _signer()
+    report = _ingest_signed(_compose(tmp_path, signer, nac=nac), signer, tmp_path)
+    assert report.foreign_rows_dropped == 1
+    assert not (report.nac.get("percept_valences") or {})
+    assert all(k.startswith(f"receiver{S}") for k in report.nac["cluster_fear"])

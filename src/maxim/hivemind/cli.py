@@ -239,6 +239,7 @@ def _run_export(args: argparse.Namespace) -> int:
             affordance_namespace=args.affordance_namespace,
             capability_map=capability_map,
             reauthor=reauthor,
+            agent_id=getattr(args, "agent_id", None),
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -865,27 +866,53 @@ def _run_inspect(args: argparse.Namespace) -> int:
 def _print_entries(bundle_path: Path, manifest: dict) -> int:
     """Project every entry of ANY bundle (unsigned gated evidence included) and print its digest, so a
     published release's entries can be checked against the bundle it was built from
-    (docs/plans/oasis_entry_index_v2.md). For a v2 release, also says whether its signed index agrees."""
+    (docs/plans/oasis_entry_index_v2.md). For a release, also says whether the index its MANIFEST
+    carries agrees -- a comparison, not a signature check (``maxim substrate ingest --require-signed``
+    verifies)."""
     import zipfile
 
+    from maxim.hivemind.bundle import MAX_ENTRY_UNCOMPRESSED_BYTES, bounded_member_read
     from maxim.hivemind.entry_index import EntryIndexError, build_index
 
     contents = manifest.get("contents") or {}
+
+    def slice_file(name: str) -> str | None:
+        meta = contents.get(name) if isinstance(contents, dict) else None
+        if meta is None:
+            return None
+        if not isinstance(meta, dict) or not isinstance(meta.get("file"), str):
+            raise EntryIndexError(f"manifest contents[{name!r}] declares no file")
+        return meta["file"]
+
     try:
         with zipfile.ZipFile(bundle_path) as zf:
-            nac = json.loads(zf.read(contents["nac"]["file"])) if "nac" in contents else None
-            ec = json.loads(zf.read(contents["ec"]["file"])) if "ec" in contents else None
-        index = build_index(nac, (ec or {}).get("substrate_nodes"))
-    except (EntryIndexError, KeyError, ValueError) as exc:
+
+            def load(name: str) -> object:
+                file = slice_file(name)
+                return (
+                    None
+                    if file is None
+                    else json.loads(bounded_member_read(zf, file, max_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES))
+                )
+
+            nac, ec = load("nac"), load("ec")
+        if nac is not None and not isinstance(nac, dict):
+            raise EntryIndexError("nac.json is not an object")
+        nodes = ec.get("substrate_nodes") if isinstance(ec, dict) else None
+        index = build_index(nac if isinstance(nac, dict) else None, nodes)
+    except OptionalDependencyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except (EntryIndexError, KeyError, ValueError, zipfile.BadZipFile) as exc:
         print(f"error: cannot project entries: {exc}", file=sys.stderr)
         return 2
     print(f"entries: {len(index['entries'])}")
     for entry in index["entries"]:
         print(f"  entry {entry['id']} {entry['modality']} {entry['digest']}")
-    signed = manifest.get("entry_index")
-    if signed is not None:
-        agrees = signed.get("entries") == index["entries"]
-        print(f"signed index: {'matches the slices' if agrees else 'DIFFERS from the slices'}")
+    carried = manifest.get("entry_index")
+    if carried is not None:
+        agrees = isinstance(carried, dict) and carried.get("entries") == index["entries"]
+        print(f"manifest index: {'matches the slices' if agrees else 'DIFFERS from the slices'}")
         return 0 if agrees else 1
     return 0
 
@@ -998,6 +1025,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--license",
         default=None,
         help="SPDX license id the bundle is published under (required with --sign; e.g. CDLA-Permissive-2.0).",
+    )
+    p_export.add_argument(
+        "--agent-id",
+        default=None,
+        help=(
+            "With --sign: whose NAc rows the release ships (your agent's id). Needed only when the state "
+            "holds rows for several agents; rows filed under any other agent are dropped, with a count."
+        ),
     )
     p_export.set_defaults(func=_run_export)
 

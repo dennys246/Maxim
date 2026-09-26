@@ -29,6 +29,7 @@ from maxim.decisions.nac import NAc, NACConfig
 from maxim.hivemind import (
     BUNDLE_KIND,
     BUNDLE_SCHEMA_VERSION,
+    UNSIGNED_BUNDLE_SCHEMA_VERSION,
     CONSENSUS_SOURCE,
     IDENTITY_DOMAIN_MARKER,
     compose_bundle,
@@ -134,7 +135,8 @@ def test_compose_manifest_carries_required_fields(tmp_path: Path) -> None:
         domain="combat",
     )
     assert manifest["kind"] == BUNDLE_KIND
-    assert manifest["schema_version"] == BUNDLE_SCHEMA_VERSION
+    # An UNSIGNED bundle stays at schema 2 (1.3.x readers refuse > 2); only a signed release is 3.
+    assert manifest["schema_version"] == UNSIGNED_BUNDLE_SCHEMA_VERSION == 2
     assert manifest["_format_version"] == "1.0"
     assert manifest["contributor_id"] == "oasis-A"
     assert manifest["domain"] == "combat"

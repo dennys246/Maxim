@@ -15,7 +15,8 @@ import pytest
 from maxim.utils.optional_deps import optional_dependency_available
 
 _needs_crypto = pytest.mark.skipif(
-    not optional_dependency_available("cryptography"), reason="signed bundles need the [sign] extra (cryptography)"
+    not (optional_dependency_available("cryptography") and optional_dependency_available("rfc8785")),
+    reason="signed bundles need the [sign] extra (cryptography + rfc8785)",
 )
 
 
@@ -51,7 +52,7 @@ def _verify(path, keys):
     from maxim.hivemind.bundle import verify_bundle_zip
 
     with zipfile.ZipFile(path) as zf:
-        return verify_bundle_zip(zf, trusted_keys=keys)
+        return verify_bundle_zip(zf, trusted_keys=keys, accept_v1=True)
 
 
 @_needs_crypto

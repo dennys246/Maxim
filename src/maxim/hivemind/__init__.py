@@ -28,6 +28,7 @@ from __future__ import annotations
 from maxim.hivemind.bundle import (
     BUNDLE_KIND,
     BUNDLE_SCHEMA_VERSION,
+    UNSIGNED_BUNDLE_SCHEMA_VERSION,
     BundleBodyMismatch,
     BundleBodyUnverifiable,
     assert_bundle_body_compatible,
@@ -67,6 +68,7 @@ from maxim.hivemind.substrate_client import SubstrateExchangeError
 __all__ = [
     "BUNDLE_KIND",
     "BUNDLE_SCHEMA_VERSION",
+    "UNSIGNED_BUNDLE_SCHEMA_VERSION",
     "BundleBodyMismatch",
     "BundleBodyUnverifiable",
     "assert_bundle_body_compatible",

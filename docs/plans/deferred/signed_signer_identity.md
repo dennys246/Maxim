@@ -3,6 +3,11 @@
 > **REVIVED 2026-09-25 — trigger (a) fired.** Step 1 landed with release format v2
 > ([oasis_entry_index_v2.md](../oasis_entry_index_v2.md)): `signer_identity` is inside the signed bytes
 > (a detached signature over the raw manifest), v1 is legacy-only. Step 2 (drop v1) stays on trigger (b).
+>
+> **Still open (not a regression):** nothing binds the verified `signer_identity` to the manifest's
+> `contributor_id` — any trusted Queen key can sign a bundle naming another contributor (V1 checks
+> `contributor_id`, the signature checks `signer_identity`). The receiver-state layer (item 7 PR B,
+> journal state keyed by signer public key) is where a binding rule belongs, if one is wanted.
 
 > **DEFERRED 2026-09-25 (owner).** public_oasis Phase 0 item 6 asked for `signer_identity` to be
 > covered by the signature. Investigation showed the unsigned label is **not exploitable by

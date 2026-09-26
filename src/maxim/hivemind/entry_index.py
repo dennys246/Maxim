@@ -6,9 +6,12 @@ the ``inherent_bias_keys`` naming those rows. Node-less entries are allowed (a N
 not keyed by a situation stay whole-bundle and never become entries.
 
 Each entry's **digest** is ``sha256`` over the RFC 8785 (JCS) serialization of its **projection**,
-built from the slices as parsed from the signed bytes. The exporter normalizes the agent segment of
-every NAc composite key to :data:`AGENT_TOKEN` before signing (so two rows can never collapse onto one
-key, and local agent ids never ship); the verifier refuses any other segment.
+built from the slices as parsed from the signed bytes. The exporter keeps only its own agent's NAc rows
+and rewrites their agent segment to :data:`AGENT_TOKEN` before signing (so two agents' rows can never
+collapse onto one key, and local agent ids never ship); the verifier refuses any other segment.
+
+Equal digests mean equal CONTENT, not equal admission: ``source`` / ``contributors`` are outside the
+projection, and ingest's V1 sweep reads them -- a per-entry dedup must not treat one as the other.
 
 This module is pure: it computes and checks, it never reads or writes a bundle.
 """
@@ -49,20 +52,39 @@ class EntryIndexError(ValueError):
     """A bundle's situation state and its entry index disagree, or cannot be indexed."""
 
 
+# ── shape (hostile input is refused as EntryIndexError, never an AttributeError) ─────────────────
+
+
+def _mapping_field(nac: Mapping[str, Any], field: str) -> Mapping[str, Any]:
+    value = nac.get(field) or {}
+    if not isinstance(value, Mapping):
+        raise EntryIndexError(f"NAc field {field!r} is not an object")
+    return value
+
+
+def _list_field(nac: Mapping[str, Any], field: str) -> list[Any]:
+    value = nac.get(field) or []
+    if not isinstance(value, list):
+        raise EntryIndexError(f"NAc field {field!r} is not a list")
+    return value
+
+
 # ── agent-segment normalization (export side) ──────────────────────────────────────────────────
 
 
 def agent_ids(nac: Mapping[str, Any]) -> set[str]:
     """Every agent id a NAc state's composite keys name (the first segment)."""
+    if not isinstance(nac, Mapping):
+        raise EntryIndexError("the NAc state is not an object")
     ids: set[str] = set()
     for field in _TRIPLE_FIELDS:
-        for key in (nac.get(field) or {}).keys():
+        for key in _mapping_field(nac, field):
             ids.add(str(key).split(NAC_KEY_SEP, 1)[0])
-    for key in nac.get("inherent_bias_keys") or []:
+    for key in _list_field(nac, "inherent_bias_keys"):
         ids.add(str(key).split(NAC_KEY_SEP, 1)[0])
-    for key in (nac.get("event_outcome_welford") or {}).keys():
+    for key in _mapping_field(nac, "event_outcome_welford"):
         ids.add(str(key).split(NAC_KEY_SEP, 1)[0])
-    for key in (nac.get("reward_bias") or {}).keys():
+    for key in _mapping_field(nac, "reward_bias"):
         ids.add(str(key).split(":", 1)[0])
     return ids
 
@@ -72,31 +94,83 @@ def _retoken(key: Any, sep: str) -> str:
     return f"{AGENT_TOKEN}{sep}{rest}"
 
 
-def normalize_agent_segment(nac: Mapping[str, Any]) -> dict[str, Any]:
-    """Rewrite the agent segment of every NAc composite key to :data:`AGENT_TOKEN`. Pure.
+#: Agent-keyed fields that are NOT situation rows, so ingest cannot re-key them onto a receiver
+#: situation: ``(field, separator)``. ``inherent_bias_keys`` is a list; the rest are objects.
+NON_SITUATION_AGENT_FIELDS: tuple[tuple[str, str], ...] = (
+    ("percept_valences", NAC_KEY_SEP),
+    ("event_outcome_welford", NAC_KEY_SEP),
+    ("reward_bias", ":"),
+)
+_ALL_AGENT_FIELDS: tuple[tuple[str, str], ...] = (
+    *((f, NAC_KEY_SEP) for f in CLUSTER_FIELDS),
+    ("inherent_bias_keys", NAC_KEY_SEP),
+    *NON_SITUATION_AGENT_FIELDS,
+)
 
-    Refuses (``EntryIndexError``) a state holding rows for more than one local agent id: normalizing
-    them would collapse two agents' rows onto one key, and a digest must never cover two values.
+
+def keep_agent_rows(
+    nac: Mapping[str, Any], keep: Any, *, fields: tuple[tuple[str, str], ...] = _ALL_AGENT_FIELDS
+) -> tuple[dict[str, Any], int]:
+    """``(nac with only the rows whose agent segment satisfies keep(agent), rows dropped)``. Pure.
+
+    One rule for both ends of a release: an agent's NAc reads filter on its own agent id, so a row
+    filed under any other id is never read by it -- the exporter does not ship such rows and a
+    receiver does not keep them.
+    """
+    out = dict(nac)
+    dropped = 0
+    for field, sep in fields:
+        if field not in nac:
+            continue
+        value = _list_field(nac, field) if field == "inherent_bias_keys" else _mapping_field(nac, field)
+        if isinstance(value, list):
+            kept_list = [k for k in value if keep(str(k).split(sep, 1)[0])]
+            dropped += len(value) - len(kept_list)
+            out[field] = kept_list
+        else:
+            kept = {k: v for k, v in value.items() if keep(str(k).split(sep, 1)[0])}
+            dropped += len(value) - len(kept)
+            out[field] = kept
+    return out, dropped
+
+
+def normalize_agent_segment(nac: Mapping[str, Any], *, own_agent_id: str | None = None) -> tuple[dict[str, Any], int]:
+    """Keep ONE agent's rows and rewrite their agent segment to :data:`AGENT_TOKEN`. Pure.
+
+    Returns ``(normalized nac, rows dropped)``. The agent is ``own_agent_id`` when given, else the one
+    real agent id the state holds; rows under any other id -- another agent's, or the token itself
+    (rows an ingested release left) -- are dropped, never relabelled: relabelling would collapse two
+    agents' rows onto one key, and a signed digest must never cover a value its signer did not learn.
+    Refuses (``EntryIndexError``) a state with several real agent ids and no ``own_agent_id``, and an
+    ``own_agent_id`` that holds no rows while others do.
     """
     ids = agent_ids(nac)
-    if len(ids - {AGENT_TOKEN}) > 1:
+    real = ids - {AGENT_TOKEN}
+    if own_agent_id is not None:
+        if not isinstance(own_agent_id, str) or not own_agent_id or own_agent_id == AGENT_TOKEN:
+            raise EntryIndexError(f"own_agent_id {own_agent_id!r} is not an agent id")
+        if real and own_agent_id not in real:
+            raise EntryIndexError(
+                f"agent {own_agent_id!r} holds no rows in this NAc state (agent ids present: {sorted(real)})"
+            )
+        own: str | None = own_agent_id
+    elif len(real) > 1:
         raise EntryIndexError(
-            f"the NAc state holds rows for {len(ids)} agent ids {sorted(ids)}; a signed bundle is one agent's "
-            "learning -- export one agent at a time"
+            f"the NAc state holds rows for {len(real)} agent ids {sorted(real)}: name which one is yours "
+            "(agent_id= / --agent-id) -- a signed release ships one agent's learning"
         )
-    out = dict(nac)
-    for field in _TRIPLE_FIELDS:
-        if field in nac:
-            out[field] = {_retoken(k, NAC_KEY_SEP): v for k, v in (nac.get(field) or {}).items()}
-    if "inherent_bias_keys" in nac:
-        out["inherent_bias_keys"] = sorted(_retoken(k, NAC_KEY_SEP) for k in nac.get("inherent_bias_keys") or [])
-    if "event_outcome_welford" in nac:
-        out["event_outcome_welford"] = {
-            _retoken(k, NAC_KEY_SEP): v for k, v in (nac.get("event_outcome_welford") or {}).items()
-        }
-    if "reward_bias" in nac:
-        out["reward_bias"] = {_retoken(k, ":"): v for k, v in (nac.get("reward_bias") or {}).items()}
-    return out
+    else:
+        own = next(iter(real), None)
+    kept, dropped = keep_agent_rows(nac, lambda agent: agent == own)
+    out = dict(kept)
+    for field, sep in _ALL_AGENT_FIELDS:
+        if field not in kept:
+            continue
+        if field == "inherent_bias_keys":
+            out[field] = sorted(_retoken(k, sep) for k in kept[field])
+        else:
+            out[field] = {_retoken(k, sep): v for k, v in kept[field].items()}
+    return out, dropped
 
 
 # ── the projection and its digest ──────────────────────────────────────────────────────────────
@@ -150,6 +224,12 @@ def entries(nac: Mapping[str, Any] | None, ec_nodes: Mapping[str, Any] | None) -
     """
     nac = nac or {}
     ec_nodes = ec_nodes or {}
+    if not isinstance(nac, Mapping) or not isinstance(ec_nodes, Mapping):
+        raise EntryIndexError("the NAc state and the EC substrate_nodes must be objects")
+    bad_nodes = [cid for cid, node in ec_nodes.items() if not isinstance(node, Mapping)]
+    if bad_nodes:
+        raise EntryIndexError(f"EC node(s) {sorted(map(str, bad_nodes))[:3]} are not objects")
+    reward_rows = _mapping_field(nac, "cluster_reward_bias")
     out: dict[str, dict[str, Any]] = {}
 
     def entry(cid: str) -> dict[str, Any]:
@@ -168,18 +248,18 @@ def entries(nac: Mapping[str, Any] | None, ec_nodes: Mapping[str, Any] | None) -
     for cid in ec_nodes:
         entry(str(cid))
     for field in CLUSTER_FIELDS:
-        for key, value in (nac.get(field) or {}).items():
+        for key, value in _mapping_field(nac, field).items():
             triple = _split_triple(key)
             if triple is None:
                 raise EntryIndexError(f"{field} key {key!r} is not agent\\x1fcluster\\x1fthird")
             _, cid, third = triple
             entry(cid)["nac"][field][f"{cid}{NAC_KEY_SEP}{third}"] = value
-    for key in nac.get("inherent_bias_keys") or []:
+    for key in _list_field(nac, "inherent_bias_keys"):
         triple = _split_triple(key)
         if triple is None:
             raise EntryIndexError(f"inherent_bias_keys entry {key!r} is not a triple")
         _, cid, third = triple
-        if key not in (nac.get("cluster_reward_bias") or {}):
+        if key not in reward_rows:
             raise EntryIndexError(f"inherent marker {key!r} names no cluster_reward_bias row (dangling)")
         entry(cid)["inherent"].append(f"{cid}{NAC_KEY_SEP}{third}")
     for e in out.values():
@@ -273,6 +353,7 @@ __all__ = [
     "digest",
     "entries",
     "jcs",
+    "keep_agent_rows",
     "normalize_agent_segment",
     "verify_index",
 ]

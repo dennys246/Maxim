@@ -25,8 +25,10 @@ from maxim.runtime.leader_proxy import start_leader_proxy
 from maxim.utils import http
 from maxim.utils.optional_deps import optional_dependency_available
 
-_HAS_CRYPTO = optional_dependency_available("cryptography")
-_needs_crypto = pytest.mark.skipif(not _HAS_CRYPTO, reason="signed bundles need the [sign] extra (cryptography)")
+_HAS_CRYPTO = optional_dependency_available("cryptography") and optional_dependency_available("rfc8785")
+_needs_crypto = pytest.mark.skipif(
+    not _HAS_CRYPTO, reason="signed bundles need the [sign] extra (cryptography + rfc8785)"
+)
 
 _KEY = "oasis-test-bearer-key"
 _EC_NODES = {"node-1": {"modality": "world", "embedding": [0.1, 0.2, 0.3], "domain": None}}

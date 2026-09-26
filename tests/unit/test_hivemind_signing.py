@@ -16,7 +16,7 @@ import pytest
 from maxim.utils.optional_deps import optional_dependency_available
 
 pytestmark = pytest.mark.skipif(
-    not optional_dependency_available("cryptography"),
+    not (optional_dependency_available("cryptography") and optional_dependency_available("rfc8785")),
     reason="bundle signing needs the [sign] extra (cryptography)",
 )
 
@@ -66,7 +66,9 @@ class TestSignVerifyRoundTrip:
         assert manifest["signer_identity"] == "queen-alpha" and manifest["release_sequence"] == 1
         assert "signature" not in manifest  # v3: the signature is the detached signature.json member
         assert SIGNATURE_MEMBER in read_members(bundle)
-        ok, reason = verify_bundle_signature(bundle, trusted_keys={"queen-alpha": signer.public_key_b64})
+        ok, reason = verify_bundle_signature(
+            bundle, trusted_keys={"queen-alpha": signer.public_key_b64}, accept_v1=True
+        )
         assert ok, reason
 
     def test_verification_survives_a_re_zip(self, tmp_path):
@@ -76,7 +78,10 @@ class TestSignVerifyRoundTrip:
         rezip = write_members(tmp_path / "rezip.zip", dict(reversed(list(read_members(bundle).items()))))
         keys = {"queen-alpha": signer.public_key_b64}
         with zipfile.ZipFile(bundle) as a, zipfile.ZipFile(rezip) as b:
-            va, vb = verify_bundle_zip(a, trusted_keys=keys), verify_bundle_zip(b, trusted_keys=keys)
+            va, vb = (
+                verify_bundle_zip(a, trusted_keys=keys, accept_v1=True),
+                verify_bundle_zip(b, trusted_keys=keys, accept_v1=True),
+            )
         assert va.ok and vb.ok and va.payload_digest == vb.payload_digest
 
 
@@ -85,27 +90,42 @@ class TestRejection:
         signer = BundleSigner.generate(signer_identity="queen-alpha")
         bundle, _ = _compose_signed(tmp_path, signer)
         rewrite_member(bundle, "ec.json", read_members(bundle)["ec.json"] + b" ")
-        ok, reason = verify_bundle_signature(bundle, trusted_keys={"queen-alpha": signer.public_key_b64})
+        ok, reason = verify_bundle_signature(
+            bundle, trusted_keys={"queen-alpha": signer.public_key_b64}, accept_v1=True
+        )
         assert not ok and "does not verify" in reason
 
     def test_an_appended_member_fails(self, tmp_path):
         signer = BundleSigner.generate(signer_identity="queen-alpha")
         bundle, _ = _compose_signed(tmp_path, signer)
         rewrite_member(bundle, "extra.json", b"{}")
-        ok, reason = verify_bundle_signature(bundle, trusted_keys={"queen-alpha": signer.public_key_b64})
+        ok, reason = verify_bundle_signature(
+            bundle, trusted_keys={"queen-alpha": signer.public_key_b64}, accept_v1=True
+        )
+        assert not ok and "members differ" in reason and "extra.json" in reason
+
+    def test_an_appended_member_the_manifest_declares_still_fails_the_signature(self, tmp_path):
+        """The member-set rule passes (manifest and archive agree) -- the signature over every member does not."""
+        signer = BundleSigner.generate(signer_identity="queen-alpha")
+        bundle, _ = _compose_signed(tmp_path, signer)
+        rewrite_member(bundle, "extra.json", b"{}")
+        rewrite_manifest(bundle, lambda m: m["contents"].update({"extra": {"file": "extra.json"}}))
+        ok, reason = verify_bundle_signature(
+            bundle, trusted_keys={"queen-alpha": signer.public_key_b64}, accept_v1=True
+        )
         assert not ok and "does not verify" in reason
 
     def test_wrong_key_fails(self, tmp_path):
         signer = BundleSigner.generate(signer_identity="queen-alpha")
         impostor = BundleSigner.generate(signer_identity="queen-alpha")
         bundle, _ = _compose_signed(tmp_path, signer)
-        ok, _ = verify_bundle_signature(bundle, trusted_keys={"queen-alpha": impostor.public_key_b64})
+        ok, _ = verify_bundle_signature(bundle, trusted_keys={"queen-alpha": impostor.public_key_b64}, accept_v1=True)
         assert not ok
 
     def test_untrusted_signer_fails(self, tmp_path):
         signer = BundleSigner.generate(signer_identity="queen-alpha")
         bundle, _ = _compose_signed(tmp_path, signer)
-        ok, reason = verify_bundle_signature(bundle, trusted_keys={"queen-beta": signer.public_key_b64})
+        ok, reason = verify_bundle_signature(bundle, trusted_keys={"queen-beta": signer.public_key_b64}, accept_v1=True)
         assert not ok
         assert "not among" in reason
 
@@ -124,7 +144,7 @@ class TestRejection:
         signer = BundleSigner.generate(signer_identity="q")
         bundle, _ = _compose_signed(tmp_path, signer)
         rewrite_member(bundle, SIGNATURE_MEMBER, json.dumps(doc).encode())
-        ok, reason = verify_bundle_signature(bundle, trusted_keys={"q": signer.public_key_b64})
+        ok, reason = verify_bundle_signature(bundle, trusted_keys={"q": signer.public_key_b64}, accept_v1=True)
         assert not ok and why in reason
 
     def test_unsigned_bundle_reports_no_signature(self, tmp_path):
@@ -137,7 +157,7 @@ class TestRejection:
             body_ref="minecraft_bench",
         )
         assert "signature" not in manifest and manifest["license"] is None
-        ok, reason = verify_bundle_signature(out, trusted_keys={"anyone": "x"})
+        ok, reason = verify_bundle_signature(out, trusted_keys={"anyone": "x"}, accept_v1=True)
         assert not ok
         assert "no signature" in reason
 
@@ -158,7 +178,7 @@ class TestRejection:
 class TestLegacyV1:
     """A schema-2 bundle signed under v1 (the pre-v2 shape) still verifies -- read BEFORE migration."""
 
-    def _v1(self, tmp_path, signer):
+    def _v1(self, tmp_path, signer, *, schema_version=2):
         unsigned = tmp_path / "unsigned.zip"
         compose_bundle(
             nac_state=None,
@@ -167,12 +187,12 @@ class TestLegacyV1:
             contributor_id="oasis-alpha",
             body_ref="minecraft_bench",
         )
-        return write_v1_bundle(unsigned, signer, out=tmp_path / "v1.zip")
+        return write_v1_bundle(unsigned, signer, out=tmp_path / "v1.zip", schema_version=schema_version)
 
     def test_a_v1_bundle_verifies_after_the_schema_bump(self, tmp_path):
         signer = BundleSigner.generate(signer_identity="queen-alpha")
         v1 = self._v1(tmp_path, signer)
-        ok, reason = verify_bundle_signature(v1, trusted_keys={"queen-alpha": signer.public_key_b64})
+        ok, reason = verify_bundle_signature(v1, trusted_keys={"queen-alpha": signer.public_key_b64}, accept_v1=True)
         assert ok, reason
         assert read_bundle_manifest(v1)["schema_version"] == 3  # the migrated view still reads
 
@@ -184,16 +204,15 @@ class TestLegacyV1:
 
     def test_a_v1_signature_on_a_schema_3_manifest_is_a_downgrade(self, tmp_path):
         signer = BundleSigner.generate(signer_identity="queen-alpha")
-        v1 = self._v1(tmp_path, signer)
-        rewrite_manifest(v1, lambda m: m.__setitem__("schema_version", 3))
-        ok, reason = verify_bundle_signature(v1, trusted_keys={"queen-alpha": signer.public_key_b64})
+        v1 = self._v1(tmp_path, signer, schema_version=3)  # a v1 signature that VERIFIES over schema 3
+        ok, reason = verify_bundle_signature(v1, trusted_keys={"queen-alpha": signer.public_key_b64}, accept_v1=True)
         assert not ok and "downgrade" in reason
 
     def test_a_v1_tampered_slice_fails(self, tmp_path):
         signer = BundleSigner.generate(signer_identity="queen-alpha")
         v1 = self._v1(tmp_path, signer)
         rewrite_member(v1, "ec.json", read_members(v1)["ec.json"] + b" ")
-        ok, reason = verify_bundle_signature(v1, trusted_keys={"queen-alpha": signer.public_key_b64})
+        ok, reason = verify_bundle_signature(v1, trusted_keys={"queen-alpha": signer.public_key_b64}, accept_v1=True)
         assert not ok and "does not verify" in reason
 
 
@@ -237,7 +256,9 @@ class TestDiskKey:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         signer = sg.load_or_create_signer(signer_identity="queen-alpha")
         bundle, _ = _compose_signed(tmp_path, signer)
-        ok, reason = verify_bundle_signature(bundle, trusted_keys={"queen-alpha": signer.public_key_b64})
+        ok, reason = verify_bundle_signature(
+            bundle, trusted_keys={"queen-alpha": signer.public_key_b64}, accept_v1=True
+        )
         assert ok, reason
 
 

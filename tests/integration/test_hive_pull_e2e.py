@@ -23,8 +23,10 @@ from maxim.hivemind.store import OasisStore
 from maxim.runtime.leader_proxy import start_leader_proxy
 from maxim.utils.optional_deps import optional_dependency_available
 
-_HAS_CRYPTO = optional_dependency_available("cryptography")
-_needs_crypto = pytest.mark.skipif(not _HAS_CRYPTO, reason="signed bundles need the [sign] extra (cryptography)")
+_HAS_CRYPTO = optional_dependency_available("cryptography") and optional_dependency_available("rfc8785")
+_needs_crypto = pytest.mark.skipif(
+    not _HAS_CRYPTO, reason="signed bundles need the [sign] extra (cryptography + rfc8785)"
+)
 
 _KEY = "hive-e2e-bearer"
 # Realistic released nodes carry a first-touch geometry stamp, so the default
@@ -133,6 +135,41 @@ def test_hive_pull_dry_run_and_apply(tmp_path):
         )
         assert rc == 0
         assert (sess / "substrate_ingest_journal.json").is_file()
+    finally:
+        _stop(server)
+
+
+@_needs_crypto
+def test_hive_pull_of_a_release_with_nac_rows_re_keys_them_to_the_receiver_agent(tmp_path):
+    """A v2 release's NAc rows arrive under the agent token: pull refuses them without a receiver id
+    and, with one, the applied state holds them under the receiver's agent -- where NAc reads look."""
+    from maxim.hivemind.signing import BundleSigner
+    from tests.unit.test_hivemind_ingest import _nac_state
+
+    signer = BundleSigner.generate(signer_identity="queen-a")
+    bundle = tmp_path / "rel.zip"
+    compose_bundle(
+        nac_state=_nac_state(cluster_fear={"donor_agent\x1fnode-1\x1fdrive:oxygen": -0.5}),
+        ec_substrate_nodes=_EC_NODES,
+        output_path=bundle,
+        contributor_id="oasis-alpha",
+        body_ref="minecraft_bench",
+        apply_identity_filter=False,
+        release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0"),
+    )
+    store = OasisStore(tmp_path / "oasis")
+    store.publish_release(bundle)
+    server, base = _start(store)
+    try:
+        reg = str(tmp_path / "hive.json")
+        HiveRegistry(reg).add("alpha", base, queen_keys={"queen-a": signer.public_key_b64})
+        sess = _receiver_session(tmp_path)
+        pull = ["--registry", reg, "pull", "--from", "alpha", "--session", str(sess)]
+        pull += ["--receiver-body", "minecraft_bench", "--api-key", _KEY, "--apply"]
+        assert run_hive_subcommand(pull) == 2  # refused: the rows would stay under the token
+        assert run_hive_subcommand([*pull, "--receiver-agent-id", "aut"]) == 0
+        fear = json.loads((sess / "nac.json").read_text(encoding="utf-8")).get("cluster_fear") or {}
+        assert fear and all(key.startswith("aut\x1f") for key in fear)
     finally:
         _stop(server)
 

@@ -31,6 +31,7 @@ from __future__ import annotations
 from maxim.decisions.causal_link import bound_predicted_value
 import copy
 import hashlib
+import io
 import json
 import logging
 import math
@@ -40,11 +41,23 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from maxim.hivemind.entry_index import AGENT_TOKEN, agent_ids
+from maxim.hivemind.entry_index import (
+    AGENT_TOKEN,
+    NON_SITUATION_AGENT_FIELDS,
+    EntryIndexError,
+    agent_ids,
+    keep_agent_rows,
+)
 from maxim.hivemind.signing import SIGNATURE_MEMBER
 from maxim.hivemind.bundle import (
+    MAX_BUNDLE_ENTRIES,
+    MAX_ENTRY_UNCOMPRESSED_BYTES,
+    MAX_TOTAL_UNCOMPRESSED_BYTES,
+    BundleVerification,
+    MemberReadError,
     assert_bundle_body_compatible,
-    read_bundle_manifest,
+    bounded_member_read,
+    read_bundle_manifest_bytes,
     scrub_nac_state_for_bundle,
     verify_bundle_zip,
 )
@@ -67,13 +80,9 @@ logger = logging.getLogger(__name__)
 # adapter decisions.
 # ─────────────────────────────────────────────────────────────────────────
 
-#: V6 — maximum ZIP members (3 canonical today; headroom for 1.2+ slices).
-MAX_BUNDLE_ENTRIES: int = 16
-#: V6 — per-entry UNCOMPRESSED size cap, read from the central directory
-#: BEFORE decompression (a compressed-size cap waves through high-ratio bombs).
-MAX_ENTRY_UNCOMPRESSED_BYTES: int = 64 * 1024 * 1024
-#: V6 — whole-archive uncompressed cap.
-MAX_TOTAL_UNCOMPRESSED_BYTES: int = 128 * 1024 * 1024
+# V6 — MAX_BUNDLE_ENTRIES / MAX_ENTRY_UNCOMPRESSED_BYTES / MAX_TOTAL_UNCOMPRESSED_BYTES live in
+# bundle.py (imported above) so the one verifier enforces the same caps; they are read from this
+# module's globals at call time, so ingest-level overrides reach verify_bundle_zip too.
 #: V6 — post-parse structural cap on nodes / links / keys per slice dict.
 MAX_NODES_PER_SLICE: int = 50_000
 #: V2 (row B) — cap on any foreign evidence count (node ``count``, link
@@ -252,6 +261,12 @@ class IngestReport:
     fear_dropped: int = 0
     fear_below_floor: int = 0
     valence_entries: dict[str, float] = field(default_factory=dict)
+    #: Non-situation NAc rows (percept valences, outcome stats, node-keyed reward bias) filed under an
+    #: agent this receiver is not, dropped at ingest: they could never be read here.
+    foreign_rows_dropped: int = 0
+    #: The signature verdict when ``require_signed`` (``None`` otherwise): the payload digest,
+    #: signer key, release sequence and entry digests the receiver-state layer keys on.
+    verification: BundleVerification | None = None
     undeclared_members: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     journal_entry: dict[str, Any] = field(default_factory=dict)
@@ -316,26 +331,13 @@ def _bounded_zip_read(zf: zipfile.ZipFile, name: str) -> bytes:
     binary-patched header can declare 10 bytes over an 800 MB stream, pass
     :func:`_check_resource_caps`, and then ``zf.read`` inflates the whole
     thing in memory before the CRC check fires (executor-lens finding 3,
-    measured at +1.3 GB RSS). Streaming through ``zf.open`` with a capped
-    read bounds memory to the cap regardless of what the headers claim.
+    measured at +1.3 GB RSS). The capped reader is
+    :func:`bundle.bounded_member_read`, shared with the signature verifier.
     """
     try:
-        with zf.open(name, "r") as fh:
-            data = fh.read(MAX_ENTRY_UNCOMPRESSED_BYTES + 1)
-            if len(data) > MAX_ENTRY_UNCOMPRESSED_BYTES:
-                raise IngestRefused(
-                    duty="V6",
-                    reason=(
-                        f"entry {name!r} decompresses past {MAX_ENTRY_UNCOMPRESSED_BYTES} bytes despite "
-                        "its declared size — lying central-directory header (zip bomb)"
-                    ),
-                )
-    except zipfile.BadZipFile as exc:
-        # A stream that CRC-fails at its declared boundary is either
-        # corruption or a lying header truncated by the bounded read —
-        # both are refusals, not tracebacks.
-        raise IngestRefused(duty="V6", reason=f"entry {name!r} is corrupt or lies about its size: {exc}") from exc
-    return data
+        return bounded_member_read(zf, name, max_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES)
+    except MemberReadError as exc:
+        raise IngestRefused(duty="V6", reason=str(exc)) from exc
 
 
 def _check_resource_caps(zf: zipfile.ZipFile) -> None:
@@ -857,6 +859,7 @@ def ingest_bundle(
     force_digest: bool = False,
     require_signed: bool = False,
     trusted_keys: dict[str, str] | None = None,
+    accept_v1: bool = True,
 ) -> IngestReport:
     """Validate + merge one foreign bundle into receiver state dicts.
 
@@ -869,6 +872,14 @@ def ingest_bundle(
     Raises :class:`IngestRefused` (or gate 7's ``BundleBodyMismatch`` /
     ``BundleBodyUnverifiable``) on any duty failure; nothing about the
     receiver changes on refusal.
+
+    ``accept_v1`` (with ``require_signed``): whether a legacy v1 signature is still accepted. It
+    defaults to True for the local/experiment path (the Exp 56/61 bundles are v1); an Oasis pull
+    passes its registry's decision.
+
+    The file is read ONCE: the journal digest, the manifest and every verified member come from the
+    same in-memory snapshot, so a file swapped mid-ingest cannot pair one bundle's trust decisions
+    with another's bytes.
     """
     bundle_path = Path(bundle_path)
     notes: list[str] = []
@@ -878,7 +889,11 @@ def ingest_bundle(
     digest = hashlib.sha256(raw).hexdigest()
 
     # 1. V6 — caps from the central directory, before decompression.
-    with zipfile.ZipFile(bundle_path, "r") as zf:
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(raw), "r")
+    except zipfile.BadZipFile as exc:
+        raise IngestRefused(duty="V6", reason=f"not a readable ZIP archive: {exc}") from exc
+    with zf:
         _check_resource_caps(zf)
         # Verify the manifest's TRUE decompressed size before the existing
         # seam re-reads it — the declared sizes checked above are attacker
@@ -886,9 +901,32 @@ def ingest_bundle(
         if "manifest.json" in zf.namelist():
             _bounded_zip_read(zf, "manifest.json")
 
+        # Signature duty — right after V6 and BEFORE any trust decision (spec order: V6 → signature →
+        # index → V1 → gate 7 → V8), so a forged or untrusted bundle is refused as unsigned rather
+        # than on whatever later duty it trips. Verified against the manifest AS STORED
+        # (verify_bundle_zip reads it raw): the envelope migration rewrites schema_version, which a
+        # v1 signature covers. Unsigned/opt-in ingests (require_signed=False) skip this and rely on V1
+        # trust alone (the experimental tier).
+        verification: BundleVerification | None = None
+        if require_signed:
+            verification = verify_bundle_zip(
+                zf,
+                trusted_keys=dict(trusted_keys or {}),
+                accept_v1=accept_v1,
+                max_members=MAX_BUNDLE_ENTRIES,
+                max_member_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES,
+                max_total_bytes=MAX_TOTAL_UNCOMPRESSED_BYTES,
+            )
+            if not verification.ok:
+                raise IngestRefused(duty="signature", reason=f"require_signed: {verification.reason}")
+            notes.append(f"signature verified ({verification.reason})")
+
         # 2. Manifest through the existing seam (migration, schema_version,
         # _format_version, kind).
-        manifest = read_bundle_manifest(bundle_path)
+        try:
+            manifest = read_bundle_manifest_bytes(raw)
+        except zipfile.BadZipFile as exc:
+            raise IngestRefused(duty="V6", reason=f"manifest.json is unreadable: {exc}") from exc
 
         # 3. V1 — the front door: bundle-level trust on the manifest.
         contributor_id = manifest.get("contributor_id")
@@ -962,9 +1000,13 @@ def ingest_bundle(
             # A v2 release ships its NAc keys under a fixed agent token (entry_index.AGENT_TOKEN), so
             # re-keying to the receiver's own agent id is MANDATORY: without it the rows stay keyed to
             # the token, NAc reads filter by agent id, and every value would silently read 0.0.
-            if receiver_agent_id is None and AGENT_TOKEN in agent_ids(donor_nac):
+            try:
+                donor_agents = agent_ids(donor_nac)
+            except EntryIndexError as exc:
+                raise IngestRefused(duty="V2", reason=f"nac.json: {exc}") from exc
+            if receiver_agent_id is None and AGENT_TOKEN in donor_agents:
                 raise IngestRefused(
-                    duty="V2",
+                    duty="rekey",
                     reason=(
                         f"the bundle's NAc rows are keyed to the agent token {AGENT_TOKEN!r} (a v2 release); "
                         "pass receiver_agent_id (--receiver-agent-id) so they re-key to your agent"
@@ -976,23 +1018,6 @@ def ingest_bundle(
             if not isinstance(parsed, dict) or not isinstance(parsed.get("substrate_nodes"), dict):
                 raise IngestRefused(duty="V2", reason="ec.json is not an object with substrate_nodes")
             donor_ec = parsed["substrate_nodes"]
-
-        # Signature duty (Slice A): when the receiver requires signed bundles,
-        # verify the ed25519 signature over (sig-excluded manifest + raw slice
-        # bytes) against the operator's trusted keys BEFORE any payload is
-        # merged. Refusal, never admit-with-clamps — the same rule the V1 front
-        # door uses. Unsigned/opt-in ingests (require_signed=False) skip this and
-        # rely on V1 trust alone (the experimental tier). Signatures verify
-        # against the manifest AS READ; a bundle needing envelope migration to
-        # load cannot carry a surviving signature (migration changes the signed
-        # bytes) — a non-issue at schema_version 2, the only shipped version.
-        if require_signed:
-            # Verified against the manifest AS STORED (verify_bundle_zip reads it raw): the envelope
-            # migration rewrites schema_version, which a v1 signature covers.
-            verification = verify_bundle_zip(zf, trusted_keys=dict(trusted_keys or {}))
-            if not verification.ok:
-                raise IngestRefused(duty="signature", reason=f"require_signed: {verification.reason}")
-            notes.append(f"signature verified ({verification.reason})")
 
     # 7. The payload admission pass (V2 / V9 / V3 / V1 sweep + stamping).
     if donor_nac is not None:
@@ -1022,10 +1047,26 @@ def ingest_bundle(
         )
 
     # 9. V4 — receiver-side quarantine + content scrub, re-run on receipt.
-    links_dropped = welford_dropped = 0
+    links_dropped = welford_dropped = foreign_rows_dropped = 0
     valence_entries: dict[str, float] = {}
     if donor_nac is not None:
         donor_nac, links_dropped, welford_dropped = _receiver_scrub(donor_nac, notes=notes)
+        # Agent-keyed rows that are NOT situation rows (percept valences, per-tool outcome stats, the
+        # node-keyed reward bias) cannot be re-keyed onto a receiver situation, so they keep the agent
+        # segment they arrived with -- and NAc reads filter on the reader's own agent id. A row this
+        # receiver can never read is dropped here, not stored as inert clutter that a later signed
+        # export would have to reason about. Kept: rows under the receiver's own id, or (no receiver
+        # id given) any real id, exactly the rows a read could reach before.
+        donor_nac, foreign_rows_dropped = keep_agent_rows(
+            donor_nac,
+            lambda agent: agent == receiver_agent_id if receiver_agent_id is not None else agent != AGENT_TOKEN,
+            fields=NON_SITUATION_AGENT_FIELDS,
+        )
+        if foreign_rows_dropped:
+            notes.append(
+                f"{foreign_rows_dropped} non-situation NAc row(s) filed under another agent dropped (never "
+                "readable by this receiver; situation rows re-key)"
+            )
         for key, valence in (donor_nac.get("percept_valences", {}) or {}).items():
             parts = str(key).split(NAC_KEY_SEP)
             if len(parts) == 3:
@@ -1104,6 +1145,7 @@ def ingest_bundle(
         "inherent_keys_admitted": admitted_inherent,
         "links_dropped_identity": links_dropped,
         "welford_dropped_identity": welford_dropped,
+        "foreign_rows_dropped": foreign_rows_dropped,
         "donor_nodes": len(donor_ec or {}),
         "notes": list(notes),
     }
@@ -1125,6 +1167,8 @@ def ingest_bundle(
         links_dropped_identity=links_dropped,
         welford_dropped_identity=welford_dropped,
         valence_entries=valence_entries,
+        foreign_rows_dropped=foreign_rows_dropped,
+        verification=verification,
         undeclared_members=undeclared,
         notes=notes,
         journal_entry=journal_entry,

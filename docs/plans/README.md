@@ -258,7 +258,8 @@ Deferred in the 2026-08-27 post-1.1.0 triage (banner + revive trigger at the top
 
 Deferred 2026-09-24 — **on a frozen condition:**
 
-- [deferred/signed_signer_identity.md](deferred/signed_signer_identity.md) — DEFERRED 2026-09-25: bind `signer_identity` into the bundle signature. Not exploitable today (verification uses the claimed identity's key; one-key-two-identities refused). Scheme v2 lands with public_oasis item 7's format change (v1 accepted with a warning); v1 dropped at the next major. Also revive if any path trusts the label unverified.
+- [deferred/signed_signer_identity.md](deferred/signed_signer_identity.md) — STEP 1 LANDED 2026-09-25 (release format v2, item 7 PR A): bind `signer_identity` into the bundle signature. Not exploitable today (verification uses the claimed identity's key; one-key-two-identities refused). Scheme v2 lands with public_oasis item 7's format change (v1 accepted with a warning); v1 dropped at the next major. Also revive if any path trusts the label unverified.
+- [deferred/transfer_non_situation_nac_rows.md](deferred/transfer_non_situation_nac_rows.md) — DEFERRED 2026-09-25: make a donor's percept valences / outcome stats / node-keyed reward bias transfer (today dropped at ingest — never readable). A behaviour change past what Exp 56/61 earned. Trigger: a design needs a transferred valence or outcome statistic (e.g. social_referencing).
 - [deferred/grounded_word_binding.md](deferred/grounded_word_binding.md) — DEFERRED 2026-09-24 on a condition (renamed from `grounded_word_binding_demo.md`): a heard word calls back its situation (substrate-primary). Revive when L0's offline gate passes — blind-authored phrasings of five situations cluster by situation through Maxim's own EC formation (criterion frozen in its header); pass → candidate 1.5 headline, fail → archive. Even a pass licenses only "labels and their paraphrases bind".
 
 Deferred in the 2026-07-15 audit — **partially shipped, remainder paused:**

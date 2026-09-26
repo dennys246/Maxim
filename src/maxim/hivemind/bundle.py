@@ -76,10 +76,11 @@ import logging
 import os
 import re
 import zipfile
+import zlib
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from maxim.hivemind.identity import (
     IDENTITY_DOMAIN_MARKER,
@@ -88,6 +89,7 @@ from maxim.hivemind.identity import (
 )
 from maxim.hivemind.merge import NAC_KEY_SEP, NODE_ID_CHARSET, _merge_link_pair, _merge_welford, _validate_source
 from maxim.hivemind.entry_index import EntryIndexError, build_index, normalize_agent_segment, verify_index
+from maxim.utils.optional_deps import OptionalDependencyError
 from maxim.hivemind.signing import (
     SIGNATURE_ALGORITHM,
     SIGNATURE_MEMBER,
@@ -102,15 +104,19 @@ from maxim.hivemind.signing import (
 from maxim.utils.atomic_io import atomic_write_text
 from maxim.utils.format_version import FORMAT_VERSION, check_format_version
 
-if TYPE_CHECKING:
-    pass
-
 logger = logging.getLogger(__name__)
 
 # Schema version for the bundle envelope itself. Separate from the
 # bio-system payload ``_format_version`` — bumping this would require
 # a migration registered alongside the bump.
 BUNDLE_SCHEMA_VERSION: int = 3
+
+#: The schema an UNSIGNED bundle is written at. The number says what a reader must understand: an
+#: unsigned contribution needs nothing schema 3 added (its manifest only drops the null signature slots
+#: and may carry a license, both read through ``.get``), so it stays readable by 1.3.x peers and Oasis
+#: servers; a signed v2 release is schema 3, which an older reader correctly refuses -- it cannot
+#: verify it.
+UNSIGNED_BUNDLE_SCHEMA_VERSION: int = 2
 
 # Bundle-level kind marker for the manifest.
 BUNDLE_KIND: str = "substrate_bundle"
@@ -756,6 +762,7 @@ def compose_bundle(
     affordance_namespace: str | None = None,
     capability_map: dict[str, str] | None = None,
     reauthor: bool = False,
+    agent_id: str | None = None,
 ) -> dict[str, Any]:
     """Compose a substrate snapshot bundle.
 
@@ -841,6 +848,8 @@ def compose_bundle(
         raise ValueError("a release carries its license in release=; do not also pass license=")
     if license is not None:
         validate_license(license)
+    if agent_id is not None and release is None:
+        raise ValueError("agent_id= selects whose rows a signed release ships; it needs release=")
     nac_state, ec_substrate_nodes = provenance_for_export(
         nac_state, ec_substrate_nodes, contributor_id=contributor_id, reauthor=reauthor
     )
@@ -848,9 +857,16 @@ def compose_bundle(
     if nac_state is not None:
         filtered_nac = dict(nac_state)
         if release is not None:
-            # A release ships one agent's learning under a fixed agent token (the receiver re-keys it):
-            # local agent ids never ship, and two rows can never collapse onto one key.
-            filtered_nac = normalize_agent_segment(filtered_nac)
+            # A release ships ONE agent's learning under a fixed agent token (the receiver re-keys it):
+            # local agent ids never ship, and rows filed under any other agent -- which this agent
+            # never reads -- are dropped, never relabelled onto its own keys.
+            filtered_nac, foreign_rows = normalize_agent_segment(filtered_nac, own_agent_id=agent_id)
+            if foreign_rows:
+                logger.warning(
+                    "release: dropped %d NAc row(s) filed under other agents (never read by this agent; "
+                    "a release ships its own agent's learning only)",
+                    foreign_rows,
+                )
         if apply_identity_filter:
             filtered_links = filter_identity_bearing_links(
                 filtered_nac.get("links", {}) or {},
@@ -900,7 +916,7 @@ def compose_bundle(
 
     manifest: dict[str, Any] = {
         "_format_version": FORMAT_VERSION,
-        "schema_version": BUNDLE_SCHEMA_VERSION,
+        "schema_version": BUNDLE_SCHEMA_VERSION if release is not None else UNSIGNED_BUNDLE_SCHEMA_VERSION,
         "kind": BUNDLE_KIND,
         "contributor_id": contributor_id,
         "domain": domain,
@@ -1041,6 +1057,44 @@ def verify_bundle_signature_parts(
 #: A v2 bundle member name: plain ASCII, no paths, no case games, no cp437/UTF-8 name divergence.
 _MEMBER_NAME = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
+#: V6 -- maximum ZIP members (3 canonical + signature.json today; headroom for 1.2+ slices).
+MAX_BUNDLE_ENTRIES: int = 16
+#: V6 -- per-member UNCOMPRESSED size cap, enforced on the ACTUAL decompressed bytes (the central
+#: directory's declared size is an attacker assertion; see :func:`bounded_member_read`).
+MAX_ENTRY_UNCOMPRESSED_BYTES: int = 64 * 1024 * 1024
+#: V6 -- whole-archive uncompressed cap.
+MAX_TOTAL_UNCOMPRESSED_BYTES: int = 128 * 1024 * 1024
+
+
+class MemberReadError(ValueError):
+    """A ZIP member that cannot be read within its caps -- corrupt, encrypted, or lying about its size."""
+
+
+def bounded_member_read(zf: zipfile.ZipFile, name: str, *, max_bytes: int) -> bytes:
+    """Decompress one member with the size cap enforced on ACTUAL bytes; never raises anything but
+    :class:`MemberReadError` on bad input.
+
+    The central-directory ``file_size`` is itself an attacker assertion -- a binary-patched header can
+    declare 10 bytes over an 800 MB stream and ``zf.read`` inflates the whole thing before the CRC
+    check fires (executor-lens finding 3, measured at +1.3 GB RSS). Streaming through ``zf.open``
+    with a capped read bounds memory to the cap regardless of what the headers claim.
+    """
+    try:
+        with zf.open(name, "r") as fh:
+            data = fh.read(max_bytes + 1)
+    except (zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError, RuntimeError, OSError) as exc:
+        # A stream that CRC-fails at its declared boundary is corruption or a lying header truncated
+        # by the bounded read; an unknown compression or an encrypted member is unreadable -- all are
+        # refusals, not tracebacks.
+        raise MemberReadError(f"entry {name!r} is corrupt or lies about its size: {exc}") from exc
+    if len(data) > max_bytes:
+        raise MemberReadError(
+            f"entry {name!r} decompresses past {max_bytes} bytes despite its declared size -- lying "
+            "central-directory header (zip bomb)"
+        )
+    return data
+
+
 #: The index cap a verifier applies by default (the ingest V6 node cap).
 _DEFAULT_MAX_ENTRIES = 50_000
 
@@ -1109,18 +1163,66 @@ def verify_bundle_zip(
     zf: zipfile.ZipFile,
     *,
     trusted_keys: Mapping[str, str],
-    accept_v1: bool = True,
+    accept_v1: bool,
     max_entries: int = _DEFAULT_MAX_ENTRIES,
+    max_members: int = MAX_BUNDLE_ENTRIES,
+    max_member_bytes: int = MAX_ENTRY_UNCOMPRESSED_BYTES,
+    max_total_bytes: int = MAX_TOTAL_UNCOMPRESSED_BYTES,
 ) -> BundleVerification:
     """Verify an open bundle ZIP -- reading the manifest AS STORED, before any envelope migration.
 
     Scheme v2 (a ``signature.json`` member): the detached signature over every other member's raw
     bytes, the signed ``signer_identity`` / ``release_sequence`` / ``license``, and the entry index
     against the slices. Scheme v1 (signature fields in a schema <= 2 manifest): verified as before,
-    only when ``accept_v1``, with a deprecation warning. Never raises on bad input -- every failure
-    is ``ok=False`` with a reason.
+    only when ``accept_v1``, with a deprecation warning. ``accept_v1`` has no default: whether an
+    Oasis still takes legacy bundles is the caller's decision, never an inherited one.
+
+    Never raises on bad input -- every failure is ``ok=False`` with a reason. Every member is read at
+    most once, through :func:`bounded_member_read`, under the per-member and total caps; a v2 release
+    must consist of EXACTLY its manifest, its declared slices and ``signature.json``, checked before
+    anything but the manifest is decompressed.
     """
+    reader = _CappedReader(zf, max_member_bytes=max_member_bytes, max_total_bytes=max_total_bytes)
+    try:
+        return _verify_bundle_zip(
+            zf, reader, trusted_keys=trusted_keys, accept_v1=accept_v1, max_entries=max_entries, max_members=max_members
+        )
+    except MemberReadError as exc:
+        return BundleVerification(False, f"unreadable member: {exc}")
+
+
+class _CappedReader:
+    """Reads each member once, bounded per member and in total (V6 on actual bytes)."""
+
+    def __init__(self, zf: zipfile.ZipFile, *, max_member_bytes: int, max_total_bytes: int) -> None:
+        self._zf = zf
+        self._max_member = max_member_bytes
+        self._max_total = max_total_bytes
+        self._cache: dict[str, bytes] = {}
+        self._total = 0
+
+    def __call__(self, name: str) -> bytes:
+        if name not in self._cache:
+            data = bounded_member_read(self._zf, name, max_bytes=self._max_member)
+            self._total += len(data)
+            if self._total > self._max_total:
+                raise MemberReadError(f"the archive decompresses past {self._max_total} bytes in total")
+            self._cache[name] = data
+        return self._cache[name]
+
+
+def _verify_bundle_zip(
+    zf: zipfile.ZipFile,
+    read: _CappedReader,
+    *,
+    trusted_keys: Mapping[str, str],
+    accept_v1: bool,
+    max_entries: int,
+    max_members: int,
+) -> BundleVerification:
     infos = zf.infolist()
+    if len(infos) > max_members:
+        return BundleVerification(False, f"bundle has {len(infos)} members (cap {max_members})")
     names = [i.filename for i in infos]
     if len(names) != len(set(names)):
         return BundleVerification(False, "duplicate ZIP member names (a reader could see different bytes)")
@@ -1130,7 +1232,7 @@ def verify_bundle_zip(
     if "manifest.json" not in names:
         return BundleVerification(False, "no manifest.json")
     try:
-        raw = _strict_json(zf.read("manifest.json"), "manifest.json")
+        raw = _strict_json(read("manifest.json"), "manifest.json")
     except (ValueError, UnicodeDecodeError) as exc:
         return BundleVerification(False, f"manifest.json is not strict JSON: {exc}")
     if not isinstance(raw, dict):
@@ -1138,9 +1240,9 @@ def verify_bundle_zip(
     files = _declared_slice_files(raw)
 
     if SIGNATURE_MEMBER in names:
-        return _verify_v2(zf, names, raw, files, trusted_keys=trusted_keys, max_entries=max_entries)
+        return _verify_v2(read, names, raw, files, trusted_keys=trusted_keys, max_entries=max_entries)
     if raw.get("signature"):
-        return _verify_v1(zf, names, raw, files, trusted_keys=trusted_keys, accept_v1=accept_v1)
+        return _verify_v1(read, names, raw, files, trusted_keys=trusted_keys, accept_v1=accept_v1)
     return BundleVerification(False, "bundle carries no signature")
 
 
@@ -1161,7 +1263,7 @@ def _trusted_signer(signer: Any, trusted_keys: Mapping[str, str]) -> tuple[str |
 
 
 def _verify_v2(
-    zf: zipfile.ZipFile,
+    read: _CappedReader,
     names: list[str],
     raw: dict[str, Any],
     files: dict[str, str],
@@ -1170,7 +1272,7 @@ def _verify_v2(
     max_entries: int,
 ) -> BundleVerification:
     try:
-        sig_doc = _strict_json(zf.read(SIGNATURE_MEMBER), SIGNATURE_MEMBER)
+        sig_doc = _strict_json(read(SIGNATURE_MEMBER), SIGNATURE_MEMBER)
     except (ValueError, UnicodeDecodeError) as exc:
         return BundleVerification(False, f"{SIGNATURE_MEMBER} is not strict JSON: {exc}")
     if not isinstance(sig_doc, dict):
@@ -1184,11 +1286,17 @@ def _verify_v2(
         return BundleVerification(False, f"a v2 signature on a schema {raw.get('schema_version')!r} manifest")
     if SIGNATURE_MEMBER in files.values():
         return BundleVerification(False, f"the manifest declares {SIGNATURE_MEMBER} as a slice")
+    # A release is EXACTLY its manifest, its declared slices and its signature: nothing undeclared is
+    # decompressed (V7), and a declared slice that is absent is not a release that was signed whole.
+    expected = {"manifest.json", SIGNATURE_MEMBER, *files.values()}
+    if set(names) != expected:
+        extra, missing = sorted(set(names) - expected), sorted(expected - set(names))
+        return BundleVerification(False, f"release members differ from its manifest: extra {extra}, missing {missing}")
     signer = raw.get("signer_identity")
     key, reason = _trusted_signer(signer, trusted_keys)
     if key is None:
         return BundleVerification(False, reason, scheme=2)
-    payload = bundle_signing_payload_v2({n: zf.read(n) for n in names})
+    payload = bundle_signing_payload_v2({n: read(n) for n in names})
     if not verify_payload(payload, str(sig_doc.get("signature")), key):
         return BundleVerification(False, f"ed25519 signature does not verify for signer {signer!r}", scheme=2)
     digest = hashlib.sha256(payload).hexdigest()
@@ -1198,10 +1306,14 @@ def _verify_v2(
     except ValueError as exc:
         return BundleVerification(False, f"signed manifest field invalid: {exc}", scheme=2, payload_digest=digest)
     try:
-        nac = _strict_json(zf.read(files["nac"]), "nac.json") if "nac" in files else None
-        ec = _strict_json(zf.read(files["ec"]), "ec.json") if "ec" in files else None
+        nac = _strict_json(read(files["nac"]), "nac.json") if "nac" in files else None
+        ec = _strict_json(read(files["ec"]), "ec.json") if "ec" in files else None
         nodes = ec.get("substrate_nodes") if isinstance(ec, Mapping) else None
         entry_digests = verify_index(raw.get("entry_index"), nac, nodes, max_entries=max_entries)
+    except OptionalDependencyError as exc:
+        return BundleVerification(
+            False, f"cannot check the entry index: {exc.fix_hint}", scheme=2, payload_digest=digest
+        )
     except (EntryIndexError, ValueError, UnicodeDecodeError, KeyError) as exc:
         return BundleVerification(False, f"entry index refused: {exc}", scheme=2, payload_digest=digest)
     return BundleVerification(
@@ -1218,7 +1330,7 @@ def _verify_v2(
 
 
 def _verify_v1(
-    zf: zipfile.ZipFile,
+    read: _CappedReader,
     names: list[str],
     raw: dict[str, Any],
     files: dict[str, str],
@@ -1232,7 +1344,10 @@ def _verify_v1(
     version = raw.get("schema_version")
     if isinstance(version, bool) or not isinstance(version, int) or version > 2:
         return BundleVerification(False, f"a v1 signature on a schema {version!r} manifest (downgrade)", scheme=1)
-    slices = {f: zf.read(f).decode("utf-8") for f in files.values() if f in names}
+    try:
+        slices = {f: read(f).decode("utf-8") for f in files.values() if f in names}
+    except UnicodeDecodeError as exc:
+        return BundleVerification(False, f"a v1 slice is not UTF-8: {exc}", scheme=1)
     ok, reason = verify_bundle_signature_parts(raw, slices, trusted_keys=trusted_keys)
     if not ok:
         return BundleVerification(False, reason, scheme=1)
@@ -1253,23 +1368,25 @@ def _verify_v1(
 
 
 def bundle_signature_scheme(bundle_path: str | Path) -> int | None:
-    """Which signing scheme a bundle CLAIMS -- ``2`` (a ``signature.json`` member), ``1`` (signature
-    fields in the manifest), ``None`` (unsigned). A presence check for routing only; it verifies
-    nothing (``verify_bundle_zip`` does)."""
+    """Which signing scheme a bundle CLAIMS -- ``2`` (a ``signature.json`` member), ``1`` (a
+    ``signature`` in the manifest, the same test :func:`verify_bundle_zip` dispatches on), ``None``
+    (unsigned). A PRESENCE check for routing and display only -- it verifies nothing and must never
+    gate trust (:func:`verify_bundle_zip` does)."""
     with zipfile.ZipFile(bundle_path, "r") as zf:
         if SIGNATURE_MEMBER in zf.namelist():
             return SIGNATURE_SCHEME_V2
         try:
-            raw = json.loads(zf.read("manifest.json").decode("utf-8"))
+            raw = json.loads(bounded_member_read(zf, "manifest.json", max_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES))
         except (KeyError, ValueError, UnicodeDecodeError):
             return None
-    return 1 if isinstance(raw, dict) and raw.get("signature") and raw.get("signature_algorithm") else None
+    return 1 if isinstance(raw, dict) and raw.get("signature") else None
 
 
 def verify_bundle_signature(
     bundle_path: str | Path,
     *,
     trusted_keys: Mapping[str, str],
+    accept_v1: bool,
 ) -> tuple[bool, str]:
     """Open a bundle and verify its signature against ``trusted_keys``.
 
@@ -1278,7 +1395,7 @@ def verify_bundle_signature(
     Returns ``(verified, reason)``.
     """
     with zipfile.ZipFile(bundle_path, "r") as zf:
-        result = verify_bundle_zip(zf, trusted_keys=trusted_keys)
+        result = verify_bundle_zip(zf, trusted_keys=trusted_keys, accept_v1=accept_v1)
     return result.ok, result.reason
 
 
@@ -1433,10 +1550,16 @@ def read_bundle_manifest_bytes(raw: bytes) -> dict[str, Any]:
 __all__ = [
     "BUNDLE_KIND",
     "BUNDLE_SCHEMA_VERSION",
+    "UNSIGNED_BUNDLE_SCHEMA_VERSION",
     "BundleBodyMismatch",
     "BundleBodyUnverifiable",
     "BundleVerification",
+    "MAX_BUNDLE_ENTRIES",
+    "MAX_ENTRY_UNCOMPRESSED_BYTES",
+    "MAX_TOTAL_UNCOMPRESSED_BYTES",
+    "MemberReadError",
     "assert_bundle_body_compatible",
+    "bounded_member_read",
     "bundle_signature_scheme",
     "compose_bundle",
     "extract_bundle",

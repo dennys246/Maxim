@@ -44,11 +44,13 @@ def _normalized():
     from maxim.hivemind.entry_index import normalize_agent_segment
 
     nac, ec = _state()
-    return normalize_agent_segment(nac), ec
+    normalized, dropped = normalize_agent_segment(nac)
+    assert dropped == 0
+    return normalized, ec
 
 
-def test_normalization_rewrites_every_agent_segment_and_refuses_two_agents():
-    from maxim.hivemind.entry_index import AGENT_TOKEN, EntryIndexError, normalize_agent_segment
+def test_normalization_rewrites_every_agent_segment():
+    from maxim.hivemind.entry_index import AGENT_TOKEN
 
     nac, _ = _normalized()
     for field in (
@@ -61,10 +63,34 @@ def test_normalization_rewrites_every_agent_segment_and_refuses_two_agents():
         assert all(k.startswith(AGENT_TOKEN + S) for k in nac[field])
     assert nac["inherent_bias_keys"][0].startswith(AGENT_TOKEN + S)
     assert list(nac["reward_bias"]) == [f"{AGENT_TOKEN}:n1"]
+
+
+def test_several_real_agents_need_an_explicit_own_agent_and_the_others_are_dropped():
+    from maxim.hivemind.entry_index import EntryIndexError, normalize_agent_segment
+
     two, _ = _state()
     two["cluster_fear"][f"other{S}n2{S}drive:oxygen"] = -0.2
-    with pytest.raises(EntryIndexError, match="agent ids"):
+    two["event_outcome_welford"][f"other{S}tool:flee"] = {"n": 900}
+    with pytest.raises(EntryIndexError, match="name which one is yours"):
         normalize_agent_segment(two)
+    out, dropped = normalize_agent_segment(two, own_agent_id="donor_1")
+    assert dropped == 2
+    assert f"_agent{S}n2{S}drive:oxygen" not in out["cluster_fear"]
+    assert out["event_outcome_welford"] == {f"_agent{S}tool:flee": {"n": 2}}  # own n=2, not the other's 900
+    with pytest.raises(EntryIndexError, match="holds no rows"):
+        normalize_agent_segment(two, own_agent_id="nobody")
+
+
+def test_rows_an_ingested_release_left_under_the_token_are_dropped_never_merged():
+    """The review probe: own -0.9 and a leftover token +0.5 on one key -- relabelling kept +0.5 (a
+    sign flip inside a signed release). The token is never the exporter's own agent."""
+    from maxim.hivemind.entry_index import normalize_agent_segment
+
+    nac = {"percept_valences": {f"queen{S}wolf{S}bite": -0.9, f"_agent{S}wolf{S}bite": 0.5}}
+    out, dropped = normalize_agent_segment(nac)
+    assert dropped == 1 and out["percept_valences"] == {f"_agent{S}wolf{S}bite": -0.9}
+    only_token, dropped = normalize_agent_segment({"percept_valences": {f"_agent{S}wolf{S}bite": 0.5}})
+    assert dropped == 1 and only_token["percept_valences"] == {}
 
 
 def test_entries_group_a_node_with_its_rows_and_allow_node_less_entries():
@@ -144,3 +170,19 @@ def test_jcs_uses_ecmascript_numbers():
     from maxim.hivemind.entry_index import jcs
 
     assert jcs({"b": 1.0, "a": [1e21, 0.1]}) == b'{"a":[1e+21,0.1],"b":1}'
+
+
+@pytest.mark.parametrize(
+    ("nac", "ec"),
+    [
+        ({"cluster_fear": [1]}, {}),  # a field of the wrong type
+        ({"inherent_bias_keys": 5}, {}),  # iterating it would raise TypeError
+        ({}, {"n1": ["not", "a", "node"]}),  # a node of the wrong type
+        ({}, ["n1"]),
+    ],
+)
+def test_entries_refuse_a_hostile_shape_as_an_index_error_not_a_crash(nac, ec):
+    from maxim.hivemind.entry_index import EntryIndexError, entries
+
+    with pytest.raises(EntryIndexError):
+        entries(nac, ec)

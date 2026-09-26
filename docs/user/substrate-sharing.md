@@ -12,7 +12,7 @@ A substrate snapshot bundle is a versioned ZIP archive:
 
 ```
 maxim-substrate.zip
-├── manifest.json   # _format_version, schema_version, contributor_id, domain, signature slots,
+├── manifest.json   # _format_version, schema_version, contributor_id, domain, license,
 │                   # body_ref + affordance_namespace + capability_map (gate 7 typed bundles)
 ├── nac.json        # NAc causal links + reward biases + provenance  (1.0)
 └── ec.json         # EC concept centroids + cluster metadata        (1.0)
@@ -105,7 +105,7 @@ To read a bundle's manifest without extracting anything:
 maxim substrate inspect my-combat-substrate.zip
 ```
 
-This prints the manifest as JSON -- contributor, domain, schema version, which slices are present, and the (reserved-null at 1.0) signature fields. Useful for checking a bundle's provenance before you trust its contents.
+This prints the manifest as JSON -- contributor, domain, schema version, which slices are present, and, for a signed release, its signer, sequence, license and entry index (`inspect --entries` prints each entry's digest). Useful for checking a bundle's provenance before you trust its contents.
 
 ## Merging into a live system
 
@@ -192,7 +192,7 @@ These three properties are load-bearing -- they are why substrate sharing is saf
 
 3. **ZIP-slip protection.** Every entry in an imported bundle is routed through a path-safety check before any file is written. Absolute paths, `..` traversal, and symlink escape are all rejected. A malicious bundle with one safe slice and one escape slice writes nothing -- the safety pass runs before any disk write. This matters because the 1.2 P2P protocol will exchange bundles between peers, so the threat surface is real even before import is widely used.
 
-The manifest also reserves `signature`, `signature_algorithm`, and `signer_identity` slots. At 1.0 they are always `None` -- the slots exist so 1.1+ verification can land without breaking 1.0 bundles. This build computes no signatures and validates none; if you need signing today, build your own ZIP with a populated signature field and a custom verifier. The recognized `signature_algorithm` vocabulary and the `signer_identity` field are documented in the [Hivemind Bundle Format registry](hivemind_bundle_format.md) so a future verifier and heterogeneous producers share one string vocabulary.
+Signing: `maxim substrate export --sign --release-sequence N --license SPDX-ID` writes a signed v2 release (bundle schema 3, a detached `signature.json`), and `maxim substrate ingest --require-signed --trust-key <id>=<pubkey>` verifies it; unsigned bundles stay schema 2. The release format is specified in the [Hivemind Bundle Format registry](hivemind_bundle_format.md#release-format-v2-bundle-schema-3). The recognized `signature_algorithm` vocabulary and the `signer_identity` field are documented in the [Hivemind Bundle Format registry](hivemind_bundle_format.md) so a future verifier and heterogeneous producers share one string vocabulary.
 
 ## See also
 
