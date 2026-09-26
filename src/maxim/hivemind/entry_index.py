@@ -169,10 +169,9 @@ def keep_agent_rows(
 def _retoken_link(link: Any) -> Any:
     if not isinstance(link, Mapping):
         return link
-    context = link.get("event_context")
-    if not isinstance(context, Mapping) or "agent_id" not in context:
+    if _link_agent(link) is None:  # names no agent (absent, empty, non-string): left as it is
         return link
-    return {**link, "event_context": {**context, "agent_id": AGENT_TOKEN}}
+    return {**link, "event_context": {**link["event_context"], "agent_id": AGENT_TOKEN}}
 
 
 def normalize_agent_segment(nac: Mapping[str, Any], *, own_agent_id: str | None = None) -> tuple[dict[str, Any], int]:

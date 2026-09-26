@@ -574,12 +574,12 @@ def test_motor_parameter_segments_are_vocabulary_not_text(tmp_path):
     from tests.unit.test_hivemind_ingest import _link, _nac_state
 
     a, b = _link(), _link()
-    a["event_signature"], b["event_signature"] = "look_at:dy=10:dp=-5", "look_at:dy=20:dp=0.5"
+    a["event_signature"], b["event_signature"] = "look_at:dy=10:dp=-5", "look_at:dy=20:dp=-0"  # :.0f, as emitted
     b["id"] = "l2"
-    nac = _nac_state(links={"look_at:dy=10:dp=-5": [a], "look_at:dy=20:dp=0.5": [b]})
+    nac = _nac_state(links={"look_at:dy=10:dp=-5": [a], "look_at:dy=20:dp=-0": [b]})
     with zipfile.ZipFile(_compose(tmp_path, signed=False, nac=nac)) as zf:
         links = json.loads(zf.read("nac.json"))["links"]
-    assert sorted(links) == ["look_at:dy=10:dp=-5", "look_at:dy=20:dp=0.5"]
+    assert sorted(links) == ["look_at:dy=10:dp=-5", "look_at:dy=20:dp=-0"]
 
 
 @_needs_sign
@@ -624,3 +624,33 @@ def test_a_learned_bias_folded_into_an_inherent_one_loses_the_marker(tmp_path):
     assert scrub_nac_state_for_bundle(state)["inherent_bias_keys"] == []
     state["inherent_bias_keys"] = [inherent_key, learned_key]
     assert scrub_nac_state_for_bundle(state)["inherent_bias_keys"] == [f"a{S}n1{S}tool:use"]
+
+
+@_needs_sign
+def test_a_link_naming_no_agent_is_left_unscoped_in_a_release(tmp_path):
+    """An empty agent_id names no agent (NAc reads it as none): it is neither counted as an agent nor
+    tokenised -- a link naming no agent must not become scoped to the receiver after re-keying."""
+    from maxim.hivemind.bundle import compose_bundle
+    from maxim.hivemind.signing import UNCOUNTED, BundleSigner, SignedRelease
+    from tests.unit.test_hivemind_ingest import _link, _nac_state
+
+    link = _link()
+    link["event_context"] = {"agent_id": ""}
+    out = tmp_path / "e.zip"
+    compose_bundle(
+        nac_state=_nac_state(links={"tool:probe": [link]}, cluster_fear={f"aut{S}n1{S}drive:oxygen": -0.5}),
+        ec_substrate_nodes=None,
+        output_path=out,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+        release=SignedRelease(
+            signer=BundleSigner.generate(signer_identity="queen-a"),
+            release_sequence=1,
+            license="CDLA-Permissive-2.0",
+            counter=UNCOUNTED,
+        ),
+    )
+    with zipfile.ZipFile(out) as zf:
+        shipped = json.loads(zf.read("nac.json"))["links"]["tool:probe"][0]
+    assert shipped["event_context"].get("agent_id") in (None, "")
