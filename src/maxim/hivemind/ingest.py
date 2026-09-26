@@ -1044,9 +1044,9 @@ def ingest_bundle(
         )
         if payload_digest is None:
             notes.append(
-                "the bundle's payload identity could not be computed (a manifest that is not strict JSON, or an "
-                "unreadable slice); dedup falls back to these exact ZIP bytes, so a re-packaged copy would not "
-                "be recognised"
+                "the bundle's payload identity could not be computed (a manifest that is not strict JSON, or a "
+                "declared slice that is unreadable or not UTF-8); dedup falls back to these exact ZIP bytes, so a "
+                "re-packaged copy would not be recognised"
             )
         seen = [d for d in (digest, payload_digest) if d]
         if any(journal.has_digest(d) for d in seen) and not force_digest:
@@ -1075,6 +1075,13 @@ def ingest_bundle(
             file_name = meta.get("file") if isinstance(meta, dict) else None
             if not isinstance(file_name, str) or not file_name:
                 raise IngestRefused(duty="V7", reason=f"manifest contents[{slice_name!r}] declares no file")
+            if file_name in ("manifest.json", SIGNATURE_MEMBER):
+                # The verifier refuses this for a signed release; the unverified path must too, or it
+                # would read the signature member (or the manifest) as a payload slice -- content no
+                # identity or signature covers as a slice.
+                raise IngestRefused(
+                    duty="V7", reason=f"manifest contents[{slice_name!r}] declares {file_name!r}, which is not a slice"
+                )
             declared_files[str(slice_name)] = file_name
 
         namelist = set(zf.namelist())

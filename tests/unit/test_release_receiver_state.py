@@ -362,3 +362,32 @@ def test_a_manifest_nested_past_the_migration_is_a_refusal(tmp_path):
     members["manifest.json"] = json.dumps(manifest).encode()
     with pytest.raises((IngestRefused, ValueError), match="nests too deeply"):
         _admit_unverified(write_members(tmp_path / "deep.zip", members), _journal(tmp_path))
+
+
+@pytest.mark.parametrize("declared", ["signature.json", "manifest.json"])
+def test_a_manifest_declaring_a_non_slice_member_as_a_slice_is_refused_unverified_too(tmp_path, declared):
+    """The review's probe: an UNSIGNED bundle declaring signature.json as its nac slice was read as one on
+    the unverified path (the verifier refuses this only for signed releases)."""
+    from maxim.hivemind.bundle import compose_bundle
+    from maxim.hivemind.ingest import IngestRefused
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+    from tests.unit.test_hivemind_ingest import _nac_state, _node
+
+    src = tmp_path / "u.zip"
+    compose_bundle(
+        nac_state=_nac_state(cluster_fear={f"a{S}n1{S}drive:oxygen": -0.5}),
+        ec_substrate_nodes={"n1": _node()},
+        output_path=src,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+    )
+    members = read_members(src)
+    manifest = json.loads(members["manifest.json"])
+    if declared == "signature.json":
+        members["signature.json"] = members.pop("nac.json")
+    manifest["contents"]["nac"] = {"file": declared}
+    members["manifest.json"] = json.dumps(manifest).encode()
+    with pytest.raises(IngestRefused) as exc:
+        _admit_unverified(write_members(tmp_path / "odd.zip", members), _journal(tmp_path))
+    assert exc.value.duty == "V7" and "not a slice" in str(exc.value)

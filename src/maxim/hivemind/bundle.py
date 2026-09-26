@@ -1401,7 +1401,8 @@ def content_payload_digest(
         raw = _strict_json(manifest_bytes, "manifest.json")
         if not isinstance(raw, dict):
             return None
-        files = sorted({f for f in _declared_slice_files(raw).values() if f in names and f != SIGNATURE_MEMBER})
+        # Every declared slice (ingest refuses a manifest declaring signature.json or manifest.json as one).
+        files = sorted({f for f in _declared_slice_files(raw).values() if f in names})
         if raw.get("schema_version") == 3:
             members = {"manifest.json": manifest_bytes, **{f: read(f) for f in files}}
             return hashlib.sha256(bundle_signing_payload_v2(members)).hexdigest()
@@ -1549,7 +1550,9 @@ def _manifest_from_zip(zf: zipfile.ZipFile, source_label: str) -> dict[str, Any]
     try:
         manifest = migrate_bundle_envelope(manifest)
     except RecursionError as exc:  # deepcopy of a manifest nested a few hundred deep
-        raise ValueError(f"bundle {source_label}: manifest.json nests too deeply to migrate") from exc
+        raise ValueError(
+            f"bundle {source_label}: manifest.json nests too deeply to migrate (or the caller's stack is already deep)"
+        ) from exc
     check_format_version(manifest, "substrate_bundle", log=logger)
     if manifest.get("kind") != BUNDLE_KIND:
         raise ValueError(f"manifest kind {manifest.get('kind')!r} != {BUNDLE_KIND!r}")
