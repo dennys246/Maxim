@@ -307,6 +307,17 @@ adapter's pre-merge review round, 2026-09-05):
   it too (a donor prior never makes the receiver's learned value exempt); a dangling marker marks
   nothing. Bare `nac_merge` keeps its commutative union. Guard:
   `tests/unit/test_cluster_row_fold.py` (each rule proven by deletion).
+- **V2/links (2026-09-26, #913 — link identity and the link re-key).** Links pair on NAc's own
+  identity — outcome signature AND event context — so a merge never drops a receiver's link: an
+  empty-donor merge is the identity on its links (before: pairing by outcome alone let context-distinct
+  links overwrite each other on every ingest; one real state lost 164 of 607). A donor link folds into
+  the link of its own identity or is appended. And a donor link's `event_context.agent_id` re-keys to
+  the receiver exactly as the situation rows do — any agent id, not only the release token — because
+  `NAc.predict` matches link context against the reader's own id, so an un-re-keyed link (every link
+  from an unsigned bundle, before) was unusable where its context is only the agent id, and
+  down-weighted otherwise. An appended donor link takes the id NAc gives its identity
+  (`causal_link_id`): a bundle's link id carries no context, and NAc treats ids as unique. Guard: `tests/unit/test_link_merge_identity.py` (each
+  rule proven by deletion).
 
 **Out of scope BY DECLARATION** (so absence is a decision, not an oversight):
 

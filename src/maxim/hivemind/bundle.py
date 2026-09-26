@@ -512,11 +512,12 @@ def scrub_nac_state_for_bundle(nac_state: dict[str, Any]) -> dict[str, Any]:
 
     # links: scrub each link, re-key on the scrubbed event signature,
     # and fold links that now share (event_sig, outcome_sig) via
-    # _merge_link_pair — nac_merge pairs by outcome_signature, so
-    # shipping duplicates would silently clobber all but one on the
-    # receiving side. The canonical outcome signature embeds valence,
-    # so same-key folding satisfies _merge_link_pair's same-valence
-    # precondition by construction.
+    # _merge_link_pair. The scrub strips a link's event_context down to
+    # its agent id, so within one agent's links this is exactly the
+    # identity nac_merge pairs on (outcome AND context, #913) — the
+    # context that told them apart does not ship. The canonical outcome
+    # signature embeds valence, so same-key folding satisfies
+    # _merge_link_pair's same-valence precondition by construction.
     merged_links: dict[str, list[dict[str, Any]]] = {}
     for evt_sig, links in (nac_state.get("links", {}) or {}).items():
         bucket = merged_links.setdefault(_scrub_event_signature(evt_sig), [])
