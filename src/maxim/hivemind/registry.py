@@ -94,6 +94,9 @@ def registry_path() -> Path:
     return key_file_path("hive.json")
 
 
+ED25519_PUBLIC_KEY_BYTES = 32
+
+
 def _validate_add(name: str, url: str, queen_keys: dict[str, str]) -> None:
     if not name or not isinstance(name, str):
         raise HiveRegistryError("oasis name must be a non-empty string")
@@ -102,20 +105,38 @@ def _validate_add(name: str, url: str, queen_keys: dict[str, str]) -> None:
     for identity, pubkey in queen_keys.items():
         if not identity or not isinstance(identity, str) or not isinstance(pubkey, str) or not pubkey:
             raise HiveRegistryError(f"queen key must be IDENTITY=PUBKEY_B64, got {identity!r}={pubkey!r}")
-    # One key, one identity: verification refuses a key trusted under two labels (the signature cannot
-    # say which signed), so catch it here, where the operator is typing it. Compared as DECODED bytes
-    # when the key decodes: a 32-byte key has four valid base64 spellings (the last character carries
-    # two unused bits), so a string comparison misses the alias. A key that does not decode cannot
-    # alias a real one, and verification rejects it loudly.
+    # Every key must be one verification can use: the CANONICAL base64 of a raw 32-byte Ed25519 public
+    # key. A key that does not decode, decodes to another length, or is one of the three non-canonical
+    # spellings of a real key (the last character carries two unused bits) is refused HERE, where the
+    # operator is typing it, rather than stored and failing at the first pull. This binds NEWLY added
+    # keys only: a legacy entry on disk is not re-checked (it still loads, and a non-canonical legacy key
+    # still verifies), and `substrate ingest --trust-key` never passes through here -- which is why the
+    # decoded-byte alias checks in `bundle.py` stay.
     import base64
     import binascii
 
-    seen: dict[bytes | str, str] = {}
+    seen: dict[bytes, str] = {}
     for identity, pubkey in queen_keys.items():
+        if pubkey != pubkey.strip():
+            raise HiveRegistryError(
+                f"queen key for {identity!r} contains surrounding whitespace (a key file's trailing newline?); strip it"
+            )
         try:
-            key: bytes | str = base64.b64decode(pubkey, validate=True)
+            key = base64.b64decode(pubkey, validate=True)
         except (binascii.Error, ValueError):
-            key = pubkey
+            raise HiveRegistryError(f"queen key for {identity!r} is not valid base64") from None
+        if len(key) != ED25519_PUBLIC_KEY_BYTES:
+            raise HiveRegistryError(
+                f"queen key for {identity!r} decodes to {len(key)} bytes, not an Ed25519 public key "
+                f"({ED25519_PUBLIC_KEY_BYTES})"
+            )
+        if base64.b64encode(key).decode("ascii") != pubkey:
+            raise HiveRegistryError(
+                f"queen key for {identity!r} is a non-canonical spelling of its key; use "
+                f"{base64.b64encode(key).decode('ascii')!r}"
+            )
+        # One key, one identity: verification refuses a key trusted under two labels (the signature
+        # cannot say which signed), so catch it here too.
         if key in seen:
             raise HiveRegistryError(
                 f"queen key for {identity!r} is already registered as {seen[key]!r}; register each key once"
