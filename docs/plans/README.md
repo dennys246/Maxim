@@ -128,6 +128,10 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
   before it IN THE SAME SITUATION (not the approach into it) (`retro_tag`, read only under `memory.strategy=strength`); reach ~5 s until Phase 5
   calibrates. Limits deferred on triggers:
   [deferred/retro_tagging_extensions.md](deferred/retro_tagging_extensions.md).
+- [oasis_entry_index_v2.md](oasis_entry_index_v2.md) — **DECIDED 2026-09-25:** public_oasis Phase 0
+  item 7 — the Queen-signed entry index (one entry = one situation cluster), signing scheme v2 as a
+  detached signature over raw bytes, release ordering + anti-equivocation, the license field
+  (`CDLA-Permissive-2.0`). Must land before the item-2 format freeze.
 - [memory_2s_d_situation_cue.md](memory_2s_d_situation_cue.md) — **DECIDED + BUILT 2026-09-25:**
   memory-strength 2S-d. A situation change recalls the memories formed in that situation (through
   the cluster concepts' refs, scored on each memory's own situation); recall only, no activation,
