@@ -85,6 +85,39 @@ def bundle_signing_payload(manifest: Mapping[str, object], slices: Mapping[str, 
     return b"".join(struct.pack(">Q", len(p)) + p for p in parts)
 
 
+# ─── Scheme v2 (docs/plans/oasis_entry_index_v2.md) ─────────────────────────────────────────────
+#
+# A DETACHED signature over the raw, uncompressed bytes of every ZIP member except the signature member
+# itself -- no canonical JSON anywhere in what is signed (the v1 hazards: `default=str` stringifying
+# numpy floats, NaN, duplicate keys read differently by two parsers). The domain tag differs from v1's
+# ``b"manifest"``, so neither scheme's signature can be replayed as the other's.
+
+#: The v2 domain-separation tag (first framed part of the v2 payload).
+BUNDLE_V2_TAG = b"maxim-bundle-v2"
+
+#: The detached-signature member of a v2 bundle.
+SIGNATURE_MEMBER = "signature.json"
+
+#: The one v2 scheme number this build implements.
+SIGNATURE_SCHEME_V2 = 2
+
+
+def bundle_signing_payload_v2(members: Mapping[str, bytes]) -> bytes:
+    """Return the bytes a scheme-v2 signature covers.
+
+    ``members`` maps each ZIP member name to its UNCOMPRESSED bytes; the signature member is excluded
+    here, so the caller may pass the whole archive. Members are ordered by their UTF-8 name bytes and
+    each part is framed with an 8-byte big-endian length prefix, exactly as v1 frames its parts.
+    Hashing uncompressed bytes keeps the payload -- and so the release's identity -- stable across
+    re-zips.
+    """
+    parts: list[bytes] = [BUNDLE_V2_TAG]
+    for name in sorted((n for n in members if n != SIGNATURE_MEMBER), key=lambda n: n.encode("utf-8")):
+        parts.append(name.encode("utf-8"))
+        parts.append(members[name])
+    return b"".join(struct.pack(">Q", len(p)) + p for p in parts)
+
+
 def _load_ed25519():
     """Import the ed25519 primitives through the canonical optional-dep surface."""
     require_optional_dependency("cryptography", feature="Hivemind bundle signing")
