@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Ingest folds donor situations that align onto one of yours instead of letting the last one win**
+  (#914). When several donor clusters align onto one receiver cluster, their rows now fold with the
+  merge layer's semantics — reward bias mean, fear min (the most aversive wins), credit source common
+  or `mixed` — and the inherent (safety-floor) marker survives only when every folded bias was
+  inherent. Before, the last row overwrote the others and a learned bias could inherit the marker and
+  become decay-exempt. The export scrub uses the same fold (`merge.fold_cluster_rows`).
+
 - **Pre-freeze hardening of the bundle format** (public_oasis Phase 0 item 2, before the public format
   freeze). The export scrub is now an ALLOWLIST at every level (top-level NAc fields, link fields, EC
   node fields, encoder provenance), so `saved_at`, unknown fields and a future producer's additions

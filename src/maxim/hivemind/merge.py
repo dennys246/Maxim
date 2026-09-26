@@ -981,6 +981,61 @@ def _later_saved_at(left: Any, right: Any) -> Any:
     return max(candidates)
 
 
+#: The cluster-keyed NAc fields :func:`fold_cluster_rows` folds, with ``inherent_bias_keys`` alongside.
+_CLUSTER_ROW_FIELDS: tuple[str, ...] = ("cluster_reward_bias", "cluster_reward_source", "cluster_fear")
+
+
+def fold_cluster_rows(
+    nac_state: dict[str, Any],
+    transform: Callable[[str], str | None],
+    *,
+    fields: tuple[str, ...],
+) -> dict[str, Any]:
+    """Re-key the cluster-keyed rows of ``fields`` (and their inherent markers) through ``transform``,
+    FOLDING the rows that land on one key -- the one fold both seams use: the export scrub (a scrubbed
+    tool signature can collide) and ingest's re-key (several donor clusters can align onto one).
+
+    Per field, the merge layer's own semantics: ``cluster_reward_bias`` MEAN, ``cluster_fear`` MIN (the
+    most aversive fear wins, as ``nac_merge`` folds it), ``cluster_reward_source`` the common value or
+    ``"mixed"``. ``transform`` returns the new key, or ``None`` to drop the row. An ``inherent_bias_keys``
+    marker survives only when EVERY ``cluster_reward_bias`` row folding into its key was marked: a
+    learned bias folded into an inherent one never becomes decay-exempt, and never dilutes the safety
+    floor while wearing its marker. Returns only the fields present in ``nac_state``. Pure.
+    """
+    out: dict[str, Any] = {}
+    sources_by_key: dict[str, list[str]] = {}
+    for field in fields:
+        src = nac_state.get(field)
+        if not isinstance(src, dict):
+            continue
+        grouped: dict[str, list[Any]] = {}
+        for key, value in src.items():
+            new_key = transform(str(key))
+            if new_key is None:
+                continue
+            grouped.setdefault(new_key, []).append(value)
+            if field == "cluster_reward_bias":
+                sources_by_key.setdefault(new_key, []).append(str(key))
+        if field == "cluster_reward_bias":
+            out[field] = {k: sum(float(v) for v in vs) / len(vs) for k, vs in grouped.items()}
+        elif field == "cluster_fear":
+            out[field] = {k: min(float(v) for v in vs) for k, vs in grouped.items()}
+        else:
+            out[field] = {k: (vs[0] if all(v == vs[0] for v in vs) else "mixed") for k, vs in grouped.items()}
+    inherent = nac_state.get("inherent_bias_keys")
+    if isinstance(inherent, list):
+        marked = {str(k) for k in inherent}
+        kept: set[str] = set()
+        for key in marked:
+            new_key = transform(key)
+            if new_key is None or new_key not in out.get("cluster_reward_bias", {}):
+                continue  # its row did not survive (or was never there): a dangling marker is not faked
+            if all(source in marked for source in sources_by_key.get(new_key, [])):
+                kept.add(new_key)
+        out["inherent_bias_keys"] = sorted(kept)
+    return out
+
+
 def rekey_nac_state(
     nac_state: dict[str, Any],
     id_map: dict[str, str],
@@ -1018,40 +1073,19 @@ def rekey_nac_state(
     # cluster through `id_map`, the agent id to the receiver's (the read path
     # `NAc.cluster_fear` filters on agent id; an un-rewritten key reads 0.0
     # silently), and a fear whose donor cluster did not survive is dropped.
-    for field in ("cluster_reward_bias", "cluster_reward_source", "cluster_fear"):
-        src = nac_state.get(field)
-        if not isinstance(src, dict):
-            continue
-        rekeyed: dict[str, Any] = {}
-        for key, value in src.items():
-            parts = str(key).split(NAC_KEY_SEP)
-            if len(parts) != 3:
-                continue
-            aid, cid, tsig = parts
-            mapped = id_map.get(cid)
-            if mapped is None:
-                continue  # the donor cluster did not survive — drop, don't fake
-            rekeyed[NAC_KEY_SEP.join((to_agent_id or aid, mapped, tsig))] = value
-        out[field] = rekeyed
+    def rekey(key: str) -> str | None:
+        parts = str(key).split(NAC_KEY_SEP)
+        if len(parts) != 3:
+            return None
+        aid, cid, tsig = parts
+        mapped = id_map.get(cid)
+        if mapped is None:
+            return None  # the donor cluster did not survive — drop, don't fake
+        return NAC_KEY_SEP.join((to_agent_id or aid, mapped, tsig))
 
-    # The inherent-class marker (1.2 poison-resistance slice) names
-    # cluster_reward_bias keys, so it re-keys through the same map — a
-    # marker left on the donor's ORIGINAL key would exempt nothing after
-    # the re-key (a silently vacuous safety floor). Same drop rule:
-    # a marker whose cluster did not survive is dropped, not faked.
-    inherent = nac_state.get("inherent_bias_keys")
-    if isinstance(inherent, list):
-        rekeyed_inherent: list[str] = []
-        for key in inherent:
-            parts = str(key).split(NAC_KEY_SEP)
-            if len(parts) != 3:
-                continue
-            aid, cid, tsig = parts
-            mapped = id_map.get(cid)
-            if mapped is None:
-                continue
-            rekeyed_inherent.append(NAC_KEY_SEP.join((to_agent_id or aid, mapped, tsig)))
-        out["inherent_bias_keys"] = sorted(set(rekeyed_inherent))
+    # Several donor clusters can align onto ONE receiver cluster (``ec_merge_aligned``), so their rows
+    # land on one key: folded with each field's merge semantics, never last-write-wins (#914).
+    out.update(fold_cluster_rows(nac_state, rekey, fields=_CLUSTER_ROW_FIELDS))
 
     # A released link names its agent as the token in ``event_context.agent_id`` (release format v2), and
     # ``NAc.predict`` matches a stored link's event context against the query context -- so a token left
