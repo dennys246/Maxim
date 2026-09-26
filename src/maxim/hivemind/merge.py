@@ -571,15 +571,31 @@ def nac_merge(
             left.get("event_outcome_welford", {}) or {},
             right.get("event_outcome_welford", {}) or {},
         ),
-        # 1.2 poison-resistance slice: the inherent-class marker travels
-        # through the fold as a sorted union. A rebuilt-dict merge that
-        # dropped it would silently strip decay exemption from every
-        # receiver-held inherent bias — the D43 delete-state shape one
-        # field over (`cluster_reward_source` above is the precedent).
-        "inherent_bias_keys": sorted(
-            set(left.get("inherent_bias_keys", []) or []) | set(right.get("inherent_bias_keys", []) or [])
-        ),
+        # 1.2 poison-resistance slice: the inherent-class marker travels through the fold. A rebuilt-dict
+        # merge that dropped it would silently strip decay exemption from every receiver-held inherent bias
+        # (the D43 delete-state shape one field over). But not as a plain UNION (#914): where both sides
+        # hold a bias row at one key, the merged value is their mean -- so the key stays inherent only when
+        # EVERY side holding a row marks it. Otherwise a learned bias would become decay-exempt by averaging
+        # with an inherent one, or an inherent value be diluted while keeping its marker.
+        "inherent_bias_keys": _merge_inherent_markers(left, right),
     }
+
+
+def _merge_inherent_markers(left: dict[str, Any], right: dict[str, Any]) -> list[str]:
+    """The merged ``inherent_bias_keys``: a key is marked when at least one side marks it AND every side
+    holding a ``cluster_reward_bias`` row at that key marks it (a marker whose own row is absent -- a
+    dangling marker -- is ignored). The rule :func:`fold_cluster_rows` applies within one state, across
+    the two sides of a merge."""
+    sides = [
+        (set(side.get("inherent_bias_keys", []) or []), set((side.get("cluster_reward_bias") or {}).keys()))
+        for side in (left, right)
+    ]
+    kept: set[str] = set()
+    for marked, rows in sides:
+        for key in marked & rows:
+            if all(key in other_marked for other_marked, other_rows in sides if key in other_rows):
+                kept.add(key)
+    return sorted(kept)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -1000,14 +1016,20 @@ def fold_cluster_rows(
     ``"mixed"``. ``transform`` returns the new key, or ``None`` to drop the row. An ``inherent_bias_keys``
     marker survives only when EVERY ``cluster_reward_bias`` row folding into its key was marked: a
     learned bias folded into an inherent one never becomes decay-exempt, and never dilutes the safety
-    floor while wearing its marker. Returns only the fields present in ``nac_state``. Pure.
+    floor while wearing its marker (``nac_merge`` applies the same rule across a merge's two sides). A
+    marker whose own bias row is absent is dropped (a dangling marker is never passed through).
+    Weighting: donor cluster rows carry no per-row counts, so the mean is unweighted -- the only fold
+    the data supports. Returns only the fields present in ``nac_state`` (a wrong-typed field RAISES:
+    this runs inside a privacy scrub, which must never fail open). Pure.
     """
     out: dict[str, Any] = {}
     sources_by_key: dict[str, list[str]] = {}
     for field in fields:
         src = nac_state.get(field)
-        if not isinstance(src, dict):
+        if src is None:
             continue
+        if not isinstance(src, dict):
+            raise ValueError(f"{field} is not an object ({type(src).__name__}) -- refusing to fold it")
         grouped: dict[str, list[Any]] = {}
         for key, value in src.items():
             new_key = transform(str(key))
@@ -1023,6 +1045,8 @@ def fold_cluster_rows(
         else:
             out[field] = {k: (vs[0] if all(v == vs[0] for v in vs) else "mixed") for k, vs in grouped.items()}
     inherent = nac_state.get("inherent_bias_keys")
+    if inherent is not None and not isinstance(inherent, list):
+        raise ValueError(f"inherent_bias_keys is not a list ({type(inherent).__name__}) -- refusing to fold it")
     if isinstance(inherent, list):
         marked = {str(k) for k in inherent}
         kept: set[str] = set()
@@ -1068,6 +1092,7 @@ def rekey_nac_state(
     Returns a new dict; the input is not mutated.
     """
     out = dict(nac_state)
+
     # `cluster_fear` (Exp 61, 2026-09-16) is keyed on the same triple shape —
     # `(agent_id, cluster_id, failure_mode)` — and takes the same path: the
     # cluster through `id_map`, the agent id to the receiver's (the read path
@@ -1342,7 +1367,9 @@ class SubstrateMergeResult:
     A caller that prints ``len(cluster_reward_bias)`` is printing
     ``|left union right|``, which is **maximal exactly when nothing aligns**.
     These two counts are the honest indicator: a merge that dropped every
-    donor bias says so.
+    donor bias says so. ``biases_dropped`` is ``before - after``, so it also counts rows FOLDED
+    together when several donor clusters align onto one receiver cluster (#914) -- a 2→1 fold reads
+    as one "dropped", its value averaged in, not lost.
     """
 
     nac: dict[str, Any]

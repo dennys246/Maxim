@@ -593,10 +593,11 @@ def scrub_nac_state_for_bundle(nac_state: dict[str, Any]) -> dict[str, Any]:
         aid, cid, tsig = key.split(_NAC_KEY_SEP, 2)
         return _NAC_KEY_SEP.join((aid, cid, _scrub_event_signature(tsig)))
 
-    scrubbed.update(
-        fold_cluster_rows(nac_state, _scrub_tsig, fields=("cluster_reward_bias", "cluster_reward_source"))
-    )
-    scrubbed.setdefault("cluster_reward_bias", {})
+    # REPLACE, never overlay: the raw copies go first, so nothing unscrubbed can survive under these names.
+    for name in ("cluster_reward_bias", "cluster_reward_source", "inherent_bias_keys"):
+        scrubbed.pop(name, None)
+    scrubbed.update(fold_cluster_rows(nac_state, _scrub_tsig, fields=("cluster_reward_bias", "cluster_reward_source")))
+    scrubbed.setdefault("cluster_reward_bias", {})  # always present in a bundle, even when empty
 
     # ALLOWLIST the top level (like event_context): a field a future producer adds -- or ``saved_at``,
     # a wall-clock timestamp the receiver discards anyway -- never ships by default.

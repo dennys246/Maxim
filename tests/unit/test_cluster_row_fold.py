@@ -76,3 +76,59 @@ def test_ingest_folds_two_donor_situations_that_align_onto_one(tmp_path: Path):
     (value,) = folded.values()
     assert value != pytest.approx(-0.4) and value != pytest.approx(0.8)  # folded, not last- or first-write
     assert not [k for k in report.nac.get("inherent_bias_keys", []) if k in folded]
+
+
+# ── review round: the third seam (nac_merge), dangling markers, a scrub that must not fail open ──
+
+
+K = f"me{S}r1{S}tool:flee"
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "marked"),
+    [
+        # receiver learned + donor inherent at one key: the mean is not a safety-floor value
+        ({"cluster_reward_bias": {K: 0.6}}, {"cluster_reward_bias": {K: -0.2}, "inherent_bias_keys": [K]}, False),
+        # receiver inherent + donor learned: diluted, so it may not keep the marker
+        ({"cluster_reward_bias": {K: 0.6}, "inherent_bias_keys": [K]}, {"cluster_reward_bias": {K: -0.2}}, False),
+        # both inherent: stays inherent
+        (
+            {"cluster_reward_bias": {K: 0.6}, "inherent_bias_keys": [K]},
+            {"cluster_reward_bias": {K: -0.2}, "inherent_bias_keys": [K]},
+            True,
+        ),
+        # receiver inherent, no donor row at that key: untouched, keeps its marker
+        ({"cluster_reward_bias": {K: 0.6}, "inherent_bias_keys": [K]}, {"cluster_reward_bias": {}}, True),
+        # a donor marker with no bias row of its own (dangling) never marks a receiver's learned bias
+        ({"cluster_reward_bias": {K: 0.6}}, {"cluster_reward_bias": {}, "inherent_bias_keys": [K]}, False),
+    ],
+)
+def test_nac_merge_keeps_a_marker_only_when_every_side_holding_the_row_marks_it(left, right, marked):
+    from maxim.hivemind.merge import nac_merge
+
+    out = nac_merge(left=left, left_source="local", right=right, right_source="peer")
+    assert (K in out["inherent_bias_keys"]) is marked
+
+
+def test_a_dangling_marker_is_dropped_by_the_fold():
+    from maxim.hivemind.merge import fold_cluster_rows
+
+    state = {"cluster_reward_bias": {f"a{S}d1{S}tool:flee": 0.3}, "inherent_bias_keys": [f"a{S}d9{S}tool:ghost"]}
+    out = fold_cluster_rows(state, lambda k: k, fields=("cluster_reward_bias",))
+    assert out["inherent_bias_keys"] == []
+
+
+def test_the_scrub_replaces_its_fields_and_never_fails_open():
+    from maxim.hivemind.bundle import scrub_nac_state_for_bundle
+
+    assert scrub_nac_state_for_bundle({"links": {}})["cluster_reward_bias"] == {}  # always present
+    with pytest.raises(ValueError, match="inherent_bias_keys is not a list"):
+        scrub_nac_state_for_bundle(
+            {
+                "links": {},
+                "cluster_reward_bias": {f"a{S}c{S}tool:use:x y": 0.1},
+                "inherent_bias_keys": (f"a{S}c{S}tool:use:x y",),
+            }
+        )
+    with pytest.raises(ValueError, match="cluster_reward_source is not an object"):
+        scrub_nac_state_for_bundle({"links": {}, "cluster_reward_source": [1]})

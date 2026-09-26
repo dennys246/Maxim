@@ -295,7 +295,9 @@ adapter's pre-merge review round, 2026-09-05):
   min, credit source common-or-`mixed` — instead of the last row winning; and a folded key keeps the
   inherent (safety-floor) marker only when every folded bias row was inherent (before: ANY, so a
   learned bias could overwrite an inherent value and stay decay-exempt). One fold,
-  `merge.fold_cluster_rows`, serves this seam and the export scrub. Guard:
+  `merge.fold_cluster_rows`, serves this seam and the export scrub; `nac_merge` applies the same
+  rule across its two sides (a key is marked only when every side holding its bias row marks it; a
+  dangling marker never marks anything). Guard:
   `tests/unit/test_cluster_row_fold.py` (each rule proven by deletion).
 
 **Out of scope BY DECLARATION** (so absence is a decision, not an oversight):
