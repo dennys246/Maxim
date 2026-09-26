@@ -278,7 +278,11 @@ OPERATIONAL_MODES: dict[str, ModeDefinition] = {
         # action for a sound: respond. Orienting the head is squarely
         # within passive's "observe" intent.
         allowed_tools=CORE_TOOLS
-        | {"move", "read_file", "glob", "list_directory", "internet_search", "http_fetch", "write_file"},
+        | {"move", "read_file", "glob", "list_directory", "internet_search", "http_fetch", "write_file"}
+        # Enforced at dispatch since #826, so every tool passive may use is named: asking the human,
+        # adjusting what they see, looking at something, and READ-ONLY code inspection. Acting tools
+        # (bash, edit_file, git_commit, run_tests) stay out -- passive observes and proposes.
+        | {"request_interaction", "display_mode", "set_scene", "novelty_track", "search_code", "git_diff"},
         forbidden_tools={"execute_file", "maxim_command", "request_directory_change"},
         max_initiative=0.3,  # Low proactivity - mostly reactive
         can_access_filesystem=True,  # Read CWD, write workspace

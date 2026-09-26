@@ -377,6 +377,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A mode's tool list is enforced when a tool runs, not only in the prompt** (#826). A tool outside
+  the current mode — including one the mode forbids — still ran when the model named it: in passive
+  mode `search_code` executed, and at full autonomy a forbidden `maxim_command` reached its tool. The
+  executor now reads the live mode at every dispatch and refuses what the mode does not allow; the
+  prompt lists exactly what the executor permits. Passive mode's list now names what it may use —
+  asking the human (`request_interaction`), `display_mode`, `set_scene`, `novelty_track`, and
+  read-only `search_code` / `git_diff`; acting tools (`bash`, `edit_file`, `git_commit`, `run_tests`)
+  are refused there, as its definition says. Active and singularity modes are unchanged.
+
 - **Merging substrate no longer destroys the receiver's own causal links, and ingested links are now
   usable** (#913). `nac_merge` paired links by outcome alone, so a receiver's links that differ only in
   context (two separate links to NAc) overwrote each other on every `maxim substrate ingest`, even from

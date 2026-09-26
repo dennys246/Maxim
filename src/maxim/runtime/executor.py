@@ -5,7 +5,7 @@ import logging
 import threading
 import time
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from maxim.tools.base import ToolOutput
 from maxim.tools.registry import ToolRegistry
@@ -111,6 +111,10 @@ class Executor:
         # D77 embodiment= and D79's cerebellum=).
         self._cerebellum: Any | None = cerebellum
         self._entity_map: Any | None = entity_map
+        # The LIVE operational mode, read at every dispatch (#826): a mode's tool list used to shape
+        # only the prompt, so a tool outside it still ran when the model named it. Set by the agent
+        # loop, which owns the mode (``set_mode_source``); None = no mode restriction.
+        self._mode_source: Callable[[], str | None] | None = None
         self._lock = threading.Lock()
         # (tool_name, start_time, invocation_id) or None
         self._running: tuple[str, float, str] | None = None
@@ -137,6 +141,36 @@ class Executor:
             for name in names:
                 TOOL_ALIASES.pop(name.lower(), None)
 
+    def set_mode_source(self, source: Callable[[], str | None] | None) -> None:
+        """Read the live operational mode from ``source`` at every dispatch (#826). None clears it."""
+        self._mode_source = source
+
+    def _mode_denial(self, tool_name: str) -> str | None:
+        """Why the LIVE mode refuses *tool_name* (canonical name), or None.
+
+        The mode's effective set is exactly what the prompt roster advertises: the mode definition's
+        ``get_available_tools`` over the registered tools (its allow-list, minus its forbidden tools
+        and capability limits), plus the wired body's always-active SEM tools, which join past the
+        mode filter by design (sem_motor_binding Phase 1). An unknown mode restricts nothing -- the
+        roster treats it the same way.
+        """
+        if self._mode_source is None:
+            return None
+        from maxim.modes.definitions import get_mode  # noqa: PLC0415 -- runtime layer, read lazily
+
+        mode_name = self._mode_source()
+        mode_def = get_mode(mode_name) if mode_name else None
+        if mode_def is None:
+            return None
+        if tool_name in mode_def.get_available_tools(set(self.registry._tools)):
+            return None
+        if self.embodiment is not None:
+            from maxim.embodiment.tool_bridge import always_active_sem_tools  # noqa: PLC0415
+
+            if any(tool.name == tool_name for tool in always_active_sem_tools(self.registry)):
+                return None
+        return f"Tool '{tool_name}' is not available in {mode_def.name} mode."
+
     def _permission_denial(self, tool_name: str, *, deny_only: bool = False) -> str | None:
         """Return the denial reason for *tool_name*, or ``None`` when allowed.
 
@@ -149,6 +183,11 @@ class Executor:
         name has no kind and is checked by name alone (it fails later at
         ``registry.get`` anyway).
         """
+        if not deny_only:
+            # The mode is an allow-list judged on the CANONICAL name, like the allow half below.
+            mode_denial = self._mode_denial(tool_name)
+            if mode_denial is not None:
+                return mode_denial
         if self._permissions is None:
             return None
         tool = self.registry._tools.get(tool_name)
@@ -161,12 +200,13 @@ class Executor:
         return reason or "Permission denied."
 
     def permits(self, tool_name: str) -> bool:
-        """True when the permission gate would let *tool_name* run.
+        """True when the permission gate -- the live mode (#826) and ``AgentPermissions`` -- would
+        let *tool_name* run.
 
         The prompt roster asks this before ADVERTISING a tool: a tool the
         executor refuses at dispatch must not be offered to the model, or the
         model spends turns choosing tools that only ever return a denial
-        (bugs ledger D82). No permissions configured → everything permits.
+        (bugs ledger D82). No mode source and no permissions → everything permits.
         """
         return self._permission_denial(tool_name) is None
 

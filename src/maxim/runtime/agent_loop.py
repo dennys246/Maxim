@@ -2235,6 +2235,11 @@ def run_agentic_loop(
 
         executor = InstrumentedExecutor(executor, action_sink)
 
+    # The mode gate at dispatch (#826): the executor reads the SAME live mode the prompt roster
+    # reads each tick, so a tool outside the mode's set is refused, not merely unadvertised.
+    if executor is not None and hasattr(executor, "set_mode_source"):
+        executor.set_mode_source(lambda: state.data.get("mode", "observe"))
+
     # Create simulation adapter (Phase 4: isolate sim concerns)
     from maxim.runtime.sim_adapter import SimulationAdapter, NullSimulationAdapter
 
