@@ -229,7 +229,10 @@ both fear arms sit at the ceiling by design. Prereg v3 (the freeze) + §Outcome;
 enter, and the wall is further out. That is why Rung B's entry condition was made independent of this
 rung (Phase 5). Bound, and it is load-bearing: the apparatus has ONE discriminating world sensor, so
 what transferred is invariance to the two LOW-GAIN place absolutes, not to a changed situation; a
-night pool still reads 0.799, so the fear misses at night and the frozen day hides it.
+night pool still reads 0.799, so the fear misses at night and the frozen day hides it. **Corrected
+2026-09-25:** the 0.799 is `time_of_day` 0.99 — the minute before the clock WRAPS — not night; at the
+fear place midnight reads 0.903 (inside the key) and the fear misses only at time ≈ 0.94–0.99, the
+linear encoding of a circular clock ([#899](https://github.com/dennys246/Maxim/issues/899)). The lit-pond wall (0.588) stands.
 
 Prereg v3 on main; owner decisions D1–D4 taken; its instrument is `WaterTrial` per pool plus the
 committed replay. **It needs nothing from Phase 0** and does not wait for it (schedule below). It
@@ -340,8 +343,11 @@ infrastructure the review located, and the full four-lens review.
   rung A closes the door and the measured context wall — a lit pond at 0.588, a NIGHT POOL at 0.799,
   both under the 0.85 threshold — is left with no owner. That matters: it means Exp 60/61's EARNED
   drowning fear **misses at night** for representational reasons, and the frozen-day protocol is
-  what hides it. An entry condition that can only fire when an experiment FAILS is a trapdoor, not
-  a gate. So Rung B gets its own trigger, independent of rung A's outcome, in two ordered parts:
+  what hides it. **Corrected 2026-09-25:** the 0.799 row is time 0.99, just before the `time_of_day`
+  wrap; midnight at the fear place reads 0.903 (inside the key), so the "night miss" is the wrap
+  (#899, a keying defect), not night. The lit-pond wall (0.588) stands — and at 0.588 it is beyond any
+  graded read, so it too is a keying question. An entry condition that can only fire when an
+  experiment FAILS is a trapdoor, not a gate. So Rung B gets its own trigger, independent of rung A's outcome, in two ordered parts:
 
   - **SHAPE (free, offline, done 2026-09-20).** `docs/experiments/data/world_channel_landscape.py`
     sweeps the REAL declared roster across its REAL declared ranges through the shipped
@@ -356,7 +362,15 @@ infrastructure the review located, and the full four-lens review.
     so `time_of_day` actually varies. Shape says the landscape has a middle; support says whether the
     world ever visits it, and a graded read is worth building only where both hold. The one committed
     open-world trace cannot answer this: `light_level` 0.0 in 1193/1193 and `time_of_day` pinned in
-    1193/1193.
+    1193/1193. **Answered offline, 2026-09-25 — no rig run needed or built.** With an idle bot and mobs,
+    weather and movement off, light is a closed form in `time_of_day`, so a day is computable. At the
+    FEAR place (sealed shell: light 0 all day, only time moves) a day is 0.95 `exact`, 0.05 `middle`
+    [0.75, 0.85), 0.00 beyond — **no SUPPORT**, and the whole middle is time 0.94–0.99, the wrap. The
+    pre-registered rig protocol was withdrawn on a two-lens design review (confounding + environment,
+    both DO-NOT-BUILD): it measured an open spawn, where sky light moves and gives apparent SUPPORT
+    (0.27) for a state the fear was never learned in —
+    [rationale/rungb-support/](../experiments/rationale/rungb-support/). Memory 2S-e (B), a graded
+    read's consumer, is parked: [deferred/generalization_by_pattern_completion.md](deferred/generalization_by_pattern_completion.md).
 
   **Recorded limit, so nobody re-measures this in the wrong place:** the water classroom cannot
   answer a generalization question at any n. Its `live_contributors` is `["is_in_water"]` — ONE
@@ -443,6 +457,11 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   Exp 56 re-baseline on 1.20.4 is a 1.3.0 debt** (never run; Exp 61 reused the fabric without it):
   done before 1.3.0, or the row carries the dated scope annotation "1.16.5-pinned; the fabric was
   reused on 1.20.4 by Exp 61 — recorded, not re-earned" and 1.4.0 inherits nothing unstated.
+- **T4a — consumerless mechanisms walked.** Every mechanism that shipped wired but with no consumer
+  and a stated consumer trigger either has had its trigger fire (and a consumer entered through its
+  own review) or is marked `Dormant since <date>` in its docstring, with the dormancy noted in the
+  release PR. Today that is one entry: memory 2S-d's situation recall
+  ([memory_2s_d_situation_cue.md](memory_2s_d_situation_cue.md) §When the recall gets a consumer).
 - **T5 (conditional) — E2.** Ships in 1.4.0 only if its Phase 5 relief store entered through its own
   review AND its outcome is recorded by the time T1–T4 hold; else 1.4.x, and the CHANGELOG headline
   says so. Its instrument (1b, 3, 5) enters with it, not with T1.
