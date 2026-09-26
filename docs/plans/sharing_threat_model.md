@@ -295,9 +295,12 @@ adapter's pre-merge review round, 2026-09-05):
   min, credit source common-or-`mixed` — instead of the last row winning; and a folded key keeps the
   inherent (safety-floor) marker only when every folded bias row was inherent (before: ANY, so a
   learned bias could overwrite an inherent value and stay decay-exempt). One fold,
-  `merge.fold_cluster_rows`, serves this seam and the export scrub; `nac_merge` applies the same
-  rule across its two sides (a key is marked only when every side holding its bias row marks it; a
-  dangling marker never marks anything). Guard:
+  `merge.fold_cluster_rows`, serves this seam and the export scrub. Across a merge's two sides,
+  `substrate_merge` admits markers RECEIVER-first (`_admit_inherent_markers`): every receiver marker
+  on a row it holds survives (no donor can strip an innate fear's decay exemption), and a donor's
+  (Queen-admitted) marker attaches only where the receiver holds no learned row at that key or marks
+  it too (a donor prior never makes the receiver's learned value exempt); a dangling marker marks
+  nothing. Bare `nac_merge` keeps its commutative union. Guard:
   `tests/unit/test_cluster_row_fold.py` (each rule proven by deletion).
 
 **Out of scope BY DECLARATION** (so absence is a decision, not an oversight):

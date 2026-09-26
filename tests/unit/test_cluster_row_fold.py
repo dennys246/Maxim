@@ -78,36 +78,63 @@ def test_ingest_folds_two_donor_situations_that_align_onto_one(tmp_path: Path):
     assert not [k for k in report.nac.get("inherent_bias_keys", []) if k in folded]
 
 
-# ── review round: the third seam (nac_merge), dangling markers, a scrub that must not fail open ──
+# ── review round: the third seam (substrate_merge's markers), dangling markers, a scrub that must not fail open ──
 
 
-K = f"me{S}r1{S}tool:flee"
+K = f"me{S}L-a{S}tool:flee"
+D = f"donor{S}R-a{S}tool:flee"
+
+
+def _ec(prefix: str) -> dict:
+    return {f"{prefix}-a": {"embedding": [1.0, 0.0], "modality": "interoception", "count": 1, "source": prefix}}
 
 
 @pytest.mark.parametrize(
-    ("left", "right", "marked"),
+    ("receiver", "donor", "marked"),
     [
-        # receiver learned + donor inherent at one key: the mean is not a safety-floor value
-        ({"cluster_reward_bias": {K: 0.6}}, {"cluster_reward_bias": {K: -0.2}, "inherent_bias_keys": [K]}, False),
-        # receiver inherent + donor learned: diluted, so it may not keep the marker
-        ({"cluster_reward_bias": {K: 0.6}, "inherent_bias_keys": [K]}, {"cluster_reward_bias": {K: -0.2}}, False),
+        # receiver inherent + donor learned: the safety floor is the RECEIVER's -- no donor removes it
+        ({"cluster_reward_bias": {K: -0.6}, "inherent_bias_keys": [K]}, {"cluster_reward_bias": {D: 0.4}}, True),
+        # receiver learned + donor inherent: a Queen prior never makes the receiver's learned value exempt
+        ({"cluster_reward_bias": {K: 0.6}}, {"cluster_reward_bias": {D: -0.2}, "inherent_bias_keys": [D]}, False),
         # both inherent: stays inherent
         (
             {"cluster_reward_bias": {K: 0.6}, "inherent_bias_keys": [K]},
-            {"cluster_reward_bias": {K: -0.2}, "inherent_bias_keys": [K]},
+            {"cluster_reward_bias": {D: -0.2}, "inherent_bias_keys": [D]},
             True,
         ),
-        # receiver inherent, no donor row at that key: untouched, keeps its marker
-        ({"cluster_reward_bias": {K: 0.6}, "inherent_bias_keys": [K]}, {"cluster_reward_bias": {}}, True),
+        # receiver holds no row: the donor's inherent prior arrives marked
+        ({}, {"cluster_reward_bias": {D: -0.2}, "inherent_bias_keys": [D]}, True),
         # a donor marker with no bias row of its own (dangling) never marks a receiver's learned bias
-        ({"cluster_reward_bias": {K: 0.6}}, {"cluster_reward_bias": {}, "inherent_bias_keys": [K]}, False),
+        ({"cluster_reward_bias": {K: 0.6}}, {"cluster_reward_bias": {}, "inherent_bias_keys": [D]}, False),
+        # neither side holds a row: a marker on either side marks nothing
+        ({"inherent_bias_keys": [K]}, {"inherent_bias_keys": [D]}, False),
     ],
 )
-def test_nac_merge_keeps_a_marker_only_when_every_side_holding_the_row_marks_it(left, right, marked):
+def test_substrate_merge_markers_are_receiver_first(receiver, donor, marked):
+    from maxim.hivemind.merge import substrate_merge
+
+    result = substrate_merge(
+        receiver_nac=receiver,
+        receiver_ec=_ec("L"),
+        donor_nac=donor,
+        donor_ec=_ec("R"),
+        receiver_source="recv",
+        donor_source="donor",
+        receiver_agent_id="me",
+    )
+    assert (K in result.nac["inherent_bias_keys"]) is marked
+    assert set(result.nac["inherent_bias_keys"]) <= set(result.nac.get("cluster_reward_bias") or {})
+
+
+def test_nac_merge_stays_commutative_on_markers():
+    """The receiver-first rule lives in substrate_merge; the bare fold is a symmetric union."""
     from maxim.hivemind.merge import nac_merge
 
-    out = nac_merge(left=left, left_source="local", right=right, right_source="peer")
-    assert (K in out["inherent_bias_keys"]) is marked
+    a = {"cluster_reward_bias": {K: 0.6}, "inherent_bias_keys": [K]}
+    b = {"cluster_reward_bias": {K: -0.2}}
+    ab = nac_merge(left=a, left_source="x", right=b, right_source="y")
+    ba = nac_merge(left=b, left_source="y", right=a, right_source="x")
+    assert ab["inherent_bias_keys"] == ba["inherent_bias_keys"] == [K]
 
 
 def test_a_dangling_marker_is_dropped_by_the_fold():
@@ -132,3 +159,19 @@ def test_the_scrub_replaces_its_fields_and_never_fails_open():
         )
     with pytest.raises(ValueError, match="cluster_reward_source is not an object"):
         scrub_nac_state_for_bundle({"links": {}, "cluster_reward_source": [1]})
+    # an absent (None) field is not a copy of the raw one: the scrubbed key never leaks through
+    raw = f"a{S}c{S}tool:use:ps aux"
+    out = scrub_nac_state_for_bundle(
+        {"links": {}, "cluster_reward_bias": {raw: 0.1}, "cluster_reward_source": None, "inherent_bias_keys": [raw]}
+    )
+    assert raw not in out["cluster_reward_bias"] and raw not in out.get("inherent_bias_keys", [])
+    # a None bias field must not survive as a raw None (the pop, not setdefault, is what replaces it)
+    assert scrub_nac_state_for_bundle({"links": {}, "cluster_reward_bias": None})["cluster_reward_bias"] == {}
+
+
+def test_admission_ignores_a_dangling_donor_marker_directly():
+    """Via substrate_merge the re-key fold already drops a dangling donor marker; the admission rule
+    must not depend on that upstream step."""
+    from maxim.hivemind.merge import _admit_inherent_markers
+
+    assert _admit_inherent_markers({}, {"cluster_reward_bias": {}, "inherent_bias_keys": [K]}) == []

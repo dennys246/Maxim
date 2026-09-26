@@ -571,30 +571,34 @@ def nac_merge(
             left.get("event_outcome_welford", {}) or {},
             right.get("event_outcome_welford", {}) or {},
         ),
-        # 1.2 poison-resistance slice: the inherent-class marker travels through the fold. A rebuilt-dict
-        # merge that dropped it would silently strip decay exemption from every receiver-held inherent bias
-        # (the D43 delete-state shape one field over). But not as a plain UNION (#914): where both sides
-        # hold a bias row at one key, the merged value is their mean -- so the key stays inherent only when
-        # EVERY side holding a row marks it. Otherwise a learned bias would become decay-exempt by averaging
-        # with an inherent one, or an inherent value be diluted while keeping its marker.
-        "inherent_bias_keys": _merge_inherent_markers(left, right),
+        # 1.2 poison-resistance slice: the inherent-class marker travels through the fold as a sorted union.
+        # A rebuilt-dict merge that dropped it would silently strip decay exemption from every receiver-held
+        # inherent bias (the D43 delete-state shape one field over). ``nac_merge`` is SYMMETRIC (commutative,
+        # module docstring), so it cannot know which side is the receiver: the receiver-first admission rule
+        # for markers lives in ``substrate_merge`` (``_admit_inherent_markers``, #914).
+        "inherent_bias_keys": sorted(
+            set(left.get("inherent_bias_keys", []) or []) | set(right.get("inherent_bias_keys", []) or [])
+        ),
     }
 
 
-def _merge_inherent_markers(left: dict[str, Any], right: dict[str, Any]) -> list[str]:
-    """The merged ``inherent_bias_keys``: a key is marked when at least one side marks it AND every side
-    holding a ``cluster_reward_bias`` row at that key marks it (a marker whose own row is absent -- a
-    dangling marker -- is ignored). The rule :func:`fold_cluster_rows` applies within one state, across
-    the two sides of a merge."""
-    sides = [
-        (set(side.get("inherent_bias_keys", []) or []), set((side.get("cluster_reward_bias") or {}).keys()))
-        for side in (left, right)
-    ]
-    kept: set[str] = set()
-    for marked, rows in sides:
-        for key in marked & rows:
-            if all(key in other_marked for other_marked, other_rows in sides if key in other_rows):
-                kept.add(key)
+def _admit_inherent_markers(receiver: dict[str, Any], donor: dict[str, Any]) -> list[str]:
+    """The inherent (safety-floor) markers a merged state carries -- RECEIVER-first (#914; the inherent
+    class is "tighten-only under merge, for this class unconditionally", coding_habits_oasis.md §4):
+
+    - every receiver marker on a row the receiver holds SURVIVES: no donor, learned or not, can remove
+      one, so an innate fear never starts to decay because an import touched its key;
+    - a donor marker (Queen-admitted -- ingest refuses any other) attaches only where the receiver holds
+      NO learned row at that key, or marks it too: a Queen prior never makes a receiver's own learned
+      value decay-exempt by averaging into it;
+    - a marker without its own bias row (dangling) marks nothing.
+    """
+    receiver_rows = set((receiver.get("cluster_reward_bias") or {}).keys())
+    receiver_marked = set(receiver.get("inherent_bias_keys", []) or [])
+    donor_rows = set((donor.get("cluster_reward_bias") or {}).keys())
+    donor_marked = set(donor.get("inherent_bias_keys", []) or [])
+    kept = receiver_marked & receiver_rows
+    kept |= {key for key in donor_marked & donor_rows if key not in receiver_rows or key in receiver_marked}
     return sorted(kept)
 
 
@@ -1016,7 +1020,8 @@ def fold_cluster_rows(
     ``"mixed"``. ``transform`` returns the new key, or ``None`` to drop the row. An ``inherent_bias_keys``
     marker survives only when EVERY ``cluster_reward_bias`` row folding into its key was marked: a
     learned bias folded into an inherent one never becomes decay-exempt, and never dilutes the safety
-    floor while wearing its marker (``nac_merge`` applies the same rule across a merge's two sides). A
+    floor while wearing its marker (across a merge's two sides ``substrate_merge`` admits markers
+    receiver-first instead: ``_admit_inherent_markers``). A
     marker whose own bias row is absent is dropped (a dangling marker is never passed through).
     Weighting: donor cluster rows carry no per-row counts, so the mean is unweighted -- the only fold
     the data supports. Returns only the fields present in ``nac_state`` (a wrong-typed field RAISES:
@@ -1492,6 +1497,8 @@ def substrate_merge(
     # exists to bypass. See tighten_negative_biases for the semantics and
     # the sign-scope guarantee.
     merged_nac, tightened = tighten_negative_biases(merged_nac, receiver_nac)
+    # The safety floor's markers, receiver-first (the symmetric nac_merge only unions them).
+    merged_nac["inherent_bias_keys"] = _admit_inherent_markers(receiver_nac or {}, rekeyed_donor)
 
     return SubstrateMergeResult(
         nac=merged_nac,

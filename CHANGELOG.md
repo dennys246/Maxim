@@ -373,7 +373,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   merge layer's semantics — reward bias mean, fear min (the most aversive wins), credit source common
   or `mixed` — and the inherent (safety-floor) marker survives only when every folded bias was
   inherent. Before, the last row overwrote the others and a learned bias could inherit the marker and
-  become decay-exempt. The export scrub uses the same fold (`merge.fold_cluster_rows`), and `nac_merge` applies the same marker rule across a merge's two sides — a receiver's learned bias averaged with a donor's inherent one (or the reverse) is no longer left decay-exempt.
+  become decay-exempt. The export scrub uses the same fold (`merge.fold_cluster_rows`), and `substrate_merge` (ingest) now admits markers receiver-first: your own inherent (safety-floor) markers always survive a merge, and a donor's marker attaches only where you hold no learned bias at that key (or mark it too) — so an import can neither make your learned bias decay-exempt nor strip an innate fear's exemption. Bare `nac_merge` still unions markers and stays commutative.
 
 - **A bundle exported by an agent that had ingested others' material is no longer refused by every
   receiver, and no longer publishes their ids.** Export copied link / EC-node provenance verbatim, but
