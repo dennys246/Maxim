@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Public format 1 is frozen** (public_oasis Phase 0 item 2). A downloaded release is a compatibility
+  promise: every 1.x release reads both bundle shapes (signed release, schema 3 / scheme v2; unsigned,
+  schema 2) as published, and a format change is a recorded decision, never a side effect.
+  `docs/plans/public_format_freeze.md` says what is frozen (both shapes, the signed payload, the
+  entry index, the slice allowlists, the receiver's §5 limits), the change rule, the horizon, and what
+  the format does NOT promise (the properties declared for the privacy read); `tests/unit/test_public_format_freeze.py` holds deterministic fixtures to it
+  in both directions — they still verify and ingest, and today's producer still composes them byte for
+  byte.
+
 - **Pre-freeze hardening of the bundle format** (public_oasis Phase 0 item 2, before the public format
   freeze). The export scrub is now an ALLOWLIST at every level (top-level NAc fields, link fields, EC
   node fields, encoder provenance), so `saved_at`, unknown fields and a future producer's additions

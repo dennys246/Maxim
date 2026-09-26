@@ -131,7 +131,8 @@ Cheap, and all of it is owed regardless of whether Phase 1 ships.
    part 1, the pre-freeze hardening, shipped as #915 — allowlist scrub, link ids that are no guess
    oracle, links as agent-scoped data, one strict manifest reader, the identity grammar, and §5
    amendments. It surfaced #914 and #913, both scheduled into 1.3.1. Part 2, the freeze record and a
-   byte-for-byte fixture guard, follows #914.)*
+   byte-for-byte fixture guard, follows #914.)* *(2026-09-26: DONE — public format 1 FROZEN:
+   [public_format_freeze.md](public_format_freeze.md) + `tests/unit/test_public_format_freeze.py`.)*
 3. **Publication-privacy read.** Bundles are NAc+EC only and identity-scrubbed twice, but cluster,
    percept and goal keys carry sim-derived text. One human read of the actual exemplar's key
    material before the first upload.
