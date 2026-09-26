@@ -89,6 +89,13 @@ def agent_ids(nac: Mapping[str, Any]) -> set[str]:
     return ids
 
 
+def is_agent_id(value: Any) -> bool:
+    """A usable agent id: a non-empty string holding neither key separator. ``reward_bias`` keys split
+    on ``:`` and the composite keys on ``\x1f``, so an id containing either would be misread as a
+    different agent (and its own rows dropped as foreign)."""
+    return isinstance(value, str) and bool(value) and ":" not in value and NAC_KEY_SEP not in value
+
+
 def _retoken(key: Any, sep: str) -> str:
     head, _, rest = str(key).partition(sep)
     return f"{AGENT_TOKEN}{sep}{rest}"
@@ -147,7 +154,7 @@ def normalize_agent_segment(nac: Mapping[str, Any], *, own_agent_id: str | None 
     ids = agent_ids(nac)
     real = ids - {AGENT_TOKEN}
     if own_agent_id is not None:
-        if not isinstance(own_agent_id, str) or not own_agent_id or own_agent_id == AGENT_TOKEN:
+        if not is_agent_id(own_agent_id) or own_agent_id == AGENT_TOKEN:
             raise EntryIndexError(f"own_agent_id {own_agent_id!r} is not an agent id")
         if real and own_agent_id not in real:
             raise EntryIndexError(
@@ -353,6 +360,7 @@ __all__ = [
     "digest",
     "entries",
     "jcs",
+    "is_agent_id",
     "keep_agent_rows",
     "normalize_agent_segment",
     "verify_index",

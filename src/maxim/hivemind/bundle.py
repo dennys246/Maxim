@@ -1071,8 +1071,9 @@ class MemberReadError(ValueError):
 
 
 def bounded_member_read(zf: zipfile.ZipFile, name: str, *, max_bytes: int) -> bytes:
-    """Decompress one member with the size cap enforced on ACTUAL bytes; never raises anything but
-    :class:`MemberReadError` on bad input.
+    """Decompress one member with the size cap enforced on ACTUAL bytes; raises only
+    :class:`MemberReadError` on a bad member (``KeyError`` for a name the archive lacks -- callers
+    check membership first).
 
     The central-directory ``file_size`` is itself an attacker assertion -- a binary-patched header can
     declare 10 bytes over an 800 MB stream and ``zf.read`` inflates the whole thing before the CRC
@@ -1135,7 +1136,10 @@ def _strict_json(raw: bytes, what: str) -> Any:
     def no_constants(name: str) -> Any:
         raise ValueError(f"{what}: non-finite number {name}")
 
-    return json.loads(raw.decode("utf-8"), object_pairs_hook=no_duplicates, parse_constant=no_constants)
+    try:
+        return json.loads(raw.decode("utf-8"), object_pairs_hook=no_duplicates, parse_constant=no_constants)
+    except RecursionError as exc:
+        raise ValueError(f"{what}: nests too deeply to parse") from exc
 
 
 def _key_bytes(value: Any) -> bytes | None:
@@ -1180,7 +1184,7 @@ def verify_bundle_zip(
     Never raises on bad input -- every failure is ``ok=False`` with a reason. Every member is read at
     most once, through :func:`bounded_member_read`, under the per-member and total caps; a v2 release
     must consist of EXACTLY its manifest, its declared slices and ``signature.json``, checked before
-    anything but the manifest is decompressed.
+    any slice (or undeclared member) is decompressed.
     """
     reader = _CappedReader(zf, max_member_bytes=max_member_bytes, max_total_bytes=max_total_bytes)
     try:
@@ -1233,6 +1237,8 @@ def _verify_bundle_zip(
         return BundleVerification(False, "no manifest.json")
     try:
         raw = _strict_json(read("manifest.json"), "manifest.json")
+    except MemberReadError:
+        raise  # reported as "unreadable member", not as a JSON fault
     except (ValueError, UnicodeDecodeError) as exc:
         return BundleVerification(False, f"manifest.json is not strict JSON: {exc}")
     if not isinstance(raw, dict):
@@ -1273,6 +1279,8 @@ def _verify_v2(
 ) -> BundleVerification:
     try:
         sig_doc = _strict_json(read(SIGNATURE_MEMBER), SIGNATURE_MEMBER)
+    except MemberReadError:
+        raise  # reported as "unreadable member", not as a JSON fault
     except (ValueError, UnicodeDecodeError) as exc:
         return BundleVerification(False, f"{SIGNATURE_MEMBER} is not strict JSON: {exc}")
     if not isinstance(sig_doc, dict):
@@ -1376,8 +1384,10 @@ def bundle_signature_scheme(bundle_path: str | Path) -> int | None:
         if SIGNATURE_MEMBER in zf.namelist():
             return SIGNATURE_SCHEME_V2
         try:
-            raw = json.loads(bounded_member_read(zf, "manifest.json", max_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES))
-        except (KeyError, ValueError, UnicodeDecodeError):
+            raw = json.loads(
+                bounded_member_read(zf, "manifest.json", max_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES).decode("utf-8")
+            )
+        except (KeyError, ValueError, UnicodeDecodeError, RecursionError):
             return None
     return 1 if isinstance(raw, dict) and raw.get("signature") else None
 
@@ -1459,29 +1469,11 @@ def extract_bundle(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     with zipfile.ZipFile(bundle_path, "r") as zf:
-        if "manifest.json" not in zf.namelist():
-            raise ValueError(f"bundle {bundle_path} missing manifest.json")
-        manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
-        if not isinstance(manifest, dict):
-            raise ValueError(f"manifest.json must be a JSON object, got {type(manifest).__name__}")
-
-        # Bundle envelope migration (post-fold scaffolding for 1.1+):
-        # routes the manifest through the migration registry before the
-        # kind / schema_version validation runs. At 1.0 the registry is
-        # empty so this is a no-op; 1.1's first bundle migration just
-        # registers a ``v1 → v2`` function and existing 1.0 bundles
-        # upgrade transparently.
-        manifest = migrate_bundle_envelope(manifest)
-
-        check_format_version(manifest, "substrate_bundle", log=logger)
-
-        if manifest.get("kind") != BUNDLE_KIND:
-            raise ValueError(f"manifest kind {manifest.get('kind')!r} != {BUNDLE_KIND!r}")
-        schema_v = manifest.get("schema_version")
-        if not isinstance(schema_v, int) or schema_v > BUNDLE_SCHEMA_VERSION:
-            raise ValueError(
-                f"manifest schema_version {schema_v!r} unsupported (this build supports up to {BUNDLE_SCHEMA_VERSION})"
-            )
+        # The one manifest reader (bounded, migrated, kind/schema/format validated).
+        manifest = _manifest_from_zip(zf, str(bundle_path))
+        read = _CappedReader(
+            zf, max_member_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES, max_total_bytes=MAX_TOTAL_UNCOMPRESSED_BYTES
+        )
 
         # Pre-validate EVERY entry path before writing anything — a
         # bundle with one good slice and one ZIP-slip slice writes
@@ -1497,7 +1489,7 @@ def extract_bundle(
                 # shape instead of the on-disk legacy one.
                 atomic_write_text(str(target), json.dumps(manifest, indent=2, sort_keys=True))
                 continue
-            content = zf.read(name).decode("utf-8")
+            content = read(name).decode("utf-8")
             atomic_write_text(str(target), content)
 
     logger.info("Extracted substrate bundle from %s to %s", bundle_path, output_dir)
@@ -1508,7 +1500,14 @@ def _manifest_from_zip(zf: zipfile.ZipFile, source_label: str) -> dict[str, Any]
     """Read + validate ``manifest.json`` from an open bundle ZIP (kind/schema/format)."""
     if "manifest.json" not in zf.namelist():
         raise ValueError(f"bundle {source_label} missing manifest.json")
-    manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+    # Bounded on ACTUAL bytes: this runs before any trust check on the network-facing paths (the
+    # Oasis /contribute handler, hive pull, inspect). MemberReadError is a ValueError.
+    try:
+        manifest = json.loads(
+            bounded_member_read(zf, "manifest.json", max_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES).decode("utf-8")
+        )
+    except RecursionError as exc:
+        raise ValueError(f"bundle {source_label}: manifest.json nests too deeply to parse") from exc
     if not isinstance(manifest, dict):
         raise ValueError(f"manifest.json must be a JSON object, got {type(manifest).__name__}")
     manifest = migrate_bundle_envelope(manifest)

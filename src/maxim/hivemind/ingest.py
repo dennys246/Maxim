@@ -46,6 +46,7 @@ from maxim.hivemind.entry_index import (
     NON_SITUATION_AGENT_FIELDS,
     EntryIndexError,
     agent_ids,
+    is_agent_id,
     keep_agent_rows,
 )
 from maxim.hivemind.signing import SIGNATURE_MEMBER
@@ -297,6 +298,8 @@ def _loads_strict(raw: bytes, *, slice_name: str) -> Any:
         raise
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise IngestRefused(duty="V2", reason=f"malformed JSON in {slice_name}: {exc}") from exc
+    except RecursionError as exc:
+        raise IngestRefused(duty="V2", reason=f"{slice_name} nests too deeply to parse") from exc
 
 
 def _require_finite(value: Any, *, where: str) -> float:
@@ -874,13 +877,15 @@ def ingest_bundle(
     receiver changes on refusal.
 
     ``accept_v1`` (with ``require_signed``): whether a legacy v1 signature is still accepted. It
-    defaults to True for the local/experiment path (the Exp 56/61 bundles are v1); an Oasis pull
-    passes its registry's decision.
+    defaults to True until the per-Oasis registry flag lands (item 7 PR B); no production caller
+    passes it yet, so every ``--require-signed`` ingest and ``hive pull`` accepts v1 today.
 
     The file is read ONCE: the journal digest, the manifest and every verified member come from the
     same in-memory snapshot, so a file swapped mid-ingest cannot pair one bundle's trust decisions
     with another's bytes.
     """
+    if receiver_agent_id is not None and not is_agent_id(receiver_agent_id):
+        raise ValueError(f"receiver_agent_id {receiver_agent_id!r} is not an agent id (no ':' or \\x1f)")
     bundle_path = Path(bundle_path)
     notes: list[str] = []
     now = time.time()
@@ -1051,30 +1056,34 @@ def ingest_bundle(
     valence_entries: dict[str, float] = {}
     if donor_nac is not None:
         donor_nac, links_dropped, welford_dropped = _receiver_scrub(donor_nac, notes=notes)
+        # The operator's V4 report shows every valence the donor CLAIMS -- computed before the drop
+        # below, so a valence the receiver will not keep is still visible (arch-lens finding 7: a lossy
+        # trust report is worse than a longer one); the note says how many were not admitted.
+        for key, valence in (donor_nac.get("percept_valences", {}) or {}).items():
+            parts = str(key).split(NAC_KEY_SEP)
+            if len(parts) == 3:
+                # Keyed by entity_class + failure_mode: two failure modes on
+                # one entity class must both reach the operator's report.
+                valence_entries[f"{parts[1]} ({parts[2]})"] = float(valence)
         # Agent-keyed rows that are NOT situation rows (percept valences, per-tool outcome stats, the
         # node-keyed reward bias) cannot be re-keyed onto a receiver situation, so they keep the agent
-        # segment they arrived with -- and NAc reads filter on the reader's own agent id. A row this
-        # receiver can never read is dropped here, not stored as inert clutter that a later signed
-        # export would have to reason about. Kept: rows under the receiver's own id, or (no receiver
-        # id given) any real id, exactly the rows a read could reach before.
+        # segment they arrived with -- and NAc reads filter on the reader's own agent id. A row the
+        # receiving agent can never read is dropped here, not stored as inert clutter that a later
+        # signed export would have to reason about. Kept: rows under the receiver's own id, or (no
+        # receiver id given) any real id, exactly the rows a read could reach before.
         donor_nac, foreign_rows_dropped = keep_agent_rows(
             donor_nac,
+            # (With no receiver id, a token row cannot get here -- the `rekey` refusal above fires on
+            # it first; the `!= AGENT_TOKEN` arm is the belt behind that refusal.)
             lambda agent: agent == receiver_agent_id if receiver_agent_id is not None else agent != AGENT_TOKEN,
             fields=NON_SITUATION_AGENT_FIELDS,
         )
         if foreign_rows_dropped:
             notes.append(
-                f"{foreign_rows_dropped} non-situation NAc row(s) filed under another agent dropped (never "
-                "readable by this receiver; situation rows re-key)"
+                f"{foreign_rows_dropped} non-situation NAc row(s) (percept valences / outcome stats / node-keyed "
+                "reward bias) filed under another agent NOT admitted -- not readable by the receiving agent; "
+                "situation rows re-key. The V4 valence report lists what the donor claimed."
             )
-        for key, valence in (donor_nac.get("percept_valences", {}) or {}).items():
-            parts = str(key).split(NAC_KEY_SEP)
-            if len(parts) == 3:
-                # Keyed by entity_class + failure_mode: two failure modes on
-                # one entity class must both reach the operator's report
-                # (arch-lens finding 7 — a lossy trust report is worse than
-                # a longer one).
-                valence_entries[f"{parts[1]} ({parts[2]})"] = float(valence)
 
     # 10. The merge — through substrate_merge (alignment + re-key + fold +
     # the tighten-only clamp at its decided seam), with the reserved

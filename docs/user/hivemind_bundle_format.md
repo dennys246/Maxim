@@ -85,7 +85,8 @@ they cannot verify.
   inspect --entries <bundle>` prints every entry's digest for any bundle.
 - **Members:** a release is EXACTLY `manifest.json`, its declared slices and `signature.json` — no
   more, no fewer, names `[A-Za-z0-9._-]`, no duplicates, `signature.json` never declared as a slice.
-  Every member is read at most once, under the V6 size caps enforced on the actual decompressed bytes.
+  Every member is read at most once, under the V6 size caps enforced on the actual decompressed bytes;
+  the member set is checked before any slice or undeclared member is decompressed.
 - **One agent's learning.** A release ships only the exporting agent's NAc rows (`--agent-id` names it
   when the state holds several; rows filed under any other agent are dropped, with a count), under the
   agent segment `_agent`. Ingest re-keys the situation rows to `--receiver-agent-id`, which it therefore

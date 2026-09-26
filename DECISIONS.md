@@ -33,7 +33,7 @@ Phase 0 item 7, landing before the item-2 format freeze):
   (`_agent`), so local agent ids never ship and two agents' rows can never collapse onto one key. A
   receiver MUST re-key the situation rows to its own agent id (ingest refuses a token-keyed bundle
   without one) and drops the non-situation rows (percept valences, outcome stats, node-keyed bias)
-  filed under another agent, which it could never read. Making those transfer is a behaviour change,
+  filed under another agent, which the receiving agent could never read. Making those transfer is a behaviour change,
   deferred on a trigger: [docs/plans/deferred/transfer_non_situation_nac_rows.md](docs/plans/deferred/transfer_non_situation_nac_rows.md).
 
 Why: the index is what lets social_referencing select and admit Queen material per entry without a

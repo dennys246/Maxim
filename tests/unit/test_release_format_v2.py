@@ -517,3 +517,210 @@ def test_ingest_drops_non_situation_rows_it_can_never_read(tmp_path):
     assert report.foreign_rows_dropped == 1
     assert not (report.nac.get("percept_valences") or {})
     assert all(k.startswith(f"receiver{S}") for k in report.nac["cluster_fear"])
+
+
+# ── second review round (re-read of the fold) ──────────────────────────────────────────────────
+
+
+def _patch_member_field(path: Path, name: str, *, flag: int | None = None, method: int | None = None) -> None:
+    """Set one member's general-purpose flag / compression method in both headers."""
+    import struct
+
+    data = bytearray(path.read_bytes())
+    eocd = data.rfind(b"PK\x05\x06")
+    count, _size, cd_offset = struct.unpack_from("<HII", data, eocd + 10)
+    pos = cd_offset
+    for _ in range(count):
+        n_len, x_len, c_len = struct.unpack_from("<HHH", data, pos + 28)
+        if data[pos + 46 : pos + 46 + n_len].decode() == name:
+            local = struct.unpack_from("<I", data, pos + 42)[0]
+            if flag is not None:
+                struct.pack_into("<H", data, pos + 8, flag)
+                struct.pack_into("<H", data, local + 6, flag)
+            if method is not None:
+                struct.pack_into("<H", data, pos + 10, method)
+                struct.pack_into("<H", data, local + 8, method)
+        pos += 46 + n_len + x_len + c_len
+    path.write_bytes(bytes(data))
+
+
+@pytest.mark.parametrize(("flag", "method"), [(0x1, None), (None, 99)], ids=["encrypted", "unknown-compression"])
+def test_an_unreadable_member_is_a_refusal_not_a_crash(tmp_path, flag, method):
+    """zipfile raises RuntimeError (encrypted) / NotImplementedError (unknown method) -- both refusals."""
+    from maxim.hivemind.bundle import MemberReadError, bounded_member_read
+    from maxim.hivemind.signing import SIGNATURE_MEMBER
+
+    signer = _signer()
+    path = _compose(tmp_path, signer)
+    _patch_member_field(path, SIGNATURE_MEMBER, flag=flag, method=method)
+    result = _verify(path, signer)
+    assert not result.ok and "unreadable member" in result.reason
+    with zipfile.ZipFile(path) as zf, pytest.raises(MemberReadError):
+        bounded_member_read(zf, SIGNATURE_MEMBER, max_bytes=1 << 20)
+
+
+def test_the_verifier_caps_the_member_count_itself(tmp_path):
+    """Direct callers (verify_bundle_signature, a future Oasis gate) do not get ingest's V6 pre-check."""
+    from maxim.hivemind.bundle import MAX_BUNDLE_ENTRIES, verify_bundle_signature
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    signer = _signer()
+    members = read_members(_compose(tmp_path, signer))
+    for i in range(MAX_BUNDLE_ENTRIES):
+        members[f"pad{i}.json"] = b"{}"
+    ok, reason = verify_bundle_signature(
+        write_members(tmp_path / "many.zip", members),
+        trusted_keys={"queen-a": signer.public_key_b64},
+        accept_v1=True,
+    )
+    assert not ok and f"(cap {MAX_BUNDLE_ENTRIES})" in reason
+
+
+def _deep(n: int = 20_000) -> bytes:
+    return b"[" * n + b"]" * n
+
+
+def test_a_deeply_nested_manifest_is_a_refusal_everywhere(tmp_path):
+    from maxim.hivemind.bundle import read_bundle_manifest_bytes
+    from maxim.hivemind.ingest import IngestionJournal, IngestRefused, ingest_bundle
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    signer = _signer()
+    members = read_members(_compose(tmp_path, signer))
+    members["manifest.json"] = _deep()
+    path = write_members(tmp_path / "deep.zip", members)
+    result = _verify(path, signer)
+    assert not result.ok and "nests too deeply" in result.reason
+    with pytest.raises(ValueError, match="nests too deeply"):
+        read_bundle_manifest_bytes(path.read_bytes())
+    with pytest.raises((IngestRefused, ValueError)):
+        ingest_bundle(
+            path,
+            journal=IngestionJournal(tmp_path / "j.json"),
+            receiver_nac=None,
+            receiver_ec_nodes=None,
+            trusted_sources=frozenset({DONOR}),
+            receiver_body=BODY,
+        )
+
+
+def test_a_deeply_nested_slice_is_refused_at_ingest(tmp_path):
+    from maxim.hivemind.ingest import _loads_strict, IngestRefused
+
+    with pytest.raises(IngestRefused, match="nests too deeply"):
+        _loads_strict(_deep(), slice_name="nac.json")
+
+
+def test_the_manifest_reader_and_extract_are_bounded(tmp_path, monkeypatch):
+    """The manifest is read before any trust check on /contribute, hive pull and inspect; extract reads
+    every member. Both go through the capped reader (a lying header is a ValueError, not an inflate)."""
+    import maxim.hivemind.bundle as bundle_mod
+    from maxim.hivemind.bundle import compose_bundle, extract_bundle, read_bundle_manifest_bytes
+
+    path = tmp_path / "u.zip"
+    compose_bundle(
+        nac_state=_nac(),
+        ec_substrate_nodes=_ec(),
+        output_path=path,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+    )
+    _patch_member_header(path, "manifest.json", usize=10)
+    with pytest.raises(ValueError, match="lies about its size"):
+        read_bundle_manifest_bytes(path.read_bytes())
+    fresh = tmp_path / "f.zip"
+    compose_bundle(
+        nac_state=_nac(),
+        ec_substrate_nodes=_ec(),
+        output_path=fresh,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+    )
+    monkeypatch.setattr(bundle_mod, "MAX_TOTAL_UNCOMPRESSED_BYTES", 64)
+    with pytest.raises(ValueError, match="in total"):
+        extract_bundle(fresh, tmp_path / "out")
+
+
+def test_ingest_reads_the_file_once(tmp_path, monkeypatch):
+    """The digest, the manifest and every verified member come from ONE snapshot: no ZipFile is ever
+    opened on the path (a file swapped mid-ingest cannot pair two bundles)."""
+    import maxim.hivemind.ingest as ingest_mod
+
+    signer = _signer()
+    path = _compose(tmp_path, signer)
+    real_zipfile = zipfile.ZipFile
+
+    def only_bytes(source, *a, **kw):
+        assert not isinstance(source, (str, Path)), f"ingest opened the path {source!r} again"
+        return real_zipfile(source, *a, **kw)
+
+    monkeypatch.setattr(ingest_mod.zipfile, "ZipFile", only_bytes)
+    assert _ingest_signed(path, signer, tmp_path).verification is not None
+
+
+@pytest.mark.parametrize("bad", ["a:b", f"a{S}b", ""])
+def test_an_agent_id_holding_a_key_separator_is_refused(tmp_path, bad):
+    from maxim.hivemind.entry_index import EntryIndexError, normalize_agent_segment
+
+    with pytest.raises(EntryIndexError):
+        normalize_agent_segment({}, own_agent_id=bad)
+    with pytest.raises(ValueError, match="not an agent id"):
+        from maxim.hivemind.ingest import IngestionJournal, ingest_bundle
+
+        ingest_bundle(
+            _compose(tmp_path, _signer()),
+            journal=IngestionJournal(tmp_path / "j.json"),
+            receiver_nac=None,
+            receiver_ec_nodes=None,
+            trusted_sources=frozenset({DONOR}),
+            receiver_body=BODY,
+            receiver_agent_id=bad,
+        )
+
+
+def _unsigned_with_valences(tmp_path: Path) -> Path:
+    from maxim.hivemind.bundle import compose_bundle
+    from tests.unit.test_hivemind_ingest import _nac_state
+
+    path = tmp_path / "exp-shape.zip"
+    compose_bundle(
+        nac_state=_nac_state(
+            cluster_fear={f"donor_agent{S}n1{S}drive:oxygen": -0.5},
+            percept_valences={f"donor_agent{S}zombie{S}drive:health": -0.4},
+        ),
+        ec_substrate_nodes=_ec(),
+        output_path=path,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+    )
+    return path
+
+
+@pytest.mark.parametrize(
+    ("receiver_agent_id", "dropped"),
+    [("recv_taught_42", 1), (None, 0), ("donor_agent", 0)],
+    ids=["other-agent-dropped", "no-receiver-id-kept", "same-agent-kept"],
+)
+def test_the_unsigned_drop_rule_the_experiment_harnesses_take(tmp_path, receiver_agent_id, dropped):
+    """The Exp 56/61/R3 shape: an UNSIGNED bundle whose rows carry the donor's real agent id. With a
+    different receiver id they are unreadable to it and dropped (counted); with no receiver id, or the
+    same id, they are exactly the rows a read could reach before, and are kept. The V4 valence report
+    lists the donor's claim either way."""
+    from maxim.hivemind.ingest import IngestionJournal, ingest_bundle
+
+    report = ingest_bundle(
+        _unsigned_with_valences(tmp_path),
+        journal=IngestionJournal(tmp_path / "j.json"),
+        receiver_nac=None,
+        receiver_ec_nodes=None,
+        trusted_sources=frozenset({DONOR}),
+        receiver_body=BODY,
+        receiver_agent_id=receiver_agent_id,
+    )
+    assert report.foreign_rows_dropped == dropped
+    assert bool(report.nac.get("percept_valences")) is (dropped == 0)
+    assert report.valence_entries == {"zombie (drive:health)": -0.4}
+    assert report.journal_entry["foreign_rows_dropped"] == dropped

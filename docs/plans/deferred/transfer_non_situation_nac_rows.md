@@ -16,7 +16,7 @@ measured and earned. Three other agent-keyed NAc fields carry no situation and s
 | `event_outcome_welford` | `agent␟tool` | the donor's outcome statistics blend into the receiver's (a donor n=900 swamps an own n=5) |
 | `reward_bias` | `agent:node` | legacy node-keyed bias; would also need the EC `id_map` |
 
-NAc reads filter on the reader's agent id, so these rows were ALWAYS inert at a receiver: first under
+NAc reads filter on the reader's agent id, so these rows were always inert for the receiving agent: first under
 the donor's id, and since release format v2 dropped at ingest (`IngestReport.foreign_rows_dropped`).
 
 ## Why not now
