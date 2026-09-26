@@ -318,6 +318,16 @@ merged_nac = nac_merge(
 
 See [hivemind.md](../hivemind.md) for the full merge and Oasis ingestion guide.
 
+### Pulling from an Oasis (`maxim hive`)
+
+| Command | What it does |
+|---|---|
+| `maxim hive add <name> <url> [--queen-key IDENTITY=PUBKEY_B64] [--domain TAG]` | Register an Oasis and its Queen public keys in `~/.config/maxim/hive.json`. A NEW entry refuses legacy v1-signed releases (`accept_v1: false`); re-adding keeps the entry's policy. |
+| `maxim hive trust <name> [--allow-unsigned\|--require-signed] [--inherent\|--no-inherent] [--accept-v1\|--refuse-v1] [--trust-source ID \| --clear-trust-sources]` | Set that Oasis's consumer trust policy. `--accept-v1` takes the legacy v1-signed lineages (removed at 2.0); `--allow-unsigned` disables signature verification altogether. |
+| `maxim hive list` / `maxim hive remove <name>` | Show registered Oases with their policy / unregister one. |
+| `maxim hive pull --from <name> --session <DIR> --receiver-body NAME [--receiver-agent-id ID] [--release ID] [--domain TAG] [--apply]` | Fetch that Oasis's releases and ingest each through `substrate ingest` under the registered policy, oldest `release_sequence` first. `--receiver-agent-id` is required for a v2 release carrying memory rows (they re-key to your agent). Dry run unless `--apply`. |
+| `maxim substrate ingest <bundle> --session <DIR> --receiver-body NAME --trust ID [--require-signed --trust-key IDENTITY=PUBKEY_B64 [--refuse-v1]] [--receiver-agent-id ID] [--apply]` | The ingestion pipeline `hive pull` delegates to. With `--require-signed` the session's journal also enforces release order: a second payload for an admitted `(key, sequence)` and a v1 bundle from a key whose v2 release was admitted are refused. |
+
 ## Roy Harness
 
 Long-horizon persona-convergence iteration runner. One `maxim roy run`

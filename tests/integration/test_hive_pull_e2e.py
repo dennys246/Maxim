@@ -212,6 +212,50 @@ def test_hive_pull_ingests_releases_in_ascending_sequence(tmp_path, monkeypatch)
 
 
 @_needs_crypto
+def test_a_newly_added_oasis_refuses_its_v1_releases_with_the_fix_and_still_takes_v2(tmp_path, capsys):
+    """A fresh `hive add` writes accept_v1: false. A legacy v1 release is skipped with the command that
+    takes it; the v2 release in the same listing is still admitted (one refusal never aborts the pull)."""
+    from maxim.hivemind.signing import BundleSigner
+    from tests.unit._signed_bundle_helpers import write_v1_bundle
+
+    signer = BundleSigner.generate(signer_identity="queen-a")
+    store = OasisStore(tmp_path / "oasis")
+    unsigned = tmp_path / "legacy-src.zip"
+    compose_bundle(
+        nac_state=None,
+        ec_substrate_nodes={"node-9": _EC_NODES["node-1"]},
+        output_path=unsigned,
+        contributor_id="oasis-alpha",
+        body_ref="minecraft_bench",
+    )
+    store.publish_release(write_v1_bundle(unsigned, signer, out=tmp_path / "legacy.zip"))
+    v2 = tmp_path / "rel.zip"
+    compose_bundle(
+        nac_state=None,
+        ec_substrate_nodes=_EC_NODES,
+        output_path=v2,
+        contributor_id="oasis-alpha",
+        body_ref="minecraft_bench",
+        release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0"),
+    )
+    store.publish_release(v2)
+    server, base = _start(store)
+    try:
+        reg = str(tmp_path / "hive.json")
+        HiveRegistry(reg).add("alpha", base, queen_keys={"queen-a": signer.public_key_b64})
+        sess = _receiver_session(tmp_path)
+        pull = ["--registry", reg, "pull", "--from", "alpha", "--session", str(sess)]
+        pull += ["--receiver-body", "minecraft_bench", "--api-key", _KEY, "--apply"]
+        capsys.readouterr()
+        assert run_hive_subcommand(pull) == 2
+        assert "maxim hive trust alpha --accept-v1" in capsys.readouterr().err
+        journal = json.loads((sess / "substrate_ingest_journal.json").read_text(encoding="utf-8"))
+        assert [e.get("signature_scheme") for e in journal["entries"]] == [2]
+    finally:
+        _stop(server)
+
+
+@_needs_crypto
 def test_hive_pull_from_a_loopback_oasis_uses_the_leader_key_implicitly(tmp_path, monkeypatch):
     """public_oasis Phase 0 item 5, the side that must keep working: with no --api-key, a pull from an
     Oasis on THIS machine still authenticates with the local leader key, against a real server."""

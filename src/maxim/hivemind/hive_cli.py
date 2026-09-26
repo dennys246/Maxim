@@ -91,7 +91,11 @@ def _run_list(args: argparse.Namespace) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 2
         verification = "unsigned-allowed" if policy["allow_unsigned"] else "queen-only"
-        legacy = "accepted" if policy["accept_v1"] else "refused"
+        legacy = (
+            "n/a (verification disabled)"
+            if policy["allow_unsigned"]
+            else ("accepted" if policy["accept_v1"] else "refused")
+        )
         allow = ", ".join(policy["trusted_sources"]) or "(any Queen-signed)"
         # Reduce the key map to a COUNT before it can reach output. Nothing here
         # prints key material (and Queen keys are public verification anchors,
@@ -104,6 +108,12 @@ def _run_list(args: argparse.Namespace) -> int:
             f"v1 signatures: {legacy}   sources: {allow}"
         )
     return 0
+
+
+def _v1_display(policy: dict) -> str:
+    if policy["allow_unsigned"]:
+        return "n/a (verification disabled -- nothing is verified, so nothing is refused as v1)"
+    return "accepted (legacy; removed at 2.0)" if policy["accept_v1"] else "refused"
 
 
 def _run_trust(args: argparse.Namespace) -> int:
@@ -146,7 +156,7 @@ def _run_trust(args: argparse.Namespace) -> int:
         f"trust policy for {args.name}:\n"
         f"  signature: {verification}\n"
         f"  inherent:  {'admitted from Queen-verified releases' if policy['inherent_trust'] else 'refused'}\n"
-        f"  v1 signatures: {'accepted (legacy; removed at 2.0)' if policy['accept_v1'] else 'refused'}\n"
+        f"  v1 signatures: {_v1_display(policy)}\n"
         f"  sources:   {', '.join(policy['trusted_sources']) or '(any contributor the Queen signed)'}"
     )
     return 0
@@ -284,9 +294,20 @@ def _run_pull(args: argparse.Namespace) -> int:
                 continue
             # `signer` is attacker bytes; an unhashable value would raise on the
             # `in` test, so type-check before using it as a key.
-            queen_verified = (
-                bundle_signature_scheme(dest) is not None and isinstance(signer, str) and signer in queen_keys
-            )
+            scheme = bundle_signature_scheme(dest)
+            queen_verified = scheme is not None and isinstance(signer, str) and signer in queen_keys
+            # Ingest refuses a legacy v1 signature for an entry with accept_v1: false (every NEWLY added
+            # Oasis); say so here with the fix, instead of a bare signature refusal. Ingest stays the
+            # authority -- this only names the operator's choice.
+            if queen_verified and scheme == 1 and not policy["accept_v1"]:
+                print(
+                    f"skipping {release_id[:12]}…: a legacy v1-signed release, and {args.from_oasis!r} accepts v2 "
+                    f"releases only (the default for a newly added Oasis). To take its v1 lineages: "
+                    f"`maxim hive trust {args.from_oasis} --accept-v1`.",
+                    file=sys.stderr,
+                )
+                rc_final = 2
+                continue
             if not queen_verified:
                 if not policy["allow_unsigned"]:
                     print(

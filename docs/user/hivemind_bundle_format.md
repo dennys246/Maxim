@@ -97,7 +97,11 @@ they cannot verify.
   identity, scheme, sequence, signed-payload digest, license). From it, ingest refuses a second
   payload for an admitted `(key, sequence)` (equivocation) and a v1 bundle from a key whose v2 release
   it admitted (downgrade), and treats a re-zipped copy of an admitted release as the same release.
-  Releases are additive: a lower sequence is not refused, and `hive pull` ingests ascending.
+  Releases are additive: a lower sequence is not refused, and `hive pull` ingests ascending. The
+  downgrade rule is not: a v1 bundle has no sequence, so once a key's v2 release is admitted, a v1
+  bundle from that key arriving later is refused in that session even if it is an older lineage.
+- **A newly added Oasis refuses v1** (`hive add` writes `accept_v1: false`); `maxim hive trust <name>
+  --accept-v1` takes its legacy v1 lineages. Entries registered before this change keep accepting v1.
 - **Legacy v1** (schema ≤ 2, the signature in the manifest) still verifies until 2.0, against the
   manifest as stored. An unsigned bundle carries no signature fields at all.
 

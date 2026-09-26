@@ -28,6 +28,12 @@ Phase 0 item 7, landing before the item-2 format freeze):
   keys on the signed-payload digest. There is no "refuse below the highest seen" rule. The payload
   covers `created_at`, so re-composing the same sequence is a NEW payload: the producer's counter
   advances on every compose, not every publish (item 7 PR C).
+- **Downgrade: once a key's v2 release is admitted, a v1 bundle from that key is refused** in that
+  receiver session (owner, kept on the PR B review). v1 has no sequence, so this also refuses an OLDER
+  v1 lineage that arrives later; recovery is a journal hand-edit. A `created_at` narrowing was rejected:
+  the key holder the rule guards against signs that timestamp. It needs one key that signed both
+  formats — the Queen's own key never signed v1, and a new registry entry refuses v1 outright — so an
+  explicit waiver is added only if it ever bites.
 - **Every signed release carries a license** (SPDX); published bundles use `CDLA-Permissive-2.0`.
 - **A release ships one agent's learning, and a receiver keeps only rows it can read** (owner, on the
   PR A review). NAc reads filter on the reader's agent id. The exporter keeps its own agent's rows

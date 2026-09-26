@@ -137,7 +137,7 @@ def test_equivocation_is_keyed_by_the_signing_key_not_the_identity(tmp_path):
     first, rotated = _signer(), _signer()
     journal = _journal(tmp_path)
     _admit(_release(tmp_path, first, sequence=1, fear=-0.5, name="a.zip"), journal, first)
-    assert _admit(_release(tmp_path, rotated, sequence=1, fear=-0.9, name="b.zip"), journal, rotated).verification
+    assert _admit(_release(tmp_path, rotated, sequence=1, fear=-0.9, name="b.zip"), journal, rotated).verification.ok
 
 
 def test_a_v1_bundle_from_a_key_that_released_v2_is_a_downgrade(tmp_path):
@@ -187,3 +187,110 @@ def test_substrate_ingest_refuse_v1_refuses_a_v1_bundle(tmp_path, capsys):
     assert run_substrate_subcommand([*base, "--refuse-v1"]) == 2
     assert "v2 releases only" in capsys.readouterr().err
     assert run_substrate_subcommand(base) == 0
+
+
+# ── review round (PR B) ────────────────────────────────────────────────────────────────────────
+
+
+def _admit_unverified(path: Path, journal):
+    """The unverified path (`allow_unsigned`, or a plain ingest without --require-signed)."""
+    from maxim.hivemind.ingest import ingest_bundle
+
+    report = ingest_bundle(
+        path,
+        journal=journal,
+        receiver_nac=None,
+        receiver_ec_nodes=None,
+        trusted_sources=frozenset({DONOR}),
+        receiver_body=BODY,
+        receiver_agent_id="receiver",
+    )
+    journal.record(report.journal_entry)
+    journal.save()
+    return report
+
+
+def _rezip(path: Path, out: Path) -> Path:
+    from tests.unit._signed_bundle_helpers import read_members
+
+    with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_STORED) as zf:
+        for name, data in reversed(list(read_members(path).items())):
+            zf.writestr(name, data)
+    assert out.read_bytes() != path.read_bytes()
+    return out
+
+
+def test_a_release_first_admitted_unverified_is_not_merged_again_when_its_signed_copy_arrives(tmp_path):
+    """The security review's probe: a re-zipped copy ingested unverified, then the signed original --
+    the content-implied payload digest makes them one release."""
+    from maxim.hivemind.ingest import IngestRefused
+
+    signer, journal = _signer(), _journal(tmp_path)
+    original = _release(tmp_path, signer)
+    report = _admit_unverified(_rezip(original, tmp_path / "copy.zip"), journal)
+    entry = report.journal_entry
+    assert entry["payload_verified"] is False and "signer_key" not in entry  # seeds no ordering rule
+    with pytest.raises(IngestRefused) as exc:
+        _admit(original, journal, signer)
+    assert exc.value.duty == "V8"
+
+
+def test_a_release_admitted_verified_is_not_merged_again_through_the_unverified_path(tmp_path):
+    from maxim.hivemind.ingest import IngestRefused
+
+    signer, journal = _signer(), _journal(tmp_path)
+    original = _release(tmp_path, signer)
+    assert _admit(original, journal, signer).journal_entry["payload_verified"] is True
+    with pytest.raises(IngestRefused) as exc:
+        _admit_unverified(_rezip(original, tmp_path / "copy.zip"), journal)
+    assert exc.value.duty == "V8"
+
+
+def test_a_re_zipped_v1_bundle_is_the_same_bundle(tmp_path):
+    from maxim.hivemind.ingest import IngestRefused
+
+    signer, journal = _signer(), _journal(tmp_path)
+    v1 = _v1(tmp_path, signer)
+    _admit(v1, journal, signer)
+    with pytest.raises(IngestRefused) as exc:
+        _admit(_rezip(v1, tmp_path / "v1-copy.zip"), journal, signer)
+    assert exc.value.duty == "V8"
+
+
+def test_the_content_digest_equals_the_verified_one(tmp_path):
+    from maxim.hivemind.bundle import content_payload_digest
+
+    signer = _signer()
+    for path in (_release(tmp_path, signer), _v1(tmp_path, signer)):
+        report = _admit(path, _journal(tmp_path / path.stem), signer)
+        with zipfile.ZipFile(path) as zf:
+            assert content_payload_digest(zf) == report.verification.payload_digest
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("release_sequence", True), ("release_sequence", "1"), ("signature_scheme", 2.0), ("signer_key", 7)],
+)
+def test_a_journal_with_a_mistyped_release_field_fails_loud(tmp_path, field, value):
+    import json
+
+    from maxim.hivemind.ingest import IngestionJournal
+
+    path = tmp_path / "journal.json"
+    path.write_text(json.dumps({"_format_version": "1.0", "entries": [{"digest": "x", field: value}]}))
+    with pytest.raises(ValueError, match=field):
+        IngestionJournal(path)
+
+
+def test_refuse_v1_without_require_signed_is_an_error_not_a_no_op(tmp_path, capsys):
+    import json
+
+    from maxim.hivemind.cli import run_substrate_subcommand
+
+    session = tmp_path / "session"
+    session.mkdir()
+    (session / "aut_nac.json").write_text(json.dumps({}))
+    (session / "aut_ec.json").write_text(json.dumps({"substrate_nodes": {}}))
+    argv = ["ingest", str(_v1(tmp_path, _signer())), "--session", str(session), "--receiver-body", BODY]
+    assert run_substrate_subcommand([*argv, "--trust", DONOR, "--refuse-v1"]) == 2
+    assert "needs --require-signed" in capsys.readouterr().err

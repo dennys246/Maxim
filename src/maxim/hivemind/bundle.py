@@ -1375,6 +1375,37 @@ def _verify_v1(
     )
 
 
+def content_payload_digest(
+    zf: zipfile.ZipFile,
+    *,
+    max_member_bytes: int = MAX_ENTRY_UNCOMPRESSED_BYTES,
+    max_total_bytes: int = MAX_TOTAL_UNCOMPRESSED_BYTES,
+) -> str | None:
+    """The signed-payload digest a bundle's CONTENT implies -- computed WITHOUT verifying anything.
+
+    The payload a v2 signature covers is every member but ``signature.json``; a v1 signature covers the
+    manifest minus its signature fields plus the declared slices. Hashing that content needs no key and
+    grants no authority: it is an identity for DEDUP only, so a release admitted on an unverified path
+    and its re-zipped or verified copy are recognised as one release (never merged twice). Equal to
+    :attr:`BundleVerification.payload_digest` whenever the bundle verifies. ``None`` for an unsigned
+    bundle or one whose members cannot be read within the caps.
+    """
+    read = _CappedReader(zf, max_member_bytes=max_member_bytes, max_total_bytes=max_total_bytes)
+    try:
+        names = [i.filename for i in zf.infolist()]
+        if SIGNATURE_MEMBER in names:
+            return hashlib.sha256(bundle_signing_payload_v2({n: read(n) for n in names})).hexdigest()
+        if "manifest.json" not in names:
+            return None
+        raw = _strict_json(read("manifest.json"), "manifest.json")
+        if not isinstance(raw, dict) or not raw.get("signature"):
+            return None
+        slices = {f: read(f).decode("utf-8") for f in _declared_slice_files(raw).values() if f in names}
+        return hashlib.sha256(bundle_signing_payload(raw, slices)).hexdigest()
+    except (ValueError, UnicodeDecodeError, KeyError):  # MemberReadError is a ValueError
+        return None
+
+
 def bundle_signature_scheme(bundle_path: str | Path) -> int | None:
     """Which signing scheme a bundle CLAIMS -- ``2`` (a ``signature.json`` member), ``1`` (a
     ``signature`` in the manifest, the same test :func:`verify_bundle_zip` dispatches on), ``None``
@@ -1561,6 +1592,7 @@ __all__ = [
     "bounded_member_read",
     "bundle_signature_scheme",
     "compose_bundle",
+    "content_payload_digest",
     "extract_bundle",
     "isolated_bundle_migrations",
     "migrate_bundle_envelope",

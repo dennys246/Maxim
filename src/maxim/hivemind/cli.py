@@ -748,6 +748,13 @@ def _run_ingest(args: argparse.Namespace) -> int:
             return 2
         trusted_keys[identity] = pubkey
 
+    if getattr(args, "refuse_v1", False) and not getattr(args, "require_signed", False):
+        print(
+            "error: --refuse-v1 decides which signatures verify, so it needs --require-signed "
+            "(without it nothing is verified and the flag would do nothing)",
+            file=sys.stderr,
+        )
+        return 2
     try:
         report = ingest_bundle(
             bundle_path,
