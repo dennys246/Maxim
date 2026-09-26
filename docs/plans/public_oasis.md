@@ -147,6 +147,9 @@ Cheap, and all of it is owed regardless of whether Phase 1 ships.
    only**, not regardless of Phase 1 (a new release-format feature for its local selection and
    per-entry journal, so a consumer verifies the Queen per entry without server-cut slices). It must
    **land before item 2**, or the format freeze reopens at once.
+   *(2026-09-25: design DECIDED — [oasis_entry_index_v2.md](oasis_entry_index_v2.md), after a two-lens
+   design review; it also carries signing scheme v2 and the license field, and records the owner's
+   item-3/4 decisions: license `CDLA-Permissive-2.0`, public ids, the privacy-read exemplar.)*
 
 ### Phase 1 — publish only (entry: Phase 0 complete)
 
