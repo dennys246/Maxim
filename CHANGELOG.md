@@ -742,6 +742,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gets a refusal where it used to get an execution. No in-repo caller wires the sandbox tools today.
   (#796)
 
+- **The sandbox runs Python scripts, keeps them inside the sandbox, and runs exactly what was
+  approved** (#800, #801, #802).
+  - **Python scripts never ran** (#800): the restricted wrapper blocked its own `import os`. The
+    wrapper now imports what it needs first, keeps the unrestricted originals in a closure, and runs
+    the script in a fresh namespace, so the script cannot reach `os` or the real `open` by name.
+  - **Containment was a string prefix** (#801): a script in `/x/sb2` passed for a sandbox at `/x/sb`,
+    and a symlink out of the sandbox was followed. Script paths and the Python `open` check now
+    compare resolved paths.
+  - **The path ran, not the approved content** (#802): bash reads a script file as it runs, so a line
+    appended to an approved script mid-run executed. Both script types now run the verified content
+    (`bash -c`, `python -c`), and no wrapper file is written into the sandbox.
+  - Hardening that came with running Python for real: the confined `open` takes paths only and opens
+    the path it checked (a bytes path, a file descriptor, or a path object answering twice slipped past
+    it), a caller's `working_dir` must be inside the
+    sandbox, scripts no longer inherit the host's stdin, and a script over 120 KiB is refused before
+    approval (its content now travels verbatim as one interpreter argument, which Linux caps at 128
+    KiB).
+  - **The resource limits are applied, and no longer break forking.** They were set in one block, so
+    the first limit a platform rejects (macOS: address space) silently skipped every later one — a
+    macOS sandbox ran with a CPU limit and nothing else. Each limit is now applied on its own. And the
+    process-count limit is gone: `RLIMIT_NPROC` counts every process of the USER, so on Linux its
+    value of 4 made each external command in a sandboxed shell script fail; runaway forking is
+    bounded by the CPU and wall-clock limits and the container.
+  - The docstrings now say what these are: defense-in-depth. The Python import hook is a denylist
+    that `io.open`, `pathlib` or a traceback frame walks around in one line, and approval covers the
+    top-level script, not modules it imports from the workspace; the boundary is the resource limits
+    and the container. No in-repo caller wires the sandbox tools today.
+
 ## [1.3.0] - 2026-09-19 — "Oasis-2"
 
 The survival world. 1.2 shared a want a teacher put there; 1.3 moves the learning signal to the
