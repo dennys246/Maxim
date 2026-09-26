@@ -571,15 +571,35 @@ def nac_merge(
             left.get("event_outcome_welford", {}) or {},
             right.get("event_outcome_welford", {}) or {},
         ),
-        # 1.2 poison-resistance slice: the inherent-class marker travels
-        # through the fold as a sorted union. A rebuilt-dict merge that
-        # dropped it would silently strip decay exemption from every
-        # receiver-held inherent bias — the D43 delete-state shape one
-        # field over (`cluster_reward_source` above is the precedent).
+        # 1.2 poison-resistance slice: the inherent-class marker travels through the fold as a sorted union.
+        # A rebuilt-dict merge that dropped it would silently strip decay exemption from every receiver-held
+        # inherent bias (the D43 delete-state shape one field over). ``nac_merge`` is SYMMETRIC (commutative,
+        # module docstring), so it cannot know which side is the receiver: the receiver-first admission rule
+        # for markers lives in ``substrate_merge`` (``_admit_inherent_markers``, #914).
         "inherent_bias_keys": sorted(
             set(left.get("inherent_bias_keys", []) or []) | set(right.get("inherent_bias_keys", []) or [])
         ),
     }
+
+
+def _admit_inherent_markers(receiver: dict[str, Any], donor: dict[str, Any]) -> list[str]:
+    """The inherent (safety-floor) markers a merged state carries -- RECEIVER-first (#914; the inherent
+    class is "tighten-only under merge, for this class unconditionally", coding_habits_oasis.md §4):
+
+    - every receiver marker on a row the receiver holds SURVIVES: no donor, learned or not, can remove
+      one, so an innate fear never starts to decay because an import touched its key;
+    - a donor marker (Queen-admitted -- ingest refuses any other) attaches only where the receiver holds
+      NO learned row at that key, or marks it too: a Queen prior never makes a receiver's own learned
+      value decay-exempt by averaging into it;
+    - a marker without its own bias row (dangling) marks nothing.
+    """
+    receiver_rows = set((receiver.get("cluster_reward_bias") or {}).keys())
+    receiver_marked = set(receiver.get("inherent_bias_keys", []) or [])
+    donor_rows = set((donor.get("cluster_reward_bias") or {}).keys())
+    donor_marked = set(donor.get("inherent_bias_keys", []) or [])
+    kept = receiver_marked & receiver_rows
+    kept |= {key for key in donor_marked & donor_rows if key not in receiver_rows or key in receiver_marked}
+    return sorted(kept)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -981,6 +1001,72 @@ def _later_saved_at(left: Any, right: Any) -> Any:
     return max(candidates)
 
 
+#: The cluster-keyed NAc fields :func:`fold_cluster_rows` folds, with ``inherent_bias_keys`` alongside.
+_CLUSTER_ROW_FIELDS: tuple[str, ...] = ("cluster_reward_bias", "cluster_reward_source", "cluster_fear")
+
+
+def fold_cluster_rows(
+    nac_state: dict[str, Any],
+    transform: Callable[[str], str | None],
+    *,
+    fields: tuple[str, ...],
+) -> dict[str, Any]:
+    """Re-key the cluster-keyed rows of ``fields`` (and their inherent markers) through ``transform``,
+    FOLDING the rows that land on one key -- the one fold both seams use: the export scrub (a scrubbed
+    tool signature can collide) and ingest's re-key (several donor clusters can align onto one).
+
+    Per field, the merge layer's own semantics: ``cluster_reward_bias`` MEAN, ``cluster_fear`` MIN (the
+    most aversive fear wins, as ``nac_merge`` folds it), ``cluster_reward_source`` the common value or
+    ``"mixed"``. ``transform`` returns the new key, or ``None`` to drop the row. An ``inherent_bias_keys``
+    marker survives only when EVERY ``cluster_reward_bias`` row folding into its key was marked: a
+    learned bias folded into an inherent one never becomes decay-exempt, and never dilutes the safety
+    floor while wearing its marker. That holds WITHIN one side's fold only: across a merge's two sides
+    ``substrate_merge`` admits markers receiver-first instead (``_admit_inherent_markers``), so a
+    receiver's inherent value averaged with a donor's learned one KEEPS its marker -- the tighten-only
+    clamp restores a negative (aversive) floor, but a positive inherent value can move. A
+    marker whose own bias row is absent is dropped (a dangling marker is never passed through).
+    Weighting: donor cluster rows carry no per-row counts, so the mean is unweighted -- the only fold
+    the data supports. Returns only the fields present in ``nac_state`` (a wrong-typed field RAISES:
+    this runs inside a privacy scrub, which must never fail open). Pure.
+    """
+    out: dict[str, Any] = {}
+    sources_by_key: dict[str, list[str]] = {}
+    for field in fields:
+        src = nac_state.get(field)
+        if src is None:
+            continue
+        if not isinstance(src, dict):
+            raise ValueError(f"{field} is not an object ({type(src).__name__}) -- refusing to fold it")
+        grouped: dict[str, list[Any]] = {}
+        for key, value in src.items():
+            new_key = transform(str(key))
+            if new_key is None:
+                continue
+            grouped.setdefault(new_key, []).append(value)
+            if field == "cluster_reward_bias":
+                sources_by_key.setdefault(new_key, []).append(str(key))
+        if field == "cluster_reward_bias":
+            out[field] = {k: sum(float(v) for v in vs) / len(vs) for k, vs in grouped.items()}
+        elif field == "cluster_fear":
+            out[field] = {k: min(float(v) for v in vs) for k, vs in grouped.items()}
+        else:
+            out[field] = {k: (vs[0] if all(v == vs[0] for v in vs) else "mixed") for k, vs in grouped.items()}
+    inherent = nac_state.get("inherent_bias_keys")
+    if inherent is not None and not isinstance(inherent, list):
+        raise ValueError(f"inherent_bias_keys is not a list ({type(inherent).__name__}) -- refusing to fold it")
+    if isinstance(inherent, list):
+        marked = {str(k) for k in inherent}
+        kept: set[str] = set()
+        for key in marked:
+            new_key = transform(key)
+            if new_key is None or new_key not in out.get("cluster_reward_bias", {}):
+                continue  # its row did not survive (or was never there): a dangling marker is not faked
+            if all(source in marked for source in sources_by_key.get(new_key, [])):
+                kept.add(new_key)
+        out["inherent_bias_keys"] = sorted(kept)
+    return out
+
+
 def rekey_nac_state(
     nac_state: dict[str, Any],
     id_map: dict[str, str],
@@ -1013,45 +1099,25 @@ def rekey_nac_state(
     Returns a new dict; the input is not mutated.
     """
     out = dict(nac_state)
+
     # `cluster_fear` (Exp 61, 2026-09-16) is keyed on the same triple shape —
     # `(agent_id, cluster_id, failure_mode)` — and takes the same path: the
     # cluster through `id_map`, the agent id to the receiver's (the read path
     # `NAc.cluster_fear` filters on agent id; an un-rewritten key reads 0.0
     # silently), and a fear whose donor cluster did not survive is dropped.
-    for field in ("cluster_reward_bias", "cluster_reward_source", "cluster_fear"):
-        src = nac_state.get(field)
-        if not isinstance(src, dict):
-            continue
-        rekeyed: dict[str, Any] = {}
-        for key, value in src.items():
-            parts = str(key).split(NAC_KEY_SEP)
-            if len(parts) != 3:
-                continue
-            aid, cid, tsig = parts
-            mapped = id_map.get(cid)
-            if mapped is None:
-                continue  # the donor cluster did not survive — drop, don't fake
-            rekeyed[NAC_KEY_SEP.join((to_agent_id or aid, mapped, tsig))] = value
-        out[field] = rekeyed
+    def rekey(key: str) -> str | None:
+        parts = str(key).split(NAC_KEY_SEP)
+        if len(parts) != 3:
+            return None
+        aid, cid, tsig = parts
+        mapped = id_map.get(cid)
+        if mapped is None:
+            return None  # the donor cluster did not survive — drop, don't fake
+        return NAC_KEY_SEP.join((to_agent_id or aid, mapped, tsig))
 
-    # The inherent-class marker (1.2 poison-resistance slice) names
-    # cluster_reward_bias keys, so it re-keys through the same map — a
-    # marker left on the donor's ORIGINAL key would exempt nothing after
-    # the re-key (a silently vacuous safety floor). Same drop rule:
-    # a marker whose cluster did not survive is dropped, not faked.
-    inherent = nac_state.get("inherent_bias_keys")
-    if isinstance(inherent, list):
-        rekeyed_inherent: list[str] = []
-        for key in inherent:
-            parts = str(key).split(NAC_KEY_SEP)
-            if len(parts) != 3:
-                continue
-            aid, cid, tsig = parts
-            mapped = id_map.get(cid)
-            if mapped is None:
-                continue
-            rekeyed_inherent.append(NAC_KEY_SEP.join((to_agent_id or aid, mapped, tsig)))
-        out["inherent_bias_keys"] = sorted(set(rekeyed_inherent))
+    # Several donor clusters can align onto ONE receiver cluster (``ec_merge_aligned``), so their rows
+    # land on one key: folded with each field's merge semantics, never last-write-wins (#914).
+    out.update(fold_cluster_rows(nac_state, rekey, fields=_CLUSTER_ROW_FIELDS))
 
     # A released link names its agent as the token in ``event_context.agent_id`` (release format v2), and
     # ``NAc.predict`` matches a stored link's event context against the query context -- so a token left
@@ -1308,7 +1374,9 @@ class SubstrateMergeResult:
     A caller that prints ``len(cluster_reward_bias)`` is printing
     ``|left union right|``, which is **maximal exactly when nothing aligns**.
     These two counts are the honest indicator: a merge that dropped every
-    donor bias says so.
+    donor bias says so. ``biases_dropped`` is ``before - after``, so it also counts rows FOLDED
+    together when several donor clusters align onto one receiver cluster (#914) -- a 2→1 fold reads
+    as one "dropped", its value averaged in, not lost.
     """
 
     nac: dict[str, Any]
@@ -1431,6 +1499,8 @@ def substrate_merge(
     # exists to bypass. See tighten_negative_biases for the semantics and
     # the sign-scope guarantee.
     merged_nac, tightened = tighten_negative_biases(merged_nac, receiver_nac)
+    # The safety floor's markers, receiver-first (the symmetric nac_merge only unions them).
+    merged_nac["inherent_bias_keys"] = _admit_inherent_markers(receiver_nac or {}, rekeyed_donor)
 
     return SubstrateMergeResult(
         nac=merged_nac,
