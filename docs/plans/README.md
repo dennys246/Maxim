@@ -2,7 +2,7 @@
 
 Current version: **1.3.0** (`pyproject.toml` + `src/maxim/__init__.py`; PyPI: https://pypi.org/project/pymaxim/ — `main` is ahead of PyPI by policy, CLAUDE.md §Versioning; checked by `scripts/lint_version_sync.py`). 1.3.0 = **"Oasis-2"**: the survival world — **Exp 60 EARNED** (anticipatory drowning-avoidance) + **Exp 61 EARNED** (the survival fear transfers between agents) + the **R3 survival benchmark** (instrument + frozen baseline) + Exp 56 re-baselined on 1.20.4. 1.2.1 = **"Spoken-code loop"** (the pairing pieces; composition unwired — corrected in 1.3.0). 1.2.0 = **"Oasis"**: **Exp 56 EARNED** + **Exp 57 PARTIAL** + the **Hivemind P2P exchange**. 1.1.4 = **"The world seam"**, 1.1.3 = **"Reachability"**, 1.1.2 = **"Decomposition"**, 1.1.1 = **"Enforcement"**.
 Now: **1.1.x follow-through** (items 1–16 in [archive/roadmap_1_1_to_1_3.md](archive/roadmap_1_1_to_1_3.md) —
-- [roadmap_1_3_x.md](roadmap_1_3_x.md) — **the 1.3.x hardening line** (drafted 2026-09-19 from the v1.3.0 re-score): 1.3.1 = the card's defects plus the guard each one needs; 1.3.2 = the `agent_loop` decomposition with behaviour-preservation gates and the ledger triggers discharged. Both infrastructure only, both before 1.4's experiments.
+- [roadmap_1_3_x.md](roadmap_1_3_x.md) — **the 1.3.x line** (drafted 2026-09-19 from the v1.3.0 re-score; **re-scoped 2026-09-26**): 1.3.1 = what users need now — the security cluster, public-API correctness, release integrity (nightly lane, network block), the public format freeze and the two ingest defects it surfaced (#913/#914), plus everything on `main` since 1.3.0, each with its guard and no new behavioural claim; 1.3.2 = the enforcement ratchets carried from 1.3.1, then the `agent_loop` decomposition with behaviour-preservation gates and the ledger triggers discharged. Both before 1.4's experiments.
 - [outstanding.md](outstanding.md) — **the standing register of owed work**, cross-cutting and not release-scoped, each entry verified at its stated date. Created 2026-09-20 after an audit found the 1.1.x item-16 block entirely shipped while CLAUDE.md still declared one of them a KNOWN GAP.
 - [roadmap_1_4.md](roadmap_1_4.md) — **the 1.4 plan** (working title "Anticipation", re-pointed 2026-09-18, five-lens reviewed): generalization + sequence credit + a trajectory instrument on the survival rig — **Exp 62 EARNED 2026-09-20 (Phase 1 closed)** → E1 conflict → [relief store] → E2 pockets → E3 strategic breathing; primitives on a variant body; release thresholds T1–T4 set, T5/T6 conditional; the release name is fixed at the transaction from the highest EARNED rung.
 - [archive/roadmap_1_3.md](archive/roadmap_1_3.md) — **the 1.3 plan** ("Oasis-2", the survival world; rescoped 2026-09-09): the phased survival-loop → shared-survival-wants roadmap with per-rung mechanism-dependency markers. · [deferred/second_body_staging.md](deferred/second_body_staging.md) — **DEFERRED 2026-09-18 on a physical trigger (a second body exists); NOT the 1.4 plan** — the perception-fabric sequencing (Stage A duck → Stage B engine seam → Stage C fabric), **now the 1.4 plan** (perception fabric moved to 1.4 in the same rescope).
@@ -59,8 +59,9 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
 ### Roadmap + release
 
 - [roadmap_1_3_x.md](roadmap_1_3_x.md) → [roadmap_1_4.md](roadmap_1_4.md) — **the live
-  scope authority** as of 2026-09-19: 1.3.1 defects + guards, 1.3.2 the `agent_loop`
-  decomposition, then 1.4's ladder.
+  scope authority** as of 2026-09-19 (re-scoped 2026-09-26): 1.3.1 what users need now (security,
+  public-API correctness, release integrity, the format freeze + #913/#914), 1.3.2 the ratchets and
+  the `agent_loop` decomposition, then 1.4's ladder.
 - [archive/roadmap_1_3.md](archive/roadmap_1_3.md) — the 1.3 plan, now a RECORD of what shipped as 1.3.0
   (its Phases 4–6 moved to `roadmap_1_4.md`; Phase 1b is deferred on its trigger).
 - [archive/roadmap_1_1_to_1_3.md](archive/roadmap_1_1_to_1_3.md) — **HISTORICAL** (it was the sole scope
