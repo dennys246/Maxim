@@ -137,7 +137,7 @@ def test_the_cli_refuses_an_unsigned_release_and_reports_what_a_contribution_dro
     assert "dropped 3 link(s) and 1 EC node(s)" in capsys.readouterr().out
 
 
-def test_two_own_links_the_scrub_folds_still_ship_as_local_and_are_admitted(tmp_path):
+def test_two_own_links_the_scrub_folds_stay_single_contributor_and_are_admitted(tmp_path):
     """Review round: one own link stamped "local", one stamped with the exporter's own id, collide
     after the signature scrub (both become ``tool:use``); unmerged-stamped, they fold to
     "_consensus", which V1 refuses. Kept rows are re-stamped as the exporter's: the fold stays single."""

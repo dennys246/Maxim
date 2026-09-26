@@ -532,10 +532,9 @@ def _redact_paths_in_provenance(value: Any) -> Any:
 #
 # * default -- an agent contributes ONLY ITS OWN LEARNING: a link or EC node is
 #   exported only when its provenance is the exporter's alone (no source, ``"local"``, or its own
-#   ``contributor_id`` -- exactly what V1 accepts), re-stamped as the exporter's ``contributor_id``. Note "own" is narrower than
-#   "learned here": a local row once FOLDED with foreign material is ``_consensus`` and is dropped,
-#   with the cluster rows on it. A ``_consensus`` row
-#   (local and foreign votes merged) is dropped, since its own share cannot be
+#   ``contributor_id`` -- exactly what V1 accepts), re-stamped as the exporter's ``contributor_id``.
+#   "Own" is narrower than "learned here": a ``_consensus`` row (local and foreign votes merged, even
+#   a local row once folded with foreign material) is dropped, since its own share cannot be
 #   separated. Cluster-keyed NAc rows naming a dropped node are dropped with it.
 # * ``reauthor=True`` -- RELEASE COMPOSITION (the Queen publishing merged
 #   contributions): every row is re-stamped as the author's (``source`` = ``contributors`` = its
