@@ -10,6 +10,15 @@
 > A re-read of v2 (both lenses, one reader) found two contradictions — the signed member set vs "an
 > appended copy dedups", and the V8 key switch re-admitting pre-change releases — plus gaps (mandatory
 > receiver re-keying, pipeline order, JCS, store migration, node-less entries inert on merge); all folded.
+>
+> **BUILD — PR A (format + verification) shipped 2026-09-25:** the envelope and members, the signed
+> payload, the entry projection and index, the verifier (bounded, before V1, v1 before migration),
+> `inspect --entries`, `--release-sequence` / `--license` / `--agent-id`, `hive pull
+> --receiver-agent-id`. Two owner decisions made on its code review changed this design, recorded
+> in the sections they touch: **own rows only** (§Agent segment) and **only signed releases are
+> schema 3** (§Envelope). Still to build: PR B — receiver state (§Receiver state, §Registry:
+> `accept_v1`); PR C — producer counter and store (§Producer, §Oasis store). The payload covers
+> `created_at`, so PR C's counter advances on every compose, not every publish.
 
 ## Why
 
@@ -76,6 +85,9 @@ license-compatibility logic.
 `schema_version` **3**. New ZIP member **`signature.json`**:
 `{"signature_scheme": 2, "signature_algorithm": "ed25519", "signature": "<base64>"}`.
 A v3 manifest carries no `signature` / `signature_algorithm` fields (they live in `signature.json`).
+*Amended on PR A's review (owner):* only a signed release is schema 3; an unsigned bundle is written at
+schema 2 (it needs nothing schema 3 added), so 1.3.x peers and Oasis servers keep reading contributions
+and refuse only a release they cannot verify.
 
 **Verification reads the manifest as stored, before any migration** (both review lenses: the v2→v3
 migration rewrites `schema_version`, which the v1 payload signs, so verifying the migrated manifest
@@ -110,12 +122,18 @@ equivocation.
 The exporter rewrites the agent segment of every NAc composite key (`agent␟cluster␟x`,
 `agent␟entity␟x`, …) to a fixed token before signing — the owed `agent_id` normalization, which also
 stops local agent ids shipping (`taught.zip` carries `donor_taught_42` today). An exporter holding rows
-for more than one local agent id **refuses** to export (it cannot normalize without collapsing them). A
+for more than one local agent id **refuses** to export (it cannot normalize without collapsing them).
+*Amended on PR A's review (owner, "own rows only"):* the exporter ships ONE agent's rows — the single
+real id, or `--agent-id` when there are several — and drops rows under any other id (including the
+token itself, which an ingested release leaves) with a count; relabelling them shipped a −0.9 valence
+as +0.5 in a review probe. Ingest drops the non-situation agent-keyed rows (percept valences, outcome
+stats, node-keyed `reward_bias`) filed under another agent, since re-keying covers situation rows
+only; transferring those is deferred ([deferred/transfer_non_situation_nac_rows.md](deferred/transfer_non_situation_nac_rows.md)). A
 v2 verifier refuses any other agent segment, so one digest can never cover two values. The token makes
 re-keying MANDATORY at the receiver: `rekey_nac_state` keeps the token when `to_agent_id` is absent, and
 NAc reads filter by agent id, so every value would silently read 0.0 (D43-class). So ingesting a
-token-keyed bundle without `receiver_agent_id` is **refused**, and `hive pull` supplies it (today
-`_build_ingest_argv` emits no `--receiver-agent-id`).
+token-keyed bundle without `receiver_agent_id` is **refused**, and `hive pull` forwards the operator's
+`--receiver-agent-id` (shipped in PR A).
 
 ### The entry projection (what a digest covers)
 
