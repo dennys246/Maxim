@@ -1401,7 +1401,8 @@ def content_payload_digest(
         raw = _strict_json(manifest_bytes, "manifest.json")
         if not isinstance(raw, dict):
             return None
-        # Every declared slice (ingest refuses a manifest declaring signature.json or manifest.json as one).
+        # Every declared slice. (Ingest refuses a manifest declaring signature.json or manifest.json as one;
+        # the v2 framing would skip a declared signature.json structurally, the v1 framing hashes it.)
         files = sorted({f for f in _declared_slice_files(raw).values() if f in names})
         if raw.get("schema_version") == 3:
             members = {"manifest.json": manifest_bytes, **{f: read(f) for f in files}}
