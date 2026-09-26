@@ -64,6 +64,22 @@ but dims alone cannot distinguish a 384-dim fallback from a real 384-dim model.
 - **`ed25519` validated since 1.2; the rest documentation-only.** `hivemind/signing.py` + `hivemind/bundle.py::verify_bundle_signature` implement and verify `ed25519`; every other listed algorithm and reserved prefix still has no validator and is refused as unverifiable when `--require-signed` is set (unknown → refuse, above). Through 1.1 no code path read, wrote, or validated these fields beyond round-tripping the manifest.
 - **`signer_identity` vs `contributor_id`.** `contributor_id` is the free-form, producer-controlled provenance string (per-link / per-node, set at compose time). `signer_identity` is reserved for the *cryptographically attested* identity a 1.1+ verifier checks against a trust anchor. They are intentionally separate so a verified signer can be required to match the claimed contributor. Like `contributor_id`, `signer_identity` shares the reserved `_*` namespace discipline used across the Hivemind layer (see [`hivemind/merge.py`](../../src/maxim/hivemind/merge.py) `_validate_source`): a 1.1+ implementer must NOT reuse an existing sentinel such as `_consensus` (which already means "aggregated across contributors" in merge provenance) or `_identity` to express a multi-signer or attested-identity concept — pick a fresh, distinct value.
 
+## Provenance at export
+
+A bundle's links and EC nodes carry `source` / `contributors`. A receiver accepts only the manifest's
+own `contributor_id` or `"local"` there, so export decides what material it can honestly ship:
+
+- **`maxim substrate export`** (a contribution) ships only **your own learning** — rows whose
+  provenance is yours alone. Material you received from others (a donor source, `"_consensus"`, a
+  foreign contributor list) is dropped, along with cluster-keyed NAc rows naming a dropped node, and
+  the command prints how many rows it dropped.
+- **`maxim substrate export --release --sign`** composes a **release** from merged contributions: every
+  row is re-authored as yours (`source` and `contributors` = your `contributor_id`), and the signature carries the
+  provenance. `--release` without `--sign` is refused.
+
+Rows with no provenance fields (cluster fear and reward bias, outcome statistics, priors) cannot be
+told apart, so a received fear folded into one of your clusters is exported as yours.
+
 ## See also
 
 - [Substrate Sharing](substrate-sharing.md) — the user-facing export / import / merge workflow

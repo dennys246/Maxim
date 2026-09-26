@@ -305,6 +305,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A bundle exported by an agent that had ingested others' material is no longer refused by every
+  receiver, and no longer publishes their ids.** Export copied link / EC-node provenance verbatim, but
+  a receiver accepts only the bundle's own contributor or `"local"` — so such a bundle carried
+  upstream contributor ids and was refused (V1). `maxim substrate export` now ships only your own
+  learning and prints what it dropped; `--release --sign` composes a signed release that re-authors
+  merged contributions as yours (the Queen's Phase 2 path, which could not work before).
+- **`maxim hive add` refuses a queen key that verification could never use.** A key must now be
+  the canonical base64 of a raw 32-byte Ed25519 public key. One that is not base64 (e.g. a
+  placeholder), decodes to another length, or is one of the three non-canonical spellings of a real
+  key is refused where the operator types it (exit 2, naming the canonical spelling when there is
+  one), instead of being stored and failing at the first pull. This binds newly added keys only:
+  registries already on disk still load unchanged, and a key that is not base64 or has the wrong length
+  still fails at verification.
+
 - **A bundle signature can no longer verify under an aliased signer identity** (public_oasis Phase 0
   item 6). `signer_identity` is not part of the signed bytes, which is safe because verification uses
   the key trusted for the claimed identity — except when one key is trusted under two identities,

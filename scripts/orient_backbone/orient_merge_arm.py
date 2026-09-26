@@ -336,9 +336,14 @@ def main() -> int:
             print("[bundle] --contributor-id is required with --bundle")
             return 2
         from maxim.hivemind.bundle import compose_bundle
+        from maxim.hivemind.signing import load_or_create_signer
 
         bundle_path = os.path.expanduser(args.bundle)
+        # A queen-mind bundle is RELEASE composition from a merge: re-authored and signed (the merged
+        # links are "_consensus", which a receiver's V1 sweep refuses in a plain export).
         manifest = compose_bundle(
+            reauthor=True,
+            signer=load_or_create_signer(signer_identity=args.contributor_id),
             nac_state=merged,
             ec_substrate_nodes=None,  # orient NAcs carry no EC state
             output_path=bundle_path,

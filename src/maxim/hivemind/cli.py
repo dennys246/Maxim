@@ -190,6 +190,22 @@ def _run_export(args: argparse.Namespace) -> int:
             )
 
     output_path = Path(args.output).expanduser().resolve()
+    reauthor = bool(getattr(args, "release", False))
+    if reauthor and not getattr(args, "sign", False):
+        print(
+            "error: --release re-authors every row as yours; a release must be signed (add --sign)",
+            file=sys.stderr,
+        )
+        return 2
+    from maxim.hivemind.bundle import provenance_for_export
+
+    _kept_nac, _kept_ec = provenance_for_export(
+        nac_state, ec_substrate_nodes, contributor_id=args.contributor_id, reauthor=reauthor
+    )
+    dropped_links = sum(len(v) for v in ((nac_state or {}).get("links", {}) or {}).values()) - sum(
+        len(v) for v in ((_kept_nac or {}).get("links", {}) or {}).values()
+    )
+    dropped_nodes = len(ec_substrate_nodes or {}) - len(_kept_ec or {})
     try:
         signer = None
         if getattr(args, "sign", False):
@@ -210,6 +226,7 @@ def _run_export(args: argparse.Namespace) -> int:
             body_ref=body_ref,
             affordance_namespace=args.affordance_namespace,
             capability_map=capability_map,
+            reauthor=reauthor,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -218,6 +235,14 @@ def _run_export(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
+    if reauthor:
+        print("provenance: RELEASE -- every row re-authored as yours (your contributor id); the signature carries it")
+    elif dropped_links or dropped_nodes:
+        print(
+            f"provenance: exported your own learning only -- dropped {dropped_links} link(s) and "
+            f"{dropped_nodes} EC node(s) that carry other contributors' provenance (received, or your "
+            "own folded with theirs); --release --sign publishes them as a signed release"
+        )
     n_slices = len(manifest.get("contents", {}))
     print(
         f"composed bundle at {output_path}\n"
@@ -903,6 +928,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Slice A (1.2 P2P): sign the bundle with the persisted ed25519 key "
             "(minted on first use under ~/.config/maxim/). Requires the [sign] extra."
+        ),
+    )
+    p_export.add_argument(
+        "--release",
+        action="store_true",
+        help=(
+            "Compose a RELEASE from merged contributions: re-author every link/node as yours "
+            "(source=local, no contributor list) instead of exporting only your own learning. "
+            "Requires --sign: the release's signature carries the provenance."
         ),
     )
     p_export.add_argument(
