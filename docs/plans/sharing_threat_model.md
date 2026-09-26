@@ -278,11 +278,14 @@ adapter's pre-merge review round, 2026-09-05):
     minted hashes the pre-scrub goal, tool params and agent id — a guess-confirmation oracle);
     `context_factors` never ships; a non-identifier `event_type` / `outcome_type` / link `domain` ships
     as `redacted` / `None`; `imagined` is a bool.
-  - **`rekey` (links).** In a release a link's `event_context.agent_id` is the agent token; a release
-    whose links name any other agent is refused, and ingest re-keys the token to `receiver_agent_id` —
-    `NAc.predict` matches a link's event context, so a token left there made every received link dead
-    for prediction. An unsigned bundle's donor agent id is left as before (re-keying it would change
-    what the Exp 56/61 transfers predict).
+  - **`rekey` (links).** Links are agent-scoped (`NAc.predict` matches a link's event context), so the
+    own-rows rule, the token check and the re-key cover them: a release ships only its exporter's links
+    (and those naming no agent) under the agent token; a release whose links name any other agent is
+    refused (links-only releases included); ingest re-keys the token to `receiver_agent_id`. An unsigned
+    bundle's identifier-shaped donor agent id is left as before (re-keying it would change what the
+    Exp 56/61 transfers predict); a non-identifier one is dropped by the scrub.
+  - **V4 (event signatures).** Any non-identifier segment of an event signature ships as `redacted`
+    (`tool:use:<free text>` still truncates to `tool:use`) — a hallucinated tool name is model output.
   Guard: `tests/unit/test_pre_freeze_fixes.py` (each proven by deletion).
 
 **Out of scope BY DECLARATION** (so absence is a decision, not an oversight):

@@ -373,18 +373,23 @@ _NAC_KEY_SEP = NAC_KEY_SEP
 
 
 def _scrub_event_signature(sig: str) -> str:
-    """Truncate ``tool:use:<free text>`` signatures to ``tool:use``.
+    """Scrub an event signature: ``tool:use:<free text>`` truncates to ``tool:use``; any other
+    non-identifier segment ships as ``redacted``.
 
     Identifier-shaped action tails are kept — they are the cross-entity
-    transfer vocabulary the bundle exists to ship. Everything else in
-    the signature space is template-generated (``tool:<name>``,
-    ``drive:<sensor>``, ``conversation:<channel>``) and passes through.
+    transfer vocabulary the bundle exists to ship. The rest of the signature
+    space is template-shaped (``tool:<name>``, ``drive:<sensor>``,
+    ``conversation:<channel>``), but its segments can still carry model output.
     """
     if sig.startswith(_USE_SIG_PREFIX):
         action = sig[len(_USE_SIG_PREFIX) :]
         if not _IDENTIFIER_TOKEN.match(action):
             return "tool:use"
-    return sig
+        return sig
+    # Every other signature is ``prefix:segment[:...]`` template vocabulary -- but a tool NAME is itself
+    # model output when the LLM hallucinates one (a real state shipped ``tool:ps aux``). Any segment that
+    # is not identifier-shaped ships as ``redacted``; the scrub's collision fold merges what now coincides.
+    return ":".join(part if _IDENTIFIER_TOKEN.match(part) else _REDACTED_TYPE for part in sig.split(":"))
 
 
 #: What a non-identifier ``event_type`` / ``outcome_type`` becomes in a bundle.

@@ -267,7 +267,9 @@ def test_identity_filter_single_signal_does_not_drop_at_threshold_2(tmp_path: Pa
         nac_payload = json.loads(zf.read("nac.json"))
     # Both stay — neither has two identity signals.
     assert "tool:open_door:success" in nac_payload["links"]
-    assert "met Dave at the market" in nac_payload["links"]
+    # The filter KEPT it (one signal < threshold 2); the unconditional content scrub then redacts the
+    # free-text signature (a non-identifier segment ships as "redacted", pre-freeze hardening).
+    assert "redacted" in nac_payload["links"]
 
 
 def test_identity_filter_drops_two_proper_noun_event_sig(tmp_path: Path) -> None:
@@ -308,7 +310,9 @@ def test_identity_filter_disabled_via_kwarg(tmp_path: Path) -> None:
     )
     with zipfile.ZipFile(output) as zf:
         nac_payload = json.loads(zf.read("nac.json"))
-    assert "Dave met Sarah in Portland" in nac_payload["links"]
+    # The disabled filter keeps the link; the content scrub is UNCONDITIONAL, so its free-text signature
+    # still ships redacted -- a --no-identity-filter backup does not keep free text verbatim.
+    assert "redacted" in nac_payload["links"]
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -1121,7 +1125,8 @@ class TestBundleScrubsNacStateSurfaces:
         assert "aut\x1ftool:probe" in data["event_outcome_welford"]
         # opt-out keeps them (trusted-internal backup semantics)
         data_off = self._compose(tmp_path, state, apply_identity_filter=False)
-        assert f"aut\x1f{idsig}" in data_off["event_outcome_welford"]
+        # Filter off: the Welford twin is kept, its free-text signature redacted by the unconditional scrub.
+        assert "aut\x1fredacted" in data_off["event_outcome_welford"]
 
 
 class TestManifestProvenancePathRedaction:

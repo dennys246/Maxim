@@ -31,7 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never ship. A link's id is re-derived from its scrubbed signatures (NAc's id hashed the private goal,
   tool params and agent id). A signed release carries no local agent id anywhere — its links'
   `event_context.agent_id` is `_agent`, re-keyed to your agent at ingest, and a release whose links name
-  another agent is refused. `context_factors` never ships; free-text `event_type` / `outcome_type` /
+  another agent is refused (links count as agent-scoped data: a release ships only the exporter's own
+  links, links-only releases included). A non-identifier event-signature segment ships as `redacted`
+  (a hallucinated tool name is model output) — this content scrub is unconditional, so a
+  `--no-identity-filter` backup no longer keeps a free-text signature verbatim. `context_factors` never
+  ships; free-text `event_type` / `outcome_type` /
   link `domain` ship as `redacted` / `None`. Every manifest reader parses strictly (duplicate keys, NaN
   and overflowing floats refused) and requires `schema_version` to be a JSON integer; ingest refuses
   numeric strings and bools in number fields and validates `cluster_reward_source` (a malformed key was

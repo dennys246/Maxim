@@ -428,3 +428,139 @@ def test_the_content_identity_frames_only_an_integer_schema_3_as_v2(tmp_path):
     ).hexdigest()
     with zipfile.ZipFile(path) as zf:
         assert content_payload_digest(zf) != v2_framed
+
+
+# ── re-read round (links-only releases, signatures, the last unguarded paths) ──────────────────
+
+
+def _links_only_nac(agent="aut-local-7", other=None):
+    from tests.unit.test_hivemind_ingest import _link, _nac_state
+
+    mine = _link()
+    mine["event_context"] = {"agent_id": agent}
+    links = [mine]
+    if other is not None:
+        theirs = _link()
+        theirs["id"], theirs["outcome_valence"] = "l2", "negative"
+        theirs["event_context"] = {"agent_id": other}
+        links.append(theirs)
+    return _nac_state(links={"tool:probe": links})
+
+
+@_needs_sign
+def test_a_links_only_release_is_re_keyed_and_its_links_predict(tmp_path):
+    """The re-read's DO-NOT-MERGE: the common real shape (links, no keyed rows) slipped both refusals and
+    shipped dead links. Links now count as agent-scoped: no receiver id -> refused; with one -> they predict."""
+    from maxim.decisions.nac import NAc
+    from maxim.hivemind.ingest import IngestRefused
+    from maxim.hivemind.signing import BundleSigner, UNCOUNTED, SignedRelease
+    from maxim.hivemind.bundle import compose_bundle
+
+    signer = BundleSigner.generate(signer_identity="queen-a")
+    out = tmp_path / "links.zip"
+    compose_bundle(
+        nac_state=_links_only_nac(),
+        ec_substrate_nodes=None,
+        output_path=out,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+        release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0", counter=UNCOUNTED),
+    )
+    signed = dict(require_signed=True, trusted_keys={"queen-a": signer.public_key_b64})
+    with pytest.raises(IngestRefused, match="agent token"):
+        _ingest(out, tmp_path, **signed)
+    report = _ingest(out, tmp_path / "second", receiver_agent_id="receiver", **signed)
+    nac = NAc()
+    nac.load_state(report.nac)
+    assert nac.predict("tool_execution", "tool:probe", context={"agent_id": "receiver"}) is not None
+
+
+@_needs_sign
+def test_a_release_ships_only_its_own_agents_links(tmp_path):
+    """Own rows only covers links: another agent's link (or one an earlier ingest left) is dropped, never
+    relabelled into the exporter's -- at the receiver it would have become live."""
+    from maxim.hivemind.bundle import compose_bundle
+    from maxim.hivemind.signing import BundleSigner, UNCOUNTED, SignedRelease
+
+    out = tmp_path / "own.zip"
+    compose_bundle(
+        nac_state=_links_only_nac(other="someone-else"),
+        ec_substrate_nodes=None,
+        output_path=out,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+        release=SignedRelease(
+            signer=BundleSigner.generate(signer_identity="queen-a"),
+            release_sequence=1,
+            license="CDLA-Permissive-2.0",
+            counter=UNCOUNTED,
+        ),
+        agent_id="aut-local-7",
+    )
+    with zipfile.ZipFile(out) as zf:
+        links = json.loads(zf.read("nac.json"))["links"]["tool:probe"]
+    assert len(links) == 1 and links[0]["outcome_valence"] == "positive"
+
+
+def test_a_free_text_signature_segment_ships_redacted(tmp_path):
+    from tests.unit.test_hivemind_ingest import _link, _nac_state
+
+    link = _link()
+    link["event_signature"] = "tool:ps aux"
+    with zipfile.ZipFile(_compose(tmp_path, signed=False, nac=_nac_state(links={"tool:ps aux": [link]}))) as zf:
+        links = json.loads(zf.read("nac.json"))["links"]
+    assert list(links) == ["tool:redacted"] and links["tool:redacted"][0]["event_signature"] == "tool:redacted"
+
+
+def test_provenance_keys_and_event_context_values_are_token_shaped(tmp_path):
+    from maxim.hivemind.bundle import compose_bundle
+    from tests.unit.test_hivemind_ingest import _node
+
+    nac = _nac()
+    nac["links"]["tool:probe"][0]["event_context"] = {"agent_id": "a sentence, not an id"}
+    out = tmp_path / "p.zip"
+    compose_bundle(
+        nac_state=nac,
+        ec_substrate_nodes={"n1": _node()},
+        output_path=out,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+        encoder_provenance={"world": {"a free text key": "x", "model_name": "org/m"}},
+    )
+    with zipfile.ZipFile(out) as zf:
+        manifest = json.loads(zf.read("manifest.json"))
+        link = json.loads(zf.read("nac.json"))["links"]["tool:probe"][0]
+    assert manifest["encoder_provenance"]["recorded"]["world"] == {"model_name": "org/m"}
+    assert link["event_context"] == {}
+
+
+def test_the_scheme_probe_parses_strictly(tmp_path):
+    from maxim.hivemind.bundle import bundle_signature_scheme
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    members = read_members(_compose(tmp_path, signed=False))
+    text = members["manifest.json"].decode()
+    members["manifest.json"] = (
+        text.replace('"kind"', '"signature": "x", "kind"', 1)
+        .replace('"kind"', '"kind": "substrate_bundle", "kind"', 1)
+        .encode()
+    )
+    assert bundle_signature_scheme(write_members(tmp_path / "dup.zip", members)) is None
+
+
+@_needs_sign
+def test_a_contribution_records_the_algorithm_it_claims_not_a_constant(tmp_path):
+    from maxim.hivemind.signing import SIGNATURE_MEMBER
+    from maxim.hivemind.store import OasisStore
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    members = read_members(_compose(tmp_path, signed=True))
+    sig = json.loads(members[SIGNATURE_MEMBER])
+    sig["signature_algorithm"] = "pkcs7"
+    members[SIGNATURE_MEMBER] = json.dumps(sig).encode()
+    store = OasisStore(tmp_path / "oasis")
+    store.accept_contribution(write_members(tmp_path / "c.zip", members).read_bytes(), source="10.0.0.1")
+    assert store.list_contributions()[0]["signature_algorithm"] == "pkcs7"

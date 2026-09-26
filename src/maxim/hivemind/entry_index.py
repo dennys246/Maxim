@@ -72,8 +72,26 @@ def _list_field(nac: Mapping[str, Any], field: str) -> list[Any]:
 # ── agent-segment normalization (export side) ──────────────────────────────────────────────────
 
 
+def _links_by_agent(nac: Mapping[str, Any]) -> list[tuple[str, str | None]]:
+    """``(event signature, agent id | None)`` per causal link, the id from ``event_context.agent_id``."""
+    out: list[tuple[str, str | None]] = []
+    links = nac.get("links") or {}
+    if not isinstance(links, Mapping):
+        raise EntryIndexError("NAc field 'links' is not an object")
+    for sig, bucket in links.items():
+        if not isinstance(bucket, list):
+            raise EntryIndexError(f"links[{sig!r}] is not a list")
+        for link in bucket:
+            context = link.get("event_context") if isinstance(link, Mapping) else None
+            agent = context.get("agent_id") if isinstance(context, Mapping) else None
+            out.append((str(sig), agent if isinstance(agent, str) else None))
+    return out
+
+
 def agent_ids(nac: Mapping[str, Any]) -> set[str]:
-    """Every agent id a NAc state's composite keys name (the first segment)."""
+    """Every agent id a NAc state names: its composite keys' first segment AND its causal links'
+    ``event_context.agent_id``. Links count: ``NAc.predict`` matches a link's event context, so a link is
+    agent-scoped in practice -- a release's own-rows rule, its token check and its re-key cover them."""
     if not isinstance(nac, Mapping):
         raise EntryIndexError("the NAc state is not an object")
     ids: set[str] = set()
@@ -86,6 +104,7 @@ def agent_ids(nac: Mapping[str, Any]) -> set[str]:
         ids.add(str(key).split(NAC_KEY_SEP, 1)[0])
     for key in _mapping_field(nac, "reward_bias"):
         ids.add(str(key).split(":", 1)[0])
+    ids.update(agent for _, agent in _links_by_agent(nac) if agent is not None)
     return ids
 
 
@@ -187,16 +206,27 @@ def normalize_agent_segment(nac: Mapping[str, Any], *, own_agent_id: str | None 
         else:
             out[field] = {_retoken(k, sep): v for k, v in kept[field].items()}
     # A causal link names its agent in ``event_context.agent_id`` -- and it is NOT inert once stored:
-    # ``NAc.predict`` matches a link's event context against the query context. It ships under the token
-    # too ("local agent ids never ship" covers the links), and ingest re-keys it with the composite keys
-    # (``merge.rekey_nac_state``). Links are not agent-keyed, so every link is kept and relabelled -- the
-    # "never relabelled" rule above is about agent-KEYED rows, which could collide; links cannot.
+    # ``NAc.predict`` matches a link's event context. So links follow the own-rows rule too: a link naming
+    # another agent (or the token an earlier ingest left) is dropped and counted; the exporter's own, and
+    # links naming no agent, ship -- relabelled to the token, which ingest re-keys to the receiver
+    # (``merge.rekey_nac_state``).
     links = kept.get("links")
     if isinstance(links, Mapping):
-        out["links"] = {
-            sig: [_retoken_link(link) for link in bucket] if isinstance(bucket, list) else bucket
-            for sig, bucket in links.items()
-        }
+        shipped: dict[str, Any] = {}
+        for sig, bucket in links.items():
+            if not isinstance(bucket, list):
+                continue
+            own_links = []
+            for link in bucket:
+                context = link.get("event_context") if isinstance(link, Mapping) else None
+                agent = context.get("agent_id") if isinstance(context, Mapping) else None
+                if agent is not None and agent != own:
+                    dropped += 1
+                    continue
+                own_links.append(_retoken_link(link))
+            if own_links:
+                shipped[sig] = own_links
+        out["links"] = shipped
     return out, dropped
 
 
