@@ -186,9 +186,11 @@ def normalize_agent_segment(nac: Mapping[str, Any], *, own_agent_id: str | None 
             out[field] = sorted(_retoken(k, sep) for k in kept[field])
         else:
             out[field] = {_retoken(k, sep): v for k, v in kept[field].items()}
-    # A causal link names its agent in ``event_context.agent_id`` (read only while an outcome is recorded
-    # live; inert once stored). It ships under the token too -- "local agent ids never ship" covers the
-    # links, not just the composite keys.
+    # A causal link names its agent in ``event_context.agent_id`` -- and it is NOT inert once stored:
+    # ``NAc.predict`` matches a link's event context against the query context. It ships under the token
+    # too ("local agent ids never ship" covers the links), and ingest re-keys it with the composite keys
+    # (``merge.rekey_nac_state``). Links are not agent-keyed, so every link is kept and relabelled -- the
+    # "never relabelled" rule above is about agent-KEYED rows, which could collide; links cannot.
     links = kept.get("links")
     if isinstance(links, Mapping):
         out["links"] = {

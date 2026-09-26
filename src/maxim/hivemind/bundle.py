@@ -303,6 +303,58 @@ def _utc_now_iso() -> str:
 # producer adds next.
 _BUNDLE_EVENT_CONTEXT_ALLOWLIST: frozenset[str] = frozenset({"agent_id"})
 
+#: The ``nac.json`` top-level fields a bundle may carry (public format 1). Everything else -- ``saved_at``,
+#: a persisted ``_format_version``, a field a future producer adds -- is dropped at export and on receipt.
+_BUNDLE_NAC_FIELDS: frozenset[str] = frozenset(
+    {
+        "version",
+        "links",
+        "outcome_index",
+        "priors",
+        "total_observations",
+        "reward_bias",
+        "goal_reward_bias",
+        "cluster_reward_bias",
+        "cluster_reward_source",
+        "inherent_bias_keys",
+        "percept_valences",
+        "event_outcome_welford",
+        "cluster_fear",
+    }
+)
+
+#: The causal-link fields a bundle may carry (``CausalLink.to_dict``'s shape).
+_BUNDLE_LINK_FIELDS: frozenset[str] = frozenset(
+    {
+        "id",
+        "event_type",
+        "event_signature",
+        "event_context",
+        "outcome_type",
+        "outcome_signature",
+        "outcome_valence",
+        "temporal_delta",
+        "predicted_value",
+        "prediction_history",
+        "observation_count",
+        "confidence",
+        "last_observed",
+        "memory_ids",
+        "context_factors",
+        "last_rpe",
+        "percept_refs",
+        "imagined",
+        "source",
+        "domain",
+        "contributors",
+    }
+)
+
+#: The EC-node fields a bundle may carry (``EC.save``'s node shape plus export provenance).
+_BUNDLE_EC_NODE_FIELDS: frozenset[str] = frozenset(
+    {"embedding", "modality", "count", "member_count", "geometry", "domain", "source", "contributors"}
+)
+
 # Identifier-shaped token: single short token, no whitespace. Gates the
 # ``tool:use:<action>`` tail (``tool:use:dodge`` / ``tool:use:open`` are
 # the documented transfer vocabulary; a sentence-shaped action is
@@ -345,9 +397,16 @@ def _scrub_type_field(value: Any) -> str:
 
 
 def _scrub_link_for_bundle(link: dict[str, Any]) -> dict[str, Any]:
-    """Return a copy of one CausalLink dict scrubbed for bundle export."""
-    scrubbed = dict(link)
-    scrubbed["event_context"] = {k: v for k, v in link["event_context"].items() if k in _BUNDLE_EVENT_CONTEXT_ALLOWLIST}
+    """Return a copy of one CausalLink dict scrubbed for bundle export (and, re-run, on receipt)."""
+    scrubbed = {k: v for k, v in link.items() if k in _BUNDLE_LINK_FIELDS}
+    scrubbed["event_context"] = {
+        k: v
+        for k, v in link["event_context"].items()
+        if k in _BUNDLE_EVENT_CONTEXT_ALLOWLIST and isinstance(v, str) and _IDENTIFIER_TOKEN.match(v)
+    }
+    scrubbed["imagined"] = link.get("imagined") is True
+    domain = link.get("domain")
+    scrubbed["domain"] = domain if isinstance(domain, str) and _IDENTIFIER_TOKEN.match(domain) else None
     # Canonical valence-preserving form built from STRUCTURED fields.
     # The review round refuted the first-token-of-outcome_signature
     # draft twice over: (a) only one of the four outcome_signature
@@ -371,7 +430,16 @@ def _scrub_link_for_bundle(link: dict[str, Any]) -> dict[str, Any]:
     scrubbed["event_signature"] = _scrub_event_signature(link["event_signature"])
     scrubbed["memory_ids"] = []
     scrubbed["percept_refs"] = []
+    # The link id NAc minted hashes the PRE-scrub event context (the LLM goal, tool params, the agent id)
+    # and outcome text -- anyone holding a guess could confirm it, and it links one contributor's
+    # releases. Re-derived from the scrubbed signatures only; unique within a bundle, because links
+    # sharing both are folded into one.
+    scrubbed["id"] = _bundle_link_id(scrubbed["event_signature"], scrubbed["outcome_signature"])
     return scrubbed
+
+
+def _bundle_link_id(event_signature: str, outcome_signature: str) -> str:
+    return hashlib.sha256(f"{event_signature}{_NAC_KEY_SEP}{outcome_signature}".encode()).hexdigest()[:16]
 
 
 def scrub_cluster_fear_for_bundle(fear: Any) -> dict[str, float]:
@@ -538,7 +606,9 @@ def scrub_nac_state_for_bundle(nac_state: dict[str, Any]) -> dict[str, Any]:
                 merged_source[new_key] = src
         scrubbed["cluster_reward_source"] = merged_source
 
-    return scrubbed
+    # ALLOWLIST the top level (like event_context): a field a future producer adds -- or ``saved_at``,
+    # a wall-clock timestamp the receiver discards anyway -- never ships by default.
+    return {k: v for k, v in scrubbed.items() if k in _BUNDLE_NAC_FIELDS}
 
 
 # Absolute filesystem path (POSIX, home-relative, or Windows drive) —
@@ -548,6 +618,12 @@ def scrub_nac_state_for_bundle(nac_state: dict[str, Any]) -> dict[str, Any]:
 _ABS_PATH_PATTERN = re.compile(r"^(/|~[/\\]|[A-Za-z]:[\\/])")
 
 _REDACTED_PATH_MARKER = "[REDACTED_PATH]"
+
+
+#: A provenance string that may ship: token-shaped (a model id like ``org/model-name``, a sensor name, a
+#: normalization mode). Anything else -- free text, a note, a hostname sentence -- ships as the marker.
+_PROVENANCE_TOKEN = re.compile(r"^[A-Za-z0-9_.:/@+-]{1,128}$")
+_REDACTED_TEXT_MARKER = "[REDACTED]"
 
 
 def _redact_paths_in_provenance(value: Any) -> Any:
@@ -562,9 +638,16 @@ def _redact_paths_in_provenance(value: Any) -> Any:
     honest-unknown contract.
     """
     if isinstance(value, str):
-        return _REDACTED_PATH_MARKER if _ABS_PATH_PATTERN.match(value) else value
+        if _ABS_PATH_PATTERN.match(value):
+            return _REDACTED_PATH_MARKER
+        return value if _PROVENANCE_TOKEN.match(value) else _REDACTED_TEXT_MARKER
     if isinstance(value, dict):
-        return {k: _redact_paths_in_provenance(v) for k, v in value.items()}
+        # Keys too: a free-text key would ship as-is.
+        return {
+            k: _redact_paths_in_provenance(v)
+            for k, v in value.items()
+            if isinstance(k, str) and _PROVENANCE_TOKEN.match(k)
+        }
     if isinstance(value, list):
         return [_redact_paths_in_provenance(v) for v in value]
     return value
@@ -920,7 +1003,10 @@ def compose_bundle(
 
     observed_embedding_dims: dict[str, list[int]] = {}
     if ec_substrate_nodes is not None:
-        ec_nodes_filtered = _filter_ec_nodes_by_domain(ec_substrate_nodes, domain=domain)
+        ec_nodes_filtered = {
+            node_id: {k: v for k, v in node.items() if k in _BUNDLE_EC_NODE_FIELDS}
+            for node_id, node in _filter_ec_nodes_by_domain(ec_substrate_nodes, domain=domain).items()
+        }
         bundle_contents["ec.json"] = json.dumps(
             {"substrate_nodes": ec_nodes_filtered},
             indent=2,
@@ -1182,8 +1268,19 @@ def _strict_json(raw: bytes, what: str) -> Any:
     def no_constants(name: str) -> Any:
         raise ValueError(f"{what}: non-finite number {name}")
 
+    def finite_float(text: str) -> float:
+        value = float(text)
+        if value != value or value in (float("inf"), float("-inf")):  # 1e999 overflows to inf
+            raise ValueError(f"{what}: non-finite number {text}")
+        return value
+
     try:
-        return json.loads(raw.decode("utf-8"), object_pairs_hook=no_duplicates, parse_constant=no_constants)
+        return json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=no_duplicates,
+            parse_constant=no_constants,
+            parse_float=finite_float,
+        )
     except RecursionError as exc:
         raise ValueError(f"{what}: nests too deeply to parse") from exc
 
@@ -1472,8 +1569,8 @@ def bundle_signature_scheme(bundle_path: str | Path) -> int | None:
         if SIGNATURE_MEMBER in zf.namelist():
             return SIGNATURE_SCHEME_V2
         try:
-            raw = json.loads(
-                bounded_member_read(zf, "manifest.json", max_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES).decode("utf-8")
+            raw = _strict_json(
+                bounded_member_read(zf, "manifest.json", max_bytes=MAX_ENTRY_UNCOMPRESSED_BYTES), "manifest.json"
             )
         except (KeyError, ValueError, UnicodeDecodeError, RecursionError):
             return None

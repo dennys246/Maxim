@@ -258,18 +258,31 @@ adapter's pre-merge review round, 2026-09-05):
 - **Pre-freeze fixes (2026-09-26, public_oasis item 2 — the format-freeze pass's code extraction).**
   - **V2 (numbers).** A number field must hold a JSON number: a numeric string or a bool is refused, not
     coerced (it survived into merged state where the value was kept verbatim).
-  - **V2 (`cluster_reward_source`).** Now validated: triple keys (cluster id charset-checked) and a value
-    from the credit-source vocabulary (`NAc.CREDIT_SOURCES` + `mixed`); a malformed key is a refusal,
-    no longer a crash in the receiver scrub.
+  - **V2 (`cluster_reward_source`).** Now validated: triple keys (cluster id charset-checked) and a string
+    value; a malformed key or a non-string is a refusal, no longer a crash. The vocabulary is OPEN: a
+    source outside `NAc.CREDIT_SOURCES` is dropped with a note (as NAc drops it), so a newer producer's
+    source is not a format break for older receivers.
   - **Manifest parsing.** Every reader parses the manifest STRICTLY (duplicate keys and non-finite
-    numbers refused), as the verifier does — the unsigned path let the last duplicate win — and
-    `schema_version` must be a plain JSON integer (`true` and `3.0` are refused).
-  - **V1 (identity grammar).** A release's `contributor_id` and `signer_identity` follow the public
-    identity grammar `[A-Za-z0-9_.@:-]{1,128}` (no reserved `_` prefix); compose enforces it for every
-    bundle, verification for schema-3 releases (legacy schema ≤ 2 stays lenient).
-  - **V4 (compose-side scrub, re-run on receipt).** A link's `event_context.agent_id` ships under the
-    agent token in a release; `context_factors` never ships (free-form keys, no production writer); a
-    non-identifier `event_type` / `outcome_type` ships as `redacted`.
+    numbers refused — including an overflowing literal like `1e999`), as the verifier does — the
+    unsigned path let the last duplicate win — and `schema_version` must be a plain JSON integer (`true`
+    and `3.0` are refused).
+  - **V1 (identity grammar).** `contributor_id` and `signer_identity` follow the public identity grammar
+    `[A-Za-z0-9_.@:-]{1,128}` (no reserved `_` prefix), enforced where identities are created or admitted
+    as new: `BundleSigner` (the type), compose, a schema-3 release's verification, and the Oasis
+    `/contribute` door (which also bounds `domain` / `body_ref` to short printable strings). Legacy
+    schema ≤ 2 bundles are read leniently.
+  - **V4 (the scrub is an ALLOWLIST, compose-side and re-run on receipt).** `nac.json`'s top level, each
+    link and each EC node carry only listed fields (`saved_at`, unknown fields and a future producer's
+    additions never ship); `encoder_provenance.recorded` keeps only token-shaped keys and strings (free
+    text ships as `[REDACTED]`); a link's `id` is re-derived from its scrubbed signatures (the id NAc
+    minted hashes the pre-scrub goal, tool params and agent id — a guess-confirmation oracle);
+    `context_factors` never ships; a non-identifier `event_type` / `outcome_type` / link `domain` ships
+    as `redacted` / `None`; `imagined` is a bool.
+  - **`rekey` (links).** In a release a link's `event_context.agent_id` is the agent token; a release
+    whose links name any other agent is refused, and ingest re-keys the token to `receiver_agent_id` —
+    `NAc.predict` matches a link's event context, so a token left there made every received link dead
+    for prediction. An unsigned bundle's donor agent id is left as before (re-keying it would change
+    what the Exp 56/61 transfers predict).
   Guard: `tests/unit/test_pre_freeze_fixes.py` (each proven by deletion).
 
 **Out of scope BY DECLARATION** (so absence is a decision, not an oversight):

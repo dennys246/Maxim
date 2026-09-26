@@ -26,15 +26,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Pre-freeze hardening of the bundle format** (public_oasis Phase 0 item 2, before the public format
-  freeze). A signed release no longer carries a local agent id inside its causal links
-  (`event_context.agent_id` ships as `_agent`); `context_factors` never ships; a free-text
-  `event_type` / `outcome_type` ships as `redacted`. Every manifest reader now parses strictly
-  (duplicate keys and NaN refused) and requires `schema_version` to be a JSON integer; ingest refuses
+  freeze). The export scrub is now an ALLOWLIST at every level (top-level NAc fields, link fields, EC
+  node fields, encoder provenance), so `saved_at`, unknown fields and a future producer's additions
+  never ship. A link's id is re-derived from its scrubbed signatures (NAc's id hashed the private goal,
+  tool params and agent id). A signed release carries no local agent id anywhere — its links'
+  `event_context.agent_id` is `_agent`, re-keyed to your agent at ingest, and a release whose links name
+  another agent is refused. `context_factors` never ships; free-text `event_type` / `outcome_type` /
+  link `domain` ship as `redacted` / `None`. Every manifest reader parses strictly (duplicate keys, NaN
+  and overflowing floats refused) and requires `schema_version` to be a JSON integer; ingest refuses
   numeric strings and bools in number fields and validates `cluster_reward_source` (a malformed key was
-  a crash); `contributor_id` / `signer_identity` must match `[A-Za-z0-9_.@:-]{1,128}` (compose, and
-  verification of schema-3 releases). The Oasis listing reports each bundle's stored schema version, a
-  contributed v2 release records its signature algorithm, and `POST /v1/substrate/contribute/?…` now
-  routes to the store.
+  a crash; an unknown source is dropped with a note). `contributor_id` / `signer_identity` must match
+  `[A-Za-z0-9_.@:-]{1,128}` — enforced by `BundleSigner`, compose, release verification and the Oasis
+  `/contribute` door (which also bounds `domain` / `body_ref`). The Oasis listing reports each bundle's
+  STORED schema version (1, 2 or 3 — no longer always 3), a contribution records its claimed signature
+  algorithm, and `POST /v1/substrate/contribute/?…` now routes to the store.
 
 - **Oasis release format v2: signed releases carry a signed entry index, their signer, their sequence
   and their license** (bundle schema 3; public_oasis Phase 0 item 7,

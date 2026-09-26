@@ -618,9 +618,10 @@ NAC_KEY_SEP = "\x1f"
 NODE_ID_CHARSET = re.compile(r"^[A-Za-z0-9_.\-]{1,128}$")
 
 #: The grammar of a PUBLIC identity string -- a bundle's ``contributor_id`` and a release's
-#: ``signer_identity`` (public format 1). Short and printable, so an id never carries free text into a
-#: listing, a journal or a log; ``@`` and ``:`` admit host- and namespace-shaped ids. The reserved ``_``
-#: prefix is refused separately (:func:`_validate_source`).
+#: ``signer_identity`` (public format 1). Short and printable; ``@`` and ``:`` admit host- and
+#: namespace-shaped ids (an id is PUBLIC -- never use an email you would not publish). Enforced where
+#: identities are CREATED or ADMITTED as new: ``BundleSigner``, ``compose_bundle``, a v2 release's
+#: verification and the Oasis ``/contribute`` door. Legacy schema <= 2 bundles are read leniently.
 IDENTITY_CHARSET = re.compile(r"^[A-Za-z0-9_.@:\-]{1,128}$")
 
 
@@ -1051,7 +1052,29 @@ def rekey_nac_state(
                 continue
             rekeyed_inherent.append(NAC_KEY_SEP.join((to_agent_id or aid, mapped, tsig)))
         out["inherent_bias_keys"] = sorted(set(rekeyed_inherent))
+
+    # A released link names its agent as the token in ``event_context.agent_id`` (release format v2), and
+    # ``NAc.predict`` matches a stored link's event context against the query context -- so a token left
+    # there would make every released link dead for prediction. Re-keyed with the composite keys. Only
+    # the TOKEN: an unsigned bundle's real donor id is left as it always was (re-keying it too would
+    # change what the Exp 56/61 transfers predict -- a behaviour change on its own trigger).
+    if to_agent_id is not None and isinstance(nac_state.get("links"), dict):
+        out["links"] = {
+            sig: [_rekey_link_agent(link, to_agent_id) for link in bucket] if isinstance(bucket, list) else bucket
+            for sig, bucket in nac_state["links"].items()
+        }
     return out
+
+
+def _rekey_link_agent(link: Any, to_agent_id: str) -> Any:
+    from maxim.hivemind.entry_index import AGENT_TOKEN  # noqa: PLC0415 -- entry_index imports this module
+
+    if not isinstance(link, dict):
+        return link
+    context = link.get("event_context")
+    if not isinstance(context, dict) or context.get("agent_id") != AGENT_TOKEN:
+        return link
+    return {**link, "event_context": {**context, "agent_id": to_agent_id}}
 
 
 def invalidate_stale_geometry_nodes(

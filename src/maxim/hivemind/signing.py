@@ -144,10 +144,15 @@ class BundleSigner:
     """
 
     def __init__(self, private_key: Ed25519PrivateKey, *, signer_identity: str) -> None:
-        if not isinstance(signer_identity, str) or not signer_identity:
-            raise ValueError("signer_identity must be a non-empty string")
-        if signer_identity.startswith("_"):
-            raise ValueError("signer_identity must not start with the reserved '_' prefix")
+        from maxim.hivemind.merge import is_public_identity  # noqa: PLC0415 -- merge is heavy; one owner
+
+        # The public identity grammar, in the TYPE: a signer that cannot publish is never constructed (no
+        # key minted and counter-registered under an identity compose would then refuse).
+        if not is_public_identity(signer_identity):
+            raise ValueError(
+                f"signer_identity {signer_identity!r} is not a public identity "
+                "([A-Za-z0-9_.@:-], 1-128 chars, no reserved '_' prefix)"
+            )
         self._private_key = private_key
         self.signer_identity = signer_identity
 

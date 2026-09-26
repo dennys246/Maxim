@@ -478,11 +478,11 @@ def _check_key_shape(key: str, parts_expected: int, *, where: str) -> list[str]:
 
 
 def _credit_source_vocabulary() -> frozenset[str]:
-    """The closed vocabulary a ``cluster_reward_source`` value comes from (``NAc._note_cluster_reward_source``
-    stores only these), so a foreign value outside it is refused, never stored as a new category."""
+    """The credit-source vocabulary this build knows (``NAc._note_cluster_reward_source`` stores only these);
+    a foreign value outside it is dropped with a note, as NAc drops it, never stored as a new category."""
     from maxim.decisions.nac import NAc  # noqa: PLC0415 -- decisions is heavy; resolved on first ingest
 
-    return frozenset({*NAc.CREDIT_SOURCES, "mixed"})
+    return frozenset(NAc.CREDIT_SOURCES)
 
 
 def _validate_nac_payload(
@@ -668,15 +668,25 @@ def _validate_nac_payload(
         raise IngestRefused(
             duty="V6", reason=f"cluster_reward_source has {len(sources)} keys (cap {MAX_NODES_PER_SLICE})"
         )
+    kept_sources: dict[str, str] = {}
+    unknown_sources = 0
     for key, value in sources.items():
         parts = _check_key_shape(str(key), 3, where=f"cluster_reward_source[{key!r}]")
         if not _NODE_ID_CHARSET.match(parts[1]):
             raise IngestRefused(duty="V9", reason=f"cluster id {parts[1]!r} fails the identifier charset")
+        if not isinstance(value, str):
+            raise IngestRefused(duty="V2", reason=f"cluster_reward_source[{key!r}] is not a string: {value!r}")
         if value not in credit_sources:
-            raise IngestRefused(
-                duty="V2",
-                reason=f"cluster_reward_source[{key!r}] = {value!r} is not a credit source {sorted(credit_sources)}",
-            )
+            # A source this build does not know (a newer producer's) is dropped, as NAc drops it -- an open
+            # vocabulary, so a new source is not a format break for older receivers.
+            unknown_sources += 1
+            continue
+        kept_sources[str(key)] = value
+    state["cluster_reward_source"] = kept_sources
+    if unknown_sources:
+        notes.append(
+            f"cluster_reward_source: {unknown_sources} entr(ies) with a credit source this build does not know dropped"
+        )
     if fear_discounted:
         notes.append(
             f"cluster_fear: {fear_discounted} entr{'y' if fear_discounted == 1 else 'ies'} discounted ×{FOREIGN_FEAR_DISCOUNT} (foreign fear is vicarious, prereg Exp 61 D1)"
@@ -1146,6 +1156,25 @@ def ingest_bundle(
                         "pass receiver_agent_id (--receiver-agent-id) so they re-key to your agent"
                     ),
                 )
+            if AGENT_TOKEN in donor_agents:
+                # A release names no local agent anywhere -- its links included (the compose-side retoken,
+                # checked again here, since a hand-built release could still carry one).
+                leaked = sorted(
+                    {
+                        str(link.get("event_context", {}).get("agent_id"))
+                        for bucket in (donor_nac.get("links") or {}).values()
+                        if isinstance(bucket, list)
+                        for link in bucket
+                        if isinstance(link, dict)
+                        and isinstance(link.get("event_context"), dict)
+                        and link["event_context"].get("agent_id") not in (None, AGENT_TOKEN)
+                    }
+                )
+                if leaked:
+                    raise IngestRefused(
+                        duty="V2",
+                        reason=f"a release's links name local agent id(s) {leaked[:3]} -- a release carries only {AGENT_TOKEN!r}",
+                    )
         if "ec" in declared_files:
             raw = _bounded_zip_read(zf, declared_files["ec"])
             parsed = _loads_strict(raw, slice_name=declared_files["ec"])

@@ -42,6 +42,7 @@ from typing import Any
 
 from maxim.hivemind.bundle import (
     BundleVerification,
+    bounded_member_read,
     bundle_signature_scheme,
     content_payload_digest,
     find_equivocation,
@@ -50,6 +51,7 @@ from maxim.hivemind.bundle import (
     stored_schema_version,
     verify_bundle_zip,
 )
+from maxim.hivemind.merge import is_public_identity
 from maxim.hivemind.signing import SIGNATURE_ALGORITHM, SIGNATURE_MEMBER, SIGNATURE_SCHEME_V2
 from maxim.utils.atomic_io import atomic_write_bytes, atomic_write_json
 from maxim.utils.format_version import check_format_version, with_format_version
@@ -91,6 +93,37 @@ def _verify(raw: bytes, queen_keys: Mapping[str, str]) -> BundleVerification:
             return verify_bundle_zip(zf, trusted_keys=dict(queen_keys), accept_v1=True)
     except zipfile.BadZipFile as exc:
         return BundleVerification(False, f"not a ZIP archive: {exc}")
+
+
+_LOG_SAFE = re.compile(r"^[\x20-\x7e]{0,128}$")
+
+
+def _check_contribution_strings(manifest: dict[str, Any]) -> None:
+    if not is_public_identity(manifest.get("contributor_id")):
+        raise OasisStoreError(f"contributor_id {manifest.get('contributor_id')!r} is not a public identity")
+    signer = manifest.get("signer_identity")
+    if signer is not None and not is_public_identity(signer):
+        raise OasisStoreError(f"signer_identity {signer!r} is not a public identity")
+    for field in ("domain", "body_ref"):
+        value = manifest.get(field)
+        if value is not None and not (isinstance(value, str) and _LOG_SAFE.match(value)):
+            raise OasisStoreError(f"{field} {value!r} is not a short printable string")
+
+
+def _claimed_algorithm(raw: bytes) -> str | None:
+    """The algorithm a v2 release's signature member CLAIMS (unverified -- the store does not check a
+    contribution's signature)."""
+    import io
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            if SIGNATURE_MEMBER not in zf.namelist():
+                return None
+            doc = json.loads(bounded_member_read(zf, SIGNATURE_MEMBER, max_bytes=64 * 1024))
+    except (zipfile.BadZipFile, ValueError):
+        return None
+    algorithm = doc.get("signature_algorithm") if isinstance(doc, dict) else None
+    return algorithm if isinstance(algorithm, str) and _LOG_SAFE.match(algorithm) else None
 
 
 def _has_signature_member(raw: bytes) -> bool:
@@ -423,15 +456,20 @@ class OasisStore:
             manifest = read_bundle_manifest_bytes(raw)
         except _MALFORMED_BUNDLE as exc:
             raise OasisStoreError(f"contribution is not a valid substrate bundle: {exc}") from exc
+        # The /contribute door is where strangers write: identities follow the public grammar and every
+        # string that lands in the provenance log is bounded and printable (no newline / escape / 5 KB id
+        # in a listing or a log). Lenience is for READING old bundles, not for admitting new ones.
+        _check_contribution_strings(manifest)
 
         record = {
             "digest": digest,
             "contributor_id": manifest.get("contributor_id"),
             "domain": manifest.get("domain"),
             "body_ref": manifest.get("body_ref"),
-            # A v2 release keeps its algorithm in signature.json, not the manifest (the listing's rule).
+            # CLAIMED, not verified (the store never checks a contribution's signature): a v2 release keeps
+            # its algorithm in signature.json, a v1 bundle in the manifest.
             "signature_algorithm": (
-                SIGNATURE_ALGORITHM if _has_signature_member(raw) else manifest.get("signature_algorithm")
+                _claimed_algorithm(raw) if _has_signature_member(raw) else manifest.get("signature_algorithm")
             ),
             "signer_identity": manifest.get("signer_identity"),
             "source": source,

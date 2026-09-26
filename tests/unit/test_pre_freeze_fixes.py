@@ -112,7 +112,6 @@ def test_a_release_claiming_schema_3_as_a_float_does_not_verify(tmp_path):
     sig = json.loads(members[SIGNATURE_MEMBER])
     sig["signature"] = signer.sign_payload(bundle_signing_payload_v2(members))
     members[SIGNATURE_MEMBER] = json.dumps(sig).encode()
-    manifest["signer_identity"] = "queen-a"
     with zipfile.ZipFile(write_members(tmp_path / "f.zip", members)) as zf:
         result = verify_bundle_zip(zf, trusted_keys={"queen-a": signer.public_key_b64}, accept_v1=False)
     assert not result.ok and "schema" in result.reason
@@ -146,13 +145,10 @@ def test_a_number_field_holding_a_string_or_bool_is_refused(tmp_path, value):
         _ingest(write_members(tmp_path / "n.zip", members), tmp_path)
 
 
-@pytest.mark.parametrize(
-    ("sources", "match"),
-    [({f"a{S}n1{S}tool:flee": "made-up-category"}, "is not a credit source"), ({"short-key": "relief"}, "short-key")],
-)
-def test_cluster_reward_source_is_validated_not_crashed_on(tmp_path, sources, match):
-    """Before the fix: never validated, and a malformed key crashed the receiver scrub with a bare ValueError."""
-    from maxim.hivemind.bundle import compose_bundle
+@pytest.mark.parametrize("sources", [{"short-key": "relief"}, {f"a{S}n1{S}tool:flee": ["relief"]}])
+def test_a_malformed_cluster_reward_source_is_refused_not_crashed_on(tmp_path, sources):
+    """Before the fix: never validated -- a malformed key crashed the receiver scrub (bare ValueError) and a
+    list value escaped as a TypeError."""
     from maxim.hivemind.ingest import IngestRefused
     from tests.unit._signed_bundle_helpers import read_members, write_members
 
@@ -160,9 +156,22 @@ def test_cluster_reward_source_is_validated_not_crashed_on(tmp_path, sources, ma
     nac = json.loads(members["nac.json"])
     nac["cluster_reward_source"] = sources
     members["nac.json"] = json.dumps(nac).encode()
-    with pytest.raises(IngestRefused, match=match):
+    with pytest.raises(IngestRefused):
         _ingest(write_members(tmp_path / "s.zip", members), tmp_path)
-    assert compose_bundle  # (import kept: the valid vocabulary still composes below)
+
+
+def test_an_unknown_credit_source_is_dropped_with_a_note_not_refused(tmp_path):
+    """An open vocabulary: a newer producer's source is dropped as NAc drops it, not a format break."""
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    members = read_members(_compose(tmp_path, signed=False))
+    nac = json.loads(members["nac.json"])
+    nac["cluster_reward_bias"] = {f"a{S}n1{S}tool:flee": 0.3}
+    nac["cluster_reward_source"] = {f"a{S}n1{S}tool:flee": "a-future-source"}
+    members["nac.json"] = json.dumps(nac).encode()
+    report = _ingest(write_members(tmp_path / "s.zip", members), tmp_path)
+    assert any("credit source this build does not know" in n for n in report.notes)
+    assert not (report.nac.get("cluster_reward_source") or {})
 
 
 def test_a_known_credit_source_still_ingests(tmp_path):
@@ -223,3 +232,199 @@ def test_a_release_whose_identity_breaks_the_grammar_does_not_verify(tmp_path):
     with zipfile.ZipFile(write_members(tmp_path / "g.zip", members)) as zf:
         result = verify_bundle_zip(zf, trusted_keys={"queen-a": signer.public_key_b64}, accept_v1=False)
     assert not result.ok and "public identity" in result.reason
+
+
+# ── review round (both lenses) ─────────────────────────────────────────────────────────────────
+
+
+def test_a_link_id_is_derived_from_scrubbed_fields_not_the_private_context(tmp_path):
+    """The shipped id hashed the PRE-scrub context (LLM goal, tool params, agent id): a guess could be
+    confirmed against it. It is now derived from the scrubbed signatures only."""
+    from maxim.hivemind.bundle import _bundle_link_id
+
+    nac = _nac()
+    nac["links"]["tool:probe"][0]["id"] = "73e060994475e688"  # NAc's context-hash id
+    for signed in (False, True):
+        link = _link_of(_compose(tmp_path, signed=signed, nac=nac, name=f"i{signed}.zip"))
+        assert link["id"] == _bundle_link_id(link["event_signature"], link["outcome_signature"])
+
+
+def test_only_allowlisted_fields_ship(tmp_path):
+    from maxim.hivemind.bundle import compose_bundle
+    from tests.unit.test_hivemind_ingest import _node
+
+    nac = _nac()
+    nac["saved_at"] = "2026-09-26T03:14:15"
+    nac["a_future_field"] = {"secret": 1}
+    link = nac["links"]["tool:probe"][0]
+    link["an_unknown_link_key"] = "free text"
+    link["domain"] = "a free text domain"
+    link["imagined"] = "yes please"
+    out = tmp_path / "a.zip"
+    compose_bundle(
+        nac_state=nac,
+        ec_substrate_nodes={"n1": {**_node(), "label": "the kitchen near the window"}},
+        output_path=out,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+        encoder_provenance={"world": {"model_name": "org/model-1", "note": "host dennys-mbp user dennys"}},
+    )
+    with zipfile.ZipFile(out) as zf:
+        shipped_nac = json.loads(zf.read("nac.json"))
+        shipped_ec = json.loads(zf.read("ec.json"))
+        manifest = json.loads(zf.read("manifest.json"))
+    assert "saved_at" not in shipped_nac and "a_future_field" not in shipped_nac
+    shipped_link = shipped_nac["links"]["tool:probe"][0]
+    assert "an_unknown_link_key" not in shipped_link
+    assert shipped_link["domain"] is None and shipped_link["imagined"] is False
+    assert "label" not in shipped_ec["substrate_nodes"]["n1"]
+    recorded = manifest["encoder_provenance"]["recorded"]["world"]
+    assert recorded == {"model_name": "org/model-1", "note": "[REDACTED]"}
+
+
+@pytest.mark.parametrize(
+    ("types", "expected"), [(("free text one", "free text two"), 1), (("free one", "free two"), 2)]
+)
+def test_free_text_types_fold_by_valence(tmp_path, types, expected):
+    """Two free-text outcome types of the same valence fold into one redacted link (observations summed);
+    different valences stay separate -- the collision fold nac_merge's pairing relies on."""
+    from tests.unit.test_hivemind_ingest import _link, _nac_state
+
+    a, b = _link(), _link()
+    a["outcome_type"], b["outcome_type"] = types
+    a["id"], b["id"] = "l1", "l2"
+    if expected == 2:
+        b["outcome_valence"] = "negative"
+    nac = _nac_state(links={"tool:probe": [a, b]})
+    with zipfile.ZipFile(_compose(tmp_path, signed=False, nac=nac)) as zf:
+        links = json.loads(zf.read("nac.json"))["links"]["tool:probe"]
+    assert len(links) == expected
+    assert all(link["outcome_type"] == "redacted" for link in links)
+    if expected == 1:
+        assert links[0]["observation_count"] == a["observation_count"] + b["observation_count"]
+
+
+@_needs_sign
+def test_a_received_release_link_predicts_for_the_receiver(tmp_path):
+    """The re-read's DO-NOT-MERGE: NAc.predict matches a stored link's event context, so a token left in
+    ``event_context.agent_id`` made every released link dead for prediction. Ingest re-keys it."""
+    from maxim.decisions.nac import NAc
+    from maxim.hivemind.signing import BundleSigner
+
+    signer = BundleSigner.generate(signer_identity="queen-a")
+    from maxim.hivemind.bundle import compose_bundle
+    from maxim.hivemind.signing import UNCOUNTED, SignedRelease
+    from tests.unit.test_hivemind_ingest import _node
+
+    out = tmp_path / "r.zip"
+    compose_bundle(
+        nac_state=_nac(),
+        ec_substrate_nodes={"n1": _node()},
+        output_path=out,
+        contributor_id=DONOR,
+        body_ref=BODY,
+        apply_identity_filter=False,
+        release=SignedRelease(signer=signer, release_sequence=1, license="CDLA-Permissive-2.0", counter=UNCOUNTED),
+    )
+    report = _ingest(
+        out,
+        tmp_path,
+        require_signed=True,
+        trusted_keys={"queen-a": signer.public_key_b64},
+        receiver_agent_id="receiver",
+    )
+    link = report.nac["links"]["tool:probe"][0]
+    assert link["event_context"] == {"agent_id": "receiver"}
+    nac = NAc()
+    nac.load_state(report.nac)
+    assert nac.predict("tool_execution", "tool:probe", context={"agent_id": "receiver"}) is not None
+
+
+@_needs_sign
+def test_a_release_whose_links_name_a_local_agent_is_refused_on_receipt(tmp_path):
+    from maxim.hivemind.ingest import IngestRefused
+    from maxim.hivemind.signing import BundleSigner, SIGNATURE_MEMBER, bundle_signing_payload_v2
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    signer = BundleSigner.generate(signer_identity="queen-a")
+    members = read_members(_compose(tmp_path, signed=True))
+    nac = json.loads(members["nac.json"])
+    nac["links"]["tool:probe"][0]["event_context"] = {"agent_id": "someones-local-agent"}
+    members["nac.json"] = json.dumps(nac, indent=2, sort_keys=True).encode()
+    sig = json.loads(members[SIGNATURE_MEMBER])
+    sig["signature"] = signer.sign_payload(bundle_signing_payload_v2(members))
+    members[SIGNATURE_MEMBER] = json.dumps(sig).encode()
+    with pytest.raises(IngestRefused, match="name local agent id"):
+        _ingest(write_members(tmp_path / "leak.zip", members), tmp_path, receiver_agent_id="receiver")
+
+
+def test_an_overflowing_float_is_refused_by_the_strict_reader():
+    from maxim.hivemind.bundle import _strict_json
+
+    with pytest.raises(ValueError, match="non-finite"):
+        _strict_json(b'{"a": 1e999}', "manifest.json")
+
+
+@pytest.mark.parametrize("identity", ["has space", "_consensus", "x" * 129])
+def test_a_signer_outside_the_public_grammar_cannot_be_constructed(identity):
+    from maxim.hivemind.signing import BundleSigner
+
+    pytest.importorskip("cryptography")
+    with pytest.raises(ValueError, match="public identity"):
+        BundleSigner.generate(signer_identity=identity)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("contributor_id", "evil\n\x1b[31mFAKE"), ("domain", "a" * 500), ("body_ref", "line\nbreak")],
+)
+def test_the_contribute_door_refuses_unsafe_strings(tmp_path, field, value):
+    from maxim.hivemind.store import OasisStore, OasisStoreError
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    members = read_members(_compose(tmp_path, signed=False))
+    manifest = json.loads(members["manifest.json"])
+    manifest[field] = value
+    members["manifest.json"] = json.dumps(manifest).encode()
+    raw = write_members(tmp_path / "c.zip", members).read_bytes()
+    with pytest.raises(OasisStoreError):
+        OasisStore(tmp_path / "oasis").accept_contribution(raw, source="10.0.0.1")
+
+
+@_needs_sign
+def test_the_reserved_prefix_is_refused_in_a_release(tmp_path):
+    from maxim.hivemind.bundle import verify_bundle_zip
+    from maxim.hivemind.signing import BundleSigner, SIGNATURE_MEMBER, bundle_signing_payload_v2
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    signer = BundleSigner.generate(signer_identity="queen-a")
+    members = read_members(_compose(tmp_path, signed=True))
+    manifest = json.loads(members["manifest.json"])
+    manifest["contributor_id"] = "_consensus"
+    members["manifest.json"] = json.dumps(manifest).encode()
+    sig = json.loads(members[SIGNATURE_MEMBER])
+    sig["signature"] = signer.sign_payload(bundle_signing_payload_v2(members))
+    members[SIGNATURE_MEMBER] = json.dumps(sig).encode()
+    with zipfile.ZipFile(write_members(tmp_path / "r.zip", members)) as zf:
+        result = verify_bundle_zip(zf, trusted_keys={"queen-a": signer.public_key_b64}, accept_v1=False)
+    assert not result.ok and "public identity" in result.reason
+
+
+def test_the_content_identity_frames_only_an_integer_schema_3_as_v2(tmp_path):
+    import hashlib
+
+    from maxim.hivemind.bundle import content_payload_digest
+    from maxim.hivemind.signing import bundle_signing_payload_v2
+    from tests.unit._signed_bundle_helpers import read_members, write_members
+
+    members = read_members(_compose(tmp_path, signed=False))
+    manifest = json.loads(members["manifest.json"])
+    manifest["schema_version"] = 3.0
+    members["manifest.json"] = json.dumps(manifest).encode()
+    path = write_members(tmp_path / "f.zip", members)
+    v2_framed = hashlib.sha256(
+        bundle_signing_payload_v2({n: d for n, d in members.items() if n in ("manifest.json", "nac.json", "ec.json")})
+    ).hexdigest()
+    with zipfile.ZipFile(path) as zf:
+        assert content_payload_digest(zf) != v2_framed
