@@ -40,7 +40,7 @@ nodes.
 
 ## 2. Compatibility freeze (the versioning contract)
 
-- **Envelope**: `manifest.schema_version` (int, currently **2**) is the bundle's
+- **Envelope**: `manifest.schema_version` (int; **2** when this section was written, **3** for signed releases since 2026-09-26 — amendment below) is the bundle's
   structural version. A receiver **refuses** `schema_version` greater than it supports
   (enforced in both `extract_bundle` and `read_bundle_manifest`); older versions
   migrate forward through `migrate_bundle_envelope`'s registered per-version
@@ -52,6 +52,11 @@ nodes.
 - **Additive manifest keys** need NO schema bump — readers use `.get` with an honest
   default (the `signer_identity` precedent). **New slices** (a new file in the ZIP)
   require a schema bump + migration.
+- *(Amended 2026-09-26, public format 1 freeze.)* `schema_version` is now **3** for a
+  signed release (scheme v2) and stays **2** for an unsigned bundle; both are frozen as
+  public format 1 ([public_format_freeze.md](public_format_freeze.md)). This contract
+  still holds, with one addition: the producer is pinned byte for byte, so even an
+  additive key — no bump — is a freeze-log line plus a regenerated fixture.
 - **`_format_version`** (string, "1.0") is the house persisted-JSON envelope on the
   MANIFEST and is orthogonal to `schema_version`. **The payload slices are NOT
   format-validated today** (accuracy-lens A3, verified): `ec.json` is written as a

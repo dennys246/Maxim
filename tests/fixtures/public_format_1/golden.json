@@ -1,0 +1,25 @@
+{
+  "public_key": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+  "release_v2.zip": {
+    "entry_digests": {
+      "n1": "sha256:57df9a19e8d9019ec942e893a40aad1e3b54391081a791dddf14d563ba8c91af",
+      "orient": "sha256:f369fdbe5c3f04bccb10d27abd9ad654ad73fec7c59864362d2a0253471f04cd"
+    },
+    "member_sha256": {
+      "ec.json": "659c3496733177daae0c1f52bc25ef242b9127aad0aa6dcea25f3b4eb0bff6a0",
+      "manifest.json": "824e8680974b1d361c5fa81f10031b9256693bb69df814c76a4249df8b645941",
+      "nac.json": "af282058e74475444124ccdcaaabb31d1a436733b72482ff2e07d7568c28144a",
+      "signature.json": "995660d00852cc9ee0c784624b8e1732462e9b2d6ec8a4e6b83b96fa7e119873"
+    },
+    "payload_identity": "b1d11702f5cf078db8a516038aa2cb74677f63fbcabb1dc49b698691232ad494"
+  },
+  "signer_identity": "fixture-queen",
+  "unsigned_schema2.zip": {
+    "member_sha256": {
+      "ec.json": "659c3496733177daae0c1f52bc25ef242b9127aad0aa6dcea25f3b4eb0bff6a0",
+      "manifest.json": "9a21d1da895b5e5ebef5cfd3cd2fbd019b54720618df9499271cfb6ca2feafb1",
+      "nac.json": "55fa249140a51175331e41828a77a6913cf3f00aa028e026cef8ce7269f129bd"
+    },
+    "payload_identity": "7560741be0f7f344287bbe92f028c188d564600def14b288ab6148df38840575"
+  }
+}
