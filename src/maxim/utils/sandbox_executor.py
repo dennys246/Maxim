@@ -5,6 +5,11 @@ Supports Python scripts and shell scripts with:
 - Restricted imports for Python
 - Isolated working directory
 - Output capture and timeout handling
+
+What runs is the APPROVED content, never a re-read of the path (#802). The import hook, the
+confined ``open`` and the shell blocklist are defense-in-depth, NOT a security boundary: in-process
+Python restrictions can be walked around. The boundary is the resource limits and the container the
+sandbox runs in.
 """
 
 from __future__ import annotations
@@ -15,7 +20,6 @@ import os
 import resource
 import subprocess
 import sys
-import tempfile
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -60,33 +64,33 @@ class ResourceLimits:
     max_file_size_bytes: int = 10 * 1024 * 1024  # 10 MB
     max_open_files: int = 64
 
-    # Process limits
-    max_processes: int = 4  # Prevent fork bombs
+    # No process-count limit: RLIMIT_NPROC counts EVERY process of the user, not the sandbox's own, so
+    # any small value makes each fork in a sandboxed script fail (a desktop or CI user always has more
+    # than a handful) -- and no value expresses "this sandbox may have N processes". Runaway forking is
+    # bounded by the CPU-time limit, the wall-clock timeout and, for real isolation, the container.
 
     def apply_to_subprocess(self) -> None:
-        """Apply resource limits to current process (call in subprocess)."""
-        try:
-            # CPU time limit
-            resource.setrlimit(resource.RLIMIT_CPU, (self.cpu_time_seconds, self.cpu_time_seconds + 5))
+        """Apply resource limits to the current process (called in the subprocess before exec).
 
-            # Memory limit (address space)
-            resource.setrlimit(resource.RLIMIT_AS, (self.memory_bytes, self.memory_bytes))
-
-            # Stack size
-            resource.setrlimit(resource.RLIMIT_STACK, (self.stack_bytes, self.stack_bytes))
-
-            # File size limit
-            resource.setrlimit(resource.RLIMIT_FSIZE, (self.max_file_size_bytes, self.max_file_size_bytes))
-
-            # Open files limit
-            resource.setrlimit(resource.RLIMIT_NOFILE, (self.max_open_files, self.max_open_files))
-
-            # Process limit (prevent fork bombs)
-            resource.setrlimit(resource.RLIMIT_NPROC, (self.max_processes, self.max_processes))
-
-        except (ValueError, resource.error) as e:
-            # Some limits may not be available on all platforms
-            logger.warning(f"Could not set some resource limits: {e}")
+        Each limit is applied INDEPENDENTLY: one the platform does not support (macOS rejects
+        RLIMIT_AS) must not silently skip the rest, as a single try block once did -- leaving a macOS
+        sandbox with a CPU limit and nothing else. Unsupported limits are reported by name.
+        """
+        limits = (
+            ("cpu", resource.RLIMIT_CPU, (self.cpu_time_seconds, self.cpu_time_seconds + 5)),
+            ("address space", resource.RLIMIT_AS, (self.memory_bytes, self.memory_bytes)),
+            ("stack", resource.RLIMIT_STACK, (self.stack_bytes, self.stack_bytes)),
+            ("file size", resource.RLIMIT_FSIZE, (self.max_file_size_bytes, self.max_file_size_bytes)),
+            ("open files", resource.RLIMIT_NOFILE, (self.max_open_files, self.max_open_files)),
+        )
+        unsupported = []
+        for name, which, value in limits:
+            try:
+                resource.setrlimit(which, value)
+            except (ValueError, OSError):  # resource.error is OSError
+                unsupported.append(name)
+        if unsupported:
+            logger.warning("Sandbox resource limits not supported on this platform: %s", ", ".join(unsupported))
 
 
 @dataclass
@@ -118,65 +122,6 @@ class ExecutionResult:
 # Python Sandbox
 # ─────────────────────────────────────────────────────────────────────────────
 
-
-# Restricted imports for Python sandbox
-ALLOWED_PYTHON_IMPORTS = {
-    # Standard library - safe modules
-    "abc",
-    "array",
-    "base64",
-    "bisect",
-    "calendar",
-    "collections",
-    "colorsys",
-    "copy",
-    "csv",
-    "dataclasses",
-    "datetime",
-    "decimal",
-    "difflib",
-    "enum",
-    "fractions",
-    "functools",
-    "hashlib",
-    "heapq",
-    "hmac",
-    "html",
-    "io",
-    "itertools",
-    "json",
-    "logging",
-    "math",
-    "numbers",
-    "operator",
-    "pathlib",
-    "pprint",
-    "random",
-    "re",
-    "statistics",
-    "string",
-    "struct",
-    "textwrap",
-    "time",
-    "typing",
-    "unicodedata",
-    "unittest",
-    "uuid",
-    "xml",
-    "zipfile",
-    # Data science (if available)
-    "numpy",
-    "pandas",
-    "scipy",
-    "sklearn",
-    "matplotlib",
-    "seaborn",
-    "PIL",
-    "cv2",
-    # Common utilities
-    "yaml",
-    "toml",
-}
 
 BLOCKED_PYTHON_IMPORTS = {
     # System/OS access
@@ -246,44 +191,77 @@ BLOCKED_PYTHON_IMPORTS = {
 
 
 def _create_restricted_python_wrapper(script_path: str, sandbox_dir: str) -> str:
-    """Create a wrapper script that restricts imports."""
-    wrapper = f"""
-import sys
+    """The program ``python -c`` runs for a sandboxed ``.py`` script.
+
+    It runs the APPROVED content -- passed as ``sys.argv[1]``, never re-read from ``script_path``
+    (#802), and never embedded in this program (a repr can grow it 4x past the argument limit) -- under an import
+    hook and an ``open`` confined to the sandbox. The order is load-bearing (#800): everything the
+    wrapper needs is imported BEFORE the hook is installed, the unrestricted originals live only in a
+    closure, and the script executes in a FRESH globals dict -- so it cannot reach ``os``, the real
+    ``__import__`` or the real ``open`` by name, the way a module-level wrapper namespace would let it.
+
+    This is defense-in-depth, NOT a security boundary. ``BLOCKED_PYTHON_IMPORTS`` is a denylist, and an
+    in-process hook is walked around in one line by: modules it does not list that open files
+    themselves (``io.open``, ``pathlib``), ``builtins.__loader__``, a traceback frame's locals
+    (``real_open``), a function's ``__closure__``, the ``object.__subclasses__()`` walk. Extending the
+    list does not change that. Approval covers the top-level script only: ``python -c`` puts the
+    working directory on ``sys.path``, so ``import helper`` loads a module the sandbox can write. The
+    boundary is the resource limits and whatever container the sandbox runs in.
+    """
+    return f"""
 import builtins
-
-# Blocked imports
-BLOCKED = {BLOCKED_PYTHON_IMPORTS!r}
-
-_original_import = builtins.__import__
-
-def _restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
-    base_name = name.split(".")[0]
-    if base_name in BLOCKED:
-        raise ImportError(f"Import of '{{name}}' is not allowed in sandbox")
-    return _original_import(name, globals, locals, fromlist, level)
-
-builtins.__import__ = _restricted_import
-
-# Change to sandbox directory
 import os
-os.chdir({sandbox_dir!r})
+import sys
 
-# Restrict file access to sandbox
-_original_open = builtins.open
 
-def _restricted_open(file, mode="r", *args, **kwargs):
-    file_path = os.path.abspath(str(file))
-    sandbox_abs = os.path.abspath({sandbox_dir!r})
-    if not file_path.startswith(sandbox_abs):
-        raise PermissionError(f"Cannot access files outside sandbox: {{file}}")
-    return _original_open(file, mode, *args, **kwargs)
+def _run(script_path, sandbox_dir, source, blocked):
+    real_import = builtins.__import__
+    real_open = builtins.open
+    realpath = os.path.realpath
+    commonpath = os.path.commonpath
+    sandbox_root = realpath(sandbox_dir)
 
-builtins.open = _restricted_open
+    def _restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name.split(".")[0] in blocked:
+            raise ImportError(f"Import of '{{name}}' is not allowed in sandbox")
+        return real_import(name, globals, locals, fromlist, level)
 
-# Now execute the actual script
-exec(open({script_path!r}).read())
+    def _restricted_open(file, mode="r", *args, **kwargs):
+        # A str or os.PathLike path only: str() of a BYTES path is the literal "b'/etc/hosts'" --
+        # a relative name that resolves inside -- and an int is a file descriptor.
+        if not isinstance(file, (str, os.PathLike)):
+            raise PermissionError(f"Only file paths may be opened in the sandbox, not {{type(file).__name__}}")
+        path = os.fsdecode(os.fspath(file))  # resolved ONCE: the path checked is the path opened
+        # Resolved and compared STRUCTURALLY (#801): a sibling sharing the prefix (/x/sb2 for /x/sb)
+        # and a symlink pointing out of the sandbox are both outside.
+        if commonpath([realpath(path), sandbox_root]) != sandbox_root:
+            raise PermissionError(f"Cannot access files outside sandbox: {{path}}")
+        return real_open(path, mode, *args, **kwargs)
+
+    code = compile(source, script_path, "exec")
+    sys.argv = [script_path, *sys.argv[2:]]
+    builtins.__import__ = _restricted_import
+    builtins.open = _restricted_open
+    exec(code, {{"__name__": "__main__", "__file__": script_path, "__builtins__": builtins}})
+
+
+_run({script_path!r}, {sandbox_dir!r}, sys.argv[1], frozenset({sorted(BLOCKED_PYTHON_IMPORTS)!r}))
 """
-    return wrapper
+
+
+# The verified content reaches the interpreter as ONE argv string, verbatim (#802): ``bash -c
+# <content>`` and ``python -c <wrapper> <content>``. Linux caps a single argument at 128 KiB
+# (MAX_ARG_STRLEN, NUL included); a script over this is refused before approval. Being an argument,
+# the approved content is visible to other local users in ``ps`` -- a script is not a secret.
+MAX_SCRIPT_BYTES: int = 120 * 1024
+
+
+def _within(path: str, root: str) -> bool:
+    """``path`` lies inside ``root`` once both are fully resolved (symlinks included) -- a structural
+    check, never a string prefix (#801: ``/x/sb2`` is not inside ``/x/sb``)."""
+    from pathlib import Path
+
+    return Path(path).resolve().is_relative_to(Path(root).resolve())
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -291,10 +269,9 @@ exec(open({script_path!r}).read())
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-# Defense-in-depth blocklist — works alongside the builtins override in
-# _make_safe_globals() which restricts Python builtins.  This catches
-# shell commands that the builtins override can't see (e.g. os.system calls
-# that embed shell syntax).  Not a standalone security boundary.
+# Defense-in-depth blocklist for SHELL scripts (the Python path has its own import hook in
+# _create_restricted_python_wrapper). A pattern match over script text is trivially evaded
+# (variables, quoting, encodings) -- not a standalone security boundary.
 BLOCKED_SHELL_COMMANDS = {
     # System modification
     "rm -rf /",
@@ -415,7 +392,8 @@ class SandboxExecutor:
     # does NOT revoke an approved hash — create a new executor to start from nothing.
     _approved_hashes: dict[str, str] = field(default_factory=dict, repr=False)
 
-    # Prefix for temporary wrapper scripts (for identification during cleanup)
+    # Prefix of the wrapper files versions before #802 wrote into the sandbox (the wrapper now runs via
+    # ``python -c``); kept so the startup cleanup still removes any a killed process left behind.
     TEMP_WRAPPER_PREFIX: str = "_maxim_wrapper_"
 
     def __post_init__(self) -> None:
@@ -473,7 +451,8 @@ class SandboxExecutor:
             script_path: Path to script (must be in sandbox)
             args: Command-line arguments
             env: Environment variables (merged with restricted set)
-            working_dir: Working directory (default: sandbox/workspace)
+            working_dir: Working directory (default: sandbox/workspace); must lie inside the
+                sandbox -- a relative path resolves against THIS process's cwd, not the sandbox
             require_approval: Whether a first run (or changed content) needs
                 ``approval_callback``'s yes. With no callback wired the run is
                 REFUSED (``APPROVAL_UNAVAILABLE``) — approval fails closed.
@@ -483,12 +462,16 @@ class SandboxExecutor:
         """
         args = args or []
         working_dir = working_dir or os.path.join(self.sandbox_dir, "workspace")
+        if not _within(working_dir, self.sandbox_dir):
+            return ExecutionResult(
+                status=ExecutionStatus.PERMISSION_DENIED,
+                error=f"Working directory must be in sandbox directory: {self.sandbox_dir}",
+            )
 
-        # Validate script path
+        # Validate script path -- structurally, after resolving symlinks (#801)
         script_path = os.path.abspath(script_path)
-        sandbox_abs = os.path.abspath(self.sandbox_dir)
 
-        if not script_path.startswith(sandbox_abs):
+        if not _within(script_path, self.sandbox_dir):
             return ExecutionResult(
                 status=ExecutionStatus.PERMISSION_DENIED,
                 error=f"Script must be in sandbox directory: {self.sandbox_dir}",
@@ -517,6 +500,16 @@ class SandboxExecutor:
                 status=ExecutionStatus.FAILED,
                 error=f"Could not read script: {e}",
             )
+
+        # Refused up front -- before anyone is asked to approve a script that cannot run -- when the one
+        # argument that will carry it exceeds what the OS passes (see MAX_SCRIPT_BYTES).
+        if len(script_content.encode("utf-8")) > MAX_SCRIPT_BYTES:
+            return ExecutionResult(
+                status=ExecutionStatus.BLOCKED,
+                error=f"Script is too large for the sandbox: over the {MAX_SCRIPT_BYTES}-byte limit",
+            )
+        if "\x00" in script_content:  # no argv string can carry a NUL
+            return ExecutionResult(status=ExecutionStatus.BLOCKED, error="Script contains a NUL byte")
 
         # Compute content hash for TOCTOU protection
         content_hash = compute_content_hash(script_content)
@@ -600,45 +593,20 @@ class SandboxExecutor:
         env: dict[str, str] | None,
         working_dir: str,
     ) -> ExecutionResult:
-        """Execute a Python script with restrictions."""
+        """Execute a Python script with restrictions -- its APPROVED content, never its path (#802).
+
+        The wrapper goes to ``python -c`` with the verified source as its first argument: nothing
+        re-reads the script file after approval, and no wrapper file is written into the sandbox.
+        """
         start_time = time.time()
-
-        # Create wrapper script
         wrapper_code = _create_restricted_python_wrapper(script_path, self.sandbox_dir)
+        safe_env = self._build_safe_env(env)
+        cmd = [sys.executable, "-c", wrapper_code, script_content] + args
 
-        # Create temporary wrapper file with identifiable prefix for cleanup
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            prefix=self.TEMP_WRAPPER_PREFIX,
-            suffix=".py",
-            dir=self.sandbox_dir,
-            delete=False,
-        ) as wrapper_file:
-            wrapper_file.write(wrapper_code)
-            wrapper_path = wrapper_file.name
-
-        try:
-            # Build environment
-            safe_env = self._build_safe_env(env)
-
-            # Build command
-            cmd = [sys.executable, wrapper_path] + args
-
-            # Execute with resource limits
-            result = self._run_subprocess(cmd, safe_env, working_dir)
-            result.execution_time_seconds = time.time() - start_time
-
-            # Collect output files
-            result.output_files = self._collect_output_files()
-
-            return result
-
-        finally:
-            # Clean up wrapper
-            try:
-                os.unlink(wrapper_path)
-            except Exception:
-                pass
+        result = self._run_subprocess(cmd, safe_env, working_dir)
+        result.execution_time_seconds = time.time() - start_time
+        result.output_files = self._collect_output_files()
+        return result
 
     def _execute_shell(
         self,
@@ -665,8 +633,10 @@ class SandboxExecutor:
         # Restrict PATH to minimal set
         safe_env["PATH"] = "/usr/bin:/bin"
 
-        # Build command
-        cmd = ["/bin/bash", script_path] + args
+        # Run the APPROVED content, never the path (#802): bash reads a script FILE incrementally as it
+        # runs, so a line appended to an approved script mid-run would execute. `bash -c` takes the
+        # verified content whole; `$0` stays the script path for messages.
+        cmd = ["/bin/bash", "-c", script_content, script_path] + args
 
         # Execute with resource limits
         result = self._run_subprocess(cmd, safe_env, working_dir)
@@ -717,6 +687,7 @@ class SandboxExecutor:
         try:
             process = subprocess.Popen(
                 cmd,
+                stdin=subprocess.DEVNULL,  # a sandboxed script never reads the host's stdin
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=env,
