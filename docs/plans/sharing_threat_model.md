@@ -290,6 +290,18 @@ adapter's pre-merge review round, 2026-09-05):
     When scrubbed keys collide, the result keeps the inherent (safety-floor) marker only if EVERY
     colliding key was inherent — a learned value never becomes decay-exempt by folding.
   Guard: `tests/unit/test_pre_freeze_fixes.py` (each proven by deletion).
+- **V2/`inherent` (2026-09-26, #914 — the re-key fold).** When several donor clusters align onto ONE
+  receiver cluster, their cluster-keyed rows FOLD with the merge layer's semantics — bias mean, fear
+  min, credit source common-or-`mixed` — instead of the last row winning; and a folded key keeps the
+  inherent (safety-floor) marker only when every folded bias row was inherent (before: ANY, so a
+  learned bias could overwrite an inherent value and stay decay-exempt). One fold,
+  `merge.fold_cluster_rows`, serves this seam and the export scrub. Across a merge's two sides,
+  `substrate_merge` admits markers RECEIVER-first (`_admit_inherent_markers`): every receiver marker
+  on a row it holds survives (no donor can strip an innate fear's decay exemption), and a donor's
+  (Queen-admitted) marker attaches only where the receiver holds no learned row at that key or marks
+  it too (a donor prior never makes the receiver's learned value exempt); a dangling marker marks
+  nothing. Bare `nac_merge` keeps its commutative union. Guard:
+  `tests/unit/test_cluster_row_fold.py` (each rule proven by deletion).
 
 **Out of scope BY DECLARATION** (so absence is a decision, not an oversight):
 

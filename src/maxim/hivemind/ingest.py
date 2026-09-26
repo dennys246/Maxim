@@ -1251,7 +1251,9 @@ def ingest_bundle(
     # by an older prune) must not ride into the fold, where a foreign bias
     # landing at the same triple would inherit its decay exemption. The
     # primary fix lives in prune_nac_cluster_biases; this catches journals
-    # of state pruned before that fix.
+    # of state pruned before that fix. Since #914 it is the SECOND of two
+    # guards: substrate_merge's _admit_inherent_markers also ignores a receiver
+    # marker without its own row; this one stays for its operator note.
     effective_receiver_nac = dict(receiver_nac or {})
     receiver_markers = effective_receiver_nac.get("inherent_bias_keys")
     if isinstance(receiver_markers, list):

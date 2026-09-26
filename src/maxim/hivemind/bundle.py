@@ -81,6 +81,7 @@ from maxim.hivemind.merge import (
     _merge_link_pair,
     _merge_welford,
     _validate_source,
+    fold_cluster_rows,
     is_public_identity,
 )
 from maxim.hivemind.entry_index import EntryIndexError, build_index, normalize_agent_segment, verify_index
@@ -583,52 +584,20 @@ def scrub_nac_state_for_bundle(nac_state: dict[str, Any]) -> dict[str, Any]:
         if _IDENTIFIER_TOKEN.match(key.split(_NAC_KEY_SEP, 2)[1])
     }
 
-    # cluster_reward_bias: scrub the tsig third of the key; mean on
-    # collision (matches nac_merge's bias semantics).
-    merged_cluster: dict[str, list[float]] = {}
-    for key, bias in (nac_state.get("cluster_reward_bias", {}) or {}).items():
+    # cluster_reward_bias / cluster_reward_source / inherent_bias_keys: scrub the tsig third of the key and
+    # FOLD what now collides -- ``merge.fold_cluster_rows``, the one fold the ingest re-key uses too (#914):
+    # bias MEAN, source common-or-"mixed", and the inherent marker kept only when every colliding key was
+    # inherent (a learned bias never becomes decay-exempt by folding). A key that is not a triple is not
+    # a shape NAc.dump() emits: the transform raises rather than ship a mangled key.
+    def _scrub_tsig(key: str) -> str:
         aid, cid, tsig = key.split(_NAC_KEY_SEP, 2)
-        new_key = _NAC_KEY_SEP.join((aid, cid, _scrub_event_signature(tsig)))
-        merged_cluster.setdefault(new_key, []).append(float(bias))
-    scrubbed["cluster_reward_bias"] = {k: sum(v) / len(v) for k, v in merged_cluster.items()}
+        return _NAC_KEY_SEP.join((aid, cid, _scrub_event_signature(tsig)))
 
-    # inherent_bias_keys (1.2 poison-resistance slice; older dumps lack it):
-    # markers name cluster_reward_bias keys, so the tsig third gets the same
-    # scrub — a marker left on the pre-scrub key would exempt nothing after
-    # the re-key. Markers whose entry did not survive the scrub are dropped
-    # (a marker naming an absent bias is the dangling-half shape).
-    if "inherent_bias_keys" in nac_state:
-        marked = {str(k) for k in nac_state.get("inherent_bias_keys", []) or []}
-        # A scrubbed key keeps the inherent marker only when EVERY source key that folded into it was
-        # inherent: a learned value averaged into an inherent one must not become decay-exempt (the
-        # safety floor would be diluted by a learned bias it never admitted).
-        sources_by_new_key: dict[str, list[str]] = {}
-        for key in nac_state.get("cluster_reward_bias", {}) or {}:
-            aid, cid, tsig = key.split(_NAC_KEY_SEP, 2)
-            sources_by_new_key.setdefault(_NAC_KEY_SEP.join((aid, cid, _scrub_event_signature(tsig))), []).append(key)
-        scrubbed_inherent: set[str] = set()
-        for key in marked:
-            aid, cid, tsig = key.split(_NAC_KEY_SEP, 2)
-            new_key = _NAC_KEY_SEP.join((aid, cid, _scrub_event_signature(tsig)))
-            if new_key in scrubbed["cluster_reward_bias"] and all(
-                source in marked for source in sources_by_new_key.get(new_key, [])
-            ):
-                scrubbed_inherent.add(new_key)
-        scrubbed["inherent_bias_keys"] = sorted(scrubbed_inherent)
-
-    # cluster_reward_source (present since the S1 provenance fold; older
-    # dumps lack it): same key scrub; disagreeing sources promote to
-    # "mixed", NAc's own semantics for multi-source accumulation.
-    if "cluster_reward_source" in nac_state:
-        merged_source: dict[str, str] = {}
-        for key, src in (nac_state.get("cluster_reward_source", {}) or {}).items():
-            aid, cid, tsig = key.split(_NAC_KEY_SEP, 2)
-            new_key = _NAC_KEY_SEP.join((aid, cid, _scrub_event_signature(tsig)))
-            if new_key in merged_source and merged_source[new_key] != src:
-                merged_source[new_key] = "mixed"
-            else:
-                merged_source[new_key] = src
-        scrubbed["cluster_reward_source"] = merged_source
+    # REPLACE, never overlay: the raw copies go first, so nothing unscrubbed can survive under these names.
+    for name in ("cluster_reward_bias", "cluster_reward_source", "inherent_bias_keys"):
+        scrubbed.pop(name, None)
+    scrubbed.update(fold_cluster_rows(nac_state, _scrub_tsig, fields=("cluster_reward_bias", "cluster_reward_source")))
+    scrubbed.setdefault("cluster_reward_bias", {})  # always present in a bundle, even when empty
 
     # ALLOWLIST the top level (like event_context): a field a future producer adds -- or ``saved_at``,
     # a wall-clock timestamp the receiver discards anyway -- never ships by default.
