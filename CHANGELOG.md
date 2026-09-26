@@ -377,6 +377,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A web fetch connects only to the public address it checked** (#824). `http_fetch` checked a
+  URL's host for a private address with one DNS lookup (through a 5-minute cache), then httpx looked
+  the name up again to connect — so a host answering public to the check and private to the connect
+  (DNS rebinding) reached internal services. Fetches whose URL the model chooses (the page and its
+  robots.txt) now go through a public-only client (`fetch_url(public_only=True)`) that resolves once,
+  at connect time, refuses unless every address is globally routable, and dials the address it
+  checked; TLS and the Host header still use the hostname. Follows `block_private_ips`. Backend base
+  URLs and downloads have the same shape and are tracked in #921.
+- **A spoken "maxim singularity" no longer switches to a code-executing mode** (#828). Any audio in
+  the room — a video, the robot's own speech — could set it. Phrase requests for a mode that can
+  execute code are refused (the same test the agent's mode tool applies, #821); "maxim passive" and
+  "maxim active" still work, and starting Maxim in a mode deliberately is unchanged.
+- **Autonomy and mode requests no longer pretend** (#827). A request for more autonomy with no human
+  approver attached used to be queued as "awaiting approval" forever; it now fails with that reason
+  (the approval surface itself is #922). A mode switch with no runtime to apply it (a sim) reported
+  "Switched" while doing nothing; it now fails. The never-read `SupervisionPolicy.allowed_mode_transitions`
+  is removed.
+
 - **Merging substrate no longer destroys the receiver's own causal links, and ingested links are now
   usable** (#913). `nac_merge` paired links by outcome alone, so a receiver's links that differ only in
   context (two separate links to NAc) overwrote each other on every `maxim substrate ingest`, even from

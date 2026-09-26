@@ -55,7 +55,7 @@ class RobotsCache:
 _robots_cache = RobotsCache()
 
 
-def _fetch_robots_txt(domain: str, timeout_s: float = 5.0) -> set[str]:
+def _fetch_robots_txt(domain: str, timeout_s: float = 5.0, *, public_only: bool = True) -> set[str]:
     """Fetch and parse robots.txt for a domain."""
     from maxim.utils import http as _http
 
@@ -69,6 +69,7 @@ def _fetch_robots_txt(domain: str, timeout_s: float = 5.0) -> set[str]:
             headers={"User-Agent": "Maxim/1.0 (Research Assistant)"},
             timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=timeout_s, total_s=timeout_s + 1.0),
             max_bytes=512_000,  # the robots.txt host is chosen by the model's URL (#825)
+            public_only=public_only,  # ...so is the address it connects to (#824)
         )
         content = resp.text
 
@@ -92,7 +93,7 @@ def _fetch_robots_txt(domain: str, timeout_s: float = 5.0) -> set[str]:
     return disallowed
 
 
-def check_robots_txt(url: str, timeout_s: float = 5.0) -> tuple[bool, str | None]:
+def check_robots_txt(url: str, timeout_s: float = 5.0, *, public_only: bool = True) -> tuple[bool, str | None]:
     """Check if URL is allowed by robots.txt.
 
     Returns (allowed, reason).
@@ -105,7 +106,7 @@ def check_robots_txt(url: str, timeout_s: float = 5.0) -> tuple[bool, str | None
         # Check cache first
         disallowed = _robots_cache.get_disallowed(domain)
         if disallowed is None:
-            disallowed = _fetch_robots_txt(domain, timeout_s)
+            disallowed = _fetch_robots_txt(domain, timeout_s, public_only=public_only)
             _robots_cache.set_disallowed(domain, disallowed)
 
         # Check if path matches any disallowed pattern
@@ -353,7 +354,9 @@ class HttpFetchTool(Tool):
 
         # Check robots.txt
         if check_robots:
-            robots_allowed, robots_reason = check_robots_txt(url, timeout_s=timeout_s)
+            robots_allowed, robots_reason = check_robots_txt(
+                url, timeout_s=timeout_s, public_only=policy.block_private_ips
+            )
             if not robots_allowed:
                 return ToolResult(
                     success=False,
@@ -383,6 +386,9 @@ class HttpFetchTool(Tool):
                 timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=timeout_s, total_s=timeout_s + 2.0),
                 # Streamed and capped (#825): the body beyond max_bytes is never downloaded.
                 max_bytes=max_bytes,
+                # The policy's private-IP check above resolves the host SEPARATELY, so a rebinding
+                # host could pass it and connect privately; this checks the address dialled (#824).
+                public_only=policy.block_private_ips,
             )
 
             # Check content type
@@ -400,10 +406,9 @@ class HttpFetchTool(Tool):
             if response.truncated:
                 logger.warning("Content truncated at %d bytes (the rest was not downloaded)", max_bytes)
 
-            # Final URL — httpx auto-follows redirects; httpx.Response stores it
-            # but our wrapper doesn't expose it yet. Use the requested URL as a
-            # safe fallback. (The request-path migration in Plan 3 may extend
-            # http.Response with a final_url field; for now this is fine.)
+            # Redirects are NOT followed (fetch_url uses httpx's default follow_redirects=False), so
+            # the final URL is the requested one. If they ever are, every hop's connection goes
+            # through the same public-only check (#824).
             final_url = url
 
             # Decode content

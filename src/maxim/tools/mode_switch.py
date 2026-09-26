@@ -74,7 +74,7 @@ class ModeSwitchTool(Tool):
     def __init__(
         self,
         get_current_mode: Callable[[], str],
-        set_mode: Callable[[str], None],
+        set_mode: Callable[[str], bool | None],
         autonomy_controller: AutonomyController | None = None,
     ):
         super().__init__()
@@ -130,16 +130,27 @@ class ModeSwitchTool(Tool):
                 metadata={"target_mode": target_mode, "previous_mode": current_mode, "type": "refused"},
             )
 
-        # Log the switch
-        switch_record = {
-            "timestamp": time.time(),
-            "from_mode": current_mode,
-            "to_mode": target_mode,
-            "reason": reason,
-        }
-        self._switch_history.append(switch_record)
+        # Perform the switch FIRST: a mode with nowhere to apply is a failure, never "Switched to X"
+        # (#827 -- in a sim ``set_mode`` had no runtime and did nothing while the tool reported success).
+        try:
+            applied = self._set_mode(target_mode)
+        except Exception as e:
+            logger.error(f"Mode switch failed: {e}")
+            return ToolResult(
+                success=False,
+                error=f"Failed to switch mode: {e}",
+                metadata={"target_mode": target_mode},
+            )
+        if applied is False:
+            return ToolResult(
+                success=False,
+                error=f"Cannot switch to {target_mode} mode: this run has no runtime to apply a mode to.",
+                metadata={"target_mode": target_mode, "previous_mode": current_mode, "type": "unapplied"},
+            )
 
-        # Log to autonomy controller if available
+        self._switch_history.append(
+            {"timestamp": time.time(), "from_mode": current_mode, "to_mode": target_mode, "reason": reason}
+        )
         if self._autonomy_controller:
             self._autonomy_controller.log_action(
                 action_type="executed",
@@ -148,29 +159,12 @@ class ModeSwitchTool(Tool):
                 mode=current_mode,
                 confidence=1.0,
             )
-
-        # Perform the switch
-        try:
-            self._set_mode(target_mode)
-            logger.info(f"Mode switched: {current_mode} -> {target_mode} ({reason})")
-
-            return ToolResult(
-                success=True,
-                output=f"Switched to {target_mode} mode",
-                metadata={
-                    "mode": target_mode,
-                    "previous_mode": current_mode,
-                    "was_change": True,
-                },
-            )
-
-        except Exception as e:
-            logger.error(f"Mode switch failed: {e}")
-            return ToolResult(
-                success=False,
-                error=f"Failed to switch mode: {e}",
-                metadata={"target_mode": target_mode},
-            )
+        logger.info(f"Mode switched: {current_mode} -> {target_mode} ({reason})")
+        return ToolResult(
+            success=True,
+            output=f"Switched to {target_mode} mode",
+            metadata={"mode": target_mode, "previous_mode": current_mode, "was_change": True},
+        )
 
     def get_switch_history(self, limit: int = 20) -> list[dict[str, Any]]:
         """Get recent mode switch history."""
@@ -286,6 +280,20 @@ class AutonomyLevelTool(Tool):
             duration_seconds=duration,
             justification=reason,
         )
+        if request.status == "unavailable":
+            # No human approval surface in this run (#827): say so, never "awaiting approval".
+            return ToolResult(
+                success=False,
+                error=(
+                    f"Autonomy escalation to {target_level.value} cannot be granted: no human approver is "
+                    f"attached to this run. Continue at {current_level.value}."
+                ),
+                metadata={
+                    "level": target_level.value,
+                    "previous_level": current_level.value,
+                    "type": "unavailable",
+                },
+            )
 
         return ToolResult(
             success=True,
