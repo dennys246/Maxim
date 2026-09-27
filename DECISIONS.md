@@ -2,6 +2,25 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-09-27 — The agent preamble is read from the Constitution (bugs ledger D32)
+
+### Decision
+
+The foundational preamble every agent's prompt carries now lives in `CONSTITUTION.md` itself, in a marked
+"Runtime Preamble" section, and the runtime reads that block verbatim from the copy shipped as package
+data (`maxim/_data/CONSTITUTION.md`, drift-tested against the repo root). Owner decision, 1.3.1.
+
+### Reason
+
+The preamble was a hard-coded paraphrase in `agents/llm_context.py`, gated only on a repo-root
+`CONSTITUTION.md` existing: the document and the prompt could drift silently, and every pip install (no
+repo root) ran with an empty preamble. Reading the text from the document makes them one thing.
+
+### Tradeoffs
+
+Editing the principles agents are told now means editing the Constitution -- intended. The block is a
+condensation; keeping it faithful to the sections above is a review duty, not a mechanical check.
+
 ## 2026-09-25 — Oasis release format v2: detached signature, entry index, ordering, license
 
 Decision (design: [docs/plans/oasis_entry_index_v2.md](docs/plans/oasis_entry_index_v2.md); public_oasis

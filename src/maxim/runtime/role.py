@@ -2,7 +2,10 @@
 
 One Maxim process has exactly one role: ``leader``, ``peer``, or ``solo``.
 The role is detected once at startup, exported to ``MAXIM_ROLE``, and
-downstream code reads the env var — never re-detects.
+downstream code reads the env var — never re-detects. A reader that also
+needs the SOURCE (the doctor) calls ``resolved_role()``, which keeps the
+source ``apply_role`` recorded and resolves afresh in a process nothing
+applied a role in (a Python session: ``maxim.diagnose()``).
 
 **C3 fold (CR2 + C-3 from the pre-implementation two-lens review):**
 the original two-detector architecture (this module + ``leader_mode.py``)
@@ -274,6 +277,21 @@ def _has_local_llm_flag(argv: list[str]) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+_APPLIED: "tuple[Role, RoleSource] | None" = None
+
+
+def resolved_role() -> "tuple[Role, RoleSource]":
+    """This process's role and the rank that decided it -- the SAME answer whether or not the CLI ran.
+
+    After ``apply_role`` exports ``MAXIM_ROLE``, ``detect_role`` would attribute the role to "env_var" (its
+    own export). This returns the source ``apply_role`` recorded while that export is still in place, and
+    ``detect_role()`` otherwise (a Python session: nothing exported). The doctor reads it, so
+    ``maxim.diagnose()`` and ``maxim doctor`` report the same role row (1.3.1)."""
+    if _APPLIED is not None and os.environ.get("MAXIM_ROLE", "").strip().lower() == _APPLIED[0]:
+        return _APPLIED
+    return detect_role()
+
+
 def apply_role(role: Role, source: RoleSource) -> None:
     """Export ``MAXIM_ROLE`` and log ``role_detected``. Idempotent.
 
@@ -284,7 +302,9 @@ def apply_role(role: Role, source: RoleSource) -> None:
     C3 fold: adds ``config_json_present`` boolean for telemetry on
     config.json adoption rate.
     """
+    global _APPLIED
     os.environ["MAXIM_ROLE"] = role
+    _APPLIED = (role, source)
 
     # Telemetry hint: did config.json contribute to the decision?
     config_json_present = False

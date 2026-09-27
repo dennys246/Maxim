@@ -501,9 +501,26 @@ class TestCampaignParametersAreThreadedOrRejected:
             "maxim.simulation.dm_schema.load_campaign",
             lambda *a, **k: SimpleNamespace(name="api_param_test", goal="test", party_mode=False),
         )
-        handler = object()
+        handler = SimpleNamespace(prompt=lambda request: "yes")
         campaign(str(self._campaign_yaml(tmp_path)), prompt_handler=handler)
         assert seen["prompt_handler"] is handler
+
+    def test_a_handler_without_prompt_is_refused_before_any_side_effect(self, tmp_path):
+        from maxim.api import campaign
+
+        with pytest.raises(TypeError, match=r"\.prompt\(PromptRequest\)"):
+            campaign(str(self._campaign_yaml(tmp_path)), prompt_handler=lambda request: "yes")
+
+    def test_an_interactive_run_with_a_handler_is_refused_before_any_side_effect(self, tmp_path, monkeypatch):
+        """With a handler the DM auto-plays and the stdin reader owns nothing: interactive=True would lie."""
+        from maxim.api import campaign
+
+        called = []
+        monkeypatch.setattr("maxim.simulation.dm_schema.load_campaign", lambda *a, **k: called.append(1))
+        handler = SimpleNamespace(prompt=lambda request: "yes")
+        with pytest.raises(ValueError, match="interactive=True"):
+            campaign(str(self._campaign_yaml(tmp_path)), interactive=True, prompt_handler=handler)
+        assert called == []
 
     def test_a_passed_handler_is_the_one_the_runs_prompts_reach(self):
         """... and the orchestrator hands it to the AUT's request_interaction tool, instead of building its
@@ -516,6 +533,32 @@ class TestCampaignParametersAreThreadedOrRejected:
         assert aut_handler is handler and sim_handler is None
         tool = build_tool_registry(operational_mode="active", prompt_handler=aut_handler).get("request_interaction")
         assert tool._handler is handler
+
+    def test_the_real_sim_hands_the_passed_handler_to_the_aut_registry(self, monkeypatch):
+        """Drive the real start_simulation_mode up to the AUT's registry build. The helper test above
+        passes even if the orchestrator stops calling the helper, or stops passing its result on."""
+        from unittest.mock import MagicMock
+
+        from maxim.simulation.orchestrator import start_simulation_mode
+
+        class _Reached(Exception):
+            pass
+
+        seen = {}
+
+        def _capture(**kwargs):
+            seen.update(kwargs)
+            raise _Reached
+
+        # What the run arms / enables before the registry build, so teardown restores it.
+        monkeypatch.setenv("MAXIM_ALLOW_BASH", "0")
+        monkeypatch.setattr("maxim.simulation.sim_logger.enable_sim_logging", lambda *a, **k: None)
+        monkeypatch.setattr("maxim.runtime.lane_backends.build_primary_router", lambda *a, **k: (MagicMock(), None))
+        monkeypatch.setattr("maxim.runtime.bootstrap.build_tool_registry", _capture)
+        handler = SimpleNamespace(prompt=lambda request: "yes")
+        with pytest.raises(_Reached):
+            start_simulation_mode(goal="x", prompt_handler=handler, max_turns=1, sandbox_backend="tmpdir")
+        assert seen["prompt_handler"] is handler
 
     def test_prompt_handler_with_an_adopted_agent_is_refused(self):
         from maxim.simulation.orchestrator import start_simulation_mode

@@ -62,14 +62,29 @@ def _is_cloud_provider_type(provider_type: str) -> bool:
 _foundational_context_cache: str | None = None
 
 
-def _load_foundational_context() -> str:
-    """The foundational preamble: the Constitution's core principles plus the agent behaviour rules.
+_PREAMBLE_START = "<!-- runtime-preamble:start -->"
+_PREAMBLE_END = "<!-- runtime-preamble:end -->"
 
-    Gated on the constitution SHIPPED IN THE PACKAGE (``maxim/_data/CONSTITUTION.md``, D32). It used to
-    walk up from this file looking for a repo-root ``CONSTITUTION.md`` / ``AGENTS.md`` -- present in a
-    checkout, absent in every installed wheel -- so every pip user's agent ran with an EMPTY preamble.
-    The repo-root file stays the source; ``tests/unit/test_foundational_preamble.py`` fails when the
-    packaged copy drifts from it. Cached: the text is session-stable (it is a cacheable prompt section).
+
+def extract_runtime_preamble(constitution: str) -> str:
+    """The Constitution's "Runtime Preamble" block: the text between its markers, fence stripped."""
+    _head, start, tail = constitution.partition(_PREAMBLE_START)
+    block, end, _ = tail.partition(_PREAMBLE_END)
+    if not start or not end:
+        # Both markers or nothing: a lost END would otherwise inject the rest of the document.
+        return ""
+    lines = [line for line in block.strip().splitlines() if not line.startswith("```")]
+    return "\n".join(lines).strip()
+
+
+def _load_foundational_context() -> str:
+    """The foundational preamble, read VERBATIM from the Constitution (D32, owner decision 2026-09-27).
+
+    It was a hard-coded paraphrase gated on a repo-root CONSTITUTION.md existing: the document and the
+    prompt could drift silently, and every pip install (no repo root) ran with an EMPTY preamble. The
+    text now lives in CONSTITUTION.md's marked "Runtime Preamble" section, read from the copy shipped
+    as package data (``maxim/_data/CONSTITUTION.md``; ``tests/unit/test_foundational_preamble.py`` fails
+    when it drifts from the repo root). Cached: the text is session-stable (a cacheable prompt section).
     """
     global _foundational_context_cache
     if _foundational_context_cache is not None:
@@ -77,34 +92,12 @@ def _load_foundational_context() -> str:
 
     from importlib import resources
 
-    if not resources.files("maxim").joinpath("_data", "CONSTITUTION.md").is_file():
+    packaged = resources.files("maxim").joinpath("_data").joinpath("CONSTITUTION.md")
+    text = extract_runtime_preamble(packaged.read_text(encoding="utf-8")) if packaged.is_file() else ""
+    if not text:
         logger.warning(
-            "maxim/_data/CONSTITUTION.md is missing from the install: the agent has no foundational preamble"
+            "No Runtime Preamble in maxim/_data/CONSTITUTION.md (missing file or markers): the agent has "
+            "no foundational preamble"
         )
-        _foundational_context_cache = ""
-        return ""
-
-    parts = [
-        "=== CORE PRINCIPLES (from Constitution) ===",
-        "Priority Order: 1) Physical Safety 2) Ethics 3) Guidelines 4) Helpfulness",
-        "",
-        "Hard Constraints (NEVER violate):",
-        "- Never move toward a person who said 'stop' or shows distress",
-        "- Never continue movement after unexpected collision",
-        "- Never attempt to prevent being powered off",
-        "- Never fabricate information or claim false certainty",
-        "",
-        "Core Values: Honesty, transparency, respect for persons, avoiding harm",
-        "When uncertain: Ask rather than assume. Halt rather than proceed blindly.",
-        "",
-        "=== AGENT BEHAVIOR RULES ===",
-        "Agents THINK but do not ACT directly.",
-        "",
-        "You MAY: Read state, query memory, propose intents, evaluate outcomes",
-        "You MAY NOT: Execute tools directly, mutate state, control execution loops",
-        "",
-        "Output: Structured intent (JSON), never imperative commands",
-        "Coordination: Through state and decision engine, not direct agent calls",
-    ]
-    _foundational_context_cache = "\n".join(parts)
+    _foundational_context_cache = text
     return _foundational_context_cache

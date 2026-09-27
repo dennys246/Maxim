@@ -237,6 +237,13 @@ class TestAgentInstance:
         assert export["episodic_memories"] == len(instance.hippocampus) == 2
         assert len(export["memory_summaries"]) == 2
 
+    def test_export_summaries_are_the_newest_twenty(self, factory, guard_config):
+        instance = factory.create_agent(guard_config)
+        ids = [instance.hippocampus.store_observation(f"event {n}") for n in range(25)]
+        export = instance.export_memories()
+        assert export["episodic_memories"] == 25
+        assert [s["id"] for s in export["memory_summaries"]] == [str(i) for i in ids[-20:]]
+
     def test_shutdown_safe(self, factory, guard_config):
         instance = factory.create_agent(guard_config)
         # Should not raise

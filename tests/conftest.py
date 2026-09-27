@@ -204,11 +204,15 @@ def _isolate_maxim_role_env():
     runtime. Follow the auto-download scrub pattern: always unset on entry,
     restore any pre-existing user value on exit.
     """
+    from maxim.runtime import role as _role
+
     saved = os.environ.pop("MAXIM_ROLE", None)
+    _role._APPLIED = None  # apply_role's record of the source; it must not outlive the env it describes
     try:
         yield
     finally:
         os.environ.pop("MAXIM_ROLE", None)
+        _role._APPLIED = None
         if saved is not None:
             os.environ["MAXIM_ROLE"] = saved
 

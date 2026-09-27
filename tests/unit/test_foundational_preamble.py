@@ -1,8 +1,8 @@
-"""D32: the foundational preamble reaches pip users (roadmap 1.3.1).
+"""D32: the foundational preamble IS the Constitution's text, and reaches pip users (roadmap 1.3.1).
 
-The loader walked up from its own file looking for a repo-root CONSTITUTION.md -- present in a
-checkout, absent in every installed wheel -- so every pip user's agent ran with an EMPTY preamble.
-It now gates on the constitution shipped as package data (maxim/_data/CONSTITUTION.md)."""
+It was a hard-coded paraphrase gated on a repo-root CONSTITUTION.md existing -- the document and the
+prompt could drift, and every installed wheel got an EMPTY preamble. The prompt now reads the marked
+"Runtime Preamble" block verbatim from the Constitution shipped as package data."""
 
 from __future__ import annotations
 
@@ -20,6 +20,32 @@ def test_the_packaged_constitution_is_the_repo_constitution() -> None:
     assert packaged.read_bytes() == (REPO / "CONSTITUTION.md").read_bytes(), (
         "src/maxim/_data/CONSTITUTION.md drifted from CONSTITUTION.md -- copy the repo-root file over it"
     )
+
+
+def test_the_prompt_preamble_is_the_constitutions_block() -> None:
+    """Read from the document, not paraphrased beside it: the drift D32 names is impossible."""
+    import maxim.agents.llm_context as ctx
+
+    block = ctx.extract_runtime_preamble((REPO / "CONSTITUTION.md").read_text(encoding="utf-8"))
+    assert block and "Never attempt to prevent being powered off" in block
+    ctx._foundational_context_cache = None
+    try:
+        assert ctx._load_foundational_context() == block
+    finally:
+        ctx._foundational_context_cache = None
+
+
+def test_a_constitution_without_the_block_yields_no_preamble() -> None:
+    from maxim.agents.llm_context import extract_runtime_preamble
+
+    assert extract_runtime_preamble("# Constitution\nno markers here\n") == ""
+
+
+def test_a_lost_end_marker_yields_no_preamble_not_the_rest_of_the_document() -> None:
+    from maxim.agents.llm_context import _PREAMBLE_START, extract_runtime_preamble
+
+    doc = f"# Constitution\n{_PREAMBLE_START}\nthe block\n# Article I\nthe rest of the document\n"
+    assert extract_runtime_preamble(doc) == ""
 
 
 def test_an_installed_package_gets_the_preamble(tmp_path) -> None:

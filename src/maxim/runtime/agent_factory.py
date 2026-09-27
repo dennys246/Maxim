@@ -267,7 +267,7 @@ class AgentInstance:
                     "tool": getattr(getattr(m, "action", None), "tool_name", "?"),
                     "valence": getattr(getattr(m, "outcome", None), "valence", 0),
                 }
-                for m in memories[:20]  # Cap at 20 for export
+                for m in memories[-20:]  # the 20 newest (the store iterates oldest first)
             ]
 
         if self.nac is not None:

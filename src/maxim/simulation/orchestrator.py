@@ -3630,6 +3630,7 @@ def start_simulation_mode(
                 no_sim_env=no_sim_env,
                 debug=debug,
                 persistent_agent=persistent_agent,
+                prompt_handler=prompt_handler,  # the caller's handler outlives /new too (D40)
             )
     else:
         # Non-interactive: just print the report

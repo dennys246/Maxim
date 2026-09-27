@@ -1347,10 +1347,14 @@ def campaign(
             interactive-mode rule); a warning is logged if stdin is not a TTY.
         verbosity: Logging verbosity (0-3).
         prompt_handler: The handler the agent's ``request_interaction`` tool asks
-            (your own UI). ``None`` (default) lets the interactive mode pick one:
-            ``SimPromptHandler`` when interactive, ``create_handler("auto")``
-            otherwise. Threaded through ``start_simulation_mode`` since 1.3.1
-            (bugs ledger D40).
+            (your own UI) -- an object with ``.prompt(PromptRequest)``, like
+            ``maxim.interactive.prompts.create_handler(...)`` returns. It answers the
+            AGENT's questions; DM encounter choices do not go through it. ``None``
+            (default) lets the interactive mode pick one: ``SimPromptHandler`` when
+            interactive, ``create_handler("auto")`` otherwise. With a handler the run
+            is not interactive (the agent picks DM choices), so ``interactive=True``
+            with a handler raises ``ValueError``. Threaded through
+            ``start_simulation_mode`` since 1.3.1 (bugs ledger D40).
 
     Returns:
         CampaignResult with choices, flags, NPC memories, and rollup.
@@ -1374,6 +1378,19 @@ def campaign(
             "campaign(npc_model=...) is not supported: party-mode NPC agents do not exist in the runtime "
             "(`party_mode` is parsed into the campaign definition and read by nothing), so there is no "
             "model to configure. Set the PC/orchestrator model with `model=` (bugs ledger D40)."
+        )
+
+    if prompt_handler is not None and interactive is True:
+        # With a caller's handler the DM runs non-interactively (the AUT picks every encounter choice)
+        # and the stdin reader does not own the agent's questions: nothing would be interactive.
+        raise ValueError(
+            "campaign(interactive=True, prompt_handler=...) is not supported: your handler answers the "
+            "agent's questions, so the run is not interactive -- pass one or the other"
+        )
+    if prompt_handler is not None and not callable(getattr(prompt_handler, "prompt", None)):
+        raise TypeError(
+            "campaign(prompt_handler=...) needs an object with .prompt(PromptRequest) -- e.g. "
+            f"maxim.interactive.prompts.create_handler(...) -- got {type(prompt_handler).__name__}"
         )
 
     model = _resolve_model(model)
