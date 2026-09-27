@@ -1198,9 +1198,9 @@ def recall(*, home_dir: str | None = None, agent_id: str | None = None, limit: i
         if home_dir is not None:
             agent_home = os.path.expanduser(home_dir)
         else:
-            from maxim.utils.paths import data_home
+            from maxim.utils.paths import RUN_DIR_KINDS, data_home
 
-            agent_home = os.path.join(str(data_home()), "agents", agent_id)
+            agent_home = os.path.join(str(data_home()), RUN_DIR_KINDS["agent"], agent_id)
         hippocampus, nac = _load_agent_home_state(agent_home)
     else:
         effective_home = os.path.expanduser(home_dir or "~/.maxim")

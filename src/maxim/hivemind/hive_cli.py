@@ -505,7 +505,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p_pull.add_argument("--from", dest="from_oasis", required=True, help="registered Oasis name")
     p_pull.add_argument("--domain", default=None, help="only pull releases tagged with this domain")
     p_pull.add_argument("--release", default=None, help="pull only this release id")
-    p_pull.add_argument("--session", required=True, help="receiver session dir or id (a maxim.create.agent() home)")
+    p_pull.add_argument(
+        "--session",
+        required=True,
+        help="receiver: a maxim.create.agent() name, a simulation's session ID, or a path to either's directory",
+    )
     p_pull.add_argument("--receiver-body", required=True, help="the receiver's body_ref (gate-7 body check)")
     p_pull.add_argument(
         "--api-key",
