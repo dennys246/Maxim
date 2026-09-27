@@ -664,6 +664,19 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 raise ValueError(
                     f"capture(): {_name} must be a non-negative int (experience µs / a sequence number), got {_value!r}"
                 )
+        # The record parts are typed objects, not text (1.3.1): `capture(perception="dark cave ahead")`
+        # used to fail deep inside with "'str' object has no attribute 'salience'".
+        for _name, _value, _type in (
+            ("perception", perception, Perception),
+            ("context", context, Context),
+            ("decision", decision, Decision),
+            ("action", action, Action),
+            ("outcome", outcome, Outcome),
+            ("record", record, EpisodicMemory),
+        ):
+            if _value is not None and not isinstance(_value, _type):
+                hint = " -- wrap text as Perception(observations={'text': ...})" if _name == "perception" else ""
+                raise TypeError(f"capture(): {_name} must be a {_type.__name__}, got {type(_value).__name__}{hint}")
         memory_id, memory = self._build_capture_record(
             perception=perception,
             context=context,

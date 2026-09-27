@@ -249,31 +249,31 @@ class AgentInstance:
     _memories_exported: bool = field(default=False, repr=False)
 
     def export_memories(self) -> dict[str, Any]:
-        """Export agent's memory state for post-sim analysis."""
+        """Export agent's memory state for post-sim analysis.
+
+        Reads the Hippocampus through its public surface (``len`` / iteration). It used to read a
+        ``.memories`` attribute that does not exist, and an ``except Exception`` turned that error into
+        a count of 0 -- so every export reported zero memories beside a store that held some. A failure
+        here now raises: a count that cannot be read is not 0.
+        """
         result: dict[str, Any] = {"agent_id": self.agent_id, "role": self.role}
 
         if self.hippocampus is not None:
-            try:
-                memories = list(self.hippocampus.memories.values())
-                result["episodic_memories"] = len(memories)
-                result["memory_summaries"] = [
-                    {
-                        "id": str(getattr(m, "id", "?")),
-                        "tool": getattr(getattr(m, "action", None), "tool_name", "?"),
-                        "valence": getattr(getattr(m, "outcome", None), "valence", 0),
-                    }
-                    for m in memories[:20]  # Cap at 20 for export
-                ]
-            except Exception:
-                result["episodic_memories"] = 0
+            memories = list(self.hippocampus)
+            result["episodic_memories"] = len(memories)
+            result["memory_summaries"] = [
+                {
+                    "id": str(getattr(m, "id", "?")),
+                    "tool": getattr(getattr(m, "action", None), "tool_name", "?"),
+                    "valence": getattr(getattr(m, "outcome", None), "valence", 0),
+                }
+                for m in memories[-20:]  # the 20 newest (the store iterates oldest first)
+            ]
 
         if self.nac is not None:
-            try:
-                stats = self.nac.stats()
-                result["causal_links"] = stats.get("total_links", 0)
-                result["total_observations"] = stats.get("total_observations", 0)
-            except Exception:
-                result["causal_links"] = 0
+            stats = self.nac.stats()
+            result["causal_links"] = stats.get("total_links", 0)
+            result["total_observations"] = stats.get("total_observations", 0)
 
         return result
 

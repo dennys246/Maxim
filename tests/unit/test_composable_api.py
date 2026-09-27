@@ -321,6 +321,8 @@ class TestCreateAgent:
         export = agent.export_memories()
         assert isinstance(export, dict)
         assert export["agent_id"] == "test_export"
+        assert agent.hippocampus is not None, "remembers=True must give the agent a hippocampus"
+        assert export["episodic_memories"] == 1  # the documented example prints this number
         agent.shutdown()
 
 

@@ -963,20 +963,26 @@ class TestDetectDoctorRole:
         assert role == "peer"
         assert "remote.example.com" in url
 
-    def test_auto_localhost_stays_auto(self, monkeypatch):
+    def test_a_localhost_url_is_not_a_peer_signal(self, monkeypatch):
+        """A loopback remote URL is not a peer signal: the role falls through to the CLI's resolver."""
         monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "http://127.0.0.1:8100/v1")
         from maxim.doctor.checks import _detect_doctor_role
+        from maxim.runtime.role import detect_role
 
         role, url = _detect_doctor_role()
-        assert role == "auto"
+        assert role != "peer" and role == detect_role()[0]
 
-    def test_no_env_returns_auto(self, monkeypatch):
+    def test_no_env_resolves_like_the_cli(self, monkeypatch):
+        """With nothing exported (a Python session calling maxim.diagnose()), the doctor resolves the
+        role through the CLI's own resolver -- it used to return "auto" here, which the CLI (which
+        exports MAXIM_ROLE at startup) never saw, so the two entry points ran different probes."""
         monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
         monkeypatch.delenv("MAXIM_ROLE", raising=False)
         from maxim.doctor.checks import _detect_doctor_role
+        from maxim.runtime.role import detect_role
 
         role, url = _detect_doctor_role()
-        assert role == "auto"
+        assert role == detect_role()[0]
         assert url is None
 
     def test_maxim_role_peer_falls_back_to_peer_yml(self, monkeypatch, tmp_path):
@@ -1052,16 +1058,19 @@ class TestCheckEnvConfig:
         assert "MAXIM_SKIP_REMOTE_PROBE" not in statuses
         assert "MAXIM_PEER_PROBE_KEY" not in statuses
 
-    def test_missing_maxim_role_warns(self, monkeypatch):
+    def test_an_unexported_role_is_resolved_like_the_cli(self, monkeypatch):
+        """A Python session (maxim.diagnose()) has nothing exported: the role is resolved exactly as the CLI
+        resolves it, not reported as a warning that the CLI did not run (1.3.1 -- one probe set)."""
         monkeypatch.delenv("MAXIM_ROLE", raising=False)
         monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
         from maxim.doctor.checks import check_env_config
+        from maxim.runtime.role import detect_role
 
         results = check_env_config(self._info())
         role_result = next((r for r in results if r.name == "MAXIM_ROLE"), None)
         assert role_result is not None
-        assert role_result.status == "warn"
-        assert "not set" in role_result.message
+        assert role_result.status == "ok"
+        assert f"resolved as '{detect_role()[0]}'" in role_result.message
 
     def test_invalid_maxim_role_fails(self, monkeypatch):
         monkeypatch.setenv("MAXIM_ROLE", "superleader")
@@ -1130,19 +1139,15 @@ class TestCheckEnvConfig:
         assert "MAXIM_LLM_ENABLED" not in names
         assert "MAXIM_LLM_N_CTX" not in names
 
-    def test_macos_fix_hint_uses_zshrc(self, monkeypatch):
+    def test_an_unexported_role_needs_no_fix(self, monkeypatch):
+        """Nothing to fix: the role resolves the same way the CLI would have exported it."""
         monkeypatch.delenv("MAXIM_ROLE", raising=False)
         monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
         from maxim.doctor.checks import check_env_config
 
         results = check_env_config(self._info(os="macos"))
         role_result = next((r for r in results if r.name == "MAXIM_ROLE"), None)
-        assert role_result is not None
-        assert role_result.fix is not None
-        # Fix should show the export command but NOT suggest adding to .zshrc
-        # (MAXIM_ROLE is auto-detected at startup; persisting to shell rc is rarely needed)
-        assert "export MAXIM_ROLE=" in role_result.fix
-        assert "zshrc" not in role_result.fix
+        assert role_result is not None and role_result.fix is None
 
 
 # ─── check_context_window ─────────────────────────────────────────────────

@@ -62,70 +62,42 @@ def _is_cloud_provider_type(provider_type: str) -> bool:
 _foundational_context_cache: str | None = None
 
 
-def _load_foundational_context() -> str:
-    """Load CONSTITUTION.md and AGENTS.md as foundational LLM context.
+_PREAMBLE_START = "<!-- runtime-preamble:start -->"
+_PREAMBLE_END = "<!-- runtime-preamble:end -->"
 
-    Caches the result to avoid repeated file I/O.
-    Returns a condensed version suitable for prompts.
+
+def extract_runtime_preamble(constitution: str) -> str:
+    """The Constitution's "Runtime Preamble" block: the text between its markers, fence stripped."""
+    _head, start, tail = constitution.partition(_PREAMBLE_START)
+    block, end, _ = tail.partition(_PREAMBLE_END)
+    if not start or not end:
+        # Both markers or nothing: a lost END would otherwise inject the rest of the document.
+        return ""
+    lines = [line for line in block.strip().splitlines() if not line.startswith("```")]
+    return "\n".join(lines).strip()
+
+
+def _load_foundational_context() -> str:
+    """The foundational preamble, read VERBATIM from the Constitution (D32, owner decision 2026-09-27).
+
+    It was a hard-coded paraphrase gated on a repo-root CONSTITUTION.md existing: the document and the
+    prompt could drift silently, and every pip install (no repo root) ran with an EMPTY preamble. The
+    text now lives in CONSTITUTION.md's marked "Runtime Preamble" section, read from the copy shipped
+    as package data (``maxim/_data/CONSTITUTION.md``; ``tests/unit/test_foundational_preamble.py`` fails
+    when it drifts from the repo root). Cached: the text is session-stable (a cacheable prompt section).
     """
     global _foundational_context_cache
     if _foundational_context_cache is not None:
         return _foundational_context_cache
 
-    from pathlib import Path
+    from importlib import resources
 
-    parts: list[str] = []
-
-    # Find repo root (look for CONSTITUTION.md or AGENTS.md)
-    current = Path(__file__).resolve()
-    repo_root = None
-    for parent in current.parents:
-        if (parent / "CONSTITUTION.md").exists() or (parent / "AGENTS.md").exists():
-            repo_root = parent
-            break
-
-    if repo_root is None:
-        logger.debug("Could not find repo root for foundational documents")
-        _foundational_context_cache = ""
-        return ""
-
-    # Load CONSTITUTION.md - extract key principles (condensed for prompt)
-    constitution_path = repo_root / "CONSTITUTION.md"
-    if constitution_path.exists():
-        try:
-            # Extract key constitutional principles (condensed for prompt efficiency)
-            parts.append("=== CORE PRINCIPLES (from Constitution) ===")
-            parts.append("Priority Order: 1) Physical Safety 2) Ethics 3) Guidelines 4) Helpfulness")
-            parts.append("")
-            parts.append("Hard Constraints (NEVER violate):")
-            parts.append("- Never move toward a person who said 'stop' or shows distress")
-            parts.append("- Never continue movement after unexpected collision")
-            parts.append("- Never attempt to prevent being powered off")
-            parts.append("- Never fabricate information or claim false certainty")
-            parts.append("")
-            parts.append("Core Values: Honesty, transparency, respect for persons, avoiding harm")
-            parts.append("When uncertain: Ask rather than assume. Halt rather than proceed blindly.")
-            logger.debug("Loaded constitution principles")
-        except Exception as e:
-            logger.warning("Failed to load CONSTITUTION.md: %s", e)
-
-    # Load AGENTS.md - extract agent behavior rules
-    agents_path = repo_root / "AGENTS.md"
-    if agents_path.exists():
-        try:
-            # Extract key agent behavior rules (condensed for prompt efficiency)
-            parts.append("")
-            parts.append("=== AGENT BEHAVIOR RULES (from AGENTS.md) ===")
-            parts.append("Agents THINK but do not ACT directly.")
-            parts.append("")
-            parts.append("You MAY: Read state, query memory, propose intents, evaluate outcomes")
-            parts.append("You MAY NOT: Execute tools directly, mutate state, control execution loops")
-            parts.append("")
-            parts.append("Output: Structured intent (JSON), never imperative commands")
-            parts.append("Coordination: Through state and decision engine, not direct agent calls")
-            logger.debug("Loaded agent rules")
-        except Exception as e:
-            logger.warning("Failed to load AGENTS.md: %s", e)
-
-    _foundational_context_cache = "\n".join(parts) if parts else ""
+    packaged = resources.files("maxim").joinpath("_data").joinpath("CONSTITUTION.md")
+    text = extract_runtime_preamble(packaged.read_text(encoding="utf-8")) if packaged.is_file() else ""
+    if not text:
+        logger.warning(
+            "No Runtime Preamble in maxim/_data/CONSTITUTION.md (missing file or markers): the agent has "
+            "no foundational preamble"
+        )
+    _foundational_context_cache = text
     return _foundational_context_cache

@@ -360,6 +360,33 @@ def _arm_sandboxed_aut_subprocess_tools() -> None:
     os.environ.setdefault("MAXIM_ALLOW_BASH", "1")
 
 
+def _select_aut_prompt_handler(prompt_handler: Any, stop_event: Any) -> tuple[Any, Any]:
+    """``(aut_handler, sim_handler)`` -- the handler the AUT's ``request_interaction`` tool asks, and the
+    interactive SimPromptHandler the stdin reader must coordinate with (None unless one was built).
+
+    A caller's ``prompt_handler`` wins (D40: ``maxim.campaign(prompt_handler=...)`` used to be refused
+    because nothing threaded it here). Otherwise the interactive mode picks: ON -> SimPromptHandler (the
+    stdin reader delivers answers to it), anything else -> the auto handler. The tool itself gates on
+    ``sim_logger.should_prompt``, so passing a handler unconditionally is safe."""
+    if prompt_handler is not None:
+        return prompt_handler, None
+    try:
+        from maxim.simulation.sim_logger import get_interactive_mode as _get_im
+        from maxim.simulation.sim_logger import InteractiveMode as _IM
+
+        if _get_im() == _IM.ON:
+            from maxim.interactive.prompts import SimPromptHandler
+
+            sim_handler = SimPromptHandler(stop_event=stop_event)
+            return sim_handler, sim_handler
+        from maxim.interactive.prompts import create_handler
+
+        return create_handler("auto"), None
+    except Exception as _ph_exc:
+        logger.debug("PromptHandler unavailable for AUT: %s", _ph_exc)
+        return None, None
+
+
 def start_simulation_mode(
     goal: str,
     mode: str = "generative",
@@ -385,6 +412,7 @@ def start_simulation_mode(
     fixture_path: str | None = None,
     entity_ref: str | None = None,
     persistent_agent: Any = None,
+    prompt_handler: Any = None,
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
@@ -425,10 +453,18 @@ def start_simulation_mode(
             (dropped at lease restore) rather than process-persistent as on
             the throwaway path. Register tools on the handle's registry
             before injection if they should outlive the campaign.
+        prompt_handler: The handler the AUT's ``request_interaction`` tool asks (D40) -- a caller's
+            own UI. None picks one from the interactive mode, as before. Cannot be combined with
+            ``persistent_agent``, whose registry already holds its handler.
 
     Returns:
         SimulationResult with session summary
     """
+    if prompt_handler is not None and persistent_agent is not None:
+        raise ValueError(
+            "start_simulation_mode(prompt_handler=...) cannot be combined with persistent_agent=: the adopted "
+            "agent's registry already holds its request_interaction handler"
+        )
     # Merge legacy sim_debug alias into canonical `debug` flag.
     if sim_debug is not None and not debug:
         debug = bool(sim_debug)
@@ -630,25 +666,10 @@ def start_simulation_mode(
     # coordinates input (avoids two threads fighting over stdin).
     # The tool itself gates on sim_logger.should_prompt, so it's safe
     # to pass unconditionally.
-    _sim_prompt_handler = None
-    try:
-        from maxim.simulation.sim_logger import get_interactive_mode as _get_im
-        from maxim.simulation.sim_logger import InteractiveMode as _IM
-
-        if _get_im() == _IM.ON:
-            from maxim.interactive.prompts import SimPromptHandler
-
-            _sim_prompt_handler = SimPromptHandler(stop_event=stop_event)
-            aut_prompt_handler = _sim_prompt_handler
-            # Gate the bridge so orchestrator waits for user to answer prompts
-            bridge._prompt_gate = _sim_prompt_handler
-        else:
-            from maxim.interactive.prompts import create_handler
-
-            aut_prompt_handler = create_handler("auto")
-    except Exception as _ph_exc:
-        logger.debug("PromptHandler unavailable for AUT: %s", _ph_exc)
-        aut_prompt_handler = None
+    aut_prompt_handler, _sim_prompt_handler = _select_aut_prompt_handler(prompt_handler, stop_event)
+    if _sim_prompt_handler is not None:
+        # Gate the bridge so orchestrator waits for user to answer prompts
+        bridge._prompt_gate = _sim_prompt_handler
 
     if _adopted is not None:
         # HANDLE seam (a), branch 4: the campaign runs on the PERSISTENT
@@ -2051,6 +2072,9 @@ def start_simulation_mode(
     _dm_error: list[Exception] = []
     # True when a human drives the conversation (no specific goal).
     # Stall detector and probing are disabled in this mode.
+    from maxim.simulation.sim_logger import InteractiveMode as _IM
+    from maxim.simulation.sim_logger import get_interactive_mode as _get_im
+
     _is_observe_only = _get_im() == _IM.ON and goal.strip().lower() in ("interactive", "interactive mode", "")
     if dm_campaign is not None:
         from maxim.simulation.campaign_runner import run_dm_campaign as _run_dm
@@ -3606,6 +3630,7 @@ def start_simulation_mode(
                 no_sim_env=no_sim_env,
                 debug=debug,
                 persistent_agent=persistent_agent,
+                prompt_handler=prompt_handler,  # the caller's handler outlives /new too (D40)
             )
     else:
         # Non-interactive: just print the report

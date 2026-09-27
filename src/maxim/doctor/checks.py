@@ -387,6 +387,32 @@ def check_resolved_config() -> list["CheckResult"]:
     for field_path in sorted(_FIELD_TO_ENV.keys()):
         env_name = _FIELD_TO_ENV[field_path]
         env_present = _env_is_set(env_name)
+        if field_path == "role":
+            # The role's real source, not the CLI's own startup export of it (which read as source=env in
+            # `maxim doctor` and as a default in `maxim.diagnose()` -- one question, two answers; 1.3.1).
+            from maxim.runtime.role import resolved_role
+
+            role_value, role_source = resolved_role()
+            cfg_role = _read_config_for_doctor(cfg, "role") if role_source == "env_var" else None
+            if cfg_role is not None and cfg_role != role_value:
+                # An exported role overriding config.json warns, like every other env-shadowed row.
+                results.append(
+                    CheckResult(
+                        name="role",
+                        status="warn",
+                        message=f"{role_value}  [source=env_var, shadows config.json={cfg_role}]",
+                        fix=_shadow_fix("role", env_name, _os.environ.get(env_name, "")),
+                    )
+                )
+            else:
+                results.append(
+                    CheckResult(
+                        name="role",
+                        status="info" if role_source == "default" else "ok",  # as every row: a default is info
+                        message=f"{role_value}  [source={role_source}]",
+                    )
+                )
+            continue
 
         try:
             value, source = resolve_setting(field_path, config=cfg)
@@ -1134,23 +1160,17 @@ def check_env_config(info: PlatformInfo, role: str | None = None) -> list["Check
     maxim_role = os.environ.get("MAXIM_ROLE", "").strip().lower()
     valid_roles = {"leader", "peer", "solo"}
     if not maxim_role:
-        # Role is inferred from heuristics — warn so the user knows
-        # which heuristic fired and can make it explicit.
-        inferred = "peer" if is_peer else "leader"
-        # MAXIM_ROLE is normally exported by detect_and_apply_role() at startup —
-        # this branch fires only if that path was bypassed (e.g. direct import).
-        # Don't suggest .zshrc for peer (auto-detected from peer.yml); for leader
-        # the systemd unit Environment= is the right persistent location.
-        if info.os == "macos":
-            export_cmd = f"export MAXIM_ROLE={inferred}  # current session; auto-detected on normal startup"
-        else:
-            export_cmd = f"export MAXIM_ROLE={inferred}  # or set in systemd unit Environment="
+        # Not exported in this process: a Python session calling maxim.diagnose() (the CLI exports it at
+        # startup). Resolve it exactly as the CLI does rather than warning that the CLI did not run --
+        # the two entry points must report the same thing (1.3.1).
+        from maxim.runtime.role import resolved_role
+
+        resolved, source = resolved_role()
         results.append(
             CheckResult(
                 name="MAXIM_ROLE",
-                status="warn",
-                message=f"not set — role inferred as '{inferred}' from heuristics. Normally auto-exported at startup; check that cli.py::main ran before this check.",
-                fix=export_cmd,
+                status="ok",
+                message=f"not exported in this process -- resolved as '{resolved}' from {source}, as `maxim` does at startup",
             )
         )
     elif maxim_role not in valid_roles:
@@ -2616,8 +2636,9 @@ def _check_lane_metrics() -> list["CheckResult"]:
 def _detect_doctor_role(explicit: str | None = None, peer_url: str | None = None) -> tuple[str, str | None]:
     """Detect whether this machine is peer/leader/solo for doctor purposes.
 
-    Returns ``(role, peer_url)`` where role is ``"peer"``, ``"leader"``,
-    ``"solo"``, or ``"auto"`` (fall through to existing behaviour).
+    Returns ``(role, peer_url)`` where role is ``"peer"``, ``"leader"`` or
+    ``"solo"`` -- resolved as the CLI resolves it when nothing more specific says
+    (``"auto"`` survives only for a role outside ``runtime.role.Role``).
     """
     import os
     from urllib.parse import urlparse
@@ -2633,9 +2654,12 @@ def _detect_doctor_role(explicit: str | None = None, peer_url: str | None = None
         host = urlparse(url).hostname or ""
         if host not in ("127.0.0.1", "localhost", "::1"):
             return "peer", url
-    # Fallback: MAXIM_ROLE is set by detect_and_apply_role() before any subcommand
-    # runs. If it says "peer", trust it and pull the URL from peer.yml.
-    maxim_role = os.environ.get("MAXIM_ROLE", "").strip().lower()
+    # Fallback: the role resolved exactly as the CLI resolves it -- the canonical pure resolver, whose
+    # first rank is the MAXIM_ROLE the CLI exports at startup. Reading only that env var made
+    # maxim.diagnose() (a Python session: nothing exported) skip every peer probe the CLI runs (1.3.1).
+    from maxim.runtime.role import resolved_role
+
+    maxim_role = resolved_role()[0]
     if maxim_role == "peer":
         try:
             from maxim.peer.config import read_peer_config
@@ -3393,6 +3417,37 @@ def check_robot_reachable(info: PlatformInfo) -> list[CheckResult]:
     return [_check_one_robot(info, robot) for robot in cfg.robots]
 
 
+def _configured_peer_key_for(peer_url: str) -> str | None:
+    """The configured API key whose configured URL IS ``peer_url`` (env pair, then peer.yml), else None."""
+    import os
+
+    from urllib.parse import urlsplit
+
+    def _norm(url: str) -> str:
+        # Scheme and host are case-insensitive, and a leader is named with or without /v1.
+        parts = urlsplit(url.strip())
+        path = parts.path.rstrip("/")
+        path = path[: -len("/v1")] if path.endswith("/v1") else path
+        return f"{parts.scheme.lower()}://{parts.netloc.lower()}{path}"
+
+    def _same(a: str | None, b: str | None) -> bool:
+        return bool(a) and bool(b) and _norm(a) == _norm(b)  # type: ignore[arg-type]
+
+    env_key = os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY")
+    if env_key and _same(os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL"), peer_url):
+        return env_key
+    try:
+        from maxim.peer.config import read_peer_config
+
+        cfg = read_peer_config()
+    except Exception as e:
+        logger.debug("Could not read peer config in run_all_checks: %s", e)
+        return None
+    if cfg is not None and cfg.api_key and _same(cfg.url, peer_url):
+        return cfg.api_key
+    return None
+
+
 def run_all_checks(
     info: PlatformInfo,
     *,
@@ -3444,20 +3499,11 @@ def run_all_checks(
 
     if detected_role == "peer" and peer_url:
         # ── peer-mode sections ────────────────────────────────────────────
-        # Resolve key from arg → env → peer config
+        # Resolve key from arg → env → peer config -- but a CONFIGURED key only for the URL it is
+        # configured for: `maxim.diagnose(peer=<any url>)` (and `doctor --as peer <url>`) must never
+        # send this machine's leader key to a host the caller named (1.3.1 review).
         if not peer_key:
-            import os
-
-            peer_key = os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY")
-        if not peer_key:
-            try:
-                from maxim.peer.config import read_peer_config
-
-                cfg = read_peer_config()
-                if cfg is not None:
-                    peer_key = cfg.api_key
-            except Exception as e:
-                logger.debug("Could not read peer config in run_all_checks: %s", e)
+            peer_key = _configured_peer_key_for(peer_url)
         sections.append(
             (
                 "Peer Connectivity",

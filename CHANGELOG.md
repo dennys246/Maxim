@@ -364,6 +364,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Public API behaviour changes that ride on the 1.3.1 correctness fixes** (a caller may notice):
+  - `Hippocampus.capture()` raises `TypeError` for an argument of the wrong type (it used to raise an
+    `AttributeError` from inside record construction).
+  - `AgentInstance.export_memories()` / `AgentPool.export_all_memories()` raise when the store cannot
+    be read, instead of reporting 0; the export now carries `memory_summaries` (the 20 newest; the key
+    was never reached before, since the count raised first).
+  - `maxim.diagnose()` resolves the role the way the CLI does, so on a machine configured as a peer
+    (`peer.yml`, `mesh.yml` or a `config.json` role) it now runs the Peer Connectivity section -- real
+    network probes, up to ~12 s against an unreachable leader. The `MAXIM_ROLE` row reads `ok`
+    ("resolved as ...") instead of warning when nothing exported it, and the Resolved Config `role` row
+    names where the role came from (it read the CLI's own startup export as `source=env`).
+  - `AgentInstance.export_memories()` no longer swallows an error from `nac.stats()` either.
+  - `diagnose(peer=...)` runs the doctor's peer checks: the separate
+    "Peer reachable" check is gone, and a configured peer key is sent only to the URL it was configured
+    for (scheme/host case and a trailing `/v1` ignored) -- `maxim doctor --as peer <url>` included: a URL
+    that is not your configured leader's now fails the auth check instead of receiving its key.
+  - `maxim.campaign(interactive=True, prompt_handler=...)` raises `ValueError`: with a handler the run
+    is not interactive.
+  - The preamble header reads `=== AGENT BEHAVIOR RULES ===` (the `(from AGENTS.md)` suffix is gone —
+    the text now comes from `CONSTITUTION.md`), and its hard constraints are the Constitution's §1 list
+    word for word: every agent's prompt now carries "Never operate actuators at speeds that could cause
+    injury", which it had omitted.
+  - `start_simulation_mode(prompt_handler=...)` is new; it raises `ValueError` with `persistent_agent`.
+
 - **The test suite cannot reach the network.** Hermeticity was HOME/HF isolation and env scrubs with
   nothing stopping a real connection: a measured fast-suite run made 52 outbound attempts from 29 tests
   (real DNS queries for `api.anthropic.com`, `*.example.com`, a TCP probe to a LAN address). A guard in
@@ -392,6 +416,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [#889](https://github.com/dennys246/Maxim/issues/889).
 
 ### Fixed
+
+- **Public API correctness** (roadmap 1.3.1).
+  - `AgentInstance.export_memories()` (and `AgentPool.export_all_memories()`) reported **0 memories**
+    whatever the agent held: it read a Hippocampus attribute that does not exist, and an
+    `except Exception` turned the error into 0. It now counts what the store holds, and a failure
+    raises instead of reading as zero.
+  - `Hippocampus.capture()` refuses a wrong argument type up front with a `TypeError` that names the
+    fix (`capture(perception="text")` failed deep inside with an unrelated `AttributeError`); the
+    `maxim.create.agent` docstring example is now run by a test.
+  - `maxim.diagnose()` runs the same checks as `maxim doctor --json`. It skipped the remote-leader probe
+    in a Python session — the doctor read only the role the CLI exports at startup — and reported
+    all-passed where the CLI exited 1. `diagnose(peer=...)` now runs the doctor's peer checks, not a
+    separate probe.
+  - `maxim.campaign(prompt_handler=...)` works: the handler reaches the agent's `request_interaction`
+    tool (it was refused because nothing threaded it). `npc_model=` still raises until party-mode NPC
+    agents exist.
+  - **pip installs get the foundational preamble** (the Constitution's core principles and the agent
+    rules). It was gated on a `CONSTITUTION.md` found above the source tree — present in a checkout,
+    absent in every wheel — so installed agents ran without it. The constitution now ships as package
+    data, and the release build refuses a wheel without it.
 
 - **A mode's limits are enforced when a tool runs, not only in the prompt** (#826). A tool the current
   mode excludes still ran when the model named it — in passive mode, a forbidden `maxim_command` reached
