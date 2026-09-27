@@ -1,0 +1,438 @@
+{
+  "version": "1.0",
+  "links": {
+    "tool:memory_recall": [
+      {
+        "id": "89b48fd44cf2024b",
+        "event_type": "tool",
+        "event_signature": "tool:memory_recall",
+        "event_context": {
+          "params": {
+            "query": "guard interaction"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:memory_recall:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.00045680999755859375
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790530754.7037618,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "73d4aefc7b7f17a1",
+        "event_type": "tool",
+        "event_signature": "tool:memory_recall",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I remember interacting with guards before. Let's recall those experiences to decide the best approac"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'count': 0, 'memories': [], 'expanded': False}",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790530754.7061539,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "02c881a293f46a04",
+        "event_type": "tool",
+        "event_signature": "tool:memory_recall",
+        "event_context": {
+          "goal": "I remember interacting with guards before. Let's recall those experiences to decide the best approach."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I remember interacting with guards before. Let's recall those experiences to decide the best approach.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790530754.706707,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:sense_tools": [
+      {
+        "id": "7d98f9b08749151b",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "guard's schedule and location"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0024976730346679688
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790530787.134478,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ffbb90f7ed920e2a",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 2 capabilities:\n- base_humanoid_listen: Atte",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790530787.136384,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "e5729f299f81ba76",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": ""
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan::success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790530787.137072,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ad199c802b20ffec",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "find a way to interact with the sleeping guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.00043201446533203125
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790530844.46691,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "466bcecf0a768b2f",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "Given my past experiences with guards and the current situation, I need to find a way to interact wi"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 8 capabilities:\n- base_humanoid_use: Use a h",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790530844.4674718,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "541b41acf347d7eb",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "Given my past experiences with guards and the current situation, I need to find a way to interact with the sleeping guard without waking him up."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:Given my past experiences with guards and the current situation, I need to find a way to interact with the sleeping guard without waking him up.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790530844.467672,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "4773312feb3c665e",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "dungeon and guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0003638267517089844
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790531968.5202181,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "8d017bb94ae92993",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I want to learn more about the dungeon and the sleeping guard. I'll use sense_tools to discover what"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 2 capabilities:\n- base_humanoid_listen: Atte",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790531968.5208058,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "aecd405a6871a5ef",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I want to learn more about the dungeon and the sleeping guard. I'll use sense_tools to discover what actions I can take related to these entities."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I want to learn more about the dungeon and the sleeping guard. I'll use sense_tools to discover what actions I can take related to these entities.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790531968.5210009,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ]
+  },
+  "outcome_index": {
+    "tool:memory_recall:positive": [
+      "89b48fd44cf2024b"
+    ],
+    "success:{'count': 0, 'memories': [], 'expanded': False}": [
+      "73d4aefc7b7f17a1"
+    ],
+    "plan:I remember interacting with guards before. Let's recall those experiences to decide the best approach.:success": [
+      "02c881a293f46a04"
+    ],
+    "tool:sense_tools:positive": [
+      "ad199c802b20ffec",
+      "4773312feb3c665e",
+      "7d98f9b08749151b"
+    ],
+    "success:Found 2 capabilities:\n- base_humanoid_listen: Atte": [
+      "ffbb90f7ed920e2a",
+      "8d017bb94ae92993"
+    ],
+    "plan::success": [
+      "e5729f299f81ba76"
+    ],
+    "success:Found 8 capabilities:\n- base_humanoid_use: Use a h": [
+      "466bcecf0a768b2f"
+    ],
+    "plan:Given my past experiences with guards and the current situation, I need to find a way to interact with the sleeping guard without waking him up.:success": [
+      "541b41acf347d7eb"
+    ],
+    "plan:I want to learn more about the dungeon and the sleeping guard. I'll use sense_tools to discover what actions I can take related to these entities.:success": [
+      "aecd405a6871a5ef"
+    ]
+  },
+  "priors": {},
+  "total_observations": 12,
+  "reward_bias": {},
+  "goal_reward_bias": {
+    "escape a dungeon with a sleeping guard": 0.060725131161657224
+  },
+  "cluster_reward_bias": {},
+  "cluster_reward_source": {},
+  "inherent_bias_keys": [],
+  "percept_valences": {},
+  "cluster_fear": {},
+  "event_outcome_welford": {},
+  "saved_at": 1790532005.306896,
+  "_format_version": "1.4"
+}

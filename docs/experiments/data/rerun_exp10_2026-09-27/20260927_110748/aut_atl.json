@@ -1,0 +1,196 @@
+{
+  "version": "1.0",
+  "concepts": {
+    "2ea39061-7e52-4840-a576-1a6802aff59a": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "2ea39061-7e52-4840-a576-1a6802aff59a",
+      "timestamp": 1790528936.8454468,
+      "created_at": 1790528936.845456,
+      "accessed_at": 1790528936.848875,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sensors:azimuth=0.00",
+      "definition": "sensors:azimuth=0.00",
+      "category": "substrate",
+      "properties": {},
+      "provenance": "AGENT_INFERENCE",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "sensors:azimuth=0.00",
+      "substrate_modality": "interoception",
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "7522be0c-23a6-4d9c-861e-b0cca823e77c"
+        ]
+      }
+    },
+    "80fb8f38-800d-433f-bf4c-105a1263b8ce": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "80fb8f38-800d-433f-bf4c-105a1263b8ce",
+      "timestamp": 1790528936.845772,
+      "created_at": 1790528936.845773,
+      "accessed_at": 1790528936.848882,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sensors:azimuth=0.00",
+      "definition": "sensors:azimuth=0.00",
+      "category": "substrate",
+      "properties": {},
+      "provenance": "AGENT_INFERENCE",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "sensors:azimuth=0.00",
+      "substrate_modality": "audio",
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "7522be0c-23a6-4d9c-861e-b0cca823e77c"
+        ]
+      }
+    },
+    "907da034-5c30-4e1b-babc-ff73389b11cd": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "907da034-5c30-4e1b-babc-ff73389b11cd",
+      "timestamp": 1790528936.848685,
+      "created_at": 1790528936.8486872,
+      "accessed_at": 1790528936.848713,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sense_tools",
+      "definition": "action: sense_tools",
+      "category": "action",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "7522be0c-23a6-4d9c-861e-b0cca823e77c"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "7522be0c-23a6-4d9c-861e-b0cca823e77c"
+        ]
+      }
+    }
+  },
+  "graph": {
+    "nodes": [
+      "2ea39061-7e52-4840-a576-1a6802aff59a",
+      "80fb8f38-800d-433f-bf4c-105a1263b8ce",
+      "907da034-5c30-4e1b-babc-ff73389b11cd"
+    ],
+    "edges": []
+  },
+  "registry": {
+    "types": {
+      "IS_A": {
+        "description": "Subsumption / taxonomy",
+        "symmetric": false,
+        "builtin": true
+      },
+      "HAS_PART": {
+        "description": "Part-whole relationship",
+        "symmetric": false,
+        "builtin": true
+      },
+      "CAUSES": {
+        "description": "Causal relationship",
+        "symmetric": false,
+        "builtin": true
+      },
+      "PROPERTY_OF": {
+        "description": "Property attribution",
+        "symmetric": false,
+        "builtin": true
+      },
+      "RELATED_TO": {
+        "description": "Generic association",
+        "symmetric": true,
+        "builtin": true
+      },
+      "ASSOCIATES": {
+        "description": "Associative link",
+        "symmetric": true,
+        "builtin": true
+      },
+      "EXECUTES_WITH": {
+        "description": "Skill executes in context of this concept",
+        "symmetric": false,
+        "builtin": true
+      },
+      "ALIAS_OF": {
+        "description": "Compound alias referencing component concepts",
+        "symmetric": false,
+        "builtin": true
+      },
+      "IS_PROPORTIONAL_TO": {
+        "description": "Two metrics scale together",
+        "symmetric": true,
+        "builtin": true
+      },
+      "CORRELATES_WITH": {
+        "description": "Statistical correlation confirmed by AG",
+        "symmetric": true,
+        "builtin": true
+      },
+      "IS_INVERSE_OF": {
+        "description": "Inverse relationship",
+        "symmetric": true,
+        "builtin": true
+      },
+      "TRANSFORMS_TO": {
+        "description": "Value transforms via known operation",
+        "symmetric": false,
+        "builtin": true
+      },
+      "TRENDS_WITH": {
+        "description": "Two metrics trend same/opposite direction",
+        "symmetric": true,
+        "builtin": true
+      },
+      "PHASE_LOCKED_TO": {
+        "description": "Activity phase-locked to SCN oscillator",
+        "symmetric": false,
+        "builtin": true
+      },
+      "PREDICTS": {
+        "description": "One pattern predicts another",
+        "symmetric": false,
+        "builtin": true
+      }
+    }
+  },
+  "stats": {
+    "concepts_stored": 3,
+    "queries": 49
+  },
+  "compressed_count": 0,
+  "_format_version": "1.0"
+}
