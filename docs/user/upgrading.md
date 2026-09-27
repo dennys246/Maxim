@@ -24,7 +24,7 @@ The 1.0 upgrade is **state-preserving**. Every file Maxim writes under `~/.maxim
 | `~/.maxim/agents/<name>/nac.json` | Causal links + reward biases + outcome index | Loads. Re-save adds `_format_version: "1.0"`. |
 | `~/.maxim/agents/<name>/atl.json` | Semantic concepts + concept graph | Loads. Re-save adds `_format_version: "1.0"`. |
 | `~/.maxim/agents/<name>/scn.json` | Temporal signatures + circadian phase priors | Loads. Re-save adds `_format_version: "1.0"`. |
-| `~/.maxim/sessions/<id>/` | Session reports, action JSONL, snapshot envelopes | Loads. Envelope-bearing files carry both `schema_version` (int) and `_format_version` (string) at root. |
+| `~/.maxim/sim_reports/<id>/` | Session reports, action JSONL, snapshot envelopes (corrected 2026-09-27: this row named `sessions/`, which no simulation writes) | Loads. Envelope-bearing files carry both `schema_version` (int) and `_format_version` (string) at root. |
 | `~/.maxim/util/last_probe_status.json` | Peer probe outcomes | Loads. Pre-1.0 dict-keyed-by-URL shape is auto-wrapped under `entries`. |
 | `~/.maxim/util/active_llm_model.{role}.txt` | Persisted LLM model selection | Plain text — unchanged. |
 | `~/.maxim/util/drained_nodes.{role}.txt` | Drain state | Plain text — unchanged. |

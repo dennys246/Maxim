@@ -43,6 +43,7 @@ The Hippocampus is the central memory store for episodic memories.
 
 ```python
 from maxim.memory import Hippocampus, HippocampusConfig, Perception
+from maxim.memory.encoding import EncodingSignals
 
 config = HippocampusConfig(
     max_nodes=10_000,
@@ -62,7 +63,7 @@ perception = Perception(
     salience=0.8,
     novelty=0.6,
 )
-memory_id = hippo.capture(perception)
+memory_id = hippo.capture(perception, encoding=EncodingSignals.unmeasured("api"))
 ```
 
 ### Querying Memories
@@ -296,7 +297,7 @@ with lock.read_lock():
 
 # Exclusive writer
 with lock.write_lock():
-    hippo.capture(new_memory)
+    hippo.capture(new_memory, encoding=EncodingSignals.unmeasured("api"))
 ```
 
 ---
