@@ -271,6 +271,7 @@ markers = [
     "robot: marks tests requiring Reachy hardware",
     "multi_agent_modes: auto-parametrize over single_agent / two_agents_shared_instance / two_agents_isolated_instances (P4 multi-agent rule; see tests/multi_agent_fixtures.py)",
     "single_agent_only: explicit opt-out of multi_agent_modes parametrization for tests that are genuinely single-agent",
+    "allow_network: the test may reach the network (tests/network_guard.py blocks it otherwise) -- a reviewed exception",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

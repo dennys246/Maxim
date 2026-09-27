@@ -1,5 +1,14 @@
 # Experiment 37: Cross-Session Behavioral Delta — Cradle Graduation
 
+> **Status (2026-09-26): FIRED — PARTIAL (mixed)** — the "PRE-REGISTERED — implementation not
+> started" header below is stale and kept as recorded. Four local-model fires ran (Qwen14B
+> 2026-06-06, Qwen32B 2026-06-08, Mistral24B 2026-06-11, DeepSeek-R1-Distill-Qwen-32B 2026-06-13),
+> and every per-fire verdict below is **PARTIAL — investigation gate**. Cross-session memory
+> persists, but the behavioral shift is Goldilocks-dependent and does not establish general prior
+> override. Cross-model interpretation lives in
+> [37_cross_model_results.md](37_cross_model_results.md) (audit 2026-09-13: PARTIAL, cloud arm
+> deferred).
+
 **Date pre-registered:** 2026-05-30
 **Status:** PRE-REGISTERED — implementation not started. Falsification conditions and acceptance thresholds locked here BEFORE any trial runs.
 **Worktree:** `feat/1-0-graduation-cross-session` at `/Users/dennyschaedig/Scripts/Maxim-wt-cross-session`

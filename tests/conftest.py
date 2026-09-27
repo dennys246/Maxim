@@ -48,6 +48,22 @@ else:
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
+# No test reaches the network (roadmap 1.3.1): outbound TCP and non-loopback DNS raise; loopback,
+# IP-literal lookups and UDP connect stay allowed. `@pytest.mark.allow_network` is the escape hatch.
+from tests import network_guard as _network_guard  # noqa: E402
+
+_network_guard.install()
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):  # noqa: ANN001, ANN201
+    """How many calls the network guard blocked this session (each would have left the machine)."""
+    if _network_guard.attempts:
+        kinds = sorted({kind for kind, _ in _network_guard.attempts})
+        terminalreporter.write_line(
+            f"network guard: blocked {len(_network_guard.attempts)} outbound call(s) ({', '.join(kinds)})"
+        )
+
+
 # Registered before runtime routers register their CostTracker flushes. Python
 # executes atexit callbacks LIFO, so late persistence lands first and this root
 # is removed last.
@@ -152,6 +168,19 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         if "requires_model_cache" in item.keywords:
             item.add_marker(skip)
+
+
+@pytest.fixture(autouse=True)
+def _network_guard_for_marked_tests(request: pytest.FixtureRequest):
+    """``@pytest.mark.allow_network`` lifts the network guard for that one test."""
+    if request.node.get_closest_marker("allow_network") is None:
+        yield
+        return
+    _network_guard.enabled = False
+    try:
+        yield
+    finally:
+        _network_guard.enabled = True
 
 
 @pytest.fixture(autouse=True)
