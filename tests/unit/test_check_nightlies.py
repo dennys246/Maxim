@@ -55,9 +55,12 @@ def test_a_tagged_version_is_not_a_release(monkeypatch) -> None:
 def test_a_release_with_a_red_nightly_is_refused(monkeypatch) -> None:
     monkeypatch.setattr(N, "pyproject_version", lambda: "1.3.1")
     monkeypatch.setattr(N, "is_tagged", lambda v: False)
+    monkeypatch.setattr(N, "main_head", lambda: "abc")
     now = datetime.now(timezone.utc).isoformat()
     monkeypatch.setattr(
-        N, "latest_nightly", lambda: ({"databaseId": 3, "createdAt": now}, _jobs(**{"Slow tests (nightly)": "failure"}))
+        N,
+        "latest_nightly",
+        lambda: ({"databaseId": 3, "createdAt": now, "headSha": "abc"}, _jobs(**{"Slow tests (nightly)": "failure"})),
     )
     assert N.main(["--only-when-releasing"]) == 1
 
@@ -75,3 +78,53 @@ def test_the_release_build_job_runs_it() -> None:
     job = workflow[workflow.index("  release-build:") : workflow.index("  unit-tests:")]
     assert "scripts/check_nightlies.py --only-when-releasing" in job
     assert "actions: read" in job
+
+
+def test_a_cancelled_run_is_skipped_for_the_newest_run_that_ran(monkeypatch) -> None:
+    """A run superseded in main's concurrency queue completes `cancelled` without running a job, and a
+    push run's nightly jobs are skipped -- neither says anything about the nightlies."""
+    runs = [
+        {"databaseId": 10, "createdAt": "2026-09-27T10:00:00Z", "conclusion": "success", "event": "push"},
+        {"databaseId": 9, "createdAt": "2026-09-27T09:00:00Z", "conclusion": "cancelled", "event": "schedule"},
+        {"databaseId": 8, "createdAt": "2026-09-26T09:00:00Z", "conclusion": "success", "event": "schedule"},
+    ]
+    viewed = []
+
+    def gh(*args):
+        if args[:2] == ("run", "list"):
+            return runs
+        viewed.append(args[2])
+        return {"jobs": [{"name": "Slow tests (nightly)", "conclusion": "success"}]}
+
+    monkeypatch.setattr(N, "_gh", gh)
+    run, jobs = N.latest_nightly()
+    assert run["databaseId"] == 8 and viewed == ["8"] and jobs
+
+
+def test_a_green_nightly_of_an_older_commit_refuses() -> None:
+    """Green before the last merge says nothing about the code being released."""
+    run = {**FRESH, "headSha": "old"}
+    jobs = _jobs(**{"Slow tests (nightly)": "success"})
+    problems = N.nightly_verdict(run, jobs, now=NOW, max_age=DAY, main_sha="new")
+    assert problems and "gh workflow run test.yml --ref main" in problems[0]
+    assert N.nightly_verdict({**run, "headSha": "new"}, jobs, now=NOW, max_age=DAY, main_sha="new") == []
+
+
+def test_a_dispatched_run_counts(monkeypatch) -> None:
+    """After a fix the operator dispatches a run on main; it is read like a scheduled one."""
+    runs = [
+        {"databaseId": 11, "createdAt": "2026-09-27T11:00:00Z", "conclusion": "success", "event": "workflow_dispatch"}
+    ]
+    monkeypatch.setattr(N, "_gh", lambda *a: runs if a[:2] == ("run", "list") else {"jobs": []})
+    assert N.latest_nightly()[0]["databaseId"] == 11
+
+
+def test_green_at_main_passes(monkeypatch) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    monkeypatch.setattr(N, "main_head", lambda: "abc")
+    monkeypatch.setattr(
+        N,
+        "latest_nightly",
+        lambda: ({"databaseId": 4, "createdAt": now, "headSha": "abc"}, _jobs(**{"Slow tests (nightly)": "success"})),
+    )
+    assert N.main([]) == 0

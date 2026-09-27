@@ -3,8 +3,10 @@
 
 The model-cache and slow lanes run only on schedule, never on a PR, so nothing on a release PR showed
 that they were red — the model-cache lane was red 16 nights running while releases were being planned.
-This reads the latest SCHEDULED run of the Tests workflow on ``main`` and fails unless every
-``(nightly)`` job in it succeeded, and the run is recent.
+This reads the latest nightly run of the Tests workflow on ``main`` -- scheduled, or dispatched with
+``gh workflow run test.yml --ref main`` -- and fails unless every ``(nightly)`` job in it succeeded, the
+run is recent, AND it tested the commit ``main`` is at now: a green run from before the last merge says
+nothing about the code being released.
 
 Fails CLOSED: no scheduled run, a stale run, a run with no nightly jobs, or an unreadable API is a
 refusal, never a pass — a check that cannot see the nightlies must not report them green.
@@ -39,13 +41,27 @@ class CheckError(Exception):
     """The nightlies could not be read -- exit 2, never a pass."""
 
 
+NIGHTLY_EVENTS = ("schedule", "workflow_dispatch")
+DISPATCH_HINT = "run `gh workflow run test.yml --ref main` and re-check when it completes"
+
+
 def nightly_verdict(
-    run: dict[str, Any] | None, jobs: list[dict[str, Any]], *, now: datetime, max_age: timedelta
+    run: dict[str, Any] | None,
+    jobs: list[dict[str, Any]],
+    *,
+    now: datetime,
+    max_age: timedelta,
+    main_sha: str | None = None,
 ) -> list[str]:
     """Why the nightlies are NOT green (empty list = green). Pure, so the rule is unit-testable."""
     if run is None:
-        return ["no completed scheduled run of the Tests workflow on main"]
+        return [f"no completed nightly run of the Tests workflow on main -- {DISPATCH_HINT}"]
     problems = []
+    if main_sha is not None and run.get("headSha") != main_sha:
+        problems.append(
+            f"run {run.get('databaseId')} tested {str(run.get('headSha'))[:12]}, but main is at {main_sha[:12]} -- "
+            f"a nightly must test the code being released: {DISPATCH_HINT}"
+        )
     created = datetime.fromisoformat(str(run["createdAt"]).replace("Z", "+00:00"))
     if now - created > max_age:
         problems.append(
@@ -72,13 +88,27 @@ def _gh(*args: str) -> Any:
 
 def latest_nightly() -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     runs = _gh(
-        "run", "list", "--workflow", WORKFLOW, "--branch", "main", "--event", "schedule",
-        "--status", "completed", "--limit", "1", "--json", "databaseId,createdAt",
+        "run", "list", "--workflow", WORKFLOW, "--branch", "main", "--status", "completed",
+        "--limit", "30", "--json", "databaseId,createdAt,conclusion,event,headSha",
     )  # fmt: skip
-    if not runs:
+    # Only runs whose nightly jobs execute (scheduled, or dispatched after a fix -- a re-run would
+    # re-test the OLD commit). A run superseded in main's concurrency queue completes `cancelled`
+    # without running a job and says nothing, so the newest run that is not cancelled is read.
+    ran = [run for run in (runs or []) if run.get("event") in NIGHTLY_EVENTS and run.get("conclusion") != "cancelled"]
+    if not ran:
         return None, []
-    view = _gh("run", "view", str(runs[0]["databaseId"]), "--json", "jobs")
-    return runs[0], list((view or {}).get("jobs") or [])
+    view = _gh("run", "view", str(ran[0]["databaseId"]), "--json", "jobs")
+    return ran[0], list((view or {}).get("jobs") or [])
+
+
+def main_head() -> str:
+    """The commit ``main`` is at on the remote."""
+    proc = subprocess.run(
+        ("git", "ls-remote", "origin", "refs/heads/main"), cwd=REPO, capture_output=True, text=True, check=False
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        raise CheckError(f"git ls-remote origin main: {proc.stderr.strip() or 'no ref'}")
+    return proc.stdout.split()[0]
 
 
 def pyproject_version() -> str:
@@ -109,16 +139,19 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             print(f"releasing {version} (no v{version} tag yet): the nightlies must be green")
         run, jobs = latest_nightly()
+        head = main_head()
     except CheckError as exc:
         print(f"UNVERIFIED: {exc}", file=sys.stderr)
         return 2
-    problems = nightly_verdict(run, jobs, now=datetime.now(timezone.utc), max_age=timedelta(hours=args.max_age_hours))
+    problems = nightly_verdict(
+        run, jobs, now=datetime.now(timezone.utc), max_age=timedelta(hours=args.max_age_hours), main_sha=head
+    )
     if problems:
         print("REFUSED: a nightly lane is not green -- do not release:", file=sys.stderr)
         for problem in problems:
             print(f"  {problem}", file=sys.stderr)
         return 1
-    print(f"nightlies green (run {run['databaseId']}, {run['createdAt']})")  # type: ignore[index]
+    print(f"nightlies green at main {head[:12]} (run {run['databaseId']}, {run['createdAt']})")  # type: ignore[index]
     return 0
 
 

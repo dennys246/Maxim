@@ -107,6 +107,16 @@ def test_every_allow_listed_test_is_actually_collected_by_the_lane() -> None:
     assert not missing, f"allow-listed ids the lane never collects (stale entries): {missing}"
 
 
+def test_the_test_skip_allow_list_cannot_grow_silently() -> None:
+    """A ratchet (roadmap 1.3.1 guard): adding an excused skip is a reviewed act -- raise this pin in
+    the same PR, with a dataset-class reason. It may only shrink quietly."""
+    assert len(C.ALLOWED_SKIPS) <= 4, (
+        "ALLOWED_SKIPS grew: an excused skip in the model-cache lane is a reviewed decision -- "
+        "raise this pin in the same PR and say why the test cannot run there"
+    )
+    assert all("dataset" in reason for reason in C.ALLOWED_SKIPS.values())
+
+
 def test_there_is_no_module_skip_allow_list() -> None:
     """The allow-list that grew with every console test file (16 red nights) is gone for good."""
     assert not hasattr(C, "ALLOWED_MODULE_SKIPS")

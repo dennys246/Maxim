@@ -72,12 +72,17 @@ hub offline variables; they are not part of the correction-release gate.
 python3 scripts/check_nightlies.py
 ```
 
-The model-cache and slow lanes run only on schedule, never on a PR, so a release PR cannot show
-them red. This reads the latest scheduled run on `main` and refuses (exit 1) unless every
-`(nightly)` job succeeded within the last 48 hours; exit 2 means it could not read them — that is
-not a pass. The `release-build` CI job runs the same check with `--only-when-releasing` on the
-release PR (pyproject's version has no `v<version>` tag yet), so this step is enforced, not only
-written down. Do not publish over a red nightly: fix it, or record why in the release notes.
+The model-cache and slow lanes run only on schedule (or on dispatch), never on a PR, so a release PR
+cannot show them red. This reads the latest nightly run on `main` and refuses (exit 1) unless every
+`(nightly)` job succeeded within the last 48 hours AND that run tested the commit `main` is at now;
+exit 2 means it could not read them — that is not a pass. The `release-build` CI job runs the same check with `--only-when-releasing`, so the
+release PR (pyproject's version has no `v<version>` tag yet) goes RED while a nightly is red — and,
+until the tag exists, so does every later PR and push to `main`: the window is short by design. It
+BLOCKS the merge only once `release-build` is a required check (an owner setting, roadmap 1.3.2);
+until then this step is the gate. When the latest nightly is red, stale, or tested an older commit,
+fix what is red on `main`, then run `gh workflow run test.yml --ref main` and re-check once it
+completes (a re-run of an old run re-tests the OLD commit and does not count). Do not publish over a
+red nightly — there is no override.
 
 ### 3. Verify clean import
 
