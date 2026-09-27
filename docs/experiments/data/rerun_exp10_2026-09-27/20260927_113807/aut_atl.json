@@ -1,0 +1,237 @@
+{
+  "version": "1.0",
+  "concepts": {
+    "1cbd8aa2-fabe-49f8-b4d0-e0741f8b3dca": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "1cbd8aa2-fabe-49f8-b4d0-e0741f8b3dca",
+      "timestamp": 1790530754.6995552,
+      "created_at": 1790530754.699595,
+      "accessed_at": 1790530844.468844,
+      "access_count": 7,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sensors:azimuth=0.00",
+      "definition": "sensors:azimuth=0.00",
+      "category": "substrate",
+      "properties": {},
+      "provenance": "AGENT_INFERENCE",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "sensors:azimuth=0.00",
+      "substrate_modality": "interoception",
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "7af4795b-07fa-4cf3-9d97-345cf588fc3d",
+          "9214c2f4-953c-4643-940a-20e06a6cb97d",
+          "bbf6fc38-3769-43df-857a-ce35a9fbdc15"
+        ]
+      }
+    },
+    "204db015-22bb-4ab3-bfef-dc071f3d3fbe": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "204db015-22bb-4ab3-bfef-dc071f3d3fbe",
+      "timestamp": 1790530754.700835,
+      "created_at": 1790530754.700841,
+      "accessed_at": 1790530844.468849,
+      "access_count": 7,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sensors:azimuth=0.00",
+      "definition": "sensors:azimuth=0.00",
+      "category": "substrate",
+      "properties": {},
+      "provenance": "AGENT_INFERENCE",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "sensors:azimuth=0.00",
+      "substrate_modality": "audio",
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "7af4795b-07fa-4cf3-9d97-345cf588fc3d",
+          "9214c2f4-953c-4643-940a-20e06a6cb97d",
+          "bbf6fc38-3769-43df-857a-ce35a9fbdc15"
+        ]
+      }
+    },
+    "85e7a5ab-0c6a-43c4-8781-0be6da6adc79": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "85e7a5ab-0c6a-43c4-8781-0be6da6adc79",
+      "timestamp": 1790530754.712991,
+      "created_at": 1790530754.712995,
+      "accessed_at": 1790530754.713044,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "memory_recall",
+      "definition": "action: memory_recall",
+      "category": "action",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "7af4795b-07fa-4cf3-9d97-345cf588fc3d"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "7af4795b-07fa-4cf3-9d97-345cf588fc3d"
+        ]
+      }
+    },
+    "c0c74766-be4b-4f18-9aa1-b56de2539eda": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "c0c74766-be4b-4f18-9aa1-b56de2539eda",
+      "timestamp": 1790530787.1406999,
+      "created_at": 1790530787.140725,
+      "accessed_at": 1790530844.4687538,
+      "access_count": 6,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sense_tools",
+      "definition": "action: sense_tools",
+      "category": "action",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "bbf6fc38-3769-43df-857a-ce35a9fbdc15",
+        "9214c2f4-953c-4643-940a-20e06a6cb97d"
+      ],
+      "source_document": null,
+      "confidence": 0.5707106781186547,
+      "reinforcement_count": 2,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "9214c2f4-953c-4643-940a-20e06a6cb97d",
+          "bbf6fc38-3769-43df-857a-ce35a9fbdc15"
+        ]
+      }
+    }
+  },
+  "graph": {
+    "nodes": [
+      "1cbd8aa2-fabe-49f8-b4d0-e0741f8b3dca",
+      "204db015-22bb-4ab3-bfef-dc071f3d3fbe",
+      "85e7a5ab-0c6a-43c4-8781-0be6da6adc79",
+      "c0c74766-be4b-4f18-9aa1-b56de2539eda"
+    ],
+    "edges": []
+  },
+  "registry": {
+    "types": {
+      "IS_A": {
+        "description": "Subsumption / taxonomy",
+        "symmetric": false,
+        "builtin": true
+      },
+      "HAS_PART": {
+        "description": "Part-whole relationship",
+        "symmetric": false,
+        "builtin": true
+      },
+      "CAUSES": {
+        "description": "Causal relationship",
+        "symmetric": false,
+        "builtin": true
+      },
+      "PROPERTY_OF": {
+        "description": "Property attribution",
+        "symmetric": false,
+        "builtin": true
+      },
+      "RELATED_TO": {
+        "description": "Generic association",
+        "symmetric": true,
+        "builtin": true
+      },
+      "ASSOCIATES": {
+        "description": "Associative link",
+        "symmetric": true,
+        "builtin": true
+      },
+      "EXECUTES_WITH": {
+        "description": "Skill executes in context of this concept",
+        "symmetric": false,
+        "builtin": true
+      },
+      "ALIAS_OF": {
+        "description": "Compound alias referencing component concepts",
+        "symmetric": false,
+        "builtin": true
+      },
+      "IS_PROPORTIONAL_TO": {
+        "description": "Two metrics scale together",
+        "symmetric": true,
+        "builtin": true
+      },
+      "CORRELATES_WITH": {
+        "description": "Statistical correlation confirmed by AG",
+        "symmetric": true,
+        "builtin": true
+      },
+      "IS_INVERSE_OF": {
+        "description": "Inverse relationship",
+        "symmetric": true,
+        "builtin": true
+      },
+      "TRANSFORMS_TO": {
+        "description": "Value transforms via known operation",
+        "symmetric": false,
+        "builtin": true
+      },
+      "TRENDS_WITH": {
+        "description": "Two metrics trend same/opposite direction",
+        "symmetric": true,
+        "builtin": true
+      },
+      "PHASE_LOCKED_TO": {
+        "description": "Activity phase-locked to SCN oscillator",
+        "symmetric": false,
+        "builtin": true
+      },
+      "PREDICTS": {
+        "description": "One pattern predicts another",
+        "symmetric": false,
+        "builtin": true
+      }
+    }
+  },
+  "stats": {
+    "concepts_stored": 4,
+    "queries": 239
+  },
+  "compressed_count": 0,
+  "_format_version": "1.0"
+}

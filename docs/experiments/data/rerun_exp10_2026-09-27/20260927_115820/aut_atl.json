@@ -1,0 +1,1115 @@
+{
+  "version": "1.0",
+  "concepts": {
+    "1cbd8aa2-fabe-49f8-b4d0-e0741f8b3dca": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "1cbd8aa2-fabe-49f8-b4d0-e0741f8b3dca",
+      "timestamp": 1790530754.6995552,
+      "created_at": 1790530754.699595,
+      "accessed_at": 1790531968.523436,
+      "access_count": 11,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sensors:azimuth=0.00",
+      "definition": "sensors:azimuth=0.00",
+      "category": "substrate",
+      "properties": {},
+      "provenance": "AGENT_INFERENCE",
+      "source_episode_ids": [
+        "1cbd8aa2-fabe-49f8-b4d0-e0741f8b3dca"
+      ],
+      "source_document": null,
+      "confidence": 0.5707106781186547,
+      "reinforcement_count": 2,
+      "embedding_text": "sensors:azimuth=0.00",
+      "substrate_modality": "interoception",
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "7af4795b-07fa-4cf3-9d97-345cf588fc3d",
+          "9214c2f4-953c-4643-940a-20e06a6cb97d",
+          "9dd29451-1d24-4a3e-925c-e316821cb49a",
+          "bbf6fc38-3769-43df-857a-ce35a9fbdc15"
+        ]
+      }
+    },
+    "204db015-22bb-4ab3-bfef-dc071f3d3fbe": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "204db015-22bb-4ab3-bfef-dc071f3d3fbe",
+      "timestamp": 1790530754.700835,
+      "created_at": 1790530754.700841,
+      "accessed_at": 1790531968.523442,
+      "access_count": 11,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sensors:azimuth=0.00",
+      "definition": "sensors:azimuth=0.00",
+      "category": "substrate",
+      "properties": {},
+      "provenance": "AGENT_INFERENCE",
+      "source_episode_ids": [
+        "204db015-22bb-4ab3-bfef-dc071f3d3fbe"
+      ],
+      "source_document": null,
+      "confidence": 0.5707106781186547,
+      "reinforcement_count": 2,
+      "embedding_text": "sensors:azimuth=0.00",
+      "substrate_modality": "audio",
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "7af4795b-07fa-4cf3-9d97-345cf588fc3d",
+          "9214c2f4-953c-4643-940a-20e06a6cb97d",
+          "9dd29451-1d24-4a3e-925c-e316821cb49a",
+          "bbf6fc38-3769-43df-857a-ce35a9fbdc15"
+        ]
+      }
+    },
+    "85e7a5ab-0c6a-43c4-8781-0be6da6adc79": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "85e7a5ab-0c6a-43c4-8781-0be6da6adc79",
+      "timestamp": 1790530754.712991,
+      "created_at": 1790530754.712995,
+      "accessed_at": 1790530754.713044,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "memory_recall",
+      "definition": "action: memory_recall",
+      "category": "action",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "7af4795b-07fa-4cf3-9d97-345cf588fc3d"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "7af4795b-07fa-4cf3-9d97-345cf588fc3d"
+        ]
+      }
+    },
+    "c0c74766-be4b-4f18-9aa1-b56de2539eda": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "c0c74766-be4b-4f18-9aa1-b56de2539eda",
+      "timestamp": 1790530787.1406999,
+      "created_at": 1790530787.140725,
+      "accessed_at": 1790531968.523361,
+      "access_count": 9,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sense_tools",
+      "definition": "action: sense_tools",
+      "category": "action",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "bbf6fc38-3769-43df-857a-ce35a9fbdc15",
+        "9214c2f4-953c-4643-940a-20e06a6cb97d",
+        "9dd29451-1d24-4a3e-925c-e316821cb49a"
+      ],
+      "source_document": null,
+      "confidence": 0.6732050807568877,
+      "reinforcement_count": 3,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "9214c2f4-953c-4643-940a-20e06a6cb97d",
+          "9dd29451-1d24-4a3e-925c-e316821cb49a",
+          "bbf6fc38-3769-43df-857a-ce35a9fbdc15"
+        ]
+      }
+    },
+    "d21c21e2-fc7e-4fcc-a403-743e88d14415": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+      "timestamp": 1790531968.522092,
+      "created_at": 1790531968.5220962,
+      "accessed_at": 1790531968.522121,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "want",
+      "definition": "goal: want",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "9dd29451-1d24-4a3e-925c-e316821cb49a"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "9dd29451-1d24-4a3e-925c-e316821cb49a"
+        ]
+      }
+    },
+    "5ba429d5-c17f-4b94-b197-46b2216afecc": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "5ba429d5-c17f-4b94-b197-46b2216afecc",
+      "timestamp": 1790531968.522219,
+      "created_at": 1790531968.5222201,
+      "accessed_at": 1790531968.5222342,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "learn",
+      "definition": "goal: learn",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "9dd29451-1d24-4a3e-925c-e316821cb49a"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "9dd29451-1d24-4a3e-925c-e316821cb49a"
+        ]
+      }
+    },
+    "64fc6312-82dd-46c2-8c35-2297775faafe": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "64fc6312-82dd-46c2-8c35-2297775faafe",
+      "timestamp": 1790531968.522314,
+      "created_at": 1790531968.522315,
+      "accessed_at": 1790531968.522325,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "dungeon",
+      "definition": "goal: dungeon",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "9dd29451-1d24-4a3e-925c-e316821cb49a"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "9dd29451-1d24-4a3e-925c-e316821cb49a"
+        ]
+      }
+    },
+    "533c99d4-2190-494d-b4e7-1e0fdefda5b2": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "533c99d4-2190-494d-b4e7-1e0fdefda5b2",
+      "timestamp": 1790531968.522399,
+      "created_at": 1790531968.5224,
+      "accessed_at": 1790531968.522411,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sleep",
+      "definition": "goal: sleep",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "9dd29451-1d24-4a3e-925c-e316821cb49a"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "9dd29451-1d24-4a3e-925c-e316821cb49a"
+        ]
+      }
+    },
+    "b89d3ba5-fede-44da-98eb-cfd88e6afb10": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "b89d3ba5-fede-44da-98eb-cfd88e6afb10",
+      "timestamp": 1790531968.522482,
+      "created_at": 1790531968.5224829,
+      "accessed_at": 1790531968.522493,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "guard",
+      "definition": "goal: guard",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "9dd29451-1d24-4a3e-925c-e316821cb49a"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "9dd29451-1d24-4a3e-925c-e316821cb49a"
+        ]
+      }
+    },
+    "88207a02-7dff-4c19-9106-17aaf941cd8d": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "88207a02-7dff-4c19-9106-17aaf941cd8d",
+      "timestamp": 1790531968.5225759,
+      "created_at": 1790531968.5225768,
+      "accessed_at": 1790531968.5225868,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "use",
+      "definition": "goal: use",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "9dd29451-1d24-4a3e-925c-e316821cb49a"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "9dd29451-1d24-4a3e-925c-e316821cb49a"
+        ]
+      }
+    },
+    "a40b4148-123a-4e7e-b622-3511dfb8f4be": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "a40b4148-123a-4e7e-b622-3511dfb8f4be",
+      "timestamp": 1790531968.522657,
+      "created_at": 1790531968.522657,
+      "accessed_at": 1790531968.522666,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sense",
+      "definition": "goal: sense",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "9dd29451-1d24-4a3e-925c-e316821cb49a"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "9dd29451-1d24-4a3e-925c-e316821cb49a"
+        ]
+      }
+    },
+    "c6de4e4c-6222-4e08-ba34-10e5b21e1996": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "c6de4e4c-6222-4e08-ba34-10e5b21e1996",
+      "timestamp": 1790531968.522736,
+      "created_at": 1790531968.522736,
+      "accessed_at": 1790531968.52275,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "tool",
+      "definition": "goal: tool",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "9dd29451-1d24-4a3e-925c-e316821cb49a"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "9dd29451-1d24-4a3e-925c-e316821cb49a"
+        ]
+      }
+    },
+    "6a2558fd-28db-49df-bbfa-bbee2a053e10": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "6a2558fd-28db-49df-bbfa-bbee2a053e10",
+      "timestamp": 1790531968.522824,
+      "created_at": 1790531968.522825,
+      "accessed_at": 1790531968.522836,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "discover",
+      "definition": "goal: discover",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "9dd29451-1d24-4a3e-925c-e316821cb49a"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "9dd29451-1d24-4a3e-925c-e316821cb49a"
+        ]
+      }
+    },
+    "7916e9fa-53de-4b09-9c08-50a41edd1dbb": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "7916e9fa-53de-4b09-9c08-50a41edd1dbb",
+      "timestamp": 1790531968.522902,
+      "created_at": 1790531968.522903,
+      "accessed_at": 1790531968.522913,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "action",
+      "definition": "goal: action",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "9dd29451-1d24-4a3e-925c-e316821cb49a"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "9dd29451-1d24-4a3e-925c-e316821cb49a"
+        ]
+      }
+    },
+    "5aa85193-5d96-499d-a696-01a41e222821": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "5aa85193-5d96-499d-a696-01a41e222821",
+      "timestamp": 1790531968.5229812,
+      "created_at": 1790531968.522982,
+      "accessed_at": 1790531968.5229928,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "take",
+      "definition": "goal: take",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "9dd29451-1d24-4a3e-925c-e316821cb49a"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "9dd29451-1d24-4a3e-925c-e316821cb49a"
+        ]
+      }
+    },
+    "73e9a3da-8acc-41ea-b524-1844fe248aef": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "73e9a3da-8acc-41ea-b524-1844fe248aef",
+      "timestamp": 1790531968.523177,
+      "created_at": 1790531968.523177,
+      "accessed_at": 1790531968.523189,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "relat",
+      "definition": "goal: relat",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "9dd29451-1d24-4a3e-925c-e316821cb49a"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "9dd29451-1d24-4a3e-925c-e316821cb49a"
+        ]
+      }
+    },
+    "e445a275-702c-43e3-98d3-a289fb707da6": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "e445a275-702c-43e3-98d3-a289fb707da6",
+      "timestamp": 1790531968.523272,
+      "created_at": 1790531968.523273,
+      "accessed_at": 1790531968.523283,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "entity",
+      "definition": "goal: entity",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "9dd29451-1d24-4a3e-925c-e316821cb49a"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "9dd29451-1d24-4a3e-925c-e316821cb49a"
+        ]
+      }
+    },
+    "e2ab6aee-2c44-4186-9697-daad64dcf89f": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "e2ab6aee-2c44-4186-9697-daad64dcf89f",
+      "timestamp": 1790531968.523494,
+      "created_at": 1790531968.523495,
+      "accessed_at": 1790531968.523495,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "want learn",
+      "definition": "Co-occurring: want + learn",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "7eb02503-ab4c-4403-b0cf-066705241425": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "7eb02503-ab4c-4403-b0cf-066705241425",
+      "timestamp": 1790531968.523526,
+      "created_at": 1790531968.523527,
+      "accessed_at": 1790531968.523527,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "want dungeon",
+      "definition": "Co-occurring: want + dungeon",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "78e24350-849a-4611-8e1e-687f96b9a467": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "78e24350-849a-4611-8e1e-687f96b9a467",
+      "timestamp": 1790531968.523552,
+      "created_at": 1790531968.523552,
+      "accessed_at": 1790531968.523552,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "want sleep",
+      "definition": "Co-occurring: want + sleep",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "638ba33d-8f65-4271-ae5d-53698a6195ac": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "638ba33d-8f65-4271-ae5d-53698a6195ac",
+      "timestamp": 1790531968.523574,
+      "created_at": 1790531968.523574,
+      "accessed_at": 1790531968.523574,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "want guard",
+      "definition": "Co-occurring: want + guard",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "ca8f8a95-32ce-45c7-b7ba-3e7ca1d4bed8": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "ca8f8a95-32ce-45c7-b7ba-3e7ca1d4bed8",
+      "timestamp": 1790531968.523595,
+      "created_at": 1790531968.523596,
+      "accessed_at": 1790531968.523596,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "want use",
+      "definition": "Co-occurring: want + use",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "bf5645a2-0e49-4236-9b4d-2f1b9e2b9dd8": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "bf5645a2-0e49-4236-9b4d-2f1b9e2b9dd8",
+      "timestamp": 1790531968.5236218,
+      "created_at": 1790531968.523623,
+      "accessed_at": 1790531968.523623,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "want sense",
+      "definition": "Co-occurring: want + sense",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    }
+  },
+  "graph": {
+    "nodes": [
+      "1cbd8aa2-fabe-49f8-b4d0-e0741f8b3dca",
+      "204db015-22bb-4ab3-bfef-dc071f3d3fbe",
+      "85e7a5ab-0c6a-43c4-8781-0be6da6adc79",
+      "c0c74766-be4b-4f18-9aa1-b56de2539eda",
+      "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+      "5ba429d5-c17f-4b94-b197-46b2216afecc",
+      "64fc6312-82dd-46c2-8c35-2297775faafe",
+      "533c99d4-2190-494d-b4e7-1e0fdefda5b2",
+      "b89d3ba5-fede-44da-98eb-cfd88e6afb10",
+      "88207a02-7dff-4c19-9106-17aaf941cd8d",
+      "a40b4148-123a-4e7e-b622-3511dfb8f4be",
+      "c6de4e4c-6222-4e08-ba34-10e5b21e1996",
+      "6a2558fd-28db-49df-bbfa-bbee2a053e10",
+      "7916e9fa-53de-4b09-9c08-50a41edd1dbb",
+      "5aa85193-5d96-499d-a696-01a41e222821",
+      "73e9a3da-8acc-41ea-b524-1844fe248aef",
+      "e445a275-702c-43e3-98d3-a289fb707da6",
+      "e2ab6aee-2c44-4186-9697-daad64dcf89f",
+      "7eb02503-ab4c-4403-b0cf-066705241425",
+      "78e24350-849a-4611-8e1e-687f96b9a467",
+      "638ba33d-8f65-4271-ae5d-53698a6195ac",
+      "ca8f8a95-32ce-45c7-b7ba-3e7ca1d4bed8",
+      "bf5645a2-0e49-4236-9b4d-2f1b9e2b9dd8"
+    ],
+    "edges": [
+      {
+        "source": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "target": "5ba429d5-c17f-4b94-b197-46b2216afecc",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "relationship_type": "ASSOCIATES",
+          "confidence": 0.3
+        }
+      },
+      {
+        "source": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "target": "64fc6312-82dd-46c2-8c35-2297775faafe",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "relationship_type": "ASSOCIATES",
+          "confidence": 0.3
+        }
+      },
+      {
+        "source": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "target": "533c99d4-2190-494d-b4e7-1e0fdefda5b2",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "relationship_type": "ASSOCIATES",
+          "confidence": 0.3
+        }
+      },
+      {
+        "source": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "target": "b89d3ba5-fede-44da-98eb-cfd88e6afb10",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "relationship_type": "ASSOCIATES",
+          "confidence": 0.3
+        }
+      },
+      {
+        "source": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "target": "88207a02-7dff-4c19-9106-17aaf941cd8d",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "relationship_type": "ASSOCIATES",
+          "confidence": 0.3
+        }
+      },
+      {
+        "source": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "target": "a40b4148-123a-4e7e-b622-3511dfb8f4be",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "relationship_type": "ASSOCIATES",
+          "confidence": 0.3
+        }
+      },
+      {
+        "source": "5ba429d5-c17f-4b94-b197-46b2216afecc",
+        "target": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "relationship_type": "ASSOCIATES",
+          "confidence": 0.3
+        }
+      },
+      {
+        "source": "e2ab6aee-2c44-4186-9697-daad64dcf89f",
+        "target": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "relationship_type": "ALIAS_OF",
+          "confidence": 0.5
+        }
+      },
+      {
+        "source": "e2ab6aee-2c44-4186-9697-daad64dcf89f",
+        "target": "5ba429d5-c17f-4b94-b197-46b2216afecc",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "relationship_type": "ALIAS_OF",
+          "confidence": 0.5
+        }
+      },
+      {
+        "source": "64fc6312-82dd-46c2-8c35-2297775faafe",
+        "target": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "relationship_type": "ASSOCIATES",
+          "confidence": 0.3
+        }
+      },
+      {
+        "source": "7eb02503-ab4c-4403-b0cf-066705241425",
+        "target": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "relationship_type": "ALIAS_OF",
+          "confidence": 0.5
+        }
+      },
+      {
+        "source": "7eb02503-ab4c-4403-b0cf-066705241425",
+        "target": "64fc6312-82dd-46c2-8c35-2297775faafe",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "relationship_type": "ALIAS_OF",
+          "confidence": 0.5
+        }
+      },
+      {
+        "source": "533c99d4-2190-494d-b4e7-1e0fdefda5b2",
+        "target": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "relationship_type": "ASSOCIATES",
+          "confidence": 0.3
+        }
+      },
+      {
+        "source": "78e24350-849a-4611-8e1e-687f96b9a467",
+        "target": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "relationship_type": "ALIAS_OF",
+          "confidence": 0.5
+        }
+      },
+      {
+        "source": "78e24350-849a-4611-8e1e-687f96b9a467",
+        "target": "533c99d4-2190-494d-b4e7-1e0fdefda5b2",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "relationship_type": "ALIAS_OF",
+          "confidence": 0.5
+        }
+      },
+      {
+        "source": "b89d3ba5-fede-44da-98eb-cfd88e6afb10",
+        "target": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "relationship_type": "ASSOCIATES",
+          "confidence": 0.3
+        }
+      },
+      {
+        "source": "638ba33d-8f65-4271-ae5d-53698a6195ac",
+        "target": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "relationship_type": "ALIAS_OF",
+          "confidence": 0.5
+        }
+      },
+      {
+        "source": "638ba33d-8f65-4271-ae5d-53698a6195ac",
+        "target": "b89d3ba5-fede-44da-98eb-cfd88e6afb10",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "relationship_type": "ALIAS_OF",
+          "confidence": 0.5
+        }
+      },
+      {
+        "source": "88207a02-7dff-4c19-9106-17aaf941cd8d",
+        "target": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "relationship_type": "ASSOCIATES",
+          "confidence": 0.3
+        }
+      },
+      {
+        "source": "ca8f8a95-32ce-45c7-b7ba-3e7ca1d4bed8",
+        "target": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "relationship_type": "ALIAS_OF",
+          "confidence": 0.5
+        }
+      },
+      {
+        "source": "ca8f8a95-32ce-45c7-b7ba-3e7ca1d4bed8",
+        "target": "88207a02-7dff-4c19-9106-17aaf941cd8d",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "relationship_type": "ALIAS_OF",
+          "confidence": 0.5
+        }
+      },
+      {
+        "source": "a40b4148-123a-4e7e-b622-3511dfb8f4be",
+        "target": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "relationship_type": "ASSOCIATES",
+          "confidence": 0.3
+        }
+      },
+      {
+        "source": "bf5645a2-0e49-4236-9b4d-2f1b9e2b9dd8",
+        "target": "d21c21e2-fc7e-4fcc-a403-743e88d14415",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "relationship_type": "ALIAS_OF",
+          "confidence": 0.5
+        }
+      },
+      {
+        "source": "bf5645a2-0e49-4236-9b4d-2f1b9e2b9dd8",
+        "target": "a40b4148-123a-4e7e-b622-3511dfb8f4be",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "relationship_type": "ALIAS_OF",
+          "confidence": 0.5
+        }
+      }
+    ]
+  },
+  "registry": {
+    "types": {
+      "IS_A": {
+        "description": "Subsumption / taxonomy",
+        "symmetric": false,
+        "builtin": true
+      },
+      "HAS_PART": {
+        "description": "Part-whole relationship",
+        "symmetric": false,
+        "builtin": true
+      },
+      "CAUSES": {
+        "description": "Causal relationship",
+        "symmetric": false,
+        "builtin": true
+      },
+      "PROPERTY_OF": {
+        "description": "Property attribution",
+        "symmetric": false,
+        "builtin": true
+      },
+      "RELATED_TO": {
+        "description": "Generic association",
+        "symmetric": true,
+        "builtin": true
+      },
+      "ASSOCIATES": {
+        "description": "Associative link",
+        "symmetric": true,
+        "builtin": true
+      },
+      "EXECUTES_WITH": {
+        "description": "Skill executes in context of this concept",
+        "symmetric": false,
+        "builtin": true
+      },
+      "ALIAS_OF": {
+        "description": "Compound alias referencing component concepts",
+        "symmetric": false,
+        "builtin": true
+      },
+      "IS_PROPORTIONAL_TO": {
+        "description": "Two metrics scale together",
+        "symmetric": true,
+        "builtin": true
+      },
+      "CORRELATES_WITH": {
+        "description": "Statistical correlation confirmed by AG",
+        "symmetric": true,
+        "builtin": true
+      },
+      "IS_INVERSE_OF": {
+        "description": "Inverse relationship",
+        "symmetric": true,
+        "builtin": true
+      },
+      "TRANSFORMS_TO": {
+        "description": "Value transforms via known operation",
+        "symmetric": false,
+        "builtin": true
+      },
+      "TRENDS_WITH": {
+        "description": "Two metrics trend same/opposite direction",
+        "symmetric": true,
+        "builtin": true
+      },
+      "PHASE_LOCKED_TO": {
+        "description": "Activity phase-locked to SCN oscillator",
+        "symmetric": false,
+        "builtin": true
+      },
+      "PREDICTS": {
+        "description": "One pattern predicts another",
+        "symmetric": false,
+        "builtin": true
+      }
+    }
+  },
+  "stats": {
+    "concepts_stored": 23,
+    "queries": 345
+  },
+  "compressed_count": 0,
+  "_format_version": "1.0"
+}

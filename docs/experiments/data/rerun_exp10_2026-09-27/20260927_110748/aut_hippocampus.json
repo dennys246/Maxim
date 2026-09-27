@@ -1,0 +1,657 @@
+{
+  "saved_at": 1790528953.0159922,
+  "memories": [
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "7522be0c-23a6-4d9c-861e-b0cca823e77c",
+      "timestamp": 1790528936.848369,
+      "run_id": "2026-09-27_110819",
+      "created_at": 1790528936.848369,
+      "accessed_at": 1790528936.848369,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "0bceb8f402bcd398",
+        "active_goal": "I need to understand the dungeon's layout before attempting to escape with the sleeping guard.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I need to understand the dungeon's layout before attempting to escape with the sleeping guard.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "describe dungeon layout"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": "ToolOutput(success=True, output=\"Your capabilities by category:\\n- Head (base_humanoid): look, listen\\n- Orient (base_humanoid): turn_left, turn_right\\n- Torso (base_humanoid): rest\\n- Arms (base_humanoid): pick_up, drop, use\\n- Legs (base_humanoid): move\\n- Communication (base_humanoid): speak\\n\\nTry a more specific query like 'attack with sword' or 'repair equipment' to activate those tools.\", error=None, error_kind=None, metadata={}, side_effects=None, rpe=0.5, drive_pressure_before=(('azimuth', 0.0),), drive_relief=None, pain=0.0)",
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "2ea39061-7e52-4840-a576-1a6802aff59a",
+        "audio": "80fb8f38-800d-433f-bf4c-105a1263b8ce"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 0,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 0,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "e6f21255-282f-4680-bab6-94002774ddce",
+      "timestamp": 1790528946.849945,
+      "run_id": "",
+      "created_at": 1790528946.849945,
+      "accessed_at": 1790528946.85141,
+      "access_count": 3,
+      "long_term": true,
+      "consolidated_at": 1790528946.850975,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 1,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 1,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "15c61d7f-019c-4758-9be4-e333163ee916",
+      "timestamp": 1790528947.368441,
+      "run_id": "",
+      "created_at": 1790528947.368441,
+      "accessed_at": 1790528950.248708,
+      "access_count": 7,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 2,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 2,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "d8a6ac33-137a-4e8e-adb5-cb4dfe3268d6",
+      "timestamp": 1790528947.9503691,
+      "run_id": "",
+      "created_at": 1790528947.9503691,
+      "accessed_at": 1790528950.24871,
+      "access_count": 6,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 3,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 3,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "76a90c1d-c8e3-4122-82ae-5b29d9467b08",
+      "timestamp": 1790528948.6004522,
+      "run_id": "",
+      "created_at": 1790528948.6004522,
+      "accessed_at": 1790528950.2487,
+      "access_count": 5,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 4,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 4,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "f53f509b-2f27-4cd6-ad80-1e1a6a6f3923",
+      "timestamp": 1790528949.226913,
+      "run_id": "",
+      "created_at": 1790528949.226913,
+      "accessed_at": 1790528950.248706,
+      "access_count": 4,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 5,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 5,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "88d83798-a82d-43af-9245-714fcf3904af",
+      "timestamp": 1790528949.7396538,
+      "run_id": "",
+      "created_at": 1790528949.7396538,
+      "accessed_at": 1790528950.2487009,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 6,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 6,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "f4d9aa75-5fba-43dd-8a5e-d9a0c6c8aaf6",
+      "timestamp": 1790528950.2467022,
+      "run_id": "",
+      "created_at": 1790528950.2467022,
+      "accessed_at": 1790528950.248703,
+      "access_count": 2,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 7,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 7,
+      "retro_tag": null
+    }
+  ],
+  "context_index": {
+    "goal:I need to understand the dungeon's layout before attempting to escape with the sleeping guard.": [
+      "7522be0c-23a6-4d9c-861e-b0cca823e77c"
+    ],
+    "tool:sense_tools": [
+      "7522be0c-23a6-4d9c-861e-b0cca823e77c"
+    ],
+    "success:True": [
+      "15c61d7f-019c-4758-9be4-e333163ee916",
+      "7522be0c-23a6-4d9c-861e-b0cca823e77c",
+      "f4d9aa75-5fba-43dd-8a5e-d9a0c6c8aaf6",
+      "76a90c1d-c8e3-4122-82ae-5b29d9467b08",
+      "e6f21255-282f-4680-bab6-94002774ddce",
+      "d8a6ac33-137a-4e8e-adb5-cb4dfe3268d6",
+      "88d83798-a82d-43af-9245-714fcf3904af",
+      "f53f509b-2f27-4cd6-ad80-1e1a6a6f3923"
+    ],
+    "mode:observe": [
+      "15c61d7f-019c-4758-9be4-e333163ee916",
+      "7522be0c-23a6-4d9c-861e-b0cca823e77c",
+      "f4d9aa75-5fba-43dd-8a5e-d9a0c6c8aaf6",
+      "76a90c1d-c8e3-4122-82ae-5b29d9467b08",
+      "e6f21255-282f-4680-bab6-94002774ddce",
+      "d8a6ac33-137a-4e8e-adb5-cb4dfe3268d6",
+      "88d83798-a82d-43af-9245-714fcf3904af",
+      "f53f509b-2f27-4cd6-ad80-1e1a6a6f3923"
+    ]
+  },
+  "stats": {
+    "memories_captured": 8,
+    "queries": 1,
+    "successful": 8
+  },
+  "compressed_count": 0,
+  "associative_graph": {
+    "nodes": [],
+    "edges": []
+  },
+  "episodes": [],
+  "next_episode_ordinal": 1,
+  "node_modality": {},
+  "experience_clock": {
+    "us": 5000000,
+    "unit": "world_experience_us"
+  },
+  "_format_version": "1.0"
+}
