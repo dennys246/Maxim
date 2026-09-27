@@ -146,30 +146,19 @@ class Executor:
         self._mode_source = source
 
     def _mode_denial(self, tool_name: str) -> str | None:
-        """Why the LIVE mode refuses *tool_name* (canonical name), or None.
+        """Why the LIVE mode refuses to run *tool_name* (canonical name), or None (#826).
 
-        The mode's effective set is exactly what the prompt roster advertises: the mode definition's
-        ``get_available_tools`` over the registered tools (its allow-list, minus its forbidden tools
-        and capability limits), plus the wired body's always-active SEM tools, which join past the
-        mode filter by design (sem_motor_binding Phase 1). An unknown mode restricts nothing -- the
-        roster treats it the same way.
+        By capability (``ModeDefinition.dispatch_refusal``): the mode's forbidden tools and the tools
+        its capabilities exclude -- for passive, the host-acting ones. The mode's allow-list shapes the
+        prompt only. An unknown mode restricts nothing, as the prompt roster treats it.
         """
         if self._mode_source is None:
             return None
         from maxim.modes.definitions import get_mode  # noqa: PLC0415 -- runtime layer, read lazily
 
         mode_name = self._mode_source()
-        mode_def = get_mode(mode_name) if mode_name else None
-        if mode_def is None:
-            return None
-        if tool_name in mode_def.get_available_tools(set(self.registry._tools)):
-            return None
-        if self.embodiment is not None:
-            from maxim.embodiment.tool_bridge import always_active_sem_tools  # noqa: PLC0415
-
-            if any(tool.name == tool_name for tool in always_active_sem_tools(self.registry)):
-                return None
-        return f"Tool '{tool_name}' is not available in {mode_def.name} mode."
+        mode_def = get_mode(mode_name) if isinstance(mode_name, str) and mode_name else None
+        return mode_def.dispatch_refusal(tool_name) if mode_def is not None else None
 
     def _permission_denial(self, tool_name: str, *, deny_only: bool = False) -> str | None:
         """Return the denial reason for *tool_name*, or ``None`` when allowed.
@@ -198,6 +187,10 @@ class Executor:
         if allowed:
             return None
         return reason or "Permission denied."
+
+    def _runnable_tools(self) -> list[str]:
+        """Registered tools the gate would let run -- what an error may suggest (#826, D82)."""
+        return sorted(t for t in self.registry.list() if self.permits(t))
 
     def permits(self, tool_name: str) -> bool:
         """True when the permission gate -- the live mode (#826) and ``AgentPermissions`` -- would
@@ -310,7 +303,7 @@ class Executor:
                 self._running = None
             self._consecutive_failures += 1
             error_msg = f"Tool {tool_name!r} is not active (belongs to scene {scene!r})."
-            error_msg += f" Available tools: {', '.join(sorted(self.registry.list()))}."
+            error_msg += f" Available tools: {', '.join(self._runnable_tools())}."
             result = ToolOutput(success=False, error=error_msg)
             self._report_failure(tool_name, invocation_id, result, params)
             return self._stamp_invocation(result, invocation_id, None)
@@ -323,13 +316,12 @@ class Executor:
             self._tools_hallucinated.append(original_name)
             self._consecutive_failures += 1
             error_msg = f"Tool not registered: {tool_name!r}."
-            suggestions = self.registry.find_similar(original_name, limit=3)
+            suggestions = [t for t in self.registry.find_similar(original_name, limit=5) if self.permits(t)][:3]
             if suggestions:
                 error_msg += f" Did you mean: {', '.join(suggestions)}?"
             # Phase 5d: proactive tool list after repeated failures
             if self._consecutive_failures >= 2:
-                available = sorted(self.registry.list())
-                error_msg += f" Available tools: {', '.join(available)}."
+                error_msg += f" Available tools: {', '.join(self._runnable_tools())}."
             else:
                 error_msg += (
                     " Only use tools from the Available Tools list."

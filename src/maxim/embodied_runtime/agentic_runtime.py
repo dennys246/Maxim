@@ -44,6 +44,15 @@ def _compute_target_hz(capabilities) -> float:
     return 2.0
 
 
+def seed_run_mode(state: Any, mode: Any) -> None:
+    """Write the runtime's RUN mode (``maxim --mode live|agentic|...``) where the agent loop reads it:
+    ``state.data["mode"]`` -- the value the prompt roster reads each tick and the executor's mode gate
+    enforces at every dispatch (#826). Without it the loop fell back to ``"observe"`` (passive) for
+    every robot run but exploration, which the gate then enforced."""
+    if isinstance(mode, str) and mode.strip():
+        state.data["mode"] = mode.strip()
+
+
 class AgenticRuntimeMixin:
     """Mixin providing agentic runtime lifecycle management for the Maxim class."""
 
@@ -301,6 +310,7 @@ class AgenticRuntimeMixin:
         )
         env = ReachyEnv(repo_root=os.getcwd(), data_dir=str(getattr(self, "home_dir", "data") or "data"))
         state = build_state(max_steps=1_000_000)
+        seed_run_mode(state, getattr(self, "mode", None))
         try:
             state.data["maxim_runtime"] = {
                 "mode": getattr(self, "mode", None),

@@ -2138,6 +2138,20 @@ def _loop_is_idle(*wake_sources: object) -> bool:
     return not any(wake_sources)
 
 
+def _prepare_executor(executor: Any, action_sink: Any, state: Any) -> Any:
+    """The loop's executor: wrapped with instrumentation when an action sink is given, and reading the
+    loop's LIVE mode at every dispatch (#826) -- the same ``state.data["mode"]`` the prompt roster reads
+    each tick, so a tool the mode refuses is refused when it runs, not merely left unadvertised.
+    Every wrapper delegates ``set_mode_source`` to the inner Executor."""
+    if action_sink is not None:
+        from maxim.simulation.instrumented_executor import InstrumentedExecutor  # noqa: PLC0415
+
+        executor = InstrumentedExecutor(executor, action_sink)
+    if executor is not None:
+        executor.set_mode_source(lambda: state.data.get("mode", "observe"))
+    return executor
+
+
 def run_agentic_loop(
     agent: Any,
     environment: Any,
@@ -2229,16 +2243,7 @@ def run_agentic_loop(
     if evaluators is None:
         evaluators = []
 
-    # Wrap executor with instrumentation if action_sink is provided
-    if action_sink is not None:
-        from maxim.simulation.instrumented_executor import InstrumentedExecutor
-
-        executor = InstrumentedExecutor(executor, action_sink)
-
-    # The mode gate at dispatch (#826): the executor reads the SAME live mode the prompt roster
-    # reads each tick, so a tool outside the mode's set is refused, not merely unadvertised.
-    if executor is not None and hasattr(executor, "set_mode_source"):
-        executor.set_mode_source(lambda: state.data.get("mode", "observe"))
+    executor = _prepare_executor(executor, action_sink, state)
 
     # Create simulation adapter (Phase 4: isolate sim concerns)
     from maxim.runtime.sim_adapter import SimulationAdapter, NullSimulationAdapter
@@ -3820,7 +3825,7 @@ def run_agentic_loop(
                 # because that's a single-slot user-input channel and
                 # using it for system feedback risks silent overwrite of
                 # real input (cross-confirmed by both review lenses).
-                _other_tools = sorted(_get_all_tools() - {_this_tool})
+                _other_tools = sorted(t for t in _get_all_tools() - {_this_tool} if executor.permits(t))
                 _cap_msg = (
                     f"SYSTEM: '{_this_tool}' was called {_consecutive_same_tool_count} times "
                     f"with identical parameters — blocked to prevent a loop. "

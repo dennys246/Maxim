@@ -121,6 +121,31 @@ class ModeDefinition:
     # which causes tool hallucination. Opt each mode in or out declaratively
     # rather than string-checking mode name at the call site.
     uses_tool_relevance_filter: bool = False
+    # Whether the mode may run tools that change the HOST (edit files, run commands or tests, commit,
+    # change the working directory or the network policy) -- enforced at dispatch (#826).
+    can_act_on_host: bool = True
+
+    def dispatch_refusal(self, tool_name: str) -> str | None:
+        """Why this mode refuses to RUN *tool_name*, or None -- enforced by the executor (#826).
+
+        By CAPABILITY, owner decision 2026-09-26: the mode's forbidden tools, the tools its declared
+        capabilities exclude, and -- for a mode that may not act on the host -- the host-acting tools.
+        The allow-list (``allowed_tools``) is not enforced here: it shapes what the PROMPT advertises,
+        and a tool a runtime or user registered (memory, introspection, protocol, user tools) stays
+        usable in every mode.
+        """
+        if tool_name in self.forbidden_tools:
+            return f"Tool '{tool_name}' is forbidden in {self.name} mode."
+        # (``can_execute_code`` is NOT enforced here: active mode declares it False yet runs its
+        # sandbox/bash tools under approval -- it filters the prompt roster only, as before #826.)
+        for allowed, tools, capability in (
+            (self.can_access_filesystem, FILESYSTEM_CAPABILITY_TOOLS, "filesystem access"),
+            (self.can_access_network, NETWORK_CAPABILITY_TOOLS, "network access"),
+            (self.can_act_on_host, HOST_ACTING_TOOLS, "acting on the host"),
+        ):
+            if not allowed and tool_name in tools:
+                return f"Tool '{tool_name}' needs {capability}, which {self.name} mode does not allow."
+        return None
 
     def get_available_tools(self, all_tools: set[str]) -> set[str]:
         """Get the set of tools available in this mode.
@@ -138,15 +163,13 @@ class ModeDefinition:
             # Otherwise, all tools except forbidden
             available = all_tools - self.forbidden_tools
 
-        # Apply capability restrictions
-        if not self.can_access_filesystem:
-            available -= {"read_file", "write_file", "execute_file", "list_directory"}
-        if not self.can_access_network:
-            available -= {"web_search", "http_fetch", "internet_search"}
-        if not self.can_execute_code:
-            available -= {"execute_file", "run_code", "sandbox_exec"}
-
-        return available
+        # Capability restrictions: what the executor refuses at dispatch (dispatch_refusal), plus the
+        # code-execution tools a mode without ``can_execute_code`` does not advertise.
+        return {
+            tool
+            for tool in available
+            if self.dispatch_refusal(tool) is None and (self.can_execute_code or tool not in CODE_EXECUTION_TOOLS)
+        }
 
     def __post_init__(self) -> None:
         """Load prompt from file if not provided inline."""
@@ -176,6 +199,7 @@ class ModeDefinition:
             "can_access_filesystem": self.can_access_filesystem,
             "can_access_network": self.can_access_network,
             "can_execute_code": self.can_execute_code,
+            "can_act_on_host": self.can_act_on_host,
             "context_prompt": self.context_prompt,
             "max_response_tokens": self.max_response_tokens,
             "context_window_tokens": self.context_window_tokens,
@@ -221,6 +245,7 @@ class ModeDefinition:
             can_access_filesystem=bool(data.get("can_access_filesystem", True)),
             can_access_network=bool(data.get("can_access_network", True)),
             can_execute_code=bool(data.get("can_execute_code", False)),
+            can_act_on_host=bool(data.get("can_act_on_host", True)),
             context_prompt=str(data.get("context_prompt", "")),
             max_response_tokens=int(data.get("max_response_tokens", 512)),
             context_window_tokens=int(data.get("context_window_tokens", 2048)),
@@ -240,6 +265,27 @@ class ModeDefinition:
 # to face a sound. Same responsive/no-side-effects class as its visual
 # siblings, and equally at home in every mode that can attend.
 CORE_TOOLS = {"respond", "speak", "focus_interests", "track_target", "focus_on_sound"}
+
+# Tools a mode's declared capabilities exclude -- left out of the prompt roster (get_available_tools)
+# and, except the code-execution set, refused at DISPATCH (ModeDefinition.dispatch_refusal, #826).
+FILESYSTEM_CAPABILITY_TOOLS = frozenset({"read_file", "write_file", "execute_file", "list_directory"})
+NETWORK_CAPABILITY_TOOLS = frozenset({"web_search", "http_fetch", "internet_search"})
+CODE_EXECUTION_TOOLS = frozenset({"execute_file", "run_code", "sandbox_exec"})
+# Tools that change the host: edit files, run commands or tests, commit, change the working directory or
+# the network policy. A mode that observes and proposes (passive) may not run them.
+HOST_ACTING_TOOLS = frozenset(
+    {
+        "bash",
+        "edit_file",
+        "git_commit",
+        "run_tests",
+        "execute_file",
+        "execute_sandbox_script",
+        "request_directory_change",
+        "internet_access_toggle",
+        "maxim_command",
+    }
+)
 
 # Filesystem tools
 FILESYSTEM_TOOLS = {"read_file", "write_file", "list_directory", "glob"}
@@ -279,15 +325,15 @@ OPERATIONAL_MODES: dict[str, ModeDefinition] = {
         # within passive's "observe" intent.
         allowed_tools=CORE_TOOLS
         | {"move", "read_file", "glob", "list_directory", "internet_search", "http_fetch", "write_file"}
-        # Enforced at dispatch since #826, so every tool passive may use is named: asking the human,
-        # adjusting what they see, looking at something, and READ-ONLY code inspection. Acting tools
-        # (bash, edit_file, git_commit, run_tests) stay out -- passive observes and proposes.
+        # What the prompt ADVERTISES in passive (dispatch enforces capabilities, not this list, #826):
+        # asking the human, adjusting what they see, looking at something, read-only code inspection.
         | {"request_interaction", "display_mode", "set_scene", "novelty_track", "search_code", "git_diff"},
         forbidden_tools={"execute_file", "maxim_command", "request_directory_change"},
         max_initiative=0.3,  # Low proactivity - mostly reactive
         can_access_filesystem=True,  # Read CWD, write workspace
         can_access_network=True,
         can_execute_code=False,
+        can_act_on_host=False,  # observes and proposes (#826): refused at dispatch, not only unadvertised
         default_network=DefaultNetworkModeConfig(
             enabled=True,
             active_behaviors=frozenset({"orienting", "social", "idle_scan", "motion"}),
@@ -306,14 +352,14 @@ FILESYSTEM PERMISSIONS:
   - notes/    → Journaling, thinking notes, observations
   - plans/    → Structured plans for CWD modifications
   - scratch/  → Temporary working files, ephemeral data
-- CWD (current working directory): You can READ files, but can only PROPOSE edits (requires approval)
+- CWD (current working directory): You can READ files; propose edits as drafts in the workspace
 - Additional folders: Check accessible_folders for any extra granted access
-- Execution: Sandbox execution requires approval
+- Execution: not available in passive mode (commands, tests, edits and commits need active mode)
 
 When in passive mode:
 - You CAN: read files, write to workspace (journaling), search the internet, respond to questions
-- You CAN PROPOSE: edits to CWD files (submit as proposals for approval)
-- You CANNOT: execute code, change directories, or act without approval
+- You CAN PROPOSE: edits to CWD files, written as drafts/ and plans/ in the workspace
+- You CANNOT: run commands or tests, edit CWD files, commit, execute code, or change directories
 - Use the workspace directories to organize your work: drafts/ for code, plans/ for proposals, notes/ for thinking""",
         # Interactive real-user queries benefit from the learned relevance
         # filter (smaller prompts, warm signal over time). Autonomous modes
