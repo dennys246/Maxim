@@ -1,0 +1,130 @@
+{
+  "session_id": "20260927_115820",
+  "timestamp": "2026-09-27 12:00:05",
+  "goal": "escape a dungeon with a sleeping guard",
+  "mode": "generative",
+  "language_model": "/Users/dennys/.maxim/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+  "language_provider": "lane-large",
+  "language_backend_class": "_MaximPeerBackend",
+  "language_endpoint": "http://127.0.0.1:8100/v1",
+  "aut_model": "",
+  "aut_provider": "",
+  "aut_backend_class": "",
+  "aut_endpoint": "",
+  "duration_s": 104.6,
+  "turns": 1,
+  "finish_reason": "planning_failed",
+  "total_actions": 1,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "sense_tools": 1
+  },
+  "tool_success_rates": {
+    "sense_tools": 1.0
+  },
+  "response_texts": [],
+  "aut_memories_formed": 144,
+  "aut_causal_links": 12,
+  "aut_nac_summary": {
+    "total_links": 12,
+    "top_links": [
+      {
+        "event": "tool:sense_tools",
+        "outcome": "tool:sense_tools:positive",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "success:Found 2 capabilities:\n- base_humanoid_listen: Atte",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "plan:I want to learn more about the dungeon and the sleeping guard. I'll use sense_tools to discover what actions I can take related to these entities.:success",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:memory_recall",
+        "outcome": "tool:memory_recall:positive",
+        "confidence": 0.451,
+        "observations": 1
+      },
+      {
+        "event": "tool:memory_recall",
+        "outcome": "success:{'count': 0, 'memories': [], 'expanded': False}",
+        "confidence": 0.451,
+        "observations": 1
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 20210,
+  "total_output_tokens": 1600,
+  "lane_breakdown": {
+    "large": {
+      "lane": "large",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    },
+    "small": {
+      "lane": "small",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    }
+  },
+  "latency_p50_ms": 0.0,
+  "latency_p99_ms": 0.0,
+  "pain_events_count": 0,
+  "fear_blocks_count": 0,
+  "learn_events_count": 4,
+  "provider_failures": {},
+  "llm_summary": "During the simulation, the robot assistant used a sense tool to gather information about the dungeon and the sleeping guard. It successfully identified two capabilities: base_humanoid_listen and planning. However, the planning failed, resulting in an unsuccessful completion of the mission.",
+  "llm_issues_found": [
+    "The planning failed, preventing the successful completion of the mission."
+  ],
+  "llm_recommendations": [
+    "Improve the robot's ability to plan and execute complex tasks, such as escaping a dungeon with a sleeping guard. This could involve enhancing its problem-solving skills or providing it with more context about the environment and objectives. Additionally, consider implementing a fallback strategy for when planning fails, allowing the robot to adapt and continue the mission in some capacity."
+  ],
+  "llm_finish_status": "planning_failed",
+  "llm_finish_reason": "planning failures=4 (limit 3), transport failures=0 (limit 3); last=unregistered_tool_proposed \u2014 see bugs ledger D13",
+  "llm_finish_summary": "PLANNING LIVENESS EXHAUSTED [planning_failed] (bugs ledger D13): planning failures=4 (limit 3), transport failures=0 (limit 3); last=unregistered_tool_proposed \u2014 see bugs ledger D13",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/Users/dennys/.maxim/sim_reports/20260927_115820/bio_telemetry.jsonl",
+  "apparatus": {
+    "substrate_actions_per_turn": null
+  },
+  "_format_version": "1.0"
+}

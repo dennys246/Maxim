@@ -1,0 +1,130 @@
+{
+  "session_id": "20260927_121056",
+  "timestamp": "2026-09-27 12:12:14",
+  "goal": "you are in a peaceful garden, enjoy the flowers",
+  "mode": "generative",
+  "language_model": "/Users/dennys/.maxim/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+  "language_provider": "lane-large",
+  "language_backend_class": "_MaximPeerBackend",
+  "language_endpoint": "http://127.0.0.1:8100/v1",
+  "aut_model": "",
+  "aut_provider": "",
+  "aut_backend_class": "",
+  "aut_endpoint": "",
+  "duration_s": 77.6,
+  "turns": 1,
+  "finish_reason": "planning_failed",
+  "total_actions": 1,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "sense_tools": 1
+  },
+  "tool_success_rates": {
+    "sense_tools": 1.0
+  },
+  "response_texts": [],
+  "aut_memories_formed": 136,
+  "aut_causal_links": 12,
+  "aut_nac_summary": {
+    "total_links": 12,
+    "top_links": [
+      {
+        "event": "tool:sense_tools",
+        "outcome": "tool:sense_tools:positive",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "success:Found 2 capabilities:\n- base_humanoid_use: Use a h",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "plan:I want to discover the capabilities I have for interacting with flowers. Sensing tools will help me understand what actions are available.:success",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:memory_recall",
+        "outcome": "tool:memory_recall:positive",
+        "confidence": 0.451,
+        "observations": 1
+      },
+      {
+        "event": "tool:memory_recall",
+        "outcome": "success:{'count': 0, 'memories': [], 'expanded': False}",
+        "confidence": 0.451,
+        "observations": 1
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 16659,
+  "total_output_tokens": 754,
+  "lane_breakdown": {
+    "large": {
+      "lane": "large",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    },
+    "small": {
+      "lane": "small",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    }
+  },
+  "latency_p50_ms": 0.0,
+  "latency_p99_ms": 0.0,
+  "pain_events_count": 0,
+  "fear_blocks_count": 0,
+  "learn_events_count": 4,
+  "provider_failures": {},
+  "llm_summary": "During the simulation, the robot assistant successfully used its sense_tools to explore and discovered it had the capability to interact with flowers. However, the planning process failed after one turn. This indicates that the robot may need more guidance or a more robust planning algorithm to effectively utilize its capabilities.",
+  "llm_issues_found": [
+    "planning_failed"
+  ],
+  "llm_recommendations": [
+    "Investigate the cause of the planning failure and implement error handling mechanisms. Consider integrating machine learning algorithms for better decision-making and planning, especially when dealing with complex tasks or environments. Enhance the robot's ability to learn from its experiences and adapt to new situations."
+  ],
+  "llm_finish_status": "planning_failed",
+  "llm_finish_reason": "planning failures=4 (limit 3), transport failures=0 (limit 3); last=unregistered_tool_proposed \u2014 see bugs ledger D13",
+  "llm_finish_summary": "PLANNING LIVENESS EXHAUSTED [planning_failed] (bugs ledger D13): planning failures=4 (limit 3), transport failures=0 (limit 3); last=unregistered_tool_proposed \u2014 see bugs ledger D13",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/Users/dennys/.maxim/sim_reports/20260927_121056/bio_telemetry.jsonl",
+  "apparatus": {
+    "substrate_actions_per_turn": null
+  },
+  "_format_version": "1.0"
+}

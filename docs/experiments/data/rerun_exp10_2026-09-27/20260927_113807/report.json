@@ -1,0 +1,134 @@
+{
+  "session_id": "20260927_113807",
+  "timestamp": "2026-09-27 11:41:15",
+  "goal": "escape a dungeon with a sleeping guard",
+  "mode": "generative",
+  "language_model": "/Users/dennys/.maxim/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+  "language_provider": "lane-large",
+  "language_backend_class": "_MaximPeerBackend",
+  "language_endpoint": "http://127.0.0.1:8100/v1",
+  "aut_model": "",
+  "aut_provider": "",
+  "aut_backend_class": "",
+  "aut_endpoint": "",
+  "duration_s": 187.7,
+  "turns": 3,
+  "finish_reason": "planning_failed",
+  "total_actions": 4,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "memory_recall": 1,
+    "_llm_unavailable": 1,
+    "sense_tools": 2
+  },
+  "tool_success_rates": {
+    "memory_recall": 1.0,
+    "_llm_unavailable": 0.0,
+    "sense_tools": 1.0
+  },
+  "response_texts": [],
+  "aut_memories_formed": 100,
+  "aut_causal_links": 9,
+  "aut_nac_summary": {
+    "total_links": 9,
+    "top_links": [
+      {
+        "event": "tool:memory_recall",
+        "outcome": "tool:memory_recall:positive",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:memory_recall",
+        "outcome": "success:{'count': 0, 'memories': [], 'expanded': False}",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:memory_recall",
+        "outcome": "plan:I remember interacting with guards before. Let's recall those experiences to decide the best approach.:success",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "tool:sense_tools:positive",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "success:Found 2 capabilities:\n- base_humanoid_listen: Atte",
+        "confidence": 0.475,
+        "observations": 1
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 39708,
+  "total_output_tokens": 2396,
+  "lane_breakdown": {
+    "large": {
+      "lane": "large",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    },
+    "small": {
+      "lane": "small",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    }
+  },
+  "latency_p50_ms": 0.0,
+  "latency_p99_ms": 0.0,
+  "pain_events_count": 0,
+  "fear_blocks_count": 0,
+  "learn_events_count": 13,
+  "provider_failures": {},
+  "llm_summary": "During the simulation, the robot assistant attempted to escape a dungeon with a sleeping guard. The test lasted for 187.7 seconds and involved four actions, none of which were blocked. However, the test ended in failure due to planning issues. The robot was able to use its sense tools effectively twice and recall memories once. It also tried to use an unavailable tool once. The cognitive state of the robot showed that it formed 100 episodic memories and learned nine causal links, with the top three being related to memory_recall.",
+  "llm_issues_found": [
+    "The simulation ended in failure due to planning issues."
+  ],
+  "llm_recommendations": [
+    "Investigate why the planning failed. This could be due to insufficient data or a flaw in the algorithm. Review past successful simulations and compare the strategies used. Consider expanding the robot's memory recall capabilities or providing it with more context about the dungeon and the guard."
+  ],
+  "llm_finish_status": "planning_failed",
+  "llm_finish_reason": "planning failures=4 (limit 3), transport failures=0 (limit 3); last=unregistered_tool_proposed \u2014 see bugs ledger D13",
+  "llm_finish_summary": "PLANNING LIVENESS EXHAUSTED [planning_failed] (bugs ledger D13): planning failures=4 (limit 3), transport failures=0 (limit 3); last=unregistered_tool_proposed \u2014 see bugs ledger D13",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/Users/dennys/.maxim/sim_reports/20260927_113807/bio_telemetry.jsonl",
+  "apparatus": {
+    "substrate_actions_per_turn": null
+  },
+  "_format_version": "1.0"
+}
