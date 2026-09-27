@@ -77,16 +77,16 @@ Grouped by the axis each item lifts; the "to reach" conditions come from the car
 
 ### Research integrity + documentation honesty (both B+, cheap items)
 
-- **[1.3.1]** **Extend `lint_prereg_precedes_data.py` to `docs/experiments/*_prereg.md`** — it reads only
+- **[1.3.1 — built, in the docs-batch PR]** **Extend `lint_prereg_precedes_data.py` to `docs/experiments/*_prereg.md`** — it reads only
   `protocols/*preregistration*.md`, so **none of 1.3.0's own experiments** (Exp 60, Exp 61, R3) are
   covered; their ordering was verified by hand. Guard: the lint, with the three 1.3 experiments in
   its governed set.
 - **[shipped #773]** **Point the 1.2.1 surfaces at the correction** — the 1.2.1 CHANGELOG entry, `release_1_2_1.md`
   and the v1.2.1 GitHub Release body still say "end to end" with no pointer to the 1.3.0 correction.
-- **[1.3.1]** **Rewrite README.md for what ships** — it is the PyPI description, still calls substrate-driven
+- **[1.3.1 — built, in the docs-batch PR]** **Rewrite README.md for what ships** — it is the PyPI description, still calls substrate-driven
   action selection a "post-1.0 research direction", never mentions the 1.2/1.3 results, and says 16
   extras where there are 21.
-- **[1.3.1]** **Three smaller errors:** the release notes' `maxim substrate invalidate --drop-geometry`
+- **[1.3.1 — built, in the docs-batch PR]** **Three smaller errors:** the release notes' `maxim substrate invalidate --drop-geometry`
   invocation is incomplete (needs `--session`, `--modality`, a tag value, `--apply`); the ledger's
   Exp 60 freeze hash names the wrong PR merge; the Exp 56 row calls amendments 3–4 pre-confirmatory
   while their headers say POST-DATA.
