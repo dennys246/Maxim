@@ -9,9 +9,10 @@ Now: **1.1.x follow-through** (items 1–16 in [archive/roadmap_1_1_to_1_3.md](a
 - [archive/quality_burndown.md](archive/quality_burndown.md) — **the quality burndown, ARCHIVED 2026-09-20**: merged into [roadmap_1_3_x.md](roadmap_1_3_x.md) §1.3.1, which now carries its re-verified remainder; kept as the record of Batches 0–2.
 the orient/robot line is DEFERRED 2026-09-19 on a second body arriving, Exp 54 Phase B/C included) **and the gates before 1.2 Oasis + Hivemind** (gates 1–8 there),
 whose motivating case study is [oasis_case_study_taught_orient.md](archive/oasis_case_study_taught_orient.md).
-The current grading baseline is the **v1.3.0 blind re-score**
-([../limits/score_cards/2026-09-19-claude.md](../limits/score_cards/2026-09-19-claude.md), three
-firewalled evidence agents, grades unadjusted) and its Codex twin; the owed Codex 1.1.0 and 1.2
+The current grading baseline is the **v1.3.1 blind re-score**
+([../limits/score_cards/2026-09-27-claude.md](../limits/score_cards/2026-09-27-claude.md), three
+firewalled evidence agents, grades unadjusted; its Codex twin is owed). Previous: the v1.3.0 re-score
+([2026-09-19-claude.md](../limits/score_cards/2026-09-19-claude.md)) and its Codex twin; the owed Codex 1.1.0 and 1.2
 cards are superseded. Historical: the Claude 1.1.0 re-score is
 [../limits/score_cards/2026-08-27-claude.md](../limits/score_cards/2026-08-27-claude.md) (Codex pairing owed).
 1.1 "Sensorimotor" shipped 2026-08-26 on two pre-registered results: Exp 52 (the want is
@@ -72,9 +73,9 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
   evidence and a disposition (D32/D33 filed 2026-08-26).
 - [../limits/score_cards/](../limits/score_cards/) — repo-grade baselines, re-scored at
   each release cut by two assessors grading blind. Current:
-  [2026-09-19-claude.md](../limits/score_cards/2026-09-19-claude.md) at tag `v1.3.0`
+  [2026-09-27-claude.md](../limits/score_cards/2026-09-27-claude.md) at tag `v1.3.1`
   (three firewalled evidence agents, grades unadjusted, evidence committed beside it);
-  its Codex twin is graded blind to it. The owed Codex 1.1.0 and 1.2 cards are
+  its Codex twin is owed, graded blind to it. Previous: `v1.3.0`'s pair. The owed Codex 1.1.0 and 1.2 cards are
   **superseded** — they would grade states nobody works on.
 
 ### Substrate representation & provenance (roadmap 1.1.x items 2, 3, 5)
