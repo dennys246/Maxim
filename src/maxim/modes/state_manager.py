@@ -14,6 +14,7 @@ from maxim.modes.definitions import (
     MaximState,
     OperationalMode,
     ProcessingState,
+    executes_code,
 )
 
 logger = logging.getLogger(__name__)
@@ -224,14 +225,28 @@ class StateManager:
         """Request awake processing state."""
         self.set_processing_state("awake")
 
-    def request_mode_passive(self) -> None:
-        self.set_operational_mode("passive")
+    # The phrase entry points: ``maxim passive|active|singularity`` spoken, or typed at the CLI, lands
+    # here (utils/response_config.py). A phrase is heard from ANY audio in the room -- a video, the
+    # robot's own TTS -- so it is not human authority for a mode that executes code (#828, owner
+    # decision 2026-09-26): such a mode is refused by ``executes_code``, the predicate every mode gate uses (#821).
+    def request_mode_passive(self) -> bool:
+        return self._request_mode_by_phrase("passive")
 
-    def request_mode_active(self) -> None:
-        self.set_operational_mode("active")
+    def request_mode_active(self) -> bool:
+        return self._request_mode_by_phrase("active")
 
-    def request_mode_singularity(self) -> None:
-        self.set_operational_mode("singularity")
+    def request_mode_singularity(self) -> bool:
+        return self._request_mode_by_phrase("singularity")
+
+    def _request_mode_by_phrase(self, mode: str) -> bool:
+        if executes_code(mode):
+            self._log.warning(
+                "Refused a phrase request for '%s': a spoken or typed phrase cannot enter a code-executing "
+                "mode (#828). Start maxim in that mode deliberately instead.",
+                mode,
+            )
+            return False
+        return self.set_operational_mode(mode)
 
     def _notify_callbacks(self, state_type: str, old: str, new: str) -> None:
         """Notify all callbacks of a state change."""

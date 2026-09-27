@@ -139,3 +139,77 @@ def test_cli_seam_refuses_a_code_executing_mode() -> None:
     assert _runtime_mode_switch_allowed("active") is True
     assert _runtime_mode_switch_allowed("live") is True
     assert _runtime_mode_switch_allowed("no-such-mode") is False
+
+
+# ── #827: no approval surface means no silent "pending"; a mode with nowhere to apply is a failure ──
+
+
+def test_an_autonomy_request_with_no_approver_is_unavailable_not_pending() -> None:
+    from maxim.agents.autonomy import AutonomyController, AutonomyLevel
+
+    controller = AutonomyController(initial_level=AutonomyLevel.PLANNING)
+    request = controller.request_autonomy(AutonomyLevel.AUTONOMOUS, justification="let me")
+    assert request.status == "unavailable"
+    assert controller.get_pending_requests() == []
+    assert controller.current_level == AutonomyLevel.PLANNING
+
+
+def test_an_attached_surface_sees_the_request_and_can_grant_it() -> None:
+    from maxim.agents.autonomy import AutonomyController, AutonomyLevel
+
+    controller = AutonomyController(initial_level=AutonomyLevel.PLANNING)
+    shown = []
+    controller.set_approval_surface(shown.append)
+    request = controller.request_autonomy(AutonomyLevel.SUPERVISED, justification="need to write")
+    assert shown == [request] and request.status == "pending"
+    assert controller.approve_autonomy_request(request) is True
+    assert controller.current_level == AutonomyLevel.SUPERVISED
+
+
+def test_the_level_tool_says_no_approver_instead_of_awaiting_approval(monkeypatch) -> None:
+    import maxim.simulation.sim_logger as sim_logger
+    from maxim.agents.autonomy import AutonomyController, AutonomyLevel
+    from maxim.tools.mode_switch import AutonomyLevelTool
+
+    monkeypatch.setattr(sim_logger, "should_prompt", lambda *a, **k: True)  # the interactive branch
+    controller = AutonomyController(initial_level=AutonomyLevel.PLANNING)
+    result = AutonomyLevelTool(controller).execute(level="autonomous", reason="trust me")
+    assert result.success is False
+    assert "no human approver" in (result.error or "")
+    assert "awaiting approval" not in (result.output or "")
+    assert controller.get_pending_requests() == []
+
+
+def test_a_mode_switch_with_no_runtime_to_apply_it_fails() -> None:
+    from maxim.agents.autonomy import AutonomyController, AutonomyLevel
+    from maxim.runtime.bootstrap import build_tool_registry
+
+    controller = AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS)
+    registry = build_tool_registry(maxim=None, autonomy_controller=controller)
+    result = registry.get("mode_switch").execute(mode="active")
+    assert result.success is False
+    assert "no runtime" in (result.error or "")
+    assert not [e for e in controller.get_audit_log() if e.action_type == "executed"]
+
+
+def test_a_mode_switch_with_a_runtime_still_applies() -> None:
+    from maxim.agents.autonomy import AutonomyController, AutonomyLevel
+    from maxim.runtime.bootstrap import build_tool_registry
+
+    class _Maxim:
+        mode = "passive"
+        requested_mode = None
+
+    maxim = _Maxim()
+    registry = build_tool_registry(
+        maxim=maxim, autonomy_controller=AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS)
+    )
+    result = registry.get("mode_switch").execute(mode="active")
+    assert result.success is True and maxim.requested_mode == "active"
+
+
+def test_the_unread_mode_transition_policy_is_gone() -> None:
+    """``allowed_mode_transitions`` was declared and never read -- a policy that looked enforced."""
+    from maxim.agents.autonomy import SupervisionPolicy
+
+    assert not hasattr(SupervisionPolicy(), "allowed_mode_transitions")

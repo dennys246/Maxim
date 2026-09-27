@@ -102,7 +102,7 @@ class AutonomyRequest:
     duration: float | None = None  # seconds, None = indefinite
     justification: str = ""
     timestamp: float = field(default_factory=time.time)
-    status: str = "pending"  # "pending", "approved", "rejected"
+    status: str = "pending"  # "pending", "approved", "rejected", "unavailable" (no approver attached)
 
 
 @dataclass
@@ -264,9 +264,6 @@ class SupervisionPolicy:
     # Confidence thresholds
     min_confidence_autonomous: float = 0.8
     min_confidence_with_explanation: float = 0.5
-
-    # Mode switching permissions
-    allowed_mode_transitions: dict[str, set[str]] = field(default_factory=dict)
 
     # Impact limits
     max_actions_per_minute: int = 10
@@ -441,6 +438,10 @@ class AutonomyController:
 
         self._on_level_change = on_level_change
         self._pending_requests: list[AutonomyRequest] = []
+        # The human surface that shows a request and later calls approve/reject_autonomy_request.
+        # None today in every runtime (#827; the surface itself is #922): a request then FAILS CLOSED as "unavailable" instead of
+        # sitting "pending" forever with no one who can ever grant it.
+        self._approval_surface: Callable[[AutonomyRequest], None] | None = None
 
     @property
     def current_level(self) -> AutonomyLevel:
@@ -495,13 +496,23 @@ class AutonomyController:
             self._set_paused(False)
             logger.info("Autonomy controller resumed")
 
+    def set_approval_surface(self, surface: Callable[[AutonomyRequest], None] | None) -> None:
+        """Attach the human surface that presents requests (and resolves them through
+        ``approve_autonomy_request`` / ``reject_autonomy_request``); None detaches it."""
+        with self._lock:
+            self._approval_surface = surface
+
     def request_autonomy(
         self,
         target_level: AutonomyLevel,
         duration_seconds: float | None = None,
         justification: str = "",
     ) -> AutonomyRequest:
-        """Agent requests higher autonomy level (requires human approval)."""
+        """Agent requests higher autonomy level (requires human approval).
+
+        With no approval surface attached the request is NOT queued: its status is ``"unavailable"``,
+        so the caller can say so -- a request nobody can see can never be granted (#827).
+        """
         request = AutonomyRequest(
             current=self._current_level,
             requested=target_level,
@@ -509,7 +520,13 @@ class AutonomyController:
             justification=justification,
         )
         with self._lock:
+            surface = self._approval_surface
+            if surface is None:
+                request.status = "unavailable"
+                logger.info("Autonomy request to %s not queued: no approval surface attached", target_level.value)
+                return request
             self._pending_requests.append(request)
+        surface(request)
         return request
 
     def approve_autonomy_request(self, request: AutonomyRequest) -> bool:

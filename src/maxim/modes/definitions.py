@@ -587,6 +587,15 @@ def get_mode(name: str) -> ModeDefinition | None:
     return None
 
 
+def executes_code(mode: str) -> bool:
+    """Whether ``mode`` (legacy names included) is a code-executing mode -- the ONE predicate every
+    gate uses: the agent's ``ModeSwitchTool`` (#821), the CLI's ``requested_mode`` consumer, and the
+    phrase path in ``StateManager`` (#828). Derived from the definition, so a future code-executing
+    mode is covered everywhere at once."""
+    definition = get_mode(mode)
+    return definition is not None and bool(definition.can_execute_code)
+
+
 def list_modes() -> list[str]:
     """Get list of available mode names."""
     return list(OPERATIONAL_MODES.keys())

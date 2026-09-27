@@ -38,7 +38,12 @@ def served(monkeypatch):
 
     _http._ensure_external_endpoint()
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    monkeypatch.setattr(_http._registry, "_clients", {**_http._registry._clients, _http._EXTERNAL_ENDPOINT: client})
+    monkeypatch.setattr(
+        _http._registry,
+        "_clients",
+        # both external clients: http_fetch uses the public-only one (#824)
+        {**_http._registry._clients, _http._EXTERNAL_ENDPOINT: client, _http._EXTERNAL_PUBLIC_ENDPOINT: client},
+    )
     yield state
     client.close()
 
@@ -98,7 +103,12 @@ def serve(monkeypatch):
 
         _http._ensure_external_endpoint()
         client = httpx.Client(transport=httpx.MockTransport(handler))
-        monkeypatch.setattr(_http._registry, "_clients", {**_http._registry._clients, _http._EXTERNAL_ENDPOINT: client})
+        monkeypatch.setattr(
+            _http._registry,
+            "_clients",
+            # both external clients: http_fetch uses the public-only one (#824)
+            {**_http._registry._clients, _http._EXTERNAL_ENDPOINT: client, _http._EXTERNAL_PUBLIC_ENDPOINT: client},
+        )
 
     return _install
 

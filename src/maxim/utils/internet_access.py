@@ -283,11 +283,13 @@ class InternetAccessPolicy:
         return True, None
 
     def _is_private_ip(self, hostname: str) -> bool:
-        """Check if hostname resolves to a private IP.
+        """Check if hostname resolves to a private IP -- a policy PRE-check.
 
-        Resolves hostnames via DNS to prevent DNS rebinding attacks where
-        an attacker's hostname initially resolves to a public IP (to pass
-        the check) but later resolves to a private IP during the actual fetch.
+        This resolves the name separately from the fetch (and through a 5-minute cache), so on its
+        own it cannot stop DNS rebinding: a host can answer public here and private to the connect.
+        The enforcement is at connect time, on the address actually dialled
+        (``maxim.utils.http.fetch_url(public_only=True)``, #824); this check refuses the obvious cases
+        early with a clear reason.
         """
         # Check obvious cases first
         if hostname in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
