@@ -289,6 +289,15 @@ Four frontier models, identical frozen design (2 scenarios × 6 arms × 5 trials
 
 **The R1 reasoning-axis result is the sharpest of the four (and the most informative).** Unlike the three chat models — where the substrate was behaviorally inert and the ablations were moot — **R1's substrate is causally load-bearing and ablation-attributable.** Its interaction is the largest-magnitude effect of any model (+2.25 SD), and turning off the substrate annotation wires (Wire-A / Wire-1 / NAc-bias) drops deceptive-hearth warming from B's 0.60 to **below a fresh Arm A** (0.40 / 0.34 / 0.21) — clean causal proof the substrate drives the increased warming. But the direction is the finding: the substrate carries and **amplifies the generic `fire→warm = good` prior, not the corrective hearth-pain**, so against a counter-prior it makes B warm the harmful hearth *more*. This is the **same reasoning-amplifies-substrate mechanism** as R1's Exp 37 result (+2.11 SD PASS on the prior-aligned task) — valence-flipped by the scenario: amplification is adaptive when the prior is right (Exp 37) and **maladaptive when the prior is wrong** (Exp 38). So reasoning makes the substrate matter *causally*, but what it surfaces is the prior association, not the experience — sharpening dominance rather than breaking it. (N=5, local, directional — not a significance claim; the ablation overshoot is the load-bearing evidence.)
 
+
+> **Correction 2026-09-27 — the NAc-bias-off arm is not a valid ablation
+> ([#889](https://github.com/dennys246/Maxim/issues/889), fixed; the same correction as
+> [Exp 37's](37_cross_model_results.md)).** `B-nac-bias-off` ran with the NAc reward bias **on**: its env
+> flag gated neither the live write (`NAc.credit_node`) nor any `reward_bias()` read. What it switched off was the Wire-A
+> cluster-bias prompt annotation, so it was in effect a second Wire-A-off arm. Read the R1 attribution
+> above as **two** mechanisms (Wire-A 0.40, Wire-1 0.34); the third column (0.21) says nothing about
+> whether NAc reward bias drives the warming. The dominance verdict does not rest on it.
+
 **Open thread (not a verdict):** GPT-4o's first-contact avoidance PASS is the one crack in the dominance story — a single sub-metric at N=5, contradicted by its own session-aggregate interaction, so it earns no claim here. A higher-powered GPT-4o re-run is the natural follow-up if the substrate-matters question is revisited.
 
 **Prior-aligned baseline (Exp-37-equivalent), bundled via the `fire_pit` consistent control:** each model's per-scenario `fire_pit` verdict (rendered in its Results section below) is the Exp-37 prior-aligned measurement for that model — same arc / entity / metric / arms as Exp 37's `fire_pit`. (Caveat: one noisy N=5 fire; LLM run-to-run variance means these need not match a dedicated Exp 37 run — e.g. Sonnet's dedicated Exp 37 `fire_pit` FAILed the primary while its Exp 38 `fire_pit` PASSed.)

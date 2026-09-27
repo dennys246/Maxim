@@ -1,5 +1,10 @@
 # Exp 61 (FROZEN 2026-09-17 at v2.3 — four-lens review FOLDED, harness-reconciled, dry runs 1+2 DONE) — shared survival fear: a learned drowning-fear transfers between independent agents and drives the receiver's first loop-live submersion
 
+> **Correction 2026-09-27 — the bundles were UNSIGNED.** "The shipped signed-bundle path" (below, and
+> §Outcome) overstated it: the harness exports through the real CLI (`exp56.common.export_bundle`) without
+> `--sign`, so every bundle was schema 2, unsigned. The transfer claim rests on the shipped export and
+> ingest path, not on signing; signed releases are covered by their own tests. Recorded on the ledger row.
+
 > **STATUS: FROZEN 2026-09-17 (this PR; docs-only). What is frozen is v2.3 as it stands below — the
 > claim, the arms (24 / 12 / 12 / 24), the receiver lifecycle, the DVs and gates, the stop rules, the
 > harness constants in `exp61_run.FROZEN`, and the operator runbook at the end. Build step 4 is DONE:
