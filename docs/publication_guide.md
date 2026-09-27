@@ -66,6 +66,19 @@ MAXIM_RUN_MODEL_TESTS=1 HF_HOME=/path/to/preloaded/huggingface \
 They remain offline unless the operator separately overrides the standard model-
 hub offline variables; they are not part of the correction-release gate.
 
+### 2b. Verify the nightly lanes are green
+
+```bash
+python3 scripts/check_nightlies.py
+```
+
+The model-cache and slow lanes run only on schedule, never on a PR, so a release PR cannot show
+them red. This reads the latest scheduled run on `main` and refuses (exit 1) unless every
+`(nightly)` job succeeded within the last 48 hours; exit 2 means it could not read them — that is
+not a pass. The `release-build` CI job runs the same check with `--only-when-releasing` on the
+release PR (pyproject's version has no `v<version>` tag yet), so this step is enforced, not only
+written down. Do not publish over a red nightly: fix it, or record why in the release notes.
+
 ### 3. Verify clean import
 
 ```bash

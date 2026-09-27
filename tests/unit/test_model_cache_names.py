@@ -7,6 +7,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 from scripts import check_model_cache_lane as C
 from scripts import model_cache_names as M
@@ -44,9 +45,13 @@ def test_lane_check_reads_junit_ids(tmp_path: Path) -> None:
     assert C.check(xml) == 0
 
 
-def test_module_scope_collection_skip_is_recognised(tmp_path: Path) -> None:
-    """Empty classname = a collection skip whose `name` is the module path. The first
-    draft produced ".py::tests.unit.test_console_talk" and failed the lane on its own id."""
+def test_module_scope_collection_skip_is_recognised(tmp_path: Path, capsys) -> None:
+    """Empty classname = a collection skip whose `name` is the module path. The first draft produced
+    ".py::tests.unit.test_console_talk"; it must be reported by its module -- and, since 1.3.1, it fails."""
+    assert C.test_id(ET.fromstring('<testcase classname="" name="tests.unit.test_console_talk"/>')) == (
+        "tests.unit.test_console_talk",
+        True,
+    )
     xml = tmp_path / "m.xml"
     xml.write_text(
         '<testsuite tests="2" skipped="1">'
@@ -54,14 +59,8 @@ def test_module_scope_collection_skip_is_recognised(tmp_path: Path) -> None:
         '<testcase classname="tests.unit.test_clip_encoder" name="test_y"/>'
         "</testsuite>"
     )
-    assert C.check(xml) == 0
-    xml.write_text(
-        '<testsuite tests="2" skipped="1">'
-        '<testcase classname="" name="tests.unit.test_not_allow_listed"><skipped message="nope"/></testcase>'
-        '<testcase classname="tests.unit.test_clip_encoder" name="test_y"/>'
-        "</testsuite>"
-    )
     assert C.check(xml) == 1
+    assert "tests.unit.test_console_talk: module skipped at collection" in capsys.readouterr().err
 
 
 def test_lane_check_refuses_zero_executed(tmp_path: Path) -> None:
@@ -108,6 +107,27 @@ def test_every_allow_listed_test_is_actually_collected_by_the_lane() -> None:
     assert not missing, f"allow-listed ids the lane never collects (stale entries): {missing}"
 
 
-def test_module_skip_allow_list_names_real_modules() -> None:
-    for mod in C.ALLOWED_MODULE_SKIPS:
-        assert (M.REPO_ROOT / (mod.replace(".", "/") + ".py")).exists(), mod
+def test_there_is_no_module_skip_allow_list() -> None:
+    """The allow-list that grew with every console test file (16 red nights) is gone for good."""
+    assert not hasattr(C, "ALLOWED_MODULE_SKIPS")
+
+
+def test_a_module_skipped_at_collection_fails_the_lane(tmp_path) -> None:
+    """A module whose optional import is absent (empty junit classname) is never excused."""
+    xml = tmp_path / "r.xml"
+    xml.write_text(
+        "<testsuites><testsuite>"
+        '<testcase classname="tests.substrate.test_x.TestX" name="test_ran"/>'
+        '<testcase classname="" name="tests.unit.test_console_server">'
+        "<skipped message=\"could not import 'fastapi'\"/></testcase>"
+        "</testsuite></testsuites>"
+    )
+    assert C.check(xml) == 1
+
+
+def test_the_lane_installs_and_requires_what_it_collects() -> None:
+    """The workflow's model-cache job installs the console + sign extras and fails a skip for them."""
+    workflow = (M.REPO_ROOT / ".github" / "workflows" / "test.yml").read_text()
+    job = workflow[workflow.index("model-cache-tests:") : workflow.index("# ── The slow lane")]
+    assert ".[semantic,test,console,sign]" in job
+    assert "--require-extras=console,sign" in job
