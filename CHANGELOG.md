@@ -386,6 +386,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the text now comes from `CONSTITUTION.md`).
   - `start_simulation_mode(prompt_handler=...)` is new; it raises `ValueError` with `persistent_agent`.
 
+- **The test suite cannot reach the network.** Hermeticity was HOME/HF isolation and env scrubs with
+  nothing stopping a real connection: a measured fast-suite run made 52 outbound attempts from 29 tests
+  (real DNS queries for `api.anthropic.com`, `*.example.com`, a TCP probe to a LAN address). A guard in
+  `tests/conftest.py` now makes outbound TCP and non-loopback DNS raise; loopback test servers are
+  unaffected, and `@pytest.mark.allow_network` is the reviewed exception. It guards the test process
+  itself (a subprocess a test spawns is not covered). Three URL-classification tests that had silently
+  moved to their resolution-failure branch now stub resolution and test what their names say.
+
 - **A release now waits for green nightlies, and the model-cache nightly can go green again.** The
   model-cache lane skipped console test modules at collection (its environment lacked the `console`
   extra) and excused them in an allow-list that grew with every new console test file — it was red 16

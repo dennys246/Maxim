@@ -133,10 +133,14 @@ class TestErrorHonesty:
         assert _is_cloud_url("http://localhost:8080") is False
         assert _is_cloud_url("http://127.0.0.1:8080") is False
 
-    def test_public_url_is_cloud(self):
-        """Public URLs should be classified as cloud."""
+    def test_public_url_is_cloud(self, monkeypatch):
+        """Public URLs should be classified as cloud -- by resolving to a public address (stubbed: the
+        test suite has no DNS, and an unresolvable host would take the fail-safe branch instead)."""
+        import socket
+
         from maxim.runtime.lane_backends import _is_cloud_url
 
+        monkeypatch.setattr(socket, "getaddrinfo", lambda host, *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))])
         assert _is_cloud_url("https://api.example.com/v1") is True
 
     def test_no_silent_pass_in_api_py(self):
