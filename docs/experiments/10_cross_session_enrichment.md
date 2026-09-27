@@ -1,5 +1,11 @@
 # Experiment 10: Cross-Session Enrichment Validation
 
+> **Re-runs.** Re-validated 2026-08-18/19 (the 1.1 heartbeat) and re-run 2026-09-27 for the 1.3.1
+> trigger walk: **MAINTAINED, narrow** — the store reloads exactly and 3 memories surface on every
+> observed resume turn, but each resumed phase ran one turn (D13, #935) and link accumulation was not
+> re-shown. Record: [data/rerun_exp10_2026-09-27/](data/rerun_exp10_2026-09-27/README.md); ledger:
+> [behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md).
+
 **Date:** 2026-04-25 → 2026-04-26
 **Branch:** `feat/percept-reflex-system`
 **Model:** qwen2.5-14b-instruct (local, RTX 5080)

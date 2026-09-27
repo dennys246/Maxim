@@ -180,7 +180,7 @@ It is **not** required for 0.8 → 1.0. The verb is a convenience, not a correct
 
 Downgrading is **not supported as a contract**. 0.8 cannot read files that carry the new envelope fields and may either ignore them silently or raise depending on the loader. If you need to roll back, restore `~/.maxim/` from a backup taken before the 1.0 upgrade.
 
-If you anticipate a possible downgrade, copy `~/.maxim/agents/` and `~/.maxim/sessions/` somewhere safe before running the upgrade.
+If you anticipate a possible downgrade, copy `~/.maxim/agents/` and `~/.maxim/sim_reports/` somewhere safe before running the upgrade. *(Corrected 2026-09-27: this named `~/.maxim/sessions/`, which no simulation writes.)*
 
 ## Reporting upgrade issues
 
