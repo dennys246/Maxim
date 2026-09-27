@@ -198,9 +198,22 @@ class TestUrlClassification:
         assert _is_cloud_url("http://10.0.0.5:8000/v1") is False
         assert _is_cloud_url("http://172.16.0.1:8000/v1") is False
 
-    def test_public_host_is_cloud(self):
+    @staticmethod
+    def _resolve_to(monkeypatch, ip):
+        """Stub resolution: the test suite has no DNS (tests/network_guard.py), and a host that cannot
+        resolve takes the fail-safe-to-cloud branch -- not the path these tests are named for."""
+        import socket
+
+        monkeypatch.setattr(socket, "getaddrinfo", lambda host, *a, **k: [(2, 1, 6, "", (ip, 0))])
+
+    def test_public_host_is_cloud(self, monkeypatch):
+        self._resolve_to(monkeypatch, "162.159.140.245")
         assert _is_cloud_url("https://api.anthropic.com/v1") is True
         assert _is_cloud_url("https://api.openai.com/v1") is True
+
+    def test_a_name_that_resolves_to_a_private_address_is_not_cloud(self, monkeypatch):
+        self._resolve_to(monkeypatch, "10.0.0.5")
+        assert _is_cloud_url("https://gpu-box.lan/v1") is False
 
     def test_empty_url_is_not_cloud(self):
         assert _is_cloud_url(None) is False
