@@ -2633,9 +2633,12 @@ def _detect_doctor_role(explicit: str | None = None, peer_url: str | None = None
         host = urlparse(url).hostname or ""
         if host not in ("127.0.0.1", "localhost", "::1"):
             return "peer", url
-    # Fallback: MAXIM_ROLE is set by detect_and_apply_role() before any subcommand
-    # runs. If it says "peer", trust it and pull the URL from peer.yml.
-    maxim_role = os.environ.get("MAXIM_ROLE", "").strip().lower()
+    # Fallback: the role resolved exactly as the CLI resolves it -- the canonical pure resolver, whose
+    # first rank is the MAXIM_ROLE the CLI exports at startup. Reading only that env var made
+    # maxim.diagnose() (a Python session: nothing exported) skip every peer probe the CLI runs (1.3.1).
+    from maxim.runtime.role import detect_role
+
+    maxim_role = detect_role()[0]
     if maxim_role == "peer":
         try:
             from maxim.peer.config import read_peer_config

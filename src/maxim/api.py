@@ -1034,10 +1034,12 @@ def diagnose(
     peer: str | None = None,
     api_key: str | None = None,
 ) -> DiagnosticReport:
-    """Run Maxim diagnostics.
+    """Run Maxim diagnostics -- the SAME probe set as ``maxim doctor --json`` (1.3.1).
 
-    Without arguments, runs local doctor checks (platform, GPU, models,
-    dependencies).  With a ``peer`` URL, tests remote connectivity.
+    Without arguments, runs the doctor's checks for this machine's role, resolved exactly as the CLI
+    resolves it (``runtime.role.detect_role``). With a ``peer`` URL, runs them as a peer of that URL.
+    Before 1.3.1 this ran without the role the CLI exports at startup, so it skipped the remote-leader
+    probe and reported all-passed where ``maxim doctor`` exited 1.
 
     Args:
         peer: Remote peer URL to test (e.g.
@@ -1051,75 +1053,8 @@ def diagnose(
     from maxim.doctor.checks import run_all_checks
 
     info = detect_platform()
-    sections = run_all_checks(info)
-
-    # If peer URL is given, add a peer connectivity section
-    if peer:
-        peer_checks = _run_peer_checks(peer, api_key)
-        sections.append(("Peer Connectivity", peer_checks))
-
+    sections = run_all_checks(info, role="peer" if peer else None, peer_url=peer, peer_key=api_key)
     return DiagnosticReport(platform=info, sections=sections)
-
-
-def _run_peer_checks(peer_url: str, api_key: str | None) -> list:
-    """Run peer connectivity checks against a remote URL."""
-    from maxim.doctor.checks import CheckResult
-    from maxim.utils import http as _http
-
-    results = []
-    try:
-        headers: dict[str, str] = {}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-
-        resp = _http.fetch_url(
-            f"{peer_url.rstrip('/')}/debug/version",
-            method="GET",
-            headers=headers,
-            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=5.0, total_s=6.0),
-        )
-        if resp.status == 200:
-            results.append(
-                CheckResult(
-                    name="Peer reachable",
-                    status="ok",
-                    message=f"Connected to {peer_url}",
-                )
-            )
-        else:
-            results.append(
-                CheckResult(
-                    name="Peer reachable",
-                    status="fail",
-                    message=f"HTTP {resp.status}",
-                    fix=f"Check that the peer is running at {peer_url}",
-                )
-            )
-    except _http.HTTPError as e:
-        results.append(
-            CheckResult(
-                name="Peer reachable",
-                status="fail",
-                message=f"{type(e).__name__}: {e.fix_hint}",
-                fix=f"Verify the peer URL is correct and the peer is running: {peer_url}",
-            )
-        )
-    except Exception as e:
-        results.append(
-            CheckResult(
-                name="Peer reachable",
-                status="fail",
-                message=str(e),
-                fix=f"Verify the peer URL is correct and the peer is running: {peer_url}",
-            )
-        )
-
-    return results
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# observe
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 def observe(
@@ -1411,22 +1346,19 @@ def campaign(
             for a human at a TTY, not for scripts, CI or notebooks (CLAUDE.md's
             interactive-mode rule); a warning is logged if stdin is not a TTY.
         verbosity: Logging verbosity (0-3).
-        prompt_handler: **Not supported — passing a non-None value raises.**
-            The orchestrator builds its own handler from the interactive mode
-            (``SimPromptHandler`` when interactive, ``create_handler("auto")``
-            otherwise); threading a caller-supplied one needs a parameter on
-            ``start_simulation_mode`` that does not exist. Use ``interactive``
-            to choose between them. Rejected rather than silently ignored
-            (N1; bugs ledger D40).
+        prompt_handler: The handler the agent's ``request_interaction`` tool asks
+            (your own UI). ``None`` (default) lets the interactive mode pick one:
+            ``SimPromptHandler`` when interactive, ``create_handler("auto")``
+            otherwise. Threaded through ``start_simulation_mode`` since 1.3.1
+            (bugs ledger D40).
 
     Returns:
         CampaignResult with choices, flags, NPC memories, and rollup.
 
     Raises:
-        NotImplementedError: If ``npc_model`` or ``prompt_handler`` is passed.
-            Both were documented and referenced nowhere — a public argument with
-            no observable effect (N1). They raise until the runtime can honour
-            them; see bugs ledger D40.
+        NotImplementedError: If ``npc_model`` is passed. It was documented and
+            referenced nowhere — a public argument with no observable effect (N1).
+            It raises until party-mode NPC agents exist; see bugs ledger D40.
 
     Example::
 
@@ -1436,18 +1368,12 @@ def campaign(
             print(f"  {choice['encounter']}: {choice['choice']}")
     """
     # N1: a documented argument that changes nothing is worse than no argument.
-    # These two have no consumer in the runtime, so they REJECT rather than lie.
+    # npc_model has no consumer in the runtime, so it REJECTS rather than lies (D40; prompt_handler is threaded).
     if npc_model is not None:
         raise NotImplementedError(
             "campaign(npc_model=...) is not supported: party-mode NPC agents do not exist in the runtime "
             "(`party_mode` is parsed into the campaign definition and read by nothing), so there is no "
             "model to configure. Set the PC/orchestrator model with `model=` (bugs ledger D40)."
-        )
-    if prompt_handler is not None:
-        raise NotImplementedError(
-            "campaign(prompt_handler=...) is not supported: the orchestrator builds its own handler from the "
-            "interactive mode. Pass `interactive=True` for the interactive handler, or run non-interactively "
-            "for NonInteractiveHandler (bugs ledger D40)."
         )
 
     model = _resolve_model(model)
@@ -1491,6 +1417,7 @@ def campaign(
             goal=campaign_def.goal or f"Complete the {campaign_def.name} campaign",
             mode="dm",
             dm_campaign=campaign_def,
+            prompt_handler=prompt_handler,
         )
 
         # Extract structured results from the sim

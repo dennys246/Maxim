@@ -32,6 +32,7 @@ def _wheel(
     ui_dist: bool = True,
     py_typed: bool = True,
     main_module: bool = True,
+    constitution: bool = True,
     data_files: int = 30,
 ) -> Path:
     path = tmp_path / f"pymaxim-{filename_version}-py3-none-any.whl"
@@ -45,6 +46,8 @@ def _wheel(
             zf.writestr("maxim/py.typed", "")
         if main_module:
             zf.writestr("maxim/__main__.py", "")
+        if constitution:  # D32: gates the agent's foundational preamble
+            zf.writestr("maxim/_data/CONSTITUTION.md", "# Constitution\n")
         if ui_dist:
             zf.writestr("maxim/console/ui_dist/index.html", "<html></html>")
             zf.writestr("maxim/console/ui_dist/assets/index-abc.js", "//")
@@ -104,7 +107,7 @@ def test_version_check_is_not_waivable_by_the_ui_flag(tmp_path: Path) -> None:
 # ── the package data the guide's manual checks covered ───────────────────────
 
 
-@pytest.mark.parametrize("missing", ["py_typed", "main_module"])
+@pytest.mark.parametrize("missing", ["py_typed", "main_module", "constitution"])
 def test_missing_required_package_file_fails(tmp_path: Path, missing: str) -> None:
     problems = A.audit_wheel(_wheel(tmp_path, **{missing: False}), VERSION)
     assert len(problems) == 1

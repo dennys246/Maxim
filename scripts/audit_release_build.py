@@ -58,7 +58,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 UI_DIST_INDEX = "maxim/console/ui_dist/index.html"
-REQUIRED_FILES = ("maxim/py.typed", "maxim/__main__.py")
+REQUIRED_FILES = ("maxim/py.typed", "maxim/__main__.py", "maxim/_data/CONSTITUTION.md")  # D32: gates the agent preamble
 MIN_DATA_FILES = 25  # the guide's manual check; a stripped _data/ is a broken wheel
 
 _PYPROJECT_VERSION = re.compile(r'^version\s*=\s*["\']([^"\']+)["\']', re.MULTILINE)

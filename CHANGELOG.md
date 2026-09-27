@@ -385,6 +385,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Public API correctness** (roadmap 1.3.1).
+  - `AgentInstance.export_memories()` (and `AgentPool.export_all_memories()`) reported **0 memories**
+    whatever the agent held: it read a Hippocampus attribute that does not exist, and an
+    `except Exception` turned the error into 0. It now counts what the store holds, and a failure
+    raises instead of reading as zero.
+  - `Hippocampus.capture()` refuses a wrong argument type up front with a `TypeError` that names the
+    fix (`capture(perception="text")` failed deep inside with an unrelated `AttributeError`); the
+    `maxim.create.agent` docstring example is now run by a test.
+  - `maxim.diagnose()` runs the same checks as `maxim doctor --json`. It skipped the remote-leader probe
+    in a Python session — the doctor read only the role the CLI exports at startup — and reported
+    all-passed where the CLI exited 1. `diagnose(peer=...)` now runs the doctor's peer checks, not a
+    separate probe.
+  - `maxim.campaign(prompt_handler=...)` works: the handler reaches the agent's `request_interaction`
+    tool (it was refused because nothing threaded it). `npc_model=` still raises until party-mode NPC
+    agents exist.
+  - **pip installs get the foundational preamble** (the Constitution's core principles and the agent
+    rules). It was gated on a `CONSTITUTION.md` found above the source tree — present in a checkout,
+    absent in every wheel — so installed agents ran without it. The constitution now ships as package
+    data, and the release build refuses a wheel without it.
+
 - **A mode's limits are enforced when a tool runs, not only in the prompt** (#826). A tool the current
   mode excludes still ran when the model named it — in passive mode, a forbidden `maxim_command` reached
   its tool at the AUTONOMOUS autonomy level. The executor now reads the live mode at every dispatch and

@@ -226,7 +226,16 @@ class TestAgentInstance:
         export = instance.export_memories()
         assert export["agent_id"] == "npc_guard"
         assert export["role"] == "npc"
-        assert "episodic_memories" in export
+        assert export["episodic_memories"] == 0  # the COUNT, not only the key
+
+    def test_export_memories_counts_what_the_hippocampus_holds(self, factory, guard_config):
+        """It read a `.memories` attribute that does not exist and reported 0 behind an except."""
+        instance = factory.create_agent(guard_config)
+        instance.hippocampus.store_observation("a stranger entered the market")
+        instance.hippocampus.store_observation("the gate was left open")
+        export = instance.export_memories()
+        assert export["episodic_memories"] == len(instance.hippocampus) == 2
+        assert len(export["memory_summaries"]) == 2
 
     def test_shutdown_safe(self, factory, guard_config):
         instance = factory.create_agent(guard_config)
@@ -570,9 +579,10 @@ class TestAgentPool:
         pool.add(factory.create_agent(guard_config))
         pool.add(factory.create_agent(merchant_config))
 
+        pool.get_agent("npc_guard").hippocampus.store_observation("a stranger entered the market")
         exports = pool.export_all_memories()
-        assert "npc_guard" in exports
-        assert "npc_merchant" in exports
+        assert exports["npc_guard"]["episodic_memories"] == 1
+        assert exports["npc_merchant"]["episodic_memories"] == 0
 
     def test_shutdown(self, factory, guard_config):
         pool = AgentPool()

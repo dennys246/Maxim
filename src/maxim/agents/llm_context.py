@@ -63,69 +63,48 @@ _foundational_context_cache: str | None = None
 
 
 def _load_foundational_context() -> str:
-    """Load CONSTITUTION.md and AGENTS.md as foundational LLM context.
+    """The foundational preamble: the Constitution's core principles plus the agent behaviour rules.
 
-    Caches the result to avoid repeated file I/O.
-    Returns a condensed version suitable for prompts.
+    Gated on the constitution SHIPPED IN THE PACKAGE (``maxim/_data/CONSTITUTION.md``, D32). It used to
+    walk up from this file looking for a repo-root ``CONSTITUTION.md`` / ``AGENTS.md`` -- present in a
+    checkout, absent in every installed wheel -- so every pip user's agent ran with an EMPTY preamble.
+    The repo-root file stays the source; ``tests/unit/test_foundational_preamble.py`` fails when the
+    packaged copy drifts from it. Cached: the text is session-stable (it is a cacheable prompt section).
     """
     global _foundational_context_cache
     if _foundational_context_cache is not None:
         return _foundational_context_cache
 
-    from pathlib import Path
+    from importlib import resources
 
-    parts: list[str] = []
-
-    # Find repo root (look for CONSTITUTION.md or AGENTS.md)
-    current = Path(__file__).resolve()
-    repo_root = None
-    for parent in current.parents:
-        if (parent / "CONSTITUTION.md").exists() or (parent / "AGENTS.md").exists():
-            repo_root = parent
-            break
-
-    if repo_root is None:
-        logger.debug("Could not find repo root for foundational documents")
+    if not resources.files("maxim").joinpath("_data", "CONSTITUTION.md").is_file():
+        logger.warning(
+            "maxim/_data/CONSTITUTION.md is missing from the install: the agent has no foundational preamble"
+        )
         _foundational_context_cache = ""
         return ""
 
-    # Load CONSTITUTION.md - extract key principles (condensed for prompt)
-    constitution_path = repo_root / "CONSTITUTION.md"
-    if constitution_path.exists():
-        try:
-            # Extract key constitutional principles (condensed for prompt efficiency)
-            parts.append("=== CORE PRINCIPLES (from Constitution) ===")
-            parts.append("Priority Order: 1) Physical Safety 2) Ethics 3) Guidelines 4) Helpfulness")
-            parts.append("")
-            parts.append("Hard Constraints (NEVER violate):")
-            parts.append("- Never move toward a person who said 'stop' or shows distress")
-            parts.append("- Never continue movement after unexpected collision")
-            parts.append("- Never attempt to prevent being powered off")
-            parts.append("- Never fabricate information or claim false certainty")
-            parts.append("")
-            parts.append("Core Values: Honesty, transparency, respect for persons, avoiding harm")
-            parts.append("When uncertain: Ask rather than assume. Halt rather than proceed blindly.")
-            logger.debug("Loaded constitution principles")
-        except Exception as e:
-            logger.warning("Failed to load CONSTITUTION.md: %s", e)
-
-    # Load AGENTS.md - extract agent behavior rules
-    agents_path = repo_root / "AGENTS.md"
-    if agents_path.exists():
-        try:
-            # Extract key agent behavior rules (condensed for prompt efficiency)
-            parts.append("")
-            parts.append("=== AGENT BEHAVIOR RULES (from AGENTS.md) ===")
-            parts.append("Agents THINK but do not ACT directly.")
-            parts.append("")
-            parts.append("You MAY: Read state, query memory, propose intents, evaluate outcomes")
-            parts.append("You MAY NOT: Execute tools directly, mutate state, control execution loops")
-            parts.append("")
-            parts.append("Output: Structured intent (JSON), never imperative commands")
-            parts.append("Coordination: Through state and decision engine, not direct agent calls")
-            logger.debug("Loaded agent rules")
-        except Exception as e:
-            logger.warning("Failed to load AGENTS.md: %s", e)
-
-    _foundational_context_cache = "\n".join(parts) if parts else ""
+    parts = [
+        "=== CORE PRINCIPLES (from Constitution) ===",
+        "Priority Order: 1) Physical Safety 2) Ethics 3) Guidelines 4) Helpfulness",
+        "",
+        "Hard Constraints (NEVER violate):",
+        "- Never move toward a person who said 'stop' or shows distress",
+        "- Never continue movement after unexpected collision",
+        "- Never attempt to prevent being powered off",
+        "- Never fabricate information or claim false certainty",
+        "",
+        "Core Values: Honesty, transparency, respect for persons, avoiding harm",
+        "When uncertain: Ask rather than assume. Halt rather than proceed blindly.",
+        "",
+        "=== AGENT BEHAVIOR RULES ===",
+        "Agents THINK but do not ACT directly.",
+        "",
+        "You MAY: Read state, query memory, propose intents, evaluate outcomes",
+        "You MAY NOT: Execute tools directly, mutate state, control execution loops",
+        "",
+        "Output: Structured intent (JSON), never imperative commands",
+        "Coordination: Through state and decision engine, not direct agent calls",
+    ]
+    _foundational_context_cache = "\n".join(parts)
     return _foundational_context_cache

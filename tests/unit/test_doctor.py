@@ -963,20 +963,26 @@ class TestDetectDoctorRole:
         assert role == "peer"
         assert "remote.example.com" in url
 
-    def test_auto_localhost_stays_auto(self, monkeypatch):
+    def test_a_localhost_url_is_not_a_peer_signal(self, monkeypatch):
+        """A loopback remote URL is not a peer signal: the role falls through to the CLI's resolver."""
         monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "http://127.0.0.1:8100/v1")
         from maxim.doctor.checks import _detect_doctor_role
+        from maxim.runtime.role import detect_role
 
         role, url = _detect_doctor_role()
-        assert role == "auto"
+        assert role != "peer" and role == detect_role()[0]
 
-    def test_no_env_returns_auto(self, monkeypatch):
+    def test_no_env_resolves_like_the_cli(self, monkeypatch):
+        """With nothing exported (a Python session calling maxim.diagnose()), the doctor resolves the
+        role through the CLI's own resolver -- it used to return "auto" here, which the CLI (which
+        exports MAXIM_ROLE at startup) never saw, so the two entry points ran different probes."""
         monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
         monkeypatch.delenv("MAXIM_ROLE", raising=False)
         from maxim.doctor.checks import _detect_doctor_role
+        from maxim.runtime.role import detect_role
 
         role, url = _detect_doctor_role()
-        assert role == "auto"
+        assert role == detect_role()[0]
         assert url is None
 
     def test_maxim_role_peer_falls_back_to_peer_yml(self, monkeypatch, tmp_path):

@@ -486,11 +486,42 @@ class TestCampaignParametersAreThreadedOrRejected:
         with pytest.raises(NotImplementedError, match="npc_model"):
             campaign(str(self._campaign_yaml(tmp_path)), npc_model="small")
 
-    def test_prompt_handler_is_rejected_not_ignored(self, tmp_path):
+    def test_prompt_handler_is_threaded_into_the_sim(self, tmp_path, monkeypatch):
+        """D40: it used to be refused; now the handler reaches start_simulation_mode ..."""
         from maxim.api import campaign
 
-        with pytest.raises(NotImplementedError, match="prompt_handler"):
-            campaign(str(self._campaign_yaml(tmp_path)), prompt_handler=lambda req: "x")
+        seen = {}
+
+        def _fake_sim(**kwargs):
+            seen.update(kwargs)
+            return SimpleNamespace(session_id="s", turns=0, finish_reason="done", campaign_analysis={})
+
+        monkeypatch.setattr("maxim.simulation.orchestrator.start_simulation_mode", _fake_sim)
+        monkeypatch.setattr(
+            "maxim.simulation.dm_schema.load_campaign",
+            lambda *a, **k: SimpleNamespace(name="api_param_test", goal="test", party_mode=False),
+        )
+        handler = object()
+        campaign(str(self._campaign_yaml(tmp_path)), prompt_handler=handler)
+        assert seen["prompt_handler"] is handler
+
+    def test_a_passed_handler_is_the_one_the_runs_prompts_reach(self):
+        """... and the orchestrator hands it to the AUT's request_interaction tool, instead of building its
+        own (the helper start_simulation_mode uses; the registry wiring is build_tool_registry's)."""
+        from maxim.runtime.bootstrap import build_tool_registry
+        from maxim.simulation.orchestrator import _select_aut_prompt_handler
+
+        handler = object()
+        aut_handler, sim_handler = _select_aut_prompt_handler(handler, stop_event=None)
+        assert aut_handler is handler and sim_handler is None
+        tool = build_tool_registry(operational_mode="active", prompt_handler=aut_handler).get("request_interaction")
+        assert tool._handler is handler
+
+    def test_prompt_handler_with_an_adopted_agent_is_refused(self):
+        from maxim.simulation.orchestrator import start_simulation_mode
+
+        with pytest.raises(ValueError, match="persistent_agent"):
+            start_simulation_mode(goal="x", prompt_handler=object(), persistent_agent=object())
 
     def test_rejection_happens_before_any_side_effect(self, tmp_path, monkeypatch):
         """The refusal must precede env mutation and campaign loading (the D16 lesson)."""
