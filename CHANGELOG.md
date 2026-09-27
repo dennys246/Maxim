@@ -23,6 +23,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-09-27 — "Hardening"
+
+The hardening release: fixes, and the guard that holds each one, with **no new behavioural claim**. What
+it hardens:
+- **Security.** The sandbox runs exactly the script that was approved, contained, and Python scripts
+  run at all (#800–#802); approval fails closed. A mode's limits are enforced when a tool runs, not only
+  in the prompt (#826). A model-chosen fetch connects only to the public address it checked (#824). The
+  agent cannot put itself, or be talked by a phrase, into singularity, the code-executing mode (#821,
+  #828; passive → active is unchanged, #924). Tool output reaches the model fenced as untrusted data
+  (#823).
+- **Sharing.** The public bundle format 1 is frozen as a compatibility promise. Oasis releases are
+  format v2 (signed entry index, signer, per-key sequence, license), and a receiver remembers what it
+  admitted, refusing equivocation and downgrade. Merging no longer destroys a receiver's own causal
+  links (#913), and aligned donor situations fold together (#914).
+- **The public API** does what its docs say: export counts, `create.agent`'s example,
+  `diagnose()` == `maxim doctor`, `campaign(prompt_handler=)`, and a preamble read from the
+  Constitution.
+- **Release integrity.** A release waits for green nightlies, the test process cannot reach the
+  network, and the prereg lint governs 1.3's own experiments.
+- **Memory-strength recording.** The phases land opt-in: under the default strategy they record and
+  never change retention.
+
+**The ledger's 1.3.1 trigger walk:**
+- **Exp 10 re-run: MAINTAINED (narrow).** The store reloads exactly and 3 memories surface on every
+  observed resume turn, but only one turn per resumed phase (1–3 across all five sessions), because
+  every run stopped early on D13 (#935).
+- **Every other fired row except Exp 37** carries a dated discharge note (walk window
+  `v1.3.0..042b7d90`; #933, which landed after it, fires no trigger by its wording).
+- **Exp 37:** its prompt trigger fired and was not re-fired (PARTIAL, no claim).
+
+**Not claimed:** Exp 62's cross-pool transfer (EARNED on the ledger 2026-09-20) is not a 1.3.1 claim
+until its different-reader pass is recorded. Announcement: `docs/announcements/release_1_3_1.md`.
+
+### Correction to 1.3.0
+
+- **Exp 61's bundles were unsigned.** The 1.3.0 headline says the fear transferred "through the
+  shipped signed-bundle path". The harness exports through the real CLI without `--sign` (schema 2), so
+  the claim rests on the shipped export and ingest path, not on signing. The ledger row, the prereg and
+  the experiments index now say so. The 1.3.0 section's Exp 61 wording is left as published.
+- **The `maxim substrate invalidate` upgrade step** was given without its required arguments. The
+  correct invocation is in the 1.3.0 section (corrected in place, marked), in `release_1_3_0.md`, and
+  on the v1.3.0 GitHub Release.
+- **Exp 37/38's `NAc-bias-off` arm is void** (#889). It left the NAc reward bias on and in effect
+  switched off Wire-A's annotation. The Exp 37 ledger row and the Exp 38 write-up are corrected; no
+  EARNED claim rested on it.
+
 ### Added
 
 - **The prereg-precedes-data lint governs 1.3's own experiments** (roadmap 1.3.1). It read only

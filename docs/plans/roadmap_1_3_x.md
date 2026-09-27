@@ -1,5 +1,10 @@
 # Roadmap 1.3.x — the hardening line: 1.3.1 (fixes + guards) → 1.3.2 (decomposition)
 
+> **1.3.1 SHIPPED 2026-09-27 as "Hardening"** — every **[1.3.1]** item below built and merged with its
+> guard (PR numbers on each row), plus the ledger's 1.3.1 trigger walk (#934) and the Exp 10 re-run
+> (#936, MAINTAINED narrow; D13 shortened every run, #935). Items marked **[→ 1.3.2]** carry to 1.3.2.
+> Release notes: [release_1_3_1.md](../announcements/release_1_3_1.md).
+
 **Drafted 2026-09-19**, the day 1.3.0 "Oasis-2" published, from the v1.3.0 blind re-score
 ([docs/limits/score_cards/2026-09-19-claude.md](../limits/score_cards/2026-09-19-claude.md) and its
 Codex twin) plus the release-day different-reader pass. **Owner decision the same day:** ship two
@@ -53,19 +58,19 @@ Grouped by the axis each item lifts; the "to reach" conditions come from the car
 | item | guard that makes it count |
 |---|---|
 | **[shipped #894]** **A gating lane that installs the `console` extra and the crypto dependency**, so the console, bundle-signing, hive-pull and Oasis-exchange tests run on every PR. Today **no lane installs fastapi or cryptography**, so those tests are skipped everywhere — and the 1.2 and 1.3 headlines both travel the signed-bundle path. | the lane itself, required in branch protection; a positive control asserting the previously-skipped modules now execute (count > 0), so the lane cannot go quietly vacuous. *Built 2026-09-25: `unit-tests` (already required) installs `console` + `sign` from `pyproject.toml`; `--require-extras=console,sign` fails any skip for a missing required extra (`tests/conftest.py`, pinned by `tests/unit/test_require_extras_lane.py`).* |
-| **[1.3.1 — built, awaiting its first green run]** **The nightly model-cache lane green** (red 16 nights running, 25 of the last 30 scheduled runs; new console modules missing from its skip allow-list). Fix by making a missing module FAIL rather than by extending the allow-list. | the lane's own red/green + a check that the allow-list cannot grow silently *(Built: the lane installs the console + sign extras and runs with `--require-extras`; `ALLOWED_MODULE_SKIPS` is gone, and `ALLOWED_SKIPS` is ratcheted in `tests/unit/test_model_cache_names.py`.)* |
+| **[1.3.1 — SHIPPED (#926); first green scheduled run 2026-09-27]** **The nightly model-cache lane green** (red 16 nights running, 25 of the last 30 scheduled runs; new console modules missing from its skip allow-list). Fix by making a missing module FAIL rather than by extending the allow-list. | the lane's own red/green + a check that the allow-list cannot grow silently *(Built: the lane installs the console + sign extras and runs with `--require-extras`; `ALLOWED_MODULE_SKIPS` is gone, and `ALLOWED_SKIPS` is ratcheted in `tests/unit/test_model_cache_names.py`.)* |
 | **[→ 1.3.2]** **A slow lane that runs**: install `sentence-transformers` so the 24 substrate sweeps execute; replace "executed > 0" with a pinned minimum. | `scripts/check_slow_lane.py` asserting the minimum |
-| **[1.3.1 — built, in the network-guard PR]** **Network blocked in tests** (hermeticity is HOME/HF isolation + ~48 env scrubs today, with no block). | a conftest socket guard + a test that asserts an outbound call raises |
+| **[1.3.1 — SHIPPED (#928)]** **Network blocked in tests** (hermeticity is HOME/HF isolation + ~48 env scrubs today, with no block). | a conftest socket guard + a test that asserts an outbound call raises |
 | **[→ 1.3.2; owner settings partly done]** **`release-build` required**, `enforce_admins` on, and a required-checks-present gate (`pr_merge_readiness.py` is manual today; the ruleset grants an always-bypass admin role). | branch-protection settings — **owner action**, not a PR |
-| **[1.3.1 — built, in the nightly-lane PR]** **The release procedure reads the nightlies**: refuse to publish while a nightly lane is red. | a step in `audit_release_build.py` or the release PR checklist, mechanized *(Built as `scripts/check_nightlies.py`, not inside the offline `audit_release_build.py`: it needs the network. Runs `--only-when-releasing` in the `release-build` job; blocking needs `release-build` required, row above. Guard: `tests/unit/test_check_nightlies.py`.)* |
+| **[1.3.1 — SHIPPED (#926)]** **The release procedure reads the nightlies**: refuse to publish while a nightly lane is red. | a step in `audit_release_build.py` or the release PR checklist, mechanized *(Built as `scripts/check_nightlies.py`, not inside the offline `audit_release_build.py`: it needs the network. Runs `--only-when-releasing` in the `release-build` job; blocking needs `release-build` required, row above. Guard: `tests/unit/test_check_nightlies.py`.)* |
 
 ### Runtime correctness (C+ → B−)
 
 | item | guard |
 |---|---|
-| **[1.3.1 — built, in the API-fixes PR]** **`AgentInstance.export_memories()` always reports 0** — it reads `self.hippocampus.memories`, which does not exist, and an `except Exception` turns the error into `0`; `AgentPool.export_all_memories` propagates it; the documented example in `docs/user/python-api.md` prints "0 memories" beside a hippocampus holding one. | a test asserting the COUNT (both current tests are vacuous: one checks the key exists, the other that it is a dict) |
-| **[1.3.1 — built, in the API-fixes PR]** **`create.agent`'s docstring example crashes** — `capture(perception="dark cave ahead")` raises `AttributeError`; `capture` does not validate its argument. | argument validation + a doctest-style test that runs the documented example |
-| **[1.3.1 — built, in the API-fixes PR]** **`maxim.diagnose()` and `maxim doctor --json` disagree** (diagnose reports all-passed while the CLI exits 1 on a probe diagnose never runs). | a test pinning one probe set for both entry points |
+| **[1.3.1 — SHIPPED (#930)]** **`AgentInstance.export_memories()` always reports 0** — it reads `self.hippocampus.memories`, which does not exist, and an `except Exception` turns the error into `0`; `AgentPool.export_all_memories` propagates it; the documented example in `docs/user/python-api.md` prints "0 memories" beside a hippocampus holding one. | a test asserting the COUNT (both current tests are vacuous: one checks the key exists, the other that it is a dict) |
+| **[1.3.1 — SHIPPED (#930)]** **`create.agent`'s docstring example crashes** — `capture(perception="dark cave ahead")` raises `AttributeError`; `capture` does not validate its argument. | argument validation + a doctest-style test that runs the documented example |
+| **[1.3.1 — SHIPPED (#930)]** **`maxim.diagnose()` and `maxim doctor --json` disagree** (diagnose reports all-passed while the CLI exits 1 on a probe diagnose never runs). | a test pinning one probe set for both entry points |
 | **[→ 1.3.2]** **The silent-default swallow shape** — a handler that ASSIGNS a fallback instead of `pass`, which is what hid `export_memories` and which `lint_no_silent_swallows.py` cannot see. | extend the lint to that shape, as a ratchet on today's count (430 bare sites, 1,788 `except Exception` total) |
 
 ### Maintainability (C → C+, the cheap half)
@@ -77,16 +82,16 @@ Grouped by the axis each item lifts; the "to reach" conditions come from the car
 
 ### Research integrity + documentation honesty (both B+, cheap items)
 
-- **[1.3.1 — built, in the docs-batch PR]** **Extend `lint_prereg_precedes_data.py` to `docs/experiments/*_prereg.md`** — it reads only
+- **[1.3.1 — SHIPPED (#931)]** **Extend `lint_prereg_precedes_data.py` to `docs/experiments/*_prereg.md`** — it reads only
   `protocols/*preregistration*.md`, so **none of 1.3.0's own experiments** (Exp 60, Exp 61, R3) are
   covered; their ordering was verified by hand. Guard: the lint, with the three 1.3 experiments in
   its governed set.
 - **[shipped #773]** **Point the 1.2.1 surfaces at the correction** — the 1.2.1 CHANGELOG entry, `release_1_2_1.md`
   and the v1.2.1 GitHub Release body still say "end to end" with no pointer to the 1.3.0 correction.
-- **[1.3.1 — built, in the docs-batch PR]** **Rewrite README.md for what ships** — it is the PyPI description, still calls substrate-driven
+- **[1.3.1 — SHIPPED (#931)]** **Rewrite README.md for what ships** — it is the PyPI description, still calls substrate-driven
   action selection a "post-1.0 research direction", never mentions the 1.2/1.3 results, and says 16
   extras where there are 21.
-- **[1.3.1 — built, in the docs-batch PR]** **Three smaller errors:** the release notes' `maxim substrate invalidate --drop-geometry`
+- **[1.3.1 — SHIPPED (#931)]** **Three smaller errors:** the release notes' `maxim substrate invalidate --drop-geometry`
   invocation is incomplete (needs `--session`, `--modality`, a tag value, `--apply`); the ledger's
   Exp 60 freeze hash names the wrong PR merge; the Exp 56 row calls amendments 3–4 pre-confirmatory
   while their headers say POST-DATA.
@@ -100,13 +105,13 @@ it ships with its guard or it does not ship.
 
 | item | guard that makes it count |
 |---|---|
-| **[1.3.1 — built, in the API-fixes PR]** **D40 remainder (was N1)** — thread `prompt_handler` through `start_simulation_mode` (the consumer, `bootstrap.build_tool_registry(prompt_handler=…)`, already exists; only the passthrough is missing). `npc_model` stays a loud `NotImplementedError` until party-mode NPC agents exist — that half is a mechanism, not a defect. | extend `tests/unit/test_api_expansion.py::TestCampaignParametersAreThreadedOrRejected`: a passed handler is the one the run's prompts reach |
-| **[1.3.1 — built, in the API-fixes PR]** **D32** — load the foundational preamble from `CONSTITUTION.md` as package data (pip users get an empty preamble today) | a drift test: packaged copy == repo-root `CONSTITUTION.md`, and a wheel-install test that the preamble is non-empty |
+| **[1.3.1 — SHIPPED (#930)]** **D40 remainder (was N1)** — thread `prompt_handler` through `start_simulation_mode` (the consumer, `bootstrap.build_tool_registry(prompt_handler=…)`, already exists; only the passthrough is missing). `npc_model` stays a loud `NotImplementedError` until party-mode NPC agents exist — that half is a mechanism, not a defect. | extend `tests/unit/test_api_expansion.py::TestCampaignParametersAreThreadedOrRejected`: a passed handler is the one the run's prompts reach |
+| **[1.3.1 — SHIPPED (#930)]** **D32** — load the foundational preamble from `CONSTITUTION.md` as package data (pip users get an empty preamble today) | a drift test: packaged copy == repo-root `CONSTITUTION.md`, and a wheel-install test that the preamble is non-empty |
 | **[→ 1.3.2]** **D49** — benchmark honesty: apply-or-delete `weight`, fix the running half-mean, drop-or-ship the missing tier2/tier3 suite files (`simulation/benchmark.py`) | a unit test per promise: a weighted suite's aggregate moves with `weight` (or the key is rejected), and every suite file the format names loads |
 | **[→ 1.3.2]** **D46 + D50** — delete the dead percept-transport reference (`simulation/sources.py`); warn on the inert `party_mode` / `choice_resolution` keys in `load_campaign` and drop the dead schema field | a test that loading a campaign carrying either key WARNS once |
 | **[→ 1.3.2]** **D63** — a PR against a non-`main` base runs no required checks | a ruleset/branch-protection change (owner action) + `scripts/pr_merge_readiness.py` reporting it; the guard is the gate existing |
 | **[→ 1.3.2]** **Fail-loud Stage 3** — narrow the measurement-path swallows; green-lit since Stage 2 measured **zero** firings ([deferred/measurement_path_fail_loud.md](deferred/measurement_path_fail_loud.md)). Must not land mid-walk on a branch a graduation run reads from. | `scripts/lint_no_silent_swallows.py`'s zero-total set grows to cover each narrowed file |
-| **[1.3.1 — first]** **The security cluster (register O11)** — the sandbox ([#800](https://github.com/dennys246/Maxim/issues/800) Python scripts never run, [#801](https://github.com/dennys246/Maxim/issues/801) raw-prefix containment, [#802](https://github.com/dennys246/Maxim/issues/802) the path runs instead of the approved content) and mode/approval ([#828](https://github.com/dennys246/Maxim/issues/828) any audio can say "maxim singularity" — highest, [#827](https://github.com/dennys246/Maxim/issues/827) autonomy approvals never shown or resolved, [#826](https://github.com/dennys246/Maxim/issues/826) suspected prompt-only tool lists), plus [#824](https://github.com/dennys246/Maxim/issues/824) DNS rebinding. Widened from the sandbox trio on the re-scope: a release that ships the security fixes on `main` does not ship knowing these. | each issue's own red gate |
+| **[1.3.1 — SHIPPED (#920, #923, #925)]** **The security cluster (register O11)** — the sandbox ([#800](https://github.com/dennys246/Maxim/issues/800) Python scripts never run, [#801](https://github.com/dennys246/Maxim/issues/801) raw-prefix containment, [#802](https://github.com/dennys246/Maxim/issues/802) the path runs instead of the approved content) and mode/approval ([#828](https://github.com/dennys246/Maxim/issues/828) any audio can say "maxim singularity" — highest, [#827](https://github.com/dennys246/Maxim/issues/827) autonomy approvals never shown or resolved, [#826](https://github.com/dennys246/Maxim/issues/826) suspected prompt-only tool lists), plus [#824](https://github.com/dennys246/Maxim/issues/824) DNS rebinding. Widened from the sandbox trio on the re-scope: a release that ships the security fixes on `main` does not ship knowing these. | each issue's own red gate |
 | **[→ 1.3.2]** **L8 record-stamping** (stamp model / endpoint / n_ctx / quantization on every run record) — Exp 44b's prerequisite; status **not re-verified** on the merge date, check before starting | a test that a run record without those fields is refused by its writer |
 
 Already covered above, so not duplicated: `mypy` scope (the ratchet in this section), god-function
@@ -118,8 +123,8 @@ stated and is left out by this line's rule, not forgotten.
 | item | guard |
 |---|---|
 | **[shipped #917]** **#914** — `merge.rekey_nac_state` folds colliding donor clusters by OVERWRITE and keeps the inherent (safety-floor) marker when any source was inherent, so a learned bias can overwrite an inherent one and stay decay-exempt. One shared "fold rows + markers" helper for the export scrub (fixed in #915) and ingest; check the Exp 56/61 evidence for collapsed situations. | a test that a learned row never inherits the marker and colliding biases mean-fold, at BOTH seams |
-| **[shipped — the freeze PR]** **The public format freeze** (public_oasis Phase 0 item 2, part 2; record: [public_format_freeze.md](public_format_freeze.md)) — the freeze record (what "public format 1" promises, the change rule, the compatibility horizon) after part 1's pre-freeze hardening (#915). | `tests/unit/test_public_format_freeze.py`: checked-in fixtures every build must verify, ingest AND recompose byte-for-byte |
-| **[1.3.1]** **#913** — `merge._merge_link_lists` indexes the receiver's OWN links by outcome signature alone, so context-distinct links overwrite each other on every ingest (a real state: 607 → 443 links with an EMPTY donor). A known data-loss bug does not ship in the release that publishes the format. Includes an audit of whether any earned result ingested through the lossy path. | a test that an empty-donor merge is the identity on the receiver's links |
+| **[shipped #918]** **The public format freeze** (public_oasis Phase 0 item 2, part 2; record: [public_format_freeze.md](public_format_freeze.md)) — the freeze record (what "public format 1" promises, the change rule, the compatibility horizon) after part 1's pre-freeze hardening (#915). | `tests/unit/test_public_format_freeze.py`: checked-in fixtures every build must verify, ingest AND recompose byte-for-byte |
+| **[1.3.1 — SHIPPED (#919)]** **#913** — `merge._merge_link_lists` indexes the receiver's OWN links by outcome signature alone, so context-distinct links overwrite each other on every ingest (a real state: 607 → 443 links with an EMPTY donor). A known data-loss bug does not ship in the release that publishes the format. Includes an audit of whether any earned result ingested through the lossy path. | a test that an empty-donor merge is the identity on the receiver's links |
 
 ### Not in 1.3.1
 
@@ -175,10 +180,10 @@ records the new ceiling either way.
              ([roadmap_1_4.md](roadmap_1_4.md))
 ```
 
-Exp 62 RAN and is EARNED (2026-09-20) — it never depended on either patch release, and its result is the 1.3.1-line content this file's §1.3.1 ships alongside. Any further rung likewise runs on the rig in parallel
+Exp 62 RAN and is EARNED on the ledger (2026-09-20) — it never depended on either patch release. **It is NOT a 1.3.1 claim** (owner decision 2026-09-27): it rides a release only once its different-reader pass is recorded. Any further rung likewise runs on the rig in parallel
 (`docs/experiments/exp62_pressure_interoception_prereg.md`, decisions D1–D4 taken).
 
 ## Cadence
 
-Re-score at the 1.4 cut, or when an axis's "to reach" condition is claimed complete — and the claim
+**1.3.1 (owner decision 2026-09-27): a blind re-score is taken at the `v1.3.1` tag**, the same firewalled procedure as v1.3.0. After that: re-score at the 1.4 cut, or when an axis's "to reach" condition is claimed complete — and the claim
 is that the guard exists, not that the work was done.
