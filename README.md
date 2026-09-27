@@ -1,77 +1,97 @@
 # Maxim
 
-Bio-inspired cognitive harness for LLM agents — embodied sensation, homeostatic drives, and brain-modeled persistent memory let LLM-driven agents carry learning across sessions without fine-tuning.
+A bio-inspired cognitive architecture for AI agents. Maxim gives an agent a **body** (sensors, drives,
+pain), **brain-modelled memory** (Hippocampus, NAc, ATL, EC, SCN, Angular Gyrus) and a way to **share
+what it learned** with other agents. It runs in two modes:
 
-Maxim gives an LLM agent a **body** (sensors, modulators, pain), **drives** (hunger, temperature, fatigue that drift and compete), and **biological memory systems** (Hippocampus, NAc, ATL, SCN, Angular Gyrus) that capture experience. When the agent's body touches fire, its thermal sensors register pain, NAc forms a causal link, and the enrichment pipeline surfaces that experience in subsequent sessions — providing the LLM with experience-grounded context alongside its pretraining. The bio-substrate doesn't replace the LLM's prior knowledge; it augments the LLM's prompt context with persistent, agent-specific lived experience.
+- **LLM harness.** An LLM chooses the actions; Maxim gives it persistent, agent-specific experience —
+  episodic recall, learned causal links, valence and drive state — as prompt context, across sessions
+  and without fine-tuning.
+- **Substrate-primary.** No language model in the action path: the agent's own learned substrate
+  (NAc reward and fear, keyed on the situation its sensors encode) chooses what to do.
 
-> **Positioning** (updated 2026-09-19 for 1.3.0, per the score card's documentation-honesty finding): Maxim is a **bio-inspired cognitive substrate** that runs in two modes. As an **LLM harness** it gives an LLM-driven agent cross-session memory, valence, causal links and drives. As a **substrate-primary** agent it selects actions itself, with no language model in the action path — that is no longer a research direction but the mode three earned results run in: [Exp 56](https://github.com/dennys246/Maxim/blob/main/docs/experiments/56_four_arm_sharing.md) (a taught want transfers between independent agents through a signed bundle), and, in 1.3 on a live Minecraft world, [Exp 60](https://github.com/dennys246/Maxim/blob/main/docs/experiments/exp60_drowning_avoidance_prereg.md) (an agent that felt air-hunger underwater leaves the water BEFORE the pain on later submersions) and [Exp 61](https://github.com/dennys246/Maxim/blob/main/docs/experiments/exp61_shared_fear_prereg.md) (that fear transfers to an agent that never felt it, 12/12 against 0/24). What is NOT claimed is as load-bearing: survival itself was a ceiling in the 1.3 benchmark — the drive buys ≈ 25 s of latency, ≈ 11 hp and ≈ 22 s of oxygen pain, not life — "dark = danger" is blocked at the instrument, and generalization to an unseen situation is untested. Every claim's scope, and every Tier-1 graduation status, lives in [docs/plans/behavioral_graduation_candidates.md](https://github.com/dennys246/Maxim/blob/main/docs/plans/behavioral_graduation_candidates.md).
+Works headless, in simulation, in a live Minecraft world, or on a Reachy Mini robot.
 
 - **Website:** [pymaxim.bio](https://pymaxim.bio)
 - **Documentation:** [pymaxim.bio/getting-started](https://pymaxim.bio/getting-started/)
-- **Legacy long-form guides:** [dennyschaedig.com/maxim](https://www.dennyschaedig.com/maxim)
+- **Source, experiments and ledgers:** [github.com/dennys246/Maxim](https://github.com/dennys246/Maxim)
 
-## What Makes This Different
+## What it has shown — and what it has not
 
-| Traditional LLM Agent | Maxim Agent |
+Each result below is a row on the ledger of record, graded against gates frozen before the data; the
+ledger states each claim's exact scope, its evidence, its current status and what would invalidate it:
+[behavioral_graduation_candidates.md](https://github.com/dennys246/Maxim/blob/main/docs/plans/behavioral_graduation_candidates.md).
+
+| Result | What was measured |
 |---|---|
-| Stateless between sessions | Cross-session memory via hippocampal recall + NAc causal links (EARNED, [Exp 10](https://github.com/dennys246/Maxim/blob/main/docs/experiments/10_cross_session_enrichment.md)) |
-| Text in, text out | Embodied: sensors, pain, homeostatic drives, reflexes |
-| Fine-tune to learn from new data | Bio-substrate captures experience: sensation → pain/reward → causal links → enrichment, surfaced as prompt context in subsequent sessions |
-| Flat tool list | Three interaction levels: observe, touch, acquire |
-| No internal state | Hunger drifts, temperature self-regulates, fatigue accumulates |
-| Prompt engineering for behavior | LLM action selection augmented by substrate-derived context (memory recall, causal predictions, valence, drives) |
+| **Memory persists across sessions** ([Exp 10](https://github.com/dennys246/Maxim/blob/main/docs/experiments/10_cross_session_enrichment.md), LLM harness; re-run pending before 1.3.1) | Episodic memories from one session are recalled into the LLM's prompt on resume (3 per turn). NAc causal links persist and accumulate, but were not shown to reach the prompt |
+| **A taught want transfers between agents** ([Exp 56](https://github.com/dennys246/Maxim/blob/main/docs/experiments/56_four_arm_sharing.md), 1.2, substrate-primary) | An agent that ingests another's exported substrate acts on what that agent was taught on first contact, in a live Minecraft world |
+| **Anticipatory avoidance from game-native pain** ([Exp 60](https://github.com/dennys246/Maxim/blob/main/docs/experiments/exp60_drowning_avoidance_prereg.md), 1.3, substrate-primary) | An agent that felt air-hunger underwater leaves the water *before* the pain on later submersions; its yoked twin without the fear pathway never does |
+| **That fear transfers** ([Exp 61](https://github.com/dennys246/Maxim/blob/main/docs/experiments/exp61_shared_fear_prereg.md), 1.3, substrate-primary) | A receiver that never felt the pain leaves the water on its first submersion — 12/12, against 0 of 60 across the three control arms |
+
+What is **not** claimed is just as load-bearing. In the 1.3 survival benchmark, survival itself was at
+ceiling: a carried fear buys about 25 s of latency, 11 hp and 22 s of oxygen pain — not life. "Dark = danger"
+is blocked at the instrument, and generalization to an unseen situation is untested. Each
+mechanism's behavioural status is tracked on the ledger; mechanisms that failed to earn weight are
+marked Dormant in the code.
+
+The Minecraft results were produced by the harnesses in
+[`scripts/exp56/`](https://github.com/dennys246/Maxim/tree/main/scripts/exp56) and
+[`scripts/survival_world/`](https://github.com/dennys246/Maxim/tree/main/scripts/survival_world) against
+Paper servers (Exp 56 earned on 1.16.5 and re-baselined on 1.20.4; Exp 60 and 61 on 1.20.4). They run
+from a repository checkout, not from the installed wheel.
 
 ## Quickstart
 
 ```bash
 # With Claude (fastest way to start)
-pip install pymaxim[llm-anthropic]
+pip install 'pymaxim[llm-anthropic]'
 export ANTHROPIC_API_KEY=sk-...
 maxim --sim "test memory recall under interference"
 
 # Or with a local model (no API key needed)
-# requires: pip install 'pymaxim[llm-llama,llm-server]'
 pip install 'pymaxim[llm-llama,llm-server]'
-maxim --list-models                        # see available models
-maxim --sim "test memory recall" --llm mistral-7b   # auto-downloads on first run
+maxim --list-models                                  # see available models
+maxim --sim "test memory recall" --llm mistral-7b    # downloads on first run
 
-# Cradle sensorimotor development (infant agent learns from sensation)
-# requires: pip install 'pymaxim[llm-llama,llm-server,semantic]'
+# Cradle sensorimotor development (an infant agent learns from sensation)
+pip install 'pymaxim[llm-llama,llm-server,semantic]'
 maxim --sim cradle --embodiment bodies/infant_humanoid --sim-max-turns 25
 ```
 
-Check your setup with `maxim doctor`, and find simulation reports in `~/.maxim/sim_reports/{session_id}/`.
+Check your setup with `maxim doctor`. Simulation reports are written to `~/.maxim/sim_reports/{session_id}/`.
+Substrate-primary action selection in a simulation is `--aut-mode substrate-primary` (experimental).
 
-## Bio-Systems
+## Bio-systems
 
-Maxim's cognitive architecture is modeled after brain systems, not software patterns:
+Maxim's architecture is modelled on brain systems, not software patterns:
 
-| System | Biological Analog | What It Does |
+| System | Biological analog | What it does |
 |---|---|---|
-| **Hippocampus** | Episodic memory | Captures experiences, recalls by context, promotes across tiers (FORMING → SHORT_TERM → LONG_TERM) |
-| **NAc** (Nucleus Accumbens) | Reward/punishment learning | Forms causal links from actions to outcomes, eligibility traces, reward bias |
-| **SCN** (Suprachiasmatic Nucleus) | Circadian clock | Temporal phase tracking, oscillator predicts event imminence, anticipatory credit |
-| **ATL** (Anterior Temporal Lobe) | Semantic concepts | Forms and reinforces concept categories from experience |
-| **EC** (Entorhinal Cortex) | Pattern separation/completion | Substrate encoding, centroid clustering, spreading activation |
-| **Angular Gyrus** | Cross-modal binding | Hebbian binding across episodes, associative retrieval |
-| **PainBus** | Nociceptive system | Rich-context pain signals from embodiment failures, drives NAc learning |
-| **Default Network** | Resting-state network | Novelty detection, arousal tracking, reactive behaviors |
+| **Hippocampus** | Episodic memory | Captures experiences with the situation they happened in; recalls by context |
+| **NAc** (nucleus accumbens) | Reward and punishment learning | Causal links from actions to outcomes, reward bias, situation-keyed fear |
+| **EC** (entorhinal cortex) | Pattern separation and completion | Encodes sensor state into situation clusters |
+| **ATL** (anterior temporal lobe) | Semantic concepts | Forms and reinforces concepts from experience |
+| **SCN** (suprachiasmatic nucleus) | Circadian clock | Temporal phase tracking, anticipatory credit |
+| **Angular Gyrus** | Cross-modal binding | Associative retrieval across episodes |
+| **PainBus** | Nociception | Pain signals from the body, which drive NAc learning |
+| **Default Network** | Resting-state network | Novelty detection, arousal, reactive behaviours |
 
-## Embodiment & Drives
+## Bodies and drives
 
-Agents have bodies with sensors, modulators, and failure modes declared in YAML:
+Agents have bodies with sensors, modulators and failure modes declared in YAML:
 
 ```yaml
-# Homeostatic drive — body self-regulates toward set_point
+# Homeostatic drive — the body self-regulates toward set_point
 core_temperature:
   drive:
     drift_mode: homeostatic
     set_point: 0.0
-    drift_rate: 0.001        # body recovers at this rate
+    drift_rate: 0.001
     comfort_band: 0.4        # no discomfort within +/-0.4
-    pain_scale: 0.5          # pain intensity per unit outside band
+    pain_scale: 0.5          # pain per unit outside the band
 
-# Entropic drive — drifts away, requires external action
+# Entropic drive — drifts away; only an action restores it
 hunger:
   drive:
     drift_mode: entropic
@@ -81,21 +101,35 @@ hunger:
     deprivation_pain: 0.3
 ```
 
-Three sensation layers converge on the same pipeline:
-- **Contact** (entity acquisition): pick up a rock → its sensors join your body → damage model evaluates
-- **Touch** (self_effect): touch fire → one-time thermal spike on arms
-- **Narrative** (keyword reflexes): narrator describes flames → reflex fires → damage → pain
+Contact, touch and narrated events all converge on one pipeline: sensor change → failure evaluation →
+PainBus → NAc learning. In the Minecraft world the game owns the drives (hunger drains, air runs out)
+and the pain comes from the game, not from a model.
 
-All produce: sensor change → `evaluate_failures()` → PainBus → NAc learning.
+## Sharing what an agent learned
 
-## What You Can Do
+An agent's learned substrate — its NAc policy and EC situation clusters, never its episodic memories —
+exports as a bundle another agent can ingest. Ingest validates every bundle before anything is merged,
+and a donor can deepen a receiver's negative biases but never weaken them.
 
-- **Cradle sensorimotor development** — infant agent learns fire avoidance, drive satisfaction, and texture discrimination through structured developmental acts
-- **Simulate cognitive scenarios** — test memory, safety, causal learning with LLM-driven narrative arcs
-- **Run DM campaigns** — multi-encounter branching stories with SEM-embodied entities
-- **Benchmark models** — compare local and cloud LLMs across cognitive task suites
-- **Connect robots** — hardware-agnostic runtime; Reachy Mini ships in-tree, third-party robots plug in via `maxim.robots` entry-point group
-- **Use the Python API** — 21 verb-based functions for programmatic access
+```bash
+# --session takes a session directory (a simulation's is ~/.maxim/sim_reports/<session_id>)
+maxim substrate export out.zip --session ~/.maxim/sim_reports/<id> \
+    --contributor-id <your-id> --body-ref minecraft_player
+maxim substrate inspect out.zip                      # read the manifest
+maxim substrate ingest out.zip --session <receiver-dir> --trust <contributor-id> \
+    --receiver-body minecraft_player                 # dry run; add --apply to merge
+
+# An Oasis is a shared source of signed releases
+maxim hive add <name> <url> --queen-key <identity>=<pubkey_b64>
+maxim hive pull --from <name> --session <receiver-dir> --receiver-body minecraft_player \
+    --receiver-agent-id <your-agent-id>              # dry run; add --apply to merge
+```
+
+Signed releases carry a signature over every member, a signed entry index and a release sequence. A
+receiver refuses a second payload under the same key and sequence (equivocation), and a legacy v1 bundle
+from a key it has already accepted a v2 release from (downgrade). See
+[Substrate sharing](https://github.com/dennys246/Maxim/blob/main/docs/user/substrate-sharing.md) and the
+[bundle format](https://github.com/dennys246/Maxim/blob/main/docs/user/hivemind_bundle_format.md).
 
 ## Installation
 
@@ -103,112 +137,75 @@ All produce: sensor change → `evaluate_failures()` → PainBus → NAc learnin
 pip install pymaxim
 ```
 
-### Optional Extras
+### Optional extras
 
 | Extra | What it adds |
 |-------|-------------|
-| `llm-llama` | Local LLM inference via llama.cpp |
-| `llm-torch` | PyTorch/Transformers backend |
 | `llm-anthropic` | Claude backend |
 | `llm-openai` | OpenAI backend |
-| `vision` | Camera + object detection |
-| `audio` | Microphone + Whisper transcription |
-| `reachy` | Reachy Mini robot SDK |
-| `comms` | Twilio SMS/Voice |
-| `semantic` | Sentence-transformer embeddings |
+| `llm-llama` | Local LLM inference via llama.cpp |
+| `llm-server` | Local OpenAI-compatible model server (includes llama.cpp) |
+| `llm-torch` | PyTorch/Transformers backend |
+| `semantic` | Sentence-transformer embeddings for memory and encoding |
+| `temporal` | Natural-language date parsing |
+| `training` | TensorFlow/Keras training |
+| `vision` | Camera and object detection |
+| `yolo` | YOLO object detection |
+| `audio` | Microphone and Whisper transcription |
 | `tts` | Text-to-speech via Piper |
-| `database` | PostgreSQL + pgvector memory stores |
+| `reachy` | Reachy Mini robot SDK |
+| `pi` | The Raspberry Pi bundle: `reachy`, `console`, `llm-anthropic`, `tts` |
+| `sign` | Signing and verifying substrate releases |
+| `console` | The web console server |
+| `search` | Web search (DuckDuckGo) |
+| `comms` | Twilio SMS and voice |
+| `database` | PostgreSQL and pgvector memory stores |
+| `all` | Every extra except `llm-torch`, `semantic`, `yolo`, `pi` and `test` |
+| `test` | The test suite's dependencies |
 
-See [getting-started.md](https://github.com/dennys246/Maxim/blob/main/docs/user/getting-started.md) for the full list of 21 extras.
-
-> **Note:** `[all]` does **not** include `[semantic]` (sentence-transformers + spaCy). Without it, memory recall and substrate encoding fall back to bag-of-words hashing. For full memory quality:
-> ```bash
-> pip install 'pymaxim[all,semantic]'
-> ```
-
-```bash
-# Local LLM + vision
-pip install pymaxim[llm-llama,vision]
-
-# Everything for development
-pip install -e '.[llm-llama,llm-anthropic,llm-openai,vision,audio]'
-```
+> **Note:** `[all]` does **not** include `[semantic]`. Without it, memory recall and substrate encoding
+> fall back to bag-of-words hashing. For full memory quality: `pip install 'pymaxim[all,semantic]'`.
 
 ## Python API
 
+21 verb-based functions give programmatic access to the same runtime:
+
 ```python
-# requires: pip install 'pymaxim[llm-llama,llm-server,semantic]'
 import maxim
 
-# Run a simulation
-result = maxim.imagine(goal="test safety boundaries")
+result = maxim.imagine(goal="test safety boundaries")   # run a simulation
+state = maxim.observe("memory")                         # inspect a bio-system
+report = maxim.diagnose()                               # the same checks as `maxim doctor`
 
-# Inspect bio-subsystems
-state = maxim.observe("memory")
+maxim.run(model="mistral-7b", goal="inspect the workspace")   # needs a configured LLM backend
 
-# Diagnose environment
-report = maxim.diagnose()
+# Controller-backed motion on a robot (robot and headless=True are contradictory)
+maxim.run(model="mistral-7b", goal="turn your head 20 degrees left", robot="reachy_mini", headless=False)
 
-# Start with a goal (requires a configured LLM backend)
-maxim.run(model="mistral-7b", goal="inspect the workspace")
-
-# Controller-backed direct motion; full capture/vision remains on the CLI runtime
-# Hardware intent is explicit: robot and headless=True are contradictory
-maxim.run(
-    model="mistral-7b",
-    goal="turn your head 20 degrees left",
-    robot="reachy_mini",
-    headless=False,
-)
-
-# Manage models
 models = maxim.list_models()
 maxim.download_model("qwen2.5-14b-instruct")
 ```
 
-See [docs/user/python-api.md](https://github.com/dennys246/Maxim/blob/main/docs/user/python-api.md) for the full API reference.
+See [the Python API reference](https://github.com/dennys246/Maxim/blob/main/docs/user/python-api.md).
 
-## CLI Quick Reference
+## CLI quick reference
 
 ```bash
-# Agent runtime
-maxim --llm mistral-7b                    # local LLM
-maxim --llm claude-sonnet                 # Claude
-
-# Simulations
-maxim --sim "test memory recall"          # generative campaign
-maxim --sim cradle --embodiment bodies/infant_humanoid  # sensorimotor development
-maxim --sim safety_boundary                # built-in arc, no files needed
-maxim --sim benchmark --models mistral-7b,qwen2.5-14b   # benchmark
-
-# Diagnostics
+maxim                                     # interactive menu
+maxim --llm claude-sonnet                 # agent runtime with Claude
+maxim --sim "test memory recall"          # generative simulation
+maxim --sim benchmark --models mistral-7b,qwen2.5-14b
 maxim doctor                              # environment check
-maxim --list-models                       # available models
-
-# Configuration
-maxim config list                         # show all resolved settings
-maxim config get lanes.large.remote_url   # get a single field
-maxim config set cloud.enabled true       # set a field
-
-# Model management
-maxim model list                          # list all available profiles
-maxim model add my-model --hf repo:file   # add a custom HuggingFace model
-maxim model remove my-model              # remove a custom profile
-
-# Substrate (Hivemind shareability)
-maxim substrate export out.zip --session 20240601_120000  # export session substrate
-maxim substrate import in.zip --output-dir ./imported     # extract bundle (does NOT auto-merge)
-maxim substrate inspect bundle.zip                        # print manifest without extracting
+maxim config list                         # every resolved setting and where it came from
+maxim model list                          # user-defined model profiles (catalog: --list-models)
 ```
 
-Simulation process exits distinguish run integrity from experimental verdicts:
-exit `0` means the run produced usable evidence (including semantic outcomes such
-as `failed`, `blocked`, or `inconclusive`), exit `1` is a generic error, and exit
-`4` is an incomplete/runtime-aborted run. Campaign scripts must reject every
-non-zero exit before analyzing its report. Python APIs return the structured
-`finish_reason` instead of terminating the host process.
+Simulation exit codes separate run integrity from experimental verdicts: `0` means the run produced
+usable evidence (including outcomes such as `failed` or `inconclusive`), `1` is an error, and `4` is an
+incomplete or aborted run — campaign scripts must reject every non-zero exit before analysing a report.
+Python APIs return the structured `finish_reason` instead of exiting.
 
-See [docs/user/cli-reference.md](https://github.com/dennys246/Maxim/blob/main/docs/user/cli-reference.md) for all flags.
+See the [CLI reference](https://github.com/dennys246/Maxim/blob/main/docs/user/cli-reference.md) for every flag.
 
 ## Documentation
 
@@ -218,11 +215,14 @@ See [docs/user/cli-reference.md](https://github.com/dennys246/Maxim/blob/main/do
 | [CLI Reference](https://github.com/dennys246/Maxim/blob/main/docs/user/cli-reference.md) | All command-line flags |
 | [Python API](https://github.com/dennys246/Maxim/blob/main/docs/user/python-api.md) | Programmatic usage |
 | [Simulation](https://github.com/dennys246/Maxim/blob/main/docs/user/simulation.md) | Campaigns, scenarios, cradle, benchmarks |
+| [Substrate sharing](https://github.com/dennys246/Maxim/blob/main/docs/user/substrate-sharing.md) | Export, ingest, Oases |
+| [Substrate-primary mode](https://github.com/dennys246/Maxim/blob/main/docs/substrate_primary.md) | Action selection without an LLM |
 | [Architecture](https://github.com/dennys246/Maxim/blob/main/docs/reference.md) | Module map, bio-system glossary |
 | [LLM Setup](https://github.com/dennys246/Maxim/blob/main/docs/user/llm-setup.md) | Model download and configuration |
-| [Peer Setup](https://github.com/dennys246/Maxim/blob/main/docs/user/peer-setup.md) | Multi-machine / tunnel setup |
-| [Configuration](https://github.com/dennys246/Maxim/blob/main/docs/user/configuration.md) | Env vars, config.json, operator reference |
-| [Substrate & Hivemind](https://github.com/dennys246/Maxim/blob/main/docs/hivemind.md) | Cross-session substrate sharing, bundle format |
+| [Peer Setup](https://github.com/dennys246/Maxim/blob/main/docs/user/peer-setup.md) | Multi-machine and tunnel setup |
+| [Robot Setup](https://github.com/dennys246/Maxim/blob/main/docs/user/robot-setup.md) | Reachy Mini ships in-tree; third-party robots plug in via the `maxim.robots` entry-point group |
+| [Configuration](https://github.com/dennys246/Maxim/blob/main/docs/user/configuration.md) | Environment variables, config.json |
+| [Experiments](https://github.com/dennys246/Maxim/blob/main/docs/experiments/README.md) | Every experiment, its prereg and its verdict |
 | [Troubleshooting](https://github.com/dennys246/Maxim/blob/main/docs/user/troubleshooting.md) | Common issues and diagnostics |
 
 ## Design essays

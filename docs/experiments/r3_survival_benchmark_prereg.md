@@ -501,7 +501,7 @@ of the rows (`r3_run.report --amended`: `harness_unchanged_between`, `reclassify
 beside the frozen one — never a hand recount. The floor of the design review (confounding +
 bio-faithful) runs on this section before the §Outcome is written.
 
-**Amendment 1 — the hash rule as frozen cannot be satisfied; the real precondition is named.** D5 and
+**Amendment 1 — 2026-09-18, POST-DATA, the hash rule as frozen cannot be satisfied; the real precondition is named.** D5 and
 §Dependent measures said "bench rows at a hash other than the gauntlet's read INCOMPLETE". The
 calibration data PR itself advances main, so no bench can ever run at the calibration hash; the
 rule as worded refuses every bench by construction (the vacuous-gate shape, inverted). The
@@ -518,7 +518,7 @@ the fingerprint guard those. **Ordering consequence:** a bench row taken AFTER t
 merges would fail Amendment 1 by its own rule (the PR touches `scripts/` and `tests/`), so the E 388
 re-run had to execute at `4cca5524` and its row lands in the bench data PR, BEFORE the amendment.
 
-**Amendment 2 — the tick-period band was frozen on a 46-period statistic and applied to a 1–2-period
+**Amendment 2 — 2026-09-18, POST-DATA, the tick-period band was frozen on a 46-period statistic and applied to a 1–2-period
 one; the refusals fell by tick phase.** The band ([0.39, 0.77] s) is the median ± 2 IQR of the
 IN-WINDOW tick periods of twelve floor-arm events, each ≈ 28 s long (≈ 46 periods per row). On a
 carried-fear event of ≈ 3 s the in-window ticks are at most one idle tick, the `flee` tick and the
