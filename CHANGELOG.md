@@ -383,7 +383,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `maxim.campaign(interactive=True, prompt_handler=...)` raises `ValueError`: with a handler the run
     is not interactive.
   - The preamble header reads `=== AGENT BEHAVIOR RULES ===` (the `(from AGENTS.md)` suffix is gone —
-    the text now comes from `CONSTITUTION.md`).
+    the text now comes from `CONSTITUTION.md`), and its hard constraints are the Constitution's §1 list
+    word for word: every agent's prompt now carries "Never operate actuators at speeds that could cause
+    injury", which it had omitted.
   - `start_simulation_mode(prompt_handler=...)` is new; it raises `ValueError` with `persistent_agent`.
 
 - **The test suite cannot reach the network.** Hermeticity was HOME/HF isolation and env scrubs with

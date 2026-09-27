@@ -19,7 +19,10 @@ repo root) ran with an empty preamble. Reading the text from the document makes 
 ### Tradeoffs
 
 Editing the principles agents are told now means editing the Constitution -- intended. The block is a
-condensation; keeping it faithful to the sections above is a review duty, not a mechanical check.
+condensation, but its hard constraints are §1's bullets VERBATIM and a test requires every one of them
+(`test_every_hard_constraint_reaches_the_prompt_verbatim`): the old prompt had dropped "Never operate
+actuators at speeds that could cause injury", and 1.3.1 restores it (owner decision, 2026-09-27). The
+rest of the block (core values, the agent behavior rules) stays a review duty, not a mechanical check.
 
 ## 2026-09-25 — Oasis release format v2: detached signature, entry index, ordering, license
 

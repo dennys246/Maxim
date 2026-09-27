@@ -35,6 +35,20 @@ def test_the_prompt_preamble_is_the_constitutions_block() -> None:
         ctx._foundational_context_cache = None
 
 
+def test_every_hard_constraint_reaches_the_prompt_verbatim() -> None:
+    """The block is a summary kept by hand; §1's Hard Constraints may not fall out of it. The
+    actuator-speed constraint had been missing from the prompt since before D32 (review 2026-09-27)."""
+    from maxim.agents.llm_context import extract_runtime_preamble
+
+    doc = (REPO / "CONSTITUTION.md").read_text(encoding="utf-8")
+    section = doc.split("### Hard Constraints (Never Violate)\n", 1)[1].split("\n\n", 1)[0]
+    bullets = [line for line in section.splitlines() if line.startswith("- ")]
+    assert len(bullets) >= 4, "the §1 Hard Constraints list was not found where this test reads it"
+    block = extract_runtime_preamble(doc)
+    missing = [b for b in bullets if b not in block.splitlines()]
+    assert not missing, f"§1 hard constraints missing from the Runtime Preamble block: {missing}"
+
+
 def test_a_constitution_without_the_block_yields_no_preamble() -> None:
     from maxim.agents.llm_context import extract_runtime_preamble
 
