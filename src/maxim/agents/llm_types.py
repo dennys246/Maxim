@@ -97,10 +97,13 @@ class ModeInfo:
         else:
             available = all_tools - self.forbidden_tools
 
+        # The capability sets are defined once, with the modes (#826).
+        from maxim.modes.definitions import FILESYSTEM_CAPABILITY_TOOLS, NETWORK_CAPABILITY_TOOLS  # noqa: PLC0415
+
         if not self.can_access_filesystem:
-            available -= {"read_file", "write_file", "list_directory", "execute_file"}
+            available -= FILESYSTEM_CAPABILITY_TOOLS
         if not self.can_access_network:
-            available -= {"internet_search", "http_fetch"}
+            available -= NETWORK_CAPABILITY_TOOLS
 
         return available
 

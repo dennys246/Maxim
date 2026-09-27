@@ -5,7 +5,7 @@ import logging
 import threading
 import time
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from maxim.tools.base import ToolOutput
 from maxim.tools.registry import ToolRegistry
@@ -111,6 +111,10 @@ class Executor:
         # D77 embodiment= and D79's cerebellum=).
         self._cerebellum: Any | None = cerebellum
         self._entity_map: Any | None = entity_map
+        # The LIVE operational mode, read at every dispatch (#826): a mode's tool list used to shape
+        # only the prompt, so a tool outside it still ran when the model named it. Set by the agent
+        # loop, which owns the mode (``set_mode_source``); None = no mode restriction.
+        self._mode_source: Callable[[], str | None] | None = None
         self._lock = threading.Lock()
         # (tool_name, start_time, invocation_id) or None
         self._running: tuple[str, float, str] | None = None
@@ -137,6 +141,25 @@ class Executor:
             for name in names:
                 TOOL_ALIASES.pop(name.lower(), None)
 
+    def set_mode_source(self, source: Callable[[], str | None] | None) -> None:
+        """Read the live operational mode from ``source`` at every dispatch (#826). None clears it."""
+        self._mode_source = source
+
+    def _mode_denial(self, tool_name: str) -> str | None:
+        """Why the LIVE mode refuses to run *tool_name* (canonical name), or None (#826).
+
+        By capability (``ModeDefinition.dispatch_refusal``): the mode's forbidden tools and the tools
+        its capabilities exclude -- for passive, the host-acting ones. The mode's allow-list shapes the
+        prompt only. An unknown mode restricts nothing, as the prompt roster treats it.
+        """
+        if self._mode_source is None:
+            return None
+        from maxim.modes.definitions import get_mode  # noqa: PLC0415 -- runtime layer, read lazily
+
+        mode_name = self._mode_source()
+        mode_def = get_mode(mode_name) if isinstance(mode_name, str) and mode_name else None
+        return mode_def.dispatch_refusal(tool_name) if mode_def is not None else None
+
     def _permission_denial(self, tool_name: str, *, deny_only: bool = False) -> str | None:
         """Return the denial reason for *tool_name*, or ``None`` when allowed.
 
@@ -149,6 +172,11 @@ class Executor:
         name has no kind and is checked by name alone (it fails later at
         ``registry.get`` anyway).
         """
+        if not deny_only:
+            # The mode is an allow-list judged on the CANONICAL name, like the allow half below.
+            mode_denial = self._mode_denial(tool_name)
+            if mode_denial is not None:
+                return mode_denial
         if self._permissions is None:
             return None
         tool = self.registry._tools.get(tool_name)
@@ -160,13 +188,18 @@ class Executor:
             return None
         return reason or "Permission denied."
 
+    def _runnable_tools(self) -> list[str]:
+        """Registered tools the gate would let run -- what an error may suggest (#826, D82)."""
+        return sorted(t for t in self.registry.list() if self.permits(t))
+
     def permits(self, tool_name: str) -> bool:
-        """True when the permission gate would let *tool_name* run.
+        """True when the permission gate -- the live mode (#826) and ``AgentPermissions`` -- would
+        let *tool_name* run.
 
         The prompt roster asks this before ADVERTISING a tool: a tool the
         executor refuses at dispatch must not be offered to the model, or the
         model spends turns choosing tools that only ever return a denial
-        (bugs ledger D82). No permissions configured → everything permits.
+        (bugs ledger D82). No mode source and no permissions → everything permits.
         """
         return self._permission_denial(tool_name) is None
 
@@ -270,7 +303,7 @@ class Executor:
                 self._running = None
             self._consecutive_failures += 1
             error_msg = f"Tool {tool_name!r} is not active (belongs to scene {scene!r})."
-            error_msg += f" Available tools: {', '.join(sorted(self.registry.list()))}."
+            error_msg += f" Available tools: {', '.join(self._runnable_tools())}."
             result = ToolOutput(success=False, error=error_msg)
             self._report_failure(tool_name, invocation_id, result, params)
             return self._stamp_invocation(result, invocation_id, None)
@@ -283,13 +316,12 @@ class Executor:
             self._tools_hallucinated.append(original_name)
             self._consecutive_failures += 1
             error_msg = f"Tool not registered: {tool_name!r}."
-            suggestions = self.registry.find_similar(original_name, limit=3)
+            suggestions = [t for t in self.registry.find_similar(original_name, limit=5) if self.permits(t)][:3]
             if suggestions:
                 error_msg += f" Did you mean: {', '.join(suggestions)}?"
             # Phase 5d: proactive tool list after repeated failures
             if self._consecutive_failures >= 2:
-                available = sorted(self.registry.list())
-                error_msg += f" Available tools: {', '.join(available)}."
+                error_msg += f" Available tools: {', '.join(self._runnable_tools())}."
             else:
                 error_msg += (
                     " Only use tools from the Available Tools list."

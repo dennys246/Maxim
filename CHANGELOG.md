@@ -377,6 +377,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A mode's limits are enforced when a tool runs, not only in the prompt** (#826). A tool the current
+  mode excludes still ran when the model named it — in passive mode, a forbidden `maxim_command` reached
+  its tool at the AUTONOMOUS autonomy level. The executor now reads the live mode at every dispatch and
+  refuses by capability: the mode's forbidden tools, the tools its capabilities exclude, and — in
+  passive mode, which observes and proposes — tools that act on the host (`bash`, `edit_file`,
+  `git_commit`, `run_tests`, `execute_file`, `execute_sandbox_script`, `request_directory_change`,
+  `internet_access_toggle`, and the already-forbidden `maxim_command`). Memory, introspection, protocol
+  and your own `maxim.register_tool` tools keep working in every mode; the prompt never lists a tool the
+  executor would refuse. `maxim.run()` and the CLI loop run in passive mode by default; active and
+  singularity modes are unchanged. The robot runtime now tells the loop its run mode
+  (`maxim --mode live` ran as passive before, which only mattered once passive was enforced).
+
 - **A web fetch connects only to the public address it checked** (#824). `http_fetch` checked a
   URL's host for a private address with one DNS lookup (through a 5-minute cache), then httpx looked
   the name up again to connect — so a host answering public to the check and private to the connect
