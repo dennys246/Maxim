@@ -275,10 +275,23 @@ class TestPeerConnectCLI:
 
 
 class TestUrlClassification:
-    def test_public_https_is_cloud(self):
+    def test_public_https_is_cloud(self, monkeypatch):
+        """Resolution stubbed to a public address: the test suite has no DNS, and an unresolvable host
+        takes the fail-safe branch instead of the one this test is named for."""
+        import socket
+
         from maxim.peer.cli import _is_public_url
 
+        monkeypatch.setattr(socket, "getaddrinfo", lambda host, *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))])
         assert _is_public_url("https://api.example.com/v1") is True
+
+    def test_a_name_resolving_to_a_private_address_is_not_cloud(self, monkeypatch):
+        import socket
+
+        from maxim.peer.cli import _is_public_url
+
+        monkeypatch.setattr(socket, "getaddrinfo", lambda host, *a, **k: [(2, 1, 6, "", ("192.168.1.20", 0))])
+        assert _is_public_url("https://gpu-box.lan/v1") is False
 
     def test_loopback_is_not_cloud(self):
         from maxim.peer.cli import _is_public_url
