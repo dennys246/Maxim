@@ -426,6 +426,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`--session <id>` finds a simulation or an agent, through one shared lookup.** `maxim substrate`
+  (`export`, `invalidate`, `ingest`) and `maxim hive pull` looked a bare ID up in `~/.maxim/sessions/`,
+  which nothing writes by ID — so neither a simulation's session ID (`~/.maxim/sim_reports/<id>/`) nor a
+  `maxim.create.agent()` name (`~/.maxim/agents/<name>/`) ever resolved, although `hive pull`'s help
+  promised the latter. They and `maxim roy diff` now use `utils/paths.py::resolve_run_dir`: a bare ID is
+  looked up in `sim_reports/` and the working directory — and, for `ingest` and `hive pull` (which read
+  an agent home's layout), in `agents/` — under `$MAXIM_DATA_HOME`, which the substrate CLI used to
+  ignore; one found in more than one place is refused as ambiguous, one found in none names
+  every place searched, an empty argument is refused (it used to mean the working directory), and anything
+  that looks like a path is only a path. `maxim roy diff` no longer swallows a lookup error.
+
 - **Public API correctness** (roadmap 1.3.1).
   - `AgentInstance.export_memories()` (and `AgentPool.export_all_memories()`) reported **0 memories**
     whatever the agent held: it read a Hippocampus attribute that does not exist, and an

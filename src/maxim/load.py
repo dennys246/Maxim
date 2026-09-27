@@ -228,9 +228,9 @@ def agent(
         agent_dir = Path(base_dir) / name
     else:
         factory = AgentFactory()
-        from maxim.utils.paths import data_home
+        from maxim.utils.paths import RUN_DIR_KINDS, data_home
 
-        agent_dir = data_home() / "agents" / name
+        agent_dir = data_home() / RUN_DIR_KINDS["agent"] / name
 
     if not agent_dir.exists():
         raise FileNotFoundError(

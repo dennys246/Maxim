@@ -47,7 +47,7 @@ maxim substrate export my-combat-substrate.zip \
 | Argument | Required | Description |
 |---|---|---|
 | `output` (positional) | yes | Path to write the `.zip` bundle to. |
-| `--session` | yes | A session ID (resolved under `~/.maxim/sessions/{id}/`) **or** a path to a directory containing `aut_nac.json` / `aut_ec.json`. |
+| `--session` | yes | A simulation's session ID (`~/.maxim/sim_reports/{id}/`) **or** a path to a directory containing `aut_nac.json` / `aut_ec.json`. (`ingest` and `hive pull` also take a `maxim.create.agent()` name, `~/.maxim/agents/{name}/`.) |
 | `--contributor-id` | yes | Opaque ID identifying this Maxim. Must NOT start with `_` (reserved namespace -- see below). |
 | `--domain` | no | Substrate-domain tag scoping the bundle (e.g. `combat`, `cooking`). Default: undomained. |
 | `--no-identity-filter` | no | Skip the identity-bearing-pattern quarantine. For trusted-internal backups only. |
@@ -66,7 +66,7 @@ composed bundle at /path/to/my-combat-substrate.zip
   identity_filter: True
 ```
 
-The `--session` argument accepts either form. A bare ID like `20260408_004219` resolves under `~/.maxim/sessions/`. A path -- absolute or relative -- to any directory holding `aut_nac.json` and/or `aut_ec.json` works for substrate persisted outside `~/.maxim/`.
+The `--session` argument accepts either form. A bare ID like `20260408_004219` is looked up in `~/.maxim/sim_reports/` and the working directory (and, for `ingest` / `hive pull`, in `~/.maxim/agents/`); an ID found in more than one place is refused as ambiguous. A path -- absolute or relative -- to any directory holding `aut_nac.json` and/or `aut_ec.json` works for substrate persisted outside `~/.maxim/`.
 
 ## Importing a bundle
 
