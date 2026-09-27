@@ -86,20 +86,18 @@ from maxim.utils.optional_deps import OptionalDependencyError
 logger = logging.getLogger(__name__)
 
 
-def _expand_session_dir(session: str) -> Path:
-    """Resolve a ``--session`` argument to an absolute persistence dir.
+def _expand_session_dir(session: str, *, agents: bool = False) -> Path:
+    """Resolve a ``--session`` argument through ``utils/paths.py::resolve_run_dir`` (raises
+    ``ValueError`` naming what it searched): a path, a simulation's session ID, and -- with
+    ``agents=True``, for the commands that read an agent home's ``nac.json``/``ec.json`` layout
+    (``ingest``, and ``hive pull`` through it) -- a ``maxim.create.agent()`` name. ``export`` and
+    ``invalidate`` read only a simulation's ``aut_*.json``, so they do not accept an agent's name.
 
-    Accepts:
+    It used to look a bare ID up in ``~/.maxim/sessions/``, a directory nothing writes by ID, so neither
+    a simulation's ID nor an agent's name ever resolved (1.3.1)."""
+    from maxim.utils.paths import resolve_run_dir
 
-    - An absolute or relative path to a directory containing ``aut_nac.json``
-      and/or ``aut_ec.json`` (used for sessions outside ``~/.maxim/``).
-    - A bare session ID, resolved against ``~/.maxim/sessions/{id}/``.
-    """
-    candidate = Path(session).expanduser()
-    if candidate.is_dir():
-        return candidate.resolve()
-    fallback = Path.home() / ".maxim" / "sessions" / session
-    return fallback.resolve()
+    return resolve_run_dir(session, kinds=("sim", "agent") if agents else ("sim",))
 
 
 def _read_optional_json(path: Path) -> dict | None:
@@ -126,9 +124,10 @@ class _MergeInputError(Exception):
 
 
 def _run_export(args: argparse.Namespace) -> int:
-    session_dir = _expand_session_dir(args.session)
-    if not session_dir.is_dir():
-        print(f"error: session directory not found: {session_dir}", file=sys.stderr)
+    try:
+        session_dir = _expand_session_dir(args.session)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return 2
 
     try:
@@ -423,9 +422,10 @@ def _run_invalidate(args: argparse.Namespace) -> int:
     """
     from maxim.hivemind.merge import invalidate_stale_geometry_nodes, prune_nac_cluster_biases
 
-    session_dir = _expand_session_dir(args.session)
-    if not session_dir.is_dir():
-        print(f"error: session directory not found: {session_dir}", file=sys.stderr)
+    try:
+        session_dir = _expand_session_dir(args.session)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return 2
 
     ec_path = session_dir / "aut_ec.json"
@@ -767,9 +767,10 @@ def _run_ingest(args: argparse.Namespace) -> int:
         print(f"error: bundle file not found: {bundle_path}", file=sys.stderr)
         return 2
 
-    session_dir = _expand_session_dir(args.session)
-    if not session_dir.is_dir():
-        print(f"error: receiver directory not found: {session_dir}", file=sys.stderr)
+    try:
+        session_dir = _expand_session_dir(args.session, agents=True)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return 2
     pair = _resolve_receiver_pair(session_dir)
     if pair is None:
@@ -1018,7 +1019,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_export.add_argument(
         "--session",
         required=True,
-        help="Session ID (resolved under ~/.maxim/sessions/{id}/) or a path to a session directory",
+        help="A simulation's session ID (under ~/.maxim/sim_reports/) or a path to a session directory",
     )
     p_export.add_argument(
         "--contributor-id",
@@ -1148,7 +1149,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_invalidate.add_argument(
         "--session",
         required=True,
-        help="Session ID (resolved under ~/.maxim/sessions/{id}/) or a path to a session directory",
+        help="A simulation's session ID (under ~/.maxim/sim_reports/) or a path to a session directory",
     )
     p_invalidate.add_argument(
         "--modality",
@@ -1179,7 +1180,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_ingest.add_argument(
         "--session",
         required=True,
-        help="Receiver: session ID (under ~/.maxim/sessions/) or a path to a session/agent directory. Must be AT REST.",
+        help="Receiver: a simulation's session ID, a maxim.create.agent() name, or a path to either's directory. Must be AT REST.",
     )
     p_ingest.add_argument(
         "--trust",

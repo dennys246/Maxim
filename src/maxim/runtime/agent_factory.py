@@ -417,9 +417,9 @@ class AgentFactory:
         if base_data_dir:
             self._base_data_dir = Path(base_data_dir)
         else:
-            from maxim.utils.paths import data_home
+            from maxim.utils.paths import RUN_DIR_KINDS, data_home
 
-            self._base_data_dir = data_home() / "agents"
+            self._base_data_dir = data_home() / RUN_DIR_KINDS["agent"]
         self._base_data_dir.mkdir(parents=True, exist_ok=True)
 
     def create_agent(

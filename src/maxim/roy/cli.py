@@ -30,21 +30,12 @@ from maxim.analysis.substrate_diff import substrate_diff, substrate_diff_to_json
 
 
 def _resolve_session_dir(arg: str) -> Path:
-    """Accept a session id (resolved against ``~/.maxim/sim_reports/``)
-    or an explicit path. Returns the path as-is if it exists, otherwise
-    falls back to the sim_reports default location."""
-    p = Path(arg).expanduser()
-    if p.is_dir():
-        return p
-    try:
-        from maxim.utils.paths import sim_reports
+    """A session id (under ``~/.maxim/sim_reports/``) or a path, through the shared
+    ``utils/paths.py::resolve_run_dir`` (raises ``ValueError`` naming what it searched). Its own copy
+    swallowed every error from the lookup."""
+    from maxim.utils.paths import resolve_run_dir
 
-        candidate = sim_reports() / arg
-        if candidate.is_dir():
-            return candidate
-    except Exception:
-        pass
-    return p
+    return resolve_run_dir(arg, kinds=("sim",))
 
 
 def _run_diff(argv: Sequence[str]) -> int:
@@ -64,14 +55,11 @@ def _run_diff(argv: Sequence[str]) -> int:
     )
     args = parser.parse_args(argv)
 
-    dir_a = _resolve_session_dir(args.session_a)
-    dir_b = _resolve_session_dir(args.session_b)
-
-    if not dir_a.is_dir():
-        print(f"error: session_a not found: {dir_a}", file=sys.stderr)
-        return 2
-    if not dir_b.is_dir():
-        print(f"error: session_b not found: {dir_b}", file=sys.stderr)
+    try:
+        dir_a = _resolve_session_dir(args.session_a)
+        dir_b = _resolve_session_dir(args.session_b)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return 2
 
     diff = substrate_diff(dir_a, dir_b)
