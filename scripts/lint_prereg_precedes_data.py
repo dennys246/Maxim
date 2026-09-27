@@ -16,6 +16,8 @@ answers.
 What it checks, for every experiment token that has a pre-registration:
 
 * **Map.** Pre-registrations are every ``protocols/*preregistration*.md``,
+  every flat ``docs/experiments/*_prereg.md`` (the 1.3-era layout: Exp 58–62,
+  R2, R3 — added 1.3.1, when none of 1.3.0's own experiments was governed),
   plus any such file a result doc ``docs/experiments/*.md`` links. A prereg's
   token is its filename up to the first ``_`` with a leading ``exp`` stripped
   (``exp53b_…`` → ``53b``, ``h1_healthy…`` → ``h1``). A data entry (file or
@@ -27,7 +29,10 @@ What it checks, for every experiment token that has a pre-registration:
   token has no prereg is out of scope (it never claimed a frozen gate).
 * **Non-gated entries** are skipped by name: ``dry_run`` / ``dryrun`` /
   ``nonfrozen`` — harness shakedowns that legitimately predate the prereg's
-  landing and are never cited as evidence.
+  landing and are never cited as evidence — and by type: a ``.py`` file is an
+  analysis instrument that lives beside the records, not a record (three of
+  them — two Exp 60 oxygen checks and the Exp 62 cross-pool replay — landed
+  in the same commit as their prereg).
 * **Time the prereg REACHED the ref:** ``git log --first-parent <ref>
   --diff-filter=A --format=%ct -- <prereg>``. ``--first-parent`` is
   load-bearing: without it a merge-committed PR reports the file's BRANCH
@@ -73,6 +78,21 @@ the reason — the rule is not weakened for them — and reported as
 ``GRANDFATHERED (still failing)``; an entry that starts passing (history
 rewritten) or names a missing file fails the lint as stale, so the list
 cannot outlive its reason.
+
+**Not-governed entries** (``NOT_GOVERNED`` below) are the token rule's
+false matches: an entry whose token collides with a prereg that does not
+govern it (``r2`` names a ladder RUNG, and the R2 drive-premise check predates
+— and is not — the R2 learned-bias experiment). Listed by path with the
+reason, reported as ``NOT GOVERNED``, and stale-checked like the grandfather
+list: an entry that no longer matches any prereg, or names a missing file,
+fails the lint.
+
+**Two classes only:** an amendment is PRE-DATA or POST-DATA for ALL of an
+experiment's data. One that is POST-DATA for some records and PRE-DATA for
+others (Exp 60's Amendment 2, the freeze: after the apparatus and gate data,
+before the trials) is judged by the class its bold header names — here
+POST-DATA, reported not judged. That it preceded the trials was checked by
+hand (2026-09-27: ~3.5 min before the first trial ``ts``).
 
 **Catches forgetting, not evasion** (house convention for heuristic lints):
 ``ts`` and the dirty flag are harness-self-reported; a prereg's frozen gates
@@ -149,11 +169,25 @@ GRANDFATHERED: dict[str, str] = {
     ),
 }
 
+# Token-collision exceptions: the entry matches a prereg's token but is not that experiment's data.
+NOT_GOVERNED: dict[str, str] = {
+    "docs/experiments/data/r2_drive_premise.json": (
+        "The R2 drive-premise CHECK (2026-09-07, PREMISE-NULL; docs/experiments/r2_drive_premise_check.md): a "
+        "premise probe run with no pre-registration. Its token `r2` is the ladder rung, shared with the later "
+        "R2 LEARNED-BIAS preregs (r2_learned_bias_prereg.md 2026-09-12, _v2 2026-09-13), which do not govern it "
+        "and which ran no live data (closed offline, 2026-09-12)."
+    ),
+}
+
 NON_GATED_MARKERS = ("dry_run", "dryrun", "nonfrozen")
-_PREREG_LINK = re.compile(r"\(([^)\s\[(]*protocols/[^)\s\[(]*preregistration[^)\s\[(]*\.md)(?:#[^)]*)?\)")
-_AMENDMENT_LINE = re.compile(r"^\*\*Amendment\s+(\d+)\b.*$", re.M)
+NON_RECORD_SUFFIXES = (".py",)
+_PREREG_LINK = re.compile(
+    r"\(([^)\s\[(]*(?:protocols/[^)\s\[(]*preregistration[^)\s\[(]*|[^)\s\[(/]*_prereg)\.md)(?:#[^)]*)?\)"
+)
+# A header may sit in a blockquote (`> **Amendment 2 — …**`, Exp 60's freeze): it must not drop out.
+_AMENDMENT_LINE = re.compile(r"^(?:>\s*)?\*\*Amendment\s+(\d+)\b.*$", re.M)
 # The bold header may wrap across lines: `**Amendment N — <date>, PRE-DATA, …**`
-_AMENDMENT_HEADER = re.compile(r"^\*\*Amendment\s+(\d+)\s+—(.*?)\*\*", re.M | re.S)
+_AMENDMENT_HEADER = re.compile(r"^(?:>\s*)?\*\*Amendment\s+(\d+)\s+—(.*?)\*\*", re.M | re.S)
 _TS_KEY = "ts"
 
 
@@ -189,6 +223,10 @@ def prereg_map(repo_root: Path) -> tuple[dict[str, set[Path]], dict[str, set[Pat
     docs: dict[str, set[Path]] = {}
     notes: list[str] = []
     for prereg in sorted((repo_root / PROTOCOLS_DIR).glob("*preregistration*.md")):
+        preregs.setdefault(token_of(prereg.name), set()).add(prereg.relative_to(repo_root))
+    # The 1.3-era layout: `docs/experiments/<token>_…_prereg.md`, flat beside the result docs (Exp 58-62,
+    # R2, R3). Reading only protocols/ left every 1.3.0 experiment ungoverned (roadmap 1.3.1).
+    for prereg in sorted((repo_root / EXPERIMENTS_DIR).glob("*_prereg.md")):
         preregs.setdefault(token_of(prereg.name), set()).add(prereg.relative_to(repo_root))
     for doc in sorted((repo_root / EXPERIMENTS_DIR).glob("*.md")):
         text = doc.read_text(errors="replace")
@@ -336,9 +374,16 @@ def _fmt(t: float | int) -> str:
     return datetime.fromtimestamp(float(t), tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
 
 
-def lint(repo_root: Path = REPO_ROOT, ref: str = DEFAULT_REF, *, grandfathered: dict[str, str] | None = None) -> int:
+def lint(
+    repo_root: Path = REPO_ROOT,
+    ref: str = DEFAULT_REF,
+    *,
+    grandfathered: dict[str, str] | None = None,
+    not_governed: dict[str, str] | None = None,
+) -> int:
     repo_root = Path(repo_root).resolve()
     grandfathered = GRANDFATHERED if grandfathered is None else grandfathered
+    not_governed = NOT_GOVERNED if not_governed is None else not_governed
     try:
         if _git(repo_root, "rev-parse", "--is-shallow-repository").strip() == "true":
             raise LintError("shallow repository — fetch full history (git fetch --unshallow) before running this lint")
@@ -356,17 +401,23 @@ def lint(repo_root: Path = REPO_ROOT, ref: str = DEFAULT_REF, *, grandfathered: 
         data_root = repo_root / DATA_DIR
         for entry in sorted(data_root.iterdir()) if data_root.exists() else []:
             rel = entry.relative_to(repo_root)
-            if any(mk in entry.name for mk in NON_GATED_MARKERS):
+            if any(mk in entry.name for mk in NON_GATED_MARKERS) or entry.suffix in NON_RECORD_SUFFIXES:
                 continue
             tok = token_of(entry.name)
             governing: set[Path] = set(preregs.get(tok, ()))
             parent = parent_token(tok)
             if parent:
                 governing |= preregs.get(parent, set())
+            key = rel.as_posix()
+            if key in not_governed:
+                if governing:
+                    notes.append(f"{rel}: NOT GOVERNED (token collision) — {not_governed[key]}")
+                else:
+                    failures.append(f"{rel}: listed as NOT_GOVERNED but matches no prereg — remove the stale entry")
+                continue
             if not governing:
                 continue
             checked += 1
-            key = rel.as_posix()
             facts = data_facts(entry)
             when, how, fallback = data_time(repo_root, ref, rel, facts)
             problems: list[str] = []
@@ -432,6 +483,9 @@ def lint(repo_root: Path = REPO_ROOT, ref: str = DEFAULT_REF, *, grandfathered: 
         for key in grandfathered:
             if not (repo_root / key).exists():
                 failures.append(f"{key}: GRANDFATHERED entry names a file that no longer exists — remove it")
+        for key in not_governed:
+            if not (repo_root / key).exists():
+                failures.append(f"{key}: NOT_GOVERNED entry names a file that no longer exists — remove it")
         if checked == 0:
             raise LintError(
                 "zero governed data entries — the prereg map or the data glob is broken; refusing to pass vacuously"
@@ -456,7 +510,8 @@ def lint(repo_root: Path = REPO_ROOT, ref: str = DEFAULT_REF, *, grandfathered: 
         return 1
     print(
         f"prereg-precedes-data lint: clean — {checked} governed data entr{'y' if checked == 1 else 'ies'} "
-        f"checked against {ref} (first-parent), {len(grandfathered)} grandfathered by explicit list (see GRANDFATHERED)"
+        f"checked against {ref} (first-parent), {len(grandfathered)} grandfathered by explicit list (see GRANDFATHERED), "
+        f"{len(not_governed)} not governed (see NOT_GOVERNED)"
     )
     return 0
 

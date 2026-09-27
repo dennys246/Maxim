@@ -71,6 +71,7 @@ def repo(tmp_path: Path) -> Repo:
 
 def run(repo: Repo, **kw) -> int:
     kw.setdefault("grandfathered", {})
+    kw.setdefault("not_governed", {})
     return L.lint(repo.root, "main", **kw)
 
 
@@ -288,3 +289,99 @@ def test_token_rules() -> None:
 def test_real_repo_grandfather_list_names_existing_files() -> None:
     for key in L.GRANDFATHERED:
         assert (L.REPO_ROOT / key).exists(), key
+
+
+# ── 1.3.1: the flat `*_prereg.md` layout, instruments, token collisions ─────────────────────────
+
+
+def _flat_prereg(repo: Repo, name: str) -> None:
+    repo.write(f"docs/experiments/{name}", "# prereg\n\nfrozen gates\n")
+
+
+def test_a_flat_prereg_governs_its_data(repo: Repo, capsys) -> None:
+    """1.3.0's own experiments (Exp 60, 61, R3) used this layout and were read by nobody."""
+    repo.data("exp60_trials.jsonl", [T0 - 3600])  # data BEFORE the prereg reached main
+    _flat_prereg(repo, "exp60_drowning_avoidance_prereg.md")
+    repo.commit("squash", T0)
+    assert run(repo) == 1
+    assert "exp60_drowning_avoidance_prereg.md" in capsys.readouterr().err
+
+
+def test_a_script_beside_the_records_is_not_a_record(repo: Repo, capsys) -> None:
+    _flat_prereg(repo, "exp60_drowning_avoidance_prereg.md")
+    repo.write("docs/experiments/data/exp60_oxygen_window_check.py", "print('check')\n")  # same commit
+    repo.commit("prereg + its check script", T0)
+    repo.data("exp60_trials.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    assert run(repo) == 0
+    assert "1 governed data entry checked" in capsys.readouterr().out
+
+
+def test_a_token_collision_is_declared_not_judged_and_goes_stale(repo: Repo, capsys) -> None:
+    repo.data("r2_drive_premise.json", [T0 - 3600])  # an earlier, un-preregistered experiment on rung R2
+    repo.commit("premise check", T0 - 3000)
+    _flat_prereg(repo, "r2_learned_bias_prereg.md")
+    repo.data("r2_learned_bias_rows.jsonl", [T0 + 100])
+    repo.commit("prereg", T0)
+    ng = {"docs/experiments/data/r2_drive_premise.json": "the premise check"}
+    assert run(repo) == 1  # undeclared: judged against the learned-bias prereg, and fails
+    capsys.readouterr()
+    assert run(repo, not_governed=ng) == 0  # declared: noted, not judged; the learned-bias rows still are
+    out, err = capsys.readouterr()
+    assert "NOT GOVERNED (token collision)" in out and "r2_drive_premise" not in err
+    # Stale: once nothing matches its token, the declaration must go.
+    (repo.root / "docs/experiments/r2_learned_bias_prereg.md").unlink()
+    (repo.root / "docs/experiments/data/r2_learned_bias_rows.jsonl").unlink()
+    _flat_prereg(repo, "exp60_x_prereg.md")
+    repo.commit("drop", T0 + 500)
+    repo.data("exp60_trials.jsonl", [T0 + 600])
+    repo.commit("other data", T0 + 700)
+    assert run(repo, not_governed=ng) == 1
+    assert "matches no prereg" in capsys.readouterr().err
+
+
+def test_real_repo_governs_the_1_3_experiments() -> None:
+    preregs, _docs, _notes = L.prereg_map(L.REPO_ROOT)
+    for token in ("60", "61", "62", "r3"):
+        assert any(p.name.endswith("_prereg.md") for p in preregs.get(token, ())), token
+
+
+def test_real_repo_not_governed_list_names_existing_files() -> None:
+    for key in L.NOT_GOVERNED:
+        assert (L.REPO_ROOT / key).exists(), key
+
+
+def test_a_blockquoted_pre_data_amendment_is_judged(repo: Repo, capsys) -> None:
+    """Exp 60 wrote its freeze amendment as `> **Amendment 2 — …**`; a regex anchored at `**` never saw it."""
+    repo.write("docs/experiments/exp60_x_prereg.md", "# prereg\n\nfrozen gates\n")
+    repo.commit("prereg", T0)
+    repo.data("exp60_trials.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    repo.write(
+        "docs/experiments/exp60_x_prereg.md",
+        "# prereg\n\n> **Amendment 1 — 2026-09-15, PRE-DATA, late.**\n\nfrozen gates\n",
+    )
+    repo.commit("late amendment", T0 + 300)
+    assert run(repo) == 1
+    assert "PRE-DATA amendment 1" in capsys.readouterr().err
+
+
+def test_a_result_doc_linking_a_flat_prereg_can_echo_allow_dirty(repo: Repo, capsys) -> None:
+    repo.write("docs/experiments/exp60_x_prereg.md", "# prereg\n\nfrozen gates\n")
+    repo.write(
+        "docs/experiments/60_results.md",
+        "Prereg: [exp60_x_prereg.md](exp60_x_prereg.md). Records carry `allow_dirty: true`.\n",
+    )
+    repo.commit("prereg", T0)
+    repo.data("exp60_trials.jsonl", [T0 + 100], {"allow_dirty": True})
+    repo.commit("data", T0 + 200)
+    assert run(repo) == 0, capsys.readouterr().err
+
+
+def test_a_not_governed_entry_naming_a_missing_file_fails(repo: Repo, capsys) -> None:
+    _flat_prereg(repo, "exp60_x_prereg.md")
+    repo.commit("prereg", T0)
+    repo.data("exp60_trials.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    assert run(repo, not_governed={"docs/experiments/data/gone.json": "x"}) == 1
+    assert "no longer exists" in capsys.readouterr().err

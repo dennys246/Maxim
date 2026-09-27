@@ -109,8 +109,11 @@ earns. The perception fabric and the microduck wait for a second robot body.
 - **Minecraft world nodes read as a stale geometry on first load.** A gained modality's geometry
   tag now includes the sensors' declared ranges (the `saturation` range changed and the old tag
   could not see it, so stored world nodes silently matched across a changed space). Existing
-  world nodes load with a one-line warning; `maxim substrate invalidate --drop-geometry` removes
-  them. Interoception and audio are untouched.
+  world nodes load with a one-line warning. To remove them, print the session's geometry census
+  with `maxim substrate invalidate --session <ID>`, then run `maxim substrate invalidate --session <ID>
+  --modality world --drop-geometry <stale-tag> --apply` (without `--apply` it is a dry run).
+  Interoception and audio are untouched. *(Corrected 2026-09-27: the notes first gave the command
+  without its required arguments.)*
 - **NAc state and bundles can now carry `cluster_fear`** (the learned situation fear). Bundles
   export it clamped and allowlisted; ingest bounds it, refuses an out-of-allowlist failure mode,
   and applies the 0.75 foreign-fear discount. Pair 1.3 exporters with 1.3 receivers.
