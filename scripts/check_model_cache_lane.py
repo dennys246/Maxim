@@ -2,8 +2,10 @@
 """Assert the nightly model-cache lane actually EXECUTED its tests (score card: Test/CI truthfulness).
 
 Reads the lane's junit XML and fails unless every skip is on an EXPLICIT allow-list with a
-reason — ``ALLOWED_SKIPS`` for test ids, ``ALLOWED_MODULE_SKIPS`` for module-scope
-``importorskip`` collection skips (empty junit classname). The previous check was
+reason — ``ALLOWED_SKIPS``, for test ids only. A module-scope collection skip (empty junit
+classname: a module whose optional import is absent) is ALWAYS a failure: the lane installs what
+it collects instead. The module allow-list that used to excuse them grew with every console test
+file and kept the lane red for 16 nights (1.3.1). The previous check was
 `executed >= 12`, a floor that could not see WHICH tests were vacuous; now a skip is either
 named-and-explained here or it fails the lane. Adding an entry is a reviewed, visible act,
 and ``tests/unit/test_model_cache_names.py`` asserts every test-id entry is in the lane's
@@ -39,18 +41,6 @@ ALLOWED_SKIPS: dict[str, str] = {
     ),
 }
 
-# Module-scope skips (`pytest.importorskip` at import time) have an EMPTY junit classname
-# and are reported by MODULE, not by test id. They arrive because the lane's `pytest tests/`
-# collects every module before `-m` deselects; a module whose optional import is absent
-# skips at collection. Listed by module with the dependency that gates them.
-ALLOWED_MODULE_SKIPS: dict[str, str] = {
-    "tests.unit.test_console_event_seam": "module-scope importorskip('fastapi') — the console extra is not installed in this lane",
-    "tests.unit.test_console_identity": "module-scope importorskip('fastapi')",
-    "tests.unit.test_console_launcher_seams": "module-scope importorskip('fastapi')",
-    "tests.unit.test_console_server": "module-scope importorskip('fastapi')",
-    "tests.unit.test_console_talk": "module-scope importorskip('fastapi')",
-}
-
 
 def test_id(case: ET.Element) -> tuple[str, bool]:
     """(id, is_module_scope). An empty classname means a COLLECTION skip, whose `name`
@@ -82,10 +72,12 @@ def check(xml_path: Path) -> int:
     for c in skipped:
         tid, module_scope = test_id(c)
         reason = (c.find("skipped").get("message") or "").strip()
-        allowed = ALLOWED_MODULE_SKIPS if module_scope else ALLOWED_SKIPS
-        if tid in allowed:
-            kind = "module" if module_scope else "test"
-            print(f"  allowed {kind} skip: {tid} — {allowed[tid]}")
+        if module_scope:
+            # Never allow-listed: a module that cannot import here needs its dependency INSTALLED in
+            # the lane (the workflow's install step), not an excuse.
+            unlisted.append((tid, f"module skipped at collection -- install what it imports: {reason}"))
+        elif tid in ALLOWED_SKIPS:
+            print(f"  allowed test skip: {tid} — {ALLOWED_SKIPS[tid]}")
         else:
             unlisted.append((tid, reason))
     if executed == 0:

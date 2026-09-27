@@ -364,6 +364,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A release now waits for green nightlies, and the model-cache nightly can go green again.** The
+  model-cache lane skipped console test modules at collection (its environment lacked the `console`
+  extra) and excused them in an allow-list that grew with every new console test file — it was red 16
+  nights running. The lane now installs what it collects and fails any collection-time skip.
+  `scripts/check_nightlies.py` reads the latest scheduled run and refuses unless every nightly job
+  succeeded; the `release-build` job runs it on the release PR, and the publication guide makes it a
+  step before publishing.
+
 - **`PerceptTraceBuffer` is Dormant (R4's look-back design review,
   [docs/plans/lookback_primitive.md](docs/plans/lookback_primitive.md)).** It was never constructed in
   production: NAc grew its own eligibility trace instead of reading it, and the review decided that no
