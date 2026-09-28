@@ -209,6 +209,10 @@ def build_tool_registry(
 
             # Mode switch requires callbacks - provide defaults if maxim not available
             def get_mode() -> str:
+                # the operator's launch grant is the current capability when set (#829)
+                granted = getattr(maxim, "launch_operational_mode", None) if maxim is not None else None
+                if isinstance(granted, str) and granted:
+                    return granted
                 if maxim is not None and hasattr(maxim, "mode"):
                     return str(getattr(maxim, "mode", "observe"))
                 return "observe"

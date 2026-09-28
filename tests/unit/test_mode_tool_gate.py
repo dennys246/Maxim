@@ -126,8 +126,8 @@ def test_the_real_passive_registry() -> None:
 @pytest.mark.parametrize(("run_mode", "bash_runs"), [("live", True), ("passive", False), ("agentic", True)])
 def test_the_robot_runtimes_run_mode_reaches_the_gate(run_mode, bash_runs) -> None:
     """The embodied runtime seeds state.data["mode"] from its run mode; before, every robot run but
-    exploration fell back to "observe" (passive). "agentic" names no mode table entry: unrestricted,
-    as the roster treats it."""
+    exploration fell back to "observe" (passive). "agentic" is active-class since #829 (an unknown name
+    would fail closed, enforced as passive)."""
     from maxim.embodied_runtime.agentic_runtime import seed_run_mode
 
     class _State:

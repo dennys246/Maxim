@@ -118,6 +118,7 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         novelty_tracker: "NoveltyTracker | None" = None,
         simulation: bool = False,
         robot_id: str | None = None,
+        operational_mode: str | None = None,
     ):
         # Apply hardware env guards (mp start method, GPU detection, OpenGL)
         _setup_hardware_env()
@@ -190,6 +191,8 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
             mode = "train" if bool(train) else "live"
         self.mode = mode
         self.train = self.mode == "train"
+        # the operator's launch grant (#829); None = the run mode decides, as before
+        self.launch_operational_mode = operational_mode
 
         self.observation_period = 1
         self.audio = bool(audio)
@@ -917,7 +920,8 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
 
         if getattr(self, "_woke_up", False):
             requested = str(getattr(self, "requested_mode", "") or "").strip().lower()
-            if requested not in ("reflection", "exploration", "live", "train", "agentic"):
+            # a capability-only request (passive / active, #829) keeps the run mode: do not park the head
+            if requested not in ("reflection", "exploration", "live", "train", "agentic", "passive", "active"):
                 try:
                     if self._robot is not None:
                         self._robot.goto_sleep()

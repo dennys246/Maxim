@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 import time
 from collections.abc import Sequence
+from typing import Any
 
 from maxim.cli_parser import _build_parser
 from maxim.utils.data_management import build_home
@@ -566,20 +567,152 @@ def _dispatch_hivemind_cli(raw_argv: list[str]) -> int | None:
 _RUNTIME_SWITCHABLE_MODES = ("sleep", "live", "agentic", "passive", "active")
 
 
-def _runtime_mode_switch_allowed(requested: str) -> bool:
+# one-shot actions that exit before any agent is built, so a grant alongside them would be ignored
+_NO_AGENT_ACTIONS = ("list_models", "delete_model", "clear_memory", "generate_simulation", "audit_architecture")
+
+
+def _explicit_mode_flag(raw_argv: Sequence[str] | None) -> bool:
+    """Whether the operator passed ``--mode`` explicitly, in either ``--mode X`` or ``--mode=X`` form."""
+    return any(arg == "--mode" or arg.startswith("--mode=") for arg in (raw_argv or []))
+
+
+def _validate_operational_grant(args: Any, raw_argv: Sequence[str] | None) -> int | None:
+    """Refuse ``--operational-mode`` where it would be silently ignored, and announce singularity (#829).
+
+    The grant is honoured by the paths that build their executor from these args: the CLI agent loop
+    (``--mode agentic``) and the robot runtime (the other run modes). It is refused, not ignored, with
+    ``--sim`` / ``--research`` / ``--benchmark`` / ``--foundry`` (their AUTs run active by design), with a
+    one-shot action that builds no agent, and without an explicit ``--mode`` (which would fall to the
+    menu or server mode). Returns an exit code
+    to stop with, or None to continue.
+    """
+    granted = getattr(args, "operational_mode", None)
+    if not granted:
+        return None
+    ignoring = [flag for flag in ("sim", "research", "benchmark", "foundry") if getattr(args, flag, None)]
+    no_agent = [flag for flag in _NO_AGENT_ACTIONS if getattr(args, flag, None)]
+    reason = None
+    if ignoring:
+        reason = f"--operational-mode is not honoured with --{ignoring[0]} (its agent runs in active mode by design)"
+    elif no_agent:
+        reason = f"--operational-mode has nothing to grant with --{no_agent[0].replace('_', '-')} (it runs no agent)"
+    elif not _explicit_mode_flag(raw_argv):
+        reason = "--operational-mode needs an explicit --mode (e.g. --mode agentic, or a robot run mode)"
+    if reason is not None:
+        print(f"maxim: error: {reason}", file=sys.stderr)
+        return 2
+    if granted == "singularity":
+        message = (
+            "OPERATIONAL MODE: singularity, granted at launch by --operational-mode. The agent may execute "
+            "code. It cannot enter this mode on its own; you launched it here."
+        )
+        logging.getLogger(__name__).warning(message)
+        print(f"maxim: warning: {message}", file=sys.stderr)
+    return None
+
+
+def _apply_operational_grant(executor: Any, granted: str | None) -> None:
+    """Make the operator's ``--operational-mode`` the mode dispatch enforces (#829)."""
+    if granted:
+        executor.set_operational_override(granted)
+        logging.getLogger(__name__).info("Operational mode %s granted at launch (--operational-mode).", granted)
+
+
+def _registry_operational_mode(args: Any, is_sim: bool) -> str:
+    """The operational mode the CLI tool registry is built for: the grant, else the historical default."""
+    return getattr(args, "operational_mode", None) or ("active" if is_sim else "passive")
+
+
+def _current_operational_mode(args: Any) -> str:
+    """The operational mode a ROBOT-runtime process runs in (the only path that reaches the runtime
+    mode-switch loop): the operator's grant, else the one its run mode implies through the legacy map
+    (the robot runtime seeds dispatch from the run mode)."""
+    from maxim.modes.definitions import get_mode
+
+    granted = str(getattr(args, "operational_mode", "") or "").strip().lower()
+    if granted:
+        return granted
+    implied = get_mode(str(getattr(args, "mode", "") or "exploration"))
+    return implied.name if implied is not None else "passive"
+
+
+def _runtime_mode_switch_allowed(requested: str, *, current_operational: str, granted: str | None) -> bool:
     """Whether a runtime ``requested_mode`` may be re-exec'd into.
 
-    #821 backstop at the seam every runtime mode request passes through: a code-executing mode is
-    refused whoever wrote ``requested_mode`` (the agent's ``ModeSwitchTool`` refuses it first).
+    The seam every runtime mode request passes through. A code-executing mode is refused whoever wrote
+    ``requested_mode`` (#821). EVERY request -- an operational name or a run mode -- may only lower
+    the capability the process would run with afterwards (#924 strict, applied at this seam, #829): an
+    operational name IS that capability; a run mode keeps the operator's grant, else implies its own.
+    Only the operator's launch flag raises capability.
     """
-    from maxim.modes.definitions import executes_code
+    from maxim.modes.definitions import OPERATIONAL_MODES, executes_code, get_mode, raises_capability
 
+    log = logging.getLogger(__name__)
     if executes_code(requested):
-        logging.getLogger(__name__).warning(
-            "Refusing runtime switch into %r: a code-executing mode cannot be entered at runtime.", requested
+        log.warning("Refusing runtime switch into %r: a code-executing mode cannot be entered at runtime.", requested)
+        return False
+    if requested not in _RUNTIME_SWITCHABLE_MODES:
+        return False
+    if requested in OPERATIONAL_MODES:
+        target = requested
+    elif granted:
+        target = granted
+    else:
+        implied = get_mode(requested)
+        target = implied.name if implied is not None else "passive"
+    if raises_capability(current_operational, target):
+        log.warning(
+            "Refusing runtime switch to %r: it would raise capability %s -> %s; only the operator can grant "
+            "that (relaunch with --operational-mode).",
+            requested,
+            current_operational,
+            target,
         )
         return False
-    return requested in _RUNTIME_SWITCHABLE_MODES
+    return True
+
+
+def _after_run_mode_request(args: Any, maxim: Any, mode: str) -> str | None:
+    """Act on the run's ``requested_mode`` once the robot runtime returns (#829). Re-execs (does not
+    return) for an allowed switch; returns the run mode to continue with in-process when the re-exec
+    fails, or None to stop. A request for the state the process is already in stops cleanly instead of
+    restarting it (a model that kept asking would otherwise restart the run forever)."""
+    from maxim.modes.definitions import OPERATIONAL_MODES
+
+    log = logging.getLogger(__name__)
+    requested = getattr(maxim, "requested_mode", None) if maxim is not None else None
+    if not requested:
+        return None
+    requested = str(requested).strip().lower()
+    if requested == "shutdown":
+        log.info("Shutdown requested.")
+        return None
+    current_operational = _current_operational_mode(args)
+    if requested == mode or (requested in OPERATIONAL_MODES and requested == current_operational):
+        log.info("Mode request %r: already there; not restarting.", requested)
+        return None
+    granted = getattr(args, "operational_mode", None)
+    if not _runtime_mode_switch_allowed(requested, current_operational=current_operational, granted=granted):
+        log.warning("Ignoring requested_mode=%r", requested)
+        return None
+    log.info("Switching mode: %s -> %s", mode, requested)
+    try:
+        delay_s = float(os.getenv("MAXIM_MODE_SWITCH_DELAY_S", "1.5") or 0.0)
+    except ValueError:
+        delay_s = 1.5
+    if delay_s > 0:
+        log.info("Waiting %.1fs before reconnect...", delay_s)
+        time.sleep(delay_s)
+    try:
+        _reexec_with_mode(args, mode=requested)
+    except Exception as e:  # noqa: BLE001 -- execv failures vary by platform; continue in-process
+        log.warning("Failed to restart Maxim for mode switch (%s); continuing in-process.", e)
+        if requested in OPERATIONAL_MODES:
+            args.operational_mode = requested  # a capability change keeps the run mode
+            return mode
+        args.mode = requested  # later gates derive the current capability from it
+        return requested
+    return None
 
 
 def _is_dm_campaign_yaml(path: Path) -> bool:
@@ -852,6 +985,8 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
     parser = _build_parser()
     args = parser.parse_args(raw_argv)
+    if (_grant_exit := _validate_operational_grant(args, raw_argv)) is not None:
+        return _grant_exit
 
     # ── Deterministic seeding (S4) — must run before heavy imports ───
     if getattr(args, "seed", None) is not None:
@@ -1698,7 +1833,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
     # If no meaningful action was specified, show quick-start guidance
     _has_sim = sim_path is not None
-    _has_mode_override = "--mode" in (raw_argv or [])
+    _has_mode_override = _explicit_mode_flag(raw_argv)
     _has_robot = getattr(args, "robot_name", "reachy_mini") != "reachy_mini" or "--robot" in (raw_argv or [])
     _is_leader = os.environ.get("MAXIM_ROLE", "").strip().lower() == "leader"
     _has_llm = os.environ.get("MAXIM_LLM_ENABLED", "").strip() == "1"
@@ -1858,7 +1993,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 # internet_policy, gateway, prompt_handler) ──
                 _is_sim_mode = getattr(args, "sim", None) is not None
 
-                _operational_mode = "active" if _is_sim_mode else "passive"
+                _operational_mode = _registry_operational_mode(args, _is_sim_mode)
                 try:
                     from maxim.interactive.prompts import create_handler
 
@@ -1927,6 +2062,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 _cli_pain_bus = _cli_instance.pain_bus
                 _cli_embodiment = _cli_instance.embodiment
                 executor = _cli_instance.executor
+                _apply_operational_grant(executor, getattr(args, "operational_mode", None))
                 # PFC deliberation: ThoughtGate + BioEnrichmentPipeline from BioStack
                 _cli_thought_gate = getattr(_cli_bio, "thought_gate", None) if _cli_bio is not None else None
                 _cli_bio_enrichment = (
@@ -2283,6 +2419,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 audio=audio_enabled,
                 audio_len=float(getattr(args, "audio_len", 5.0) or 5.0),
                 interactive=bool(getattr(args, "interactive", True)),
+                operational_mode=getattr(args, "operational_mode", None),
             )
 
             if mode == "sleep":
@@ -2321,31 +2458,10 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
             except Exception:
                 pass
 
-        requested = getattr(maxim, "requested_mode", None) if maxim is not None else None
-        if not requested:
+        next_mode = _after_run_mode_request(args, maxim, mode)
+        if next_mode is None:
             break
-        requested = str(requested).strip().lower()
-        if requested == "shutdown":
-            logger.info("Shutdown requested.")
-            break
-        if _runtime_mode_switch_allowed(requested):
-            logger.info("Switching mode: %s -> %s", mode, requested)
-            delay_s = 0.0
-            try:
-                delay_s = float(os.getenv("MAXIM_MODE_SWITCH_DELAY_S", "1.5") or 0.0)
-            except Exception:
-                delay_s = 1.5
-            if delay_s > 0:
-                logger.info("Waiting %.1fs before reconnect...", delay_s)
-                time.sleep(delay_s)
-            try:
-                _reexec_with_mode(args, mode=requested)
-            except Exception as e:
-                logger.warning("Failed to restart Maxim for mode switch (%s); continuing in-process.", e)
-                mode = requested
-                continue
-        logger.warning("Ignoring unknown requested_mode=%r", requested)
-        break
+        mode = next_mode
 
     return 0
 

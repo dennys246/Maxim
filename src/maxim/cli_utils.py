@@ -451,10 +451,22 @@ def configure_cpu_fallback_model(logger: logging.Logger, home_dir: str = "data")
 
 
 def reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
-    """Restart the process in a new operational mode via os.execv."""
+    """Restart the process in a new mode via os.execv.
+
+    Two vocabularies (#829): an OPERATIONAL name (passive / active / singularity) re-execs with the SAME
+    run mode and ``--operational-mode <name>``; any other name is a RUN mode (``--mode <name>``) and
+    keeps the current ``--operational-mode``. Before, an operational name went to ``--mode``, which
+    argparse rejected (exit 2).
+    """
+    from maxim.modes.definitions import OPERATIONAL_MODES
+
     mode = str(mode or "").strip().lower()
     if not mode:
         return
+    operational = str(getattr(args, "operational_mode", "") or "").strip().lower() or None
+    if mode in OPERATIONAL_MODES:
+        operational = mode
+        mode = str(getattr(args, "mode", "") or "exploration").strip().lower()
 
     audio_flag = bool(getattr(args, "audio", True))
     if mode == "sleep":
@@ -497,6 +509,8 @@ def reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
         argv.append("--reset")
     if bool(getattr(args, "enable_embeddings", False)):
         argv.append("--enable-embeddings")
+    if operational:
+        argv.extend(["--operational-mode", operational])
     os.execv(sys.executable, argv)
 
 

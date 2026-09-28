@@ -23,6 +23,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`--operational-mode passive|active|singularity`: the operator's launch grant for capability**
+  (#829, owner decisions).
+  - The CLI had no way to choose the operational mode. It came from the run mode, through the legacy
+    name map.
+  - The flag is the human path #924's strict rule assumes. It sets the mode dispatch enforces, what the
+    model is shown (the tool roster, context prompt and Default Network), and the tool registry's file
+    containment. It works in the CLI agent loop (`--mode agentic`) and the robot runtime (the other run
+    modes).
+  - It needs an explicit `--mode`, and it is refused (exit 2), never silently ignored, with `--sim`,
+    `--research`, `--benchmark` or `--foundry`, or with a one-shot action that runs no agent
+    (`--list-models`, `--delete-model`, `--clear-memory`, `--generate-simulation`,
+    `--audit-architecture`).
+  - `singularity` (code execution) is reachable only this way, announced on stderr and in the log.
+  - Without the flag, the mode a run starts in is unchanged. How runtime mode requests are handled
+    changes with or without it (see Changed).
+
 ### Security
 
 - **Downloads and backend URLs check the address they actually connect to** (#921; the #824 fix,
@@ -83,13 +101,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Runtime mode requests work, and can only lower capability** (#829).
+  - A runtime request for `passive`/`active` re-exec'd with `--mode passive`, which argparse rejected
+    (exit 2). Operational names now re-exec with the same run mode and `--operational-mode`.
+  - Every runtime request, operational or run mode, may only lower the capability the process would
+    run with afterwards. Only the launch flag raises it.
+  - A request for the state the process is already in no longer restarts it.
+  - A capability-only request no longer parks the robot's head.
+  - Without a grant, a robot started in a passive-class run mode (sleep, train, reflection) can no
+    longer re-exec itself into an active-class one (live, agentic, active). No shipped path requests
+    that today; the wake handler asks for `exploration`, which was never runtime-switchable.
+  - The run mode `agentic` now has a definition (active-class). It is read by the capability checks
+    on mode requests; no shipped path enforces it at dispatch (the `--mode agentic` CLI loop runs
+    passive), so no run's tool access changes.
+  - A mode name that resolves to no definition now fails closed: it is enforced as passive, never as
+    unrestricted.
+
 - **The agent can no longer raise its own mode capability** (#924, owner decision 2026-09-27). The
   model's `mode_switch` tool now refuses any switch that gains capability — passive → active (it gains
   acting on the host) as well as any switch into singularity (#821) — and still allows lowering (active
   → passive, singularity → anything). "Gains capability" is derived from the mode definitions
   (`modes.definitions.raises_capability`, over the same dispatch refusals #826 enforces), so a new mode
-  is covered automatically. An unknown target fails closed; an unknown current mode (the agentic
-  runtime's `"agentic"`) may still lower itself. This reverses 1.3.1's "passive → active is
+  is covered automatically. An unknown target fails closed; an unknown current mode (then
+  `"agentic"`) may still lower itself (#829, above, now defines `agentic` and judges an unknown current
+  mode as passive). This reverses 1.3.1's "passive → active is
   unchanged": only a human can grant a raise, which becomes possible once the in-session approval
   surface (#922) exists. **Latent today:** no shipped runtime registers `mode_switch` (it needs an
   `autonomy_controller`); the rule is fixed before #829 makes the mode re-exec path work.

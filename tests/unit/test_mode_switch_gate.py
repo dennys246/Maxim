@@ -87,10 +87,11 @@ def test_raises_capability_is_derived_from_dispatch_enforcement() -> None:
     assert raises_capability("singularity", "active") is False
     assert raises_capability("passive", "passive") is False
     assert raises_capability("passive", "no-such-mode") is True  # unknown TARGET: fail closed
-    # unknown CURRENT (the agentic runtime runs as "agentic"): unrestricted, as dispatch treats it --
-    # lowering out of it is free, but entering a code-executing mode is still refused (#821)
+    # "agentic" (the robot runtime's run mode) is active-class since #829; an UNKNOWN current mode is
+    # judged as passive, which is what dispatch enforces for it
     assert raises_capability("agentic", "passive") is False
     assert raises_capability("agentic", "active") is False
+    assert raises_capability("no-such-mode", "active") is True
     assert raises_capability("agentic", "singularity") is True
 
 
@@ -217,10 +218,10 @@ def test_real_registry_wiring_never_sets_requested_mode_to_singularity() -> None
 def test_cli_seam_refuses_a_code_executing_mode() -> None:
     from maxim.cli import _runtime_mode_switch_allowed
 
-    assert _runtime_mode_switch_allowed("singularity") is False
-    assert _runtime_mode_switch_allowed("active") is True
-    assert _runtime_mode_switch_allowed("live") is True
-    assert _runtime_mode_switch_allowed("no-such-mode") is False
+    assert _runtime_mode_switch_allowed("singularity", current_operational="singularity", granted=None) is False
+    assert _runtime_mode_switch_allowed("active", current_operational="active", granted=None) is True
+    assert _runtime_mode_switch_allowed("live", current_operational="active", granted=None) is True
+    assert _runtime_mode_switch_allowed("no-such-mode", current_operational="active", granted=None) is False
 
 
 # ── #827: no approval surface means no silent "pending"; a mode with nowhere to apply is a failure ──

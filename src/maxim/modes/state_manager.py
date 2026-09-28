@@ -244,7 +244,7 @@ class StateManager:
         if executes_code(mode):
             self._log.warning(
                 "Refused a phrase request for '%s': a spoken or typed phrase cannot enter a code-executing "
-                "mode (#828). Start maxim in that mode deliberately instead.",
+                "mode (#828). Launch with --operational-mode singularity to grant it deliberately.",
                 mode,
             )
             return False

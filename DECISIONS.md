@@ -2,6 +2,55 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-09-28 — The operational mode is a launch grant, separate from the run mode (#829)
+
+### Decision
+
+Owner decisions, three at the design step and one at review:
+
+1. **Two axes, two flags.** `--mode` stays the run mode (exploration, agentic, sleep, live, train,
+   reflection). `--operational-mode passive|active|singularity` is the operator's launch grant for
+   capability.
+   - It sets the mode dispatch enforces (`Executor.set_operational_override`), what the model is shown
+     (`agent_loop._effective_mode`: roster, context prompt, Default Network) and the registry's file
+     containment.
+   - It is honoured by the CLI agent loop (`--mode agentic`) and the robot runtime.
+   - It needs an explicit `--mode`. It is refused (exit 2) with `--sim`/`--research`/`--benchmark`/
+     `--foundry`, whose AUTs run active by design, and with the one-shot actions that run no agent.
+   - Every runtime request may only LOWER the capability the process would run with afterwards: an
+     operational name is that capability, and a run mode keeps the grant, else implies its own.
+   - A request for the current state is a no-op, not a restart.
+2. **Singularity is reachable only by the explicit launch flag**, announced on stderr and in the log. The
+   tool, the heard phrase and the runtime re-exec all refuse it. The grant persists across run-mode
+   re-execs (a sleep/wake cycle; without a grant, waking from a passive-class run mode into an
+   active-class one is a raise and is refused). #922's time-boxed, in-session grant will supersede that persistence.
+3. **`--mode agentic` is defined (active-class), and an unknown mode name fails closed**: it is enforced
+   as passive, never as unrestricted. `raises_capability` judges an unknown current mode as passive too,
+   so the predicate and dispatch agree. On shipped paths `agentic` reaches the predicate (the
+   `ModeSwitchTool` reads the run mode) and the in-process re-exec fallback. No shipped writer puts it in
+   the loop state, so no dispatch changes.
+4. **A small, explicit exception to the 1.3.2 `agent_loop` fence** (owner, at review). Three read sites
+   now resolve the mode through `_effective_mode`, so a raising grant is not a silent no-op at the
+   prompt.
+
+### Reason
+
+Operational names reached `--mode`, which rejected them (exit 2). There was no launch path to a chosen
+capability, although #924's strict rule depends on one. Review found the grant reaching dispatch but not
+the prompt, and silently ignored on sim paths. Both are the silent-no-op shape the rules forbid.
+
+### Tradeoffs
+
+- Without the flag, file containment and dispatch can still disagree: the robot runtime and the CLI sim
+  fall-through, #960. That predates #829, and changing either side changes capability.
+- It lands ahead of #834's typed `GrantAuthority`. The grant is a bare string for now, and #834 will
+  retrofit it.
+- The wake handler's `exploration` request is still not runtime-switchable (pre-existing). Without a
+  grant, a passive-class run mode (sleep, train, reflection) cannot re-exec into an active-class one
+  (live, agentic, active): the lower-only rule applies to run modes too. A robot meant to wake into an
+  active run mode must be launched with `--operational-mode active`.
+
+
 ## 2026-09-28 — Downloads stay in the class of their first dial; operator paths let a proxy win (#921)
 
 ### Decision
@@ -91,7 +140,7 @@ switch raises capability when:
 - or the target drops the confirmation requirement.
 
 An unknown target counts as a raise. An unknown current mode (the agentic runtime's `"agentic"`) counts
-as unrestricted, as dispatch treats it, but still may not enter a code-executing mode. The rule is latent
+as unrestricted, as dispatch treats it, but still may not enter a code-executing mode. (Superseded by #829: `agentic` is defined, and an unknown current mode is judged as passive.) The rule is latent
 today: no shipped runtime registers `mode_switch`.
 
 This holds until the in-session human approval surface (#922, 1.4) exists. A capability-raising request is

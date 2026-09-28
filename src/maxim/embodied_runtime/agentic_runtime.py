@@ -491,12 +491,14 @@ class AgenticRuntimeMixin:
         _t_tools = time.time()
         # Pass maxim=None when headless so robot tools get no-op stubs
         _maxim_for_tools = self if (hasattr(self, "_capabilities") and self._capabilities.has_robot) else None
+        _granted_mode = getattr(self, "launch_operational_mode", None)
         registry = build_tool_registry(
             maxim=_maxim_for_tools,
             response_output=response_output,
             internet_policy_getter=internet_policy_getter,
             gateway=gateway,
             state_manager=self._state_manager,
+            **({"operational_mode": _granted_mode} if _granted_mode else {}),
         )
         # --- Learned Tool Index ---
         # Keyword-weighted hashtable for tool relevance scoring in prompts.
@@ -621,6 +623,9 @@ class AgenticRuntimeMixin:
         else:
             executor = build_executor(registry, pain_bus=None, permissions=None)
             self._tool_pain_bridge = None
+        if _granted_mode:
+            # the operator's launch grant (#829) is the mode dispatch enforces, over the seeded run mode
+            executor.set_operational_override(_granted_mode)
 
         # Layer 3a (Track 1 of embodiment_runtime_wiring.md): route the
         # executor's Embodiment into the memory hub so memory_agent's

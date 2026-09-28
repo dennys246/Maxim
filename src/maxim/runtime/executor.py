@@ -115,6 +115,9 @@ class Executor:
         # only the prompt, so a tool outside it still ran when the model named it. Set by the agent
         # loop, which owns the mode (``set_mode_source``); None = no mode restriction.
         self._mode_source: Callable[[], str | None] | None = None
+        # The operator's launch grant (`--operational-mode`, #829): when set it IS the mode dispatch
+        # enforces, whatever the loop's run mode says. None = the mode source decides, as before.
+        self._operational_override: str | None = None
         self._lock = threading.Lock()
         # (tool_name, start_time, invocation_id) or None
         self._running: tuple[str, float, str] | None = None
@@ -145,20 +148,51 @@ class Executor:
         """Read the live operational mode from ``source`` at every dispatch (#826). None clears it."""
         self._mode_source = source
 
+    @property
+    def operational_override(self) -> str | None:
+        """The operator's launch grant, or None (#829). The agent loop's prompt roster, context prompt
+        and Default Network read it through ``agent_loop._effective_mode``, so what the model is SHOWN
+        matches what dispatch ENFORCES."""
+        return self._operational_override
+
+    def set_operational_override(self, mode: str | None) -> None:
+        """The operator's launch grant (#829): ``mode`` becomes the operational mode dispatch enforces,
+        taking precedence over the loop's run mode. None clears it. An unknown name is refused here, at
+        launch, rather than failing closed at every dispatch."""
+        from maxim.modes.definitions import get_mode  # noqa: PLC0415 -- runtime layer, read lazily
+
+        if mode is not None and get_mode(mode) is None:
+            raise ValueError(f"unknown operational mode {mode!r}")
+        self._operational_override = mode
+
     def _mode_denial(self, tool_name: str) -> str | None:
         """Why the LIVE mode refuses to run *tool_name* (canonical name), or None (#826).
 
         By capability (``ModeDefinition.dispatch_refusal``): the mode's forbidden tools and the tools
         its capabilities exclude -- for passive, the host-acting ones. The mode's allow-list shapes the
-        prompt only. An unknown mode restricts nothing, as the prompt roster treats it.
+        prompt only. The operator's launch grant (``set_operational_override``) takes precedence over
+        the run mode. A mode NAME that resolves to no definition fails closed (#829): it is enforced as
+        passive, never as unrestricted. No mode at all (no source, or a source returning nothing)
+        restricts nothing, as before.
         """
-        if self._mode_source is None:
-            return None
         from maxim.modes.definitions import get_mode  # noqa: PLC0415 -- runtime layer, read lazily
 
-        mode_name = self._mode_source()
-        mode_def = get_mode(mode_name) if isinstance(mode_name, str) and mode_name else None
-        return mode_def.dispatch_refusal(tool_name) if mode_def is not None else None
+        if self._operational_override is not None:
+            mode_name: str | None = self._operational_override
+        elif self._mode_source is not None:
+            mode_name = self._mode_source()
+        else:
+            return None
+        if not isinstance(mode_name, str) or not mode_name:
+            return None
+        mode_def = get_mode(mode_name)
+        if mode_def is None:
+            passive = get_mode("passive")
+            if passive is None:  # pragma: no cover - the mode table always defines passive
+                raise RuntimeError("the passive mode definition is missing")
+            refusal = passive.dispatch_refusal(tool_name)
+            return f"{refusal} (the mode {mode_name!r} is unknown, so it is enforced as passive)" if refusal else None
+        return mode_def.dispatch_refusal(tool_name)
 
     def _permission_denial(self, tool_name: str, *, deny_only: bool = False) -> str | None:
         """Return the denial reason for *tool_name*, or ``None`` when allowed.

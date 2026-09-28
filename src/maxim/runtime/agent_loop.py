@@ -2152,6 +2152,18 @@ def _prepare_executor(executor: Any, action_sink: Any, state: Any) -> Any:
     return executor
 
 
+def _effective_mode(executor: Any, state: Any, default: str) -> str:
+    """The operational mode the prompt roster, context prompt and Default Network use: the operator's
+    launch grant when one is set (``Executor.operational_override``, #829), else the loop's own state
+    mode -- the SAME precedence the executor's dispatch gate applies, so what the model is shown matches
+    what dispatch enforces. (A deliberate, owner-approved exception to the 1.3.2 decomposition fence.)"""
+    granted = getattr(executor, "operational_override", None)
+    if isinstance(granted, str) and granted:
+        return granted
+    mode = state.data.get("mode", default) or default
+    return str(mode) if mode else ""
+
+
 def run_agentic_loop(
     agent: Any,
     environment: Any,
@@ -2498,9 +2510,9 @@ def run_agentic_loop(
             log_agentic("agent_loop", "shutdown", {"reason": "shutdown_mode"})
             break
 
-        # Configure Default Network for current mode
-        if current_mode:
-            ctrl.configure_dn_for_mode(current_mode)
+        # Configure Default Network for current mode (the operator's grant wins, #829)
+        if _dn_mode := _effective_mode(executor, state, current_mode):
+            ctrl.configure_dn_for_mode(_dn_mode)
 
         # Check if autonomy is paused
         if autonomy_controller.is_paused:
@@ -4898,11 +4910,11 @@ def run_agentic_loop(
                         processed_cli_inputs.append(new_cli_input)
 
                     if context:
-                        # Get mode info
-                        mode_name = state.data.get("mode", "observe")
+                        # Get mode info -- the operator's grant wins, as at dispatch (#829)
+                        mode_name = _effective_mode(executor, state, "observe")
 
-                        # Get mode definition for tool access
-                        mode_def = get_mode(mode_name)
+                        # Get mode definition for tool access (unknown = passive, as dispatch enforces, #829)
+                        mode_def = get_mode(mode_name) or get_mode("passive")
                         available_tools_for_mode = set()
                         if mode_def and _all_tools:
                             available_tools_for_mode = mode_def.get_available_tools(_all_tools)

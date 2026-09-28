@@ -70,6 +70,7 @@ cards' deciding gaps are named where they apply.
 | M16 | A fix on an EARNED path is walked (burn-down ⟲ rule) | A diff-scoped check: a PR touching a file named in a ledger row's `Re-run on:` or `Regression guard:` must add a dated walk annotation to that row, or name the row in a `Ledger walk:` section of the PR body. | Research integrity |
 | M17 | Reproduce first (burn-down rule; "prove a guard by deleting it") | A CI job runs a PR's new or changed tests against its merge-base and requires at least one failure when the PR closes an issue labelled `bug`. | Test/CI truthfulness |
 | M18 | Every outbound path that takes an operator or remote URL picks an address policy (llm-routing brief, #921 invariant) | Make `address_policy` a required keyword on `fetch_url` / `download_to_file` and on non-internal `HTTPEndpoint`s, and have an AST check require `http_client=address_checked_client(...)` wherever an SDK client is built with a `base_url`. Omitting either then fails CI, not review. | Runtime correctness |
+| M19 | Every runtime that builds an executor applies the operator's `--operational-mode` grant, or refuses the flag (runtime-tools brief, #829) | A required keyword-only `operational_grant=` on `AgentFactory.create_full_agent` / the robot runtime's executor build, so a new runtime that forgets it is a `TypeError`. Folds into #834's typed `GrantAuthority`. | Runtime correctness |
 
 ## Where a thing goes — issue, plan, or here
 

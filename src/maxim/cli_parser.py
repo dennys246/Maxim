@@ -63,6 +63,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "reflection (memory consolidation).",
     )
     core.add_argument(
+        "--operational-mode",
+        type=str,
+        default=None,
+        choices=["passive", "active", "singularity"],
+        help="Operational mode (capability) the operator grants at launch: passive, active, or singularity "
+        "(code execution; logged loudly). Default: derived from the run mode. The agent itself can "
+        "never raise it at runtime (#924); this flag is the human grant (#829).",
+    )
+    core.add_argument(
         "--language-model",
         "--llm",
         type=str,

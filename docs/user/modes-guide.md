@@ -89,6 +89,16 @@ When no robot hardware is detected, Maxim runs in headless mode -- the full agen
 
 You do not have to restart Maxim to change modes.
 
+### Launch grant
+
+The operational mode (the capability) is chosen at launch with `--operational-mode passive|active|singularity`
+alongside an explicit `--mode` (#829); for example `maxim --mode agentic --operational-mode active`. Without
+it, the CLI agent loop runs passive and the robot runtime follows its run mode. At runtime the agent can only
+lower it; raising it takes a relaunch with the flag. That includes run-mode restarts: without a grant, a
+robot launched in a passive run mode (`sleep`, `train`, `reflection`) cannot restart itself into `live` or
+`agentic`, so launch it with `--operational-mode active` if it should. (The voice phrases below change the robot's
+state-manager mode, not what dispatch enforces.)
+
 ### Voice Commands
 
 - "Maxim sleep" -- agent enters sleep
@@ -96,7 +106,7 @@ You do not have to restart Maxim to change modes.
 - "Maxim passive" -- switch to planning (passive) mode
 - "Maxim active" -- switch to supervised (active) mode
 - "Maxim singularity" -- **refused**: a phrase is heard from any audio in the room, so it cannot enter the
-  code-executing mode (#828). Start Maxim in singularity mode deliberately instead.
+  code-executing mode (#828). Grant it deliberately at launch: `maxim --mode agentic --operational-mode singularity`.
 
 ### Agent Tools
 
