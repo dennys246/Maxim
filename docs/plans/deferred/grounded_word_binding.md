@@ -367,6 +367,35 @@ fail) — need the 384 ↔ 768 projection and their own prereg with the nearest-
 **Shared, owned by neither alone:** the `HEARD_WITH` shape, the situation-key shape (`{modality: …}` with
 embeddings), the look-back (R4), the claim sentences.
 
+## Alternate source — the coding world (added 2026-09-27; nothing built)
+
+[../coding_world.md](../coding_world.md) proposes a sandbox world in which Maxim's own actions produce text
+(tracebacks, test output) paired with independently measured outcomes. It is the kind of source the
+2026-09-20 audit asked for ("redesign the data source"). **It does not re-open this plan.** Its disposition
+depends on this plan's L0 result:
+
+- **L0 FAILS → this plan archives as written.** The coding world does not revive it. A later attempt on
+  the coding source is a new line, a second draw, and needs an owner decision recorded as such.
+- **L0 PASSES → the coding world is a declared alternate source**, behind its own gates, frozen before any
+  data:
+  - **Independence rule.** No sensor is parsed from the paired text. Sensors come from exit status or a
+    result file, are declared before capture, and carry a known-answer check. This blocks the survival
+    audit's finding 3: text that restates a sensor.
+  - **A coding L0.** The same pinned encoder and 0.44 threshold, five failure classes, a near-miss pair and
+    distractors, and m ≥ 5 blind-authored phrasings per class that **avoid the exception-type token**.
+    Otherwise word overlap wins trivially, which is the pre-declared primary risk. Pass criteria are
+    purity ≥ 0.9 and leave-one-out ≥ 0.8. A new **sensor half** asks whether the declared sandbox
+    sensors separate the classes at 0.85 through the real `SensorEncoder` and EC.
+  - **The paired-data audit.** `scripts/paired_data_audit.py`, unchanged, on natural (not staged)
+    failures, with the window fixed in advance.
+  - **Stack Overflow** question titles — only if the owner permits it (coding_world.md decision 5, whose
+    default is no use) — may serve only as held-out **test** phrasings: never training
+    data, pinned by post IDs plus the dump's SHA. It is not the grounded text, because it has no sensor
+    side.
+  - **Expected verdict risk: "labels".** Python and pytest messages are templates with open-vocabulary
+    fillers.
+  - **Ceiling:** at most "error classes and their paraphrases bind to measured sandbox situations".
+
 ## Guards and disciplines
 
 - **A template is a label.** If L0's vocabulary is still templates, claims say "a label".

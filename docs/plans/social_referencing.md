@@ -193,6 +193,34 @@ plan's join stage, not here — the v3 text said both, and this plan takes neith
 - **Rig:** big-mac-mini once quiet; the operator starts the Paper server (no model server: no LLM is in
   this loop). Budget ≈3–5 h.
 
+## Deferred sources — Stack Overflow (added 2026-09-27; nothing built)
+
+The owner asked whether Stack Overflow could serve as outside advice. It could, eventually, but it does
+not fit this plan's design as written.
+
+**Why it does not fit today:**
+- An Oasis entry is a situation cluster (an EC node with NAc fear/want rows) matched on a **sensed** key.
+  A Stack Overflow post is prose. Matching one to a sensed situation needs the language line's text key
+  (J2) and the cross-modal projection.
+- The foreign layer holds valences. Turning prose into a valence needs an LLM, and an LLM in the action
+  path is L6.
+
+**Revive when all of these hold:**
+- Exp C has EARNED the gate on sensed keys.
+- J2 and the projection exist.
+- The owner has decided licensing and provenance:
+  - CC BY-SA, which cannot be relabelled under the Oasis's CDLA-Permissive-2.0;
+  - a dump pinned by post IDs plus its SHA, with the repo committing IDs and scripts, never content;
+  - a separate signer, never `maxim-queen`, because Queen signing asserts Maxim's own lineage learned it;
+  - its own `trust(source)` prior.
+- A stale-advice condition can be constructed with pre-registered placement (pinned library versions).
+
+**Terms (checked 2026-09-27):**
+- The official dump has been account-gated since 2024 and its terms exclude LLM training.
+- Community mirrors continue on archive.org. Skip the watermarked 2025-06-30 dump.
+- The paid "Stack Data Licensing" targets LLM builders.
+- None of this project's uses needs it. Details: [coding_world.md](coding_world.md) §Stack Overflow.
+
 ## Guards and disciplines
 
 - A fix ships with a caller; gates are strict red gates on the real composition.

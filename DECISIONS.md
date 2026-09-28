@@ -2,6 +2,46 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-09-27 — The coding world revives coding_habits_oasis; Exp 55 leaves the Shared-perception deferral
+
+### Decision
+
+`docs/plans/deferred/coding_habits_oasis.md` is revived **by owner request** as a 1.4 parallel line,
+`docs/plans/coding_world.md`. Its written trigger ("a rung names the gap") has not fired. The old file
+stays as the record. The revival comes with five rules:
+
+1. **Exp 55 re-points** from the Shared-perception deferral to this line. It was bundled with the
+   physical trigger (a second body) but never needed one, because it is agent-to-agent transfer on one
+   body type.
+2. **Oracle harm labels** (for example "a failing test was deleted" or "a CWE pattern was introduced")
+   ride the 2026-09-12 harness-injected lane under all four of its rules. The oracle lives under
+   `scripts/`. It injects a pain valence into an interoceptive drive that is never on the world roster,
+   and each prereg names it as the independent variable. Measured world state (test outcomes, exit codes,
+   honeypot touches) stays D1.
+3. **No second credit store.** The act-bound aversive write is a PainBus *producer* for the existing
+   `NAc.credit_operant_reward` path.
+   - Roadmap 1.4 Phase 5's relief-store review only *reserves* the opposite sign on that seam.
+   - The producer is designed in its own review after the relief store's T5 decision.
+   - It is off by default and never set in an E-rung arm.
+4. **Default: no coding-world `src/` before the 1.4.0 cut**, so the line cannot gate 1.4.0 through T4.
+5. **Stack Overflow is not grounded text.** It has no sensor side. No Stack Overflow content is committed
+   and no LLM is trained on it. Its uses (held-out test phrasings, later advice) are owner decisions
+   listed in the plan, with "no use before social referencing's trigger" as the default.
+
+### Reason
+
+The survival-world paired-data audit ruled "redesign the data source". The aversive-conscience hand-off
+asks a question Maxim can answer honestly only where a harmful act is measurable. The deferred plan had
+already designed that world. Two-lens review found that the act-bound write mostly exists already
+(`credit_operant_reward`, Exp 56's teacher path). So the new piece is a producer, not a store.
+
+### Tradeoffs
+
+- This adds a parallel line with its own may-fail experiments. Mechanization backlog M12 allows at most
+  one claim-bearing experiment per line at a time.
+- Rule 4 delays any coding-world result to after 1.4.0.
+- The by-attention rules are mechanization backlog rows M10–M14 in `docs/plans/outstanding.md`.
+
 ## 2026-09-27 — The agent preamble is read from the Constitution (bugs ledger D32)
 
 ### Decision

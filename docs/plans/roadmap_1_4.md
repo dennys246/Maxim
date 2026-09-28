@@ -5,7 +5,7 @@
 [rationale/roadmap-1-4/](rationale/roadmap-1-4/)). Every lens returned DO-NOT-BUILD on at least one
 rung *as sketched* and none attacked the thesis or the ladder's order. v2 folds all of them
 (§Review record at the end lists what changed and what was dismissed). **Owner decisions taken
-2026-09-18:** (1) the "Shared perception" 1.4 (perception fabric + microduck + Exp 55 + breeding,
+2026-09-18:** (1) the "Shared perception" 1.4 (perception fabric + microduck + Exp 55 [re-pointed 2026-09-27 to coding_world.md] + breeding,
 sequenced in [deferred/second_body_staging.md](deferred/second_body_staging.md)) is **DEFERRED on a physical trigger** — it
 revives the day a second body exists (a real backend registered through `maxim.robots`, or the
 operator records the body's arrival), Stage A unchanged, the plan intact; (2) 1.4 continues the
@@ -331,7 +331,10 @@ infrastructure the review located, and the full four-lens review.
   but **unfingerprinted**.
 - **A cluster-keyed relief store (needed by E2).** New: a positive, world-keyed write from measured
   relief, beside the fear-only store. Front-gate against `credit_operant_reward` (teacher) and the
-  trace. Enters BEFORE Phase 3.
+  trace. Enters BEFORE Phase 3. **Its review also reserves the opposite sign on the same seam** (schema
+  and front-gate answer only) for the coding world's pain producer ([coding_world.md](coding_world.md) C3),
+  so no second store is ever created; that producer is designed later in its own review, off by default
+  and never set in an E-rung arm — it adds no scope to this review beyond the reservation.
 - **A graded predictor (anticipation).** Audit first: `anticipatory_pre_activate` + drive
   TemporalEvents (dormant on both ends) and `embodiment/cerebellum.py` (write live, read dormant —
   and, until [#908](https://github.com/dennys246/Maxim/issues/908) lands, never SAVED: the audit must
@@ -528,12 +531,21 @@ until the 1.3.2 decomposition slices touching it have landed.
    Exp C prereg (paper; its src waits for 1.3.2 and its rig time for E3).
 4. **E1's prereg drafted and design-reviewed** (four lenses) so it can freeze as soon as Phase 0's E1 part
    exists — paper now, freeze later.
+5. **The coding world's paper and offline half** ([coding_world.md](coding_world.md) C0, behind its own
+   flat prereg on main): three committed offline replays — does a second player (`nearest_player_dist`) enter Exp 60's water key at 0.85
+   (cosine and a fresh-EC replay under both first-exposure orders); the tamper break point of the shipped
+   ingest clamp as a pure `recommend_action` replay over donor-bundle pressure; do a draft `code_sandbox`
+   world roster's situations separate — and the line's four-lens design review. None touches loop code;
+   none needs the rig.
 
 **Rig order (Track C)** — one rig, one operator; no live run on code that is still moving:
 1. the complete Exp 10 re-run (1.3.2, right after #935);
 2. the live Exp 60 re-run (1.3.2, after the decomposition — it discharges the triggers the
    decomposition fires);
-3. 1.4's campaigns, starting with the schedule below.
+3. 1.4's campaigns, starting with the schedule below;
+4. after E3's campaign has run or its disposition is recorded, the parallel lines' rig work, one at a
+   time: social referencing's Exp C, then the coding world's Exp W Stage 2 (only if its offline replay
+   found a non-trivial region).
 
 ## Schedule that keeps the rig busy (scope lens SF-8)
 
@@ -601,6 +613,19 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   experience. **Depends on** [public_oasis.md](public_oasis.md) Phase 0 (scheduled for it); **src after
   1.3.2**; **rig after E3's campaign**; opt-in and never on in an E1–E3 arm. Its Exp C is a may-fail
   bet of its own, which is why it waits for E3 rather than sharing the release's headline.
+- **Coding world** ([coding_world.md](coding_world.md), PROPOSED 2026-09-27; revives
+  [deferred/coding_habits_oasis.md](deferred/coding_habits_oasis.md) by owner request, and Exp 55 with it):
+  does an aversion learned from pain bind to the **act or to being watched**? First on Exp 60's EARNED
+  fear with a second player as the observer (Exp W, D1-legal, no new mechanism — an offline key-geometry
+  replay first, since the key may simply not see the watcher); then in a coding world — a second world on
+  the 1.1.4 seam where Maxim applies hand-authored patch variants in a Docker sandbox, pain is measured,
+  and oracle labels are harness-only on the 2026-09-12 lane — with a tamper arm (Exp K), then Exp 55's
+  transfer. **Front-gate:** `credit_operant_reward` already writes a signed, action-bound value to the
+  world cluster; what is missing is a pain producer for it (C3), which §Phase 5's relief-store review only
+  reserves a sign for. **Stack Overflow is not grounded text** (no sensor side; no need to pay); its
+  advice use and the coding world's language use live in social referencing and grounded word binding.
+  **Now:** Groundwork item 5. **Default: no coding-world `src/` before the 1.4.0 cut**, so nothing here
+  gates 1.4.0; never active in an E1–E3 arm; rig per Track C item 4. Claims are candidate 1.5 headlines.
 
 ## What is NOT in 1.4
 
@@ -613,6 +638,8 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
 - **Hostile classrooms, crafting, farming, shelter** — behind R4's routing audit and E3.
 - **Hivemind promotion** — unchanged from 1.2's WRITE-ONLY posture.
 - **A benchmark framework.** Phase 0 extracts what three harnesses share and stops.
+- **Coding-world claims** (Exp W's confirmatory stage, Exp K, Exp 55, external safety suites,
+  outreach) — a parallel line whose claims are candidate 1.5 headlines ([coding_world.md](coding_world.md)).
 
 ## Risks, and what each turns into
 
@@ -629,6 +656,9 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   `NAc_RECOMMEND(passed_gate)` → `calls[]` entry, or the row is refused.
 - **Divergence.** Two consecutive rungs each surfacing a NEW failure mode ⇒ stop and audit the layer
   beneath (instrument, then bridge).
+- **The coding world grows into a second ladder.** At most one claim-bearing experiment in that line is
+  active at a time (M12); its `src/` waits for the 1.4.0 cut by default; the divergence rule applies
+  line-wide.
 
 ## Record edits made with this plan (so the plans audit reads one story)
 
@@ -648,6 +678,15 @@ caveat. Companion edits: [README.md](README.md) (§Active entry),
 [../wiring/README.md](../wiring/README.md), [../agents/bio-memory.md](../agents/bio-memory.md)
 (`save_cerebellum` invariant marked vacuous pending #908; widening scope pointer),
 [../agents/embodiment.md](../agents/embodiment.md) (Cerebellum gotcha).
+
+*2026-09-27 (coding world):* §Parallel lines gains "Coding world"; Groundwork gains item 5 and Track C
+item 4; §Phase 5's relief store reserves the opposite sign; §What is NOT in 1.4 and §Risks gain one line
+each; the status header marks Exp 55 re-pointed. Companion edits: [coding_world.md](coding_world.md)
+(new), [deferred/coding_habits_oasis.md](deferred/coding_habits_oasis.md) (banner: revived),
+[deferred/grounded_word_binding.md](deferred/grounded_word_binding.md) (§Alternate source),
+[social_referencing.md](social_referencing.md) (§Deferred sources), [README.md](README.md) (§Active entry;
+Exp 55 leaves the Shared-perception deferral), [outstanding.md](outstanding.md) (M10–M14), DECISIONS.md
+(2026-09-27 record).
 
 ## Review record (v1 → v2, 2026-09-18)
 
