@@ -202,6 +202,20 @@ Session `20260924_095451`: 5 turns, then `planning_failed` (D13). Record:
   narrator weakness. On that day's `main` (`1d79787d`), reflexes dispatched their own tool and the
   result was ignored. It cannot be proven retroactively.
 
+### Guard edit — 2026-09-28, #951 (not a trigger walk; nothing fired)
+
+`scripts/survival_world/scripted_water.py` and `tests/unit/test_water_trial_smoke.py` are cited Regression
+guards on the **Exp 61** and **Exp 62** rows, and #951 edited both. No `Re-run on:` trigger fires by its
+wording:
+- `WaterTrial` and the live bridge are untouched.
+- The scripted bridge's new step clock is opt-in (`clock=None` by default), and its wall mode is
+  behaviourally identical: the new surfacing branch runs only under a clock, no `_scripted_t` key is
+  added, and the clock is read once per snapshot instead of twice.
+
+All scripted-bridge tests pass. One stricter condition, recorded so it is not mistaken for the earned
+one: the Exp 61 donor-sanity guard (`test_donor_sequence…`) now runs **lockstepped**, so its fear-at-cap
+check no longer depends on the runner's speed. The rows were earned on the live bridge and are unchanged.
+
 ### Trigger walk — 2026-09-27, the 1.3.1 patch cut
 
 A trigger audit, not a heartbeat: the minor-version heartbeat fires on `1.X → 1.X+1`, and 1.3.1 is a

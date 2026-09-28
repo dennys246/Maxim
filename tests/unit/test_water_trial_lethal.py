@@ -27,7 +27,12 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from survival_world.common import InstrumentError  # noqa: E402
-from survival_world.scripted_water import ScriptedWaterBridge, ScriptedWaterControl  # noqa: E402
+from survival_world.scripted_water import (  # noqa: E402
+    LockstepTime,
+    ScriptedWaterBridge,
+    ScriptedWaterControl,
+    StepClock,
+)
 from survival_world.setup_world import water_anchor_record, water_classroom_geometry  # noqa: E402
 from survival_world.water_trial import R3_GAMERULES, Refusal, WaterTrial, _detach_fear_subscriber  # noqa: E402
 
@@ -66,17 +71,24 @@ def _rig(
     detach: bool,
     damage_per_s: float = 2.0,
     respawn_lag_s: float | None = None,
+    escape_delay_s: float = 0.3,
+    lockstep_patch=None,
 ):
+    """``lockstep_patch`` (a pytest ``monkeypatch``) runs the scripted world on a step clock the
+    harness advances (#951), so a window the test reads (the respawn lag) is world time, not wall."""
     from maxim.simulation.minecraft_harness import MinecraftSyncPump, build_minecraft_aut
     from survival_world.common import make_fresh_encoder
 
     rec = _record()
+    world_clock = StepClock() if lockstep_patch is not None else None
     srv = ScriptedWaterBridge(
         shore=_xyz(rec["shore"]),
         submerged=_xyz(rec["submerged"]),
         damage_onset_s=damage_onset_s,
         damage_per_s=damage_per_s,
         respawn_lag_s=respawn_lag_s,
+        escape_delay_s=escape_delay_s,
+        clock=world_clock,
     )
     rcon = ScriptedWaterControl(srv, gamerules={r: v for r, v in R3_GAMERULES})
     home = tmp_path / agent_id
@@ -104,6 +116,11 @@ def _rig(
     )
     trial.attach_instruments()
     trial.resolve_tools()
+    if lockstep_patch is not None:
+        # one 4 Hz tick per sleep at least: `lethal_event` paces with sleep(period - elapsed), which
+        # sleeps 0 on an overrun tick — without a quantum a slow runner would freeze the world
+        lockstep = LockstepTime(world_clock, min_step_s=1.0 / FAST["loop_hz"])
+        lockstep_patch.setattr(sys.modules[WaterTrial.__module__], "time", lockstep)
     return srv, rcon, aut, trial
 
 
@@ -149,11 +166,21 @@ def test_lethal_event_surface_by_own_escape_teleports_before_the_loop_stops(tmp_
 
 
 @pytest.mark.timeout(240)
-def test_lethal_event_death_reads_the_objective_and_the_respawn(tmp_path: Path) -> None:
-    # damage must OUTRUN the loop (40 hp/s → dead 0.5 s after onset), else the innate reflex surfaces it (next test)
-    # the scoreboard leads the respawn by 0.6 s — longer than a 4 Hz sample — so the race is CERTAIN here
+def test_lethal_event_death_reads_the_objective_and_the_respawn(tmp_path: Path, monkeypatch) -> None:
+    # 40 hp/s → dead 0.5 s (world time) after onset. The scoreboard leads the respawn by 0.6 s of WORLD
+    # time and the harness steps the world 0.25 s at a time (#951: lockstep), so at least two samples land
+    # inside the lag whatever the runner's speed — the race is certain here. The escape takes 2 s of world
+    # time to land (> the 0.5 s damage window + the 0.6 s respawn lag), so no reflex escape, however its
+    # ticks fall, can surface the agent before the death or land in the death→respawn gap.
     srv, rcon, aut, trial = _rig(
-        tmp_path, "lethal_death", damage_onset_s=1.5, detach=True, damage_per_s=40.0, respawn_lag_s=0.6
+        tmp_path,
+        "lethal_death",
+        damage_onset_s=1.5,
+        detach=True,
+        damage_per_s=40.0,
+        respawn_lag_s=0.6,
+        escape_delay_s=2.0,
+        lockstep_patch=monkeypatch,
     )
     try:
         trial.rescue("ready")
@@ -163,9 +190,14 @@ def test_lethal_event_death_reads_the_objective_and_the_respawn(tmp_path: Path) 
     assert ev["end"] == "death" and ev["survived"] is False and ev["t_death"] is not None, ev["end"]
     assert ev["t_first_damage"] is not None and ev["min_health"] is not None and ev["min_health"] < 20.0
     assert ev["health_lost"] > 0 and ev["pain_seconds"]["health"] > 0.0
-    # detached, damage outran the loop: no call BEFORE the death (a post-event flee during the corroboration
-    # samples is the health reflex firing on a respawned body — flagged, not counted)
-    assert all(c["post_event"] for c in ev["calls"]) and trial.fear_dump() == {}
+    # detached: NOTHING acts before damage exists. A call before the damage onset (1.5 s after the window
+    # opens; a world step never outruns the wall clock, so a wall `t` < 1.5 is before it) would be
+    # anticipation without fear — a detach that failed on some other path (fear_dump covers only the NAc
+    # half). A reflex call INSIDE the damage window is allowed: whether a 4 Hz tick lands in a 0.5 s window
+    # is scheduling (#951: asserting "no call before the death" flaked three times). A post-event flee
+    # during the corroboration samples is the reflex firing on a respawned body — flagged, not counted.
+    assert all(c["post_event"] or c["t"] >= 1.5 for c in ev["calls"]), ev["calls"]
+    assert trial.fear_dump() == {}
     # the respawn discontinuity within the death sample: health 20, out of the water, at the shore
     last = ev["samples"][-1]
     assert last["deaths_delta"] == 1 and not last["in_water"] and last["health"] == 20.0 and last["saturation"] == 5.0

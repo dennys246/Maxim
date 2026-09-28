@@ -39,7 +39,12 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from survival_world.exp61_run import close_and_stage, donor_sanity_staged  # noqa: E402
-from survival_world.scripted_water import ScriptedWaterBridge, ScriptedWaterControl  # noqa: E402
+from survival_world.scripted_water import (  # noqa: E402
+    LockstepTime,
+    ScriptedWaterBridge,
+    ScriptedWaterControl,
+    StepClock,
+)
 from survival_world.water_trial import Refusal, WaterTrial  # noqa: E402
 
 SHORE = {"x": 10.0, "y": 64.0, "z": 10.0}
@@ -166,11 +171,19 @@ def test_water_trial_ticks_acts_and_the_staging_close_persists_fear(tmp_path: Pa
 
 
 @pytest.mark.timeout(240)
-def test_donor_sequence_over_the_scripted_bridge_passes_the_staged_sanity(tmp_path: Path) -> None:
-    srv = ScriptedWaterBridge(shore=SHORE, submerged=SUBMERGED)
+def test_donor_sequence_over_the_scripted_bridge_passes_the_staged_sanity(tmp_path: Path, monkeypatch) -> None:
+    # LOCKSTEP (#951): the donor's fear is 0.5 x intensity summed over the oxygen pains published
+    # during the scripted ramp, so on wall time a slow runner saw fewer ramp states and shipped -0.76
+    # against the frozen cap of -1.0. The world now advances exactly as far as the harness sleeps, so
+    # the ramp's states are the same on any runner (pain is latched on severity, so extra samples of
+    # one state publish nothing and a slow runner can only merge steps).
+    world_clock = StepClock()
+    srv = ScriptedWaterBridge(shore=SHORE, submerged=SUBMERGED, clock=world_clock)
     rcon = ScriptedWaterControl(srv)
     agent_id = "smoke_donor"
     aut, encoder, pump, home = _build(tmp_path, srv, agent_id)
+    lockstep = LockstepTime(world_clock)
+    monkeypatch.setattr(sys.modules[WaterTrial.__module__], "time", lockstep)
     trial = WaterTrial(
         aut=aut,
         rcon=rcon,
@@ -178,7 +191,12 @@ def test_donor_sequence_over_the_scripted_bridge_passes_the_staged_sanity(tmp_pa
         geom=GEOM,
         frozen=FAST,
         probe_cap_s=3.0,
-        train_cap_s=12.0,
+        # a WALL timeout on the training loop, not a measured quantity: under lockstep the world time
+        # a sample sees is fixed by the harness's sleeps, so a larger cap changes only whether a slow
+        # runner finishes, never what it measures. Valid ONLY because this scripted world has no
+        # damage onset: in the protocol the cap is "onset minus a margin" (conditioning stays
+        # pre-damage), a meaning a wall cap under lockstep would silently lose.
+        train_cap_s=60.0,
         persistence_dir=home,
         agent_id=agent_id,
         encoder=encoder,
@@ -221,6 +239,9 @@ def test_donor_sequence_over_the_scripted_bridge_passes_the_staged_sanity(tmp_pa
         )
         assert sanity["pass"], sanity["reasons"]
         assert sanity["fear_shipped"] >= 1 and sanity["reward_bias_zero_nodes"] == 0
+        # the lockstep actually drove the world (not wall time), and the harness saw a stepped world
+        assert lockstep.steps > 0 and world_clock.now() > 0.0
+        assert "_scripted_t" in aut.client.latest_state()
     finally:
         try:
             aut.client.close()
@@ -350,3 +371,16 @@ def test_without_the_reopen_the_staging_close_refuses_instead_of_staging_stale_f
         except Exception:
             pass
         srv.close()
+
+
+def test_no_campaign_runs_the_scripted_world_on_a_step_clock() -> None:
+    """The step clock (#951) is a test instrument: a campaign or harness that ran the scripted world
+    on one would measure harness sleeps, not wall time. Pinned structurally — only tests may use it."""
+    scripts = Path(__file__).resolve().parents[2] / "scripts"
+    offenders = [
+        str(path.relative_to(scripts))
+        for path in scripts.rglob("*.py")
+        if path.name != "scripted_water.py"
+        and any(token in path.read_text(encoding="utf-8") for token in ("StepClock", "LockstepTime"))
+    ]
+    assert offenders == [], offenders
