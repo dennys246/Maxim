@@ -1,0 +1,4 @@
+REFUSED: a nightly lane is not green -- do not release:
+  run 36347890771 tested 7e695a58cb59, but main is at 8d6a2c85c90b -- a nightly must test the code being released: run `gh workflow run test.yml --ref main` and re-check when it completes
+
+EXIT_STATUS=1

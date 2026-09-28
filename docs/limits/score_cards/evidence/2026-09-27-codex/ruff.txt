@@ -1,0 +1,5 @@
+$ python -m ruff check src/ tests/
+UTC=2026-09-27T23:48:20.174931+00:00
+All checks passed!
+
+EXIT_STATUS=0

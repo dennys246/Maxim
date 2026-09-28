@@ -1,0 +1,12 @@
+src/maxim/planning/plan_manager.py:481:                similar = svc.hippocampus.recall_similar(f"plan failure: {phase.description} — {error}", limit=3)
+src/maxim/runtime/bio_stack.py:80:    def save_cerebellum(self) -> None:
+src/maxim/runtime/bio_stack.py:458:            cerebellum = Cerebellum(config=CerebellumConfig())
+src/maxim/bridges/fear_bridge.py:627:                    metadata={
+src/maxim/runtime/agent_loop.py:328:                metadata={"type": "episode"},
+src/maxim/runtime/agent_loop.py:1372:    """The explicit opt-out for ``propose_via_substrate(situation_cue=...)`` (memory 2S-d)."""
+src/maxim/runtime/agent_loop.py:1428:def propose_via_substrate(
+src/maxim/runtime/agent_loop.py:1465:            "propose_via_substrate(situation_cue=...) takes MemoryHub.situation_cue or NO_SITUATION_CUE, "
+src/maxim/runtime/agent_loop.py:1634:        fear_need = float(nac.anticipatory_threat_need(agent_id, clusters or None))
+src/maxim/runtime/agent_loop.py:3702:                                            metadata={"type": "agent_action"},
+src/maxim/runtime/agent_loop.py:4208:                            metadata={"type": "action_execution"},
+src/maxim/runtime/agent_loop.py:4514:                substrate_proposal = propose_via_substrate(

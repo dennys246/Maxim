@@ -1,0 +1,329 @@
+$ python -m maxim --help
+UTC=2026-09-27T23:48:20.543048+00:00
+usage: maxim [-h] [--display {clean,bio,debug}] [--interactive [INTERACTIVE]]
+             [--log-level {0,1,2}]
+             [--mode {live,train,reflection,sleep,agentic,exploration}]
+             [--language-model LANGUAGE_MODEL] [--auto-download]
+             [--llm-n-ctx N] [--embodiment REF] [--no-embodiment]
+             [--deep-embodiment] [--epochs EPOCHS] [--home-dir HOME_DIR]
+             [--list-models] [--delete-model MODEL] [--cloud-fallback MODEL]
+             [--cloud-lane LANE MODEL] [--cloud-budget DOLLARS]
+             [--autonomy {planning,supervised,autonomous}]
+             [--autonomy-duration AUTONOMY_DURATION]
+             [--internet-access | --no-internet] [--memory-path MEMORY_PATH]
+             [--reset] [--enable-embeddings] [--clear-memory [TYPE]]
+             [--robot-name ROBOT_NAME] [--timeout TIMEOUT]
+             [--segmentation-model SEGMENTATION_MODEL] [--audio AUDIO]
+             [--audio_len AUDIO_LEN] [--tts] [--tts-model TTS_MODEL] [--comms]
+             [--no-agentic-console] [--sim [GOAL_OR_PATH]] [--sim-goal GOAL]
+             [--dm] [--reap-orphans] [--sim-max-turns N] [--research]
+             [--sim-mode MODE] [--aut-model MODEL] [--aut-mode MODE]
+             [--campaign PATH] [--continuous] [--no-sim-env]
+             [--sandbox {auto,docker,tmpdir}] [--sandbox-image IMAGE]
+             [--sandbox-network {none,bridge,host}] [--resume-sim SESSION_ID]
+             [--sim-report PATH] [--report-json PATH] [--seed N]
+             [--foundry THEME] [--foundry-count N] [--foundry-genre GENRE]
+             [--foundry-category CATEGORY] [--foundry-dry-run] [--auto-curate]
+             [--curate-threshold N] [--no-curate] [--trace [SUBSYSTEMS]]
+             [--show CHANNELS] [--benchmark [TIERS]]
+             [--models MODEL1,MODEL2,...] [--runs N] [--benchmark-output DIR]
+             [--baseline PATH] [--write-paper] [--clear-cache]
+             [--audit-architecture] [--generate-simulation DESCRIPTION]
+             [-o PATH] [--last [N]] [--show-last] [--clear-last]
+
+Maxim — bio-inspired cognitive architecture for AI agents.
+
+Quick start:
+  maxim                              Interactive menu
+  maxim --sim "test memory recall"   Run a simulation
+  maxim --llm claude-sonnet          Use Claude as the LLM backend
+  maxim --list-models                Show available models
+  maxim doctor                       Run environment diagnostics
+
+options:
+  -h, --help            show this help message and exit
+
+core:
+  Runtime and model configuration
+
+  --display {clean,bio,debug}
+                        Output detail: bio (+ memory/learning annotations,
+                        DEFAULT), clean (narrative only), debug (+ full system
+                        traces).
+  --interactive [INTERACTIVE]
+                        Enable interactive terminal input. Use bare
+                        --interactive to enable, or --interactive false to
+                        disable. When unset, auto-enables for DM campaigns and
+                        disables for generative sims.
+  --log-level {0,1,2}, --verbosity {0,1,2}
+                        Logging level: 0=warnings/errors, 1=info, 2=debug.
+                        Alias: --verbosity (deprecated, will be removed before
+                        1.0).
+  --mode {live,train,reflection,sleep,agentic,exploration}
+                        Run mode: exploration (DEFAULT), agentic (full agent
+                        loop), sleep (audio-only), live (no training), train
+                        (update MotorCortex), reflection (memory
+                        consolidation).
+  --language-model LANGUAGE_MODEL, --llm LANGUAGE_MODEL
+                        LLM profile name (overrides ~/.maxim/config/llm.json
+                        and $MAXIM_LLM_PROFILE).
+  --auto-download       Skip the interactive 'download model? [y/N]' prompt
+                        and proceed with any GGUF download required for the
+                        active LLM profile. Equivalent to
+                        MAXIM_AUTO_DOWNLOAD_MODELS=1. Use in scripts and
+                        headless deployments.
+  --llm-n-ctx N         Override auto-computed llama.cpp n_ctx (context
+                        window). Use for tuning against specific VRAM budgets.
+                        Warning: a value above the formula estimate may OOM
+                        the GPU at load time.
+  --embodiment REF      SEM component reference for the agent's body (e.g.
+                        'weapons/rusty_sword'). Loads the component, auto-
+                        generates affordance tools, and wires the pain cascade
+                        through NAc. Works with --sim across all modes (since
+                        0.6).
+  --no-embodiment       Disable default embodiment in sim mode. By default,
+                        sims use bodies/base_humanoid so the agent has
+                        physical affordances. Pass this flag to run without a
+                        body (pre-0.7 behavior).
+  --deep-embodiment     [experimental] Enable level-3 deep embodiment: per-
+                        sub-sensor damage routing via damage_affinities,
+                        individual sub-sensor exposure to the agent. Requires
+                        a capable LLM — level 2 (default) collapses sub-
+                        sensors to a single integrity value per body part. Env
+                        var: MAXIM_DEEP_EMBODIMENT=1.
+  --epochs EPOCHS       Epochs to run Maxim for (0 = unlimited).
+  --home-dir HOME_DIR   Data directory for run artifacts (default: 'data').
+  --list-models         List available LLM model profiles and exit.
+  --delete-model MODEL  Delete a downloaded local LLM model to free disk
+                        space.
+
+cloud:
+  Cloud LLM provider options
+
+  --cloud-fallback MODEL
+                        Add a cloud model as fallback on the infer lane (e.g.,
+                        claude-sonnet, gpt-4o-mini). Used when the primary
+                        (local/self-hosted) provider fails or is rate-limited.
+  --cloud-lane LANE MODEL
+                        Assign a cloud model to a specific lane (e.g.,
+                        --cloud-lane review claude-haiku).
+  --cloud-budget DOLLARS
+                        Max session cost in USD for cloud providers (default:
+                        $5.00).
+
+autonomy:
+  Agent autonomy and permissions
+
+  --autonomy {planning,supervised,autonomous}
+                        Initial autonomy level: planning (propose only),
+                        supervised (act within bounds), autonomous (full
+                        agency).
+  --autonomy-duration AUTONOMY_DURATION
+                        Limit autonomous mode to N seconds, then revert to
+                        supervised. Only applies when --autonomy autonomous is
+                        set.
+  --internet-access     Enable internet access for search and fetch tools
+                        (default).
+  --no-internet         Disable internet access for all tools.
+
+memory:
+  Persistent memory management
+
+  --memory-path MEMORY_PATH
+                        Path for memory persistence (agentic mode). Default:
+                        {home_dir}/memory/memories.json
+  --reset               Reset memory on startup (agentic mode).
+  --enable-embeddings   Enable embedding-based memory similarity (requires
+                        sentence-transformers).
+  --clear-memory [TYPE]
+                        Clear persistent memory and exit. Bio-systems (cleared
+                        across all agents/<id>/): hippo, nac, ec, scn, atl,
+                        angular_gyrus (nac and ec are a pair — clearing either
+                        clears both). Global learners: focus, bounds,
+                        escalation, fear, threshold, pain, statistician,
+                        cross_layer, semantic. Also: planning. Use 'all'
+                        (default) for everything. Can specify multiple comma-
+                        separated types.
+
+hardware:
+  Robot and hardware options
+
+  --robot-name ROBOT_NAME
+                        Reachy Mini daemon robot_name (default:
+                        $MAXIM_ROBOT_NAME or 'reachy_mini').
+  --timeout TIMEOUT     Seconds to wait for the robot connection (default:
+                        30).
+  --segmentation-model SEGMENTATION_MODEL
+                        Vision engine (default: rtm). Options: rtm, yolo
+                        (requires [yolo] extra).
+  --audio AUDIO         Record + transcribe audio (True/False).
+  --audio_len AUDIO_LEN
+                        Seconds per transcription chunk (default: 5.0).
+  --tts                 Enable text-to-speech for spoken responses (requires
+                        piper-tts).
+  --tts-model TTS_MODEL
+                        TTS voice model name (default: en_US-lessac-medium).
+  --comms               Enable Twilio SMS/Voice communication (requires
+                        TWILIO_* env vars).
+
+agentic:
+  Agent loop display and logging
+
+  --no-agentic-console  Disable agentic event output to console.
+
+simulation:
+  Simulation mode (--sim)
+
+  --sim [GOAL_OR_PATH]  Run simulation. String: goal for generative campaign.
+                        YAML path: run scenario/campaign directly.
+                        'agent'/'research'/'benchmark': legacy mode aliases.
+                        No argument: interactive REPL.
+  --sim-goal GOAL, --goal GOAL
+                        Simulation goal (alternative to passing goal as --sim
+                        value). Alias: --goal
+  --dm                  Dungeon Master mode. With --sim <path.yaml>: run as a
+                        DM campaign (redundant — campaign YAML is auto-
+                        detected). With --sim <goal>: run the generative
+                        narrative campaign runner labelled 'dm'; it does NOT
+                        author campaign YAML (the architect path is not
+                        implemented).
+  --reap-orphans        [experimental] Kill stale maxim sim processes detected
+                        at startup (safety net for runaway runs that may still
+                        be hitting the LLM backend). Equivalent to
+                        MAXIM_REAP_ORPHANS=1.
+  --sim-max-turns N     Maximum simulation turns before forced termination.
+                        When reached, the stall detector injects a max_turns
+                        termination into the bridge so the report shows
+                        finish_reason='max_turns'. Default: 50.
+  --research            [experimental] Generate research report (Writer +
+                        Reviewer agents) after simulation completes. Surface
+                        still evolving — see docs/user/stable_api.md.
+  --sim-mode MODE       Orchestrator flow-shape label recorded in reports/logs
+                        (default: generative; the dm/research/benchmark
+                        dispatch paths set their own). Free-form; replaced the
+                        removed --persona flag.
+  --aut-model MODEL     Separate LLM for the agent-under-test (e.g.,
+                        mistral-7b). Orchestrator/research agents use
+                        --language-model.
+  --aut-mode MODE       [experimental] AUT action-selection mode. 'llm-
+                        primary' (default) uses the LLM to propose actions.
+                        'substrate-primary' skips the LLM and proposes via
+                        NAc.recommend_action() — Phase -1 of the grounded
+                        language acquisition program. See
+                        docs/plans/grounded_language_acquisition.md.
+  --campaign PATH       Campaign YAML(s) for --sim research mode. Glob
+                        patterns accepted.
+  --continuous          Continuous simulation: never auto-complete, keep
+                        testing until /cancel.
+  --no-sim-env          Skip simulated filesystem with pain-triggering files
+                        (empty sandbox).
+  --sandbox {auto,docker,tmpdir}
+                        Sandbox backend: 'auto' (Docker if available, else
+                        tmpdir), 'docker' (requires Docker), 'tmpdir' (host-
+                        based isolation).
+  --sandbox-image IMAGE
+                        Docker image for the sandbox container (default:
+                        python:3.12-slim).
+  --sandbox-network {none,bridge,host}
+                        Container network mode: 'none' (isolated, default),
+                        'bridge' (outbound traffic), 'host' (shared).
+  --resume-sim SESSION_ID
+                        Resume a previous simulation session by ID. Restores
+                        AUT memory state and provides previous findings as
+                        context.
+  --sim-report PATH     Write scenario results to a JSON file (requires
+                        --sim).
+  --report-json PATH    Emit the full SimulationReport as JSON. Use '-' for
+                        stdout, or a file path. Useful for CI / grading
+                        pipelines that need a structured artifact without
+                        parsing the human report.
+  --seed N              Global deterministic seed. Sets PYTHONHASHSEED,
+                        random, numpy, and torch seeds for reproducible
+                        fixture runs. Byte-identical determinism requires
+                        fixture-driven mode (no live LLM).
+
+foundry:
+  Asset Foundry — LLM-driven SEM component generation
+
+  --foundry THEME       [experimental] Run the Asset Foundry pipeline.
+                        Generates SEM components from a theme prompt,
+                        validates, tests, and scores them. Example: maxim
+                        --foundry 'cyberpunk weapons' --count 10
+  --foundry-count N, --count N
+                        [experimental] Number of components to generate
+                        (default: 10).
+  --foundry-genre GENRE
+                        [experimental] Genre tag for generated components
+                        (default: fantasy).
+  --foundry-category CATEGORY
+                        [experimental] Specific category (weapons, creatures,
+                        npcs, items, etc.). If omitted, distributes across
+                        categories.
+  --foundry-dry-run     [experimental] Generate + validate only, skip gauntlet
+                        testing.
+
+curation:
+  Pre-sim auto-curation of SEM components
+
+  --auto-curate         [experimental] Before sim, check genre/category
+                        coverage and run foundry to fill gaps. Promoted
+                        components go to ~/.maxim/components/.
+  --curate-threshold N  [experimental] Min components per genre/category
+                        before auto-curate triggers (default: 5).
+  --no-curate           [experimental] Explicit opt-out of auto-curation
+                        (overrides config defaults).
+
+debug:
+  Debug tracing and output filtering
+
+  --trace [SUBSYSTEMS], --debug [SUBSYSTEMS], --sim-debug [SUBSYSTEMS]
+                        Enable detailed bio-system traces to stderr. Without
+                        args: all. With args: comma-separated (e.g., --trace
+                        hippo,nac). Subsystems: hippo/memory,
+                        nac/causal/reward, atl/semantic, scn/temporal, all.
+                        --debug and --sim-debug are synonyms.
+  --show CHANNELS       Filter simulation output by channel. Comma-separated:
+                        bio, bio-only (learning mechanisms only), exec, sim,
+                        memory, safety, all (default). Example: --show bio-
+                        only
+
+benchmark:
+  Multi-model benchmarking (--benchmark)
+
+  --benchmark [TIERS]   Run tiered benchmarks. Values: tier1, tier2, tier3,
+                        all, or comma-separated. Requires --models. Without
+                        --campaign only tier1/all resolve to a shipped suite
+                        (cognitive_suite.yaml); tier2/tier3 name suites that
+                        do not exist — pass --campaign.
+  --models MODEL1,MODEL2,...
+                        Comma-separated model profiles for benchmarking.
+  --runs N              Runs per model in benchmark (default: 1). Multiple
+                        runs enable variance measurement.
+  --benchmark-output DIR
+                        Output directory for benchmark reports (default:
+                        ~/.maxim/benchmarks).
+  --baseline PATH       Path to a previous benchmark_report.json for
+                        comparison.
+  --write-paper         Generate a comparative research paper from benchmark
+                        results.
+
+utilities:
+  Maintenance and generation tools
+
+  --clear-cache         Clear Python bytecode cache (__pycache__) before
+                        running.
+  --audit-architecture  Audit layer imports against the reviewed accepted-debt
+                        baseline (utils/architecture_baseline.json) and exit;
+                        exit 1 on new, stale, or unreviewed findings.
+  --generate-simulation DESCRIPTION
+                        [experimental] Generate a simulation scenario YAML
+                        from a natural language description.
+  -o PATH, --output PATH
+                        Output path for --generate-simulation (default:
+                        stdout).
+  --last [N]            Re-run a recent invocation. --last (most recent),
+                        --last 2 (second most recent).
+  --show-last           Show the last saved invocation and exit.
+  --clear-last          Clear the saved last invocation and exit.
+
+EXIT_STATUS=0
