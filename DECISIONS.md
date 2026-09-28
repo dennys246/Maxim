@@ -32,6 +32,50 @@ running there is contained. `git_commit` was the one host coding tool with no ga
   tools, because of the ceiling: contained, not convenient.
 - The environment allowlist drops `SSH_AUTH_SOCK`, so SSH signing is unavailable to these tools.
 
+## 2026-09-27 — The agent may never raise its own mode capability (#924, strict)
+
+### Decision
+
+The model's `mode_switch` tool refuses every switch that gains capability, and allows every switch that
+does not. This covers passive → active, which gains acting on the host (#826's dispatch refusal), not only
+switches into the code-executing singularity (#821). Lowering stays free. "Gains capability" is one
+predicate, `maxim.modes.definitions.raises_capability`, derived from the enforcement itself. It
+iterates the same `DISPATCH_CAPABILITIES` table the dispatch gate reads, so the two cannot drift. A
+switch raises capability when:
+- the target would run a tool the current mode refuses at dispatch;
+- or the target gains code execution;
+- or the target drops the confirmation requirement.
+
+An unknown target counts as a raise. An unknown current mode (the agentic runtime's `"agentic"`) counts
+as unrestricted, as dispatch treats it, but still may not enter a code-executing mode. The rule is latent
+today: no shipped runtime registers `mode_switch`.
+
+This holds until the in-session human approval surface (#922, 1.4) exists. A capability-raising request is
+then that surface's decision.
+
+### Reason
+
+After #826, passive mode is enforced by capability at dispatch, so a passive agent that could switch itself
+to active could step out of that refusal. Owner decision 2026-09-27: strict, the recommended default under
+"weak evidence never gates". It reverses the 2026-09-26 decision to keep #821's narrower rule for 1.3.1,
+which is recorded in #924's body, not in this file.
+
+### Tradeoffs
+
+- An agent that genuinely needs active mode now has to ask a human. Until #922 exists, that means a
+  restart in active mode by the operator.
+- The rule is enforced in the tool, not at dispatch, because the executor gates by tool name. A second
+  mode-changing tool would have to call the predicate too. #834's typed authority is what makes that
+  structural.
+- Other channels use `executes_code` only:
+  - the CLI `requested_mode` consumer (#829);
+  - the heard-phrase path (#828). It changes `StateManager`'s mode, not the `state.data["mode"]` that
+    dispatch reads, so it does not raise dispatch capability today;
+  - the wake handler's sleep → exploration request (`agentic_runtime.py`), which the CLI's switchable-mode
+    list rejects today.
+
+  #834 unifies them.
+
 ## 2026-09-27 — The coding world revives coding_habits_oasis; Exp 55 leaves the Shared-perception deferral
 
 ### Decision

@@ -10,7 +10,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
-from maxim.modes.definitions import executes_code  # the one predicate; re-exported for callers
+from maxim.modes.definitions import get_mode, raises_capability
 from maxim.tools.base import Tool, ToolResult
 
 if TYPE_CHECKING:
@@ -23,28 +23,18 @@ logger = logging.getLogger(__name__)
 VALID_MODES = frozenset({"passive", "active", "singularity"})
 
 
-def _resolve_mode(name: str):
-    """The mode definition for a name, including legacy names ("live" -> active), or None."""
-    from maxim.modes.definitions import get_mode
+def _self_grantable(current: str, target: str) -> bool:
+    """Whether the agent may switch itself from ``current`` into ``target``.
 
-    return get_mode(name)
-
-
-def _self_grantable(target: str, current: str) -> bool:
-    """Whether the agent may switch itself from ``current`` into ``target`` (#821).
-
-    A mode that can execute code (today: singularity, the only one with ``can_execute_code``
-    plus full tools and network) is never self-granted -- whether or not a human is present --
-    so injected text the model reads cannot talk it into one. Derived from the mode definition
-    rather than a hand-kept list, so a future code-executing mode is covered automatically.
-    There is no in-session human approval yet: ``AutonomyController.approve_autonomy_request``
-    has no caller, and the generic confirmation prompt auto-answers "yes" when non-interactive.
+    STRICT (#924, owner decision 2026-09-27): only a switch that gains NO capability -- lowering or
+    lateral -- is self-grantable. Passive -> active (it gains acting on the host) and any switch into
+    a code-executing mode (#821's case) are refused, whether or not a human is present, so injected
+    text the model reads cannot talk it into more power. It holds until the in-session human
+    approval surface (#922) exists; a capability-raising request is then that surface's decision.
+    Derived from the mode definitions (``raises_capability``), so a future mode is covered
+    automatically.
     """
-    if not executes_code(target):
-        return True
-    current_def = _resolve_mode(current)
-    target_def = _resolve_mode(target)
-    return current_def is not None and target_def is not None and current_def.name == target_def.name
+    return not raises_capability(current, target)
 
 
 class ModeSwitchTool(Tool):
@@ -95,28 +85,33 @@ class ModeSwitchTool(Tool):
 
         current_mode = self._get_current_mode()
 
-        # Check if already in target mode
-        if current_mode.replace("_", "-") == normalized_mode:
+        # Check if already in target mode (a legacy alias counts: "live" is already "active")
+        current_def, target_def = get_mode(current_mode), get_mode(target_mode)
+        same = current_def is not None and target_def is not None and current_def.name == target_def.name
+        if same or current_mode.replace("_", "-") == normalized_mode:
             return ToolResult(
                 success=True,
                 output=f"Already in {target_mode} mode",
                 metadata={"mode": target_mode, "was_change": False},
             )
 
-        # Refuse a self-granted escalation into a code-executing mode (#821).
-        if not _self_grantable(target_mode, current_mode):
+        # Refuse a self-granted capability raise (#924 strict; #821's code-executing case included).
+        if not _self_grantable(current_mode, target_mode):
             logger.warning("Refused self-escalation: %s -> %s (%s)", current_mode, target_mode, reason)
             if self._autonomy_controller:
                 self._autonomy_controller.log_action(
                     action_type="rejected",
                     action={"tool_name": "mode_switch", "params": kwargs},
-                    reasoning=f"Refused: the agent cannot switch itself into {target_mode} mode",
+                    reasoning=f"Refused: the agent cannot raise its own capability ({current_mode} -> {target_mode})",
                     mode=current_mode,
                     confidence=1.0,
                 )
             return ToolResult(
                 success=False,
-                error=f"Switching to {target_mode} mode cannot be done by the agent.",
+                error=(
+                    f"Switching from {current_mode} to {target_mode} mode raises capability and cannot be "
+                    "done by the agent; only a human can grant it."
+                ),
                 metadata={"target_mode": target_mode, "previous_mode": current_mode, "type": "refused"},
             )
 

@@ -572,7 +572,7 @@ def _runtime_mode_switch_allowed(requested: str) -> bool:
     #821 backstop at the seam every runtime mode request passes through: a code-executing mode is
     refused whoever wrote ``requested_mode`` (the agent's ``ModeSwitchTool`` refuses it first).
     """
-    from maxim.tools.mode_switch import executes_code
+    from maxim.modes.definitions import executes_code
 
     if executes_code(requested):
         logging.getLogger(__name__).warning(

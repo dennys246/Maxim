@@ -52,6 +52,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **`git_commit` is opt-in: set `MAXIM_ALLOW_GIT_COMMIT=1`** (owner decision). It was the one host
     coding tool with no gate.
 
+### Changed
+
+- **The agent can no longer raise its own mode capability** (#924, owner decision 2026-09-27). The
+  model's `mode_switch` tool now refuses any switch that gains capability — passive → active (it gains
+  acting on the host) as well as any switch into singularity (#821) — and still allows lowering (active
+  → passive, singularity → anything). "Gains capability" is derived from the mode definitions
+  (`modes.definitions.raises_capability`, over the same dispatch refusals #826 enforces), so a new mode
+  is covered automatically. An unknown target fails closed; an unknown current mode (the agentic
+  runtime's `"agentic"`) may still lower itself. This reverses 1.3.1's "passive → active is
+  unchanged": only a human can grant a raise, which becomes possible once the in-session approval
+  surface (#922) exists. **Latent today:** no shipped runtime registers `mode_switch` (it needs an
+  `autonomy_controller`); the rule is fixed before #829 makes the mode re-exec path work.
+
 ### Correction to 1.2.0
 
 - **Exp 56's bundles were unsigned.** The 1.2.0 section says A's substrate was "exported as a signed

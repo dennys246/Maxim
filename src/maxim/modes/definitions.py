@@ -138,12 +138,8 @@ class ModeDefinition:
             return f"Tool '{tool_name}' is forbidden in {self.name} mode."
         # (``can_execute_code`` is NOT enforced here: active mode declares it False yet runs its
         # sandbox/bash tools under approval -- it filters the prompt roster only, as before #826.)
-        for allowed, tools, capability in (
-            (self.can_access_filesystem, FILESYSTEM_CAPABILITY_TOOLS, "filesystem access"),
-            (self.can_access_network, NETWORK_CAPABILITY_TOOLS, "network access"),
-            (self.can_act_on_host, HOST_ACTING_TOOLS, "acting on the host"),
-        ):
-            if not allowed and tool_name in tools:
+        for flag, tools, capability in DISPATCH_CAPABILITIES:
+            if not getattr(self, flag) and tool_name in tools:
                 return f"Tool '{tool_name}' needs {capability}, which {self.name} mode does not allow."
         return None
 
@@ -285,6 +281,15 @@ HOST_ACTING_TOOLS = frozenset(
         "internet_access_toggle",
         "maxim_command",
     }
+)
+
+# The capabilities ``ModeDefinition.dispatch_refusal`` enforces, as (flag attribute, tools, label). ONE
+# table, read by the dispatch gate (#826) and by ``raises_capability`` (#924), so a capability added here
+# is enforced at dispatch AND counted as a raise -- the two cannot drift apart.
+DISPATCH_CAPABILITIES: tuple[tuple[str, frozenset[str], str], ...] = (
+    ("can_access_filesystem", FILESYSTEM_CAPABILITY_TOOLS, "filesystem access"),
+    ("can_access_network", NETWORK_CAPABILITY_TOOLS, "network access"),
+    ("can_act_on_host", HOST_ACTING_TOOLS, "acting on the host"),
 )
 
 # Filesystem tools
@@ -588,12 +593,46 @@ def get_mode(name: str) -> ModeDefinition | None:
 
 
 def executes_code(mode: str) -> bool:
-    """Whether ``mode`` (legacy names included) is a code-executing mode -- the ONE predicate every
-    gate uses: the agent's ``ModeSwitchTool`` (#821), the CLI's ``requested_mode`` consumer, and the
-    phrase path in ``StateManager`` (#828). Derived from the definition, so a future code-executing
-    mode is covered everywhere at once."""
+    """Whether ``mode`` (legacy names included) is a code-executing mode -- the code-execution
+    predicate the CLI's ``requested_mode`` backstop and the phrase path in ``StateManager`` (#828) use.
+    The model's ``ModeSwitchTool`` uses the stricter ``raises_capability`` (#924); unifying who may
+    grant what across channels is #834. Derived from the definition, so a future code-executing mode
+    is covered everywhere at once."""
     definition = get_mode(mode)
     return definition is not None and bool(definition.can_execute_code)
+
+
+def raises_capability(current: str, target: str) -> bool:
+    """Whether switching from ``current`` to ``target`` GAINS any capability (#924) -- the predicate the
+    model's ``ModeSwitchTool`` gate uses (owner decision 2026-09-27, strict: the model may never raise
+    its own capability until the in-session human approval surface, #922, exists).
+
+    Derived from the enforcement itself rather than a hand-kept ordering: a switch raises capability
+    when the target would RUN a tool the current mode refuses at dispatch (over the one
+    ``DISPATCH_CAPABILITIES`` table the dispatch gate reads, plus both modes' forbidden tools), gains
+    code execution, or drops the confirmation requirement. (Filesystem CONTAINMENT -- which directories
+    a mode's tools may touch -- is applied when the registry is built, not at dispatch, so it is not
+    seen here; the real modes are ordered the same way on it.)
+
+    Unknown modes: an unknown TARGET is a raise (fail closed). An unknown CURRENT mode -- the agentic
+    runtime runs as ``"agentic"``, which has no definition -- is treated as unrestricted, as the
+    executor's dispatch gate treats it, so lowering out of it stays free; a switch INTO a code-executing
+    mode is still refused (#821's absolute rule).
+    """
+    target_def = get_mode(target)
+    if target_def is None:
+        return True
+    current_def = get_mode(current)
+    if current_def is None:
+        return bool(target_def.can_execute_code)
+    gated = current_def.forbidden_tools | target_def.forbidden_tools
+    for _flag, tools, _label in DISPATCH_CAPABILITIES:
+        gated = gated | tools
+    if any(current_def.dispatch_refusal(t) is not None and target_def.dispatch_refusal(t) is None for t in gated):
+        return True
+    if target_def.can_execute_code and not current_def.can_execute_code:
+        return True
+    return current_def.confirmations_required and not target_def.confirmations_required
 
 
 def list_modes() -> list[str]:
