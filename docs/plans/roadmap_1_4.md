@@ -509,7 +509,12 @@ parallel.
 [#922](https://github.com/dennys246/Maxim/issues/922) and typed grant authority
 [#834](https://github.com/dennys246/Maxim/issues/834), designed together in one review, with
 [#832](https://github.com/dennys246/Maxim/issues/832) item 2 (gating the internet toggle, with the operator reset that rides with it) waiting on them.
-Design work, not hardening; no survival rung depends on them.
+Design work, not hardening; no survival rung depends on them. **They also carry one requirement from #829:**
+without a launch grant, a robot started in a passive-class run mode (sleep, train, reflection) cannot
+re-exec itself into an active-class one (live, agentic, active), because every runtime request may only
+lower capability. That holds until a human can grant the raise in session. Today the workaround is
+launching with `--operational-mode active`. The #922/#834 design must say whether a wake can carry a
+standing, typed grant, and who may issue it.
 
 ## Groundwork in parallel with 1.3.2 (owner decision 2026-09-27)
 

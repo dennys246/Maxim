@@ -273,6 +273,10 @@ told apart from the refactor.
   - [#965](https://github.com/dennys246/Maxim/issues/965) (#832's review): the internet policy summary
     never reaches the model, and the recorded on/off is a launch snapshot. Wire a true summary through
     the live getter per turn, or delete the dead fields end to end (owner decision).
+  - [#963](https://github.com/dennys246/Maxim/issues/963) (#829's follow-up): the loop resolves the
+    operational mode per call site, so the follow-up type ignores the launch grant. The slice that owns
+    the loop's mode handling makes one accessor the only capability reader, guarded against new raw
+    `state.data["mode"]` reads. #829's source-pin wiring tests become behavioural in the same PR.
   - [#863](https://github.com/dennys246/Maxim/issues/863): its `agent_loop.py` sites. Its `cli.py::_main_impl`
     sites go with that slice if it lands; if not, they stay open on #863 with this home recorded.
 - **After the orchestrator's characterization tests** (the first slice of its decomposition):
