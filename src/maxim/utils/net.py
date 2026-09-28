@@ -11,22 +11,39 @@ from __future__ import annotations
 import ipaddress
 import logging
 import socket
+from typing import Literal
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 
-def _is_private_ip(ip: str) -> bool:
-    """Return True for private, loopback, link-local, reserved, or multicast IPs.
+AddressPolicy = Literal["any", "public", "private"]
+"""Which addresses a connection may dial (#921): ``"public"`` = globally routable only; ``"private"`` =
+non-public only (LAN, loopback); ``"any"`` = unchecked."""
 
-    Returns True on parse error — fail-closed: if we cannot prove the IP is
-    public, treat it as private so the caller rejects it under strict mode.
-    """
+_EMBEDS_IPV4 = tuple(ipaddress.ip_network(n) for n in ("64:ff9b::/96", "::ffff:0:0:0/96", "::/96"))
+
+
+def is_public_address(address: str) -> bool:
+    """Globally routable -- the classifier ``validate_base_url`` and the connect-time checks in
+    ``utils/http.py`` share (#824, #921), so the two can never disagree (they did on CGNAT,
+    100.64.0.0/10). ``InternetAccessPolicy``'s pre-check keeps its own; the connect check decides. Judged explicitly rather than by ``is_global`` alone, which calls multicast,
+    site-local and NAT64-around-10.x addresses global (and varies across Python versions). An IPv6
+    answer that embeds an IPv4 address is judged by that IPv4 address. An unparseable address is not
+    public (fail closed)."""
     try:
-        addr = ipaddress.ip_address(ip)
-    except Exception:
-        return True
-    return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved or addr.is_multicast
+        ip = ipaddress.ip_address(address.split("%", 1)[0])
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address):
+        embedded = ip.ipv4_mapped or ip.sixtofour
+        if embedded is None and any(ip in net for net in _EMBEDS_IPV4):
+            embedded = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+        if embedded is not None:
+            return is_public_address(str(embedded))
+        if ip.is_site_local:
+            return False
+    return ip.is_global and not (ip.is_multicast or ip.is_reserved or ip.is_unspecified)
 
 
 def is_loopback_url(url: str) -> bool:
@@ -47,6 +64,21 @@ def is_loopback_url(url: str) -> bool:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
         return False
+
+
+def base_url_address_policy(base_url: str, allow_local: bool) -> AddressPolicy:
+    """The address policy a validated backend URL is held to at CONNECT time (#921): the same rules
+    ``validate_base_url`` states, enforced on the address actually dialled rather than on its own
+    earlier lookup (a DNS answer that changes between the two defeated both rules).
+
+    ``"public"`` when local endpoints are not allowed; ``"private"`` for a cleartext ``http://`` URL (it is
+    only ever allowed to a private network); ``"any"`` for ``https://`` with local endpoints allowed.
+    """
+    if not allow_local:
+        return "public"
+    if urlparse(base_url).scheme == "http":
+        return "private"
+    return "any"
 
 
 def validate_base_url(base_url: str, allow_local: bool) -> str | None:
@@ -88,10 +120,10 @@ def validate_base_url(base_url: str, allow_local: bool) -> str | None:
         return None
     for info in addrinfos:
         ip = info[4][0]
-        if _is_private_ip(ip) and not allow_local:
+        if not is_public_address(ip) and not allow_local:
             return None
         # http scheme is only allowed for private IPs, even when allow_local
-        if parsed.scheme == "http" and not _is_private_ip(ip):
+        if parsed.scheme == "http" and is_public_address(ip):
             return None
     return base_url
 

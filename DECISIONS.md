@@ -2,6 +2,50 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-09-28 — Downloads stay in the class of their first dial; operator paths let a proxy win (#921)
+
+### Decision
+
+Two owner decisions:
+
+1. **`download_to_file` stays in the address class of its first dial.** Each download gets its own
+   connection backend (`utils/http.py::_StartClassBackend`). The first connection's own resolution fixes
+   the class. If every address is public, every later hop (each redirect is a new connection) must be
+   public too. Anything else, meaning a LAN or loopback URL the operator configured such as a local Oasis
+   or a model mirror, stays unrestricted.
+2. **A configured proxy still carries operator-configured URLs** (downloads, backend base URLs, peer
+   probes). The proxy can come from env vars or the macOS/Windows system proxy. The proxy dials, so the
+   connect-time check cannot apply to what it carries, and one WARNING per process says so. Every checked
+   client gets httpx's OWN per-URL proxy mounts (`_proxy_mounts`) over an address-checked default
+   transport, so httpx's `NO_PROXY` semantics decide per hop, and every DIRECT dial is checked. The
+   model-chosen fetch (#824) never uses a proxy.
+
+The backend base-URL paths enforce `validate_base_url`'s rules at connect time, and the peer's probes are
+included. One classifier, `utils/net.py::is_public_address`, serves both the validation and the connect.
+
+### Reason
+
+#824 made the model-chosen fetch safe and scoped these operator-configured paths out.
+- A redirect from a public registry into the LAN or `169.254.169.254` is the SSRF a download can suffer.
+- Refusing every private address would break LAN-hosted Oasis and mirror setups.
+- Classifying the start with a separate lookup was the first draft. Two reviewers showed a hostile DNS
+  owner could answer private to it and public to the connect, taking the whole download off the checked
+  path. Classifying on the dial itself removes that lookup.
+- Proxies: a custom transport silently drops proxies. Strict checks would have cut model downloads and
+  every OpenAI-compatible cloud backend for anyone behind a corporate proxy. A first attempt re-derived
+  httpx's proxy rules by hand and misread ports and schemes in `NO_PROXY`, ignored system proxies, and
+  left a proxy-bypassing redirect hop unchecked. Reusing httpx's own rules fixed all three.
+
+### Tradeoffs
+
+- **What a proxy carries is not address-checked.** It is logged, not silent. `NO_PROXY` hosts and
+  direct hops are checked.
+- It relies on httpx's private `httpx._utils.get_environment_proxies`, pinned by a test that fails if
+  httpx moves it.
+- A URL whose own first dial is private is trusted as the operator's choice.
+- CGNAT (100.64.0.0/10) moved from "public" to "non-public" in `validate_base_url` when the classifiers
+  were unified. An `https://` backend on Tailscale now needs `allow_local_endpoints`.
+
 ## 2026-09-28 — Host coding tools: the working root, and git_commit is opt-in (#949)
 
 ### Decision

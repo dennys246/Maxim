@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from maxim.utils.net import _is_private_ip, validate_base_url
+from maxim.utils.net import is_public_address, validate_base_url
 
 
 def _fake_getaddrinfo(ip: str):
@@ -17,22 +17,26 @@ def _fake_getaddrinfo(ip: str):
 # ── is_private_ip ────────────────────────────────────────────────────────
 
 
-def test_is_private_ip_loopback():
-    assert _is_private_ip("127.0.0.1")
+# ── is_public_address: the one classifier (#921) ──────────────────────────
 
 
-def test_is_private_ip_rfc1918():
-    assert _is_private_ip("10.0.0.1")
-    assert _is_private_ip("192.168.1.1")
-    assert _is_private_ip("172.16.0.1")
+def test_loopback_is_not_public():
+    assert not is_public_address("127.0.0.1")
 
 
-def test_is_private_ip_public():
-    assert not _is_private_ip("8.8.8.8")
+def test_rfc1918_is_not_public():
+    assert not is_public_address("10.0.0.1")
+    assert not is_public_address("192.168.1.1")
+    assert not is_public_address("172.16.0.1")
 
 
-def test_is_private_ip_malformed_fails_closed():
-    assert _is_private_ip("not-an-ip")
+def test_a_public_address_is_public():
+    assert is_public_address("8.8.8.8")
+
+
+def test_malformed_fails_closed():
+    """An address that cannot be proven public is not public (fail closed)."""
+    assert not is_public_address("not-an-ip")
 
 
 # ── validate_base_url ────────────────────────────────────────────────────
@@ -95,3 +99,12 @@ def test_openai_backend_reexports_alias():
     from maxim.utils.net import validate_base_url as _canonical
 
     assert _validate_base_url is _canonical
+
+
+def test_cgnat_is_not_public_so_validation_and_connect_agree():
+    """#921: 100.64.0.0/10 (CGNAT, Tailscale) is non-public for validate_base_url AND the connect
+    check -- the old classifier called it public."""
+    assert not is_public_address("100.64.1.2")
+    with patch("socket.getaddrinfo", _fake_getaddrinfo("100.64.1.2")):
+        assert validate_base_url("https://ts-peer.test/v1", allow_local=False) is None
+        assert validate_base_url("http://ts-peer.test/v1", allow_local=True) == "http://ts-peer.test/v1"

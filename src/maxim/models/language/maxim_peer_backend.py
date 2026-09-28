@@ -77,6 +77,7 @@ from maxim.models.language.types import (
     LLMResponse,
 )
 from maxim.utils import http as _http
+from maxim.utils.net import base_url_address_policy
 from maxim.utils.http import (
     HTTPAuthError,
     HTTPClientError,
@@ -171,6 +172,8 @@ def _probe_once(url: str, api_key: str | None, timeout_s: float):
             probe_url,
             method="GET",
             headers=headers,
+            # #921: the probe carries the bearer key; a cleartext URL may only reach a private network
+            address_policy=base_url_address_policy(url, allow_local=True),
             timeout=_http.TimeoutPolicy(
                 connect_s=min(timeout_s, 2.0),
                 read_s=timeout_s,
@@ -230,6 +233,7 @@ def _probe_stage2_readiness(
             method="POST",
             headers=headers,
             json=body,
+            address_policy=base_url_address_policy(url, allow_local=True),  # #921
             timeout=_http.TimeoutPolicy(
                 connect_s=min(timeout_s, 2.0),
                 read_s=timeout_s,
@@ -378,6 +382,10 @@ class _MaximPeerBackend:
                 probe_url,
                 method="GET",
                 headers=headers,
+                # #921: the same connect-time rule as inference, from the provider's allow_local
+                address_policy=base_url_address_policy(
+                    base, bool(self._provider_cfg().get("allow_local_endpoints", True))
+                ),
                 timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=3.0, total_s=4.0),
             )
             body = json.loads(resp.content or b"{}")
@@ -786,6 +794,9 @@ class _MaximPeerBackend:
 
             auth_provider = _provide_key
 
+        from maxim.utils.net import base_url_address_policy
+
+        policy = base_url_address_policy(base, bool(self._provider_cfg().get("allow_local_endpoints", True)))
         _http.register_endpoint(
             HTTPEndpoint(
                 name=self._endpoint_name,
@@ -797,6 +808,8 @@ class _MaximPeerBackend:
                 auth_provider=auth_provider,
                 timeouts=self._get_timeout_policy(),
                 internal=True,
+                # #921: validate_base_url's rules, enforced on the address actually dialled
+                address_policy=policy,
             )
         )
         self._endpoint_registered = True

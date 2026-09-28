@@ -25,6 +25,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Downloads and backend URLs check the address they actually connect to** (#921; the #824 fix,
+  extended to the two paths it left open).
+  - **Downloads** (`download_to_file`: model downloads, Oasis bundle pulls) follow redirects, and every
+    hop is now a checked connection. Owner decision: a download stays in the address class of its
+    **first dial**. If that dial is public, so is every later hop, so a public registry can never redirect
+    into your LAN or the cloud metadata address. A LAN or loopback URL you configured (a local Oasis, a
+    mirror) stays unrestricted. The class comes from the connection itself, not from a separate lookup
+    that a hostile DNS answer could steer.
+  - **Backend base URLs** (the peer and OpenAI-compatible backends) were checked by
+    `validate_base_url` on its own DNS lookup, then looked up again to connect. Its rules are now
+    enforced on the address actually dialled:
+    - public-only when local endpoints are not allowed;
+    - a cleartext `http://` URL only reaches a private network, never a public host.
+
+    This covers inference and the peer's health and discovery probes, which carry the bearer key.
+  - **One classifier.** `validate_base_url` and the connect-time checks share
+    `utils.net.is_public_address`. Edge change: a CGNAT address (100.64.0.0/10, Tailscale's range) now
+    counts as non-public, so an `https://` backend there needs `allow_local_endpoints`, and a cleartext
+    `http://` backend there is now allowed wherever local endpoints are (the peer backend's default;
+    the OpenAI-compatible backend needs `allow_local_endpoints`).
+  - **Proxies** (owner decision). Downloads and backend URLs still honour a configured proxy
+    (`HTTP(S)_PROXY`, `ALL_PROXY`, or the macOS/Windows system proxy), using httpx's own `NO_PROXY` rules,
+    per URL and on every redirect hop. A URL the proxy carries is not address-checked (the proxy dials
+    on Maxim's behalf), and one warning per process says so. Every direct connection, `NO_PROXY` hosts
+    included, is checked. The model-chosen fetch (#824) never uses a proxy.
+  - The OpenAI-compatible backend now receives an address-checked HTTP client that keeps the SDK's
+    defaults (redirects followed, its connection limits). A refused connection is logged with its reason
+    instead of the SDK's bare "Connection error.".
+
 - **The host coding tools no longer inherit the parent's environment, and run in a contained root**
   (#949).
   - **Environment.** `bash`, `execute_file`, `run_tests`, `git_diff` and `git_commit` spawn their
