@@ -65,17 +65,24 @@ def endpoints():
                 client.close()
 
 
+REDIRECTS: dict[str, str] = {}
+"""Redirect table for the local server: request path -> Location. Tests fill it; the server never
+echoes request input into a header (code scanning: py/http-response-splitting)."""
+
+
 @pytest.fixture
 def server():
-    """A local server: /file serves bytes, /redirect?to=URL redirects, and every path is recorded."""
+    """A local server: /file serves bytes, a path in ``REDIRECTS`` redirects, every path is recorded."""
     hits: list[str] = []
+    REDIRECTS.clear()
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802
             hits.append(self.path)
-            if self.path.startswith("/redirect?to="):
+            location = REDIRECTS.get(self.path)
+            if location is not None:
                 self.send_response(302)
-                self.send_header("Location", self.path.split("=", 1)[1])
+                self.send_header("Location", location)
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
@@ -111,6 +118,12 @@ def _resolver(monkeypatch, table):
     monkeypatch.setattr(socket, "getaddrinfo", fake)
 
 
+def _redirect_url(origin: str, target: str) -> str:
+    """``origin``/redirect answers 302 to ``target`` (registered, never read from the request)."""
+    REDIRECTS["/redirect"] = target
+    return f"{origin}/redirect"
+
+
 def _loopback_plays_public(monkeypatch):
     monkeypatch.setattr(_http, "_is_public_address", lambda a: a == "127.0.0.1")
 
@@ -124,9 +137,9 @@ def test_a_public_download_cannot_be_redirected_into_the_lan(monkeypatch, server
     _resolver(monkeypatch, {"registry.test": [["127.0.0.1"]], "internal.test": [["127.0.0.2"]]})
     with pytest.raises(_http.HTTPConnectionError, match="non-public"):
         _http.download_to_file(
-            f"http://registry.test:{port}/redirect?to=http://internal.test:{port}/file", tmp_path / "out"
+            _redirect_url(f"http://registry.test:{port}", f"http://internal.test:{port}/file"), tmp_path / "out"
         )
-    assert hits == [f"/redirect?to=http://internal.test:{port}/file"]  # the first hop only
+    assert hits == ["/redirect"]  # the first hop only
 
 
 def test_a_public_start_stays_public_even_when_the_same_name_rebinds(monkeypatch, server, tmp_path) -> None:
@@ -137,7 +150,7 @@ def test_a_public_start_stays_public_even_when_the_same_name_rebinds(monkeypatch
     _resolver(monkeypatch, {"registry.test": [["127.0.0.1"], ["127.0.0.2"]]})
     with pytest.raises(_http.HTTPConnectionError, match="non-public"):
         _http.download_to_file(
-            f"http://registry.test:{port}/redirect?to=http://registry.test:{port + 1}/file", tmp_path / "out"
+            _redirect_url(f"http://registry.test:{port}", f"http://registry.test:{port + 1}/file"), tmp_path / "out"
         )
 
 
@@ -162,7 +175,7 @@ def test_a_public_download_may_redirect_to_another_public_host(monkeypatch, serv
     _loopback_plays_public(monkeypatch)
     _resolver(monkeypatch, {"registry.test": [["127.0.0.1"]], "cdn.test": [["127.0.0.1"]]})
     written = _http.download_to_file(
-        f"http://registry.test:{port}/redirect?to=http://cdn.test:{port}/file", tmp_path / "out"
+        _redirect_url(f"http://registry.test:{port}", f"http://cdn.test:{port}/file"), tmp_path / "out"
     )
     assert written == len(b"PAYLOAD") and (tmp_path / "out").read_bytes() == b"PAYLOAD"
 
