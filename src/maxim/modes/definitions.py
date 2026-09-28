@@ -488,6 +488,11 @@ _LEGACY_NAME_MAP: dict[str, str] = {
     "active_assistance": "active",
     "exploration": "active",
     "research": "active",
+    # the run mode `--mode agentic` (the CLI agent loop, #829) had no definition. No shipped path puts it
+    # in the loop's state (that loop runs `observe` = passive), so dispatch is unchanged; it is read by the
+    # capability predicate and the re-exec seam, and an UNKNOWN mode now fails closed
+    # (Executor._mode_denial).
+    "agentic": "active",
 }
 
 
@@ -614,17 +619,17 @@ def raises_capability(current: str, target: str) -> bool:
     a mode's tools may touch -- is applied when the registry is built, not at dispatch, so it is not
     seen here; the real modes are ordered the same way on it.)
 
-    Unknown modes: an unknown TARGET is a raise (fail closed). An unknown CURRENT mode -- the agentic
-    runtime runs as ``"agentic"``, which has no definition -- is treated as unrestricted, as the
-    executor's dispatch gate treats it, so lowering out of it stays free; a switch INTO a code-executing
-    mode is still refused (#821's absolute rule).
+    Unknown modes: an unknown TARGET is a raise (fail closed). An unknown CURRENT mode is judged as
+    passive -- exactly what the executor's dispatch gate enforces for it since #829 -- so a switch out
+    of it gains whatever passive lacks. (``"agentic"``, the CLI agent loop's run mode, is defined since
+    #829: an active-class name.)
     """
     target_def = get_mode(target)
     if target_def is None:
         return True
-    current_def = get_mode(current)
-    if current_def is None:
-        return bool(target_def.can_execute_code)
+    current_def = get_mode(current) or get_mode("passive")  # unknown = enforced as passive (#829)
+    if current_def is None:  # pragma: no cover - the mode table always defines passive
+        raise RuntimeError("the passive mode definition is missing")
     gated = current_def.forbidden_tools | target_def.forbidden_tools
     for _flag, tools, _label in DISPATCH_CAPABILITIES:
         gated = gated | tools
