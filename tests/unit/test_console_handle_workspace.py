@@ -40,7 +40,7 @@ class TestRegistryBuilder:
         cwd.mkdir()
         root.mkdir()
         monkeypatch.chdir(cwd)
-        build_tool_registry(operational_mode="active", allowed_dirs_override=[str(root)])
+        build_tool_registry(internet_launch_enabled=False, operational_mode="active", allowed_dirs_override=[str(root)])
         assert not (cwd / ".maxim_workspace").exists(), "scaffold landed in the CWD despite an override"
         assert (root / ".maxim_workspace").is_dir()
 
@@ -49,7 +49,7 @@ class TestRegistryBuilder:
         from maxim.runtime.bootstrap import build_tool_registry
 
         monkeypatch.chdir(tmp_path)
-        build_tool_registry(operational_mode="active")
+        build_tool_registry(internet_launch_enabled=False, operational_mode="active")
         assert (tmp_path / ".maxim_workspace").is_dir()
 
 

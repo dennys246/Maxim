@@ -329,7 +329,7 @@ def test_run_wires_and_disconnects_robot(tmp_path, mocked_run_runtime, monkeypat
         learning=False,
     )
 
-    assert mocked_run_runtime.registry_calls == [{"maxim": robot}]
+    assert mocked_run_runtime.registry_calls == [{"internet_launch_enabled": False, "maxim": robot}]
     assert _RunTestAgent.instances[0].goal.robot is robot
     release.assert_called_once_with(lease)
 

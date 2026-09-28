@@ -150,19 +150,17 @@ class TestHttpFetchCancel:
         def _poison_policy():
             tool.cancel()  # flip the event mid-execute
 
-            class _P:
-                enabled = True
-                max_fetch_bytes = 1_000_000
-                request_timeout_s = 5.0
-                max_pages_per_minute = 10
-                require_robots_ok = False
-                block_paywalled = False
-                unsafe_content_checks = False
+            from maxim.utils.internet_access import EffectiveInternetPolicy, InternetAccessPolicy
 
-                def can_access(self, url):
-                    return True, None
-
-            return _P()
+            # block_private_ips=False: no DNS pre-check for example.com in a unit test
+            rules = InternetAccessPolicy(
+                request_timeout_s=5.0,
+                require_robots_ok=False,
+                block_paywalled=False,
+                unsafe_content_checks=False,
+                block_private_ips=False,
+            )
+            return EffectiveInternetPolicy(policy=rules, enabled=True)
 
         tool._get_internet_policy = _poison_policy
         result = tool.execute(url="https://example.com")
@@ -196,11 +194,9 @@ class TestInternetSearchCancel:
         def _poison_policy():
             tool.cancel()
 
-            class _P:
-                enabled = True
-                request_timeout_s = 5.0
+            from maxim.utils.internet_access import EffectiveInternetPolicy, InternetAccessPolicy
 
-            return _P()
+            return EffectiveInternetPolicy(policy=InternetAccessPolicy(request_timeout_s=5.0), enabled=True)
 
         tool._get_internet_policy = _poison_policy
         result = tool.execute(query="anything")

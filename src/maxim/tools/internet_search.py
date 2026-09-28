@@ -408,25 +408,31 @@ class InternetSearchTool(Tool):
     # Tool metadata
     requires_internet_access = True
 
-    # Domains to exclude from search results
+    # Domains always excluded from search results, on top of the operator's policy lists. Matched as a
+    # domain or its subdomains, so an entry must be a registrable name ("grokipedia" alone matched no
+    # host, #832).
     BLOCKED_DOMAINS: set[str] = {
-        "grokipedia",
+        "grokipedia.com",
     }
 
     def __init__(
         self,
         get_internet_policy: Any | None = None,
-        rate_limit_per_minute: int = 10,
         blocked_domains: set[str] | None = None,
     ):
         super().__init__()
+        # The page limit, timeout and allow/block lists all come from this getter's policy, read per
+        # request (#832): the tool keeps no limit of its own that could disagree with the operator's.
         self._get_internet_policy = get_internet_policy
-        self._rate_limit = rate_limit_per_minute
         self._request_times: list[float] = []
         # Merge instance-level blocked domains with class defaults
+        from maxim.utils.internet_access import normalize_host
+
         self._blocked_domains = self.BLOCKED_DOMAINS.copy()
         if blocked_domains:
             self._blocked_domains.update(blocked_domains)
+        # Normalised once, here, so a bad entry fails at construction, not mid-search.
+        self._own_blocks = frozenset(normalize_host(d) for d in self._blocked_domains)
         # CC11 cancellation hook (see ``cancel`` docstring + the
         # HttpFetchTool comment for rationale on threading.Event +
         # clear-at-execute-entry).
@@ -446,44 +452,29 @@ class InternetSearchTool(Tool):
         """
         self._cancelled.set()
 
-    def _is_blocked_domain(self, url: str) -> bool:
-        """Check if URL is from a blocked domain.
+    def _filter_results(self, results: list[dict[str, str]], access: Any) -> list[dict[str, str]]:
+        """Drop results the tool's own list or the operator's allow/block lists refuse (#832).
 
-        Uses proper URL parsing to extract the hostname and check if it
-        matches or ends with any blocked domain pattern.
+        One host normaliser for both lists (``normalize_host``: case, trailing dot, IDNA), and a check
+        that resolves nothing: a search result is only a link, and the fetch that follows it runs the
+        full check (private addresses, then the connect-time check). A result whose URL does not parse
+        is dropped on its own; it does not fail the search.
         """
-        try:
-            parsed = urlparse(url)
-            hostname = (parsed.hostname or "").lower()
+        from maxim.utils.internet_access import host_matches, normalize_host
 
-            if not hostname:
-                return False
-
-            for blocked in self._blocked_domains:
-                blocked_lower = blocked.lower()
-                # Check if hostname matches exactly or is a subdomain
-                # e.g., "example.com" blocks "example.com" and "sub.example.com"
-                # but not "notexample.com" or "example.com.malicious.net"
-                if hostname == blocked_lower:
-                    return True
-                if hostname.endswith("." + blocked_lower):
-                    return True
-
-            return False
-        except Exception as e:
-            # If URL parsing fails, log and don't block
-            logger.debug(f"Failed to parse URL for domain blocking: {url} - {e}")
-            return False
-
-    def _filter_results(self, results: list[dict[str, str]]) -> list[dict[str, str]]:
-        """Filter out results from blocked domains."""
         filtered = []
         for result in results:
             url = result.get("url", "")
-            if not self._is_blocked_domain(url):
-                filtered.append(result)
-            else:
-                logger.debug(f"Filtered blocked domain: {url}")
+            try:
+                raw_host = urlparse(url).hostname or ""
+                host = normalize_host(raw_host)
+            except ValueError:
+                logger.debug("Dropped a search result with an unparseable URL")
+                continue
+            if host_matches(host, self._own_blocks) or access.domain_refusal(raw_host) is not None:
+                logger.debug("Filtered search result from %s", host)
+                continue
+            filtered.append(result)
         return filtered
 
     def execute(self, **kwargs: Any) -> ToolResult:
@@ -505,11 +496,11 @@ class InternetSearchTool(Tool):
 
         # Check internet access policy
         if self._get_internet_policy:
-            policy = self._get_internet_policy()
-            if not policy.enabled:
+            access = self._get_internet_policy()  # the operator's rules + the toggle, for this request
+            if not access.enabled:
                 return ToolResult(
                     success=False,
-                    error="Internet access is disabled",
+                    error=access.disabled_reason(),
                     metadata={"policy_blocked": True},
                 )
         else:
@@ -527,13 +518,14 @@ class InternetSearchTool(Tool):
         if self._cancelled.is_set():
             return ToolResult(success=False, error="Search cancelled")
 
-        # Check rate limit
+        # Check rate limit (the operator's page limit, read with the policy for this request)
+        limit = access.policy.max_pages_per_minute
         now = time.time()
         self._request_times = [t for t in self._request_times if now - t < 60]
-        if len(self._request_times) >= self._rate_limit:
+        if len(self._request_times) >= limit:
             return ToolResult(
                 success=False,
-                error=f"Rate limit exceeded ({self._rate_limit} requests/minute)",
+                error=f"Rate limit exceeded ({limit} requests/minute)",
                 metadata={"rate_limited": True},
             )
 
@@ -545,19 +537,14 @@ class InternetSearchTool(Tool):
 
         # Perform the search
         try:
-            timeout = 8.0
-            if self._get_internet_policy:
-                policy = self._get_internet_policy()
-                timeout = policy.request_timeout_s
-
             results, search_failure = _search_duckduckgo(
                 query,
                 max_results=min(max_results, 10),  # Cap at 10
-                timeout_s=timeout,
+                timeout_s=access.policy.request_timeout_s,
             )
 
             # Filter out blocked domains
-            results = self._filter_results(results)
+            results = self._filter_results(results, access)
 
             if search_failure:
                 # A BROKEN search is a failure, not an empty one. Previously

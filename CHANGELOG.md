@@ -43,6 +43,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Web search obeys the operator's internet policy, and the policy can no longer be changed under the
+  tools** (#832 items 1, 5; owner decisions 2026-09-28).
+  - `internet_search` read only on/off and the timeout. Its results are now filtered through the
+    policy's `allow_domains` / `block_domains` (a list check that resolves nothing; the fetch that
+    follows a link runs the full check), and its rate limit is the policy's `max_pages_per_minute`,
+    read per request. The tool's own default block entry named `grokipedia`, which matched no host; it
+    is now `grokipedia.com`.
+  - `InternetAccessPolicy` is frozen and holds only the operator's rules. On/off belongs to the runtime
+    toggle and is composed at read time by the new `EffectiveInternetPolicy`, which every internet tool
+    now receives.
+    - Domain lists are normalised frozensets: lowercased, trailing dot dropped, and IDNA for Unicode
+      names. The tool's own list and the hosts go through the same normaliser, so
+      `grokipedia.com.` no longer slips past.
+    - A bare string, an empty name, a non-boolean flag and a non-positive limit are refused. In the file
+      that means internet goes off until it is fixed; a whole-number float such as `10.0` is accepted.
+  - **Shape changes (a parallel review before the freeze):**
+    - Three fields that nothing ever read (`allow_paywalled_with_credentials`, `retention_seconds`,
+      `citations_required`) are retired.
+    - The private lowercased copies of the domain lists are gone. `dataclasses.replace` copied them
+      stale, so the old list stayed enforced.
+  - **An unknown key in `util/internet_policy.json` now fails closed** (internet off, logged), like a
+    corrupt file.
+    - A typo such as `block_domain` used to be ignored, silently dropping the block list.
+    - The retired keys (and a stray `enabled`) load with a warning, so files written before this keep
+      working.
+    - A policy file written by a NEWER build, with a field this build does not know, turns internet
+      off here (a downgrade fails closed).
+  - **A corrupt or unreadable toggle file (`util/internet_access.json`) now fails closed too**, and so
+    does one whose `enabled` is not a real boolean (a hand-written `"false"` is a truthy string).
+    - It fell back to the default (on), so a corrupted "off" turned internet back on.
+    - A missing file still means on.
+    - A refusal names which file is unreadable rather than a bare "disabled".
+    - The startup hint now says to delete only the toggle file, since the policy file holds the
+      domain lists.
+  - A wildcard entry (`*.example.com`) is refused: it matched nothing. A domain already covers its
+    subdomains. Unicode entries match their punycode host; the IDNA 2003/2008 gap for `ß`-style names
+    is #968.
+  - The policy cache is keyed on the file's identity (mtime in ns, inode, size), taken before the read,
+    so an edit within one mtime tick is seen on the next request. A state directory that cannot be read
+    disables internet instead of crashing the registry build at startup.
+  - A search result whose URL does not parse is dropped on its own; it used to fail the whole search.
 - **Downloads and backend URLs check the address they actually connect to** (#921; the #824 fix,
   extended to the two paths it left open).
   - **Downloads** (`download_to_file`: model downloads, Oasis bundle pulls) follow redirects, and every
@@ -101,6 +142,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`build_tool_registry` takes a required `internet_launch_enabled` and builds the policy getter
+  itself** (#832 item 4). The `internet_policy_getter=` parameter is removed, so no caller can hand
+  the internet tools a bare policy. Forgetting the decision is a `TypeError`, not "no internet".
+  - The sim, console and API registries state `False`, which is today's behaviour.
+  - An AST test (`test_only_the_builder_wires_the_internet_tools`) fails any module but the builder
+    that constructs an internet tool, passes `get_internet_policy=`, or imports the getter (an alias
+    included). The CI grep is the belt. The old grep's pattern (`InternetAccessPolicy(enabled=`) could
+    no longer match anything.
+- **Internet-policy API changes** (`maxim.utils` exports these; #832):
+  - `load_internet_policy` returns an `EffectiveInternetPolicy` (`.enabled`, `.can_access(url)`,
+    `.domain_refusal(host)`, `.summary()`, and the operator rules as `.policy`), not the policy.
+  - `InternetAccessPolicy(enabled=...)` is a `TypeError`: on/off is not a policy field.
+  - `InternetAccessPolicy.can_access` moved to the view. The policy has `url_refusal(url)` and
+    `domain_refusal(host)`.
+  - Removed: the fields `allow_paywalled_with_credentials`, `retention_seconds`,
+    `citations_required`, and `InternetSearchTool(rate_limit_per_minute=...)`.
+- **The internet state recorded for the prompt is the effective one** (#832 item 3).
+  - `cli.py` recorded the launch cap as `state.data["internet_access"]`, and the robot runtime
+    recorded nothing. Both now record the cap AND the persisted toggle, with a readable policy file.
+  - The loop's reads agree on the default (`False`); two defaulted to `True`.
+  - It is still a launch snapshot: a toggle mid-session is not reflected until the per-turn read lands
+    with the `agent_loop` slices (#965). No consumer decides anything on it today.
 - **Runtime mode requests work, and can only lower capability** (#829).
   - A runtime request for `passive`/`active` re-exec'd with `--mode passive`, which argparse rejected
     (exit 2). Operational names now re-exec with the same run mode and `--operational-mode`.

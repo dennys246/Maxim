@@ -235,7 +235,9 @@ def test_git_commit_never_runs_repository_hooks(tmp_path, monkeypatch) -> None:
 def test_the_registry_hands_the_containment_root_to_every_host_coding_tool(tmp_path) -> None:
     from maxim.runtime.bootstrap import build_tool_registry
 
-    registry = build_tool_registry(operational_mode="active", allowed_dirs_override=[str(tmp_path)])
+    registry = build_tool_registry(
+        internet_launch_enabled=False, operational_mode="active", allowed_dirs_override=[str(tmp_path)]
+    )
     root = os.path.realpath(tmp_path)
     for name in ("bash", "execute_file", "run_tests", "git_diff", "git_commit"):
         assert registry.get(name)._allowed_dirs == [root], name

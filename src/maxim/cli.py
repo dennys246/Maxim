@@ -1969,13 +1969,9 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     speaker_fn=speaker_fn,
                 )
 
-                # Check if internet access is enabled (default: True unless --no-internet)
+                # The launch cap on internet access (default: on unless --no-internet); the registry
+                # builds the live policy getter from it (#822, #832).
                 internet_enabled = not bool(getattr(args, "no_internet", False))
-
-                # The persisted policy + runtime toggle, capped by --no-internet (#822).
-                from maxim.utils.internet_access import live_internet_policy_getter
-
-                internet_policy_getter = live_internet_policy_getter(internet_enabled)
 
                 # Build comms stack if enabled (--comms flag or MAXIM_COMMS_ENABLED env)
                 comms_enabled = bool(getattr(args, "comms", False)) or os.environ.get(
@@ -2004,7 +2000,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
                 registry = build_tool_registry(
                     response_output=response_output,
-                    internet_policy_getter=internet_policy_getter,
+                    internet_launch_enabled=internet_enabled,
                     gateway=gateway,
                     operational_mode=_operational_mode,
                     prompt_handler=_prompt_handler,
@@ -2208,8 +2204,11 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                             except Exception as _e:
                                 logger.debug("Entity context injection failed: %s", _e)
 
-                # Store internet access in state (uses internet_enabled from above)
-                state.data["internet_access"] = internet_enabled
+                # The EFFECTIVE state at launch (the cap AND the persisted toggle/policy), not the cap
+                # alone (#832). A launch snapshot: the live per-turn read is #965 (agent_loop slices).
+                from maxim.utils.internet_access import effective_internet_enabled
+
+                state.data["internet_access"] = effective_internet_enabled(internet_enabled)
                 state.data["autonomy_level"] = initial_level.value
 
                 # Wire communication gateway if available

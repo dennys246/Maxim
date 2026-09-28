@@ -503,10 +503,16 @@ jobs:
             echo "ERROR: raw urllib.request.urlopen outside utils/http.py"
             exit 1
           fi
-          # #822: runtimes get their internet policy from utils/internet_access.py::live_internet_policy_getter;
-          # a bare InternetAccessPolicy(enabled=...) elsewhere bypasses the persisted policy and toggle.
-          if grep -rn "InternetAccessPolicy(enabled=" src/maxim/ | grep -v "utils/internet_access.py"; then
-            echo "ERROR: bare InternetAccessPolicy(enabled=...) outside utils/internet_access.py (use live_internet_policy_getter)"
+          # #822/#832: the internet tools are wired ONLY by build_tool_registry (runtime/bootstrap.py), and
+          # only the loader (utils/internet_access.py) composes the effective view. The full, alias-proof
+          # check is the AST test tests/unit/test_internet_policy_832.py::test_only_the_builder_wires_the_internet_tools;
+          # this grep is the belt.
+          if grep -rnE --include=*.py "live_internet_policy_getter|get_internet_policy=|[^ ]InternetSearchTool\(|[^ ]HttpFetchTool\(|= *(InternetSearchTool|HttpFetchTool)\(" src/maxim/ | grep -v "^src/maxim/runtime/bootstrap.py:\|^src/maxim/utils/internet_access.py:"; then
+            echo "ERROR: internet tools or their policy getter wired outside runtime/bootstrap.py (pass internet_launch_enabled= to build_tool_registry)"
+            exit 1
+          fi
+          if grep -rn --include=*.py "EffectiveInternetPolicy(" src/maxim/ | grep -v "^src/maxim/utils/internet_access.py:"; then
+            echo "ERROR: EffectiveInternetPolicy built outside utils/internet_access.py (only the loader composes it)"
             exit 1
           fi
           # PerceptTraceBuffer is DORMANT (R4's look-back design review, 2026-09-24,

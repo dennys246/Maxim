@@ -369,6 +369,7 @@ class TestToolRegistryConfinement:
         os.makedirs(sandbox_dir, exist_ok=True)
 
         registry = build_tool_registry(
+            internet_launch_enabled=False,
             operational_mode="active",
             allowed_dirs_override=[sandbox_dir],
         )
@@ -394,6 +395,7 @@ class TestToolRegistryConfinement:
         os.makedirs(sandbox_dir, exist_ok=True)
 
         registry = build_tool_registry(
+            internet_launch_enabled=False,
             operational_mode="active",
             allowed_dirs_override=[sandbox_dir],
         )
@@ -419,6 +421,7 @@ class TestToolRegistryConfinement:
         os.makedirs(sandbox_dir, exist_ok=True)
 
         registry = build_tool_registry(
+            internet_launch_enabled=False,
             operational_mode="active",
             allowed_dirs_override=[sandbox_dir],
         )
@@ -437,6 +440,7 @@ class TestToolRegistryConfinement:
         os.makedirs(sandbox_dir, exist_ok=True)
 
         registry = build_tool_registry(
+            internet_launch_enabled=False,
             operational_mode="active",
             allowed_dirs_override=[sandbox_dir],
         )

@@ -113,7 +113,7 @@ def test_the_real_passive_registry() -> None:
     """The reproduction path: build_tool_registry(passive) + build_executor, as the CLI does."""
     from maxim.runtime.bootstrap import build_executor, build_tool_registry
 
-    registry = build_tool_registry(operational_mode="passive")
+    registry = build_tool_registry(internet_launch_enabled=False, operational_mode="passive")
     executor = build_executor(registry, pain_bus=None, permissions=None)
     executor.set_mode_source(lambda: "passive")
     registered = set(registry._tools)

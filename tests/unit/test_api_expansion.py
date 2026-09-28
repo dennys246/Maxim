@@ -531,7 +531,9 @@ class TestCampaignParametersAreThreadedOrRejected:
         handler = object()
         aut_handler, sim_handler = _select_aut_prompt_handler(handler, stop_event=None)
         assert aut_handler is handler and sim_handler is None
-        tool = build_tool_registry(operational_mode="active", prompt_handler=aut_handler).get("request_interaction")
+        tool = build_tool_registry(
+            internet_launch_enabled=False, operational_mode="active", prompt_handler=aut_handler
+        ).get("request_interaction")
         assert tool._handler is handler
 
     def test_the_real_sim_hands_the_passed_handler_to_the_aut_registry(self, monkeypatch):

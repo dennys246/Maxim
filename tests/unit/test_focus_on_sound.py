@@ -206,7 +206,7 @@ class TestWiringCoherence:
         registry itself."""
         from maxim.runtime import build_tool_registry
 
-        registry = build_tool_registry(maxim=_FakeMaxim(latest=(0.0, _now(), 0.0)))
+        registry = build_tool_registry(internet_launch_enabled=False, maxim=_FakeMaxim(latest=(0.0, _now(), 0.0)))
         assert "focus_on_sound" in registry.list()
 
     def test_headless_gets_a_noop_stub_not_a_bare_token(self):
@@ -215,7 +215,7 @@ class TestWiringCoherence:
         the deep-dive 'move' bare-token failure, again."""
         from maxim.runtime import build_tool_registry
 
-        registry = build_tool_registry(maxim=None)
+        registry = build_tool_registry(internet_launch_enabled=False, maxim=None)
         assert "focus_on_sound" in registry.list()
         tool = registry.get("focus_on_sound")
         result = tool.execute()

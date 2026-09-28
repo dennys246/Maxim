@@ -2,6 +2,34 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-09-28 — The internet policy is the operator's, frozen; on/off is composed at read time (#832)
+
+### Decision
+
+Owner decisions on #832 items 1, 3, 4 and 5 (item 2 waits for #922/#834). The freeze followed a parallel three-lens review of the type's shape: enforcement, planned work, and freeze mechanics.
+
+1. **Search obeys the policy.** Results pass the policy's allow/block lists (`domain_refusal`, no DNS); the page limit is `max_pages_per_minute`, read per request.
+2. **`build_tool_registry(internet_launch_enabled=...)` is required and builds the getter.** No caller can hand the tools a policy, and forgetting is a `TypeError`.
+3. **The recorded internet state is the effective value at launch** in both runtimes. The live per-turn read waits for the `agent_loop` slices (#965).
+4. **`InternetAccessPolicy` is frozen and operator-only:**
+   - `enabled` moved out to a composed, never-persisted `EffectiveInternetPolicy(policy, enabled, source)`;
+   - the three fields nothing read are retired;
+   - the stale private domain copies are removed;
+   - values are validated on construction.
+5. **Forward compat is loader-owned** (not `extra`, not SHAPE-FROZEN): unknown keys fail closed, and retired keys warn. So any field added later turns internet off on an older build: a downgrade fails closed.
+6. **A corrupt toggle file fails closed too.** This is an author extension made during the folds and not one of the owner's four answers; it is pending the owner's explicit OK on the PR. It applies #822's stance (and item 5's) to the toggle: a corrupt or non-boolean `util/internet_access.json` used to fall back to ON.
+
+### Reason
+
+The operator's lists and limits reached `http_fetch` but not search. The shared cached instance was mutable, and its loader mutated it. Three fields claimed behaviour nothing enforced. `dataclasses.replace` kept a stale block list enforced. And an ignored unknown key meant a typo silently dropped a block list. Freezing without the review would have locked the dead fields and the `enabled` ownership split into the persisted shape.
+
+### Tradeoffs
+
+- A policy file with an unknown key now turns internet off until it is fixed. That is the #822 fail-closed stance, applied to typos, and it makes a downgrade across an added field turn internet off (the #856 class, chosen deliberately here).
+- The recorded on/off can go stale mid-session until #965. No consumer decides on it today.
+- The review's other findings are separate issues: the summary never reaches the model (#965), the pre-check's classifier and DNS-failure reason (#966), robots.txt failing open (#967), and IDNA 2003 vs 2008 for `ß`-style entries (#968).
+
+
 ## 2026-09-28 — The operational mode is a launch grant, separate from the run mode (#829)
 
 ### Decision

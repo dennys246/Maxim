@@ -56,7 +56,9 @@ class TestExecuteSurfacesTheFailure:
         from maxim.tools.internet_search import InternetSearchTool
 
         # execute() blocks by default without a policy; give it a permissive one.
-        policy = type("P", (), {"enabled": True, "request_timeout_s": 8.0})()
+        from maxim.utils.internet_access import EffectiveInternetPolicy, InternetAccessPolicy
+
+        policy = EffectiveInternetPolicy(policy=InternetAccessPolicy(), enabled=True)
         return InternetSearchTool(get_internet_policy=lambda: policy)
 
     def test_broken_search_is_reported_as_a_failure(self):
@@ -93,7 +95,9 @@ def test_failure_flag_is_in_metadata(failed):
     # machine-checkable rather than string-matched.
     from maxim.tools.internet_search import InternetSearchTool
 
-    policy = type("P", (), {"enabled": True, "request_timeout_s": 8.0})()
+    from maxim.utils.internet_access import EffectiveInternetPolicy, InternetAccessPolicy
+
+    policy = EffectiveInternetPolicy(policy=InternetAccessPolicy(), enabled=True)
     tool = InternetSearchTool(get_internet_policy=lambda: policy)
     ret = ([], "boom") if failed else ([], None)
     with patch("maxim.tools.internet_search._search_duckduckgo", return_value=ret):

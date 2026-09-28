@@ -4582,7 +4582,7 @@ def run_agentic_loop(
                             timestamp=time.time(),
                             mode=state.data.get("mode", "active"),
                             autonomy_level=state.data.get("autonomy_level", "supervised"),
-                            internet_access=state.data.get("internet_access", True),
+                            internet_access=state.data.get("internet_access", False),
                         )
                         logger.info("Created minimal context for pending action followup")
 
@@ -4597,7 +4597,7 @@ def run_agentic_loop(
                             timestamp=time.time(),
                             mode=state.data.get("mode", "active"),
                             autonomy_level=state.data.get("autonomy_level", "supervised"),
-                            internet_access=state.data.get("internet_access", True),
+                            internet_access=state.data.get("internet_access", False),
                         )
                         logger.debug("Created minimal context for audio-orient escalation")
 

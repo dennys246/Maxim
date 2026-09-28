@@ -192,6 +192,7 @@ class MaximHandle:
         self._workspace = (Path(home) if home is not None else agent_data(agent_id)) / "workspace"
         self._workspace.mkdir(parents=True, exist_ok=True)
         tool_registry = build_tool_registry(
+            internet_launch_enabled=False,
             operational_mode="active",
             response_output=self._response_output,
             allowed_dirs_override=[str(self._workspace)],

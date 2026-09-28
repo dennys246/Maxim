@@ -17,6 +17,7 @@ from maxim.utils.structured_logging import (
 
 from maxim.utils.internet_access import (
     Citation,
+    EffectiveInternetPolicy,
     InternetAccessPolicy,
     InternetAccessState,
     load_internet_access,
@@ -63,6 +64,7 @@ __all__ = [
     "log_structured",
     # Internet access
     "Citation",
+    "EffectiveInternetPolicy",
     "InternetAccessPolicy",
     "InternetAccessState",
     "load_internet_access",

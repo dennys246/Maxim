@@ -282,11 +282,13 @@ class TestRespondToolWiring:
         from maxim.runtime.bootstrap import build_tool_registry
         from maxim.utils.response_output import ResponseOutput
 
-        bare = build_tool_registry(operational_mode="active")
+        bare = build_tool_registry(internet_launch_enabled=False, operational_mode="active")
         assert "respond" not in set(bare.list_all())
 
         wired = build_tool_registry(
-            operational_mode="active", response_output=ResponseOutput(sandbox_path=str(tmp_path))
+            internet_launch_enabled=False,
+            operational_mode="active",
+            response_output=ResponseOutput(sandbox_path=str(tmp_path)),
         )
         assert {"respond", "speak"} <= set(wired.list_all())
 
