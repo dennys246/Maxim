@@ -1,0 +1,24 @@
+usage: maxim hive pull [-h] --from FROM_OASIS [--domain DOMAIN]
+                       [--release RELEASE] --session SESSION --receiver-body
+                       RECEIVER_BODY [--api-key API_KEY]
+                       [--allow-unstamped-geometry]
+                       [--receiver-agent-id RECEIVER_AGENT_ID] [--apply]
+
+options:
+  -h, --help            show this help message and exit
+  --from FROM_OASIS     registered Oasis name
+  --domain DOMAIN       only pull releases tagged with this domain
+  --release RELEASE     pull only this release id
+  --session SESSION     receiver: a maxim.create.agent() name, a simulation's
+                        session ID, or a path to either's directory
+  --receiver-body RECEIVER_BODY
+                        the receiver's body_ref (gate-7 body check)
+  --api-key API_KEY     bearer token for the Oasis (default: the local leader
+                        key, for a loopback Oasis only)
+  --allow-unstamped-geometry
+                        admit EC nodes without a geometry stamp (legacy
+                        archives; passed through to ingest)
+  --receiver-agent-id RECEIVER_AGENT_ID
+                        your agent's id: a v2 release's NAc rows arrive under
+                        an agent token and re-key to it (required for v2)
+  --apply               write the merge (default: dry run)

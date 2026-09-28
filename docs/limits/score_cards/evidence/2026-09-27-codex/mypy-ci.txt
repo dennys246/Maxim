@@ -1,0 +1,5 @@
+$ python -m mypy src/maxim/__init__.py src/maxim/api.py src/maxim/session.py src/maxim/create.py src/maxim/load.py src/maxim/hivemind/ --ignore-missing-imports --follow-imports=silent
+UTC=2026-09-27T23:47:47.486390+00:00
+Success: no issues found in 19 source files
+
+EXIT_STATUS=0

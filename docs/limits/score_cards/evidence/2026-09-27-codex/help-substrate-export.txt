@@ -1,0 +1,68 @@
+usage: maxim substrate export [-h] --session SESSION --contributor-id
+                              CONTRIBUTOR_ID [--domain DOMAIN]
+                              [--no-identity-filter]
+                              [--identity-threshold IDENTITY_THRESHOLD]
+                              [--body-ref BODY_REF] [--body-yaml BODY_YAML]
+                              [--affordance-namespace AFFORDANCE_NAMESPACE]
+                              [--sign] [--release] [--signer-id SIGNER_ID]
+                              [--release-sequence RELEASE_SEQUENCE]
+                              [--license LICENSE] [--key-file KEY_FILE]
+                              [--agent-id AGENT_ID]
+                              output
+
+positional arguments:
+  output                Path to write the .zip bundle to
+
+options:
+  -h, --help            show this help message and exit
+  --session SESSION     A simulation's session ID (under
+                        ~/.maxim/sim_reports/) or a path to a session
+                        directory
+  --contributor-id CONTRIBUTOR_ID
+                        Opaque ID identifying this Maxim. Must NOT start with
+                        '_' (reserved namespace).
+  --domain DOMAIN       Substrate-domain tag scoping the bundle (e.g.
+                        "combat", "cooking"). Default: undomained.
+  --no-identity-filter  Skip the identity-bearing-pattern quarantine (use for
+                        trusted-internal backups only).
+  --identity-threshold IDENTITY_THRESHOLD
+                        Identity-bearing heuristic threshold (default 2 —
+                        bundle-stricter than the heuristic default).
+  --body-ref BODY_REF   Gate 7: the body the biases were learned on (e.g.
+                        'reachy_mini'). Undeclared bundles ship body_ref: null
+                        and are refused by body-checking receivers.
+  --body-yaml BODY_YAML
+                        Gate 7: path to the body's embodiment YAML. Derives
+                        manifest.capability_map (tool:<name> ->
+                        <modulator>/<affordance>) via the real tool-naming
+                        path, and defaults --body-ref to the spec's name.
+  --affordance-namespace AFFORDANCE_NAMESPACE
+                        Gate 7: name of the vocabulary the bundle's tool
+                        signatures live in.
+  --sign                Slice A (1.2 P2P): sign the bundle with the persisted
+                        ed25519 key (minted on first use under
+                        ~/.config/maxim/). Requires the [sign] extra.
+  --release             Compose a RELEASE from merged contributions: re-author
+                        every link/node as yours (stamped with your
+                        contributor id) instead of exporting only your own
+                        learning. Requires --sign: the release's signature
+                        carries the provenance.
+  --signer-id SIGNER_ID
+                        signer_identity written to the manifest (defaults to
+                        --contributor-id).
+  --release-sequence RELEASE_SEQUENCE
+                        With --sign: this release's place in the signing key's
+                        sequence. Default: the next number from the key's
+                        counter (~/.maxim/util/hive_release_sequence.json); an
+                        explicit N may only move it forward, and is required
+                        once for an existing key the counter has never seen.
+  --license LICENSE     SPDX license id the bundle is published under
+                        (required with --sign; e.g. CDLA-Permissive-2.0).
+  --key-file KEY_FILE   With --sign: the private key to sign with (minted
+                        there on first use; public key at <file>.pub). Keep
+                        the Queen key in its own file, apart from this host's
+                        development key.
+  --agent-id AGENT_ID   With --sign: whose NAc rows the release ships (your
+                        agent's id). Needed only when the state holds rows for
+                        several agents; rows filed under any other agent are
+                        dropped, with a count.

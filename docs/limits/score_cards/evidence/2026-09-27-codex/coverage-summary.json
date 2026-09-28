@@ -1,0 +1,167 @@
+{
+  "total": {
+    "statements": 90416,
+    "covered_lines": 58619,
+    "line_percent": 64.83,
+    "branches": 29672,
+    "covered_branches": 15714,
+    "branch_percent": 52.96,
+    "combined_percent": 61.9
+  },
+  "files": {
+    "runtime/agent_loop.py": {
+      "statements": 1964,
+      "covered_lines": 998,
+      "line_percent": 50.81,
+      "branches": 874,
+      "covered_branches": 360,
+      "branch_percent": 41.19,
+      "combined_percent": 47.85
+    },
+    "simulation/orchestrator.py": {
+      "statements": 1495,
+      "covered_lines": 168,
+      "line_percent": 11.24,
+      "branches": 532,
+      "covered_branches": 41,
+      "branch_percent": 7.71,
+      "combined_percent": 10.31
+    },
+    "cli.py": {
+      "statements": 1223,
+      "covered_lines": 171,
+      "line_percent": 13.98,
+      "branches": 426,
+      "covered_branches": 61,
+      "branch_percent": 14.32,
+      "combined_percent": 14.07
+    },
+    "runtime/executor.py": {
+      "statements": 273,
+      "covered_lines": 235,
+      "line_percent": 86.08,
+      "branches": 90,
+      "covered_branches": 71,
+      "branch_percent": 78.89,
+      "combined_percent": 84.3
+    },
+    "runtime/agent_factory.py": {
+      "statements": 341,
+      "covered_lines": 298,
+      "line_percent": 87.39,
+      "branches": 94,
+      "covered_branches": 84,
+      "branch_percent": 89.36,
+      "combined_percent": 87.82
+    },
+    "runtime/bio_stack.py": {
+      "statements": 195,
+      "covered_lines": 148,
+      "line_percent": 75.9,
+      "branches": 48,
+      "covered_branches": 33,
+      "branch_percent": 68.75,
+      "combined_percent": 74.49
+    },
+    "utils/sandbox_executor.py": {
+      "statements": 244,
+      "covered_lines": 171,
+      "line_percent": 70.08,
+      "branches": 78,
+      "covered_branches": 44,
+      "branch_percent": 56.41,
+      "combined_percent": 66.77
+    },
+    "utils/http.py": {
+      "statements": 560,
+      "covered_lines": 468,
+      "line_percent": 83.57,
+      "branches": 140,
+      "covered_branches": 109,
+      "branch_percent": 77.86,
+      "combined_percent": 82.43
+    },
+    "hivemind/bundle.py": {
+      "statements": 642,
+      "covered_lines": 607,
+      "line_percent": 94.55,
+      "branches": 238,
+      "covered_branches": 214,
+      "branch_percent": 89.92,
+      "combined_percent": 93.3
+    },
+    "hivemind/ingest.py": {
+      "statements": 575,
+      "covered_lines": 526,
+      "line_percent": 91.48,
+      "branches": 292,
+      "covered_branches": 244,
+      "branch_percent": 83.56,
+      "combined_percent": 88.81
+    },
+    "memory/hippocampus.py": {
+      "statements": 716,
+      "covered_lines": 650,
+      "line_percent": 90.78,
+      "branches": 256,
+      "covered_branches": 206,
+      "branch_percent": 80.47,
+      "combined_percent": 88.07
+    },
+    "decisions/nac.py": {
+      "statements": 1186,
+      "covered_lines": 1115,
+      "line_percent": 94.01,
+      "branches": 508,
+      "covered_branches": 452,
+      "branch_percent": 88.98,
+      "combined_percent": 92.5
+    },
+    "planning/plan_manager.py": {
+      "statements": 306,
+      "covered_lines": 262,
+      "line_percent": 85.62,
+      "branches": 126,
+      "covered_branches": 78,
+      "branch_percent": 61.9,
+      "combined_percent": 78.7
+    },
+    "bridges/fear_bridge.py": {
+      "statements": 273,
+      "covered_lines": 78,
+      "line_percent": 28.57,
+      "branches": 94,
+      "covered_branches": 5,
+      "branch_percent": 5.32,
+      "combined_percent": 22.62
+    },
+    "api.py": {
+      "statements": 795,
+      "covered_lines": 596,
+      "line_percent": 74.97,
+      "branches": 230,
+      "covered_branches": 154,
+      "branch_percent": 66.96,
+      "combined_percent": 73.17
+    },
+    "create.py": {
+      "statements": 75,
+      "covered_lines": 51,
+      "line_percent": 68.0,
+      "branches": 14,
+      "covered_branches": 7,
+      "branch_percent": 50.0,
+      "combined_percent": 65.17
+    },
+    "load.py": {
+      "statements": 56,
+      "covered_lines": 44,
+      "line_percent": 78.57,
+      "branches": 14,
+      "covered_branches": 9,
+      "branch_percent": 64.29,
+      "combined_percent": 75.71
+    },
+    "embodied_runtime/selfy.py": "NOT MEASURED"
+  }
+}

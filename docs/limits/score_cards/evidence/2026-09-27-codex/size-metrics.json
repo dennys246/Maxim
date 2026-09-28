@@ -1,0 +1,138 @@
+{
+  "src/maxim": {
+    "files": 524,
+    "physical_lines": 233361
+  },
+  "tests": {
+    "files": 575,
+    "physical_lines": 196345
+  },
+  "test_src_line_ratio": 0.8413788079413441,
+  "functions": {
+    "total": 6544,
+    "over200": 53,
+    "over300": 19,
+    "largest20": [
+      [
+        3389,
+        "src/maxim/runtime/agent_loop.py",
+        2155,
+        "run_agentic_loop"
+      ],
+      [
+        3322,
+        "src/maxim/simulation/orchestrator.py",
+        390,
+        "start_simulation_mode"
+      ],
+      [
+        1696,
+        "src/maxim/cli.py",
+        655,
+        "_main_impl"
+      ],
+      [
+        918,
+        "src/maxim/embodied_runtime/agentic_runtime.py",
+        240,
+        "_start_agentic_runtime"
+      ],
+      [
+        636,
+        "src/maxim/cli_parser.py",
+        12,
+        "_build_parser"
+      ],
+      [
+        587,
+        "src/maxim/embodied_runtime/media_loop.py",
+        24,
+        "live"
+      ],
+      [
+        513,
+        "src/maxim/runtime/bio_stack.py",
+        108,
+        "build_bio_stack"
+      ],
+      [
+        502,
+        "src/maxim/embodiment/tool_bridge.py",
+        474,
+        "execute"
+      ],
+      [
+        462,
+        "src/maxim/decisions/nac.py",
+        2006,
+        "recommend_action"
+      ],
+      [
+        437,
+        "src/maxim/hivemind/ingest.py",
+        925,
+        "ingest_bundle"
+      ],
+      [
+        417,
+        "src/maxim/simulation/orchestrator.py",
+        2664,
+        "_stall_detector"
+      ],
+      [
+        415,
+        "src/maxim/runtime/tool_dispatch.py",
+        167,
+        "record_outcome"
+      ],
+      [
+        362,
+        "src/maxim/console/server.py",
+        1631,
+        "build_app"
+      ],
+      [
+        352,
+        "src/maxim/tools/math_tool.py",
+        60,
+        "execute"
+      ],
+      [
+        326,
+        "src/maxim/embodied_runtime/selfy.py",
+        103,
+        "__init__"
+      ],
+      [
+        324,
+        "src/maxim/runtime/leader_proxy.py",
+        1223,
+        "_proxy_request"
+      ],
+      [
+        313,
+        "src/maxim/simulation/generative_runner.py",
+        340,
+        "run_generative_campaign"
+      ],
+      [
+        311,
+        "src/maxim/runtime/lane_backends.py",
+        2383,
+        "_maybe_auto_spawn_server"
+      ],
+      [
+        304,
+        "src/maxim/decisions/nac.py",
+        656,
+        "__init__"
+      ],
+      [
+        300,
+        "src/maxim/hivemind/cli.py",
+        1013,
+        "_build_parser"
+      ]
+    ]
+  }
+}
