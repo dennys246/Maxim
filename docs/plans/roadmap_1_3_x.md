@@ -171,6 +171,16 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    boundary. Guard: each lane fails on the escape.
 8. **One source of truth for claims** (mechanization backlog M2). Guard: the claims-registry lint.
 
+**Engram integrity (pulled in from 1.4's parallel line, 2026-09-27).** Its four engineering items gate
+1.4.0 (release threshold T7), touch no survival rung's path and run off the rig
+([engram_formation.md](engram_formation.md)), so they fit the hardening line:
+[#908](https://github.com/dennys246/Maxim/issues/908) the Cerebellum is never saved (guard: a round trip
+that fails on today's default config); [#909](https://github.com/dennys246/Maxim/issues/909) the
+motor-engram docs overclaim and the read side is undeclared-dormant (guard: the Dormant docstring + a
+caller-grep test); [#910](https://github.com/dennys246/Maxim/issues/910) the `[DANGEROUS]` annotation is
+unreachable (guard: a test that reaches it through the real annotator); [#911](https://github.com/dennys246/Maxim/issues/911)
+the text-only reward-widening drift hazard (an offline measurement committed as a record, not a fix).
+
 **Before 1.4.0, not in 1.3.2:** the release pipeline in CI — [#938](https://github.com/dennys246/Maxim/issues/938)
 fixed, then a tag-triggered workflow that builds once, audits those bytes, publishes them with PyPI trusted
 publishing and creates the Release from them, plus a `v*` tag ruleset and required signatures. Both cards'
@@ -182,9 +192,18 @@ recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_
 
 ### The decomposition
 
-**One target: `agent_loop.py`** (5,348 lines; `run_agentic_loop` 3,484). `start_simulation_mode`
-(3,324) and `_main_impl` (1,747) stay pinned by the ratchet for a later pass — naming them here
-would repeat the "kicked down the road" pattern this release exists to end.
+**Scope widened 2026-09-27 (owner): two targets in order, a third if time allows.**
+
+1. **`agent_loop.py`** (5,543 lines; `run_agentic_loop` 3,389 at `v1.3.1`) — first, because 1.4's Phase 0
+   instrument is built on it.
+2. **`start_simulation_mode`** (`simulation/orchestrator.py`, 3,322). Its tests cover **11%** of its lines
+   (the Codex card's measurement at `v1.3.1`), so it is NOT decomposed blind: characterization tests
+   first, then an orchestrator coverage floor set from them (item 5 above), then slices under the same
+   gates below. The coverage ratchet is what makes this decomposition safe.
+3. **`_main_impl`** (`cli.py`, 1,696) — only if 1 and 2 land; it is CLI glue, the least valuable of the three.
+
+The "kicked down the road" worry that kept this to one target is answered by the rule in **Sizing**: if a
+slice stalls, 1.3.2 ships the slices that landed and the ratchet records the new ceiling.
 
 **Behaviour preservation is the gate, not an aspiration.** Every slice must keep green, in the same
 PR: the byte-identical-selection provenance test, the encoder golden pin, and an offline
@@ -213,8 +232,11 @@ records the new ceiling either way.
            security cluster (#800-802, #824, #826-828), nightly lane + release-reads-nightlies,
            network block, public-API
            fixes, D40, D32, doc honesty; plus everything on main since 1.3.0
-  → 1.3.2  the enforcement ratchets carried from 1.3.1, then the agent_loop decomposition +
-           typing scope, triggers discharged
+  → 1.3.2  #935 + provenance + the complete Exp 10 re-run → data-safety + silent seams (#939,
+           #840/#841, mypy) → the ratchets → engram integrity (#908–#911) → the decomposition
+           (agent_loop, then start_simulation_mode behind characterization tests; _main_impl if time)
+           → trigger walk + live Exp 60 re-run
+           ‖ in parallel, no loop code: 1.4 groundwork (roadmap_1_4.md §Groundwork in parallel with 1.3.2)
   → 1.4    Phase 0 instrument on the decomposed loop, then Exp 62 → E1 → …
              ([roadmap_1_4.md](roadmap_1_4.md))
 ```
