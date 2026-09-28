@@ -1,0 +1,27 @@
+HEAD 7e695a58cb596bafb165dec03286635826c38b59
+REMOVED docs/limits/score_cards True
+REMOVED docs/plans/archive/quality_burndown.md True
+REMOVED docs/plans/archive/external_critique_response.md True
+REMOVED docs/plans/archive/roadmap_1_1_to_1_3.md True
+baseline JSON valid
+./docs/experiments/37_cross_model_results.md:197 reviewed label match, not a repository grade
+./tests/behavioral/test_exp37_analyzer_smoke.py:1054 reviewed label match, not a repository grade
+./docs/experiments/37_cross_session_graduation.md:329 reviewed label match, not a repository grade
+./docs/experiments/37_cross_session_graduation.md:330 reviewed label match, not a repository grade
+./tests/integration/test_plan_lifecycle.py:648 reviewed label match, not a repository grade
+./docs/plans/behavioral_graduation_candidates.md:239 experiment arm comparison
+./docs/experiments/31_roy_divergence_audit.md:32 reviewed label match, not a repository grade
+./docs/experiments/31_roy_divergence_audit.md:34 reviewed label match, not a repository grade
+./docs/experiments/rationale/exp61-shared-fear/wiring.md:233 reviewed label match, not a repository grade
+./docs/experiments/rationale/exp61-shared-fear/environment.md:297 reviewed label match, not a repository grade
+./tests/unit/test_exp61_fear_transport.py:5 reviewed label match, not a repository grade
+./docs/experiments/exp61_shared_fear_prereg.md:27 reviewed label match, not a repository grade
+./docs/experiments/exp61_shared_fear_prereg.md:117 reviewed label match, not a repository grade
+./docs/plans/deferred/setpoint_aware_neutral.md:76 reviewed label match, not a repository grade
+./docs/plans/README.md:39 reviewed label match, not a repository grade
+./docs/archive/dungeon_master_persona.md:1143 reviewed label match, not a repository grade
+./docs/plans/archive/substrate_p8_sleep_replay.md:84 experiment interference label
+./docs/plans/archive/hivemind_p2p_scope.md:272 reviewed label match, not a repository grade
+./docs/plans/archive/llm_path_operator_visibility.md:167 reviewed label match, not a repository grade
+./docs/plans/archive/survival_world_1_3.md:268 reviewed label match, not a repository grade
+MATCH_LINES 20

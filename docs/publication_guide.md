@@ -2,7 +2,7 @@
 
 Step-by-step guide for publishing pymaxim to PyPI.
 
-**Current release:** 1.1.0 — published to PyPI 2026-08-26 (tag `v1.1.0` at `df881b87`; GitHub Release with the exact wheel + sdist attached; `pip install pymaxim`).
+**Current release:** the newest `## [X.Y.Z]` section of `CHANGELOG.md`, and https://pypi.org/project/pymaxim/ for what PyPI serves. *(This line named a version until 2026-09-27 and still said 1.1.0 at the v1.3.1 tag — a hand-kept version line rots, which is why the living sync lines are linted and this one no longer names one.)*
 **Package name:** pymaxim (import name: `maxim`)
 **Build system:** setuptools + wheel
 

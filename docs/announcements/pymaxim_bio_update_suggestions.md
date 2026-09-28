@@ -1,4 +1,140 @@
-# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19)
+# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19 · 1.3.1 refresh 2026-09-27)
+
+## 1.3.1 refresh — 2026-09-27 ("Hardening"; PyPI `upload_time` 2026-09-27T22:06Z, signed tag `v1.3.1` @ `7e695a58`)
+
+**Framing rule.** 1.3.1 makes **no new behavioural claim**. It is fixes plus the guard that holds
+each one. The site says so in its first sentence about the release, then lists what was hardened
+(security, sharing, the Python API) and sends API users to the upgrade breaks before anything else.
+1.3.0's claims (Exp 60, Exp 61, R3) **stand**; 1.3.1 lists three corrections to 1.3.0 (Exp 61
+unsigned, the `invalidate` upgrade step, the void Exp 37/38 NAc-bias-off arm), and the site
+carries all three. **Exp 62** stays on
+the site as ledger evidence only: earned on the ledger 2026-09-20, **not** a 1.3.1 release claim
+until its different-reader pass is recorded — the site says exactly that beside it. "Influenced is
+not controlled" and "bio-inspired is not a neuroscience simulation" hold throughout: every security
+item names its limit (passive → active is ungated, #924; fencing does not stop a model following
+injected text, #823; the sandbox's import hook is defense in depth, not the boundary), and the
+memory-strength phases are presented as **recording only**, never as a feature. Release links:
+[GitHub Release](https://github.com/dennys246/Maxim/releases/tag/v1.3.1) ·
+[PyPI 1.3.1](https://pypi.org/project/pymaxim/1.3.1/). Site fix: **maxim-web
+`docs/1-3-1-hardening`**; this section is its engine companion and lands first.
+
+**Engine truth read on `origin/main` (`8d6a2c85`), not from memory:** `release_1_3_1.md`; CHANGELOG
+`[1.3.1]` including "Correction to 1.3.0" (`[Unreleased]` is empty on main — the "Correction to
+1.2.0" is open as #942, and the Exp 56 fact it records holds regardless: the ledger's Exp 56 row on
+main already says the harness exports unsigned, and `scripts/exp56/common.py::export_bundle` has no
+`--sign`, checked at `9905d4d8` and today); the graduation ledger's "Trigger walk — 2026-09-27" and
+the Exp 10 / 37 / 56 / 60 / 61 / 62 rows; `docs/experiments/data/rerun_exp10_2026-09-27/README.md`;
+the Exp 38 write-up's 2026-09-27 correction. The v1.3.1 score card
+(`docs/limits/score_cards/2026-09-27-claude.md`) was read but is **not linked**: the site links no
+score card anywhere, so it gains none now.
+
+**Verified against the artifact, not a proxy.**
+
+- **Clean venv** (`python3 -m venv` on 3.14, `pip install 'pymaxim[console]==1.3.1'`, later the
+  `sign` extra for the signing flow). `maxim.__version__` = 1.3.1, imported from the venv.
+  `ComponentRegistry().list_refs()` = **97** = the regenerated `components.json` count
+  (`--label "pymaxim 1.3.1 (PyPI wheel)"`); the only catalog diff is the label and one description's
+  moved plan path.
+- **CLI flags:** every `--flag` in a site bash block or inline `maxim …` span — **93** across **19**
+  verb groups — checked against the 1.3.1 wheel's `--help` (argparse and the hand-written helps of
+  `doctor`, `roy`, `peer`, `tunnel`, `config`). All exist. A second pass checked the other direction —
+  **required** flags each command omits — and found a real, pre-1.3.1 defect: **every
+  `maxim substrate ingest` example on the site lacked the required `--trust <contributor-id>`**, so
+  none of them ran as written (`the following arguments are required: --trust`).
+- **The sharing flow, run end to end on the wheel** (two throwaway sessions built with the engine's
+  own test helpers, in a scratch `$HOME`): `keygen` → `export --sign` refused without `--license` →
+  `export --sign --license CDLA-Permissive-2.0` = schema 3, `release_sequence` 1, `signature.json`;
+  unsigned export = schema 2 → `ingest` of the release refused without `--receiver-agent-id`, then
+  verified and dry-ran with it (fear discounted ×0.75) → `oasis publish` refused without
+  `--queen-key` and refused the unsigned bundle, published the release with it → `oasis serve` on
+  loopback + `hive add` (registry wrote `accept_v1: false`) → `hive pull` refused without
+  `--receiver-agent-id`, verified and dry-ran with it using the local leader key (loopback only).
+- **Python:** **48/48** site snippets compile. The capture and memory snippets **run** on the wheel:
+  the published Hippocampus capture raised `TypeError: … missing 1 required keyword-only argument:
+  'encoding'`; the rewritten one runs, as do the load, retrieval, strategy, `/reference/cli/`
+  inspect, `/guides/simulation/outputs/` load and `maxim.campaign` argument-error snippets.
+- **Build:** `pnpm build` clean, **155** pages; **12,217** internal hrefs + fragments resolve in
+  `dist/` (URL-decoding checker), 0 broken; all **154** sitemap routes present; the
+  `live-site-check` release-line regex matches `1.3.1 "Hardening"` in source and built HTML.
+
+**Engine defects found while running the snippets (not filed; owner's call):**
+1. `HippocampusConfig(persistence_path="~/…")` is used verbatim — `save()` writes a literal `./~/`
+   directory under the working directory. Same for `maxim.load.nac("~/…")`
+   (`FileNotFoundError`). The site now passes absolute paths and says the path is not expanded.
+2. `maxim.load.hippocampus("~/…")` returns an **empty store without raising** (a missing
+   absolute path does raise `FileNotFoundError`, as its docstring promises), so a later
+   `save()` would overwrite. The site tells readers to check `len(...)` before saving.
+3. `Hippocampus(config)` with an existing `persistence_path` starts empty and its next `save()`
+   overwrites the file (3 memories → 1, measured). #939 names `create.hippocampus` / `create.atl`;
+   this is the constructor underneath it and may want to be in #939's "done when". Note also that
+   `Hippocampus.from_config(config)` with the path only on the config reopened **0**, while
+   `from_config(config, persistence_path=P)` reopened 3.
+4. The docs site's old snippet pointed at `~/.maxim/memory/hippocampus.json` — the running agent's
+   own store — so, with (2), copying it could clobber real memory. The site example now uses a
+   scratch file and warns.
+
+### Findings (route → claim before → truth source → fix)
+
+| Route | Before | Truth source | Fix |
+|---|---|---|---|
+| `/getting-started/` | 1.3.0 "Oasis-2" version line; Exp 61 "exported through the shipped signed-bundle path"; Exp 56 "exported as a signed bundle"; `diagnose()` unexplained | PyPI `upload_time`; `release_1_3_1.md`; CHANGELOG "Correction to 1.3.0"; Exp 56 ledger row; `common.py::export_bundle`; #942 (open) | 1.3.1 "Hardening", 2026-09-27 UTC, four links; "no new behavioural claim" first, then security / sharing / API in three bullets; 1.3.0 kept as "which 1.3.1 leaves standing"; "through the shipped export and ingest path"; Exp 56 "(unsigned, through the shipped CLI)"; a dated "Corrected in 1.3.1" paragraph (Exp 61 unsigned, `invalidate`, the void ablation arm), with Exp 56 attributed to the ledger and its 1.2.0-notes correction named as pending, not as a 1.3.1 correction; Exp 62 "not a claim of 1.3.1 until a second reader's review is recorded"; `diagnose()` == `maxim doctor`, real network probes on a peer-configured machine |
+| `/installation/` | no upgrade guidance; no `sign` extra | `release_1_3_1.md` §Upgrading | New **Upgrading to 1.3.1**: `encoding=` required (with `EncodingSignals.unmeasured("api")` and its import), passive enforced ("maxim active"), `hive pull --receiver-agent-id`, `--api-key` for remote/LAN, `export --sign --license` + one-time `--release-sequence N`, `oasis publish --queen-key` + digest ids, `hive trust --accept-v1`, `--session` lookup, `diagnose()` probes, internet policy / proxy, config downgrade; `sign` row in the extras table |
+| `/systems/hippocampus/` | `hippo.capture(perception)` (raises on 1.3.1); `persistence_path="~/.maxim/memory/hippocampus.json"`; `Hippocampus(config, strategy=CompositeStrategy(...))` (no such parameter); staged formation described as live; config listing without the strength keys | wheel signatures; CHANGELOG Phase 2b-i/2c-*/2d-*/2S-*, #817; #939 + the measurements above | Runnable capture with `encoding=` and `save()` on a scratch absolute path; a caution: the constructor does not load and overwrites, #939, reopen with `maxim.load.hippocampus`, `~` not expanded, never point an example at the live store; strategy chosen by `memory_strategy` name (`composite` is a fixed 0.6/0.4 blend; unknown names raise); new **What 1.3.1 records, and does not yet use** — recording only under the default strategy, `strength` an uncalibrated placeholder (~12 s of run experience); staged formation marked "designed, not running" (#817, pool capped at 32); config listing gains `strength_*`, `retro_*`, `dedup_window_s` |
+| `/concepts/operating-modes/` | "old names survive only as voice aliases"; passive "edits require approval"; "Maxim singularity" switches to autonomous; `autonomy_level` "requires human approval" via a queue | `modes/definitions.py` (wheel); #821, #826, #827, #828, #922, #924; #800–802, #823, #824, #825 | Both name sets are live and map 1:1; passive's real table (workspace, host-acting tools refused at dispatch, the tool list); "Maxim singularity" refused; more autonomy fails with no approver (#922); new **Enforced since 1.3.1** with every limit stated — passive → active ungated (#924), sandbox import hook is defense in depth and no shipped runtime wires the sandbox tools, fencing cannot stop a model following injected text |
+| `/reference/cli/` | `ingest` without `--trust`; `export … [--sign]` with no license; `invalidate` recipe without `--modality`; `oasis publish signed-bundle.zip`; `hive pull` without `--receiver-agent-id` / `--api-key`; voice table "passive / active / singularity" | wheel `--help` + the runs above; CHANGELOG `[1.3.1]` Added/Fixed | Verb list with `--trust`, `--receiver-agent-id`, `--sign --license`, `inspect --entries`, `keygen --key-file`; the runnable `invalidate … --modality world --drop-geometry <stale-tag> --apply` with a dated correction; new bullets: signed export is a v2 release, format 1 frozen, receiver journal refuses equivocation/downgrade; merge keeps the receiver's links (#913), aligned situations fold (#914), allowlist scrub, unsigned export ships only your own learning; keys only where they belong; `--accept-v1`; singularity phrase refused; inspect snippet gains its missing `Path` import and a None guard |
+| `/guides/oasis/` | "exports that as a signed bundle"; `export --sign` without `--license`; `ingest` without `--trust`; `oasis publish signed-bundle.zip`; `hive pull` without `--receiver-agent-id` | same | "a bundle, signed or not"; **Signing a release** (v2 contents, `--license`, per-key counter, `--release-sequence N` once, `--key-file`, format freeze with a link to `public_format_freeze.md`); runnable ingest; receiver journal, #913 (607 → 443), #914, allowlist scrub; publish/pull with `--queen-key`, `--receiver-agent-id`, `--api-key`, digest ids; `--accept-v1` default; the flow's wheel run stated; Exp 56 "with an unsigned bundle" |
+| `/reference/tools/` | `ModeSwitchTool` "(passive/active/singularity)"; sandbox tool "Run Python in an isolated sandbox"; `maxim.run()` silent on modes | #821, #800–802, #826 | Singularity refused; sandbox row: runs only approved content, fails closed, no shipped runtime wires it; `run()` starts passive and host-acting tools are refused, registered tools keep working |
+| `/concepts/prompt-system/` | foundational preamble "a hardcoded paraphrase … a pip-installed agent gets an empty preamble" (D32) | CHANGELOG Fixed "pip installs get the foundational preamble"; wheel `_data/CONSTITUTION.md` + `_load_foundational_context()` output | Read from the Constitution, which ships in the wheel; §1 hard constraints word for word incl. the actuator-speed one; header `=== AGENT BEHAVIOR RULES ===` |
+| `/guides/dm-campaigns/` | "`npc_model=` and `prompt_handler=` … raise `NotImplementedError`" | CHANGELOG Fixed; wheel run | `prompt_handler=` works since 1.3.1; `interactive=True` with it raises `ValueError`; `npc_model=` still raises |
+| `/guides/simulation/outputs/` | `maxim.load.nac("~/.maxim/…")` | wheel run (`FileNotFoundError`) | `Path.home()` path; "`load.*` take the path as written" |
+| `/research/evidence/` | Exp 10 "earned"; Exp 56 "signed bundle"; Exp 61 "shipped signed-bundle path"; Exp 62 unqualified; no #889 entry | ledger Exp 10 row + re-run README; Exp 56/61 rows; Exp 62 row's trigger-walk note; #889 | Exp 10 **MAINTAINED (narrow), 2026-09-27** with the five-part scope (exact reload of 100; new fields round-trip on all 100; 3 per observed resume turn; one turn per phase because every run stopped on D13, #935; link accumulation not re-shown) plus "3 is the enrichment cap" and "too thin for negative transfer"; Exp 56/61 unsigned; Exp 62 "not a claim of the 1.3.1 release"; corrections list gains #889 (Exp 37 then 38), unsigned bundles, the Exp 10 re-run |
+| `/research/experiments/cross-session-learning/`, `/roy-harness/` | Exp 37 ablations listed with NAc-bias as valid; Exp 38 "0.40, 0.34 and 0.21" attributed to three wires; Exp 10 "re-validated" only | Exp 37 row; Exp 38 write-up's 2026-09-27 correction; Exp 10 re-run README | NAc-bias-off void (#889) — only Wire-A and Wire-1 attribute; Exp 38's 0.21 arm says nothing about NAc reward bias; Exp 10 September re-run paragraph and bound |
+| `/research/experiments/world-seam/`, `/memory/engrams/`, landing | "exported as a signed bundle" / "shipped signed-bundle path" | Exp 56/61 rows; `common.py` | "a bundle", with dated unsigned corrections on both walkthroughs; engrams "signed or not" |
+| `src/data/experiments.json` | Exp 10 "clean re-validation" only; Exp 56 / 61 "signed"; Exp 37 cross-model silent on #889 | as above | Exp 10 summary + finding carry the narrow re-run; Exp 56 / 61 unsigned with the date; Exp 37 cross-model names the void arm. 99 rows, none added |
+| `src/data/components.json` | "pymaxim 1.3.0 (PyPI wheel)" | the 1.3.1 wheel registry | "pymaxim 1.3.1 (PyPI wheel)", 97, derived |
+
+**Left as is, deliberately.** Exp 60, Exp 61 and R3's numbers and scopes, byte for byte; the
+landing's 1.3 card (only its Exp 56 "signed" word moved); every "signed bundle" sentence that is
+about the signing feature itself. No score card is linked (the site links none). Exp 62's page and
+numbers are unchanged; only its release status is stated.
+
+**Not carried to the site.** The release-integrity items (green-nightly gate, the network-free test
+process, the prereg lint over 1.3's own experiments) — true and guarded, but engineering process
+rather than something a user can act on; the site's evidence pages already point at the ledger.
+The removed internals (`Executor.get_last_rpe`, `SupervisionPolicy.allowed_mode_transitions`) and the
+validation refusals, which the site links to via the release notes' Upgrading section.
+
+**Different-reader pass (before either PR).** An independent agent re-checked every changed claim
+in both diffs against the sources above and the wheel, re-running the cheap measurements. Fifteen
+findings, all folded: the Exp 56 correction was mis-attributed to 1.3.1 (it is #942's); the
+`diagnose()` "~12 s" is for an **unreachable** leader and a stalling one takes longer; "three memories
+… leave one" misread the clobber (all three are lost; the one is a new capture); an unknown
+`memory_strategy` raises at the first `sleep()` in Python, not at construction; `load.hippocampus`'s
+silent empty result on a `~` path (now defect 2 above); the preamble carries the **four** §1
+constraints from the Constitution's Runtime Preamble section (plus one line that is not in §1);
+"no shipped runtime attaches" an approver (#827) rather than "none can be attached"; the receiver
+journal's limits (per receiver session, verified admissions only, `--require-signed` only); the Exp 10
+commit is operator-attested; the byte cap is #825; "only Wire-A and Wire-1 attribute" read as if both
+did (Wire-1 did not) — now "the only valid ablations"; an unreadable internet policy fails closed;
+the strength model removes a memory "that is not recalled"; and this section's own framing line.
+
+### Acceptance checks — 1.3.1
+
+- [x] Version line 1.3.1 "Hardening", 2026-09-27 (UTC upload time), links to the release notes, CHANGELOG, GitHub Release and PyPI 1.3.1.
+- [x] "No new behavioural claim" stated first; 1.3.0's claims stand with the three corrections; Exp 62 labelled ledger evidence, not a 1.3.1 claim.
+- [x] No sentence says Exp 56 or Exp 61 used a signed bundle; every remaining "signed bundle" is about the signing feature.
+- [x] Every security item carries its limit (#924, #823, defense-in-depth sandbox); memory strength appears only as recording.
+- [x] Exp 10 reads MAINTAINED (narrow), 2026-09-27, with the one-turn / D13 / #935 / no-link-accumulation scope wherever its status appears.
+- [x] Exp 37 / 38's NAc-bias-off arm is void on every page that lists the ablations; attribution only to Wire-A and Wire-1.
+- [x] Every upgrade break is reflected in the snippets and guides that touch it (`encoding=`, passive, `--receiver-agent-id`, `--api-key`, `--license`, `--release-sequence`, `--queen-key`, `--accept-v1`, `--session`, `diagnose()`); #939 warned where the Hippocampus API is documented.
+- [x] A different reader checked every changed claim against the engine sources before the PRs; its 15 findings are folded.
+- [x] 93 CLI flags / 19 verb groups checked against the 1.3.1 wheel; the required-flag pass's `--trust` defect fixed; the sharing flow run end to end on the wheel.
+- [x] 48/48 Python snippets compile; the capture, load, retrieval, strategy and inspect snippets run on the wheel.
+- [x] Counts derived: components 97 from the wheel registry; experiments 99 from `experiments.json`.
+- [x] `pnpm build` clean (155 pages); 12,217 internal links + fragments resolve; 154/154 sitemap routes present.
+- [ ] **After merge/deploy:** re-crawl the live sitemap, confirm the version line via `live-site-check`, and spot-check `/installation/#upgrading-to-131`, `/concepts/operating-modes/#enforced-since-131` and `/research/evidence/#cross-session-memory-persistence`.
+- [ ] **Human-only (carried since 1.0.9):** visual / mobile / keyboard / accessibility pass in a real browser — the longer installation page and the two new cautions on `/systems/hippocampus/`.
+
 
 ## Engram pages — 2026-09-25 (not a release refresh; engine truth = `docs/wiring/engram-formation.md`)
 

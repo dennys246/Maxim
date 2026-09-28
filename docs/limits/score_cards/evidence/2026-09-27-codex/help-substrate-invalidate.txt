@@ -1,0 +1,17 @@
+usage: maxim substrate invalidate [-h] --session SESSION [--modality MODALITY]
+                                  [--drop-geometry DROP_GEOMETRY] [--apply]
+
+options:
+  -h, --help            show this help message and exit
+  --session SESSION     A simulation's session ID (under
+                        ~/.maxim/sim_reports/) or a path to a session
+                        directory
+  --modality MODALITY   Modality whose stale nodes to invalidate (e.g.
+                        'world').
+  --drop-geometry DROP_GEOMETRY
+                        The stale geometry tag to drop, by name (copy it from
+                        the census this command prints when run without this
+                        flag, or from the EC mismatch warning). Unstamped
+                        nodes are never touched.
+  --apply               Actually write (default is a dry-run report). Writes a
+                        tombstone sidecar first.

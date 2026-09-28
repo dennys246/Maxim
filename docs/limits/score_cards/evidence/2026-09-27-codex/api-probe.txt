@@ -1,0 +1,5 @@
+documented hippo roundtrip PASS {'id_preserved': True, 'recall_count': 1}
+documented agent create/export/shutdown/load PASS {'before': {'agent_id': 'scout', 'role': 'npc', 'episodic_memories': 1, 'memory_summaries': [{'id': '0f34d7c4-58a3-487f-bacc-af8416243245', 'tool': '', 'valence': 0}], 'causal_links': 0, 'total_observations': 0}, 'after': {'agent_id': 'scout', 'role': 'npc', 'episodic_memories': 1, 'memory_summaries': [{'id': '0f34d7c4-58a3-487f-bacc-af8416243245', 'tool': '', 'valence': 0}], 'causal_links': 0, 'total_observations': 0}}
+documented nac example/save/load PASS {'prediction': None, 'loaded_type': 'NAc'}
+documented atl roundtrip PASS {'concept_id_preserved': True}
+network attempts []

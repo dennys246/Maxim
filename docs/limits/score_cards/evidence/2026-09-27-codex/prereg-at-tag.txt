@@ -1,0 +1,167 @@
+$ python scripts/lint_prereg_precedes_data.py --ref v1.3.1
+UTC=2026-09-27T23:47:37.902792+00:00
+NOTE: docs/experiments/data/44b_pilot: exp44b_preregistration.md was touched by 3 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/44b_pilot: GRANDFATHERED (still failing) — Exp 44b PILOT (instrument shakedown, docs/experiments/44b_pilot.md — explicitly not the confirmatory run and not evidence for the 44b gates): campaign_start `2026-08-10T11:53:49` is a NAIVE local time (−0600, i.e. 17:53Z) and precedes the pre-registration commit 1667ad19 (12:10:05 −0600) by 16 minutes — the prereg was on a branch, not on main, when the pilot began. Surfaced by this lint 2026-08-29; the confirmatory run has not happened; the harness now writes epoch `ts`.
+NOTE:     `ts` is a naive ISO-8601 string (no UTC offset) — its zone is unknowable; write epoch seconds
+NOTE:     pre-registration docs/experiments/protocols/exp44b_preregistration.md reached v1.3.1 at 2026-08-10 18:10:05Z, not before the data (2026-08-10 11:53:49Z, first ts)
+NOTE: docs/experiments/data/44b_s4_nonstationarity: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/52_phaseA_scripted.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/52_phaseA_scripted.json: exp52_nurture_preregistration.md was touched by 2 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/52_phaseB_embodied.jsonl: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/52_phaseB_embodied.jsonl: exp52_nurture_preregistration.md was touched by 1 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/52_phaseB_runs: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/52_phaseB_runs: exp52_nurture_preregistration.md was touched by 1 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/53_agents: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/53_agents: GRANDFATHERED (still failing) — Exp 53 inputs (the nursery agents' nac/ec state, sha256-pinned by the manifest): landed in the same squash 617b1625 as PRE-DATA amendments 1–2 of the 53 pre-registration, so 'amendment before data' cannot be shown for the original run. R1 (2026-08-28) re-read these same files from a clean tree.
+NOTE:     PRE-DATA amendment 1 of docs/experiments/protocols/exp53_cross_context_readout_preregistration.md reached v1.3.1 at 2026-08-26 18:27:10Z, not before the data (2026-08-26 18:27:10Z, first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE:     PRE-DATA amendment 2 of docs/experiments/protocols/exp53_cross_context_readout_preregistration.md reached v1.3.1 at 2026-08-26 18:27:10Z, not before the data (2026-08-26 18:27:10Z, first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/53_agents_manifest.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/53_agents_manifest.json: GRANDFATHERED (still failing) — Exp 53 manifest — same squash 617b1625 as amendments 1–2 (see 53_agents).
+NOTE:     PRE-DATA amendment 1 of docs/experiments/protocols/exp53_cross_context_readout_preregistration.md reached v1.3.1 at 2026-08-26 18:27:10Z, not before the data (2026-08-26 18:27:10Z, first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE:     PRE-DATA amendment 2 of docs/experiments/protocols/exp53_cross_context_readout_preregistration.md reached v1.3.1 at 2026-08-26 18:27:10Z, not before the data (2026-08-26 18:27:10Z, first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/53_cross_context_readout.jsonl: exp53_cross_context_readout_preregistration.md was touched by 2 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/53_cross_context_readout.jsonl: GRANDFATHERED (still failing) — Exp 53 original (2026-08-26 release day): first record 15:04Z from a DIRTY tree at 68f9026e (stamped, no allow_dirty — the flag did not exist); its pre-registration reached main at 17:05Z (#550), two hours AFTER the data. Disclosed in docs/experiments/53_cross_context_readout.md and docs/lessons/experiment-prereg-precedes-data.md; the ledger row rests on the R1 replication (53b_cross_context_readout_replication_2026-08-28.jsonl), which passes every rule here.
+NOTE:     pre-registration docs/experiments/protocols/exp53_cross_context_readout_preregistration.md reached v1.3.1 at 2026-08-26 17:05:04Z, not before the data (2026-08-26 15:04:08Z, first ts)
+NOTE:     PRE-DATA amendment 1 of docs/experiments/protocols/exp53_cross_context_readout_preregistration.md reached v1.3.1 at 2026-08-26 18:27:10Z, not before the data (2026-08-26 15:04:08Z, first ts)
+NOTE:     PRE-DATA amendment 2 of docs/experiments/protocols/exp53_cross_context_readout_preregistration.md reached v1.3.1 at 2026-08-26 18:27:10Z, not before the data (2026-08-26 15:04:08Z, first ts)
+NOTE:     2 record(s) stamp working_tree_dirty_src_scripts: true without allow_dirty: true — a gated record from a dirty tree is refused or explicitly allowed, never silent
+NOTE: docs/experiments/data/53b_cross_context_readout.jsonl: exp53_cross_context_readout_preregistration.md was touched by 2 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/53b_cross_context_readout.jsonl: exp53b_cross_context_readout_delta_preregistration.md was touched by 2 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/53b_cross_context_readout.jsonl: GRANDFATHERED (still failing) — Exp 53b original (2026-08-26): first record 15:57Z from the same DIRTY tree; its pre-registration's only appearance on main is the squash 617b1625 (#551, 18:27Z) that also landed this file — same commit, so the freeze-before-data evidence does not exist. Disclosed in the result doc + lesson; superseded by R1.
+NOTE:     pre-registration docs/experiments/protocols/exp53_cross_context_readout_preregistration.md reached v1.3.1 at 2026-08-26 17:05:04Z, not before the data (2026-08-26 15:57:49Z, first ts)
+NOTE:     PRE-DATA amendment 1 of docs/experiments/protocols/exp53_cross_context_readout_preregistration.md reached v1.3.1 at 2026-08-26 18:27:10Z, not before the data (2026-08-26 15:57:49Z, first ts)
+NOTE:     PRE-DATA amendment 2 of docs/experiments/protocols/exp53_cross_context_readout_preregistration.md reached v1.3.1 at 2026-08-26 18:27:10Z, not before the data (2026-08-26 15:57:49Z, first ts)
+NOTE:     pre-registration docs/experiments/protocols/exp53b_cross_context_readout_delta_preregistration.md reached v1.3.1 at 2026-08-26 18:27:10Z, not before the data (2026-08-26 15:57:49Z, first ts)
+NOTE:     3 record(s) stamp working_tree_dirty_src_scripts: true without allow_dirty: true — a gated record from a dirty tree is refused or explicitly allowed, never silent
+NOTE: docs/experiments/data/53b_cross_context_readout_replication_2026-08-28.jsonl: exp53b_cross_context_readout_delta_preregistration.md was touched by 1 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/54_agents: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/54_agents_manifest.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/54_magnitude.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/54_phaseA_nursery.jsonl: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/54_phaseA_runs: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/54_targets.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/54_targets.json: GRANDFATHERED (still failing) — Exp 54 sweep-declared Phase B targets (2026-08-26, 93887e6e): provenance block stamped working_tree_dirty_src_scripts: true with no allowance. A gated INPUT to Phase B/C; disclosed in docs/experiments/54_nurture_reachy_body.md (2026-08-29). Phase B/C must re-declare from a clean tree or run with --allow-dirty and echo it.
+NOTE:     1 record(s) stamp working_tree_dirty_src_scripts: true without allow_dirty: true — a gated record from a dirty tree is refused or explicitly allowed, never silent
+NOTE: docs/experiments/data/56_four_arm.jsonl: amendment 3 of exp56_four_arm_sharing_preregistration.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/56_four_arm.jsonl: amendment 4 of exp56_four_arm_sharing_preregistration.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/56_four_arm.jsonl: exp56_four_arm_sharing_preregistration.md was touched by 6 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/56_four_arm_verdict.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/56_four_arm_verdict.json: amendment 3 of exp56_four_arm_sharing_preregistration.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/56_four_arm_verdict.json: amendment 4 of exp56_four_arm_sharing_preregistration.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/56_four_arm_verdict.json: exp56_four_arm_sharing_preregistration.md was touched by 6 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/56_phase0.json: amendment 3 of exp56_four_arm_sharing_preregistration.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/56_phase0.json: amendment 4 of exp56_four_arm_sharing_preregistration.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/56_phase0.json: exp56_four_arm_sharing_preregistration.md was touched by 8 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/57_ladder.jsonl: amendment 2 of exp57_dose_response_ladder_preregistration.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/57_ladder.jsonl: amendment 3 of exp57_dose_response_ladder_preregistration.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/57_ladder.jsonl: exp57_dose_response_ladder_preregistration.md was touched by 1 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/57_ladder_verdict.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/57_ladder_verdict.json: amendment 2 of exp57_dose_response_ladder_preregistration.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/57_ladder_verdict.json: amendment 3 of exp57_dose_response_ladder_preregistration.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/57_ladder_verdict.json: exp57_dose_response_ladder_preregistration.md was touched by 1 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/57_phase0.json: amendment 2 of exp57_dose_response_ladder_preregistration.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/57_phase0.json: amendment 3 of exp57_dose_response_ladder_preregistration.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/57_phase0.json: exp57_dose_response_ladder_preregistration.md was touched by 2 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/d8_read_mutation_20260905.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/d8_read_mutation_20260905.json: d8_read_mutation_preregistration.md was touched by 1 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/exp56_rebaseline_1204: amendment 3 of exp56_four_arm_sharing_preregistration.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp56_rebaseline_1204: amendment 4 of exp56_four_arm_sharing_preregistration.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp56_rebaseline_1204: exp56_four_arm_sharing_preregistration.md was touched by 4 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/exp58_offline_gates.json: exp58_survival_wants_prereg.md was touched by 8 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15.json: amendment 2 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15.json: amendment 1 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15.json: amendment 3 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15.json: amendment 4 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15.json: amendment 5 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15.json: amendment 6 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15.json: amendment 7 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15.json: exp60_drowning_avoidance_prereg.md was touched by 10 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15b.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15b.json: amendment 2 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15b.json: amendment 1 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15b.json: amendment 3 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15b.json: amendment 4 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15b.json: amendment 5 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15b.json: amendment 6 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15b.json: amendment 7 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_geometry_2026-09-15b.json: exp60_drowning_avoidance_prereg.md was touched by 9 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/exp60_trials.jsonl: amendment 2 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_trials.jsonl: amendment 1 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_trials.jsonl: amendment 3 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_trials.jsonl: amendment 4 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_trials.jsonl: amendment 5 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_trials.jsonl: amendment 6 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_trials.jsonl: amendment 7 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_trials.jsonl: exp60_drowning_avoidance_prereg.md was touched by 7 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/exp60_verdict.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/exp60_verdict.json: amendment 2 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_verdict.json: amendment 1 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_verdict.json: amendment 3 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_verdict.json: amendment 4 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_verdict.json: amendment 5 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_verdict.json: amendment 6 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_verdict.json: amendment 7 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_verdict.json: exp60_drowning_avoidance_prereg.md was touched by 3 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/exp60_water_apparatus.json: amendment 2 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_water_apparatus.json: amendment 1 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_water_apparatus.json: amendment 3 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_water_apparatus.json: amendment 4 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_water_apparatus.json: amendment 5 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_water_apparatus.json: amendment 6 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_water_apparatus.json: amendment 7 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_water_apparatus.json: exp60_drowning_avoidance_prereg.md was touched by 10 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/exp60_water_apparatus_2026-09-17.json: amendment 2 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_water_apparatus_2026-09-17.json: amendment 1 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_water_apparatus_2026-09-17.json: amendment 3 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_water_apparatus_2026-09-17.json: amendment 4 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_water_apparatus_2026-09-17.json: amendment 5 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_water_apparatus_2026-09-17.json: amendment 6 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_water_apparatus_2026-09-17.json: amendment 7 of exp60_drowning_avoidance_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/exp60_water_apparatus_2026-09-17.json: exp60_drowning_avoidance_prereg.md was touched by 2 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/exp61_pairs.jsonl: exp61_shared_fear_prereg.md was touched by 4 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/exp61_verdict.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/exp61_verdict.json: exp61_shared_fear_prereg.md was touched by 4 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/exp62_pool2_geometry.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/exp62_pool2_geometry.json: exp62_pressure_interoception_prereg.md was touched by 4 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/exp62_pool2_geometry_reconnect.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/exp62_pool2_geometry_reconnect.json: exp62_pressure_interoception_prereg.md was touched by 4 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/exp62_pool2_water_apparatus.json: exp62_pressure_interoception_prereg.md was touched by 4 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/exp62_rows.jsonl: exp62_pressure_interoception_prereg.md was touched by 3 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/exp62_verdict.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/exp62_verdict.json: exp62_pressure_interoception_prereg.md was touched by 3 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/gate6_merged_gauntlet: gate6_merged_gauntlet_preregistration.md was touched by 1 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/h1_daemon_state_precal.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/h1_daemon_state_precal.json: h1_healthy_hardware_doa_preregistration.md was touched by 4 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/h1_doa_sweep.jsonl: h1_healthy_hardware_doa_preregistration.md was touched by 5 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/h1_partc_big_block.jsonl: h1_healthy_hardware_doa_preregistration.md was touched by 2 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/h1_partc_big_block.jsonl: GRANDFATHERED (still failing) — H1 Part C `_big` block (2026-08-24, run 20260824T213320Z at b01a6589): stamped working_tree_dirty_src_scripts: true with no allowance (the --allow-dirty door did not exist). Cited by the Exp 45 EARNED ledger row (behavioral_graduation_candidates.md) as delivered-shift evidence — surfaced by the 2026-08-29 review round; disclosed on that row. Re-run under the refusal rule is owed (item 16.7).
+NOTE:     2 record(s) stamp working_tree_dirty_src_scripts: true without allow_dirty: true — a gated record from a dirty tree is refused or explicitly allowed, never silent
+NOTE: docs/experiments/data/h1_partc_summary.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/h1_partc_summary.json: h1_healthy_hardware_doa_preregistration.md was touched by 3 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/l11_geometry_2026-09-15.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/r2_drive_premise.json: NOT GOVERNED (token collision) — The R2 drive-premise CHECK (2026-09-07, PREMISE-NULL; docs/experiments/r2_drive_premise_check.md): a premise probe run with no pre-registration. Its token `r2` is the ladder rung, shared with the later R2 LEARNED-BIAS preregs (r2_learned_bias_prereg.md 2026-09-12, _v2 2026-09-13), which do not govern it and which ran no live data (closed offline, 2026-09-12).
+NOTE: docs/experiments/data/r3_bench.jsonl: amendment 1 of r3_survival_benchmark_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/r3_bench.jsonl: amendment 2 of r3_survival_benchmark_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/r3_bench.jsonl: r3_survival_benchmark_prereg.md was touched by 4 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/r3_cal.jsonl: amendment 1 of r3_survival_benchmark_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/r3_cal.jsonl: amendment 2 of r3_survival_benchmark_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/r3_cal.jsonl: r3_survival_benchmark_prereg.md was touched by 5 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/r3_gauntlet.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/r3_gauntlet.json: amendment 1 of r3_survival_benchmark_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/r3_gauntlet.json: amendment 2 of r3_survival_benchmark_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/r3_gauntlet.json: r3_survival_benchmark_prereg.md was touched by 4 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/r3_pilot_2026-09-17.jsonl: amendment 1 of r3_survival_benchmark_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/r3_pilot_2026-09-17.jsonl: amendment 2 of r3_survival_benchmark_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/r3_pilot_2026-09-17.jsonl: r3_survival_benchmark_prereg.md was touched by 8 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/r3_report.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/r3_report.json: amendment 1 of r3_survival_benchmark_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/r3_report.json: amendment 2 of r3_survival_benchmark_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/r3_report.json: r3_survival_benchmark_prereg.md was touched by 4 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+NOTE: docs/experiments/data/r3_report_amended.json: no `ts` in any record — judged at commit granularity (first commit on v1.3.1 (no ts field — commit granularity, LENIENT))
+NOTE: docs/experiments/data/r3_report_amended.json: amendment 1 of r3_survival_benchmark_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/r3_report_amended.json: amendment 2 of r3_survival_benchmark_prereg.md is POST-DATA — reported, not judged
+NOTE: docs/experiments/data/r3_report_amended.json: r3_survival_benchmark_prereg.md was touched by 3 commit(s) on v1.3.1 after the data's first ts — in-place edits without an amendment header are not judged; check them
+prereg-precedes-data lint: clean — 52 governed data entries checked against v1.3.1 (first-parent), 7 grandfathered by explicit list (see GRANDFATHERED), 1 not governed (see NOT_GOVERNED)
+
+EXIT_STATUS=0

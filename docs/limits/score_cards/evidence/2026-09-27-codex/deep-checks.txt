@@ -1,0 +1,102 @@
+RELEASE_TIMELINE {"tagName": "v1.3.1", "createdAt": "2026-09-27T22:08:48Z", "publishedAt": "2026-09-27T22:09:07Z", "targetCommitish": "main"}
+ARTIFACT pymaxim-1.3.1-py3-none-any.whl PyPI_upload 2026-09-27T22:06:30.427339Z sha256 b53dd1c301d2289568400b79f920f78f25c8d811e7a6541df75a6557d2b13009 MATCH_PYPI True GH_digest sha256:b53dd1c301d2289568400b79f920f78f25c8d811e7a6541df75a6557d2b13009
+ARTIFACT pymaxim-1.3.1.tar.gz PyPI_upload 2026-09-27T22:06:33.599608Z sha256 c5bd54ac2b63a90897df8ba975200310ec2824e6344705a3841ca1e257b05f94 MATCH_PYPI True GH_digest sha256:c5bd54ac2b63a90897df8ba975200310ec2824e6344705a3841ca1e257b05f94
+WHEEL_PY_SOURCE 524 exact matches; differing [] absent []
+TAG_PY_NOT_IN_WHEEL []
+PYPI_README_EQUAL True
+RELEASE_NOTES_EQUAL True
+RULESET {
+  "id": 13705164,
+  "name": "main-protection",
+  "target": "branch",
+  "source_type": "Repository",
+  "source": "dennys246/Maxim",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "exclude": [],
+      "include": [
+        "~DEFAULT_BRANCH"
+      ]
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "code_scanning",
+      "parameters": {
+        "code_scanning_tools": [
+          {
+            "tool": "CodeQL",
+            "security_alerts_threshold": "high_or_higher",
+            "alerts_threshold": "all"
+          }
+        ]
+      }
+    }
+  ],
+  "node_id": "RRS_lACqUmVwb3NpdG9yec5C6P38zgDRH8w",
+  "created_at": "2026-03-09T21:06:38.627-06:00",
+  "updated_at": "2026-09-19T17:57:04.352-06:00",
+  "bypass_actors": [],
+  "current_user_can_bypass": "never",
+  "_links": {
+    "self": {
+      "href": "https://api.github.com/repos/dennys246/Maxim/rulesets/13705164"
+    },
+    "html": {
+      "href": "https://github.com/dennys246/Maxim/rules/13705164"
+    }
+  }
+}
+RUN tag-nightly-run.json {'databaseId': 36347890771, 'headSha': '7e695a58cb596bafb165dec03286635826c38b59', 'event': 'workflow_dispatch', 'createdAt': '2026-09-27T20:24:11Z', 'updatedAt': '2026-09-27T20:59:46Z', 'status': 'completed', 'conclusion': 'failure'}
+JOBS [('Model-cache tests (nightly)', 'success', '2026-09-27T20:41:46Z', '2026-09-27T20:53:47Z'), ('aarch64 real install smoke (Debian bookworm)', 'success', '2026-09-27T20:41:48Z', '2026-09-27T20:43:01Z'), ('Release-object audit (tags, assets, sha256, links)', 'success', '2026-09-27T20:41:46Z', '2026-09-27T20:42:06Z'), ('Slow tests (nightly)', 'success', '2026-09-27T20:41:46Z', '2026-09-27T20:50:46Z'), ('Python 3.13 compatibility', 'success', '2026-09-27T20:41:46Z', '2026-09-27T20:42:05Z'), ('Python 3.11 compatibility', 'success', '2026-09-27T20:41:47Z', '2026-09-27T20:42:08Z'), ('Release build (wheel contents + version)', 'failure', '2026-09-27T20:41:46Z', '2026-09-27T20:42:06Z'), ('aarch64 resolve (lean Pi extra, no heavy backends)', 'success', '2026-09-27T20:41:46Z', '2026-09-27T20:42:41Z'), ('Python 3.10 compatibility', 'success', '2026-09-27T20:41:46Z', '2026-09-27T20:42:09Z'), ('lint', 'success', '2026-09-27T20:41:46Z', '2026-09-27T20:42:14Z'), ('unit-tests', 'success', '2026-09-27T20:41:46Z', '2026-09-27T20:59:45Z'), ('Python 3.14 compatibility', 'success', '2026-09-27T20:41:46Z', '2026-09-27T20:42:12Z')]
+RUN latest-scheduled-run.json {'databaseId': 36324374166, 'headSha': '627d690f0f73373c9f3600e4979c23a78285e4d0', 'event': 'schedule', 'createdAt': '2026-09-27T14:00:38Z', 'updatedAt': '2026-09-27T14:18:16Z', 'status': 'completed', 'conclusion': 'success'}
+JOBS [('Model-cache tests (nightly)', 'success', '2026-09-27T14:00:41Z', '2026-09-27T14:14:07Z'), ('Release build (wheel contents + version)', 'success', '2026-09-27T14:00:41Z', '2026-09-27T14:01:00Z'), ('lint', 'success', '2026-09-27T14:00:40Z', '2026-09-27T14:01:04Z'), ('Release-object audit (tags, assets, sha256, links)', 'success', '2026-09-27T14:00:41Z', '2026-09-27T14:01:01Z'), ('Python 3.14 compatibility', 'success', '2026-09-27T14:00:41Z', '2026-09-27T14:01:08Z'), ('Slow tests (nightly)', 'success', '2026-09-27T14:00:41Z', '2026-09-27T14:10:28Z'), ('Python 3.13 compatibility', 'success', '2026-09-27T14:00:41Z', '2026-09-27T14:01:08Z'), ('unit-tests', 'success', '2026-09-27T14:00:40Z', '2026-09-27T14:18:15Z'), ('Python 3.11 compatibility', 'success', '2026-09-27T14:00:41Z', '2026-09-27T14:00:58Z'), ('Python 3.10 compatibility', 'success', '2026-09-27T14:00:41Z', '2026-09-27T14:01:09Z'), ('aarch64 resolve (lean Pi extra, no heavy backends)', 'success', '2026-09-27T14:00:41Z', '2026-09-27T14:01:13Z'), ('aarch64 real install smoke (Debian bookworm)', 'skipped', '2026-09-27T14:00:39Z', '2026-09-27T14:00:39Z')]
+PROVENANCE exp60_trials.jsonl prereg_first_main_epoch 1789490579 data_facts {'first_ts': 1789526867.931054, 'naive': False, 'allow_dirty': False, 'dirty_unallowed': 0, 'has_records': True}
+working_tree_dirty_src_scripts {'False': 20}
+allow_dirty {}
+executed_git_hash {'be0383052dbe': 10, '2708e2082fdd': 10}
+git_hash {}
+PROVENANCE exp61_pairs.jsonl prereg_first_main_epoch 1789612682 data_facts {'first_ts': 1789664707.3871381, 'naive': False, 'allow_dirty': False, 'dirty_unallowed': 0, 'has_records': True}
+working_tree_dirty_src_scripts {'False': 121}
+allow_dirty {}
+executed_git_hash {'4e25b4754219': 121}
+git_hash {}
+PROVENANCE exp62_rows.jsonl prereg_first_main_epoch 1789677016 data_facts {'first_ts': 1789947030.974493, 'naive': False, 'allow_dirty': False, 'dirty_unallowed': 0, 'has_records': True}
+working_tree_dirty_src_scripts {'False': 31}
+allow_dirty {}
+executed_git_hash {'acf568b876b8': 31}
+git_hash {}
+PROVENANCE r3_bench.jsonl prereg_first_main_epoch 1789672513 data_facts {'first_ts': 1789697819.645685, 'naive': False, 'allow_dirty': False, 'dirty_unallowed': 0, 'has_records': True}
+working_tree_dirty_src_scripts {'False': 75}
+allow_dirty {}
+executed_git_hash {'4cca5524a686': 75}
+git_hash {}
+PROVENANCE exp56_rebaseline_1204/56_four_arm.jsonl prereg_first_main_epoch 1788657948 data_facts {'first_ts': 1789824485.4799209, 'naive': False, 'allow_dirty': False, 'dirty_unallowed': 0, 'has_records': True}
+working_tree_dirty_src_scripts {'False': 402}
+allow_dirty {'False': 201}
+executed_git_hash {'8f8191e5': 201}
+git_hash {}
+EXP10_HASH 20260927_110748/report.json True
+EXP10_HASH 20260927_112714/report.json True
+EXP10_HASH 20260927_113807/report.json True
+EXP10_HASH 20260927_115820/report.json True
+EXP10_HASH 20260927_121056/report.json True
+EXP10_HASH 20260927_110748/run_log.jsonl True
+EXP10_HASH 20260927_112714/run_log.jsonl True
+EXP10_HASH 20260927_113807/run_log.jsonl True
+EXP10_HASH 20260927_115820/run_log.jsonl True
+EXP10_HASH 20260927_121056/run_log.jsonl True
+EXP10_SESSION 20260927_110748 hippo_keys ['saved_at', 'memories', 'context_index', 'stats', 'compressed_count', 'associative_graph', 'episodes', 'next_episode_ordinal', 'node_modality', 'experience_clock', '_format_version'] report_finish {'turns': 1, 'finish_reason': 'planning_failed'}
+EXP10_SESSION 20260927_112714 hippo_keys ['saved_at', 'memories', 'context_index', 'stats', 'compressed_count', 'associative_graph', 'episodes', 'next_episode_ordinal', 'node_modality', 'experience_clock', '_format_version'] report_finish {'turns': 2, 'finish_reason': 'planning_failed'}
+EXP10_SESSION 20260927_113807 hippo_keys ['saved_at', 'memories', 'context_index', 'stats', 'compressed_count', 'associative_graph', 'episodes', 'next_episode_ordinal', 'node_modality', 'experience_clock', '_format_version'] report_finish {'turns': 3, 'finish_reason': 'planning_failed'}
+EXP10_SESSION 20260927_115820 hippo_keys ['saved_at', 'memories', 'context_index', 'stats', 'compressed_count', 'associative_graph', 'episodes', 'next_episode_ordinal', 'node_modality', 'experience_clock', '_format_version'] report_finish {'turns': 1, 'finish_reason': 'planning_failed'}
+EXP10_SESSION 20260927_121056 hippo_keys ['saved_at', 'memories', 'context_index', 'stats', 'compressed_count', 'associative_graph', 'episodes', 'next_episode_ordinal', 'node_modality', 'experience_clock', '_format_version'] report_finish {'turns': 1, 'finish_reason': 'planning_failed'}
+
+EXIT_STATUS=0

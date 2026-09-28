@@ -1,0 +1,5 @@
+auditing pymaxim-1.3.1-py3-none-any.whl against pyproject version 1.3.1
+auditing pymaxim-1.3.1.tar.gz
+release-build audit: clean
+
+EXIT_STATUS=0

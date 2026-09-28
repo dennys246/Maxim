@@ -1,0 +1,5 @@
+ISSUE_840_REAL_SIGNATURE_REJECTS_BRIDGE_CALL got an unexpected keyword argument 'metadata'
+ISSUE_841_REAL_RECALL AttributeError 'str' object has no attribute 'detected_objects'
+ISSUE_924_PASSIVE_TO_ACTIVE True callback ['active']
+SINGULARITY_REFUSED True callback ['active']
+network_attempts []

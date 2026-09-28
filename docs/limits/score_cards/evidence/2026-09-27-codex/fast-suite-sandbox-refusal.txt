@@ -1,0 +1,46 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
+rootdir: /Users/dennyschaedig/Scripts/Maxim/.worktrees/rescore-v1.3.1-codex
+configfile: pyproject.toml
+plugins: anyio-4.12.0, timeout-2.4.0, cov-7.0.0
+collected 12188 items / 44 deselected / 12144 selected
+
+tests/behavioral/test_cradle_mother_pipeline.py ........                 [  0%]
+tests/behavioral/test_exp37_analyzer_smoke.py .......................... [  0%]
+.................                                                        [  0%]
+tests/behavioral/test_exp37_harness_smoke.py ........................... [  0%]
+..................................................                       [  1%]
+tests/behavioral/test_exp41_pipeline.py .............                    [  1%]
+tests/behavioral/test_exp42_pipeline.py ................................ [  1%]
+                                                                         [  1%]
+tests/experiments/test_deliberation_stress.py ..................         [  1%]
+tests/integration/test_api_verbs.py ................                     [  1%]
+tests/integration/test_bootstrap.py ............                         [  1%]
+tests/integration/test_cross_session_persistence.py ..                   [  1%]
+tests/integration/test_curriculum_runner.py .................            [  1%]
+tests/integration/test_foundry.py ................................       [  2%]
+tests/integration/test_hive_pull_e2e.py F
+
+=================================== FAILURES ===================================
+_______________________ test_hive_pull_dry_run_and_apply _______________________
+tests/integration/test_hive_pull_e2e.py:106: in test_hive_pull_dry_run_and_apply
+    server, base = _start(store)
+                   ^^^^^^^^^^^^^
+tests/integration/test_hive_pull_e2e.py:57: in _start
+    port = _free_port()
+           ^^^^^^^^^^^^
+tests/integration/test_hive_pull_e2e.py:39: in _free_port
+    s.bind(("127.0.0.1", 0))
+E   PermissionError: [Errno 1] Operation not permitted
+----------------------------- Captured stderr call -----------------------------
+17:46:23 | INFO | Composed substrate bundle at /private/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/pytest-of-dennyschaedig/pytest-1847/test_hive_pull_dry_run_and_app0/rel.zip (1 slices)
+17:46:23 | INFO | oasis: published release 57acd04f1e4c (signer=queen-a, sequence 1, CDLA-Permissive-2.0)
+------------------------------ Captured log call -------------------------------
+INFO     maxim.hivemind.bundle:bundle.py:1104 Composed substrate bundle at /private/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/pytest-of-dennyschaedig/pytest-1847/test_hive_pull_dry_run_and_app0/rel.zip (1 slices)
+INFO     maxim.hivemind.store:store.py:260 oasis: published release 57acd04f1e4c (signer=queen-a, sequence 1, CDLA-Permissive-2.0)
+=========================== short test summary info ============================
+FAILED tests/integration/test_hive_pull_e2e.py::test_hive_pull_dry_run_and_apply
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+================ 1 failed, 270 passed, 44 deselected in 41.58s =================
+
+EXIT_STATUS=1
