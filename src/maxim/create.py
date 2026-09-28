@@ -182,6 +182,10 @@ def agent(
         ``AgentInstance`` with ``.hippocampus``, ``.nac``, ``.atl``,
         ``.tool_registry``, ``.entity``, ``.shutdown()`` methods.
 
+    Raises:
+        FileExistsError: If the agent's home already holds persisted state (a previous
+            ``create.agent`` of the same name). Use ``maxim.load.agent(name)`` to continue it.
+
     Example::
 
         agent = maxim.create.agent("scout", personality="cautious")
@@ -193,6 +197,7 @@ def agent(
             encoding=EncodingSignals.unmeasured("api"),  # say what you measured, or that you measured nothing
         )
         agent.shutdown()
+        # Next time, continue it: maxim.load.agent("scout") (create.agent refuses an existing home).
     """
     if tool_whitelist is not None:
         raise ValueError(
@@ -200,7 +205,7 @@ def agent(
             "use AgentFactory.create_full_agent(with_executor=True) with AgentConfig.permissions"
         )
 
-    from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+    from maxim.runtime.agent_factory import AgentConfig, AgentFactory, persisted_agent_state
 
     factory = AgentFactory()
     config = AgentConfig(
@@ -213,6 +218,23 @@ def agent(
         permissions=None,
         persistence_dir=persistence_dir,
     )
+    # A fresh agent over an existing one would save over its NAc/EC/SCN while its memories survived:
+    # a mixed agent. Refuse before building anything (#939, owner decision).
+    agent_dir = factory.persistence_dir_for(config)
+    existing = persisted_agent_state(agent_dir)
+    if existing:
+        if persistence_dir and agent_dir.name != name:
+            how = (
+                "Continue it with AgentFactory().create_agent(AgentConfig(agent_id=..., "
+                f"persistence_dir={str(agent_dir)!r}), auto_load=True)"
+            )
+        else:
+            base = f", base_dir={str(agent_dir.parent)!r}" if persistence_dir else ""
+            how = f"Continue it with maxim.load.agent({name!r}{base})"
+        raise FileExistsError(
+            f"Agent '{name}' already has persisted state in {agent_dir} ({len(existing)} file(s), e.g. "
+            f"{existing[0].name}). {how}, choose another name or directory, or move that directory to start over."
+        )
     return factory.create_agent(config)
 
 

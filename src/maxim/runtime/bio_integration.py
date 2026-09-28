@@ -204,6 +204,8 @@ def end_bio_session(
             if hasattr(hippocampus, "config") and hippocampus.config.persistence_path:
                 hippocampus.save()
                 log_agentic("hippocampus", "saved", {"memories": len(hippocampus)}, level="INFO")
+        except FileExistsError as e:  # StoreOverwriteRefused (#939): never at DEBUG, the memories are unsaved
+            logger.error("Hippocampus not saved at session end: %s", e)
         except Exception as e:
             logger.debug("Failed to save hippocampus: %s", e)
 

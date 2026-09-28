@@ -68,7 +68,7 @@ class ConsolidationMixin:
         # repeated-session guard, where a persistent agent runs full
         # consolidation with a live persistence_path every campaign.
         if self.config.auto_save_after_sleep and self.config.persistence_path:
-            self.save_with_backup(self.config.persistence_path)
+            self._auto_save_after_sleep()
 
         # Log consolidation activity OUTSIDE rwlock (P3f — Tier 2)
         if hasattr(self, "_collector") and self._collector and self._collector.verbosity >= 1:
@@ -548,9 +548,20 @@ class ConsolidationMixin:
         # as sleep(): save_with_backup → dump takes a read lock on this
         # non-reentrant RWLock).
         if self.config.auto_save_after_sleep and self.config.persistence_path:
-            self.save_with_backup(self.config.persistence_path)
+            self._auto_save_after_sleep()
 
         return results
+
+    def _auto_save_after_sleep(self) -> None:
+        """The post-sleep auto-save. A refusal to overwrite a file this store never read (#939) is
+        logged at ERROR and does not undo the sleep: the consolidation results still stand, and the
+        file on disk is left as it was."""
+        from maxim.exceptions import StoreOverwriteRefused
+
+        try:
+            self.save_with_backup(self.config.persistence_path)
+        except StoreOverwriteRefused as e:
+            logger.error("Hippocampus auto-save after sleep refused: %s", e)
 
     def _sleep_with_clustering(
         self,

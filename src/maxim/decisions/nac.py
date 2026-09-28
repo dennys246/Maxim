@@ -3933,6 +3933,9 @@ class NAc:
         path = path or self.config.persistence_path
         if path is None:
             raise ValueError("NAc.save() requires a path or NACConfig.persistence_path to be set")
+        from maxim.utils.paths import store_file_path
+
+        path = store_file_path(path)  # `~` means home (#950)
 
         from maxim.utils.atomic_io import atomic_write_json
         from maxim.utils.format_version import with_format_version
@@ -3972,6 +3975,9 @@ class NAc:
         path = path or self.config.persistence_path
         if path is None:
             raise ValueError("NAc.load() requires a path or NACConfig.persistence_path to be set")
+        from maxim.utils.paths import store_file_path
+
+        path = store_file_path(path)  # `~` means home (#950)
         with open(path, encoding="utf-8") as f:
             state = json.load(f)
 
@@ -4010,6 +4016,9 @@ class NAc:
         path = path or self.config.persistence_path
         if path is None:
             raise ValueError("NAc.load_safe() requires a path or NACConfig.persistence_path to be set")
+        from maxim.utils.paths import store_file_path
+
+        path = store_file_path(path)  # `~` means home (#950)
         if not os.path.exists(path):
             logger.info("No existing NAc file at %s, starting fresh", path)
             return True, None

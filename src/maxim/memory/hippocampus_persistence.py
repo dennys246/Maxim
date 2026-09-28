@@ -18,6 +18,7 @@ from maxim.memory.types import (
     CompressedMemory,
     EpisodicMemory,
 )
+from maxim.memory.store import StoreFileOwnership
 from maxim.utils.atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
@@ -63,12 +64,15 @@ def _anchor_traces_that_predate_the_clock(memories: dict, now_us: int) -> int:
     return anchored
 
 
-class PersistenceMixin:
+class PersistenceMixin(StoreFileOwnership):
     """Persistence methods for Hippocampus.
 
     Provides save(), load(), load_with_recovery(), save_with_backup(),
-    and graph restoration. Mixed into the Hippocampus class.
+    and graph restoration. Mixed into the Hippocampus class. Paths expand ``~`` (#950), and a save
+    never replaces an existing file this instance did not read (``StoreFileOwnership``, #939).
     """
+
+    _store_name = "hippocampus"
 
     # P3.5 Stage 1 — BioSystemSnapshot Protocol envelope version.
     # Payload-layer legacy version string "3.0" is tombstoned; all future
@@ -300,35 +304,42 @@ class PersistenceMixin:
                 self._node_modality.clear()
                 self._node_modality.update(temp_node_modality)
 
-    def save(self, path: str | None = None) -> None:
+    def save(self, path: str | None = None, *, overwrite: bool = False) -> None:
         """Save hippocampus to JSON file.
 
         Args:
             path: File path. Uses config.persistence_path if None.
+            overwrite: Replace an existing file this instance never read. Without it such a save
+                raises ``StoreOverwriteRefused`` (#939).
         """
-        path = path or self.config.persistence_path
-        if not path:
+        if not (path or self.config.persistence_path):
             raise ValueError("No persistence path specified")
+        path = self._default_store_path(path)
+        self._check_store_write(path, overwrite=overwrite)
 
         from maxim.utils.format_version import with_format_version
 
         payload = with_format_version(self.dump())
         atomic_write_json(path, payload)
+        self._claim_store_file(path)
         logger.info("Saved hippocampus to %s (%d memories)", path, len(payload["memories"]))
 
-    def load(self, path: str | None = None) -> None:
+    def load(self, path: str | None = None, *, missing_ok: bool = False) -> None:
         """Load hippocampus from JSON file.
 
         Args:
             path: File path. Uses config.persistence_path if None.
+            missing_ok: Return quietly when the file does not exist (load-if-present). Without it a
+                missing file raises ``FileNotFoundError``, as ``NAc.load`` does.
         """
-        path = path or self.config.persistence_path
-        if not path:
+        if not (path or self.config.persistence_path):
             raise ValueError("No persistence path specified")
+        path = self._default_store_path(path)
 
         if not os.path.exists(path):
-            logger.warning("Hippocampus file not found: %s", path)
-            return
+            if missing_ok:
+                return
+            raise FileNotFoundError(f"Hippocampus file not found: {path}")
 
         with open(path, "r", encoding="utf-8") as f:
             state = json.load(f)
@@ -337,6 +348,7 @@ class PersistenceMixin:
 
         check_format_version(state, "hippocampus", log=logger)
         self.load_state(state)
+        self._claim_store_file(path)
 
         edge_count = sum(
             len(self._graph.get_associated(mid)) for mid in self._memories if self._graph.get_node(mid) is not None
@@ -363,9 +375,9 @@ class PersistenceMixin:
         Returns:
             (success, error_message) - error_message is None on success.
         """
-        path = path or self.config.persistence_path
-        if not path:
+        if not (path or self.config.persistence_path):
             return False, "No persistence path specified"
+        path = self._default_store_path(path)
 
         if not os.path.exists(path):
             logger.info("No existing hippocampus file, starting fresh")
@@ -384,6 +396,8 @@ class PersistenceMixin:
                 if os.path.exists(backup_path):
                     try:
                         self.load(backup_path)
+                        # The caller chose to restore: the next save replaces the corrupt primary.
+                        self._claim_store_file(path)
                         logger.info("Restored from backup: %s", backup_path)
                         return True, "Restored from backup (original corrupt)"
                     except Exception as be:
@@ -392,8 +406,8 @@ class PersistenceMixin:
             if on_error == "raise":
                 raise
 
-            # warn_and_continue: start fresh
-            logger.warning("Starting with empty hippocampus due to corrupt file")
+            # warn_and_continue: start fresh, keeping the corrupt file as a copy (owner decision, #939).
+            self._set_aside_after_failed_load(path)
             return True, error_msg
 
         except Exception as e:
@@ -403,19 +417,38 @@ class PersistenceMixin:
             if on_error == "raise":
                 raise
 
+            from maxim.memory.store import UNREADABLE_STORE_ERRORS
+
+            if isinstance(e, UNREADABLE_STORE_ERRORS):  # unreadable content, not an OSError
+                self._set_aside_after_failed_load(path)
             return True, error_msg
 
-    def save_with_backup(self, path: str | None = None) -> None:
+    def _set_aside_after_failed_load(self, path: str) -> None:
+        """Copy the unreadable file aside and let this (empty) store save in its place. If the copy
+        itself fails, the file stays unclaimed, so saves keep refusing rather than destroy it."""
+        try:
+            self.set_aside_unreadable_file(path)
+        except OSError as copy_error:
+            logger.error(
+                "Could not keep a copy of the unreadable hippocampus file %s (%s); it stays in place and "
+                "this session's memories will not be saved over it",
+                path,
+                copy_error,
+            )
+
+    def save_with_backup(self, path: str | None = None, *, overwrite: bool = False) -> None:
         """Save with automatic backup of previous version.
 
         Args:
             path: File path. Uses config.persistence_path if None.
+            overwrite: As for ``save``; the refusal comes BEFORE the backup is taken.
         """
         import shutil
 
-        path = path or self.config.persistence_path
-        if not path:
+        if not (path or self.config.persistence_path):
             raise ValueError("No persistence path specified")
+        path = self._default_store_path(path)
+        self._check_store_write(path, overwrite=overwrite)
 
         # Create backup of existing file
         if os.path.exists(path):
@@ -425,8 +458,8 @@ class PersistenceMixin:
             except Exception as e:
                 logger.warning("Failed to create backup: %s", e)
 
-        # Save normally
-        self.save(path)
+        # Save normally (already checked above)
+        self.save(path, overwrite=True)
 
     def _restore_graph(self, graph_data: dict[str, Any]) -> None:
         """Restore the associative graph from serialized data (lock must be held).

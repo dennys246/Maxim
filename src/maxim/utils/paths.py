@@ -192,6 +192,16 @@ def resolve_config(filename: str) -> Path:
     )
 
 
+def store_file_path(path: str | os.PathLike[str]) -> str:
+    """A persisted store's file path as the filesystem should see it: ``~`` expanded (#950).
+
+    Every save/load of a memory store resolves its path through this, so ``~/...`` means the home
+    directory wherever it is given -- a ``persistence_path``, a ``load()`` argument or a ``maxim.load``
+    call -- and never a literal ``./~`` directory under the working directory.
+    """
+    return os.path.expanduser(os.fspath(path))
+
+
 def resolve_user_state(relative_path: str) -> Path:
     """Resolve a user-state file path under ``~/.maxim/``.
 

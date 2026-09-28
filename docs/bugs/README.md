@@ -206,3 +206,9 @@ Numbered after 1.1.1's D34–D42, which are now on `main`. **Renumbered D43/D44 
   exactly; adding `— why` inside the bracket makes it report "no annotation" silently).
   Not yet a defect because neither has merged — but they must land together with the
   parser fix, or this becomes D12 on the day they don't.
+
+### Surfaced by the v1.3.1 re-score and the pymaxim.bio wheel check (2026-09-27)
+
+| id | defect | disposition | where |
+|---|---|---|---|
+| D88 | **A memory store saved over a file it never read, and `~` was not expanded (#939, #950).** `create.hippocampus`/`create.atl` with an existing path, the plain constructors and `from_config` (path on the config) started empty and replaced the file on the next save (measured: 3 memories → 1); `create.agent` over an existing agent overwrote its NAc/EC/SCN while its memories survived; `load.hippocampus("~/…")` returned an empty store, `load.nac("~/…")` raised and `persistence_path="~/…"` wrote a literal `./~/`; `load.*` raised a raw `JSONDecodeError` on a corrupt file. | **FIXED** (1.3.2 batch 2): a save guard on Hippocampus and ATL (`memory/store.py::StoreFileOwnership`, `StoreOverwriteRefused`), `create.agent` refuses an existing home, `~` expanded by `utils/paths.py::store_file_path`, typed `MemoryCorruptionError`. **Still open:** the same guard for NAc, EC, SCN, AngularGyrus and the cross-layer index, [#971](https://github.com/dennys246/Maxim/issues/971). | `src/maxim/memory/store.py::StoreFileOwnership`; `src/maxim/load.py`; `src/maxim/create.py::agent`. Guard: `tests/unit/test_store_paths_950_939.py` |
