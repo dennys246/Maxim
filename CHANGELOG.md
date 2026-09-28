@@ -23,6 +23,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Correction to 1.2.0
+
+- **Exp 56's bundles were unsigned.** The 1.2.0 section says A's substrate was "exported as a signed
+  bundle". The Exp 56 harness exports through the real CLI without `--sign`
+  (`scripts/exp56/common.py::export_bundle`, at the campaign commit `9905d4d8` as today), so every
+  bundle was schema 2, unsigned — the same correction 1.3.1 made for Exp 61, which reuses that harness.
+  The claim rests on the shipped export and ingest path, not on signing. The 1.2.0 section is left
+  as published; `release_1_2_0.md` and the experiments index carry a marked correction.
+
+### Fixed
+
+- **Statements that disagreed with the records** (found by the v1.3.1 re-score, #940). The README (the
+  PyPI description) still called Exp 10 "re-run pending" and said its causal links "accumulate"; it now
+  reads MAINTAINED (narrow), with accumulation not re-shown. `docs/user/upgrading.md` advised backing up
+  `~/.maxim/sessions/`, which no simulation writes; it now names `sim_reports/`. The Exp 10 write-up
+  now points at both re-runs.
+
 ## [1.3.1] - 2026-09-27 — "Hardening"
 
 The hardening release: fixes, and the guard that holds each one, with **no new behavioural claim**. What

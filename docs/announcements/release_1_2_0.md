@@ -14,7 +14,7 @@ declares its cost.
 
 - **Exp 56 — EARNED (the headline).** Agent A is taught, by a contingent teacher, that one
   specific action pays off at one specific world situation (the Exp 52 operant-credit mechanism,
-  moved to the world channel). A's learned substrate is exported as a signed bundle and ingested
+  moved to the world channel). A's learned substrate is exported as a bundle *(corrected 2026-09-27: unsigned — the harness exports without `--sign`; the notes first said "signed")* and ingested
   into agent B — *independent by construction*: different `agent_id`, separately built
   `EntorhinalCortex` + `SensorEncoder`, disjoint cluster ids. At B's **first contact** with the
   situation, B chooses A's taught action, and three controls establish that the choice needed the
