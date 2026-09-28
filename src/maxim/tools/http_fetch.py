@@ -316,8 +316,9 @@ class HttpFetchTool(Tool):
 
         # Check internet access policy
         if self._get_internet_policy:
-            policy = self._get_internet_policy()
-            can_access, reason = policy.can_access(url)
+            access = self._get_internet_policy()
+            can_access, reason = access.can_access(url)
+            policy = access.policy  # the operator's limits for this request
             if not can_access:
                 return ToolResult(
                     success=False,

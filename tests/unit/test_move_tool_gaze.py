@@ -164,8 +164,8 @@ def test_controller_context_registers_only_usable_robot_tools(tmp_path, monkeypa
 
     monkeypatch.chdir(tmp_path)
     controller = SimulatedController(robot_id="selected")
-    names = set(build_tool_registry(maxim=controller).list())
-    move = build_tool_registry(maxim=controller).get("move")
+    names = set(build_tool_registry(internet_launch_enabled=False, maxim=controller).list())
+    move = build_tool_registry(internet_launch_enabled=False, maxim=controller).get("move")
 
     assert "move" in names
     assert "robot_id" not in move.input_schema

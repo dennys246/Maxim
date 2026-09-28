@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from maxim.environment.filesystem_env import FileSystemEnv
 from maxim.evaluation.agent_eval import AgentEvaluator
@@ -45,7 +45,6 @@ if TYPE_CHECKING:
     from maxim.embodiment.component_registry import ComponentRegistry
     from maxim.proprioception.pain import PainDetector
     from maxim.proprioception.pain_bus import PainBus
-    from maxim.utils.internet_access import InternetAccessPolicy
     from maxim.utils.filesystem_policy import FilesystemPolicy
     from maxim.utils.sandbox_executor import SandboxExecutor
     from maxim.utils.output_watcher import OutputWatcher
@@ -56,9 +55,9 @@ logger = logging.getLogger(__name__)
 
 def build_tool_registry(
     *,
+    internet_launch_enabled: bool,
     maxim: object | None = None,
     autonomy_controller: AutonomyController | None = None,
-    internet_policy_getter: Callable[[], InternetAccessPolicy] | None = None,
     filesystem_policy: FilesystemPolicy | None = None,
     sandbox_executor: SandboxExecutor | None = None,
     output_watcher: OutputWatcher | None = None,
@@ -80,8 +79,13 @@ def build_tool_registry(
         maxim: Live legacy Maxim runtime or ``RobotController`` context.
             Controller-only contexts register only controller-backed tools;
             legacy capture/vision/DoA tools require the full Maxim runtime.
+        internet_launch_enabled: REQUIRED. The launch cap on internet access (``--no-internet``, an
+            exploration policy's ``allow_internet``). When True the builder registers the internet
+            tools with the ONE live policy getter (``live_internet_policy_getter``: the operator's
+            persisted policy plus the runtime toggle, read per request); when False it registers none.
+            Required so a caller states the decision, and the builder, not the caller, builds the
+            getter (#832): no caller can hand the tools a bare policy.
         autonomy_controller: Autonomy level controller.
-        internet_policy_getter: Function to get internet access policy.
         filesystem_policy: Instance-level filesystem policy.
         sandbox_executor: Sandbox code executor.
         output_watcher: Output watcher for monitoring.
@@ -248,7 +252,10 @@ def build_tool_registry(
         except Exception as e:
             logger.warning("Failed to register sleep tool: %s", e)
 
-    # Register internet tools (if policy getter provided)
+    # Register internet tools (only under the launch cap; the getter is always the live one)
+    from maxim.utils.internet_access import live_internet_policy_getter
+
+    internet_policy_getter = live_internet_policy_getter(internet_launch_enabled)
     if internet_policy_getter is not None:
         try:
             from maxim.tools.internet_search import InternetSearchTool, InternetAccessTool

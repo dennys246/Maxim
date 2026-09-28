@@ -66,12 +66,14 @@ def test_a_rebinding_host_passes_the_policy_but_never_reaches_the_internal_servi
     """The issue's scenario, end to end through the tool: public to the policy, private to the connect."""
     from maxim.tools.http_fetch import HttpFetchTool
     from maxim.utils import internet_access
-    from maxim.utils.internet_access import InternetAccessPolicy
+    from maxim.utils.internet_access import EffectiveInternetPolicy, InternetAccessPolicy
 
     port, hits = internal_server
     monkeypatch.setattr(internet_access, "_dns_cache", {})
     _resolver(monkeypatch, [[PUBLIC], ["127.0.0.1"]])
-    policy = InternetAccessPolicy(enabled=True, require_robots_ok=False, unsafe_content_checks=False)
+    policy = EffectiveInternetPolicy(
+        policy=InternetAccessPolicy(require_robots_ok=False, unsafe_content_checks=False), enabled=True
+    )
     assert policy.can_access(f"http://{HOST}:{port}/secret") == (True, None)  # the pre-check is fooled
 
     result = HttpFetchTool(get_internet_policy=lambda: policy).execute(url=f"http://{HOST}:{port}/secret")

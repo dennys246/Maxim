@@ -208,7 +208,9 @@ def test_real_registry_wiring_never_sets_requested_mode_to_singularity() -> None
 
     maxim = _Maxim()
     registry = build_tool_registry(
-        maxim=maxim, autonomy_controller=AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS)
+        internet_launch_enabled=False,
+        maxim=maxim,
+        autonomy_controller=AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS),
     )
     result = registry.get("mode_switch").execute(mode="singularity")
     assert result.success is False
@@ -271,7 +273,7 @@ def test_a_mode_switch_with_no_runtime_to_apply_it_fails() -> None:
         mode = "active"
 
     controller = AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS)
-    registry = build_tool_registry(maxim=_NoRuntime(), autonomy_controller=controller)
+    registry = build_tool_registry(internet_launch_enabled=False, maxim=_NoRuntime(), autonomy_controller=controller)
     # a LOWERING switch, so the #924 gate lets it through and the #827 path is what refuses it
     result = registry.get("mode_switch").execute(mode="passive")
     assert result.success is False
@@ -290,7 +292,9 @@ def test_a_mode_switch_with_a_runtime_still_applies() -> None:
     maxim = _Maxim()
     maxim.mode = "active"  # a LOWERING switch: under #924 only those are self-grantable
     registry = build_tool_registry(
-        maxim=maxim, autonomy_controller=AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS)
+        internet_launch_enabled=False,
+        maxim=maxim,
+        autonomy_controller=AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS),
     )
     result = registry.get("mode_switch").execute(mode="passive")
     assert result.success is True and maxim.requested_mode == "passive"
@@ -307,7 +311,9 @@ def test_real_registry_wiring_refuses_passive_to_active() -> None:
 
     maxim = _Maxim()
     registry = build_tool_registry(
-        maxim=maxim, autonomy_controller=AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS)
+        internet_launch_enabled=False,
+        maxim=maxim,
+        autonomy_controller=AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS),
     )
     result = registry.get("mode_switch").execute(mode="active")
     assert result.success is False

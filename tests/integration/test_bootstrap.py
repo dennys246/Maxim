@@ -70,7 +70,7 @@ class TestBootstrapComponents:
         """Tool registry builds and has base tools."""
         from maxim.runtime.bootstrap import build_tool_registry
 
-        registry = build_tool_registry()
+        registry = build_tool_registry(internet_launch_enabled=False)
         assert registry is not None
         assert hasattr(registry, "get") or hasattr(registry, "list_tools")
 

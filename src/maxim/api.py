@@ -664,7 +664,7 @@ def run(
             agent.wire_robot(_robot)
             logger.info("Robot connected and awake: %s", robot)
 
-        tool_registry = build_tool_registry(maxim=_robot)
+        tool_registry = build_tool_registry(internet_launch_enabled=False, maxim=_robot)
         _inject_registered_tools(tool_registry)
 
         # F5: Headless bio-learning via AgentFactory. Bio-learning ON by

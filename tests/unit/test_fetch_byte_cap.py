@@ -69,10 +69,15 @@ def test_a_body_under_the_cap_is_not_marked_truncated(served) -> None:
 
 def _fetch_tool():
     from maxim.tools.http_fetch import HttpFetchTool
-    from maxim.utils.internet_access import InternetAccessPolicy
+    from maxim.utils.internet_access import EffectiveInternetPolicy, InternetAccessPolicy
 
-    policy = InternetAccessPolicy(enabled=True, max_fetch_bytes=1_000_000, require_robots_ok=False)
-    policy._is_private_ip = lambda host: False  # the domain is fictional; skip DNS
+    class _NoDnsPolicy(InternetAccessPolicy):
+        def _is_private_ip(self, hostname: str) -> bool:
+            return False  # the domain is fictional; skip DNS (the policy is frozen, so no instance patch)
+
+    policy = EffectiveInternetPolicy(
+        policy=_NoDnsPolicy(max_fetch_bytes=1_000_000, require_robots_ok=False), enabled=True
+    )
     return HttpFetchTool(get_internet_policy=lambda: policy)
 
 

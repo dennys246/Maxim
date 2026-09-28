@@ -21,15 +21,13 @@ REPO = Path(__file__).resolve().parents[2]
 
 @pytest.fixture(autouse=True)
 def _fresh_policy_cache():
-    ia._cached_policy = None
-    ia._cached_policy_path = None
+    ia._reset_policy_cache()
     yield
-    ia._cached_policy = None
-    ia._cached_policy_path = None
+    ia._reset_policy_cache()
 
 
 def _write_policy(path: Path, **fields) -> None:
-    ia.save_internet_policy(ia.InternetAccessPolicy(enabled=True, **fields), path)
+    ia.save_internet_policy(ia.InternetAccessPolicy(**fields), path)
 
 
 @pytest.fixture
@@ -116,9 +114,9 @@ def test_policy_cache_is_keyed_by_file(tmp_path: Path) -> None:
     a, b, access = tmp_path / "a.json", tmp_path / "b.json", tmp_path / "access.json"
     _write_policy(a, block_domains={"a.example"})
     _write_policy(b, block_domains={"b.example"})
-    assert "a.example" in ia.load_internet_policy(a, access_path=access).block_domains
+    assert "a.example" in ia.load_internet_policy(a, access_path=access).policy.block_domains
     # Same mtime second is likely; the cache must still not hand back a's policy for b.
-    assert "b.example" in ia.load_internet_policy(b, access_path=access).block_domains
+    assert "b.example" in ia.load_internet_policy(b, access_path=access).policy.block_domains
 
 
 def test_saved_policy_carries_format_version_and_round_trips(tmp_path: Path) -> None:
@@ -128,12 +126,13 @@ def test_saved_policy_carries_format_version_and_round_trips(tmp_path: Path) -> 
     assert data["_format_version"] == "1.0"
     assert "enabled" not in data  # the access toggle owns it
     loaded = ia.load_internet_policy(path, access_path=tmp_path / "access.json")
-    assert loaded.max_fetch_bytes == 1234 and "x.example" in loaded.block_domains
+    assert loaded.policy.max_fetch_bytes == 1234 and "x.example" in loaded.policy.block_domains
 
 
 @pytest.mark.parametrize("rel", ["src/maxim/cli.py", "src/maxim/embodied_runtime/agentic_runtime.py"])
 def test_runtimes_use_the_shared_getter_not_a_bare_policy(rel: str) -> None:
-    """The composition guard: both runtimes route through `live_internet_policy_getter`."""
+    """The composition guard: both runtimes hand the builder their launch cap, and since #832 the
+    builder builds the one live getter (behavioural: test_internet_policy_832.py)."""
     source = (REPO / rel).read_text()
-    assert "InternetAccessPolicy(enabled=" not in source
-    assert "live_internet_policy_getter(" in source
+    assert "InternetAccessPolicy(" not in source
+    assert "internet_launch_enabled=" in source

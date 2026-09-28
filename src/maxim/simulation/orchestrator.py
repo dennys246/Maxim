@@ -693,6 +693,7 @@ def start_simulation_mode(
                 logger.warning("Failed to lease respond/speak onto adopted registry: %s", e)
     else:
         aut_registry = build_tool_registry(
+            internet_launch_enabled=False,
             operational_mode="active",
             allowed_dirs_override=sandbox_dirs,
             response_output=aut_response_output,

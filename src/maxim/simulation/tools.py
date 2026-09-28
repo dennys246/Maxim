@@ -1333,6 +1333,7 @@ class SpawnSubSimulationTool(Tool):
         except Exception:
             pass
         sub_registry = build_tool_registry(
+            internet_launch_enabled=False,
             operational_mode="active",
             allowed_dirs_override=self._sandbox_dirs,
             response_output=sub_response_output,

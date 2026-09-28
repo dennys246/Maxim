@@ -45,7 +45,7 @@ def _restore_interactive_mode():
 
 
 def test_build_tool_registry_registers_display_tools():
-    registry = build_tool_registry()
+    registry = build_tool_registry(internet_launch_enabled=False)
     assert registry.get("display_mode") is not None
     assert registry.get("request_interaction") is not None
     assert isinstance(registry.get("display_mode"), DisplayModeTool)
@@ -54,7 +54,7 @@ def test_build_tool_registry_registers_display_tools():
 
 def test_request_interaction_uses_handler_when_interactive_on():
     handler = _RecordingHandler(answer="proceed")
-    registry = build_tool_registry(prompt_handler=handler)
+    registry = build_tool_registry(internet_launch_enabled=False, prompt_handler=handler)
 
     set_interactive_mode(InteractiveMode.ON)
     tool = registry.get("request_interaction")
@@ -70,7 +70,7 @@ def test_request_interaction_uses_handler_when_interactive_on():
 
 def test_request_interaction_disabled_when_interactive_off():
     handler = _RecordingHandler()
-    registry = build_tool_registry(prompt_handler=handler)
+    registry = build_tool_registry(internet_launch_enabled=False, prompt_handler=handler)
 
     set_interactive_mode(InteractiveMode.OFF)
     tool = registry.get("request_interaction")
@@ -85,7 +85,7 @@ def test_request_interaction_disabled_when_interactive_off():
 
 def test_request_interaction_critical_overrides_off():
     handler = _RecordingHandler(answer="approved")
-    registry = build_tool_registry(prompt_handler=handler)
+    registry = build_tool_registry(internet_launch_enabled=False, prompt_handler=handler)
 
     set_interactive_mode(InteractiveMode.OFF)
     tool = registry.get("request_interaction")
@@ -97,7 +97,7 @@ def test_request_interaction_critical_overrides_off():
 
 
 def test_request_interaction_falls_back_without_handler(capsys: Any):
-    registry = build_tool_registry(prompt_handler=None)
+    registry = build_tool_registry(internet_launch_enabled=False, prompt_handler=None)
 
     set_interactive_mode(InteractiveMode.ON)
     tool = registry.get("request_interaction")

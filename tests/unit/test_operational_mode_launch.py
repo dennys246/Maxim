@@ -215,7 +215,9 @@ def test_the_mode_switch_tool_sees_the_grant() -> None:
 
     robot = _Robot()
     registry = build_tool_registry(
-        maxim=robot, autonomy_controller=AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS)
+        internet_launch_enabled=False,
+        maxim=robot,
+        autonomy_controller=AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS),
     )
     result = registry.get("mode_switch").execute(mode="active")
     assert result.success is False and robot.requested_mode is None

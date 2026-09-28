@@ -470,10 +470,11 @@ class AgenticRuntimeMixin:
         exploration_policy_dict = getattr(self, "_exploration_policy", {}) or {}
         allow_internet = exploration_policy_dict.get("allow_internet", True)
 
-        # The persisted policy + runtime toggle, capped by the exploration policy (#822).
-        from maxim.utils.internet_access import live_internet_policy_getter
+        # The registry builds the live policy getter from this cap (#822, #832). Record the EFFECTIVE
+        # state at launch where the loop reads it (nothing recorded it; a launch snapshot, #965).
+        from maxim.utils.internet_access import effective_internet_enabled
 
-        internet_policy_getter = live_internet_policy_getter(allow_internet)
+        state.data["internet_access"] = effective_internet_enabled(allow_internet)
 
         # Build comms stack if enabled (MAXIM_COMMS_ENABLED env)
         gateway = None
@@ -495,7 +496,7 @@ class AgenticRuntimeMixin:
         registry = build_tool_registry(
             maxim=_maxim_for_tools,
             response_output=response_output,
-            internet_policy_getter=internet_policy_getter,
+            internet_launch_enabled=bool(allow_internet),
             gateway=gateway,
             state_manager=self._state_manager,
             **({"operational_mode": _granted_mode} if _granted_mode else {}),
