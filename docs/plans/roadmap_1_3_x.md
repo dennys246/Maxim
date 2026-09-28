@@ -160,9 +160,32 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    mismatch swallowed by a broad `except` — exactly what mypy catches. Extend CI's mypy set to `runtime/executor.py`,
    `runtime/agent_loop.py`, `bridges/`, `planning/`, and start the repo-wide error-count ratchet carried from
    1.3.1 (1,071 at the tag; it may only fall). Guard: CI mypy on those modules + the ratchet.
-5. **Coverage as a ratchet.** Measure on every PR; an overall floor (64.8% lines at the tag) plus per-module
-   floors on the risk seams (the orchestrator at 11%, `fear_bridge.py` at 29%, `tools/sandbox.py`). Guard:
-   the CI step fails below a floor; floors only rise.
+5. **Coverage as a ratchet — and a coverage push where the risk is** (widened 2026-09-27, owner). Baseline:
+   the Codex card's whole-suite run at `v1.3.1` — **61.9% of 90,416 statements**, 31,797 uncovered
+   ([evidence](../limits/score_cards/evidence/2026-09-27-codex/)). Three mechanisms, all in CI:
+   - **An overall floor and per-package floors** that only rise, set from that baseline.
+   - **Changed-line coverage ≥ 80% on every PR** (diff coverage), so new and moved code arrives tested
+     whatever the file's history.
+   - **A reviewed exclusion list** for code that needs a model or hardware (vision engines,
+     `inference/transcribe_audio.py`, `models/language/transformers_backend.py`, camera display): covered
+     by the model-cache nightly or named with a reason — never silently omitted (today's
+     `pyproject.toml` omits `embodied_runtime/selfy.py` without one).
+
+   **Where the push goes, by risk × uncovered lines** (coverage at `v1.3.1`):
+   | Area | Coverage | Why first |
+   |---|---|---|
+   | the three decomposition targets — `orchestrator.py`, `cli.py`, `agent_loop.py` | 11%, 14%, 51% | pinned by characterization tests before any slice (below) |
+   | `bridges/` (`fear_bridge.py` 29%) | 49% | where #840's silent failure lives |
+   | `default_network/`, `attention/`, `math/angular_gyrus.py` | 41%, 33%, 45% | bio systems that feed behaviour |
+   | `tools/sandbox.py`, `utils/sandbox_executor.py` | 27%, 70% | the code-execution boundary |
+   | `leader_proxy.py`, `router.py`, `lane_backends.py`, `peer/cli.py` | 53%, 63%, 66%, 46% | network, auth, routing |
+   | `embodied_runtime/` (mockable parts: `agentic_runtime`, `movement`, `workers`) | 32% | the robot runtime |
+
+   **Quality, not just lines:** the push writes behavioural and composition tests (a caller through its
+   real callee — the #840/#841 class), each new guard proven by deleting its mechanism; a test that
+   raises coverage without asserting behaviour does not count. Guard: the three CI checks above; the
+   floors, the changed-line threshold and the exclusion list are committed files, and the lint fails
+   on a floor that drops or an exclusion without a reason.
 6. **One function-length ratchet** — nothing over 200 lines may grow, nothing new may exceed 200 — replacing
    the two mismatched mechanisms ([#940](https://github.com/dennys246/Maxim/issues/940)). Guard: the lint, with
    a per-function baseline.
@@ -204,6 +227,13 @@ recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_
 
 The "kicked down the road" worry that kept this to one target is answered by the rule in **Sizing**: if a
 slice stalls, 1.3.2 ships the slices that landed and the ratchet records the new ceiling.
+
+**Coverage first, then extract (2026-09-27).** No slice moves code its tests do not pin. Each slice
+adds characterization tests for the code it will move, in its own commit BEFORE the extraction, and
+the extraction commit must keep them green unchanged. Extracted modules arrive at ≥ 80% line coverage
+(the changed-line gate enforces it), and the target file's per-module floor rises to its new measured
+value in the same PR. The orchestrator (11%) and `cli.py` (14%) get their characterization pass as the
+first slice of their decomposition, not after.
 
 **Behaviour preservation is the gate, not an aspiration.** Every slice must keep green, in the same
 PR: the byte-identical-selection provenance test, the encoder golden pin, and an offline
