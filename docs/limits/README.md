@@ -1,7 +1,8 @@
 # Measurement limits — the instrument ledger
 
-> **Score cards** live in [score_cards/](score_cards/). The current baseline is the v1.3.0
-> re-score: [2026-09-19-claude.md](score_cards/2026-09-19-claude.md) and
+> **Score cards** live in [score_cards/](score_cards/). The current baseline is the v1.3.1
+> re-score, [2026-09-27-claude.md](score_cards/2026-09-27-claude.md) (its Codex twin owed). Before it,
+> the v1.3.0 pair: [2026-09-19-claude.md](score_cards/2026-09-19-claude.md) and
 > [2026-09-19-codex.md](score_cards/2026-09-19-codex.md), graded blind to each other. The Claude
 > card's §Divergence compares them and shows most of the spread tracking what each assessor could
 > execute, not a disagreement about facts. **Method, from 2026-09-19 on:** three firewalled evidence agents grade groups of
