@@ -1730,8 +1730,8 @@ def _isolate_registered_tools():
 
 @pytest.fixture(autouse=True)
 def _isolate_maxim_tool_gate_env():
-    """Scrub the opt-in tool gates ``MAXIM_ALLOW_GIT_DIFF`` and
-    ``MAXIM_ALLOW_RUN_TESTS`` across every test.
+    """Scrub the opt-in tool gates ``MAXIM_ALLOW_GIT_DIFF``, ``MAXIM_ALLOW_GIT_COMMIT``
+    (#949) and ``MAXIM_ALLOW_RUN_TESTS`` across every test.
 
     ``GitDiffTool`` / ``RunTestsTool`` read these at ``execute()`` time
     (same mechanism as ``MAXIM_ALLOW_BASH`` in ``tools/filesystem.py``).
@@ -1739,7 +1739,7 @@ def _isolate_maxim_tool_gate_env():
     test that dispatches the tool, running a real ``git`` / test-runner
     subprocess. Same pattern as ``_isolate_maxim_auto_download_env``.
     """
-    names = ("MAXIM_ALLOW_GIT_DIFF", "MAXIM_ALLOW_RUN_TESTS")
+    names = ("MAXIM_ALLOW_GIT_DIFF", "MAXIM_ALLOW_GIT_COMMIT", "MAXIM_ALLOW_RUN_TESTS")
     saved = {name: os.environ.pop(name, None) for name in names}
     try:
         yield

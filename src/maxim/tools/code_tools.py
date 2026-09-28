@@ -110,7 +110,14 @@ class CodeSearchTool(Tool):
 
 
 class RunTestsTool(Tool):
-    """Run test suite and return structured results."""
+    """Run test suite and return structured results.
+
+    Contained (#949): it runs in ``tool_workdir(allowed_dirs)`` -- the project when it lies inside the
+    mode's ``allowed_dirs``, else ``allowed_dirs[0]`` -- ``test_path`` must resolve inside ``allowed_dirs``,
+    and the environment is the host-tool allowlist, so the parent's environment secrets never reach it.
+    The command itself is still a model-chosen argv run on the host (paths inside it are not checked):
+    a contained host tool, not a sandbox.
+    """
 
     name = "run_tests"
     description = "Run test suite and return structured results"
@@ -120,6 +127,10 @@ class RunTestsTool(Tool):
         "test_path": (str, None),
         "timeout": (int, 120),
     }
+
+    def __init__(self, allowed_dirs: list[str] | None = None) -> None:
+        super().__init__()
+        self._allowed_dirs = [os.path.realpath(d) for d in allowed_dirs] if allowed_dirs else None
 
     def execute(self, **kwargs) -> ToolOutput:
         # Opt-in like BashTool: ``command`` is an arbitrary model-supplied
@@ -136,9 +147,19 @@ class RunTestsTool(Tool):
         test_path = kwargs.get("test_path")
         timeout = kwargs.get("timeout", 120)
 
+        from maxim.tools.base import contained_path, host_tool_env, tool_workdir
+
+        workdir = tool_workdir(self._allowed_dirs)
         cmd_parts = command.split()
         if test_path:
-            cmd_parts.append(test_path)
+            contained = contained_path(test_path, self._allowed_dirs, base=workdir)
+            if contained is None:
+                return ToolOutput(
+                    success=False,
+                    error=f"test_path {test_path!r} is outside the allowed directories",
+                    error_kind=ToolErrorKind.PERMISSION_DENIED,
+                )
+            cmd_parts.append(contained)
 
         try:
             result = subprocess.run(
@@ -147,6 +168,8 @@ class RunTestsTool(Tool):
                 text=True,
                 timeout=timeout,
                 shell=False,
+                cwd=workdir,
+                env=host_tool_env(),
             )
         except subprocess.TimeoutExpired:
             return ToolOutput(

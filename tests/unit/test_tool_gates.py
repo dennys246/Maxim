@@ -51,7 +51,20 @@ class TestGitDiffGate:
         with patch("maxim.tools.git_tools.subprocess.run", return_value=_ok_result("diff")) as mock_run:
             output = GitDiffTool().run(ref1="main", ref2="feature", path="src/x.py")
         assert output.success is True
-        assert mock_run.call_args[0][0] == ["git", "diff", "--end-of-options", "main", "feature", "--", "src/x.py"]
+        from maxim.tools.base import GIT_HARDENING_ARGS
+
+        assert mock_run.call_args[0][0] == [
+            "git",
+            *GIT_HARDENING_ARGS,  # hooks/fsmonitor off (#949)
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--end-of-options",
+            "main",
+            "feature",
+            "--",
+            "src/x.py",
+        ]
 
 
 class TestGitDiffArgumentInjection:

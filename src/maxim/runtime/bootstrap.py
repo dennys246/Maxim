@@ -132,9 +132,9 @@ def build_tool_registry(
     registry.register(GlobTool(allowed_dirs=allowed_dirs))
     registry.register(BashTool(allowed_dirs=allowed_dirs))
     registry.register(CodeSearchTool(allowed_dirs=allowed_dirs))
-    registry.register(RunTestsTool())
-    registry.register(GitDiffTool())
-    registry.register(GitCommitTool())
+    registry.register(RunTestsTool(allowed_dirs=allowed_dirs))
+    registry.register(GitDiffTool(allowed_dirs=allowed_dirs))
+    registry.register(GitCommitTool(allowed_dirs=allowed_dirs))
 
     # Register directory change tool (only enabled for active/singularity modes)
     registry.register(
