@@ -1,8 +1,10 @@
-"""#821 — the model must not be able to switch itself into singularity mode.
+"""#821 + #924 — the model must not be able to raise its own capability.
 
-`singularity` is the only mode with `can_execute_code=True` plus full tools and network, so a
-model-initiated escalation to it (e.g. prompted by injected web text) must never reach
-`set_mode`. These tests drive the real `ModeSwitchTool` with recording callbacks.
+#821: `singularity` is the only mode with `can_execute_code=True` plus full tools and network, so a
+model-initiated escalation to it (e.g. prompted by injected web text) must never reach `set_mode`.
+#924 (owner decision 2026-09-27, STRICT): no capability raise at all -- passive -> active gains acting
+on the host -- until the in-session approval surface (#922) exists. Lowering stays free. These tests
+drive the real `ModeSwitchTool` with recording callbacks.
 """
 
 from __future__ import annotations
@@ -56,13 +58,93 @@ def test_deescalation_from_singularity_is_free() -> None:
     assert modes.set_calls == ["passive"]
 
 
-def test_passive_to_active_still_allowed() -> None:
-    # `active` is not a code-executing mode (`can_execute_code=False`), so this stays open. Note it
-    # is not code-free when unattended: non-interactive runs auto-answer "yes" to confirmations.
+def test_passive_to_active_is_refused() -> None:
+    # #924 STRICT (inverts #821's pinned `test_passive_to_active_still_allowed`): active gains acting on
+    # the host, which passive refuses at dispatch (#826), so the model may not grant it to itself.
     tool, modes = _tool("passive")
-    result = tool.execute(mode="active")
+    result = tool.execute(mode="active", reason="the task needs it")
+    assert result.success is False
+    assert modes.set_calls == []
+    assert "raises capability" in (result.error or "")
+
+
+def test_active_to_passive_is_free() -> None:
+    tool, modes = _tool("active")
+    result = tool.execute(mode="passive")
     assert result.success is True
-    assert modes.set_calls == ["active"]
+    assert modes.set_calls == ["passive"]
+
+
+def test_raises_capability_is_derived_from_dispatch_enforcement() -> None:
+    from maxim.modes.definitions import raises_capability
+
+    assert raises_capability("passive", "active") is True  # gains HOST_ACTING_TOOLS
+    assert raises_capability("active", "singularity") is True  # gains code execution
+    assert raises_capability("passive", "singularity") is True
+    assert raises_capability("live", "singularity") is True  # legacy name for active
+    assert raises_capability("active", "passive") is False
+    assert raises_capability("singularity", "passive") is False
+    assert raises_capability("singularity", "active") is False
+    assert raises_capability("passive", "passive") is False
+    assert raises_capability("passive", "no-such-mode") is True  # unknown TARGET: fail closed
+    # unknown CURRENT (the agentic runtime runs as "agentic"): unrestricted, as dispatch treats it --
+    # lowering out of it is free, but entering a code-executing mode is still refused (#821)
+    assert raises_capability("agentic", "passive") is False
+    assert raises_capability("agentic", "active") is False
+    assert raises_capability("agentic", "singularity") is True
+
+
+def test_an_agentic_run_may_lower_itself() -> None:
+    tool, modes = _tool("agentic")
+    assert tool.execute(mode="passive").success is True
+    assert modes.set_calls == ["passive"]
+    tool, modes = _tool("agentic")
+    assert tool.execute(mode="singularity").success is False and modes.set_calls == []
+
+
+def test_a_legacy_alias_of_the_current_mode_is_already_there() -> None:
+    tool, modes = _tool("live")  # legacy name for active
+    result = tool.execute(mode="active")
+    assert result.success is True and result.metadata["was_change"] is False
+    assert modes.set_calls == []
+
+
+def _synthetic_modes(monkeypatch, **variants):
+    """Register synthetic modes derived from passive, so each arm of `raises_capability` is pinned alone."""
+    import dataclasses
+
+    from maxim.modes import definitions
+
+    base = dataclasses.replace(definitions.get_mode("passive"), forbidden_tools=set(), can_act_on_host=True)
+    for name, changes in variants.items():
+        monkeypatch.setitem(definitions.OPERATIONAL_MODES, name, dataclasses.replace(base, name=name, **changes))
+
+
+def test_gaining_only_network_access_is_a_raise(monkeypatch) -> None:
+    from maxim.modes.definitions import raises_capability
+
+    _synthetic_modes(monkeypatch, zz_offline={"can_access_network": False}, zz_online={"can_access_network": True})
+    assert raises_capability("zz-offline", "zz-online") is True
+    assert raises_capability("zz-online", "zz-offline") is False
+
+
+def test_dropping_only_the_confirmation_requirement_is_a_raise(monkeypatch) -> None:
+    from maxim.modes.definitions import raises_capability
+
+    _synthetic_modes(
+        monkeypatch, zz_confirm={"confirmations_required": True}, zz_unconfirmed={"confirmations_required": False}
+    )
+    assert raises_capability("zz-confirm", "zz-unconfirmed") is True
+    assert raises_capability("zz-unconfirmed", "zz-confirm") is False
+
+
+def test_lifting_only_a_forbidden_tool_is_a_raise(monkeypatch) -> None:
+    from maxim.modes.definitions import raises_capability
+
+    # a tool in NO capability set, so only the forbidden-tools arm can see it
+    _synthetic_modes(monkeypatch, zz_strict={"forbidden_tools": {"zz_uncategorised_tool"}}, zz_lax={})
+    assert raises_capability("zz-strict", "zz-lax") is True
+    assert raises_capability("zz-lax", "zz-strict") is False
 
 
 def test_refusal_is_recorded_in_the_autonomy_audit_log() -> None:
@@ -105,7 +187,7 @@ def test_non_string_mode_is_rejected_not_crashed() -> None:
 
 
 def test_executes_code_is_derived_from_the_mode_definition() -> None:
-    from maxim.tools.mode_switch import executes_code
+    from maxim.modes.definitions import executes_code
 
     assert executes_code("singularity") is True
     assert executes_code("SINGULARITY") is True
@@ -184,9 +266,13 @@ def test_a_mode_switch_with_no_runtime_to_apply_it_fails() -> None:
     from maxim.agents.autonomy import AutonomyController, AutonomyLevel
     from maxim.runtime.bootstrap import build_tool_registry
 
+    class _NoRuntime:  # a mode to read, but no `requested_mode` to apply a change to
+        mode = "active"
+
     controller = AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS)
-    registry = build_tool_registry(maxim=None, autonomy_controller=controller)
-    result = registry.get("mode_switch").execute(mode="active")
+    registry = build_tool_registry(maxim=_NoRuntime(), autonomy_controller=controller)
+    # a LOWERING switch, so the #924 gate lets it through and the #827 path is what refuses it
+    result = registry.get("mode_switch").execute(mode="passive")
     assert result.success is False
     assert "no runtime" in (result.error or "")
     assert not [e for e in controller.get_audit_log() if e.action_type == "executed"]
@@ -201,11 +287,30 @@ def test_a_mode_switch_with_a_runtime_still_applies() -> None:
         requested_mode = None
 
     maxim = _Maxim()
+    maxim.mode = "active"  # a LOWERING switch: under #924 only those are self-grantable
+    registry = build_tool_registry(
+        maxim=maxim, autonomy_controller=AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS)
+    )
+    result = registry.get("mode_switch").execute(mode="passive")
+    assert result.success is True and maxim.requested_mode == "passive"
+
+
+def test_real_registry_wiring_refuses_passive_to_active() -> None:
+    """#924 end to end through `build_tool_registry`: the tool the agent actually gets refuses the raise."""
+    from maxim.agents.autonomy import AutonomyController, AutonomyLevel
+    from maxim.runtime.bootstrap import build_tool_registry
+
+    class _Maxim:
+        mode = "passive"
+        requested_mode = None
+
+    maxim = _Maxim()
     registry = build_tool_registry(
         maxim=maxim, autonomy_controller=AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS)
     )
     result = registry.get("mode_switch").execute(mode="active")
-    assert result.success is True and maxim.requested_mode == "active"
+    assert result.success is False
+    assert maxim.requested_mode is None
 
 
 def test_the_unread_mode_transition_policy_is_gone() -> None:

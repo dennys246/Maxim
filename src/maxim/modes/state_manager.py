@@ -228,7 +228,9 @@ class StateManager:
     # The phrase entry points: ``maxim passive|active|singularity`` spoken, or typed at the CLI, lands
     # here (utils/response_config.py). A phrase is heard from ANY audio in the room -- a video, the
     # robot's own TTS -- so it is not human authority for a mode that executes code (#828, owner
-    # decision 2026-09-26): such a mode is refused by ``executes_code``, the predicate every mode gate uses (#821).
+    # decision 2026-09-26): such a mode is refused by ``executes_code`` (#821). The model's own tool uses the
+    # stricter ``raises_capability`` (#924); a phrase changes only this StateManager's mode, not the mode the
+    # executor's dispatch gate reads (``state.data["mode"]``). Who may grant what across channels is #834.
     def request_mode_passive(self) -> bool:
         return self._request_mode_by_phrase("passive")
 
