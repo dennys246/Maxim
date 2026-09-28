@@ -1120,6 +1120,15 @@ jobs:
         run: |
           python3 scripts/lint_unreleased_on_src_change.py
 
+      - name: Pinned config.json schema is append-only (#856)
+        # tests/fixtures/config_schema_by_version.json pins every config field path per
+        # CONFIG_FORMAT_VERSION; the pin test fails on an unversioned schema change. This makes the
+        # append-only half mechanical: an entry that exists at the merge-base may not be edited (the
+        # "just add it to the current version" response would re-create #856). Positive control:
+        # tests/unit/test_lint_config_schema_append_only.py.
+        run: |
+          python3 scripts/lint_config_schema_append_only.py
+
       - name: God-function length ratchet (Maintainability score-card mechanization)
         # The 2026-08-27 card's standing complaint: "CI does not bound any
         # function's length" and all three god-functions had GROWN. Pins

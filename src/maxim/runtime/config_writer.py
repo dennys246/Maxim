@@ -42,6 +42,7 @@ from typing import Any, Callable
 from maxim.exceptions import ConfigurationError
 from maxim.runtime.config_loader import (
     CONFIG_FORMAT_VERSION,
+    _check_format_version,
     LaneTierConfig,
     LaneTierPlacement,
     MaximConfig,
@@ -122,11 +123,21 @@ def write_config(
     target.parent.mkdir(parents=True, exist_ok=True)
 
     payload = _serialize_for_json(config)
+    # A config parsed from an OLDER (or same-version) file is this build's schema, so it is written at
+    # this build's version: passing the old version through made the canonical stamp refuse once
+    # CONFIG_FORMAT_VERSION moved (#856). A config parsed from a NEWER file lost the keys this build
+    # tolerated; writing it would drop them silently and stamp the file down (#974), so that stays a
+    # loud refusal.
+    loaded_version = payload.pop("_format_version", None)
+    if isinstance(loaded_version, str) and loaded_version:
+        if _check_format_version({"_format_version": loaded_version})[1]:
+            raise ConfigurationError(
+                f"config_writer: this config was loaded from a newer config.json (_format_version "
+                f"{loaded_version!r}; this build writes {CONFIG_FORMAT_VERSION}). Writing it would drop the "
+                "settings this build does not know. Upgrade Maxim, or edit the file by hand (#974)."
+            )
     # Post-implementation Architecture #1 fold: route _format_version
-    # stamping through the canonical with_format_version helper. The
-    # pre-fold direct assignment silently bypassed CC1's fail-loud-
-    # on-stale-conflict semantics (raises ValueError when payload
-    # already carries a mismatched _format_version).
+    # stamping through the canonical with_format_version helper.
     payload = with_format_version(payload, CONFIG_FORMAT_VERSION)
 
     try:

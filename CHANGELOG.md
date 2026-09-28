@@ -217,6 +217,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A config.json written by this build no longer stops an older build** (#856, owner decision
+  2026-09-28).
+  - Four sections (`console`, `tools`, `sim`, `memory`), plus fields added inside `llm` and `console`,
+    shipped without bumping the config format version. So a file this build wrote still said `"1.0"`, an older build refused the unknown section
+    (`ConfigurationError: unknown top-level key(s)`), and every `maxim` command failed until the file
+    was hand-edited.
+  - `CONFIG_FORMAT_VERSION` is now `"1.1"`. An older build treats that as a future minor and tolerates
+    the sections it does not know, with a warning.
+  - The config writer stamps this build's version for a config parsed from an older file, rather than
+    passing that file's version through (the bump would otherwise have made `maxim config set` refuse
+    on every existing file). `write_config` refuses a config parsed from a NEWER file with a
+    `ConfigurationError` (it raised a raw `ValueError` before) rather than writing it without the keys
+    this build does not know. `mutate_config` / `set_field` (the ordinary `maxim config set` path) still
+    drop them: #974, decision owed.
+  - A file with no version is read as the loader's own version, as documented.
+  - **Guard:** every config field path is pinned per version in
+    `tests/fixtures/config_schema_by_version.json`, so a schema change without a bump fails CI with the
+    path that changed. `scripts/lint_config_schema_append_only.py` (CI) refuses an edit to an existing
+    entry, so the fix for that failure cannot be "add it to the current version".
+  - A `"1.0"` file an earlier build wrote with those sections still stops an older build until it is
+    rewritten (any `maxim config set`).
+  - The write half is #974: an older build rewriting a newer file drops the keys it does not know.
+
 - **A memory store no longer saves over a file it never read, and `~` means the home directory**
   (#939, #950; owner decisions 2026-09-28). A user's memories could be silently lost.
   - **The clobber (#939).** `maxim.create.hippocampus` / `create.atl` with an existing
