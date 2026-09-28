@@ -95,12 +95,13 @@ You do not have to restart Maxim to change modes.
 - "Maxim wake up" -- wake from sleep
 - "Maxim passive" -- switch to planning (passive) mode
 - "Maxim active" -- switch to supervised (active) mode
-- "Maxim singularity" -- switch to autonomous mode
+- "Maxim singularity" -- **refused**: a phrase is heard from any audio in the room, so it cannot enter the
+  code-executing mode (#828). Start Maxim in singularity mode deliberately instead.
 
 ### Agent Tools
 
-- **`mode_switch`** -- Switch between operational modes. Logs switches with timestamps and reasoning.
-- **`autonomy_level`** -- Request autonomy changes. Escalation (e.g., autonomous to planning) is always allowed. De-escalation requires human approval.
+- **`mode_switch`** -- The agent may switch itself to a mode with **no more capability** than its current one (e.g. active → passive). A switch that gains capability — passive → active, or anything → singularity — is refused: only a human can grant it (#821, #924). Logs switches with timestamps and reasoning.
+- **`autonomy_level`** -- Request autonomy changes. Lowering autonomy (e.g. autonomous → planning) is immediate. Raising it needs human approval, and with no approval surface attached the request is refused, not left pending (#827).
 - **`sleep`** -- Agent calls this to enter the sleep processing state. Wakes automatically on user input.
 
 ### Prompt Profiles
