@@ -142,6 +142,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking, to stable surfaces (#939, #950; owner decisions 2026-09-28).** Each change turns a
+  silent loss of memories into an error. The owner should confirm at the cut whether they fit a
+  patch release.
+  - `maxim.create.agent(name)` raises `FileExistsError` when the agent's home already holds
+    persisted state.
+  - `Hippocampus.save()` / `ATL.save()` raise `StoreOverwriteRefused` over an existing file the
+    instance never read. It is newly exported from `maxim`, and is also a `FileExistsError`.
+  - `Hippocampus.load()` / `ATL.load()` raise `FileNotFoundError` on a missing file; `missing_ok=True`
+    keeps the old load-if-present.
+  - `maxim.load.hippocampus/nac/atl` raise `MemoryCorruptionError` for an unreadable file, instead of
+    a raw `JSONDecodeError`.
+  - New: `save(overwrite=)`, `allow_overwrite()`, `may_write()`, `load(missing_ok=)`.
+  - Details under Fixed.
+
 - **`build_tool_registry` takes a required `internet_launch_enabled` and builds the policy getter
   itself** (#832 item 4). The `internet_policy_getter=` parameter is removed, so no caller can hand
   the internet tools a bare policy. Forgetting the decision is a `TypeError`, not "no internet".
@@ -203,6 +217,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A memory store no longer saves over a file it never read, and `~` means the home directory**
+  (#939, #950; owner decisions 2026-09-28). A user's memories could be silently lost.
+  - **The clobber (#939).** `maxim.create.hippocampus` / `create.atl` with an existing
+    `persistence_path`, the plain `Hippocampus(...)` / `ATL(...)` constructors, and
+    `Hippocampus.from_config` with the path only on the config all started empty and replaced the
+    file on the next save. Measured: 3 memories on disk, 1 after one save.
+    - Hippocampus and ATL now refuse, with `StoreOverwriteRefused` (a `FileExistsError`), to save
+      over an existing file they neither read nor created. `save(overwrite=True)` or
+      `allow_overwrite()` replaces one deliberately.
+    - The sleep auto-save logs the refusal at ERROR and keeps the sleep's results. The sim NPC
+      (write-but-don't-read) declares its overwrite.
+    - `from_config` now reads a path given only on the config.
+    - An unreadable Hippocampus/ATL file that the store starts fresh from is first copied to
+      `<name>.corrupt-<UTC timestamp>` (logged). The store then persists normally. This covers
+      `load_with_recovery`, `ATL.load_safe` (the hub's session-start restore), and
+      `load.agent(on_corrupt="fresh")`. It used to be silently replaced. If the copy cannot be made,
+      the original stays and saves over it are refused.
+  - **`maxim.create.agent(name)` now refuses (`FileExistsError`) when the agent's home already holds
+    persisted state.** Building a fresh agent there overwrote its NAc, EC and SCN while its memories
+    survived. Continue it with `maxim.load.agent(name)`. The other stores' save guard is #971.
+  - **`~` (#950).** `maxim.load.hippocampus("~/...")` returned an EMPTY store (the check expanded `~`,
+    the load did not), `load.nac("~/...")` raised, and `persistence_path="~/..."` saved into a literal
+    `./~/` under the working directory. Every Hippocampus, ATL and NAc save/load, the `load.*` calls,
+    `AgentConfig.persistence_dir`, `load.agent(base_dir=)` and `AgentFactory(base_data_dir=)` now
+    expand it (`utils/paths.py::store_file_path`).
+  - `maxim.load.hippocampus` / `load.nac` / `load.atl` raise `MemoryCorruptionError` for an unreadable
+    file, as `load.agent` does, instead of a raw `JSONDecodeError`.
+  - `Hippocampus.load` and `ATL.load` of a missing file raise `FileNotFoundError`, as `NAc.load` does;
+    they used to leave the store empty (Hippocampus with a warning, ATL silently). `missing_ok=True`
+    is the explicit load-if-present.
 - **Statements that disagreed with the records** (found by the v1.3.1 re-score, #940). The README (the
   PyPI description) still called Exp 10 "re-run pending" and said its causal links "accumulate"; it now
   reads MAINTAINED (narrow), with accumulation not re-shown. `docs/user/upgrading.md` advised backing up

@@ -37,8 +37,9 @@ def test_the_documented_create_agent_example_runs() -> None:
     ("name", "value"),
     [("perception", "dark cave ahead"), ("action", {"tool_name": "look"}), ("outcome", 1.0)],
 )
-def test_capture_refuses_a_wrong_argument_type_up_front(name, value) -> None:
-    agent = maxim.create.agent("typed_capture", remembers=True)
+def test_capture_refuses_a_wrong_argument_type_up_front(name, value, tmp_path) -> None:
+    # Its own home per case: create.agent refuses a home that already holds state (#939).
+    agent = maxim.create.agent("typed_capture", remembers=True, persistence_dir=str(tmp_path / "typed_capture"))
     try:
         before = len(agent.hippocampus)
         with pytest.raises(TypeError, match=rf"capture\(\): {name} must be a"):

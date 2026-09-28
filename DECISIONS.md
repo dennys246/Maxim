@@ -2,6 +2,29 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-09-28 — A memory store never saves over a file it did not read; `~` is the home directory (#939, #950)
+
+### Decision
+
+Owner decisions, four at the design step:
+
+1. **The clobber is fixed at SAVE, not in the constructors.** A store may write a file it read, a file it created, or a file it was told to replace (`save(overwrite=True)`, `allow_overwrite()`). Any other existing file raises `StoreOverwriteRefused`. Enforced in `memory/store.py::StoreFileOwnership` for Hippocampus and ATL, so every construction path is covered, including future ones. The constructors keep the package contract that `create.*` is always empty.
+2. **`create.agent(name)` refuses up front** when the agent's home already holds persisted state. With a guard on only some stores, a fresh agent there would have kept the old memories but replaced NAc/EC/SCN: a mixed agent. The guard for the remaining stores is #971.
+3. **`~` is expanded** through one resolver (`utils/paths.py::store_file_path`): in every Hippocampus, ATL and NAc save/load, the `load.*` calls, and the agent-home paths (`persistence_dir`, `load.agent(base_dir=)`, `AgentFactory(base_data_dir=)`). SCN, EC, AngularGyrus and the cross-layer index get it with their guard (#971).
+4. **`load()` of a missing file raises `FileNotFoundError`** in Hippocampus and ATL, as in NAc. `missing_ok=True` is the explicit load-if-present form (the hub's session-start ATL restore uses `load_safe`, which checks the file exists first).
+
+### Reason
+
+A user's memories were lost silently: the documented examples did it when run twice. The failure lived in the composition "construct empty, then save", which no single constructor sees, so the guard sits at the one place every path passes through, the write.
+
+### Tradeoffs
+
+- A corrupt Hippocampus/ATL file that a store starts fresh from is copied to `<name>.corrupt-<UTC timestamp>`, and then the store saves in its place (owner decision at review). Preserving it untouched instead would have left the agent half-persisted: its memories session-only while NAc/EC kept saving, the mixed state #939 prevents. The evidence is kept either way; if the copy fails, the original stays and saves over it are refused.
+- The write-but-don't-read orchestrator still restores its ATL at session start (#972, pre-existing): its overwrite declaration only matters when that read fails.
+- Running a script that calls `create.agent("scout")` twice now fails the second time, with a message naming `load.agent`. The same holds for `create.hippocampus(persistence_path=P)` followed by `save()`.
+- NAc, EC, SCN, AngularGyrus and the cross-layer index are not guarded yet (#971). `create.agent`'s up-front refusal covers the public entry point meanwhile.
+
+
 ## 2026-09-28 — The internet policy is the operator's, frozen; on/off is composed at read time (#832)
 
 ### Decision

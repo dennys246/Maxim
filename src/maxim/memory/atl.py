@@ -43,6 +43,7 @@ from maxim.memory.semantic_types import (
     SemanticRelationship,
 )
 from maxim.memory.semantics import Semantics
+from maxim.memory.store import UNREADABLE_STORE_ERRORS, StoreFileOwnership
 from maxim.utils.atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
@@ -69,14 +70,17 @@ class ATLConfig:
     name_similarity_threshold: float = 0.8  # For deduplication
 
 
-class ATL(MemoryLayer):
+class ATL(StoreFileOwnership, MemoryLayer):
     """Anterior Temporal Lobe — Semantic concept memory.
 
     MemoryLayer protocol (store/get/recall/consolidate/save/load)
     plus semantic-specific methods (define_relationship, find_or_create).
 
-    Thread-safe via RWLock.
+    Thread-safe via RWLock. Paths expand ``~`` (#950), and a save never replaces an existing file
+    this instance did not read (``StoreFileOwnership``, #939).
     """
+
+    _store_name = "atl"
 
     # P3.5 Stage 1 — BioSystemSnapshot Protocol envelope version.
     # Payload-layer legacy version string "1.0" is tombstoned; all future
@@ -383,22 +387,35 @@ class ATL(MemoryLayer):
             self._stats = state.get("stats", {"concepts_stored": 0, "queries": 0})
             self._compressed_count = state.get("compressed_count", self._compressed_count)
 
-    def save(self, path: str | None = None) -> None:
-        """Persist ATL state to JSON."""
-        path = path or self.config.persistence_path
-        if path is None:
+    def save(self, path: str | None = None, *, overwrite: bool = False) -> None:
+        """Persist ATL state to JSON (no-op when no path is given or configured).
+
+        ``overwrite`` replaces an existing file this instance never read; without it such a save
+        raises ``StoreOverwriteRefused`` (#939).
+        """
+        if not (path or self.config.persistence_path):
             return
+        path = self._default_store_path(path)
+        self._check_store_write(path, overwrite=overwrite)
 
         from maxim.utils.format_version import with_format_version
 
         atomic_write_json(path, with_format_version(self.dump()), default=None)
+        self._claim_store_file(path)
         logger.debug("ATL saved to %s (%d concepts)", path, len(self._concepts))
 
-    def load(self, path: str | None = None) -> None:
-        """Restore ATL state from JSON."""
-        path = path or self.config.persistence_path
-        if path is None or not os.path.exists(path):
+    def load(self, path: str | None = None, *, missing_ok: bool = False) -> None:
+        """Restore ATL state from JSON (no-op when no path is given or configured).
+
+        A missing file raises ``FileNotFoundError`` unless ``missing_ok`` (load-if-present).
+        """
+        if not (path or self.config.persistence_path):
             return
+        path = self._default_store_path(path)
+        if not os.path.exists(path):
+            if missing_ok:
+                return
+            raise FileNotFoundError(f"ATL file not found: {path}")
 
         with open(path) as f:
             state = json.load(f)
@@ -407,21 +424,31 @@ class ATL(MemoryLayer):
 
         check_format_version(state, "atl", log=logger)
         self.load_state(state)
+        self._claim_store_file(path)
 
         logger.debug("ATL loaded from %s (%d concepts)", path, len(self._concepts))
 
     def load_safe(self, path: str | None = None) -> tuple[bool, str | None]:
-        """Load with recovery on failure. Returns (success, error_message)."""
+        """Load with recovery on failure. Returns (success, error_message).
+
+        A corrupt file is copied to ``<name>.corrupt-<UTC timestamp>`` and the store starts empty; the
+        next save replaces the original (#939, owner decision)."""
         path = path or self.config.persistence_path
+        if path is not None:
+            path = self._default_store_path(path)
         if path is None or not os.path.exists(path):
             logger.info("No existing ATL file, starting fresh")
             return True, None
         try:
             self.load(path)
             return True, None
-        except (json.JSONDecodeError, ValueError, KeyError, TypeError) as e:
+        except UNREADABLE_STORE_ERRORS as e:
             error_msg = f"Corrupt ATL file ({type(e).__name__}): {e}"
             logger.warning("%s — starting with empty concept store", error_msg)
+            try:
+                self.set_aside_unreadable_file(path)  # keep a copy, then save fresh in its place (#939)
+            except OSError as copy_error:
+                logger.error("Could not keep a copy of %s (%s); it stays unsaved-over", path, copy_error)
             with self._rwlock.write():
                 self._concepts.clear()
                 self._context_index.clear()

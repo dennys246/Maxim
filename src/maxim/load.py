@@ -30,6 +30,38 @@ if TYPE_CHECKING:
 __all__ = ["hippocampus", "nac", "atl", "session", "sessions", "agent", "entity"]
 
 
+def _unreadable_errors() -> tuple[type[Exception], ...]:
+    """What a store's loader raises for a file it cannot parse or reconstruct: the one shared definition
+    (``memory/store.py::UNREADABLE_STORE_ERRORS``), imported lazily like every facade import.
+    OSError (permissions, a directory) is not corruption and propagates as itself."""
+    from maxim.memory.store import UNREADABLE_STORE_ERRORS
+
+    return UNREADABLE_STORE_ERRORS
+
+
+def _existing_store_file(path: str, label: str) -> str:
+    """The path with ``~`` expanded -- the SAME path that is then loaded (#950: the check expanded
+    it and the loader did not, so ``~/...`` loaded an empty store). Raises ``FileNotFoundError``."""
+    import os
+
+    from maxim.utils.paths import store_file_path
+
+    resolved = store_file_path(path)
+    if not os.path.exists(resolved):
+        raise FileNotFoundError(f"{label} file not found: {path}")
+    return resolved
+
+
+def _corrupt(label: str, path: str, exc: Exception) -> Exception:
+    """The ``MemoryCorruptionError`` ``load.agent`` raises for the same file (#939)."""
+    from maxim.exceptions import MemoryCorruptionError
+
+    return MemoryCorruptionError(
+        f"{label} file {path} could not be read ({type(exc).__name__}: {exc}); repair or move it",
+        context={"path": path, "subsystem": label},
+    )
+
+
 def hippocampus(path: str) -> "Hippocampus":
     """Load a Hippocampus from a persisted JSON file.
 
@@ -41,16 +73,14 @@ def hippocampus(path: str) -> "Hippocampus":
 
     Raises:
         FileNotFoundError: If the file does not exist.
+        MemoryCorruptionError: If the file cannot be read as a Hippocampus.
 
     Example::
 
         hippo = maxim.load.hippocampus("~/.maxim/agents/scout/hippocampus.json")
         memories = hippo.recall(query="wolf", limit=5)
     """
-    from pathlib import Path as _Path
-
-    if not _Path(path).expanduser().exists():
-        raise FileNotFoundError(f"Hippocampus file not found: {path}")
+    resolved = _existing_store_file(path, "Hippocampus")
 
     # The retention model is runtime POLICY, not persisted state: a loaded store scores by the
     # CURRENT ``memory.strategy``, not whatever was set when the file was written (contrast
@@ -59,7 +89,10 @@ def hippocampus(path: str) -> "Hippocampus":
     from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs
 
     h = Hippocampus(HippocampusConfig(**resolve_hippocampus_memory_kwargs()))
-    h.load(path)
+    try:
+        h.load(resolved)
+    except _unreadable_errors() as e:
+        raise _corrupt("Hippocampus", resolved, e) from e
     return h
 
 
@@ -74,16 +107,14 @@ def nac(path: str) -> "NAc":
 
     Raises:
         FileNotFoundError: If the file does not exist.
+        MemoryCorruptionError: If the file cannot be read as a NAc.
 
     Example::
 
         nac = maxim.load.nac("~/.maxim/agents/scout/nac.json")
         prediction = nac.predict("action", "ate_mushroom")
     """
-    from pathlib import Path as _Path
-
-    if not _Path(path).expanduser().exists():
-        raise FileNotFoundError(f"NAc file not found: {path}")
+    resolved = _existing_store_file(path, "NAc")
 
     from maxim.decisions.nac import NAc
 
@@ -91,7 +122,10 @@ def nac(path: str) -> "NAc":
     # apply_decay=False: a read-only load must report disk truth — the
     # same file inspected on two different days must give the same
     # numbers, and a load→save round-trip must not compound decay.
-    n.load(path, apply_decay=False)
+    try:
+        n.load(resolved, apply_decay=False)
+    except _unreadable_errors() as e:
+        raise _corrupt("NAc", resolved, e) from e
     return n
 
 
@@ -106,23 +140,24 @@ def atl(path: str) -> "ATL":
 
     Raises:
         FileNotFoundError: If the file does not exist.
+        MemoryCorruptionError: If the file cannot be read as an ATL.
 
     Example::
 
         atl = maxim.load.atl("~/.maxim/agents/scout/atl.json")
         concepts = atl.recall(limit=10)
     """
-    from pathlib import Path as _Path
-
-    if not _Path(path).expanduser().exists():
-        raise FileNotFoundError(f"ATL file not found: {path}")
+    resolved = _existing_store_file(path, "ATL")
 
     # As in ``load.hippocampus``: the model is current policy, never restored from the file.
     from maxim.memory.atl import ATL, ATLConfig
     from maxim.runtime.config_loader import resolve_memory_strategy
 
     a = ATL(ATLConfig(memory_strategy=resolve_memory_strategy()))
-    a.load(path)
+    try:
+        a.load(resolved)
+    except _unreadable_errors() as e:
+        raise _corrupt("ATL", resolved, e) from e
     return a
 
 
@@ -195,8 +230,11 @@ def agent(
             ``"raise"`` (default) aborts with a
             :class:`~maxim.exceptions.MemoryCorruptionError` naming every bad
             file. ``"fresh"`` is the explicit opt-in to start those subsystems
-            empty; the corrupt file stays on disk until the agent next saves,
-            so nothing is destroyed by the choice.
+            empty. An unreadable Hippocampus or ATL file is copied to
+            ``<name>.corrupt-<UTC timestamp>`` beside it (logged) and the agent
+            saves fresh state in its place, so nothing is destroyed by the
+            choice. NAc, EC and SCN files are NOT copied: their unreadable file
+            is overwritten at the next save, with no copy (until #971).
 
     Returns:
         ``AgentInstance`` with persisted state restored.
@@ -224,6 +262,7 @@ def agent(
     from maxim.runtime.agent_factory import AgentConfig, AgentFactory
 
     if base_dir:
+        base_dir = str(Path(base_dir).expanduser())  # `~` means home (#950)
         factory = AgentFactory(base_data_dir=base_dir)
         agent_dir = Path(base_dir) / name
     else:

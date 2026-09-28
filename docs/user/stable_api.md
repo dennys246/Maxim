@@ -72,8 +72,9 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 
 **Category-level** exceptions are importable from `maxim.*` (leaf subclasses live in
 `maxim.exceptions` — catch the category, or import the leaf explicitly). The one leaf
-exported directly is `MemoryCorruptionError`, because `load.agent()` documents it as its
-raise type:
+exported directly are `MemoryCorruptionError`, because `load.agent()` and `load.hippocampus/nac/atl()`
+document it as their raise type, and `StoreOverwriteRefused` (#939), which a store's `save()` raises
+over a file it never read (also catchable as `MaximMemoryError` or `FileExistsError`):
 
 | Symbol | Stable | Notes |
 |---|---|---|
@@ -97,12 +98,12 @@ raise type:
 
 | Symbol | Stable | Notes |
 |---|---|---|
-| `create.hippocampus(...)` | ✅ | |
+| `create.hippocampus(...)` | ✅ | Always empty. Its `save()` raises `StoreOverwriteRefused` over an existing file it never read (#939); open that file with `load.hippocampus`. |
 | `create.nac(...)` | ✅ | |
-| `create.atl(...)` | ✅ | |
+| `create.atl(...)` | ✅ | Always empty; `save()` refuses an existing unread file, as for `create.hippocampus`. |
 | `create.scn()` | ✅ | |
 | `create.angular_gyrus(...)` | ✅ | |
-| `create.agent(name, ...) -> AgentInstance` | ✅ | |
+| `create.agent(name, ...) -> AgentInstance` | ✅ | Raises `FileExistsError` when the agent's home already holds persisted state (#939); continue it with `load.agent(name)`. |
 | `create.pool(...) -> AgentPool` | ✅ | |
 | `create.entity(template_ref, ...) -> Entity` | ✅ | |
 | `create.embodiment(root_entity, ...) -> Embodiment` | ✅ | |
@@ -113,12 +114,12 @@ raise type:
 
 | Symbol | Stable | Notes |
 |---|---|---|
-| `load.hippocampus(path) -> Hippocampus` | ✅ | |
-| `load.nac(path) -> NAc` | ✅ | |
-| `load.atl(path) -> ATL` | ✅ | |
+| `load.hippocampus(path) -> Hippocampus` | ✅ | `~` expands. Raises `FileNotFoundError` (missing) or `MemoryCorruptionError` (unreadable). |
+| `load.nac(path) -> NAc` | ✅ | As `load.hippocampus`. |
+| `load.atl(path) -> ATL` | ✅ | As `load.hippocampus`. |
 | `load.session(session_id) -> Session` | ✅ | |
 | `load.sessions(*, limit=20) -> list[Session]` | ✅ | |
-| `load.agent(name, *, base_dir=None, on_corrupt="raise") -> AgentInstance` | ✅ | Restores Hippocampus, NAc, ATL and SCN **before returning**. Raises `MemoryCorruptionError` naming every unreadable file; pass `on_corrupt="fresh"` to accept empty state for those subsystems (the corrupt file is left on disk). |
+| `load.agent(name, *, base_dir=None, on_corrupt="raise") -> AgentInstance` | ✅ | Restores Hippocampus, NAc, ATL and SCN **before returning**. Raises `MemoryCorruptionError` naming every unreadable file; pass `on_corrupt="fresh"` to accept empty state for those subsystems (an unreadable Hippocampus or ATL file is first copied to `<name>.corrupt-<UTC timestamp>`). |
 | `load.entity(path) -> Entity` | ✅ | |
 
 `AgentInstance`, `AgentPool`, `LLMRouter`, `Hippocampus`, `NAc`, `ATL`, and `Embodiment` are returned by these factory/loader functions; their **public** methods (the ones documented in [python-api.md](python-api.md)) are stable. Internal helper methods (leading underscore) are not.

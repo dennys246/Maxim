@@ -75,6 +75,8 @@ _API_TYPES = {
     # Leaf, exported because a stable verb names it: load.agent() documents
     # MemoryCorruptionError as its raise type (review fold).
     "MemoryCorruptionError": "maxim.exceptions",
+    # Leaf, exported because stable methods raise it: a store's save() over a file it never read (#939).
+    "StoreOverwriteRefused": "maxim.exceptions",
     "PlanningError": "maxim.exceptions",
     "HardwareError": "maxim.exceptions",
     "MaximRuntimeError": "maxim.exceptions",
@@ -139,6 +141,7 @@ __all__ = [
     "ToolNotFoundError",
     "MaximMemoryError",
     "MemoryCorruptionError",
+    "StoreOverwriteRefused",
     "PlanningError",
     "HardwareError",
     "MaximRuntimeError",

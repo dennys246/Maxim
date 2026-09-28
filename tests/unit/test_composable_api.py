@@ -282,19 +282,22 @@ class TestCreateAgent:
         assert agent.hippocampus is not old_hippo
         agent.shutdown()
 
-    def test_create_agent_always_fresh(self):
-        """create.agent should NOT auto-load existing state."""
+    def test_create_agent_never_writes_over_an_existing_agent(self):
+        """create.agent never loads existing state, and since #939 it refuses to build a fresh agent over
+        it (a fresh agent saved over part of the old one's files). load.agent continues it."""
         import maxim
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # persistence_dir=tmpdir/fresh_test (matches AgentFactory's default layout)
             pdir = os.path.join(tmpdir, "fresh_test")
             agent = maxim.create.agent("fresh_test", persistence_dir=pdir, remembers=True)
-            agent.hippocampus.store_observation("should not persist to create")
+            agent.hippocampus.store_observation("kept")
             agent.shutdown()
 
-            agent2 = maxim.create.agent("fresh_test", persistence_dir=pdir, remembers=True)
-            assert len(agent2.hippocampus) == 0, "create.agent should start fresh"
+            with pytest.raises(FileExistsError, match="load.agent"):
+                maxim.create.agent("fresh_test", persistence_dir=pdir, remembers=True)
+            agent2 = maxim.load.agent("fresh_test", base_dir=tmpdir)
+            assert len(agent2.hippocampus) == 1
             agent2.shutdown()
 
     def test_load_agent_restores_state(self):

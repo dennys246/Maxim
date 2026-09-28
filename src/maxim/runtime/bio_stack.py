@@ -201,7 +201,9 @@ def build_bio_stack(
     from maxim.similarity.ec import ECConfig, EntorhinalCortex
     from maxim.time.scn import SCN
 
-    p = Path(persistence_dir) if persistence_dir is not None else None
+    # `~` means home (#950): every path below derives from `p`, and the stores expand it themselves,
+    # so an unexpanded `p` split an agent's files between $HOME and a literal ./~ .
+    p = Path(persistence_dir).expanduser() if persistence_dir is not None else None
 
     # One-time migration: the CLI historically used "memories.json" for
     # hippocampus persistence. Standardize on "hippocampus.json" (which
@@ -233,6 +235,10 @@ def build_bio_stack(
         _ok, _err = hippocampus.load_with_recovery()
         if _ok:
             logger.info("Restored hippocampus from %s (%d memories)", p / "hippocampus.json", len(hippocampus))
+    elif not load_persisted and p is not None:
+        # Write-but-don't-read (the sim NPC): it saves over last run's file ON PURPOSE, so it says so;
+        # the store guard refuses an undeclared overwrite of a file it never read (#939).
+        hippocampus.allow_overwrite()
     # Substrate exploration policy (substrate_exploration_policy.md, 1.1):
     # resolve the novelty-bonus weight from config.json (CLI > env >
     # config.json > 0.0 default). 0.0 == OFF == legacy argmax; the Exp 41
@@ -392,6 +398,8 @@ def build_bio_stack(
                 memory_strategy=resolve_memory_strategy(),
             )
         )
+        if not load_persisted and p is not None:
+            atl.allow_overwrite()  # write-but-don't-read, declared (#939)
     except Exception:
         logger.debug("ATL not available")
 

@@ -735,7 +735,12 @@ class MemoryHub:
                 logger.debug("ATL already restored at construction; skipping session-start reload")
             else:
                 try:
-                    self.atl.load()
+                    # Load-if-present (a new agent has no atl.json yet, which is not a failure); a
+                    # corrupt one is copied aside and the ATL starts empty (#939).
+                    if getattr(self.atl.config, "persistence_path", None):
+                        ok, atl_error = self.atl.load_safe()
+                        if not ok:
+                            results["atl_load_error"] = atl_error
                     results["atl_concepts"] = len(self.atl)
                 except Exception as e:
                     logger.warning("Failed to load ATL state: %s", e)
@@ -979,6 +984,8 @@ class MemoryHub:
         if self.atl is not None:
             try:
                 self.atl.save()
+            except FileExistsError as e:  # StoreOverwriteRefused (#939): concepts unsaved, file kept
+                logger.error("ATL state not saved: %s", e)
             except Exception as e:
                 logger.warning("Failed to save ATL state: %s", e)
 
@@ -1107,6 +1114,8 @@ class MemoryHub:
         if self.atl is not None:
             try:
                 self.atl.save()
+            except FileExistsError as e:  # StoreOverwriteRefused (#939): concepts unsaved, file kept
+                logger.error("ATL state not saved: %s", e)
             except Exception as e:
                 logger.warning("Failed to save ATL state: %s", e)
 

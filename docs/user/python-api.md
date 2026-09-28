@@ -176,6 +176,9 @@ hippo.store_observation("The wolf was near the cave entrance")
 hippo.store_observation("The key was under the mat")
 memories = hippo.recall(query="wolf", limit=3)
 hippo.save()  # Persist to disk
+# Run it again? create.* is always empty, so saving over /tmp/memory.json would destroy the first
+# run's memories: save() refuses (StoreOverwriteRefused). Reopen it with
+# maxim.load.hippocampus("/tmp/memory.json") to keep them, or pass save(overwrite=True) to replace them.
 
 # Causal learning
 nac = maxim.create.nac()
@@ -490,8 +493,16 @@ agent.shutdown()  # Saves hippocampus + NAc + ATL + SCN
 agent = maxim.load.agent("scout")
 # agent.hippocampus already contains "Wolves hunt at dusk"
 
-# Note: maxim.create.agent("scout") would start fresh (no memories)
+# Note: maxim.create.agent("scout") now refuses (FileExistsError): building a fresh agent over the
+# persisted one would overwrite part of its state. Continue it with maxim.load.agent("scout").
 ```
+
+Paths accept `~` (the home directory) for Hippocampus, ATL and NAc (`persistence_path`, `save`/`load`
+arguments), `persistence_dir`, and every `maxim.load.*` argument. A Hippocampus or ATL never saves over
+an existing file it did not read or create: `save()` raises `maxim.StoreOverwriteRefused` (also a
+`FileExistsError`). Pass `save(overwrite=True)` (or call `allow_overwrite()`) to replace one
+deliberately; `may_write(path)` tells you in advance whether a save would be refused. `load()` of a
+missing file raises `FileNotFoundError`; `load(path, missing_ok=True)` loads only if it exists.
 
 ---
 

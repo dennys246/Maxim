@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import logging
 import math
-import os
 import queue
 import threading
 import time
@@ -543,10 +542,15 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
 
     @classmethod
     def from_config(cls, config: HippocampusConfig, persistence_path: str | None = None) -> "Hippocampus":
-        """Create hippocampus from config, auto-loading saved state if path exists."""
+        """Create hippocampus from config, auto-loading saved state if the file exists.
+
+        The file is ``persistence_path`` when given, else ``config.persistence_path`` (#939: a path set
+        only on the config used to be ignored here, so this "loading" constructor started empty).
+        """
         instance = cls(config=config)
-        if persistence_path and os.path.exists(persistence_path):
-            instance.load(persistence_path)
+        path = persistence_path or config.persistence_path
+        if path:
+            instance.load(path, missing_ok=True)
         return instance
 
     @classmethod

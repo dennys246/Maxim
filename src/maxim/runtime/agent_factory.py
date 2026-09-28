@@ -90,7 +90,9 @@ class AgentConfig:
     load_persisted: bool = True
 
     # D17: what to do when a persisted subsystem file is unreadable.
-    #   "warn"  — log a WARNING and continue with fresh state (DEFAULT).
+    #   "warn"  — log a WARNING and continue with fresh state (DEFAULT). An unreadable
+    #             hippocampus/atl file (data errors only; an OSError is not) is first
+    #             copied to <name>.corrupt-<UTC> (#939).
     #   "raise" — abort with MemoryCorruptionError naming every corrupt file.
     # Typed + validated in __post_init__ (review fold, cross-confirmed): a bare
     # str compared with `== "raise"` means "Raise"/"fail"/"" silently degrade to
@@ -129,7 +131,14 @@ def _note_corruption(
     detail = str(error) if not isinstance(error, Exception) else f"{type(error).__name__}: {error}"
     log.warning("Corrupt %s state at %s (%s) — continuing with fresh %s", subsystem, path, detail, subsystem)
     if corrupt is not None:
-        corrupt.append({"subsystem": subsystem, "path": str(path), "error": detail})
+        # Whether the file is UNREADABLE (a data error) rather than unreachable (OSError): only the
+        # former may be copied aside and replaced by a fresh store (#939).
+        from maxim.memory.store import UNREADABLE_STORE_ERRORS
+
+        unreadable = isinstance(error, UNREADABLE_STORE_ERRORS)
+        corrupt.append(
+            {"subsystem": subsystem, "path": str(path), "error": detail, "unreadable": "yes" if unreadable else ""}
+        )
 
 
 def check_nac_ec_pairing(agent_dir: "Path") -> str | None:
@@ -167,6 +176,34 @@ def check_nac_ec_pairing(agent_dir: "Path") -> str | None:
     return msg
 
 
+# The files an agent's stores persist in its home (factory + bio stack + hub).
+AGENT_STATE_FILES = (
+    "hippocampus.json",
+    "nac.json",
+    "ec.json",
+    "atl.json",
+    "scn.json",
+    "angular_gyrus.json",
+    "cerebellum.json",
+    "memories.json",
+    "hippocampus.json.backup",
+)
+
+
+def persisted_agent_state(agent_dir: Path) -> list[Path]:
+    """The persisted store files in an agent's home (``AGENT_STATE_FILES``, and anything under its
+    ``memory_hub/`` directory). Empty for a missing home or one holding only unrelated files (#939:
+    ``maxim.create.agent`` refuses a home that already holds state, instead of writing a fresh agent
+    over part of it)."""
+    if not agent_dir.is_dir():
+        return []
+    found = [agent_dir / name for name in AGENT_STATE_FILES if (agent_dir / name).is_file()]
+    hub_dir = agent_dir / "memory_hub"
+    if hub_dir.is_dir():
+        found += sorted(p for p in hub_dir.rglob("*") if p.is_file())
+    return found
+
+
 def _corruption_error(agent_id: str, corrupt: list[dict[str, str]]) -> Exception:
     """Build the actionable MemoryCorruptionError for ``on_corrupt="raise"``."""
     from maxim.exceptions import MemoryCorruptionError
@@ -178,7 +215,7 @@ def _corruption_error(agent_id: str, corrupt: list[dict[str, str]]) -> Exception
         f"fully restored; refusing to silently substitute fresh state:\n" + "\n".join(lines) + "\n"
         "Recover by repairing or moving the listed file(s), or call "
         'load.agent(..., on_corrupt="fresh") to start those subsystems empty '
-        "(the corrupt file is left on disk until the agent next saves)."
+        "(an unreadable hippocampus/atl file is first copied to <name>.corrupt-<timestamp>)."
     )
     return MemoryCorruptionError(
         message,
@@ -339,6 +376,8 @@ class AgentInstance:
                 persist_path = getattr(getattr(self.hippocampus, "config", None), "persistence_path", None)
                 if persist_path:
                     self.hippocampus.save(persist_path)
+            except FileExistsError as e:  # StoreOverwriteRefused (#939): memories unsaved, file kept
+                log.error("Agent %s: hippocampus not saved: %s", self.agent_id, e)
             except Exception as e:
                 log.warning("Agent %s: hippocampus save failed: %s", self.agent_id, e)
 
@@ -415,7 +454,7 @@ class AgentFactory:
     ) -> None:
         self._component_registry = component_registry
         if base_data_dir:
-            self._base_data_dir = Path(base_data_dir)
+            self._base_data_dir = Path(base_data_dir).expanduser()  # `~` means home (#950)
         else:
             from maxim.utils.paths import RUN_DIR_KINDS, data_home
 
@@ -486,6 +525,23 @@ class AgentFactory:
             auto_load=auto_load,
             corrupt=corrupt,
         )
+
+        if corrupt and config.on_corrupt == "warn":
+            # The explicit fresh start (load.agent(on_corrupt="fresh"), and this mode's documented
+            # contract): keep a copy of each unreadable Hippocampus/ATL file, then let the store save in
+            # its place, so the agent persists consistently (#939, owner decision 2026-09-28).
+            for store, entry in ((hippocampus, "hippocampus"), (atl, "atl")):
+                # Only an UNREADABLE file (a data error); an OSError is not a licence to replace it.
+                if store is not None and any(c["subsystem"] == entry and c.get("unreadable") for c in corrupt):
+                    try:
+                        store.set_aside_unreadable_file()
+                        if entry == "atl":
+                            # The hub's session start must not read the corrupt file a second time.
+                            store.restored_at_construction = True
+                    except OSError as e:
+                        log.error(
+                            "Could not keep a copy of the unreadable %s file (%s); it stays unsaved-over", entry, e
+                        )
 
         if corrupt and config.on_corrupt == "raise":
             # Release the hub before aborting (review fold): its ConceptExtractor
@@ -789,12 +845,15 @@ class AgentFactory:
 
     # -- private subsystem creation -----------------------------------------
 
+    def persistence_dir_for(self, config: AgentConfig) -> Path:
+        """The agent's persistence directory, ``~`` expanded (#950), WITHOUT creating it."""
+        if config.persistence_dir:
+            return Path(config.persistence_dir).expanduser()
+        return self._base_data_dir / config.agent_id
+
     def _resolve_persistence_dir(self, config: AgentConfig) -> Path:
         """Resolve or create per-agent persistence directory."""
-        if config.persistence_dir:
-            p = Path(config.persistence_dir)
-        else:
-            p = self._base_data_dir / config.agent_id
+        p = self.persistence_dir_for(config)
         p.mkdir(parents=True, exist_ok=True)
         return p
 

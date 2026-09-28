@@ -500,6 +500,8 @@ def save_aut_state(
             hippo_path = session_dir / "aut_hippocampus.json"
             hippocampus.save(str(hippo_path))
             logger.info("AUT hippocampus saved: %s (%d memories)", hippo_path, len(hippocampus))
+        except FileExistsError as e:  # StoreOverwriteRefused (#939): the run's memories are unsaved
+            logger.error("AUT hippocampus not saved: %s", e)
         except Exception as e:
             logger.debug("Failed to save AUT hippocampus: %s", e)
 
@@ -524,6 +526,8 @@ def save_aut_state(
             atl_path = session_dir / "aut_atl.json"
             atl.save(str(atl_path))
             logger.info("AUT ATL saved: %s", atl_path)
+        except FileExistsError as e:  # StoreOverwriteRefused (#939)
+            logger.error("AUT ATL not saved: %s", e)
         except Exception as e:
             logger.debug("Failed to save AUT ATL: %s", e)
 

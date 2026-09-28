@@ -197,6 +197,23 @@ class MemoryCorruptionError(MaximMemoryError):
     pass
 
 
+class StoreOverwriteRefused(MaximMemoryError, FileExistsError):
+    """A memory store refused to save over an existing file it never read (#939).
+
+    Saving would replace memories this instance never loaded. Open the file with ``maxim.load.*`` (or
+    the store's ``load()``) to keep them, save elsewhere, or declare the overwrite with
+    ``save(overwrite=True)`` / ``allow_overwrite()``. Also a ``FileExistsError``, so ordinary
+    file-error handling still sees it.
+    """
+
+    def __init__(self, message: str = "", *, path: str = "", store: str = "") -> None:
+        # Defaults keep it picklable/copyable, like the other keyword-only Maxim errors.
+        super().__init__(message, context={"path": path, "store": store})
+        self.path = path
+        self.store = store
+        self.filename = path  # what a plain FileExistsError handler reads
+
+
 class MemoryCapacityError(MaximMemoryError):
     """Memory capacity limit exceeded."""
 
@@ -372,6 +389,7 @@ __all__ = [
     # Memory
     "MaximMemoryError",
     "MemoryCorruptionError",
+    "StoreOverwriteRefused",
     "MemoryCapacityError",
     # Planning
     "PlanningError",
