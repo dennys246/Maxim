@@ -110,7 +110,8 @@ def test_the_connection_dials_the_address_that_was_checked(monkeypatch):
 
 
 def test_a_fetch_that_is_not_public_only_still_reaches_lan_hosts(monkeypatch, internal_server):
-    """The control: the shared _external client (leader proxy, peers, downloads) is unrestricted."""
+    """The control: the shared _external client (the leader proxy, `for_url` admin calls) is unrestricted;
+    downloads and operator URLs are checked separately since #921."""
     port, hits = internal_server
     _resolver(monkeypatch, [["127.0.0.1"]])
     response = _http.fetch_url(f"http://{HOST}:{port}/ok")

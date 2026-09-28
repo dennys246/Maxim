@@ -123,6 +123,20 @@ def _parse_processing_ms(headers: Any) -> float | None:
         return None
 
 
+def _address_refusal(exc: BaseException) -> str | None:
+    """The connect-time address refusal (#921) inside an SDK error's cause chain, if any."""
+    from maxim.utils.http import AddressRefused
+
+    cur: BaseException | None = exc
+    for _ in range(8):
+        if cur is None:
+            return None
+        if isinstance(cur, AddressRefused):
+            return str(cur)
+        cur = cur.__cause__ or cur.__context__
+    return None
+
+
 class _OpenAIBackend:
     """OpenAI backend using the official SDK."""
 
@@ -252,11 +266,36 @@ class _OpenAIBackend:
             if self._provider_key in ("openai_compatible", "openai_compat") and not base_url:
                 warn("OpenAI-compatible provider requires a valid base_url")
                 return None
-            self._client = OpenAI(
-                api_key=api_key,
-                base_url=base_url,
-                timeout=self._get_timeout(),
-            )
+            client_kwargs: dict[str, Any] = {
+                "api_key": api_key,
+                "base_url": base_url,
+                "timeout": self._get_timeout(),
+            }
+            if base_url:
+                from maxim.utils import http as _http
+                from maxim.utils.net import base_url_address_policy
+
+                # #921: validate_base_url's rules, enforced on the address the SDK actually dials
+                allow_local = bool(self._provider_cfg().get("allow_local_endpoints", False))
+                checked = _http.address_checked_client(
+                    base_url_address_policy(base_url, allow_local), timeout=self._get_timeout(), base_url=base_url
+                )
+                if checked is not None:
+                    client_kwargs["http_client"] = checked
+                    # a client replaced after an auth reset may still serve an in-flight request:
+                    # retire it, and close every retired client at unload
+                    retired = getattr(self, "_retired_http_clients", [])
+                    previous = getattr(self, "_checked_http_client", None)
+                    if previous is not None:
+                        # keep ONE retired client (it may serve the call that just failed); a client
+                        # retired two resets ago has no in-flight caller, so close it -- a persistent
+                        # 401 must not accumulate clients
+                        while retired:
+                            retired.pop().close()
+                        retired.append(previous)
+                    self._retired_http_clients = retired
+                    self._checked_http_client = checked
+            self._client = OpenAI(**client_kwargs)
             return self._client
         except Exception as e:
             warn("Failed to init OpenAI client: %s", e)
@@ -268,6 +307,16 @@ class _OpenAIBackend:
 
     def unload(self) -> None:
         self._client = None
+        self._close_checked_http_client()
+
+    def _close_checked_http_client(self) -> None:
+        """The checked clients (#921) are ours to close; the SDK does not own them."""
+        clients = [getattr(self, "_checked_http_client", None), *getattr(self, "_retired_http_clients", [])]
+        self._checked_http_client = None
+        self._retired_http_clients = []
+        for checked in clients:
+            if checked is not None:
+                checked.close()
 
     def complete(
         self,
@@ -386,7 +435,14 @@ class _OpenAIBackend:
             except Exception as e:
                 last_err = e
                 if _is_auth_error(e):
-                    self._client = None
+                    self._client = None  # the checked http client is retired, closed at unload (#921)
+                refused = _address_refusal(e)
+                if refused is not None:
+                    # #921: the SDK reports a refused dial as a bare "Connection error."; say why and
+                    # take the normal final-failure path. This loop does not retry it (the SDK's own
+                    # max_retries has already re-tried the dial, each refused before any byte is sent).
+                    log.warning("OpenAI-compatible backend %s: %s", self._provider_key, refused)
+                    break
 
                 # 502/503/504: upstream server restarting — use longer backoff
                 # and grant extra retries beyond the normal limit.

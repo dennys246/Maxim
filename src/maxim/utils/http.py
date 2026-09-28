@@ -33,7 +33,6 @@ This module is load-bearing for Plans 2, 3, and 4. Do not add
 
 from __future__ import annotations
 
-import ipaddress
 import json as _json
 import logging
 import socket
@@ -49,6 +48,8 @@ from typing import Any, Callable, Iterator, Mapping
 import httpcore
 import httpx
 
+from maxim.utils.net import AddressPolicy
+from maxim.utils.net import is_public_address as _is_public_address
 from maxim.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -202,9 +203,23 @@ class HTTPEndpoint:
     # (the leader, peer-to-peer tunnels). Never for third-party APIs
     # like HuggingFace or web search. Propagates X-Maxim-* headers.
     internal: bool = False
-    # Connect only to globally-routable addresses, checked at CONNECT time on the address actually
-    # dialled (#824). For fetches whose URL the model chooses; see ``fetch_url(public_only=True)``.
-    public_only: bool = False
+    # Which addresses this endpoint may dial, checked at CONNECT time on the address actually dialled
+    # (#824, #921): "public" (globally routable only), "private" (LAN/loopback only -- a cleartext
+    # ``http://`` backend), or "any". See ``utils/net.py::AddressPolicy``.
+    address_policy: AddressPolicy = "any"
+    # True = never route through an env proxy, so the check always holds (the MODEL-chosen fetch, #824).
+    # False = an env proxy that applies to the base URL wins, with one warning: the proxy dials, so the
+    # check cannot apply (owner decision 2026-09-28, #921).
+    strict_address_check: bool = False
+
+    # Runtime-only registry entry, never persisted or sent: CC3 does not apply.
+    def __post_init__(self) -> None:
+        if self.address_policy not in ("any", "public", "private"):
+            raise ValueError(f"HTTPEndpoint {self.name!r}: unknown address_policy {self.address_policy!r}")
+
+    @property
+    def public_only(self) -> bool:
+        return self.address_policy == "public"
 
 
 # ─────────────────────────── RequestContext ─────────────────────────────
@@ -473,13 +488,20 @@ class _EndpointRegistry:
                     max_connections=ep.max_pool_connections,
                     max_keepalive_connections=ep.max_pool_connections,
                 )
-                self._clients[name] = httpx.Client(
-                    base_url=ep.base_url or "",
-                    timeout=ep.timeouts.to_httpx(),
-                    limits=limits,
-                    # A transport also switches off env proxies (a proxy would dial for us, unchecked).
-                    transport=_public_only_transport(limits) if ep.public_only else None,
-                )
+                backend = _policy_backend(ep.address_policy)
+                if backend is None:
+                    self._clients[name] = httpx.Client(
+                        base_url=ep.base_url or "", timeout=ep.timeouts.to_httpx(), limits=limits
+                    )
+                else:
+                    # every DIRECT dial is address-checked; a proxy (unless strict) carries its URLs
+                    self._clients[name] = _checked_client(
+                        backend,
+                        limits=limits,
+                        timeout=ep.timeouts.to_httpx(),
+                        base_url=ep.base_url or "",
+                        strict=ep.strict_address_check,
+                    )
             return self._clients[name]
 
     def close_all(self) -> None:
@@ -526,37 +548,37 @@ def close_all() -> None:
 
 # IPv6 forms that carry an IPv4 address in their low 32 bits, which is what they dial: NAT64
 # (RFC 6052), IPv4-translated (RFC 2765) and the deprecated IPv4-compatible range.
-_EMBEDS_IPV4 = tuple(ipaddress.ip_network(n) for n in ("64:ff9b::/96", "::ffff:0:0:0/96", "::/96"))
+class AddressRefused(httpcore.ConnectError):
+    """A connection whose host resolved to an address its endpoint's policy refuses (#824, #921)."""
 
 
-def _is_public_address(address: str) -> bool:
-    """Globally routable -- judged explicitly rather than by ``is_global`` alone, which calls
-    multicast, site-local and NAT64-around-10.x addresses global (and varies across Python versions).
-    An IPv6 answer that embeds an IPv4 address is judged by that IPv4 address."""
-    ip = ipaddress.ip_address(address.split("%", 1)[0])
-    if isinstance(ip, ipaddress.IPv6Address):
-        embedded = ip.ipv4_mapped or ip.sixtofour
-        if embedded is None and any(ip in net for net in _EMBEDS_IPV4):
-            embedded = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
-        if embedded is not None:
-            return _is_public_address(str(embedded))
-        if ip.is_site_local:
-            return False
-    return ip.is_global and not (ip.is_multicast or ip.is_reserved or ip.is_unspecified)
-
-
-class NonPublicAddressRefused(httpcore.ConnectError):
+class NonPublicAddressRefused(AddressRefused):
     """A public-only connection whose host resolved to a non-global address."""
 
 
-class _PublicOnlyBackend(httpcore.SyncBackend):
-    """Resolve the host ONCE, at connect time, refuse unless EVERY address is globally routable, and
+class PublicAddressRefused(AddressRefused):
+    """A private-only (cleartext LAN) connection whose host resolved to a public address (#921)."""
+
+
+class _AddressCheckingBackend(httpcore.SyncBackend):
+    """Resolve the host ONCE, at connect time, refuse unless EVERY address passes the policy, and
     dial the address that was checked.
 
     A check that resolves and a connect that resolves again can disagree: a rebinding host answers
-    public to the check and private to the connect (#824). Here the check and the dial share one
+    one class to the check and another to the connect (#824). Here the check and the dial share one
     resolution, uncached. TLS SNI and the Host header come from the URL, not from this address, so
-    they are unchanged."""
+    they are unchanged. A redirect is a new connection, so every hop is checked."""
+
+    refused: type[AddressRefused] = AddressRefused
+    refused_class = "an address this endpoint's policy refuses"
+
+    def accepts(self, address: str) -> bool:  # pragma: no cover - overridden
+        raise NotImplementedError
+
+    def admit(self, host: str, addresses: list[str]) -> None:
+        """Raise unless this resolution may be dialled."""
+        if not addresses or not all(self.accepts(a) for a in addresses):
+            raise self.refused(f"refused: {host!r} resolves to {self.refused_class}")
 
     def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):  # type: ignore[no-untyped-def]
         try:
@@ -564,8 +586,7 @@ class _PublicOnlyBackend(httpcore.SyncBackend):
         except socket.gaierror as exc:
             raise httpcore.ConnectError(f"could not resolve {host!r}: {exc}") from exc
         addresses = list(dict.fromkeys(str(info[4][0]) for info in infos))
-        if not addresses or not all(_is_public_address(a) for a in addresses):
-            raise NonPublicAddressRefused(f"refused: {host!r} resolves to a non-public address")
+        self.admit(host, addresses)
         # Every address is vetted, so try each in turn, as the stock backend's create_connection does
         # (a dual-stack answer with no IPv6 route -- an immediate ConnectError -- still reaches IPv4).
         # A connect TIMEOUT is not retried per address: it propagates, so one fetch waits at most one
@@ -580,12 +601,146 @@ class _PublicOnlyBackend(httpcore.SyncBackend):
         raise last
 
 
-def _public_only_transport(limits: httpx.Limits) -> httpx.HTTPTransport:
+class _PublicOnlyBackend(_AddressCheckingBackend):
+    """Globally-routable addresses only (#824): model-chosen fetches, and downloads that start public."""
+
+    refused = NonPublicAddressRefused
+    refused_class = "a non-public address"
+
+    def accepts(self, address: str) -> bool:
+        return _is_public_address(address)
+
+
+class _PrivateOnlyBackend(_AddressCheckingBackend):
+    """Non-public addresses only (#921): a cleartext ``http://`` backend may reach a LAN or loopback
+    server, never a public host."""
+
+    refused = PublicAddressRefused
+    refused_class = "a public address (cleartext HTTP is allowed only to a private network)"
+
+    def accepts(self, address: str) -> bool:
+        return not _is_public_address(address)
+
+
+class _StartClassBackend(_AddressCheckingBackend):
+    """A download stays in the address class of its FIRST dial (#921, owner decision 2026-09-28).
+
+    One backend per download. The first connection's own resolution fixes the class: every address
+    public -> the download is public, and every later hop (each redirect is a new connection) must be
+    public too, so a public registry can never redirect into the LAN or 169.254.169.254. Anything else
+    (a LAN/loopback URL the operator configured, a local Oasis, a mirror) -> unrestricted. There is no
+    separate classification lookup, so no rebinding answer can move the download off the checked path.
+    """
+
+    refused = NonPublicAddressRefused
+    refused_class = "a non-public address (this download started on a public host)"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.start_class: str | None = None
+
+    def accepts(self, address: str) -> bool:
+        return self.start_class != "public" or _is_public_address(address)
+
+    def admit(self, host: str, addresses: list[str]) -> None:
+        if self.start_class is None:
+            self.start_class = "public" if addresses and all(_is_public_address(a) for a in addresses) else "any"
+        super().admit(host, addresses)
+
+
+_proxy_warned = False
+_proxy_warned_lock = threading.Lock()
+
+
+def _proxy_mounts(*, limits: httpx.Limits) -> dict[str, httpx.BaseTransport | None]:
+    """httpx's OWN proxy configuration (env vars, and the macOS/Windows system proxy it reads through
+    ``urllib.request.getproxies``), as ``mounts`` for a client whose default transport is address-
+    checked (#921, owner decision 2026-09-28: the proxy wins for operator paths, loudly).
+
+    httpx decides per URL -- every redirect hop included -- with its own NO_PROXY semantics: a proxied
+    URL goes through the proxy (which dials, so no address check can apply), and every DIRECT dial,
+    NO_PROXY hosts included, uses the checked default transport. Re-deriving httpx's rules here was
+    wrong twice in review (ports and schemes in NO_PROXY, system proxies); this reuses them. Pinned by
+    ``tests/unit/test_http_address_policy.py``, which fails if httpx moves the helper.
+    """
+    global _proxy_warned
+    from httpx._utils import get_environment_proxies
+
+    mounts: dict[str, httpx.BaseTransport | None] = {}
+    proxied = False
+    for pattern, proxy_url in get_environment_proxies().items():
+        if proxy_url:
+            proxied = True
+            mounts[pattern] = httpx.HTTPTransport(proxy=proxy_url, limits=limits)
+        else:
+            mounts[pattern] = None  # NO_PROXY: the checked default transport
+    if proxied:
+        with _proxy_warned_lock:
+            first = not _proxy_warned
+            _proxy_warned = True
+        if first:
+            logger.warning(
+                "A proxy is configured (HTTP(S)_PROXY / ALL_PROXY or the system proxy): downloads and "
+                "backend requests it carries bypass the connect-time address check (#921), because the "
+                "proxy dials on Maxim's behalf. Direct connections stay checked. Unset the proxy, or add "
+                "hosts to NO_PROXY, to restore the check for them."
+            )
+    return mounts
+
+
+def _checked_client(
+    backend: _AddressCheckingBackend,
+    *,
+    limits: httpx.Limits,
+    timeout: Any,
+    base_url: str = "",
+    follow_redirects: bool = False,
+    strict: bool = False,
+) -> httpx.Client:
+    """An ``httpx.Client`` whose DIRECT connections are all address-checked by ``backend``; unless
+    ``strict``, httpx's own proxy mounts carry proxied URLs (see ``_proxy_mounts``)."""
+    return httpx.Client(
+        base_url=base_url,
+        timeout=timeout,
+        follow_redirects=follow_redirects,
+        transport=_checked_transport(limits, backend),
+        mounts=None if strict else _proxy_mounts(limits=limits),
+        trust_env=False,  # the proxy configuration is the explicit mounts above, nothing implicit
+    )
+
+
+def _checked_transport(limits: httpx.Limits, backend: _AddressCheckingBackend) -> httpx.HTTPTransport:
     transport = httpx.HTTPTransport(limits=limits)
     # httpx exposes no backend parameter; its connection pool takes one. Pinned by
     # tests/unit/test_http_public_only.py, which fails if this stops being the pool's backend.
-    transport._pool._network_backend = _PublicOnlyBackend()  # noqa: SLF001
+    transport._pool._network_backend = backend  # noqa: SLF001
     return transport
+
+
+def _policy_backend(policy: AddressPolicy) -> _AddressCheckingBackend | None:
+    if policy == "public":
+        return _PublicOnlyBackend()
+    if policy == "private":
+        return _PrivateOnlyBackend()
+    if policy == "any":
+        return None
+    raise ValueError(f"unknown address policy {policy!r}")
+
+
+# The OpenAI SDK's own defaults (openai.DEFAULT_CONNECTION_LIMITS), so a checked client does not
+# narrow the pool parallel lanes rely on.
+_SDK_CONNECTION_LIMITS = httpx.Limits(max_connections=1000, max_keepalive_connections=100)
+
+
+def address_checked_client(policy: AddressPolicy, *, timeout: float, base_url: str | None) -> httpx.Client | None:
+    """An ``httpx.Client`` enforcing ``policy`` on every address it dials directly, for a third-party SDK
+    that owns its transport (the OpenAI backend, #921); None for "any". It matches the SDK's defaults
+    (redirects followed -- every hop is a checked connection -- and its connection limits), and a
+    configured proxy carries the URLs it covers (``_proxy_mounts``). The caller closes it."""
+    backend = _policy_backend(policy)
+    if backend is None:
+        return None
+    return _checked_client(backend, limits=_SDK_CONNECTION_LIMITS, timeout=timeout, base_url="", follow_redirects=True)
 
 
 # ─────────────────────────── External endpoint bootstrap ────────────────
@@ -596,8 +751,16 @@ peer-cli remote admin calls). Headers are minimal and non-internal —
 no X-Maxim-* propagation."""
 
 _EXTERNAL_PUBLIC_ENDPOINT = "_external_public"
-"""``_external`` for URLs the MODEL chooses (http_fetch): connects to globally-routable addresses only
-(#824). ``_external`` itself stays unrestricted -- the leader proxy, peers and downloads reach LAN hosts."""
+"""``_external`` for URLs the MODEL chooses (http_fetch): connects to globally-routable addresses only,
+and never through a proxy (#824). ``_external`` itself is unrestricted. Downloads are checked per
+download (``_StartClassBackend``), operator fetches through the policy endpoints below (#921)."""
+
+_EXTERNAL_POLICY_ENDPOINTS: dict[str, str] = {
+    "public": "_external_policy_public",
+    "private": "_external_policy_private",
+}
+"""``fetch_url(address_policy=...)`` for OPERATOR-configured URLs (a peer's probe, #921): the policy is
+checked on the address dialled; an env proxy that applies to the URL wins, with one warning."""
 
 _external_registered = False
 _external_lock = threading.Lock()
@@ -608,7 +771,13 @@ def _ensure_external_endpoint() -> None:
     with _external_lock:
         if _external_registered:
             return
-        for name, public_only in ((_EXTERNAL_ENDPOINT, False), (_EXTERNAL_PUBLIC_ENDPOINT, True)):
+        specs: list[tuple[str, AddressPolicy, bool]] = [
+            (_EXTERNAL_ENDPOINT, "any", False),
+            (_EXTERNAL_PUBLIC_ENDPOINT, "public", True),
+            (_EXTERNAL_POLICY_ENDPOINTS["public"], "public", False),
+            (_EXTERNAL_POLICY_ENDPOINTS["private"], "private", False),
+        ]
+        for name, policy, strict in specs:
             register_endpoint(
                 HTTPEndpoint(
                     name=name,
@@ -618,7 +787,8 @@ def _ensure_external_endpoint() -> None:
                     timeouts=TimeoutPolicy.long(),
                     max_pool_connections=DEFAULT_POOL_PER_ENDPOINT,
                     internal=False,
-                    public_only=public_only,
+                    address_policy=policy,
+                    strict_address_check=strict,
                 )
             )
         _external_registered = True
@@ -789,6 +959,11 @@ def _classify_httpx_error(endpoint: str, exc: BaseException) -> HTTPError:
                 f"{exc} -- a public-only fetch never connects to a private or internal address "
                 "(and does not use HTTP(S)_PROXY, which would connect on its behalf unchecked)"
             ),
+        )
+    if isinstance(exc, httpx.ConnectError) and isinstance(exc.__cause__, PublicAddressRefused):
+        return HTTPConnectionError(
+            endpoint,
+            fix_hint=f"{exc} -- use an https:// base URL for a public host (#921)",
         )
     if isinstance(exc, httpx.ConnectError):
         return HTTPConnectionError(
@@ -970,6 +1145,7 @@ def fetch_url(
     timeout: TimeoutPolicy | float | None = None,
     max_bytes: int | None = None,
     public_only: bool = False,
+    address_policy: AddressPolicy = "any",
 ) -> Response:
     """One-off fetch of a full URL via the shared ``_external`` endpoint.
 
@@ -984,12 +1160,22 @@ def fetch_url(
 
     ``public_only`` (#824): connect only to a globally-routable address, checked on the address
     actually dialled (``_external_public``) -- for URLs the MODEL chooses. A policy pre-check that
-    resolves separately cannot stop a rebinding host; this can.
+    resolves separately cannot stop a rebinding host; this can. Never uses a proxy.
+
+    ``address_policy`` (#921): for an OPERATOR-configured URL (a peer probe) -- "public" / "private"
+    checked on the address dialled; an env proxy that applies to the URL wins, with one warning.
     """
     if max_bytes is not None and (not isinstance(max_bytes, int) or max_bytes < 0):
         raise ValueError(f"max_bytes must be a non-negative int, got {max_bytes!r}")
     _ensure_external_endpoint()
-    endpoint_name = _EXTERNAL_PUBLIC_ENDPOINT if public_only else _EXTERNAL_ENDPOINT
+    if public_only:
+        endpoint_name = _EXTERNAL_PUBLIC_ENDPOINT
+    elif address_policy == "any":
+        endpoint_name = _EXTERNAL_ENDPOINT
+    elif address_policy not in _EXTERNAL_POLICY_ENDPOINTS:
+        raise ValueError(f"unknown address_policy {address_policy!r}")
+    else:
+        endpoint_name = _EXTERNAL_POLICY_ENDPOINTS[address_policy]
     ep = _registry.get(endpoint_name)
     client = _registry.get_client(endpoint_name)
     if max_bytes is not None:
@@ -1239,6 +1425,16 @@ def stream_post(
     )
 
 
+def _download_client(ep: HTTPEndpoint) -> httpx.Client:
+    """One client per download (#921): a ``_StartClassBackend`` holds the download to the address class
+    of its first dial on every direct hop; a configured proxy carries the URLs it covers."""
+    return _checked_client(
+        _StartClassBackend(),
+        limits=httpx.Limits(max_connections=4, max_keepalive_connections=4),
+        timeout=ep.timeouts.to_httpx(),
+    )
+
+
 def download_to_file(
     url: str,
     dest_path: Path | str,
@@ -1264,8 +1460,11 @@ def download_to_file(
     preserved for caller cleanup.
     """
     _ensure_external_endpoint()
-    ep = _registry.get(_EXTERNAL_ENDPOINT)
-    client = _registry.get_client(_EXTERNAL_ENDPOINT)
+    endpoint_name = _EXTERNAL_ENDPOINT
+    ep = _registry.get(endpoint_name)
+    # #921: a download stays in the address class of its FIRST dial (a public start is public on every
+    # hop), checked by a per-download backend -- unless an env proxy carries it (the proxy wins, loudly).
+    owned_client: httpx.Client | None = None
     final_headers = _build_headers(ep, context, headers)
     timeout_obj = _resolve_timeout(ep, timeout or TimeoutPolicy.long())
 
@@ -1278,6 +1477,8 @@ def download_to_file(
     total_size = 0
 
     try:
+        owned_client = _download_client(ep)
+        client = owned_client
         with client.stream(
             "GET",
             url,
@@ -1286,7 +1487,7 @@ def download_to_file(
             follow_redirects=True,
         ) as resp:
             if resp.status_code >= 400:
-                err = _classify_status(_EXTERNAL_ENDPOINT, resp.status_code, resp.headers)
+                err = _classify_status(endpoint_name, resp.status_code, resp.headers)
                 if err is not None:
                     raise err
             cl = resp.headers.get("content-length") or "0"
@@ -1309,15 +1510,18 @@ def download_to_file(
                             pass
     except httpx.HTTPError as e:
         elapsed_ms = (time.monotonic() - t0) * 1000
-        _metrics.record_request(_EXTERNAL_ENDPOINT, "error", elapsed_ms)
-        raise _classify_httpx_error(_EXTERNAL_ENDPOINT, e) from e
+        _metrics.record_request(endpoint_name, "error", elapsed_ms)
+        raise _classify_httpx_error(endpoint_name, e) from e
+    finally:
+        if owned_client is not None:
+            owned_client.close()
 
     elapsed_ms = (time.monotonic() - t0) * 1000
-    _metrics.record_request(_EXTERNAL_ENDPOINT, 200, elapsed_ms)
+    _metrics.record_request(endpoint_name, 200, elapsed_ms)
 
     if expected_bytes is not None and total_written != expected_bytes:
         raise HTTPError(
-            _EXTERNAL_ENDPOINT,
+            endpoint_name,
             fix_hint=(f"Download size mismatch: got {total_written} bytes, expected {expected_bytes}"),
         )
     return total_written
