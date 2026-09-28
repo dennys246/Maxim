@@ -502,6 +502,39 @@ afterwards means building that instrument twice, and refactoring while a may-fai
 confounds a null with the refactor (the divergence rule). Exp 62 depends on neither and runs in
 parallel.
 
+## Groundwork in parallel with 1.3.2 (owner decision 2026-09-27)
+
+1.3.2 grew (roadmap_1_3_x.md): two decompositions and the engram-integrity items. The 1.4 lines do
+**not** move their code into it — each one reads or writes the selection code 1.3.2 is splitting
+(social referencing: "no src before 1.3.2"; grounded word binding: "L1 adds a modality to the loop
+1.3.2 is decomposing"), and a may-fail result measured on a loop mid-refactor cannot tell a null from
+the refactor (the divergence rule). What runs now is everything that needs **no loop code**, so each
+line reaches "ready to build" the day 1.3.2 ships.
+
+**The boundary:** paper (preregs, design reviews), offline measurements and non-loop plumbing only.
+Nothing under `runtime/agent_loop.py`, `decisions/nac.py`'s selection path or `simulation/orchestrator.py`
+until the 1.3.2 decomposition slices touching it have landed.
+
+**Dev-box groundwork (Track B), in order of value:**
+1. **Exp 62's different-reader pass** — cheap, and it turns an EARNED ledger row into a result 1.4 may
+   claim (it is not a 1.3.1 claim until this is recorded).
+2. **The grounded-language L0 offline gate** ([deferred/grounded_word_binding.md](deferred/grounded_word_binding.md)):
+   frozen 2026-09-24, offline, no rig — blind-authored phrasings of five situations through Maxim's own EC
+   at the pinned 0.44, purity ≥ 0.9 and leave-one-out accuracy ≥ 0.8 against a word-overlap baseline. A
+   pass re-enters the line with a four-lens design review, ready to build after 1.3.2; a fail archives it
+   with the measurement. Either way it is learned before any effort is spent.
+3. **Social referencing's prerequisites** ([social_referencing.md](social_referencing.md)): the remaining
+   [public_oasis.md](public_oasis.md) Phase 0 items it depends on, and the four-lens design review of its
+   Exp C prereg (paper; its src waits for 1.3.2 and its rig time for E3).
+4. **E1's prereg drafted and design-reviewed** (four lenses) so it can freeze as soon as Phase 0's E1 part
+   exists — paper now, freeze later.
+
+**Rig order (Track C)** — one rig, one operator; no live run on code that is still moving:
+1. the complete Exp 10 re-run (1.3.2, right after #935);
+2. the live Exp 60 re-run (1.3.2, after the decomposition — it discharges the triggers the
+   decomposition fires);
+3. 1.4's campaigns, starting with the schedule below.
+
 ## Schedule that keeps the rig busy (scope lens SF-8)
 
 ```
@@ -559,7 +592,7 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   the `[DANGEROUS]` annotation is unreachable ([#910](https://github.com/dennys246/Maxim/issues/910)),
   and reward widening is text-only with an unmeasured drift hazard
   ([#911](https://github.com/dennys246/Maxim/issues/911) — an offline measurement, not a fix). None
-  touches a survival rung's path; all run off the rig. Its three larger items ride on owners that
+  touches a survival rung's path; all run off the rig. **Scheduled into 1.3.2 (2026-09-27).** Its three larger items ride on owners that
   already exist: the daily wrap (#899) on Phase 5 keying, the episodic readout (#848) on the memory
   line's 2S-e, motor engrams on Phase 5's graded-predictor audit.
 - **Social referencing** ([social_referencing.md](social_referencing.md), PROPOSED 2026-09-24; split

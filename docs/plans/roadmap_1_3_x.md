@@ -141,11 +141,99 @@ required-checks gate, the silent-default swallow lint, the function-length and m
 D46 + D50, D63, fail-loud Stage 3 and L8 — land here beside the decomposition, each with the guard
 named in its row. The ratchets go FIRST in 1.3.2: they pin the ceilings the decomposition then lowers.
 
+### From the v1.3.1 score cards (added 2026-09-27)
+
+Both blind cards ([Claude](../limits/score_cards/2026-09-27-claude.md), [Codex](../limits/score_cards/2026-09-27-codex.md))
+found the same facts and differed on weight; the plan is set against the **lower** readings. Every item
+ships with the guard named beside it, proven by deleting its mechanism. Order matters: 1 unblocks every
+live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the checks the cards credit.
+
+1. **D13 short runs ([#935](https://github.com/dennys246/Maxim/issues/935))** — first, because every live
+   heartbeat re-run now stops after 1–3 turns. Guard: an offline replay test of the narrator's follow-up
+   input (August commit vs `main`), and a committed Sim-Short record that reaches its turn cap.
+2. **Evidence provenance + the typed-abort gate** (mechanization backlog M1). Guard: the ledger lint.
+   Then the **complete Exp 10 re-run** that replaces 1.3.1's narrow one — pre-registered, provenance-stamped,
+   phases run to their cap.
+3. **`create.*` overwrites an existing store; `load.*` raises raw errors ([#939](https://github.com/dennys246/Maxim/issues/939)).**
+   Guard: a test that fails on today's clobber.
+4. **The silent seams #840 and #841, and type-checking the composition layer.** Both are an argument
+   mismatch swallowed by a broad `except` — exactly what mypy catches. Extend CI's mypy set to `runtime/executor.py`,
+   `runtime/agent_loop.py`, `bridges/`, `planning/`, and start the repo-wide error-count ratchet carried from
+   1.3.1 (1,071 at the tag; it may only fall). Guard: CI mypy on those modules + the ratchet.
+5. **Coverage as a ratchet — and a coverage push where the risk is** (widened 2026-09-27, owner). Baseline:
+   the Codex card's whole-suite run at `v1.3.1` — **61.9% of 90,416 statements**, 31,797 uncovered
+   ([evidence](../limits/score_cards/evidence/2026-09-27-codex/)). Three mechanisms, all in CI:
+   - **An overall floor and per-package floors** that only rise, set from that baseline.
+   - **Changed-line coverage ≥ 80% on every PR** (diff coverage), so new and moved code arrives tested
+     whatever the file's history.
+   - **A reviewed exclusion list** for code that needs a model or hardware (vision engines,
+     `inference/transcribe_audio.py`, `models/language/transformers_backend.py`, camera display): covered
+     by the model-cache nightly or named with a reason — never silently omitted (today's
+     `pyproject.toml` omits `embodied_runtime/selfy.py` without one).
+
+   **Where the push goes, by risk × uncovered lines** (coverage at `v1.3.1`):
+   | Area | Coverage | Why first |
+   |---|---|---|
+   | the three decomposition targets — `orchestrator.py`, `cli.py`, `agent_loop.py` | 11%, 14%, 51% | pinned by characterization tests before any slice (below) |
+   | `bridges/` (`fear_bridge.py` 29%) | 49% | where #840's silent failure lives |
+   | `default_network/`, `attention/`, `math/angular_gyrus.py` | 41%, 33%, 45% | bio systems that feed behaviour |
+   | `tools/sandbox.py`, `utils/sandbox_executor.py` | 27%, 70% | the code-execution boundary |
+   | `leader_proxy.py`, `router.py`, `lane_backends.py`, `peer/cli.py` | 53%, 63%, 66%, 46% | network, auth, routing |
+   | `embodied_runtime/` (mockable parts: `agentic_runtime`, `movement`, `workers`) | 32% | the robot runtime |
+
+   **Quality, not just lines:** the push writes behavioural and composition tests (a caller through its
+   real callee — the #840/#841 class), each new guard proven by deleting its mechanism; a test that
+   raises coverage without asserting behaviour does not count. Guard: the three CI checks above; the
+   floors, the changed-line threshold and the exclusion list are committed files, and the lint fails
+   on a floor that drops or an exclusion without a reason.
+6. **One function-length ratchet** — nothing over 200 lines may grow, nothing new may exceed 200 — replacing
+   the two mismatched mechanisms ([#940](https://github.com/dennys246/Maxim/issues/940)). Guard: the lint, with
+   a per-function baseline.
+7. **CI escape paths ([#940](https://github.com/dennys246/Maxim/issues/940))**: the `|| echo` optional install,
+   the reason-less `importorskip`, the slow lane's expected roster, the network guard at the process-tree
+   boundary. Guard: each lane fails on the escape.
+8. **One source of truth for claims** (mechanization backlog M2). Guard: the claims-registry lint.
+
+**Engram integrity (pulled in from 1.4's parallel line, 2026-09-27).** Its four engineering items gate
+1.4.0 (release threshold T7), touch no survival rung's path and run off the rig
+([engram_formation.md](engram_formation.md)), so they fit the hardening line:
+[#908](https://github.com/dennys246/Maxim/issues/908) the Cerebellum is never saved (guard: a round trip
+that fails on today's default config); [#909](https://github.com/dennys246/Maxim/issues/909) the
+motor-engram docs overclaim and the read side is undeclared-dormant (guard: the Dormant docstring + a
+caller-grep test); [#910](https://github.com/dennys246/Maxim/issues/910) the `[DANGEROUS]` annotation is
+unreachable (guard: a test that reaches it through the real annotator); [#911](https://github.com/dennys246/Maxim/issues/911)
+the text-only reward-widening drift hazard (an offline measurement committed as a record, not a fix).
+
+**Before 1.4.0, not in 1.3.2:** the release pipeline in CI — [#938](https://github.com/dennys246/Maxim/issues/938)
+fixed, then a tag-triggered workflow that builds once, audits those bytes, publishes them with PyPI trusted
+publishing and creates the Release from them, plus a `v*` tag ruleset and required signatures. Both cards'
+Release-governance gap; it also takes GPG off the release path.
+
+**Not a process item:** Ambition moves only with new science — an EARNED result beyond one binary cue at
+ceiling (a non-binary discriminator, or R4's delayed credit), and a production consumer for one
+recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_1_4.md)).
+
 ### The decomposition
 
-**One target: `agent_loop.py`** (5,348 lines; `run_agentic_loop` 3,484). `start_simulation_mode`
-(3,324) and `_main_impl` (1,747) stay pinned by the ratchet for a later pass — naming them here
-would repeat the "kicked down the road" pattern this release exists to end.
+**Scope widened 2026-09-27 (owner): two targets in order, a third if time allows.**
+
+1. **`agent_loop.py`** (5,543 lines; `run_agentic_loop` 3,389 at `v1.3.1`) — first, because 1.4's Phase 0
+   instrument is built on it.
+2. **`start_simulation_mode`** (`simulation/orchestrator.py`, 3,322). Its tests cover **11%** of its lines
+   (the Codex card's measurement at `v1.3.1`), so it is NOT decomposed blind: characterization tests
+   first, then an orchestrator coverage floor set from them (item 5 above), then slices under the same
+   gates below. The coverage ratchet is what makes this decomposition safe.
+3. **`_main_impl`** (`cli.py`, 1,696) — only if 1 and 2 land; it is CLI glue, the least valuable of the three.
+
+The "kicked down the road" worry that kept this to one target is answered by the rule in **Sizing**: if a
+slice stalls, 1.3.2 ships the slices that landed and the ratchet records the new ceiling.
+
+**Coverage first, then extract (2026-09-27).** No slice moves code its tests do not pin. Each slice
+adds characterization tests for the code it will move, in its own commit BEFORE the extraction, and
+the extraction commit must keep them green unchanged. Extracted modules arrive at ≥ 80% line coverage
+(the changed-line gate enforces it), and the target file's per-module floor rises to its new measured
+value in the same PR. The orchestrator (11%) and `cli.py` (14%) get their characterization pass as the
+first slice of their decomposition, not after.
 
 **Behaviour preservation is the gate, not an aspiration.** Every slice must keep green, in the same
 PR: the byte-identical-selection provenance test, the encoder golden pin, and an offline
@@ -155,7 +243,7 @@ show all three does not merge.
 **Typing rides along, scoped:** every module the decomposition creates enters CI's mypy set. The
 repo-wide ratchet from 1.3.1 holds the rest. Full coverage is not promised.
 
-**Close it honestly:** a trigger walk over the ledger (Exp 60 and Exp 61 both name
+**Close it honestly:** the complete Exp 10 re-run (item 2 above), a trigger walk over the ledger (Exp 60 and Exp 61 both name
 `run_agentic_loop`'s idle-gate and autonomy handling) and a live re-run of Exp 60 on the rig
 (5 seeds per arm, ~1 h) to discharge them with a dated annotation, rather than an argument that a
 pure extraction changes nothing.
@@ -174,8 +262,11 @@ records the new ceiling either way.
            security cluster (#800-802, #824, #826-828), nightly lane + release-reads-nightlies,
            network block, public-API
            fixes, D40, D32, doc honesty; plus everything on main since 1.3.0
-  → 1.3.2  the enforcement ratchets carried from 1.3.1, then the agent_loop decomposition +
-           typing scope, triggers discharged
+  → 1.3.2  #935 + provenance + the complete Exp 10 re-run → data-safety + silent seams (#939,
+           #840/#841, mypy) → the ratchets → engram integrity (#908–#911) → the decomposition
+           (agent_loop, then start_simulation_mode behind characterization tests; _main_impl if time)
+           → trigger walk + live Exp 60 re-run
+           ‖ in parallel, no loop code: 1.4 groundwork (roadmap_1_4.md §Groundwork in parallel with 1.3.2)
   → 1.4    Phase 0 instrument on the decomposed loop, then Exp 62 → E1 → …
              ([roadmap_1_4.md](roadmap_1_4.md))
 ```
