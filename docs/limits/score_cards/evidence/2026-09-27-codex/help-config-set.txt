@@ -1,0 +1,6 @@
+Usage: maxim config set <field-path> <value>
+
+Field paths: dot-separated. Use 'maxim config list' for the full set.
+
+Boolean: use true/false (also accepts 1/0/yes/no/on/off).
+Null: pass the literal string 'null' or '-' to clear the field.

@@ -1,0 +1,6 @@
+$ python -m maxim --audit-architecture
+UTC=2026-09-27T23:47:46.548442+00:00
+Architecture audit: 33 accepted-debt finding(s) across 30 baseline entries (/Users/dennyschaedig/Scripts/Maxim/.worktrees/rescore-v1.3.1-codex/src/maxim/utils/architecture_baseline.json).
+No new, stale, or unreviewed findings.
+
+EXIT_STATUS=0

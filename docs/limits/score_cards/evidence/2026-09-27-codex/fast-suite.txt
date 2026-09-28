@@ -1,0 +1,1111 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
+rootdir: /Users/dennyschaedig/Scripts/Maxim/.worktrees/rescore-v1.3.1-codex
+configfile: pyproject.toml
+plugins: anyio-4.12.0, timeout-2.4.0, cov-7.0.0
+collected 12188 items / 44 deselected / 12144 selected
+
+tests/behavioral/test_cradle_mother_pipeline.py ........                 [  0%]
+tests/behavioral/test_exp37_analyzer_smoke.py .......................... [  0%]
+.................                                                        [  0%]
+tests/behavioral/test_exp37_harness_smoke.py ........................... [  0%]
+..................................................                       [  1%]
+tests/behavioral/test_exp41_pipeline.py .............                    [  1%]
+tests/behavioral/test_exp42_pipeline.py ................................ [  1%]
+                                                                         [  1%]
+tests/experiments/test_deliberation_stress.py ..................         [  1%]
+tests/integration/test_api_verbs.py ................                     [  1%]
+tests/integration/test_bootstrap.py ............                         [  1%]
+tests/integration/test_cross_session_persistence.py ..                   [  1%]
+tests/integration/test_curriculum_runner.py .................            [  1%]
+tests/integration/test_foundry.py ................................       [  2%]
+tests/integration/test_hive_pull_e2e.py ..........                       [  2%]
+tests/integration/test_imagination_wiring.py ...................         [  2%]
+tests/integration/test_multi_agent_attribution.py .............          [  2%]
+tests/integration/test_multi_agent_attribution_scale.py .....            [  2%]
+tests/integration/test_oasis_exchange_e2e.py ......                      [  2%]
+tests/integration/test_oasis_ingest_e2e.py .                             [  2%]
+tests/integration/test_orchestrator_actor.py ............                [  2%]
+tests/integration/test_orchestrator_sandbox.py ............              [  2%]
+tests/integration/test_persistence_compat.py ........................... [  3%]
+.                                                                        [  3%]
+tests/integration/test_persistent_agent_campaign.py .................... [  3%]
+..........                                                               [  3%]
+tests/integration/test_phase0_harness.py ......................          [  3%]
+tests/integration/test_plan_lifecycle.py .................               [  3%]
+tests/integration/test_prompt_builder_audit.py .........                 [  3%]
+tests/integration/test_prompt_caching.py ..                              [  3%]
+tests/integration/test_research_pipeline.py .......                      [  3%]
+tests/integration/test_roy_runner.py .............................       [  4%]
+tests/integration/test_sim_embodiment.py ..........                      [  4%]
+tests/integration/test_substrate_primary_aut.py ......................   [  4%]
+tests/learning/test_escalation_bridge.py ............                    [  4%]
+tests/learning/test_focus_learner.py ............                        [  4%]
+tests/learning/test_nac_convergence.py ...........                       [  4%]
+tests/performance/test_fast_failover.py .....                            [  4%]
+tests/substrate/baselines/test_baselines.py ...[K  ⠴ Orchestrator planning next probe... (15s).....s.                   [  4%]
+tests/substrate/test_b4_replanning_ab.py ............                    [  4%]
+tests/substrate/test_components_smoke.py ......                          [  4%]
+tests/substrate/test_concept_decomposition_validation.py ......          [  4%]
+tests/substrate/test_evidence_write_policy.py .................          [  5%]
+tests/substrate/test_mock_llm.py ........................                [  5%]
+tests/substrate/test_p2_reward_modulation.py ......                      [  5%]
+tests/substrate/test_p3a_episode_binding.py ............................ [  5%]
+.......................                                                  [  5%]
+tests/substrate/test_p3a_fixture_validation.py .........[K  ⠇ Orchestrator planning next probe... (18s)..........       [  5%]
+tests/substrate/test_p3b_channel_integration.py .......................[K  ⠋ Orchestrator planning next probe... (20s). [  6%]
+..............                                                           [  6%]
+tests/substrate/test_p4_00_vacuous_pass_guard.py .............           [  6%]
+tests/substrate/test_p4_cross_modal_mechanism.py .....................   [  6%]
+tests/substrate/test_p4_fixture_validation.py .........sss               [  6%]
+tests/substrate/test_p4_mug_test_roundtrip.py s                          [  6%]
+tests/substrate/test_p5_stress_persistence.py .................          [  6%]
+tests/substrate/test_p6_extinction.py .....[K  ⠏ Orchestrator planning next probe... (29s)....                          [  6%]
+tests/substrate/test_p8_sleep_replay.py .............                    [  6%]
+tests/substrate/test_persistence_harness.py ................             [  7%]
+tests/substrate/test_sem_execution_production.py .....                   [  7%]
+tests/substrate/test_sem_pain_cascade.py ......                          [  7%]
+tests/substrate/test_snapshot_subprocess_round_trip.py .....             [  7%]
+tests/substrate/test_trajectory_invariants.py ...................        [  7%]
+tests/substrate/test_valence_annotation.py ..........................    [  7%]
+tests/unit/test_acting_coach.py ........................................ [  7%]
+.                                                                        [  7%]
+tests/unit/test_adapter_contract.py ...                                  [  7%]
+tests/unit/test_adaptive_planning.py ................................... [  8%]
+................                                                         [  8%]
+tests/unit/test_admin_core.py ....................                       [  8%]
+tests/unit/test_agent_factory.py ....................................... [  8%]
+.......                                                                  [  8%]
+tests/unit/test_agent_guidance_lint.py ...........                       [  8%]
+tests/unit/test_agent_isolation.py .................                     [  9%]
+tests/unit/test_agent_loop_error_handling.py ..................          [  9%]
+tests/unit/test_agent_permissions.py ................................    [  9%]
+tests/unit/test_agentic_runtime.py ...........                           [  9%]
+tests/unit/test_analyze_cradle_mother_guard.py ...............           [  9%]
+tests/unit/test_analyze_exp54_magnitude.py ..                            [  9%]
+tests/unit/test_api_core.py ..........................[K  ⠧ Orchestrator planning next probe... (57s).............      [ 10%]
+tests/unit/test_api_expansion.py ....................................... [ 10%]
+....                                                                     [ 10%]
+tests/unit/test_api_surface.py ..........[K  ⠹ Orchestrator planning next probe... (72s).............                   [ 10%]
+tests/unit/test_archetypes.py .......................................... [ 10%]
+...........................ssssssss..ssss...s..ssss.....ssss............ [ 11%]
+..............                                                           [ 11%]
+tests/unit/test_architecture_audit.py .................................. [ 11%]
+.....................                                                    [ 12%]
+tests/unit/test_artifact_stamping.py ....................                [ 12%]
+tests/unit/test_atomic_io.py ....................                        [ 12%]
+tests/unit/test_audio_localization.py .................................. [ 12%]
+......                                                                   [ 12%]
+tests/unit/test_audio_orientation.py .......................[K  ⠇ Orchestrator planning next probe... (78s)....         [ 12%]
+tests/unit/test_audit_release_build.py .................                 [ 13%]
+tests/unit/test_audit_release_tags.py ...............                    [ 13%]
+tests/unit/test_auto_fire_dispatch.py ....                               [ 13%]
+tests/unit/test_autonomy_forbid_precedence.py .................[K  ⠇ Orchestrator planning next probe... (78s)          [ 13%]
+tests/unit/test_backend_error_taxonomy.py .............................. [ 13%]
+..                                                                       [ 13%]
+tests/unit/test_bash_tool_cwd.py ......                                  [ 13%]
+tests/unit/test_bench_recovery_time.py ...........................       [ 13%]
+tests/unit/test_benchmark_phase0.py .................................... [ 14%]
+.                                                                        [ 14%]
+tests/unit/test_benchmark_runner.py .............[K  ⠙ Orchestrator planning next probe... (81s)....................... [ 14%]
+.......................                                                  [ 14%]
+tests/unit/test_bio_context.py ................[K  ⠋ Orchestrator planning next probe... (80s)........................  [ 15%]
+tests/unit/test_bio_enrichment.py ...........................            [ 15%]
+tests/unit/test_bio_enrichment_wiring.py ...........................     [ 15%]
+tests/unit/test_bio_integration.py ..................................    [ 15%]
+tests/unit/test_bio_stack_persistence_paths.py .....                     [ 15%]
+tests/unit/test_bio_system_snapshot.py ................................. [ 16%]
+.....................................                                    [ 16%]
+tests/unit/test_bio_telemetry.py .[K  ⠙ Orchestrator planning next probe... (81s).....................................[K  ⠸ Orchestrator planning next probe... (83s). [ 16%]
+..                                                                       [ 16%]
+tests/unit/test_bio_tracers.py ..............                            [ 16%]
+tests/unit/test_body_state_wiring.py .......                             [ 16%]
+tests/unit/test_body_yaw_joint_index.py ...                              [ 16%]
+tests/unit/test_build_bio_stack.py ............................          [ 17%]
+tests/unit/test_build_default_network.py ...........                     [ 17%]
+tests/unit/test_build_executor.py .........................              [ 17%]
+tests/unit/test_build_memory_hub.py ............................         [ 17%]
+tests/unit/test_bundle_export_provenance.py ...........                  [ 17%]
+tests/unit/test_c5_direct_health.py ........                             [ 17%]
+tests/unit/test_c6_raw_construction.py ..............[K  ⠏ Orchestrator planning next probe... (89s)....                [ 18%]
+tests/unit/test_cancellation.py .......                                  [ 18%]
+tests/unit/test_capabilities.py ........                                 [ 18%]
+tests/unit/test_causal_link_provenance.py ..........                     [ 18%]
+tests/unit/test_causal_memory.py ............                            [ 18%]
+tests/unit/test_cc3_forward_compat.py .................                  [ 18%]
+tests/unit/test_cerebellum_wiring.py .............                       [ 18%]
+tests/unit/test_check_nightlies.py ..............                        [ 18%]
+tests/unit/test_check_slow_lane.py ...........                           [ 18%]
+tests/unit/test_cli_action_gate.py .....                                 [ 18%]
+tests/unit/test_cli_sim_dispatch.py ...................                  [ 18%]
+tests/unit/test_cli_utils.py ................[K  ⠙ Orchestrator planning next probe... (91s)..................          [ 19%]
+tests/unit/test_clip_encoder.py .ssss.                                   [ 19%]
+tests/unit/test_cloud_backends.py ...................................... [ 19%]
+......................                                                   [ 19%]
+tests/unit/test_cloud_dispatch.py ...............                        [ 19%]
+tests/unit/test_cloud_redaction_headers.py .......                       [ 19%]
+tests/unit/test_cloud_solo_auto_detect.py ................               [ 20%]
+tests/unit/test_cluster_fear.py ..........[K  ⠹ Orchestrator planning next probe... (92s)......                         [ 20%]
+tests/unit/test_cluster_reward_provenance.py ................            [ 20%]
+tests/unit/test_cluster_row_fold.py ...............                      [ 20%]
+tests/unit/test_code_search_tool.py .......                              [ 20%]
+tests/unit/test_coding_replan.py ........                                [ 20%]
+tests/unit/test_cognitive_pain.py ...................................... [ 20%]
+....                                                                     [ 20%]
+tests/unit/test_component_index.py ..................................... [ 21%]
+s...                                                                     [ 21%]
+tests/unit/test_component_protocol.py ...............                    [ 21%]
+tests/unit/test_component_registry.py ...............................[K  ⠸ Orchestrator planning next probe... (103s)... [ 21%]
+....                                                                     [ 21%]
+tests/unit/test_composable_api.py ...................................... [ 22%]
+...........................                                              [ 22%]
+tests/unit/test_composite_source.py ...............                      [ 22%]
+tests/unit/test_concept_class.py ....................................... [ 22%]
+....                                                                     [ 22%]
+tests/unit/test_concept_context.py .....................                 [ 22%]
+tests/unit/test_concept_decomposer.py ..............................[K  ⠹ Orchestrator planning next probe... (122s).... [ 23%]
+........                                                                 [ 23%]
+tests/unit/test_concept_extractor.py ................................... [ 23%]
+.......[K  ⠸ Orchestrator planning next probe... (133s)......                                                            [ 23%]
+tests/unit/test_concept_grounder.py .....................                [ 23%]
+tests/unit/test_concept_grounder_async.py ...................            [ 24%]
+tests/unit/test_config_cli.py ...........................                [ 24%]
+tests/unit/test_config_loader.py ....................................... [ 24%]
+........................................................................ [ 25%]
+........................................................................ [ 25%]
+.............................                                            [ 25%]
+tests/unit/test_config_writer.py .......................                 [ 26%]
+tests/unit/test_confirmation_scope_crash.py ..                           [ 26%]
+tests/unit/test_connection.py .........                                  [ 26%]
+tests/unit/test_connection_state.py [K  ⠧ Orchestrator planning next probe... (137s).......                              [ 26%]
+tests/unit/test_consecutive_tool_cap.py ........                         [ 26%]
+tests/unit/test_console_agent_id.py ..................                   [ 26%]
+tests/unit/test_console_auth.py ................................         [ 26%]
+tests/unit/test_console_device_handoff.py .......................        [ 26%]
+tests/unit/test_console_event_seam.py ...........................[K  ⠋ Orchestrator planning next probe... (140s)....... [ 27%]
+....                                                                     [ 27%]
+tests/unit/test_console_handle_stop.py ....                              [ 27%]
+tests/unit/test_console_handle_workspace.py ....                         [ 27%]
+tests/unit/test_console_identity.py .[K  ⠏ Orchestrator planning next probe... (139s)..........                          [ 27%]
+tests/unit/test_console_launcher_seams.py ................s.....         [ 27%]
+tests/unit/test_console_pairing.py ..................                    [ 27%]
+tests/unit/test_console_sandbox.py ...................[K  ⠸ Orchestrator planning next probe... (143s)................   [ 28%]
+tests/unit/test_console_server.py ..............                         [ 28%]
+tests/unit/test_console_talk.py ....................[K  ⠼ Orchestrator planning next probe... (144s).................... [ 28%]
+.....                                                                    [ 28%]
+tests/unit/test_console_tool_allowlist.py ...........                    [ 28%]
+tests/unit/test_console_trust_guard.py ..........[K  ⠴ Orchestrator planning next probe... (205s)..................[K  ⠴ Orchestrator planning next probe... (205s)..... [ 28%]
+[K  ⠼ Orchestrator planning next probe... (204s)...[K  ⠦ Orchestrator planning next probe... (206s)..............                                                        [ 29%]
+tests/unit/test_console_ui_bundle.py ........................            [ 29%]
+tests/unit/test_contemplation.py .....................................[K  ⠦ Orchestrator planning next probe... (206s).. [ 29%]
+......................................................                   [ 30%]
+tests/unit/test_context_compaction.py ......                             [ 30%]
+tests/unit/test_context_index.py .........................               [ 30%]
+tests/unit/test_cost_tracker_local.py ...................                [ 30%]
+tests/unit/test_cradle_drive_calibration.py ...                          [ 30%]
+tests/unit/test_cradle_mother.py ......................                  [ 30%]
+tests/unit/test_cradle_mother_credit_mode.py .....                       [ 30%]
+tests/unit/test_cradle_mother_stimulus_order.py ....                     [ 30%]
+tests/unit/test_create_agent_example.py .....                            [ 30%]
+tests/unit/test_cwd_scanner.py ........                                  [ 30%]
+tests/unit/test_d44_merge_behavioural_delta.py .....[K  ⠇ Orchestrator planning next probe... (208s).....                [ 30%]
+tests/unit/test_d62_merge_arm_noop_guard.py .........                    [ 30%]
+tests/unit/test_data_streams.py ..................                       [ 31%]
+tests/unit/test_decision_engine.py .................                     [ 31%]
+tests/unit/test_decision_log.py ..............                           [ 31%]
+tests/unit/test_decision_provenance.py ..........                        [ 31%]
+tests/unit/test_deliberation_intents.py ......                           [ 31%]
+tests/unit/test_device_speak_sink.py .........                           [ 31%]
+tests/unit/test_diagnose_matches_doctor.py .......                       [ 31%]
+tests/unit/test_dm_runtime.py ...                                        [ 31%]
+tests/unit/test_dm_schema.py ................                            [ 31%]
+tests/unit/test_doa_feed.py ..........[K  ⠼ Orchestrator planning next probe... (214s)..............                     [ 31%]
+tests/unit/test_docker_sandbox.py .....................................  [ 32%]
+tests/unit/test_doctor.py .........................[K  ⠧ Orchestrator planning next probe... (227s)..................... [ 32%]
+.............[K  ⠇ Orchestrator planning next probe... (228s)........................................................... [ 33%]
+..........................                                               [ 33%]
+tests/unit/test_doctor_p8_checks.py ................                     [ 33%]
+tests/unit/test_doctor_resolved_config.py .............................. [ 33%]
+...................                                                      [ 34%]
+tests/unit/test_download_atomicity.py .......                            [ 34%]
+tests/unit/test_drain_routing.py ....................................... [ 34%]
+........................                                                 [ 34%]
+tests/unit/test_drain_state.py ................................          [ 34%]
+tests/unit/test_drive_pain_helper.py ..........                          [ 34%]
+tests/unit/test_drive_specs.py ..............................            [ 35%]
+tests/unit/test_drive_temporal_event.py ....                             [ 35%]
+tests/unit/test_ec_centroid_drift_fix.py ......                          [ 35%]
+tests/unit/test_ec_match_margin.py ...........                           [ 35%]
+tests/unit/test_ec_readonly_recall.py ..........                         [ 35%]
+tests/unit/test_ec_substrate_provenance.py .......                       [ 35%]
+tests/unit/test_ec_trace_activations.py .............[K  ⠹ Orchestrator planning next probe... (232s).................   [ 35%]
+tests/unit/test_ec_vectorized_scan.py ..............                     [ 35%]
+tests/unit/test_edit_file_tool.py ..............                         [ 35%]
+tests/unit/test_embodiment_failures.py ................................. [ 36%]
+                                                                         [ 36%]
+tests/unit/test_embodiment_sem.py ......................[K  ⠹ Orchestrator planning next probe... (232s)...............  [ 36%]
+tests/unit/test_empty_store_truthiness.py .............                  [ 36%]
+tests/unit/test_encoder_golden_v1.py .........                           [ 36%]
+tests/unit/test_encoding_strength.py ................................... [ 37%]
+.................                                                        [ 37%]
+tests/unit/test_ensure_available.py .................                    [ 37%]
+tests/unit/test_entity_acquisition.py ........                           [ 37%]
+tests/unit/test_entry_index.py ...............                           [ 37%]
+tests/unit/test_estimate_max_ctx.py ..........................           [ 37%]
+tests/unit/test_exceptions.py .............                              [ 37%]
+tests/unit/test_exp44_ablation.py .....                                  [ 37%]
+tests/unit/test_exp44_campaign_gates.py ............                     [ 37%]
+tests/unit/test_exp44_nonstationarity.py ...............                 [ 38%]
+tests/unit/test_exp49_harness_seams.py ................................. [ 38%]
+...                                                                      [ 38%]
+tests/unit/test_exp52_phase_a_harness.py ..                              [ 38%]
+tests/unit/test_exp53_verdict.py ......                                  [ 38%]
+tests/unit/test_exp54_harness.py ............                            [ 38%]
+tests/unit/test_exp56_harness.py ....................[K  ⠧ Orchestrator planning next probe... (257s)....                [ 38%]
+tests/unit/test_exp57_harness.py ..................................      [ 39%]
+tests/unit/test_exp60_drowning_substrate.py ..........                   [ 39%]
+tests/unit/test_exp60_run.py ..............................              [ 39%]
+tests/unit/test_exp60_water_classroom.py ..........[K  ⠇ Orchestrator planning next probe... (258s)..................... [ 39%]
+.[K  ⠋ Orchestrator planning next probe... (260s)................                                                        [ 39%]
+tests/unit/test_exp61_fear_transport.py ...........                      [ 39%]
+tests/unit/test_exp61_run.py ...........................                 [ 40%]
+tests/unit/test_exp62_precheck.py ........                               [ 40%]
+tests/unit/test_exp62_run.py ........................................... [ 40%]
+.........                                                                [ 40%]
+tests/unit/test_experience_clock.py ............................         [ 40%]
+tests/unit/test_experiment_runner.py .......[K  ⠙ Orchestrator planning next probe... (261s)....                         [ 40%]
+tests/unit/test_fail_loud_stage2.py ..............[K  ⠴ Orchestrator planning next probe... (275s).......                [ 41%]
+tests/unit/test_fear_gate.py .................                           [ 41%]
+tests/unit/test_fetch_byte_cap.py ..........                             [ 41%]
+tests/unit/test_fixture_orchestrator.py ........................         [ 41%]
+tests/unit/test_focus_on_sound.py ...................................    [ 41%]
+tests/unit/test_foundational_preamble.py .[K  ⠙ Orchestrator planning next probe... (31s)......                         [ 41%]
+tests/unit/test_foundry.py .....................[K  ⠹ Orchestrator planning next probe... (32s)....                     [ 42%]
+tests/unit/test_frozen_dataclasses.py .........                          [ 42%]
+tests/unit/test_function_length_baseline.py .....                        [ 42%]
+tests/unit/test_function_router.py ...............[K  ⠸ Orchestrator planning next probe... (293s)...................... [ 42%]
+...........                                                              [ 42%]
+tests/unit/test_gate1_runtime_geometry_detection.py ...................  [ 42%]
+tests/unit/test_gate2_geometry_and_thresholds.py ...............         [ 42%]
+tests/unit/test_gating.py .............[K  ⠼ Orchestrator planning next probe... (294s).........                         [ 42%]
+tests/unit/test_generative_campaign.py ................................. [ 43%]
+....[K  ⠼ Orchestrator planning next probe... (294s).....                                                                [ 43%]
+tests/unit/test_genre_gating.py ..............                           [ 43%]
+tests/unit/test_geometry_tag_ranges.py ..............                    [ 43%]
+tests/unit/test_git_tools.py ......                                      [ 43%]
+tests/unit/test_gpu_compat.py ..........                                 [ 43%]
+tests/unit/test_gpu_detect.py ..........                                 [ 43%]
+tests/unit/test_grayscale_tools_annotation.py ....................       [ 43%]
+tests/unit/test_heartbeat.py ................                            [ 44%]
+tests/unit/test_hippo_tracer.py .........[K  ⠋ Orchestrator planning next probe... (300s)..                              [ 44%]
+tests/unit/test_hippocampus.py ...............[K  ⠹ Orchestrator planning next probe... (302s).......................... [ 44%]
+.                                                                        [ 44%]
+tests/unit/test_hippocampus_atomic_load.py ...                           [ 44%]
+tests/unit/test_hippocampus_threading.py ....[K  ⠼ Orchestrator planning next probe... (44s)                            [ 44%]
+tests/unit/test_hive_cli.py ..........................[K  ⠴ Orchestrator planning next probe... (305s).................  [ 44%]
+tests/unit/test_hive_key_scope.py ..................                     [ 45%]
+tests/unit/test_hivemind_bundle.py ..................................... [ 45%]
+..........................                                               [ 45%]
+tests/unit/test_hivemind_identity.py ..........................          [ 45%]
+tests/unit/test_hivemind_ingest.py ..................................... [ 46%]
+........................                                                 [ 46%]
+tests/unit/test_hivemind_merge.py [K  ⠴ Orchestrator planning next probe... (45s).......[K  ⠦ Orchestrator planning next probe... (306s)............................... [ 46%]
+..........................                                               [ 46%]
+tests/unit/test_hivemind_signing.py ......................               [ 47%]
+tests/unit/test_http_client.py ...................................       [ 47%]
+tests/unit/test_http_public_only.py .......................              [ 47%]
+tests/unit/test_imagination.py [K  ⠋ Orchestrator planning next probe... (310s)......................................... [ 47%]
+...............[K  ⠹ Orchestrator planning next probe... (52s)...................[K  ⠸ Orchestrator planning next probe... (313s).....................                  [ 48%]
+tests/unit/test_infant_operant_satiated_body.py ....                     [ 48%]
+tests/unit/test_inference_lock_timeout.py ...                            [ 48%]
+tests/unit/test_inherent_bias_class.py ........                          [ 48%]
+tests/unit/test_input_handlers.py ..............[K  ⠴ Orchestrator planning next probe... (55s)........................ [ 48%]
+....                                                                     [ 48%]
+tests/unit/test_interactive.py .............[K  ⠦ Orchestrator planning next probe... (316s)........................     [ 49%]
+tests/unit/test_internet_policy_live.py ............                     [ 49%]
+tests/unit/test_internet_search_failure_surfacing.py ........            [ 49%]
+tests/unit/test_introspection_and_tools.py ............................. [ 49%]
+.[K  ⠴ Orchestrator planning next probe... (315s)..................                                                      [ 49%]
+tests/unit/test_introspection_tools.py ................................[K  ⠧ Orchestrator planning next probe... (317s). [ 49%]
+                                                                         [ 49%]
+tests/unit/test_json_parser.py ............................              [ 50%]
+tests/unit/test_l11_geometry_probe.py .......................            [ 50%]
+tests/unit/test_lane_backends.py ....................................... [ 50%]
+..............                                                           [ 50%]
+tests/unit/test_lane_metrics.py ......................                   [ 50%]
+tests/unit/test_lane_models.py ......................[K  ⠧ Orchestrator planning next probe... (57s)................... [ 51%]
+.......                                                                  [ 51%]
+tests/unit/test_lane_placement.py ...................[K  ⠇ Orchestrator planning next probe... (318s)................... [ 51%]
+.............                                                            [ 51%]
+tests/unit/test_lane_placement_config.py ........................        [ 51%]
+tests/unit/test_lane_placement_runtime.py .......................        [ 52%]
+tests/unit/test_lane_profile_rewalk.py ..........                        [ 52%]
+tests/unit/test_lane_routing_via_config.py ..........................    [ 52%]
+tests/unit/test_lane_served_nctx.py ..........                           [ 52%]
+tests/unit/test_last_run.py ..........................                   [ 52%]
+tests/unit/test_leader_mode.py ..........                                [ 52%]
+tests/unit/test_leader_pinning.py ...............                        [ 52%]
+tests/unit/test_leader_proxy.py ........................................ [ 53%]
+........................................................................ [ 53%]
+............................................                             [ 54%]
+tests/unit/test_learned_tool_index.py ...............[K  ⠏ Orchestrator planning next probe... (59s)..............      [ 54%]
+tests/unit/test_link_merge_identity.py ........                          [ 54%]
+tests/unit/test_lint_atomic_io_ratchet.py .............                  [ 54%]
+tests/unit/test_lint_body_rest_neutral.py ..........[K  ⠴ Orchestrator planning next probe... (65s)......               [ 54%]
+tests/unit/test_lint_fix_touches_tests.py ................               [ 54%]
+tests/unit/test_lint_function_length.py .....                            [ 54%]
+tests/unit/test_lint_harness_provenance.py ........                      [ 54%]
+tests/unit/test_lint_no_silent_swallows.py .......[K  ⠹ Orchestrator planning next probe... (332s)...................... [ 55%]
+........                                                                 [ 55%]
+tests/unit/test_lint_orphan_modules.py .....                             [ 55%]
+tests/unit/test_lint_prereg_precedes_data.py ........................... [ 55%]
+.                                                                        [ 55%]
+tests/unit/test_lint_unreleased_declared.py .................            [ 55%]
+tests/unit/test_lint_unreleased_on_src_change.py .....                   [ 55%]
+tests/unit/test_lint_version_sync.py ..........                          [ 55%]
+tests/unit/test_llm_call_registry.py ...............                     [ 55%]
+tests/unit/test_llm_cancellation.py ........                             [ 56%]
+tests/unit/test_llm_context.py ............................              [ 56%]
+tests/unit/test_llm_fallback.py ...........................[K  ⠼ Orchestrator planning next probe... (384s)............. [ 56%]
+........[K  ⠦ Orchestrator planning next probe... (386s).......................................                          [ 56%]
+tests/unit/test_llm_server.py ........................                   [ 57%]
+tests/unit/test_llm_types.py .....................................       [ 57%]
+tests/unit/test_llm_worker_cancellation.py .................             [ 57%]
+tests/unit/test_llm_worker_n_ctx_clamp.py ...........                    [ 57%]
+tests/unit/test_llm_worker_pool.py ......................                [ 57%]
+tests/unit/test_load_agent_restore_contract.py ........................  [ 58%]
+tests/unit/test_local_llm_override.py .......                            [ 58%]
+tests/unit/test_local_server_spawner.py ........................         [ 58%]
+tests/unit/test_logging_helpers.py ........                              [ 58%]
+tests/unit/test_loop_section_extraction.py ..........                    [ 58%]
+tests/unit/test_lsh_degeneracy_d51.py ....                               [ 58%]
+tests/unit/test_maxim_peer_backend.py .................................. [ 58%]
+...........                                                              [ 58%]
+tests/unit/test_mdns_discovery.py ...............                        [ 59%]
+tests/unit/test_media_capability_truth.py ............                   [ 59%]
+tests/unit/test_media_loop.py .............                              [ 59%]
+tests/unit/test_media_stream_gating.py ......                            [ 59%]
+tests/unit/test_memory_2d1_capture_time.py ..............                [ 59%]
+tests/unit/test_memory_2d2_retro_tagging.py ...........................  [ 59%]
+tests/unit/test_memory_2s_d_situation_cue.py ......................      [ 59%]
+tests/unit/test_memory_2sb_situation.py ................[K  ⠸ Orchestrator planning next probe... (423s).....            [ 59%]
+tests/unit/test_memory_2sc_signals.py .................................. [ 60%]
+...                                                                      [ 60%]
+tests/unit/test_memory_activation.py .............................       [ 60%]
+tests/unit/test_memory_activation_wiring.py ..........                   [ 60%]
+tests/unit/test_memory_agent_factory.py ..[K  ⠼ Orchestrator planning next probe... (424s)                               [ 60%]
+tests/unit/test_memory_drive_signals.py ..................               [ 60%]
+tests/unit/test_memory_encoding.py ..................................    [ 61%]
+tests/unit/test_memory_pair_invalidation.py ..........                   [ 61%]
+tests/unit/test_memory_phase0_input_integrity.py .......                 [ 61%]
+tests/unit/test_memory_strategy_config.py .............................. [ 61%]
+...........                                                              [ 61%]
+tests/unit/test_memory_strength_strategy.py .........[K  ⠧ Orchestrator planning next probe... (167s)................... [ 61%]
+..............[K  ⠇ Orchestrator planning next probe... (428s)............                                               [ 61%]
+tests/unit/test_memory_unification.py .................................. [ 62%]
+........[K  ⠧ Orchestrator planning next probe... (427s)..................                                               [ 62%]
+tests/unit/test_mesh_config.py ..................[K  ⠏ Orchestrator planning next probe... (429s)....................... [ 62%]
+..............................                                           [ 63%]
+tests/unit/test_mesh_primitives.py ...............................       [ 63%]
+tests/unit/test_mesh_serialization.py ..............                     [ 63%]
+tests/unit/test_mesh_setup.py .......................................... [ 63%]
+..........                                                               [ 63%]
+tests/unit/test_mesh_trace.py ...................[K  ⠇ Orchestrator planning next probe... (428s)............            [ 64%]
+tests/unit/test_minecraft_bench57_body.py .......                        [ 64%]
+tests/unit/test_minecraft_harness.py ........                            [ 64%]
+tests/unit/test_minecraft_seam.py ......................                 [ 64%]
+tests/unit/test_modality_seam.py ...............................         [ 64%]
+tests/unit/test_mode_switch_gate.py ..................                   [ 64%]
+tests/unit/test_mode_tool_gate.py .............[K  ⠴ Orchestrator planning next probe... (445s).......                   [ 64%]
+tests/unit/test_model_cache_names.py ..........                          [ 65%]
+tests/unit/test_model_cli.py .....................................       [ 65%]
+tests/unit/test_model_path_resolution.py .......                         [ 65%]
+tests/unit/test_modulator_abstract.py ...............                    [ 65%]
+tests/unit/test_motor_credit_emission.py .......                         [ 65%]
+tests/unit/test_motor_engrams.py ....................                    [ 65%]
+tests/unit/test_move_tool_gaze.py .....[K  ⠴ Orchestrator planning next probe... (455s)..........                        [ 65%]
+tests/unit/test_movement.py .............................                [ 66%]
+tests/unit/test_mps_vram_detection.py ...................                [ 66%]
+tests/unit/test_multi_agent_modes_baseline.py ...s..s.sss.....[K  ⠧ Orchestrator planning next probe... (457s)..         [ 66%]
+tests/unit/test_multi_robot.py ................................          [ 66%]
+tests/unit/test_multi_robot_extensibility.py .........................   [ 66%]
+tests/unit/test_nac.py ................................................. [ 67%]
+...................................................                      [ 67%]
+tests/unit/test_nac_persistence_decay.py ............                    [ 67%]
+tests/unit/test_nac_recommend_action.py ...[K  ⠹ Orchestrator planning next probe... (202s)........                      [ 67%]
+tests/unit/test_naming_events.py ....................................... [ 68%]
+...                                                                      [ 68%]
+tests/unit/test_net_ssrf.py ...............                              [ 68%]
+tests/unit/test_network_guard.py .........                               [ 68%]
+tests/unit/test_no_wall_clock_coupled_signatures.py .                    [ 68%]
+tests/unit/test_noop_bridge.py ........                                  [ 68%]
+tests/unit/test_normalize_llm_entity_spec.py ...............             [ 68%]
+tests/unit/test_normalize_value_range_aware.py ............              [ 68%]
+tests/unit/test_novelty_tracker.py ..................................... [ 69%]
+.......                                                                  [ 69%]
+tests/unit/test_oasis_store.py ...............                           [ 69%]
+tests/unit/test_openai_error_sanitize.py ........                        [ 69%]
+tests/unit/test_optional_deps.py ....................                    [ 69%]
+tests/unit/test_orient_reactivity.py .....[K  ⠹ Orchestrator planning next probe... (212s)....                           [ 69%]
+tests/unit/test_orphan_reaper.py ..................                      [ 69%]
+tests/unit/test_pain_bus.py ............................................ [ 70%]
+......                                                                   [ 70%]
+tests/unit/test_pairing_announcer.py [K  ⠦ Orchestrator planning next probe... (476s)........                            [ 70%]
+tests/unit/test_paper_server.py ...................                      [ 70%]
+tests/unit/test_paths.py ......................                          [ 70%]
+tests/unit/test_pattern_completer.py ............                        [ 70%]
+tests/unit/test_peer_cli_cache_clear.py ..........                       [ 70%]
+tests/unit/test_peer_config.py ...............[K  ⠴ Orchestrator planning next probe... (215s)...............            [ 70%]
+tests/unit/test_peer_install.py .................................        [ 71%]
+tests/unit/test_peer_mesh_cli.py ....................................... [ 71%]
+................................................                         [ 71%]
+tests/unit/test_perceived_pain.py ...................................... [ 72%]
+...                                                                      [ 72%]
+tests/unit/test_percept_context.py ..........                            [ 72%]
+tests/unit/test_percept_factory.py ...............                       [ 72%]
+tests/unit/test_percept_simulation.py ................................   [ 72%]
+tests/unit/test_percept_source_protocol.py ........                      [ 72%]
+tests/unit/test_percept_trace_buffer.py .................                [ 72%]
+tests/unit/test_percept_trace_buffer_persistence.py ..........           [ 72%]
+tests/unit/test_percept_wire_format.py ..............                    [ 73%]
+tests/unit/test_perception_placement.py ..............................   [ 73%]
+tests/unit/test_permission_context.py .......                            [ 73%]
+tests/unit/test_persistence_fixes.py ...................                 [ 73%]
+tests/unit/test_pfc_deliberation.py .................................    [ 73%]
+tests/unit/test_phase0_fixes.py ........................                 [ 74%]
+tests/unit/test_phase1_fixes.py .....................                    [ 74%]
+tests/unit/test_phase_c_helpers.py .............[K  ⠴ Orchestrator planning next probe... (485s).....................    [ 74%]
+tests/unit/test_pkg_aarch64_guard.py ..................................  [ 74%]
+tests/unit/test_place_code_wiring.py .......[K  ⠼ Orchestrator planning next probe... (484s).....                        [ 74%]
+tests/unit/test_plan_arc_bridge.py ....................                  [ 75%]
+tests/unit/test_plan_document.py .................................[K  ⠦ Orchestrator planning next probe... (486s)...... [ 75%]
+...                                                                      [ 75%]
+tests/unit/test_plan_manager.py ........................                 [ 75%]
+tests/unit/test_planning_liveness.py ................................... [ 75%]
+......[K  ⠏ Orchestrator planning next probe... (229s)..............[K  ⠋ Orchestrator planning next probe... (490s)...........                                          [ 76%]
+tests/unit/test_pr_merge_readiness.py .................................. [ 76%]
+......                                                                   [ 76%]
+tests/unit/test_pre_freeze_fixes.py .................................... [ 76%]
+......                                                                   [ 76%]
+tests/unit/test_prefetch_topics.py .................                     [ 76%]
+tests/unit/test_probe_remote.py ................................[K  ⠋ Orchestrator planning next probe... (230s).        [ 77%]
+tests/unit/test_process_lock.py .........                                [ 77%]
+tests/unit/test_producer_protocols.py ...........                        [ 77%]
+tests/unit/test_productive_listen.py ...[K  ⠋ Orchestrator planning next probe... (490s).....                            [ 77%]
+tests/unit/test_profile_metadata.py .................................... [ 77%]
+.............                                                            [ 77%]
+tests/unit/test_prompt_budgeter.py ..................................... [ 78%]
+......                                                                   [ 78%]
+tests/unit/test_prompt_builder.py ...................................[K  ⠙ Orchestrator planning next probe... (231s)... [ 78%]
+.........................                                                [ 78%]
+tests/unit/test_prompt_transcript_suppression.py ..........              [ 78%]
+tests/unit/test_provenance.py .......................................... [ 79%]
+.............                                                            [ 79%]
+tests/unit/test_provenance_gate.py ..............                        [ 79%]
+tests/unit/test_public_format_freeze.py ......                           [ 79%]
+tests/unit/test_r1_cross_layout_probe.py ..                              [ 79%]
+tests/unit/test_r3_pilot.py .                                            [ 79%]
+tests/unit/test_r3_run.py ...[K  ⠹ Orchestrator planning next probe... (562s)......                                      [ 79%]
+tests/unit/test_rate_limiter.py ............                             [ 79%]
+tests/unit/test_reachy_connection_options.py .....................       [ 79%]
+tests/unit/test_reachy_head_frame.py .......                             [ 79%]
+tests/unit/test_reachy_mini_infant_body.py ............                  [ 79%]
+tests/unit/test_reachy_orient_body.py .........                          [ 80%]
+tests/unit/test_reachy_retained_axes.py ........................         [ 80%]
+tests/unit/test_reachy_workspace_safety.py ............................. [ 80%]
+....                                                                     [ 80%]
+tests/unit/test_reaction_bus.py .......................                  [ 80%]
+tests/unit/test_reaction_types.py ..............                         [ 80%]
+tests/unit/test_readme_pypi_rendering.py ....                            [ 80%]
+tests/unit/test_recall.py .........                                      [ 80%]
+tests/unit/test_recall_improvements.py ...........                       [ 80%]
+tests/unit/test_reflex.py ..............[K  ⠦ Orchestrator planning next probe... (326s)..........[K  ⠧ Orchestrator planning next probe... (587s)...................... [ 81%]
+....................[K  ⠇ Orchestrator planning next probe... (588s)..............                                       [ 81%]
+tests/unit/test_register_tool_persistence.py ..............              [ 81%]
+tests/unit/test_release_format_v2.py ................................... [ 82%]
+...........                                                              [ 82%]
+tests/unit/test_release_producer_store.py .............................. [ 82%]
+.................                                                        [ 82%]
+tests/unit/test_release_receiver_state.py ........................       [ 82%]
+tests/unit/test_replan_and_reflection.py .......[K  ⠙ Orchestrator planning next probe... (331s)............             [ 82%]
+tests/unit/test_replanner.py ...............................             [ 83%]
+tests/unit/test_replanner_stage2.py .....                                [ 83%]
+tests/unit/test_request_interaction_tool.py .....                        [ 83%]
+tests/unit/test_require_extras_lane.py .......                           [ 83%]
+tests/unit/test_research_agents.py .......................               [ 83%]
+tests/unit/test_research_tools.py ...............                        [ 83%]
+tests/unit/test_response_config.py ...................                   [ 83%]
+tests/unit/test_retrieval.py ...........................                 [ 83%]
+tests/unit/test_robot_controller.py ...................                  [ 84%]
+tests/unit/test_robot_registry.py ..................................     [ 84%]
+tests/unit/test_robots_yaml_connect_config.py ........                   [ 84%]
+tests/unit/test_role_detection.py ...................                    [ 84%]
+tests/unit/test_role_unification.py ..........................           [ 84%]
+tests/unit/test_router_prompt_cache_split.py ....                        [ 84%]
+tests/unit/test_router_typed_exceptions.py ....................          [ 85%]
+tests/unit/test_roy_5_cosine_localization.py ...........[K  ⠴ Orchestrator planning next probe... (335s)................ [ 85%]
+........                                                                 [ 85%]
+tests/unit/test_roy_log.py .......................                       [ 85%]
+tests/unit/test_rpe_per_invocation.py .....                              [ 85%]
+tests/unit/test_run_tests_tool.py .....                                  [ 85%]
+tests/unit/test_salience_protocols.py ..................[K  ⠴ Orchestrator planning next probe... (595s)................ [ 85%]
+...........................[K  ⠧ Orchestrator planning next probe... (597s)......                                        [ 86%]
+tests/unit/test_sandbox.py ..........................................    [ 86%]
+tests/unit/test_sandbox_approval_fails_closed.py ..........              [ 86%]
+tests/unit/test_sandbox_containment_and_content.py ..................... [ 86%]
+.......                                                                  [ 86%]
+tests/unit/test_save_aut_state.py ....                                   [ 86%]
+tests/unit/test_scene_tools.py .................................         [ 87%]
+tests/unit/test_scn.py ........................                          [ 87%]
+tests/unit/test_scn_oscillator_feedback.py .......................       [ 87%]
+tests/unit/test_seeding.py .............ss                               [ 87%]
+tests/unit/test_self_effect.py ..............                            [ 87%]
+tests/unit/test_sem_motor_binding.py ............................        [ 87%]
+tests/unit/test_sensor_encoder_audio.py ........                         [ 88%]
+tests/unit/test_signer_identity_binding.py ...........                   [ 88%]
+tests/unit/test_significance.py .................................        [ 88%]
+tests/unit/test_sim_adapter_unflatten.py ......                          [ 88%]
+tests/unit/test_sim_emitter_contract.py ................................ [ 88%]
+................[K  ⠸ Orchestrator planning next probe... (353s)........................                                 [ 89%]
+tests/unit/test_sim_pain_percept_delivery.py ................[K  ⠼ Orchestrator planning next probe... (614s)........... [ 89%]
+..................                                                       [ 89%]
+tests/unit/test_sim_types.py .......................                     [ 89%]
+tests/unit/test_simulation_agent.py ..................................   [ 89%]
+tests/unit/test_stable_hash_two_process.py .....                         [ 89%]
+tests/unit/test_stage_0b_0c_telemetry.py .............[K  ⠼ Orchestrator planning next probe... (364s).................. [ 90%]
+.                                                                        [ 90%]
+tests/unit/test_stall_detector_with_registry.py ......                   [ 90%]
+tests/unit/test_stall_hard_abort.py ....[K  ⠴ Orchestrator planning next probe... (625s)..[K  ⠦ Orchestrator planning next probe... (6s).[K  ⠧ Orchestrator planning next probe... (7s)...                           [ 90%]
+tests/unit/test_stall_threshold.py ....................                  [ 90%]
+tests/unit/test_state_manager.py .................                       [ 90%]
+tests/unit/test_statistic_shapes.py .......[K  ⠼ Orchestrator planning next probe... (4s).......                       [ 90%]
+tests/unit/test_stop_reasons.py .........                                [ 90%]
+tests/unit/test_storage_report.py .............                          [ 90%]
+tests/unit/test_stream_events.py .....                                   [ 90%]
+tests/unit/test_substrate_action_budget.py ...............[K  ⠏ Orchestrator planning next probe... (369s)..             [ 91%]
+tests/unit/test_substrate_diff.py ........                               [ 91%]
+tests/unit/test_substrate_drive_needs.py ....                            [ 91%]
+tests/unit/test_substrate_exploration.py ..................              [ 91%]
+tests/unit/test_substrate_invalidate.py ......[K  ⠙ Orchestrator planning next probe... (371s)..........                 [ 91%]
+tests/unit/test_substrate_merge_nac_cli.py ...................           [ 91%]
+tests/unit/test_substrate_min_confidence_env.py .[K  ⠹ Orchestrator planning next probe... (12s)...[K  ⠏ Orchestrator planning next probe... (9s)....                 [ 91%]
+tests/unit/test_substrate_primary_scene_harm.py [K  ⠸ Orchestrator planning next probe... (633s)......[K  ⠸ Orchestrator planning next probe... (3s).............[K  ⠸ Orchestrator planning next probe... (13s)..... [ 91%]
+.                                                                        [ 91%]
+tests/unit/test_substrate_primary_wake.py ....                           [ 91%]
+tests/unit/test_substrate_recognition.py ............................... [ 92%]
+......[K  ⠇ Orchestrator planning next probe... (28s)..............[K  ⠴ Orchestrator planning next probe... (25s)                                                     [ 92%]
+tests/unit/test_substrate_session_resolution.py ...............          [ 92%]
+tests/unit/test_survival_drive_prior.py .......                          [ 92%]
+tests/unit/test_survival_learns_break2.py ....                           [ 92%]
+tests/unit/test_swallowed_log.py ........                                [ 92%]
+tests/unit/test_target_effect.py ......[K  ⠇ Orchestrator planning next probe... (648s)...                               [ 92%]
+tests/unit/test_temporal_credit.py ....[K  ⠼ Orchestrator planning next probe... (24s)..[K  ⠧ Orchestrator planning next probe... (27s).[K  ⠋ Orchestrator planning next probe... (30s)..........                     [ 92%]
+tests/unit/test_test_harness_hermeticity.py ...                          [ 92%]
+tests/unit/test_thought_gate.py ................                         [ 93%]
+tests/unit/test_thread_manager.py .....[K  ⠇ Orchestrator planning next probe... (18s)...[K  ⠋ Orchestrator planning next probe... (650s).                              [ 93%]
+tests/unit/test_tick_tracker.py ..........                               [ 93%]
+tests/unit/test_tool_cancel.py ..........                                [ 93%]
+tests/unit/test_tool_discovery.py ....[K  ⠙ Orchestrator planning next probe... (31s).............[K  ⠏ Orchestrator planning next probe... (29s)..................... [ 93%]
+...............                                                          [ 93%]
+tests/unit/test_tool_dispatch.py ...................[K  ⠏ Orchestrator planning next probe... (649s)...................[K  ⠧ Orchestrator planning next probe... (27s). [ 94%]
+.[K  ⠸ Orchestrator planning next probe... (33s)....................                                                    [ 94%]
+tests/unit/test_tool_dual_schema.py .............[K  ⠙ Orchestrator planning next probe... (651s).[K  ⠇ Orchestrator planning next probe... (28s)...................... [ 94%]
+.................                                                        [ 94%]
+tests/unit/test_tool_gates.py ....[K  ⠙ Orchestrator planning next probe... (21s).............                          [ 94%]
+tests/unit/test_tool_metadata.py ..........                              [ 94%]
+tests/unit/test_tool_output_framing.py ............                      [ 94%]
+tests/unit/test_tool_timeout.py ....                                     [ 94%]
+tests/unit/test_tools_standalone_import.py ...                           [ 95%]
+tests/unit/test_transition_drive_pain.py ..................[K  ⠋ Orchestrator planning next probe... (30s).             [ 95%]
+tests/unit/test_tunnel.py ............[K  ⠋ Orchestrator planning next probe... (650s)............[K  ⠙ Orchestrator planning next probe... (31s).[K  ⠇ Orchestrator planning next probe... (28s)............          [ 95%]
+tests/unit/test_tunnel_daemon_spawner.py ...............                 [ 95%]
+tests/unit/test_tunnel_keys.py .............................             [ 95%]
+tests/unit/test_two_stage_probe.py ................                      [ 95%]
+tests/unit/test_unified_pruning.py .............                         [ 96%]
+tests/unit/test_use_based_consolidation.py ..................[K  ⠙ Orchestrator planning next probe... (391s).....       [ 96%]
+tests/unit/test_user_profiles.py ..............................[K  ⠹ Orchestrator planning next probe... (32s)......... [ 96%]
+.......                                                                  [ 96%]
+tests/unit/test_vendor_console_freshness.py ...............              [ 96%]
+tests/unit/test_vision_engine.py ..........................              [ 96%]
+tests/unit/test_vision_stream.py ...........                             [ 97%]
+tests/unit/test_water_trial_encoding.py .............[K  ⠇ Orchestrator planning next probe... (658s).                   [ 97%]
+tests/unit/test_water_trial_lethal.py ..[K  ⠋ Orchestrator planning next probe... (420s).....                            [ 97%]
+tests/unit/test_water_trial_smoke.py .....                               [ 97%]
+tests/unit/test_wire_1_risk_annotation.py .............................. [ 97%]
+............................                                             [ 97%]
+tests/unit/test_wire_2_percept_aversion.py ............................. [ 97%]
+..........[K  ⠹ Orchestrator planning next probe... (462s)....[K  ⠸ Orchestrator planning next probe... (93s).............[K  ⠸ Orchestrator planning next probe... (103s).[K  ⠋ Orchestrator planning next probe... (100s).........                                    [ 98%]
+tests/unit/test_wire_3_embodiment_filter.py ...................[K  ⠸ Orchestrator planning next probe... (723s).....[K  ⠴ Orchestrator planning next probe... (105s).... [ 98%]
+....[K  ⠼ Orchestrator planning next probe... (104s).........                                                            [ 98%]
+tests/unit/test_wire_a_cluster_bias_annotation.py ...................... [ 98%]
+..........[K  ⠹ Orchestrator planning next probe... (102s)............................                                   [ 99%]
+tests/unit/test_worker_pool.py .......[K  ⠙ Orchestrator planning next probe... (101s).......[K  ⠦ Orchestrator planning next probe... (106s)........................... [ 99%]
+.                                                                        [ 99%]
+tests/unit/test_workers.py ...[K  ⠋ Orchestrator planning next probe... (100s)..[K  ⠏ Orchestrator planning next probe... (469s)............                             [ 99%]
+tests/unit/test_working_memory.py ....[K  ⠼ Orchestrator planning next probe... (114s).......................            [ 99%]
+tests/unit/test_world_channel.py ...[K  ⠸ Orchestrator planning next probe... (113s)...........                          [ 99%]
+tests/unit/test_world_set_ownership.py ..[K  ⠸ Orchestrator planning next probe... (113s)..[K  ⠋ Orchestrator planning next probe... (110s)..[K  ⠹ Orchestrator planning next probe... (472s)[K  ⠸ Orchestrator planning next probe... (103s)[K  ⠴ Orchestrator planning next probe... (115s)[K  ⠼ Orchestrator planning next probe... (114s)[K  ⠸ Orchestrator planning next probe... (733s)[K  ⠹ Orchestrator planning next probe... (112s)[K  ⠹ Orchestrator planning next probe... (732s)[K  ⠋ Orchestrator planning next probe... (110s)[K  ⠸ Orchestrator planning next probe... (113s)[K  ⠦ Orchestrator planning next probe... (116s)[K  ⠼ Orchestrator planning next probe... (734s)[K  ⠼ Orchestrator planning next probe... (104s)[K  ⠙ Orchestrator planning next probe... (111s)[K  ⠸ Orchestrator planning next probe... (473s)[K  ⠼ Orchestrator planning next probe... (114s)[K  ⠙ Orchestrator planning next probe... (111s)[K  ⠼ Orchestrator planning next probe... (104s)[K  ⠸ Orchestrator planning next probe... (473s)[K  ⠴ Orchestrator planning next probe... (115s)[K  ⠸ Orchestrator planning next probe... (113s)[K  ⠼ Orchestrator planning next probe... (734s)[K  ⠦ Orchestrator planning next probe... (116s)[K  ⠸ Orchestrator planning next probe... (733s)[K  ⠼ Orchestrator planning next probe... (114s)[K  ⠧ Orchestrator planning next probe... (117s)[K  ⠙ Orchestrator planning next probe... (111s)[K  ⠴ Orchestrator planning next probe... (105s)[K  ⠴ Orchestrator planning next probe... (735s)[K  ⠹ Orchestrator planning next probe... (112s)[K  ⠼ Orchestrator planning next probe... (474s)[K  ⠴ Orchestrator planning next probe... (105s)[K  ⠹ Orchestrator planning next probe... (112s)[K  ⠴ Orchestrator planning next probe... (115s)[K  ⠼ Orchestrator planning next probe... (474s)[K  ⠦ Orchestrator planning next probe... (116s)[K  ⠴ Orchestrator planning next probe... (735s)[K  ⠧ Orchestrator planning next probe... (117s)[K  ⠼ Orchestrator planning next probe... (114s)[K  ⠼ Orchestrator planning next probe... (734s)[K  ⠹ Orchestrator planning next probe... (112s)[K  ⠦ Orchestrator planning next probe... (736s)[K  ⠴ Orchestrator planning next probe... (115s)[K  ⠇ Orchestrator planning next probe... (118s)[K  ⠸ Orchestrator planning next probe... (113s)[K  ⠦ Orchestrator planning next probe... (106s)[K  ⠴ Orchestrator planning next probe... (475s)[K  ⠦ Orchestrator planning next probe... (106s)[K  ⠸ Orchestrator planning next probe... (113s)[K  ⠧ Orchestrator planning next probe... (117s)[K  ⠦ Orchestrator planning next probe... (736s)[K  ⠦ Orchestrator planning next probe... (116s)[K  ⠴ Orchestrator planning next probe... (475s)[K  ⠇ Orchestrator planning next probe... (118s)[K  ⠴ Orchestrator planning next probe... (115s)[K  ⠴ Orchestrator planning next probe... (735s)[K  ⠦ Orchestrator planning next probe... (116s)[K  ⠸ Orchestrator planning next probe... (113s)[K  ⠧ Orchestrator planning next probe... (737s)[K  ⠏ Orchestrator planning next probe... (119s)[K  ⠼ Orchestrator planning next probe... (114s)[K  ⠧ Orchestrator planning next probe... (107s)[K  ⠦ Orchestrator planning next probe... (476s)[K  ⠧ Orchestrator planning next probe... (117s)[K  ⠼ Orchestrator planning next probe... (114s)[K  ⠧ Orchestrator planning next probe... (107s)[K  ⠦ Orchestrator planning next probe... (476s)[K  ⠇ Orchestrator planning next probe... (118s)[K  ⠏ Orchestrator planning next probe... (119s)[K  ⠧ Orchestrator planning next probe... (737s)[K  ⠦ Orchestrator planning next probe... (116s)[K  ⠦ Orchestrator planning next probe... (736s)[K  ⠴ Orchestrator planning next probe... (115s)[K  ⠧ Orchestrator planning next probe... (117s)[K  ⠋ Orchestrator planning next probe... (120s)[K  ⠼ Orchestrator planning next probe... (114s)[K  ⠇ Orchestrator planning next probe... (738s)[K  ⠇ Orchestrator planning next probe... (108s)[K  ⠧ Orchestrator planning next probe... (477s)[K  ⠇ Orchestrator planning next probe... (118s)[K  ⠴ Orchestrator planning next probe... (115s)[K  ⠇ Orchestrator planning next probe... (738s)[K  ⠧ Orchestrator planning next probe... (477s)[K  ⠏ Orchestrator planning next probe... (119s)[K  ⠋ Orchestrator planning next probe... (120s)[K  ⠧ Orchestrator planning next probe... (737s)[K  ⠇ Orchestrator planning next probe... (108s)[K  ⠧ Orchestrator planning next probe... (117s)[K  ⠴ Orchestrator planning next probe... (115s)[K  ⠙ Orchestrator planning next probe... (121s)[K  ⠇ Orchestrator planning next probe... (118s)[K  ⠏ Orchestrator planning next probe... (739s)[K  ⠦ Orchestrator planning next probe... (116s)[K  ⠏ Orchestrator planning next probe... (109s)[K  ⠇ Orchestrator planning next probe... (478s)[K  ⠏ Orchestrator planning next probe... (119s)[K  ⠦ Orchestrator planning next probe... (116s)[K  ⠇ Orchestrator planning next probe... (478s)[K  ⠏ Orchestrator planning next probe... (109s)[K  ⠏ Orchestrator planning next probe... (739s)[K  ⠙ Orchestrator planning next probe... (121s)[K  ⠋ Orchestrator planning next probe... (120s)[K  ⠇ Orchestrator planning next probe... (118s)[K  ⠇ Orchestrator planning next probe... (738s)[K  ⠏ Orchestrator planning next probe... (119s)[K  ⠦ Orchestrator planning next probe... (116s)[K  ⠋ Orchestrator planning next probe... (740s)[K  ⠹ Orchestrator planning next probe... (122s)[K  ⠧ Orchestrator planning next probe... (117s)[K  ⠋ Orchestrator planning next probe... (110s)[K  ⠏ Orchestrator planning next probe... (479s)[K  ⠋ Orchestrator planning next probe... (120s)[K  ⠏ Orchestrator planning next probe... (479s)[K  ⠧ Orchestrator planning next probe... (117s)[K  ⠋ Orchestrator planning next probe... (110s)[K  ⠋ Orchestrator planning next probe... (740s)[K  ⠙ Orchestrator planning next probe... (121s)[K  ⠹ Orchestrator planning next probe... (122s)[K  ⠏ Orchestrator planning next probe... (119s)[K  ⠏ Orchestrator planning next probe... (739s)[K  ⠙ Orchestrator planning next probe... (741s)[K  ⠧ Orchestrator planning next probe... (117s)[K  ⠇ Orchestrator planning next probe... (118s)[K  ⠸ Orchestrator planning next probe... (123s)[K  ⠋ Orchestrator planning next probe... (120s)[K  ⠙ Orchestrator planning next probe... (111s)[K  ⠋ Orchestrator planning next probe... (480s)[K  ⠋ Orchestrator planning next probe... (480s)[K  ⠙ Orchestrator planning next probe... (121s)[K  ⠇ Orchestrator planning next probe... (118s)[K  ⠙ Orchestrator planning next probe... (111s)[K  ⠸ Orchestrator planning next probe... (123s)[K  ⠹ Orchestrator planning next probe... (122s)[K  ⠙ Orchestrator planning next probe... (741s)[K  ⠋ Orchestrator planning next probe... (120s)[K  ⠋ Orchestrator planning next probe... (740s)[K  ⠙ Orchestrator planning next probe... (121s)[K  ⠏ Orchestrator planning next probe... (119s)[K  ⠹ Orchestrator planning next probe... (742s)[K  ⠇ Orchestrator planning next probe... (118s)[K  ⠼ Orchestrator planning next probe... (124s)[K  ⠹ Orchestrator planning next probe... (112s)[K  ⠙ Orchestrator planning next probe... (481s)[K  ⠹ Orchestrator planning next probe... (112s)[K  ⠹ Orchestrator planning next probe... (122s)[K  ⠙ Orchestrator planning next probe... (481s)[K  ⠏ Orchestrator planning next probe... (119s)[K  ⠹ Orchestrator planning next probe... (742s)[K  ⠸ Orchestrator planning next probe... (123s)[K  ⠼ Orchestrator planning next probe... (124s)[K  ⠙ Orchestrator planning next probe... (121s)[K  ⠋ Orchestrator planning next probe... (120s)[K  ⠏ Orchestrator planning next probe... (119s)[K  ⠹ Orchestrator planning next probe... (122s)[K  ⠸ Orchestrator planning next probe... (113s)[K  ⠙ Orchestrator planning next probe... (741s)[K  ⠸ Orchestrator planning next probe... (743s)[K  ⠴ Orchestrator planning next probe... (125s)[K  ⠹ Orchestrator planning next probe... (482s)[K  ⠸ Orchestrator planning next probe... (123s)[K  ⠹ Orchestrator planning next probe... (482s)[K  ⠋ Orchestrator planning next probe... (120s)[K  ⠴ Orchestrator planning next probe... (125s)[K  ⠸ Orchestrator planning next probe... (113s)[K  ⠸ Orchestrator planning next probe... (743s)[K  ⠼ Orchestrator planning next probe... (124s)[K  ⠹ Orchestrator planning next probe... (742s)[K  ⠹ Orchestrator planning next probe... (122s)[K  ⠸ Orchestrator planning next probe... (123s)[K  ⠋ Orchestrator planning next probe... (120s)[K  ⠼ Orchestrator planning next probe... (744s)[K  ⠦ Orchestrator planning next probe... (126s)[K  ⠙ Orchestrator planning next probe... (121s)[K  ⠼ Orchestrator planning next probe... (114s)[K  ⠸ Orchestrator planning next probe... (483s)[K  ⠙ Orchestrator planning next probe... (121s)[K  ⠼ Orchestrator planning next probe... (124s)[K  ⠸ Orchestrator planning next probe... (483s)[K  ⠼ Orchestrator planning next probe... (114s)[K  ⠼ Orchestrator planning next probe... (744s)[K  ⠦ Orchestrator planning next probe... (126s)[K  ⠴ Orchestrator planning next probe... (125s)[K  ⠸ Orchestrator planning next probe... (123s)[K  ⠙ Orchestrator planning next probe... (121s)[K  ⠸ Orchestrator planning next probe... (743s)[K  ⠼ Orchestrator planning next probe... (124s)[K  ⠧ Orchestrator planning next probe... (127s)[K  ⠴ Orchestrator planning next probe... (745s)[K  ⠹ Orchestrator planning next probe... (122s)[K  ⠴ Orchestrator planning next probe... (115s)[K  ⠼ Orchestrator planning next probe... (484s)[K  ⠴ Orchestrator planning next probe... (125s)[K  ⠼ Orchestrator planning next probe... (484s)[K  ⠹ Orchestrator planning next probe... (122s)[K  ⠴ Orchestrator planning next probe... (115s)[K  ⠴ Orchestrator planning next probe... (745s)[K  ⠧ Orchestrator planning next probe... (127s)[K  ⠦ Orchestrator planning next probe... (126s)[K  ⠼ Orchestrator planning next probe... (124s)[K  ⠼ Orchestrator planning next probe... (744s)[K  ⠦ Orchestrator planning next probe... (746s)[K  ⠇ Orchestrator planning next probe... (128s)[K  ⠹ Orchestrator planning next probe... (122s)[K  ⠴ Orchestrator planning next probe... (125s)[K  ⠸ Orchestrator planning next probe... (123s)[K  ⠦ Orchestrator planning next probe... (116s)[K  ⠴ Orchestrator planning next probe... (485s)[K  ⠸ Orchestrator planning next probe... (123s)[K  ⠦ Orchestrator planning next probe... (116s)[K  ⠴ Orchestrator planning next probe... (485s)[K  ⠦ Orchestrator planning next probe... (126s)[K  ⠦ Orchestrator planning next probe... (746s)[K  ⠧ Orchestrator planning next probe... (127s)[K  ⠇ Orchestrator planning next probe... (128s)[K  ⠴ Orchestrator planning next probe... (125s)[K  ⠴ Orchestrator planning next probe... (745s)[K  ⠏ Orchestrator planning next probe... (129s)[K  ⠧ Orchestrator planning next probe... (747s)[K  ⠦ Orchestrator planning next probe... (126s)[K  ⠸ Orchestrator planning next probe... (123s)[K  ⠼ Orchestrator planning next probe... (124s)[K  ⠧ Orchestrator planning next probe... (117s)[K  ⠦ Orchestrator planning next probe... (486s)[K  ⠇ Orchestrator planning next probe... (128s)[K  ⠏ Orchestrator planning next probe... (129s)[K  ⠧ Orchestrator planning next probe... (117s)[K  ⠧ Orchestrator planning next probe... (127s)[K  ⠼ Orchestrator planning next probe... (124s)[K  ⠦ Orchestrator planning next probe... (126s)[K  ⠧ Orchestrator planning next probe... (747s)[K  ⠦ Orchestrator planning next probe... (486s)[K  ⠦ Orchestrator planning next probe... (746s)[K  ⠧ Orchestrator planning next probe... (127s)[K  ⠼ Orchestrator planning next probe... (124s)[K  ⠋ Orchestrator planning next probe... (130s)[K  ⠴ Orchestrator planning next probe... (125s)[K  ⠇ Orchestrator planning next probe... (748s)[K  ⠇ Orchestrator planning next probe... (118s)[K  ⠧ Orchestrator planning next probe... (487s)[K  ⠇ Orchestrator planning next probe... (128s)[K  ⠧ Orchestrator planning next probe... (487s)[K  ⠴ Orchestrator planning next probe... (125s)[K  ⠋ Orchestrator planning next probe... (130s)[K  ⠇ Orchestrator planning next probe... (118s)[K  ⠇ Orchestrator planning next probe... (748s)[K  ⠏ Orchestrator planning next probe... (129s)[K  ⠧ Orchestrator planning next probe... (127s)[K  ⠧ Orchestrator planning next probe... (747s)[K  ⠇ Orchestrator planning next probe... (128s)[K  ⠴ Orchestrator planning next probe... (125s)[K  ⠦ Orchestrator planning next probe... (126s)[K  ⠏ Orchestrator planning next probe... (749s)[K  ⠙ Orchestrator planning next probe... (131s)[K  ⠏ Orchestrator planning next probe... (119s)[K  ⠇ Orchestrator planning next probe... (488s)[K  ⠦ Orchestrator planning next probe... (126s)[K  ⠇ Orchestrator planning next probe... (488s)[K  ⠏ Orchestrator planning next probe... (129s)[K  ⠏ Orchestrator planning next probe... (119s)[K  ⠏ Orchestrator planning next probe... (749s)[K  ⠙ Orchestrator planning next probe... (131s)[K  ⠋ Orchestrator planning next probe... (130s)[K  ⠇ Orchestrator planning next probe... (128s)[K  ⠇ Orchestrator planning next probe... (748s)[K  ⠏ Orchestrator planning next probe... (129s)                            [100%][K  ⠹ Orchestrator planning next probe... (132s)[K  ⠦ Orchestrator planning next probe... (126s)[K  ⠧ Orchestrator planning next probe... (127s)[K  ⠋ Orchestrator planning next probe... (750s)[K  ⠋ Orchestrator planning next probe... (120s)
+
+network guard: blocked 98 outbound call(s) (connect, dns)
+================================ tests coverage ================================
+______________ coverage: platform darwin, python 3.12.12-final-0 _______________
+
+Name                                                    Stmts   Miss Branch BrPart  Cover   Missing
+---------------------------------------------------------------------------------------------------
+src/maxim/__init__.py                                      49      2     12      3    92%   185, 197->201, 209->213, 218
+src/maxim/__main__.py                                       2      2      0      0     0%   3-5
+src/maxim/agents/agentic_goal_agent.py                    130     62     54     14    46%   84-95, 100, 104, 115-117, 138, 144-163, 166->exit, 177, 180, 188-190, 193-237, 254, 279-280, 286-287, 295, 300-301, 335-339, 344-348
+src/maxim/agents/autonomy.py                              387    100    114     20    67%   61-76, 179, 190, 201, 216, 300, 303, 306, 309, 315-323, 326-327, 354-356, 360-366, 370-376, 384, 389-390, 394-399, 406, 452-454, 473->476, 480-484, 536, 544, 550-557, 566-571, 635, 676-677, 696-699, 737-738, 756-776, 802, 805-808
+src/maxim/agents/base.py                                   82     54     32      0    25%   29, 32, 35, 38, 43-44, 47, 50-57, 60-65, 68-77, 80-86, 89-95, 99-107
+src/maxim/agents/bus.py                                   785    164    200     19    74%   319, 430, 480-483, 487-488, 492-494, 565-569, 575-576, 827-838, 953-974, 978-997, 1001-1003, 1007, 1282, 1308-1314, 1342, 1370, 1423, 1449-1453, 1457-1459, 1474-1494, 1498-1538, 1542-1543, 1547-1574, 1577->exit, 1589->exit, 1638, 1685->1684, 1687, 1695, 1699, 1702, 1706, 1748-1749, 1779-1781, 1794-1801, 1809-1810
+src/maxim/agents/context_pool.py                          259    112     66     13    52%   59, 91, 100, 120-126, 149, 171, 180, 188, 240, 244, 256, 259-260, 262->265, 265->268, 269, 272, 298, 305-306, 321-323, 327-329, 333-339, 348-360, 364-366, 370-379, 403, 414-418, 453, 473-502, 506-507, 511-512, 517-518, 533-559, 566-582, 586-590, 600
+src/maxim/agents/exec_agent.py                            790    429    306     11    42%   112, 169-182, 185-192, 195-208, 211-229, 232-238, 259-261, 269->267, 275-276, 359, 644, 655, 678, 692-824, 844->848, 883, 929-984, 1056-1212, 1253-1300, 1313-1433, 1450-1454, 1468-1513, 1536-1598, 1602-1620, 1634-1642, 1662-1679, 1687-1704, 1726, 1733->1742, 1744, 1754, 1763-1785, 1791-1794, 1798-1810
+src/maxim/agents/fear_agent.py                            183     61     70      8    65%   149, 158, 204-206, 210-211, 262-263, 267-271, 281-284, 310-357, 362-366, 462-489, 499, 501, 509, 525
+src/maxim/agents/goal_agent.py                             11      4      0      0    64%   19-21, 24
+src/maxim/agents/llm_agent.py                             195    141     52      0    22%   127-150, 154-199, 203-225, 249-278, 301-315, 324, 328, 332, 351-375, 379-382, 387, 392, 397, 402-403, 425-463, 484-485, 493-520
+src/maxim/agents/llm_context.py                            51      1     14      1    97%   98
+src/maxim/agents/llm_fallback.py                          263     29    116     13    86%   181-182, 186, 190-191, 228-229, 247, 268->276, 301, 374-378, 381, 405, 411-413, 418, 426, 434-438, 444->446, 448-449, 493
+src/maxim/agents/llm_types.py                             109      1     10      0    99%   39
+src/maxim/agents/llm_worker.py                            469    111    138     38    74%   93-95, 425-436, 458-464, 517, 519, 523, 529, 567-568, 585-588, 598->602, 611->613, 627-629, 670, 674, 722-724, 746->750, 748-749, 751-771, 795->797, 798, 805-827, 831-850, 868, 884, 902, 904, 906, 909-910, 929-933, 1008->exit, 1024-1026, 1064, 1069->1065, 1076, 1084->1079, 1098-1099, 1119-1120, 1124, 1148, 1159-1160, 1180-1189, 1210, 1243-1244, 1265, 1282, 1288, 1322-1323, 1331-1332, 1360, 1363, 1366, 1369, 1372, 1381, 1393
+src/maxim/agents/maxim_agent.py                           200     73     50     13    58%   79, 159, 193->199, 199->203, 203->210, 211->215, 216->220, 228->232, 232->exit, 251-264, 268-275, 279-287, 303, 311-312, 323-324, 343-347, 348->exit, 364-370, 382-386, 390, 402-410, 422, 430, 434, 438-441, 445-448, 452-453, 457, 461-462, 466-467
+src/maxim/agents/memory_agent.py                          710    234    280     58    64%   248, 287-291, 310-311, 320-328, 350, 352, 354, 386, 393-399, 420, 443, 451-454, 461, 485-486, 577->581, 583->596, 597-601, 634-636, 644->exit, 649-670, 679-685, 689-690, 694-714, 741->745, 760->771, 790-792, 806-807, 826, 829-831, 838-849, 863-869, 875, 885->898, 893-895, 904->902, 915-918, 938->936, 943-954, 964->966, 966->969, 969->972, 972->979, 974->979, 977-978, 988-997, 1005-1006, 1035-1049, 1076, 1078-1098, 1130-1133, 1137-1140, 1166, 1252-1264, 1269-1285, 1289-1299, 1303-1308, 1317-1323, 1369-1392, 1397-1419, 1422->1471, 1423->1445, 1442-1443, 1445->1471, 1455-1468, 1488-1489, 1502, 1514-1538, 1549, 1558-1559, 1562-1579, 1609-1611, 1615-1616, 1620-1621, 1644, 1648-1655
+src/maxim/agents/modality.py                               37      1      6      1    95%   102->104, 178
+src/maxim/agents/output_mixin.py                           76     52     32      2    24%   66-71, 75, 95-98, 118-121, 143-146, 167-170, 192-210, 226-238, 253-256, 264-267, 274-283, 300-310
+src/maxim/agents/percept_factory.py                        44      2     10      2    93%   42-43, 103->105, 181->183
+src/maxim/agents/perception_agent.py                      200     85     68     16    55%   70, 76, 99, 103, 107, 113, 115, 122-133, 145-149, 158-175, 201-215, 230, 232, 287, 291, 298, 311-314, 324-374, 381-410, 414-419
+src/maxim/agents/permissions.py                            88      2     28      2    97%   148, 177
+src/maxim/agents/prompt_budgeter.py                       176     13     68     10    90%   173, 291->290, 300->304, 310->313, 326->324, 330, 338, 348, 353-361, 381, 408
+src/maxim/agents/prompt_builder.py                        795    264    370     68    64%   170-171, 174-190, 263, 267, 294-295, 297, 301, 305, 325-328, 365, 379, 396, 402, 408->416, 568, 571, 585, 588->583, 593->596, 720-733, 737-760, 797-798, 800-801, 804, 810-813, 816-817, 821->829, 827, 834->842, 843-845, 852-920, 968-972, 1002->exit, 1031, 1070->1111, 1139-1144, 1166-1167, 1177-1179, 1204->exit, 1227-1230, 1310->exit, 1345, 1363-1368, 1378, 1388, 1396, 1406-1421, 1438, 1441->1446, 1460->1463, 1464-1467, 1470-1476, 1479-1485, 1536-1558, 1615, 1616->1618, 1618->1620, 1621, 1625-1629, 1642-1651, 1661-1670, 1680-1689, 1699-1711, 1729->1731, 1748->1752, 1753, 1767-1786, 1807-1808, 1813-1828, 1833->1836, 1838-1843, 1849, 1890-1907, 1910-1948
+src/maxim/agents/statistician_agent.py                    380    281    158      5    20%   168-170, 174-176, 180-183, 190-191, 194-197, 206-241, 247-253, 273-300, 308-394, 402-417, 431-452, 482-508, 514-526, 530, 538-561, 565-579, 588-686, 690-696, 704-732, 736-772, 780-785, 808-839
+src/maxim/analysis/roy_log.py                             296     20     88     21    89%   79, 99, 142-144, 245-248, 269, 309-310, 315->322, 351-352, 354-355, 361->366, 367, 368->375, 376, 451->453, 490->498, 544->558, 571->573, 574, 575->577, 578, 579->561, 680
+src/maxim/analysis/substrate_diff.py                      359     66    100     20    77%   48, 84, 89, 108-131, 178, 180-185, 189-194, 216, 220-221, 226-242, 273, 298, 308-323, 439, 448, 453, 462->478, 465->464, 469->468, 502, 554, 600-601, 631-642, 680-691
+src/maxim/api.py                                          795    199    230     44    73%   82-86, 90-92, 102, 117-119, 122-124, 128-130, 190, 200-201, 203, 218->220, 239-242, 262-268, 282->285, 302-310, 317-319, 357->365, 365->exit, 384-385, 455-464, 483-492, 571, 613-619, 631-633, 652, 695, 731, 738-740, 741->751, 754-756, 760-762, 763->770, 766-768, 826->838, 848-854, 859-863, 881, 928->931, 951, 960-966, 971->976, 976->exit, 1007, 1012, 1016-1029, 1099-1101, 1116-1152, 1201-1203, 1209-1210, 1217, 1218->1220, 1239-1243, 1254-1256, 1299-1301, 1536->1561, 1660-1667, 1860-1918, 1953->1958, 1980-1981, 2072-2073, 2089, 2095, 2103->2105, 2134-2135
+src/maxim/attention/attention_network.py                  321    251     84      1    18%   29-30, 113, 128, 132-139, 143-147, 151-155, 170-215, 219-249, 256-275, 283-301, 315-397, 401-402, 406-409, 431-506, 513-545, 549-550, 562-580
+src/maxim/attention/gaze_controller.py                    140     80     26      0    36%   134, 152-169, 182-225, 237-250, 262-277, 287-290, 294-298, 306-315, 319, 332-334, 338, 342-346, 351, 356, 360-361
+src/maxim/attention/gaze_history.py                        77     42     10      0    40%   89-94, 112-138, 151-166, 170-171, 175-178, 182-185, 190-191
+src/maxim/attention/salience_map.py                       223    147     68      0    27%   187-194, 206-208, 227-286, 306-328, 339-351, 355-372, 381-391, 410-443, 454-455, 466-469, 485, 497-506, 522-523, 537-546, 554, 558-559, 563-576, 584-587, 606-619
+src/maxim/attention/scene_context.py                      115     75     30      0    28%   105-154, 164-175, 190-207, 211-220, 224-226, 234-236, 240, 244-247, 251-255, 259
+src/maxim/bench/cli.py                                     61     33     16      1    45%   29-40, 135-222, 238
+src/maxim/bench/recovery_time.py                          134      4     42      2    97%   271->257, 350, 488-491
+src/maxim/bridges/escalation_bridge.py                    254     66     88     16    70%   129, 131, 153-155, 172, 226-228, 251->249, 287-289, 294, 296->exit, 329, 337->344, 351-354, 360-388, 392-394, 421-424, 435-451, 481, 488->495, 510, 518-519, 578, 588, 596, 606-616
+src/maxim/bridges/fear_bridge.py                          273    195     94      5    23%   128->132, 133, 135, 137, 142, 154-161, 176-237, 248-303, 307-311, 344-393, 413-443, 450-465, 498-535, 539-561, 565-608, 615-633, 648-657, 670-678, 686-696, 705
+src/maxim/bridges/pain_bridge.py                          178    104     52      5    34%   132, 138->169, 142->154, 154->169, 198-224, 235-261, 270-327, 331-334, 353-379, 400-427, 450-491, 512-544, 549, 557, 565, 577->exit, 583-597
+src/maxim/bridges/planning_bridge.py                      152    100     48      2    28%   100, 123-217, 222, 258-297, 313-329, 362, 394-395, 406-423, 427-437, 446
+src/maxim/bridges/salience_bridge.py                      181    139     72      1    17%   85, 97-184, 204-240, 254, 262-275, 303-322, 330-333, 337-357, 361-373, 377-387, 392, 396-399
+src/maxim/bridges/spatial_bridge.py                       169    124     60      1    20%   94, 109-191, 197, 220-238, 254-270, 291-334, 345-360, 379-382, 401-407, 411-424, 428-433, 438, 442-443
+src/maxim/bridges/tool_pain_bridge.py                     258     20     88      9    92%   109, 114, 180->exit, 214-215, 243->248, 247, 310->314, 323-324, 434->441, 458-459, 513->517, 526-527, 639-640, 676-677, 792-795, 829
+src/maxim/cli.py                                         1223   1052    426     11    14%   50, 96->99, 117->121, 121->126, 127->131, 131->135, 135->140, 156, 188, 199-331, 338-375, 380-396, 401-418, 423-447, 452-532, 548-550, 554-556, 637-640, 652, 660-2350, 2368-2397
+src/maxim/cli_utils.py                                    354    186    164      8    47%   98, 106-149, 176-226, 230-238, 245-246, 249, 253-255, 260-328, 420-450, 455-500, 636-637, 652, 661-662, 665-668
+src/maxim/comms/api.py                                    102    102     20      0     0%   10-187
+src/maxim/comms/channels/base.py                            8      2      0      0    75%   19, 23
+src/maxim/comms/channels/twilio_channel.py                 45     45      2      0     0%   3-93
+src/maxim/comms/conversation.py                            99     51     20      0    40%   73, 122-143, 146-154, 157-165, 169-175, 182-196, 203-210, 219-238, 250-262
+src/maxim/comms/gateway.py                                 32     20      6      0    32%   39-40, 43, 47-51, 55-58, 78-98
+src/maxim/console/__init__.py                              10      5      0      0    50%   25-32
+src/maxim/console/handle.py                               249     80     82     10    69%   148-150, 185-186, 231-240, 259, 263, 344-385, 392-511, 538->545, 540, 546-549, 557, 593, 687
+src/maxim/console/server.py                               854     93    242     23    88%   220, 523->525, 737-738, 744-745, 815->817, 818, 822-825, 919-920, 943-944, 1072->1077, 1093-1097, 1100, 1103, 1119, 1129-1130, 1228, 1238, 1275, 1280-1284, 1331, 1358->1368, 1372, 1378, 1412, 1423, 1515, 1570-1571, 1579, 1594-1595, 1863-1864, 1886, 1892-1895, 1898-1908, 1910-1912, 1924, 1985->1984, 2130-2133, 2136-2144, 2151-2152, 2159-2218
+src/maxim/create.py                                        75     24     14      1    65%   264-270, 290-293, 319, 346-364
+src/maxim/data/camera/display.py                          322    286    128      0     8%   19-24, 42-51, 55-65, 69-75, 80-86, 90-119, 124-135, 140-159, 163-172, 176-180, 184-191, 195-200, 204-234, 238, 242-245, 258-354, 366-459, 473-505
+src/maxim/decisions/causal_link.py                        158     13     22      2    89%   102, 107, 112-115, 133, 342-345, 431-432, 511
+src/maxim/decisions/nac.py                               1186     71    508     46    93%   301-309, 666-667, 1066, 1081, 1183-1184, 1213, 1225-1228, 1328-1331, 1351-1352, 1424-1425, 1462-1463, 1478->1493, 1491-1492, 1569->1568, 1572->1568, 1575-1576, 1615, 1665, 1685, 1687, 1750, 1760, 1765, 1777->1776, 1786->1785, 1839-1842, 1851->1850, 1852->1851, 1854, 1905-1906, 1953, 1963, 1968->1970, 1989->1991, 2245->2250, 2336->2341, 2338->2341, 2401->2405, 2403->2405, 2406, 2657, 2659, 2681, 3166, 3249, 3252-3253, 3307->3301, 3434->3427, 3436-3437, 3455->3472, 3469-3470, 3742, 3753-3754, 3764, 3779, 3802, 3805-3806, 3816, 3819-3820, 3843-3845, 3912, 4012, 4014-4015, 4043
+src/maxim/decisions/nac_tracer.py                          88      2      4      1    97%   133, 150
+src/maxim/decisions/significance.py                       205     51     54      5    68%   31-40, 180, 218, 245-285, 290->exit, 300-308, 321->320
+src/maxim/decisions/temporal_credit.py                    125     13     44      4    90%   110-111, 116-117, 155, 163->162, 171->167, 179-180, 198-199, 243->238, 301-302, 325-326
+src/maxim/default_network/arbiter.py                       63     38     20      0    30%   73-123, 133-136, 140-142, 147, 155-158
+src/maxim/default_network/background_tasks.py             133     81     34      0    31%   86-94, 98-99, 137-148, 152-156, 160-174, 178-210, 214-245, 249
+src/maxim/default_network/behaviors/__init__.py            12      1      0      0    92%   64
+src/maxim/default_network/behaviors/base.py                54     18      8      0    58%   61-63, 73-74, 130, 134-136, 143-144, 148-149, 154-156, 178-179
+src/maxim/default_network/behaviors/idle.py               204    130     44      0    30%   90, 95-123, 131-189, 206, 214-215, 219-223, 265-281, 291-293, 367-376, 389, 402-537, 555, 572-574
+src/maxim/default_network/behaviors/motion.py              66     47     22      0    22%   63-131, 144-145, 153-155
+src/maxim/default_network/behaviors/orienting.py           54     35     18      0    26%   66, 74-138
+src/maxim/default_network/behaviors/social.py             133    105     48      0    15%   97-102, 113-145, 153-283, 311-325, 329-333
+src/maxim/default_network/behaviors/startle.py             84     63     28      0    19%   68-156, 169-175, 179-181, 190
+src/maxim/default_network/behaviors/turn_around.py         81     53     24      0    27%   90, 94, 98, 106-195
+src/maxim/default_network/config.py                       224     18     30     12    88%   262->265, 268-269, 273-275, 281->292, 283->286, 289-290, 302-317, 351->362, 362->372, 372->383, 383->395, 395->406, 406->416, 416->427, 427->440
+src/maxim/default_network/gate.py                         150     97     42      2    29%   74->exit, 129->133, 158-279, 302-303, 318-333, 337-338, 346-347, 355-356, 364-374, 382-383, 391-392, 400-401, 405-406, 410-422, 433-441, 449-458
+src/maxim/default_network/gaze_manager.py                 113     91     58      0    13%   53-107, 115-119, 139-148, 159-162, 176-180, 191-193, 201-203, 210-215, 247-271, 283-303
+src/maxim/default_network/inhibition.py                    28     16      4      0    38%   37-44, 51-53, 60-61, 74, 78, 90-91, 99
+src/maxim/default_network/messages.py                      39      3      2      0    88%   41, 67-68
+src/maxim/default_network/movement_utils.py               102     80     28      0    17%   54-56, 83-101, 128-155, 171-196, 214-224, 246-287
+src/maxim/default_network/network.py                      671    446    246     11    27%   327->330, 331->exit, 337->340, 341->344, 345->348, 349->352, 353->359, 360->exit, 417->419, 429, 444-451, 461, 466, 471, 476, 481, 486, 491, 496, 501, 506, 516, 521, 526, 531, 558-591, 595-613, 627-651, 661-662, 673, 684, 688-720, 735-808, 827-887, 893-909, 913-941, 949-975, 980-1032, 1036-1054, 1058-1105, 1115-1146, 1152-1189, 1193-1208, 1212-1234, 1248-1301, 1310-1323, 1333-1352, 1360-1386
+src/maxim/doctor/checks.py                               1207    259    404     48    79%   52, 66-68, 90-98, 164, 272-273, 283, 305-306, 419-427, 590, 621-624, 667-668, 680-681, 694-695, 714-715, 862, 877-878, 900-901, 915-916, 925->874, 1017, 1020-1021, 1025, 1032-1033, 1077-1082, 1115-1116, 1121-1122, 1206-1207, 1213-1216, 1218, 1231-1234, 1249-1250, 1252, 1274-1277, 1312, 1376-1377, 1401->1410, 1403->1401, 1415-1433, 1434->1456, 1446-1447, 1449-1450, 1452-1454, 1467-1468, 1470, 1517-1521, 1546-1547, 1581-1582, 1588->1607, 1600-1601, 1727, 1800, 1876-1898, 1922-1958, 2016-2017, 2043, 2060-2061, 2105, 2113, 2125-2155, 2174-2175, 2178-2179, 2214-2241, 2248, 2254, 2303-2304, 2354-2387, 2406-2407, 2441, 2468-2474, 2487, 2508, 2536, 2547, 2556-2565, 2589, 2617-2618, 2626-2632, 2670-2671, 2675, 2695-2696, 2705-2706, 2715-2716, 2771-2772, 2821-2824, 2831-2832, 2892-2893, 2900-2901, 3105-3106, 3115-3116, 3141-3142, 3144, 3159->3165, 3163, 3167->3170, 3217-3218, 3262-3263, 3272-3277, 3443-3445, 3505->3507, 3581
+src/maxim/doctor/cli.py                                   311    175    108      7    44%   72, 86-88, 141, 144-145, 213-390, 442-444, 455, 467, 478-481, 488-599
+src/maxim/doctor/platform_detect.py                       152     83     60      8    38%   41, 51, 54-57, 81-99, 103-120, 125-132, 136-139, 149-179, 191-192, 195-196, 210-212, 223-224
+src/maxim/embodied_runtime/agentic_runtime.py             723    513    234     20    30%   52->exit, 90->99, 101-103, 132-134, 237-238, 251-1157, 1169-1198, 1222-1223, 1230->1235, 1232-1233, 1241->1250, 1244->1250, 1246-1247, 1258, 1267->1261, 1272->1277, 1274-1275, 1279->1281, 1282->1288, 1284->1288, 1295->1291, 1298-1299, 1305->1303, 1307->1303, 1314-1318, 1321-1322, 1326-1328, 1341-1342, 1348-1349, 1358-1363, 1369-1374, 1393-1396, 1403-1404, 1418-1419, 1428-1429, 1438-1439, 1446-1447
+src/maxim/embodied_runtime/connection.py                  247    160     70      3    30%   91, 114->exit, 125-130, 143-148, 151-160, 163-168, 171-227, 245-246, 258, 266-267, 270-383
+src/maxim/embodied_runtime/input_handlers.py              399    233    170     13    40%   23-77, 80-125, 128-169, 185, 188-199, 208-210, 219, 221, 227, 230-231, 234->238, 268, 270->265, 277-313, 316-320, 326-327, 336-337, 388-389, 410, 417->425, 423-424, 427-489, 494-495, 565-576
+src/maxim/embodied_runtime/media_loop.py                  480    416    168      5    12%   35-610, 635-638, 663-672, 685-686, 712-714, 734-736, 747, 753-792, 797, 801-841
+src/maxim/embodied_runtime/movement.py                    625    348    188     28    41%   101, 104-122, 128-129, 137->145, 141-143, 146-149, 159, 171-172, 176-177, 224, 241-243, 265, 267, 271, 288-298, 301-306, 309-314, 353-363, 367-369, 391, 395, 397, 400->402, 402->404, 405-407, 443-445, 497->509, 509->523, 604-659, 672-679, 683-702, 706-727, 736-743, 758-811, 822-836, 847-869, 873-878, 892-894, 919-920, 931-947, 960-1003, 1056-1108, 1130, 1186-1235, 1263, 1268-1273, 1303-1304, 1306, 1329-1330, 1347-1348, 1367->1373, 1380-1384, 1389-1393, 1405-1411
+src/maxim/embodied_runtime/vision_stream.py               158     87     48      3    43%   37->44, 70-71, 73, 82-186, 198-199, 204-205, 213-214
+src/maxim/embodied_runtime/workers.py                     364    291    120      9    19%   97-105, 109-130, 135-170, 177-184, 188-210, 218-225, 248, 254-258, 262, 267-278, 296-327, 343-430, 454-598
+src/maxim/embodiment/archetype.py                         119      7     42      4    93%   134-136, 143, 146-147, 204, 211->214
+src/maxim/embodiment/audio_localization.py                271     23     84     10    90%   191, 222-227, 232->235, 391->exit, 416->exit, 434, 443-446, 455, 469-474, 561-562, 745, 753->757, 755-756, 816-817
+src/maxim/embodiment/backends/cerebellum_modulator.py     100     37     32      7    59%   81, 85, 123-125, 141, 157-165, 179, 228-249, 253-257, 263-270, 330, 335-337
+src/maxim/embodiment/backends/minecraft.py                 75     14     24      3    79%   78, 82-84, 95-107, 130, 133-134
+src/maxim/embodiment/body.py                              390     48    194     31    85%   107, 111, 120-125, 189->194, 202->200, 206-207, 216->215, 219->217, 229-230, 267->311, 272-273, 341->246, 358, 418-419, 529-530, 553, 556, 561-565, 574->547, 586, 608, 619, 624-626, 635->650, 638->650, 645-648, 662-663, 677->656, 681, 683, 687->606, 696, 710-711, 715, 723, 797, 918, 919->915, 920->919, 937-939, 947
+src/maxim/embodiment/cerebellum.py                        322    185     70      4    38%   82-96, 133, 138, 142, 181, 191-196, 292-319, 330-331, 355-357, 411-415, 434, 443-457, 463-469, 481-505, 513-531, 535-551, 567, 571, 575, 579, 583, 623, 677-681, 683->697, 694-695, 710-772, 782-805, 811-814
+src/maxim/embodiment/component_index.py                   294     36     96     19    85%   75->77, 82->81, 218->227, 248->256, 272, 314->313, 321->exit, 327, 350, 356-358, 398, 420-423, 439, 457-459, 465-472, 491-492, 508->507, 522, 543, 551, 554-557, 566-567, 595, 601-603
+src/maxim/embodiment/component_registry.py                218     13     76      5    93%   113, 269-270, 404-406, 413->419, 415-416, 444-448, 473
+src/maxim/embodiment/engrams.py                            66      0     24      1    99%   157->149
+src/maxim/embodiment/entity_map.py                         77      1     24      3    96%   100->102, 160, 179->178
+src/maxim/embodiment/motor.py                             229    136     74      4    32%   44, 47, 59, 89, 94, 99, 103-105, 109-117, 120, 136, 152, 186-190, 194-219, 255-262, 266-277, 282, 301-302, 322-324, 326-328, 330-332, 337, 366-383, 387-428, 433, 438-445, 448, 486-512
+src/maxim/embodiment/naming_events.py                      89      9     42      1    92%   134-135, 194-195, 204-205, 211, 215-216
+src/maxim/embodiment/percepts.py                           68      9     16      3    83%   114, 127, 137->139, 175-176, 199, 203, 217-219
+src/maxim/embodiment/reflex.py                            198     10     74     12    92%   121, 207, 307->318, 310->318, 411->406, 412->411, 461, 466, 470, 474, 511-513, 544->550, 547->550, 555
+src/maxim/embodiment/resolution.py                         43     32     26      0    16%   43-56, 71-95, 104-111
+src/maxim/embodiment/sem.py                               389     46    156     22    85%   265, 291->297, 295, 337, 399, 403, 408, 410, 428, 436, 447, 454, 467, 480, 484, 612->611, 618, 629, 650->exit, 662, 666, 670, 686->688, 688->690, 690->692, 696->711, 723, 731-741, 756, 769->759, 813->803, 836-837, 866, 874-875, 879-899, 1000->1005
+src/maxim/embodiment/spec.py                              399     56    202     33    83%   145, 179-185, 189-202, 241, 278, 344, 374, 482->481, 531->544, 536-537, 583->588, 642-646, 659->668, 669, 685-687, 701, 766, 877, 882, 887, 908, 913-914, 931, 936, 962, 972-983, 984->993, 1021->1019, 1042, 1043->1047, 1045->1047, 1052, 1104-1108, 1110->1102, 1112->1111
+src/maxim/embodiment/tool_bridge.py                       438     47    214     27    87%   75->73, 93-94, 130, 141->149, 163->174, 165->174, 171->174, 185-186, 290, 380-381, 387->374, 392, 394, 464->472, 468->472, 550->549, 553-554, 565->563, 567-568, 667->663, 670-671, 686, 689-690, 722->726, 726->734, 753-754, 796-801, 845->843, 847->843, 879-882, 923, 944-946, 960->971, 963->965, 967-969, 1116->1115, 1135->1130, 1148-1161, 1182-1183
+src/maxim/energy/llm_tracker.py                            66     41      8      0    34%   101-108, 132-175, 186-199, 210-213, 240-243, 253-258
+src/maxim/energy/registry.py                              110     58     32      1    40%   83->87, 106-108, 119-120, 131, 141-163, 171, 175-176, 187-214, 225, 236-237, 257-277, 281-291, 316-317
+src/maxim/energy/signal.py                                 55     10      2      0    79%   56, 69-77, 103-107, 125
+src/maxim/energy/tracker.py                                60     31      4      0    45%   64-70, 78-85, 102, 113-131, 146-147, 163-165, 169-172, 183
+src/maxim/environment/base.py                              16      4      0      0    75%   19, 26, 33, 40
+src/maxim/environment/filesystem_env.py                    18      3      2      0    85%   13-14, 28
+src/maxim/environment/reachy_env.py                       121    107     34      0     9%   12-28, 32-44, 53-60, 63-64, 67-139, 165, 168
+src/maxim/evaluation/agent_eval.py                         10      6      2      0    33%   12-20
+src/maxim/evaluation/base.py                                6      1      0      0    83%   15
+src/maxim/evaluation/plan_eval.py                          24     20     12      0    11%   12-37
+src/maxim/evaluation/tool_eval.py                           9      5      2      0    36%   12-18
+src/maxim/exceptions.py                                    88      0      8      1    99%   232->234
+src/maxim/hardware/capabilities.py                         65      2      0      0    97%   106, 110
+src/maxim/hardware/config.py                              125     46     42      4    64%   73->72, 81-93, 142, 148-155, 229, 233-234, 258-289, 306-328
+src/maxim/hardware/controller.py                          103     21     10      2    76%   152, 167->166, 184, 189, 205-224, 240, 255, 264, 293, 302, 311, 320, 333, 342, 373->375
+src/maxim/hardware/reachy/controller.py                   400    107    108     14    71%   140, 149, 181-185, 195-201, 206-212, 215-220, 246-248, 252-261, 270-273, 319-320, 356, 431-438, 450-457, 554, 598->711, 722->731, 804, 828-830, 843, 854->859, 868->870, 870->876, 873-874, 879-881, 900, 909-910, 935-937, 946, 957-959, 967-986, 994-1012, 1052-1063
+src/maxim/hardware/reachy/motor_backend.py                162     19     50      3    90%   136-137, 142-143, 157->exit, 159-160, 186-188, 256, 308-309, 315->318, 319-320, 390-392, 413-414
+src/maxim/hardware/reachy/streams.py                      113     69     20      0    33%   59-70, 74-76, 80-93, 98, 103, 107-108, 112-113, 152-163, 167-177, 188-197, 202, 207, 212, 216-217, 221-222, 226-230
+src/maxim/hardware/registry.py                            285     55     64      5    82%   122-123, 127-129, 141-148, 230-231, 246, 282-283, 299-300, 310-311, 335-336, 379-380, 439->442, 496-498, 512-514, 538-539, 542-544, 562-575, 597-598, 601-603, 617-619
+src/maxim/hardware/simulation/controller.py               175      9     58     15    90%   35, 37, 110, 292, 302->309, 413, 468->470, 475, 504, 517, 530, 532->534, 534->537, 547->549, 549->552
+src/maxim/hardware/simulation/streams.py                   88      3     12      2    95%   60, 67-68
+src/maxim/hardware/streams.py                              62     18      0      0    71%   35, 44, 50, 56, 60, 64, 84, 96, 102, 108, 114, 118, 122, 136, 142, 151, 155, 159
+src/maxim/harm/joint_limit.py                             167    132     70      0    15%   145-166, 175-202, 211-258, 286-331, 341-404, 427
+src/maxim/harm/movement.py                                 88     60     22      0    25%   104-124, 133-161, 191-219, 245, 260-278
+src/maxim/harm/predictor.py                                78     17      6      0    73%   81, 90, 94, 153, 161, 179-181, 186-188, 193-195, 200, 205, 209
+src/maxim/harm/registry.py                                 74     46     18      0    30%   78-82, 100-127, 151-152, 172-181, 199-200, 204-208, 213, 218, 222, 239-241
+src/maxim/harm/tool_predictor.py                           22      5      4      1    69%   59-67
+src/maxim/hivemind/bundle.py                              642     35    238     24    93%   155, 209, 231, 480-481, 548->546, 564, 748->746, 832, 936, 1097->1102, 1100-1101, 1127, 1129, 1131, 1144-1145, 1152, 1201, 1263, 1288-1289, 1295, 1374, 1378, 1382, 1421-1422, 1424, 1498-1499, 1508, 1540, 1544, 1607, 1681, 1690
+src/maxim/hivemind/cli.py                                 542     85    148     27    83%   136-138, 149-153, 185, 220-225, 265-266, 320, 323-325, 352-353, 395-397, 441-442, 488->498, 495->490, 523-524, 537->539, 567-569, 600, 616-618, 620-621, 665->663, 709-711, 748, 767-768, 772-774, 777-782, 788-790, 791->793, 795-796, 801-803, 809-810, 856-858, 875->874, 879-881, 886-888, 894, 899-908, 921-922, 926-928, 952, 954, 970, 973-978, 997-1002
+src/maxim/hivemind/entry_index.py                         234     10    126      8    95%   88, 91, 102, 171, 223, 276-277, 321, 367, 374
+src/maxim/hivemind/hive_cli.py                            286     28     66      5    91%   66-68, 80-82, 226-228, 249, 251, 266, 277-280, 284-287, 292-297, 424-426, 429-430
+src/maxim/hivemind/identity.py                             35      1     18      1    96%   196
+src/maxim/hivemind/ingest.py                              575     49    292     48    89%   202, 207, 244->exit, 333, 351, 424, 426, 448, 476, 513, 515, 527, 529, 534, 541, 543, 548, 551, 566, 568-569, 578, 605, 607-608, 629, 631, 634->652, 655, 666, 668, 676, 697, 699, 706, 721, 743, 776, 793, 798, 815, 820, 862-863, 916, 992->1001, 1020, 1025, 1110, 1115, 1142, 1182, 1222->1220, 1292->1291
+src/maxim/hivemind/merge.py                               462     27    202     16    93%   168, 221-223, 386-387, 394, 499-507, 811, 813, 861-862, 949, 976-977, 986->988, 988->990, 991->961, 1131, 1156, 1361-1362, 1367-1368, 1370->1372, 1375->1377
+src/maxim/hivemind/oasis_cli.py                           138     33     28      2    75%   23-25, 55->57, 71-72, 104-153, 195-197
+src/maxim/hivemind/oasis_endpoints.py                      33      2      4      0    95%   77-78
+src/maxim/hivemind/registry.py                            125      6     54      5    94%   94, 105, 113, 118, 177, 268
+src/maxim/hivemind/signing.py                             206      4     40      4    97%   227, 258, 387, 398, 501->exit
+src/maxim/hivemind/store.py                               257     33     74     11    87%   94-95, 106, 121, 123-124, 135-136, 142-143, 153, 282, 287-289, 323-324, 343, 347, 352-354, 356-357, 363->374, 375-377, 398, 402-404, 506, 526
+src/maxim/hivemind/substrate_client.py                     69     25     12      3    60%   55-58, 72-73, 76, 120-127, 155-160, 166-167, 169, 175-183
+src/maxim/imagination/designer.py                         158     13     68     12    88%   97-98, 109, 127->138, 134-135, 151-159, 292->291, 296->299, 308, 310->317, 312->317, 318->306, 320->306, 407, 434-435
+src/maxim/imagination/trigger.py                          394     69    118     20    83%   304, 313, 329->exit, 365->345, 485-486, 499-500, 507-508, 513->520, 546, 573-574, 601-603, 605, 635-636, 676-677, 691-701, 728, 734-736, 763-775, 820-822, 869-870, 893-894, 908, 915-916, 950-951, 955, 963, 969-971, 977, 989-997, 1024-1025, 1079-1081, 1099, 1107-1108, 1110->1117
+src/maxim/inference/segment_vision.py                     307    192    114      3    34%   25-26, 219, 238-239, 275-288, 301-303, 314-318, 326-329, 350-357, 368, 387-413, 423-425, 438-457, 494-623, 672-728, 751-760
+src/maxim/inference/transcribe_audio.py                   389    352    106      0     7%   54-121, 139-160, 176-197, 209-242, 260-274, 279-295, 312-328, 354-374, 404-558, 602-786
+src/maxim/integration/bio_enrichment.py                   419     75    194     28    78%   323-325, 363-364, 462, 464->463, 468-469, 487->494, 489->494, 508-542, 586-587, 591, 606-607, 676, 681, 699->743, 721->743, 728-736, 743->751, 746-748, 751->756, 786, 797-802, 812-814, 839->838, 843-845, 899->898, 902-903, 932-937, 951-952, 963->965, 965->972, 968, 973->975, 977->980, 980->985, 982->985
+src/maxim/integration/memory_hub.py                       817    368    306     40    53%   239->245, 261-265, 295-296, 306-309, 334-363, 395->398, 399, 402->exit, 408, 422, 458, 470, 503->exit, 593, 606-636, 689-690, 694-701, 705-709, 712-716, 721-723, 740-741, 748-749, 756-757, 761-766, 782, 784-785, 798-801, 889-891, 895-898, 904-905, 909-916, 923-924, 932-933, 940-941, 949->958, 954-955, 958->970, 963-964, 970->979, 975-976, 982-983, 989-990, 996-997, 1001-1006, 1010-1013, 1039->1045, 1054-1055, 1059-1066, 1069->1078, 1074-1075, 1078->1088, 1083-1084, 1088->1099, 1093-1094, 1102-1104, 1110-1111, 1117-1118, 1124-1125, 1143, 1151-1153, 1166, 1196->1200, 1221, 1223, 1227->1229, 1244-1247, 1255-1295, 1318, 1323, 1352-1356, 1388-1419, 1447-1457, 1473-1482, 1491-1498, 1518-1527, 1542-1549, 1569-1578, 1594-1603, 1614, 1616->exit, 1619-1620, 1642-1651, 1669-1679, 1690-1697, 1724-1733, 1753-1764, 1785-1799, 1810-1819, 1848-1850, 1859, 1864, 1895-1899, 1906, 1918, 1929-1953, 1964-1968
+src/maxim/integration/recall.py                           100     10     32      6    88%   61->exit, 130, 155-156, 165->167, 206-207, 230, 233-234, 240-241, 246->242
+src/maxim/interactive/display.py                          452    302    126      9    29%   42-43, 68, 198->exit, 203, 207-219, 224-228, 320, 326, 350-351, 356-359, 363-365, 369-371, 379-382, 386-388, 392-395, 399-409, 415-418, 422-425, 432-440, 444, 448-450, 483, 486-487, 504->506, 510-513, 517-519, 523-525, 532-534, 540-554, 558-572, 587-598, 603-604, 609-610, 614-617, 626-631, 638-643, 648-651, 655-825, 829-930, 958-961
+src/maxim/interactive/prompts.py                          278    180     86      2    32%   101-164, 185-187, 190-201, 204-215, 218-260, 263-271, 342-345, 350-351, 356-363, 367, 379-476, 522-527, 532-538
+src/maxim/load.py                                          56     12     14      3    76%   53, 86, 115-126, 277-279
+src/maxim/math/angular_gyrus.py                           443    245    142     18    41%   103->exit, 112, 118-119, 125->128, 132-135, 141-148, 163->161, 169-190, 218-220, 230, 232, 234, 255-284, 288, 294, 312-313, 319, 340, 373->376, 380-385, 390-393, 396-404, 415, 418, 421-424, 437, 466-501, 517-535, 545, 549-552, 556-574, 581-614, 624-669, 679-729, 738-763, 780-793, 805-818, 830-843, 855-868, 903, 923
+src/maxim/math/ips.py                                     158     99     56      6    32%   100-115, 123-140, 154, 161, 173-185, 194, 232, 259-260, 262-263, 288-326, 360-434, 448, 452-463
+src/maxim/math/linalg.py                                  238    201    120      0    10%   51, 56, 61, 66, 71, 76-79, 84, 94, 99-102, 107-111, 121, 126, 131, 136-139, 144-146, 156-163, 168-171, 181, 186-193, 198, 208-250, 263-300, 313-351, 365-401, 415-473
+src/maxim/math/math_types.py                               65      4      8      4    89%   58->60, 60->62, 104-105, 149->151, 151->153, 209-210
+src/maxim/math/workspace.py                                79     56     24      0    22%   44-48, 52-67, 77, 81, 85-88, 97-117, 121-123, 130-141, 145, 161-179
+src/maxim/memory/association_index.py                      62      5     28      5    87%   92, 110, 121->117, 124->117, 140-143
+src/maxim/memory/atl.py                                   386     65    154     29    80%   128-129, 134, 142, 146, 167-170, 186, 191->189, 200->203, 205, 209-212, 269, 272, 276, 280, 286, 288-292, 322->318, 390, 415-431, 447->449, 453->456, 461-462, 471, 476-482, 490, 572->574, 600->598, 641, 701-703, 722->724, 727->exit, 731, 734, 782, 784->787, 788-791
+src/maxim/memory/atl_tracer.py                             73      7      8      3    88%   40, 82-83, 96->95, 108-110, 126
+src/maxim/memory/base.py                                   60     21     12      1    56%   34, 52, 65, 72, 83, 89-91, 110-117, 120, 124->exit, 129-130, 134-136
+src/maxim/memory/concept_context.py                       117     28     60      4    72%   105->110, 135, 205->204, 222->220, 239, 256-308
+src/maxim/memory/concept_extractor.py                     221     24    108     11    88%   135-136, 151-152, 188-189, 190->195, 202->200, 209-217, 224-227, 236-245, 275, 291-292, 397, 462, 470, 501->499
+src/maxim/memory/concept_grounder.py                      235     31    108     22    83%   71, 107->112, 114, 120-123, 203-204, 221, 228, 242->218, 263, 297->299, 299->301, 302-303, 309-310, 326-331, 379->381, 381->383, 383->385, 393->395, 395->399, 399->403, 407->377, 441-450, 476, 497->473, 531->518
+src/maxim/memory/context_index.py                          97      2     36      4    95%   110->106, 124->120, 154, 185
+src/maxim/memory/cross_layer.py                           125     34     38      5    67%   111-134, 147-155, 165-173, 196, 200, 204-206, 213, 217, 241-242
+src/maxim/memory/encoding.py                              121      1     52      1    99%   108
+src/maxim/memory/episode.py                               261     14     92      3    95%   333-338, 544, 550-551, 555-557, 568-570, 849->847, 885-888
+src/maxim/memory/hippo_tracer.py                          112     25     14      2    75%   90, 110-111, 131-133, 152->151, 164-167, 178-189, 216-223
+src/maxim/memory/hippocampus.py                           716     66    256     36    88%   581, 589, 593, 602->exit, 605, 709->712, 807, 849, 942-943, 949-950, 1033-1034, 1036, 1124, 1130->exit, 1153-1154, 1156, 1182-1183, 1186-1187, 1202->1204, 1221-1222, 1343->1349, 1350->1356, 1353, 1357->1363, 1365, 1378, 1393-1395, 1399-1400, 1449, 1455, 1460-1461, 1465-1470, 1488->1493, 1493->1484, 1499-1500, 1504-1506, 1511-1513, 1515->1518, 1567, 1577->exit, 1589->exit, 1704-1709, 1806, 1985, 2000->1999, 2096-2097, 2121->2125, 2163-2166, 2197->exit, 2348-2349, 2353->exit
+src/maxim/memory/hippocampus_consolidation.py             309    108    158     36    60%   75-77, 106->110, 110->113, 129-139, 212-213, 222, 226, 240-243, 273-274, 288-294, 303-304, 307, 311-312, 319, 342-346, 360, 368, 380, 384, 387, 411, 418-419, 479->455, 500, 542, 551, 564, 579->584, 592-596, 603-670, 675, 679, 684-685, 688, 692, 696-698, 702-703, 706-707
+src/maxim/memory/hippocampus_persistence.py               200     41     74     13    77%   168-170, 283->282, 286-287, 311, 327, 330-331, 368, 371-372, 378-406, 418, 425-426, 441->440, 454, 458, 468, 470
+src/maxim/memory/hippocampus_retrieval.py                 230     30    126     21    83%   41-42, 47->49, 49->64, 56->59, 61, 76-77, 151, 184, 188, 194, 233-234, 269-271, 288->286, 290, 351-361, 381-382, 393-394, 430, 447->exit, 499, 512->510, 540, 546->558, 553->558
+src/maxim/memory/layer.py                                  83     17     12      1    81%   47, 52, 57, 62, 73, 85, 98, 104, 109, 114, 122, 130, 138, 143, 171, 205, 210
+src/maxim/memory/pattern_completer.py                     155      9     72     10    90%   113->118, 117, 134, 204->225, 212-222, 227, 256->245, 258->260, 279->278, 333->332
+src/maxim/memory/rwlock.py                                 50      6      6      3    84%   43, 50->exit, 60, 101-102, 106-107
+src/maxim/memory/semantic_promoter.py                     114     42     52     11    52%   49->exit, 107-109, 114-115, 118->111, 132-157, 169, 185-188, 201-203, 212->214, 215->226, 218-224, 238, 250, 262
+src/maxim/memory/semantic_types.py                        167     11     28      5    91%   115-122, 149, 186->188, 188->190, 251-252, 339-340, 394->396, 396->398, 463-464
+src/maxim/memory/semantics.py                             117     56     46      8    50%   57, 70, 72, 94-135, 158->173, 177, 219, 224, 225->230, 253-254, 263, 272-276, 280-291
+src/maxim/memory/sleep_replay.py                           56      4     20      5    88%   114, 130, 135, 139, 184->183
+src/maxim/memory/snapshot.py                              218     12     80     12    92%   150->exit, 152->exit, 202, 249, 348, 651-652, 654, 691, 710, 712, 715, 717, 723
+src/maxim/memory/spatial.py                                41     41     20      0     0%   12-71
+src/maxim/memory/state_store.py                            57     24      8      1    55%   59-61, 70-71, 81-82, 97-109, 113-114, 118-119, 123-125
+src/maxim/memory/store.py                                  88     29     32     13    62%   41->exit, 42->exit, 43->exit, 44->exit, 51->exit, 52->exit, 53->exit, 60->exit, 61->exit, 62->exit, 108-115, 132, 139, 142-143, 150, 153-156, 159-163, 166-167, 174, 177-180, 183-187, 190-191
+src/maxim/memory/strategies.py                            247     42     92     17    76%   225->231, 228-229, 244, 255->259, 257, 309, 320-322, 334-336, 356, 362->371, 365, 369, 393, 519-520, 556-587, 644, 646, 648
+src/maxim/memory/text.py                                   44      5     26      3    86%   200->209, 213, 221-224
+src/maxim/memory/types.py                                 292      5     38      2    98%   583, 593, 598, 604, 680->682, 682->684, 854
+src/maxim/models/audio/__init__.py                          3      3      0      0     0%   3-11
+src/maxim/models/audio/transcription.py                     2      2      0      0     0%   3-10
+src/maxim/models/audio/tts.py                             137    137     38      0     0%   14-313
+src/maxim/models/download.py                              437    281    148      9    34%   242-246, 251-255, 261, 263, 265, 276-288, 334-335, 354->359, 357-358, 365-366, 377-378, 386-393, 415-445, 512, 603-618, 639->641, 647-650, 675->683, 680-681, 700-720, 736-788, 793-820, 833-852, 861-883, 899-959, 969-1101
+src/maxim/models/language/anthropic_backend.py            281    104     94     12    59%   62-63, 65, 68-69, 161-165, 171-172, 181-182, 226-236, 240, 243, 304-311, 329, 342->346, 348-354, 360, 371-372, 375, 382, 398-399, 413->417, 433->429, 443->429, 470-556, 582
+src/maxim/models/language/backend_protocol.py              12      3      0      0    75%   69, 92, 99
+src/maxim/models/language/cloud_dispatch.py                48      3     12      1    93%   168, 175-176
+src/maxim/models/language/config.py                       264     25     92     21    87%   47, 52-53, 623-624, 636->647, 641, 667, 680->687, 681->680, 761-763, 771-774, 810->818, 813->815, 834->836, 837, 854, 879, 933->937, 934->933, 944->957, 973->975, 991->993, 995-998, 1013, 1026-1027, 1035
+src/maxim/models/language/cost_tracker.py                 287     61     60     19    76%   47, 55-57, 70, 82->81, 158-160, 162-163, 187-188, 191-192, 195-196, 204-205, 208-213, 218, 221, 225-226, 232, 239-240, 244, 248, 270-271, 272->exit, 341, 353-356, 404, 411-412, 427, 429->437, 443-444, 462->464, 480-488, 510-512, 515, 522, 526
+src/maxim/models/language/json_parser.py                  189     46     86      9    76%   117-120, 141-142, 145-146, 180, 238, 244, 249-253, 296->304, 307-311, 326-362
+src/maxim/models/language/lane_metrics.py                 178     12     48      7    89%   66->68, 95, 105-108, 150->153, 187, 197-200, 248, 251
+src/maxim/models/language/llama_backend.py                103     89     42      0    10%   18-21, 24-121, 125, 138-168, 172-175
+src/maxim/models/language/maxim_peer_backend.py           435     46    110     22    87%   146, 190-191, 198, 219, 251, 253, 266, 370, 374->376, 391, 393->exit, 398, 449, 458, 554-564, 742, 764-765, 785, 830, 832, 860, 867, 876->882, 974, 979-982, 1011->1013, 1014->1022, 1023, 1035, 1043-1044, 1052-1060, 1062-1063, 1065-1066, 1077-1080, 1141
+src/maxim/models/language/mesh_trace.py                   145     61     52      8    53%   94, 96, 98-99, 101, 114, 115->117, 120-124, 170-194, 204-225, 240-256, 270->272
+src/maxim/models/language/openai_backend.py               260    158     84      6    35%   33-36, 47-48, 89-104, 109-110, 115-123, 157, 173, 216, 220-221, 225-229, 232-236, 240, 245-263, 267, 270, 281-288, 301-442, 448->451, 495-554
+src/maxim/models/language/profile_loader.py               157     13     86     10    91%   128-130, 147, 176, 217, 221, 242, 275, 357->361, 393-394, 450, 468
+src/maxim/models/language/prompt_formats.py                62     49     14      0    17%   7-8, 12-14, 26-30, 34-41, 45-49, 53-59, 63-67, 71-75, 79-83, 102, 106-108
+src/maxim/models/language/router.py                       883    328    356     89    58%   188-189, 197, 202, 214-219, 223, 228, 233, 244, 249, 259, 271, 287, 302->304, 305-308, 310-311, 336-337, 345-347, 353, 356-358, 361-363, 375-376, 378-381, 384-386, 388-390, 392-394, 407-408, 411->430, 415-428, 435-449, 462-464, 469, 475->474, 484-485, 503, 505, 511-527, 555-556, 559, 560->564, 563, 576->580, 579, 582-584, 600, 603, 609->615, 615->623, 618-619, 626-627, 655, 675, 678, 691, 694, 717, 720, 743->exit, 818, 837-840, 865, 898-899, 916, 921, 923-931, 976-982, 1005, 1011-1022, 1064, 1073-1074, 1117, 1121-1122, 1140, 1142, 1212->1214, 1226->1228, 1239->1241, 1297-1300, 1315-1328, 1342-1347, 1384-1395, 1409, 1411, 1413, 1500->1508, 1519-1527, 1560-1576, 1588, 1591, 1594, 1597, 1600-1603, 1617-1664, 1680-1685, 1690, 1700, 1703-1704, 1718-1756, 1790, 1797-1798, 1809-1810, 1842-1848, 1866-1924, 2006->2009, 2010-2011, 2017-2020, 2029-2063, 2067->2075, 2070-2072, 2076, 2078, 2079->2083, 2084-2085, 2095-2096, 2098-2099, 2101-2102, 2104-2105, 2110, 2113-2115, 2118-2121
+src/maxim/models/language/token_counter.py                 30      3      6      3    83%   10->exit, 52, 56-57
+src/maxim/models/language/transformers_backend.py         257    257    110      0     0%   8-478
+src/maxim/models/language/types.py                         74      1      2      0    99%   56
+src/maxim/models/model_cli.py                             176     20     66      8    88%   112-117, 119, 122-127, 129, 131-135, 137, 139-143, 351->353, 413-416, 445-447, 456-457
+src/maxim/models/movement/motor_cortex.py                 103    103     26      0     0%   1-171
+src/maxim/models/vision/clip_encoder.py                    46     15      4      2    66%   77, 88-92, 133, 143-147, 157-161
+src/maxim/models/vision/registry.py                        35     18      8      0    49%   62-83, 101-105
+src/maxim/models/vision/rtm_engine.py                     330    245     80      0    22%   139-217, 241-246, 255-267, 285-298, 354-362, 374-388, 391, 410-435, 469-487, 490-501, 510-564, 575-674, 684-697, 701
+src/maxim/models/vision/segmentation.py                    84     32     28      9    60%   28-29, 33, 35, 37, 42-43, 50-64, 107-109, 124, 128-132, 136, 155, 159, 195->198, 206, 215->217
+src/maxim/models/vision/tracker.py                         75      2     26      1    97%   144-145
+src/maxim/models/vision/ultralytics_engine.py             311    286     92      0     6%   27, 46-49, 59-86, 90-102, 115-177, 180-192, 201-323, 334-464, 474-483, 487-490
+src/maxim/modes/definitions.py                            163     48     36      4    66%   177, 180->exit, 187-188, 192, 220-238, 508-509, 539, 543, 547-555, 580, 601, 606, 1008-1009, 1023-1045
+src/maxim/modes/state_manager.py                          128     17     22      5    85%   28, 32, 89, 137->exit, 166-167, 188, 207-208, 222, 226, 256-257, 269->275, 272-273, 275->283, 278-279, 284
+src/maxim/motion/movement.py                              142     88     44      1    31%   19-20, 24-31, 42-93, 104-139, 173->177, 245-270
+src/maxim/peer/admin_core.py                              278     98    106     27    61%   70->73, 86-87, 89-91, 105, 128-129, 135-137, 142-145, 151->153, 161-172, 184-188, 194, 199-200, 207-212, 225-230, 241-243, 269->271, 274->279, 296-299, 305-307, 315-316, 333->344, 339->333, 341->343, 347-370, 397->399, 424-427, 432, 449-450, 459-475
+src/maxim/peer/cli.py                                     723    390    284     46    44%   108, 112, 114, 116, 118, 120, 122, 124, 126-128, 130-132, 134-136, 138-140, 142-144, 146-148, 217-218, 223-225, 233-241, 258-262, 285, 349-350, 356->370, 369, 371, 373, 376->379, 387-401, 421-422, 449-478, 483-536, 556-589, 597-619, 629-630, 633, 645-646, 655-656, 662-667, 700-701, 703-707, 709-710, 713-716, 721-723, 725->733, 728-729, 757-758, 760->768, 773-827, 840-853, 857, 864-865, 867->875, 870-871, 885->887, 888->892, 896-897, 903-940, 958-969, 976-1058, 1135-1199
+src/maxim/peer/config.py                                   92     13     26      3    86%   29-31, 64-65, 115-121, 137-138, 187, 191, 209
+src/maxim/peer/drain_routing.py                           286     39     84     13    85%   69-73, 111->109, 158-160, 210->208, 214, 222->218, 234-236, 263-264, 362, 370-371, 373, 375-377, 410-412, 494->497, 502->504, 508->exit, 513-519, 550-555, 573-575, 605-606, 617-623, 675-677
+src/maxim/peer/drain_state.py                             117      6     26      0    96%   185-186, 393-394, 477-478
+src/maxim/peer/install_core.py                            105     20     44      5    78%   96-101, 216, 251->254, 268-270, 277-282, 294-301
+src/maxim/peer/mesh_cli.py                                392     54    158     16    85%   161, 213-214, 233, 308, 323-325, 344, 511-513, 631-634, 636-638, 641->643, 646-647, 670-672, 690-698, 715->722, 766-768, 778-786, 803->810, 841, 872-874, 884-892, 909->916, 928-931, 1036-1040, 1093, 1095
+src/maxim/peer/mesh_config.py                             216      8     90      5    96%   273, 346-347, 418, 474->480, 481->483, 491, 493, 518-519
+src/maxim/peer/mesh_setup.py                              274     40     74      8    86%   241-245, 293-297, 399, 414, 419, 478-481, 484-485, 531-533, 537-539, 580-582, 585-587, 601-604, 606-607, 675-679, 683-685
+src/maxim/planning/adaptive_planner.py                    285    102    154     24    58%   92, 93->95, 95->88, 102->100, 106-107, 110, 116-121, 181, 194-196, 212-231, 262-281, 285->284, 286->284, 310, 359-360, 366-367, 370-371, 396, 402, 408-409, 418->399, 420-421, 425-451, 455-461, 492, 496, 518-556, 567->569, 590->594, 600-602, 610->619
+src/maxim/planning/adaptive_policy.py                      67      2     28      5    93%   69, 72, 112->114, 114->124, 115->114
+src/maxim/planning/base.py                                 13      1      0      0    92%   44
+src/maxim/planning/constraints.py                           8      1      2      1    80%   10
+src/maxim/planning/plan_dashboard.py                      142     97     32      0    26%   64, 69-80, 83-91, 94-104, 107-113, 116-121, 124-140, 145, 152-175, 179-210
+src/maxim/planning/plan_document.py                       399     34    108     20    87%   304-306, 309-311, 317-319, 323->330, 331-335, 337-341, 343-345, 549, 555, 637, 640, 727, 765->exit, 782, 822->827, 845->857, 852-854, 859, 863->857, 866-867
+src/maxim/planning/plan_logger.py                          93     52      4      0    42%   60, 64, 69-70, 76-77, 83-87, 93-98, 101, 107, 116-118, 126-144, 148-179
+src/maxim/planning/plan_manager.py                        306     44    126     28    79%   66-69, 73-75, 153->158, 173->184, 202, 233->265, 275, 369, 373, 376->381, 412->410, 432-434, 444->exit, 473-476, 480-495, 499-503, 507-514, 523->522, 529->522, 599->606, 601->600, 612->618, 624-628, 635->639, 654->664, 658->664, 704-706, 714->exit
+src/maxim/planning/planning.py                             30     25     16      0    11%   8-16, 21-44
+src/maxim/planning/policy.py                               23     18     12      0    14%   9-21, 24-29
+src/maxim/planning/structural_diff.py                      30      2     12      2    90%   24, 43
+src/maxim/prompts/acting_coach.py                         153      3     78      6    96%   136, 175-176, 258->240, 324->326, 331->334, 392->380
+src/maxim/prompts/grayscale_tools_annotation.py            49      2     26      3    93%   61->exit, 62->exit, 63->exit, 119-120
+src/maxim/prompts/motor_only_aut.py                        36      1     20      7    86%   82->89, 86, 123->126, 126->136, 129->136, 131->133, 133->136
+src/maxim/prompts/prompt_profiles.py                       67     35     14      0    40%   24-31, 42-44, 59, 62, 65-67, 73, 76-89, 101, 104, 107, 114-119
+src/maxim/proprioception/focus_learner.py                 282     34     60     13    83%   182->exit, 214, 242, 275, 283, 327, 359->382, 375->382, 386->390, 420->452, 466, 499, 527-554, 605-611, 703-705
+src/maxim/proprioception/movement_tracker.py              119     75     26      0    30%   44, 119-133, 137-138, 142-181, 196-215, 219-237, 245-265, 269-273, 277-278
+src/maxim/proprioception/pain.py                          260    102     74      4    56%   160, 225, 296, 331-346, 368-378, 387-389, 407-487, 491-558, 562-563, 595, 620-621, 636, 641-642, 731, 739-743, 748
+src/maxim/proprioception/pain_bus.py                      196     12     46      1    95%   93, 105-106, 179-180, 271-272, 288, 444-445, 706-707
+src/maxim/proprioception/perceived_pain.py                185     15     84      9    91%   183->179, 191-193, 200->198, 216, 311, 315, 326->330, 365-366, 378-379, 416->414, 430->441, 438-439, 500-501, 514-515
+src/maxim/provenance/collector.py                          84      2     26      2    96%   106->111, 195-196
+src/maxim/provenance/render.py                             97      5     52      6    91%   53->55, 56-58, 78, 98->101, 149, 161->164
+src/maxim/provenance/store.py                             149     41     56      8    65%   35-37, 64-65, 77-78, 92-93, 103-104, 121-122, 137, 151->149, 154-155, 187-196, 203, 205-206, 209, 210->207, 211->210, 222-233
+src/maxim/reactions/bus.py                                 69      4     18      1    94%   77->exit, 98-99, 116-117
+src/maxim/reactions/compat.py                              10      1      2      1    83%   29
+src/maxim/reactions/protocols.py                           14      0     10      5    79%   30->exit, 32->exit, 40->exit, 43->exit, 45->exit
+src/maxim/report.py                                       108     20     32     10    76%   100->104, 104->108, 108->112, 112->116, 117-121, 123->130, 131-137, 152-158, 195->197, 198, 200->202
+src/maxim/retrieval/orchestrator.py                       113     13     38      8    85%   123, 177, 180, 192-193, 214-215, 257, 279, 287, 302, 309-310
+src/maxim/retrieval/signals.py                             29      3      2      0    90%   79, 92, 121
+src/maxim/retrieval/temporal_signal.py                    150     52     50      8    63%   29-31, 137, 150-152, 159-160, 211, 221-225, 249-257, 297-318, 327, 330, 333, 336-337, 340-341, 344-359, 387, 395->exit, 399-400
+src/maxim/roy/cli.py                                      127     34     38     10    70%   60, 65-71, 114-131, 201-205, 209->226, 214->221, 222-223, 226->239, 229-231, 239->251, 242-244, 257-268, 272, 278-282
+src/maxim/runtime/agent_factory.py                        341     43     94     10    88%   131->exit, 261->273, 303-305, 328-329, 342-343, 348->355, 350-351, 358-359, 376-378, 385->391, 499-500, 508-511, 533-534, 665->674, 668-669, 702->720, 711-712, 773-774, 827-833, 892-895, 920->922, 973, 979-985, 999-1001
+src/maxim/runtime/agent_loop.py                          1964    966    874    136    48%   52-53, 134->exit, 136-137, 182->185, 185->187, 196-201, 207->210, 224-225, 228-236, 242-251, 254-257, 261-264, 268-271, 275-279, 290-294, 297-310, 315-317, 330-331, 336-337, 341->374, 343->374, 360->374, 364-372, 376-377, 381, 420, 422-424, 476, 542, 574, 604, 710-712, 739->741, 742, 744, 746, 748, 771->785, 785->790, 790->794, 794->799, 799->809, 848->850, 866->870, 937, 942, 945-946, 1001, 1009->1023, 1011->1023, 1069, 1072-1073, 1087, 1103-1104, 1181-1182, 1204->1203, 1216, 1241->1240, 1252->1246, 1254-1255, 1258->1257, 1301, 1313-1321, 1322->1302, 1335-1340, 1375, 1473, 1477, 1513->1536, 1516, 1563-1575, 1578-1586, 1621-1622, 1729, 1802-1805, 1866, 1902, 1993-2021, 2088-2094, 2099-2101, 2147-2149, 2150->2152, 2243->2246, 2254->2269, 2262-2267, 2269->2271, 2277, 2282, 2343-2351, 2391-2393, 2447, 2459->2478, 2492-2493, 2498-2499, 2502->2506, 2507-2508, 2528, 2574-2580, 2608-2633, 2652-2686, 2705-2706, 2710->2837, 2727-2734, 2736-2760, 2777-2786, 2797, 2803-2813, 2838-2945, 2959-3127, 3133-3140, 3146->3152, 3159-3162, 3179-3181, 3196->3226, 3198-3205, 3210-3221, 3227-3228, 3231-3232, 3243-3245, 3249-3257, 3276-3281, 3296-3297, 3299->3307, 3301-3302, 3308-3539, 3544, 3548-3549, 3577, 3588-3589, 3593->3775, 3610-3751, 3763-3770, 3798-3799, 3804-3805, 3846, 3859-3891, 3898-3928, 3963-3966, 3977->3983, 3998->4005, 4010-4025, 4035-4048, 4056-4060, 4103->4106, 4144->4162, 4164-4173, 4180-4185, 4194->4200, 4196-4197, 4210-4211, 4240-4277, 4306-4307, 4314-4391, 4399-4460, 4483-4488, 4513->4521, 4524->4536, 4547-4548, 4551-5468, 5480-5481, 5487, 5499->2454, 5506-5507, 5527, 5534-5536
+src/maxim/runtime/agent_pool.py                           165     46     40     10    70%   81-82, 93->exit, 98-99, 105->exit, 107->115, 110-111, 119-120, 186->196, 192-193, 211-212, 222-225, 250->249, 255->258, 267-268, 281-282, 293-294, 298, 305, 308-309, 319-320, 324-328, 348, 352-373, 379
+src/maxim/runtime/approval.py                              26     22     20      0     9%   79-132
+src/maxim/runtime/bio_integration.py                      107      4     22      1    96%   204->213, 231-232, 372-373
+src/maxim/runtime/bio_stack.py                            195     47     48     13    74%   91, 101->exit, 104-105, 214-218, 234->241, 246-247, 260-271, 292, 320, 354-355, 372-379, 395-396, 406-407, 455-456, 461-465, 466->468, 488-489, 493-497, 498->exit, 528-536, 538, 550-551, 578-579, 601-603
+src/maxim/runtime/bootstrap.py                            263     82     74      7    72%   118, 183-186, 231-234, 238-245, 249-269, 273-287, 296-299, 303-311, 451, 530->523, 608, 620, 636-694
+src/maxim/runtime/capabilities.py                         121     24     26      3    79%   26, 37, 144-164, 206-207, 258, 262->267, 265-266, 268->273, 271-272
+src/maxim/runtime/capture.py                              379    229    112     20    37%   88->90, 134-135, 156-161, 184->192, 187-189, 195, 200-207, 212, 238-239, 261-269, 274-279, 283-286, 294-327, 334-335, 350-351, 355-358, 363, 374-424, 429, 444-500, 512-593, 599-600, 604-605, 609-612, 616-619, 623, 631, 635, 640, 648-649, 659-662, 666-669, 673-676
+src/maxim/runtime/concurrent_executor.py                   85     66     32      0    16%   55-69, 78-108, 133-136, 140, 147-181, 185-187
+src/maxim/runtime/config_cli.py                           175     40     46      7    79%   97-100, 117-119, 128-129, 143-146, 185-186, 199-205, 231-236, 245-247, 267-270, 275->281, 285-290, 293-294
+src/maxim/runtime/config_loader.py                        669     68    288     29    90%   580-582, 696, 793, 798, 814, 896, 899-900, 1000-1006, 1090-1102, 1106-1111, 1115-1123, 1211, 1235, 1251, 1329, 1334, 1383, 1427, 1443, 1463, 1466, 1474, 1477, 1495, 1497, 1499, 1501, 1510, 1516, 1534, 1587, 1691-1693, 1696-1699, 1715-1716, 1723-1727, 1778, 1784-1785, 1789-1796, 1818-1819, 1821-1827, 1858-1859
+src/maxim/runtime/config_writer.py                        183     30     52     11    80%   97, 134-135, 177-178, 266, 268, 279, 340, 342, 344, 391-392, 396, 401-412, 426-427, 435, 437
+src/maxim/runtime/decision_log.py                         153     28     42     10    78%   91-92, 141-143, 154, 175-176, 230-232, 238-239, 245, 271-272, 276, 283-285, 299-301, 309->311, 312, 316-318, 320
+src/maxim/runtime/dn_controller.py                         61     43     24      1    22%   30-38, 42-48, 54-83, 96-101
+src/maxim/runtime/executor.py                             273     38     90      9    84%   135-136, 140-142, 221, 253, 321, 338-343, 406-409, 489-492, 496-509, 537-538, 541->531, 584, 588-589, 590->581, 612
+src/maxim/runtime/experience_time.py                       49      1     14      1    97%   58
+src/maxim/runtime/fear_gate.py                             92     14     30      3    86%   99-102, 137-140, 149, 161-164, 212, 221->223
+src/maxim/runtime/fetch_cache.py                           84     55     28      0    26%   41-43, 50-76, 86-109, 125-139, 143-144, 149-150
+src/maxim/runtime/file_patterns.py                         43     11     14      5    68%   89, 91, 98-106, 131, 133
+src/maxim/runtime/gating.py                               251     26     70     19    85%   126, 232, 250, 258-259, 274->278, 279, 283, 287, 318, 351-353, 362, 380, 398-400, 480-482, 492, 496, 517->514, 520-521, 522->528, 544, 602, 604->595
+src/maxim/runtime/heartbeat.py                            122     23     44     16    75%   45, 95->exit, 110-111, 125-126, 132-133, 146-149, 153->157, 158->162, 163->167, 169, 175, 184-186, 188->exit, 204, 212->exit, 214->exit, 217->exit, 252-255, 268, 277
+src/maxim/runtime/lane_backends.py                       1233    420    500     70    65%   84, 174, 267, 281-284, 292-295, 319-320, 334-335, 341->328, 356-359, 367-368, 383->385, 388->345, 412->414, 414->416, 416->419, 425, 431-433, 487-488, 536->exit, 549-550, 586-587, 601, 623-624, 638-640, 803, 859-860, 866-867, 872, 876, 914->918, 923, 927, 944-947, 954->952, 991, 1013, 1015, 1058-1060, 1063, 1068-1070, 1087, 1122-1136, 1144-1146, 1157, 1162-1205, 1234-1236, 1244-1246, 1286, 1301, 1311->1313, 1335-1337, 1348-1350, 1390-1393, 1397, 1410-1413, 1423-1424, 1434-1435, 1436->1443, 1439, 1460-1461, 1497, 1504, 1513, 1521-1522, 1542, 1546-1561, 1584->1591, 1598-1602, 1604->1606, 1610-1613, 1645-1646, 1648-1654, 1667, 1694-1695, 1697-1699, 1705, 1711, 1716, 1739-1742, 1794, 1804-1805, 1870-1871, 1884, 1902, 1912->1920, 2012-2014, 2055-2060, 2069, 2085-2086, 2088, 2146, 2174-2176, 2183-2185, 2223, 2319->2326, 2371-2372, 2377, 2404, 2439-2447, 2451-2457, 2467, 2471, 2479-2481, 2483-2490, 2495-2502, 2508-2509, 2515->2532, 2520-2522, 2548, 2576-2693, 2721, 2737-2749, 2761-2785, 2815-2816, 2866-2876, 2881-2886, 2902-2950, 2965-3049, 3057-3094, 3113-3127
+src/maxim/runtime/lane_models.py                          210     22     84      9    87%   145, 153->157, 294-295, 312, 316->318, 355-361, 424-428, 463-468, 584, 594, 597-598
+src/maxim/runtime/leader_proxy.py                        1155    547    370     52    51%   153-155, 170-171, 187->194, 190->194, 358-359, 393, 397->406, 414->413, 424-425, 460, 567, 592-598, 632->630, 643-659, 693-694, 744-746, 749-750, 795-806, 808->824, 828->exit, 834, 851-854, 856, 858-859, 925-952, 966-977, 980-985, 988-993, 997-1009, 1029-1030, 1053-1071, 1074-1082, 1140-1141, 1153->1168, 1165-1166, 1197-1219, 1247-1271, 1287-1288, 1323-1418, 1423-1432, 1439, 1459, 1461, 1464->1478, 1472, 1484-1498, 1519, 1523, 1540, 1542, 1544-1545, 1566-1677, 1705->1711, 1708-1709, 1714-1716, 1751-1787, 1791-1804, 1809-1820, 1824-1850, 1858-1906, 1967, 2018-2019, 2042-2043, 2076-2080, 2105-2106, 2111, 2128-2237, 2249-2278, 2291-2362, 2373-2424, 2430-2431, 2438-2440, 2445-2447, 2451, 2456-2457, 2459-2460, 2462-2463, 2465-2466, 2468, 2473, 2478-2480, 2484-2491, 2506, 2520, 2539, 2549, 2560-2561, 2567-2573, 2606, 2615, 2616->2624, 2636-2637, 2642-2644, 2653-2662, 2690-2692, 2713
+src/maxim/runtime/llm_call_registry.py                     65      2     10      0    97%   169-174
+src/maxim/runtime/llm_server.py                           158     28     48      8    81%   59-60, 134-141, 211-219, 245, 247->251, 251->256, 254, 258, 303, 314, 361-370, 420-421
+src/maxim/runtime/local_server_spawner.py                 206     85     48      5    55%   61-93, 102-144, 153-194, 244, 259, 300->304, 305, 339-340, 399-402
+src/maxim/runtime/loop_controller.py                      302    118     66     10    57%   54-55, 222-224, 230-233, 280, 343-345, 355-358, 384-445, 506-542, 556-623, 638->exit, 642-643, 652-665, 673-695
+src/maxim/runtime/loop_state.py                            81      3     34      3    95%   25->31, 46, 51, 126
+src/maxim/runtime/orphan_reaper.py                        138     63     44      0    53%   73-113, 123-160, 248, 260-262, 266-267
+src/maxim/runtime/pain_interceptor.py                      78      9     20      4    87%   106, 111, 126->124, 162->169, 165-166, 177-178, 216-217, 223
+src/maxim/runtime/preemption.py                           124     43     16      0    58%   169, 179-190, 207-208, 217, 222-226, 243-247, 251, 255-274, 278-281, 284-285, 288-289
+src/maxim/runtime/prefetch.py                             550    225    228     29    56%   257, 262->264, 269, 307, 332, 335-336, 348-349, 376-377, 443->445, 476-477, 535-657, 682-705, 753, 782-794, 813-844, 849, 859-881, 892, 896-904, 914-942, 950-993, 998-1019, 1033-1043, 1058, 1067, 1070-1076, 1078->1131, 1092, 1094, 1096, 1114-1115, 1119-1126, 1132, 1135-1139, 1190, 1213->1211, 1220-1221, 1224-1225, 1237-1239, 1267, 1272-1278
+src/maxim/runtime/probe_cache.py                           77      8     18      3    88%   94, 120-121, 134-135, 151-152, 188, 192->exit
+src/maxim/runtime/rate_limit.py                            89     89     14      0     0%   27-200
+src/maxim/runtime/rate_limiter.py                          54      2      8      0    97%   61-62
+src/maxim/runtime/role.py                                 143     27     40      1    85%   93-95, 106-107, 113-114, 142-143, 172-174, 192-193, 195-197, 315-316, 362-363, 431-442
+src/maxim/runtime/sim_adapter.py                          140     55     36      5    55%   117, 118->142, 147, 162, 173-192, 206-219, 235-243, 247-254, 258-265, 338, 341, 344, 347, 350, 353
+src/maxim/runtime/skill_matcher.py                        111     88     56      0    14%   37-44, 65-85, 89-105, 126-154, 158-168, 172-175, 180-197
+src/maxim/runtime/stall_threshold.py                       41      3     12      1    92%   176, 179-180
+src/maxim/runtime/state.py                                 50     14      8      2    69%   25->exit, 43->45, 49-67
+src/maxim/runtime/system_metrics.py                       179     89     48      6    44%   53-59, 90, 92-93, 100-116, 128, 131-133, 137-155, 184->182, 189-190, 216-217, 226->229, 237-238, 258-259, 270-274, 288-297, 310-335, 356-359
+src/maxim/runtime/thought_gate.py                          77      4     12      0    96%   197-198, 208-209
+src/maxim/runtime/tick_tracker.py                          61      1     12      1    97%   104
+src/maxim/runtime/tool_dispatch.py                        168     16     60      3    91%   139-141, 161-163, 427-428, 545-549, 561-562, 580-581, 628, 684
+src/maxim/runtime/worker_pool.py                          371     21     84     15    91%   298->exit, 319->322, 328-329, 338->exit, 393->392, 397->392, 417->419, 474-475, 490-491, 519, 534->536, 582-583, 600, 613, 664, 671, 685->688, 725-735, 752, 775-777
+src/maxim/salience/movement_detector.py                   113     77     30      0    25%   84, 101-190, 206-216, 227-230, 241-243, 252-259, 263, 271-279
+src/maxim/salience/novelty.py                              74     22      2      1    70%   59-60, 93-94, 111-116, 133, 144-145, 158-161, 174-177, 206
+src/maxim/salience/protocols.py                            65     11      0      0    83%   83, 90, 94, 154, 162, 170, 174, 201, 205, 256, 261
+src/maxim/salience/salience_network.py                    323    108    114     29    59%   28-29, 120, 145-154, 182-185, 198->175, 201->exit, 230, 254-261, 285-316, 335, 338, 345-351, 366, 377, 380, 383-385, 415, 430->432, 434-454, 475-519, 557, 559, 561, 565-594, 630, 640-641, 649-654, 681
+src/maxim/salience/where.py                               140      8     48      4    94%   83-87, 89, 175, 284
+src/maxim/session.py                                      176     55     40     13    66%   68, 72, 84, 92, 122, 128, 147-182, 187, 190, 212-214, 273->284, 281-282, 295->298, 299, 301, 320-336, 345, 349->348, 369-378, 382-389, 394, 407, 430-432
+src/maxim/similarity/__init__.py                           17      9      0      0    47%   26-37
+src/maxim/similarity/decomposer.py                        112     10     38      4    91%   65->exit, 147, 253, 295, 315-331
+src/maxim/similarity/ec.py                                517     82    170     14    81%   68-72, 171, 178, 187, 228, 551-569, 849->854, 930, 938->exit, 1042, 1094, 1231-1233, 1247-1250, 1254, 1280-1289, 1307-1314, 1335-1365, 1396, 1401-1408, 1443, 1459, 1467-1483, 1573, 1659
+src/maxim/similarity/encoder.py                           315     35    100     10    88%   45, 51-53, 55-63, 187-188, 260-269, 306, 313-314, 403-404, 433, 445, 450, 531, 592, 854, 1035-1036, 1047-1048, 1057-1058
+src/maxim/similarity/indices.py                            77     35     28      3    43%   46->48, 48->50, 50->54, 65-74, 78, 82, 86, 90, 94, 116-140, 144
+src/maxim/similarity/lsh.py                               102     48     50      3    45%   51-66, 81-88, 112->115, 115->exit, 137->128, 156-187, 195-208, 212
+src/maxim/similarity/semantic.py                          266    179     68      3    27%   41-46, 55-61, 74, 86-87, 90-98, 176->exit, 190-223, 239-270, 284-296, 303-316, 335-341, 359-365, 390-398, 402-419, 423-426, 435, 439-443, 476-478, 482, 486, 490-491, 511-523, 541-559, 563, 578-601, 612-644, 648-649
+src/maxim/similarity/signature.py                         110     56     36      3    40%   73-153, 167, 195, 207
+src/maxim/simulation/arcs.py                              108      6     26      3    93%   60, 96-98, 103, 737
+src/maxim/simulation/benchmark.py                         424     63    154     16    84%   116, 126->132, 146-150, 165->163, 174->173, 181->188, 184->183, 386-423, 466-469, 509, 517->519, 520->524, 646, 652, 658, 770->751, 839-888, 901-911
+src/maxim/simulation/bio_telemetry.py                      69     12     24      3    80%   76-77, 107-109, 124, 129->127, 131-132, 177-187
+src/maxim/simulation/bridge.py                            146     17     42      4    87%   178-179, 188-191, 200-203, 229-231, 241-246, 367-368
+src/maxim/simulation/campaign_runner.py                   146     90     26      2    35%   45, 68-71, 99-208, 268-279, 290-291, 329-371
+src/maxim/simulation/composite_source.py                   68      1     30      0    99%   125
+src/maxim/simulation/container_runner.py                  164     32     28      5    78%   240, 252, 263, 273, 277, 281, 367, 375-376, 409->411, 412, 448-473, 483-489, 506-513, 536-537, 546, 552-561
+src/maxim/simulation/conversational_source.py              87     23     10      2    70%   64, 94-107, 153-175, 190, 222, 235-236, 240-247, 251-255
+src/maxim/simulation/cradle_mother.py                      98      9     34      3    91%   203, 227->232, 259-260, 280-281, 289->293, 291-292, 301-302
+src/maxim/simulation/curriculum_runner.py                 175     19     56     13    85%   142, 148, 160, 170, 177, 181, 194, 198->200, 212, 216, 220, 271-280, 306-308
+src/maxim/simulation/dm_runtime.py                        602    499    282      9    13%   54-73, 91, 146, 150, 164-166, 175-292, 297-318, 323-330, 343-394, 408-410, 422-424, 426->413, 436-437, 448-493, 497-502, 509-565, 574-620, 635-677, 696-776, 781-785, 821-827, 835-851, 861-878, 882-891, 895-897, 901-941, 945-957, 991-1008, 1021, 1027, 1031-1034, 1043, 1048, 1052-1053, 1062-1091, 1107-1160
+src/maxim/simulation/dm_schema.py                         233     32    100     14    83%   61-66, 79-89, 93, 181-184, 188, 192->196, 197-201, 254-264, 266, 301-302, 306, 353->375, 389-391, 394->393, 401->400, 408->407, 415->414
+src/maxim/simulation/entity_designer.py                   140     41     72     18    68%   153->167, 164-165, 172-173, 205-219, 237-243, 257, 260->262, 275, 279-281, 284, 373, 375, 377-383, 400-401, 403, 405, 407, 409, 412->398, 415, 419-420, 423
+src/maxim/simulation/experiment.py                         63     16     10      0    73%   137-182
+src/maxim/simulation/fixture_orchestrator.py              203     50     68     10    70%   260-289, 455->460, 457->460, 471-472, 490-492, 513-514, 536-537, 543->555, 547->550, 551-552, 561-562, 581-582, 586-598, 628-629, 637-664
+src/maxim/simulation/foundry.py                           601    116    206     44    78%   279-280, 307, 345, 347->343, 350, 352, 362, 365, 369, 376-377, 379->374, 396, 398->394, 405->394, 408, 410, 412->394, 414, 467->464, 469-471, 479-481, 491-493, 500-502, 508-510, 515-517, 525-527, 607-609, 614->621, 617-618, 626-632, 634-635, 642->641, 645->641, 653->664, 658-662, 665-666, 674-677, 714, 804-811, 823, 825, 941-943, 1030-1036, 1049, 1081-1082, 1103-1114, 1121-1123, 1127-1129, 1136-1137, 1204-1206, 1243-1245, 1289-1294, 1323-1331
+src/maxim/simulation/generative_runner.py                 243     78     74     19    66%   58-59, 150-167, 187, 191, 206-214, 216->201, 230-231, 246-274, 318->320, 325->328, 399, 401, 461, 466->484, 476->484, 488-492, 505-569, 589, 594->604, 599-601, 623->626, 642-643, 677, 716, 726, 733-735
+src/maxim/simulation/instrumented_executor.py              37      1      8      0    98%   155
+src/maxim/simulation/interactive.py                       243    223     64      0     7%   99-339, 356-402, 418-451, 456-466, 471-485, 490-506, 511-524
+src/maxim/simulation/introspection.py                     155     12     72      5    93%   111, 130, 151-152, 163->165, 165->167, 201-202, 216-217, 234-235, 241-242, 327->332
+src/maxim/simulation/minecraft.py                         192     11     56      9    92%   147-148, 159->168, 187-188, 227, 235-238, 281, 283->295, 293->291, 309->exit, 313->exit, 327->329, 330->exit, 362
+src/maxim/simulation/minecraft_harness.py                 180     19     40     12    86%   105-106, 133->exit, 146-147, 152->exit, 164-165, 169, 172-173, 174->166, 261->266, 263->261, 267, 269, 303->exit, 323-324, 326-331, 401->403, 429-430, 450->458, 456-457
+src/maxim/simulation/narrator.py                          195     38     70     20    77%   167, 175, 185, 188->195, 238-242, 260->264, 287-288, 290-308, 336, 339->345, 342-343, 346-347, 366, 376-382, 396->399, 405, 415-417, 423, 426, 434-437, 582-583
+src/maxim/simulation/orchestrator.py                     1495   1327    532     13    10%   52-60, 65-66, 130-131, 173, 177, 190-191, 265-266, 373-387, 470, 515, 550-551, 559-561, 562->572, 576, 584, 597->603, 617-618, 647->651, 661-662, 672, 680-693, 702-3711
+src/maxim/simulation/plan_arc_bridge.py                    86      1     32      2    97%   227, 327->338
+src/maxim/simulation/report.py                            393    249    152     13    31%   123-135, 170->173, 182-186, 190, 198-201, 204-224, 238-246, 258->277, 261-271, 286, 288, 290-292, 299-313, 366-390, 460-462, 503-504, 511-512, 527-528, 531-536, 548-589, 610-622, 627-674, 689-811, 826-842
+src/maxim/simulation/research_agents.py                   186     15     48      7    91%   195->192, 215, 224-226, 283, 328, 393-396, 425, 427, 451-455
+src/maxim/simulation/research_orchestrator.py             137     70     32      8    44%   133->137, 136, 138-141, 150, 152, 160-180, 186, 237-358
+src/maxim/simulation/research_tools.py                     90      4     12      1    95%   48->46, 53-54, 86-87
+src/maxim/simulation/response_policy.py                    65     41     24      0    27%   47-66, 74-89, 97-112, 121, 125, 129
+src/maxim/simulation/roy_runner.py                        404     49    132     29    85%   173, 179, 193, 199, 207, 211, 215, 224->226, 227, 234, 248, 251, 253->255, 259, 267, 279, 281, 354-355, 372-373, 385-388, 514-515, 572-576, 577->593, 597-599, 602, 666-667, 671-679, 683-687, 728-733, 848, 902->920, 916, 921, 922->928, 929
+src/maxim/simulation/sandbox.py                           381     79    104     25    76%   63, 68, 73, 78, 83, 88, 94, 99, 120, 139-140, 144, 151-152, 156, 163-164, 168, 171, 174-175, 179, 187->exit, 190-191, 205, 419->421, 454->453, 495, 517-553, 567->565, 609-610, 730, 738, 768->774, 771-772, 774->exit, 777-778, 785, 801-812, 820, 833-835, 843-859, 863, 899, 905, 949, 953-957
+src/maxim/simulation/scenario_source.py                   111     12     20      6    85%   77-78, 81, 87-88, 209, 213, 218, 229-231, 239->242, 255
+src/maxim/simulation/sim_logger.py                        575     77    200     38    81%   116-117, 121-122, 135-139, 199, 220, 255, 264->270, 293->exit, 342, 405->exit, 411-416, 421->exit, 427-429, 435->exit, 447->exit, 455, 606->exit, 621->620, 738-746, 752-757, 793-807, 840-841, 848->847, 856-858, 870->exit, 873-874, 906->911, 909, 915-917, 1012, 1029-1032, 1090, 1094-1095, 1105->1109, 1115-1117, 1246-1247, 1262, 1329-1334, 1487->1489, 1539->1541, 1611->1613, 1720, 1766-1780, 1809->1811, 1815, 1863->1865, 1869
+src/maxim/simulation/sim_types.py                          97     26     28      2    70%   104-133, 162, 170-172
+src/maxim/simulation/simulation_generator.py              128     79     52      6    34%   112-125, 145-204, 234, 236, 244, 245->249, 249->254, 261->284, 289-302, 307-345, 350-353
+src/maxim/simulation/sinks.py                              74      6     22      4    90%   82, 87, 156, 160, 191, 197
+src/maxim/simulation/sources.py                            15      4      0      0    73%   130, 138, 147, 158
+src/maxim/simulation/spinner.py                           101      6     30      3    92%   145, 172-176, 202
+src/maxim/simulation/substrate_telemetry.py               122     20     54     13    80%   101-103, 111-112, 131->137, 134->132, 142-143, 153, 156-157, 170->192, 173, 181, 184->177, 186->171, 199-200, 208, 218, 222->213, 229->226, 231-232, 248-249
+src/maxim/simulation/tools.py                             607    181    166     22    69%   33, 36-38, 41-47, 50, 53, 57, 61, 65, 71-72, 86-87, 90-105, 149-163, 274-276, 345->356, 357, 380, 383-399, 471, 514, 516-517, 551-552, 655, 657, 759, 793-794, 851, 855, 878-879, 1037-1044, 1048-1051, 1081-1082, 1099, 1102-1103, 1153-1154, 1155->1158, 1219-1222, 1224-1227, 1229-1232, 1245-1298, 1302-1434, 1517->1528, 1529
+src/maxim/simulation/tools_dm.py                          123    123     28      0     0%   8-287
+src/maxim/simulation/validation.py                        202     13     88     13    91%   63, 67, 127, 162, 172, 198, 201, 216, 291, 303, 350->349, 384, 410, 413->412, 426
+src/maxim/spatial/bounds_learner.py                       236    162     68      2    26%   49, 54, 100->exit, 176-218, 226-251, 269-301, 305-314, 327-360, 371-380, 391-416, 428-441, 461-469, 473-481, 485-502, 506-519, 523-534, 538
+src/maxim/spatial/spatial_map.py                          299    215    110      1    21%   34-35, 100-102, 106-125, 129-153, 157-176, 205-227, 237-246, 254-263, 267-285, 289, 351-357, 361-364, 368-371, 380-397, 406-434, 438-449, 466-523, 531-546, 554-557, 561-563, 567-568, 572-573, 584-594
+src/maxim/time/oscillator.py                              186     51     52      1    70%   208-229, 244-271, 360-362, 366-368, 375-384, 388-390, 435->437
+src/maxim/time/scn.py                                     296     55     90     14    77%   64-75, 87, 97, 100, 106, 112, 115, 141->134, 146-149, 263-267, 301-302, 306-307, 364-365, 367-368, 406->405, 410->409, 414->413, 418->417, 455-458, 546, 567, 583-585, 663-666, 673-675, 682-684, 691-693, 776
+src/maxim/time/temporal_signature.py                       43      1      2      1    96%   119
+src/maxim/tools/base.py                                   126      7     50      7    92%   175-176, 207->206, 209, 255-256, 268, 431
+src/maxim/tools/code_tools.py                              86      8     28      4    88%   51-53, 62, 69, 72, 75-76
+src/maxim/tools/comms.py                                   37     22     14      0    29%   37-38, 47-65, 89-90, 98-109
+src/maxim/tools/discovery.py                              325     45    158     27    82%   67->63, 195-202, 206, 223->221, 234-235, 258-261, 274, 353-357, 388-389, 402->398, 416-419, 424, 440-441, 456-460, 468->466, 481, 485->495, 488->495, 493->495, 512->521, 517->521, 533->538, 535-536, 545-550, 585-586, 610, 616, 620->608, 623->621, 627-628
+src/maxim/tools/display.py                                 63     22     14      1    62%   55-79, 169-170, 176->180, 222-229
+src/maxim/tools/explain.py                                 76     27     34      5    62%   66-68, 108, 116-118, 126-136, 142-151
+src/maxim/tools/filesystem.py                             421    190    174     19    50%   38, 42, 46, 50, 77-98, 141->156, 153-154, 157-160, 167-178, 255-269, 273, 283, 291-292, 302-343, 372, 375-459, 496-497, 501, 503->512, 525-526, 542-543, 582->586, 596-597, 655, 689-770, 801-853, 941, 946, 960, 970-971, 973->992, 994, 1019-1022
+src/maxim/tools/git_tools.py                               61     10     24      2    86%   77-80, 109, 120-123, 126
+src/maxim/tools/http_fetch.py                             195     72     58     12    57%   39-44, 48, 52, 60-93, 101-121, 152, 201, 305, 311, 315, 331-332, 349, 357-361, 406->412, 417-419, 423-424, 428, 436-438, 456->461, 478, 485, 492, 499, 506, 519-528
+src/maxim/tools/internet_search.py                        252    130     94     15    43%   38-39, 45-56, 89, 110-176, 205-207, 230-270, 279-280, 282-283, 289-290, 296-297, 312-386, 429, 460, 468, 470, 473-476, 486, 498, 504, 510-517, 534, 544, 549->553, 599-601, 638-649
+src/maxim/tools/introspection.py                          336     53    104     24    82%   68, 76, 78, 82-83, 96->95, 100-102, 162-163, 181->197, 194-195, 238, 243-260, 304-305, 322-323, 386-387, 434-435, 507-508, 512->514, 515, 520-521, 572->578, 575-576, 579-584, 642-643, 706, 714-721, 735->740, 740->744, 744->758, 747-750, 758->766, 763->766, 780->782, 782->784, 784->786, 799->801
+src/maxim/tools/learned_index.py                          188     15     78     13    87%   171, 222-225, 230->243, 233-238, 243->253, 245->253, 247, 297, 326, 338->342, 342->344, 344->347, 373-374, 410->404
+src/maxim/tools/math_tool.py                              171    171     70      0     0%   14-411
+src/maxim/tools/mode_switch.py                             92     17     26      6    79%   91, 100, 127-129, 161, 197-199, 208, 225-226, 243-256, 288
+src/maxim/tools/narrative.py                              119      5     52      5    94%   47, 209, 314->326, 319, 331->329, 333-334
+src/maxim/tools/novelty.py                                 38      6      2      0    80%   31-32, 37-39, 44
+src/maxim/tools/reachy.py                                 788    513    252      8    32%   41->45, 54-55, 87-219, 276-312, 333-351, 361-411, 429-492, 509-651, 776-777, 800, 819-820, 833, 860-862, 980-981, 1043->1052, 1046-1049, 1058, 1070, 1091-1092, 1099-1101, 1128-1129, 1166-1167, 1256-1398, 1443-1455, 1478-1482, 1632-1641, 1655-1834, 1838-1877, 1890-1893, 1900-1920, 1928-2013, 2017-2023, 2027-2033, 2056-2062, 2074-2075, 2087, 2099-2104, 2109, 2114
+src/maxim/tools/reachy_stubs.py                            55     17     14      1    62%   54, 157-165, 197-222
+src/maxim/tools/registry.py                               170      7     54      6    93%   32, 72-73, 199, 319, 331, 376
+src/maxim/tools/response.py                                38     19     14      0    37%   75-95, 140-163
+src/maxim/tools/sandbox.py                                267    183     86      4    27%   54-56, 59-106, 127-128, 131-168, 188-189, 192-237, 252-253, 256-312, 357, 364, 374, 389->394, 432-433, 436-460, 480-481, 484-501, 517-519, 522-561, 580-581, 584-624, 649-672
+src/maxim/tools/sleep.py                                   24     24      6      0     0%   7-57
+src/maxim/tunnel/cli.py                                   366    132     90      4    66%   108-257, 292-296, 303-312, 335-337, 341-342, 381-383, 428, 515-517, 627-631
+src/maxim/tunnel/cloudflared.py                            80     44     28      4    39%   37-54, 60-65, 84, 92-93, 95, 101-103, 108-115, 120-127, 132-139, 148-164
+src/maxim/tunnel/config.py                                 39      2     14      0    96%   75-76
+src/maxim/tunnel/daemon_spawner.py                         78      6     16      3    90%   65, 91, 125->131, 153-156
+src/maxim/tunnel/keys.py                                   98      8     16      3    90%   39-41, 65-66, 82->87, 85-86, 135
+src/maxim/utils/agent_output.py                           198    144     42      0    22%   61-70, 80-84, 122-146, 150-159, 168-191, 195-203, 207-214, 218-225, 229-233, 237-246, 250-251, 268-289, 298-324, 328-331, 353-360, 378-385, 405-413, 422-432, 440, 462-500, 504-509, 527, 537
+src/maxim/utils/atomic_io.py                               82     17     16      0    81%   101-104, 111-112, 121-122, 170-173, 175-181, 186-187
+src/maxim/utils/audio.py                                  112     59     30      2    46%   28, 43-55, 73-96, 143->146, 151-153, 174-182, 198-199, 204, 215, 227, 231, 240-245, 249-259
+src/maxim/utils/audit.py                                  253      7    100      9    95%   196, 277->268, 326, 391, 407-408, 412, 525->535, 535->549, 541->543, 556
+src/maxim/utils/cloud_audit.py                             36      7      0      0    81%   30, 54-60
+src/maxim/utils/cloud_redaction.py                        117     12     42      7    86%   176, 195, 197, 200-202, 226-227, 237-238, 240-241
+src/maxim/utils/coding_guidelines.py                       72     20     42     11    64%   545, 556-557, 576, 583->582, 587, 621, 636-672, 705->709, 710->714, 714->719, 717, 732
+src/maxim/utils/config.py                                 152    127     32      0    14%   23-28, 38-65, 109-112, 117-193, 196, 199-209, 212-222, 225-265, 268, 296
+src/maxim/utils/content_safety.py                         124     78     48      0    27%   44-47, 51-59, 132-148, 162-201, 216-257, 271-273, 280-287, 295-303, 311-319
+src/maxim/utils/data_management.py                        249    219     38      0    10%   15-27, 45-50, 53-55, 58-66, 69, 72, 75-89, 92-146, 160-163, 166-168, 171-179, 182-196, 199-240, 254-257, 260-262, 265-273, 276-290, 293-334
+src/maxim/utils/detections.py                              25     20      4      0    17%   9-16, 30-52
+src/maxim/utils/filesystem_policy.py                      330    162    100      3    44%   48-74, 93-98, 102, 169-192, 196-197, 201-202, 206-207, 211-212, 216-217, 222, 227, 232, 237, 241, 260-270, 301-306, 314-330, 335-338, 343-350, 360-362, 367, 372, 390-393, 523, 552-566, 611-617, 623-624, 637-638, 651-658, 671-677, 683-684, 694-701, 719-723, 736-740, 752-756, 785-833, 864-891, 944, 976-979
+src/maxim/utils/formatting.py                              42     42      2      0     0%   7-138
+src/maxim/utils/gpu_compat.py                              84     24     42      7    69%   41, 52-75, 90-91, 95, 100-103, 112-114, 127, 188, 190, 192
+src/maxim/utils/gpu_detect.py                              55      4     18      4    89%   62, 92, 101, 114
+src/maxim/utils/http.py                                   560     92    140     25    82%   177, 295->exit, 329, 336-337, 348, 402-403, 408, 453-454, 471, 486-492, 495-496, 515-516, 521, 564-565, 649, 691, 714-715, 741, 772, 777-778, 803, 823, 875-907, 911, 937->939, 950->948, 955->950, 957-959, 990, 1093, 1103, 1110->1115, 1116-1117, 1122, 1125, 1167-1183, 1192-1210, 1290->1292, 1295-1296, 1301, 1306-1307, 1311-1313, 1319, 1345-1363, 1413-1416
+src/maxim/utils/internet_access.py                        281     65     86     17    73%   51->55, 61-63, 77-89, 98-100, 143-145, 161-163, 242-243, 247, 250->256, 253, 265-267, 278-279, 280->283, 296, 300, 305, 319-330, 343, 347->349, 349->351, 351->353, 353->355, 410-412, 445-446, 450, 474-475, 491-493, 550, 560, 569-571, 575-581
+src/maxim/utils/last_run.py                                86      8     24      3    90%   87-88, 112-113, 143, 146->164, 159, 162-163
+src/maxim/utils/logging.py                                173     82     72      8    52%   66-81, 93-144, 158, 160, 162, 173-184, 188, 198-201, 214-218, 254-283, 291->293, 296-300, 453->456
+src/maxim/utils/net.py                                     51      5     16      1    91%   40-41, 73-74, 83
+src/maxim/utils/output_watcher.py                         206    206     64      0     0%   7-453
+src/maxim/utils/paths.py                                  102      1     20      1    98%   236
+src/maxim/utils/plotting.py                               173    173     62      0     0%   1-335
+src/maxim/utils/process_lock.py                            56     11      8      2    80%   116-120, 124-125, 131-134, 144-151
+src/maxim/utils/prompts.py                                130     67     36      6    43%   56-84, 90, 95, 100-101, 120-124, 129-133, 154-158, 172-173, 183-198, 204, 210, 239->294, 308-327
+src/maxim/utils/queueing.py                                12      8      0      0    33%   8-15
+src/maxim/utils/reachy_diagnostics.py                     123    123     22      0     0%   13-239
+src/maxim/utils/response_config.py                        153     26     56     21    78%   73-74, 90, 97->99, 100-101, 139, 189->199, 190->189, 195-197, 200, 205, 208-209, 212, 216, 399->409, 400->399, 405-407, 410, 415, 419, 421, 425, 433-434, 436, 465->464, 466->468, 468->464
+src/maxim/utils/response_output.py                        144    114     68      0    14%   39-51, 64-89, 151-174, 186-202, 206, 218-236, 249-284, 292-321, 327
+src/maxim/utils/sandbox_executor.py                       244     73     78     12    67%   79-93, 359, 363, 367, 422-438, 481, 489, 498-499, 553-554, 566, 571-572, 583, 625, 667-671, 685, 707-718, 727, 732, 751-761, 765-783, 793-795, 800, 805, 813
+src/maxim/utils/seeding.py                                 36      6      2      1    82%   58-59, 67-69, 130
+src/maxim/utils/singleton.py                               75     30      6      1    57%   47, 63-66, 79-82, 99-100, 113-115, 119-120, 124-125, 130-132, 152, 158, 164, 167, 170, 173, 179, 184, 189
+src/maxim/utils/storage.py                                109     12     36      2    90%   129-131, 135, 171->167, 187-194
+src/maxim/utils/structured_logging.py                     170     51     34      4    64%   133, 146-164, 202, 210, 218-219, 223-225, 241, 245-248, 254, 259-260, 264-266, 276-278, 282-288, 302-303, 375->exit, 409, 420-421
+src/maxim/utils/thread_manager.py                          77     12     16      7    80%   87-88, 124, 132, 137-138, 140->130, 143, 167, 172->180, 175-178
+src/maxim/utils/web_cache.py                              177    129     44      0    22%   52, 56-57, 61, 79, 115-123, 127-140, 144-147, 158-179, 189-205, 209-222, 229-235, 239-240, 255-261, 272, 276-287, 291-314, 318-332, 336-353, 363-365, 373-383, 388
+---------------------------------------------------------------------------------------------------
+TOTAL                                                   90416  31797  29672   3492    62%
+
+90 files skipped due to complete coverage.
+Coverage JSON written to file /tmp/maxim-codex-audit-131/coverage-fast.json
+[K  ⠋ Orchestrator planning next probe... (120s)[K  ⠋ Orchestrator planning next probe... (130s)[K  ⠏ Orchestrator planning next probe... (489s)[K  ⠧ Orchestrator planning next probe... (127s)[K  ⠏ Orchestrator planning next probe... (749s)[K  ⠹ Orchestrator planning next probe... (132s)[K  ⠧ Orchestrator planning next probe... (127s)[K  ⠋ Orchestrator planning next probe... (130s)=========================== short test summary info ============================
+SKIPPED [1] tests/substrate/baselines/test_baselines.py:73: sentence-transformers is installed — test targets missing-dep path
+SKIPPED [3] tests/substrate/test_p4_fixture_validation.py: requires pretrained model/dataset assets; set MAXIM_RUN_MODEL_TESTS=1 with a local cache
+SKIPPED [1] tests/substrate/test_p4_mug_test_roundtrip.py:97: requires pretrained model/dataset assets; set MAXIM_RUN_MODEL_TESTS=1 with a local cache
+SKIPPED [21] tests/unit/test_archetypes.py:358: No archetype field
+SKIPPED [1] tests/unit/test_clip_encoder.py:32: requires pretrained model/dataset assets; set MAXIM_RUN_MODEL_TESTS=1 with a local cache
+SKIPPED [1] tests/unit/test_clip_encoder.py:58: requires pretrained model/dataset assets; set MAXIM_RUN_MODEL_TESTS=1 with a local cache
+SKIPPED [1] tests/unit/test_clip_encoder.py:74: requires pretrained model/dataset assets; set MAXIM_RUN_MODEL_TESTS=1 with a local cache
+SKIPPED [1] tests/unit/test_clip_encoder.py:107: requires pretrained model/dataset assets; set MAXIM_RUN_MODEL_TESTS=1 with a local cache
+SKIPPED [1] tests/unit/test_component_index.py:661: rusty_gate not in seed components
+SKIPPED [1] tests/unit/test_console_launcher_seams.py:215: tmp_path is not under $HOME on this platform
+SKIPPED [1] tests/unit/test_multi_agent_modes_baseline.py:34: single_agent mode by definition has only one id
+SKIPPED [2] tests/unit/test_multi_agent_modes_baseline.py:41: only the shared-instance tripwire shares NAc objects
+SKIPPED [2] tests/unit/test_multi_agent_modes_baseline.py:50: only isolated-instances mode tests separate-object isolation
+SKIPPED [1] tests/unit/test_seeding.py:137: SemanticEngine not healthy (missing deps)
+SKIPPED [1] tests/unit/test_seeding.py:154: SemanticEngine not healthy (missing deps)
+========= 12105 passed, 39 skipped, 44 deselected in 820.07s (0:13:40) =========
+[K  ⠙ Orchestrator planning next probe... (131s)[K  ⠋ Orchestrator planning next probe... (490s)[K  ⠙ Orchestrator planning next probe... (131s)[K  ⠙ Orchestrator planning next probe... (751s)[K  ⠏ Orchestrator planning next probe... (129s)[K  ⠋ Orchestrator planning next probe... (750s)[K  ⠇ Orchestrator planning next probe... (128s)[K  ⠙ Orchestrator planning next probe... (121s)[K  ⠸ Orchestrator planning next probe... (133s)[K  ⠏ Orchestrator planning next probe... (489s)[K  ⠙ Orchestrator planning next probe... (121s)[K  ⠇ Orchestrator planning next probe... (128s)
+EXIT_STATUS=0

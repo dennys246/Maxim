@@ -1,0 +1,36 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
+rootdir: /Users/dennyschaedig/Scripts/Maxim/.worktrees/rescore-v1.3.1-codex
+configfile: pyproject.toml
+plugins: anyio-4.12.0, timeout-2.4.0, cov-7.0.0
+collected 29 items
+
+tests/unit/test_mode_tool_gate.py ....................                   [ 68%]
+tests/unit/test_network_guard.py .....FF..                               [100%]
+
+=================================== FAILURES ===================================
+__________________________ test_loopback_still_works ___________________________
+tests/unit/test_network_guard.py:58: in test_loopback_still_works
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../../.local/share/uv/python/cpython-3.12.12-macos-aarch64-none/lib/python3.12/socketserver.py:457: in __init__
+    self.server_bind()
+../../../../.local/share/uv/python/cpython-3.12.12-macos-aarch64-none/lib/python3.12/http/server.py:136: in server_bind
+    socketserver.TCPServer.server_bind(self)
+../../../../.local/share/uv/python/cpython-3.12.12-macos-aarch64-none/lib/python3.12/socketserver.py:478: in server_bind
+    self.socket.bind(self.server_address)
+E   PermissionError: [Errno 1] Operation not permitted
+________________ test_udp_connect_sends_nothing_and_is_allowed _________________
+tests/unit/test_network_guard.py:71: in test_udp_connect_sends_nothing_and_is_allowed
+    sock.connect(("8.8.8.8", 80))
+tests/network_guard.py:71: in _connect
+    return _real_connect(self, address)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   PermissionError: [Errno 1] Operation not permitted
+network guard: blocked 5 outbound call(s) (connect, dns)
+=========================== short test summary info ============================
+FAILED tests/unit/test_network_guard.py::test_loopback_still_works - Permissi...
+FAILED tests/unit/test_network_guard.py::test_udp_connect_sends_nothing_and_is_allowed
+========================= 2 failed, 27 passed in 0.36s =========================
+
+EXIT_STATUS=1
