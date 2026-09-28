@@ -44,6 +44,71 @@ PLAYER_ROSTER = (
 )
 
 
+class StepClock:
+    """A virtual clock for the scripted world, advanced only by the harness (#951).
+
+    The scripted world normally runs on wall time, independent of when the harness samples it, so
+    how many harness samples land inside a scripted interval (an oxygen ramp, a damage window)
+    depends on the runner's speed. Driven by a :class:`StepClock`, the world advances exactly as
+    far as the harness sleeps, so what a harness samples is fixed by its own schedule. Dev/test
+    instrument only: the live bridge and the campaigns never use it (pinned by
+    ``test_no_campaign_runs_the_scripted_world_on_a_step_clock``).
+
+    Only waits made through a harness module's patched ``time`` advance it. ``common.settle_until``
+    sleeps on real time, so a settle that waits on a TIME-driven world change (surfacing after an
+    escape, a respawn) would spin to its timeout under a step clock; the settles the water trials
+    use wait on teleports, which apply at once.
+    """
+
+    def __init__(self, start: float = 0.0) -> None:
+        self._t = float(start)
+        self._lock = threading.Lock()
+
+    def now(self) -> float:
+        with self._lock:
+            return self._t
+
+    def advance(self, dt: float) -> float:
+        if dt < 0:
+            raise ValueError(f"a step clock cannot go backwards (dt={dt})")
+        with self._lock:
+            self._t += float(dt)
+            return self._t
+
+
+class LockstepTime:
+    """A drop-in for the ``time`` module inside a harness module (#951).
+
+    ``sleep(s)`` advances the scripted world by exactly ``s`` and then sleeps for real, so the bridge
+    publishes the advanced world DURING the sleep and the harness's next read sees it. World time is
+    the sum of the harness's own sleeps: a slow runner takes longer per step but steps through the
+    same world states. The pump still syncs on wall time; drive pain is latched on severity, so an
+    extra sync of an unchanged world publishes nothing and a slow runner can only merge steps, never
+    lose the ramp. It adds no wait of its own, so a wall-time measurement made with short sleeps (the
+    bridge-cadence preflight) is unchanged. Everything else (``monotonic``, ``time``) is the real
+    module's, so wall deadlines stay wall deadlines.
+
+    ``min_step_s`` is the world quantum of one harness tick. A tick loop that paces itself with
+    ``sleep(period - elapsed)`` sleeps LESS (or zero) when a tick overruns, so on a slow runner the
+    world would advance less per tick (and not at all past an overrun). With a quantum, every sleep
+    advances the world by at least one tick, so world time counts harness ticks whatever the compute
+    time. Default 0 (advance exactly the slept amount), for loops that sleep a fixed period.
+    """
+
+    def __init__(self, clock: StepClock, *, min_step_s: float = 0.0) -> None:
+        self._clock = clock
+        self._min_step_s = float(min_step_s)
+        self.steps = 0
+
+    def sleep(self, seconds: float) -> None:
+        self._clock.advance(max(float(seconds), self._min_step_s))
+        self.steps += 1
+        time.sleep(seconds)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(time, name)
+
+
 class ScriptedWaterBridge:
     def __init__(
         self,
@@ -59,12 +124,21 @@ class ScriptedWaterBridge:
         damage_per_s: float = 2.0,
         respawn_saturation: float = 5.0,
         respawn_lag_s: float | None = None,
+        clock: StepClock | None = None,
     ) -> None:
         """``damage_onset_s`` (default None = no damage, the Exp 60/61 smoke) turns on a SCRIPTED
         DROWNING: submerged past that many seconds the bot loses ``damage_per_s`` health per second
         (the game's 2 hp/s), and at 0 it DIES — ``deaths`` +1, respawn at the shore with health 20,
         oxygen 20 and the game-native respawn saturation (5) — so a harness's death branch and its
-        detector are red-gated OFFLINE (R3 wiring lens SF-C)."""
+        detector are red-gated OFFLINE (R3 wiring lens SF-C).
+
+        ``clock`` (default None = wall time, unchanged) runs the scripted world on a
+        :class:`StepClock` the harness advances (#951): drain, damage, death, respawn lag and the
+        escape delay all read it, and each snapshot carries ``_scripted_t``, the world time it
+        shows (a test asserts the harness read a stepped world)."""
+        self._clock = clock
+        self._now = clock.now if clock is not None else time.monotonic
+        self._surface_at: float | None = None  # lockstep mode: the escape lands at this world time
         self.shore = dict(shore)
         # Exp 62 runs TWO pools in one world, so "in water" is a property of WHICH point the bot was
         # teleported to, not of a single point. A dict stays a dict for every existing caller; a list
@@ -114,8 +188,14 @@ class ScriptedWaterBridge:
     def set_anchor(self, pos: dict[str, float]) -> None:
         with self._lock:
             self.anchor = dict(pos)
+            if self._clock is not None:
+                # a teleport cancels an escape still in flight (under a step clock the world does
+                # not advance during a rescue, so a pending surface would otherwise yank the NEXT
+                # submersion out of the water)
+                self._surface_at = None
             if self._in_water_locked():
-                self._submerged_since = self._submerged_since or time.monotonic()
+                if self._submerged_since is None:  # `is None`: a step clock starts at 0.0
+                    self._submerged_since = self._now()
             else:
                 self._submerged_since = None
 
@@ -128,10 +208,15 @@ class ScriptedWaterBridge:
 
     def _snapshot(self) -> dict[str, float]:
         with self._lock:
+            now = self._now()
+            if self._surface_at is not None and now >= self._surface_at:
+                self._surface_at = None
+                self.anchor = dict(self.shore)
+                self._submerged_since = None
             in_water = self._in_water_locked()
             if in_water:
-                since = self._submerged_since or time.monotonic()
-                elapsed = time.monotonic() - since
+                since = self._submerged_since if self._submerged_since is not None else now
+                elapsed = now - since
                 oxygen = max(0.0, 20.0 - self._drain * elapsed)
                 if self._damage_onset is not None and elapsed > self._damage_onset and self._respawn_at is None:
                     self._health = max(0.0, 20.0 - self._damage_per_s * (elapsed - self._damage_onset))
@@ -139,9 +224,12 @@ class ScriptedWaterBridge:
                         # DEATH: the `deaths` objective rises NOW; the respawn snapshot follows two state
                         # intervals later — the live race a harness's corroboration must survive
                         self.deaths += 1
-                        self.died_at.append(time.monotonic())
-                        self._respawn_at = time.monotonic() + self._respawn_lag
-                if self._respawn_at is not None and time.monotonic() >= self._respawn_at:
+                        self.died_at.append(now)
+                        self._respawn_at = now + self._respawn_lag
+                # NOTE: the respawn is only processed while the anchor is still in water; an escape or
+                # teleport landing between the death and the respawn leaves the bot dead (health 0,
+                # `_respawn_at` never cleared). Pre-existing; tests keep escapes out of that gap.
+                if self._respawn_at is not None and now >= self._respawn_at:
                     # RESPAWN at the shore (doImmediateRespawn), sensors reset
                     self._respawn_at = None
                     self.anchor = dict(self.shore)
@@ -156,7 +244,7 @@ class ScriptedWaterBridge:
             y = float(self.anchor["y"])
             health = self._health
             saturation = self._saturation
-        return {
+        snap = {
             "health": health,
             "food": 20.0,
             "light_level": 9.0 if in_water else 14.0,
@@ -186,6 +274,9 @@ class ScriptedWaterBridge:
             "nearest_player_dist": 64.0,
             "look_pitch": 0.0,
         }
+        if self._clock is not None:
+            snap["_scripted_t"] = now
+        return snap
 
     def _do_action(self, name: str) -> tuple[bool, str]:
         self.actions.append(name)
@@ -194,6 +285,12 @@ class ScriptedWaterBridge:
         if name == "escape_water":
             if not in_water:
                 return True, "already in air"
+
+            if self._clock is not None:
+                with self._lock:
+                    if self._surface_at is None:  # a repeat escape never postpones the first
+                        self._surface_at = self._now() + self._escape_delay
+                return True, "surfaced"
 
             def _surface() -> None:
                 time.sleep(self._escape_delay)
