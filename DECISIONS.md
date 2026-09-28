@@ -17,7 +17,7 @@ Owner decisions on #832 items 1, 3, 4 and 5 (item 2 waits for #922/#834). The fr
    - the stale private domain copies are removed;
    - values are validated on construction.
 5. **Forward compat is loader-owned** (not `extra`, not SHAPE-FROZEN): unknown keys fail closed, and retired keys warn. So any field added later turns internet off on an older build: a downgrade fails closed.
-6. **A corrupt toggle file fails closed too.** This is an author extension made during the folds and not one of the owner's four answers; it is pending the owner's explicit OK on the PR. It applies #822's stance (and item 5's) to the toggle: a corrupt or non-boolean `util/internet_access.json` used to fall back to ON.
+6. **A corrupt toggle file fails closed too.** Proposed during the review folds, beyond the owner's four answers, and approved by the owner on 2026-09-28 after #969 was up. It applies #822's stance (and item 5's) to the toggle: a corrupt or non-boolean `util/internet_access.json` used to fall back to ON.
 
 ### Reason
 
