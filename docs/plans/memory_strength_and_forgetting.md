@@ -193,7 +193,7 @@ and the once-a-year fact still survive by tag and by links, not by use.
   [#813](https://github.com/dennys246/Maxim/issues/813) salience/novelty dropped,
   [#814](https://github.com/dennys246/Maxim/issues/814) failures stored as successes,
   [#815](https://github.com/dennys246/Maxim/issues/815) failed tool results crash,
-  [#816](https://github.com/dennys246/Maxim/issues/816) compressed-concept crash (crash half),
+  [#816](https://github.com/dennys246/Maxim/issues/816) compressed-concept crash (crash half — moved 2026-09-27 to the 1.3.2 issue burn-down, batch 2),
   [#817](https://github.com/dennys246/Maxim/issues/817) staged formation never completes (wire or Dormant).
 - ~~Add decay / eviction / cap to the ledger rows' `Re-run on:` triggers~~ — **dropped
   2026-09-21:** the ledger's own discipline fixes a row's triggers at graduation ("not
@@ -740,7 +740,7 @@ the spacing-correct update — **opt-in like the rest**, since it would otherwis
 derived split), floored at today's item caps so no earned short run can see a difference.
 Forget the weakest only when over budget, down to a low-water mark (e.g. 90 %), via a lazily
 maintained heap — no O(N) rescan per insert. Over-budget-but-nothing-forgettable is **loud**
-([#819](https://github.com/dennys246/Maxim/issues/819)). Numbers cite a measurement:
+([#819](https://github.com/dennys246/Maxim/issues/819); its loud half moved 2026-09-27 to the 1.3.2 issue burn-down, batch 2 — the heap and eviction cost stay here). Numbers cite a measurement:
 `scripts/memory_cost_harness.py` (bytes per item, eviction latency, load time), modelled on the EC
 scan-cost harness. Resource probing (RAM/disk) is rejected as a default: it makes runs
 non-reproducible across machines. EC budgeting (non-world modalities only, cascading to NAc/ATL via
@@ -768,7 +768,8 @@ time of day).
 ## Not in this plan (filed separately)
 
 - [#818](https://github.com/dennys246/Maxim/issues/818) — NAc wall-clock decay ignores the
-  inherent-class exemption. Touches Exp 56/57/61 inputs; out of round one's scope, fixed on its own.
+  inherent-class exemption. Touches Exp 56/57/61 inputs; out of round one's scope, fixed on its own
+  (scheduled 2026-09-27: 1.3.2 issue burn-down, batch 2, with #812).
 - [#812](https://github.com/dennys246/Maxim/issues/812) — ATL typed relations share one update slot.
 
 ## Open questions

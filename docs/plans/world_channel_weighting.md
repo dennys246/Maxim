@@ -229,6 +229,7 @@ answerable by declaration when a rung needs it.
 
 ## Related
 
+- Open defect [#784](https://github.com/dennys246/Maxim/issues/784) — the A4 gain inverts a place code; homed here (1.3.2 issue burn-down, 2026-09-27), to be settled with 1.4 Phase 5 keying.
 - `docs/limits/l11_sensor_dilution.md` · `docs/plans/deferred/setpoint_aware_neutral.md`
 - `docs/wiring/cosine-separation-is-directional.md` (corollaries 2 and 7)
 - `docs/experiments/exp62_pressure_interoception_prereg.md` §Rung B
