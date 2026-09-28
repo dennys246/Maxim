@@ -1,6 +1,8 @@
 # Collective coding-safety habits — Queen-tier safety benchmarking
 
 
+> **REVIVED 2026-09-27 into [../coding_world.md](../coding_world.md)** (owner request: the aversive-conscience hand-off and the Stack Overflow question). This file stays as the record of the 2026-09-05 design; every decision below holds unless coding_world.md says otherwise. Its written trigger had not fired; the revival is the owner's. Changes there: Exp 55 re-points from the Shared-perception deferral to that line; the world is assembled through a harness that bypasses the orchestrator (Slice 1 items 1–3 are no longer on its path); §5's pain half becomes a PainBus producer for the existing `NAc.credit_operant_reward` write rather than a `ToolPainBridge` path, and §5's "reward stays interoceptive" is narrowed to tool-success reward (roadmap 1.4 Phase 5's relief store is a positive world-keyed write); §9 defect 2 is superseded by #796. The file stays in `deferred/` rather than `archive/` because `src/` docstrings and tests link it.
+
 > **DEFERRED 2026-09-19** (plans audit at the 1.3.0 release; README §Rules: a deferred plan states its revive trigger). **Revive when:** a 1.4 rung names the gap it fills (`roadmap_1_4.md` Phase 5 enters a mechanism only when an experiment names it). The design below is unchanged and is not being worked on until then.
 **Status: ADOPTED 2026-09-05** (decided 2026-09-04/05; grounded in a three-lens parallel
 survey — execution infrastructure, hivemind merge semantics, experiment-framework
