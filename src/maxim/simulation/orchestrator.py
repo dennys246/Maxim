@@ -353,9 +353,9 @@ def _arm_sandboxed_aut_subprocess_tools() -> None:
 
     Deliberately NOT the gates sandbox-launch added for git_diff / run_tests:
     the AUT registry deregisters both tools alongside bash, so arming them
-    here would be dead code — and unlike ``BashTool`` neither takes a
-    ``cwd``, so the sandbox rationale would not even transfer. If a sim ever
-    needs them, give them a ``cwd``/``allowed_dirs`` first.
+    here would be dead code. Since #949 both take ``allowed_dirs`` and run in
+    ``tool_workdir`` with the host-tool env allowlist, so if a sim ever needs
+    them, register them with the sandbox root as ``allowed_dirs``.
     """
     os.environ.setdefault("MAXIM_ALLOW_BASH", "1")
 

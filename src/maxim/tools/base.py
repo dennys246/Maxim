@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -443,3 +444,136 @@ class Tool(ABC):
             optional = isinstance(spec, tuple) and len(spec) >= 2
             if key not in kwargs and not optional:
                 raise ValueError(f"Missing required input: {key}")
+
+
+# ── Host-tool containment (#949) ─────────────────────────────────────────────────────────────────
+# The environment a host-acting tool's subprocess receives: an ALLOWLIST, so API keys and tokens held in
+# the parent's ENVIRONMENT (ANTHROPIC_API_KEY, a peer key, cloud credentials) never reach a model-driven
+# command. It does not hide FILES the user can read (~/.config/maxim/api_key, ~/.aws/credentials): these
+# are host tools, not a sandbox. Kept: the interpreter-selection vars (PYTHONPATH, VIRTUAL_ENV) so "run the
+# tests" runs the project's own code, and the git/gpg config locations (XDG_CONFIG_HOME, GNUPGHOME,
+# GPG_TTY). Dropped: everything else, MAXIM_* included (no nested run can re-arm a MAXIM_ALLOW_* gate) --
+# and SSH_AUTH_SOCK (access to the user's SSH keys), GIT_* (GIT_DIR would point git outside its root),
+# proxies and CA bundles. Extending the list is a code change here, by design.
+# Deliberately NOT ``utils/sandbox_executor.py::SandboxExecutor._build_safe_env``: the sandbox REDIRECTS
+# HOME and pins PATH for code it isolates; a host tool inherits both. One shared list would be wrong for
+# one of them.
+HOST_TOOL_ENV_ALLOW = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "SHELL",
+        "TMPDIR",
+        "TERM",
+        "TZ",
+        "LANG",
+        "PYTHONPATH",
+        "VIRTUAL_ENV",
+        "PYTHONIOENCODING",
+        "XDG_CONFIG_HOME",
+        "GNUPGHOME",
+        "GPG_TTY",
+    }
+)
+_HOST_TOOL_ENV_PREFIXES = ("LC_",)
+
+
+def host_tool_env(environ: dict[str, str] | None = None) -> dict[str, str]:
+    """The allowlisted environment for a host-acting tool's subprocess (#949)."""
+    source = os.environ if environ is None else environ
+    return {
+        key: value
+        for key, value in source.items()
+        if key in HOST_TOOL_ENV_ALLOW or key.startswith(_HOST_TOOL_ENV_PREFIXES)
+    }
+
+
+def _within(path: str, allowed_dirs: list[str]) -> bool:
+    return any(path == root or path.startswith(root + os.sep) for root in allowed_dirs)
+
+
+def tool_workdir(allowed_dirs: list[str] | None) -> str | None:
+    """The working directory of a host coding tool (#949; owner decision 2026-09-28).
+
+    The PROJECT -- the process working directory -- when it lies inside the mode's ``allowed_dirs``,
+    as it does in every mode's filesystem policy; otherwise ``allowed_dirs[0]`` (a sim tmpdir or the
+    console's override root, which deliberately exclude the process CWD). ``None`` (no containment)
+    means the process CWD. ``allowed_dirs[0]`` alone was the wrong rule: in the mode configs it is the
+    scratch ``.maxim_workspace``, so tests collected nothing and repo paths silently diffed as empty.
+    """
+    if not allowed_dirs:
+        return None
+    roots = [os.path.realpath(d) for d in allowed_dirs]
+    cwd = os.path.realpath(os.getcwd())
+    return cwd if _within(cwd, roots) else roots[0]
+
+
+def contained_path(path: object, allowed_dirs: list[str] | None, base: str | None = None) -> str | None:
+    """A model-supplied path resolved and checked against ``allowed_dirs``, or None when refused (#949).
+
+    Relative paths resolve against ``base`` (the tool's working directory; the process CWD when None),
+    then ``realpath`` -- so ``..`` and symlinks cannot step outside. An empty or non-string path is
+    refused. With no ``allowed_dirs`` (no containment) the path is returned unchanged.
+    """
+    if not isinstance(path, str) or not path.strip():
+        return None
+    if not allowed_dirs:
+        return path
+    expanded = os.path.expanduser(path)
+    if not os.path.isabs(expanded):
+        expanded = os.path.join(base or os.getcwd(), expanded)
+    resolved = os.path.realpath(expanded)
+    return resolved if _within(resolved, [os.path.realpath(d) for d in allowed_dirs]) else None
+
+
+def git_env(root: str | None) -> dict[str, str]:
+    """``host_tool_env()`` plus ``GIT_CEILING_DIRECTORIES`` at the root's parent, so git never searches
+    ABOVE its working root for a repository (#949): a root that is not itself inside a repo fails
+    loudly instead of silently reaching an enclosing repo (the host's, when the root is a workspace)."""
+    env = host_tool_env()
+    if root:
+        env["GIT_CEILING_DIRECTORIES"] = os.path.dirname(os.path.realpath(root))
+    return env
+
+
+# git configuration that turns a git call into code execution, switched off on every host git call:
+# hooks (a write to .git/hooks/*) and fsmonitor. `git diff` adds --no-ext-diff/--no-textconv and
+# `git commit` adds --no-gpg-sign (a repo-local gpg.program). NOT closable by any git switch: clean/
+# smudge/process FILTERS (.gitattributes + filter.*.clean in .git/config) run on diff and add. A model
+# that can write a repository's .git/config can therefore still make git run code -- which is why both
+# git tools are opt-in (MAXIM_ALLOW_GIT_DIFF / MAXIM_ALLOW_GIT_COMMIT). Refusing .git/ writes is #957.
+GIT_HARDENING_ARGS = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
+
+
+def git_root_refusal(workdir: str | None, allowed_dirs: list[str] | None) -> str | None:
+    """Why git must not run from ``workdir``, or None (#949).
+
+    The ceiling stops git searching UPWARD, but a model-written ``.git`` FILE (``gitdir: /elsewhere``)
+    or ``core.worktree`` points it anywhere. So before any git call, ask git where it resolved and
+    refuse unless both the repository directory and the worktree lie inside ``allowed_dirs``. With no
+    ``allowed_dirs`` (no containment) there is nothing to check.
+    """
+    if not allowed_dirs:
+        return None
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", *GIT_HARDENING_ARGS, "rev-parse", "--absolute-git-dir", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=workdir,
+            env=git_env(workdir),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"could not resolve the git repository: {exc}"
+    if result.returncode != 0:
+        return result.stderr.strip() or "not a git repository"
+    roots = [os.path.realpath(d) for d in allowed_dirs]
+    for resolved in result.stdout.split("\n"):
+        if resolved.strip() and not _within(os.path.realpath(resolved.strip()), roots):
+            return f"git resolved {resolved.strip()!r}, outside the allowed directories"
+    return None

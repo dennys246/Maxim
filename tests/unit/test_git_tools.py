@@ -30,7 +30,18 @@ class TestGitDiffToolSuccess:
 
         assert output.success is True
         assert "diff" in output.output
-        assert mock_run.call_args[0][0] == ["git", "diff", "--end-of-options", "HEAD"]
+        from maxim.tools.base import GIT_HARDENING_ARGS
+
+        # hooks/fsmonitor off, no external diff driver or textconv (#949)
+        assert mock_run.call_args[0][0] == [
+            "git",
+            *GIT_HARDENING_ARGS,
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--end-of-options",
+            "HEAD",
+        ]
 
 
 class TestGitDiffToolFailure:
@@ -58,7 +69,8 @@ class TestGitDiffToolFailure:
 class TestGitCommitToolSuccess:
     """Successful commit returns success=True."""
 
-    def test_success(self) -> None:
+    def test_success(self, monkeypatch) -> None:
+        monkeypatch.setenv("MAXIM_ALLOW_GIT_COMMIT", "1")
         tool = GitCommitTool()
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -73,7 +85,8 @@ class TestGitCommitToolSuccess:
 class TestGitCommitToolDryRun:
     """dry_run=True should add --dry-run flag to command."""
 
-    def test_dry_run_flag(self) -> None:
+    def test_dry_run_flag(self, monkeypatch) -> None:
+        monkeypatch.setenv("MAXIM_ALLOW_GIT_COMMIT", "1")
         tool = GitCommitTool()
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -97,7 +110,8 @@ class TestGitCommitToolDryRun:
 class TestGitCommitToolWithFiles:
     """Providing files should trigger git add for each file."""
 
-    def test_git_add_called_for_each_file(self) -> None:
+    def test_git_add_called_for_each_file(self, monkeypatch) -> None:
+        monkeypatch.setenv("MAXIM_ALLOW_GIT_COMMIT", "1")
         tool = GitCommitTool()
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -106,11 +120,20 @@ class TestGitCommitToolWithFiles:
         with patch("maxim.tools.git_tools.subprocess.run", return_value=mock_result) as mock_run:
             tool.run(message="add files", files=["a.py", "b.py"])
 
-        # Check that git add was called for each file
-        add_calls = [c for c in mock_run.call_args_list if c[0][0][:2] == ["git", "add"]]
+        # git add once per file, with `--` before the path (#949); with no allowed_dirs the path is unchanged
+        add_calls = [c[0][0] for c in mock_run.call_args_list if "add" in c[0][0]]
         assert len(add_calls) == 2
-        assert add_calls[0][0][0][2] == "a.py"
-        assert add_calls[1][0][0][2] == "b.py"
+        assert add_calls[0][-2:] == ["--", "a.py"]
+        assert add_calls[1][-2:] == ["--", "b.py"]
+
+
+class TestGitCommitIsOptIn:
+    def test_disabled_without_the_flag(self) -> None:
+        with patch("maxim.tools.git_tools.subprocess.run") as mock_run:
+            output = GitCommitTool().run(message="m")
+        assert output.success is False and output.error_kind == ToolErrorKind.PERMISSION_DENIED
+        assert "MAXIM_ALLOW_GIT_COMMIT" in (output.error or "")
+        mock_run.assert_not_called()
 
 
 class TestGitDiffInAlwaysAllowed:

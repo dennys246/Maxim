@@ -2,6 +2,36 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-09-28 — Host coding tools: the working root, and git_commit is opt-in (#949)
+
+### Decision
+
+Two owner decisions, taken when #949's review found that `allowed_dirs[0]` is the scratch
+`.maxim_workspace` in every mode's filesystem policy:
+
+1. **The working root** of `run_tests`, `git_diff`, `git_commit` and `execute_file` is the project
+   (the process working directory) when it lies inside the mode's `allowed_dirs`, and otherwise
+   `allowed_dirs[0]` (a sim tmpdir or the console's override root). It is computed by one function,
+   `tools/base.py::tool_workdir`. git is capped at that root with `GIT_CEILING_DIRECTORIES`. `bash`
+   keeps its existing `allowed_dirs[0]` default.
+2. **`git_commit` is opt-in** via `MAXIM_ALLOW_GIT_COMMIT`, off by default, the same shape as
+   `MAXIM_ALLOW_BASH`, `MAXIM_ALLOW_RUN_TESTS` and `MAXIM_ALLOW_GIT_DIFF`.
+
+### Reason
+
+With `allowed_dirs[0]` as the root, `run_tests` collected nothing, a repo-relative `git_diff` path
+returned success with an empty diff (a silent no-op), singularity crashed on a workspace that is never
+created, and git searched upward from the workspace into the host repository, so `git_commit` could
+commit whatever the user had staged. The project is inside `allowed_dirs` by the policy's own design, so
+running there is contained. `git_commit` was the one host coding tool with no gate.
+
+### Tradeoffs
+
+- A user who relied on the agent committing must set the flag.
+- A project started from a subdirectory of a repository cannot reach the repository root from these
+  tools, because of the ceiling: contained, not convenient.
+- The environment allowlist drops `SSH_AUTH_SOCK`, so SSH signing is unavailable to these tools.
+
 ## 2026-09-27 — The coding world revives coding_habits_oasis; Exp 55 leaves the Shared-perception deferral
 
 ### Decision

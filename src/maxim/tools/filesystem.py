@@ -100,7 +100,7 @@ def validate_path_traversal(
 
 from maxim.utils.gpu_compat import env_flag as _env_flag
 
-from .base import Tool, ToolErrorKind, ToolResult
+from .base import Tool, ToolErrorKind, ToolResult, host_tool_env, tool_workdir
 
 
 def _rebase_relative(path: str, allowed_dirs: list[str] | None) -> str:
@@ -441,6 +441,8 @@ class ExecuteFileTool(Tool):
                 text=True,
                 timeout=timeout,
                 shell=False,  # Explicitly disable shell to prevent injection
+                cwd=tool_workdir(self._allowed_dirs),
+                env=host_tool_env(),  # #949: no parent API keys reach a model-written script
             )
 
             return ToolResult(
@@ -993,10 +995,11 @@ class BashTool(Tool):
             if not is_safe:
                 return ToolResult(success=False, error=reason)
 
-            # Execute command via explicit bash invocation (no shell=True).
-            # This prevents shell metacharacter injection ($(), ``, &&, ||, ;)
-            # from being interpreted by the parent shell. The command still runs
-            # in bash, but subprocess doesn't invoke an intermediate shell.
+            # The command runs in bash, which DOES interpret metacharacters ($(), ``, &&, ||, ;):
+            # skipping `shell=True` only avoids a second, parent shell. The dangerous-pattern
+            # screen above is the filter; the containment is the working directory (allowed_dirs[0])
+            # and an allowlisted environment, so the command never sees the parent's API keys (#949).
+            # Absolute paths inside the command are NOT contained -- this is a host shell, not a sandbox.
             result = subprocess.run(
                 ["/bin/bash", "-c", command],
                 shell=False,
@@ -1004,6 +1007,7 @@ class BashTool(Tool):
                 text=True,
                 timeout=timeout,
                 cwd=cwd,
+                env=host_tool_env(),
             )
 
             return ToolResult(

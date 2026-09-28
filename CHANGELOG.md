@@ -23,6 +23,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **The host coding tools no longer inherit the parent's environment, and run in a contained root**
+  (#949).
+  - **Environment.** `bash`, `execute_file`, `run_tests`, `git_diff` and `git_commit` spawn their
+    processes with an **allowlisted environment** (`tools.base.host_tool_env`: `PATH`, `HOME`, locale,
+    `PYTHONPATH`, `VIRTUAL_ENV`, `XDG_CONFIG_HOME`, `GNUPGHOME`, `GPG_TTY` and a few others). API keys, peer
+    keys and every other environment variable, `MAXIM_*` included, are dropped.
+    - Also dropped, deliberately: `SSH_AUTH_SOCK`, so SSH commit signing and git over SSH stop working
+      from these tools; `GIT_*`; proxies; and CA bundles. Extending the list is a code change.
+    - Files the user can read, such as `~/.config/maxim/api_key`, stay reachable. These are host tools,
+      not a sandbox.
+  - **Working root** (owner decision). `run_tests`, `git_diff`, `git_commit` and `execute_file` run in
+    the project (the process working directory) when it lies inside the mode's allowed directories;
+    otherwise they run in the first allowed directory, such as a sim tmpdir or the console root.
+    - git never searches above that root (`GIT_CEILING_DIRECTORIES`). Before any git call, the tool also
+      checks that git's resolved repository and worktree lie inside the allowed directories, so a
+      model-written `.git` gitfile cannot redirect it.
+    - A model-supplied `test_path`, diff path or commit file must resolve inside the allowed
+      directories. Paths inside a `bash` command or the `run_tests` argv are not checked.
+  - **git hardening.** Every git call disables hooks and fsmonitor. `git diff` also disables external
+    diff drivers and textconv, and `git commit` disables signing (a repo-local `gpg.program`).
+    `git_commit` passes `--` and refuses option-shaped file names.
+    - **Not closed:** a model that can write a repository's `.git/config` can still make git run code
+      through clean/smudge filters, which no git switch disables. That is why both git tools are
+      opt-in. Refusing writes under `.git/` is tracked in #957.
+  - **`git_commit` is opt-in: set `MAXIM_ALLOW_GIT_COMMIT=1`** (owner decision). It was the one host
+    coding tool with no gate.
+
 ### Correction to 1.2.0
 
 - **Exp 56's bundles were unsigned.** The 1.2.0 section says A's substrate was "exported as a signed
