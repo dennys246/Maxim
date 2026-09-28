@@ -505,6 +505,12 @@ afterwards means building that instrument twice, and refactoring while a may-fai
 confounds a null with the refactor (the divergence rule). Exp 62 depends on neither and runs in
 parallel.
 
+**Carried into 1.4 from the 1.3.2 issue burn-down (2026-09-27):** the in-session approval surface
+[#922](https://github.com/dennys246/Maxim/issues/922) and typed grant authority
+[#834](https://github.com/dennys246/Maxim/issues/834), designed together in one review, with
+[#832](https://github.com/dennys246/Maxim/issues/832) item 2 (gating the internet toggle, with the operator reset that rides with it) waiting on them.
+Design work, not hardening; no survival rung depends on them.
+
 ## Groundwork in parallel with 1.3.2 (owner decision 2026-09-27)
 
 1.3.2 grew (roadmap_1_3_x.md): two decompositions and the engram-integrity items. The 1.4 lines do

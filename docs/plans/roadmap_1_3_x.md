@@ -139,7 +139,7 @@ The items marked [→ 1.3.2], the decomposition, full mypy coverage, and any new
 The enforcement ratchets and small defects marked **[→ 1.3.2]** in §1.3.1 — the slow lane, the
 required-checks gate, the silent-default swallow lint, the function-length and mypy ratchets, D49,
 D46 + D50, D63, fail-loud Stage 3 and L8 — land here beside the decomposition, each with the guard
-named in its row. The ratchets go FIRST in 1.3.2: they pin the ceilings the decomposition then lowers.
+named in its row. The ratchets go FIRST among the enforcement items (after #951 and #935, which unblock CI truth and live re-runs — §Sequence): they pin the ceilings the decomposition then lowers.
 
 ### From the v1.3.1 score cards (added 2026-09-27)
 
@@ -204,6 +204,114 @@ caller-grep test); [#910](https://github.com/dennys246/Maxim/issues/910) the `[D
 unreachable (guard: a test that reaches it through the real annotator); [#911](https://github.com/dennys246/Maxim/issues/911)
 the text-only reward-widening drift hazard (an offline measurement committed as a record, not a fix).
 
+**Issue burn-down (added 2026-09-27, owner).** 1.3.2 spends a solid share of its time closing open
+GitHub issues, because most of them are the class both score cards penalise: something that silently
+never worked. Every issue open on 2026-09-27 (39) has a home: the ten already scheduled keep theirs, the rest are placed below.
+
+- **Already scheduled (10).** Nine are in 1.3.2 above: #935, #939, #840, #841, #940 and #908–#911.
+  #938 is "before 1.4.0", below this block, and keeps that home.
+- **Placed here.** The rest are sorted into four homes: a **commitment** (batches 0–2), **best
+  effort** (batches 3–4), **with the slice that owns the file**, and **1.4**.
+- **Split issues.** Some are split between two homes, and each split names both halves.
+
+*Rules for every burn-down fix:*
+
+- **Reproduce first.** The fix PR's first commit adds a test that fails on today's code, and the fix
+  commit turns it green. A probe that does not reproduce the defect closes the issue only if it asserts
+  that the defect's precondition was actually reached, by constructing it directly. #816 needs a
+  compressed concept and #819 a store full of long-term memories at its cap. If the probe cannot assert
+  its precondition, the issue stays open.
+- **Guard by deletion**, and **a caller, not a capability** (M3). Same bar as the rest of 1.3.2.
+- **Batch by concern**, one PR per batch. **Exception:** an issue that changes a format contract, owes
+  a decision, or is marked ⟲ gets its own PR. Each PR gets a two-lens review round.
+- **⟲ marks a fix that changes what an EARNED ledger row's path computes.** Each ⟲ fix:
+  - names its rows;
+  - adds each row's own `Re-run on:` trigger to the walk;
+  - discharges each row **in its own PR**, by that row's re-run or by a dated structural annotation
+    on the row (memory plan Phase 0's rule, "each fix PR states which ledger rows it re-ran or
+    discharged").
+
+  The decomposition's closing Exp 60 re-run discharges Exp 60 only. **Timing:** ⟲ fixes land before
+  the first `agent_loop` slice's characterization commit, so that closing re-run measures the
+  decomposition alone. Fixes that fire the Exp 10 row land before the complete Exp 10 re-run (item 2),
+  so that re-run covers them rather than going stale on arrival.
+
+*The fence* (roadmap 1.4 Groundwork's boundary, verbatim): "Nothing under `runtime/agent_loop.py`,
+`decisions/nac.py`'s selection path or `simulation/orchestrator.py` until the 1.3.2 decomposition slices
+touching it have landed." Every batch below stays inside it. A ⟲ fix in best-effort batch 4 that lands
+after decomposition work has started is discharged by its own rows' re-runs in its own PR, never by the
+closing walk.
+
+*Commitment: batches 0–2.* These close in 1.3.2. Moving one to a later release takes an owner decision
+recorded in this plan.
+
+| Batch | Issues | Notes |
+|---|---|---|
+| 0. CI truth | [#951](https://github.com/dennys246/Maxim/issues/951) ⟲ the scripted water-trial tests depend on wall-clock caps | **First in the chain** (§Sequence). A flaky required check turned `main` red on a docs-only merge, and until it is fixed every red check is ambiguous. The fix makes the scripted path tick-counted; it neither retries nor raises a cap. ⟲ because `WaterTrial` is the shared instrument for Exp 60/61/62 and R3, and a Regression guard on the Exp 61 and Exp 62 rows. Its gates: the live path stays byte-identical, and the four verdicts are reproduced offline from committed data. |
+| 1. Security | [#949](https://github.com/dennys246/Maxim/issues/949) coding tools run in the host cwd with the full environment; [#921](https://github.com/dennys246/Maxim/issues/921) `validate_base_url` / `download_to_file` re-resolve after their check; [#924](https://github.com/dennys246/Maxim/issues/924) a passive agent can self-switch to active; [#829](https://github.com/dennys246/Maxim/issues/829) the mode re-exec passes a `--mode` argparse rejects; [#832](https://github.com/dennys246/Maxim/issues/832) items 1, 3, 4, 5 of the internet-policy follow-ups | **Owner decision owed on #924, before #829**, because fixing the re-exec makes passive→active work end to end. Strict is the recommended default: the model's mode tool never raises capability until #922's approval surface exists. It reverses the 2026-09-26 "keep #821" decision, so the pinned `test_mode_switch_gate.py::test_passive_to_active_still_allowed` is inverted in the same PR. **#829 and #832 edit `cli.py::_main_impl`'s body** (the re-exec loop, `_operational_mode`, the `internet_access` state). They land before `_main_impl`'s characterization pass, a deliberate exception to the land-after-the-slice rule (the fence does not cover `cli.py`) because that slice is "if time". #832 item 2 (the approval gate, and the operator reset that rides with it) waits for #922. |
+| 2. Data safety | [#950](https://github.com/dennys246/Maxim/issues/950) `load.*` and `persistence_path` do not expand `~` (the store silently loads empty), in the same PR as item 3's #939; [#856](https://github.com/dennys246/Maxim/issues/856) a new config section breaks downgrades (**decision owed; own PR**); [#816](https://github.com/dennys246/Maxim/issues/816) crash half, reinforcing a compressed concept raises (**moved here from memory Phase 0**); [#819](https://github.com/dennys246/Maxim/issues/819) loud half, the silently exceeded cap made loud (**moved here from memory Phase 4**; the O(N log N) eviction cost stays in Phase 4's heap); [#812](https://github.com/dennys246/Maxim/issues/812) typed ATL relations share one update slot; [#818](https://github.com/dennys246/Maxim/issues/818) ⟲ wall-clock decay ignores the inherent-class exemption (Exp 56/57/61 rows); [#843](https://github.com/dennys246/Maxim/issues/843) ⟲ percept captures default to success, and a double reinforce (treated as firing the Exp 10 row's "hippocampus persistence schema change": it changes stored values, not the schema, so this is a conservative judgment); [#932](https://github.com/dennys246/Maxim/issues/932) its non-orchestrator callers (listed below) | A user's memory silently lost or corrupted is the worst failure a memory system can have. #818 and #812 are free: the memory plan lists them as "filed separately". #818's ⟲ rests on "changes what the path computes" (no row's `Re-run on:` names wall-clock bias decay; Exp 57 is PARTIAL), which its PR states. #816's design half stays in memory Phase 3. |
+
+*Best effort: batches 3–4.* These may move to a named plan path with a trigger, recorded in this plan
+(where M15 sees it), not only on the issue.
+
+| Batch | Issues | Notes |
+|---|---|---|
+| 3. Silent seams | [#851](https://github.com/dennys246/Maxim/issues/851) ⟲ `ToolPainBridge` pending entries leak and disable embodiment-pain attribution (the "SEM pain → NAc cascade" row: "ToolPainBridge attribution change"); [#845](https://github.com/dennys246/Maxim/issues/845) memory consumers that never deliver: items 2, 3 and 5 (5 verified first), and item 4's `exec_agent.py::recall_deep` site (its `plan_manager` site is #841's); item 1 rides the slice — **per consumer, wire it or mark it Dormant, each with its behaviour tier declared**; [#863](https://github.com/dennys246/Maxim/issues/863) step 2, the telemetry wraps catching caller logic, **outside** `agent_loop.py`, `orchestrator.py` and `_main_impl` | The #840/#841 class, beside item 4's mypy extension, which catches more of them. |
+| 4. Body defects | [#873](https://github.com/dennys246/Maxim/issues/873) ⟲ the no-silent-fallback half: `damage_component` fails on a missing part instead of reporting success (row 9); [#874](https://github.com/dennys246/Maxim/issues/874) ⟲ cradle heat never reaches the arm (row 9's "Cradle / drive / SEM body change"; probably discharged structurally, since row 9 is the dragon / `base_humanoid` setup, but stated in the PR) | Both are "reports success, did nothing". #873's four design points (sum vs weighted mean, a missing part, partless bodies, archetype reflex sets) stay with [deferred/reflex_layering.md](deferred/reflex_layering.md). |
+
+*With the slice that owns the file*, each in its own PR. A fix measured on a loop mid-refactor cannot be
+told apart from the refactor.
+
+- **With the `agent_loop` slices:**
+  - [#835](https://github.com/dennys246/Maxim/issues/835): tool results travel as synthetic human
+    input. It lands after the slice that owns the follow-up channel, which #834 builds on.
+  - [#850](https://github.com/dennys246/Maxim/issues/850): `NAc.last_rpe` is sticky. Its per-goal RPE
+    reaches `ExecAgent` only through the loop (`runtime/bio_integration.py`); owner decision on the
+    binding design.
+  - [#845](https://github.com/dennys246/Maxim/issues/845) item 1: the replan prompt from
+    `runtime/loop_state.py`.
+  - [#863](https://github.com/dennys246/Maxim/issues/863): its `agent_loop.py` sites. Its `cli.py::_main_impl`
+    sites go with that slice if it lands; if not, they stay open on #863 with this home recorded.
+- **After the orchestrator's characterization tests** (the first slice of its decomposition):
+  - [#932](https://github.com/dennys246/Maxim/issues/932): the `--resume-sim` lookup. Its other callers
+    go in batch 2's PR: `session.py` and `api.py` (they need the CLAUDE.md mypy run), `research_orchestrator.py`,
+    `campaign_runner.py`, and the `scripts/exp44/` and `scripts/benchmark_*` harnesses (the provenance
+    lint applies to those two).
+  - #863's `orchestrator.py` sites.
+- **After the decomposition, not inside it:**
+  - [#866](https://github.com/dennys246/Maxim/issues/866), then [#865](https://github.com/dennys246/Maxim/issues/865).
+    Moving `sim_logger` touches imports in 79 files, `agent_loop.py` among them, and #866 changes
+    `sim_log`, the hottest function on the path. That is design work, not a behaviour-preserving
+    move, and each gets its own review.
+  - If they do not fit in 1.3.2, they keep their home in [outstanding.md](outstanding.md) O12.
+
+*1.4, by design.* Each needs an experiment or a mechanism review, not a hardening fix. Each is linked
+from the plan that owns it:
+
+- [#922](https://github.com/dennys246/Maxim/issues/922), [#834](https://github.com/dennys246/Maxim/issues/834)
+  and #832 item 2 → [roadmap_1_4.md](roadmap_1_4.md) §Before 1.4.
+- [#880](https://github.com/dennys246/Maxim/issues/880) → [deferred/nociception_layer.md](deferred/nociception_layer.md)
+  (its F1).
+- [#848](https://github.com/dennys246/Maxim/issues/848) → memory 2S-e.
+- [#899](https://github.com/dennys246/Maxim/issues/899) → roadmap 1.4 Phase 5 keying.
+- [#784](https://github.com/dennys246/Maxim/issues/784) → [world_channel_weighting.md](world_channel_weighting.md).
+
+**Done when:**
+- Batches 0–2 are closed.
+- Each of batches 3–4 is closed, or moved as recorded above.
+- The slice-bound items have landed with their slices, or stay open with them.
+- The release PR lists the open-issue count at `v1.3.1` and at the cut, and names each open issue with
+  its home.
+
+The scheduled items keep their own "ships with its guard" rule, and #938 keeps its home.
+
+**Guards:**
+- M15: every open issue is linked from the plan it is homed to.
+- M16: a PR that touches a ledger row's `Re-run on:` path records a walk line.
+- M17: a PR closing a bug issue carries a test that fails at its merge-base.
+
+Until those exist, this block is the check, by attention.
+
 **Before 1.4.0, not in 1.3.2:** the release pipeline in CI — [#938](https://github.com/dennys246/Maxim/issues/938)
 fixed, then a tag-triggered workflow that builds once, audits those bytes, publishes them with PyPI trusted
 publishing and creates the Release from them, plus a `v*` tag ruleset and required signatures. Both cards'
@@ -262,10 +370,13 @@ records the new ceiling either way.
            security cluster (#800-802, #824, #826-828), nightly lane + release-reads-nightlies,
            network block, public-API
            fixes, D40, D32, doc honesty; plus everything on main since 1.3.0
-  → 1.3.2  #935 + provenance + the complete Exp 10 re-run → data-safety + silent seams (#939,
-           #840/#841, mypy) → the ratchets → engram integrity (#908–#911) → the decomposition
+  → 1.3.2  #951 (main's flaky red) → #935 + provenance + burn-down fixes that fire Exp 10 → the complete
+           Exp 10 re-run → data-safety + silent seams (#939, #840/#841, mypy) → the ratchets (FIRST among the
+           enforcement items; #951/#935 precede them because they unblock CI truth and re-runs) → engram
+           integrity (#908–#911) → ⟲ burn-down fixes, each discharged in its own PR → the decomposition
            (agent_loop, then start_simulation_mode behind characterization tests; _main_impl if time)
            → trigger walk + live Exp 60 re-run
+           ‖ in parallel, inside the fence: the issue burn-down, batches 1–4 (security first)
            ‖ in parallel, no loop code: 1.4 groundwork (roadmap_1_4.md §Groundwork in parallel with 1.3.2)
   → 1.4    Phase 0 instrument on the decomposed loop, then Exp 62 → E1 → …
              ([roadmap_1_4.md](roadmap_1_4.md))

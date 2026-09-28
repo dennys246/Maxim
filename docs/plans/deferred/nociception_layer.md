@@ -72,7 +72,7 @@ which no publisher was found — possibly dead; verify before step 2 touches it.
 
 ## Verified findings (2026-09-24)
 
-- **F1 — anticipated pain is paid out as real negative reward.** `perceived_pain.py` publishes its
+- **F1 — anticipated pain is paid out as real negative reward** ([#880](https://github.com/dennys246/Maxim/issues/880)). `perceived_pain.py` publishes its
   prediction as `Reaction(kind="pain", valence=NEGATIVE, context=ReactionContext(agent_id=...))`;
   `_distribute_reward_from_reaction` pays `-intensity` for any negative reaction whose `agent_id` is
   neither `None` nor `WORLD_AGENT_ID`. **Live on the `maxim --sim` orchestrator AUT path** (every
