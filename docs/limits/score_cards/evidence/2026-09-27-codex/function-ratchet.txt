@@ -1,0 +1,9 @@
+$ python scripts/lint_function_length.py
+UTC=2026-09-27T23:47:46.418559+00:00
+function-length ratchet (span = inclusive line count; ratchet-down only):
+  [OK] src/maxim/cli.py::_main_impl = 1696 (pin 1743; +47 — lower the pin)
+  [OK] src/maxim/runtime/agent_loop.py::run_agentic_loop = 3389 (pin 3453; +64 — lower the pin)
+  [OK] src/maxim/simulation/orchestrator.py::start_simulation_mode = 3322 (pin 3324; +2 — lower the pin)
+function-length ratchet: clean
+
+EXIT_STATUS=0

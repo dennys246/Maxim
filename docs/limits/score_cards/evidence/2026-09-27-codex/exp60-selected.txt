@@ -1,0 +1,33 @@
+{
+  "_format_version": "1.0",
+  "kind": "exp60_verdict",
+  "refused": [],
+  "n_clean": {
+    "fear": 5,
+    "ablated": 5
+  },
+  "fear_post_median": 1.0,
+  "fear_pre_median": 0.0,
+  "ablated_post_median": 0.0,
+  "permutation": {
+    "observed_diff": 1.0,
+    "p_one_sided": 0.003968253968253968,
+    "relabellings": 252
+  },
+  "checks": {
+    "fear_post_median_ge_min": true,
+    "ablated_post_median_le_max": true,
+    "fear_post_gt_pre_every_seed": true,
+    "permutation_p_lt_alpha": true,
+    "fear_specificity_every_seed": true
+  },
+  "verdict": "EARNED",
+  "data": "docs/experiments/data/exp60_trials.jsonl",
+  "run_ids": [
+    "301eb2edff6d",
+    "eeb92752ee2b"
+  ]
+}
+VERDICT: EARNED
+
+EXIT_STATUS=0

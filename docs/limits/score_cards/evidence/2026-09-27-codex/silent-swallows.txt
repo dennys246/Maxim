@@ -1,0 +1,7 @@
+$ python scripts/lint_no_silent_swallows.py
+UTC=2026-09-27T23:47:46.026895+00:00
+no-silent-swallows: 418 bare `except Exception: pass/continue` site(s) in 112 file(s) across src/maxim/ (16 measurement-path files held at zero; every other file grandfathered at its origin/main count)
+no-silent-swallows: 153 broad swallow(s) on the measurement path do not report through log_swallowed_exception (ratcheted per file; may fall, may not rise)
+no-silent-swallows lint: clean
+
+EXIT_STATUS=0

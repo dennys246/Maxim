@@ -1,0 +1,20 @@
+{
+  "_format_version": "1.0",
+  "kind": "exp60_verdict",
+  "verdict": "INCOMPLETE",
+  "reason": "duplicate (arm, seed) rows: ['ablated/seed11\u00d72', 'ablated/seed12\u00d72', 'ablated/seed13\u00d72', 'ablated/seed14\u00d72', 'ablated/seed15\u00d72', 'fear/seed11\u00d72', 'fear/seed12\u00d72', 'fear/seed13\u00d72', 'fear/seed14\u00d72', 'fear/seed15\u00d72'] \u2014 pass --run-id ONCE PER ARM (each arm invocation mints its own id)",
+  "duplicates": [
+    "ablated/seed11\u00d72",
+    "ablated/seed12\u00d72",
+    "ablated/seed13\u00d72",
+    "ablated/seed14\u00d72",
+    "ablated/seed15\u00d72",
+    "fear/seed11\u00d72",
+    "fear/seed12\u00d72",
+    "fear/seed13\u00d72",
+    "fear/seed14\u00d72",
+    "fear/seed15\u00d72"
+  ],
+  "data": "docs/experiments/data/exp60_trials.jsonl",
+  "run_ids": null
+}

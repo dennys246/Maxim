@@ -1,0 +1,42 @@
+  0.2.1     GRANDFATHERED (still failing) — pre-1.0 PyPI upload; no Release object was ever created (tag reconstructed 2026-08-20)
+      no GitHub Release on v0.2.1 — a tag says which commit, a Release hands over the artifact
+  0.3.0     GRANDFATHERED (still failing) — pre-1.0 PyPI upload; no Release object was ever created (tag reconstructed 2026-08-20)
+      no GitHub Release on v0.3.0 — a tag says which commit, a Release hands over the artifact
+  0.3.1     GRANDFATHERED (still failing) — pre-1.0 PyPI upload; no Release object was ever created (tag reconstructed 2026-08-20)
+      no GitHub Release on v0.3.1 — a tag says which commit, a Release hands over the artifact
+  0.3.2     GRANDFATHERED (still failing) — pre-1.0 PyPI upload; no Release object was ever created (tag reconstructed 2026-08-20)
+      no GitHub Release on v0.3.2 — a tag says which commit, a Release hands over the artifact
+  0.4.0     GRANDFATHERED (still failing) — pre-1.0 PyPI upload; no Release object was ever created (tag reconstructed 2026-08-20)
+      no GitHub Release on v0.4.0 — a tag says which commit, a Release hands over the artifact
+  0.5.0     GRANDFATHERED (still failing) — pre-1.0 PyPI upload; no Release object was ever created (tag reconstructed 2026-08-20)
+      no GitHub Release on v0.5.0 — a tag says which commit, a Release hands over the artifact
+  0.6.0     GRANDFATHERED (still failing) — 0.6.0–0.8.1 shipped to PyPI without CHANGELOG entries or Release objects (CHANGELOG note, 2026-05-11)
+      PyPI serves 0.6.0 but there is no v0.6.0 tag
+      no GitHub Release on v0.6.0 — a tag says which commit, a Release hands over the artifact
+  0.7.0     GRANDFATHERED (still failing) — 0.6.0–0.8.1 shipped to PyPI without CHANGELOG entries or Release objects (CHANGELOG note, 2026-05-11)
+      PyPI serves 0.7.0 but there is no v0.7.0 tag
+      no GitHub Release on v0.7.0 — a tag says which commit, a Release hands over the artifact
+  0.8.0     GRANDFATHERED (still failing) — 0.6.0–0.8.1 shipped to PyPI without CHANGELOG entries or Release objects (CHANGELOG note, 2026-05-11)
+      PyPI serves 0.8.0 but there is no v0.8.0 tag
+      no GitHub Release on v0.8.0 — a tag says which commit, a Release hands over the artifact
+  0.8.1     GRANDFATHERED (still failing) — 0.6.0–0.8.1 shipped to PyPI without CHANGELOG entries or Release objects (CHANGELOG note, 2026-05-11)
+      PyPI serves 0.8.1 but there is no v0.8.1 tag
+      no GitHub Release on v0.8.1 — a tag says which commit, a Release hands over the artifact
+  0.9.0     GRANDFATHERED (still failing) — Release object exists but predates the attach-the-artifacts rule (2026-08-26) — 0 assets attached
+      v0.9.0 Release has 0 asset(s); the exact wheel + sdist (≥2) must be attached
+      v0.9.0 Release is missing the PyPI file pymaxim-0.9.0-py3-none-any.whl
+      v0.9.0 Release is missing the PyPI file pymaxim-0.9.0.tar.gz
+  0.9.1     GRANDFATHERED (still failing) — PyPI upload with no Release object at all; predates the attach-the-artifacts rule (2026-08-26)
+      no GitHub Release on v0.9.1 — a tag says which commit, a Release hands over the artifact
+  1.0.0     GRANDFATHERED (still failing) — Release object exists ('Maxim 1.0.0 — The Honest Benchmark') but predates the rule (0 assets)
+      v1.0.0 Release has 0 asset(s); the exact wheel + sdist (≥2) must be attached
+      v1.0.0 Release is missing the PyPI file pymaxim-1.0.0-py3-none-any.whl
+      v1.0.0 Release is missing the PyPI file pymaxim-1.0.0.tar.gz
+  1.0.9     GRANDFATHERED (still failing) — Release object backfilled 2026-08-26 from the CHANGELOG with NO assets — the 1.0.9 wheel/sdist were not kept after the upload, so they cannot be attached without rebuilding (a rebuild would not be the published artifact). Named by the 2026-08-27 score card; fixing it means re-uploading provably-identical files, which is a deliberate operator act, not a lint fix.
+      v1.0.9 Release has 0 asset(s); the exact wheel + sdist (≥2) must be attached
+      v1.0.9 Release is missing the PyPI file pymaxim-1.0.9-py3-none-any.whl
+      v1.0.9 Release is missing the PyPI file pymaxim-1.0.9.tar.gz
+release-object audit: clean — 24 PyPI version(s) checked, 14 grandfathered
+All released CHANGELOG versions have tags.
+
+EXIT_STATUS=0

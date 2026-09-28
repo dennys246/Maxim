@@ -1,0 +1,6 @@
+memory_type list
+BASE 100 experience_clock {'us': 15000000, 'unit': 'world_experience_us'}
+20260927_115820 total 144 baseline_ids_kept 100 same_new_fields 100 experience_clock {'us': 20000000, 'unit': 'world_experience_us'}
+ENRICHMENT_TRACES []
+20260927_121056 total 136 baseline_ids_kept 100 same_new_fields 100 experience_clock {'us': 20000000, 'unit': 'world_experience_us'}
+ENRICHMENT_TRACES []
