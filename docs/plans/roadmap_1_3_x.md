@@ -141,6 +141,45 @@ required-checks gate, the silent-default swallow lint, the function-length and m
 D46 + D50, D63, fail-loud Stage 3 and L8 — land here beside the decomposition, each with the guard
 named in its row. The ratchets go FIRST in 1.3.2: they pin the ceilings the decomposition then lowers.
 
+### From the v1.3.1 score cards (added 2026-09-27)
+
+Both blind cards ([Claude](../limits/score_cards/2026-09-27-claude.md), [Codex](../limits/score_cards/2026-09-27-codex.md))
+found the same facts and differed on weight; the plan is set against the **lower** readings. Every item
+ships with the guard named beside it, proven by deleting its mechanism. Order matters: 1 unblocks every
+live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the checks the cards credit.
+
+1. **D13 short runs ([#935](https://github.com/dennys246/Maxim/issues/935))** — first, because every live
+   heartbeat re-run now stops after 1–3 turns. Guard: an offline replay test of the narrator's follow-up
+   input (August commit vs `main`), and a committed Sim-Short record that reaches its turn cap.
+2. **Evidence provenance + the typed-abort gate** (mechanization backlog M1). Guard: the ledger lint.
+   Then the **complete Exp 10 re-run** that replaces 1.3.1's narrow one — pre-registered, provenance-stamped,
+   phases run to their cap.
+3. **`create.*` overwrites an existing store; `load.*` raises raw errors ([#939](https://github.com/dennys246/Maxim/issues/939)).**
+   Guard: a test that fails on today's clobber.
+4. **The silent seams #840 and #841, and type-checking the composition layer.** Both are an argument
+   mismatch swallowed by a broad `except` — exactly what mypy catches. Extend CI's mypy set to `runtime/executor.py`,
+   `runtime/agent_loop.py`, `bridges/`, `planning/`, and start the repo-wide error-count ratchet carried from
+   1.3.1 (1,071 at the tag; it may only fall). Guard: CI mypy on those modules + the ratchet.
+5. **Coverage as a ratchet.** Measure on every PR; an overall floor (64.8% lines at the tag) plus per-module
+   floors on the risk seams (the orchestrator at 11%, `fear_bridge.py` at 29%, `tools/sandbox.py`). Guard:
+   the CI step fails below a floor; floors only rise.
+6. **One function-length ratchet** — nothing over 200 lines may grow, nothing new may exceed 200 — replacing
+   the two mismatched mechanisms ([#940](https://github.com/dennys246/Maxim/issues/940)). Guard: the lint, with
+   a per-function baseline.
+7. **CI escape paths ([#940](https://github.com/dennys246/Maxim/issues/940))**: the `|| echo` optional install,
+   the reason-less `importorskip`, the slow lane's expected roster, the network guard at the process-tree
+   boundary. Guard: each lane fails on the escape.
+8. **One source of truth for claims** (mechanization backlog M2). Guard: the claims-registry lint.
+
+**Before 1.4.0, not in 1.3.2:** the release pipeline in CI — [#938](https://github.com/dennys246/Maxim/issues/938)
+fixed, then a tag-triggered workflow that builds once, audits those bytes, publishes them with PyPI trusted
+publishing and creates the Release from them, plus a `v*` tag ruleset and required signatures. Both cards'
+Release-governance gap; it also takes GPG off the release path.
+
+**Not a process item:** Ambition moves only with new science — an EARNED result beyond one binary cue at
+ceiling (a non-binary discriminator, or R4's delayed credit), and a production consumer for one
+recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_1_4.md)).
+
 ### The decomposition
 
 **One target: `agent_loop.py`** (5,348 lines; `run_agentic_loop` 3,484). `start_simulation_mode`
@@ -155,7 +194,7 @@ show all three does not merge.
 **Typing rides along, scoped:** every module the decomposition creates enters CI's mypy set. The
 repo-wide ratchet from 1.3.1 holds the rest. Full coverage is not promised.
 
-**Close it honestly:** a trigger walk over the ledger (Exp 60 and Exp 61 both name
+**Close it honestly:** the complete Exp 10 re-run (item 2 above), a trigger walk over the ledger (Exp 60 and Exp 61 both name
 `run_agentic_loop`'s idle-gate and autonomy handling) and a live re-run of Exp 60 on the rig
 (5 seeds per arm, ~1 h) to discharge them with a dated annotation, rather than an argument that a
 pure extraction changes nothing.

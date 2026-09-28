@@ -83,7 +83,7 @@ Core retains the three session-killing bullets (`--interactive false` from scrip
   every sim process, so match on `maxim` and verify. The same shape one layer over: the OpenAPI
   snapshot tests say "run `maxim serve --dump-openapi`", which on a box whose FastAPI differs from
   CI's would commit the WRONG schema and break everyone — a snapshot message assumes the canonical
-  environment. Regression guard: process invariant — no automated test; the mechanically checkable
+  environment. Regression guard: process invariant — no automated test (mechanization backlog M9); the mechanically checkable
   form (assert the box is quiet before a cadence assertion) is tracked follow-up work.
 - **Known-failing on big-mac-mini, none of them main's fault** (verified 2026-09-22 against green CI
   at `82864566`): 3 `test_vision_engine` (no `[vision]` extra), 2 OpenAPI snapshot (FastAPI/Pydantic

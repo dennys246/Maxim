@@ -41,6 +41,27 @@ direction nobody is looking.
 | O17 | **Run-directory lookups outside `resolve_run_dir` — verified 2026-09-27** | `utils/paths.py::resolve_run_dir` answers "which directory is run X" for `maxim substrate`, `hive pull` and `roy diff` (#933); the orchestrator's `--resume-sim`, `Session.from_disk`, a script and two writers that ignore `MAXIM_DATA_HOME` still resolve on their own. [#932](https://github.com/dennys246/Maxim/issues/932). | Each caller on `resolve_run_dir`, or listed in the persistence-config brief's invariant with its reason. |
 | O18 | **Security follow-ups from the 1.3.1 cluster — verified 2026-09-27** | [#921](https://github.com/dennys246/Maxim/issues/921): `validate_base_url` and `download_to_file` re-resolve after their address check (the #824 class, operator-supplied URLs). [#922](https://github.com/dennys246/Maxim/issues/922): the in-session human approval surface for autonomy/mode requests (#827 made them fail closed meanwhile). [#924](https://github.com/dennys246/Maxim/issues/924): a passive agent can self-switch to active (latent; decide with #922). | Each issue closes itself; this row goes when the last does. |
 
+## Mechanization backlog (added 2026-09-27)
+
+Rules the repo follows **by attention** — each a `Regression guard: process invariant` in CLAUDE.md or a
+brief, citing its row here (CLAUDE.md §Working principles, "Enforced, or on the backlog"). The v1.3.1
+score cards credit only enforcement, and the release's slips all landed on rules like these. **Close a
+row by shipping the check** (a lint, test or required CI job, proven by deleting its mechanism), then
+point the rule's guard line at it and move the row to §Closed. Ranked by the axis it moves; both v1.3.1
+cards' deciding gaps are named where they apply.
+
+| # | Rule (where) | The check that would enforce it | Axis |
+|---|---|---|---|
+| M1 | Weak evidence never gates; typed aborts are not data (CLAUDE.md) | `maxim --sim` stamps commit, clean tree, model, `n_ctx` and interpreter path into `report.json`; a lint refuses a ledger status change citing a record that lacks them or whose runs ended in a typed abort, unless a committed exception names owner + reason; `rerun_*` data governed by the prereg lint, keyed to the row it re-runs. **Both cards' Research-integrity gap.** | Research integrity |
+| M2 | One source of truth for claims (new) | A claims registry (status, scope, evidence per claim); the README results table, experiments index and release-note claim lines generated from it or linted against it. **Would have caught all four 2026-09-27 statement errors.** | Documentation honesty |
+| M3 | A fix ships with a caller (CLAUDE.md) | Diff-scoped CI check: a PR that adds a public symbol or says it fixes an issue shows a non-test caller of the new symbols. | Runtime correctness |
+| M4 | The merged diff is the reviewed diff (CLAUDE.md) | The review round records the head SHA it read; a CI check fails a merge whose diff differs from the last-reviewed SHA's, unless the delta is docs-only. | Test/CI truthfulness |
+| M5 | Four-lens design review before a harness (CLAUDE.md) | The prereg lint requires `docs/experiments/rationale/<slug>/` with the required lenses before a prereg's freeze commit. | Research integrity |
+| M6 | Run the readiness check before merging (CLAUDE.md) | `scripts/pr_merge_readiness.py` as a required status check, so a merge cannot happen with an expected context absent. | Test/CI truthfulness |
+| M7 | Tool results flow through the agent bus (CLAUDE.md) | An architecture-audit rule: a tool may not call into an agent class directly (allowlisting `agents.autonomy`, which `tools/mode_switch.py` and `tools/sandbox.py` import legitimately today). | Maintainability |
+| M8 | Module extraction never re-imports a mutable global by name (runtime-tools brief) | A lint flagging `from X import _lowercase_global` where `X` assigns that name at module level. | Maintainability |
+| M9 | A failure message naming a config fix is checked against what else is running (simulation-experiments brief) | A cadence/timing assertion first asserts the box is quiet (no other `maxim` process), and snapshot tests assert the canonical environment (FastAPI version) before telling anyone to regenerate. | Test/CI truthfulness |
+
 ## Where a thing goes — issue, plan, or here
 
 Adopted 2026-09-20, after this register was created and immediately duplicated three GitHub issues
