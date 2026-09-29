@@ -417,24 +417,16 @@ class PersistenceMixin(StoreFileOwnership):
             if on_error == "raise":
                 raise
 
-            from maxim.memory.store import UNREADABLE_STORE_ERRORS
+            from maxim.memory.store import is_unreadable_store_error
 
-            if isinstance(e, UNREADABLE_STORE_ERRORS):  # unreadable content, not an OSError
+            if is_unreadable_store_error(e):  # unreadable content, not an OSError
                 self._set_aside_after_failed_load(path)
             return True, error_msg
 
     def _set_aside_after_failed_load(self, path: str) -> None:
         """Copy the unreadable file aside and let this (empty) store save in its place. If the copy
         itself fails, the file stays unclaimed, so saves keep refusing rather than destroy it."""
-        try:
-            self.set_aside_unreadable_file(path)
-        except OSError as copy_error:
-            logger.error(
-                "Could not keep a copy of the unreadable hippocampus file %s (%s); it stays in place and "
-                "this session's memories will not be saved over it",
-                path,
-                copy_error,
-            )
+        self.start_fresh_keeping_copy(path)
 
     def save_with_backup(self, path: str | None = None, *, overwrite: bool = False) -> None:
         """Save with automatic backup of previous version.

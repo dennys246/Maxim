@@ -250,9 +250,18 @@ def test_oserror_family_is_reported_not_swallowed(agent_home, tmp_path):
     assert "nac" in {c["subsystem"] for c in ei.value.context["corrupt"]}
 
 
-def test_subsystem_that_fails_to_build_is_never_silently_absent(agent_home, tmp_path):
-    """A None subsystem must not be handed back as a successful 'full restore'."""
-    (agent_home / "nac.json").mkdir()
+def test_subsystem_that_fails_to_build_is_never_silently_absent(agent_home, tmp_path, monkeypatch):
+    """A None subsystem must not be handed back as a successful 'full restore'.
+
+    It used to reach a null MemoryHub through an unreadable nac.json (a directory), which left NAc None
+    and made the hub fail to build. Since #971 the factory reports a failed NAc LOAD as itself
+    (test_oserror_family_is_reported_not_swallowed) and still builds the hub, so the hub is broken here
+    directly."""
+
+    def cannot_build(**kwargs):
+        raise RuntimeError("hub construction failed")
+
+    monkeypatch.setattr("maxim.integration.memory_hub.build_memory_hub", cannot_build)
     with pytest.raises(MemoryCorruptionError) as ei:
         _load(tmp_path)
     reported = {c["subsystem"] for c in ei.value.context["corrupt"]}

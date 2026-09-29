@@ -261,6 +261,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **No memory store saves over a file it never read, and none replaces an unreadable file without
+  keeping a copy** (#971; owner decisions 2026-09-28). #939 guarded Hippocampus and ATL; the other
+  stores still started empty and saved over their file.
+  - NAc, EC, SCN, AngularGyrus and the cross-layer graph now raise `StoreOverwriteRefused` on a save
+    over an existing file they neither read nor created (`save(overwrite=True)` / `allow_overwrite()`
+    to replace one on purpose). Before, `AgentFactory.create_agent(auto_load=False)` overwrote a
+    readable agent home's NAc, EC and SCN at shutdown; only `create.agent`'s up-front refusal stood in
+    front of it.
+  - An unreadable file is kept as `<name>.corrupt-<UTC>` and the store saves fresh in its place, the
+    #939 rule, now uniform. NAc (`load_safe`), EC (an empty rebuild), SCN (in the factory) and
+    AngularGyrus (`load` swallowed the error at DEBUG) each used to save an empty store over it with no
+    copy. SCN's special case in `build_bio_stack`, which left an unreadable `scn.json` unsaved for the
+    whole session (the agent half-persisted), is retired. `load_safe` is new on EC and SCN.
+  - A partial load no longer survives recovery: each store is emptied through its own contract. NAc's
+    hand-kept reset list had drifted and left `cluster_fear`, `cluster_reward_source` and the
+    inherent-bias keys from a corrupt file in place. A failed EC load puts back the config it had
+    adopted from the file (a wrongly typed setting there crashed `load.agent(on_corrupt="fresh")`).
+  - **"Unreadable" gains `IndexError`, `ArithmeticError` and `RecursionError`**, for every store
+    including Hippocampus and ATL, and for `maxim.load.*` (`utils/store_ownership.py::
+    UNREADABLE_STORE_ERRORS`): bad content that raised them escaped recovery and crashed construction.
+    It stays an explicit list on purpose (owner decision): an `OSError` (the file is unreachable) or a
+    code or environment defect (`NameError`, `ImportError`, ...) propagates with the file untouched,
+    and is never read as corruption. EC and SCN used to start fresh on ANY failure and save over their
+    files; a loader bug now stops `build_bio_stack`, and under `create_agent(on_corrupt="warn")` it is
+    reported, the store starts empty in memory (logged at ERROR) and its file is left untouched with
+    saves over it refused.
+  - Under `on_corrupt="warn"`, an agent whose `nac.json` cannot be read now gets an empty NAc (its
+    saves over that file refused, logged at ERROR) instead of none. If an NAc reset beside an
+    unreadable EC cannot keep its copy, the EC does not save over its file either, so the pair on disk
+    stays consistent.
+  - **An unreadable `ec.json` starts the NAc fresh too**, its readable `nac.json` kept as a copy: NAc
+    biases key on EC node ids, so beside a fresh EC they would silently dangle. An EC that cannot be
+    restored for another reason (an unreachable file, or a loader defect under `on_corrupt="warn"`)
+    starts the NAc empty in memory too, with neither file copied nor saved over.
+  - The write-but-don't-read agent (`build_bio_stack(load_persisted=False)`, the sim NPC) declares its
+    overwrite on every store, as do `orient_merge_arm --save-merged` and `live_3_learn --fresh`.
+  - Every automatic save of these stores (the hub's session end, `AgentInstance.shutdown`,
+    `save_aut_state`) logs a refusal at ERROR.
+  - `EntorhinalCortex.save`/`load` and `SCN.save`/`load` take their configured path by default.
+  - The Cerebellum is never auto-saved yet (#908); it takes the guard when it gets a path.
+  - A store mixing in the guard without a way to empty itself is a `TypeError` at class definition.
+  - The mixin moved to `utils/store_ownership.py` (still importable from `maxim.memory.store`): NAc
+    inheriting from anything in `maxim.memory` was a circular import.
+  - Not yet covered: the sim's `--resume-sim` AUT restore does not apply the NAc/EC pair rule (#981).
+
 - **Reinforcing one typed ATL relation no longer updates another on the same concept pair** (#812).
   - Every relation type but CAUSES is stored as `EdgeType.ASSOCIATES`, with the type in metadata.
     `Semantics.update_edge` found the right edge by type but then applied the update through
@@ -327,7 +372,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       the original stays and saves over it are refused.
   - **`maxim.create.agent(name)` now refuses (`FileExistsError`) when the agent's home already holds
     persisted state.** Building a fresh agent there overwrote its NAc, EC and SCN while its memories
-    survived. Continue it with `maxim.load.agent(name)`. The other stores' save guard is #971.
+    survived. Continue it with `maxim.load.agent(name)`. The other stores' save guard followed in #971.
   - **`~` (#950).** `maxim.load.hippocampus("~/...")` returned an EMPTY store (the check expanded `~`,
     the load did not), `load.nac("~/...")` raised, and `persistence_path="~/..."` saved into a literal
     `./~/` under the working directory. Every Hippocampus, ATL and NAc save/load, the `load.*` calls,

@@ -30,153 +30,18 @@ log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# File ownership: a store never writes over a file it did not read (#939)
+# File ownership: a store never writes over a file it did not read (#939, #971)
 # ---------------------------------------------------------------------------
 
-
-# What a store's loader raises for a file it cannot parse or rebuild (JSONDecodeError is a ValueError).
-# ONE definition, used by every "start fresh from an unreadable file" path and by maxim.load.* (#939);
-# anything else (OSError: permissions, EIO) is not corruption, and never licenses replacing the file.
-UNREADABLE_STORE_ERRORS: tuple[type[Exception], ...] = (ValueError, KeyError, TypeError, AttributeError)
-
-# Copies this process made, so identical bytes met by two loaders in one construction are kept once,
-# while a corruption that RECURS across runs still leaves one dated copy per run.
-_COPIES_MADE_THIS_PROCESS: set[str] = set()
-
-
-class StoreFileOwnership:
-    """Mixin for a memory store that persists to one JSON file (Hippocampus, ATL).
-
-    A store may write a file it READ, a file that did not exist when it first wrote it (it created
-    it), or a file it was explicitly told to overwrite (``save(overwrite=True)`` /
-    ``allow_overwrite()``). Anything else is an existing file whose memories this instance never
-    loaded, and saving would destroy them, so ``save`` raises ``StoreOverwriteRefused`` (#939: a
-    ``create.*`` store, the plain constructor and ``from_config`` with the path on the config all used
-    to start empty and clobber the file on the next save). Enforced at the write, so every path that
-    builds a store is covered, including ones added later.
-
-    Ownership is per instance and never released: it is not a lock. Two live stores that both read
-    one file can still overwrite each other's saves, and a file deleted and recreated by another writer
-    is still "owned" here. The guard stops the empty-store clobber, not concurrent writers.
-
-    The class that mixes this in names itself in ``_store_name`` and exposes ``config.persistence_path``.
-    """
-
-    _store_name: str = "store"
-
-    def _owned_store_files(self) -> set[str]:
-        return self.__dict__.setdefault("_store_owned_files", set())
-
-    @staticmethod
-    def _store_file_key(path: str) -> str:
-        import os
-
-        from maxim.utils.paths import store_file_path
-
-        return os.path.realpath(store_file_path(path))
-
-    def _default_store_path(self, path: str | None) -> str:
-        chosen = path or getattr(getattr(self, "config", None), "persistence_path", None)
-        if not chosen:
-            raise ValueError(f"{self._store_name}: no path given and no persistence_path configured")
-        from maxim.utils.paths import store_file_path
-
-        return store_file_path(chosen)
-
-    def may_write(self, path: str | None = None) -> bool:
-        """Whether ``save`` would write ``path`` (default: the configured one) without refusing."""
-        import os
-
-        target = self._default_store_path(path)
-        return not os.path.exists(target) or self._store_file_key(target) in self._owned_store_files()
-
-    def allow_overwrite(self, path: str | None = None) -> None:
-        """Declare that this store may replace ``path`` (default: the configured one) without reading it.
-
-        For a deliberately write-but-don't-read store (the sim NPC, a fresh start over a file the
-        operator chose to discard). The file's current contents are lost on the next save.
-        """
-        import os
-
-        target = self._default_store_path(path)
-        self._owned_store_files().add(self._store_file_key(target))
-        if os.path.exists(target):
-            log.warning("%s: will overwrite %s without reading it (declared)", self._store_name, target)
-
-    def set_aside_unreadable_file(self, path: str | None = None) -> str | None:
-        """Keep an unreadable store file as evidence, then let this store save in its place.
-
-        Copies ``path`` (default: the configured one) to ``<name>.corrupt-<UTC timestamp>`` beside
-        it, logs where it went, and claims the original, so a store that started empty after a
-        failed load persists normally instead of being refused forever (owner decision 2026-09-28,
-        #939). Returns the copy's path, or None when there is no file.
-        """
-        import shutil
-        import time as _time
-        from pathlib import Path
-
-        import filecmp
-
-        target = Path(self._default_store_path(path))
-        if not target.exists():
-            return None
-        # A failed load can leave PART of the file in the store; "starting empty" must be true before
-        # the store is allowed to save over the file.
-        self._reset_store_state()
-        # Two loaders can meet the same corrupt file in one construction (create_full_agent's factory,
-        # then its bio stack): keep ONE copy of identical bytes -- among copies made by THIS process.
-        for existing in sorted(_COPIES_MADE_THIS_PROCESS):
-            existing_path = Path(existing)
-            if existing_path.parent == target.parent and existing_path.name.startswith(f"{target.name}.corrupt-"):
-                if existing_path.exists() and filecmp.cmp(existing_path, target, shallow=False):
-                    self._claim_store_file(str(target))
-                    log.warning(
-                        "%s: %s could not be read; its copy is already at %s", self._store_name, target, existing
-                    )
-                    return existing
-        stamp = _time.strftime("%Y%m%dT%H%M%SZ", _time.gmtime())
-        copy = target.with_name(f"{target.name}.corrupt-{stamp}")
-        n = 1
-        while copy.exists():
-            copy = target.with_name(f"{target.name}.corrupt-{stamp}-{n}")
-            n += 1
-        shutil.copy2(target, copy)
-        _COPIES_MADE_THIS_PROCESS.add(str(copy))
-        self._claim_store_file(str(target))
-        log.warning(
-            "%s: %s could not be read; kept a copy at %s and starting empty -- the next save replaces it",
-            self._store_name,
-            target,
-            copy,
-        )
-        return str(copy)
-
-    def _reset_store_state(self) -> None:
-        """Empty this store completely, through its own snapshot contract: restore the dump of a fresh
-        store with the same config (every surface ``load_state`` owns -- graph, indexes, stats)."""
-        fresh = type(self)(getattr(self, "config", None))  # type: ignore[call-arg]
-        self.load_state(fresh.dump())  # type: ignore[attr-defined]
-
-    def _claim_store_file(self, path: str) -> None:
-        """Record that this store read, created or was told to replace ``path``."""
-        self._owned_store_files().add(self._store_file_key(path))
-
-    def _check_store_write(self, path: str, *, overwrite: bool) -> None:
-        """Raise ``StoreOverwriteRefused`` unless this store may write ``path`` (expanded already)."""
-        if overwrite:
-            self._claim_store_file(path)
-            return
-        if not self.may_write(path):
-            from maxim.exceptions import StoreOverwriteRefused
-
-            raise StoreOverwriteRefused(
-                f"{self._store_name}: refusing to save over {path}, which this instance never read -- "
-                f"it would replace the memories stored there. Open it with maxim.load.{self._store_name}() "
-                "(or the store's load()) to keep them, save to another path, or pass overwrite=True / call "
-                "allow_overwrite() to replace them deliberately.",
-                path=path,
-                store=self._store_name,
-            )
+# Defined in a leaf module (#971): NAc, EC, SCN and AngularGyrus inherit the mixin, and importing this
+# package runs memory/__init__, which imports the Hippocampus, which imports NAc -- a cycle. Re-exported
+# here so existing imports keep working.
+from maxim.utils.store_ownership import (  # noqa: E402,F401
+    _COPIES_MADE_THIS_PROCESS,
+    UNREADABLE_STORE_ERRORS,
+    StoreFileOwnership,
+    is_unreadable_store_error,
+)
 
 
 # ---------------------------------------------------------------------------

@@ -30,13 +30,13 @@ if TYPE_CHECKING:
 __all__ = ["hippocampus", "nac", "atl", "session", "sessions", "agent", "entity"]
 
 
-def _unreadable_errors() -> tuple[type[Exception], ...]:
-    """What a store's loader raises for a file it cannot parse or reconstruct: the one shared definition
-    (``memory/store.py::UNREADABLE_STORE_ERRORS``), imported lazily like every facade import.
-    OSError (permissions, a directory) is not corruption and propagates as itself."""
-    from maxim.memory.store import UNREADABLE_STORE_ERRORS
+def _unreadable(e: Exception) -> bool:
+    """Whether ``e`` means the file is UNREADABLE -- the one shared definition
+    (``utils/store_ownership.py::UNREADABLE_STORE_ERRORS``), imported lazily like every facade import.
+    Anything else (an OSError, a code defect) propagates as itself."""
+    from maxim.memory.store import is_unreadable_store_error
 
-    return UNREADABLE_STORE_ERRORS
+    return is_unreadable_store_error(e)
 
 
 def _existing_store_file(path: str, label: str) -> str:
@@ -91,7 +91,9 @@ def hippocampus(path: str) -> "Hippocampus":
     h = Hippocampus(HippocampusConfig(**resolve_hippocampus_memory_kwargs()))
     try:
         h.load(resolved)
-    except _unreadable_errors() as e:
+    except Exception as e:
+        if not _unreadable(e):
+            raise
         raise _corrupt("Hippocampus", resolved, e) from e
     return h
 
@@ -124,7 +126,9 @@ def nac(path: str) -> "NAc":
     # numbers, and a load→save round-trip must not compound decay.
     try:
         n.load(resolved, apply_decay=False)
-    except _unreadable_errors() as e:
+    except Exception as e:
+        if not _unreadable(e):
+            raise
         raise _corrupt("NAc", resolved, e) from e
     return n
 
@@ -156,7 +160,9 @@ def atl(path: str) -> "ATL":
     a = ATL(ATLConfig(memory_strategy=resolve_memory_strategy()))
     try:
         a.load(resolved)
-    except _unreadable_errors() as e:
+    except Exception as e:
+        if not _unreadable(e):
+            raise
         raise _corrupt("ATL", resolved, e) from e
     return a
 
@@ -233,11 +239,11 @@ def agent(
             ``"raise"`` (default) aborts with a
             :class:`~maxim.exceptions.MemoryCorruptionError` naming every bad
             file. ``"fresh"`` is the explicit opt-in to start those subsystems
-            empty. An unreadable Hippocampus or ATL file is copied to
-            ``<name>.corrupt-<UTC timestamp>`` beside it (logged) and the agent
-            saves fresh state in its place, so nothing is destroyed by the
-            choice. NAc, EC and SCN files are NOT copied: their unreadable file
-            is overwritten at the next save, with no copy (until #971).
+            empty. An unreadable Hippocampus, ATL, NAc, EC or SCN file is
+            copied to ``<name>.corrupt-<UTC timestamp>`` beside it (logged)
+            and the agent saves fresh state in its place, so nothing is
+            destroyed by the choice. An unreadable EC also starts the NAc
+            fresh (a copy kept): its biases key on EC node ids (#971).
 
     Returns:
         ``AgentInstance`` with persisted state restored.

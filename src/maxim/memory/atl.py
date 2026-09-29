@@ -43,7 +43,7 @@ from maxim.memory.semantic_types import (
     SemanticRelationship,
 )
 from maxim.memory.semantics import Semantics
-from maxim.memory.store import UNREADABLE_STORE_ERRORS, StoreFileOwnership
+from maxim.memory.store import StoreFileOwnership, is_unreadable_store_error
 from maxim.utils.atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
@@ -442,19 +442,12 @@ class ATL(StoreFileOwnership, MemoryLayer):
         try:
             self.load(path)
             return True, None
-        except UNREADABLE_STORE_ERRORS as e:
+        except Exception as e:
+            if not is_unreadable_store_error(e):
+                raise
             error_msg = f"Corrupt ATL file ({type(e).__name__}): {e}"
             logger.warning("%s — starting with empty concept store", error_msg)
-            try:
-                self.set_aside_unreadable_file(path)  # keep a copy, then save fresh in its place (#939)
-            except OSError as copy_error:
-                logger.error("Could not keep a copy of %s (%s); it stays unsaved-over", path, copy_error)
-            with self._rwlock.write():
-                self._concepts.clear()
-                self._context_index.clear()
-                self._concept_contexts.clear()
-                self._modality_index.clear()
-                self._compressed_count = 0
+            self.start_fresh_keeping_copy(path)  # keep a copy, then save fresh in its place (#939)
             return False, error_msg
 
     def consolidate(self, **kwargs: Any) -> dict[str, int]:

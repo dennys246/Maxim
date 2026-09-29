@@ -40,6 +40,7 @@ from maxim.decisions.causal_link import (
     causal_link_id,
     hash_link_context,
 )
+from maxim.utils.store_ownership import StoreFileOwnership, is_unreadable_store_error
 from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
@@ -607,7 +608,7 @@ _DRIVE_TOOL_AFFINITIES: dict[str, tuple[str, ...]] = {
 }
 
 
-class NAc:
+class NAc(StoreFileOwnership):
     """Nucleus Accumbens - Causal inference and reward prediction engine.
 
     Learns event → outcome relationships through observation, enabling
@@ -647,6 +648,8 @@ class NAc:
             print(f"Expected: {prediction.predicted_outcome}")
             print(f"Confidence: {prediction.confidence:.2f}")
     """
+
+    _store_name = "nac"  # StoreFileOwnership (#971): never saves over a file it did not read
 
     # P3.5 Stage 1 — BioSystemSnapshot Protocol envelope version.
     # Payload-layer legacy version string "1.0" is tombstoned; all future
@@ -3915,11 +3918,12 @@ class NAc:
                 results["cluster_reward_bias_pruned"] = p
         return results
 
-    def save(self, path: str | None = None) -> None:
+    def save(self, path: str | None = None, *, overwrite: bool = False) -> None:
         """Save NAc state to JSON file.
 
         If ``path`` is omitted, falls back to ``self.config.persistence_path``.
-        Raises ``ValueError`` if neither is set.
+        Raises ``ValueError`` if neither is set. ``overwrite`` replaces an existing file this instance
+        never read; without it such a save raises ``StoreOverwriteRefused`` (#971).
 
         Stamps ``_format_version`` at ``_NAC_FORMAT_VERSION``
         (``"1.2"`` as of Wire 1, release_0_9_1.md Stage 4).
@@ -3933,9 +3937,8 @@ class NAc:
         path = path or self.config.persistence_path
         if path is None:
             raise ValueError("NAc.save() requires a path or NACConfig.persistence_path to be set")
-        from maxim.utils.paths import store_file_path
-
-        path = store_file_path(path)  # `~` means home (#950)
+        path = self._default_store_path(path)  # `~` means home (#950)
+        self._check_store_write(path, overwrite=overwrite)
 
         from maxim.utils.atomic_io import atomic_write_json
         from maxim.utils.format_version import with_format_version
@@ -3950,6 +3953,7 @@ class NAc:
         # nothing but file mtime to age biases by.
         payload["saved_at"] = time.time()
         atomic_write_json(path, with_format_version(payload, version=_NAC_FORMAT_VERSION))
+        self._claim_store_file(path)
         logger.info("Saved NAc to %s (%d links)", path, len(self))
 
     def load(self, path: str | None = None, *, apply_decay: bool = True) -> None:
@@ -3975,9 +3979,7 @@ class NAc:
         path = path or self.config.persistence_path
         if path is None:
             raise ValueError("NAc.load() requires a path or NACConfig.persistence_path to be set")
-        from maxim.utils.paths import store_file_path
-
-        path = store_file_path(path)  # `~` means home (#950)
+        path = self._default_store_path(path)  # `~` means home (#950)
         with open(path, encoding="utf-8") as f:
             state = json.load(f)
 
@@ -3985,6 +3987,7 @@ class NAc:
 
         check_format_version(state, "nac", log=logger)
         self.load_state(state)
+        self._claim_store_file(path)
 
         # Decay-on-load (1.3, nac_cross_session_persistence.md): age the
         # bias surfaces by elapsed wall-clock time since save. Lives HERE
@@ -4012,39 +4015,32 @@ class NAc:
         logger.info("Loaded NAc from %s (%d links, %d biases)", path, len(self), len(self._reward_bias))
 
     def load_safe(self, path: str | None = None, *, apply_decay: bool = True) -> tuple[bool, str | None]:
-        """Load with recovery on failure. Returns (success, error_message)."""
+        """Load with recovery on failure. Returns (success, error_message).
+
+        A missing file is a fresh start. An UNREADABLE one (``is_unreadable_store_error``) is copied to
+        ``<name>.corrupt-<UTC timestamp>``, the store is emptied through its snapshot contract, and the
+        next save replaces the original (#971, the #939 rule). An ``OSError`` propagates: it never
+        licenses replacing the file.
+        """
         path = path or self.config.persistence_path
         if path is None:
             raise ValueError("NAc.load_safe() requires a path or NACConfig.persistence_path to be set")
-        from maxim.utils.paths import store_file_path
-
-        path = store_file_path(path)  # `~` means home (#950)
+        path = self._default_store_path(path)  # `~` means home (#950)
         if not os.path.exists(path):
             logger.info("No existing NAc file at %s, starting fresh", path)
             return True, None
         try:
             self.load(path, apply_decay=apply_decay)
             return True, None
-        except (json.JSONDecodeError, ValueError, KeyError, TypeError, AttributeError) as e:
-            # AttributeError joins the list for wrong-typed containers
-            # (e.g. {"links": "not-a-dict"} → .items() on a str) — the
-            # same corrupt-file class as the others (review fold).
+        except Exception as e:
+            if not is_unreadable_store_error(e):
+                raise
             error_msg = f"Corrupt NAc file ({type(e).__name__}): {e}"
             logger.warning("%s — starting with empty causal model", error_msg)
-            # Reset EVERY surface load_state mutates, not just the link
-            # tables — a raise partway through load can leave earlier
-            # surfaces populated from the corrupt file, and "empty causal
-            # model" must be true, not aspirational (review fold, Exec #1
-            # + Arch #5).
-            self._links = {}
-            self._outcome_index = {}
-            self._priors = {}
-            self._total_observations = 0
-            self._reward_bias = {}
-            self._goal_reward_bias = {}
-            self._cluster_reward_bias = {}
-            self._percept_valences = {}
-            self._event_outcome_welford = {}
+            # Empties EVERY surface load_state sets (a load that failed partway can leave some
+            # populated), then keeps a copy. The hand-kept reset list it replaces had drifted: it missed
+            # cluster_fear, cluster_reward_source and the inherent-bias keys.
+            self.start_fresh_keeping_copy(path)
             return False, error_msg
 
     def get_version(self) -> str:

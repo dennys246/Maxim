@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from maxim.utils.store_ownership import StoreFileOwnership, is_unreadable_store_error
+
 if TYPE_CHECKING:
     from maxim.memory.layer import MemoryLayer
 
@@ -58,7 +60,7 @@ class CrossLayerEdge:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-class CrossLayerGraph:
+class CrossLayerGraph(StoreFileOwnership):
     """Graph linking records across memory layers.
 
     Lightweight: only stores edge data, delegates record access to
@@ -69,6 +71,7 @@ class CrossLayerGraph:
     # Payload-layer legacy version string "1.0" is tombstoned; all future
     # migrations land at the envelope layer. See memory/snapshot.py docstring.
     schema_version: ClassVar[int] = 1
+    _store_name = "cross_layer"  # StoreFileOwnership (#971): never saves over a file it did not read
 
     def __init__(
         self,
@@ -250,30 +253,53 @@ class CrossLayerGraph:
                 metadata=e_data.get("metadata", {}),
             )
 
-    def save(self, path: str | None = None) -> None:
-        """Persist cross-layer graph to JSON."""
-        path = path or self._persistence_path
-        if path is None:
+    def _configured_store_path(self) -> str | None:
+        return self._persistence_path
+
+    def _fresh_store(self) -> "CrossLayerGraph":
+        return CrossLayerGraph(layers=self._layers, persistence_path=self._persistence_path)
+
+    def save(self, path: str | None = None, *, overwrite: bool = False) -> None:
+        """Persist cross-layer graph to JSON (no-op when no path is given or configured).
+
+        ``overwrite`` replaces an existing file this instance never read; without it such a save raises
+        ``StoreOverwriteRefused`` (#971).
+        """
+        if not (path or self._persistence_path):
             return
+        path = self._default_store_path(path)  # `~` means home
+        self._check_store_write(path, overwrite=overwrite)
 
         from maxim.utils.atomic_io import atomic_write_json
         from maxim.utils.format_version import with_format_version
 
         atomic_write_json(path, with_format_version(self.dump()), default=None)
+        self._claim_store_file(path)
 
     def load(self, path: str | None = None) -> None:
-        """Restore cross-layer graph from JSON."""
-        path = path or self._persistence_path
-        if path is None or not os.path.exists(path):
+        """Restore cross-layer graph from JSON (no-op when no path is given or configured, or the file
+        is absent). An UNREADABLE file is copied to ``<name>.corrupt-<UTC timestamp>`` and the graph
+        starts empty; the next save replaces the original (#971, the #939 rule)."""
+        if not (path or self._persistence_path):
             return
+        path = self._default_store_path(path)
+        if not os.path.exists(path):
+            return
+        try:
+            with open(path) as f:
+                state = json.load(f)
 
-        with open(path) as f:
-            state = json.load(f)
+            from maxim.utils.format_version import check_format_version
 
-        from maxim.utils.format_version import check_format_version
-
-        check_format_version(state, "cross_layer_graph", log=logger)
-        self.load_state(state)
+            check_format_version(state, "cross_layer_graph", log=logger)
+            self.load_state(state)
+        except Exception as e:
+            if not is_unreadable_store_error(e):
+                raise
+            logger.warning("Corrupt cross-layer graph %s (%s: %s) — starting empty", path, type(e).__name__, e)
+            self.start_fresh_keeping_copy(path)
+            return
+        self._claim_store_file(path)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for persistence."""

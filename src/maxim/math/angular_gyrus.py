@@ -42,6 +42,7 @@ from maxim.math.types import (
     MathCategory,
 )
 from maxim.memory.rwlock import RWLock
+from maxim.utils.store_ownership import StoreFileOwnership, is_unreadable_store_error
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ class AngularGyrusConfig:
     seed_built_ins: bool = True
 
 
-class AngularGyrus(MemoryLayer):
+class AngularGyrus(StoreFileOwnership, MemoryLayer):
     """Angular Gyrus (Posterior Parietal Lobe) — Exact math + math memory.
 
     **MemoryLayer protocol** (store/get/recall/consolidate/save/load/etc.)
@@ -73,6 +74,7 @@ class AngularGyrus(MemoryLayer):
 
     # --- Persistence version ---
     _VERSION = "1.0"
+    _store_name = "angular_gyrus"  # StoreFileOwnership (#971): never saves over a file it did not read
 
     def __init__(self, config: AngularGyrusConfig | None = None) -> None:
         self.config = config or AngularGyrusConfig()
@@ -287,11 +289,17 @@ class AngularGyrus(MemoryLayer):
     def graph(self) -> DependencyGraph:
         return self._graph
 
-    def save(self, path: str | None = None) -> None:
-        """Persist to JSON file."""
-        save_path = path or self.config.persistence_path
-        if not save_path:
+    def save(self, path: str | None = None, *, overwrite: bool = False) -> None:
+        """Persist to JSON file (no-op when no path is given or configured).
+
+        ``overwrite`` replaces an existing file this instance never read; without it such a save raises
+        ``StoreOverwriteRefused`` (#971) -- checked before the write, whose own ``OSError`` handling
+        must not swallow the refusal (it is a ``FileExistsError``).
+        """
+        if not (path or self.config.persistence_path):
             return
+        save_path = self._default_store_path(path)  # `~` means home
+        self._check_store_write(save_path, overwrite=overwrite)
 
         with self._rwlock.read():
             data = {
@@ -308,23 +316,43 @@ class AngularGyrus(MemoryLayer):
             from maxim.utils.format_version import with_format_version
 
             atomic_write_json(save_path, with_format_version(data))
+            self._claim_store_file(save_path)
             logger.debug("Angular gyrus saved %d records to %s", len(self._records), save_path)
         except OSError as e:
             logger.warning("Failed to save angular gyrus: %s", e)
 
     def load(self, path: str | None = None) -> None:
-        """Load from JSON file."""
-        load_path = path or self.config.persistence_path
-        if not load_path:
-            return
+        """Load from JSON file (no-op when no path is given or configured, or the file is absent).
 
+        An UNREADABLE file (``is_unreadable_store_error``) is copied to ``<name>.corrupt-<UTC timestamp>``
+        and the store starts empty; the next save replaces the original (#971, the #939 rule -- this
+        used to be swallowed at DEBUG, then saved over). A file that cannot be opened is reported and
+        left alone: an ``OSError`` never licenses replacing it, so a later save over it is refused.
+        """
+        import os
+
+        if not (path or self.config.persistence_path):
+            return
+        load_path = self._default_store_path(path)
+        if not os.path.exists(load_path):
+            return
         try:
             with open(load_path) as f:
                 data = json.load(f)
-        except (OSError, json.JSONDecodeError) as e:
-            logger.debug("Failed to load angular gyrus: %s", e)
+            self._load_payload(data, load_path)
+        except Exception as e:
+            if not is_unreadable_store_error(e):
+                if isinstance(e, OSError):
+                    logger.warning("Could not read angular gyrus file %s: %s — it is left untouched", load_path, e)
+                    return
+                raise
+            logger.warning("Corrupt angular gyrus file %s (%s: %s) — starting empty", load_path, type(e).__name__, e)
+            self.start_fresh_keeping_copy(load_path)
             return
+        self._claim_store_file(load_path)
+        logger.debug("Angular gyrus loaded %d records from %s", len(self._records), load_path)
 
+    def _load_payload(self, data: Any, load_path: str) -> None:
         from maxim.utils.format_version import check_format_version
 
         check_format_version(data, "angular_gyrus", log=logger)
@@ -348,7 +376,17 @@ class AngularGyrus(MemoryLayer):
             self._total_stores = stats.get("total_stores", 0)
             self._total_recalls = stats.get("total_recalls", 0)
 
-        logger.debug("Angular gyrus loaded %d records from %s", len(self._records), load_path)
+    def _reset_store_state(self) -> None:
+        """Empty the store to what a fresh one holds (the seeded built-ins, if configured); AngularGyrus
+        has no ``dump``/``load_state``. Callbacks and the lock stay."""
+        fresh = AngularGyrus(self.config)
+        with self._rwlock.write():
+            self._records = fresh._records
+            self._context_index = fresh._context_index
+            self._record_contexts = fresh._record_contexts
+            self._graph = fresh._graph
+            self._total_stores = fresh._total_stores
+            self._total_recalls = fresh._total_recalls
 
     def consolidate(self, **kwargs: Any) -> dict[str, int]:
         """Consolidation cycle: score records, compress/remove stale ones.

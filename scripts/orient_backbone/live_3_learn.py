@@ -532,6 +532,7 @@ def main() -> int:
     nac = NAc(NACConfig(persistence_path=args.nac_path))
     if args.fresh:
         print("[nac] --fresh: starting untrained")
+        nac.allow_overwrite()  # --fresh replaces the previous policy file on purpose (#971)
     else:
         ok, err = nac.load_safe(args.nac_path)
         print(f"[nac] load_safe({args.nac_path}) -> ok={ok}" + (f" ({err})" if err else ""))
