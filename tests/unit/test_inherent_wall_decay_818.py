@@ -29,6 +29,7 @@ def _nac_with_biases(path: str | None = None) -> NAc:
     return nac
 
 
+@pytest.mark.single_agent_only
 def test_wall_clock_decay_leaves_an_inherent_bias_exactly_as_it_was() -> None:
     nac = _nac_with_biases()
     nac.apply_wall_clock_decay(3 * DAY)
@@ -36,6 +37,7 @@ def test_wall_clock_decay_leaves_an_inherent_bias_exactly_as_it_was() -> None:
     assert nac._cluster_reward_bias[LEARNED] == pytest.approx(-0.8 * 0.5**3)  # learned ones still age
 
 
+@pytest.mark.single_agent_only
 def test_wall_clock_decay_never_prunes_an_inherent_bias() -> None:
     """Long enough to prune a learned bias of the same size: the inherent one stays, marker and all."""
     nac = _nac_with_biases()
@@ -46,6 +48,7 @@ def test_wall_clock_decay_never_prunes_an_inherent_bias() -> None:
     assert INHERENT in nac.inherent_bias_keys
 
 
+@pytest.mark.single_agent_only
 def test_an_agent_off_for_three_days_reloads_its_inherent_bias_intact(tmp_path: Path) -> None:
     """The path the defect lived on: save, then NAc.load() with decay-on-load across a real gap."""
     path = tmp_path / "nac.json"
@@ -58,3 +61,21 @@ def test_an_agent_off_for_three_days_reloads_its_inherent_bias_intact(tmp_path: 
     assert reloaded._cluster_reward_bias[INHERENT] == pytest.approx(-0.8)
     assert reloaded._cluster_reward_bias[LEARNED] == pytest.approx(-0.8 * 0.5**3, rel=1e-3)
     assert INHERENT in reloaded.inherent_bias_keys
+
+
+@pytest.mark.multi_agent_modes
+def test_one_agents_inherent_key_does_not_shield_another_agents_bias(multi_agent_modes) -> None:
+    """The exemption is per KEY, and the key carries the agent: in every mode (including one NAc shared
+    by two agents) only the marked agent's bias survives the offline decay."""
+    ids = multi_agent_modes.agent_ids
+    for agent_id in ids:
+        multi_agent_modes.nac_for(agent_id)._cluster_reward_bias[(agent_id, "cluster-hot", "touch")] = -0.8
+    marked = ids[0]
+    multi_agent_modes.nac_for(marked).mark_inherent_bias(marked, "cluster-hot", "touch")
+    for nac in {id(multi_agent_modes.nac_for(a)): multi_agent_modes.nac_for(a) for a in ids}.values():
+        nac.apply_wall_clock_decay(3 * DAY)
+    assert multi_agent_modes.nac_for(marked)._cluster_reward_bias[(marked, "cluster-hot", "touch")] == -0.8
+    for other in ids[1:]:
+        assert multi_agent_modes.nac_for(other)._cluster_reward_bias[(other, "cluster-hot", "touch")] == pytest.approx(
+            -0.8 * 0.5**3
+        )
