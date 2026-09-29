@@ -25,6 +25,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A sim's `report.json` records which code, interpreter, model profile and context budget it ran
+  under** (mechanization backlog M1, first half).
+  - New `provenance` block, in `scripts/_provenance.py`'s vocabulary so the prereg lint reads it as it
+    reads a harness's own:
+    - taken at sim start: `executed_git_hash`, `working_tree_dirty_src_scripts` (a clean tree over
+      `src/` and `scripts/` only), `executed_maxim_file`, `python`, `pythonpath`, `maxim_version`, and
+      `configured_n_ctx` (the `llm.n_ctx` setting an owned local server spawns with, with its source);
+    - per LLM role (`language_`, `aut_`): the router's own `profile`, its configured `router_n_ctx`, and
+      the worker's `budget_n_ctx`, which is that window clamped to the smallest declared provider
+      context. A remote server's own window is not knowable from the client and is not claimed;
+    - `code_tree_sha256`: a sha256 of the `src/`+`scripts/` code on disk -- every tracked path, every
+      untracked one the repo's own `.gitignore` files do not exclude, and every path in HEAD, each framed
+      with its content (a file's bytes, a symlink's target, or deleted). Git supplies only the path set,
+      so no git config or index state (external diff, per-user excludes, assume-unchanged,
+      `core.fileMode`, autocrlf) can move it or hide a change, and inherited git location and pathspec
+      variables are dropped. Its boundary: a path the repo's `.gitignore` files exclude is assumed not to
+      be code, and every rule that decides it (the root `.gitignore`, any `.gitignore` in scope, tracked
+      or not) is hashed with the code. `scripts/_provenance.py` stamps the same digest into harness records, so M1b's lint can bind a dirty sim report to the
+      harness record that allowed it (owner decision after a security review: the allowance lives only
+      in the harness record a human granted; a sim report never carries `allow_dirty`);
+    - the code is stamped again at report time: the run counts as dirty if either stamp saw a dirty tree
+      (code imported lazily after the start is code too), and `code_changed_during_run` is true when
+      the commit, the clean-tree state or the digest moved during the run; the end values are kept
+      beside the start ones.
+  - A tree that cannot be established (a PyPI install, a `maxim` imported from inside some other repo,
+    a git failure) stamps `executed_git_hash: "unknown"` and counts as dirty: unknown never reads as
+    clean.
+  - New `ts`: the run's start in epoch seconds, the data time the prereg lint reads (the old `timestamp`
+    is a naive local string).
+  - `simulation.report.build_report` takes `started_at=` and `provenance=` as required keywords, so a
+    caller cannot forget them; an empty stamp is still possible, and the ledger lint (M1's second half)
+    will read it as unestablished.
+  - Two small public accessors on `LLMWorker`: `router` and `n_ctx` (the clamped budget).
+
 - **`maxim config downgrade` and `maxim config restore-preserved`: a newer config.json after a downgrade
   is never silently stripped** (#974, owner decision 2026-09-28).
   - `maxim config set` on a file written by a newer Maxim now REFUSES and names the way out. Before, it

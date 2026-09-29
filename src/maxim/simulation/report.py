@@ -8,8 +8,13 @@ After each simulation run, this module:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import os
+import stat
+import subprocess
+import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -107,6 +112,186 @@ class SimulationReport:
     # Currently: substrate_actions_per_turn (int | None = unbounded).
     apparatus: dict[str, Any] = field(default_factory=dict)
 
+    # When the run started (epoch seconds) and which code, interpreter, model profile and context size it
+    # ran under (mechanization backlog M1): the record carries what an operator used to attest by hand,
+    # so a ledger lint can refuse a status change citing a run it cannot establish. Keys follow
+    # ``scripts/_provenance.py`` (``executed_git_hash``, ``working_tree_dirty_src_scripts``, ...), the
+    # vocabulary the prereg lint already reads. ``ts`` is the data time that lint takes; ``None`` = a
+    # report not built by a sim (``build_report`` always sets it).
+    ts: float | None = None
+    provenance: dict[str, Any] = field(default_factory=dict)
+
+
+# ``git status`` scope for the clean-tree flag, as ``scripts/_provenance.py::DIRTY_SCOPE``: ``src/`` and
+# ``scripts/`` only (a scenario YAML's state is not covered).
+_DIRTY_SCOPE = ("src", "scripts")
+
+
+def capture_start_provenance() -> dict[str, Any]:
+    """What a sim runs with, taken at its start (M1): the imported code, the interpreter, and the
+    configured context window.
+
+    A commit is claimed only when the imported ``maxim`` is the ``src/`` of a git checkout; a PyPI install
+    stamps ``"unknown"``. As in ``scripts/_provenance.py``, a tree whose state cannot be established counts
+    as DIRTY: unknown must never read as clean. ``configured_n_ctx`` is the ``llm.n_ctx`` setting, which an
+    owned local server is spawned with; a remote server's own window is not knowable from here.
+    """
+    import maxim
+    from maxim.exceptions import ConfigurationError
+    from maxim.runtime.config_loader import resolve_setting
+
+    try:
+        n_ctx, n_ctx_source = resolve_setting("llm.n_ctx")
+    except ConfigurationError as e:  # a malformed env value must not cost the run its start
+        logger.warning("report provenance: llm.n_ctx unresolved (%s: %s)", type(e).__name__, e)
+        n_ctx, n_ctx_source = None, f"unresolved: {type(e).__name__}"
+    return {
+        **_code_stamp(Path(maxim.__file__).resolve()),
+        "python": sys.executable,
+        "pythonpath": os.environ.get("PYTHONPATH", ""),
+        "maxim_version": maxim.__version__,
+        "configured_n_ctx": n_ctx,
+        "configured_n_ctx_source": n_ctx_source,
+    }
+
+
+def run_provenance(start: dict[str, Any], *, llm_worker: Any | None, aut_worker: Any | None) -> dict[str, Any]:
+    """``start`` (from :func:`capture_start_provenance`) plus what each LLM role actually ran with.
+
+    Per role (``language``, ``aut``; ``None`` = no such worker): the router's own profile and configured
+    window, and the worker's prompt budget, which is that window clamped to the smallest declared provider
+    context. The code is stamped again here: the run counts as dirty if either stamp saw a dirty tree, and
+    ``code_changed_during_run`` is true when the commit, the clean-tree state or the uncommitted diff moved
+    while the run was going (an edit made and reverted inside it is not seen); the end values are kept
+    beside the start ones. Profile and windows are read here, at report time: a mid-run model switch
+    would stamp the model the run ended on.
+    """
+    import maxim
+
+    end = _code_stamp(Path(maxim.__file__).resolve())
+    changed = any(end[k] != start.get(k) for k in end)
+    roles: dict[str, Any] = {}
+    for role, worker in (("language", llm_worker), ("aut", aut_worker)):
+        router = getattr(worker, "router", None)
+        roles[f"{role}_profile"] = getattr(getattr(router, "cfg", None), "profile", None)
+        roles[f"{role}_router_n_ctx"] = router.n_ctx if router is not None else None
+        roles[f"{role}_budget_n_ctx"] = worker.n_ctx if worker is not None else None
+    # Dirty if either stamp saw a dirty tree: code imported lazily after the start stamp is code too.
+    dirty = start.get("working_tree_dirty_src_scripts") is not False or end["working_tree_dirty_src_scripts"]
+    return {
+        **start,
+        **roles,
+        "working_tree_dirty_src_scripts": dirty,
+        "code_changed_during_run": changed,
+        "end_executed_git_hash": end["executed_git_hash"],
+        "end_code_tree_sha256": end["code_tree_sha256"],
+    }
+
+
+def _code_stamp(maxim_file: Path) -> dict[str, Any]:
+    from maxim import _has_git_metadata
+
+    repo = maxim_file.parents[2]  # src/maxim/__init__.py -> repo
+    in_checkout = _has_git_metadata(str(repo)) and (repo / "src" / "maxim").resolve() == maxim_file.parent
+    return {
+        "executed_maxim_file": str(maxim_file),
+        "executed_git_hash": _git_short12(repo) if in_checkout else "unknown",
+        "working_tree_dirty_src_scripts": _tree_dirty(repo) if in_checkout else True,
+        "code_tree_sha256": _code_tree_sha256(repo) if in_checkout else "unknown",
+    }
+
+
+def _code_tree_sha256(repo_root: Path | str, scope: tuple[str, ...] = _DIRTY_SCOPE) -> str:
+    """sha256 naming the exact code under ``scope`` (M1): every tracked path, every untracked path the repo's
+    own ``.gitignore`` files do not exclude, and every path in HEAD, in path order, each framed with its
+    content -- a regular file's bytes (and whether it is executable), a symlink's target string, or
+    deleted. It hashes what is ON DISK and asks git only for the path set, so no git config or index state
+    (an external diff, textconv, a per-user exclude file, assume-unchanged, ``core.fileMode``, autocrlf)
+    can move it or hide a change; inherited git location and pathspec variables (``GIT_DIR``,
+    ``GIT_WORK_TREE``, ``GIT_LITERAL_PATHSPECS``, ...) are dropped so a parent process cannot point it
+    elsewhere or blind a listing. The boundary it keeps: a path the repo's ``.gitignore`` files exclude is
+    assumed not to be code, and every rule that decides it (the root ``.gitignore``, any ``.gitignore`` in
+    scope, tracked or not) is hashed with the code. ``"unknown"`` when git fails, a path is neither a
+    file, a symlink nor absent (an untracked nested repo is a directory), or a path resolves outside the
+    repo. Its twin in ``scripts/_provenance.py::code_tree_sha256`` must stay identical (pinned by AST)."""
+    repo = Path(repo_root)
+    inherited = (
+        *("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR"),
+        *("GIT_LITERAL_PATHSPECS", "GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS", "GIT_ICASE_PATHSPECS"),
+    )
+    env = {k: v for k, v in os.environ.items() if k not in inherited}
+    env["GIT_OPTIONAL_LOCKS"] = "0"
+    listed: set[bytes] = set()
+    for args in (
+        # The root .gitignore is hashed with the code: it decides which paths count as code.
+        ["ls-files", "-z", "--cached", "--others", "--exclude-per-directory=.gitignore", "--", ".gitignore", *scope],
+        ["ls-tree", "-r", "-z", "--name-only", "HEAD", "--", ".gitignore", *scope],
+        # An untracked .gitignore is listed with no excludes, so one that ignores itself (and the code
+        # beside it) still moves the digest.
+        ["ls-files", "-z", "--others", "--", ".gitignore", *(f":(glob){d}/**/.gitignore" for d in scope)],
+    ):
+        try:
+            r = subprocess.run(
+                ["git", "-c", "core.precomposeunicode=true", *args], cwd=repo, capture_output=True, timeout=60, env=env
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return "unknown"
+        if r.returncode != 0:
+            return "unknown"
+        listed.update(p for p in r.stdout.split(b"\0") if p)
+
+    def framed(field: bytes) -> bytes:
+        return len(field).to_bytes(8, "big") + field
+
+    root = os.path.realpath(repo)
+    digest = hashlib.sha256()
+    for rel in sorted(listed):
+        path = repo / os.fsdecode(rel)
+        if os.path.commonpath([root, os.path.realpath(path.parent)]) != root:
+            return "unknown"  # reached through a symlinked directory: not this repo's code
+        try:
+            st = os.lstat(path)
+        except FileNotFoundError:
+            digest.update(framed(rel) + framed(b"deleted"))
+            continue
+        except OSError:
+            return "unknown"
+        if stat.S_ISLNK(st.st_mode):
+            digest.update(framed(rel) + framed(b"symlink") + framed(os.fsencode(os.readlink(path))))
+        elif stat.S_ISREG(st.st_mode):
+            content = hashlib.sha256()
+            try:
+                with open(path, "rb") as f:
+                    for block in iter(lambda: f.read(1 << 20), b""):
+                        content.update(block)
+            except OSError:
+                return "unknown"
+            kind = b"executable" if st.st_mode & 0o111 else b"file"
+            digest.update(framed(rel) + framed(kind) + framed(content.digest()))
+        else:
+            return "unknown"
+    return digest.hexdigest()
+
+
+def _git_short12(repo: Path) -> str:
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "--short=12", "HEAD"], cwd=repo, capture_output=True, text=True, timeout=15
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+    return (r.returncode == 0 and r.stdout.strip()) or "unknown"
+
+
+def _tree_dirty(repo: Path) -> bool:
+    try:
+        r = subprocess.run(
+            ["git", "status", "--porcelain", "--", *_DIRTY_SCOPE], cwd=repo, capture_output=True, text=True, timeout=30
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return True
+    return r.returncode != 0 or bool(r.stdout.strip())
+
 
 def _count_tokens(text: str, llm_router: Any | None) -> int:
     """Best-effort token count for a static template.
@@ -158,6 +343,8 @@ def build_report(
     aut_endpoint: str = "",
     llm_finish_context: dict[str, Any] | None = None,
     session_id: str | None = None,
+    started_at: float,
+    provenance: dict[str, Any],
 ) -> SimulationReport:
     """Build a SimulationReport from all available data sinks.
 
@@ -328,6 +515,8 @@ def build_report(
         goal=goal,
         mode=mode,
         apparatus=apparatus,
+        ts=started_at,
+        provenance=dict(provenance),
         language_model=language_model,
         language_provider=language_provider,
         language_backend_class=language_backend_class,

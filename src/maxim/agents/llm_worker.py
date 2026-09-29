@@ -1388,6 +1388,17 @@ class LLMWorker:
         self._avg_latency_ms = alpha * latency_ms + (1 - alpha) * self._avg_latency_ms
 
     @property
+    def router(self) -> Any:
+        """The LLM router this worker calls."""
+        return self._llm
+
+    @property
+    def n_ctx(self) -> int:
+        """The prompt budget this worker composes to: the router's window, clamped to the smallest
+        declared provider context."""
+        return self._n_ctx
+
+    @property
     def stats(self) -> dict[str, Any]:
         """Get worker statistics."""
         return {

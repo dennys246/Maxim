@@ -187,8 +187,12 @@ class TestApparatusArtifacts:
 
         bounded = SimulationBridge(response_timeout=0.5, settle_s=0.1, substrate_actions_per_turn=6)
         unbounded = SimulationBridge(response_timeout=0.5, settle_s=0.1)
-        r_bounded = build_report(goal="g", mode="m", bridge=bounded, duration_s=1.0, finish_reason="done")
-        r_unbounded = build_report(goal="g", mode="m", bridge=unbounded, duration_s=1.0, finish_reason="done")
+        r_bounded = build_report(
+            goal="g", mode="m", bridge=bounded, duration_s=1.0, finish_reason="done", started_at=0.0, provenance={}
+        )
+        r_unbounded = build_report(
+            goal="g", mode="m", bridge=unbounded, duration_s=1.0, finish_reason="done", started_at=0.0, provenance={}
+        )
         assert r_bounded.apparatus["substrate_actions_per_turn"] == 6
         assert r_unbounded.apparatus["substrate_actions_per_turn"] is None
 

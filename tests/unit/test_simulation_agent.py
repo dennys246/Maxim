@@ -373,6 +373,8 @@ class TestSimulationTools:
             duration_s=12.5,
             finish_reason="failed",
             llm_finish_context=bridge.finish_context,
+            started_at=0.0,
+            provenance={},
         )
         assert report.llm_finish_status == "failed"
         assert "rm -rf" in report.llm_finish_reason
@@ -389,6 +391,8 @@ class TestSimulationTools:
             bridge=bridge,
             duration_s=1.0,
             finish_reason="completed",
+            started_at=0.0,
+            provenance={},
         )
         assert report.llm_finish_status == ""
         assert report.llm_finish_reason == ""
