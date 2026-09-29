@@ -71,6 +71,7 @@ atexit.register(_restore_terminal)
 logger = logging.getLogger(__name__)
 
 # Extracted to sim_types.py
+from maxim.simulation.report import capture_start_provenance, run_provenance  # noqa: E402
 from maxim.simulation.sim_types import (  # noqa: E402
     SimulationResult,
     load_resume_context as _load_resume_context,
@@ -500,6 +501,7 @@ def start_simulation_mode(
     )
 
     start_time = time.time()
+    start_provenance = capture_start_provenance()  # the code this run imported, taken now (M1)
 
     # ── HANDLE seam (a): adopt an injected persistent agent EARLY ────────
     # Validation is loud + first so a mis-built instance fails before any
@@ -3432,6 +3434,8 @@ def start_simulation_mode(
         # dict. Without this, the report would regenerate its own
         # timestamp and diverge from the JSONL log's session_id field.
         session_id=session_id,
+        started_at=start_time,
+        provenance=run_provenance(start_provenance, llm_worker=orch_llm_worker, aut_worker=aut_llm_worker),
     )
 
     # Attach fixture/substrate metrics if present

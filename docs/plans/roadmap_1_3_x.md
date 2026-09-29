@@ -152,6 +152,19 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    heartbeat re-run now stops after 1–3 turns. Guard: an offline replay test of the narrator's follow-up
    input (August commit vs `main`), and a committed Sim-Short record that reaches its turn cap.
 2. **Evidence provenance + the typed-abort gate** (mechanization backlog M1). Guard: the ledger lint.
+   **Stamps shipped 2026-09-29** (`report.json`'s `provenance` + `ts`), with an owner-approved fence
+   exception: `start_simulation_mode` +3 lines over its measured 3323 (both length fences now 3326) to capture the code at sim start. Owner
+   decisions for the lint half: one committed exceptions file (owner, reason, date; stale entries fail);
+   a `rerun_*` directory needs its own PRE-DATA amendment; the gate checks record-citing status changes;
+   a run that ended `error` or `unknown` is no more citable than a typed abort; a dirty-tree allowance lives
+   only in the harness record and binds a dirty sim report by commit, run window and the shared
+   `code_tree_sha256` (a sim report never carries `allow_dirty`; a hand-run sim needs a clean tree or an
+   owner exception), and the prereg lint's echo check must name the entry or harness run. A record whose
+   stamp is unestablished (hash `unknown`, dirty unallowed, an empty stamp, no `ts`, or
+   `code_changed_during_run`) is not citable.
+   The clean-tree flag itself still trusts `git status`, which git config and index state can fool
+   ([#998](https://github.com/dennys246/Maxim/issues/998)); it lands with or before M1b, since M1b's "clean"
+   judgement rests on it.
    Then the **complete Exp 10 re-run** that replaces 1.3.1's narrow one — pre-registered, provenance-stamped,
    phases run to their cap.
 3. **`create.*` overwrites an existing store; `load.*` raises raw errors ([#939](https://github.com/dennys246/Maxim/issues/939)).**

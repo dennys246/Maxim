@@ -61,7 +61,9 @@ from the same tree as the harness that calls it.
 
 from __future__ import annotations
 
+import hashlib
 import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -210,6 +212,78 @@ def working_tree_dirty(repo_root: Path | str, scope: tuple[str, ...] = DIRTY_SCO
     return bool(r.stdout.strip())
 
 
+def code_tree_sha256(repo_root: Path | str, scope: tuple[str, ...] = DIRTY_SCOPE) -> str:
+    """sha256 naming the exact code under ``scope`` (M1): every tracked path, every untracked path the repo's
+    own ``.gitignore`` files do not exclude, and every path in HEAD, in path order, each framed with its
+    content -- a regular file's bytes (and whether it is executable), a symlink's target string, or
+    deleted. It hashes what is ON DISK and asks git only for the path set, so no git config or index state
+    (an external diff, textconv, a per-user exclude file, assume-unchanged, ``core.fileMode``, autocrlf)
+    can move it or hide a change; inherited git location and pathspec variables (``GIT_DIR``,
+    ``GIT_WORK_TREE``, ``GIT_LITERAL_PATHSPECS``, ...) are dropped so a parent process cannot point it
+    elsewhere or blind a listing. The boundary it keeps: a path the repo's ``.gitignore`` files exclude is
+    assumed not to be code, and every rule that decides it (the root ``.gitignore``, any ``.gitignore`` in
+    scope, tracked or not) is hashed with the code. ``"unknown"`` when git fails, a path is neither a
+    file, a symlink nor absent (an untracked nested repo is a directory), or a path resolves outside the
+    repo. Its twin in ``src/maxim/simulation/report.py::_code_tree_sha256`` must stay identical (pinned by AST)."""
+    repo = Path(repo_root)
+    inherited = (
+        *("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR"),
+        *("GIT_LITERAL_PATHSPECS", "GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS", "GIT_ICASE_PATHSPECS"),
+    )
+    env = {k: v for k, v in os.environ.items() if k not in inherited}
+    env["GIT_OPTIONAL_LOCKS"] = "0"
+    listed: set[bytes] = set()
+    for args in (
+        # The root .gitignore is hashed with the code: it decides which paths count as code.
+        ["ls-files", "-z", "--cached", "--others", "--exclude-per-directory=.gitignore", "--", ".gitignore", *scope],
+        ["ls-tree", "-r", "-z", "--name-only", "HEAD", "--", ".gitignore", *scope],
+        # An untracked .gitignore is listed with no excludes, so one that ignores itself (and the code
+        # beside it) still moves the digest.
+        ["ls-files", "-z", "--others", "--", ".gitignore", *(f":(glob){d}/**/.gitignore" for d in scope)],
+    ):
+        try:
+            r = subprocess.run(
+                ["git", "-c", "core.precomposeunicode=true", *args], cwd=repo, capture_output=True, timeout=60, env=env
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return "unknown"
+        if r.returncode != 0:
+            return "unknown"
+        listed.update(p for p in r.stdout.split(b"\0") if p)
+
+    def framed(field: bytes) -> bytes:
+        return len(field).to_bytes(8, "big") + field
+
+    root = os.path.realpath(repo)
+    digest = hashlib.sha256()
+    for rel in sorted(listed):
+        path = repo / os.fsdecode(rel)
+        if os.path.commonpath([root, os.path.realpath(path.parent)]) != root:
+            return "unknown"  # reached through a symlinked directory: not this repo's code
+        try:
+            st = os.lstat(path)
+        except FileNotFoundError:
+            digest.update(framed(rel) + framed(b"deleted"))
+            continue
+        except OSError:
+            return "unknown"
+        if stat.S_ISLNK(st.st_mode):
+            digest.update(framed(rel) + framed(b"symlink") + framed(os.fsencode(os.readlink(path))))
+        elif stat.S_ISREG(st.st_mode):
+            content = hashlib.sha256()
+            try:
+                with open(path, "rb") as f:
+                    for block in iter(lambda: f.read(1 << 20), b""):
+                        content.update(block)
+            except OSError:
+                return "unknown"
+            kind = b"executable" if st.st_mode & 0o111 else b"file"
+            digest.update(framed(rel) + framed(kind) + framed(content.digest()))
+        else:
+            return "unknown"
+    return digest.hexdigest()
+
+
 def is_gated_path(repo_root: Path | str, out_path: Path | str | None) -> bool:
     """True when ``out_path`` resolves inside ``<repo_root>/docs/experiments/data/``."""
     if out_path is None:
@@ -295,6 +369,7 @@ def in_process_code_provenance(
         "executed_maxim_file": str(executed),
         "executed_git_hash": _git_hash_short12(root),
         "working_tree_dirty_src_scripts": gate["working_tree_dirty_src_scripts"],
+        "code_tree_sha256": code_tree_sha256(root),
         "python": sys.executable,
         "pythonpath": os.environ.get("PYTHONPATH", ""),
     }
@@ -345,6 +420,9 @@ def executed_code_provenance(
         "executed_maxim_file": resolved or "unresolved",
         "executed_git_hash": _git_hash(executed_root) if executed_root else "unknown",
         "working_tree_dirty_src_scripts": gate["working_tree_dirty_src_scripts"],
+        # The digest describes the tree the dirty flag (and any allowance) was judged on, and only when that
+        # is the tree the sub-sims import: an allowance for one tree must never bind to another's code.
+        "code_tree_sha256": code_tree_sha256(root) if executed_root == root else "unknown",
         "pythonpath": os.environ.get("PYTHONPATH", ""),
     }
     if gate["allow_dirty"]:
