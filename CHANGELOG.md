@@ -217,6 +217,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reinforcing one typed ATL relation no longer updates another on the same concept pair** (#812).
+  - Every relation type but CAUSES is stored as `EdgeType.ASSOCIATES`, with the type in metadata.
+    `Semantics.update_edge` found the right edge by type but then applied the update through
+    `DependencyGraph.update_edge`, which took the FIRST edge of that kind on the pair. So reinforcing
+    `PROPERTY_OF` could bump `IS_A` (reproduced), and the reverse update of a symmetric relation had the
+    same flaw.
+  - `DependencyGraph.update_edge` takes a `metadata_match`, and `Semantics` scopes both updates to the
+    relation's type.
+  - Latent until now: a scan of 283 persisted ATL files (559,382 typed edges) found no pair holding two
+    types. The ledger rows that read typed relations are discharged on that evidence and gain an
+    "ATL typed-relation update path" re-run trigger.
 - **The Hippocampus capacity cap is no longer exceeded silently** (#819, the loud half).
   - At `max_nodes` an insert evicts the lowest-scored memory that is not long-term. When every memory
     is long-term nothing may be evicted, and the insert proceeded with no warning (reproduced with a

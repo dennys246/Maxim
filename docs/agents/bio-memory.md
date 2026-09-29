@@ -71,6 +71,15 @@ Construction of this whole stack is owned by the builder family (`build_bio_stac
 
   Regression guard: [tests/unit/test_store_paths_950_939.py](../../tests/unit/test_store_paths_950_939.py). Each mechanism is proven by deletion: the refusal, created and read ownership, the `from_config` path, the NPC's two declarations, `create.agent`'s refusal and its store-file list, `~` in store, agent and `build_bio_stack` paths, the keep-a-copy rule on every recovery path (and the refusal when the copy fails, and one copy per content), typed corruption, the missing-file raise, the hub's load-if-present, and the picklable refusal.
 
+- **[engineering] A typed ATL relation's identity is `(source, target, edge_type, relationship_type)`; any update on the ATL graph scopes by `relationship_type`** (#812).
+  - Every relation type but CAUSES is stored as `EdgeType.ASSOCIATES`, so `(source, target, edge_type)` alone can match several relations. An unscoped `DependencyGraph.update_edge` lands on whichever was added first: reinforcing `PROPERTY_OF` bumped `IS_A`.
+  - `Semantics.update_edge` passes `metadata_match={"relationship_type": …}` on the forward and the symmetric-reverse update.
+  - `Semantics.define` writes the type key last, so caller metadata cannot overwrite it.
+  - A new writer or remover on the ATL graph scopes the same way.
+  - The grounder's own direction bug is #976.
+
+  Regression guard: [tests/unit/test_semantics_typed_update_812.py](../../tests/unit/test_semantics_typed_update_812.py) (two types on one pair; the symmetric reverse; the graph-level scope; the type key not overwritable; each proven by deletion).
+
 - **[engineering] Memory tier progression is one-way**: FORMING → SHORT_TERM → LONG_TERM. Don't skip or reverse. WORKING is not a tier — it's an Exec-owned `WorkingMemorySet` (active reference layer). See `agents/working_memory.py`. Regression guard: [src/maxim/agents/bus.py](src/maxim/agents/bus.py) — `TierTransitionError` raised on skip/reverse attempts; tier-progression code structurally enforces direction.
 
 - **[engineering] Hippocampus, NAc, and ATL maintain SEPARATE EpisodicMemory instances** — this is intentional coexistence, not tech debt. Don't merge. Regression guard: [src/maxim/integration/memory_hub.py::build_memory_hub](src/maxim/integration/memory_hub.py) — each bio-system takes its own EpisodicMemory instance via constructor params.

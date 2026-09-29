@@ -56,10 +56,12 @@ class Semantics:
         if self._registry.get(rel_type) is None:
             return False
 
+        # The type key goes LAST: it is the edge's identity for updates (#812), so caller metadata may
+        # not overwrite it.
         edge_meta = {
-            "relationship_type": rel_type,
             "confidence": confidence,
             **(metadata or {}),
+            "relationship_type": rel_type,
         }
 
         # Use CAUSES for causal types, ASSOCIATES for everything else
@@ -226,16 +228,20 @@ class Semantics:
             current = edge.metadata.get("confidence", 0.5)
             meta_updates["confidence"] = max(0.05, min(0.95, current + confidence_delta))
 
-        # Apply via DependencyGraph's public update_edge
-        self._graph.update_edge(
+        # Apply via DependencyGraph's public update_edge, scoped to THIS relation type: every type but
+        # CAUSES shares EdgeType.ASSOCIATES, so an unscoped update lands on whichever typed relation on
+        # the pair was defined first (#812).
+        type_match = {"relationship_type": rel_type}
+        updated = self._graph.update_edge(
             source_id,
             target_id,
             edge_type,
             weight=weight,
             metadata_updates=meta_updates if meta_updates else None,
+            metadata_match=type_match,
         )
 
-        # Update symmetric reverse edge
+        # Update symmetric reverse edge (same scoping)
         if self._registry.is_symmetric(rel_type):
             rev_meta = dict(meta_updates) if meta_updates else {}
             self._graph.update_edge(
@@ -244,9 +250,11 @@ class Semantics:
                 edge_type,
                 weight=weight,
                 metadata_updates=rev_meta if rev_meta else None,
+                metadata_match=type_match,
             )
 
-        return True
+        # The find and the update take the graph lock separately: report what the update did.
+        return updated
 
     def get_all_for(self, record_id: str) -> list[SemanticRelationship]:
         """Get all relationships involving a record (both directions)."""

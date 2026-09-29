@@ -1325,15 +1325,24 @@ class DependencyGraph(Generic[T]):
         edge_type: EdgeType,
         weight: float | None = None,
         metadata_updates: dict[str, Any] | None = None,
+        *,
+        metadata_match: dict[str, Any] | None = None,
     ) -> bool:
         """Update an existing edge's weight and/or metadata in-place.
 
-        Finds the first edge matching (source, target, edge_type) and applies
-        the requested updates. Returns True if the edge was found and updated.
+        Finds the first edge matching (source, target, edge_type) -- and, when ``metadata_match`` is
+        given, whose metadata carries those key/values, the same filter ``find_edge`` applies -- and
+        applies the requested updates. Returns True if the edge was found and updated.
+
+        Several edges can share (source, target, edge_type): the ATL stores every typed relation but
+        CAUSES as ASSOCIATES, with the type in metadata. Without ``metadata_match`` an update lands on
+        whichever of them was added first (#812).
         """
         with self._lock:
             for edge in self._outgoing.get(source, []):
                 if edge.target == target and edge.edge_type == edge_type:
+                    if metadata_match and not all(edge.metadata.get(k) == v for k, v in metadata_match.items()):
+                        continue
                     if weight is not None:
                         edge.weight = weight
                     if metadata_updates:
