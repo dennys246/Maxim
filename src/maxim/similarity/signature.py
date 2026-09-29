@@ -109,7 +109,9 @@ class SituationSignature:
         if hasattr(memory, "outcome"):
             outcome = memory.outcome
             if hasattr(outcome, "success"):
-                outcome_type = "success" if outcome.success else "failure"
+                from maxim.memory.types import outcome_label
+
+                outcome_type = outcome_label(outcome.success)  # None is "unknown", not a failure (#843)
 
         # stable_hash_32, NOT builtin hash(): these ints are persisted via
         # EC.save()/load() and compared for exact equality in

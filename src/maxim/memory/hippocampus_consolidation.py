@@ -359,8 +359,9 @@ class ConsolidationMixin:
         if novelty > 0.9:
             return True
 
-        # Criterion 3: Successful user interaction
-        if had_user_input and success:
+        # Criterion 3: Successful user interaction. `is True`: an unknown outcome (a percept, #843) is not
+        # a success, and it used to promote every percept with user text to long-term, never evicted.
+        if had_user_input and success is True:
             return True
 
         # Criterion 4: Frequently accessed

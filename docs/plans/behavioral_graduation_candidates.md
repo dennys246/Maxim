@@ -231,6 +231,64 @@ update.
   ATL relations, and the survival harnesses use the ATL only through `activate_substrate_node` (#812's
   caller grep).
 
+### Trigger walk — 2026-09-29, #843 (hippocampus outcome values; Exp 10 fires conservatively)
+
+#843 stores `Outcome.success = None` ("unknown") for a memory that is not an action outcome:
+- a percept, which `capture_from_loop` used to store as a success;
+- an observation, or a bare `capture()`, which used to be stored as a failure.
+
+`Outcome()` itself now defaults to unknown, and a stored value that is not a bool or `None` is refused
+(in `Outcome` and in `CompressedMemory`; a file holding one is unreadable). Retention,
+consolidation, stats, summaries and prediction confidence read unknown as neither. The same PR stops a
+plain `SemanticMemory` from being reinforced twice per episode and gives each percept its own forming-pool
+key. It changes stored values, not the schema, so the Exp 10 row's "hippocampus persistence schema change" fires
+only on a conservative reading, as `roadmap_1_3_x.md` item 2 records.
+
+**Exp 10 (cross-session memory persistence): discharged, pending the complete Exp 10 re-run.**
+- **Old data.** The row's recorded baseline holds 100 memories, and 97 are percepts stored as
+  `success: true`. Files on disk are not migrated (owner decision), so its records keep that value.
+- **Consolidation.** The recorded runs are `--sim`/`--resume-sim` without a persistent agent. They close
+  through `on_session_end_lightweight`, which runs no `sleep()`, consolidation, compression or
+  forgetting. Memories ARE promoted in-session (46 of the baseline's 100 are `long_term`, 55 of 136 and 62
+  of 144 in the resumed sessions), by `MemoryAgent._check_promotions` (tracked salience) and
+  `Hippocampus._score_and_maybe_promote_batch`. Neither reads `success`; the one promotion criterion that
+  does, `_should_promote`'s criterion 3, runs only at sleep (`sleep`/`sleep_with_clustering`; the public
+  `consolidate()` has no callers).
+- **Capacity.** The stores held 100–144 memories against a 10,000 cap, so eviction never ran and no
+  retention score was ever computed.
+- **The metric path.** The metric is memories surfaced per resume turn, which is at the enrichment cap
+  of 3, plus store counts and field round-trips. It runs through `bio_enrichment` recall by object, goal
+  keywords and content, none of which reads `success`. The round-trip check does not cover `success`.
+- **Not a measurement.** Two channels reach the LLM: the memory lines of its prompt, where a percept no
+  longer reads "succeeded", and the pattern-completion `prediction:` lines with their confidence, which
+  now count known outcomes only (the Exp 10 README records 0 predictions on every trace). The argument
+  that Exp 10's counts cannot move through them is structural. **The complete Exp 10 re-run (the 1.3.2 plan's item 2, "Evidence provenance + the
+  typed-abort gate", planned 2026-09-27) runs after this fix and covers it** (owner decision 2026-09-29), together with #939/#950, #971 and #972. Registered as `outstanding.md` O19.
+
+**Not fired, and why:**
+- **Exp 60/61/62 (survival rows).** The survival stack has two capture doors.
+  - The loop door: `capture_from_loop` with a `ToolOutput`, whose `success` is always a bool;
+    `pain_bus`, `tool_pain_bridge` and the cerebellum construct their `Outcome` with an explicit bool.
+  - The percept door: `run_minecraft_aut`'s `MaximAgent` has a `MemoryAgent` subscribed to `Percept`,
+    and `PerceptionAgent` publishes one per `propose_intent`. It does not capture there: a detection-less
+    percept scores salience 0.0 (`_compute_salience`) with no Maxim keyword, under `_on_percept`'s 0.2 gate.
+  - Either way, none of their metrics reads a retention score, a promotion or a prediction confidence.
+- **Exp 09 (row 9, MAINTAINED).** Its metric is keyword fires and the habituation × sensitization
+  trajectories; its trigger names none of these paths.
+- **`SituationSignature.outcome_type`.** An unknown's structural hash is now `"tool:unknown"`, not
+  `":success"`/`":failure"`, so it no longer matches a signature persisted before. `from_memory` is reached
+  only by `introspection` and `adaptive_planner` similarity queries; no production `EC.register(memory=)`
+  exists and no row measures through it.
+- **Double reinforce.** A plain `SemanticMemory` exists only as a legacy ATL entry without the `_concept`
+  flag (`ATL.load`) or a direct API construction. All 38 ATL entries in the Exp 10 re-run data carry
+  `_concept`, and a `Concept` was already reinforced once. No recorded run reached it.
+- **Forming-pool key.** A MemoryAgent-local pool that no row measures.
+
+**Exp 37 (cross-session behavioural delta, PARTIAL): noted, not discharged.**
+- This is a "prompt construction change" by its row's wording: MemoryAgent's percept lines in the LLM
+  prompt no longer carry "succeeded", and prediction confidence ignores unknown outcomes.
+- The row makes no EARNED claim and blocks no release. A re-fire of it runs on the new prompt.
+
 ### Trigger walk — 2026-09-29, #818 (NAc wall-clock decay of `cluster_reward_bias`)
 
 #818 makes `NAc.apply_wall_clock_decay` skip inherent-class cluster biases (`_inherent_bias_keys`), as the

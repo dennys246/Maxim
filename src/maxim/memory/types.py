@@ -285,7 +285,7 @@ class PredictedOutcome:
     """
 
     tool: str  # Action tool used in the past
-    success: bool  # Whether the past action succeeded
+    success: bool | None  # Whether the past action succeeded; None when it was not an action outcome (#843)
     goal: str | None = None  # Goal from the past decision
     confidence: float = 1.0  # Decision confidence from the past episode
     math_context: list[MathContextEntry] | None = None  # Per-concept layer stats
@@ -462,14 +462,39 @@ class Action:
         )
 
 
+def outcome_label(success: bool | None) -> str:
+    """``"success"``, ``"failure"`` or ``"unknown"`` -- the one rendering of an outcome's tri-state (#843).
+    ``None`` is not a failure: it is a memory that was never an action outcome (a percept)."""
+    if success is None:
+        return "unknown"
+    return "success" if success else "failure"
+
+
+def _require_tri_state(value: Any, where: str) -> None:
+    """Refuse a stored success that is not ``True``, ``False`` or ``None`` (#843): every reader branches
+    three ways, and a fourth value would read as whichever branch its truthiness picks. The one check for
+    both stored copies, ``Outcome.success`` and ``CompressedMemory.success``."""
+    if value is not None and not isinstance(value, bool):
+        raise TypeError(f"{where} must be a bool or None, not {type(value).__name__}")
+
+
 @dataclass
 class Outcome:
-    """What happened as a result of the action."""
+    """What happened as a result of the action.
 
-    success: bool = False
+    ``success`` is ``True``/``False`` for an action outcome, and ``None`` (#843) for a memory that is not
+    one -- a percept or an observation. Read it with ``is True``/``is False``, never as a truthy check:
+    ``None`` must read as neither. The default is ``None``: an outcome nobody stated is unknown, not a
+    failure, whichever door built the record. Anything but a bool or ``None`` is refused, so a reader's
+    three-way branch never meets a fourth value."""
+
+    success: bool | None = None
     result: Any = None
     error: str | None = None
     evaluations: list[dict[str, Any]] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        _require_tri_state(self.success, "Outcome.success")
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for storage."""
@@ -484,7 +509,7 @@ class Outcome:
     def from_dict(cls, data: dict[str, Any]) -> Outcome:
         """Deserialize from storage."""
         return cls(
-            success=data.get("success", False),
+            success=data.get("success"),
             result=data.get("result"),
             error=data.get("error"),
             evaluations=data.get("evaluations", []),
@@ -666,13 +691,16 @@ class CompressedMemory(CompressedRecord):
     # Essential decision data (for queries)
     goal: str | None = None
     tool_name: str = ""
-    success: bool = False
+    success: bool | None = None  # None: not an action outcome (#843)
 
     # Minimal perception summary
     had_user_input: bool = False
     object_count: int = 0
     novelty: float = 0.5
     salience: float = 0.5
+
+    def __post_init__(self) -> None:
+        _require_tri_state(self.success, f"CompressedMemory {self.id!r} success")
 
     def keywords(self) -> set[str]:
         """Extract keywords from compressed episodic data."""
@@ -771,7 +799,7 @@ class CompressedMemory(CompressedRecord):
             access_contexts=deque(data.get("access_contexts", []), maxlen=10),
             goal=data.get("goal"),
             tool_name=data.get("tool_name", ""),
-            success=data.get("success", False),
+            success=data.get("success"),
             had_user_input=data.get("had_user_input", False),
             object_count=data.get("object_count", 0),
             novelty=data.get("novelty", 0.5),
@@ -780,6 +808,15 @@ class CompressedMemory(CompressedRecord):
             **_encoding_kwargs(data),
             **_strength_kwargs(data),
         )
+
+
+def _outcome_of(data: dict[str, Any]) -> Outcome:
+    """A stored episode's outcome; a refused value names the episode, so the one log line about an
+    unreadable store says which record (#843)."""
+    try:
+        return Outcome.from_dict(data.get("outcome", {}))
+    except TypeError as e:
+        raise TypeError(f"episode {data.get('id')!r}: {e}") from e
 
 
 @dataclass
@@ -932,7 +969,7 @@ class EpisodicMemory(MemoryRecord):
             context=Context.from_dict(data.get("context", {})),
             decision=Decision.from_dict(data.get("decision", {})),
             action=Action.from_dict(data.get("action", {})),
-            outcome=Outcome.from_dict(data.get("outcome", {})),
+            outcome=_outcome_of(data),
             metadata=data.get("metadata", {}),
             **_situation_kwargs(data),
             **_encoding_kwargs(data),
