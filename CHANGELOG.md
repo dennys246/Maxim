@@ -261,6 +261,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An inherent-class NAc cluster bias no longer decays while the agent is offline** (#818).
+  `NAc.apply_wall_clock_decay`, which `load()` runs over the time since `saved_at`, decayed every cluster
+  bias. The Queen-curated inherent class is decay-exempt, and the per-tick decay honoured that; this
+  path did not. Such a bias halved for every day offline (measured: −0.8 became −0.1 over three days) and,
+  after enough days, was pruned, leaving its inherent marker pointing at nothing. It is now left exactly
+  as saved. No recorded experiment could hold an inherent key, so no ledger row changes (trigger walk in
+  `behavioral_graduation_candidates.md`).
+
 - **The concept grounder updates each typed ATL relation once, in the direction it is stored** (#976).
   Both grounding paths read a concept's relations in both directions and always updated
   `(concept, other)`: a symmetric relation (RELATED_TO, ASSOCIATES, the math types) came back twice and
