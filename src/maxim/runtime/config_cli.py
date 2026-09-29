@@ -10,6 +10,10 @@ Surface:
                                         effective fields with sources
   maxim config set <field-path> <val> — atomic write via config_writer
   maxim config edit                   — open $EDITOR on the file
+  maxim config downgrade              — after running an older build: keep the settings it
+                                        knows, set the rest aside in config.preserved.json (#974)
+  maxim config restore-preserved      — after upgrading: review and restore set-aside settings
+                                        (interactive terminal only)
 
 Exit codes:
   0 success
@@ -65,6 +69,10 @@ def run_config_subcommand(argv: Sequence[str]) -> int:
         return _cmd_list(rest)
     if verb == "edit":
         return _cmd_edit(rest)
+    if verb == "downgrade":
+        return _cmd_downgrade(rest)
+    if verb == "restore-preserved":
+        return _cmd_restore_preserved(rest)
 
     print(f"Unknown config verb: {verb}", file=sys.stderr)
     _print_usage()
@@ -80,6 +88,8 @@ def _print_usage() -> None:
     print("  path                 — print the resolved config.json path")
     print("  list                 — show every effective field + source marker")
     print("  edit                 — open $EDITOR on the config file")
+    print("  downgrade            — keep the settings this build knows; set a newer file's others aside")
+    print("  restore-preserved    — review and restore set-aside settings (interactive terminal only)")
     print()
     print("Field paths: dot-separated, e.g. llm.profile, lanes.large.remote_url")
     print()
@@ -305,6 +315,103 @@ def _cmd_edit(argv: list[str]) -> int:
         return 2
 
     print(f"✓ saved {target}")
+    return 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# downgrade / restore-preserved — a newer config.json after a downgrade (#974)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _safe(text: object, limit: int = 120) -> str:
+    """Escape and truncate a name or value before it is printed (injection review, #974)."""
+    from maxim.runtime.config_writer import safe_display
+
+    return safe_display(text, limit)
+
+
+def _interactive_terminal() -> bool:
+    """A person at a terminal: both stdin and stdout are TTYs. An agent's shell tool is not one."""
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _cmd_downgrade(argv: list[str]) -> int:
+    """``maxim config downgrade`` — rewrite a newer config.json for this build (#974)."""
+    if argv and argv[0] in ("-h", "--help"):
+        print("Usage: maxim config downgrade")
+        print("  For a config.json written by a NEWER Maxim: keeps the settings this build knows and moves")
+        print("  the rest to config.preserved.json (never applied). Restore them after upgrading with")
+        print("  `maxim config restore-preserved`.")
+        return 0
+    if argv:
+        print(f"✗ unexpected argument {_safe(argv[0], 40)}", file=sys.stderr)
+        return 2
+    from maxim.runtime.config_writer import downgrade_config
+
+    try:
+        result = downgrade_config()
+    except ConfigurationError as e:
+        print(f"✗ {_safe(str(e), 400)}", file=sys.stderr)
+        return 2
+    except OSError as e:
+        print(f"✗ failed to write config: {_safe(str(e), 300)}", file=sys.stderr)
+        return 1
+    print(f"✓ {_safe(str(result.config), 200)} now holds the settings this build knows.")
+    print(f"  Set aside in {_safe(str(result.sidecar), 200)} (not applied):")
+    for name in result.preserved:
+        print(f"    - {_safe(name, 80)}")
+    print("  After upgrading, run `maxim config restore-preserved` to review and restore them.")
+    return 0
+
+
+def _cmd_restore_preserved(argv: list[str]) -> int:
+    """``maxim config restore-preserved`` — review and restore set-aside settings (#974).
+
+    Interactive only: it refuses without a terminal and has no flag to skip the confirmation, so the
+    CLI never restores unattended. That makes a restore no EASIER than editing config.json directly; it
+    is not a barrier against a same-user process, which could allocate a terminal or edit the file.
+    """
+    if argv and argv[0] in ("-h", "--help"):
+        print("Usage: maxim config restore-preserved")
+        print("  Shows each set-aside setting this build now knows (current -> preserved, security-relevant")
+        print("  ones flagged) and restores them only if you confirm. Requires an interactive terminal.")
+        return 0
+    if argv:
+        print(f"✗ unexpected argument {_safe(argv[0], 40)} (there is no way to skip the confirmation)", file=sys.stderr)
+        return 2
+    if not _interactive_terminal():
+        print("✗ restore-preserved needs an interactive terminal: a person must review the changes", file=sys.stderr)
+        return 2
+
+    from maxim.runtime.config_writer import RestoreRow, restore_preserved
+
+    def confirm(rows: list[RestoreRow]) -> bool:
+        print("These set-aside settings are known to this build:")
+        for row in rows:
+            flag = "  [SECURITY-RELEVANT]" if row.security_relevant else ""
+            print(f"  {_safe(row.path, 60)}: {_safe(row.current, 60)} -> {_safe(row.preserved, 60)}{flag}")
+            note = f"; replaces {row.superseded} older set-aside value(s)" if row.superseded else ""
+            print(
+                f"      set aside from format {_safe(row.source_format_version, 12)} at {_safe(row.preserved_at, 25)}"
+                f"{note}"
+            )
+        if any(row.security_relevant for row in rows):
+            print("Security-relevant settings can widen what an agent may do or where Maxim reads from.")
+        return input(f"Restore these {len(rows)} setting(s)? [y/N] ").strip().lower() in ("y", "yes")
+
+    try:
+        restored = restore_preserved(confirm=confirm)
+    except ConfigurationError as e:
+        # A validation error can quote a preserved value: escaped and bounded like everything else.
+        print(f"✗ {_safe(str(e), 400)}", file=sys.stderr)
+        return 2
+    except OSError as e:
+        print(f"✗ failed to write config: {_safe(str(e), 300)}", file=sys.stderr)
+        return 1
+    if not restored:
+        print("Nothing restored.")
+        return 0
+    print(f"✓ restored {len(restored)} setting(s).")
     return 0
 
 

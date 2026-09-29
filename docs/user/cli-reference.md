@@ -239,6 +239,8 @@ The `maxim config` verbs manage the operator-level config at `~/.config/maxim/co
 | `maxim config list [--json]` | Same as `get` with no args; `--json` for machine-readable output. |
 | `maxim config path` | Print the resolved `config.json` path (XDG-aware). |
 | `maxim config edit` | Open `$EDITOR` (or `$VISUAL`) on the file. Validates after the editor exits; a parse error surfaces a warning but doesn't auto-revert. |
+| `maxim config downgrade` | For a `config.json` written by a NEWER Maxim (which `config set` refuses to rewrite): keeps the settings this build knows, at this build's version, and moves the rest to `config.preserved.json` (owner-only, never applied). #974. |
+| `maxim config restore-preserved` | After upgrading: shows each set-aside setting this build now knows (current → preserved, security-relevant ones flagged), re-validates it, and restores only on a `y` at an interactive terminal. There is no flag to skip the confirmation. #974. |
 
 **API key references** in `config.json::lanes.<tier>.remote_api_key_ref` accept ONLY file paths (`/...` or `~/...`) or keyring URIs (`keyring:<service>:<account>`). Inline plaintext keys are rejected at load time. The canonical leader-key path is `~/.config/maxim/api_key` (mode 0600).
 

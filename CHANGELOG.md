@@ -25,6 +25,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`maxim config downgrade` and `maxim config restore-preserved`: a newer config.json after a downgrade
+  is never silently stripped** (#974, owner decision 2026-09-28).
+  - `maxim config set` on a file written by a newer Maxim now REFUSES and names the way out. Before, it
+    rewrote the file with only the settings this build knew, and the newer build's settings vanished.
+  - `maxim config downgrade` keeps the settings this build knows and moves the rest to
+    `config.preserved.json`. The sidecar is owner-only, is written before the config, and is never read
+    for configuration.
+  - After upgrading, `maxim config restore-preserved` shows each set-aside FIELD the new build knows
+    (current → preserved, plus the version and time it was set aside). Every setting except a short list
+    of tuning knobs is flagged security-relevant. A preserved section is merged field by field, never
+    wholesale. It re-validates everything and restores only on a `y` at an interactive terminal; there is
+    no flag to skip that.
+  - **Injection review:** every printed name and value is escaped; the sidecar read is size-capped; both
+    new writers are on the operator-only config-writer CI allow-list.
+
 - **`--operational-mode passive|active|singularity`: the operator's launch grant for capability**
   (#829, owner decisions).
   - The CLI had no way to choose the operational mode. It came from the run mode, through the legacy
