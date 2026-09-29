@@ -261,6 +261,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A write-but-don't-read agent no longer restores its ATL, AngularGyrus or cross-layer graph at
+  session start** (#972). The sim orchestrator's agent (`AgentConfig(load_persisted=False)`, "must NOT
+  restore it") skipped the Hippocampus, NAc/EC and SCN restores, but the hub's `on_session_start`
+  still loaded `atl.json` (and `angular_gyrus.json`) from its home, so last run's concepts came back
+  every session; a factory agent built without `auto_load` did the same. `build_memory_hub` now
+  REQUIRES a keyword-only `load_persisted` (breaking for a direct caller; forgetting it is a
+  `TypeError`, not a restore), and both builders pass their own choice.
+  - Consequence: `AgentFactory.create_npc_agent` re-created over an existing NPC home no longer gets
+    its ATL back; like its other stores since #939/#971, the ATL starts empty and its save over the
+    file is refused, logged at ERROR. Follow-up: #985.
+  - Not covered: machine-wide learned state outside any agent home (escalation thresholds, semantic
+    embeddings) is still shared by every agent, the orchestrator included (#984).
+
 - **No memory store saves over a file it never read, and none replaces an unreadable file without
   keeping a copy** (#971; owner decisions 2026-09-28). #939 guarded Hippocampus and ATL; the other
   stores still started empty and saved over their file.
