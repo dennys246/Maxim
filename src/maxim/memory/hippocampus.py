@@ -181,7 +181,9 @@ class EpisodeConfig:
 class HippocampusConfig:
     """Configuration for the Hippocampus."""
 
-    # Maximum nodes before warning (not enforced in Phase 1)
+    # The capacity cap. At the cap an insert evicts the lowest-scored memory that is NOT long-term; when
+    # every memory is long-term nothing may be evicted, the insert proceeds, and that is logged at WARNING
+    # (#819). A byte budget + lazy-heap eviction is memory-strength Phase 4.
     max_nodes: int = 10_000
 
     # State store capacity
@@ -426,6 +428,10 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # happen since this session opened" after a load. These start at 0 for this object's life
         # and only ever rise, so any snapshot pair reads as a difference.
         self._work_lock = threading.Lock()
+        # Inserts that exceeded max_nodes because nothing was evictable (#819), and the overage at which
+        # the next warning fires (it doubles, so a store stuck over its cap logs O(log n) times).
+        self._over_capacity_inserts = 0
+        self._over_capacity_next_warning = 1
         self._captures_this_process = 0
         self._capture_seq_next = 0  # Phase 2d-1; guarded by _work_lock; resumed past the saved max on load
         self._activations_this_process = 0
@@ -879,9 +885,15 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         eviction, indexing, stats bookkeeping, immediate-promotion checks,
         consolidation-candidate enrollment, and associative-graph linking.
         """
-        # Capacity check — evict before insert
+        # Capacity check — evict before insert. The cap is judged AFTER the eviction attempt: a store
+        # can already be over it (a load_state of a larger store; memories promoted to long-term at
+        # birth), and then one eviction still leaves it over. Either way the insert is loud (#819).
         if len(self._memories) >= self.config.max_nodes:
             self._evict_one()
+            if len(self._memories) >= self.config.max_nodes:
+                self._note_over_capacity()
+        else:
+            self._over_capacity_next_warning = 1  # back under the cap: the next overage warns again
 
         self._memories[memory_id] = memory
         self._index_memory(memory_id, memory)
@@ -1430,6 +1442,9 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 "graph_nodes": graph_node_count,
                 "graph_edges": graph_edge_count,
                 "graph_enabled": self.config.enable_associative_graph,
+                # This process only, NOT restored with the rest of these stats: inserts that left the
+                # store over max_nodes (#819).
+                "over_capacity_inserts_this_process": self._over_capacity_inserts,
             }
 
     def check_consistency(self) -> list[str]:
@@ -2171,8 +2186,24 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
 
         self._memories.pop(memory_id, None)
 
-    def _evict_one(self) -> None:
-        """Evict the lowest-scored memory to make room.
+    def _note_over_capacity(self) -> None:
+        """An insert will leave the store over its cap (#819): nothing was evictable, or it was already
+        over. Count it, and warn at the first overage and each time the overage doubles (reset once the
+        store is back under the cap). Must be called with the write lock held."""
+        self._over_capacity_inserts += 1
+        overage = len(self._memories) + 1 - self.config.max_nodes  # after the pending insert
+        if overage >= self._over_capacity_next_warning:
+            self._over_capacity_next_warning = overage * 2
+            logger.warning(
+                "Hippocampus over capacity: %d memories against max_nodes=%d. Store-time eviction never removes a "
+                "long-term memory, so nothing more could be evicted (#819). Raise max_nodes or let sleep() "
+                "consolidate; the byte budget is memory-strength Phase 4.",
+                len(self._memories) + 1,
+                self.config.max_nodes,
+            )
+
+    def _evict_one(self) -> bool:
+        """Evict the lowest-scored memory to make room; return whether one was evicted.
 
         Reuses _get_memory_strategy() for consistent scoring between
         store-time eviction and sleep consolidation. Never evicts
@@ -2202,6 +2233,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             _, evict_id = heapq.heappop(scored)
             self._remove_memory(evict_id)
             logger.debug("Evicted memory %s at capacity", evict_id[:8])
+            return True
+        return False
 
     def register_deletion_callback(self, callback: Callable[[str], None]) -> None:
         """Register a callback to be notified when memories are deleted.
