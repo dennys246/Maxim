@@ -108,8 +108,13 @@ rewrite it on the newer build by re-setting any field to the value it already ha
 `maxim config get llm.n_ctx`, then `maxim config set llm.n_ctx <that value>`), which stamps it `"1.1"`
 without changing a setting.
 
-After a downgrade, avoid `maxim config set` on the older build: it rewrites the file without the keys it
-does not know (#974).
+After a downgrade, `maxim config set` on a build with this change refuses a newer file instead of silently
+dropping the settings it does not know (#974). An OLDER build without it still drops them.
+1. Run `maxim config downgrade`. It keeps the settings this build knows and moves the rest to
+   `config.preserved.json` beside `config.json`: readable only by you, and never applied.
+2. After upgrading, run `maxim config restore-preserved`. It shows each set-aside setting the new build
+   knows (current value → preserved value, security-relevant ones flagged), re-validates it, and restores
+   it only when you answer `y` at a terminal.
 
 ### Auto-migration from peer.yml
 

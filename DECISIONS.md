@@ -2,6 +2,34 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-09-28 — A newer config.json is refused, then transitioned explicitly (#974)
+
+### Decision
+
+Owner decision (the refuse-only option, plus a transition the owner asked for):
+- `maxim config set` refuses a config.json from a newer format version.
+- `maxim config downgrade` keeps the known settings and moves the unknown ones to a `config.preserved.json` sidecar that is never applied.
+- `maxim config restore-preserved` restores them after an upgrade: re-validated, shown as a diff with security-relevant settings flagged, and confirmed at an interactive terminal.
+
+### Reason
+
+After a downgrade, an ordinary `config set` silently deleted every setting the newer build had added. Preserving them automatically would have let a stale security-relevant setting come back without the operator seeing it. Refusing alone would have left no path through a rollback short of hand-editing.
+
+### Tradeoffs
+
+- The owner's injection review, and a security review lens, set the requirements:
+  - escaped output, including validation errors;
+  - no `--yes`: the CLI never restores unattended;
+  - EVERY setting flagged except an explicit list of tuning knobs, so a field added later is flagged by default;
+  - preserved sections restored and shown field by field, never wholesale (a wholesale section once silently reset the fields it lacked);
+  - each entry's source version and time shown;
+  - the same validation as `config set`;
+  - one bounded read.
+- The terminal requirement makes a restore no EASIER than editing `config.json` directly. It is not a barrier against a same-user process, which could allocate a terminal, call the Python API, or edit the file itself.
+- No new privilege boundary is crossed: the sidecar and `config.json` are both files owned by the same user, so a planted sidecar can do nothing a direct edit could not.
+- A build without this change, which is every release before it, still drops a newer file's keys on write.
+
+
 ## 2026-09-28 — config.json format 1.1, and the schema is pinned to the version (#856)
 
 ### Decision

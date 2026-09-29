@@ -1560,6 +1560,57 @@ def _parse_lanes_section(section: Any, tolerate_unknown: bool) -> LanesConfigSec
     )
 
 
+def config_field_paths() -> frozenset[str]:
+    """Every leaf field path of THIS build's config schema (``llm.n_ctx``, ``lanes.large.remote_url``):
+    the fields a preserved setting may be restored into (#974)."""
+    from dataclasses import fields as _fields
+    from dataclasses import is_dataclass
+
+    out: set[str] = set()
+
+    def walk(obj: Any, prefix: str) -> None:
+        for f in _fields(obj):
+            if f.name.startswith("_"):
+                continue
+            value = getattr(obj, f.name)
+            if is_dataclass(value):
+                walk(value, f"{prefix}{f.name}.")
+            else:
+                out.add(f"{prefix}{f.name}")
+
+    walk(MaximConfig(), "")
+    return frozenset(out)
+
+
+def unknown_config_entries(data: dict[str, Any]) -> dict[str, Any]:
+    """The settings in a raw config dict that THIS build's schema does not know (#974), as dotted paths.
+
+    Top-level keys that are not ``MaximConfig`` fields, and fields inside a known section that the
+    section does not declare. ``lanes`` is skipped: its tiers keep unknown keys in their own ``extra``.
+    ``_format_version`` is never an entry.
+    """
+    from dataclasses import fields as _fields
+    from dataclasses import is_dataclass
+
+    known = {f.name: f for f in _fields(MaximConfig) if not f.name.startswith("_")}
+    defaults = MaximConfig()
+    out: dict[str, Any] = {}
+    for key, value in data.items():
+        if key == "_format_version":
+            continue
+        if key not in known:
+            out[key] = value
+            continue
+        section_default = getattr(defaults, key)
+        if key == "lanes" or not is_dataclass(section_default) or not isinstance(value, dict):
+            continue
+        section_fields = {f.name for f in _fields(section_default)}
+        for sub, sub_value in value.items():
+            if sub not in section_fields:
+                out[f"{key}.{sub}"] = sub_value
+    return out
+
+
 def _parse_config_dict(data: dict[str, Any]) -> MaximConfig:
     """Validate and parse a JSON-decoded dict into :class:`MaximConfig`.
 
