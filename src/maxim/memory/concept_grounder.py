@@ -21,6 +21,7 @@ from uuid import uuid4
 
 from maxim.memory.semantic_types import Concept
 from maxim.memory.types import CompressedMemory, EpisodicMemory
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.math.angular_gyrus import AngularGyrus
@@ -206,7 +207,20 @@ class ConceptGrounder:
     def _compute_relationship_updates(self, concept: Concept) -> list[tuple[str, str, str, float | None, float | None]]:
         """Compute proposed edge changes from Jaccard co-occurrence.
 
-        Returns list of (source_id, target_id, rel_type, weight_or_None, confidence_delta_or_None).
+        Returns list of (source_id, target_id, rel_type, weight_or_None, confidence_delta_or_None), each
+        relation ONCE and in the direction it is STORED (#976). ``direction="both"`` returns incoming edges
+        too: a symmetric relation comes back twice (its two stored directions, which
+        ``Semantics.update_edge`` keeps in sync, so updating both applied the delta twice), and an
+        incoming non-symmetric one must be addressed from its source (``(concept, other)`` names an edge
+        that does not exist, so it was never grounded).
+
+        The dedupe key is the stored edge: its unordered ends for a symmetric type, its ordered ends
+        otherwise, plus the type. A type missing from the registry counts as non-symmetric, so each stored
+        direction is updated once by its own call.
+
+        Bounded, as before: ``find`` lists outgoing edges first and caps the combined list at 50, so a
+        concept with many outgoing relations (a symmetric one counts twice) reaches few or none of its
+        incoming ones. The set of relations reached is unchanged by #976.
         """
         relationships = self._atl.find_by_relationship(concept.id, direction="both", limit=50)
         if not relationships:
@@ -214,8 +228,20 @@ class ConceptGrounder:
 
         concept_refs = set(concept.memory_refs.get("hippocampus", {}))
         updates: list[tuple[str, str, str, float | None, float | None]] = []
+        registry = self._atl.semantics.registry
+        seen: set[tuple[object, str]] = set()
 
         for other_id, rel in relationships:
+            rel_type = rel.relationship_type
+            ends: object = (
+                frozenset((rel.source_id, rel.target_id))
+                if registry.is_symmetric(rel_type)
+                else (rel.source_id, rel.target_id)
+            )
+            if (ends, rel_type) in seen:
+                continue
+            seen.add((ends, rel_type))
+
             other = self._atl.get(other_id)
             if not isinstance(other, Concept):
                 continue
@@ -232,9 +258,9 @@ class ConceptGrounder:
             if jaccard > 0.3 and shared >= 3:
                 updates.append(
                     (
-                        concept.id,
-                        other_id,
-                        rel.relationship_type,
+                        rel.source_id,
+                        rel.target_id,
+                        rel_type,
                         min(1.0, jaccard * self.JACCARD_WEIGHT_SCALE),
                         0.05,
                     )
@@ -242,9 +268,9 @@ class ConceptGrounder:
             elif jaccard < 0.05 and union >= 10:
                 updates.append(
                     (
-                        concept.id,
-                        other_id,
-                        rel.relationship_type,
+                        rel.source_id,
+                        rel.target_id,
+                        rel_type,
                         None,
                         -0.1,
                     )
@@ -290,7 +316,19 @@ class ConceptGrounder:
         if concept is None or not isinstance(concept, Concept):
             return  # Concept evicted
 
-        # Apply edge updates
+        self._apply_edge_updates(edge_updates)
+
+        # Apply quantification proposals
+        for proposal in quant_proposals:
+            try:
+                self._store_single_quantification(concept, proposal)
+            except Exception as e:
+                logger.debug("Failed to store quantification for %s: %s", proposal.get("field_name"), e)
+
+    def _apply_edge_updates(self, edge_updates: list[tuple[str, str, str, float | None, float | None]]) -> None:
+        """Apply computed edge updates (both grounding paths). One failed update does not stop the rest;
+        it is reported as a structured ``swallowed_exception`` event (the sync path used to raise on it,
+        and a DEBUG line would have hidden that it no longer does, #976 review)."""
         for source_id, target_id, rel_type, weight, confidence_delta in edge_updates:
             try:
                 kwargs: dict[str, Any] = {}
@@ -299,15 +337,8 @@ class ConceptGrounder:
                 if confidence_delta is not None:
                     kwargs["confidence_delta"] = confidence_delta
                 self._atl.semantics.update_edge(source_id, target_id, rel_type, **kwargs)
-            except Exception as e:
-                logger.debug("Failed to update edge %s→%s: %s", source_id, target_id, e)
-
-        # Apply quantification proposals
-        for proposal in quant_proposals:
-            try:
-                self._store_single_quantification(concept, proposal)
-            except Exception as e:
-                logger.debug("Failed to store quantification for %s: %s", proposal.get("field_name"), e)
+            except Exception:
+                log_swallowed_exception()
 
     def _store_single_quantification(self, concept: Concept, proposal: dict[str, Any]) -> None:
         """Store a single AG MathMemory record from a quantification proposal."""
@@ -458,49 +489,14 @@ class ConceptGrounder:
     # ------------------------------------------------------------------
 
     def _modulate_relationships(self, concept: Concept) -> None:
-        """Strengthen or weaken concept relationships based on Jaccard
-        co-occurrence similarity.
+        """Strengthen or weaken concept relationships based on Jaccard co-occurrence similarity (the
+        sync path, without a worker pool).
 
-        Uses Jaccard index (|A ∩ B| / |A ∪ B|) — symmetric and handles
-        size imbalance naturally.
+        Uses Jaccard index (|A ∩ B| / |A ∪ B|) — symmetric and handles size imbalance naturally. The
+        SAME computation and application as the pooled path (#976: this path had its own copy of the
+        loop, with the same direction bug).
         """
-        relationships = self._atl.find_by_relationship(concept.id, direction="both", limit=50)
-        if not relationships:
-            return
-
-        concept_refs = set(concept.memory_refs.get("hippocampus", {}))
-
-        for other_id, rel in relationships:
-            other = self._atl.get(other_id)
-            if not isinstance(other, Concept):
-                continue
-
-            other_refs = set(other.memory_refs.get("hippocampus", {}))
-            shared = len(concept_refs & other_refs)
-            union = len(concept_refs | other_refs)
-
-            if union < 3:
-                continue
-
-            jaccard = shared / union
-
-            # Strengthen: high co-occurrence with enough shared evidence
-            if jaccard > 0.3 and shared >= 3:
-                self._atl.semantics.update_edge(
-                    concept.id,
-                    other_id,
-                    rel.relationship_type,
-                    weight=min(1.0, jaccard * self.JACCARD_WEIGHT_SCALE),
-                    confidence_delta=0.05,
-                )
-            # Weaken: low co-occurrence despite many total observations
-            elif jaccard < 0.05 and union >= 10:
-                self._atl.semantics.update_edge(
-                    concept.id,
-                    other_id,
-                    rel.relationship_type,
-                    confidence_delta=-0.1,
-                )
+        self._apply_edge_updates(self._compute_relationship_updates(concept))
 
     # ------------------------------------------------------------------
     # AG quantification storage

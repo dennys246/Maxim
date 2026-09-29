@@ -261,6 +261,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The concept grounder updates each typed ATL relation once, in the direction it is stored** (#976).
+  Both grounding paths read a concept's relations in both directions and always updated
+  `(concept, other)`: a symmetric relation (RELATED_TO, ASSOCIATES, the math types) came back twice and
+  moved by TWO confidence deltas per pass (+0.10, not +0.05; −0.2, not −0.1), and an incoming
+  non-symmetric one (HAS_PART, ALIAS_OF, …) named an edge that does not exist and was never grounded.
+  An incoming edge that now gets grounded also gets its weight set (`min(1, 2·Jaccard)`), as outgoing
+  ones always did. The sync path now shares the pooled path's computation and apply step, so the two
+  cannot drift again; a failed edge update no longer stops the rest there, and is reported as a
+  structured `swallowed_exception` event on both paths (it was a DEBUG line on the pooled one).
+  - Still bounded as before: a concept's relations are read up to 50, outgoing first, so one with many
+    outgoing relations reaches few or none of its incoming ones.
+
 - **A write-but-don't-read agent no longer restores its ATL, AngularGyrus or cross-layer graph at
   session start** (#972). The sim orchestrator's agent (`AgentConfig(load_persisted=False)`, "must NOT
   restore it") skipped the Hippocampus, NAc/EC and SCN restores, but the hub's `on_session_start`
