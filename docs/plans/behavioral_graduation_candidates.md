@@ -231,6 +231,53 @@ update.
   ATL relations, and the survival harnesses use the ATL only through `activate_substrate_node` (#812's
   caller grep).
 
+### Trigger walk — 2026-09-29, #818 (NAc wall-clock decay of `cluster_reward_bias`)
+
+#818 makes `NAc.apply_wall_clock_decay` skip inherent-class cluster biases (`_inherent_bias_keys`), as the
+per-tick decay already did. Before, a Queen-curated bias halved for every day the agent was offline.
+
+Exp 45's `Re-run on:` ("NAc `cluster_reward_bias`/`recommend_action` change") fires by its wording, since
+decay-on-load of `cluster_reward_bias` is what changed. The issue's rows (Exp 56, 57, 61) and every other
+row that persists NAc were walked as well.
+
+The fix changes a value only where three things hold together:
+- a NAc holds inherent keys;
+- it is loaded with decay on (`NAc.load`/`load_safe`, the default);
+- it is loaded across a nonzero gap since its `saved_at`.
+
+**The discharge rests on the first condition. No recorded run's NAc can hold an inherent key, so the
+changed branch has nothing to act on.** This is structural and independent of the bug:
+- Nothing in production calls `mark_inherent_bias`, pinned by
+  `tests/unit/test_inherent_bias_class.py::test_mark_inherent_bias_has_no_production_caller`.
+- Ingest admits a donor's inherent markers only from a contributor in `inherent_trusted_sources`, and
+  refuses them otherwise (`hivemind/ingest.py`). No harness passes `--inherent-trust` or
+  `inherent_trust`: `scripts/exp56/common.py::ingest_bundle_into`, which Exp 61 and R3 reuse, passes
+  `--trust` only.
+- Exp 56's donor sanity makes `inherent_keys == 0` a pass condition. Exp 61 and R3 arm D refuse a donor
+  whose staged cluster biases are non-empty (`exp61_run.py::donor_sanity_staged`), and inherent keys are
+  a subset of those.
+- Corroboration from the committed data (all of `docs/experiments/data/`, `.gz` and zips included):
+  `inherent_bias_keys` is present only as an empty list, or absent. Exp 56's rows record
+  `inherent_keys: 0` (100 donors) and `inherent_keys_admitted: 0` (150 merges).
+
+Two backstops, not needed for the discharge:
+- **Gap.** Where a reload with decay happens (Exp 56, Exp 61 and R3 arm D, through `build_bio_stack`'s
+  `load_safe`), the receiver is rebuilt right after its ingest in the same run. The records do not stamp
+  the reload time, so this is a bound, not a measurement: at the 1-day half-life even an hour's gap would
+  keep 0.971 of an inherent bias.
+- **Paths that never decay.** Exp 57 reads its merge through `load_state`. Exp 53b loads with
+  `apply_decay=False`. Exp 60 and Exp 62 build fresh and never reload. Exp 52's resume loads with
+  `apply_decay=False`.
+- **Exp 45.** The Queen-mind bundle has no `inherent_bias_keys` field, and `orient_merge_arm.py` reads it
+  through `load_state`. `live_3_learn.py` reloads with decay on, but the July NAc files it reads carry
+  neither `inherent_bias_keys` nor `saved_at` (checked on the dev box; not committed), so the decay never
+  runs on them.
+
+**Discharged: every row that persists NAc.** That covers the survival rows (Exp 52, 53b, 56, 57, 60, 61,
+62, R3), Exp 45, Exp 10, Exp 37 and row 9, on the zero-origin argument above. No recorded value changes.
+The one route that exercises the fix, a Queen-trusted inherent ingest followed by a reboot, is not part
+of any experiment.
+
 ### Trigger walk — 2026-09-29, #976 (`ATL typed-relation update path` fired; follows #812)
 
 #976 changes the confidences the concept grounder writes: a symmetric relation used to move by two

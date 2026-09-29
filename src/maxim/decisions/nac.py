@@ -3870,7 +3870,11 @@ class NAc(StoreFileOwnership):
         immediate save→load round-trip lossy (the first in-session tick
         decay prunes them anyway, so production behavior is unchanged).
         Causal links and Welford variance are deliberately untouched —
-        they are accumulated statistics, not activations.
+        they are accumulated statistics, not activations. Inherent-class
+        cluster biases (``_inherent_bias_keys``, Queen curation) are exempt
+        here exactly as in the per-tick ``decay_cluster_reward_biases`` —
+        no decay, no pruning (#818: they halved every day offline, and a
+        pruned one left its inherent marker pointing at nothing).
 
         Returns:
             Dict of ``{surface_name: pruned_count}`` for surfaces that
@@ -3879,13 +3883,16 @@ class NAc(StoreFileOwnership):
         if elapsed_s <= 0:
             return {}
 
-        def _decay(biases: dict, half_life_s: float) -> tuple[dict, int]:
+        def _decay(biases: dict, half_life_s: float, exempt: frozenset | set = frozenset()) -> tuple[dict, int]:
             if not biases or half_life_s <= 0:
                 return biases, 0
             factor = 0.5 ** (elapsed_s / half_life_s)
             kept: dict = {}
             pruned = 0
             for key, value in biases.items():
+                if key in exempt:
+                    kept[key] = value
+                    continue
                 new_value = value * factor
                 if abs(new_value) < 0.001 and abs(value) >= 0.001:
                     pruned += 1
@@ -3913,7 +3920,7 @@ class NAc(StoreFileOwnership):
             self._cluster_fear, p = _decay(self._cluster_fear, slow)
             if p:
                 results["cluster_fear_pruned"] = p
-            self._cluster_reward_bias, p = _decay(self._cluster_reward_bias, fast)
+            self._cluster_reward_bias, p = _decay(self._cluster_reward_bias, fast, self._inherent_bias_keys)
             if p:
                 results["cluster_reward_bias_pruned"] = p
         return results
