@@ -16,8 +16,8 @@ Precedence (CLI > env > config > default) is exposed via
 of-truth confusion is the bug class to surface) AND at WARNING on
 divergence (env shadows config with a different value).
 
-Schema versioning at 1.0 (CC1): every ``config.json`` written by
-Maxim carries ``"_format_version": "1.0"`` at root. The file is
+Schema versioning (CC1): every ``config.json`` written by Maxim carries
+``"_format_version"`` at root (``CONFIG_FORMAT_VERSION``, ``"1.1"`` since #856). The file is
 CLI-canonical (the ``maxim config`` verbs are the operator's primary
 path; hand-edit is the escape hatch), so CC1 applies. This is the
 intentional divergence from ``profiles.yml`` (hand-edit-canonical, no
@@ -59,10 +59,17 @@ logger = logging.getLogger(__name__)
 # Schema constants (FROZEN at 1.0)
 # ─────────────────────────────────────────────────────────────────────────────
 
-CONFIG_FORMAT_VERSION: str = "1.0"
-"""Inaugural format version. Bumped per CC1 on shape changes:
-minor (1.1+) for additive non-breaking fields, major (2.0) for
-required-field breaking changes (loader migration required)."""
+CONFIG_FORMAT_VERSION: str = "1.1"
+"""The config.json format version. Bumped per CC1 on shape changes:
+minor for additive fields (an older build reading a future minor tolerates
+the keys it does not know, with a warning), major (2.0) for removed or
+renamed fields (loader migration required).
+
+History: 1.0 inaugural; 1.1 (#856) covers the ``console``, ``tools``,
+``sim`` and ``memory`` sections, which shipped under 1.0 so an older
+build refused them. Every field path is pinned per version in
+``tests/fixtures/config_schema_by_version.json``; a schema change without
+a bump fails ``tests/unit/test_config_format_version_856.py``."""
 
 _VALID_ROLES: frozenset[str] = frozenset({"leader", "peer", "solo"})
 _VALID_BACKENDS: frozenset[str] = frozenset({"llama_cpp", "pytorch"})
@@ -93,8 +100,9 @@ class LLMConfigSection:
 
     SHAPE-FROZEN at 1.0 (CC3) — path (b) per config_unification.md IM1
     fold. ``backend`` is a frozen enum surface; an ``extra:`` dict
-    would dilute typed validation. Adding optional fields with defaults
-    is non-breaking; adding required fields is a 2.0 break.
+    would dilute typed validation. Adding ANY field, optional or not,
+    bumps CONFIG_FORMAT_VERSION's minor (an older build refuses an unknown
+    key in a same-version file, #856); removing or renaming one is a 2.0 break.
     """
 
     enabled: bool = True
@@ -102,8 +110,8 @@ class LLMConfigSection:
     n_ctx: int = 8192
     backend: Literal["llama_cpp", "pytorch"] = "llama_cpp"
     auto_download: bool = False
-    # Prompt-budget knobs (P21, sandbox plan; 2026-09-04) — additive-optional
-    # per the MaximConfig docstring, no `_format_version` bump. Both `None`
+    # Prompt-budget knobs (P21, sandbox plan; 2026-09-04). They shipped under
+    # 1.0 without a bump, which #856 corrected (1.1). Both `None`
     # = built-in behaviour: the mode's own ``max_response_tokens`` (512 for
     # the agent loop's ModeInfo) and the PFC deliberation cap of 3 cycles in
     # sim / 2 live. ``max_response_tokens`` is at once the agent loop's
@@ -404,8 +412,8 @@ class ConsoleConfigSection:
 
     port: int = 8765
     ui_dist: str | None = None
-    # Sandbox-launch (2026-09-03) additions — all additive-optional per the
-    # MaximConfig docstring, so no `_format_version` bump. Validated HERE
+    # Sandbox-launch (2026-09-03) additions. They shipped under 1.0 without a
+    # bump, which #856 corrected (1.1). Validated HERE
     # (`coerce_agent_id`, the int/bool/list coercers), so `maxim config set`
     # and env both refuse a bad value at write/read time rather than at the
     # first Talk request.
@@ -465,9 +473,11 @@ class MaximConfig:
 
     SHAPE-FROZEN at 1.0 (CC3) — path (b) per config_unification.md IM1
     fold. Top-level shape is the schema contract; section additions
-    go inside section types, not at root. Adding optional fields with
-    defaults is non-breaking; adding required fields requires
-    ``_format_version 2.0`` + a migration step in the same commit.
+    go inside section types, not at root. Adding ANY field or section, in
+    any section, bumps CONFIG_FORMAT_VERSION's minor -- an older build
+    tolerates unknown keys only in a NEWER-minor file (#856; guarded by
+    tests/unit/test_config_format_version_856.py). Removing or renaming one
+    requires ``_format_version 2.0`` + a migration step in the same commit.
 
     Field order: ``_format_version`` is declared first per the
     underscore-sort-first convention (N1 fold from the review round —
@@ -1157,7 +1167,6 @@ def _check_format_version(data: dict[str, Any]) -> tuple[str, bool]:
     freeze-critical contract" pattern CLAUDE.md targets.
     """
     from maxim.utils.format_version import (
-        FORMAT_VERSION as _FV_DEFAULT,
         LEGACY_VERSION,
         check_format_version,
     )
@@ -1181,8 +1190,10 @@ def _check_format_version(data: dict[str, Any]) -> tuple[str, bool]:
     # no payload).
     raw = check_format_version(data, "config_json", log=logger)
     if raw == LEGACY_VERSION:
-        # Pre-1.0 file or absent field. Treat as same-major.
-        raw = _FV_DEFAULT
+        # Pre-1.0 file or absent field: treated as the loader's own version, as the comment above
+        # promises (it read the global FORMAT_VERSION, "1.0", which only matched while the two were
+        # equal, #856).
+        raw = CONFIG_FORMAT_VERSION
 
     # Parse major.minor; tolerate trailing patch/identifiers via splitting.
     try:

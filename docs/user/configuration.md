@@ -92,6 +92,25 @@ The legacy `MAXIM_LANE_<TIER>_REMOTE_API_KEY` env var still works (it directly h
 
 The four declarative-config files coexist by design.
 
+### Format version and downgrades
+
+`config.json` carries a `_format_version` (`"1.1"` since 1.3.2). A build reading a file with a NEWER
+minor version tolerates the sections and keys it does not know, with a warning, instead of refusing to
+start. The 1.3.2 bump covers what shipped under `"1.0"` without one:
+- the `console`, `tools`, `sim` and `memory` sections;
+- fields added inside `llm` (`max_response_tokens`, `deliberation_max_cycles`) and `console`.
+
+So 1.3.0, which lacks the `memory` section, can read a 1.3.2 file. (1.3.1 already knows every section
+and field in 1.1.)
+
+A file an earlier build wrote as `"1.0"` WITH one of those additions still stops an older build. First
+rewrite it on the newer build by re-setting any field to the value it already has (read it with
+`maxim config get llm.n_ctx`, then `maxim config set llm.n_ctx <that value>`), which stamps it `"1.1"`
+without changing a setting.
+
+After a downgrade, avoid `maxim config set` on the older build: it rewrites the file without the keys it
+does not know (#974).
+
 ### Auto-migration from peer.yml
 
 On first startup when `config.json` is absent **AND** `peer.yml` is present **AND** `~/.cloudflared/config.{yml,yaml}` is absent (preserves the legitimate leader-case), the loader auto-writes a minimal `config.json` populated from peer.yml fields. peer.yml is left in place — never deleted by the shim. Subsequent startups read `config.json` directly. The migration logs INFO once.

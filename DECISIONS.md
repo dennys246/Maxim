@@ -2,6 +2,23 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-09-28 — config.json format 1.1, and the schema is pinned to the version (#856)
+
+### Decision
+
+Owner decision: bump `CONFIG_FORMAT_VERSION` to `"1.1"` once, covering what shipped under `"1.0"` without one: the `console`, `tools`, `sim` and `memory` sections, and the fields added inside `llm` and `console`. Guard it so the next schema change cannot ship without a bump: every field path is pinned per version in `tests/fixtures/config_schema_by_version.json` (append-only; minors only add).
+
+### Reason
+
+The format-version contract was built for this case and never used. An older build tolerates the unknown keys of a FUTURE minor, but refuses them in a same-version file, and that stopped every `maxim` command after a downgrade. Documenting the incompatibility instead would have left the next section to repeat it.
+
+### Tradeoffs
+
+- A `"1.0"` file an earlier build wrote with those sections still stops an older build until it is rewritten. No change can reach files already on disk.
+- The write side stays open: an older build that rewrites a newer file drops the keys it does not know (#974, decision owed there).
+- The writer now stamps its own version rather than a loaded file's. A config loaded from an older file is this build's schema once parsed.
+
+
 ## 2026-09-28 — A memory store never saves over a file it did not read; `~` is the home directory (#939, #950)
 
 ### Decision

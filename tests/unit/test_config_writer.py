@@ -26,6 +26,7 @@ import pytest
 
 from maxim.exceptions import ConfigurationError
 from maxim.runtime.config_loader import (
+    CONFIG_FORMAT_VERSION,
     LaneTierConfig,
     LanesConfigSection,
     LLMConfigSection,
@@ -83,7 +84,7 @@ class TestWriteAndReadRoundtrip:
         path = tmp_path / "config.json"
         write_config(MaximConfig(), path=path)
         raw = json.loads(path.read_text())
-        assert raw["_format_version"] == "1.0"
+        assert raw["_format_version"] == CONFIG_FORMAT_VERSION
 
     def test_format_version_routed_through_canonical_helper(self, tmp_path, monkeypatch):
         """Post-implementation Architecture #1 fold: writes route
@@ -107,7 +108,7 @@ class TestWriteAndReadRoundtrip:
         path = tmp_path / "config.json"
         write_config(MaximConfig(), path=path)
         assert calls, "with_format_version helper was not called by the writer"
-        assert calls[0][1] == "1.0"
+        assert calls[0][1] == CONFIG_FORMAT_VERSION
 
 
 class TestSetField:

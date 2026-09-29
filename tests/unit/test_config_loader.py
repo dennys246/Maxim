@@ -104,7 +104,7 @@ class TestFormatVersionFieldOrder:
 
     def test_format_version_default_matches_module_constant(self):
         cfg = MaximConfig()
-        assert cfg._format_version == CONFIG_FORMAT_VERSION == "1.0"
+        assert cfg._format_version == CONFIG_FORMAT_VERSION == "1.1"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
