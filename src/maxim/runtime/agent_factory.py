@@ -1228,6 +1228,7 @@ class AgentFactory:
                 ec=self._create_ec(agent_dir, auto_load=auto_load, corrupt=corrupt),
                 atl=atl,
                 agent_id=agent_id,
+                load_persisted=auto_load,  # a fresh agent restores nothing at session start either (#972)
             )
         except Exception as e:
             log.warning("Failed to create MemoryHub: %s", e)

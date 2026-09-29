@@ -429,6 +429,7 @@ def build_bio_stack(
         angular_gyrus=angular_gyrus,
         agent_id=agent_id,
         start_background_workers=False,
+        load_persisted=load_persisted,  # write-but-don't-read holds at session start too (#972)
     )
 
     # -- Step 4: PainBus ---------------------------------------------------

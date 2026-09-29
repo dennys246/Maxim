@@ -155,7 +155,7 @@ class TestMemoryHubRawConstructionRaises:
         from maxim.integration.memory_hub import build_memory_hub
 
         core = _make_memory_hub_core_systems()
-        hub = build_memory_hub(agent_id="default_agent", **core)
+        hub = build_memory_hub(agent_id="default_agent", load_persisted=True, **core)
         assert hub is not None
 
     def test_allow_raw_kw_only(self) -> None:
@@ -201,7 +201,7 @@ class TestBuildersDoNotRaise:
         from maxim.integration.memory_hub import build_memory_hub
 
         core = _make_memory_hub_core_systems()
-        hub = build_memory_hub(agent_id="default_agent", **core)
+        hub = build_memory_hub(agent_id="default_agent", load_persisted=True, **core)
         assert hub is not None
 
 

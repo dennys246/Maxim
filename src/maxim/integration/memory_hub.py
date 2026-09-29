@@ -171,6 +171,12 @@ class MemoryHub:
 
     # Semantic embedding settings (Phase 4)
     embedding_persist_path: str = ""  # resolved lazily via _resolve_embedding_path()
+    # Whether on_session_start restores the ATL, AngularGyrus and cross-layer graph from their files. The
+    # builder decides, and must (#972: build_memory_hub requires it). False for an agent that restores
+    # nothing: the write-but-don't-read agent (build_bio_stack(load_persisted=False), the sim orchestrator),
+    # which declares its overwrites, and a factory agent built without auto_load, which does not -- over
+    # an existing home its saves are refused.
+    load_persisted: bool = True
 
     # Multi-layer memory (optional)
     atl: "ATL | None" = None
@@ -735,6 +741,10 @@ class MemoryHub:
                 self.atl.restored_at_construction = False
                 results["atl_concepts"] = len(self.atl)
                 logger.debug("ATL already restored at construction; skipping session-start reload")
+            elif not self.load_persisted:
+                # Write-but-don't-read (#972). Orthogonal to the flag above: that one skips ONE reload
+                # of an ATL restored at construction; this one means the agent never restores.
+                results["atl_concepts"] = len(self.atl)
             else:
                 try:
                     # Load-if-present (a new agent has no atl.json yet, which is not a failure); a
@@ -747,16 +757,16 @@ class MemoryHub:
                 except Exception as e:
                     logger.warning("Failed to load ATL state: %s", e)
 
-        # Load Angular Gyrus state
-        if self.angular_gyrus is not None:
+        # Load Angular Gyrus state (not for a write-but-don't-read agent, #972)
+        if self.angular_gyrus is not None and self.load_persisted:
             try:
                 self.angular_gyrus.load()
                 results["ag_records"] = len(self.angular_gyrus)
             except Exception as e:
                 logger.warning("Failed to load Angular Gyrus state: %s", e)
 
-        # Load cross-layer graph
-        if self._cross_layer is not None:
+        # Load cross-layer graph (not for a write-but-don't-read agent, #972)
+        if self._cross_layer is not None and self.load_persisted:
             try:
                 self._cross_layer.load()
                 results["cross_layer_edges"] = self._cross_layer.stats()["total_edges"]
@@ -2025,6 +2035,11 @@ def build_memory_hub(
     # divergence at the AgentFactory production door. Mirrors
     # ``build_bio_stack``'s required-keyword-only contract.
     agent_id: str,
+    # REQUIRED keyword-only (#972): whether the hub's session start restores the ATL, AngularGyrus and
+    # cross-layer graph. A default here is how a write-but-don't-read agent came to restore them anyway --
+    # the fourth silent miss of "the builder's load choice never reached a restore or save" (#939, #971,
+    # D28), so forgetting it is a TypeError, not a restore.
+    load_persisted: bool,
     start_background_workers: bool = True,
 ) -> MemoryHub:
     """Construct a MemoryHub with bridges ALWAYS wired.
@@ -2058,6 +2073,9 @@ def build_memory_hub(
         novelty_tracker: NoveltyTracker for sensitization wiring.
         start_background_workers: Start the ConceptExtractor immediately.
             Transactional builders may defer it until assembly succeeds.
+        load_persisted: REQUIRED. Whether ``on_session_start`` restores the ATL, AngularGyrus and
+            cross-layer graph from their files. False for a builder that restores nothing
+            (write-but-don't-read, a fresh factory agent; #972).
     """
     hub = MemoryHub(
         hippocampus=hippocampus,
@@ -2070,6 +2088,7 @@ def build_memory_hub(
         cerebellum=cerebellum,
         embodiment=embodiment,
         agent_id=agent_id,
+        load_persisted=load_persisted,
         _allow_raw=True,
         # Construction and bridge wiring are fallible. Defer worker start
         # until the complete builder transaction has succeeded.

@@ -439,6 +439,7 @@ def test_the_hub_logs_a_session_end_refusal_at_error(tmp_path: Path, store: str,
         "scn": _scn(None),
         "nac": _nac(None),
         "ec": _ec(None),
+        "load_persisted": True,
     }
     if store != "cross_layer":
         kwargs[store] = spec.make(str(path))

@@ -30,6 +30,8 @@ def core_systems():
         "scn": SCN(),
         "nac": NAc(),
         "ec": EntorhinalCortex(),
+        # Not a bio-system: build_memory_hub's required restore decision (#972), spread with the rest.
+        "load_persisted": True,
     }
 
 
@@ -53,9 +55,10 @@ class TestBuildMemoryHub:
     def test_missing_hippocampus_raises_type_error(self, core_systems):
         from maxim.integration.memory_hub import build_memory_hub
 
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError, match="'hippocampus'"):
             build_memory_hub(
                 agent_id="default_agent",
+                load_persisted=True,
                 scn=core_systems["scn"],
                 nac=core_systems["nac"],
                 ec=core_systems["ec"],
@@ -64,9 +67,10 @@ class TestBuildMemoryHub:
     def test_missing_scn_raises_type_error(self, core_systems):
         from maxim.integration.memory_hub import build_memory_hub
 
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError, match="'scn'"):
             build_memory_hub(
                 agent_id="default_agent",
+                load_persisted=True,
                 hippocampus=core_systems["hippocampus"],
                 nac=core_systems["nac"],
                 ec=core_systems["ec"],
@@ -75,9 +79,10 @@ class TestBuildMemoryHub:
     def test_missing_nac_raises_type_error(self, core_systems):
         from maxim.integration.memory_hub import build_memory_hub
 
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError, match="'nac'"):
             build_memory_hub(
                 agent_id="default_agent",
+                load_persisted=True,
                 hippocampus=core_systems["hippocampus"],
                 scn=core_systems["scn"],
                 ec=core_systems["ec"],
@@ -86,13 +91,23 @@ class TestBuildMemoryHub:
     def test_missing_ec_raises_type_error(self, core_systems):
         from maxim.integration.memory_hub import build_memory_hub
 
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError, match="'ec'"):
             build_memory_hub(
                 agent_id="default_agent",
+                load_persisted=True,
                 hippocampus=core_systems["hippocampus"],
                 scn=core_systems["scn"],
                 nac=core_systems["nac"],
             )
+
+    def test_missing_load_persisted_raises_type_error(self, core_systems):
+        """#972: the restore decision is required -- a default is how a write-but-don't-read agent came
+        to restore its ATL anyway."""
+        from maxim.integration.memory_hub import build_memory_hub
+
+        systems = {k: v for k, v in core_systems.items() if k != "load_persisted"}
+        with pytest.raises(TypeError, match="'load_persisted'"):
+            build_memory_hub(agent_id="default_agent", **systems)
 
     # ── Core invariant: three always-created bridges are alive ───────────
 
