@@ -16,6 +16,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from maxim.memory.types import record_success
+
 if TYPE_CHECKING:
     from maxim.memory.hippocampus import Hippocampus
     from maxim.salience.salience_network import SalienceNetwork
@@ -122,12 +124,7 @@ class SalienceMemoryBridge:
                             # bucket. `record_interaction`'s `None` tier and
                             # the decisive-denominator rate exist for exactly
                             # this case.
-                            if hasattr(mem, "success"):
-                                success_val = mem.success
-                            elif hasattr(mem, "outcome"):
-                                success_val = mem.outcome.success
-                            else:
-                                success_val = None
+                            success_val = record_success(mem)
                             if success_val is None:
                                 neutral.append(mem)
                             elif success_val:

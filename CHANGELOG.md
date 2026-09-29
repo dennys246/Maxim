@@ -261,6 +261,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A memory surfaced to the LLM is marked by its own outcome, not as a failure** (#991).
+  - `bio_enrichment` probed `getattr(mem, "success", False)`, which an `EpisodicMemory` never had (its
+    success is on `.outcome`), so since the pipeline's first version (2026-04-20) every surfaced episode
+    carried valence -0.3 and the `[-]` icon. Now: success +0.3 `[+]`, failure -0.3 `[-]`, unknown 0.0
+    `[~]` (unknown used to read as a failure). The aggregate valence in the think tool's output moves
+    with it. Nothing ranks or filters memories by this valence; the change is what the LLM reads.
+  - `EpisodicMemory.success` now answers like `CompressedMemory.success` (a read-only view of its
+    outcome), and `memory.types.record_success` reads either. The planner, the memory context items,
+    both introspection formatters and `SituationSignature` read only `outcome.success`, so a compressed
+    record's success was lost there (the planner skipped it); they use the accessor now, as do the four
+    bridges, whose results are unchanged. A name-scoped scan of `src/` fails on a new attribute probe.
+  - The planner admits a success as a strategy only when it has a tool to show (read for either kind):
+    each admitted strategy is rendered in the decomposition prompt and credited as used, and one with no
+    tool rendered nothing while still being credited. A legacy dict outcome counts only when its
+    success `is True`.
+  - Only the success field is unified; tool and goal still differ between the kinds (#995).
+
 - **A memory that is not an action outcome records its success as unknown (`None`), not as a success or
   a failure** (#843; owner decisions 2026-09-29).
   - `Hippocampus.capture_from_loop` stored a percept, whose result states no success, as a SUCCESS.
@@ -271,7 +288,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Outcome()` and `CompressedMemory()` default to unknown, and a value that is not a bool or `None`
     raises `TypeError`. A stored file holding one is unreadable: it is kept as a copy and the store
     starts fresh (#971's policy), and the error names the episode.
-  - The memory readers treat unknown as neither (the enrichment valence still reads it as failure, #991):
+  - The memory readers treat unknown as neither:
     - Retention (`ImportanceBasedStrategy` scores it 0.65, the midpoint of success and failure).
     - Promotion.
     - Stats (a new `unknown_outcome` bucket).

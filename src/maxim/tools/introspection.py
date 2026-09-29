@@ -12,6 +12,7 @@ import time
 from typing import Any
 
 from maxim.memory.layer import activate_after_use
+from maxim.memory.types import record_success
 from maxim.tools.base import Tool, ToolResult
 
 
@@ -741,6 +742,7 @@ def _format_episodic_memory(m: Any) -> dict[str, Any]:
         act = m.action
         result["tool"] = getattr(act, "tool_name", None)
 
+    result["success"] = record_success(m)  # both record kinds (#991); a dict outcome below overrides
     if hasattr(m, "outcome"):
         out = m.outcome
         if isinstance(out, dict):
@@ -749,7 +751,6 @@ def _format_episodic_memory(m: Any) -> dict[str, Any]:
             if "reflection" in out:
                 result["reflection"] = out["reflection"]
         else:
-            result["success"] = getattr(out, "success", None)
             result["error"] = getattr(out, "error", None)
             r = getattr(out, "result", None)
             if isinstance(r, dict) and "reflection" in r:

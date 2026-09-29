@@ -231,6 +231,63 @@ update.
   ATL relations, and the survival harnesses use the ATL only through `activate_substrate_node` (#812's
   caller grep).
 
+### Trigger walk — 2026-09-29, #991 (enrichment memory valence; Exp 37's "prompt construction change" fires)
+
+#991 reads a memory's success the same way for both record kinds. `bio_enrichment._query_hippocampus`
+probed `getattr(mem, "success", False)`, which an `EpisodicMemory` never had, so every surfaced episode
+was tagged as a failure: valence -0.3, rendered `[-]` in the memory lines the LLM reads. Four more
+readers (`adaptive_planner`, `MemoryAgent._memory_to_context_item`, the two introspection formatters)
+and `SituationSignature` read only `outcome.success`, so a `CompressedMemory`'s success was lost there.
+The fix puts the answer on the type (`EpisodicMemory.success`, a read-only view of its outcome) and one
+accessor, `memory.types.record_success`, that every reader taking either record kind now uses (readers
+guarded to one kind keep reading it directly); the four bridges that already read both kinds moved onto
+it with identical results. The planner admits a success as a strategy only when it has a tool to show,
+because every admitted strategy is rendered and credited as used. Only the success field is unified
+here; tool and goal still differ between the kinds ([#995](https://github.com/dennys246/Maxim/issues/995)). Enrichment now reads success +0.3 (`[+]`), failure
+-0.3 (`[-]`), unknown 0.0 (`[~]`).
+
+**Every recorded LLM-AUT run since 2026-04-20 ran under the bug.** The probe dates from `745278e8`
+(2026-04-20, the pipeline's first version), before the original Exp 10 (2026-04-25/26), its August
+heartbeat, the 2026-09-27 re-run and every Exp 37/38 fire. In all of them every surfaced
+`EpisodicMemory` carried the failure icon `[-]` (its summary text, "X succeeded"/"X failed", was already
+right; a `CompressedMemory` read correctly throughout). Their results stand as measured on that prompt; a
+post-#991 run is not comparable to them on prompt content.
+
+**What reads the valence.** Nothing ranks, filters or caps memories by it: the three retrieval paths
+choose and cap the memories, and valence is attached afterwards. It reaches the LLM as each memory
+line's `[+]/[-]/[~]` icon (`format_thought_response`: the loop's percept enrichment and deliberation
+cycles, the think tool, the console), and as the aggregate `EnrichmentResult.valence` in the think tool's
+`valence` field (`tools/narrative.py`). `exec_agent`'s pre-deliberation path, which would write it as a
+working-memory salience, is dead: `ExecAgent.wire_bio_enrichment` has no callers. Reflexes run in the
+same `enrich()` call but take the text and predictions, not the memories.
+
+**Exp 37 (cross-session behavioural delta, PARTIAL): fires ("prompt construction change"), noted.**
+The row makes no EARNED claim and blocks no release. A re-fire runs on the new prompt and is not
+comparable to earlier fires across this boundary.
+
+**Exp 10 (cross-session memory persistence): not fired; covered by the complete Exp 10 re-run.** None
+of its triggers (ATL typed-relation path, encoder swap, hippocampus persistence schema change, heartbeat)
+names this path, and what its re-run gates on (store counts at open, memories per trace at the cap of 3,
+field round-trips) is fixed before valence exists. What the LLM reads changes, which the complete re-run
+(`outstanding.md` O19, sequenced after this fix) covers. The original record's "action sequence differs
+in a way traceable to enrichment" was read under the all-`[-]` prompt.
+
+**Not fired:**
+- The four bridges: each returns the same tri-state as before for both stored kinds, and
+  `planning_bridge`'s old `else False` default is read only truthily, as `None` is.
+- The context-item, introspection and signature readers change only for a `CompressedMemory`, which
+  exists only after `sleep()` compression; the Exp 10 runs never sleep (#843's walk).
+- The planner (reached from `agent_loop`'s re-decomposition after a failure) changes for episodes too:
+  a success with no tool is no longer admitted as a strategy (it rendered nothing but was credited as
+  used), and a legacy dict outcome counts only when `success is True`. What Exp 10 gates on (store counts,
+  memories per trace at the enrichment cap, field round-trips) reads neither the strategy list nor the
+  planner's activation credit, so it does not fire; the decomposition prompt's text is Exp 37's, above.
+- Exp 60/61/62: `minecraft_harness._loop_kwargs` passes no `bio_enrichment_pipeline`, so the loop's
+  percept enrichment never runs there (`water_trial.py` runs through `run_minecraft_aut`).
+- Row 9 (reflex system; Cradle/drive/SEM body, PainBus/ReactionBus/NAc reward pipeline) and the SEM
+  pain → NAc row (ToolPainBridge attribution, `record_outcome` credit): none of their triggers names
+  this path. No other row's `Re-run on:` names prompt construction or enrichment.
+
 ### Trigger walk — 2026-09-29, #843 (hippocampus outcome values; Exp 10 fires conservatively)
 
 #843 stores `Outcome.success = None` ("unknown") for a memory that is not an action outcome:

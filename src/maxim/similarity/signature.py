@@ -103,15 +103,12 @@ class SituationSignature:
 
         # Compute structural hash
         tool_name = ""
-        outcome_type = ""
         if hasattr(memory, "action"):
             tool_name = getattr(memory.action, "tool_name", "") or ""
-        if hasattr(memory, "outcome"):
-            outcome = memory.outcome
-            if hasattr(outcome, "success"):
-                from maxim.memory.types import outcome_label
+        from maxim.memory.types import outcome_label, record_success
 
-                outcome_type = outcome_label(outcome.success)  # None is "unknown", not a failure (#843)
+        # None is "unknown", not a failure (#843); both record kinds (#991: a compressed one read "").
+        outcome_type = outcome_label(record_success(memory))
 
         # stable_hash_32, NOT builtin hash(): these ints are persisted via
         # EC.save()/load() and compared for exact equality in

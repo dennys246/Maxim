@@ -470,6 +470,18 @@ def outcome_label(success: bool | None) -> str:
     return "success" if success else "failure"
 
 
+def record_success(record: Any) -> bool | None:
+    """A memory record's outcome, whichever kind it is (#991). Both stored kinds answer ``.success``
+    (``EpisodicMemory`` through its ``outcome``); this also serves a duck-typed record that carries only an
+    ``outcome``, and gives ``None`` (unknown) for one with neither. A dict outcome (a legacy shape some
+    readers still accept) is not read here: it gives ``None``. Readers call this rather than probing
+    attributes: ``getattr(mem, "success", False)`` once read every episode as a failure."""
+    if hasattr(record, "success"):
+        return record.success
+    outcome = getattr(record, "outcome", None)
+    return getattr(outcome, "success", None)
+
+
 def _require_tri_state(value: Any, where: str) -> None:
     """Refuse a stored success that is not ``True``, ``False`` or ``None`` (#843): every reader branches
     three ways, and a fourth value would read as whichever branch its truthiness picks. The one check for
@@ -838,6 +850,13 @@ class EpisodicMemory(MemoryRecord):
     decision: Decision = field(default_factory=Decision)
     action: Action = field(default_factory=Action)
     outcome: Outcome = field(default_factory=Outcome)
+
+    @property
+    def success(self) -> bool | None:
+        """The outcome's tri-state, readable the same way as ``CompressedMemory.success`` (#991). Readers
+        probed ``success`` or ``outcome.success`` and silently missed one record kind; answering on the type
+        makes any such read correct for both. Read-only: an outcome is set on ``outcome``."""
+        return self.outcome.success
 
     # Extensible metadata bag — used by Mother Maxim for domain_tags,
     # contribution_source, witness_count, tenant_id, deidentification_model.

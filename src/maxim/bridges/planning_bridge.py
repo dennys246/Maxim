@@ -13,6 +13,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from maxim.memory.types import record_success
+
 if TYPE_CHECKING:
     from maxim.decisions.nac import NAc
     from maxim.memory.hippocampus import Hippocampus
@@ -142,13 +144,7 @@ class PlanHistoryBridge:
                     for mem, _score in associated:
                         if mem.id not in seen_ids:
                             # Only include successful associated memories
-                            success_val = (
-                                mem.success
-                                if hasattr(mem, "success")
-                                else mem.outcome.success
-                                if hasattr(mem, "outcome")
-                                else False
-                            )
+                            success_val = record_success(mem)
                             if success_val:
                                 seen_ids.add(mem.id)
                                 memories.append(mem)
