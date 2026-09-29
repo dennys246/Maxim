@@ -17,7 +17,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from maxim.memory.types import record_success
 from maxim.planning.base import Planner
+
+
+def _strategy_tool(memory: Any) -> str:
+    """The tool a successful memory used, for either record kind: ``EpisodicMemory.action.tool_name`` or
+    ``CompressedMemory.tool_name`` (#991; the two kinds name it differently, #995). ``""`` = none."""
+    action = getattr(memory, "action", None)
+    return getattr(action, "tool_name", "") or getattr(memory, "tool_name", "") or ""
 
 
 # ---------------------------------------------------------------------------
@@ -98,9 +106,7 @@ class PlanningContext:
         if self.successful_strategies:
             parts.append("Successful strategies in similar situations:")
             for m in self.successful_strategies[:3]:
-                action = getattr(m, "action", None)
-                if hasattr(action, "tool_name") and action.tool_name:
-                    parts.append(f"  - Used {action.tool_name} → success")
+                parts.append(f"  - Used {_strategy_tool(m)} → success")
 
         if self.ranked_skills:
             top_skills = [s["name"] for s in self.ranked_skills[:5]]
@@ -397,25 +403,25 @@ class AdaptivePlanner(Planner):
 
                 # Partition into reflections and successes
                 for mem, _activation in pctx.associated_memories:
+                    # A CompressedMemory has no ``outcome`` but does carry its success (#991): it used to be
+                    # skipped here, so a compressed success never counted as a strategy.
                     outcome = getattr(mem, "outcome", None)
-                    if outcome is None:
-                        continue
-
                     reflection_text = None
-                    is_success = False
 
                     if isinstance(outcome, dict):
                         reflection_text = outcome.get("reflection")
-                        is_success = outcome.get("success", False)
+                        is_success = outcome.get("success") is True
                     else:
-                        is_success = getattr(outcome, "success", False)
+                        is_success = record_success(mem) is True
                         result = getattr(outcome, "result", None)
                         if isinstance(result, dict):
                             reflection_text = result.get("reflection")
 
                     if reflection_text:
                         pctx.reflections.append(mem)
-                    elif is_success:
+                    elif is_success and _strategy_tool(mem):
+                        # Admitted only with a tool to show: the prompt is the only place a strategy is
+                        # rendered, and every admitted one is credited as used (#991).
                         pctx.successful_strategies.append(mem)
             except Exception:
                 pass

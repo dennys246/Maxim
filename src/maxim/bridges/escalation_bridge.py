@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from maxim.memory.types import record_success
+
 if TYPE_CHECKING:
     from maxim.decisions.nac import NAc
     from maxim.memory.hippocampus import Hippocampus
@@ -364,13 +366,7 @@ class EscalationLearningBridge:
                     successes = 0
                     failures = 0
                     for mem, _score in associated:
-                        success_val = (
-                            mem.success
-                            if hasattr(mem, "success")
-                            else mem.outcome.success
-                            if hasattr(mem, "outcome")
-                            else None
-                        )
+                        success_val = record_success(mem)
                         if success_val is True:
                             successes += 1
                         elif success_val is False:

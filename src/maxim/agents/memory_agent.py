@@ -50,6 +50,7 @@ from maxim.memory.types import (
     Outcome,
     Perception,
     PredictedOutcome,
+    record_success,
 )
 from maxim.memory.association_index import AssociationIndex
 from maxim.memory.text import normalize_tokens
@@ -973,9 +974,9 @@ class MemoryAgent(Agent, AgentOutputMixin):
             if hasattr(record, "action") and record.action:
                 content["action"] = getattr(record.action, "tool_name", None)
                 source = "action"
-            if hasattr(record, "outcome") and record.outcome:
-                content["success"] = getattr(record.outcome, "success", None)
-                source = "goal_outcome" if content.get("success") is not None else source
+            content["success"] = record_success(record)  # both record kinds (#991)
+            if content["success"] is not None:
+                source = "goal_outcome"
             if hasattr(record, "perception") and record.perception:
                 transcript = getattr(record.perception, "transcript", None)
                 if transcript:

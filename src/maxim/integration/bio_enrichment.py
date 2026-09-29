@@ -22,6 +22,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from maxim.memory.types import record_success
 from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
@@ -40,6 +41,13 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Data types
 # ---------------------------------------------------------------------------
+
+
+# An enrichment memory's valence from its outcome (#991): success leans approach, failure avoid, and an
+# unknown outcome (a percept, #843) neither. The sign is the invariant; the +-0.3 magnitudes (they predate
+# #991) and unknown's 0.0 are an innate prior -- revisit if valence ever ranks, filters or caps memories,
+# or feeds a salience or a credit.
+_OUTCOME_VALENCE: dict[bool | None, float] = {True: 0.3, False: -0.3, None: 0.0}
 
 
 @dataclass(frozen=True, slots=True)
@@ -676,9 +684,11 @@ class BioEnrichmentPipeline:
                 return
             seen_ids.add(mem.id)
             summary = self._summarize_episode(mem)
-            valence = getattr(mem, "valence", 0.0)
-            if not hasattr(mem, "valence"):
-                valence = 0.3 if getattr(mem, "success", False) else -0.3
+            valence = getattr(mem, "valence", None)
+            if valence is None:
+                # A record carries no valence of its own: read its outcome, whichever kind it is (#991;
+                # every episode read as a failure). Unknown (a percept, #843) is neutral.
+                valence = _OUTCOME_VALENCE[record_success(mem)]
             summaries.append(
                 EpisodicSummary(
                     memory_id=mem.id,
@@ -963,9 +973,7 @@ class BioEnrichmentPipeline:
         if hasattr(mem, "action") and hasattr(mem.action, "tool_name"):
             tool = mem.action.tool_name or tool
         if tool:
-            success = getattr(mem, "success", None)
-            if success is None and hasattr(mem, "outcome"):
-                success = getattr(mem.outcome, "success", None)
+            success = record_success(mem)
             status = "succeeded" if success else "failed" if success is False else ""
             parts.append(f"{tool} {status}".strip())
         # Goal context

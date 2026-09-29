@@ -14,6 +14,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from maxim.memory.types import record_success
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,7 +75,7 @@ class Observer:
                     "id": getattr(m, "id", "?"),
                     "goal": getattr(getattr(m, "context", None), "goal", ""),
                     "tool": getattr(getattr(m, "action", None), "tool_used", ""),
-                    "success": getattr(getattr(m, "outcome", None), "success", None),
+                    "success": record_success(m),
                     "timestamp": getattr(m, "timestamp", 0),
                 }
                 for m in memories

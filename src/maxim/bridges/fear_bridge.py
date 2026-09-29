@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from maxim.memory.types import record_success
+
 if TYPE_CHECKING:
     from maxim.decisions.nac import NAc
     from maxim.memory.hippocampus import Hippocampus
@@ -366,13 +368,7 @@ class FearCircuitBridge:
                     risk_signals = 0
                     safe_signals = 0
                     for mem, _score in associated:
-                        success = (
-                            mem.success
-                            if hasattr(mem, "success")
-                            else mem.outcome.success
-                            if hasattr(mem, "outcome")
-                            else None
-                        )
+                        success = record_success(mem)
                         if success is True:
                             safe_signals += 1
                         elif success is False:
