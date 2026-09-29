@@ -231,6 +231,47 @@ update.
   ATL relations, and the survival harnesses use the ATL only through `activate_substrate_node` (#812's
   caller grep).
 
+### Trigger walk — 2026-09-29, #976 (`ATL typed-relation update path` fired; follows #812)
+
+#976 changes the confidences the concept grounder writes: a symmetric relation used to move by two
+deltas per grounding pass, and an incoming non-symmetric one was never updated. That fires the
+`ATL typed-relation update path` trigger on the three rows #812 gave it.
+
+The question for each row is whether a grounder-written relation confidence or weight reaches the row's
+metric. The answer comes from reading the code, not from replaying the bug.
+
+- **Where those values can be seen at all.**
+  - The prompt builders render a relation's type and target only (`agents/prompt_builder.py`, the
+    concept-context and knowledge-context sections).
+  - `Semantics.find` returns edges in insertion order, and `update_edge` neither creates nor deletes
+    edges. So which relations are present, and in what order, is unchanged.
+  - Two readers use the numbers. `ATL.recall_associated`'s spreading activation has no production
+    caller. The optional `concept_query` introspection tool prints them, but only if the LLM calls it
+    with a concept id.
+- **Exp 10 (cross-session memory persistence): discharged.**
+  - The grounder runs in the sim AUT (the bio stack's sync path).
+  - The metric is store counts, memories surfaced per resume turn by `bio_enrichment`, field round-trips
+    and carried NAc links. None of these read ATL relations: the enrichment path uses EC completion,
+    `hippocampus.retrieve_on_cue`, and `atl.get`/`atl.recall` by name.
+  - The one channel to the LLM, a `concept_query` call, was available and not taken. The tool was
+    registered in all five sessions of the re-run (each `run_log.jsonl.gz` "Active tools" line, under
+    `docs/experiments/data/rerun_exp10_2026-09-27/`), and their `actions.jsonl.gz` contain no call to it.
+- **Cross-session behavioural delta under LLM-AUT (Wire-A, Exp 37/38): discharged, with one stated
+  caveat.**
+  - The metric is an action fraction from `actions.jsonl`, and the ablated mechanisms are NAc/EC-side.
+  - The only channel by which the changed numbers could reach the LLM's choices is a `concept_query`
+    call. None of the 13 Exp 37/38 record files (`docs/experiments/data/37_*.jsonl`, `38_*.jsonl`: 12 of
+    60 records and one, `37_oldhash_qwen32b_A_2026-08-22.jsonl`, of 5) contains one. The absence is informative: `tool_usage` counts every tool
+    the AUT called, introspection tools included (`predict_outcome` appears in the Sonnet runs).
+  - That evidence is independent of the bug. Up to a first `concept_query` call the prompts are the same
+    under the old and new code, so the bug cannot create or remove the call.
+  - A re-run whose AUT does call `concept_query` would not be covered by this note.
+- **Affordance concept transfer: discharged.** The metric is an embedding cosine through EC pattern
+  completion. The ATL is touched only by `activate_substrate_node`, which writes no relations, and the
+  grounder is not on the path.
+
+Each row keeps its `Re-run on:` trigger.
+
 ### Guard edit — 2026-09-28, #951 (not a trigger walk; nothing fired)
 
 `scripts/survival_world/scripted_water.py` and `tests/unit/test_water_trial_smoke.py` are cited Regression
