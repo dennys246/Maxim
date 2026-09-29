@@ -171,6 +171,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New: `save(overwrite=)`, `allow_overwrite()`, `may_write()`, `load(missing_ok=)`.
   - Details under Fixed.
 
+- **Breaking, to stable surfaces: run directories resolve through `resolve_run_dir`, and the API follows
+  `MAXIM_DATA_HOME`** (#932; owner decisions 2026-09-28). The owner should confirm at the cut, with #939/#950,
+  whether these fit a patch release. Still resolving on their own: the orchestrator's `--resume-sim`
+  (homed after its characterization tests) and five experiment harnesses that scan a data home they
+  created or archived (listed in the persistence-config brief).
+  - `maxim.load.session(id)` resolves an exact ID or a path first, the same way the CLI does. An ID that
+    names no directory is still tried as a prefix, but a prefix matching several sessions now raises
+    `maxim.RunDirAmbiguous` (newly exported; a `MaximMemoryError` and a `ValueError`, as is
+    `RunDirNotFound`, both now in `maxim.exceptions`) listing them. Before, the NEWEST match was
+    loaded silently, even when the ID asked for was an exact match of an older run.
+  - Because it resolves like the CLI, a bare ID is also looked up in the working directory: an ID that
+    names a directory there too is refused as ambiguous, and one that names only a directory there loads
+    it (its metadata is empty without a `report.json`). Pass a path to be exact.
+  - `maxim.run`, `maxim.observe` and `maxim.recall` default to the data home (`MAXIM_DATA_HOME`, else
+    `~/.maxim`), not a literal `~/.maxim`.
+  - `maxim.run(learning=True)` keeps its agent in `<home>/agents/api_agent/`, not flat in
+    `<home>/sessions/`, so `recall(agent_id="api_agent")` reads it and `--clear-memory` now reaches it.
+    The first run after upgrading moves the old files there once, whole or not at all: staged beside it,
+    fsynced, and renamed into place (`atomic_io.atomic_install_dir`, which refuses a populated target),
+    with the originals deleted only after the rename. It never moves them over an agent already there: it
+    leaves them and names them in a warning. A user who set `MAXIM_DATA_HOME` had the agent in
+    `~/.maxim/sessions/` anyway; it is never moved across data homes, and `run()` without `home_dir`
+    names it in a warning (owner decision).
+  - `--sim research`, pre-parsed campaign analyses and `scripts/spike_dm_pipeline_audit.py` write under
+    `<data home>/sim_reports/`, not a `./data/sim_reports/` relative to wherever the command ran.
+    Existing `./data/sim_reports/` directories are left alone.
+  - `scripts/check_oscillator_coldstart.py --session` takes a simulation's ID or directory, resolved by
+    `resolve_run_dir`; it hard-coded `~/.maxim`.
+
 - **`build_tool_registry` takes a required `internet_launch_enabled` and builds the policy getter
   itself** (#832 item 4). The `internet_policy_getter=` parameter is removed, so no caller can hand
   the internet tools a bare policy. Forgetting the decision is a `TypeError`, not "no internet".

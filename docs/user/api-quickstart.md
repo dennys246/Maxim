@@ -89,7 +89,8 @@ state = maxim.introspect("causal")
 
 ```python
 # Goal seeds initial work; the service loop blocks until Ctrl+C/runtime shutdown
-# Bio-learning is ON by default — memories persist to ~/.maxim/sessions/
+# Bio-learning is ON by default — memories persist to <data home>/agents/api_agent/
+# (data home: MAXIM_DATA_HOME, else ~/.maxim)
 maxim.run(model="mistral-7b", goal="explore the environment")
 
 # Disable bio-learning (no persistent memory or causal learning)

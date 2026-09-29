@@ -204,6 +204,159 @@ def persisted_agent_state(agent_dir: Path) -> list[Path]:
     return found
 
 
+def migrate_agent_state(legacy_dir: Path, agent_dir: Path) -> bool:
+    """Move an agent's store files from ``legacy_dir`` into ``agent_dir`` -- whole, or not at all (#932).
+
+    Built for ``maxim.run``'s agent, which lived flat in ``<home>/sessions/`` before 1.3.2. Returns whether
+    it migrated. "State" is ``persisted_agent_state`` -- the same definition ``create.agent`` refuses on:
+
+    - ``legacy_dir`` holds none: nothing to do.
+    - ``agent_dir`` already holds some: that agent is the real one. The legacy files stay where they are
+      and a warning names them; nothing is merged.
+    - Otherwise the files are copied into a uniquely named staging directory beside ``agent_dir``, and
+      ``atomic_io.atomic_install_dir`` fsyncs it and renames it into place in one step. A failure or a
+      kill never leaves a partial agent at ``agent_dir`` for the next run to load as whole, and the
+      originals are deleted only after the rename. Anything ``agent_dir`` held that is not state (a
+      ``.DS_Store``, an empty ``memory_hub/``, a ``<store>.corrupt-<UTC>`` copy) is carried into the new
+      directory, because the rename needs an empty target; a kill in that window leaves it in the
+      ``.<name>.migrating-*`` staging directory, which is not an agent and is never deleted for you.
+    - Another process that installs the agent first wins: this one discards its copy and returns False.
+    - An entry in ``agent_dir`` whose name the new agent needs and that holds a file raises
+      ``FileExistsError`` naming it, before anything is touched.
+    - If a carried entry cannot be put back after a failure, the staging directory is kept as its only
+      copy, and a warning names it.
+
+    Files outside ``AGENT_STATE_FILES`` and ``memory_hub/`` -- for example ``<store>.corrupt-<UTC>``
+    copies -- stay in ``legacy_dir``. Any other failure propagates with the legacy agent untouched.
+    """
+    import shutil
+    import tempfile
+
+    from maxim.utils.atomic_io import atomic_install_dir
+
+    legacy_files = persisted_agent_state(legacy_dir)
+    if not legacy_files:
+        return False
+    if persisted_agent_state(agent_dir):
+        log.warning(
+            "Not migrating the agent state in %s: %s already holds an agent. Left in place "
+            "(delete them once you no longer need them): %s",
+            legacy_dir,
+            agent_dir,
+            ", ".join(str(p) for p in legacy_files),
+        )
+        return False
+    agent_dir.parent.mkdir(parents=True, exist_ok=True)
+    residue_entries = sorted(agent_dir.iterdir()) if agent_dir.is_dir() else []
+    staged_names = {src.relative_to(legacy_dir).parts[0] for src in legacy_files}
+    for entry in residue_entries:
+        # A name the stage will hold cannot be carried. Only memory_hub/ can collide with no state in it, so
+        # it holds no files; anything else colliding is refused before anything is touched.
+        if entry.name in staged_names and not _holds_no_files(entry):
+            raise FileExistsError(f"cannot migrate into {agent_dir}: {entry} is in the way (move it aside)")
+    stage = Path(tempfile.mkdtemp(prefix=f".{agent_dir.name}.migrating-", dir=agent_dir.parent))
+    # mkdtemp makes it 0700 and the rename keeps that; give the agent home the mode its siblings get.
+    try:
+        stage.chmod(agent_dir.parent.stat().st_mode & 0o777)
+    except OSError as exc:  # a mount that rejects chmod: the agent home stays owner-only
+        log.debug("Could not set the mode of %s: %s", stage, exc)
+    residue: list[str] = []
+    try:
+        for src in legacy_files:
+            dst = stage / src.relative_to(legacy_dir)
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+        for entry in residue_entries:
+            if entry.name in staged_names:  # file-free (checked above): nothing to carry
+                _remove_empty_tree(entry)
+                continue
+            target = stage / entry.name
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.copytree(entry, target, symlinks=True)
+            else:
+                shutil.copy2(entry, target, follow_symlinks=False)
+            residue.append(entry.name)  # copied: from here the stage holds it, whatever the removal does
+            entry.unlink() if entry.is_symlink() or not entry.is_dir() else shutil.rmtree(entry)
+        atomic_install_dir(str(stage), str(agent_dir))
+    except BaseException as exc:
+        if not stage.exists():
+            # The rename happened: the agent is installed; only the tail was interrupted.
+            log.warning(
+                "Migrated the agent state in %s to %s, but was interrupted before removing the originals.",
+                legacy_dir,
+                agent_dir,
+            )
+            raise
+        if _restore_residue(stage, agent_dir, residue):
+            shutil.rmtree(stage, ignore_errors=True)
+        else:
+            log.warning("Kept %s: it holds files that could not be put back into %s.", stage, agent_dir)
+        if isinstance(exc, OSError) and persisted_agent_state(agent_dir):
+            # Our stage never got in, so this state is another process's install.
+            log.info("Agent state in %s was installed at %s by another process first.", legacy_dir, agent_dir)
+            return False
+        raise
+    log.warning("Migrated the agent state in %s to %s (one time).", legacy_dir, agent_dir)
+    for src in legacy_files:
+        try:
+            src.unlink()
+        except OSError as exc:
+            log.warning("Migrated %s but could not remove the original: %s", src, exc)
+    hub = legacy_dir / "memory_hub"
+    if hub.is_dir():
+        for d in sorted((p for p in hub.rglob("*") if p.is_dir()), reverse=True) + [hub]:
+            try:
+                d.rmdir()
+            except OSError as exc:
+                log.debug("Left %s in place (not empty): %s", d, exc)
+    return True
+
+
+def _holds_no_files(entry: Path) -> bool:
+    """A symlink, or a directory tree with no file (or link) anywhere in it."""
+    if entry.is_symlink():
+        return True
+    return entry.is_dir() and not any(p.is_file() or p.is_symlink() for p in entry.rglob("*"))
+
+
+def _remove_empty_tree(entry: Path) -> None:
+    """Remove a symlink (only the link) or a directory tree of empty directories -- never a file.
+
+    ``rmdir`` refuses a directory that still holds anything, so if a file appeared since the check (another
+    process's install) this raises instead of deleting it.
+    """
+    if entry.is_symlink():
+        entry.unlink()
+        return
+    for d in sorted((p for p in entry.rglob("*") if p.is_dir() and not p.is_symlink()), reverse=True):
+        d.rmdir()
+    entry.rmdir()
+
+
+def _restore_residue(stage: Path, agent_dir: Path, names: list[str]) -> bool:
+    """Merge the entries ``migrate_agent_state`` carried out of ``agent_dir`` back into it.
+
+    Merging, not skipping: a removal that failed partway leaves part of an entry behind, and the stage
+    holds the only complete copy. Returns False if anything could not be put back -- the caller then
+    keeps the stage.
+    """
+    import shutil
+
+    ok = True
+    for name in names:
+        src, dst = stage / name, agent_dir / name
+        try:
+            agent_dir.mkdir(parents=True, exist_ok=True)
+            if src.is_dir() and not src.is_symlink():
+                shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True)
+            elif not (dst.exists() or dst.is_symlink()):
+                shutil.copy2(src, dst, follow_symlinks=False)
+        except OSError as exc:
+            ok = False
+            log.warning("Could not put %s back into %s: %s", name, agent_dir, exc)
+    return ok
+
+
 def _corruption_error(agent_id: str, corrupt: list[dict[str, str]]) -> Exception:
     """Build the actionable MemoryCorruptionError for ``on_corrupt="raise"``."""
     from maxim.exceptions import MemoryCorruptionError

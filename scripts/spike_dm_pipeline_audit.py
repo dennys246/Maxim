@@ -25,7 +25,6 @@ import json
 import sys
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 
@@ -492,9 +491,10 @@ def main() -> int:
     report.print_summary()
 
     # Save JSON report
-    out_dir = Path("data/sim_reports")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "pipeline_audit.json"
+    # Under the data home like every simulation report, not a working-directory-relative ./data/ (#932).
+    from maxim.utils.paths import sim_reports
+
+    out_path = sim_reports() / "pipeline_audit.json"
     with open(out_path, "w") as f:
         json.dump(report.to_dict(), f, indent=2, default=str)
     print(f"Report saved to {out_path}")

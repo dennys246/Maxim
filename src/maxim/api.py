@@ -23,6 +23,7 @@ import os
 import sys
 import threading
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -144,6 +145,54 @@ def configure(
 
 
 _API_DEFAULT_MODEL = "mistral-7b"
+
+# The agent ``run(learning=True)`` persists, and where it lived before #932: flat in ``<home>/sessions/``,
+# beside nothing else of its kind and invisible to ``resolve_run_dir``. It now lives in an agent home.
+_API_AGENT_ID = "api_agent"
+_LEGACY_API_AGENT_DIR = "sessions"
+
+
+def _api_home(home_dir: str | None) -> str:
+    """The root the API verbs read and write: ``home_dir``, else the data home (#932).
+
+    The default used to be a literal ``~/.maxim``, so ``MAXIM_DATA_HOME`` moved everything except the API.
+    """
+    if home_dir:
+        return os.path.expanduser(home_dir)
+    from maxim.utils.paths import data_home
+
+    return str(data_home())
+
+
+def _api_agent_dir(home: str, *, default_home: bool) -> Path:
+    """``<home>/agents/api_agent``, after moving a pre-#932 flat ``<home>/sessions/`` agent into it.
+
+    ``default_home``: the caller passed no ``home_dir``. Before #932 that meant ``~/.maxim`` even under
+    ``MAXIM_DATA_HOME``, so an agent may still sit in ``~/.maxim/sessions/``. It is never moved across
+    data homes (a throwaway ``MAXIM_DATA_HOME`` must not take the user's real agent); a warning names it.
+    """
+    from maxim.runtime.agent_factory import migrate_agent_state, persisted_agent_state
+    from maxim.utils.paths import RUN_DIR_KINDS
+
+    agent_dir = Path(home) / RUN_DIR_KINDS["agent"] / _API_AGENT_ID
+    migrate_agent_state(Path(home) / _LEGACY_API_AGENT_DIR, agent_dir)
+    old_default = Path.home() / ".maxim"
+    if default_home and Path(home).resolve() != old_default.resolve():
+        stranded = persisted_agent_state(old_default / _LEGACY_API_AGENT_DIR)
+        if stranded:
+            logger.warning(
+                "maxim.run() now follows MAXIM_DATA_HOME (%s); an earlier agent is still in %s and is NOT "
+                "loaded: %s. To keep it, move those files into %s (only while that holds no agent), or pass "
+                "home_dir=%r.",
+                home,
+                old_default / _LEGACY_API_AGENT_DIR,
+                ", ".join(str(p) for p in stranded),
+                agent_dir,
+                str(old_default),
+            )
+    return agent_dir
+
+
 _RUN_LOCK = threading.Lock()
 
 
@@ -517,8 +566,10 @@ def run(
     currently stop the service loop automatically.
 
     Bio-learning (episodic memory, causal learning, pain attribution)
-    is **enabled by default**.  Memories persist to ``~/.maxim/sessions/``
-    across sessions.  Pass ``learning=False`` to disable.
+    is **enabled by default**.  Memories persist to
+    ``<home>/agents/api_agent/`` across sessions (moved from ``<home>/sessions/``
+    on first run after upgrading; #932). Read them back with
+    ``recall(agent_id="api_agent")`` (``home_dir`` there names the agent home itself).  Pass ``learning=False`` to disable.
 
     Args:
         model: LLM profile name (e.g. ``"mistral-7b"``, ``"claude-sonnet"``).
@@ -533,8 +584,8 @@ def run(
             to restore awake state and connection ownership; if safe sleep or
             disconnect cannot be confirmed, it retains the registration and
             raises ``HardwareError``.
-        home_dir: Root for API-owned memory, data, and session persistence
-            (default ``~/.maxim``). Runtime step snapshots still use the
+        home_dir: Root for API-owned memory, data, and agent persistence
+            (default: the data home -- ``MAXIM_DATA_HOME``, else ``~/.maxim``). Runtime step snapshots still use the
             CWD-relative ``data/agents/`` path; complete ownership is tracked
             for 1.1.x under D15.
         verbosity: Logging verbosity (0-3).
@@ -618,7 +669,7 @@ def run(
                 logger.warning("Auto-curation failed: %s", e)
                 print(f"  WARNING: Auto-curation failed ({e})", file=sys.stderr)
 
-        effective_home = os.path.expanduser(home_dir or "~/.maxim")
+        effective_home = _api_home(home_dir)
         os.makedirs(effective_home, exist_ok=True)
 
         # ── LLM router ───────────────────────────────────────────────────
@@ -672,16 +723,17 @@ def run(
         if learning:
             from maxim.runtime.agent_factory import AgentConfig, AgentFactory
 
+            _api_agent_home = _api_agent_dir(effective_home, default_home=not home_dir)
             _api_config = AgentConfig(
-                agent_id="api_agent",
+                agent_id=_API_AGENT_ID,
                 role="pc",
-                persistence_dir=os.path.join(effective_home, "sessions"),
+                persistence_dir=str(_api_agent_home),
                 with_bio_stack=True,
                 with_executor=True,
                 with_pain_bridge=True,
             )
             _api_factory = AgentFactory(
-                base_data_dir=os.path.join(effective_home, "sessions"),
+                base_data_dir=str(_api_agent_home.parent),
             )
             _api_instance = _api_factory.create_full_agent(
                 _api_config,
@@ -695,7 +747,7 @@ def run(
                 agent.wire_memory_hub(_headless_memory_hub)
             logger.info(
                 "Bio-learning enabled — memories persist to %s. Disable with learning=False.",
-                os.path.join(effective_home, "sessions"),
+                _api_agent_home,
             )
         else:
             executor = build_executor(tool_registry, pain_bus=None, permissions=None)
@@ -1083,12 +1135,13 @@ def observe(
 
         keyword: Filter results by keyword (for memory/causal queries).
         limit: Max results to return.
-        home_dir: Data directory to load state from (default ``~/.maxim``).
+        home_dir: Data directory to load state from (default: the data home --
+            ``MAXIM_DATA_HOME``, else ``~/.maxim``).
 
     Returns:
         Dict with subsystem-specific data.  Structure varies by subsystem.
     """
-    effective_home = os.path.expanduser(home_dir or "~/.maxim")
+    effective_home = _api_home(home_dir)
 
     # Build observer from persisted state
     observer = _build_observer(effective_home)
@@ -1175,8 +1228,8 @@ def recall(*, home_dir: str | None = None, agent_id: str | None = None, limit: i
     MemoryView read MUST match the home its HANDLE agent writes, or campaign
     learning is silently invisible):
 
-    * ``recall()`` — the api-session layout: ``~/.maxim/memory/{hippocampus,nac}.json``
-      (or ``home_dir`` in place of ``~/.maxim``). Unchanged legacy behavior.
+    * ``recall()`` — the api-session layout: ``<data home>/memory/{hippocampus,nac}.json``
+      (or ``home_dir`` in place of the data home).
     * ``recall(agent_id="console_agent")`` — the **AgentFactory layout**:
       ``<data_home>/agents/<agent_id>/{hippocampus,nac}.json`` (files at the
       agent home's root, no ``memory/`` subdir). ``home_dir`` then overrides the
@@ -1203,7 +1256,7 @@ def recall(*, home_dir: str | None = None, agent_id: str | None = None, limit: i
             agent_home = os.path.join(str(data_home()), RUN_DIR_KINDS["agent"], agent_id)
         hippocampus, nac = _load_agent_home_state(agent_home)
     else:
-        effective_home = os.path.expanduser(home_dir or "~/.maxim")
+        effective_home = _api_home(home_dir)
         observer = _build_observer(effective_home)
         if observer is not None:
             hippocampus = getattr(observer, "_hippocampus", None)

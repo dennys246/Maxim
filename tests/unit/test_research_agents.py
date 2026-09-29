@@ -290,7 +290,12 @@ class TestResearchResult:
 
         from maxim.simulation.research_orchestrator import start_research_mode
 
+        from maxim.utils.paths import _reset_caches
+
         monkeypatch.chdir(tmp_path)
+        # The session directory lives under the data home, not ./data/ (#932).
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "home"))
+        _reset_caches()
         monkeypatch.setattr("maxim.runtime.lane_backends.build_primary_router", lambda **kwargs: (None, None))
         monkeypatch.setattr(
             "maxim.models.language.router.load_llm_config",
@@ -316,7 +321,7 @@ class TestResearchResult:
         assert result.finish_reason == "planning_failed"
         assert result.review_verdict == "aborted"
         payload = json.loads(
-            (tmp_path / "data" / "sim_reports" / f"research_{result.session_id}" / "research_result.json").read_text()
+            (tmp_path / "home" / "sim_reports" / f"research_{result.session_id}" / "research_result.json").read_text()
         )
         assert payload["finish_reason"] == "planning_failed"
         assert payload["review_verdict"] == "aborted"

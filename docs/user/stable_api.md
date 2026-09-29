@@ -71,10 +71,12 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 ## Stable error hierarchy
 
 **Category-level** exceptions are importable from `maxim.*` (leaf subclasses live in
-`maxim.exceptions` — catch the category, or import the leaf explicitly). The one leaf
+`maxim.exceptions` — catch the category, or import the leaf explicitly). The leaves
 exported directly are `MemoryCorruptionError`, because `load.agent()` and `load.hippocampus/nac/atl()`
-document it as their raise type, and `StoreOverwriteRefused` (#939), which a store's `save()` raises
-over a file it never read (also catchable as `MaximMemoryError` or `FileExistsError`):
+document it as their raise type, `StoreOverwriteRefused` (#939), which a store's `save()` raises
+over a file it never read (also catchable as `MaximMemoryError` or `FileExistsError`), and
+`RunDirAmbiguous` (#932), which `load.session()` raises for an ID or prefix naming more than one session
+(also catchable as `MaximMemoryError` or `ValueError`):
 
 | Symbol | Stable | Notes |
 |---|---|---|
@@ -117,7 +119,7 @@ over a file it never read (also catchable as `MaximMemoryError` or `FileExistsEr
 | `load.hippocampus(path) -> Hippocampus` | ✅ | `~` expands. Raises `FileNotFoundError` (missing) or `MemoryCorruptionError` (unreadable). |
 | `load.nac(path) -> NAc` | ✅ | As `load.hippocampus`. |
 | `load.atl(path) -> ATL` | ✅ | As `load.hippocampus`. |
-| `load.session(session_id) -> Session` | ✅ | |
+| `load.session(session_id) -> Session` | ✅ | An ID, a unique ID prefix or a path, resolved like the CLI (`resolve_run_dir`). Raises `FileNotFoundError` for none, `RunDirAmbiguous` for several (#932). |
 | `load.sessions(*, limit=20) -> list[Session]` | ✅ | |
 | `load.agent(name, *, base_dir=None, on_corrupt="raise") -> AgentInstance` | ✅ | Restores Hippocampus, NAc, ATL and SCN **before returning**. Raises `MemoryCorruptionError` naming every unreadable file; pass `on_corrupt="fresh"` to accept empty state for those subsystems (an unreadable Hippocampus or ATL file is first copied to `<name>.corrupt-<UTC timestamp>`). |
 | `load.entity(path) -> Entity` | ✅ | |

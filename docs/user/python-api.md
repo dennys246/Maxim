@@ -152,7 +152,7 @@ All loading/restoring goes through `maxim.load` — the single canonical namespa
 | `load.hippocampus(path)` | Restore episodic memory | `Hippocampus` |
 | `load.nac(path)` | Restore causal model | `NAc` |
 | `load.atl(path)` | Restore semantic concepts | `ATL` |
-| `load.session(session_id)` | Load a persisted session (fuzzy match) | `Session` |
+| `load.session(session_id)` | Load a persisted session by ID, unique ID prefix or path (an ambiguous prefix raises `RunDirAmbiguous`) | `Session` |
 | `load.sessions(limit=20)` | List recent sessions | `list[Session]` |
 | `load.agent(name, base_dir)` | Restore a persisted agent with all subsystems | `AgentInstance` |
 | `load.entity(path)` | Load entity from YAML or saved JSON | `Entity` |
