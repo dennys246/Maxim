@@ -487,7 +487,7 @@ def test_an_unreachable_file_is_never_licensed_for_replacement(tmp_path: Path, m
 
 def test_a_recurring_corruption_leaves_one_copy_per_occurrence(tmp_path: Path) -> None:
     """Dedup covers two loaders in one construction, not a corruption that happens again later."""
-    from maxim.memory import store as store_mod
+    from maxim.utils import store_ownership as store_mod  # the registry's home (#971)
 
     path = tmp_path / "memory.json"
     path.write_text("")

@@ -33,7 +33,7 @@ If you want a mutable field *in* a declarative file ("operator committed their i
 
 | Area | Key files |
 |---|---|
-| Atomic persistence | `src/maxim/utils/atomic_io.py` (`atomic_write_json`, `atomic_write_text`, `atomic_write_bytes`, `atomic_write_secret`; `atomic_install_dir` for a staged directory, #932), `src/maxim/utils/paths.py` (data path resolution) |
+| Atomic persistence | `src/maxim/utils/atomic_io.py` (`atomic_write_json`, `atomic_write_text`, `atomic_write_bytes`, `atomic_write_secret`; `atomic_install_dir` for a staged directory, #932), `src/maxim/utils/paths.py` (data path resolution), `src/maxim/utils/store_ownership.py` (a store never saves over a file it did not read; the invariant lives in docs/agents/bio-memory.md) |
 | Format versioning | `src/maxim/utils/format_version.py` (`with_format_version`, `check_format_version`); envelope `schema_version` in `memory/snapshot.py` |
 | Stable hashing | `src/maxim/utils/seeding.py` (`stable_hash_32`, `stable_hash_64_signed`) |
 | Config load/precedence | `src/maxim/runtime/config_loader.py` (`resolve_setting`, `_env_is_set`, env coercers, `_maybe_migrate_from_peer_yml`, `_apply_lane_config_to_env`) |

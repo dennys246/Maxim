@@ -24,7 +24,6 @@ See also:
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -320,10 +319,16 @@ def build_bio_stack(
         if (p / "nac.json").exists():
             # load_safe recovers internally and REPORTS via its return value;
             # this caller used to discard it, so nothing downstream could tell a
-            # clean restore from a recovered-from-corrupt one.
-            ok, err = nac.load_safe()
-            if not ok:
-                logger.warning("NAc restore fell back to an empty causal model: %s", err)
+            # clean restore from a recovered-from-corrupt one. An unreadable file is
+            # kept as a copy and replaced by the fresh store (#971).
+            try:
+                ok, err = nac.load_safe()
+                if not ok:
+                    logger.warning("NAc restore fell back to an empty causal model: %s", err)
+            except OSError as e:  # unreachable, not unreadable: left untouched, saves over it refused
+                logger.error("NAc state at %s could not be read (%s); it is left untouched", p / "nac.json", e)
+    elif p is not None:
+        nac.allow_overwrite()  # write-but-don't-read, declared (#971)
     # SCN persists beside NAc/EC, exactly as AgentFactory._create_memory_hub does
     # (bugs ledger D42, found while fixing D41): this path built a pathless SCN, so
     # `on_session_end` had nothing to save to and every runtime agent lost its
@@ -331,34 +336,22 @@ def build_bio_stack(
     # indistinguishable from an empty one. Bound at CONSTRUCTION, not assigned after,
     # to close the same concurrent-construction race the factory closed.
     #
-    # An UNREADABLE scn.json is left pathless: binding the path makes that file
-    # writable for the first time, so a corrupt one would otherwise be overwritten
-    # with empty state at session end and the recoverable original destroyed. Going
-    # pathless preserves it without touching it — this session simply does not
-    # persist temporal state, loudly.
+    # An UNREADABLE scn.json is kept as a copy and SCN saves fresh in its place, like every other store
+    # (#971, owner decision: this retires the old pathless special case, which left the agent
+    # half-persisted -- SCN silent while NAc/EC kept saving).
     scn_path = str(p / "scn.json") if p is not None else None
-    # `load_persisted=False` is the documented write-but-don't-read agent (the
-    # orchestrator NPC): it must not read a previous session's temporal state.
-    scn_restorable = scn_path is not None and load_persisted and Path(scn_path).exists()
-    scn_unreadable = False
-    if scn_restorable:
+    scn = SCN(persistence_path=scn_path)
+    if scn_path is not None and load_persisted and Path(scn_path).exists():
         try:
-            json.loads(Path(scn_path).read_text())
-        except (OSError, ValueError) as e:
-            scn_unreadable = True
-            logger.warning(
-                "SCN state at %s is unreadable (%s). It is left UNTOUCHED — this session runs with empty "
-                "temporal state and will NOT persist SCN, so the file stays recoverable. Move or repair it "
-                "to restore persistence.",
-                scn_path,
-                e,
-            )
-    scn = SCN(persistence_path=None if scn_unreadable else scn_path)
-    if scn_restorable and not scn_unreadable:
-        try:
-            scn.load(scn_path)
-        except Exception as e:  # D17: report, never swallow silently
-            logger.warning("SCN restore failed (%s); starting with empty temporal state: %s", scn_path, e)
+            ok, err = scn.load_safe()
+            if not ok:
+                logger.warning("SCN restore fell back to empty temporal state: %s", err)
+        except OSError as e:  # unreachable, not unreadable: left untouched, saves over it refused
+            logger.error("SCN state at %s could not be read (%s); it is left untouched", scn_path, e)
+    elif scn_path is not None and not load_persisted:
+        # `load_persisted=False` is the documented write-but-don't-read agent (the orchestrator NPC): it
+        # must not read a previous session's temporal state, and it declares the overwrite (#971).
+        scn.allow_overwrite()
     scn.enable_oscillator()  # B2: close SCN→NAc feedback loop
     # EC persists beside NAc (nac_cross_session_persistence.md): NAc's
     # reward_bias / cluster_reward_bias are keyed by EC node ids, so
@@ -373,18 +366,26 @@ def build_bio_stack(
         config=ECConfig(persistence_path=str(p / "ec.json") if p is not None else None),
     )
     if load_persisted and p is not None and (p / "ec.json").exists():
+        # load_safe empties every surface a partial load set ("starting fresh" must be literally true:
+        # EC.load mutates _lsh -> _inverted -> _signatures -> substrate nodes in sequence), keeps a copy
+        # of an unreadable file, and lets the fresh EC save in its place (#971).
         try:
-            ec.load(str(p / "ec.json"))
-        except Exception as _ec_err:
-            # Reconstruct rather than keep the partially-mutated instance:
-            # EC.load mutates _lsh → _inverted → _signatures → substrate
-            # nodes in sequence, so a mid-load raise leaves an internally
-            # inconsistent EC — "starting fresh" must be literally true
-            # (review fold, Arch #4 + Exec #4, cross-confirmed).
-            logger.warning("Failed to load EC state (starting fresh): %s", _ec_err)
-            ec = EntorhinalCortex(
-                config=ECConfig(persistence_path=str(p / "ec.json")),
-            )
+            ec_ok, ec_err = ec.load_safe()
+        except OSError as e:  # unreachable, not unreadable: left untouched, saves over it refused
+            logger.error("EC state at %s could not be read (%s); it is left untouched", p / "ec.json", e)
+            # The EC starts empty, so the NAc's biases would point at nodes it does not hold: empty the NAc
+            # too. Neither file is bad, so neither is copied, and neither is saved over (#971 review).
+            nac.start_fresh_in_memory()
+            logger.error("The NAc starts empty too, and will not save over %s", p / "nac.json")
+        else:
+            if not ec_ok:
+                logger.warning("EC restore fell back to an empty EC: %s", ec_err)
+                # NAc biases key on EC node ids: beside a fresh EC they would dangle (owner decision).
+                from maxim.runtime.agent_factory import reset_nac_beside_unreadable_ec
+
+                reset_nac_beside_unreadable_ec(nac, ec=ec)
+    elif p is not None and not load_persisted:
+        ec.allow_overwrite()  # write-but-don't-read, declared (#971)
 
     # -- Step 2: Optional multi-layer memory (ATL + AngularGyrus) ----------
     atl = None
@@ -411,6 +412,8 @@ def build_bio_stack(
                 persistence_path=str(p / "angular_gyrus.json") if p is not None else None,
             )
         )
+        if not load_persisted and p is not None:
+            angular_gyrus.allow_overwrite()  # write-but-don't-read, declared (#971)
     except Exception:
         logger.debug("AngularGyrus not available")
 

@@ -326,7 +326,7 @@ def main() -> int:
             os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
             nac = NAc(NACConfig(persistence_path=out))
             nac.load_state(merged)
-            nac.save(out)
+            nac.save(out, overwrite=True)  # the operator named this output file; replacing it is the point (#971)
             # Carry the state space forward. A merged policy with no sidecar is
             # precisely the bug this pipeline exists to prevent: the demo would
             # assume the legacy boundary and mis-bin a 0.33-trained merge, silently.

@@ -36,6 +36,8 @@ from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs, resol
 
 from maxim.agents.permissions import AgentPermissions
 
+from maxim.exceptions import StoreOverwriteRefused
+
 log = logging.getLogger(__name__)
 
 
@@ -133,12 +135,39 @@ def _note_corruption(
     if corrupt is not None:
         # Whether the file is UNREADABLE (a data error) rather than unreachable (OSError): only the
         # former may be copied aside and replaced by a fresh store (#939).
-        from maxim.memory.store import UNREADABLE_STORE_ERRORS
+        from maxim.memory.store import is_unreadable_store_error
 
-        unreadable = isinstance(error, UNREADABLE_STORE_ERRORS)
+        unreadable = isinstance(error, BaseException) and is_unreadable_store_error(error)
         corrupt.append(
             {"subsystem": subsystem, "path": str(path), "error": detail, "unreadable": "yes" if unreadable else ""}
         )
+
+
+def reset_nac_beside_unreadable_ec(nac: Any, *, ec: Any) -> None:
+    """Start the NAc fresh because its EC could not be read (#971, owner decision 2026-09-28).
+
+    NAc's reward and cluster biases key on EC node ids, so a readable ``nac.json`` restored beside an EC
+    that started empty points at nodes that no longer exist -- the dangling state the NAc/EC pair
+    invariant exists to prevent. Its file is kept as ``nac.json.corrupt-<UTC>`` like an unreadable one,
+    then the NAc saves fresh in its place. If that copy cannot be made, the NAc is emptied anyway but
+    stops owning its file, so a save over it is refused and the readable file stays the only copy.
+    The reverse needs nothing: EC nodes without biases dangle nothing. When the NAc's copy fails, the EC
+    also stops owning ``ec.json``: the pair on disk then stays exactly as it was, rather than a fresh
+    ``ec.json`` beside the old biases.
+    """
+    if nac is None:
+        return
+    if not getattr(getattr(nac, "config", None), "persistence_path", None):
+        return  # a pathless NAc loaded nothing from a home
+    copy = nac.start_fresh_keeping_copy(
+        reason="is readable, but its EC (ec.json) was not, and its biases key on EC node ids"
+    )
+    if copy is None and nac.may_write() is False and ec is not None:
+        # The NAc could not keep its copy, so nac.json stays as it is on disk; if the EC saved fresh over
+        # ec.json, the next run would restore exactly the dangling pair this exists to prevent. Keep the
+        # pair together: the EC does not save over its file either.
+        ec.disown_store_file()
+        log.error("The EC will not save over its file either, so the NAc/EC pair on disk stays consistent")
 
 
 def check_nac_ec_pairing(agent_dir: "Path") -> str | None:
@@ -529,7 +558,7 @@ class AgentInstance:
                 persist_path = getattr(getattr(self.hippocampus, "config", None), "persistence_path", None)
                 if persist_path:
                     self.hippocampus.save(persist_path)
-            except FileExistsError as e:  # StoreOverwriteRefused (#939): memories unsaved, file kept
+            except StoreOverwriteRefused as e:  # (#939): memories unsaved, file kept
                 log.error("Agent %s: hippocampus not saved: %s", self.agent_id, e)
             except Exception as e:
                 log.warning("Agent %s: hippocampus save failed: %s", self.agent_id, e)
@@ -539,6 +568,8 @@ class AgentInstance:
                 nac_path = getattr(getattr(self.nac, "config", None), "persistence_path", None)
                 if nac_path:
                     self.nac.save(nac_path)
+            except StoreOverwriteRefused as e:  # (#971): causal model unsaved, file kept
+                log.error("Agent %s: NAc not saved: %s", self.agent_id, e)
             except Exception as e:
                 log.warning("Agent %s: NAc save failed: %s", self.agent_id, e)
 
@@ -683,18 +714,55 @@ class AgentFactory:
             # The explicit fresh start (load.agent(on_corrupt="fresh"), and this mode's documented
             # contract): keep a copy of each unreadable Hippocampus/ATL file, then let the store save in
             # its place, so the agent persists consistently (#939, owner decision 2026-09-28).
-            for store, entry in ((hippocampus, "hippocampus"), (atl, "atl")):
+            # #971: NAc, EC and SCN too, and NAc is reset beside an unreadable EC (its biases key on EC
+            # node ids).
+            hub_ec = getattr(memory_hub, "ec", None) if memory_hub is not None else None
+            hub_scn = getattr(memory_hub, "scn", None) if memory_hub is not None else None
+
+            def _unreadable(entry: str) -> bool:
+                return any(c["subsystem"] == entry and c.get("unreadable") for c in corrupt)
+
+            def _failed_otherwise(entry: str) -> bool:
+                return any(c["subsystem"] == entry and not c.get("unreadable") for c in corrupt)
+
+            for store, entry in (
+                (hippocampus, "hippocampus"),
+                (atl, "atl"),
+                (nac, "nac"),
+                (hub_ec, "ec"),
+                (hub_scn, "scn"),
+            ):
                 # Only an UNREADABLE file (a data error); an OSError is not a licence to replace it.
-                if store is not None and any(c["subsystem"] == entry and c.get("unreadable") for c in corrupt):
-                    try:
-                        store.set_aside_unreadable_file()
-                        if entry == "atl":
-                            # The hub's session start must not read the corrupt file a second time.
-                            store.restored_at_construction = True
-                    except OSError as e:
-                        log.error(
-                            "Could not keep a copy of the unreadable %s file (%s); it stays unsaved-over", entry, e
-                        )
+                if store is not None and _unreadable(entry):
+                    # Empties the store, keeps a copy, and saves in its place; if the copy fails the store
+                    # still starts empty but saves over the file are refused (logged at ERROR).
+                    store.start_fresh_keeping_copy()
+                    if entry == "atl":
+                        # The hub's session start must not read the corrupt file a second time.
+                        store.restored_at_construction = True
+                elif store is not None and _failed_otherwise(entry):
+                    # Not bad content (an OSError, or a defect outside UNREADABLE_STORE_ERRORS): the file is
+                    # left exactly as it is and never claimed, and the store must not run the session on
+                    # whatever a load that failed partway put in it (#971 review).
+                    store.start_fresh_in_memory()
+                    if entry == "atl":
+                        # Nor may the hub's session start re-read it into the store just emptied.
+                        store.restored_at_construction = True
+                    log.error(
+                        "Agent %s: %s could not be restored for a reason other than bad content; it starts "
+                        "empty and will not save over its file",
+                        config.agent_id,
+                        entry,
+                    )
+            if _unreadable("ec") and not _unreadable("nac"):
+                reset_nac_beside_unreadable_ec(nac, ec=hub_ec)
+            elif _failed_otherwise("ec") and nac is not None and not (_unreadable("nac") or _failed_otherwise("nac")):
+                # The EC started empty without its file being bad: the NAc's biases would point at nodes it
+                # does not hold. Empty the NAc too; neither file is bad, so neither is copied or saved over.
+                nac.start_fresh_in_memory()
+                log.error(
+                    "Agent %s: its NAc starts empty too, beside an EC that could not be restored", config.agent_id
+                )
 
         if corrupt and config.on_corrupt == "raise":
             # Release the hub before aborting (review fold): its ConceptExtractor
@@ -1059,17 +1127,16 @@ class AgentFactory:
             nac_path = str(agent_dir / "nac.json")
             nac = NAc(NACConfig(persistence_path=nac_path))
             if auto_load and (agent_dir / "nac.json").exists():
-                # load_safe recovers internally and REPORTS via its return
-                # value; the factory used to discard it (D17).
-                ok, err = nac.load_safe(nac_path)
-                if not ok:
-                    _note_corruption(corrupt, "nac", Path(nac_path), err or "unreadable NAc state")
+                # D17: report, never swallow silently. The recovery (keep a copy, start empty, save in
+                # its place) is create_agent's, and only under on_corrupt="warn" (#971).
+                try:
+                    nac.load(nac_path)
+                except Exception as e:
+                    _note_corruption(corrupt, "nac", Path(nac_path), e)
             return nac
         except Exception as e:
-            # Covers the OSError family that NAc.load_safe deliberately does not
-            # catch (PermissionError, IsADirectoryError, EIO) — it used to escape
-            # here and leave `corrupt` empty, so load.agent() returned nac=None
-            # and memory_hub=None at WARNING level (review fold).
+            # Construction itself failed (the load's own failures are noted above):
+            # report it so on_corrupt="raise" sees a subsystem that was NOT built.
             log.warning("Failed to create NAc: %s", e)
             _note_corruption(corrupt, "nac", agent_dir / "nac.json", e)
             return None
@@ -1138,9 +1205,10 @@ class AgentFactory:
             # the previous session's temporal state through it, making the
             # fresh/loaded distinction incoherent (and the Oasis ingestion
             # contract undefinable: what a bundle merges INTO must be known).
-            # The persistence path stays bound either way: a fresh agent still
-            # SAVES its temporal state at session end (write-but-don't-read,
-            # the same shape bio_stack.py gives the orchestrator NPC).
+            # The persistence path stays bound either way: a fresh agent in an
+            # empty home still SAVES its temporal state at session end. Over an
+            # existing scn.json it never read, that save is refused (#971) --
+            # create.agent refuses such a home up front.
             if scn_path_str is not None and auto_load:
                 scn_file = Path(scn_path_str)
                 if scn_file.exists():
@@ -1189,12 +1257,10 @@ class AgentFactory:
             try:
                 ec.load(str(ec_path))
             except Exception as e:
-                # Reconstruct rather than keep the partially-mutated instance:
-                # EC.load mutates _lsh -> _inverted -> _signatures -> substrate
-                # nodes in sequence, so a mid-load raise leaves an internally
-                # inconsistent EC (same reasoning as bio_stack.py).
+                # EC.load mutates _lsh -> _inverted -> _signatures -> substrate nodes in sequence, so a
+                # mid-load raise leaves an inconsistent EC. Under on_corrupt="warn" create_agent empties
+                # it (set_aside_unreadable_file); under "raise" the agent is discarded (#971).
                 _note_corruption(corrupt, "ec", ec_path, e)
-                ec = EntorhinalCortex(config=ECConfig(persistence_path=str(ec_path)))
         return ec
 
     def _create_tool_registry(self) -> Any:

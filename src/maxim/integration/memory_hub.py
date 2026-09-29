@@ -47,6 +47,8 @@ if TYPE_CHECKING:
     from maxim.spatial.spatial_map import SpatialMap
     from maxim.time.scn import SCN
 
+from maxim.exceptions import StoreOverwriteRefused
+
 logger = logging.getLogger(__name__)
 
 
@@ -956,6 +958,8 @@ class MemoryHub:
             if scn_path:
                 try:
                     self.scn.save(scn_path)
+                except StoreOverwriteRefused as e:  # (#971): temporal state unsaved, file kept
+                    logger.error("SCN state not saved: %s", e)
                 except Exception as e:
                     logger.warning("Failed to save SCN state: %s", e)
 
@@ -965,6 +969,8 @@ class MemoryHub:
             if nac_path:
                 try:
                     self.nac.save(nac_path)
+                except StoreOverwriteRefused as e:  # (#971): causal model unsaved, file kept
+                    logger.error("NAc state not saved: %s", e)
                 except Exception as e:
                     logger.warning("Failed to save NAc state: %s", e)
 
@@ -977,6 +983,8 @@ class MemoryHub:
             if ec_path:
                 try:
                     self.ec.save(ec_path)
+                except StoreOverwriteRefused as e:  # (#971): substrate unsaved, file kept
+                    logger.error("EC state not saved: %s", e)
                 except Exception as e:
                     logger.warning("Failed to save EC state: %s", e)
 
@@ -984,7 +992,7 @@ class MemoryHub:
         if self.atl is not None:
             try:
                 self.atl.save()
-            except FileExistsError as e:  # StoreOverwriteRefused (#939): concepts unsaved, file kept
+            except StoreOverwriteRefused as e:  # (#939): concepts unsaved, file kept
                 logger.error("ATL state not saved: %s", e)
             except Exception as e:
                 logger.warning("Failed to save ATL state: %s", e)
@@ -993,6 +1001,8 @@ class MemoryHub:
         if self.angular_gyrus is not None:
             try:
                 self.angular_gyrus.save()
+            except StoreOverwriteRefused as e:  # (#971): math memory unsaved, file kept
+                logger.error("AG state not saved: %s", e)
             except Exception as e:
                 logger.warning("Failed to save AG state: %s", e)
 
@@ -1000,6 +1010,8 @@ class MemoryHub:
         if self._cross_layer is not None:
             try:
                 self._cross_layer.save()
+            except StoreOverwriteRefused as e:  # (#971): edges unsaved, file kept
+                logger.error("Cross-layer graph state not saved: %s", e)
             except Exception as e:
                 logger.warning("Failed to save cross-layer graph: %s", e)
 
@@ -1078,6 +1090,8 @@ class MemoryHub:
             if scn_path:
                 try:
                     self.scn.save(scn_path)
+                except StoreOverwriteRefused as e:  # (#971): temporal state unsaved, file kept
+                    logger.error("SCN state not saved: %s", e)
                 except Exception as e:
                     logger.warning("Failed to save SCN state: %s", e)
 
@@ -1087,6 +1101,8 @@ class MemoryHub:
             if nac_path:
                 try:
                     self.nac.save(nac_path)
+                except StoreOverwriteRefused as e:  # (#971): causal model unsaved, file kept
+                    logger.error("NAc state not saved: %s", e)
                 except Exception as e:
                     logger.warning("Failed to save NAc state: %s", e)
 
@@ -1097,6 +1113,8 @@ class MemoryHub:
             if ec_path:
                 try:
                     self.ec.save(ec_path)
+                except StoreOverwriteRefused as e:  # (#971): substrate unsaved, file kept
+                    logger.error("EC state not saved: %s", e)
                 except Exception as e:
                     logger.warning("Failed to save EC state: %s", e)
 
@@ -1114,7 +1132,7 @@ class MemoryHub:
         if self.atl is not None:
             try:
                 self.atl.save()
-            except FileExistsError as e:  # StoreOverwriteRefused (#939): concepts unsaved, file kept
+            except StoreOverwriteRefused as e:  # (#939): concepts unsaved, file kept
                 logger.error("ATL state not saved: %s", e)
             except Exception as e:
                 logger.warning("Failed to save ATL state: %s", e)
@@ -1123,6 +1141,8 @@ class MemoryHub:
         if self.angular_gyrus is not None:
             try:
                 self.angular_gyrus.save()
+            except StoreOverwriteRefused as e:  # (#971): math memory unsaved, file kept
+                logger.error("AG state not saved: %s", e)
             except Exception as e:
                 logger.warning("Failed to save AG state: %s", e)
 
@@ -1130,6 +1150,8 @@ class MemoryHub:
         if self._cross_layer is not None:
             try:
                 self._cross_layer.save()
+            except StoreOverwriteRefused as e:  # (#971): edges unsaved, file kept
+                logger.error("Cross-layer graph state not saved: %s", e)
             except Exception as e:
                 logger.warning("Failed to save cross-layer graph: %s", e)
 

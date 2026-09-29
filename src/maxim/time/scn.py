@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 if TYPE_CHECKING:
     from maxim.models.bio_context import TemporalContext
 
+from maxim.utils.store_ownership import StoreFileOwnership, is_unreadable_store_error
 from maxim.time.temporal_signature import TemporalSignature
 
 logger = logging.getLogger(__name__)
@@ -151,7 +152,7 @@ class BoundedBin:
 
 
 @dataclass
-class SCN:
+class SCN(StoreFileOwnership):
     """Suprachiasmatic Nucleus - temporal rhythm indexing.
 
     Maintains binned indices for fast temporal queries:
@@ -199,6 +200,9 @@ class SCN:
     # save. Kept as ``persistence_path`` (public, typed) instead of the old
     # untyped ``_persistence_path`` attribute.
     persistence_path: str | None = None
+
+    # StoreFileOwnership (#971): never saves over a file it did not read. ClassVar, so not a field.
+    _store_name: ClassVar[str] = "scn"
 
     # P3.5 Stage 1 — BioSystemSnapshot Protocol envelope version.
     # Payload-layer legacy version string "3.0" is tombstoned; all future
@@ -753,23 +757,71 @@ class SCN:
 
             self._oscillator = OscillatorNetwork.from_dict(osc_data)
 
-    def save(self, path: str) -> None:
-        """Save SCN state to JSON file (v3.0 with bounded bins)."""
+    def _configured_store_path(self) -> str | None:
+        return self.persistence_path
+
+    def _fresh_store(self) -> "SCN":
+        return SCN(persistence_path=self.persistence_path)
+
+    def _reset_store_state(self) -> None:
+        """Empty the bins, signatures and priors (the snapshot contract), and give a running oscillator
+        a fresh one: ``load_state`` only replaces an oscillator the file carries, so a partial load
+        could leave the file's."""
+        super()._reset_store_state()
+        if self._oscillator is not None:
+            self._oscillator = type(self._oscillator)(getattr(self._oscillator, "config", None))
+
+    def save(self, path: str | None = None, *, overwrite: bool = False) -> None:
+        """Save SCN state to JSON file (v3.0 with bounded bins; default: ``persistence_path``).
+
+        ``overwrite`` replaces an existing file this instance never read; without it such a save raises
+        ``StoreOverwriteRefused`` (#971).
+        """
         from maxim.utils.atomic_io import atomic_write_json
         from maxim.utils.format_version import with_format_version
 
+        path = self._default_store_path(path)  # `~` means home
+        self._check_store_write(path, overwrite=overwrite)
         atomic_write_json(path, with_format_version(self.dump()))
+        self._claim_store_file(path)
         logger.info("Saved SCN to %s (%d signatures)", path, len(self._signatures))
 
-    def load(self, path: str) -> None:
-        """Load SCN state from JSON file (supports v1.0, v2.0, and v3.0)."""
+    def load(self, path: str | None = None) -> None:
+        """Load SCN state from JSON file (supports v1.0, v2.0, and v3.0; default: ``persistence_path``)."""
+        path = self._default_store_path(path)  # `~` means home
         with open(path, encoding="utf-8") as f:
             state = json.load(f)
         from maxim.utils.format_version import check_format_version
 
         check_format_version(state, "scn", log=logger)
         self.load_state(state)
+        self._claim_store_file(path)
         logger.info("Loaded SCN from %s (%d signatures)", path, len(self._signatures))
+
+    def load_safe(self, path: str | None = None) -> tuple[bool, str | None]:
+        """Load with recovery on failure. Returns (success, error_message).
+
+        A missing file is a fresh start. An UNREADABLE one (``is_unreadable_store_error``) is copied to
+        ``<name>.corrupt-<UTC timestamp>``, the SCN is emptied, and the next save replaces the original
+        (#971: the #939 rule, which retires SCN's old pathless special case). An ``OSError`` propagates:
+        it never licenses replacing the file.
+        """
+        import os
+
+        path = self._default_store_path(path)
+        if not os.path.exists(path):
+            logger.info("No existing SCN file at %s, starting fresh", path)
+            return True, None
+        try:
+            self.load(path)
+            return True, None
+        except Exception as e:
+            if not is_unreadable_store_error(e):
+                raise
+            error_msg = f"Corrupt SCN file ({type(e).__name__}): {e}"
+            logger.warning("%s — starting with empty temporal state", error_msg)
+            self.start_fresh_keeping_copy(path)
+            return False, error_msg
 
     def get_version(self) -> str:
         """Return data format version."""

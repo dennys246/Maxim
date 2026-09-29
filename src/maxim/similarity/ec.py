@@ -52,6 +52,7 @@ from uuid import uuid4
 if TYPE_CHECKING:
     from maxim.models.bio_context import EncodingContext
 
+from maxim.utils.store_ownership import StoreFileOwnership, is_unreadable_store_error
 from maxim.similarity.indices import InvertedIndices
 from maxim.similarity.lsh import LSHIndex, SemanticLSH
 from maxim.similarity.signature import SituationSignature
@@ -484,7 +485,7 @@ class PatternResult:
     best_similarity: float = -1.0
 
 
-class EntorhinalCortex:
+class EntorhinalCortex(StoreFileOwnership):
     """Entorhinal Cortex - Multi-modal similarity engine.
 
     Provides efficient multi-modal similarity queries across all memory
@@ -525,6 +526,8 @@ class EntorhinalCortex:
         # Query by structural features
         tool_memories = ec.query(tool="internet_search")
     """
+
+    _store_name = "ec"  # StoreFileOwnership (#971): never saves over a file it did not read
 
     def __init__(self, config: ECConfig | None = None):
         self.config = config or ECConfig()
@@ -1500,8 +1503,14 @@ class EntorhinalCortex:
     # Persistence
     # ─────────────────────────────────────────────────────────────────────────
 
-    def save(self, path: str) -> None:
-        """Save EC state to JSON file."""
+    def save(self, path: str | None = None, *, overwrite: bool = False) -> None:
+        """Save EC state to JSON file (default: ``config.persistence_path``).
+
+        ``overwrite`` replaces an existing file this instance never read; without it such a save raises
+        ``StoreOverwriteRefused`` (#971).
+        """
+        path = self._default_store_path(path)  # `~` means home
+        self._check_store_write(path, overwrite=overwrite)
         data = {
             "version": "1.0",
             # Marks that persisted hash-derived values (signature
@@ -1547,6 +1556,7 @@ class EntorhinalCortex:
         from maxim.utils.format_version import with_format_version
 
         atomic_write_json(path, with_format_version(data))
+        self._claim_store_file(path)
 
         logger.info(
             "Saved EC to %s (%d signatures, %d substrate nodes)",
@@ -1555,8 +1565,23 @@ class EntorhinalCortex:
             len(self._substrate_nodes),
         )
 
-    def load(self, path: str) -> None:
-        """Load EC state from JSON file."""
+    def load(self, path: str | None = None) -> None:
+        """Load EC state from JSON file (default: ``config.persistence_path``).
+
+        A load that fails leaves the config as it was: the file's index settings are adopted first, and
+        a store emptied after a failed load must not keep them (#971 review -- a wrongly typed setting
+        then crashed the recovery, and a well-typed one was written back by the "fresh" EC).
+        """
+        path = self._default_store_path(path)  # `~` means home
+        config_before = self.config
+        try:
+            self._load_file(path)
+        except BaseException:
+            self.config = config_before
+            raise
+        self._claim_store_file(path)
+
+    def _load_file(self, path: str) -> None:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
@@ -1653,6 +1678,50 @@ class EntorhinalCortex:
             len(self._signatures),
             len(self._substrate_nodes),
         )
+
+    def load_safe(self, path: str | None = None) -> tuple[bool, str | None]:
+        """Load with recovery on failure. Returns (success, error_message).
+
+        A missing file is a fresh start. An UNREADABLE one (``is_unreadable_store_error``) is copied to
+        ``<name>.corrupt-<UTC timestamp>``, the EC is emptied (``load`` has already put back the config
+        it adopted from the file), and the next save replaces the original (#971, the #939 rule). An ``OSError`` propagates: it never licenses replacing the file.
+        """
+        path = self._default_store_path(path)
+        if not os.path.exists(path):
+            logger.info("No existing EC file at %s, starting fresh", path)
+            return True, None
+        try:
+            self.load(path)
+            return True, None
+        except Exception as e:
+            if not is_unreadable_store_error(e):
+                raise
+            error_msg = f"Corrupt EC file ({type(e).__name__}): {e}"
+            logger.warning("%s — starting with an empty EC", error_msg)
+            self.start_fresh_keeping_copy(path)
+            return False, error_msg
+
+    def _reset_store_state(self) -> None:
+        """Empty every surface ``load`` replaces (EC has no ``dump``/``load_state``). The encoders stay:
+        they are not persisted in this file. Built without the neural embedder, which would only be
+        thrown away."""
+        from dataclasses import replace
+
+        fresh = EntorhinalCortex(replace(self.config, enable_semantic=False))
+        for name in (
+            "_lsh",
+            "_inverted",
+            "_signatures",
+            "_substrate_nodes",
+            "_substrate_node_geometries",
+            "_substrate_node_counts",
+            "_substrate_node_sources",
+            "_substrate_node_domains",
+            "_geometry_mismatch_seen",
+            "_encoder_provenance",
+        ):
+            setattr(self, name, getattr(fresh, name))
+        self._invalidate_matrix_cache()
 
     def get_version(self) -> str:
         """Return data format version."""

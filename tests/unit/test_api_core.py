@@ -959,7 +959,9 @@ def test_write_but_dont_read_agents_do_not_restore_scn(api_home):
 
 def test_a_corrupt_scn_file_is_preserved_not_overwritten(api_home, caplog):
     """D42 bound scn.json to the runtime path, which means session end can now REWRITE
-    it — so an unreadable file must be moved aside first, never silently destroyed."""
+    it — so an unreadable file must be kept, never silently destroyed. #971 (owner decision):
+    it is kept as a COPY and SCN persists again, like every store; it used to go pathless,
+    leaving the agent half-persisted."""
     from maxim.runtime.agent_factory import AgentConfig, AgentFactory
 
     factory = AgentFactory()
@@ -972,13 +974,13 @@ def test_a_corrupt_scn_file_is_preserved_not_overwritten(api_home, caplog):
     caplog.set_level(logging.WARNING)
     second = factory.create_full_agent(AgentConfig(agent_id="corrupt_scn", with_bio_stack=True))
     try:
-        assert second.memory_hub.scn.persistence_path is None, (
-            "a corrupt scn.json stayed bound, so session end would overwrite it"
-        )
-        assert any("unreadable" in r.getMessage() for r in caplog.records)
+        assert second.memory_hub.scn.persistence_path == str(scn_json), "SCN went unpersisted again"
+        assert any("Corrupt SCN file" in r.getMessage() for r in caplog.records)
     finally:
         second.shutdown()
-    assert scn_json.read_text() == "{not json at all", "the unreadable SCN file was destroyed"
+    copies = list(scn_json.parent.glob("scn.json.corrupt-*"))
+    assert len(copies) == 1 and copies[0].read_text() == "{not json at all", "the unreadable SCN file was destroyed"
+    json.loads(scn_json.read_text())  # SCN saved fresh in its place
 
 
 # ── #932: the API home follows the data home; the agent lives in agents/api_agent ──
