@@ -27,7 +27,7 @@ from collections import defaultdict
 from functools import partial
 from typing import Any, TYPE_CHECKING
 
-from maxim.memory.semantic_types import CompressedSemantic, Concept, ConceptProvenance
+from maxim.memory.semantic_types import Concept, ConceptProvenance
 from maxim.memory.text import normalize_tokens
 from maxim.memory.types import EpisodicMemory, MemoryRecord
 
@@ -271,11 +271,10 @@ class ConceptExtractor:
         concept = self._atl.get(concept_id)
         if concept and isinstance(concept, Concept):
             concept.add_ref("hippocampus", memory_id)
-        elif concept and not was_created and not isinstance(concept, CompressedSemantic):
-            concept.reinforce(memory_id)
-        # A CompressedSemantic has no reinforce(): compression is one-way until the memory-strength
-        # plan's Phase 3 makes it reversible (#816). Skipping it here stops the AttributeError that
-        # aborted the whole episode's extraction; the concept is simply not strengthened.
+        # A plain SemanticMemory hit was already reinforced once, by find_or_create (it has
+        # source_episode_id); reinforcing it again here counted every episode twice (#843). A
+        # CompressedSemantic has no reinforce() (compression is one-way until the memory-strength plan's
+        # Phase 3, #816) and find_or_create skips it, so it is simply not strengthened.
 
         # Bio-tier trace: surface concept formation and reinforcement so
         # --display bio runs can observe the ATL's semantic accumulation in

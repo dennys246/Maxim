@@ -261,6 +261,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A memory that is not an action outcome records its success as unknown (`None`), not as a success or
+  a failure** (#843; owner decisions 2026-09-29).
+  - `Hippocampus.capture_from_loop` stored a percept, whose result states no success, as a SUCCESS.
+    `store_observation` and `capture()` with no outcome stored one as a FAILURE.
+  - As a false success, every percept with user text earned the 0.7 "successful interaction" retention
+    floor and was promoted to long-term memory at a full `sleep()`, where it is never evicted. It also
+    crowded real successes out of `recall(success=True)`.
+  - `Outcome()` and `CompressedMemory()` default to unknown, and a value that is not a bool or `None`
+    raises `TypeError`. A stored file holding one is unreadable: it is kept as a copy and the store
+    starts fresh (#971's policy), and the error names the episode.
+  - The memory readers treat unknown as neither (the enrichment valence still reads it as failure, #991):
+    - Retention (`ImportanceBasedStrategy` scores it 0.65, the midpoint of success and failure).
+    - Promotion.
+    - Stats (a new `unknown_outcome` bucket).
+    - Recall summaries and `SituationSignature` (`"unknown"`, via `memory.types.outcome_label`).
+    - Prediction confidence, computed over known outcomes only.
+  - Files already on disk are not migrated: an old percept keeps its stored `true`. In an LLM prompt, a
+    percept memory no longer reads "succeeded".
+  - A plain `SemanticMemory` concept is no longer reinforced twice per episode.
+  - Two percepts in the same second no longer share one forming-pool key and overwrite each other.
+
 - **An inherent-class NAc cluster bias no longer decays while the agent is offline** (#818).
   `NAc.apply_wall_clock_decay`, which `load()` runs over the time since `saved_at`, decayed every cluster
   bias. The Queen-curated inherent class is decay-exempt, and the per-tick decay honoured that; this

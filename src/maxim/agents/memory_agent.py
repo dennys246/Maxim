@@ -20,6 +20,7 @@ injection but does not own it.
 
 from __future__ import annotations
 
+import itertools
 import os
 import threading
 import time
@@ -161,6 +162,9 @@ class MemoryAgent(Agent, AgentOutputMixin):
 
         # Staged formation pool (keyed by run_id)
         self._forming_pool: dict[str, WorkingMemoryEntry] = {}  # insertion-ordered, newest last
+        # A percept's forming-pool key. Its timestamp second alone let two percepts in one second share a
+        # key, and the second overwrote the first in the FIRST one's slot -- so "newest last" was not (#843).
+        self._percept_seq = itertools.count(1)
 
         # Pattern completion hook (set by ATL/MemoryHub wiring)
         self._pattern_completion_fn: Callable[[EpisodicMemory], list[PredictedOutcome]] | None = None
@@ -260,7 +264,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
         )
 
         episodic = EpisodicMemory(
-            id=f"wm-{now:.0f}-{run_id[:8]}",
+            id=f"wm-{run_id}",  # run_id[:8] was always "percept-": only second-unique (#843)
             timestamp=now,
             run_id=run_id,
             perception=Perception(
@@ -473,7 +477,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
             action_name = getattr(entry.record.action, "tool_name", "") or getattr(
                 entry.record.action, "name", "<action>"
             )
-            success_str = "ok" if outcome.success else "fail"
+            success_str = {True: "ok", False: "fail"}.get(outcome.success, "unknown")
             sim_learn(
                 f"memory formed → SHORT_TERM ({mem_id[:8]})",
                 detail=f"{action_name} → {success_str}",
@@ -512,15 +516,18 @@ class MemoryAgent(Agent, AgentOutputMixin):
         if not predictions:
             return 0.0
 
-        n = len(predictions)
-
-        # Success rate
-        successes = sum(1 for p in predictions if p.success)
-        success_rate = successes / n
+        # Only the predictions that ARE outcomes count, in every term: an unknown one (a percept, #843)
+        # is evidence of neither. It used to count as a failure in the rate, and it would still inflate
+        # the sample size and dilute the consistency if only the rate filtered it. None known: no confidence.
+        known = [p for p in predictions if p.success is not None]
+        if not known:
+            return 0.0
+        n = len(known)
+        success_rate = sum(1 for p in known if p.success is True) / n
 
         # Action consistency: what fraction used the most common action?
         action_counts: dict[str, int] = {}
-        for p in predictions:
+        for p in known:
             action_counts[p.tool] = action_counts.get(p.tool, 0) + 1
         most_common_count = max(action_counts.values()) if action_counts else 0
         consistency = most_common_count / n
@@ -615,7 +622,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
 
             # Capture via Hippocampus if salient — use staged formation
             if percept.salience > self._salience_threshold or percept.has_maxim_keyword:
-                run_id = f"percept-{percept.timestamp:.0f}"
+                run_id = f"percept-{percept.timestamp:.0f}-{next(self._percept_seq)}"
                 self._begin_memory_formation(percept, run_id)
 
     def _on_tool_result(self, result: ToolResult) -> None:

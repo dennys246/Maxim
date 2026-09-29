@@ -874,7 +874,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             context=context or Context(),
             decision=decision or Decision(),
             action=action or Action(),
-            outcome=outcome or Outcome(),
+            # No outcome given is not a failure (#843): an observation or a bare capture is unknown.
+            outcome=outcome or Outcome(success=None),
         )
         return memory_id, memory
 
@@ -902,10 +903,12 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         self._stats["memories_captured"] += 1
         with self._work_lock:
             self._captures_this_process += 1
-        if memory.outcome.success:
+        if memory.outcome.success is True:
             self._stats["successful"] = self._stats.get("successful", 0) + 1
-        else:
+        elif memory.outcome.success is False:
             self._stats["failed"] = self._stats.get("failed", 0) + 1
+        else:  # not an action outcome (#843)
+            self._stats["unknown_outcome"] = self._stats.get("unknown_outcome", 0) + 1
 
         # Check for immediate promotion to long-term (very high importance)
         if (
@@ -1077,16 +1080,18 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         )
 
         # Build outcome. `result` is a ToolResult-like object OR a mapping with success/error keys
-        # (#814: a dict result used to read as success, storing goal failures as successes).
-        success = True
+        # (#814: a dict result used to read as success, storing goal failures as successes). A result
+        # that states no success -- a percept's empty one -- is not an action outcome: unknown, None
+        # (#843; it defaulted to True, earning the percept a "successful interaction" floor).
+        success: bool | None = None
         error = None
         if isinstance(result, Mapping):
-            if "success" in result:
+            if result.get("success") is not None:  # a stated None stays unknown
                 success = bool(result["success"])
             if result.get("error"):
                 error = str(result["error"])
         else:
-            if hasattr(result, "success"):
+            if getattr(result, "success", None) is not None:
                 success = bool(result.success)
             if hasattr(result, "error"):
                 error = str(result.error) if result.error else None

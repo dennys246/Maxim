@@ -6,7 +6,7 @@ import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
-from maxim.memory.types import CompressedMemory, EpisodicMemory
+from maxim.memory.types import CompressedMemory, EpisodicMemory, outcome_label
 
 if TYPE_CHECKING:
     from maxim.agents.working_memory import WorkingMemorySet
@@ -73,10 +73,10 @@ def _rank_by_relevance(
 def _memory_summary(mem: EpisodicMemory | CompressedMemory) -> str:
     """One-line summary of a memory for WorkingMemorySet RECALL entries."""
     if isinstance(mem, CompressedMemory):
-        outcome = "success" if mem.success else "failure"
+        outcome = outcome_label(mem.success)
         return f"[recalled] {mem.goal or 'unknown goal'} → {mem.tool_name} ({outcome})"
     goal = mem.context.active_goal or mem.decision.intent.get("goal", "")
-    outcome = "success" if mem.outcome.success else "failure"
+    outcome = outcome_label(mem.outcome.success)
     tool = mem.action.tool_name or "none"
     return f"[recalled] {goal} → {tool} ({outcome})"
 

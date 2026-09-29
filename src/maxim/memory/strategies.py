@@ -222,10 +222,10 @@ class AccessBasedStrategy(MemoryStrategy):
         # Always keep successful user interactions (check for EpisodicMemory)
         if isinstance(record, EpisodicMemory):
             if record.perception.cli_input or record.perception.transcript:
-                if record.outcome.success:
+                if record.outcome.success is True:
                     score = max(score, 0.7)
         elif isinstance(record, CompressedMemory):
-            if record.had_user_input and record.success:
+            if record.had_user_input and record.success is True:
                 score = max(score, 0.7)
 
         return min(1.0, score)
@@ -257,6 +257,11 @@ class AccessBasedStrategy(MemoryStrategy):
                 return age > self.compression_age * 3  # 3 days
 
         return True
+
+
+# ImportanceBasedStrategy's outcome term. Unknown (``None``: not an action outcome, #843) sits at the
+# midpoint of success and failure (owner decision 2026-09-29) -- neither rewarded nor penalized.
+_SUCCESS_SCORE: dict[bool | None, float] = {True: 1.0, None: 0.65, False: 0.3}
 
 
 class ImportanceBasedStrategy(MemoryStrategy):
@@ -313,11 +318,11 @@ class ImportanceBasedStrategy(MemoryStrategy):
 
         # Success bonus
         if isinstance(record, EpisodicMemory):
-            success_score = 1.0 if record.outcome.success else 0.3
+            success_score = _SUCCESS_SCORE[record.outcome.success]
             novelty_score = record.perception.novelty
             had_user_input = bool(record.perception.cli_input or record.perception.transcript)
         elif isinstance(record, CompressedMemory):
-            success_score = 1.0 if record.success else 0.3
+            success_score = _SUCCESS_SCORE[record.success]
             novelty_score = record.novelty
             had_user_input = record.had_user_input
         elif isinstance(record, (SemanticMemory, CompressedSemantic)):
