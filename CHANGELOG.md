@@ -228,6 +228,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Latent until now: a scan of 283 persisted ATL files (559,382 typed edges) found no pair holding two
     types. The ledger rows that read typed relations are discharged on that evidence and gain an
     "ATL typed-relation update path" re-run trigger.
+- **The Hippocampus capacity cap is no longer exceeded silently** (#819, the loud half).
+  - At `max_nodes` an insert evicts the lowest-scored memory that is not long-term. When every memory
+    is long-term nothing may be evicted, and the insert proceeded with no warning (reproduced with a
+    cap of 3: 4 stored, nothing logged).
+  - It now logs a WARNING whenever an insert leaves the store over its cap: nothing was evictable, or
+    the store was already over it (a `load_state` of a larger store, memories promoted at birth). The
+    warning fires at the first overage and each time the overage doubles, and resets once the store is
+    back under the cap. Such inserts are counted in `stats()["over_capacity_inserts_this_process"]`.
+  - Which memory is evicted is unchanged, so no experiment's behaviour changes. The stats key is
+    additive; its consumers read only `total_memories`.
+  - The byte budget and lazy-heap eviction remain memory-strength Phase 4. The config comment that
+    called the cap "not enforced" is corrected.
 
 - **A config.json written by this build no longer stops an older build** (#856, owner decision
   2026-09-28).
