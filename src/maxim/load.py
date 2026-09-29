@@ -164,18 +164,21 @@ def atl(path: str) -> "ATL":
 def session(session_id: str) -> "Session":
     """Load a persisted simulation session by ID.
 
-    This is the canonical way to access past sessions.  Supports fuzzy
-    matching on session_id prefix (e.g. ``"20260408"`` matches
-    ``"20260408_143022"``).
+    This is the canonical way to access past sessions. ``session_id`` is an ID
+    or a path, resolved like every other run directory
+    (``utils/paths.py::resolve_run_dir``); an ID that names no directory may be
+    a unique prefix (e.g. ``"20260408"`` matches ``"20260408_143022"``).
 
     Args:
-        session_id: Full or partial session ID.
+        session_id: Session ID, unique ID prefix, or path to the session directory.
 
     Returns:
         ``Session`` with metadata loaded from report.json.
 
     Raises:
         FileNotFoundError: If no matching session is found.
+        maxim.RunDirAmbiguous: If the ID or prefix matches more than one
+            session (a ``MaximMemoryError`` and a ``ValueError``; the message lists them).
 
     Example::
 

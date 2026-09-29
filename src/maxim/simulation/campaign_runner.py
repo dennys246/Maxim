@@ -280,8 +280,10 @@ def run_precampaign_turns(
 
     # Save analysis
     try:
-        analysis_path = Path("data") / "sim_reports" / f"campaign_analysis_{time.strftime('%Y%m%d_%H%M%S')}.json"
-        analysis_path.parent.mkdir(parents=True, exist_ok=True)
+        from maxim.utils.paths import sim_reports
+
+        # Under the data home, not a working-directory-relative ./data/sim_reports/ (#932).
+        analysis_path = sim_reports() / f"campaign_analysis_{time.strftime('%Y%m%d_%H%M%S')}.json"
         from maxim.utils.atomic_io import atomic_write_json
         from maxim.utils.format_version import with_format_version
 

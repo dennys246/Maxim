@@ -77,6 +77,8 @@ _API_TYPES = {
     "MemoryCorruptionError": "maxim.exceptions",
     # Leaf, exported because stable methods raise it: a store's save() over a file it never read (#939).
     "StoreOverwriteRefused": "maxim.exceptions",
+    # Leaf, exported because a stable verb raises it: load.session() on an ambiguous ID or prefix (#932).
+    "RunDirAmbiguous": "maxim.exceptions",
     "PlanningError": "maxim.exceptions",
     "HardwareError": "maxim.exceptions",
     "MaximRuntimeError": "maxim.exceptions",
@@ -142,6 +144,7 @@ __all__ = [
     "MaximMemoryError",
     "MemoryCorruptionError",
     "StoreOverwriteRefused",
+    "RunDirAmbiguous",
     "PlanningError",
     "HardwareError",
     "MaximRuntimeError",

@@ -214,6 +214,21 @@ class StoreOverwriteRefused(MaximMemoryError, FileExistsError):
         self.filename = path  # what a plain FileExistsError handler reads
 
 
+class RunDirNotFound(MaximMemoryError, ValueError):
+    """``utils/paths.py::resolve_run_dir`` found no directory; the message names every place it searched.
+
+    Also a ``ValueError``, which is what it was before it joined the hierarchy (1.3.1).
+    """
+
+
+class RunDirAmbiguous(MaximMemoryError, ValueError):
+    """A run ID or ID prefix names more than one directory; the message lists them (#932).
+
+    Raised by ``resolve_run_dir`` and ``maxim.load.session``: a guess could read, or write to, the wrong
+    run. Pass a path, or the full ID. Also a ``ValueError``.
+    """
+
+
 class MemoryCapacityError(MaximMemoryError):
     """Memory capacity limit exceeded."""
 
@@ -390,6 +405,8 @@ __all__ = [
     "MaximMemoryError",
     "MemoryCorruptionError",
     "StoreOverwriteRefused",
+    "RunDirNotFound",
+    "RunDirAmbiguous",
     "MemoryCapacityError",
     # Planning
     "PlanningError",

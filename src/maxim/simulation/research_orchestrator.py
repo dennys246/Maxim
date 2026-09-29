@@ -116,8 +116,13 @@ def start_research_mode(
 
     start_time = time.time()
     session_id = time.strftime("%Y%m%d_%H%M%S")
-    session_dir = Path("data") / "sim_reports" / f"research_{session_id}"
+    # Under the data home like every other simulation report (#932): a working-directory-relative
+    # ./data/sim_reports/ was written wherever the command ran and read by nothing.
+    from maxim.utils.paths import sim_reports
+
+    session_dir = sim_reports() / f"research_{session_id}"
     session_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Research session directory: %s", session_dir)
 
     # ── Setup ────────────────────────────────────────────────────────────
     bus = LocalMessageBus()

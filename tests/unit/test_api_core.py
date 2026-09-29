@@ -7,7 +7,9 @@ the expected type.
 
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -977,3 +979,160 @@ def test_a_corrupt_scn_file_is_preserved_not_overwritten(api_home, caplog):
     finally:
         second.shutdown()
     assert scn_json.read_text() == "{not json at all", "the unreadable SCN file was destroyed"
+
+
+# ── #932: the API home follows the data home; the agent lives in agents/api_agent ──
+
+
+class _CapturingFactory:
+    """AgentFactory stand-in: records where the API agent was told to live."""
+
+    configs: list = []
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+    def create_full_agent(self, config, *, tool_registry):
+        self.__class__.configs.append(config)
+        return SimpleNamespace(
+            executor=MagicMock(), hippocampus=None, memory_hub=None, pain_bus=None, shutdown=MagicMock()
+        )
+
+
+@pytest.fixture
+def api_data_home(tmp_path, monkeypatch):
+    from maxim.utils.paths import _reset_caches
+
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "home"))
+    _reset_caches()
+    _CapturingFactory.configs = []
+    monkeypatch.setattr("maxim.runtime.agent_factory.AgentFactory", _CapturingFactory)
+    yield tmp_path / "home"
+    _reset_caches()
+
+
+def test_run_default_home_follows_maxim_data_home(api_data_home, mocked_run_runtime) -> None:
+    """`home_dir=None` meant a literal ~/.maxim, ignoring MAXIM_DATA_HOME (#932)."""
+    mocked_run_runtime.api.run(model="test-profile", goal="g", learning=True)
+    assert _RunTestAgent.instances[-1].kwargs["memory_persistence_path"] == str(api_data_home / "memory")
+    assert Path(_CapturingFactory.configs[-1].persistence_dir) == api_data_home / "agents" / "api_agent"
+
+
+def test_run_agent_lives_in_agents_not_flat_in_sessions(tmp_path, api_data_home, mocked_run_runtime) -> None:
+    home = tmp_path / "explicit"
+    mocked_run_runtime.api.run(model="test-profile", goal="g", home_dir=str(home), learning=True)
+    assert Path(_CapturingFactory.configs[-1].persistence_dir) == home / "agents" / "api_agent"
+
+
+def _legacy_flat_agent(home: Path) -> Path:
+    sessions = home / "sessions"
+    (sessions / "memory_hub").mkdir(parents=True)
+    (sessions / "hippocampus.json").write_text('{"legacy": "hippo"}')
+    (sessions / "nac.json").write_text('{"legacy": "nac"}')
+    (sessions / "memory_hub" / "hub.json").write_text('{"legacy": "hub"}')
+    (sessions / "20260101_000000").mkdir()  # not the agent's: must stay put
+    (sessions / "20260101_000000" / "report.json").write_text("{}")
+    return sessions
+
+
+def test_run_migrates_the_legacy_flat_agent_once(api_data_home, mocked_run_runtime, caplog) -> None:
+    sessions = _legacy_flat_agent(api_data_home)
+    agent_dir = api_data_home / "agents" / "api_agent"
+    with caplog.at_level("WARNING", logger="maxim.api"):
+        mocked_run_runtime.api.run(model="test-profile", goal="g", learning=True)
+    assert json.loads((agent_dir / "hippocampus.json").read_text()) == {"legacy": "hippo"}
+    assert json.loads((agent_dir / "nac.json").read_text()) == {"legacy": "nac"}
+    assert json.loads((agent_dir / "memory_hub" / "hub.json").read_text()) == {"legacy": "hub"}
+    assert not (sessions / "hippocampus.json").exists()
+    assert not (sessions / "memory_hub").exists()
+    assert (sessions / "20260101_000000" / "report.json").exists()
+    assert not any(p.name.startswith(".") for p in (api_data_home / "agents").iterdir())  # no staging left
+    assert any("migrat" in r.getMessage().lower() for r in caplog.records)
+
+
+def test_run_never_migrates_over_existing_agent_state(api_data_home, mocked_run_runtime, caplog) -> None:
+    sessions = _legacy_flat_agent(api_data_home)
+    agent_dir = api_data_home / "agents" / "api_agent"
+    agent_dir.mkdir(parents=True)
+    (agent_dir / "hippocampus.json").write_text('{"current": true}')
+    with caplog.at_level("WARNING", logger="maxim.api"):
+        mocked_run_runtime.api.run(model="test-profile", goal="g", learning=True)
+    assert json.loads((agent_dir / "hippocampus.json").read_text()) == {"current": True}
+    assert (sessions / "hippocampus.json").exists()
+    assert not (agent_dir / "nac.json").exists()
+    assert any(str(sessions / "hippocampus.json") in r.getMessage() for r in caplog.records)
+
+
+def test_run_failed_migration_leaves_the_legacy_agent_whole(api_data_home, mocked_run_runtime, monkeypatch) -> None:
+    """A half-copied agent would be loaded as the real one and the rest orphaned: fail, change nothing."""
+    import shutil
+
+    sessions = _legacy_flat_agent(api_data_home)
+    real_copy2 = shutil.copy2
+    calls = []
+
+    def flaky_copy2(src, dst, *a, **k):
+        calls.append(src)
+        if len(calls) == 2:
+            raise OSError("disk full")
+        return real_copy2(src, dst, *a, **k)
+
+    monkeypatch.setattr(shutil, "copy2", flaky_copy2)
+    with pytest.raises(OSError, match="disk full"):
+        mocked_run_runtime.api.run(model="test-profile", goal="g", learning=True)
+    assert (sessions / "hippocampus.json").exists() and (sessions / "nac.json").exists()
+    assert (sessions / "memory_hub" / "hub.json").exists()
+    agents = api_data_home / "agents"
+    assert not (agents / "api_agent").exists() or not any((agents / "api_agent").iterdir())
+    assert not any(p.name.startswith(".") for p in agents.iterdir()) if agents.exists() else True
+
+
+def test_observe_default_home_follows_maxim_data_home(api_data_home) -> None:
+    import maxim.api as api
+
+    assert api.observe()["home_dir"] == str(api_data_home)
+
+
+def test_run_migrates_past_a_home_that_holds_no_state(api_data_home, mocked_run_runtime) -> None:
+    """ "No state" is persisted_agent_state's definition: a .DS_Store or an empty memory_hub/ never blocks."""
+    sessions = _legacy_flat_agent(api_data_home)
+    agent_dir = api_data_home / "agents" / "api_agent"
+    (agent_dir / "memory_hub").mkdir(parents=True)
+    (agent_dir / ".DS_Store").write_text("finder")
+    mocked_run_runtime.api.run(model="test-profile", goal="g", learning=True)
+    assert json.loads((agent_dir / "hippocampus.json").read_text()) == {"legacy": "hippo"}
+    assert json.loads((agent_dir / "memory_hub" / "hub.json").read_text()) == {"legacy": "hub"}
+    assert (agent_dir / ".DS_Store").read_text() == "finder"  # carried, not lost
+    assert not (sessions / "hippocampus.json").exists()
+
+
+def test_run_warns_about_an_agent_stranded_in_the_old_default_home(
+    tmp_path, api_data_home, mocked_run_runtime, caplog, monkeypatch
+) -> None:
+    """Before #932, run() ignored MAXIM_DATA_HOME; that agent is named, never moved across data homes."""
+    monkeypatch.setenv("HOME", str(tmp_path / "user"))  # never the developer's real ~/.maxim
+    old = Path.home() / ".maxim" / "sessions"
+    old.mkdir(parents=True, exist_ok=True)
+    (old / "hippocampus.json").write_text('{"old": true}')
+    try:
+        with caplog.at_level("WARNING", logger="maxim.api"):
+            mocked_run_runtime.api.run(model="test-profile", goal="g", learning=True)
+        assert any(str(old / "hippocampus.json") in r.getMessage() for r in caplog.records)
+        assert (old / "hippocampus.json").exists()
+        assert not (api_data_home / "agents" / "api_agent" / "hippocampus.json").exists()
+
+        caplog.clear()
+        with caplog.at_level("WARNING", logger="maxim.api"):
+            mocked_run_runtime.api.run(model="test-profile", goal="g", home_dir=str(tmp_path / "x"), learning=True)
+        assert not any(str(old) in r.getMessage() for r in caplog.records)  # an explicit home is a choice
+    finally:
+        (old / "hippocampus.json").unlink()
+
+
+def test_recall_default_home_follows_maxim_data_home(api_data_home, monkeypatch) -> None:
+    import maxim.api as api
+
+    seen = []
+    monkeypatch.setattr(api, "_build_observer", lambda home: seen.append(home))
+    api.recall()
+    assert seen == [str(api_data_home)]

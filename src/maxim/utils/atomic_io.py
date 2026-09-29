@@ -229,3 +229,45 @@ def atomic_write_secret(path: str, content: str, *, encoding: str = "utf-8") -> 
     secrets" signal.
     """
     atomic_write_text(path, content, encoding=encoding, preserve_mode=True, initial_mode=0o600)
+
+
+def _fsync_path(path: str) -> None:
+    """fsync one file or directory; a filesystem that cannot fsync (some network FSes) is skipped."""
+    try:
+        fd = os.open(path, os.O_RDONLY)  # a directory cannot be opened on every platform
+    except OSError as e:
+        logger.debug("fsync skipped, cannot open %s: %s", path, e)
+        return
+    try:
+        os.fsync(fd)
+    except OSError as e:
+        # Unsupported here: the data is written, just without a durability guarantee (as above).
+        logger.debug("fsync unsupported for %s: %s", path, e)
+    finally:
+        os.close(fd)
+
+
+def atomic_install_dir(staged: str, dest: str) -> None:
+    """Make the fully written directory ``staged`` appear at ``dest`` in ONE rename (#932).
+
+    The directory sibling of the writers above: every file and directory under ``staged`` is fsynced
+    first, so the rename can never reach disk ahead of the data it exposes, and the parent is fsynced
+    after. ``dest`` must be absent or an EMPTY directory: an empty one is removed first (``rmdir``,
+    which refuses a populated directory), then ``staged`` is renamed to the now-absent path -- the same
+    on POSIX and Windows, where a rename onto any existing directory fails. So ``dest`` is briefly absent
+    between the two: a reader then sees no directory, and a writer that fills it then makes the rename
+    fail, which is refused like any populated ``dest``. A populated ``dest``, or one
+    recreated and populated in between, raises ``OSError``: it is never merged into, and ``staged`` is
+    never nested inside it (what ``shutil.move`` does to an existing directory). ``staged`` must be on
+    ``dest``'s filesystem (stage it beside ``dest``). On failure ``staged`` is left for the caller.
+    """
+    for root, dirs, files in os.walk(staged, topdown=False):
+        for name in files:
+            _fsync_path(os.path.join(root, name))
+        for name in dirs:
+            _fsync_path(os.path.join(root, name))
+    _fsync_path(staged)
+    if os.path.isdir(dest) and not os.path.islink(dest):
+        os.rmdir(dest)  # raises on a populated directory
+    os.rename(staged, dest)
+    _fsync_path(os.path.dirname(os.path.abspath(dest)))

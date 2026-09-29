@@ -23,6 +23,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+# Defined in maxim.exceptions (MaximMemoryError + ValueError, #932); importable from here as before.
+from maxim.exceptions import RunDirAmbiguous, RunDirNotFound  # noqa: F401
+
 
 # ---------------------------------------------------------------------------
 # Bundled data (read-only, shipped in wheel)
@@ -218,12 +221,14 @@ def resolve_user_state(relative_path: str) -> Path:
     return p
 
 
-class RunDirNotFound(ValueError):
-    """``resolve_run_dir`` found no directory; the message names every place it searched."""
+def looks_like_run_path(raw: str) -> bool:
+    """Whether a user's run argument is a PATH (only ever a path) rather than an ID (#932).
 
-
-class RunDirAmbiguous(ValueError):
-    """``resolve_run_dir`` found the ID in more than one place; the message names them."""
+    A separator, a leading ``~`` or ``.``, or an absolute path. ``resolve_run_dir`` and the prefix search
+    behind ``maxim.load.session`` share this one rule, so a path shape added here cannot turn into an ID
+    prefix there.
+    """
+    return Path(raw).name != raw or raw.startswith(("~", ".")) or Path(raw).expanduser().is_absolute()
 
 
 def resolve_run_dir(id_or_path: str, *, kinds: tuple[str, ...] = ("sim", "agent")) -> Path:
@@ -249,7 +254,7 @@ def resolve_run_dir(id_or_path: str, *, kinds: tuple[str, ...] = ("sim", "agent"
         # Path("") is ".": an empty argument would otherwise name the working directory.
         raise RunDirNotFound("empty run id or path")
     as_path = Path(raw).expanduser()
-    if Path(raw).name != raw or raw.startswith(("~", ".")) or as_path.is_absolute():
+    if looks_like_run_path(raw):
         if as_path.is_dir():
             return as_path.resolve()
         raise RunDirNotFound(f"directory not found: {as_path}")

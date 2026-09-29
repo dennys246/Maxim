@@ -25,6 +25,23 @@ import pytest
 # ── Lazy loading ───────────────────────────────────────────────────────
 
 
+@pytest.fixture
+def sim_home(tmp_path, monkeypatch):
+    """A real data home (``Session.from_disk`` resolves through ``resolve_run_dir``, which reads
+    ``data_home()`` itself -- patching ``sim_reports`` does not reach it) and an empty working directory
+    (a searched place). Yields its ``sim_reports/``."""
+    from maxim.utils.paths import _reset_caches
+
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "home"))
+    (tmp_path / "cwd").mkdir()
+    monkeypatch.chdir(tmp_path / "cwd")
+    _reset_caches()
+    reports = tmp_path / "home" / "sim_reports"
+    reports.mkdir(parents=True)
+    yield reports
+    _reset_caches()
+
+
 class TestLazyLoading:
     """Verify maxim.create, maxim.load, and types are accessible."""
 
@@ -493,83 +510,67 @@ class TestSession:
         assert session.model == "mistral-7b"
         assert session.result is result
 
-    def test_session_from_disk(self):
-        """Session.from_disk loads from a session directory."""
+    def test_session_from_disk(self, sim_home):
+        """Session.from_disk loads from a session directory (a unique ID prefix)."""
         from maxim.session import Session
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create a fake session directory
-            session_dir = Path(tmpdir) / "20260408_143022"
-            session_dir.mkdir()
-            report = {
-                "goal": "test goal",
-                "mode": "generative",
-                "language_model": "mistral-7b",
-                "turns": 5,
-            }
-            with open(session_dir / "report.json", "w") as f:
-                json.dump(report, f)
+        session_dir = sim_home / "20260408_143022"
+        session_dir.mkdir()
+        report = {
+            "goal": "test goal",
+            "mode": "generative",
+            "language_model": "mistral-7b",
+            "turns": 5,
+        }
+        with open(session_dir / "report.json", "w") as f:
+            json.dump(report, f)
 
-            with mock.patch("maxim.utils.paths.sim_reports", return_value=Path(tmpdir)):
-                session = Session.from_disk("20260408")
-                assert session.id == "20260408_143022"
-                assert session.goal == "test goal"
-                assert session.model == "mistral-7b"
-                assert session.mode == "generative"
+        session = Session.from_disk("20260408")
+        assert session.id == "20260408_143022"
+        assert session.goal == "test goal"
+        assert session.model == "mistral-7b"
+        assert session.mode == "generative"
 
-    def test_session_from_disk_reads_legacy_persona_key(self):
+    def test_session_from_disk_reads_legacy_persona_key(self, sim_home):
         """Pre-1.1 report.json persisted the label under "persona" — the
         disk loader must surface it as `mode` (two-lens fold: this alias
         branch had zero coverage, and a revert to `data.get("mode", "")`
         would silently blank the label on every pre-1.1 session)."""
+        from maxim.session import Session, list_sessions
+
+        session_dir = sim_home / "20250101_090000"
+        session_dir.mkdir()
+        report = {
+            "goal": "old-session goal",
+            "persona": "adversarial",
+            "language_model": "mistral-7b",
+            "turns": 2,
+        }
+        with open(session_dir / "report.json", "w") as f:
+            json.dump(report, f)
+
+        session = Session.from_disk("20250101")
+        assert session.mode == "adversarial"
+        assert any(s.mode == "adversarial" for s in list_sessions())
+
+    def test_session_from_disk_ambiguous_prefix_refuses(self, sim_home):
+        """A prefix matching two sessions is refused, listing both (#932: the newest used to win)."""
         from maxim.session import Session
+        from maxim.utils.paths import RunDirAmbiguous
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            session_dir = Path(tmpdir) / "20250101_090000"
-            session_dir.mkdir()
-            report = {
-                "goal": "old-session goal",
-                "persona": "adversarial",
-                "language_model": "mistral-7b",
-                "turns": 2,
-            }
-            with open(session_dir / "report.json", "w") as f:
-                json.dump(report, f)
+        for sid in ("20260408_100000", "20260408_143022"):
+            (sim_home / sid).mkdir()
+            (sim_home / sid / "report.json").write_text('{"goal": "g"}')
 
-            with mock.patch("maxim.utils.paths.sim_reports", return_value=Path(tmpdir)):
-                session = Session.from_disk("20250101")
-                assert session.mode == "adversarial"
+        with pytest.raises(RunDirAmbiguous, match="20260408_100000.*20260408_143022"):
+            Session.from_disk("20260408")
 
-            with mock.patch("maxim.utils.paths.sim_reports", return_value=Path(tmpdir)):
-                from maxim.session import list_sessions
-
-                sessions = list_sessions()
-                assert any(s.mode == "adversarial" for s in sessions)
-
-    def test_session_from_disk_fuzzy_match(self):
-        """Fuzzy prefix matching should find the most recent session."""
-        from maxim.session import Session
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            (Path(tmpdir) / "20260408_100000").mkdir()
-            (Path(tmpdir) / "20260408_100000" / "report.json").write_text('{"goal": "old"}')
-            (Path(tmpdir) / "20260408_143022").mkdir()
-            (Path(tmpdir) / "20260408_143022" / "report.json").write_text('{"goal": "new"}')
-
-            with mock.patch("maxim.utils.paths.sim_reports", return_value=Path(tmpdir)):
-                session = Session.from_disk("20260408")
-                # Should match the most recent (143022 > 100000)
-                assert session.id == "20260408_143022"
-                assert session.goal == "new"
-
-    def test_session_from_disk_not_found(self):
+    def test_session_from_disk_not_found(self, sim_home):
         """Should raise FileNotFoundError for non-existent session."""
         from maxim.session import Session
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch("maxim.utils.paths.sim_reports", return_value=Path(tmpdir)):
-                with pytest.raises(FileNotFoundError):
-                    Session.from_disk("99999999")
+        with pytest.raises(FileNotFoundError):
+            Session.from_disk("99999999")
 
     def test_list_sessions(self):
         """list_sessions should return Session objects."""
@@ -646,19 +647,18 @@ class TestLoad:
             loaded = maxim.load.nac(path)
             assert loaded is not None
 
-    def test_load_session(self):
-        """maxim.load.session delegates to Session.from_disk."""
+    def test_load_session(self, sim_home):
+        """maxim.load.session delegates to Session.from_disk (an exact ID)."""
         import maxim
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            d = Path(tmpdir) / "20260408_999999"
-            d.mkdir()
-            (d / "report.json").write_text('{"goal": "loaded"}')
+        d = sim_home / "20260408_999999"
+        d.mkdir()
+        (d / "report.json").write_text('{"goal": "loaded"}')
+        (sim_home / "20260408_999999_later").mkdir()  # an exact ID wins over a longer ID it prefixes
 
-            with mock.patch("maxim.utils.paths.sim_reports", return_value=Path(tmpdir)):
-                s = maxim.load.session("20260408_999999")
-                assert s.id == "20260408_999999"
-                assert s.goal == "loaded"
+        s = maxim.load.session("20260408_999999")
+        assert s.id == "20260408_999999"
+        assert s.goal == "loaded"
 
     def test_load_sessions(self):
         """maxim.load.sessions should list sessions."""

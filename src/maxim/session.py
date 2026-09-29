@@ -247,23 +247,27 @@ class Session:
     def from_disk(cls, session_id: str) -> "Session":
         """Load a Session from a persisted session directory.
 
-        Supports fuzzy matching on session_id prefix (e.g. ``"20260408"``
-        matches ``"20260408_143022"``).
+        ``session_id`` is a session's ID or a path to its directory, resolved by
+        ``utils/paths.py::resolve_run_dir`` (the one answer to "which directory is
+        run X"; #932). A bare ID that names no directory is then tried as a prefix
+        of the IDs in ``<data home>/sim_reports/`` (e.g. ``"20260408"`` matches
+        ``"20260408_143022"``) -- when exactly one matches.
 
         Raises:
             FileNotFoundError: If no matching session is found.
+            RunDirAmbiguous: If the ID names more than one directory, or the
+                prefix matches more than one session (the message lists them).
         """
-        from maxim.utils.paths import sim_reports
+        from maxim.utils.paths import RunDirNotFound, resolve_run_dir, sim_reports
 
-        reports_dir = sim_reports()
-        match = _fuzzy_find_session(reports_dir, session_id)
-        if match is None:
-            raise FileNotFoundError(
-                f"No session matching '{session_id}' found in {reports_dir}. "
-                f"Run maxim.list_sessions() to see available sessions."
-            )
-
-        session_dir = reports_dir / match
+        try:
+            session_dir = resolve_run_dir(session_id, kinds=("sim",))
+        except RunDirNotFound as exc:
+            by_prefix = _find_session_by_prefix(sim_reports(), session_id)
+            if by_prefix is None:
+                raise FileNotFoundError(f"{exc}. Run maxim.list_sessions() to see available sessions.") from exc
+            session_dir = by_prefix
+        match = session_dir.name
 
         # Load report.json for metadata
         report_path = session_dir / "report.json"
@@ -339,22 +343,23 @@ def query_observer(
 # ── Module-level helpers ───────────────────────────────────────────────
 
 
-def _fuzzy_find_session(reports_dir: Path, prefix: str) -> str | None:
-    """Find a session directory by prefix match. Returns the full name or None."""
-    if not reports_dir.is_dir():
+def _find_session_by_prefix(reports_dir: Path, prefix: str) -> Path | None:
+    """The one session directory in ``reports_dir`` whose ID starts with ``prefix``, or None.
+
+    Never a guess: several matches raise ``RunDirAmbiguous`` listing them (#932 -- the newest match
+    used to win silently). A path-shaped ``prefix`` is not a prefix: ``resolve_run_dir`` already
+    answered it.
+    """
+    from maxim.utils.paths import RunDirAmbiguous, looks_like_run_path
+
+    raw = str(prefix).strip()
+    if not raw or looks_like_run_path(raw) or not reports_dir.is_dir():
         return None
-
-    candidates = []
-    for p in reports_dir.iterdir():
-        if p.is_dir() and p.name.startswith(prefix):
-            candidates.append(p.name)
-
-    if not candidates:
-        return None
-
-    # Return the most recent match (lexicographic sort = chronological for timestamps)
-    candidates.sort(reverse=True)
-    return candidates[0]
+    candidates = sorted(p for p in reports_dir.iterdir() if p.is_dir() and p.name.startswith(raw))
+    if len(candidates) > 1:
+        listed = ", ".join(p.name for p in candidates)
+        raise RunDirAmbiguous(f"{raw!r} is a prefix of more than one session ({listed}); pass the full ID")
+    return candidates[0].resolve() if candidates else None
 
 
 def _build_session_observer(session_dir: Path) -> Any:
