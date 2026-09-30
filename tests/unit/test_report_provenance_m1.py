@@ -86,7 +86,9 @@ def test_a_git_failure_is_unknown_and_dirty(monkeypatch) -> None:
     def failing(*args, **kwargs):
         return subprocess.CompletedProcess(args[0], 128, stdout="deadbeef\n M src/x.py\n", stderr="fatal")
 
-    monkeypatch.setattr(report_mod.subprocess, "run", failing)
+    from maxim.utils import code_tree
+
+    monkeypatch.setattr(code_tree.subprocess, "run", failing)
     stamp = capture_start_provenance()
     assert stamp["executed_git_hash"] == "unknown"
     assert stamp["working_tree_dirty_src_scripts"] is True
@@ -328,17 +330,15 @@ def test_the_digest_is_framed_so_two_trees_cannot_share_a_stream(tmp_path) -> No
     assert report_mod._code_tree_sha256(repo) != two
 
 
-def test_the_two_digest_implementations_are_the_same_code() -> None:
-    """Equal outputs on one fixture are not enough: a flag added to one twin must fail here."""
+def test_the_harness_and_the_sim_read_the_same_code_tree_module() -> None:
+    """One implementation (#998): ``scripts/_provenance.py`` loads ``utils/code_tree.py`` by path from its
+    own tree, and ``report.py`` imports it; the M1 twin pin became this identity."""
+    from maxim.utils import code_tree
 
-    def body(path: Path, name: str) -> str:
-        fn = next(n for n in ast.walk(ast.parse(path.read_text())) if isinstance(n, ast.FunctionDef) and n.name == name)
-        args = ast.dump(fn.args).replace("_DIRTY_SCOPE", "SCOPE").replace("DIRTY_SCOPE", "SCOPE")
-        return args + ast.dump(ast.Module(body=fn.body[1:], type_ignores=[]))  # the docstring differs
-
-    assert body(REPO / "src" / "maxim" / "simulation" / "report.py", "_code_tree_sha256") == body(
-        REPO / "scripts" / "_provenance.py", "code_tree_sha256"
-    )
+    prov = _load_script("_provenance")
+    assert Path(prov._code_tree.__file__).resolve() == Path(code_tree.__file__).resolve()
+    assert report_mod._code_tree_sha256 is code_tree.code_tree_sha256
+    assert report_mod._tree_dirty is code_tree.tree_dirty
 
 
 def test_a_harness_whose_sub_sims_import_another_tree_stamps_no_digest(tmp_path, monkeypatch) -> None:

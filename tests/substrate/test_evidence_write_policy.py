@@ -266,21 +266,21 @@ class TestEvidenceOutPathsHelper:
 
     def test_with_the_flag_clean_tree_returns_committed(self, tmp_path, monkeypatch) -> None:
         prov = self._prov()
-        monkeypatch.setattr(prov, "working_tree_dirty", lambda *a, **k: False)
+        monkeypatch.setattr(prov, "working_tree_difference", lambda *a, **k: None)
         committed = tmp_path / "docs" / "experiments" / "results" / "x.json"
         out = prov.evidence_out_paths(tmp_path, [committed], write_experiment_results=True)
         assert out == [committed.resolve()]
 
     def test_with_the_flag_dirty_tree_refuses(self, tmp_path, monkeypatch) -> None:
         prov = self._prov()
-        monkeypatch.setattr(prov, "working_tree_dirty", lambda *a, **k: True)
+        monkeypatch.setattr(prov, "working_tree_difference", lambda *a, **k: "src/x.py: untracked")
         committed = tmp_path / "docs" / "experiments" / "results" / "x.json"
         with pytest.raises(prov.DirtyTreeError):
             prov.evidence_out_paths(tmp_path, [committed], write_experiment_results=True)
 
     def test_dirty_tree_with_explicit_allowance_writes_committed(self, tmp_path, monkeypatch) -> None:
         prov = self._prov()
-        monkeypatch.setattr(prov, "working_tree_dirty", lambda *a, **k: True)
+        monkeypatch.setattr(prov, "working_tree_difference", lambda *a, **k: "src/x.py: untracked")
         committed = tmp_path / "docs" / "experiments" / "results" / "x.json"
         out = prov.evidence_out_paths(tmp_path, [committed], write_experiment_results=True, allow_dirty=True)
         assert out == [committed.resolve()]

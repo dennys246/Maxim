@@ -8,12 +8,9 @@ After each simulation run, this module:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
-import stat
-import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass, field
@@ -21,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from maxim.exceptions import StoreOverwriteRefused
+from maxim.utils import code_tree
 
 logger = logging.getLogger(__name__)
 
@@ -122,9 +120,15 @@ class SimulationReport:
     provenance: dict[str, Any] = field(default_factory=dict)
 
 
-# ``git status`` scope for the clean-tree flag, as ``scripts/_provenance.py::DIRTY_SCOPE``: ``src/`` and
-# ``scripts/`` only (a scenario YAML's state is not covered).
-_DIRTY_SCOPE = ("src", "scripts")
+# The code scope (``src/`` and ``scripts/``; a scenario YAML's state is not covered). The clean flag and the
+# code digest are ``utils/code_tree.py``'s, the same file ``scripts/_provenance.py`` loads (#998).
+_DIRTY_SCOPE = code_tree.SCOPE
+_code_tree_sha256 = code_tree.code_tree_sha256
+_tree_dirty = code_tree.tree_dirty
+
+
+def _git_short12(repo: Path) -> str:
+    return code_tree.head_hash(repo, 12)
 
 
 def capture_start_provenance() -> dict[str, Any]:
@@ -199,98 +203,6 @@ def _code_stamp(maxim_file: Path) -> dict[str, Any]:
         "working_tree_dirty_src_scripts": _tree_dirty(repo) if in_checkout else True,
         "code_tree_sha256": _code_tree_sha256(repo) if in_checkout else "unknown",
     }
-
-
-def _code_tree_sha256(repo_root: Path | str, scope: tuple[str, ...] = _DIRTY_SCOPE) -> str:
-    """sha256 naming the exact code under ``scope`` (M1): every tracked path, every untracked path the repo's
-    own ``.gitignore`` files do not exclude, and every path in HEAD, in path order, each framed with its
-    content -- a regular file's bytes (and whether it is executable), a symlink's target string, or
-    deleted. It hashes what is ON DISK and asks git only for the path set, so no git config or index state
-    (an external diff, textconv, a per-user exclude file, assume-unchanged, ``core.fileMode``, autocrlf)
-    can move it or hide a change; inherited git location and pathspec variables (``GIT_DIR``,
-    ``GIT_WORK_TREE``, ``GIT_LITERAL_PATHSPECS``, ...) are dropped so a parent process cannot point it
-    elsewhere or blind a listing. The boundary it keeps: a path the repo's ``.gitignore`` files exclude is
-    assumed not to be code, and every rule that decides it (the root ``.gitignore``, any ``.gitignore`` in
-    scope, tracked or not) is hashed with the code. ``"unknown"`` when git fails, a path is neither a
-    file, a symlink nor absent (an untracked nested repo is a directory), or a path resolves outside the
-    repo. Its twin in ``scripts/_provenance.py::code_tree_sha256`` must stay identical (pinned by AST)."""
-    repo = Path(repo_root)
-    inherited = (
-        *("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR"),
-        *("GIT_LITERAL_PATHSPECS", "GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS", "GIT_ICASE_PATHSPECS"),
-    )
-    env = {k: v for k, v in os.environ.items() if k not in inherited}
-    env["GIT_OPTIONAL_LOCKS"] = "0"
-    listed: set[bytes] = set()
-    for args in (
-        # The root .gitignore is hashed with the code: it decides which paths count as code.
-        ["ls-files", "-z", "--cached", "--others", "--exclude-per-directory=.gitignore", "--", ".gitignore", *scope],
-        ["ls-tree", "-r", "-z", "--name-only", "HEAD", "--", ".gitignore", *scope],
-        # An untracked .gitignore is listed with no excludes, so one that ignores itself (and the code
-        # beside it) still moves the digest.
-        ["ls-files", "-z", "--others", "--", ".gitignore", *(f":(glob){d}/**/.gitignore" for d in scope)],
-    ):
-        try:
-            r = subprocess.run(
-                ["git", "-c", "core.precomposeunicode=true", *args], cwd=repo, capture_output=True, timeout=60, env=env
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return "unknown"
-        if r.returncode != 0:
-            return "unknown"
-        listed.update(p for p in r.stdout.split(b"\0") if p)
-
-    def framed(field: bytes) -> bytes:
-        return len(field).to_bytes(8, "big") + field
-
-    root = os.path.realpath(repo)
-    digest = hashlib.sha256()
-    for rel in sorted(listed):
-        path = repo / os.fsdecode(rel)
-        if os.path.commonpath([root, os.path.realpath(path.parent)]) != root:
-            return "unknown"  # reached through a symlinked directory: not this repo's code
-        try:
-            st = os.lstat(path)
-        except FileNotFoundError:
-            digest.update(framed(rel) + framed(b"deleted"))
-            continue
-        except OSError:
-            return "unknown"
-        if stat.S_ISLNK(st.st_mode):
-            digest.update(framed(rel) + framed(b"symlink") + framed(os.fsencode(os.readlink(path))))
-        elif stat.S_ISREG(st.st_mode):
-            content = hashlib.sha256()
-            try:
-                with open(path, "rb") as f:
-                    for block in iter(lambda: f.read(1 << 20), b""):
-                        content.update(block)
-            except OSError:
-                return "unknown"
-            kind = b"executable" if st.st_mode & 0o111 else b"file"
-            digest.update(framed(rel) + framed(kind) + framed(content.digest()))
-        else:
-            return "unknown"
-    return digest.hexdigest()
-
-
-def _git_short12(repo: Path) -> str:
-    try:
-        r = subprocess.run(
-            ["git", "rev-parse", "--short=12", "HEAD"], cwd=repo, capture_output=True, text=True, timeout=15
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return "unknown"
-    return (r.returncode == 0 and r.stdout.strip()) or "unknown"
-
-
-def _tree_dirty(repo: Path) -> bool:
-    try:
-        r = subprocess.run(
-            ["git", "status", "--porcelain", "--", *_DIRTY_SCOPE], cwd=repo, capture_output=True, text=True, timeout=30
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return True
-    return r.returncode != 0 or bool(r.stdout.strip())
 
 
 def _count_tokens(text: str, llm_router: Any | None) -> int:

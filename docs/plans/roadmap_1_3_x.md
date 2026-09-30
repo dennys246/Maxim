@@ -162,9 +162,10 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    owner exception), and the prereg lint's echo check must name the entry or harness run. A record whose
    stamp is unestablished (hash `unknown`, dirty unallowed, an empty stamp, no `ts`, or
    `code_changed_during_run`) is not citable.
-   The clean-tree flag itself still trusts `git status`, which git config and index state can fool
-   ([#998](https://github.com/dennys246/Maxim/issues/998)); it lands with or before M1b, since M1b's "clean"
-   judgement rests on it.
+   **The clean-tree flag ([#998](https://github.com/dennys246/Maxim/issues/998), before M1b):** it no longer
+   asks `git status`; a tree is clean when every code path is on disk exactly as HEAD has it (blob,
+   executable bit, symlink target), over the same path set the digest hashes, and a refusal names the
+   first difference. One stdlib-only module, `utils/code_tree.py`, which the harnesses load by path.
    Then the **complete Exp 10 re-run** that replaces 1.3.1's narrow one — pre-registered, provenance-stamped,
    phases run to their cap.
 3. **`create.*` overwrites an existing store; `load.*` raises raw errors ([#939](https://github.com/dennys246/Maxim/issues/939)).**
