@@ -56,14 +56,15 @@ Full history: docs/lessons/experiment-prereg-precedes-data.md.
 
 This module is deliberately stdlib-only and does NOT import `maxim` — it is
 imported by path from the harness's own directory, so it is guaranteed to come
-from the same tree as the harness that calls it.
+from the same tree as the harness that calls it. The clean flag and the code
+digest are ``src/maxim/utils/code_tree.py``'s (stdlib-only by contract), loaded
+the same way: by file path from THIS tree, never through ``sys.path`` (#998).
 """
 
 from __future__ import annotations
 
-import hashlib
+import importlib.util
 import os
-import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -83,15 +84,29 @@ __all__ = [
     "evidence_out_paths_or_exit",
     "EVIDENCE_DIR",
     "resolved_maxim_file",
+    "working_tree_difference",
     "working_tree_dirty",
 ]
+
+
+def _load_code_tree():
+    """``src/maxim/utils/code_tree.py`` from THIS tree, by path: the harness's code judged by its own tree's
+    rules, whatever ``maxim`` the interpreter would import."""
+    path = Path(__file__).resolve().parents[1] / "src" / "maxim" / "utils" / "code_tree.py"
+    spec = importlib.util.spec_from_file_location("_maxim_code_tree", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_code_tree = _load_code_tree()
 
 # Anything written here is a GATED record: it backs a ledger row, a result
 # doc, or a release gate. The refuse path below applies to this tree only.
 GATED_DATA_DIR = Path("docs/experiments/data")
 
-# The paths whose dirtiness makes a run's code-under-test unestablishable.
-DIRTY_SCOPE = ("src", "scripts")
+# The paths whose dirtiness makes a run's code-under-test unestablishable (plus the root .gitignore).
+DIRTY_SCOPE = _code_tree.SCOPE
 
 
 class ProvenanceError(RuntimeError):
@@ -144,17 +159,7 @@ def resolved_maxim_file(binary: str, *, timeout: float = 60.0) -> str | None:
 
 
 def _git_hash(cwd: Path) -> str:
-    try:
-        r = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        return r.stdout.strip() or "unknown"
-    except Exception:
-        return "unknown"
+    return _code_tree.head_hash(cwd)
 
 
 def assert_repo_interpreter(repo_root: Path | str, binary: str, *, exempt: bool = False) -> str | None:
@@ -192,96 +197,20 @@ def assert_repo_interpreter(repo_root: Path | str, binary: str, *, exempt: bool 
 
 
 def working_tree_dirty(repo_root: Path | str, scope: tuple[str, ...] = DIRTY_SCOPE) -> bool:
-    """True when ``git status`` reports any change (incl. untracked) under ``scope``.
+    """True unless the code on disk under ``scope`` is exactly HEAD's (#998; ``utils/code_tree.py``). Decided
+    by content, not ``git status``, which per-user config and index state could make report a dirty tree
+    as clean. Unknown counts as DIRTY: an unestablishable tree is what the refuse path exists to stop."""
+    return _code_tree.tree_dirty(repo_root, scope)
 
-    A git failure counts as DIRTY: an unestablishable tree is the exact thing
-    the refuse path exists to stop, so unknown must not read as clean.
-    """
-    try:
-        r = subprocess.run(
-            ["git", "status", "--porcelain", "--", *scope],
-            cwd=Path(repo_root),
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return True
-    if r.returncode != 0:
-        return True
-    return bool(r.stdout.strip())
+
+def working_tree_difference(repo_root: Path | str, scope: tuple[str, ...] = DIRTY_SCOPE) -> str | None:
+    """``None`` when clean, else the first difference as ``"<path>: <why>"`` (``utils/code_tree.py``)."""
+    return _code_tree.tree_difference(repo_root, scope)
 
 
 def code_tree_sha256(repo_root: Path | str, scope: tuple[str, ...] = DIRTY_SCOPE) -> str:
-    """sha256 naming the exact code under ``scope`` (M1): every tracked path, every untracked path the repo's
-    own ``.gitignore`` files do not exclude, and every path in HEAD, in path order, each framed with its
-    content -- a regular file's bytes (and whether it is executable), a symlink's target string, or
-    deleted. It hashes what is ON DISK and asks git only for the path set, so no git config or index state
-    (an external diff, textconv, a per-user exclude file, assume-unchanged, ``core.fileMode``, autocrlf)
-    can move it or hide a change; inherited git location and pathspec variables (``GIT_DIR``,
-    ``GIT_WORK_TREE``, ``GIT_LITERAL_PATHSPECS``, ...) are dropped so a parent process cannot point it
-    elsewhere or blind a listing. The boundary it keeps: a path the repo's ``.gitignore`` files exclude is
-    assumed not to be code, and every rule that decides it (the root ``.gitignore``, any ``.gitignore`` in
-    scope, tracked or not) is hashed with the code. ``"unknown"`` when git fails, a path is neither a
-    file, a symlink nor absent (an untracked nested repo is a directory), or a path resolves outside the
-    repo. Its twin in ``src/maxim/simulation/report.py::_code_tree_sha256`` must stay identical (pinned by AST)."""
-    repo = Path(repo_root)
-    inherited = (
-        *("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR"),
-        *("GIT_LITERAL_PATHSPECS", "GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS", "GIT_ICASE_PATHSPECS"),
-    )
-    env = {k: v for k, v in os.environ.items() if k not in inherited}
-    env["GIT_OPTIONAL_LOCKS"] = "0"
-    listed: set[bytes] = set()
-    for args in (
-        # The root .gitignore is hashed with the code: it decides which paths count as code.
-        ["ls-files", "-z", "--cached", "--others", "--exclude-per-directory=.gitignore", "--", ".gitignore", *scope],
-        ["ls-tree", "-r", "-z", "--name-only", "HEAD", "--", ".gitignore", *scope],
-        # An untracked .gitignore is listed with no excludes, so one that ignores itself (and the code
-        # beside it) still moves the digest.
-        ["ls-files", "-z", "--others", "--", ".gitignore", *(f":(glob){d}/**/.gitignore" for d in scope)],
-    ):
-        try:
-            r = subprocess.run(
-                ["git", "-c", "core.precomposeunicode=true", *args], cwd=repo, capture_output=True, timeout=60, env=env
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return "unknown"
-        if r.returncode != 0:
-            return "unknown"
-        listed.update(p for p in r.stdout.split(b"\0") if p)
-
-    def framed(field: bytes) -> bytes:
-        return len(field).to_bytes(8, "big") + field
-
-    root = os.path.realpath(repo)
-    digest = hashlib.sha256()
-    for rel in sorted(listed):
-        path = repo / os.fsdecode(rel)
-        if os.path.commonpath([root, os.path.realpath(path.parent)]) != root:
-            return "unknown"  # reached through a symlinked directory: not this repo's code
-        try:
-            st = os.lstat(path)
-        except FileNotFoundError:
-            digest.update(framed(rel) + framed(b"deleted"))
-            continue
-        except OSError:
-            return "unknown"
-        if stat.S_ISLNK(st.st_mode):
-            digest.update(framed(rel) + framed(b"symlink") + framed(os.fsencode(os.readlink(path))))
-        elif stat.S_ISREG(st.st_mode):
-            content = hashlib.sha256()
-            try:
-                with open(path, "rb") as f:
-                    for block in iter(lambda: f.read(1 << 20), b""):
-                        content.update(block)
-            except OSError:
-                return "unknown"
-            kind = b"executable" if st.st_mode & 0o111 else b"file"
-            digest.update(framed(rel) + framed(kind) + framed(content.digest()))
-        else:
-            return "unknown"
-    return digest.hexdigest()
+    """The M1 code digest (``utils/code_tree.py``): names the exact code on disk, dirty or not."""
+    return _code_tree.code_tree_sha256(repo_root, scope)
 
 
 def is_gated_path(repo_root: Path | str, out_path: Path | str | None) -> bool:
@@ -311,11 +240,12 @@ def preflight_gated_record(
     """
     root = Path(repo_root).resolve()
     gated = is_gated_path(root, out_path)
-    dirty = working_tree_dirty(root)
+    difference = working_tree_difference(root)
+    dirty = difference is not None
     if gated and dirty and not allow_dirty:
         raise DirtyTreeError(
             f"refusing to write a GATED record ({Path(out_path).resolve().relative_to(root)}) "
-            f"from a DIRTY tree: `git status --porcelain -- {' '.join(DIRTY_SCOPE)}` is not empty in {root}.\n"
+            f"from a DIRTY tree: the code on disk in {root} is not HEAD's ({difference}).\n"
             "  A result whose code-under-test cannot be established is not a validation "
             "(Exp 42b corollary; Exp 53/53b release-day incident).\n"
             "  Fix: commit (and merge) the harness/src changes first, then re-run from the clean tree —\n"
@@ -379,17 +309,7 @@ def in_process_code_provenance(
 
 
 def _git_hash_short12(cwd: Path) -> str:
-    try:
-        r = subprocess.run(
-            ["git", "rev-parse", "--short=12", "HEAD"],
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        return r.stdout.strip() or "unknown"
-    except (OSError, subprocess.TimeoutExpired):
-        return "unknown"
+    return _code_tree.head_hash(cwd, 12)
 
 
 def executed_code_provenance(
@@ -485,11 +405,12 @@ def evidence_out_paths(
             else:
                 out.append(p)
         return out
-    if working_tree_dirty(root) and not allow_dirty:
+    difference = working_tree_difference(root)
+    if difference is not None and not allow_dirty:
         raise DirtyTreeError(
             "refusing to OVERWRITE committed evidence "
             f"({', '.join(str(p.relative_to(root)) for p in governed)}) from a DIRTY tree "
-            f"(`git status --porcelain -- {' '.join(DIRTY_SCOPE)}` is not empty in {root}).\n"
+            f"(the code on disk in {root} is not HEAD's: {difference}).\n"
             "  A degraded or in-progress run must not replace real evidence (D25/D27).\n"
             "  Fix: commit the harness/src changes and re-run from the clean tree, or pass --allow-dirty."
         )

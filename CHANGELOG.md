@@ -39,12 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       untracked one the repo's own `.gitignore` files do not exclude, and every path in HEAD, each framed
       with its content (a file's bytes, a symlink's target, or deleted). Git supplies only the path set,
       so no git config or index state (external diff, per-user excludes, assume-unchanged,
-      `core.fileMode`, autocrlf) can move it or hide a change, and inherited git location and pathspec
+      `core.fileMode`, autocrlf) can hide a change; index state can only move it toward "different", so a
+      clean tree's digest is fixed by HEAD alone, and inherited git location and pathspec
       variables are dropped. Its boundary: a path the repo's `.gitignore` files exclude is assumed not to
-      be code, and every rule that decides it (the root `.gitignore`, any `.gitignore` in scope, tracked
-      or not) is hashed with the code. `scripts/_provenance.py` stamps the same digest into harness records, so M1b's lint can bind a dirty sim report to the
-      harness record that allowed it (owner decision after a security review: the allowance lives only
-      in the harness record a human granted; a sim report never carries `allow_dirty`);
+      be code, and the rules that decide it are hashed with the code (the root `.gitignore`, every
+      committed `.gitignore`, and any untracked one except inside a directory the committed rules
+      already exclude; #998). `scripts/_provenance.py` stamps the same digest into harness records, so
+      M1b's lint can bind a dirty sim report to the harness record that allowed it (owner decision
+      after a security review: the allowance lives only in the harness record a human granted; a sim
+      report never carries `allow_dirty`);
     - the code is stamped again at report time: the run counts as dirty if either stamp saw a dirty tree
       (code imported lazily after the start is code too), and `code_changed_during_run` is true when
       the commit, the clean-tree state or the digest moved during the run; the end values are kept
@@ -294,6 +297,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as published; `release_1_2_0.md` and the experiments index carry a marked correction.
 
 ### Fixed
+
+- **The clean-tree flag that gates every committed experiment record is decided by content, not by
+  `git status`** (#998).
+  - `working_tree_dirty_src_scripts` (`scripts/_provenance.py::working_tree_dirty`, and the sim-report
+    stamp) asked `git status`, which a per-user exclude file, `git update-index --assume-unchanged` /
+    `--skip-worktree`, `core.fileMode=false`, `core.ignorecase`, replace refs, or a `GIT_DIR` /
+    `GIT_WORK_TREE` leaked from a parent process could make report a dirty tree as clean.
+  - Now: clean means every code path (`src/`, `scripts/`, the root `.gitignore`: the path set M1's
+    `code_tree_sha256` hashes) is on disk exactly as HEAD has it, compared by git blob id computed from
+    the bytes on disk, executable bit (git's owner-bit rule) and symlink target. Nothing extra, nothing
+    missing; unknown (a git failure, an odd path, a submodule) reads dirty.
+  - A refusal now names the first difference (`src/a.py: content differs from HEAD`,
+    `scripts/new.py: not in HEAD`, ...) instead of quoting a `git status` that may show nothing.
+  - One implementation: `src/maxim/utils/code_tree.py`, stdlib-only by contract. `scripts/_provenance.py`
+    loads it by file path from its own tree (it still never imports `maxim`); `simulation/report.py`
+    imports it. The commit hash stamped beside the flag is read the same way, so a leaked `GIT_DIR`
+    cannot pair this tree's verdict with another repo's commit.
+  - What reads differently now:
+    - dirty where `git status` saw nothing: the hidden cases above; an edited root `.gitignore`;
+      line-ending conversion (autocrlf, `eol` attributes) and checkout filters; a checkout where every
+      file is executable under `core.fileMode=false` (WSL `/mnt/c`, exFAT, SMB); a sparse checkout (HEAD
+      paths absent from disk); files hidden only by a per-user or rig-local exclude;
+    - clean where `git status` said dirty: index-only states that leave the disk equal to HEAD (a staged
+      edit reverted on disk, `git rm --cached`, an index flag), because the flag judges the code on disk;
+      which `.gitignore` rules excuse a directory is taken from HEAD, not the index. Index state can
+      still make a tree read dirty (a path staged but not in HEAD), never clean;
+    - still clean: an untracked `.gitignore` inside a directory the tracked rules already exclude (a
+      pytest cache, a venv, an npm package ship one), and a group-only exec bit. A normal clean checkout
+      on a POSIX filesystem reads clean.
+  - Committed records stamped `working_tree_dirty_src_scripts: false` before this change cannot be
+    re-judged: they predate the code digest, so nothing on disk can confirm or refute them.
+  - M1's `code_tree_sha256` shares the new path set and reader, so its values change: executable now
+    means git's owner bit, a deletion frames an empty content field, and untracked `.gitignore`s inside
+    directories the tracked rules exclude are no longer hashed. No committed record carries the digest
+    yet.
+  - Git reads no user or system config and no inherited `GIT_CONFIG_*` for these checks, and a repo whose
+    config points its work tree elsewhere (`core.worktree`), or a subdirectory, reads dirty.
 
 - **A memory surfaced to the LLM is marked by its own outcome, not as a failure** (#991).
   - `bio_enrichment` probed `getattr(mem, "success", False)`, which an `EpisodicMemory` never had (its
