@@ -684,8 +684,13 @@ class _Campaign:
         self.campaign_id = campaign_id
         apparatus = _load_json(C.REPO_ROOT / APPARATUS_RECORD)
         gate = _load_json(C.REPO_ROOT / args.gate_record)
-        if instrument_check_authorizes(apparatus) is not None or not (gate.get("run_gate") or {}).get("pass"):
-            raise SystemExit("[FAIL] the Exp 60 apparatus check / geometry gate records must carry PASS on main")
+        refusal = instrument_check_authorizes(apparatus)
+        if refusal is not None:
+            raise SystemExit(
+                f"[FAIL] the Exp 60 apparatus check {APPARATUS_RECORD} does not authorize a run: {refusal}"
+            )
+        if not (gate.get("run_gate") or {}).get("pass"):
+            raise SystemExit("[FAIL] the geometry gate record must carry run_gate PASS on main")
         self.geom = _load_json(ANCHOR_FILE)
         pain_edge_min = min_pain_edge_s(apparatus)
         if pain_edge_min is None:

@@ -280,7 +280,9 @@ Owner decisions (2026-09-30), in order:
   lower a pass; no pre-registration names a value); provenance rides ONCE per run (first and terminal line) with a
   `provenance_sha256` on every line; the live harnesses (Exp 58/60/61, R3) authorize only on a stamped, real,
   passing instrument check (`_provenance.instrument_check_authorizes`), no longer on `all_pass` — so a pre-M1b
-  apparatus record is refused and the check must be re-run before the next live campaign; a verdict's `mock` is
+  apparatus record is refused and the check must be re-run before the next live campaign (R3 reads the DATED
+  record `exp60_water_apparatus_2026-09-17.json`, Exp 60/61 `exp60_water_apparatus.json`: the re-check's `--out`
+  must be the path each harness reads, #1019); a verdict's `mock` is
   judged over the WHOLE file for every verdict writer (smokes go in their own files).
 
 - **Event logs** (`orient_backbone/live_common.py::JsonlLog`, 10 constructions): `mock` and `evidence` are
@@ -313,7 +315,9 @@ Owner decisions (2026-09-30), in order:
   an earlier run is never read. It is no longer appended to the records it judged, which would change the bytes
   its hash names. Its scope is `{"run_ids": [...]}` over the exp53 run ids it used; it is `mock` when any line of
   the file is mock or does not say, and `scoped_lines_stamped` says whether every scoped line carries `log_run_id`,
-  `mock` and `provenance`. Its in-run `gate_I` line stays in the records; gate6 reads gate T from the verdict file.
+  `mock` and `provenance_sha256`, and its run group has a line carrying the block that digest names
+  (`exp53::_lines_stamped`; fixed in #1019 — the first cut required the block on every line, which provenance-once
+  made false for every real run). Its in-run `gate_I` line stays in the records; gate6 reads gate T from the verdict file.
 - **Verdicts** (`stamp_verdict`) take a required `mock`: true when any row of the file is mock or unstamped, or
   there are no rows (`any_not_stamped_real`); an empty selector (`[]`, `""`) is refused like a `None` one. A re-verdict over the committed, pre-stamp records therefore reads `mock: true`: unknown
   is mock. Read it that way, not as "the run was a smoke".
@@ -337,7 +341,11 @@ Owner decisions (2026-09-30), in order:
 
 For PR 5b:
 - Support kinds: `harness_row`, `harness_event` (judged per `log_run_id` group: exactly one terminal `ok`, no mock
-  line, every line's `provenance_sha256` equal to the group's block), `verdict` and `sim_report`.
+  line, every line's `provenance_sha256` equal to the digest of the group's block), `verdict` and `sim_report`.
+  The digest is `live_common.provenance_digest`: sha256 of `json.dumps(block, sort_keys=True)` (default
+  separators, `ensure_ascii`) over the block as stamped, `allow_dirty` included; 5b imports it rather than
+  re-serialising. A code-tree digest reading `unknown` (git failed, at the start or the end) never matches
+  anything, itself included.
   `instrument_check`, `diagnosis`, `harness_header` and `harness_demo` never count. Pass sets: `exp53_verdict`
   `{PASS}`; Exp 52 Phase A rows (`experiment: "exp52_phaseA_scripted"`) `{PASS}` read from `verdict`.
 - **A cited instrument check must hold** (owner decision, 5a): `status: ok`, `pass: true`, `mock: false`. It never
@@ -354,7 +362,15 @@ For PR 5b:
     reach `finish("ok")`.
   - `finish` itself is caller-declared.
   - Each writer's `passed` rule and `FROZEN_PARAMS` are the writer's own.
+- gate6 appends to its records; a second gauntlet into the same records file (e.g. with
+  `--write-experiment-results`) holds two complete runs per phase and its verdict refuses (`VerdictError`). That
+  fails closed and gate6 is uncited, so it stays (#1019 item 7); give each gauntlet a fresh records file.
 - **Owner note:** `doa_settle` (the 0.23 s convergence figure cited in T1-7 and Exp 45) and `loudness_bench_poll`
   (`h2_loudness_bench.jsonl`) produce cited measurements but are non-support logs, so those findings can never be
-  gate support.
+  gate support. **Owner decision (2026-09-30): both stay non-support.** `doa_settle` measures the instrument (how
+  long a DoA reading takes to converge), not behaviour, so it must never be the new record that advances a row;
+  the kind that fits is an instrument check, which needs a frozen pass bound no pre-registration names yet.
+  **Revisit when** a prereg freezes a settle wait or a claim depends on a convergence bound: then `doa_settle`
+  becomes an instrument check with that frozen pass rule, never evidence. Neither record is in any ledger
+  Evidence field today, so nothing is blocked.
 

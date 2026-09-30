@@ -55,6 +55,13 @@ def _maxim_file() -> str | None:
     return getattr(maxim, "__file__", None)
 
 
+def provenance_digest(block: dict) -> str:
+    """The ``provenance_sha256`` every event-log line carries: sha256 of ``json.dumps(block, sort_keys=True)``
+    (default separators, ``ensure_ascii``), over the block as stamped (``allow_dirty`` included). The one
+    definition — the log and every reader that checks a line against its run's block use this function."""
+    return hashlib.sha256(json.dumps(block, sort_keys=True).encode()).hexdigest()
+
+
 class JsonlLog:
     """Append-only JSONL event log (one dict per line, ts stamped).
 
@@ -70,8 +77,9 @@ class JsonlLog:
     M1b PR 5a-2 (the evidence gate reads these logs): the log also refuses (exit 3), for ANY path, when the
     imported ``maxim`` is not this repo's src. Every line carries its ``mock`` flag, a ``log_run_id`` minted fresh
     per log and ``provenance_sha256``; the full code ``provenance`` block rides on the run's first line and its
-    terminal line (the gate judges a run as a group, so once is enough, owner decision 2026-09-30). The run id is (never the process-wide harness run id: gate6 runs
-    minted fresh per log, never the process-wide harness run id (gate6 runs several Exp 53 phases in one process).
+    terminal line (the gate judges a run as a group, so once is enough, owner decision 2026-09-30). The run id is
+    minted fresh per log, never the process-wide harness run id (gate6 runs several Exp 53 phases in one process);
+    the digest is :func:`provenance_digest` of the block.
     ``mock`` and ``evidence`` are required keywords.
 
     * ``evidence=False``: lines are ``record_kind: "harness_demo"`` — never support; no terminal status.
@@ -95,7 +103,7 @@ class JsonlLog:
             raise SystemExit(3) from exc
         if gate["allow_dirty"]:
             self.provenance["allow_dirty"] = True
-        self.provenance_sha256 = hashlib.sha256(json.dumps(self.provenance, sort_keys=True).encode()).hexdigest()
+        self.provenance_sha256 = provenance_digest(self.provenance)
         self._lines = 0
         self.gated = gate["gated"]
         self.mock = bool(mock)

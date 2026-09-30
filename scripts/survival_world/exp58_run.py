@@ -12,7 +12,8 @@ The bot is teleported into the deep pit and FLEES UP the staircase; "exited the 
 y_altitude rises above mid_y.
 
   1. PREFLIGHTS (all before any measurement; refusal = exit 3/4, no data):
-     - offline gates record exists with all_pass true (prereg instrument-gate stop rule);
+     - offline gates record is a stamped, passing instrument check (`_provenance.instrument_check_authorizes`,
+       M1b PR 5a-2; the prereg instrument-gate stop rule);
      - frozen-apparatus fingerprint asserted + stamped (fear α/cap/θ/allowlist, encoder
        threshold, explore weight) and the usable-episode bound checked vs the comfort band;
      - geometry via y_altitude (reliable): the bot reaches the safe chamber's depth and the

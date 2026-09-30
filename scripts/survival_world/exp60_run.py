@@ -8,7 +8,8 @@ gated by ``l11_geometry_probe.py`` run_gate). Modelled on ``exp58_run.py`` (whic
 with the changes the four design lenses required. Per seed × arm:
 
   1. PREFLIGHTS (all before any measurement; refusal = exit 3/4, no behavioural data):
-     - both gated records on main PASS (apparatus check ``all_pass``; geometry gate
+     - both gated records on main PASS (the apparatus check through
+       ``_provenance.instrument_check_authorizes``, M1b PR 5a-2; geometry gate
        ``run_gate.pass``) and the anchor carries the check's stamped ``measured`` onset;
      - frozen-apparatus fingerprint asserted + stamped — fear α/cap/θ/allowlist (WITH
        ``drive:oxygen``), encoder threshold, explore weight, the OXYGEN drive spec, and the
