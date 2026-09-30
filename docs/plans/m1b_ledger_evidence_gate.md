@@ -238,8 +238,21 @@ Every record the gate will read from the writers below now says what it is, stam
   file under `scripts/` but `_provenance.py`: presence checks, which catch forgetting, not evasion.
 - The harness edits fire no ledger `Re-run on:` trigger and match no pre-registration's pinned hash.
 
+Owner decisions (2026-09-30), after the review round and a design pass on widening 5a:
+- **Widen, as PR 5a-2 before 5b:** stamp every writer below. Its design pass found per-line status in event
+  logs fails open (data lines of an aborted run read `ok`), so 5a-2 gets a run-level terminal status per
+  `harness_run_id`, verdicts out of the exp53 log, a `diagnosis` kind, and its own design round.
+- **Instrument checks** get `record_kind: "instrument_check"` with a `pass` field the gate requires true (5a-2
+  moves the Exp 56/57 checks off `stamp_harness_row`); the Exp 44 `campaign_start` row becomes
+  `record_kind: "harness_header"`.
+- **Event logs are judged per run group** (`harness_run_id`), not per file; row files and verdicts stay per file.
+- **`JsonlLog` refuses everywhere** (exit 3) when the imported `maxim` is not this repo's src, scratch logs too.
+- **For 5b:** only `harness_row`, `verdict` and `sim_report` count as new support; an instrument check, diagnosis
+  or header never does.
+- R3's re-admitted rows stay `failed` (noted below).
+
 For PR 5b:
-- **Not stamped yet (fail closed at the gate):** `orient_backbone/exp53_cross_context_readout.py` (T1-10's
+- **Not stamped yet (fail closed at the gate; PR 5a-2):** `orient_backbone/exp53_cross_context_readout.py` (T1-10's
   `53d53_*`), the h1 DoA sweep / part-c writers (T1-7), the cradle phase-A scripted output (T1-9), `exp58_run.py`,
   `exp58_offline_gates.py`, `exp60_water_check.py` (the gate-(ii) records Exp 60/62 cite), `survival_world/
   instrument_check.py`, `exp62_precheck.py`, and R3's report and gauntlet.
