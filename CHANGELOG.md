@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Exp 53 verdict's `scoped_lines_stamped` reads true for real runs** (#1019). Since provenance rides once per
+  run, it now checks each scoped line's `provenance_sha256` against its run's block (`live_common.provenance_digest`,
+  the one digest definition) instead of requiring the block on every line. The Exp 61 apparatus refusal now names
+  its reason, and the handler-rule test asserts it scanned the four evidence helpers.
+
 ### Added
 
 - **Every writer the ledger cites stamps what its record is, and an event log says how its run ended**

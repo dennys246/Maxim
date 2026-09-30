@@ -210,15 +210,18 @@ def _abort_class_call(node: ast.AST) -> bool:
     )
 
 
-def _handler_problems(tree: ast.AST) -> list[str]:
+def _handler_problems(tree: ast.AST, scanned: set[str] | None = None) -> list[str]:
     """v6 SF-1, applied where the run's code now lives: in every function that receives the evidence log (a
     parameter annotated ``JsonlLog``), each ``except`` handler re-raises, writes an abort-class event
     (``abort`` / ``*_aborted`` — which latches the run failed) or calls ``mark_aborted``, or sits inside a handler
     that does. So no caught-and-continued failure can reach ``finish("ok")`` from inside these functions."""
     problems = []
-    for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)):
-        if not any(a.annotation is not None and "JsonlLog" in ast.unparse(a.annotation) for a in fn.args.args):
+    for fn in (n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        params = [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs]
+        if not any(a.annotation is not None and "JsonlLog" in ast.unparse(a.annotation) for a in params):
             continue
+        if scanned is not None:
+            scanned.add(fn.name)
         handlers = [n for n in ast.walk(fn) if isinstance(n, ast.ExceptHandler)]
         ok = {id(h) for h in handlers if any(isinstance(n, ast.Raise) or _abort_class_call(n) for n in ast.walk(h))}
         covered = {
@@ -232,6 +235,7 @@ def _handler_problems(tree: ast.AST) -> list[str]:
 
 def test_every_orient_log_declares_evidence_and_evidence_logs_run_in_a_with() -> None:
     seen: set[str] = set()
+    scanned: set[str] = set()
     for path in sorted(ORIENT.glob("*.py")):
         if path.name == "live_common.py":
             continue
@@ -245,8 +249,10 @@ def test_every_orient_log_declares_evidence_and_evidence_logs_run_in_a_with() ->
                 withs = [i.context_expr for w in ast.walk(tree) if isinstance(w, ast.With) for i in w.items]
                 assert call in withs, f"{path.name}:{call.lineno}: an evidence log is a `with` item"
         assert _finish_positions_ok(tree) == [], path.name
-        assert _handler_problems(tree) == [], path.name
+        assert _handler_problems(tree, scanned) == [], path.name
     assert seen == EVIDENCE_LOGS
+    # the rule is not vacuous: it reached the helper each evidence caller runs its code in (#1019)
+    assert {"_sweep", "_block", "_learn", "_run_logged"} <= scanned
 
 
 def test_the_call_shape_guard_catches_a_finish_in_finally_and_an_alias() -> None:
@@ -261,6 +267,8 @@ def test_the_call_shape_guard_catches_a_finish_in_finally_and_an_alias() -> None
     swallow = "def _run(args, log: JsonlLog) -> int:\n    try:\n        go()\n    except ConnectionError:\n        pass\n    return 0\n"
     latched = swallow.replace("        pass\n", "        log.write('abort', reason='x')\n")
     assert _handler_problems(ast.parse(swallow)) and _handler_problems(ast.parse(latched)) == []
+    kw_only = swallow.replace("def _run(args, log: JsonlLog)", "async def _run(args, *, log: JsonlLog)")
+    assert _handler_problems(ast.parse(kw_only)), "a keyword-only log in an async helper is still scanned"
 
 
 # ── the evidence callers, driven through their real paths ────────────────
@@ -364,20 +372,34 @@ def _runs(stamped: dict | None) -> list[dict]:
     return [{**r, **(stamped or {})} for r in recs]
 
 
+def _write_through_real_logs(records: Path, rows: list[dict], *, mock: bool) -> None:
+    """Each exp53 run written the way the harness writes it: one evidence JsonlLog per run (provenance once)."""
+    for rid in dict.fromkeys(r["run_id"] for r in rows):
+        with lc.JsonlLog(str(records), mock=mock, evidence=True) as log:
+            for r in (r for r in rows if r["run_id"] == rid):
+                log.write(r["event"], **{k: v for k, v in r.items() if k != "event"})
+            log.finish("ok")
+
+
 @pytest.mark.parametrize(
-    ("stamp", "mock", "stamped"),
+    ("source", "mock", "stamped"),
     [
-        (None, True, False),  # legacy lines: unknown is mock, never support
-        ({"log_run_id": "x", "mock": True, "provenance": {}}, True, True),  # a dry run
-        ({"log_run_id": "x", "mock": False, "provenance": {}}, False, True),
+        ("legacy", True, False),  # legacy lines: unknown is mock, never support
+        ("dry", True, True),  # a dry run through the real log
+        ("real", False, True),  # a real run through the real log
+        ("forged", False, False),  # stamps written by hand: no line carries the block its digest names
     ],
 )
 def test_the_exp53_verdict_is_its_own_record_and_a_smoke_when_its_lines_are(
-    stamp, mock: bool, stamped: bool, tmp_path: Path
+    source: str, mock: bool, stamped: bool, tmp_path: Path
 ) -> None:
     h = _exp53()
     records = tmp_path / "records.jsonl"
-    records.write_text("\n".join(json.dumps(r) for r in _runs(stamp)) + "\n")
+    if source in ("dry", "real"):
+        _write_through_real_logs(records, _runs(None), mock=source == "dry")
+    else:
+        forged = {"log_run_id": "x", "mock": False, "provenance_sha256": "0" * 64}
+        records.write_text("\n".join(json.dumps(r) for r in _runs(forged if source == "forged" else None)) + "\n")
     before = records.read_bytes()
     assert h.main(["verdict", "--records", str(records)]) in (0, 1)
     assert records.read_bytes() == before, "the verdict never appends to the records it judged"
@@ -423,10 +445,9 @@ def test_exp53_ends_a_run_ok_only_on_a_computed_outcome(rc: int, status: str, tm
 def test_one_mock_line_anywhere_makes_the_exp53_verdict_mock(tmp_path: Path) -> None:
     """Owner decision 2026-09-30: a verdict's mock is judged over the whole file; smokes go in their own files."""
     h = _exp53()
-    real = {"log_run_id": "x", "mock": False, "provenance": {}}
     records = tmp_path / "records.jsonl"
-    rows = _runs(real) + [{"event": "start", "run_id": "Z", "phase": 2, **real, "mock": True}]
-    records.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    _write_through_real_logs(records, _runs(None), mock=False)
+    _write_through_real_logs(records, [{"event": "start", "run_id": "Z", "phase": 2}], mock=True)
     assert h.main(["verdict", "--records", str(records), "--run-id", "A", "--run-id", "Q"]) in (0, 1)
     v = json.loads((tmp_path / "records_verdict.json").read_text())
     assert v["scope"] == {"run_ids": ["A", "Q"]} and v["mock"] is True

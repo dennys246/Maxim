@@ -1385,6 +1385,20 @@ def default_verdict_out(records: str | Path) -> Path:
     return p.with_name(f"{p.stem}_verdict.json")
 
 
+def _lines_stamped(lines: list[dict], recs: list[dict]) -> bool:
+    """Whether every scoped line carries the event-log stamps (M1b PR 5a-2, provenance once per run): its own
+    ``log_run_id``, ``mock`` and ``provenance_sha256``, and — for each ``log_run_id`` group those lines belong to —
+    some line of the file carrying the full ``provenance`` block whose digest is that group's."""
+    if not lines or not all(all(k in r for k in ("log_run_id", "mock", "provenance_sha256")) for r in lines):
+        return False
+    blocks = {
+        (r["log_run_id"], live_common.provenance_digest(r["provenance"]))
+        for r in recs
+        if "log_run_id" in r and isinstance(r.get("provenance"), dict)
+    }
+    return all((r["log_run_id"], r["provenance_sha256"]) in blocks for r in lines)
+
+
 def _write_verdict(
     args: argparse.Namespace, summary: dict, *, gate: str, recs: list[dict], data_bytes: bytes, code: dict
 ) -> None:
@@ -1393,7 +1407,7 @@ def _write_verdict(
     does not say (owner decision 2026-09-30: whole file, as every verdict; smokes go in their own files)."""
     scoped = sorted({rid for rid in summary["runs_used"].values() if rid})
     lines = [r for r in recs if r.get("run_id") in scoped]
-    stamped = bool(lines) and all(all(k in r for k in ("log_run_id", "mock", "provenance")) for r in lines)
+    stamped = _lines_stamped(lines, recs)
     record = {
         "_format_version": "1.0",
         "ts": time.time(),
