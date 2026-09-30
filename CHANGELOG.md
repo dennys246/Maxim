@@ -25,6 +25,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The behavioural-graduation ledger is machine-readable** (M1b PR 3).
+  - Every row of its two status tables has a stable ID (`T1-1`…, `T3-1`…) and opens with
+    `**Status: <TOKEN> <date>**` from a closed vocabulary, with ranks.
+  - A positive status carries an `**Evidence:**` field of tracked records under `docs/experiments/data/`.
+  - `scripts/lint_ledger_format.py` enforces it through the shared parser `scripts/_ledger.py`, the one the
+    evidence gate will use. It checks:
+    - that each cited record is a tracked file or a session directory holding a report, never a
+      script, README, symlink or aborted capture;
+    - that dates never move back and a raise needs a later one;
+    - that IDs never vanish;
+    - that `LEGACY` is never entered.
+  - It replaces `lint_claude_md_invariants.py`'s EARNED-row check.
+  - **Two rows are now `STALE`, which blocks the next release until they are re-run:** Exp 10 (T1-1) and
+    Exp 09 (T3-9). Their re-runs ended `planning_failed`, a typed abort, which cannot back a status (owner
+    decision).
+  - EC pattern completion is `LEGACY`: its records are lost.
+
 - **A harness row names the sims it ran, and says what each one ran under** (M1b PR 2, #1003).
   - The sim reports a harness spawns live under the gitignored `data/`, so the committed row is the only
     record a ledger gate can read. Each harness mints a run id (`scripts/_provenance.py::harness_run_id`,

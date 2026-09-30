@@ -167,7 +167,8 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    executable bit, symlink target), over the same path set the digest hashes, and a refusal names the
    first difference. One stdlib-only module, `utils/code_tree.py`, which the harnesses load by path.
    Then the **complete Exp 10 re-run** that replaces 1.3.1's narrow one — pre-registered, provenance-stamped,
-   phases run to their cap.
+   phases run to their cap — and a **complete Exp 09 re-run**. Since M1b PR 3 (2026-09-30, owner decision)
+   both ledger rows are `STALE` (T1-1, T3-9: their narrow re-runs ended in typed aborts), which blocks the cut.
 3. **`create.*` overwrites an existing store; `load.*` raises raw errors ([#939](https://github.com/dennys246/Maxim/issues/939)).**
    Guard: a test that fails on today's clobber.
 4. **The silent seams #840 and #841, and type-checking the composition layer.** Both are an argument

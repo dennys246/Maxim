@@ -106,7 +106,7 @@ change) — not for a routine heartbeat.
 
 ### Sim-Short Chapter
 
-#### 3. Narrative reflexes, Exp 09 (Tier 3 #9) — one short sim, ~2 min
+#### 3. Narrative reflexes, Exp 09 (T3-9) — one short sim, ~2 min
 
 ```bash
 MAXIM_SUBSTRATE_PATH=1 \
@@ -132,7 +132,7 @@ trajectories present. Validation greps live in
 **Scope caveat (from the row):** narrative keyword reflexes only — no halo to
 audio/orienting reflexes.
 
-#### 4. Cross-session memory persistence, Exp 10 (Tier 1 row 1) — 3 short sims, ~10-20 min
+#### 4. Cross-session memory persistence, Exp 10 (T1-1) — 3 short sims, ~10-20 min
 
 ```bash
 # Phase 1 — fresh baseline (note the printed session_id)
@@ -189,7 +189,7 @@ Size the timeout from observed pace (~55 s/turn on the Mac → ≥ 5400s;
 7200s gives margin), and if the FIRST seed times out, STOP the fleet and
 re-size rather than letting every seed burn the full window.
 
-#### 6. Substrate-primary discrimination (Exp 42, Tier 1 #6) — sub-sim fleet
+#### 6. Substrate-primary discrimination (Exp 42, T1-6) — sub-sim fleet
 
 ```bash
 python scripts/benchmark_exp42_preference.py \
@@ -207,7 +207,7 @@ them in the output JSONL before reading results.
 
 ### Big-Model Chapter (formerly "Cloud Chapter")
 
-#### 7. Cross-session Goldilocks under LLM-AUT (Exp 37, Tier 1 row 1b) — the expensive one
+#### 7. Cross-session Goldilocks under LLM-AUT (Exp 37, T1-2) — the expensive one
 
 Per the row: re-validation re-fires Exp 37 with the same N=5 design at the
 matching git hash across the model set (per-model, pick the models that matter

@@ -81,7 +81,7 @@ can still cite a clean but irrelevant record, and review is the check for that.
   `provenance.harness_run_id`; the conftest scrub in the same commit), its rows list the `session_id`s it
   spawned, and the binding needs the session named, equal run ids, and equal non-`unknown`
   `code_tree_sha256`. Hashes are compared at full length (the stamps are normalised to one length).
-- **Citations** are extracted from the whole row line (links and backticked paths); a GitHub URL form
+- **Citations** are the row's `**Evidence:**` field only (as built in PR 3; the rest of the row is context), parsed by `scripts/_ledger.py`; a GitHub URL form
   fails; `|` inside code spans no longer breaks a row.
 
 ### The prereg lint
@@ -143,3 +143,33 @@ row names its session); every hash is the full commit id; a harness row's own `p
 every family-1 harness (the legacy per-row `git_hash` field says where the harness lives and is never read). The design pass's round-2 and round-3 folds are in
 the PR. Follow-up: [#1009](https://github.com/dennys246/Maxim/issues/1009) (one resolution for
 `--resume-sim`).
+
+## PR 3 as built (2026-09-30)
+
+The ledger's two status tables now carry stable row IDs (`T1-1`–`T1-15`, `T3-1`–`T3-20`). Each row opens with
+`**Status: <TOKEN> <date>**`, from the closed vocabulary with ranks written in the ledger's own section. A
+positive row carries an `**Evidence:**` field of tracked records. The rules are enforced by
+`scripts/lint_ledger_format.py` through the shared parser `scripts/_ledger.py`, which PR 5 imports; the lint
+replaces `lint_claude_md_invariants.py`'s check 5. The design pass ran two rounds: v1 was DO-NOT-BUILD (the
+Evidence field had no defined shape, and dates could be laundered). Its folds are the rules below.
+
+- **Evidence grammar:**
+  - one field per row, straight after the Status line, holding only links or code spans;
+  - every entry tracked by git and not a symlink;
+  - a directory counts only as a session directory holding a `report.json`;
+  - refused: scripts, markdown, READMEs, the data root, and aborted, invalid or non-gated names;
+  - link text that looks like a path must name its own target.
+- **Dates against the merge-base:** never later than today; never moving back; a raise needs a later date;
+  a new row is not backdated before the base.
+- **LEGACY** can be kept, never entered.
+
+Owner decisions (2026-09-30, all the recommended options): T1-1 (Exp 10) and T3-9 (Exp 09) are `STALE`, because
+their re-runs were typed aborts, and this blocks the 1.3.2 cut until they are re-run (`outstanding.md` O19). EC
+pattern completion is `LEGACY`, since its data is lost. Two tokens are new: `SUPERSEDED` (T1-8, by T1-9) and
+`TIER-2` (T3-17–T3-20). T1-6, T1-7 and T1-15 keep their status with the caveat written in the row.
+
+**For PR 5:**
+- A raise is a rank increase (`_ledger.is_raise`); a move between positive tokens also needs a new date (`_ledger.needs_new_date`). A new ID arriving at rank ≥ 1 is a raise from rank 0, and its previous date is
+  the merge-base commit's date.
+- A date change on a positive row is a trigger, like a raise.
+- The claim cells are Tier 1's `Claim`, and Tier 3's `Bio-claim` and `Graduation predicate`.
