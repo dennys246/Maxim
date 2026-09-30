@@ -426,6 +426,8 @@ def main() -> int:
                 speech_density=args.speech_density,
             )
         rec["speech_density"] = args.speech_density
+        # M1b PR 5a: the scripted arm is the offline smoke (no maxim spawn, no LLM) — a gate never reads it.
+        _provenance.stamp_harness_row(rec, mock=args.arm == "scripted")
         records.append(rec)
         m = rec["metrics"]
         print(

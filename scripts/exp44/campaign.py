@@ -721,6 +721,8 @@ def main() -> int:
         return 3
     if prov.get("allow_dirty"):
         _MANIFEST_STAMP["allow_dirty"] = True
+    # M1b PR 5a: every row says whether it is a smoke; a --dry-run manifest is never evidence.
+    _MANIFEST_STAMP["mock"] = bool(args.dry_run)
     _append_manifest(campaign_dir, {"stage": "campaign_start", "config": cfg, "provenance": prov})
 
     arm_filter = {a for a in args.arms.split(",") if a}

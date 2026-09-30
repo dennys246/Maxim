@@ -46,6 +46,10 @@ AST: it calls ``executed_code_provenance(..., out_path=...)`` (the preflight alo
 discarded their provenance) and names ``"record_kind"``; and a harness that spawns ``"--sim"`` sets
 ``env["MAXIM_HARNESS_RUN_ID"]`` literally, calls ``harness_run_id(``, finds its report through
 ``find_own_report``/``spawn_evidence`` (never the newest directory) and echoes it with ``sim_evidence(``.
+Since M1b PR 5a a ``"--sim"`` spawner may not call ``in_process_code_provenance``: the provenance block's
+``harness_family`` (``"in_process"`` / ``"spawning"``, stamped by ``_provenance`` itself) tells the evidence gate
+whether to judge a row by its own provenance or by the sims it echoes, so a spawner claiming ``in_process`` would
+be judged without its sims.
 Presence checks: one literal covers a file, and they catch forgetting, not a wrong argument.
 
 False positives (a script whose match is not a record write / sub-sim spawn)
@@ -188,6 +192,12 @@ def _stamp_failures(rel: Path, tree: ast.AST) -> list[str]:
                 f"{rel}: spawns `maxim --sim` without binding its sims by harness run id — missing "
                 f"{', '.join(missing)} (M1b, #1003: find the report the spawn wrote, never the newest directory, "
                 "and echo its evidence into the row)"
+            )
+        if "in_process_code_provenance" in calls:
+            out.append(
+                f"{rel}: spawns `maxim --sim` but calls in_process_code_provenance — that stamps "
+                'harness_family: "in_process", which the evidence gate judges by the row\'s own provenance '
+                "instead of the sims it spawned (M1b PR 5a); a spawner stamps executed_code_provenance only"
             )
     return out
 

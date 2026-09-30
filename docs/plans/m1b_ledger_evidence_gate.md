@@ -105,7 +105,8 @@ Other status surfaces (the CLAUDE.md active-initiatives line, CHANGELOG, release
    with `record_kind` and `harness_run_id` stamps across sim reports and harnesses, and one hash length.
 3. **Ledger normalisation + format lint** (owner reviews every row's status).
 4. **Prereg lint** (`rerun_`, scoped amendments, `NNdMM`).
-5. **The evidence gate** + the legacy snapshot + the exceptions file.
+5. **The evidence gate** + the legacy snapshot + the exceptions file, split in two: **5a** stamps the writers
+   the gate reads, **5b** is the gate.
 
 ## PR 2 as built (#1003, 2026-09-29)
 
@@ -211,3 +212,27 @@ For PR 5:
   there, while every entry can read PASS.
 - Wire the exceptions file into this lint too (an `EXCEPTED` status). Otherwise, now that the in-script lists
   are frozen, a future legitimate exception has no path.
+
+## PR 5a as built (2026-09-30)
+
+Every record the gate will read now says what it is, stamped where it is written:
+
+- **Harness rows** go through `scripts/_provenance.py::stamp_harness_row`: `record_kind: "harness_row"`, `status`
+  (`failed` when the row carries a `refusal`, or already said so; else `ok`) and an explicit `mock`. The survival
+  writers (Exp 60, 61, 62, R3), Exp 56/57 campaigns and instrument checks use it. Exp 37's failed row, the Exp 44
+  manifest (`mock` = `--dry-run`) and the Exp 49 rows (`mock` = the scripted arm) now carry `mock` too.
+- **Verdicts** go through `stamp_verdict`: `record_kind: "verdict"`, a `kind` (`exp56_verdict` … `exp62_verdict`;
+  the gate owns each kind's pass values), `data` repo-relative with `data_sha256` of the bytes judged, and the
+  `scope` selecting its rows (`run_ids`, or `campaign_id` + the row kinds counted). The Exp 56/57 analyzers now
+  stamp their own `provenance`.
+- **`harness_family`** is stamped inside the provenance block by `_provenance` (`in_process` / `spawning`), never
+  by a writer. Exp 56/57 import `maxim` and never spawn it, so they moved to
+  `in_process_code_provenance(repo, maxim.__file__)`; the console-script probe described a different package.
+  `lint_harness_provenance.py` refuses `in_process_code_provenance` in a `--sim` spawner.
+- The harness edits fire no ledger `Re-run on:` trigger and match no pre-registration's pinned hash.
+
+For PR 5b:
+- The Exp 49 rows carry no `sims`, so under the spawning-family rule they can never be ESTABLISHED.
+- R3's report re-admits rows whose only refusal is the tick band (Amendment 2); those rows are stamped
+  `failed`, so the gate skips them, which is conservative. R3 has no verdict writer.
+- The Exp 44 `campaign_start` row carries no `status` (legacy reading: ok); its stage rows do.

@@ -63,6 +63,7 @@ the same way: by file path from THIS tree, never through ``sys.path`` (#998).
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -77,6 +78,8 @@ __all__ = [
     "OwnReportError",
     "SimRunFailed",
     "failed_row",
+    "stamp_harness_row",
+    "stamp_verdict",
     "is_failed_row",
     "spawn_evidence",
     "depends_on",
@@ -313,6 +316,9 @@ def in_process_code_provenance(
         "executed_maxim_file": str(executed),
         "executed_git_hash": _git_hash(root),
         **_run_id_stamp(),
+        # Stamped HERE, never by the writer (M1b PR 5a): the evidence gate judges an in-process row by its own
+        # provenance and a spawning row by the sims it echoes, so a writer must not choose which.
+        "harness_family": "in_process",
         "working_tree_dirty_src_scripts": gate["working_tree_dirty_src_scripts"],
         "code_tree_sha256": code_tree_sha256(root),
         "python": sys.executable,
@@ -356,6 +362,7 @@ def executed_code_provenance(
         "code_tree_sha256": code_tree_sha256(root) if executed_root == root else "unknown",
         "pythonpath": os.environ.get("PYTHONPATH", ""),
         **_run_id_stamp(),
+        "harness_family": "spawning",
     }
     if gate["allow_dirty"]:
         prov["allow_dirty"] = True
@@ -474,6 +481,36 @@ def failed_row(exc: BaseException) -> dict[str, object]:
         "sims": list(getattr(exc, "sims", []) or []),
         **({"failure_detail": exc.detail} if getattr(exc, "detail", None) else {}),
     }
+
+
+def stamp_harness_row(row: dict, *, mock: bool) -> dict:
+    """A harness row as the evidence gate reads it (M1b PR 5a), stamped at the one place a writer writes it:
+    ``record_kind``, ``status`` (``failed`` when the row carries a ``refusal`` or was already failed, else ``ok``)
+    and an explicit ``mock`` (a missing ``mock`` is never read as "not mock"). Returns the same dict."""
+    row["record_kind"] = "harness_row"
+    refused = bool(row.get("refusal"))
+    row["status"] = "failed" if refused or row.get("status") == "failed" else "ok"
+    row["mock"] = bool(mock)
+    return row
+
+
+def stamp_verdict(verdict: dict, *, repo_root: Path | str, kind: str, data: Path | str, scope: dict) -> dict:
+    """A verdict as the evidence gate reads it (M1b PR 5a): ``record_kind``, its ``kind`` (the gate owns each
+    kind's pass values), the rows file it judged as a REPO-RELATIVE path with that file's sha256 (rows appended
+    after the verdict change the hash), and the scope that selects its rows (``run_ids`` / ``campaign_id`` + row
+    ``kinds``). Returns the same dict."""
+    root = Path(repo_root).resolve()
+    path = Path(data).resolve()
+    try:
+        rel = path.relative_to(root).as_posix()
+    except ValueError:
+        rel = str(data)  # outside the repo: the gate refuses it (not a tracked record)
+    verdict["record_kind"] = "verdict"
+    verdict["kind"] = kind
+    verdict["data"] = rel
+    verdict["data_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+    verdict["scope"] = scope
+    return verdict
 
 
 def is_failed_row(row: object) -> bool:

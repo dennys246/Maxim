@@ -103,6 +103,8 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    stamp_harness_row,
+    stamp_verdict,
 )
 from exp56 import common as C  # noqa: E402
 from survival_world.common import InstrumentError  # noqa: E402
@@ -742,7 +744,8 @@ class _Campaign:
     def write(self, row: dict[str, Any]) -> None:
         self.out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.out_path, "a") as fh:
-            fh.write(json.dumps(row) + "\n")
+            # record_kind / status (refusal → failed) / mock: the evidence gate's reading (M1b PR 5a).
+            fh.write(json.dumps(stamp_harness_row(row, mock=False)) + "\n")
 
     # ── the wet apparatus checks, once per pair, on a throwaway agent ──
 
@@ -1188,7 +1191,13 @@ def _run(args: argparse.Namespace) -> int:
 def _verdict(args: argparse.Namespace) -> int:
     rows = [json.loads(ln) for ln in Path(args.data).expanduser().read_text().splitlines() if ln.strip()]
     v = compute_verdict(rows, campaign_id=args.campaign_id)
-    v["data"] = str(args.data)
+    stamp_verdict(  # the rows file (repo-relative + sha256) and the rows the verdict counts (M1b PR 5a)
+        v,
+        repo_root=C.REPO_ROOT,
+        kind="exp61_verdict",
+        data=Path(args.data).expanduser(),
+        scope={"campaign_id": args.campaign_id, "kinds": ["receiver", "anti_vacuity"]},
+    )
     print(json.dumps({k: v[k] for k in v if k not in ("gates",)}, indent=2))
     print(f"VERDICT: {v['verdict']}" + (f" ({v['incomplete_cause']})" if v.get("incomplete_cause") else ""))
     if args.json:

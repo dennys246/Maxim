@@ -34,7 +34,8 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 from _provenance import (  # noqa: E402
     assert_repo_interpreter,
     evidence_out_paths,
-    executed_code_provenance,
+    in_process_code_provenance,
+    stamp_harness_row,
     preflight_gated_record_or_exit,
 )
 from _paper_server import server_version_matches  # noqa: E402
@@ -338,7 +339,11 @@ def main() -> int:
         REPO_ROOT, [args.out], write_experiment_results=args.write_experiment_results, allow_dirty=args.allow_dirty
     )[0]
     preflight = preflight_gated_record_or_exit(REPO_ROOT, out_path, allow_dirty=args.allow_dirty)
-    provenance = executed_code_provenance(REPO_ROOT, "maxim", out_path=out_path, allow_dirty=args.allow_dirty)
+    import maxim  # noqa: PLC0415
+
+    # In-process provenance (M1b PR 5a): this harness IMPORTS maxim and never spawns it, so the executed code
+    # is the imported package (asserted to be this repo's src), not whatever the `maxim` console script resolves.
+    provenance = in_process_code_provenance(REPO_ROOT, maxim.__file__, out_path=out_path, allow_dirty=args.allow_dirty)
 
     if args.mock:
         server = C.ScriptedBridgeServer(seed=args.seed_base)
@@ -439,8 +444,7 @@ def main() -> int:
                         keep_artifacts=(i == 0),
                         artifacts_dir=out_path.parent / "pair0_artifacts",
                     )
-                    row["record_kind"] = "harness_row"  # M1b (#1003): the gate classifies a record by this stamp
-                    row["mock"] = bool(args.mock)
+                    stamp_harness_row(row, mock=bool(args.mock))  # record_kind / status / mock (M1b PR 5a)
                     row.update(preflight)
                     row.update(preflight_platform)
                     row["provenance"] = provenance

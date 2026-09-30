@@ -46,6 +46,7 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    stamp_harness_row,
 )
 from exp56 import common as C  # noqa: E402
 from survival_world.common import InstrumentError  # noqa: E402
@@ -548,7 +549,8 @@ class _R3:
     def write(self, row: dict[str, Any]) -> None:
         self.out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.out_path, "a") as fh:
-            fh.write(json.dumps(row, default=str) + "\n")
+            # record_kind / status (refusal → failed) / mock: the evidence gate's reading (M1b PR 5a).
+            fh.write(json.dumps(stamp_harness_row(row, mock=False), default=str) + "\n")
 
     # ── rows ──
 

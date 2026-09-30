@@ -95,6 +95,8 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    stamp_harness_row,
+    stamp_verdict,
 )
 from exp56 import common as C  # noqa: E402
 from survival_world.common import InstrumentError  # noqa: E402
@@ -318,6 +320,14 @@ def compute_verdict(
 # ─────────────────────────────────── live ───────────────────────────────────
 
 
+def _write_row(out_path: Path, record: dict) -> None:
+    """Append one seed's row, stamped as the evidence gate reads it (M1b PR 5a): record_kind, status
+    (a refusal → failed) and mock."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "a") as fh:
+        fh.write(json.dumps(stamp_harness_row(record, mock=False)) + "\n")
+
+
 def _run(args: argparse.Namespace) -> int:
     out_arg = Path(args.out)
     out_abs = out_arg if out_arg.is_absolute() else (C.REPO_ROOT / out_arg)
@@ -507,9 +517,7 @@ def _run(args: argparse.Namespace) -> int:
                 os.chdir(prev_cwd)
                 shutil.rmtree(persistence_dir, ignore_errors=True)
             records.append(record)
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(out_path, "a") as fh:
-                fh.write(json.dumps(record) + "\n")
+            _write_row(out_path, record)
     finally:
         rcon.close()
 
@@ -521,8 +529,15 @@ def _run(args: argparse.Namespace) -> int:
 def _verdict(args: argparse.Namespace) -> int:
     recs = [json.loads(ln) for ln in Path(args.data).expanduser().read_text().splitlines() if ln.strip()]
     v = compute_verdict(recs, run_id=args.run_id)
-    v["data"] = str(args.data)
     v["run_ids"] = args.run_id
+    # The rows file as a repo-relative path + its sha256, and the scope selecting its rows (M1b PR 5a).
+    stamp_verdict(
+        v,
+        repo_root=C.REPO_ROOT,
+        kind="exp60_verdict",
+        data=Path(args.data).expanduser(),
+        scope={"run_ids": args.run_id},
+    )
     print(json.dumps({k: v[k] for k in v if k not in ("per_seed", "gates")}, indent=2))
     print(f"VERDICT: {v['verdict']}")
     if args.json:

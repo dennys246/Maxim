@@ -25,6 +25,7 @@ from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS_DIR))
+REPO_ROOT = SCRIPTS_DIR.parent
 
 # ── frozen verdict constants (gate v1) ───────────────────────────────────
 GATES_V1 = {
@@ -176,7 +177,14 @@ def main() -> int:
     path = Path(args.inp)
     rows = load_rows(path)
     report = analyze(rows, min_pairs=args.min_pairs)
-    report["record_kind"] = "verdict"  # M1b (#1003): the gate classifies a record by this stamp
+    # The verdict as the evidence gate reads it (M1b PR 5a): its kind, the rows file (repo-relative + sha256), the
+    # scope (every row of the file), and the code that computed it.
+    from _provenance import in_process_code_provenance, stamp_verdict  # noqa: PLC0415
+
+    import maxim  # noqa: PLC0415
+
+    stamp_verdict(report, repo_root=REPO_ROOT, kind="exp56_verdict", data=path, scope={})
+    report["provenance"] = in_process_code_provenance(REPO_ROOT, maxim.__file__)
     # One platform per file (re-baseline port, 2026-09-18): rows carry the server's measured
     # `version` reply; a file mixing platforms (or pre-port rows without the field beside rows
     # with it) has no single apparatus and gets no verdict.
