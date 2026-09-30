@@ -27,9 +27,9 @@ _REPO = Path(__file__).resolve().parent.parent
 # Ratchet-DOWN only: never raise a number here to make a growing function pass.
 _BASELINES: dict[tuple[str, str], int] = {
     ("src/maxim/runtime/agent_loop.py", "run_agentic_loop"): 3453,
-    # 3324 -> 3326: owner-approved fence exception 2026-09-29 (M1 stamps each report with the code the run
-    # imported, captured at sim start; +3 over the measured 3323). The decomposition removes it with the rest.
-    ("src/maxim/simulation/orchestrator.py", "start_simulation_mode"): 3326,
+    # 3324 -> 3326 (2026-09-29, owner-approved M1 exception: the code stamp at sim start), then tightened
+    # to 3313 the same day (#1002: the finish-reason resolution extracted to _resolve_finish_reason).
+    ("src/maxim/simulation/orchestrator.py", "start_simulation_mode"): 3313,
     ("src/maxim/cli.py", "_main_impl"): 1743,
 }
 

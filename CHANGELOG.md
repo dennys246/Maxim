@@ -298,6 +298,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A sim that simply finishes reports `completed`, not `cancel`** (#1002).
+  - The generative, DM, fixture and pre-campaign runners stop the loop by setting the same `stop_event`
+    an operator's `/cancel` sets, and the shutdown sets it for every run, so every run that ended
+    without a `finish_context` read `cancel`: 27 of the 37 committed `report.json` files under
+    `docs/experiments/data/` (the other 10 carry `max_turns` or `planning_failed`), complete cradle
+    runs included. Since #524 (2026-08-19) `cancel` counts as a typed abort, so those runs also exited 4
+    and `roy_runner`, `BenchmarkRunner`, `curriculum_runner` and `research_orchestrator` treated them as
+    unusable.
+  - The operator's stop (`/cancel`, Ctrl+C, an interrupted reader, a top-level KeyboardInterrupt) is now
+    its own event, set only by `_stop_by_operator`, and the finish reason is resolved by the
+    module-level `_resolve_finish_reason`, which does not read `stop_event`. A finished run exits 0.
+  - Each campaign runner's own ending is recorded at its call site (`_finish_runner`), read in that
+    runner's own return shape: the runners catch their own failures and return, so without it a
+    narrator crash or a fixture / DM exception would have read `completed`. A failure the runner reports is
+    `error`, naming the runner (owner decision; a generative run's per-turn bridge failure is not yet
+    reported by the runner, so it still reads `completed`); a generative run that hit its own turn cap is `max_turns`; a DM
+    campaign's `campaign.finish_reason` is read (Ctrl+C is `cancel`, a structural failure such as an
+    unknown encounter is `error`); a fixture run finishes `complete`; a pre-campaign run with any failed
+    turn is `error`; an unrecognised ending is `error` (fail closed). The tests build their inputs from
+    the real producers (`DMRuntime.get_rollup`, `FixtureDrivenOrchestrator.to_report_dict`,
+    `run_precampaign_turns`).
+  - Committed records are not rewritten; the ledger walk found no row affected (the Exp 42 and Exp 52
+    harnesses ignore the exit code). The bugs ledger's D22 row wrongly said every subprocess harness
+    rejects a non-zero exit; corrected.
+
 - **The clean-tree flag that gates every committed experiment record is decided by content, not by
   `git status`** (#998).
   - `working_tree_dirty_src_scripts` (`scripts/_provenance.py::working_tree_dirty`, and the sim-report
